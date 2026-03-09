@@ -3,12 +3,9 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { requireConversationOwnerAction, requireUserId } from "./auth";
 import {
-  PERSONALIZED_DASHBOARD_PAGE_SYSTEM_PROMPT,
   buildPersonalizedDashboardPageUserMessage,
   type PersonalizedDashboardPageAssignment,
 } from "./prompts/personalized_dashboard";
-import { normalizePromptOverrides, resolvePromptText } from "./prompts/registry";
-import { jsonValueValidator } from "./shared_validators";
 
 /** Max dashboard pages to generate (0 = disabled). */
 const MAX_DASHBOARD_PAGES_TO_GENERATE = 0;
@@ -332,7 +329,8 @@ export const startGeneration = action({
     targetDeviceId: v.optional(v.string()),
     pageAssignments: v.optional(v.array(pageAssignmentInputValidator)),
     force: v.optional(v.boolean()),
-    promptOverrides: v.optional(jsonValueValidator),
+    systemPrompt: v.optional(v.string()),
+    userPromptTemplate: v.optional(v.string()),
   },
   returns: startGenerationResultValidator,
   handler: async (ctx, args): Promise<{
@@ -342,7 +340,6 @@ export const startGeneration = action({
   }> => {
     const ownerId = await requireUserId(ctx);
     await requireConversationOwnerAction(ctx, args.conversationId);
-    const promptOverrides = normalizePromptOverrides(args.promptOverrides);
 
     const manualAssignments = args.pageAssignments
       ? buildAssignmentsFromInput(args.pageAssignments)
@@ -361,6 +358,8 @@ export const startGeneration = action({
     const planned = manualAssignments.length >= 2
       ? manualAssignments.slice(0, 4)
       : buildHeuristicAssignments(normalizedUserProfile);
+    const systemPrompt = args.systemPrompt?.trim();
+    const userPromptTemplate = args.userPromptTemplate?.trim();
 
     // Resolve which device to target
     const executionTarget = await ctx.runQuery(internal.agent.device_resolver.resolveExecutionTarget, {
@@ -390,12 +389,20 @@ export const startGeneration = action({
 
     // Dispatch each page as a dashboard_generation_request event to the local runner
     const toDispatch = planned.slice(0, MAX_DASHBOARD_PAGES_TO_GENERATE);
+    if (toDispatch.length > 0 && (!systemPrompt || !userPromptTemplate)) {
+      return {
+        started: false,
+        pageIds: [],
+        skippedReason: "missing_prompt_config",
+      };
+    }
+
     for (const page of toDispatch) {
       const assignment = toAssignment(page);
       const userPrompt = buildPersonalizedDashboardPageUserMessage({
         userProfile: normalizedUserProfile,
         assignment,
-        promptTemplate: resolvePromptText("personalized_dashboard.user", promptOverrides),
+        promptTemplate: userPromptTemplate!,
       });
 
       await ctx.runMutation(internal.events.appendInternalEvent, {
@@ -410,7 +417,7 @@ export const startGeneration = action({
           topic: page.topic,
           focus: page.focus,
           dataSources: page.dataSources,
-          systemPrompt: resolvePromptText("personalized_dashboard.system", promptOverrides),
+          systemPrompt: systemPrompt!,
           userPrompt,
         },
       });

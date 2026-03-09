@@ -4,11 +4,9 @@ import type { ActionCtx } from "../_generated/server";
 import {
   buildSearchHtmlUserPrompt,
 } from "../prompts/index";
-import { resolvePromptText } from "../prompts/registry";
-import type { PromptOverrideMap } from "../prompts/registry";
 import type { ToolOptions } from "./types";
 
-const MAX_WEB_SEARCH_RESULTS = 5;
+const MAX_WEB_SEARCH_RESULTS = 8;
 const MAX_WEB_SEARCH_HIGHLIGHT_CHARS = 400;
 const MAX_WEB_SEARCH_SNIPPET_CHARS = 300;
 
@@ -28,6 +26,11 @@ export type WebSearchResponse = {
   text: string;
   results: SearchHit[];
   html?: string;
+};
+
+export type SearchHtmlPromptConfig = {
+  systemPrompt: string;
+  userPromptTemplate: string;
 };
 
 const sanitizeGeneratedHtml = (value: string): string =>
@@ -67,10 +70,16 @@ const generateSearchHtml = async (
   options: {
     query: string;
     results: SearchHit[];
-    promptOverrides?: PromptOverrideMap;
+    promptConfig?: SearchHtmlPromptConfig;
   },
 ): Promise<string | undefined> => {
-  if (options.results.length === 0) return undefined;
+  if (
+    options.results.length === 0 ||
+    !options.promptConfig?.systemPrompt.trim() ||
+    !options.promptConfig.userPromptTemplate.trim()
+  ) {
+    return undefined;
+  }
 
   const resultsText = options.results
     .map((result, index) => `${index + 1}. ${result.title}\n   ${result.url}\n   ${result.snippet}`)
@@ -79,14 +88,14 @@ const generateSearchHtml = async (
   const prompt = buildSearchHtmlUserPrompt({
     query: options.query,
     resultsText,
-    promptTemplate: resolvePromptText("search_html.user", options.promptOverrides),
+    promptTemplate: options.promptConfig.userPromptTemplate,
   });
 
   const result = await generateText({
     model: SEARCH_HTML_MODEL,
     temperature: 1.0,
     maxOutputTokens: 16096,
-    system: resolvePromptText("search_html.system", options.promptOverrides),
+    system: options.promptConfig.systemPrompt,
     messages: [{ role: "user", content: prompt }],
   });
 
@@ -100,7 +109,7 @@ export const executeWebSearch = async (
   options: {
     ownerId?: string;
     includeHtml?: boolean;
-    promptOverrides?: PromptOverrideMap;
+    searchHtmlPromptConfig?: SearchHtmlPromptConfig;
     category?: string;
   } = {},
 ): Promise<WebSearchResponse> => {
@@ -175,7 +184,7 @@ export const executeWebSearch = async (
         searchResult.html = await generateSearchHtml({
           query,
           results,
-          promptOverrides: options.promptOverrides,
+          promptConfig: options.searchHtmlPromptConfig,
         });
       } catch (error) {
         console.warn(

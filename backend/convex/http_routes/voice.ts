@@ -3,7 +3,7 @@ import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction } from "../auth";
-import { normalizePromptOverrides, resolvePromptText } from "../prompts/registry";
+import { buildVoiceSessionInstructions } from "../prompts/voice_orchestrator";
 import {
   errorResponse,
   jsonResponse,
@@ -81,13 +81,18 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           model?: string;
           turnDetection?: "semantic_vad" | "server_vad";
           turnEagerness?: "low" | "medium" | "high";
-          promptOverrides?: unknown;
+          basePrompt?: string;
         };
         let body: VoiceSessionBody | null = null;
         try {
           body = (await request.json()) as VoiceSessionBody;
         } catch {
           return errorResponse(400, "Invalid JSON body", origin);
+        }
+
+        const basePrompt = body?.basePrompt?.trim();
+        if (!basePrompt) {
+          return errorResponse(400, "basePrompt is required", origin);
         }
 
         // Resolve owner ID from identity
@@ -169,8 +174,6 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           resolveDeviceStatus(),
           resolveActiveThreads(),
         ]);
-        const promptOverrides = normalizePromptOverrides(body?.promptOverrides);
-
         if (!openaiApiKey) {
           return errorResponse(
             503,
@@ -180,17 +183,15 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
         }
 
         // Build voice session instructions with dynamic context
-        const [{ buildVoiceSessionInstructions }, { getVoiceToolSchemas }] =
-          await Promise.all([
-            import("../prompts/voice_orchestrator"),
-            import("../tools/voice_schemas"),
-          ]);
+        const [{ getVoiceToolSchemas }] = await Promise.all([
+          import("../tools/voice_schemas"),
+        ]);
 
         const userName =
           identity.name ?? identity.nickname;
 
         const instructions = buildVoiceSessionInstructions({
-          basePrompt: resolvePromptText("voice_orchestrator.base", promptOverrides),
+          basePrompt,
           userName,
           platform: "desktop",
           deviceStatus,
