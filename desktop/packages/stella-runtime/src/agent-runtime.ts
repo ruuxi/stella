@@ -78,6 +78,7 @@ export type RuntimeToolEndEvent = {
   toolCallId: string;
   toolName: string;
   resultPreview: string;
+  html?: string;
 };
 
 export type RuntimeErrorEvent = {
@@ -132,6 +133,26 @@ type OrchestratorRunOptions = BaseRunOptions & {
 type SubagentRunOptions = BaseRunOptions & {
   onProgress?: (chunk: string) => void;
   callbacks?: Partial<RuntimeRunCallbacks>;
+};
+
+const getToolResultHtml = (
+  toolName: string,
+  result: unknown,
+): string | undefined => {
+  if (toolName.toLowerCase() !== "websearch") return undefined;
+  if (!result || typeof result !== "object") return undefined;
+  const details = (result as { details?: unknown }).details;
+  if (!details || typeof details !== "object") return undefined;
+  const html = (details as { html?: unknown }).html;
+  return typeof html === "string" && html.trim().length > 0 ? html : undefined;
+};
+
+const getToolResultPreview = (toolName: string, result: unknown): string => {
+  const html = getToolResultHtml(toolName, result);
+  if (html) {
+    return "HTML search briefing ready.";
+  }
+  return textFromUnknown(result).slice(0, MAX_RESULT_PREVIEW);
 };
 
 const now = () => Date.now();
@@ -266,8 +287,15 @@ const createPiTools = (opts: {
         if (!opts.webSearch) {
           return { content: [{ type: "text", text: "WebSearch is not available." }], details: {} };
         }
-        const { text } = await opts.webSearch(query);
-        return { content: [{ type: "text", text }], details: { text } };
+        const { text, html } = await opts.webSearch(query);
+        const toolText = html?.trim() ? html : text;
+        return {
+          content: [{ type: "text", text: toolText }],
+          details: {
+            text: toolText,
+            ...(html?.trim() ? { html } : {}),
+          },
+        };
       }
 
       if (toolName === "WebFetch") {
@@ -441,7 +469,8 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
     }
 
     if (event.type === "tool_execution_end") {
-      const preview = textFromUnknown(event.result).slice(0, MAX_RESULT_PREVIEW);
+      const preview = getToolResultPreview(event.toolName, event.result);
+      const html = getToolResultHtml(event.toolName, event.result);
       console.log(`[stella:trace] tool exec end   | ${event.toolName} | callId=${event.toolCallId} | result=${preview.slice(0, 200)}`);
       const s = nextSeq();
       opts.callbacks.onToolEnd({
@@ -450,6 +479,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         resultPreview: preview,
+        ...(html ? { html } : {}),
       });
       opts.store.recordRunEvent({
         timestamp: now(),
@@ -826,7 +856,8 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
     }
 
     if (event.type === "tool_execution_end") {
-      const preview = textFromUnknown(event.result).slice(0, MAX_RESULT_PREVIEW);
+      const preview = getToolResultPreview(event.toolName, event.result);
+      const html = getToolResultHtml(event.toolName, event.result);
       const s = nextSeq();
       opts.store.recordRunEvent({
         timestamp: now(),
@@ -845,6 +876,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         resultPreview: preview,
+        ...(html ? { html } : {}),
       });
     }
   });

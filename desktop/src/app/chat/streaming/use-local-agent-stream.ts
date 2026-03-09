@@ -18,6 +18,7 @@ type LocalAgentEvent = {
   toolCallId?: string
   toolName?: string
   resultPreview?: string
+  html?: string
   finalText?: string
 }
 
@@ -129,6 +130,7 @@ export function useLocalAgentStream({
             toolCallId: event.toolCallId,
             toolName: event.toolName,
             resultPreview: event.resultPreview,
+            html: event.html,
           })
           break
         case 'error':

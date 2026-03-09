@@ -35,7 +35,6 @@ export function getStellaUiSocketPath(): string {
 
 /** Known default home view panels and their source files. */
 const DEFAULT_PANEL_MAP: Record<string, string> = {
-  "news feed": "src/app/home/NewsFeed.tsx",
   "image gallery": "src/app/home/ImageGallery.tsx",
   "music player": "src/app/home/MusicPlayer.tsx",
   "generativecanvas": "src/app/home/GenerativeCanvas.tsx",

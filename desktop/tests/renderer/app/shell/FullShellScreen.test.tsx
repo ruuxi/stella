@@ -172,7 +172,7 @@ vi.mock("@/app/shell/FloatingOrb", () => ({
 }));
 
 vi.mock("@/app/shell/hooks/use-orb-message", () => ({
-  useOrbMessage: () => ({ text: null, opacity: 0 }),
+  useOrbMessage: () => ({ text: null }),
 }));
 
 vi.mock("@/app/auth/AuthDialog", () => ({

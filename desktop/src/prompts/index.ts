@@ -24,7 +24,6 @@ export {
   OFFLINE_RESPONDER_SYSTEM_PROMPT,
   getOfflineResponderSystemPrompt,
 } from "./offline_responder"
-export { NEWS_HTML_SYSTEM_PROMPT, buildNewsHtmlUserPrompt, getNewsHtmlSystemPrompt } from "./news_html"
 export {
   VOICE_ORCHESTRATOR_PROMPT,
   buildVoiceSessionInstructions,

@@ -52,10 +52,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onUpdate: onIpc<string>('display:update'),
   },
 
-  news: {
-    onUpdate: onIpc<string>('news:update'),
-  },
-
   ui: {
     getState: () => ipcRenderer.invoke('ui:getState'),
     setState: (partial: Record<string, unknown>) => ipcRenderer.invoke('ui:setState', partial),
@@ -201,6 +197,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
           toolCallId?: string;
           toolName?: string;
           resultPreview?: string;
+          html?: string;
           error?: string;
           fatal?: boolean;
           finalText?: string;
@@ -217,6 +214,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       toolCallId?: string;
       toolName?: string;
       resultPreview?: string;
+      html?: string;
       error?: string;
       fatal?: boolean;
       finalText?: string;

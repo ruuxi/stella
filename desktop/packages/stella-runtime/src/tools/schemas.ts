@@ -154,7 +154,69 @@ export const WebSearchSchema = z.object({
 });
 
 export const DisplaySchema = z.object({
-  html: z.string().describe("HTML content to render on the canvas panel. Use semantic HTML (headings, paragraphs, lists, tables, divs). Elements are auto-styled to match the app theme. Use inline styles for layout (grid, flexbox). Use var(--foreground) and var(--background) for colors."),
+  html: z.string().describe(
+    "HTML content to render on the canvas panel. The container auto-styles semantic elements.\n\n" +
+    "DESIGN: refined informational display — clean, structured, editorial. Typography and whitespace do the work. Not generic cards.\n\n" +
+    "RULES:\n" +
+    "- Headlines: font-family: Georgia, serif; font-weight: 500. Use h2 for topic title (19-22px, opacity 0.92), h3 for section labels (10px, uppercase, letter-spacing 0.1em, opacity 0.35). Avoid h1.\n" +
+    "- Colors: ONLY var(--foreground) and var(--background). Opacity tiers: 0.92 (title), 0.88 (key values), 0.65 (body), 0.42 (secondary text), 0.25-0.3 (meta). Never hardcode colors.\n" +
+    "- Metric blocks: use a grid row with joined segments — background: color-mix(in oklch, var(--foreground) 3%, transparent). First segment border-radius: 8px 0 0 8px, last: 0 8px 8px 0. Large serif numbers (22px), tiny uppercase labels (10px, 0.08em spacing, 0.32 opacity).\n" +
+    "- Dividers: <div> with height: 1px, background: color-mix(in oklch, var(--foreground) 4-5%, transparent). Top accent divider can use linear-gradient(90deg, color-mix(in oklch, var(--foreground) 15%, transparent), transparent).\n" +
+    "- Left accent bars for list items: width: 3px, border-radius: 2px, background: color-mix(in oklch, var(--foreground) 10%, transparent), align-self: stretch.\n" +
+    "- Tables: subtle surface (2.5% foreground), border-radius 8px, overflow hidden. No header row — use label/value pairs. Cell borders: 1px solid color-mix(in oklch, var(--foreground) 4%, transparent).\n" +
+    "- Source/meta: <small> with font-size: 10px, opacity 0.18-0.25, letter-spacing 0.03em.\n" +
+    "- Layout: flexbox via inline styles. No <style> blocks, no class names, no scripts, no external resources.\n\n" +
+    "REFERENCE — adapt this structure to any content type:\n\n" +
+    '<div style="display: flex; flex-direction: column; gap: 0;">\n' +
+    '  <div style="margin-bottom: 6px;">\n' +
+    '    <h3 style="margin: 0 0 4px; font-size: 10px; letter-spacing: 0.12em; opacity: 0.3;">Market Overview</h3>\n' +
+    '    <h2 style="font-size: 22px; font-weight: 500; opacity: 0.92; margin: 0; font-family: Georgia, serif; letter-spacing: -0.02em;">NVIDIA Corporation</h2>\n' +
+    "  </div>\n" +
+    '  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">\n' +
+    '    <small style="font-size: 11px; opacity: 0.35; margin: 0;">NASDAQ: NVDA</small>\n' +
+    '    <small style="opacity: 0.15; margin: 0;">&middot;</small>\n' +
+    '    <small style="font-size: 11px; opacity: 0.3; margin: 0;">As of 3:42 PM EST</small>\n' +
+    "  </div>\n" +
+    '  <div style="height: 1px; background: linear-gradient(90deg, color-mix(in oklch, var(--foreground) 15%, transparent), transparent); margin-bottom: 20px;"></div>\n' +
+    '  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px; margin-bottom: 20px;">\n' +
+    '    <div style="padding: 12px 14px; background: color-mix(in oklch, var(--foreground) 3%, transparent); border-radius: 8px 0 0 8px;">\n' +
+    '      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.32; margin-bottom: 6px;">Price</div>\n' +
+    '      <div style="font-size: 22px; font-weight: 400; opacity: 0.88; font-family: Georgia, serif; letter-spacing: -0.02em;">$892.40</div>\n' +
+    '      <div style="font-size: 11px; opacity: 0.45; margin-top: 3px;">+2.34%</div>\n' +
+    "    </div>\n" +
+    '    <div style="padding: 12px 14px; background: color-mix(in oklch, var(--foreground) 3%, transparent);">\n' +
+    '      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.32; margin-bottom: 6px;">Mkt Cap</div>\n' +
+    '      <div style="font-size: 22px; font-weight: 400; opacity: 0.88; font-family: Georgia, serif; letter-spacing: -0.02em;">$2.19T</div>\n' +
+    '      <div style="font-size: 11px; opacity: 0.45; margin-top: 3px;">Mega cap</div>\n' +
+    "    </div>\n" +
+    '    <div style="padding: 12px 14px; background: color-mix(in oklch, var(--foreground) 3%, transparent); border-radius: 0 8px 8px 0;">\n' +
+    '      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.32; margin-bottom: 6px;">P/E</div>\n' +
+    '      <div style="font-size: 22px; font-weight: 400; opacity: 0.88; font-family: Georgia, serif; letter-spacing: -0.02em;">64.2</div>\n' +
+    '      <div style="font-size: 11px; opacity: 0.45; margin-top: 3px;">TTM</div>\n' +
+    "    </div>\n" +
+    "  </div>\n" +
+    '  <div style="margin-bottom: 20px;">\n' +
+    '    <h3 style="font-size: 10px; letter-spacing: 0.1em; opacity: 0.35; margin-bottom: 10px;">Summary</h3>\n' +
+    '    <p style="font-size: 12.5px; opacity: 0.55; line-height: 1.65;">Brief analysis paragraph here.</p>\n' +
+    "  </div>\n" +
+    '  <div style="height: 1px; background: color-mix(in oklch, var(--foreground) 5%, transparent); margin-bottom: 18px;"></div>\n' +
+    '  <div style="margin-bottom: 20px;">\n' +
+    '    <h3 style="font-size: 10px; letter-spacing: 0.1em; opacity: 0.35; margin-bottom: 12px;">Key Points</h3>\n' +
+    '    <div style="display: flex; flex-direction: column; gap: 10px;">\n' +
+    '      <div style="display: flex; gap: 10px; align-items: flex-start;">\n' +
+    '        <div style="width: 3px; align-self: stretch; border-radius: 2px; background: color-mix(in oklch, var(--foreground) 10%, transparent); flex-shrink: 0; margin-top: 2px;"></div>\n' +
+    '        <div>\n' +
+    '          <p style="font-size: 12.5px; opacity: 0.65; margin-bottom: 3px; line-height: 1.45;"><strong style="opacity: 0.8;">Bold lead</strong> followed by supporting detail.</p>\n' +
+    '          <small style="font-size: 10px; opacity: 0.25;">Source &middot; Date</small>\n' +
+    "        </div>\n" +
+    "      </div>\n" +
+    "    </div>\n" +
+    "  </div>\n" +
+    '  <div style="padding-top: 8px;">\n' +
+    '    <small style="font-size: 10px; opacity: 0.18; letter-spacing: 0.03em;">Sources &middot; Timestamp</small>\n' +
+    "  </div>\n" +
+    "</div>"
+  ),
 });
 
 // ─── Tool Descriptions ──────────────────────────────────────────────────────
@@ -252,11 +314,13 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Render HTML on the canvas panel of the home dashboard.\n\n" +
     "Usage:\n" +
     "- Outputs rich visual content on the home screen instead of plain text in chat.\n" +
-    "- Use semantic HTML: headings, paragraphs, lists, tables. They are auto-styled to match the app.\n" +
-    "- For layout, use inline styles with CSS grid or flexbox.\n" +
-    "- For colors, use var(--foreground) and var(--background) to respect light/dark themes.\n" +
-    "- Keep HTML self-contained — no external stylesheets or scripts.\n" +
-    "- Use this when information benefits from visual presentation (summaries, overviews, results).",
+    "- Use for ANY content that benefits from visual presentation: data, research, explanations, comparisons, formatted text.\n" +
+    "- Follow the design system and reference example in the schema description exactly — same opacity tiers, same element patterns.\n" +
+    "- Headlines: Georgia, serif. Section labels: h3 (10px uppercase). Metric blocks: joined grid segments with large serif numbers.\n" +
+    "- Key points/items: left accent bar pattern (3px bar + content). Tables: subtle surface, no header row.\n" +
+    "- Colors: ONLY var(--foreground)/var(--background) with opacity. Dividers: color-mix. Never hardcode colors.\n" +
+    "- Layout via inline styles: flexbox or grid. No <style> blocks, no class names, no scripts.\n" +
+    "- Adapt the reference structure to the content — stocks get metric blocks, explanations get accent-bar sections, data gets tables.",
   HeartbeatGet:
     "Get the current heartbeat configuration for this conversation.\n\n" +
     "Returns the full local heartbeat config or null if none exists.",

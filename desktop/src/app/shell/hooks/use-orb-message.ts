@@ -5,25 +5,25 @@ const STORAGE_KEY = "stella:orb-last-seen-message";
 
 /**
  * Extracts the latest assistant message from events and manages
- * a show/fade/hide lifecycle for the floating orb bubble.
+ * a show → read → hide lifecycle for the floating orb bubble.
+ *
+ * Returns only `text`; entrance/exit animations are handled by motion
+ * in the FloatingOrb component (AnimatePresence).
  */
 export function useOrbMessage(
   events: EventRecord[],
   isVisible: boolean,
-): { text: string | null; opacity: number } {
+): { text: string | null } {
   const [text, setText] = useState<string | null>(null);
-  const [opacity, setOpacity] = useState(0);
   const [storedId] = useState(() => {
     try { return localStorage.getItem(STORAGE_KEY); } catch { return null; }
   });
   const lastSeenIdRef = useRef<string | null>(storedId);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isVisible) {
       if (timerRef.current) clearTimeout(timerRef.current);
-      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
       return;
     }
 
@@ -50,31 +50,24 @@ export function useOrbMessage(
 
     queueMicrotask(() => {
       setText(displayText);
-      setOpacity(1);
     });
 
-    // Clear previous timers
+    // Clear previous timer
     if (timerRef.current) clearTimeout(timerRef.current);
-    if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
 
     // Calculate reading time: ~60ms per word, minimum 3s
     const wordCount = displayText.split(/\s+/).length;
     const readingTime = Math.max(3000, wordCount * 60);
 
-    // Start fade after reading time
+    // Hide after reading time — exit animation handled by motion
     timerRef.current = setTimeout(() => {
-      setOpacity(0);
-      // Hide text after fade completes
-      fadeTimerRef.current = setTimeout(() => {
-        setText(null);
-      }, 1000);
+      setText(null);
     }, readingTime);
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
     };
   }, [events, isVisible]);
 
-  return isVisible ? { text, opacity } : { text: null, opacity: 0 };
+  return isVisible ? { text } : { text: null };
 }
