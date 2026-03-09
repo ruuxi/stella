@@ -122,6 +122,7 @@ import type {
   RecordingRestartData,
   InputEventData,
   StylesData,
+  ChainCommand,
   SiteModSetCommand,
   SiteModRemoveCommand,
   SiteModToggleCommand,
@@ -147,6 +148,42 @@ interface SnapshotData {
   snapshot: string;
   refs?: Record<string, { role: string; name?: string }>;
 }
+
+interface ChainStepResult {
+  step: number;
+  action: string;
+  success: boolean;
+  data?: unknown;
+  error?: string;
+  durationMs: number;
+}
+
+interface ChainData {
+  results: ChainStepResult[];
+  completed: number;
+  total: number;
+  totalDurationMs: number;
+  snapshot?: string;
+  screenshot?: string;
+}
+
+const waitForDelay = (min = 300, max = 1200): Promise<void> => {
+  const clampedMin = Math.max(0, min);
+  const clampedMax = Math.max(clampedMin, max);
+  const ratio = (Math.random() + Math.random()) / 2;
+  const duration = clampedMin + ratio * (clampedMax - clampedMin);
+  return new Promise((resolve) => setTimeout(resolve, duration));
+};
+
+const getChainSelector = (step: Record<string, unknown>): string | undefined => {
+  if (typeof step.selector === 'string' && step.selector.trim().length > 0) {
+    return step.selector;
+  }
+  if (typeof step.ref === 'string' && step.ref.trim().length > 0) {
+    return step.ref;
+  }
+  return undefined;
+};
 
 /**
  * Convert Playwright errors to AI-friendly messages
@@ -459,6 +496,8 @@ export async function executeCommand(command: Command, browser: BrowserManager):
         return await handleRecordingStop(command, browser);
       case 'recording_restart':
         return await handleRecordingRestart(command, browser);
+      case 'chain':
+        return await handleChain(command, browser);
       case 'site_mod_set':
         return await handleSiteModSet(command, browser);
       case 'site_mod_list':
@@ -505,6 +544,111 @@ async function handleNavigate(
   return successResponse(command.id, {
     url: page.url(),
     title: await page.title(),
+  });
+}
+
+async function handleChain(
+  command: ChainCommand,
+  browser: BrowserManager
+): Promise<Response<ChainData>> {
+  const results: ChainStepResult[] = [];
+  const chainStart = Date.now();
+  const delay = command.delay ?? { min: 300, max: 1200 };
+  const shouldWaitForSelector = command.waitForSelector !== false;
+  const waitTimeout = command.waitTimeout ?? 10000;
+  const abortOnError = command.abortOnError !== false;
+
+  for (let index = 0; index < command.steps.length; index++) {
+    const step = command.steps[index] as Record<string, unknown>;
+    const action = typeof step.action === 'string' ? step.action : '';
+    const stepStart = Date.now();
+    const selector = getChainSelector(step);
+
+    if (shouldWaitForSelector && selector) {
+      try {
+        await browser.getLocator(selector).waitFor({
+          state: 'attached',
+          timeout: waitTimeout,
+        });
+      } catch {
+        results.push({
+          step: index,
+          action,
+          success: false,
+          error: `Timeout waiting for selector: ${selector}`,
+          durationMs: Date.now() - stepStart,
+        });
+        if (abortOnError) break;
+        continue;
+      }
+    }
+
+    const response = await executeCommand(
+      { ...step, id: `${command.id}_s${index}` } as Command,
+      browser
+    );
+
+    if (response.success) {
+      results.push({
+        step: index,
+        action,
+        success: true,
+        data: response.data,
+        durationMs: Date.now() - stepStart,
+      });
+    } else {
+      results.push({
+        step: index,
+        action,
+        success: false,
+        error: response.error,
+        durationMs: Date.now() - stepStart,
+      });
+      if (abortOnError) break;
+    }
+
+    if (index < command.steps.length - 1) {
+      await waitForDelay(delay.min, delay.max);
+    }
+  }
+
+  const data: ChainData = {
+    results,
+    completed: results.filter((result) => result.success).length,
+    total: command.steps.length,
+    totalDurationMs: Date.now() - chainStart,
+  };
+
+  if (command.returnSnapshot) {
+    const snapshot = await executeCommand(
+      {
+        id: `${command.id}_snapshot`,
+        action: 'snapshot',
+        interactive: true,
+        compact: true,
+      } as Command,
+      browser
+    );
+    if (snapshot.success && snapshot.data && typeof snapshot.data === 'object') {
+      data.snapshot = (snapshot.data as { snapshot?: unknown }).snapshot as string | undefined;
+    }
+  }
+
+  if (command.returnScreenshot) {
+    const screenshot = await executeCommand(
+      {
+        id: `${command.id}_screenshot`,
+        action: 'screenshot',
+      } as Command,
+      browser
+    );
+    if (screenshot.success && screenshot.data && typeof screenshot.data === 'object') {
+      data.screenshot = (screenshot.data as { base64?: unknown }).base64 as string | undefined;
+    }
+  }
+
+  return successResponse(command.id, {
+    ...data,
   });
 }
 
