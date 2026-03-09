@@ -1,16 +1,16 @@
-/* Aura-style message list */
+/* Message list — column-reverse viewport handles bottom-anchoring,
+   so no justify-content: flex-end or min-height: 100% needed. */
 .event-list {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  gap: 40px;
-  flex: 1;
-  min-height: 100%;
+  gap: 24px;
 }
 
 .event-list[data-empty="true"],
 .event-list[data-loading-history="true"] {
+  flex: 1;
   justify-content: center;
+  min-height: 100%;
 }
 
 /* Session turn - single message container */
@@ -18,7 +18,8 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 40px;
+  gap: 16px;
+  overflow-anchor: none;
 }
 
 .session-turn-header {
@@ -363,7 +364,7 @@
 /* Scroll to bottom button */
 .scroll-to-bottom {
   position: absolute;
-  bottom: 130px;
+  bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
   width: 36px;
@@ -390,5 +391,44 @@
 
 .scroll-to-bottom:active {
   transform: translateX(-50%) scale(0.95);
+}
+
+/* Custom scrollbar — overlaid on hidden native scrollbar */
+.chat-scrollbar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 10px;
+  z-index: 15;
+  pointer-events: none;
+}
+
+.chat-scrollbar__thumb {
+  position: absolute;
+  right: 2px;
+  width: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--foreground) 20%, transparent);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.2s ease, width 0.15s ease, right 0.15s ease;
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.chat-scrollbar__thumb--visible {
+  opacity: 1;
+}
+
+.chat-scrollbar:hover .chat-scrollbar__thumb {
+  opacity: 1;
+  width: 8px;
+  right: 1px;
+}
+
+.chat-scrollbar__thumb:active {
+  cursor: grabbing;
+  background: color-mix(in srgb, var(--foreground) 35%, transparent);
 }
 

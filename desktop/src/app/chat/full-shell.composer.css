@@ -1,19 +1,11 @@
-﻿/* Composer - single-row prompt bar at bottom */
+﻿/* Composer — normal flow, centered within parent flex column */
 .composer {
-  position: absolute;
-  bottom: 16px;
-  left: 0;
-  right: 0;
-  z-index: 30;
+  position: relative;
+  flex-shrink: 0;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 0 24px;
-  pointer-events: none;
-}
-
-.composer > * {
-  pointer-events: auto;
+  padding: 8px 24px 16px;
 }
 
 /* === Shell: visual container with animated height + border-radius === */
