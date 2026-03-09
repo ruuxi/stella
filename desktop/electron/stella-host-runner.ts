@@ -9,7 +9,21 @@ type ElectronStellaHostRunnerOptions = Omit<
   "selfModHmrController" | "selfModMonitor" | "stellaBrowserBinPath" | "stellaUiCliPath"
 >;
 
-export type StellaHostRunner = ReturnType<typeof createRuntimeStellaHostRunner>;
+type RuntimeStellaHostRunner = ReturnType<typeof createRuntimeStellaHostRunner>;
+
+export type StellaHostRunner = Omit<RuntimeStellaHostRunner, "webSearch"> & {
+  webSearch: (
+    query: string,
+    options?: {
+      category?: string;
+      searchHtmlPrompts?: { systemPrompt: string; userPromptTemplate: string };
+    },
+  ) => Promise<{
+    text: string;
+    results: Array<{ title: string; url: string; snippet: string }>;
+    html?: string;
+  }>;
+};
 
 export const createStellaHostRunner = (
   options: ElectronStellaHostRunnerOptions,
@@ -30,4 +44,4 @@ export const createStellaHostRunner = (
     stellaUiCliPath: options.frontendRoot
       ? path.join(options.frontendRoot, "electron", "system", "stella-ui-cli.mjs")
       : undefined,
-  });
+  }) as StellaHostRunner;

@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { showToast } from '@/ui/toast'
-import { getPromptOverridesPayload } from '@/prompts'
+import { getSearchHtmlPromptConfig } from '@/prompts'
 import { useRafStringAccumulator } from '@/shared/hooks/use-raf-state'
 import { useResumeAgentRun } from '../hooks/use-resume-agent-run'
 import type { AgentStreamEvent, SelfModAppliedData } from './streaming-types'
@@ -18,7 +18,6 @@ type LocalAgentEvent = {
   toolCallId?: string
   toolName?: string
   resultPreview?: string
-  html?: string
   finalText?: string
 }
 
@@ -130,7 +129,6 @@ export function useLocalAgentStream({
             toolCallId: event.toolCallId,
             toolName: event.toolName,
             resultPreview: event.resultPreview,
-            html: event.html,
           })
           break
         case 'error':
@@ -208,7 +206,7 @@ export function useLocalAgentStream({
           userMessageId: args.userMessageId,
           userPrompt: args.userPrompt,
           storageMode,
-          ...getPromptOverridesPayload(["search_html.system", "search_html.user"]),
+          searchHtmlPrompts: getSearchHtmlPromptConfig(),
         })
         .then(({ runId: agentRunId }) => {
           if (runIdCounter !== streamRunIdRef.current) return

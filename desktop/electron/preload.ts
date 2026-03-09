@@ -142,7 +142,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.send('voice:persistTranscript', payload),
     orchestratorChat: (payload: { conversationId: string; message: string }) =>
       ipcRenderer.invoke('voice:orchestratorChat', payload) as Promise<string>,
-    webSearch: (payload: { query: string; category?: string }) =>
+    webSearch: (payload: { query: string; category?: string; searchHtmlPrompts?: { systemPrompt: string; userPromptTemplate: string } }) =>
       ipcRenderer.invoke('voice:webSearch', payload) as Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>,
     setAssistantSpeaking: (active: boolean) =>
       ipcRenderer.invoke('voice:setAssistantSpeaking', active) as Promise<{ ok: boolean }>,
@@ -186,7 +186,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       userPrompt: string;
       agentType?: string;
       storageMode?: 'cloud' | 'local';
-      promptOverrides?: Record<string, string>;
+      searchHtmlPrompts?: { systemPrompt: string; userPromptTemplate: string };
     }) => ipcRenderer.invoke('agent:startChat', payload) as Promise<{ runId: string }>,
     cancelChat: (runId: string) => ipcRenderer.send('agent:cancelChat', runId),
     resumeStream: (payload: { runId: string; lastSeq: number }) =>
@@ -199,7 +199,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
           toolCallId?: string;
           toolName?: string;
           resultPreview?: string;
-          html?: string;
           error?: string;
           fatal?: boolean;
           finalText?: string;
@@ -216,7 +215,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       toolCallId?: string;
       toolName?: string;
       resultPreview?: string;
-      html?: string;
       error?: string;
       fatal?: boolean;
       finalText?: string;
