@@ -47,6 +47,45 @@ describe("TaskCreate delegation controls", () => {
     });
   });
 
+  it("prefers the cloud task id when defaulting parentTaskId", async () => {
+    const createTask = vi.fn(async () => ({ taskId: "child-task" }));
+    const ctx = createStateContext("state-root", {
+      createTask,
+      getTask: async () => null,
+      cancelTask: async () => ({ canceled: false }),
+    });
+
+    const result = await handleTask(
+      ctx,
+      {
+        action: "create",
+        description: "Inspect codebase",
+        prompt: "Check the imports",
+        subagent_type: "explore",
+      },
+      {
+        conversationId: "conv-1",
+        deviceId: "device-1",
+        requestId: "req-1",
+        agentType: "general",
+        taskId: "local:task:parent-task",
+        cloudTaskId: "cloud-parent-task",
+        taskDepth: 1,
+        maxTaskDepth: 2,
+        delegationAllowlist: ["explore"],
+        storageMode: "cloud",
+      },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(createTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parentTaskId: "cloud-parent-task",
+        storageMode: "cloud",
+      }),
+    );
+  });
+
   it("rejects child agent types outside the caller allowlist", async () => {
     const createTask = vi.fn(async () => ({ taskId: "child-task" }));
     const ctx = createStateContext("state-root", {
@@ -76,6 +115,41 @@ describe("TaskCreate delegation controls", () => {
 
     expect(result.error).toContain("only create these subtask types: explore");
     expect(createTask).not.toHaveBeenCalled();
+  });
+
+  it("defaults delegated task storage to local when the caller does not specify a storage mode", async () => {
+    const createTask = vi.fn(async () => ({ taskId: "child-task" }));
+    const ctx = createStateContext("state-root", {
+      createTask,
+      getTask: async () => null,
+      cancelTask: async () => ({ canceled: false }),
+    });
+
+    const result = await handleTask(
+      ctx,
+      {
+        action: "create",
+        description: "Inspect codebase",
+        prompt: "Check the imports",
+        subagent_type: "explore",
+      },
+      {
+        conversationId: "conv-1",
+        deviceId: "device-1",
+        requestId: "req-1",
+        agentType: "general",
+        taskDepth: 1,
+        maxTaskDepth: 2,
+        delegationAllowlist: ["explore"],
+      },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(createTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storageMode: "local",
+      }),
+    );
   });
 
   it("rejects creates that would exceed the inherited depth budget", async () => {

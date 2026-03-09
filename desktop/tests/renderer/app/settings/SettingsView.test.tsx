@@ -24,10 +24,6 @@ vi.mock("@/convex/api", () => ({
         setGeneralAgentEngine: "preferences.setGeneralAgentEngine",
         getCodexLocalMaxConcurrency: "preferences.getCodexLocalMaxConcurrency",
         setCodexLocalMaxConcurrency: "preferences.setCodexLocalMaxConcurrency",
-        getAccountMode: "preferences.getAccountMode",
-        setAccountMode: "preferences.setAccountMode",
-        getSyncMode: "preferences.getSyncMode",
-        setSyncMode: "preferences.setSyncMode",
       },
       secrets: {
         listSecrets: "secrets.listSecrets",
@@ -55,7 +51,6 @@ vi.mock("@/app/settings/hooks/use-model-catalog", () => ({
 const mockListLlmCredentials = vi.fn();
 const mockSaveLlmCredential = vi.fn();
 const mockDeleteLlmCredential = vi.fn();
-const mockSetLocalSyncMode = vi.fn();
 
 // Lightweight mock of the Radix-based Dialog components so that the dialog
 // content is rendered synchronously in jsdom when `open` is true.
@@ -132,19 +127,11 @@ function mockUseMutation(
  */
 function setupUseQuery(opts: {
   modelOverrides?: string;
-  accountMode?: "connected" | "private_local";
-  syncMode?: "on" | "off";
   generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
   codexLocalMaxConcurrency?: number;
 } = {}) {
   mockUseQuery((queryPath: unknown) => {
     const path = queryPath as string;
-    if (path === "preferences.getAccountMode") {
-      return opts.accountMode ?? "connected";
-    }
-    if (path === "preferences.getSyncMode") {
-      return opts.syncMode ?? "on";
-    }
     if (path === "preferences.getModelOverrides") {
       return opts.modelOverrides ?? undefined;
     }
@@ -161,7 +148,6 @@ function setupUseQuery(opts: {
 function setupElectronApi(
   credentials: Array<{ provider: string; label: string; status: "active"; updatedAt?: number }> = [],
 ) {
-  mockSetLocalSyncMode.mockResolvedValue(undefined);
   mockListLlmCredentials.mockResolvedValue(
     credentials.map((entry, index) => ({
       provider: entry.provider,
@@ -184,7 +170,6 @@ function setupElectronApi(
 
   window.electronAPI = {
     system: {
-      setLocalSyncMode: mockSetLocalSyncMode,
       listLlmCredentials: mockListLlmCredentials,
       saveLlmCredential: mockSaveLlmCredential,
       deleteLlmCredential: mockDeleteLlmCredential,
@@ -282,9 +267,9 @@ describe("Tab switching", () => {
     expect(modelsTab.className).not.toContain("settings-sidebar-tab--active");
   });
 
-  it("shows BasicTab content by default (Account Mode, Sign Out, etc)", () => {
+  it("shows BasicTab content by default (Storage, Sign Out, etc)", () => {
     render(<SettingsDialog {...defaultProps()} />);
-    expect(screen.getByText("Account Mode")).toBeTruthy();
+    expect(screen.getByText("Storage")).toBeTruthy();
     // "Sign Out" appears as both label and button
     const signOutElements = screen.getAllByText("Sign Out");
     expect(signOutElements.length).toBeGreaterThanOrEqual(2);
@@ -304,17 +289,17 @@ describe("Tab switching", () => {
     expect(screen.getByText("API Keys")).toBeTruthy();
 
     // Basic tab content should be hidden
-    expect(screen.queryByText("Account Mode")).toBeNull();
+    expect(screen.queryByText("Storage")).toBeNull();
   });
 
   it("switches back to Basic tab from Models", async () => {
     render(<SettingsDialog {...defaultProps()} />);
 
     await openModelsTab();
-    expect(screen.queryByText("Account Mode")).toBeNull();
+    expect(screen.queryByText("Storage")).toBeNull();
 
     fireEvent.click(screen.getByText("Basic"));
-    expect(screen.getByText("Account Mode")).toBeTruthy();
+    expect(screen.getByText("Storage")).toBeTruthy();
     expect(screen.queryByText("Model Configuration")).toBeNull();
   });
 });
@@ -330,24 +315,16 @@ describe("Basic tab privacy copy", () => {
     } as unknown as typeof globalThis.ResizeObserver;
   });
 
-  it("shows sync-off wording that keeps history local to device", () => {
-    setupUseQuery({ accountMode: "connected", syncMode: "off" });
+  it("shows local-only storage wording", () => {
     render(<SettingsDialog {...defaultProps()} />);
 
-    expect(screen.getByText("Account Mode")).toBeTruthy();
-    expect(screen.getByText("Chat Sync")).toBeTruthy();
-    expect(screen.getByText(/Sync Off\./)).toBeTruthy();
+    expect(screen.getByText("Storage")).toBeTruthy();
     expect(
-      screen.getByText(/Conversation history stays on this device and is not synced to cloud\./),
+      screen.getByText(/Local only\. Conversations stay on this device\./),
     ).toBeTruthy();
-  });
-
-  it("hides Chat Sync controls in private local mode", () => {
-    setupUseQuery({ accountMode: "private_local", syncMode: "off" });
-    render(<SettingsDialog {...defaultProps()} />);
-
-    expect(screen.getByText("Account Mode")).toBeTruthy();
-    expect(screen.queryByText("Chat Sync")).toBeNull();
+    expect(
+      screen.getByText(/Cloud sync and connected mode are not available in the app right now\./),
+    ).toBeTruthy();
   });
 });
 
