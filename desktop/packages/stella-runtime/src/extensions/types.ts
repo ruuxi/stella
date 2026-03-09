@@ -1,6 +1,6 @@
 // Extension system type definitions.
 //
-// Extensions are auto-discovered from the stella-agents directory:
+// Extensions are auto-discovered from the agents directory:
 //   tools/<name>.tool.ts       - Custom tool definitions
 //   hooks/<name>.hook.ts       - Lifecycle hooks
 //   providers/<name>.provider.ts - Custom LLM providers

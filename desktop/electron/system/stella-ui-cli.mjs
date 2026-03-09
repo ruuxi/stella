@@ -10,13 +10,12 @@
  */
 
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 
 const socketPath =
   process.platform === "win32"
     ? "\\\\.\\pipe\\stella-ui"
-    : path.join(os.homedir(), "stella", ".stella", "state", "stella-ui.sock");
+    : path.resolve(process.cwd(), ".stella", "state", "stella-ui.sock");
 
 const [command, ...args] = process.argv.slice(2);
 

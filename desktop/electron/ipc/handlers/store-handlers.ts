@@ -1,13 +1,12 @@
 import { promises as fs } from 'fs'
 import { ipcMain } from 'electron'
-import os from 'os'
 import path from 'path'
 
 type StoreHandlersOptions = Record<string, never>
 
 export const registerStoreHandlers = (_options: StoreHandlersOptions) => {
   ipcMain.handle('theme:listInstalled', async () => {
-    const themesDir = path.join(os.homedir(), 'stella', '.stella', 'themes')
+    const themesDir = path.resolve(process.cwd(), '.stella', 'themes')
     try {
       const files = await fs.readdir(themesDir)
       const themes = []

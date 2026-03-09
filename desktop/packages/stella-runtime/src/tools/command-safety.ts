@@ -15,7 +15,7 @@ import { getDangerousCommandReason } from "./schemas.js";
 
 // NOTE: Normal rm/del operations are handled by the deferred-delete trash system
 // (see deferred-delete.ts + buildProtectedCommand in tools-shell.ts) which intercepts
-// rm/rmdir/unlink/del/erase and moves files to ~/stella/.stella/state/deferred-delete/trash/
+// rm/rmdir/unlink/del/erase and moves files to desktop/.stella/state/deferred-delete/trash/
 // with 24h retention. The blocklist here only catches things the trash CAN'T protect
 // against: filesystem-level destruction, fork bombs, and system power commands.
 

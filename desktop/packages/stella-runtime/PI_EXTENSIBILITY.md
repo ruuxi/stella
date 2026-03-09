@@ -1,7 +1,7 @@
 # Pi Extensibility Reference (Stella Runtime)
 
 ## Purpose
-This document is a complete capability map for extensibility in `frontend/packages/stella-runtime`.
+This document is a complete capability map for extensibility in `desktop/packages/stella-runtime`.
 It is written for coding agents that need to extend behavior safely and intentionally.
 
 It covers two layers:
@@ -16,7 +16,7 @@ It covers two layers:
 | Layer | What it extends | Typical mechanism |
 | --- | --- | --- |
 | Pi core | Agent lifecycle, tool system, commands, UI, model/provider routing | `pi.on(...)`, `pi.registerTool(...)`, `pi.registerCommand(...)`, `pi.registerProvider(...)` |
-| Stella host | Device tools, skills/agents from `~/stella/.stella`, self-mod workflows, local task orchestration | Tool handlers, local manifest parsing, task manager, runtime router |
+| Stella host | Device tools, skills/agents from `desktop/.stella`, self-mod workflows, local task orchestration | Tool handlers, local manifest parsing, task manager, runtime router |
 
 Use Pi core when you need generic extension behavior.
 Use Stella host when you need Stella-specific device/runtime behavior.
@@ -217,11 +217,11 @@ Stella wraps Pi with a host runner that adds:
 - Shell lifecycle control
 - Local persistence and memory wiring
 
-### 2.2 Dynamic Skills And Agents From `~/stella/.stella`
+### 2.2 Dynamic Skills And Agents From `desktop/.stella`
 At startup, Stella loads:
 
-- Skills from `~/stella/.stella/skills/*/SKILL.md`
-- Agents from `~/stella/.stella/agents/*/AGENT.md`
+- Skills from `desktop/.stella/skills/*/SKILL.md`
+- Agents from `desktop/.stella/agents/*/AGENT.md`
 
 Skill parsing supports:
 

@@ -42,7 +42,7 @@ const STELLA_SESSION_PARTITION = 'persist:Stella'
 const STARTUP_STAGE_DELAY_MS = 250
 
 export const bootstrapMainProcess = () => {
-  // __dirname at runtime is dist-electron/electron/; frontendRoot is the project root (frontend/)
+  // __dirname at runtime is dist-electron/electron/; frontendRoot is the project root (desktop/)
   const frontendRoot = path.resolve(__dirname, '..', '..')
 
   let appReady = false
@@ -335,9 +335,9 @@ export const bootstrapMainProcess = () => {
       appSession.clearCache(),
     ])
 
-    const homePath = app.getPath('home')
+    const homePath = stellaHomePath ?? path.resolve(frontendRoot, '.stella')
     await Promise.allSettled([
-      fs.rm(path.join(homePath, 'stella'), { recursive: true, force: true }),
+      fs.rm(homePath, { recursive: true, force: true }),
     ])
 
     if (hadRunner) {

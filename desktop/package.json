@@ -20,8 +20,8 @@
     "native:build": "cd native && npm install && npm run build",
     "workspace:create-app": "node scripts/create-workspace-app.mjs",
     "electron:dev": "bun run build:packages && concurrently -k \"cross-env NODE_ENV=development vite\" \"bunx --package typescript@5.9.3 tsc -w -p tsconfig.electron.json --preserveWatchOutput\" \"bunx --package typescript@5.9.3 tsc -w -p tsconfig.preload.json --preserveWatchOutput\" \"node scripts/dev-electron.mjs\"",
-    "electron:build": "npm run native:build && cd ../frontend && bun run build:packages && bunx --package typescript@5.9.3 tsc --build && vite build && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron-builder",
-    "electron:preview": "cd ../frontend && bun run build:packages && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron .",
+    "electron:build": "npm run native:build && bun run build:packages && bunx --package typescript@5.9.3 tsc --build && vite build && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron-builder",
+    "electron:preview": "bun run build:packages && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron .",
     "emotes:sync": "node scripts/fetch-emotes.mjs",
     "emotes:sync:clean": "node scripts/fetch-emotes.mjs --clean",
     "emotes:label": "node scripts/label-emotes.mjs",
@@ -181,8 +181,13 @@
         ]
       },
       {
-        "from": "resources/bundled-skills",
-        "to": "bundled-skills",
+        "from": ".stella/skills",
+        "to": "skills",
+        "filter": ["**/*"]
+      },
+      {
+        "from": ".stella/agents",
+        "to": "agents",
         "filter": ["**/*"]
       },
       {

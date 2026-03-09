@@ -2,7 +2,7 @@
  * Identity Map - Persistent Pseudonymization Layer
  *
  * Maps real contact names/identifiers to fake aliases so the LLM/backend
- * never sees real PII. The mapping persists at ~/stella/.stella/state/identity_map.json.
+ * never sees real PII. The mapping persists at desktop/.stella/state/identity_map.json.
  */
 
 import { promises as fs } from "fs";
