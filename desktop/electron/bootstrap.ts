@@ -273,14 +273,6 @@ export const bootstrapMainProcess = () => {
           }
         }
       },
-      newsHtml: (html) => {
-        const targets = windowManager ? windowManager.getAllWindows() : BrowserWindow.getAllWindows()
-        for (const win of targets) {
-          if (!win.isDestroyed()) {
-            win.webContents.send('news:update', html)
-          }
-        }
-      },
       listLocalChatEvents: (conversationId, maxItems) =>
         localChatService?.listEvents(conversationId, maxItems) ?? [],
       scheduleApi: {

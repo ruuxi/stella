@@ -19,7 +19,7 @@ export class UiStateService {
   readonly state: UiState = {
     mode: 'chat',
     window: 'full',
-    view: 'chat',
+    view: 'home',
     conversationId: null,
     isVoiceActive: false,
     isVoiceRtcActive: false,

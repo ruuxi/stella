@@ -7,7 +7,6 @@ import type {
   LocalCronJobRecord,
   LocalHeartbeatConfigRecord,
 } from "@/types/electron"
-import { NewsFeed } from "./NewsFeed"
 import { ImageGallery } from "./ImageGallery"
 import { GenerativeCanvas } from "./GenerativeCanvas"
 import { SuggestionsPanel } from "./SuggestionsPanel"
@@ -132,9 +131,6 @@ export function HomeView({ conversationId }: HomeViewProps) {
       <div className="home-dashboard">
         <div className="home-zone-canvas">
           <GenerativeCanvas />
-        </div>
-        <div className="home-zone-news">
-          <NewsFeed />
         </div>
         <div className="home-zone-sidebar">
           <ImageGallery />

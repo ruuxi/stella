@@ -76,11 +76,11 @@
 
 .home-dashboard {
   display: grid;
-  grid-template-columns: 0.88fr 0.88fr 1fr;
+  grid-template-columns: 1.76fr 1fr;
   grid-template-rows: 1fr auto;
   grid-template-areas:
-    "canvas  news    sidebar"
-    "music   music   music";
+    "canvas  sidebar"
+    "music   music";
   gap: 10px;
   padding: 14px;
   height: 100%;
@@ -89,13 +89,10 @@
 
 .home-zone-canvas {
   grid-area: canvas;
+  min-height: 0;
+  overflow: hidden;
   animation: home-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: 0s;
-}
-.home-zone-news {
-  grid-area: news;
-  animation: home-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
-  animation-delay: 0.08s;
 }
 .home-zone-sidebar {
   grid-area: sidebar;
@@ -112,7 +109,7 @@
 
 .home-zone-music {
   grid-area: music;
-  /* Match width of canvas + news columns (1.76fr of 2.76fr total) */
+  /* Match width of canvas column (1.76fr of 2.76fr total) */
   max-width: 63.8%;
   animation: home-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: 0.06s;
@@ -122,12 +119,12 @@
 
 @container home (max-width: 780px) {
   .home-dashboard {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     grid-template-rows: 1fr auto auto;
     grid-template-areas:
-      "canvas  news"
-      "sidebar sidebar"
-      "music   music";
+      "canvas"
+      "sidebar"
+      "music";
     overflow-y: auto;
     scrollbar-width: none;
     height: auto;
@@ -168,7 +165,6 @@
     grid-template-rows: auto;
     grid-template-areas:
       "canvas"
-      "news"
       "sidebar"
       "music";
     overflow-y: auto;
@@ -183,12 +179,6 @@
     flex-direction: column;
   }
   .home-zone-sidebar > * { flex: none; }
-}
-
-@container home (max-width: 360px) {
-  .home-zone-news {
-    display: none;
-  }
 }
 
 /* --- Dashboard Card --- */
@@ -470,36 +460,6 @@
   );
   background-size: 200% 100%;
   animation: skeleton-shimmer 2.2s ease-in-out infinite;
-}
-
-/* --- News Feed --- */
-
-.news-feed-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.news-feed-item {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 5%, transparent);
-}
-.news-feed-item:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.news-feed-footnote {
-  font-size: 11px;
-  color: var(--foreground);
-  opacity: 0.28;
-  line-height: 1.4;
-  margin-top: auto;
-  flex-shrink: 0;
-  padding-top: 8px;
 }
 
 /* --- Image Gallery (compact, in sidebar) --- */

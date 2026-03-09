@@ -130,12 +130,22 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     }
   })
 
-  ipcMain.handle('voice:orchestratorChat', async (_event, payload: { conversationId: string; message: string }) => {
-    console.log(`[${ts()}] [Voice] orchestratorChat request:`, payload.message)
-    const stellaHostRunner = options.getStellaHostRunner()
-    if (!stellaHostRunner) {
-      throw new Error('Stella runtime not initialized')
-    }
+  // Queue for voice requests while the orchestrator is busy.
+  // Only the latest pending request is kept — if the user refines their ask
+  // while the orchestrator is running, earlier queued requests are dropped.
+  type PendingVoiceRequest = {
+    payload: { conversationId: string; message: string }
+    resolve: (value: string) => void
+    reject: (error: Error) => void
+  }
+  let pendingVoiceRequest: PendingVoiceRequest | null = null
+  let voiceRequestActive = false
+
+  const executeVoiceChat = (
+    payload: { conversationId: string; message: string },
+    stellaHostRunner: StellaHostRunner,
+  ): Promise<string> => {
+    console.log(`[${ts()}] [Voice] orchestratorChat executing:`, payload.message)
 
     // Emit agent events to the full window so the trace viewer can capture them
     const emitToFrontend = (eventPayload: Record<string, unknown>) => {
@@ -205,6 +215,64 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
         reject(err instanceof Error ? err : new Error(String(err)))
       })
     })
+  }
+
+  const drainVoiceQueue = () => {
+    const pending = pendingVoiceRequest
+    pendingVoiceRequest = null
+    if (!pending) {
+      voiceRequestActive = false
+      return
+    }
+
+    const stellaHostRunner = options.getStellaHostRunner()
+    if (!stellaHostRunner) {
+      pending.reject(new Error('Stella runtime not initialized'))
+      voiceRequestActive = false
+      return
+    }
+
+    console.log(`[${ts()}] [Voice] dequeuing pending request:`, pending.payload.message)
+    executeVoiceChat(pending.payload, stellaHostRunner).then(
+      (result) => {
+        pending.resolve(result)
+        drainVoiceQueue()
+      },
+      (err) => {
+        pending.reject(err instanceof Error ? err : new Error(String(err)))
+        drainVoiceQueue()
+      },
+    )
+  }
+
+  ipcMain.handle('voice:orchestratorChat', async (_event, payload: { conversationId: string; message: string }) => {
+    console.log(`[${ts()}] [Voice] orchestratorChat request:`, payload.message)
+    const stellaHostRunner = options.getStellaHostRunner()
+    if (!stellaHostRunner) {
+      throw new Error('Stella runtime not initialized')
+    }
+
+    // If the orchestrator is busy, queue this request and return a promise
+    // that resolves when it eventually runs
+    if (voiceRequestActive) {
+      // Drop any previously queued request — only the latest matters
+      if (pendingVoiceRequest) {
+        console.log(`[${ts()}] [Voice] replacing queued request:`, pendingVoiceRequest.payload.message)
+        pendingVoiceRequest.reject(new Error('Superseded by newer voice request'))
+      }
+      console.log(`[${ts()}] [Voice] orchestrator busy, queuing request:`, payload.message)
+      return new Promise<string>((resolve, reject) => {
+        pendingVoiceRequest = { payload, resolve, reject }
+      })
+    }
+
+    voiceRequestActive = true
+    try {
+      const result = await executeVoiceChat(payload, stellaHostRunner)
+      return result
+    } finally {
+      drainVoiceQueue()
+    }
   })
 
   ipcMain.handle('voice:setAssistantSpeaking', async (_event, active: boolean) => {

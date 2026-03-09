@@ -314,14 +314,9 @@ export type ElectronDisplayApi = {
   onUpdate: (callback: (html: string) => void) => () => void
 }
 
-export type ElectronNewsApi = {
-  onUpdate: (callback: (html: string) => void) => () => void
-}
-
 export type ElectronApi = {
   platform: string
   display: ElectronDisplayApi
-  news: ElectronNewsApi
   window: ElectronWindowApi
   ui: ElectronUiApi
   capture: ElectronCaptureApi

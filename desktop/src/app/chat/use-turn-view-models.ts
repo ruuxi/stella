@@ -1,6 +1,6 @@
 import { useMemo, useDeferredValue } from "react";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
-import type { MessagePayload } from "@/app/chat/lib/event-transforms";
+import type { MessagePayload, ToolResultPayload } from "@/app/chat/lib/event-transforms";
 import {
   groupEventsIntoTurns,
   getCurrentRunningTool,
@@ -18,6 +18,26 @@ import {
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 
 type BaseTurnViewModel = Omit<TurnViewModel, "selfModApplied">;
+
+const getTurnWebSearchHtml = (events: EventRecord[]): string | undefined => {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i];
+    if (event.type !== "tool_result" || !event.payload || typeof event.payload !== "object") {
+      continue;
+    }
+    const payload = event.payload as ToolResultPayload;
+    if (payload.toolName?.toLowerCase() !== "websearch") {
+      continue;
+    }
+    if (typeof payload.html === "string" && payload.html.trim().length > 0) {
+      return payload.html;
+    }
+    if (typeof payload.result === "string" && payload.result.trim().startsWith("<")) {
+      return payload.result;
+    }
+  }
+  return undefined;
+};
 
 const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
   if (!event?.payload || typeof event.payload !== "object") {
@@ -101,6 +121,7 @@ export function useTurnViewModels(opts: {
       const assistantEmotesEnabled = isOrchestratorChatMessagePayload(
         getMessagePayload(turn.assistantMessage),
       );
+      const webSearchBadgeHtml = getTurnWebSearchHtml(turn.toolEvents);
 
       return {
         id: turn.id,
@@ -110,6 +131,7 @@ export function useTurnViewModels(opts: {
         assistantText,
         assistantMessageId,
         assistantEmotesEnabled,
+        webSearchBadgeHtml,
       };
     });
   }, [slicedTurns, depseudonymize]);
