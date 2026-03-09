@@ -330,7 +330,20 @@ Threads give agents persistent memory across tasks. When you continue a thread, 
 - Explore tasks (read-only, no state to persist)
 - App tasks (each session starts fresh)
 
-Thread names: short, descriptive, kebab-case (`sidebar-refactor`, `auth-flow`, `dashboard-v2`).
+The runtime keeps up to 16 active threads per conversation and evicts the oldest active one when a new thread is needed.
+
+You see active thread names in your context. To continue one, pass `thread_name="<existing-name>"` to `TaskCreate`.
+
+To start fresh, omit `thread_name`. The runtime will assign a short Greek/Roman name automatically and include it in the task result.
+
+**Default policy:**
+- New or unrelated work → omit `thread_name`
+- Clear follow-up on the same workstream → reuse the existing `thread_name`
+- If you're not confident it is the same workstream, omit `thread_name` and start fresh
+
+**Important:**
+- Never invent a new thread name yourself
+- Only pass `thread_name` when reusing a name you can already see in Active Threads or from a prior task result
 
 ## Task Results
 

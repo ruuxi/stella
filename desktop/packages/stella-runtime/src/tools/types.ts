@@ -96,7 +96,7 @@ export type TaskToolSnapshot = {
 };
 
 export type TaskToolApi = {
-  createTask: (request: TaskToolRequest) => Promise<{ taskId: string }>;
+  createTask: (request: TaskToolRequest) => Promise<{ taskId: string; threadName?: string }>;
   getTask: (taskId: string) => Promise<TaskToolSnapshot | null>;
   cancelTask: (taskId: string, reason?: string) => Promise<{ canceled: boolean }>;
   sendTaskMessage?: (

@@ -6,6 +6,8 @@ import { truncate } from "../tools/utils.js";
 export type LocalTaskManagerAgentContext = {
   systemPrompt: string;
   dynamicContext: string;
+  orchestratorReminderText?: string;
+  shouldInjectDynamicReminder?: boolean;
   toolsAllowlist?: string[];
   delegationAllowlist?: string[];
   model?: string;
@@ -79,6 +81,11 @@ export type TaskLifecycleEvent = {
 
 type LocalTaskManagerOpts = {
   maxConcurrent?: number;
+  resolveTaskThread?: (args: {
+    conversationId: string;
+    agentType: string;
+    threadName?: string;
+  }) => { threadId: string; threadName: string; reused: boolean } | null;
   onTaskEvent?: (event: TaskLifecycleEvent) => void;
   fetchAgentContext: (args: {
     conversationId: string;
@@ -99,7 +106,7 @@ type LocalTaskManagerOpts = {
     abortSignal: AbortSignal;
     onProgress?: (chunk: string) => void;
     onToolStart?: (event: { runId: string; seq: number; toolCallId: string; toolName: string }) => void;
-    onToolEnd?: (event: { runId: string; seq: number; toolCallId: string; toolName: string; resultPreview: string }) => void;
+    onToolEnd?: (event: { runId: string; seq: number; toolCallId: string; toolName: string; resultPreview: string; html?: string }) => void;
     toolExecutor: (
       toolName: string,
       args: Record<string, unknown>,
@@ -398,9 +405,14 @@ export class LocalTaskManager implements TaskToolApi {
     }
   }
 
-  async createTask(request: TaskToolRequest): Promise<{ taskId: string }> {
+  async createTask(request: TaskToolRequest): Promise<{ taskId: string; threadName?: string }> {
     const id = `local:task:${crypto.randomUUID()}`;
     const controller = new AbortController();
+    const resolvedThread = this.opts.resolveTaskThread?.({
+      conversationId: request.conversationId,
+      agentType: request.agentType,
+      threadName: request.threadName,
+    }) ?? null;
 
     const task: RuntimeTaskRecord = {
       id,
@@ -419,8 +431,8 @@ export class LocalTaskManager implements TaskToolApi {
       controller,
       storageMode: request.storageMode,
       parentTaskId: request.parentTaskId,
-      threadId: request.threadId,
-      threadName: request.threadName,
+      threadId: resolvedThread?.threadId ?? request.threadId,
+      threadName: resolvedThread?.threadName ?? request.threadName,
       commandId: request.commandId,
       systemPromptOverride: request.systemPromptOverride,
       recentActivity: [],
@@ -456,7 +468,10 @@ export class LocalTaskManager implements TaskToolApi {
     }
 
     this.tryStartNext();
-    return { taskId: task.id };
+    return {
+      taskId: task.id,
+      ...(task.threadName ? { threadName: task.threadName } : {}),
+    };
   }
 
   async getTask(taskId: string): Promise<TaskToolSnapshot | null> {

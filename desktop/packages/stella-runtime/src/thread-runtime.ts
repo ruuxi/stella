@@ -307,4 +307,5 @@ export const maybeCompactRuntimeThread = async (args: {
   ];
 
   args.store.replaceThreadMessages(args.threadKey, nextMessages);
+  args.store.updateThreadSummary(args.threadKey, summary);
 };
