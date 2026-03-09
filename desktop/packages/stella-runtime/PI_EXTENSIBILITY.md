@@ -222,6 +222,7 @@ At startup, Stella loads:
 
 - Skills from `desktop/.stella/skills/*/SKILL.md`
 - Agents from `desktop/.stella/agents/*/AGENT.md`
+- Extensions from `desktop/.stella/extensions/{tools,hooks,providers,prompts}`
 
 Skill parsing supports:
 

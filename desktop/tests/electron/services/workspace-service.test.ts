@@ -21,7 +21,7 @@ afterEach(() => {
 describe('WorkspaceService', () => {
   it('returns no workspace panels when the feature is disabled', async () => {
     const stellaHome = createTempHome()
-    const panelsDir = path.join(stellaHome, 'workspace', 'panels')
+    const panelsDir = path.resolve(stellaHome, '..', 'workspace', 'panels')
     fs.mkdirSync(panelsDir, { recursive: true })
     fs.writeFileSync(path.join(panelsDir, 'pd_focus.tsx'), 'export default function Panel() { return null }')
 
