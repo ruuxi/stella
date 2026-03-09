@@ -80,7 +80,7 @@
   grid-template-rows: 1fr auto;
   grid-template-areas:
     "canvas  sidebar"
-    "music   music";
+    "music   sidebar";
   gap: 10px;
   padding: 14px;
   height: 100%;
@@ -109,8 +109,6 @@
 
 .home-zone-music {
   grid-area: music;
-  /* Match width of canvas column (1.76fr of 2.76fr total) */
-  max-width: 63.8%;
   animation: home-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: 0.06s;
 }
@@ -245,6 +243,10 @@
 .home-zone-sidebar .dashboard-card {
   height: auto;
   flex-shrink: 0;
+}
+/* Last sidebar card fills remaining space */
+.home-zone-sidebar .dashboard-card:last-child {
+  flex: 1;
 }
 
 /* --- Generative Canvas --- */

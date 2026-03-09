@@ -150,7 +150,10 @@ export const MediaGenerateSchema = z.object({
 });
 
 export const WebSearchSchema = z.object({
-  query: z.string().min(2).describe("Search query (natural language)"),
+  query: z.string().min(2).describe("Natural language search query — write descriptively, not as keywords"),
+  category: z.enum(["company", "people", "research paper"]).optional().describe(
+    "Optional filter. 'company' for company research, 'people' for non-public figures, 'research paper' for academic papers. Omit for news, sports, general facts."
+  ),
 });
 
 export const DisplaySchema = z.object({
@@ -304,12 +307,21 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- prompt describes what to generate or how to edit.\n" +
     "- media_type: \"image\" or \"video\".",
   WebSearch:
-    "Search the web for current information.\n\n" +
-    "Usage:\n" +
-    "- Returns up to 6 results with title, URL, and text snippet.\n" +
-    "- Use for questions requiring up-to-date information beyond training data.\n" +
-    "- query should be a natural language search phrase.\n" +
-    "- Search results are automatically displayed on the News panel.",
+    "Search the web via Exa for current information.\n\n" +
+    "Use natural language queries, not keywords (e.g. 'Tesla current stock performance' not 'TSLA stock price').\n" +
+    "Returns up to 10 results with title, URL, and highlighted excerpts.\n" +
+    "Search results are automatically displayed on the canvas panel.\n\n" +
+    "WHEN TO SEARCH: current events, recent news, facts/stats that change over time, " +
+    "product/company info, prices, people's current roles, documentation, comparisons between evolving products.\n" +
+    "WHEN NOT TO SEARCH: general knowledge, coding help, creative writing, opinions, well-established historical facts, definitions.\n" +
+    "PARTIAL SEARCH: If a query mixes static knowledge with time-sensitive info, only search the time-sensitive parts.\n\n" +
+    "CATEGORIES — use sparingly, most queries should omit:\n" +
+    "- 'company': only for 'what does X company do' style company research.\n" +
+    "- 'people': only for non-public figures (e.g. finding a professional's profile). Never for public figures, quotes, or news about someone.\n" +
+    "- 'research paper': only for academic papers or arxiv.\n" +
+    "For news, sports, general facts — do NOT set a category.\n\n" +
+    "FOLLOW-UPS: In multi-turn conversations, expand referential language — " +
+    "'competitors' should include the specific company being discussed, 'how do I set it up' should include what 'it' refers to.",
   Display:
     "Render HTML on the canvas panel of the home dashboard.\n\n" +
     "Usage:\n" +

@@ -23,8 +23,8 @@ export type WelcomeSuggestion = {
 
 export type PromptTemplateValues = {
   "offline_responder.system": undefined
-  "news_html.system": undefined
-  "news_html.user": {
+  "search_html.system": undefined
+  "search_html.user": {
     query: string
     resultsText: string
   }

@@ -123,7 +123,7 @@ type BaseRunOptions = {
   abortSignal?: AbortSignal;
   frontendRoot?: string;
   selfModMonitor?: SelfModMonitor | null;
-  webSearch?: (query: string) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>;
+  webSearch?: (query: string, options?: { category?: string }) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>;
 };
 
 type OrchestratorRunOptions = BaseRunOptions & {
@@ -265,7 +265,7 @@ const createPiTools = (opts: {
     args: Record<string, unknown>,
     context: ToolContext,
   ) => Promise<ToolResult>;
-  webSearch?: (query: string) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>;
+  webSearch?: (query: string, options?: { category?: string }) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>;
 }): AgentTool[] => {
   const requested = Array.isArray(opts.toolsAllowlist) && opts.toolsAllowlist.length > 0
     ? opts.toolsAllowlist
@@ -287,7 +287,8 @@ const createPiTools = (opts: {
         if (!opts.webSearch) {
           return { content: [{ type: "text", text: "WebSearch is not available." }], details: {} };
         }
-        const { text, html } = await opts.webSearch(query);
+        const category = typeof args.category === "string" ? args.category : undefined;
+        const { text, html } = await opts.webSearch(query, { category });
         const toolText = html?.trim() ? html : text;
         return {
           content: [{ type: "text", text: toolText }],
