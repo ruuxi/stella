@@ -1,8 +1,8 @@
 /**
- * ChatColumn: .session-content + .session-messages, scroll management, message rendering.
+ * ChatColumn: column-reverse scroll viewport, message rendering, custom scrollbar, composer.
  */
 
-import { memo } from "react";
+import { memo, useCallback, useRef } from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { OnboardingView } from "../onboarding/OnboardingOverlay";
 import { Composer } from "./Composer";
@@ -13,6 +13,7 @@ import type { StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAni
 import type { ChatContext } from "@/types/electron";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import type { ThumbState } from "@/app/shell/use-full-shell";
 import "./full-shell.chat.css";
 
 export type StreamingState = {
@@ -63,12 +64,17 @@ export type ChatColumnProps = {
   streaming: StreamingState;
   history: HistoryState;
   composer: ComposerState;
-  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
-  setScrollContainerElement: React.RefCallback<HTMLDivElement>;
-  canVirtualize: boolean;
+  /** Callback ref — assign to the column-reverse scroll viewport */
+  setViewportElement: React.RefCallback<HTMLDivElement>;
+  /** Callback ref — assign to the content wrapper inside the viewport */
+  setContentElement: React.RefCallback<HTMLDivElement>;
   onScroll: () => void;
   showScrollButton: boolean;
   scrollToBottom: (behavior?: ScrollBehavior) => void;
+  /** overflow-anchor style for the viewport */
+  overflowAnchor: "auto" | "none";
+  /** Custom scrollbar thumb state */
+  thumbState: ThumbState;
   onboarding: OnboardingState;
   conversationId: string | null;
   onCommandSelect?: (suggestion: CommandSuggestion) => void;
@@ -79,12 +85,13 @@ export const ChatColumn = memo(function ChatColumn({
   streaming,
   history,
   composer,
-  scrollContainerRef,
-  setScrollContainerElement,
-  canVirtualize,
+  setViewportElement,
+  setContentElement,
   onScroll,
   showScrollButton,
   scrollToBottom,
+  overflowAnchor,
+  thumbState,
   onboarding,
   conversationId,
   onCommandSelect,
@@ -92,75 +99,133 @@ export const ChatColumn = memo(function ChatColumn({
   const suggestions = useCommandSuggestions(events, streaming.isStreaming);
   const showConversation = onboarding.done;
 
+  // --- Custom scrollbar thumb drag ---
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef<{ y: number; scrollTop: number } | null>(null);
+  const viewportForDragRef = useRef<HTMLDivElement | null>(null);
+
+  // Capture viewport ref for drag operations
+  const assignViewport = useCallback(
+    (node: HTMLDivElement | null) => {
+      viewportForDragRef.current = node;
+      setViewportElement(node);
+    },
+    [setViewportElement],
+  );
+
+  const handleThumbDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingRef.current = true;
+    const el = viewportForDragRef.current;
+    if (!el) return;
+    dragStartRef.current = { y: e.clientY, scrollTop: el.scrollTop };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
+
+  const handleThumbMove = useCallback((e: React.PointerEvent) => {
+    if (!isDraggingRef.current || !dragStartRef.current) return;
+    const el = viewportForDragRef.current;
+    if (!el) return;
+    const trackHeight = el.clientHeight;
+    const scrollRange = el.scrollHeight - el.clientHeight;
+    const dy = e.clientY - dragStartRef.current.y;
+    // In column-reverse, dragging thumb down → scrolling toward top (more negative scrollTop)
+    const scrollDelta = -(dy / trackHeight) * scrollRange;
+    el.scrollTop = dragStartRef.current.scrollTop + scrollDelta;
+  }, []);
+
+  const handleThumbUp = useCallback(() => {
+    isDraggingRef.current = false;
+    dragStartRef.current = null;
+  }, []);
+
   return (
     <div className="full-body-main">
-      <div
-        className="session-content"
-        ref={setScrollContainerElement}
-        onScroll={onScroll}
-      >
-        {showConversation ? (
-          <div className="session-messages">
-            <ConversationEvents
-              events={events}
-              streamingText={streaming.text}
-              reasoningText={streaming.reasoningText}
-              isStreaming={streaming.isStreaming}
-              pendingUserMessageId={streaming.pendingUserMessageId}
-              selfModMap={streaming.selfModMap}
-              hasOlderEvents={history.hasOlderEvents}
-              isLoadingOlder={history.isLoadingOlder}
-              isLoadingHistory={history.isInitialLoading}
-              scrollContainerRef={scrollContainerRef}
-              canVirtualize={canVirtualize}
-            />
-            {!streaming.isStreaming && suggestions.length > 0 && onCommandSelect && (
-              <CommandChips
-                suggestions={suggestions}
-                onSelect={onCommandSelect}
+      {/* Viewport region — scroll container + overlays (scrollbar, scroll-to-bottom) */}
+      <div className="chat-viewport-region">
+        <div
+          className="session-content"
+          ref={assignViewport}
+          onScroll={onScroll}
+          style={{ overflowAnchor }}
+        >
+          {showConversation ? (
+            <div className="session-messages" ref={setContentElement}>
+              <ConversationEvents
+                events={events}
+                streamingText={streaming.text}
+                reasoningText={streaming.reasoningText}
+                isStreaming={streaming.isStreaming}
+                pendingUserMessageId={streaming.pendingUserMessageId}
+                selfModMap={streaming.selfModMap}
+                hasOlderEvents={history.hasOlderEvents}
+                isLoadingOlder={history.isLoadingOlder}
+                isLoadingHistory={history.isInitialLoading}
               />
-            )}
+              {!streaming.isStreaming && suggestions.length > 0 && onCommandSelect && (
+                <CommandChips
+                  suggestions={suggestions}
+                  onSelect={onCommandSelect}
+                />
+              )}
+            </div>
+          ) : (
+            <OnboardingView
+              hasExpanded={onboarding.hasExpanded}
+              onboardingDone={onboarding.done}
+              onboardingExiting={onboarding.exiting}
+              isAuthenticated={onboarding.isAuthenticated}
+              splitMode={onboarding.splitMode}
+              hasDiscoverySelections={onboarding.hasDiscoverySelections}
+              stellaAnimationRef={onboarding.stellaAnimationRef}
+              onboardingKey={onboarding.key}
+              triggerFlash={onboarding.triggerFlash}
+              startBirthAnimation={onboarding.startBirthAnimation}
+              completeOnboarding={onboarding.completeOnboarding}
+              handleEnterSplit={onboarding.handleEnterSplit}
+              onDiscoveryConfirm={onboarding.onDiscoveryConfirm}
+              onSelectionChange={onboarding.onSelectionChange}
+              onDemoChange={onboarding.onDemoChange}
+            />
+          )}
+        </div>
+
+        {/* Custom scrollbar thumb overlay */}
+        {showConversation && (
+          <div className="chat-scrollbar">
+            <div
+              className={`chat-scrollbar__thumb${thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
+              style={{ top: `${thumbState.top}px`, height: `${thumbState.height}px` }}
+              onPointerDown={handleThumbDown}
+              onPointerMove={handleThumbMove}
+              onPointerUp={handleThumbUp}
+              onPointerCancel={handleThumbUp}
+            />
           </div>
-        ) : (
-          <OnboardingView
-            hasExpanded={onboarding.hasExpanded}
-            onboardingDone={onboarding.done}
-            onboardingExiting={onboarding.exiting}
-            isAuthenticated={onboarding.isAuthenticated}
-            splitMode={onboarding.splitMode}
-            hasDiscoverySelections={onboarding.hasDiscoverySelections}
-            stellaAnimationRef={onboarding.stellaAnimationRef}
-            onboardingKey={onboarding.key}
-            triggerFlash={onboarding.triggerFlash}
-            startBirthAnimation={onboarding.startBirthAnimation}
-            completeOnboarding={onboarding.completeOnboarding}
-            handleEnterSplit={onboarding.handleEnterSplit}
-            onDiscoveryConfirm={onboarding.onDiscoveryConfirm}
-            onSelectionChange={onboarding.onSelectionChange}
-            onDemoChange={onboarding.onDemoChange}
-          />
+        )}
+
+        {showScrollButton && showConversation && (
+          <button
+            className="scroll-to-bottom"
+            onClick={() => scrollToBottom("smooth")}
+            aria-label="Scroll to bottom"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
         )}
       </div>
 
-      {showScrollButton && showConversation && (
-        <button
-          className="scroll-to-bottom"
-          onClick={() => scrollToBottom("instant")}
-          aria-label="Scroll to bottom"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </button>
-      )}
-
+      {/* Composer — normal flow below the scroll viewport */}
       {showConversation && (
         <div className={onboarding.exiting ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
           <Composer

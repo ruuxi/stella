@@ -163,31 +163,42 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  position: relative;
 }
 
-/* Session content - open layout with gradient visible */
-.session-content {
+/* Viewport region — scroll container + overlay controls (scrollbar, scroll-to-bottom).
+   flex: 1 fills remaining space above the composer; position: relative
+   anchors the absolute overlays. */
+.chat-viewport-region {
   flex: 1;
   min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Session content — column-reverse scroll viewport.
+   scrollTop=0 is at the bottom (newest content).
+   Native bottom-anchoring: new content stays visible without JS. */
+.session-content {
+  height: 100%;
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
   overflow-y: auto;
   scrollbar-width: none;
-  scroll-padding-block-end: 140px;
 }
 
 .session-content::-webkit-scrollbar {
   display: none;
 }
 
-/* Message container - centered with max-width */
+/* Message container — centered, padding reserves space for title bar + composer.
+   min-height: 100% ensures short conversations fill the viewport so content
+   doesn't sit behind the absolutely-positioned composer at the bottom. */
 .session-messages {
-  flex: 1;
   width: 100%;
   max-width: min(50rem, 100%);
   margin: 0 auto;
-  padding: 112px 24px 140px; /* Extra top padding for title bar, bottom padding for composer clearance + breathing room */
+  padding: 112px 24px 24px;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;

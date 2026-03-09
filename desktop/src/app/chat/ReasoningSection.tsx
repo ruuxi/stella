@@ -72,10 +72,8 @@ export function ReasoningSection({
           data-visible={visible}
         >
           <div ref={contentRef} className="reasoning-content">
-            {content ? (
+            {content && (
               <Markdown text={content} isAnimating={isStreaming} />
-            ) : (
-              <TextShimmer text="Thinking..." active={isStreaming} className="reasoning-placeholder-shimmer" />
             )}
           </div>
         </div>
