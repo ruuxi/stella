@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { UiMode, UiState, ViewType, WindowMode } from '@/shared/contracts/ui'
 import { getElectronApi } from '@/platform/electron/electron'
@@ -25,6 +25,8 @@ const UiStateContext = createContext<UiStateContextValue | null>(null)
 
 export const UiStateProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<UiState>(defaultState)
+  const hasHydratedFromMainRef = useRef(false)
+  const pendingLocalStateRef = useRef<Partial<UiState>>({})
 
   useEffect(() => {
     const api = getElectronApi()
@@ -35,14 +37,28 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
     api.ui
       .getState()
       .then((nextState) => {
-        setState(nextState)
+        if (hasHydratedFromMainRef.current) {
+          return
+        }
+        hasHydratedFromMainRef.current = true
+        const pendingLocalState = pendingLocalStateRef.current
+        pendingLocalStateRef.current = {}
+        setState({ ...nextState, ...pendingLocalState })
       })
       .catch(() => {
-        setState(defaultState)
+        if (hasHydratedFromMainRef.current) {
+          return
+        }
+        hasHydratedFromMainRef.current = true
+        const pendingLocalState = pendingLocalStateRef.current
+        pendingLocalStateRef.current = {}
+        setState({ ...defaultState, ...pendingLocalState })
       })
 
     const unsubscribe = api.ui.onState((nextState) => {
-      setState(nextState)
+      hasHydratedFromMainRef.current = true
+      pendingLocalStateRef.current = {}
+      setState({ ...nextState })
     })
 
     return () => {
@@ -52,6 +68,12 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
 
   const updateState = useCallback((partial: Partial<UiState>) => {
     setState((prev) => ({ ...prev, ...partial }))
+    if (!hasHydratedFromMainRef.current) {
+      pendingLocalStateRef.current = {
+        ...pendingLocalStateRef.current,
+        ...partial,
+      }
+    }
     const api = getElectronApi()
     if (api) {
       void api.ui.setState(partial)

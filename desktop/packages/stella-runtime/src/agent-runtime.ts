@@ -61,12 +61,14 @@ export type SelfModMonitor = {
 
 export type RuntimeStreamEvent = {
   runId: string;
+  agentType: string;
   seq: number;
   chunk: string;
 };
 
 export type RuntimeToolStartEvent = {
   runId: string;
+  agentType: string;
   seq: number;
   toolCallId: string;
   toolName: string;
@@ -74,6 +76,7 @@ export type RuntimeToolStartEvent = {
 
 export type RuntimeToolEndEvent = {
   runId: string;
+  agentType: string;
   seq: number;
   toolCallId: string;
   toolName: string;
@@ -82,6 +85,7 @@ export type RuntimeToolEndEvent = {
 
 export type RuntimeErrorEvent = {
   runId: string;
+  agentType: string;
   seq: number;
   error: string;
   fatal: boolean;
@@ -89,6 +93,7 @@ export type RuntimeErrorEvent = {
 
 export type RuntimeEndEvent = {
   runId: string;
+  agentType: string;
   seq: number;
   finalText: string;
   persisted: boolean;
@@ -451,7 +456,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
       const chunk = event.assistantMessageEvent.delta;
       if (!chunk) return;
       const s = nextSeq();
-      opts.callbacks.onStream({ runId, seq: s, chunk });
+      opts.callbacks.onStream({ runId, agentType: opts.agentType, seq: s, chunk });
       opts.store.recordRunEvent({
         timestamp: now(),
         runId,
@@ -469,6 +474,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
       const s = nextSeq();
       opts.callbacks.onToolStart({
         runId,
+        agentType: opts.agentType,
         seq: s,
         toolCallId: event.toolCallId,
         toolName: event.toolName,
@@ -492,6 +498,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
       const s = nextSeq();
       opts.callbacks.onToolEnd({
         runId,
+        agentType: opts.agentType,
         seq: s,
         toolCallId: event.toolCallId,
         toolName: event.toolName,
@@ -566,6 +573,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
 
     opts.callbacks.onEnd({
       runId,
+      agentType: opts.agentType,
       seq: endSeq,
       finalText,
       persisted: true,
@@ -590,6 +598,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
 
     opts.callbacks.onError({
       runId,
+      agentType: opts.agentType,
       seq: errSeq,
       error: errorMessage,
       fatal: true,
@@ -616,6 +625,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
   });
   let seq = 0;
   const nextSeq = () => ++seq;
+  let finalText = "";
 
   opts.store.recordRunEvent({
     timestamp: now(),
@@ -675,6 +685,12 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
             type: "stream",
             chunk,
           });
+          opts.callbacks?.onStream?.({
+            runId,
+            agentType: opts.agentType,
+            seq: s,
+            chunk,
+          });
         },
         maxConcurrency: opts.agentContext.codexLocalMaxConcurrency,
       });
@@ -702,6 +718,14 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         type: "run_end",
         finalText: result.text,
       });
+      finalText = result.text;
+      opts.callbacks?.onEnd?.({
+        runId,
+        agentType: opts.agentType,
+        seq: endSeq,
+        finalText,
+        persisted: true,
+      });
       return { runId, result: result.text };
     } catch (error) {
       const errorMessage = `Codex App Server execution failed: ${(error as Error).message || "Unknown error"}`;
@@ -713,6 +737,13 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         agentType: opts.agentType,
         seq: errSeq,
         type: "error",
+        error: errorMessage,
+        fatal: true,
+      });
+      opts.callbacks?.onError?.({
+        runId,
+        agentType: opts.agentType,
+        seq: errSeq,
         error: errorMessage,
         fatal: true,
       });
@@ -748,6 +779,12 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
             type: "stream",
             chunk,
           });
+          opts.callbacks?.onStream?.({
+            runId,
+            agentType: opts.agentType,
+            seq: s,
+            chunk,
+          });
         },
       });
       if (result.text.trim()) {
@@ -774,6 +811,14 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         type: "run_end",
         finalText: result.text,
       });
+      finalText = result.text;
+      opts.callbacks?.onEnd?.({
+        runId,
+        agentType: opts.agentType,
+        seq: endSeq,
+        finalText,
+        persisted: true,
+      });
       return { runId, result: result.text };
     } catch (error) {
       const errorMessage = `Claude Code execution failed: ${(error as Error).message || "Unknown error"}`;
@@ -785,6 +830,13 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         agentType: opts.agentType,
         seq: errSeq,
         type: "error",
+        error: errorMessage,
+        fatal: true,
+      });
+      opts.callbacks?.onError?.({
+        runId,
+        agentType: opts.agentType,
+        seq: errSeq,
         error: errorMessage,
         fatal: true,
       });
@@ -846,6 +898,12 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
           type: "stream",
           chunk,
         });
+        opts.callbacks?.onStream?.({
+          runId,
+          agentType: opts.agentType,
+          seq: s,
+          chunk,
+        });
       }
       return;
     }
@@ -864,6 +922,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
       });
       opts.callbacks?.onToolStart?.({
         runId,
+        agentType: opts.agentType,
         seq: s,
         toolCallId: event.toolCallId,
         toolName: event.toolName,
@@ -887,6 +946,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
       });
       opts.callbacks?.onToolEnd?.({
         runId,
+        agentType: opts.agentType,
         seq: s,
         toolCallId: event.toolCallId,
         toolName: event.toolName,
@@ -906,6 +966,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
       .reverse()
       .find((message) => message.role === "assistant");
     const result = extractAssistantText(latestAssistant);
+    finalText = result;
     if (result.trim()) {
       opts.store.appendThreadMessage({
         timestamp: now(),
@@ -930,6 +991,13 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
       type: "run_end",
       finalText: result,
     });
+    opts.callbacks?.onEnd?.({
+      runId,
+      agentType: opts.agentType,
+      seq: endSeq,
+      finalText,
+      persisted: true,
+    });
 
     return {
       runId,
@@ -945,6 +1013,13 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
       agentType: opts.agentType,
       seq: errSeq,
       type: "error",
+      error: errorMessage,
+      fatal: true,
+    });
+    opts.callbacks?.onError?.({
+      runId,
+      agentType: opts.agentType,
+      seq: errSeq,
       error: errorMessage,
       fatal: true,
     });

@@ -192,8 +192,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     resumeStream: (payload: { runId: string; lastSeq: number }) =>
       ipcRenderer.invoke('agent:resume', payload) as Promise<{
         events: Array<{
-          type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end';
+          type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end' | 'task-started' | 'task-completed' | 'task-failed' | 'task-progress';
           runId: string;
+          agentType?: string;
           seq: number;
           chunk?: string;
           toolCallId?: string;
@@ -204,12 +205,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
           finalText?: string;
           persisted?: boolean;
           selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
+          taskId?: string;
+          description?: string;
+          parentTaskId?: string;
+          result?: string;
+          statusText?: string;
         }>;
         exhausted: boolean;
       }>,
     onStream: onIpc<{
-      type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end';
+      type: 'stream' | 'tool-start' | 'tool-end' | 'error' | 'end' | 'task-started' | 'task-completed' | 'task-failed' | 'task-progress';
       runId: string;
+      agentType?: string;
       seq: number;
       chunk?: string;
       toolCallId?: string;
@@ -220,6 +227,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       finalText?: string;
       persisted?: boolean;
       selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
+      taskId?: string;
+      description?: string;
+      parentTaskId?: string;
+      result?: string;
+      statusText?: string;
     }>('agent:event'),
     onSelfModHmrState: onIpc<{ paused: boolean; message: string }>('agent:selfModHmrState'),
     selfModRevert: (featureId?: string, steps?: number) =>

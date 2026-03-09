@@ -17,6 +17,7 @@ import type { EventRecord, MessageTurn, StepItem } from "@/app/chat/lib/event-tr
 import { extractStepsFromEvents, groupEventsIntoTurns } from "@/app/chat/lib/event-transforms";
 
 const EVENT_PAGE_SIZE = 200;
+const LOCAL_LOAD_RETRY_MS = 300;
 const EMPTY_EVENTS: EventRecord[] = [];
 const NO_OP = () => {};
 
@@ -84,6 +85,7 @@ export const useConversationEventFeed = (
     count: 0,
     hasLoaded: false,
   }));
+  const [localRetryTick, setLocalRetryTick] = useState(0);
   const [scheduledEvents, setScheduledEvents] = useState<EventRecord[]>(EMPTY_EVENTS);
   const [scheduledEventCount, setScheduledEventCount] = useState(0);
 
@@ -129,6 +131,19 @@ export const useConversationEventFeed = (
     }
 
     let cancelled = false;
+    let retryTimer: number | null = null;
+
+    const scheduleRetry = () => {
+      if (cancelled || retryTimer !== null) {
+        return;
+      }
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        if (!cancelled) {
+          setLocalRetryTick((current) => current + 1);
+        }
+      }, LOCAL_LOAD_RETRY_MS);
+    };
 
     const load = async () => {
       try {
@@ -138,6 +153,10 @@ export const useConversationEventFeed = (
         ]);
         if (cancelled) {
           return;
+        }
+        if (retryTimer !== null) {
+          window.clearTimeout(retryTimer);
+          retryTimer = null;
         }
         setLocalSnapshot({
           visitToken: localWindowVisitToken,
@@ -153,21 +172,29 @@ export const useConversationEventFeed = (
           visitToken: localWindowVisitToken,
           events: EMPTY_EVENTS,
           count: 0,
-          hasLoaded: true,
+          hasLoaded: false,
         });
+        scheduleRetry();
       }
     };
 
     void load();
     const unsubscribe = subscribeToLocalChatUpdates(() => {
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+        retryTimer = null;
+      }
       void load();
     });
 
     return () => {
       cancelled = true;
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+      }
       unsubscribe();
     };
-  }, [conversationId, localMaxItems, localWindowVisitToken, storageMode]);
+  }, [conversationId, localMaxItems, localRetryTick, localWindowVisitToken, storageMode]);
 
   useEffect(() => {
     if (storageMode !== "local" || !conversationId || !window.electronAPI?.schedule) {

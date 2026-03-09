@@ -24,6 +24,7 @@ type Props = {
   isLoadingHistory?: boolean;
   onOpenAttachment?: (attachment: Attachment) => void;
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
+  canVirtualize?: boolean;
 };
 
 /** Non-virtualized renderer for small lists or when scrollContainerRef is not provided */
@@ -255,6 +256,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   isLoadingHistory,
   onOpenAttachment,
   scrollContainerRef,
+  canVirtualize,
 }: Props) {
   const {
     turns,
@@ -275,7 +277,8 @@ export const ConversationEvents = memo(function ConversationEvents({
   });
 
   const shouldVirtualize =
-    scrollContainerRef && turns.length >= VIRTUALIZATION_THRESHOLD;
+    Boolean(canVirtualize) &&
+    turns.length >= VIRTUALIZATION_THRESHOLD;
 
   if (isLoadingHistory && turns.length === 0 && !showStreaming) {
     return (

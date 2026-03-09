@@ -18,6 +18,7 @@ type AppendEventArgs = Omit<LocalAppendEventArgs, 'timestamp' | 'eventId'>
 type AppendAgentEventArgs = {
   conversationId: string
   type: 'tool_request' | 'tool_result' | 'assistant_message'
+  agentType?: string
   userMessageId?: string
   toolCallId?: string
   toolName?: string
@@ -84,6 +85,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
           requestId: args.toolCallId,
           payload: {
             toolName: args.toolName,
+            ...(args.agentType ? { agentType: args.agentType } : {}),
           },
         }).catch(() => undefined)
         return
@@ -98,6 +100,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
           result: args.html ?? args.resultPreview,
           ...(args.resultPreview ? { resultPreview: args.resultPreview } : {}),
           ...(args.html ? { html: args.html } : {}),
+          ...(args.agentType ? { agentType: args.agentType } : {}),
         },
       }).catch(() => undefined)
     },

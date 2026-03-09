@@ -43,6 +43,10 @@ export function useTraceIpcListener(enabled: boolean) {
     if (!enabled || !window.electronAPI?.agent?.onStream) return;
 
     const cleanup = window.electronAPI.agent.onStream((event) => {
+      if (event.agentType) {
+        registerRunAgent(event.runId, event.agentType);
+      }
+
       switch (event.type) {
         case "tool-start":
           traceToolStart(
@@ -151,7 +155,7 @@ export function useTraceEventMonitor(
         const p = event.payload;
         // Only trace if it has agentType (sub-agent tool use) to avoid
         // duplicating the IPC tool-start events from the orchestrator
-        if (p.agentType) {
+        if (p.agentType && p.agentType !== "orchestrator") {
           addTrace("tool", "tool-request", `[${p.agentType}] ${p.toolName}`, {
             toolName: p.toolName,
             agent: p.agentType,
@@ -166,6 +170,7 @@ export function useTraceEventMonitor(
         if (p.error) {
           addTrace("error", "tool-error", `${p.toolName}: ${p.error.slice(0, 200)}`, {
             toolName: p.toolName,
+            agent: p.agentType,
             data: { error: p.error },
           });
         }

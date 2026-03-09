@@ -143,7 +143,7 @@ export function traceAgentError(error: string, fatal: boolean, runId?: string) {
 
 export function traceStreamEnd(runId?: string, finalTextPreview?: string) {
   const agent = runId ? runIdToAgent.get(runId) : undefined;
-  addTrace("orchestrator", "stream-end", finalTextPreview?.slice(0, 150) ?? "(empty)", {
+  addTrace(agent && agent !== "orchestrator" ? "agent" : "orchestrator", "stream-end", finalTextPreview?.slice(0, 150) ?? "(empty)", {
     runId,
     agent,
   });
