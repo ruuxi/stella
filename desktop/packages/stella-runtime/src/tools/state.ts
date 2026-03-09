@@ -132,7 +132,6 @@ export const handleTask = async (
   const parentTaskId =
     toOptionalString(args.parentTaskId ?? args.parent_task_id) ??
     toOptionalString(context.taskId);
-  const threadId = toOptionalString(args.threadId ?? args.thread_id);
   const threadName = toOptionalString(args.threadName ?? args.thread_name);
   const commandId = toOptionalString(args.commandId ?? args.command_id);
   const systemPromptOverride = toOptionalString(
@@ -170,14 +169,18 @@ export const handleTask = async (
       taskDepth: nextTaskDepth,
       ...(typeof maxTaskDepth === "number" ? { maxTaskDepth } : {}),
       parentTaskId,
-      threadId,
       threadName,
       commandId,
       systemPromptOverride,
       storageMode,
     });
     return {
-      result: `Task running.\nTask ID: ${created.taskId}\nElapsed: 0ms`,
+      result: [
+        "Task running.",
+        `Task ID: ${created.taskId}`,
+        ...(created.threadName ? [`Thread: ${created.threadName}`] : []),
+        "Elapsed: 0ms",
+      ].join("\n"),
     };
   }
 

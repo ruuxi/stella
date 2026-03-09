@@ -1,6 +1,15 @@
 import fs from "fs";
 import path from "path";
 import { createRequire } from "module";
+import {
+  MAX_ACTIVE_RUNTIME_THREADS,
+  RUNTIME_THREAD_REMINDER_INTERVAL_TOKENS,
+  RUNTIME_THREAD_NAME_POOL,
+  type RuntimeThreadRecord,
+  normalizeRuntimeThreadName,
+  pickAvailableRuntimeThreadName,
+} from "./runtime-threads.js";
+import { buildRuntimeThreadKey } from "./thread-runtime.js";
 
 const require = createRequire(import.meta.url);
 
@@ -40,6 +49,11 @@ type JsonlMemory = {
   conversationId: string;
   content: string;
   tags?: string[];
+};
+
+type RuntimeConversationState = {
+  reminderTokensSinceLastInjection?: number;
+  forceReminderOnNextTurn?: boolean;
 };
 
 type SqliteStatement = {
@@ -171,6 +185,32 @@ const isMemoryEntry = (value: unknown): value is JsonlMemory => {
     );
 };
 
+const isRuntimeThreadRecord = (value: unknown): value is RuntimeThreadRecord => {
+  const row = asObject(value);
+  if (!row) return false;
+  return typeof row.conversationId === "string"
+    && typeof row.threadKey === "string"
+    && typeof row.agentType === "string"
+    && typeof row.name === "string"
+    && (row.status === "active" || row.status === "evicted")
+    && typeof row.createdAt === "number"
+    && typeof row.lastUsedAt === "number"
+    && (row.summary == null || typeof row.summary === "string");
+};
+
+const isRuntimeConversationStateMap = (
+  value: unknown,
+): value is Record<string, RuntimeConversationState> => {
+  const row = asObject(value);
+  if (!row) return false;
+  return Object.values(row).every((entry) => {
+    const state = asObject(entry);
+    if (!state) return false;
+    return (state.reminderTokensSinceLastInjection == null || typeof state.reminderTokensSinceLastInjection === "number")
+      && (state.forceReminderOnNextTurn == null || typeof state.forceReminderOnNextTurn === "boolean");
+  });
+};
+
 const openRuntimeDatabase = (dbPath: string): SqliteDatabase => {
   if (typeof globalThis.Bun !== "undefined") {
     const bunSqlite = require("bun:sqlite") as {
@@ -212,10 +252,14 @@ export class JsonlRuntimeStore {
   private readonly threadArchiveDir: string;
   private readonly runsDir: string;
   private readonly memoryFile: string;
+  private readonly threadRegistryFile: string;
+  private readonly conversationStateFile: string;
   private readonly sqliteFile: string;
   private readonly db: SqliteDatabase | null;
   private readonly threadNeedsResync = new Set<string>();
   private memoryNeedsResync = false;
+  private runtimeThreads: RuntimeThreadRecord[];
+  private runtimeConversationState: Record<string, RuntimeConversationState>;
 
   constructor(stellaHome: string) {
     this.root = path.join(stellaHome, "state", "stella-runtime");
@@ -223,6 +267,8 @@ export class JsonlRuntimeStore {
     this.threadArchiveDir = path.join(this.threadsDir, "archive");
     this.runsDir = path.join(this.root, "runs");
     this.memoryFile = path.join(this.root, "memory.jsonl");
+    this.threadRegistryFile = path.join(this.root, "thread-registry.json");
+    this.conversationStateFile = path.join(this.root, "conversation-state.json");
     this.sqliteFile = path.join(this.root, SQLITE_DB_FILE);
 
     fs.mkdirSync(this.root, { recursive: true });
@@ -230,6 +276,8 @@ export class JsonlRuntimeStore {
     fs.mkdirSync(this.threadArchiveDir, { recursive: true });
     fs.mkdirSync(this.runsDir, { recursive: true });
 
+    this.runtimeThreads = this.loadRuntimeThreads();
+    this.runtimeConversationState = this.loadConversationState();
     this.db = this.initDatabase();
     if (this.db) {
       this.syncAllFromJsonl();
@@ -586,6 +634,7 @@ export class JsonlRuntimeStore {
   appendThreadMessage(message: JsonlThreadMessage): void {
     const filePath = path.join(this.threadsDir, `${fileSafeId(message.conversationId)}.jsonl`);
     appendJsonl(filePath, message);
+    this.touchThread(message.conversationId);
     if (!this.db) return;
     try {
       this.insertThreadMessage(message);
@@ -822,6 +871,199 @@ export class JsonlRuntimeStore {
     if (rows.length === 0) return [];
     const scored = scoreMemoryMatches(query, rows);
     return scored.slice(0, limit).map((entry) => entry.row);
+  }
+
+  private loadRuntimeThreads(): RuntimeThreadRecord[] {
+    if (!fs.existsSync(this.threadRegistryFile)) return [];
+    try {
+      const raw = JSON.parse(fs.readFileSync(this.threadRegistryFile, "utf-8")) as unknown;
+      if (!Array.isArray(raw)) return [];
+      return raw.filter(isRuntimeThreadRecord);
+    } catch {
+      return [];
+    }
+  }
+
+  private saveRuntimeThreads(): void {
+    ensureParentDir(this.threadRegistryFile);
+    fs.writeFileSync(
+      this.threadRegistryFile,
+      JSON.stringify(this.runtimeThreads, null, 2),
+      "utf-8",
+    );
+  }
+
+  private loadConversationState(): Record<string, RuntimeConversationState> {
+    if (!fs.existsSync(this.conversationStateFile)) return {};
+    try {
+      const raw = JSON.parse(fs.readFileSync(this.conversationStateFile, "utf-8")) as unknown;
+      return isRuntimeConversationStateMap(raw) ? raw : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private saveConversationState(): void {
+    ensureParentDir(this.conversationStateFile);
+    fs.writeFileSync(
+      this.conversationStateFile,
+      JSON.stringify(this.runtimeConversationState, null, 2),
+      "utf-8",
+    );
+  }
+
+  private updateRuntimeThread(
+    threadKey: string,
+    update: (thread: RuntimeThreadRecord) => RuntimeThreadRecord,
+  ): void {
+    const index = this.runtimeThreads.findIndex((thread) => thread.threadKey === threadKey);
+    if (index < 0) return;
+    this.runtimeThreads[index] = update(this.runtimeThreads[index]!);
+    this.saveRuntimeThreads();
+  }
+
+  listActiveThreads(conversationId: string): RuntimeThreadRecord[] {
+    return this.runtimeThreads
+      .filter((thread) => thread.conversationId === conversationId && thread.status === "active")
+      .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
+      .slice(0, MAX_ACTIVE_RUNTIME_THREADS);
+  }
+
+  resolveOrCreateActiveThread(args: {
+    conversationId: string;
+    agentType: string;
+    threadName?: string;
+  }): { threadId: string; threadName: string; reused: boolean } {
+    const requestedName = normalizeRuntimeThreadName(args.threadName ?? "");
+    const existing =
+      requestedName
+        ? this.runtimeThreads.find((thread) =>
+            thread.conversationId === args.conversationId
+            && thread.status === "active"
+            && thread.name === requestedName)
+        : undefined;
+    if (existing) {
+      this.touchThread(existing.threadKey);
+      return {
+        threadId: existing.threadKey,
+        threadName: existing.name,
+        reused: true,
+      };
+    }
+
+    const activeThreads = this.listActiveThreads(args.conversationId);
+    if (activeThreads.length >= MAX_ACTIVE_RUNTIME_THREADS) {
+      const oldest = [...activeThreads].sort((a, b) => a.lastUsedAt - b.lastUsedAt)[0];
+      if (oldest) {
+        this.updateRuntimeThread(oldest.threadKey, (thread) => ({
+          ...thread,
+          status: "evicted",
+        }));
+      }
+    }
+
+    const activeNames = new Set(this.listActiveThreads(args.conversationId).map((thread) => thread.name));
+    const selectedName =
+      requestedName
+        && RUNTIME_THREAD_NAME_POOL.includes(requestedName)
+        && !activeNames.has(requestedName)
+        ? requestedName
+        : pickAvailableRuntimeThreadName(activeNames);
+    const threadKey = buildRuntimeThreadKey({
+      conversationId: args.conversationId,
+      agentType: args.agentType,
+      runId: selectedName,
+      threadId: selectedName,
+    });
+    const now = Date.now();
+    this.runtimeThreads.push({
+      conversationId: args.conversationId,
+      threadKey,
+      agentType: args.agentType,
+      name: selectedName,
+      status: "active",
+      createdAt: now,
+      lastUsedAt: now,
+    });
+    this.saveRuntimeThreads();
+    this.forceOrchestratorReminderOnNextTurn(args.conversationId);
+    return {
+      threadId: threadKey,
+      threadName: selectedName,
+      reused: false,
+    };
+  }
+
+  touchThread(threadKey: string): void {
+    const thread = this.runtimeThreads.find((entry) => entry.threadKey === threadKey);
+    if (!thread) return;
+    this.updateRuntimeThread(threadKey, (entry) => ({
+      ...entry,
+      lastUsedAt: Date.now(),
+    }));
+  }
+
+  updateThreadSummary(threadKey: string, summary: string): void {
+    const trimmed = summary.trim();
+    if (!trimmed) return;
+    const thread = this.runtimeThreads.find((entry) => entry.threadKey === threadKey);
+    if (!thread) return;
+    this.updateRuntimeThread(threadKey, (entry) => ({
+      ...entry,
+      summary: trimmed,
+      lastUsedAt: Date.now(),
+    }));
+    this.forceOrchestratorReminderOnNextTurn(thread.conversationId);
+  }
+
+  getThreadName(threadKey: string): string | undefined {
+    return this.runtimeThreads.find((thread) => thread.threadKey === threadKey)?.name;
+  }
+
+  getOrchestratorReminderState(conversationId: string): {
+    shouldInjectDynamicReminder: boolean;
+    reminderTokensSinceLastInjection: number;
+  } {
+    const state = this.runtimeConversationState[conversationId] ?? {};
+    const rawCurrent = state.reminderTokensSinceLastInjection;
+    const current =
+      typeof rawCurrent === "number" && Number.isFinite(rawCurrent)
+        ? Math.max(0, Math.floor(rawCurrent))
+        : 0;
+    return {
+      shouldInjectDynamicReminder:
+        state.forceReminderOnNextTurn === true
+        || rawCurrent == null
+        || current >= RUNTIME_THREAD_REMINDER_INTERVAL_TOKENS,
+      reminderTokensSinceLastInjection: current,
+    };
+  }
+
+  updateOrchestratorReminderCounter(args: {
+    conversationId: string;
+    resetTo?: number;
+    incrementBy?: number;
+  }): void {
+    const current = this.runtimeConversationState[args.conversationId]?.reminderTokensSinceLastInjection ?? 0;
+    const nextValue = args.resetTo != null
+      ? Math.max(0, Math.floor(args.resetTo))
+      : Math.max(0, Math.floor(current + (args.incrementBy ?? 0)));
+    this.runtimeConversationState[args.conversationId] = {
+      reminderTokensSinceLastInjection: nextValue,
+      ...(args.resetTo != null ? { forceReminderOnNextTurn: false } : {
+        forceReminderOnNextTurn: this.runtimeConversationState[args.conversationId]?.forceReminderOnNextTurn ?? false,
+      }),
+    };
+    this.saveConversationState();
+  }
+
+  forceOrchestratorReminderOnNextTurn(conversationId: string): void {
+    this.runtimeConversationState[conversationId] = {
+      reminderTokensSinceLastInjection:
+        this.runtimeConversationState[conversationId]?.reminderTokensSinceLastInjection ?? 0,
+      forceReminderOnNextTurn: true,
+    };
+    this.saveConversationState();
   }
 
   close(): void {
