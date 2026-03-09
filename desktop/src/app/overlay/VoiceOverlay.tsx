@@ -17,6 +17,7 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
   const [exiting, setExiting] = useState(false);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transitionFrameRef = useRef<number | null>(null);
+  const retainedStyleRef = useRef<CSSProperties | undefined>(style);
 
   const windowType = useWindowType();
   const isActiveWindow = windowType === "overlay" || state.window === windowType;
@@ -38,6 +39,17 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
 
   const isAnyVoiceActive = isActiveWindow && (state.isVoiceActive || state.isVoiceRtcActive);
   const isAudioReady = isRecording || isConnected;
+
+  useEffect(() => {
+    if (style) {
+      retainedStyleRef.current = style;
+      return;
+    }
+
+    if (isAnyVoiceActive) {
+      retainedStyleRef.current = undefined;
+    }
+  }, [isAnyVoiceActive, style]);
 
   // Voice mode uses server-reported speaking state for RTC (more reliable
   // than energy thresholds which decay slowly due to analyser smoothing).
@@ -99,6 +111,7 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
         cancelAnimationFrame(transitionFrameRef.current);
         transitionFrameRef.current = null;
       }
+      retainedStyleRef.current = undefined;
     };
   }, []);
 
@@ -112,8 +125,10 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
 
   if (!showOverlay) return null;
 
+  const overlayStyle = style ?? retainedStyleRef.current;
+
   return (
-    <div className="voice-overlay" style={style}>
+    <div className="voice-overlay" style={overlayStyle}>
       <div
         className={`voice-overlay-creature${exiting ? " voice-overlay-exiting" : ""}`}
         onClick={handleClick}
