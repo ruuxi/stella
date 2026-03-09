@@ -64,7 +64,7 @@ describe("useScrollManagement", () => {
     expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
   });
 
-  it("scrollToBottom calls scrollTo on the container", () => {
+  it("scrollToBottom uses motion spring for smooth scroll", () => {
     const { result } = renderHook(() => useScrollManagement(makeOptions()));
 
     const mockDiv = {
@@ -80,10 +80,8 @@ describe("useScrollManagement", () => {
       result.current.scrollToBottom();
     });
 
-    expect(mockDiv.scrollTo).toHaveBeenCalledWith({
-      top: 1000,
-      behavior: "smooth",
-    });
+    // Smooth scroll now uses motion animate() — scrollTo is NOT called
+    expect(mockDiv.scrollTo).not.toHaveBeenCalled();
   });
 
   it("scrollToBottom accepts custom behavior", () => {

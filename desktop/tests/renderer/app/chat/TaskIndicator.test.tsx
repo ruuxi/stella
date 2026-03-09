@@ -126,13 +126,13 @@ describe("TaskIndicator", () => {
     expect(screen.getByText("Fallback desc")).toBeTruthy();
   });
 
-  it("renders spinner for each running task", () => {
+  it("renders Stella animation for each running task", () => {
     const tasks = [
       { id: "t1", agentType: "general", status: "running" as const, description: "A" },
       { id: "t2", agentType: "explore", status: "running" as const, description: "B" },
     ];
     const { container } = render(<TaskIndicator tasks={tasks} />);
-    const spinners = container.querySelectorAll("[data-component='spinner']");
-    expect(spinners.length).toBe(2);
+    const stellas = container.querySelectorAll(".indicator-stella");
+    expect(stellas.length).toBe(2);
   });
 });

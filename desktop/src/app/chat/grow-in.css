@@ -48,7 +48,6 @@
   .grow-in {
     height: auto !important;
     overflow: visible !important;
-    transition: none !important;
   }
 
   .grow-in-inner {

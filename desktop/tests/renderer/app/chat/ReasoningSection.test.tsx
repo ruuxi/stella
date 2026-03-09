@@ -21,8 +21,10 @@ describe("ReasoningSection", () => {
   });
 
   it("shows Thinking... placeholder when streaming with no content", () => {
-    render(<ReasoningSection content="" isStreaming={true} />);
-    expect(screen.getByText("Thinking...")).toBeTruthy();
+    const { container } = render(<ReasoningSection content="" isStreaming={true} />);
+    const shimmer = container.querySelector(".reasoning-placeholder-shimmer");
+    expect(shimmer).toBeTruthy();
+    expect(shimmer?.textContent?.replace(/\u00A0/g, " ")).toBe("Thinking...");
   });
 
   it("shows toggle button when not streaming", () => {
@@ -114,8 +116,10 @@ describe("ReasoningSection", () => {
 
     // Collapse it
     fireEvent.click(screen.getByRole("button"));
-    // When collapsed + not streaming, body should not render
-    expect(container.querySelector(".reasoning-body")).toBeNull();
+    // When collapsed + not streaming, body uses data-visible="false" transition
+    const body = container.querySelector(".reasoning-body");
+    expect(body).toBeTruthy();
+    expect(body?.getAttribute("data-visible")).toBe("false");
   });
 
   it("defaults isStreaming to false", () => {
