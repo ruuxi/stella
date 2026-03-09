@@ -9,8 +9,6 @@
   width: 220px;
   flex-shrink: 0;
   background: var(--background);
-  border-right: 1px solid var(--border-weak);
-  border-radius: 0 10px 10px 0;
   position: relative;
   z-index: 2;
 }
