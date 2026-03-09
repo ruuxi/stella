@@ -52,7 +52,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => [...prev, toast]);
 
     if (options.duration !== 0) {
-      const timeout = options.duration || 5000;
+      const timeout = options.duration || 4000;
       const timeoutId = window.setTimeout(() => {
         removeToast(id);
       }, timeout);
@@ -77,6 +77,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     () => ({ toasts, addToast, removeToast }),
     [toasts, addToast, removeToast],
   );
+
+  React.useEffect(() => {
+    const imperativeToast = (options: ToastOptions | string) =>
+      addToast(typeof options === "string" ? { description: options } : options);
+
+    setToastFn(imperativeToast);
+
+    return () => {
+      if (toastFn === imperativeToast) {
+        setToastFn(null);
+      }
+    };
+  }, [addToast]);
 
   return (
     <ToastContext.Provider value={value}>
@@ -121,7 +134,7 @@ function ToastItem({ toast, onClose }: ToastItemProps) {
 
 let toastFn: ((options: ToastOptions | string) => string) | null = null;
 
-export function setToastFn(fn: (options: ToastOptions | string) => string) {
+export function setToastFn(fn: ((options: ToastOptions | string) => string) | null) {
   toastFn = fn;
 }
 
