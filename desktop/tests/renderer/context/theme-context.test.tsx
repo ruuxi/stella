@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { ThemeProvider, useTheme, useThemeControl } from "../../../src/context/theme-context";
-import type { ThemeColors } from "../../../src/theme/themes";
+import { getThemesSnapshot, registerTheme, unregisterTheme, type ThemeColors } from "../../../src/theme/themes";
 
 /** Combines read + control hooks for tests that need both. */
 function useThemeCombined() {
@@ -36,6 +36,7 @@ describe("ThemeProvider + useTheme", () => {
   afterEach(() => {
     localStorage.clear();
     delete ((window as unknown as Record<string, unknown>)).electronAPI;
+    unregisterTheme("custom-theme");
   });
 
   it("provides default theme (carbonfox)", () => {
@@ -230,6 +231,24 @@ describe("ThemeProvider + useTheme", () => {
     const { result } = renderHook(() => useThemeCombined(), { wrapper });
     expect(Array.isArray(result.current.themes)).toBe(true);
     expect(result.current.themes.length).toBeGreaterThanOrEqual(15);
+  });
+
+  it("keeps the theme snapshot stable until the registry changes", () => {
+    const initialSnapshot = getThemesSnapshot();
+
+    expect(getThemesSnapshot()).toBe(initialSnapshot);
+
+    registerTheme({
+      id: "custom-theme",
+      name: "Custom",
+      light: {} as ThemeColors,
+      dark: {} as ThemeColors,
+    });
+
+    const updatedSnapshot = getThemesSnapshot();
+    expect(updatedSnapshot).not.toBe(initialSnapshot);
+    expect(updatedSnapshot.some((theme) => theme.id === "custom-theme")).toBe(true);
+    expect(getThemesSnapshot()).toBe(updatedSnapshot);
   });
 
   it("dark mode resolves to dark colors", () => {

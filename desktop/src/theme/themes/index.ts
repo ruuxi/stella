@@ -23,8 +23,14 @@ export const themes: Theme[] = [
 ];
 
 const listeners = new Set<() => void>();
+let themesSnapshot: readonly Theme[] = themes.slice();
+
+const refreshThemesSnapshot = () => {
+  themesSnapshot = themes.slice();
+};
 
 const emitChange = () => {
+  refreshThemesSnapshot();
   for (const listener of listeners) {
     listener();
   }
@@ -43,7 +49,7 @@ export const subscribeThemes = (listener: () => void) => {
   };
 };
 
-export const getThemesSnapshot = (): Theme[] => [...themes];
+export const getThemesSnapshot = (): readonly Theme[] => themesSnapshot;
 
 export const registerTheme = (theme: Theme) => {
   const existing = themes.findIndex((t) => t.id === theme.id);
