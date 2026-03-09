@@ -8,11 +8,13 @@ const {
   convexSetAuthMock,
   convexCloseMock,
   displayHtmlMock,
+  localTaskManagerCtorMock,
 } = vi.hoisted(() => ({
   convexActionMock: vi.fn(),
   convexSetAuthMock: vi.fn(),
   convexCloseMock: vi.fn().mockResolvedValue(undefined),
   displayHtmlMock: vi.fn(),
+  localTaskManagerCtorMock: vi.fn(),
 }));
 
 vi.mock("convex/browser", () => ({
@@ -66,6 +68,10 @@ vi.mock("../../../packages/stella-runtime/src/extensions/index.js", () => ({
 
 vi.mock("../../../packages/stella-runtime/src/tasks/index.js", () => ({
   LocalTaskManager: class LocalTaskManager {
+    constructor(opts: unknown) {
+      localTaskManagerCtorMock(opts);
+    }
+
     shutdown() {}
   },
 }));
@@ -94,6 +100,7 @@ describe("runtime runner WebSearch", () => {
     convexSetAuthMock.mockReset();
     convexCloseMock.mockClear();
     displayHtmlMock.mockReset();
+    localTaskManagerCtorMock.mockReset();
   });
 
   afterEach(() => {
@@ -144,5 +151,17 @@ describe("runtime runner WebSearch", () => {
     expect(displayHtmlMock).not.toHaveBeenCalled();
 
     runner.stop();
+  });
+
+  it("configures the local task manager for up to 16 concurrent subagents", () => {
+    createStellaHostRunner({
+      deviceId: "device-1",
+      StellaHome: createTempHome(),
+      displayHtml: displayHtmlMock,
+    });
+
+    expect(localTaskManagerCtorMock).toHaveBeenCalledWith(expect.objectContaining({
+      maxConcurrent: 16,
+    }));
   });
 });
