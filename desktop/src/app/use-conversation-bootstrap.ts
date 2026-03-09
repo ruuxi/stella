@@ -103,11 +103,15 @@ export const useConversationBootstrap = () => {
       const hostPromise = configurePiRuntime()
       const devicePromise = getOrCreateDeviceId()
       const settleRuntime = () => Promise.allSettled([hostPromise, devicePromise])
+      const settleRuntimeAndRestoreShortcut = async () => {
+        await settleRuntime()
+        restoreVoiceShortcut()
+      }
 
       if (!isAuthenticated || accountMode === 'private_local') {
         const [localConversationId] = await Promise.all([
           getOrCreateLocalConversationId(),
-          settleRuntime(),
+          settleRuntimeAndRestoreShortcut(),
         ])
         if (!cancelled) {
           setConversationId(localConversationId)
@@ -116,14 +120,14 @@ export const useConversationBootstrap = () => {
       }
 
       if (accountMode === undefined) {
-        await settleRuntime()
+        await settleRuntimeAndRestoreShortcut()
         return
       }
 
       try {
         const [conversation] = await Promise.all([
           getOrCreateDefaultConversation({}),
-          settleRuntime(),
+          settleRuntimeAndRestoreShortcut(),
         ])
         if (!cancelled && conversation?._id) {
           await syncLocalMessages(
@@ -136,8 +140,6 @@ export const useConversationBootstrap = () => {
             setConversationId(conversation._id)
           }
         }
-
-        restoreVoiceShortcut()
       } catch (error) {
         console.error('[useConversationBootstrap] Cloud conversation setup failed:', error)
       }
