@@ -121,6 +121,7 @@ type BaseRunOptions = {
     toolName: string,
     args: Record<string, unknown>,
     context: ToolContext,
+    signal?: AbortSignal,
   ) => Promise<ToolResult>;
   deviceId: string;
   stellaHome: string;
@@ -314,6 +315,7 @@ const createPiTools = (opts: {
     toolName: string,
     args: Record<string, unknown>,
     context: ToolContext,
+    signal?: AbortSignal,
   ) => Promise<ToolResult>;
   webSearch?: (
     query: string,
@@ -336,7 +338,7 @@ const createPiTools = (opts: {
     label: toolName,
     description: TOOL_DESCRIPTIONS[toolName] ?? `${toolName} tool`,
     parameters: (TOOL_JSON_SCHEMAS[toolName] ?? AnyToolArgsSchema) as typeof AnyToolArgsSchema,
-    execute: async (toolCallId, params) => {
+    execute: async (toolCallId, params, signal) => {
       const args = (params as Record<string, unknown>) ?? {};
 
       if (toolName === "WebSearch") {
@@ -429,7 +431,7 @@ const createPiTools = (opts: {
         }
       }
 
-      let toolResult = await opts.toolExecutor(toolName, effectiveArgs, context);
+      let toolResult = await opts.toolExecutor(toolName, effectiveArgs, context, signal);
 
       // --- after_tool hook ---
       if (opts.hookEmitter) {

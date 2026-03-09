@@ -100,12 +100,14 @@ type LocalTaskManagerOpts = {
       toolName: string,
       args: Record<string, unknown>,
       context: ToolContext,
+      signal?: AbortSignal,
     ) => Promise<ToolResult>;
   }) => Promise<{ runId: string; result: string; error?: string }>;
   toolExecutor: (
     toolName: string,
     args: Record<string, unknown>,
     context: ToolContext,
+    signal?: AbortSignal,
   ) => Promise<ToolResult>;
   createCloudTaskRecord: (args: {
     conversationId: string;
@@ -292,18 +294,18 @@ export class LocalTaskManager implements TaskToolApi {
           agentType: task.agentType,
           statusText: `Using ${ev.toolName}`,
         }),
-        toolExecutor: async (toolName, toolArgs, toolContext) => {
+        toolExecutor: async (toolName, toolArgs, toolContext, signal) => {
           const scopedContext: ToolContext = {
             ...toolContext,
             taskId: task.id,
           };
           const lockKey = getFsLockKey(toolName, toolArgs);
           if (!lockKey) {
-            return await this.opts.toolExecutor(toolName, toolArgs, scopedContext);
+            return await this.opts.toolExecutor(toolName, toolArgs, scopedContext, signal);
           }
           const release = await this.acquireFsLock(task.id, lockKey);
           try {
-            return await this.opts.toolExecutor(toolName, toolArgs, scopedContext);
+            return await this.opts.toolExecutor(toolName, toolArgs, scopedContext, signal);
           } finally {
             release();
           }
