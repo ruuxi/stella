@@ -5,8 +5,6 @@ import {
 } from "@/infra/ai/llm"
 import { resolvePromptText } from "./resolve"
 
-const MUSIC_PROMPT_MODEL = "google/gemini-3-flash"
-
 export type MusicMood = "Auto" | "Focus" | "Calm" | "Energy" | "Sleep" | "Lo-fi"
 
 export type PromptSet = {
@@ -63,15 +61,12 @@ export async function generateMusicPrompt(
 
   try {
     const json = await callChatCompletion<ChatCompletionResponse>({
-      provider: "vercel",
-      model: MUSIC_PROMPT_MODEL,
       agentType: "music_prompt",
       messages: [
         { role: "system", content: getMusicSystemPrompt() },
         { role: "user", content: userMessage },
       ],
       body: {
-        model: MUSIC_PROMPT_MODEL,
         max_tokens: 16192,
         temperature: 1,
         stream: false,

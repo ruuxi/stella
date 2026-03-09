@@ -180,10 +180,10 @@ const sanitizeProxyBase = (value: string | null): string | null => {
   const trimmed = value.trim();
   if (!trimmed) return null;
   const normalized = trimmed.replace(/\/+$/, "");
-  if (normalized.includes("/api/ai/v1")) {
+  if (normalized.includes("/api/managed-ai")) {
     return normalized;
   }
-  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/ai/v1`;
+  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/managed-ai`;
 };
 
 /** Scan source files for data-stella-label attributes to build panel inventory. */
@@ -437,10 +437,10 @@ export const createStellaHostRunner = ({
     if (args.agentType === "orchestrator" && listLocalChatEvents) {
       const localEvents = listLocalChatEvents(args.conversationId, 800).filter((event) =>
         LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
-      const contextWindow =
-        typeof resolvedLlm.model.contextWindow === "number" && resolvedLlm.model.contextWindow > 0
-          ? Math.floor(resolvedLlm.model.contextWindow)
-          : 128_000;
+      const resolvedContextWindow = Number(resolvedLlm.model.contextWindow);
+      const contextWindow = Number.isFinite(resolvedContextWindow) && resolvedContextWindow > 0
+        ? Math.floor(resolvedContextWindow)
+        : 128_000;
       const localHistoryBudget = Math.max(
         MIN_LOCAL_HISTORY_TOKENS,
         contextWindow - LOCAL_HISTORY_RESERVE_TOKENS,
@@ -717,7 +717,7 @@ export const createStellaHostRunner = ({
       },
     });
 
-    console.log(`[stella:trace] handleLocalChat | runId=${runId} | agent=${agentType} | model=${agentContext.model} | resolvedModel=${resolvedLlm.model} | convId=${conversationId}`);
+    console.log(`[stella:trace] handleLocalChat | runId=${runId} | agent=${agentType} | model=${agentContext.model} | resolvedModel=${resolvedLlm.model.id} | convId=${conversationId}`);
     console.log(`[stella:trace] handleLocalChat | tools=[${(agentContext.toolsAllowlist ?? []).join(", ")}]`);
     console.log(`[stella:trace] handleLocalChat | threadHistory=${agentContext.threadHistory?.length ?? 0} messages`);
 

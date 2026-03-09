@@ -1,4 +1,4 @@
-import { getModels, type Api, type Model } from "@stella/stella-ai";
+import { createManagedModel, getModels, type Api, type Model } from "@stella/stella-ai";
 import { getLocalLlmCredential } from "./storage/llm-credentials.js";
 
 type ManagedProxyConfig = {
@@ -8,19 +8,21 @@ type ManagedProxyConfig = {
 
 export type ResolvedLlmRoute = {
   model: Model<Api>;
-  route: "direct-provider" | "direct-openrouter" | "direct-gateway" | "managed-proxy";
+  route: "direct-provider" | "direct-openrouter" | "direct-gateway" | "managed";
   getApiKey: () => string | undefined;
 };
+
+const MANAGED_CONTEXT_WINDOW_TOKENS = 256_000;
 
 const normalizeProxyBase = (value: string | null | undefined): string | null => {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
   const normalized = trimmed.replace(/\/+$/, "");
-  if (normalized.includes("/api/ai/v1")) {
+  if (normalized.includes("/api/managed-ai")) {
     return normalized;
   }
-  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/ai/v1`;
+  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/managed-ai`;
 };
 
 const parseModel = (rawModel: string | undefined): { provider: string; modelId: string; fullModelId: string } | null => {
@@ -125,37 +127,6 @@ const findRegistryModel = (
   return null;
 };
 
-const createManagedProxyModel = (
-  fullModelId: string,
-  provider: string,
-  proxyBaseUrl: string,
-  agentType: string,
-): Model<"openai-completions"> => ({
-  id: fullModelId,
-  name: fullModelId,
-  api: "openai-completions",
-  provider,
-  baseUrl: proxyBaseUrl,
-  reasoning: true,
-  input: ["text"],
-  cost: {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-  },
-  contextWindow: 256_000,
-  maxTokens: 16_384,
-  headers: {
-    "X-Provider": provider,
-    "X-Model-Id": fullModelId,
-    "X-Agent-Type": agentType,
-  },
-  compat: {
-    supportsStrictMode: false,
-  },
-});
-
 const getGatewayCredential = (stellaHomePath: string): string | null =>
   getCredential(stellaHomePath, "vercel-ai-gateway");
 
@@ -228,15 +199,17 @@ export const resolveLlmRoute = (args: {
     }
   }
 
-  // Managed proxy path — model may be undefined (backend decides)
+  // Managed path — backend owns model selection and provider routing.
   const proxyBaseUrl = normalizeProxyBase(args.proxy.baseUrl);
   const authToken = args.proxy.getAuthToken()?.trim();
   if (proxyBaseUrl && authToken) {
-    const fullModelId = parsed?.fullModelId ?? "";
-    const provider = parsed?.provider ?? "";
     return {
-      model: createManagedProxyModel(fullModelId, provider, proxyBaseUrl, args.agentType),
-      route: "managed-proxy",
+      route: "managed",
+      model: createManagedModel({
+        endpoint: `${proxyBaseUrl}/chat/completions`,
+        agentType: args.agentType,
+        contextWindow: MANAGED_CONTEXT_WINDOW_TOKENS,
+      }),
       getApiKey: () => args.proxy.getAuthToken()?.trim() || authToken,
     };
   }

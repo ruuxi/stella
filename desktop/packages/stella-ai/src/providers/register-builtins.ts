@@ -8,8 +8,15 @@ import { streamGoogleVertex, streamSimpleGoogleVertex } from "./google-vertex.js
 import { streamOpenAICodexResponses, streamSimpleOpenAICodexResponses } from "./openai-codex-responses.js";
 import { streamOpenAICompletions, streamSimpleOpenAICompletions } from "./openai-completions.js";
 import { streamOpenAIResponses, streamSimpleOpenAIResponses } from "./openai-responses.js";
+import { streamStellaManaged, streamSimpleStellaManaged } from "./stella-managed.js";
 
 export function registerBuiltInApiProviders(): void {
+	registerApiProvider({
+		api: "stella-managed",
+		stream: streamStellaManaged,
+		streamSimple: streamSimpleStellaManaged,
+	});
+
 	registerApiProvider({
 		api: "anthropic-messages",
 		stream: streamAnthropic,

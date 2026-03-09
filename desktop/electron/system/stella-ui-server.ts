@@ -13,10 +13,7 @@ import http from "http";
 import os from "os";
 import type { BrowserWindow } from "electron";
 import {
-  buildChatHeaders,
-  buildChatRequestBody,
-  readChatCompletionStream,
-  readChatErrorDetail,
+  streamManagedChatCompletion,
 } from "../../src/shared/ai/chat-completions.js";
 
 let server: http.Server | null = null;
@@ -94,20 +91,15 @@ async function callGenerateModel(
   proxyBaseUrl: string,
   authToken: string,
 ): Promise<string> {
-  const modelId = "inception/mercury-2";
-
-  const response = await fetch(`${proxyBaseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${authToken}`,
-      ...buildChatHeaders({
-        provider: "inception",
-        model: modelId,
-        agentType: "panel-generate",
-      }),
+  const fullContent = await streamManagedChatCompletion({
+    transport: {
+      endpoint: `${proxyBaseUrl}/chat/completions`,
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
     },
-    body: JSON.stringify(buildChatRequestBody({
-      model: modelId,
+    request: {
+      agentType: "panel-generate",
       messages: [
         { role: "system", content: GENERATE_SYSTEM_PROMPT },
         {
@@ -115,19 +107,13 @@ async function callGenerateModel(
           content: `Current component source:\n\`\`\`tsx\n${currentSource}\n\`\`\`\n\nUpdate this component to: ${prompt}`,
         },
       ],
-      stream: true,
-      body: {
-        maxOutputTokens: 8192,
-        temperature: 1.0,
-      },
-    })),
+    },
+    body: {
+      max_completion_tokens: 8192,
+      temperature: 1.0,
+    },
+    onChunk: () => {},
   });
-
-  if (!response.ok) {
-    const detail = await readChatErrorDetail(response);
-    throw new Error(`Generate model call failed (${response.status}): ${detail}`);
-  }
-  const fullContent = await readChatCompletionStream(response, () => {});
 
   const content = fullContent.trim();
   if (!content) {
