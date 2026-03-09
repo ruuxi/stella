@@ -1,14 +1,21 @@
 import {
   completeSimple,
-  createManagedContext,
-  createManagedModel,
-  readAssistantText,
   streamSimple,
   type AssistantMessage,
-  type ManagedChatMessage,
+  type Context,
+  type Model,
   type SimpleStreamOptions,
+  type TextContent,
   type ThinkingLevel,
 } from "@stella/stella-ai";
+
+function readAssistantText(message: AssistantMessage): string {
+  return message.content
+    .filter((part): part is TextContent => part.type === "text")
+    .map((part) => part.text)
+    .join("")
+    .trim();
+}
 
 export const CHAT_COMPLETIONS_PATH = "/api/managed-ai/chat/completions";
 
@@ -45,12 +52,6 @@ export type ManagedChatTransport = {
   headers?: Record<string, string>;
 };
 
-type ManagedCompletionOptions = {
-  model: ReturnType<typeof createManagedModel>;
-  context: ReturnType<typeof createManagedContext>;
-  options: SimpleStreamOptions;
-};
-
 const toSimpleOptions = (
   body?: Record<string, unknown>,
 ): SimpleStreamOptions => {
@@ -66,26 +67,116 @@ const toSimpleOptions = (
   };
 };
 
-const createManagedCompletion = (args: {
+const toTextBlocks = (content: ChatMessage["content"]): TextContent[] => {
+  if (typeof content === "string") {
+    const text = content.trim();
+    return text ? [{ type: "text", text }] : [];
+  }
+  return content
+    .filter((part): part is { type?: string; text: string } => typeof part?.text === "string")
+    .map((part) => ({ type: "text" as const, text: part.text.trim() }))
+    .filter((part) => part.text.length > 0);
+};
+
+const emptyUsage = (): AssistantMessage["usage"] => ({
+  input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+});
+
+/**
+ * Convert ChatMessage[] to a standard Context for the openai-completions provider.
+ */
+function buildContext(messages: ChatMessage[]): Context {
+  const systemParts: string[] = [];
+  const llmMessages: Context["messages"] = [];
+
+  for (const message of messages) {
+    const blocks = toTextBlocks(message.content);
+    if (message.role === "system" || message.role === "developer") {
+      const text = blocks.map((b) => b.text).join("\n").trim();
+      if (text) systemParts.push(text);
+      continue;
+    }
+    if (blocks.length === 0) continue;
+
+    if (message.role === "user") {
+      llmMessages.push({ role: "user", content: blocks, timestamp: Date.now() });
+      continue;
+    }
+
+    llmMessages.push({
+      role: "assistant",
+      content: blocks,
+      timestamp: Date.now(),
+      stopReason: "stop",
+      usage: emptyUsage(),
+      api: "openai-completions",
+      provider: "stella-managed",
+      model: "default",
+    });
+  }
+
+  return {
+    ...(systemParts.length > 0 ? { systemPrompt: systemParts.join("\n\n") } : {}),
+    messages: llmMessages,
+  };
+}
+
+/**
+ * Create a standard openai-completions model for non-agentic managed calls.
+ */
+function buildModel(
+  endpoint: string,
+  agentType: string,
+  extraHeaders?: Record<string, string>,
+): Model<"openai-completions"> {
+  return {
+    id: "default",
+    name: "Stella Managed",
+    api: "openai-completions",
+    provider: "stella-managed",
+    baseUrl: endpoint,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 256_000,
+    maxTokens: 16_384,
+    headers: {
+      "X-Stella-Agent-Type": agentType,
+      ...extraHeaders,
+    },
+    compat: {
+      supportsDeveloperRole: true,
+      supportsReasoningEffort: true,
+      supportsUsageInStreaming: true,
+      maxTokensField: "max_completion_tokens",
+      supportsStrictMode: false,
+    },
+  };
+}
+
+type CompletionExecution = {
+  model: Model<"openai-completions">;
+  context: Context;
+  options: SimpleStreamOptions;
+};
+
+const createCompletion = (args: {
   transport: ManagedChatTransport;
   request: ChatRequestOptions;
   body?: Record<string, unknown>;
-}): ManagedCompletionOptions => ({
-  model: createManagedModel({
-    endpoint: args.transport.endpoint,
-    agentType: args.request.agentType,
-    headers: {
-      ...args.transport.headers,
-      ...args.request.headers,
-    },
+}): CompletionExecution => ({
+  model: buildModel(args.transport.endpoint, args.request.agentType, {
+    ...args.transport.headers,
+    ...args.request.headers,
   }),
-  context: createManagedContext(args.request.messages as ManagedChatMessage[]),
+  context: buildContext(args.request.messages),
   options: toSimpleOptions(args.body),
 });
 
 const ensureSuccess = (message: AssistantMessage): AssistantMessage => {
   if (message.stopReason === "error" || message.stopReason === "aborted") {
-    throw new Error(message.errorMessage || "Managed chat completion failed");
+    throw new Error(message.errorMessage || "Chat completion failed");
   }
   return message;
 };
@@ -128,7 +219,7 @@ export async function callManagedChatCompletion<TResponse = ChatCompletionRespon
   body?: Record<string, unknown>;
   signal?: AbortSignal;
 }): Promise<TResponse> {
-  const execution = createManagedCompletion(args);
+  const execution = createCompletion(args);
   const message = ensureSuccess(await completeSimple(
     execution.model,
     execution.context,
@@ -147,7 +238,7 @@ export async function streamManagedChatCompletion(args: {
   onChunk: (chunk: string) => void;
   signal?: AbortSignal;
 }): Promise<string> {
-  const execution = createManagedCompletion(args);
+  const execution = createCompletion(args);
   const stream = streamSimple(
     execution.model,
     execution.context,

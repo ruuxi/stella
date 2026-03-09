@@ -1,4 +1,4 @@
-import { createManagedModel, getModels, type Api, type Model } from "@stella/stella-ai";
+import { getModels, type Api, type Model } from "@stella/stella-ai";
 import { getLocalLlmCredential } from "./storage/llm-credentials.js";
 
 type ManagedProxyConfig = {
@@ -12,7 +12,36 @@ export type ResolvedLlmRoute = {
   getApiKey: () => string | undefined;
 };
 
-const MANAGED_CONTEXT_WINDOW_TOKENS = 256_000;
+const MANAGED_CONTEXT_WINDOW = 256_000;
+const MANAGED_MAX_TOKENS = 16_384;
+const MANAGED_DEFAULT_MODEL = "default";
+
+/**
+ * Create a standard openai-completions model routed through the managed backend proxy.
+ * The backend handles actual model selection and upstream provider routing.
+ */
+const createManagedProxyModel = (proxyBaseUrl: string, agentType: string): Model<"openai-completions"> => ({
+  id: MANAGED_DEFAULT_MODEL,
+  name: "Stella Managed",
+  api: "openai-completions",
+  provider: "stella-managed",
+  baseUrl: `${proxyBaseUrl}/chat/completions`,
+  reasoning: true,
+  input: ["text", "image"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: MANAGED_CONTEXT_WINDOW,
+  maxTokens: MANAGED_MAX_TOKENS,
+  headers: {
+    "X-Stella-Agent-Type": agentType,
+  },
+  compat: {
+    supportsDeveloperRole: true,
+    supportsReasoningEffort: true,
+    supportsUsageInStreaming: true,
+    maxTokensField: "max_completion_tokens",
+    supportsStrictMode: false,
+  },
+});
 
 const normalizeProxyBase = (value: string | null | undefined): string | null => {
   if (!value) return null;
@@ -225,17 +254,13 @@ export const resolveLlmRoute = (args: {
     }
   }
 
-  // Managed path — backend owns model selection and provider routing.
+  // Managed path — backend proxies to upstream provider using standard OpenAI format.
   const proxyBaseUrl = normalizeProxyBase(args.proxy.baseUrl);
   const authToken = args.proxy.getAuthToken()?.trim();
   if (proxyBaseUrl && authToken) {
     return {
       route: "managed",
-      model: createManagedModel({
-        endpoint: `${proxyBaseUrl}/chat/completions`,
-        agentType: args.agentType,
-        contextWindow: MANAGED_CONTEXT_WINDOW_TOKENS,
-      }),
+      model: createManagedProxyModel(proxyBaseUrl, args.agentType),
       getApiKey: () => args.proxy.getAuthToken()?.trim() || authToken,
     };
   }
