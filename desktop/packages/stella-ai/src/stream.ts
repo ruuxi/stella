@@ -11,6 +11,7 @@ import type {
 	ProviderStreamOptions,
 	SimpleStreamOptions,
 	StreamOptions,
+	TextContent,
 } from "./types.js";
 
 export { getEnvApiKey } from "./env-api-keys.js";
@@ -57,4 +58,12 @@ export async function completeSimple<TApi extends Api>(
 ): Promise<AssistantMessage> {
 	const s = streamSimple(model, context, options);
 	return s.result();
+}
+
+export function readAssistantText(message: AssistantMessage): string {
+	return message.content
+		.filter((part): part is TextContent => part.type === "text")
+		.map((part) => part.text)
+		.join("")
+		.trim();
 }

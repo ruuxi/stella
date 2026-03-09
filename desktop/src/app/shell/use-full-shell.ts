@@ -206,8 +206,8 @@ export function useScrollManagement({
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null
 
-      // Skip programmatic scroll detection
-      if (isWithinGrace()) {
+      // Skip programmatic scroll detection (grace window or spring in-flight)
+      if (isWithinGrace() || springRef.current) {
         updateThumb()
         return
       }
