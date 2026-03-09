@@ -6,7 +6,7 @@ import {
   streamManagedChatCompletion,
   type ChatCompletionResponse,
   type ChatMessage,
-} from "@stella/stella-runtime";
+} from "@stella/stella-runtime/chat-completions";
 
 export {
   CHAT_COMPLETIONS_PATH,

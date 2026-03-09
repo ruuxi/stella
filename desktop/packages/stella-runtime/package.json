@@ -51,6 +51,10 @@
     "./tools/utils": {
       "types": "./dist/tools/utils.d.ts",
       "default": "./dist/tools/utils.js"
+    },
+    "./chat-completions": {
+      "types": "./dist/chat-completions.d.ts",
+      "default": "./dist/chat-completions.js"
     }
   }
 }
