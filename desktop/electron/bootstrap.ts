@@ -7,6 +7,7 @@ import {
 } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { spawn, type ChildProcess } from 'child_process'
 import { getDevServerUrl } from './dev-url.js'
 import { registerAllIpcHandlers } from './ipc/ipc-registry.js'
 import { OverlayWindowController } from './windows/overlay-window.js'
@@ -53,6 +54,7 @@ export const bootstrapMainProcess = () => {
   let overlayController: OverlayWindowController | null = null
   let hmrMorphOrchestrator: ReturnType<typeof createHmrMorphOrchestrator> | null = null
   let deferredStartupSequence: Promise<void> | null = null
+  let stellaBrowserDaemon: ChildProcess | null = null
 
   // --- Core services (no deps or lightweight deps) ---
 
@@ -300,6 +302,63 @@ export const bootstrapMainProcess = () => {
     schedulerService.start()
   }
 
+  /**
+   * Start the stella-browser daemon in extension mode so the Chrome extension
+   * can connect immediately on app launch (WS server on port 9224).
+   */
+  const startStellaBrowserDaemon = () => {
+    if (stellaBrowserDaemon) return
+
+    // __dirname is dist-electron/electron/ at runtime; stella-browser/ is at the project root
+    const projectRoot = path.resolve(__dirname, '..', '..')
+    const stellaBrowserRoot = path.join(projectRoot, 'stella-browser')
+
+    let runner: string
+    let args: string[]
+
+    // Use Electron binary as Node (ELECTRON_RUN_AS_NODE=1) for both dev and prod
+    runner = process.execPath
+    if (isDev) {
+      // In dev, run tsx cli.mjs directly to avoid .cmd shim issues on Windows
+      const tsxCli = path.join(stellaBrowserRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs')
+      args = [tsxCli, path.join(stellaBrowserRoot, 'src', 'daemon.ts')]
+    } else {
+      args = [path.join(stellaBrowserRoot, 'dist', 'daemon.js')]
+    }
+
+    stellaBrowserDaemon = spawn(runner, args, {
+      stdio: isDev ? ['ignore', 'pipe', 'pipe'] : 'ignore',
+      detached: false,
+      env: {
+        ...process.env,
+        STELLA_BROWSER_DAEMON: '1',
+        STELLA_BROWSER_PROVIDER: 'extension',
+        STELLA_BROWSER_EXT_TOKEN: '',
+        ELECTRON_RUN_AS_NODE: '1',
+      },
+    })
+
+    if (isDev && stellaBrowserDaemon.stdout && stellaBrowserDaemon.stderr) {
+      stellaBrowserDaemon.stdout.on('data', (d: Buffer) => console.log(`[stella-browser] ${d.toString().trimEnd()}`))
+      stellaBrowserDaemon.stderr.on('data', (d: Buffer) => console.error(`[stella-browser] ${d.toString().trimEnd()}`))
+    }
+
+    stellaBrowserDaemon.on('exit', (code) => {
+      if (!isQuitting) {
+        console.warn(`[stella-browser] daemon exited with code ${code}, restarting...`)
+        stellaBrowserDaemon = null
+        setTimeout(startStellaBrowserDaemon, 2000)
+      } else {
+        stellaBrowserDaemon = null
+      }
+    })
+
+    stellaBrowserDaemon.on('error', (err) => {
+      console.error('[stella-browser] daemon spawn error:', err.message)
+      stellaBrowserDaemon = null
+    })
+  }
+
   const hardResetLocalState = async (): Promise<{ ok: true }> => {
     const hadRunner = Boolean(stellaHostRunner)
 
@@ -361,6 +420,8 @@ export const bootstrapMainProcess = () => {
     authService.captureInitialAuthUrl(process.argv)
 
     await initializeStellaHostRunner()
+
+    startStellaBrowserDaemon()
 
     overlayController = new OverlayWindowController({
       preloadPath: path.join(__dirname, 'preload.js'),
@@ -527,6 +588,10 @@ export const bootstrapMainProcess = () => {
     authService.stopAuthRefreshLoop()
     if (stellaHostRunner) {
       stellaHostRunner.killAllShells()
+    }
+    if (stellaBrowserDaemon) {
+      stellaBrowserDaemon.kill()
+      stellaBrowserDaemon = null
     }
     schedulerService?.stop()
     cleanupSelectedTextProcess()

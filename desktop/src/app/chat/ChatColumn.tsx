@@ -64,6 +64,8 @@ export type ChatColumnProps = {
   history: HistoryState;
   composer: ComposerState;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  setScrollContainerElement: React.RefCallback<HTMLDivElement>;
+  canVirtualize: boolean;
   onScroll: () => void;
   showScrollButton: boolean;
   scrollToBottom: (behavior?: ScrollBehavior) => void;
@@ -78,6 +80,8 @@ export const ChatColumn = memo(function ChatColumn({
   history,
   composer,
   scrollContainerRef,
+  setScrollContainerElement,
+  canVirtualize,
   onScroll,
   showScrollButton,
   scrollToBottom,
@@ -92,7 +96,7 @@ export const ChatColumn = memo(function ChatColumn({
     <div className="full-body-main">
       <div
         className="session-content"
-        ref={scrollContainerRef}
+        ref={setScrollContainerElement}
         onScroll={onScroll}
       >
         {showConversation ? (
@@ -108,6 +112,7 @@ export const ChatColumn = memo(function ChatColumn({
               isLoadingOlder={history.isLoadingOlder}
               isLoadingHistory={history.isInitialLoading}
               scrollContainerRef={scrollContainerRef}
+              canVirtualize={canVirtualize}
             />
             {!streaming.isStreaming && suggestions.length > 0 && onCommandSelect && (
               <CommandChips

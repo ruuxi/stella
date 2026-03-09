@@ -32,6 +32,7 @@ export type ToolResultPayload = {
   html?: string;
   error?: string;
   requestId?: string;
+  agentType?: string;
 };
 
 // Attachment structure

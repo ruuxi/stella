@@ -21,6 +21,9 @@ const mockAppendEvent = vi.fn(() => Promise.resolve(null));
 const mockAppendAgentEvent = vi.fn();
 const mockUploadAttachments = vi.fn(() => Promise.resolve([]));
 const mockBuildHistory = vi.fn(() => undefined);
+const mockAgentHealthCheck = vi.fn(() => Promise.resolve({ ready: true }));
+const mockAgentStartChat = vi.fn(() => Promise.resolve({ runId: "run-1" }));
+const mockAgentOnStream = vi.fn(() => vi.fn());
 
 vi.mock("@/context/chat-store", () => ({
   useChatStore: vi.fn(() => ({
@@ -83,10 +86,19 @@ describe("useStreamingChat", () => {
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
     vi.clearAllMocks();
+    localStorage.clear();
+    window.electronAPI = {
+      agent: {
+        healthCheck: mockAgentHealthCheck,
+        startChat: mockAgentStartChat,
+        onStream: mockAgentOnStream,
+      },
+    } as typeof window.electronAPI;
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    delete window.electronAPI;
   });
 
   // ----------------------------------------------------------------
@@ -124,6 +136,7 @@ describe("useStreamingChat", () => {
 
       // No follow-up, so isStreaming stays false
       expect(result.current.isStreaming).toBe(false);
+      expect(mockAgentStartChat).not.toHaveBeenCalled();
     });
 
     it("skips follow_up that already has an assistant response", async () => {
@@ -149,6 +162,7 @@ describe("useStreamingChat", () => {
       });
 
       expect(result.current.isStreaming).toBe(false);
+      expect(mockAgentStartChat).not.toHaveBeenCalled();
     });
 
     it("does nothing when conversationId is null", async () => {
@@ -169,6 +183,63 @@ describe("useStreamingChat", () => {
       });
 
       expect(result.current.isStreaming).toBe(false);
+      expect(mockAgentStartChat).not.toHaveBeenCalled();
+    });
+
+    it("does not replay queued follow_up events that already existed on mount", async () => {
+      const events: EventRecord[] = [
+        makeEvent({
+          _id: "msg-1",
+          timestamp: Date.now() - 5_000,
+          type: "user_message",
+          payload: { text: "open netflix and make it blue", mode: "follow_up" },
+        }),
+      ];
+
+      renderHook(() =>
+        useStreamingChat({ conversationId: "conv-1", events }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(mockAgentStartChat).not.toHaveBeenCalled();
+    });
+
+    it("starts queued follow_up events created after mount", async () => {
+      const { rerender } = renderHook(
+        ({ events }: { events: EventRecord[] }) =>
+          useStreamingChat({ conversationId: "conv-1", events }),
+        {
+          initialProps: { events: [] as EventRecord[] },
+        },
+      );
+
+      const nextEvents: EventRecord[] = [
+        makeEvent({
+          _id: "msg-2",
+          timestamp: Date.now() + 1,
+          type: "user_message",
+          payload: { text: "open the browser again", mode: "follow_up" },
+        }),
+      ];
+
+      rerender({ events: nextEvents });
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mockAgentStartChat).toHaveBeenCalledTimes(1);
+      expect(mockAgentStartChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          userMessageId: "msg-2",
+          userPrompt: "open the browser again",
+        }),
+      );
     });
   });
 

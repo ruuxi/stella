@@ -548,11 +548,11 @@ export const createStellaHostRunner = ({
           selfModMonitor,
           onProgress,
           callbacks: activeCallbacksRef ? {
-            onStream: () => {},
+            onStream: (ev) => activeCallbacksRef?.onStream?.(ev),
             onToolStart: (ev) => activeCallbacksRef?.onToolStart?.(ev),
             onToolEnd: (ev) => activeCallbacksRef?.onToolEnd?.(ev),
-            onError: (ev) => activeCallbacksRef?.onError?.({ ...ev, fatal: false }),
-            onEnd: () => {},
+            onError: (ev) => activeCallbacksRef?.onError?.(ev),
+            onEnd: (ev) => activeCallbacksRef?.onEnd?.(ev),
           } : undefined,
           webSearch,
         });
@@ -776,6 +776,7 @@ export const createStellaHostRunner = ({
       cleanupRun();
       callbacks.onError({
         runId,
+        agentType,
         seq: Date.now(),
         error: (error as Error).message || "Stella runtime failed",
         fatal: true,

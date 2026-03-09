@@ -199,8 +199,8 @@ export async function startDaemon(options?: {
   if (isExtension) {
     // Start WebSocket server FIRST so the extension can connect when Chrome launches
     const extPort = parseInt(process.env.STELLA_BROWSER_EXT_PORT ?? '9224', 10);
-    // Always require a token, including user-browser mode.
-    extensionBridge = new ExtensionBridge(extPort);
+    const extToken = process.env.STELLA_BROWSER_EXT_TOKEN;
+    extensionBridge = new ExtensionBridge(extPort, extToken);
     await extensionBridge.start();
 
     // In user-browser mode, relaunch Chrome AFTER the WebSocket is ready

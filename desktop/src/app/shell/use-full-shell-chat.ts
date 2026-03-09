@@ -79,6 +79,8 @@ export function useFullShellChat({
 
   const {
     scrollContainerRef,
+    setScrollContainerElement,
+    hasScrollElement,
     isNearBottomRef,
     showScrollButton,
     scrollToBottom,
@@ -192,6 +194,8 @@ export function useFullShellChat({
     },
     scroll: {
       scrollContainerRef,
+      setScrollContainerElement,
+      hasScrollElement,
       handleScroll,
       showScrollButton,
       scrollToBottom,

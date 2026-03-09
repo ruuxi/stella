@@ -6,7 +6,7 @@ import type { AgentStreamEvent } from "../streaming/streaming-types";
 export interface StreamingRefs {
   streamRunIdRef: MutableRefObject<number>;
   localRunIdRef: MutableRefObject<string | null>;
-  localSeqRef: MutableRefObject<number>;
+  localSeqByRunIdRef: MutableRefObject<Map<string, number>>;
   agentStreamCleanupRef: MutableRefObject<(() => void) | null>;
 }
 
@@ -42,7 +42,7 @@ export function useResumeAgentRun({
   const {
     streamRunIdRef,
     localRunIdRef,
-    localSeqRef,
+    localSeqByRunIdRef,
     agentStreamCleanupRef,
   } = refs;
 
@@ -84,7 +84,7 @@ export function useResumeAgentRun({
       setIsStreaming(true);
       setPendingUserMessageId(null);
       localRunIdRef.current = activeRun.runId;
-      localSeqRef.current = 0;
+      localSeqByRunIdRef.current.clear();
 
       if (agentStreamCleanupRef.current) {
         agentStreamCleanupRef.current();
@@ -119,7 +119,7 @@ export function useResumeAgentRun({
     handleAgentEvent,
     isStreaming,
     localRunIdRef,
-    localSeqRef,
+    localSeqByRunIdRef,
     resetReasoningText,
     resetStreamingState,
     resetStreamingText,

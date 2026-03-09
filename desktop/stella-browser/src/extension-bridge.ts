@@ -106,8 +106,9 @@ export class ExtensionBridge {
 
   constructor(port: number = 9224, token?: string, commandTimeout: number = 60000) {
     this.port = port;
-    const normalizedToken = typeof token === 'string' ? token.trim() : '';
-    this.token = normalizedToken || crypto.randomUUID();
+    // When token is explicitly provided (even empty string), use it as-is.
+    // Empty token disables auth (localhost-only, origin-verified connections).
+    this.token = token !== undefined ? token.trim() : crypto.randomUUID();
     this.commandTimeout = commandTimeout;
   }
 
@@ -339,7 +340,7 @@ export class ExtensionBridge {
 
       // Handle authentication
       if (msg.type === 'hello') {
-        if (msg.token === this.token) {
+        if (msg.token === this.token || !this.token) {
           authenticated = true;
           this.ws = ws;
           this.connected = true;
