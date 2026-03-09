@@ -172,7 +172,35 @@ describe("ChatStoreProvider", () => {
         expect.objectContaining({
           type: "tool_result",
           requestId: "tc-1",
-          payload: { toolName: "bash", result: "output" },
+          payload: { toolName: "bash", result: "output", resultPreview: "output" },
+        }),
+      );
+    });
+
+    it("stores tool result HTML alongside the persisted result payload", () => {
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      act(() => {
+        result.current.appendAgentEvent({
+          conversationId: "conv-1",
+          type: "tool_result",
+          toolCallId: "tc-2",
+          toolName: "WebSearch",
+          resultPreview: "HTML search briefing ready.",
+          html: "<section><h3>Briefing</h3></section>",
+        });
+      });
+
+      expect(mockAppendLocalEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "tool_result",
+          requestId: "tc-2",
+          payload: {
+            toolName: "WebSearch",
+            result: "<section><h3>Briefing</h3></section>",
+            resultPreview: "HTML search briefing ready.",
+            html: "<section><h3>Briefing</h3></section>",
+          },
         }),
       );
     });
