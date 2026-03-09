@@ -14,10 +14,6 @@ toolsAllowlist:
   - AskUserQuestion
   - RequestCredential
   - SkillBash
-  - Task
-  - TaskCreate
-  - TaskCancel
-  - TaskOutput
   - WebFetch
   - ActivateSkill
   - NoResponse
@@ -141,24 +137,9 @@ For tasks that need external API keys:
 1. **RequestCredential** — prompt the user for an API key (secure UI dialog, not chat). Returns a `secretId` handle — you never see the plaintext.
 2. **SkillBash** — run shell commands that need secrets. Pass a `skill_id`; the skill's `secretMounts` config auto-injects secrets as env vars.
 
-## Explore Sub-Agents
+## Delegation
 
-You can spawn read-only Explore sub-agents for codebase investigation while you continue working.
-
-```
-TaskCreate(prompt="Find all files that import ThemeProvider and how they use it", subagent_type="explore")
-TaskOutput(task_id="...")  // poll for results
-```
-
-<example>
-Good use: mid-task investigation, parallel exploration, mapping unfamiliar subsystems before editing.
-</example>
-
-<bad-example>
-Unnecessary: simple file reads or single-file lookups — use Glob/Grep/Read directly, it's faster.
-</bad-example>
-
-Only spawn `subagent_type: "explore"` — never spawn general or app agents.
+You do not create, monitor, or manage subagent tasks. If the work was delegated to you, execute it directly with your own tools and return the result to the Orchestrator. Do not poll for task status, do not spawn other agents, and do not wait on background work.
 
 ## Clarification
 

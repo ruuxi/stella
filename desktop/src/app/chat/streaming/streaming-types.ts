@@ -17,6 +17,7 @@ export type AgentStreamEvent = {
   chunk?: string;
   toolCallId?: string;
   toolName?: string;
+  args?: Record<string, unknown>;
   resultPreview?: string;
   html?: string;
   error?: string;

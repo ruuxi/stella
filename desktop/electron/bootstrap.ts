@@ -43,6 +43,9 @@ const STELLA_SESSION_PARTITION = 'persist:Stella'
 const STARTUP_STAGE_DELAY_MS = 250
 
 export const bootstrapMainProcess = () => {
+  // __dirname at runtime is dist-electron/electron/; frontendRoot is the project root (frontend/)
+  const frontendRoot = path.resolve(__dirname, '..', '..')
+
   let appReady = false
   let isQuitting = false
   let deviceId: string | null = null
@@ -241,7 +244,7 @@ export const bootstrapMainProcess = () => {
     try {
       await ensureLastResortRecoveryScripts({
         stellaHomePath: stellaHome.homePath,
-        frontendRoot: path.resolve(__dirname, '..'),
+        frontendRoot,
       })
     } catch (error) {
       console.warn('[self-mod] Failed to write recovery scripts:', (error as Error).message)
@@ -264,7 +267,7 @@ export const bootstrapMainProcess = () => {
     stellaHostRunner = createStellaHostRunner({
       deviceId,
       StellaHome: stellaHome.homePath,
-      frontendRoot: path.resolve(__dirname, '..'),
+      frontendRoot,
       getHmrMorphOrchestrator: () => hmrMorphOrchestrator,
       requestCredential: (payload) => credentialService.requestCredential(payload),
       displayHtml: (html) => {
@@ -309,9 +312,7 @@ export const bootstrapMainProcess = () => {
   const startStellaBrowserDaemon = () => {
     if (stellaBrowserDaemon) return
 
-    // __dirname is dist-electron/electron/ at runtime; stella-browser/ is at the project root
-    const projectRoot = path.resolve(__dirname, '..', '..')
-    const stellaBrowserRoot = path.join(projectRoot, 'stella-browser')
+    const stellaBrowserRoot = path.join(frontendRoot, 'stella-browser')
 
     let runner: string
     let args: string[]
@@ -327,8 +328,9 @@ export const bootstrapMainProcess = () => {
     }
 
     stellaBrowserDaemon = spawn(runner, args, {
-      stdio: isDev ? ['ignore', 'pipe', 'pipe'] : 'ignore',
+      stdio: 'ignore',
       detached: false,
+      windowsHide: true,
       env: {
         ...process.env,
         STELLA_BROWSER_DAEMON: '1',
@@ -337,11 +339,6 @@ export const bootstrapMainProcess = () => {
         ELECTRON_RUN_AS_NODE: '1',
       },
     })
-
-    if (isDev && stellaBrowserDaemon.stdout && stellaBrowserDaemon.stderr) {
-      stellaBrowserDaemon.stdout.on('data', (d: Buffer) => console.log(`[stella-browser] ${d.toString().trimEnd()}`))
-      stellaBrowserDaemon.stderr.on('data', (d: Buffer) => console.error(`[stella-browser] ${d.toString().trimEnd()}`))
-    }
 
     stellaBrowserDaemon.on('exit', (code) => {
       if (!isQuitting) {
@@ -469,7 +466,7 @@ export const bootstrapMainProcess = () => {
     // Start stella-ui server for agent UI control
     startStellaUiServer({
       getWindow: () => windowManager?.getFullWindow() ?? null,
-      frontendRoot: path.resolve(__dirname, '..'),
+      frontendRoot,
       getProxy: () => stellaHostRunner?.getProxy() ?? null,
     })
     hmrMorphOrchestrator = createHmrMorphOrchestrator({
@@ -523,7 +520,7 @@ export const bootstrapMainProcess = () => {
       agent: {
         getStellaHostRunner: () => stellaHostRunner,
         isHostAuthAuthenticated: () => authService.getHostAuthAuthenticated(),
-        frontendRoot: path.resolve(__dirname, '..'),
+        frontendRoot,
         assertPrivilegedSender: (event, channel) =>
           externalLinkService.assertPrivilegedSender(event, channel),
         hmrMorphOrchestrator,

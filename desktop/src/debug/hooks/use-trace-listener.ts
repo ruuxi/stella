@@ -53,6 +53,7 @@ export function useTraceIpcListener(enabled: boolean) {
             event.toolName ?? "unknown",
             event.toolCallId,
             event.runId,
+            event.args,
           );
           break;
         case "tool-end":

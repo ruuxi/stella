@@ -40,6 +40,7 @@ export function useStreamingChat({
       userMessageId?: string
       toolCallId?: string
       toolName?: string
+      args?: Record<string, unknown>
       resultPreview?: string
       html?: string
       finalText?: string
@@ -152,7 +153,18 @@ export function useStreamingChat({
 
       const platform = getPlatform()
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
-      const mode = isStreaming ? 'follow_up' : undefined
+      const shouldQueueFollowUp =
+        isStreaming &&
+        Boolean(pendingUserMessageId) &&
+        !events.some((event) => {
+          if (event.type !== 'assistant_message') return false
+          if (!event.payload || typeof event.payload !== 'object') return false
+          return (
+            (event.payload as { userMessageId?: string }).userMessageId
+            === pendingUserMessageId
+          )
+        })
+      const mode = shouldQueueFollowUp ? 'follow_up' : undefined
 
       const event = await chatStoreAppendEvent({
         conversationId: resolvedConversationId,
@@ -193,8 +205,10 @@ export function useStreamingChat({
       activeConversationId,
       chatStoreAppendEvent,
       chatStoreUploadAttachments,
+      events,
       isLocalStorage,
       isStreaming,
+      pendingUserMessageId,
       startStream,
     ],
   )

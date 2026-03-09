@@ -18,6 +18,7 @@ type LocalAgentEvent = {
   userMessageId?: string
   toolCallId?: string
   toolName?: string
+  args?: Record<string, unknown>
   resultPreview?: string
   finalText?: string
 }
@@ -122,6 +123,7 @@ export function useLocalAgentStream({
             agentType: event.agentType,
             toolCallId: event.toolCallId,
             toolName: event.toolName,
+            args: event.args,
           })
           break
         case 'tool-end':
@@ -169,19 +171,9 @@ export function useLocalAgentStream({
             }))
           }
 
-          setIsStreaming(false)
+          resetStreamingState(runIdCounter)
           localRunIdRef.current = null
-          localSeqByRunIdRef.current.clear()
-
-          if (agentStreamCleanupRef.current) {
-            agentStreamCleanupRef.current()
-            agentStreamCleanupRef.current = null
-          }
-
-          if (streamingTextRef.current.trim().length === 0) {
-            resetStreamingText()
-            setPendingUserMessageId(null)
-          }
+          localSeqByRunIdRef.current.delete(event.runId)
           break
       }
     },
@@ -189,7 +181,6 @@ export function useLocalAgentStream({
       appendAgentEvent,
       appendStreamingDelta,
       resetStreamingState,
-      resetStreamingText,
       streamingTextRef,
     ],
   )
