@@ -14,6 +14,7 @@ const DEFAULT_RECENT_FEATURE_LIMIT = 8;
 
 const FEATURES_INDEX_PATH = path.join(
   os.homedir(),
+  "stella",
   ".stella",
   "mods",
   "features.json",

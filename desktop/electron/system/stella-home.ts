@@ -58,7 +58,7 @@ const seedBundledSkills = (skillsPath: string) =>
   seedBundledDir(BUNDLED_SKILLS_DIR, skillsPath);
 
 export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
-  const homePath = path.join(app.getPath("home"), ".stella");
+  const homePath = path.join(app.getPath("home"), "stella", ".stella");
 
   const agentsPath = path.join(homePath, "agents");
   const skillsPath = path.join(homePath, "skills");

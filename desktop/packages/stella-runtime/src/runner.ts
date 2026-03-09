@@ -39,7 +39,7 @@ const DEFAULT_MAX_TASK_DEPTH = 8;
 const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;
 const MIN_LOCAL_HISTORY_TOKENS = 8_000;
 // Minimal fallback prompts â€” real prompts live in bundled AGENT.md files
-// seeded to ~/.stella/agents/ on first startup.
+// seeded to ~/stella/.stella/agents/ on first startup.
 const DEFAULT_ORCHESTRATOR_PROMPT =
   "You are Stella's orchestrator. Coordinate specialized work and keep work non-blocking by default. " +
   "For user-facing output, prefer Display for most substantive, structured, or multi-item responses and keep plain text mainly for acknowledgments, brief confirmations, and short replies. " +
@@ -700,7 +700,7 @@ export const createStellaHostRunner = ({
       });
 
     // Load agents directly from source (electron/stella-agents/) with
-    // ~/.stella/agents/ as an override layer for user-custom agents.
+    // ~/stella/.stella/agents/ as an override layer for user-custom agents.
     const agentSources = stellaAgentsPath ? [stellaAgentsPath, agentsPath] : [agentsPath];
     void Promise.all(agentSources.map((p) => loadAgentsFromHome(p).catch(() => [] as ParsedAgentLike[])))
       .then((results) => {

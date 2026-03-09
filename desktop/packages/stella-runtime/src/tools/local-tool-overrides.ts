@@ -4,7 +4,7 @@
  * These replace the backend passthrough (`callBackendTool`) for tools
  * that can execute entirely in the Electron process:
  * - WebFetch: direct fetch() + HTML-to-text
- * - ActivateSkill: read from ~/.stella/skills/ on disk
+ * - ActivateSkill: read from ~/stella/.stella/skills/ on disk
  * - NoResponse: immediate return
  */
 

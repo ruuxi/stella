@@ -179,7 +179,7 @@ describe("agent runtime cancellation propagation", () => {
       agentContext: buildAgentContext(),
       toolExecutor,
       deviceId: "device-1",
-      stellaHome: "/tmp/.stella",
+      stellaHome: "/tmp/stella/.stella",
       resolvedLlm,
       store: store as unknown as JsonlRuntimeStore,
       callbacks: {
@@ -212,7 +212,7 @@ describe("agent runtime cancellation propagation", () => {
       agentContext: buildAgentContext(),
       toolExecutor,
       deviceId: "device-1",
-      stellaHome: "/tmp/.stella",
+      stellaHome: "/tmp/stella/.stella",
       resolvedLlm,
       store: store as unknown as JsonlRuntimeStore,
     });
