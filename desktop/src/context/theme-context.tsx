@@ -6,9 +6,18 @@ import {
   useMemo,
   useState,
   useCallback,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { themes, getThemeById, defaultTheme, registerTheme, type Theme, type ThemeColors } from "../theme/themes";
+import {
+  getThemeById,
+  defaultTheme,
+  registerTheme,
+  subscribeThemes,
+  getThemesSnapshot,
+  type Theme,
+  type ThemeColors,
+} from "../theme/themes";
 import { generateGradientTokens } from "../theme/color";
 
 type ColorMode = "light" | "dark" | "system";
@@ -237,6 +246,7 @@ function useThemePreview(): ThemePreviewState {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const preview = useThemePreview();
   const persisted = useThemePersistence(preview.clearAll);
+  const availableThemes = useSyncExternalStore(subscribeThemes, getThemesSnapshot, getThemesSnapshot);
 
   const activeThemeId = preview.previewThemeId ?? persisted.themeId;
   const theme = getThemeById(activeThemeId) ?? defaultTheme;
@@ -252,9 +262,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const readValue = useMemo<ThemeReadValue>(
     () => ({
       theme, themeId: persisted.themeId, colorMode: persisted.colorMode, resolvedColorMode,
-      gradientMode: effectiveGradientMode, gradientColor: effectiveGradientColor, colors, themes,
+      gradientMode: effectiveGradientMode, gradientColor: effectiveGradientColor, colors, themes: availableThemes,
     }),
-    [theme, persisted.themeId, persisted.colorMode, resolvedColorMode, effectiveGradientMode, effectiveGradientColor, colors],
+    [theme, persisted.themeId, persisted.colorMode, resolvedColorMode, effectiveGradientMode, effectiveGradientColor, colors, availableThemes],
   );
 
   const controlValue = useMemo<ThemeControlValue>(

@@ -2,6 +2,8 @@ export {
   themes,
   getThemeById,
   defaultTheme,
+  subscribeThemes,
+  getThemesSnapshot,
   registerTheme,
   unregisterTheme,
   type Theme,

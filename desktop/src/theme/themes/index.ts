@@ -22,11 +22,28 @@ export const themes: Theme[] = [
   onedarkpro, shadesofpurple, nightowl, vesper, carbonfox, gruvbox, ayu, aura,
 ];
 
+const listeners = new Set<() => void>();
+
+const emitChange = () => {
+  for (const listener of listeners) {
+    listener();
+  }
+};
+
 export const getThemeById = (id: string): Theme | undefined => {
   return themes.find((t) => t.id === id);
 };
 
 export const defaultTheme = themes.find((t) => t.id === "carbonfox")!;
+
+export const subscribeThemes = (listener: () => void) => {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
+
+export const getThemesSnapshot = (): Theme[] => [...themes];
 
 export const registerTheme = (theme: Theme) => {
   const existing = themes.findIndex((t) => t.id === theme.id);
@@ -35,11 +52,13 @@ export const registerTheme = (theme: Theme) => {
   } else {
     themes.push(theme);
   }
+  emitChange();
 };
 
 export const unregisterTheme = (id: string) => {
   const index = themes.findIndex((t) => t.id === id);
   if (index >= 0) {
     themes.splice(index, 1);
+    emitChange();
   }
 };
