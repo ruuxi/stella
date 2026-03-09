@@ -7,8 +7,10 @@ export type LocalTaskManagerAgentContext = {
   systemPrompt: string;
   dynamicContext: string;
   toolsAllowlist?: string[];
+  delegationAllowlist?: string[];
   model?: string;
   fallbackModel?: string;
+  taskDepth?: number;
   maxTaskDepth: number;
   defaultSkills: string[];
   skillIds: string[];
@@ -33,6 +35,8 @@ type RuntimeTaskRecord = {
   description: string;
   prompt: string;
   agentType: string;
+  taskDepth: number;
+  maxTaskDepth?: number;
   status: LocalTaskManagerStatus;
   startedAt: number;
   completedAt: number | null;
@@ -147,9 +151,15 @@ const pathsOverlap = (a: string, b: string): boolean => {
   return a.startsWith(`${b}${sep}`) || b.startsWith(`${a}${sep}`);
 };
 
+const BASH_PATH_PATTERN = String.raw`(?:[A-Za-z]:[\\/]|\\\\|\/|\.\.?[\\/])`;
+
 const extractBashPath = (command: string): string | undefined => {
-  const match = command.match(/(?:^|\s)(\/[^\s"'`]+|\.\.?\/[^\s"'`]+)/);
-  return match ? match[1] : undefined;
+  const match = command.match(
+    new RegExp(
+      String.raw`(?:^|\s)(?:"(${BASH_PATH_PATTERN}[^"]+)"|'(${BASH_PATH_PATTERN}[^']+)'|(${BASH_PATH_PATTERN}[^\s"'` + "`" + String.raw`]+))`,
+    ),
+  );
+  return match?.[1] ?? match?.[2] ?? match?.[3];
 };
 
 const getFsLockKey = (
@@ -261,6 +271,12 @@ export class LocalTaskManager implements TaskToolApi {
         threadId: task.threadId,
       });
 
+      context.maxTaskDepth =
+        typeof task.maxTaskDepth === "number"
+          ? Math.min(context.maxTaskDepth, task.maxTaskDepth)
+          : context.maxTaskDepth;
+      context.taskDepth = task.taskDepth;
+
       if (task.systemPromptOverride) {
         context.systemPrompt = task.systemPromptOverride;
       }
@@ -298,6 +314,9 @@ export class LocalTaskManager implements TaskToolApi {
           const scopedContext: ToolContext = {
             ...toolContext,
             taskId: task.id,
+            taskDepth: task.taskDepth,
+            maxTaskDepth: context.maxTaskDepth,
+            delegationAllowlist: context.delegationAllowlist,
           };
           const lockKey = getFsLockKey(toolName, toolArgs);
           if (!lockKey) {
@@ -389,6 +408,11 @@ export class LocalTaskManager implements TaskToolApi {
       description: request.description,
       prompt: request.prompt,
       agentType: request.agentType,
+      taskDepth: Math.max(1, request.taskDepth ?? 1),
+      maxTaskDepth:
+        typeof request.maxTaskDepth === "number"
+          ? Math.max(1, Math.floor(request.maxTaskDepth))
+          : undefined,
       status: "pending",
       startedAt: Date.now(),
       completedAt: null,
@@ -423,6 +447,7 @@ export class LocalTaskManager implements TaskToolApi {
         agentType: request.agentType,
         parentTaskId: cloudParentTaskId,
         commandId: request.commandId,
+        maxTaskDepth: task.maxTaskDepth,
       }).then((created) => {
         task.cloudTaskId = created.taskId;
       }).catch(() => {

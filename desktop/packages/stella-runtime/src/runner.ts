@@ -168,6 +168,7 @@ type ParsedAgentLike = {
   systemPrompt: string;
   agentTypes: string[];
   toolsAllowlist?: string[];
+  delegationAllowlist?: string[];
   defaultSkills?: string[];
   model?: string;
   maxTaskDepth?: number;
@@ -520,6 +521,7 @@ export const createStellaHostRunner = ({
           ? buildPanelInventory(frontendRoot)
           : "",
       toolsAllowlist: resolveToolsAllowlist(args.agentType, agent?.toolsAllowlist),
+      delegationAllowlist: agent?.delegationAllowlist,
       model,
       maxTaskDepth: agent?.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH,
       defaultSkills: agent?.defaultSkills ?? [],

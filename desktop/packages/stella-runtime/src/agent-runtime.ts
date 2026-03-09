@@ -309,6 +309,9 @@ const createPiTools = (opts: {
   agentType: string;
   deviceId: string;
   stellaHome: string;
+  taskDepth?: number;
+  maxTaskDepth?: number;
+  delegationAllowlist?: string[];
   toolsAllowlist?: string[];
   store: JsonlRuntimeStore;
   toolExecutor: (
@@ -347,14 +350,15 @@ const createPiTools = (opts: {
           return { content: [{ type: "text", text: "WebSearch is not available." }], details: {} };
         }
         const category = typeof args.category === "string" ? args.category : undefined;
-        const { text, html } = await opts.webSearch(query, { category });
-        const toolText = html?.trim() ? html : text;
+        const result = await opts.webSearch(query, { category });
+        const toolText = result.html?.trim()
+          ? result.html
+          : result.text?.trim()
+            ? result.text
+            : "WebSearch returned no response.";
         return {
           content: [{ type: "text", text: toolText }],
-          details: {
-            text: toolText,
-            ...(html?.trim() ? { html } : {}),
-          },
+          details: result,
         };
       }
 
@@ -410,6 +414,9 @@ const createPiTools = (opts: {
         requestId: toolCallId,
         agentType: opts.agentType,
         storageMode: "local",
+        ...(typeof opts.taskDepth === "number" ? { taskDepth: opts.taskDepth } : {}),
+        ...(typeof opts.maxTaskDepth === "number" ? { maxTaskDepth: opts.maxTaskDepth } : {}),
+        ...(opts.delegationAllowlist ? { delegationAllowlist: opts.delegationAllowlist } : {}),
       };
 
       // --- before_tool hook ---
@@ -511,6 +518,9 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
     agentType: opts.agentType,
     deviceId: opts.deviceId,
     stellaHome: opts.stellaHome,
+    taskDepth: opts.agentContext.taskDepth ?? 0,
+    maxTaskDepth: opts.agentContext.maxTaskDepth,
+    delegationAllowlist: opts.agentContext.delegationAllowlist,
     toolsAllowlist: opts.agentContext.toolsAllowlist,
     store: opts.store,
     toolExecutor: opts.toolExecutor,
@@ -1000,6 +1010,9 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
     agentType: opts.agentType,
     deviceId: opts.deviceId,
     stellaHome: opts.stellaHome,
+    taskDepth: opts.agentContext.taskDepth ?? 0,
+    maxTaskDepth: opts.agentContext.maxTaskDepth,
+    delegationAllowlist: opts.agentContext.delegationAllowlist,
     toolsAllowlist: opts.agentContext.toolsAllowlist,
     store: opts.store,
     toolExecutor: opts.toolExecutor,

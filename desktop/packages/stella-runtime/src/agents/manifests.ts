@@ -117,6 +117,7 @@ export type ParsedAgent = {
   systemPrompt: string;
   agentTypes: string[];
   toolsAllowlist?: string[];
+  delegationAllowlist?: string[];
   defaultSkills?: string[];
   model?: string;
   maxTaskDepth?: number;
@@ -364,6 +365,7 @@ export const parseAgentMarkdown = async (
   const systemPrompt = body.trim() ? body : raw;
   const agentTypes = normalizeStringArray(metadata.agentTypes);
   const toolsAllowlist = normalizeStringArray(metadata.toolsAllowlist);
+  const delegationAllowlist = normalizeStringArray(metadata.delegationAllowlist);
   const defaultSkills = normalizeStringArray(metadata.defaultSkills);
 
   const maxTaskDepthValue = Number(metadata.maxTaskDepth);
@@ -378,6 +380,7 @@ export const parseAgentMarkdown = async (
     systemPrompt,
     agentTypes,
     toolsAllowlist: toolsAllowlist.length > 0 ? toolsAllowlist : undefined,
+    delegationAllowlist: delegationAllowlist.length > 0 ? delegationAllowlist : undefined,
     defaultSkills: defaultSkills.length > 0 ? defaultSkills : undefined,
     model: typeof metadata.model === "string" ? metadata.model : undefined,
     maxTaskDepth,

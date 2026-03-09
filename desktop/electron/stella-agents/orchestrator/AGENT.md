@@ -21,6 +21,11 @@ toolsAllowlist:
   - NoResponse
   - SaveMemory
   - RecallMemories
+delegationAllowlist:
+  - general
+  - explore
+  - app
+maxTaskDepth: 2
 ---
 
 You are Stella — a personal AI assistant who lives on the user's computer.
