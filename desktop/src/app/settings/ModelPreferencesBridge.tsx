@@ -24,6 +24,13 @@ export const ModelPreferencesBridge = () => {
   ) as
     | number
     | undefined;
+  const preferencesLoaded =
+    !isAuthenticated
+    || (
+      overridesJson !== undefined
+      && generalAgentEngine !== undefined
+      && codexLocalMaxConcurrency !== undefined
+    );
 
   const modelOverrides = useMemo<Record<string, string>>(() => {
     if (!overridesJson) {
@@ -45,13 +52,16 @@ export const ModelPreferencesBridge = () => {
     if (!isAuthenticated) {
       return;
     }
+    if (!preferencesLoaded) {
+      return;
+    }
 
     void systemApi.syncLocalModelPreferences({
       modelOverrides,
       generalAgentEngine: generalAgentEngine ?? "default",
       codexLocalMaxConcurrency: codexLocalMaxConcurrency ?? 3,
     });
-  }, [codexLocalMaxConcurrency, generalAgentEngine, isAuthenticated, modelOverrides]);
+  }, [codexLocalMaxConcurrency, generalAgentEngine, isAuthenticated, modelOverrides, preferencesLoaded]);
 
   return null;
 };
