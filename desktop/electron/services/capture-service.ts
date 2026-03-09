@@ -481,8 +481,7 @@ export class CaptureService {
       screenshot: capture?.screenshot ?? null,
       window: toChatContextWindow(capture?.windowInfo),
     })
-    this.pendingRegionCaptureResolve = null
-    this.pendingRegionCapturePromise = null
+    this.resetRegionCapture()
   }
 
   async captureAutoWindowText(): Promise<{ text: string; title: string; app: string } | null> {
