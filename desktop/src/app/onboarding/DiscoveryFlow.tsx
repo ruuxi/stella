@@ -33,6 +33,7 @@ export function useDiscoveryFlow({
   >(null);
 
   const synthesizedRef = useRef(false);
+  const synthesizingRef = useRef(false);
 
   const handleDiscoveryConfirm = useCallback(
     (categories: DiscoveryCategory[]) => {
@@ -45,12 +46,16 @@ export function useDiscoveryFlow({
   useEffect(() => {
     if (!discoveryCategories || !activeConversationId) return;
     if (synthesizedRef.current) return;
-    synthesizedRef.current = true;
+    if (synthesizingRef.current) return;
+    synthesizingRef.current = true;
 
     const run = async () => {
+      let completed = false;
       try {
         const exists = await window.electronAPI?.browser.checkCoreMemoryExists?.();
         if (exists) {
+          completed = true;
+          synthesizedRef.current = true;
           return;
         }
 
@@ -92,8 +97,16 @@ export function useDiscoveryFlow({
             });
           }
         }
+
+        completed = true;
+        synthesizedRef.current = true;
       } catch {
         // Silent fail - discovery is non-critical
+      } finally {
+        if (!completed) {
+          synthesizedRef.current = false;
+        }
+        synthesizingRef.current = false;
       }
     };
 
