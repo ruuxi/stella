@@ -33,8 +33,8 @@ const normalizeAccountMode = (
   value: string | null | undefined,
 ): "private_local" | "connected" => (value === "connected" ? "connected" : "private_local");
 
-const normalizeSyncMode = (value: string | null | undefined): "on" | "off" =>
-  value === "off" ? "off" : "on";
+export const normalizeSyncMode = (value: string | null | undefined): "on" | "off" =>
+  value === "on" ? "on" : "off";
 
 export const normalizeGeneralAgentEngine = (
   value: string | null | undefined,
@@ -151,7 +151,7 @@ export const getSyncMode = query({
   returns: syncModeValidator,
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return "on";
+    if (!identity) return "off";
     const ownerId = identity.subject;
     const record = await ctx.db
       .query("user_preferences")
