@@ -178,6 +178,34 @@ stella-browser cookies get                          # Get cookies
 stella-browser storage local                        # View localStorage
 ```
 
+### Site Mods (Persistent Per-Site Customization)
+
+Save CSS and JS overrides that automatically apply every time the user visits a site. Mods persist across page reloads and browser restarts.
+
+```bash
+# Save a CSS/JS override for a URL pattern
+stella-browser site_mod_set --pattern "x.com/*" --css "[data-testid='trend'] { display: none !important; }" --label "Hide trending"
+
+# Save with JS
+stella-browser site_mod_set --pattern "reddit.com/*" --js "document.querySelector('.sidebar').remove()" --label "Remove sidebar"
+
+# Both CSS and JS
+stella-browser site_mod_set --pattern "news.ycombinator.com/*" --css "body { font-size: 16px !important; }" --js "document.title = 'HN'" --label "Restyle HN"
+
+# List all saved overrides
+stella-browser site_mod_list
+
+# Remove an override
+stella-browser site_mod_remove --pattern "x.com/*"
+
+# Disable without deleting
+stella-browser site_mod_toggle --pattern "x.com/*" --enabled false
+```
+
+URL patterns use glob matching: `x.com/*`, `*.github.com/*`, `github.com/*/pull/*`.
+
+**When to use**: User asks to permanently change how a site looks or behaves — hide elements, restyle, increase font size, remove distractions, add dark mode. For one-time changes, use `eval` instead.
+
 ### Debug
 
 ```bash

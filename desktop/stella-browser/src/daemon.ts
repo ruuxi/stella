@@ -504,8 +504,9 @@ export async function startDaemon(options?: {
     cleanupSocket();
   });
 
-  // Keep process alive
-  process.stdin.resume();
+  // Keep process alive (setInterval prevents the event loop from draining,
+  // works even when stdin is unavailable e.g. stdio: 'ignore')
+  setInterval(() => {}, 1 << 30);
 }
 
 // Run daemon if this is the entry point
