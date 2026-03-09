@@ -434,6 +434,14 @@ describe('parseCommand', () => {
       }
     });
 
+    it('should parse snapshot with cursor option', () => {
+      const result = parseCommand(cmd({ id: '1', action: 'snapshot', cursor: true }));
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.command.cursor).toBe(true);
+      }
+    });
+
     it('should parse snapshot with compact filter', () => {
       const result = parseCommand(cmd({ id: '1', action: 'snapshot', compact: true }));
       expect(result.success).toBe(true);

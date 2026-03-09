@@ -66,6 +66,43 @@ pub fn gen_id() -> String {
     )
 }
 
+fn require_option_value<'a>(
+    rest: &'a [&'a str],
+    index: usize,
+    context: &str,
+    usage: &'static str,
+    flag: &str,
+) -> Result<&'a str, ParseError> {
+    let value = rest.get(index + 1).copied().ok_or_else(|| ParseError::MissingArguments {
+        context: context.to_string(),
+        usage,
+    })?;
+    if value.starts_with("--") {
+        return Err(ParseError::MissingArguments {
+            context: context.to_string(),
+            usage,
+        });
+    }
+    if value.is_empty() {
+        return Err(ParseError::InvalidValue {
+            message: format!("{} requires a non-empty value", flag),
+            usage,
+        });
+    }
+    Ok(value)
+}
+
+fn parse_bool_flag(value: &str, usage: &'static str, flag: &str) -> Result<bool, ParseError> {
+    match value {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        _ => Err(ParseError::InvalidValue {
+            message: format!("{} must be true, false, 1, or 0", flag),
+            usage,
+        }),
+    }
+}
+
 pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError> {
     if args.is_empty() {
         return Err(ParseError::MissingArguments {
@@ -888,6 +925,8 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
 
         // === Site Mods ===
         "site_mod_set" => {
+            const USAGE: &str =
+                "site_mod_set --pattern <glob> [--css <css>] [--js <js>] [--label <name>]";
             let mut pattern: Option<&str> = None;
             let mut css: Option<&str> = None;
             let mut js: Option<&str> = None;
@@ -895,21 +934,33 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
             let mut i = 0;
             while i < rest.len() {
                 match rest[i] {
-                    "--pattern" => { pattern = rest.get(i + 1).copied(); i += 2; }
-                    "--css" => { css = rest.get(i + 1).copied(); i += 2; }
-                    "--js" => { js = rest.get(i + 1).copied(); i += 2; }
-                    "--label" => { label = rest.get(i + 1).copied(); i += 2; }
+                    "--pattern" => {
+                        pattern = Some(require_option_value(&rest, i, "site_mod_set", USAGE, "--pattern")?);
+                        i += 2;
+                    }
+                    "--css" => {
+                        css = Some(require_option_value(&rest, i, "site_mod_set", USAGE, "--css")?);
+                        i += 2;
+                    }
+                    "--js" => {
+                        js = Some(require_option_value(&rest, i, "site_mod_set", USAGE, "--js")?);
+                        i += 2;
+                    }
+                    "--label" => {
+                        label = Some(require_option_value(&rest, i, "site_mod_set", USAGE, "--label")?);
+                        i += 2;
+                    }
                     _ => { i += 1; }
                 }
             }
             let pattern = pattern.ok_or_else(|| ParseError::MissingArguments {
                 context: "site_mod_set".to_string(),
-                usage: "site_mod_set --pattern <glob> [--css <css>] [--js <js>] [--label <name>]",
+                usage: USAGE,
             })?;
             if css.is_none() && js.is_none() {
                 return Err(ParseError::MissingArguments {
                     context: "site_mod_set".to_string(),
-                    usage: "site_mod_set --pattern <glob> [--css <css>] [--js <js>] [--label <name>]",
+                    usage: USAGE,
                 });
             }
             let mut cmd = json!({ "id": id, "action": "site_mod_set", "pattern": pattern });
@@ -920,29 +971,39 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
         }
         "site_mod_list" => Ok(json!({ "id": id, "action": "site_mod_list" })),
         "site_mod_remove" => {
+            const USAGE: &str = "site_mod_remove --pattern <glob>";
             let mut pattern: Option<&str> = None;
             let mut i = 0;
             while i < rest.len() {
                 match rest[i] {
-                    "--pattern" => { pattern = rest.get(i + 1).copied(); i += 2; }
+                    "--pattern" => {
+                        pattern = Some(require_option_value(&rest, i, "site_mod_remove", USAGE, "--pattern")?);
+                        i += 2;
+                    }
                     _ => { i += 1; }
                 }
             }
             let pattern = pattern.ok_or_else(|| ParseError::MissingArguments {
                 context: "site_mod_remove".to_string(),
-                usage: "site_mod_remove --pattern <glob>",
+                usage: USAGE,
             })?;
             Ok(json!({ "id": id, "action": "site_mod_remove", "pattern": pattern }))
         }
         "site_mod_toggle" => {
+            const USAGE: &str = "site_mod_toggle --pattern <glob> [--enabled true|false]";
             let mut pattern: Option<&str> = None;
             let mut enabled: Option<bool> = None;
             let mut i = 0;
             while i < rest.len() {
                 match rest[i] {
-                    "--pattern" => { pattern = rest.get(i + 1).copied(); i += 2; }
+                    "--pattern" => {
+                        pattern = Some(require_option_value(&rest, i, "site_mod_toggle", USAGE, "--pattern")?);
+                        i += 2;
+                    }
                     "--enabled" => {
-                        enabled = rest.get(i + 1).map(|v| *v == "true" || *v == "1");
+                        let value =
+                            require_option_value(&rest, i, "site_mod_toggle", USAGE, "--enabled")?;
+                        enabled = Some(parse_bool_flag(value, USAGE, "--enabled")?);
                         i += 2;
                     }
                     _ => { i += 1; }
@@ -950,7 +1011,7 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
             }
             let pattern = pattern.ok_or_else(|| ParseError::MissingArguments {
                 context: "site_mod_toggle".to_string(),
-                usage: "site_mod_toggle --pattern <glob> [--enabled true|false]",
+                usage: USAGE,
             })?;
             let mut cmd = json!({ "id": id, "action": "site_mod_toggle", "pattern": pattern });
             if let Some(e) = enabled { cmd["enabled"] = json!(e); }
@@ -1675,6 +1736,50 @@ mod tests {
             &default_flags(),
         );
         assert!(result.is_err());
+    }
+
+    // === Site Mod Tests ===
+
+    #[test]
+    fn test_site_mod_set_rejects_flag_as_pattern_value() {
+        let result = parse_command(&args("site_mod_set --pattern --css body{}"), &default_flags());
+        assert!(matches!(result, Err(ParseError::MissingArguments { .. })));
+    }
+
+    #[test]
+    fn test_site_mod_remove_rejects_flag_as_pattern_value() {
+        let result = parse_command(&args("site_mod_remove --pattern --json"), &default_flags());
+        assert!(matches!(result, Err(ParseError::MissingArguments { .. })));
+    }
+
+    #[test]
+    fn test_site_mod_toggle_rejects_invalid_enabled_value() {
+        let result = parse_command(
+            &args("site_mod_toggle --pattern x.com/* --enabled maybe"),
+            &default_flags(),
+        );
+        assert!(matches!(result, Err(ParseError::InvalidValue { .. })));
+    }
+
+    #[test]
+    fn test_site_mod_toggle_rejects_flag_as_enabled_value() {
+        let result = parse_command(
+            &args("site_mod_toggle --pattern x.com/* --enabled --json"),
+            &default_flags(),
+        );
+        assert!(matches!(result, Err(ParseError::MissingArguments { .. })));
+    }
+
+    #[test]
+    fn test_site_mod_toggle_parses_enabled_false() {
+        let cmd = parse_command(
+            &args("site_mod_toggle --pattern x.com/* --enabled false"),
+            &default_flags(),
+        )
+        .unwrap();
+        assert_eq!(cmd["action"], "site_mod_toggle");
+        assert_eq!(cmd["pattern"], "x.com/*");
+        assert_eq!(cmd["enabled"], false);
     }
 
     // === Storage Tests ===
