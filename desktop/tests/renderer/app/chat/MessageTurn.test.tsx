@@ -206,26 +206,5 @@ describe("TurnItem", () => {
     expect(screen.queryByRole("img", { name: "Attachment" })).toBeNull();
     expect(screen.getByText("Attachment 1")).toBeInTheDocument();
   });
-
-  it("renders the web search briefing badge without requiring assistant text", () => {
-    const { container } = render(
-      <TurnItem
-        turn={{
-          id: "turn-badge",
-          userText: "search the web",
-          userAttachments: [],
-          assistantText: "",
-          assistantMessageId: null,
-          assistantEmotesEnabled: false,
-          webSearchBadgeHtml: "<section><h3>Top story</h3><p>Summary</p></section>",
-        }}
-      />,
-    );
-
-    expect(screen.getByText("Search briefing")).toBeInTheDocument();
-    expect(screen.getByText("Top story")).toBeInTheDocument();
-    expect(screen.getByText("Summary")).toBeInTheDocument();
-    expect(container.querySelector(".event-search-badge")).toBeTruthy();
-  });
 });
 

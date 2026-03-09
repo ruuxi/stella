@@ -22,7 +22,6 @@ export type TurnViewModel = {
   assistantText: string;
   assistantMessageId: string | null;
   assistantEmotesEnabled: boolean;
-  webSearchBadgeHtml?: string;
   selfModApplied?: SelfModApplied;
 };
 
@@ -171,7 +170,6 @@ export const TurnItem = memo(function TurnItem({
   const userChannelEnvelope = turn.userChannelEnvelope;
   const assistantText = turn.assistantText;
   const hasAssistantContent = assistantText.trim().length > 0;
-  const hasWebSearchBadge = Boolean(turn.webSearchBadgeHtml?.trim().length);
   const hasUserContent =
     userText.trim().length > 0 || userAttachments.length > 0;
   const hasChannelMeta = Boolean(userChannelEnvelope?.provider);
@@ -191,7 +189,7 @@ export const TurnItem = memo(function TurnItem({
   );
 
   const shouldShowAssistantArea =
-    hasAssistantContent || hasWebSearchBadge || shouldShowStreamingAssistant;
+    hasAssistantContent || shouldShowStreamingAssistant;
   const assistantDisplayText = hasAssistantContent
     ? assistantText
     : (streaming?.streamingText ?? "");
@@ -313,16 +311,6 @@ export const TurnItem = memo(function TurnItem({
                   </GrowIn>
                 )}
             </>
-          )}
-
-          {hasWebSearchBadge && turn.webSearchBadgeHtml && (
-            <div className="event-search-badge" data-tool="websearch">
-              <span className="event-search-badge-label">Search briefing</span>
-              <div
-                className="event-search-badge-body"
-                dangerouslySetInnerHTML={{ __html: turn.webSearchBadgeHtml }}
-              />
-            </div>
           )}
 
           {assistantDisplayText.trim().length > 0 && (
