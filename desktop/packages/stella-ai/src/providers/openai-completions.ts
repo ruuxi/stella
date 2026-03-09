@@ -11,6 +11,7 @@ import type {
 import { getEnvApiKey } from "../env-api-keys.js";
 import { calculateCost, supportsXhigh } from "../models.js";
 import type {
+	Api,
 	AssistantMessage,
 	Context,
 	Message,
@@ -56,7 +57,7 @@ function normalizeMistralToolId(id: string): string {
  * This is needed because Anthropic (via proxy) requires the tools param
  * to be present when messages include tool_calls or tool role messages.
  */
-function hasToolHistory(messages: Message[]): boolean {
+export function hasToolHistory(messages: Message[]): boolean {
 	for (const msg of messages) {
 		if (msg.role === "toolResult") {
 			return true;
@@ -506,8 +507,8 @@ function maybeAddOpenRouterAnthropicCacheControl(
 	}
 }
 
-export function convertMessages(
-	model: Model<"openai-completions">,
+export function convertMessages<TApi extends Api>(
+	model: Model<TApi>,
 	context: Context,
 	compat: Required<OpenAICompletionsCompat>,
 ): ChatCompletionMessageParam[] {
@@ -738,7 +739,7 @@ export function convertMessages(
 	return params;
 }
 
-function convertTools(
+export function convertTools(
 	tools: Tool[],
 	compat: Required<OpenAICompletionsCompat>,
 ): OpenAI.Chat.Completions.ChatCompletionTool[] {

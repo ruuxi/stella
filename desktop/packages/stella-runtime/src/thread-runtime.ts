@@ -1,4 +1,4 @@
-import type { Model } from "@stella/stella-ai";
+import { completeSimple, readAssistantText } from "@stella/stella-ai";
 import type { JsonlThreadMessage, JsonlRuntimeStore } from "./jsonl_store.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 
@@ -97,16 +97,16 @@ const formatThreadMessagesForCompaction = (messages: ThreadMessage[]): string =>
 const estimateMessageTokens = (message: ThreadMessage): number =>
   Math.max(1, Math.ceil((message.content ?? "").length / 4));
 
-const getContextWindow = (model: Model<never> | Model<string>): number => {
-  const value = Number(model.contextWindow);
+const getContextWindow = (route: ResolvedLlmRoute): number => {
+  const value = Number(route.model.contextWindow);
   if (!Number.isFinite(value) || value <= 0) {
     return DEFAULT_CONTEXT_WINDOW_TOKENS;
   }
   return Math.floor(value);
 };
 
-const getCompactionTriggerTokens = (model: Model<never> | Model<string>): number =>
-  Math.max(MIN_TRIGGER_TOKENS, getContextWindow(model) - THREAD_COMPACTION_RESERVE_TOKENS);
+const getCompactionTriggerTokens = (route: ResolvedLlmRoute): number =>
+  Math.max(MIN_TRIGGER_TOKENS, getContextWindow(route) - THREAD_COMPACTION_RESERVE_TOKENS);
 
 const getThreadTokenEstimate = (messages: ThreadMessage[]): number =>
   messages.reduce((sum, message) => sum + estimateMessageTokens(message), 0);
@@ -187,39 +187,11 @@ export const formatThreadCheckpointMessage = (checkpoint: ThreadCheckpoint): str
     checkpoint.summary.trim(),
   ].join("\n");
 
-const readChatCompletionText = async (response: Response): Promise<string> => {
-  const json = (await response.json()) as {
-    choices?: Array<{
-      message?: {
-        content?: string | Array<{ type?: string; text?: string }>;
-      };
-    }>;
-  };
-  const content = json.choices?.[0]?.message?.content;
-  if (typeof content === "string") {
-    return content.trim();
-  }
-  if (!Array.isArray(content)) {
-    return "";
-  }
-  return content
-    .filter((part) => part?.type === "text" && typeof part.text === "string")
-    .map((part) => part.text!.trim())
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-};
-
 const generateThreadSummary = async (args: {
   messages: ThreadMessage[];
   previousSummary?: string;
   resolvedLlm: ResolvedLlmRoute;
-  agentType: string;
 }): Promise<string | null> => {
-  if (args.resolvedLlm.model.api !== "openai-completions") {
-    return null;
-  }
-
   const apiKey = args.resolvedLlm.getApiKey()?.trim();
   if (!apiKey) {
     return null;
@@ -242,41 +214,28 @@ const generateThreadSummary = async (args: {
     .filter((part) => part.length > 0)
     .join("\n\n");
 
-  const endpoint = `${args.resolvedLlm.model.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${apiKey}`,
-    ...(args.resolvedLlm.model.headers ?? {}),
-  };
-  headers["X-Agent-Type"] = args.agentType;
-  headers["X-Model-Id"] = args.resolvedLlm.model.id;
-  headers["X-Provider"] = String(args.resolvedLlm.model.provider);
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: args.resolvedLlm.model.id,
-      stream: false,
-      messages: [
-        {
-          role: "system",
-          content: THREAD_COMPACTION_SYSTEM_PROMPT,
-        },
-        {
-          role: "user",
-          content: promptBody,
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
+  try {
+    const message = await completeSimple(
+      args.resolvedLlm.model,
+      {
+        systemPrompt: THREAD_COMPACTION_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: promptBody }],
+            timestamp: Date.now(),
+          },
+        ],
+      },
+      {
+        apiKey,
+      },
+    );
+    const text = readAssistantText(message);
+    return text || null;
+  } catch {
     return null;
   }
-
-  const text = await readChatCompletionText(response);
-  return text.trim() || null;
 };
 
 export const maybeCompactRuntimeThread = async (args: {
@@ -295,7 +254,7 @@ export const maybeCompactRuntimeThread = async (args: {
   }
 
   const totalTokens = getThreadTokenEstimate(messages);
-  if (totalTokens < getCompactionTriggerTokens(args.resolvedLlm.model)) {
+  if (totalTokens < getCompactionTriggerTokens(args.resolvedLlm)) {
     return;
   }
 
@@ -322,7 +281,6 @@ export const maybeCompactRuntimeThread = async (args: {
     messages: summarizableMessages,
     previousSummary,
     resolvedLlm: args.resolvedLlm,
-    agentType: args.agentType,
   });
   if (!summary) {
     return;

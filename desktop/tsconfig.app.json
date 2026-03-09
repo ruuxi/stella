@@ -26,7 +26,11 @@
     /* Path aliases */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@stella/stella-ai": ["./packages/stella-ai/src/index.ts"],
+      "@stella/stella-agent-core": ["./packages/stella-agent-core/src/index.ts"],
+      "@stella/stella-runtime": ["./packages/stella-runtime/src/index.ts"],
+      "@stella/stella-runtime/*": ["./packages/stella-runtime/src/*"]
     }
   },
   "include": ["src"]

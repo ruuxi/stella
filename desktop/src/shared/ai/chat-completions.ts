@@ -1,4 +1,16 @@
-export const CHAT_COMPLETIONS_PATH = "/api/ai/v1/chat/completions";
+import {
+  completeSimple,
+  createManagedContext,
+  createManagedModel,
+  readAssistantText,
+  streamSimple,
+  type AssistantMessage,
+  type ManagedChatMessage,
+  type SimpleStreamOptions,
+  type ThinkingLevel,
+} from "@stella/stella-ai";
+
+export const CHAT_COMPLETIONS_PATH = "/api/managed-ai/chat/completions";
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant" | "developer";
@@ -23,40 +35,76 @@ export type ChatCompletionResponse = {
 };
 
 export type ChatRequestOptions = {
-  provider: string;
-  model: string;
   agentType: string;
   messages: ChatMessage[];
   headers?: Record<string, string>;
 };
 
-export function buildChatHeaders(
-  options: Pick<ChatRequestOptions, "provider" | "model" | "agentType"> & {
-    headers?: Record<string, string>;
-  },
-): Record<string, string> {
-  return {
-    "Content-Type": "application/json",
-    "X-Provider": options.provider,
-    "X-Model-Id": options.model,
-    "X-Agent-Type": options.agentType,
-    ...options.headers,
-  };
-}
+export type ManagedChatTransport = {
+  endpoint: string;
+  headers?: Record<string, string>;
+};
 
-export function buildChatRequestBody(
-  options: Pick<ChatRequestOptions, "model" | "messages"> & {
-    stream: boolean;
-    body?: Record<string, unknown>;
-  },
-): Record<string, unknown> {
+type ManagedCompletionOptions = {
+  model: ReturnType<typeof createManagedModel>;
+  context: ReturnType<typeof createManagedContext>;
+  options: SimpleStreamOptions;
+};
+
+const toSimpleOptions = (
+  body?: Record<string, unknown>,
+): SimpleStreamOptions => {
+  const maxTokensValue = body?.max_completion_tokens ?? body?.max_tokens;
+  const reasoningValue = body?.reasoning_effort;
   return {
-    model: options.model,
-    messages: options.messages,
-    stream: options.stream,
-    ...options.body,
+    maxTokens: typeof maxTokensValue === "number" ? maxTokensValue : undefined,
+    temperature: typeof body?.temperature === "number" ? body.temperature : undefined,
+    reasoning:
+      reasoningValue === "minimal" || reasoningValue === "low" || reasoningValue === "medium" || reasoningValue === "high" || reasoningValue === "xhigh"
+        ? reasoningValue as ThinkingLevel
+        : undefined,
   };
-}
+};
+
+const createManagedCompletion = (args: {
+  transport: ManagedChatTransport;
+  request: ChatRequestOptions;
+  body?: Record<string, unknown>;
+}): ManagedCompletionOptions => ({
+  model: createManagedModel({
+    endpoint: args.transport.endpoint,
+    agentType: args.request.agentType,
+    headers: {
+      ...args.transport.headers,
+      ...args.request.headers,
+    },
+  }),
+  context: createManagedContext(args.request.messages as ManagedChatMessage[]),
+  options: toSimpleOptions(args.body),
+});
+
+const ensureSuccess = (message: AssistantMessage): AssistantMessage => {
+  if (message.stopReason === "error" || message.stopReason === "aborted") {
+    throw new Error(message.errorMessage || "Managed chat completion failed");
+  }
+  return message;
+};
+
+const messageToResponse = (message: AssistantMessage): ChatCompletionResponse => ({
+  choices: [{
+    message: {
+      content: message.content
+        .filter((part): part is { type: "text"; text: string } => part.type === "text")
+        .map((part) => ({ type: "text", text: part.text })),
+    },
+  }],
+  usage: {
+    input_tokens: message.usage.input,
+    prompt_tokens: message.usage.input + message.usage.cacheRead,
+    output_tokens: message.usage.output,
+    completion_tokens: message.usage.output,
+  },
+});
 
 export function extractChatText(response: ChatCompletionResponse): string {
   const content = response.choices?.[0]?.message?.content;
@@ -74,52 +122,50 @@ export function extractChatText(response: ChatCompletionResponse): string {
   return "";
 }
 
-export async function readChatErrorDetail(response: Response): Promise<string> {
-  try {
-    const text = await response.text();
-    return text || response.statusText;
-  } catch {
-    return response.statusText || "Request failed";
-  }
+export async function callManagedChatCompletion<TResponse = ChatCompletionResponse>(args: {
+  transport: ManagedChatTransport;
+  request: ChatRequestOptions;
+  body?: Record<string, unknown>;
+  signal?: AbortSignal;
+}): Promise<TResponse> {
+  const execution = createManagedCompletion(args);
+  const message = ensureSuccess(await completeSimple(
+    execution.model,
+    execution.context,
+    {
+      ...execution.options,
+      signal: args.signal,
+    },
+  ));
+  return messageToResponse(message) as TResponse;
 }
 
-export async function readChatCompletionStream(
-  response: Response,
-  onChunk: (chunk: string) => void,
-): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw new Error("Chat completion returned no response body");
-  }
+export async function streamManagedChatCompletion(args: {
+  transport: ManagedChatTransport;
+  request: ChatRequestOptions;
+  body?: Record<string, unknown>;
+  onChunk: (chunk: string) => void;
+  signal?: AbortSignal;
+}): Promise<string> {
+  const execution = createManagedCompletion(args);
+  const stream = streamSimple(
+    execution.model,
+    execution.context,
+    {
+      ...execution.options,
+      signal: args.signal,
+    },
+  );
 
-  const decoder = new TextDecoder();
-  let buffer = "";
   let fullContent = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (!line.startsWith("data: ")) continue;
-      const data = line.slice(6).trim();
-      if (!data || data === "[DONE]") continue;
-
-      try {
-        const parsed = JSON.parse(data) as ChatCompletionResponse;
-        const delta = parsed.choices?.[0]?.delta?.content;
-        if (!delta) continue;
-        fullContent += delta;
-        onChunk(delta);
-      } catch {
-        // Ignore malformed SSE chunks from upstream providers.
-      }
+  for await (const event of stream) {
+    if (event.type !== "text_delta") {
+      continue;
     }
+    fullContent += event.delta;
+    args.onChunk(event.delta);
   }
 
-  return fullContent;
+  const finalMessage = ensureSuccess(await stream.result());
+  return fullContent || readAssistantText(finalMessage);
 }

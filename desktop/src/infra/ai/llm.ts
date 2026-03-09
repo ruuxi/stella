@@ -1,11 +1,9 @@
 import { createServiceRequest } from "@/infra/http/service-request";
 import {
-  buildChatHeaders,
-  buildChatRequestBody,
+  callManagedChatCompletion,
   CHAT_COMPLETIONS_PATH,
   extractChatText,
-  readChatCompletionStream,
-  readChatErrorDetail,
+  streamManagedChatCompletion,
   type ChatCompletionResponse,
   type ChatMessage,
 } from "@/shared/ai/chat-completions";
@@ -18,8 +16,6 @@ export {
 };
 
 type ChatRequestBase = {
-  provider: string;
-  model: string;
   agentType: string;
   messages: ChatMessage[];
   path?: string;
@@ -35,60 +31,38 @@ type ChatStreamRequest = ChatRequestBase & {
   onChunk: (chunk: string) => void;
 };
 
-async function createChatRequest(
+async function createManagedTransport(
   options: ChatRequestBase,
-  body: Record<string, unknown>,
-): Promise<Response> {
-  const { endpoint, headers } = await createServiceRequest(
+) {
+  return await createServiceRequest(
     options.path ?? CHAT_COMPLETIONS_PATH,
-    buildChatHeaders(options),
+    options.headers,
   );
-
-  return await fetch(endpoint, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
 }
 
 export async function callChatCompletion<TResponse = ChatCompletionResponse>(
   options: ChatJsonRequest,
 ): Promise<TResponse> {
-  const response = await createChatRequest(
-    options,
-    buildChatRequestBody({
-      model: options.model,
+  return await callManagedChatCompletion<TResponse>({
+    transport: await createManagedTransport(options),
+    request: {
+      agentType: options.agentType,
       messages: options.messages,
-      stream: false,
-      body: options.body,
-    }),
-  );
-
-  if (!response.ok) {
-    const detail = await readChatErrorDetail(response);
-    throw new Error(`Chat completion failed (${response.status}): ${detail}`);
-  }
-
-  return (await response.json()) as TResponse;
+    },
+    body: options.body,
+  });
 }
 
 export async function streamChatCompletion(
   options: ChatStreamRequest,
 ): Promise<string> {
-  const response = await createChatRequest(
-    options,
-    buildChatRequestBody({
-      model: options.model,
+  return await streamManagedChatCompletion({
+    transport: await createManagedTransport(options),
+    request: {
+      agentType: options.agentType,
       messages: options.messages,
-      stream: true,
-      body: options.body,
-    }),
-  );
-
-  if (!response.ok) {
-    const detail = await readChatErrorDetail(response);
-    throw new Error(`Chat completion failed (${response.status}): ${detail}`);
-  }
-
-  return await readChatCompletionStream(response, options.onChunk);
+    },
+    body: options.body,
+    onChunk: options.onChunk,
+  });
 }

@@ -390,7 +390,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
     ? await opts.selfModMonitor.getBaselineHead(opts.frontendRoot).catch(() => null)
     : null;
 
-  console.log(`[stella:trace] orchestrator start | runId=${runId} | agent=${opts.agentType} | model=${opts.resolvedLlm.model} | convId=${opts.conversationId}`);
+  console.log(`[stella:trace] orchestrator start | runId=${runId} | agent=${opts.agentType} | model=${opts.resolvedLlm.model.id} | convId=${opts.conversationId}`);
   console.log(`[stella:trace] user prompt: ${opts.userPrompt.slice(0, 300)}`);
 
   opts.store.recordRunEvent({
@@ -419,6 +419,12 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
     toolExecutor: opts.toolExecutor,
     webSearch: opts.webSearch,
   });
+
+  console.log(`[stella:trace] tools for ${opts.agentType}:`, tools.map(t => ({
+    name: t.name,
+    hasDesc: !!t.description,
+    paramKeys: Object.keys((t.parameters as Record<string, unknown>)?.properties ?? {}),
+  })));
 
   const agent = new Agent({
     initialState: {
