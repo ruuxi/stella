@@ -8,8 +8,15 @@ export {
   setPromptOverride,
   writePromptOverrides,
 } from "./storage"
-export { resolvePrompt, resolvePromptText } from "./resolve"
-export { getPromptOverridesPayload } from "./transport"
+export { getPromptTemplateText, resolvePrompt, resolvePromptText } from "./resolve"
+export {
+  getPersonalizedDashboardPromptConfig,
+  getSearchHtmlPromptConfig,
+  getSkillMetadataPromptConfig,
+  getSkillSelectionPromptConfig,
+  getSynthesisPromptConfig,
+  getVoiceSessionPromptConfig,
+} from "./transport"
 export type {
   PersonalizedDashboardPageAssignment,
   PromptDefinition,
@@ -48,3 +55,4 @@ export {
   getMusicSystemPrompt,
 } from "./music"
 export type { MusicMood, PromptSet } from "./music"
+export type { SearchHtmlPromptConfig } from "./transport"

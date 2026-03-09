@@ -1,18 +1,37 @@
-import { loadPromptOverrides } from "./storage";
-import type { PromptId, PromptOverrideMap } from "./types";
+import { getPromptTemplateText } from "./resolve";
 
-export const getPromptOverridesPayload = (
-  promptIds: PromptId[],
-): { promptOverrides?: PromptOverrideMap } => {
-  const allOverrides = loadPromptOverrides();
-  const promptOverrides: PromptOverrideMap = {};
+export type SearchHtmlPromptConfig = {
+  systemPrompt: string
+  userPromptTemplate: string
+}
 
-  for (const promptId of promptIds) {
-    const value = allOverrides[promptId];
-    if (typeof value === "string" && value.trim().length > 0) {
-      promptOverrides[promptId] = value.trim();
-    }
-  }
+export const getSearchHtmlPromptConfig = (): SearchHtmlPromptConfig => ({
+  systemPrompt: getPromptTemplateText("search_html.system").trim(),
+  userPromptTemplate: getPromptTemplateText("search_html.user").trim(),
+})
 
-  return Object.keys(promptOverrides).length > 0 ? { promptOverrides } : {};
-};
+export const getVoiceSessionPromptConfig = (): { basePrompt: string } => ({
+  basePrompt: getPromptTemplateText("voice_orchestrator.base").trim(),
+})
+
+export const getSynthesisPromptConfig = () => ({
+  coreMemorySystemPrompt: getPromptTemplateText("synthesis.core_memory.system").trim(),
+  coreMemoryUserPromptTemplate: getPromptTemplateText("synthesis.core_memory.user").trim(),
+  welcomeMessagePromptTemplate: getPromptTemplateText("synthesis.welcome_message.user").trim(),
+  welcomeSuggestionsPromptTemplate: getPromptTemplateText("synthesis.welcome_suggestions.user").trim(),
+})
+
+export const getSkillMetadataPromptConfig = () => ({
+  systemPrompt: getPromptTemplateText("skill_metadata.system").trim(),
+  userPromptTemplate: getPromptTemplateText("skill_metadata.user").trim(),
+})
+
+export const getSkillSelectionPromptConfig = () => ({
+  systemPrompt: getPromptTemplateText("skill_selection.system").trim(),
+  userPromptTemplate: getPromptTemplateText("skill_selection.user").trim(),
+})
+
+export const getPersonalizedDashboardPromptConfig = () => ({
+  systemPrompt: getPromptTemplateText("personalized_dashboard.system").trim(),
+  userPromptTemplate: getPromptTemplateText("personalized_dashboard.user").trim(),
+})

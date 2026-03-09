@@ -9,7 +9,7 @@
  */
 
 import { createServiceRequest } from "@/infra/http/service-request";
-import { getPromptOverridesPayload } from "@/prompts";
+import { getSearchHtmlPromptConfig, getVoiceSessionPromptConfig } from "@/prompts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -111,11 +111,11 @@ const toConvexConversationId = (value: unknown): string | null => {
 
 const buildVoiceSessionRequestBody = (
   conversationId?: string,
-): { conversationId?: string; promptOverrides?: Record<string, string> } => {
+): { conversationId?: string; basePrompt: string } => {
   const convexConversationId = toConvexConversationId(conversationId);
   return {
     ...(convexConversationId ? { conversationId: convexConversationId } : {}),
-    ...getPromptOverridesPayload(["voice_orchestrator.base"]),
+    ...getVoiceSessionPromptConfig(),
   };
 };
 
@@ -290,7 +290,6 @@ export class RealtimeVoiceSession {
   // Accumulated transcript fragments
   private assistantTranscriptBuffer = "";
   private lastUserTranscript = "";
-  private pendingNoToolResponseReasons: string[] = [];
 
   // Conversation trace log — sequential record of every event for debugging
   private static readonly MAX_TRACE_ENTRIES = 500;
@@ -1035,25 +1034,6 @@ export class RealtimeVoiceSession {
     }
   }
 
-  private requestNarrationResponse(text: string, reason: string) {
-    const normalized = text.trim();
-    if (!normalized) return;
-    this.pendingNoToolResponseReasons.push(reason);
-    this.trace("NARRATE", `${reason}: ${normalized.slice(0, 300)}`);
-    this.sendEvent({
-      type: "response.create",
-      response: {
-        conversation: "none",
-        input: [],
-        output_modalities: ["audio", "text"],
-        instructions:
-          "Speak exactly the text between BEGIN_SPEECH and END_SPEECH. " +
-          "Do not add or remove information. Do not mention the delimiters.\n\n" +
-          `BEGIN_SPEECH\n${normalized}\nEND_SPEECH`,
-      },
-    });
-  }
-
   private syncExternalAudioDucking(active: boolean) {
     if (this.externalAudioDuckingActive === active) return;
     this.externalAudioDuckingActive = active;
@@ -1171,21 +1151,12 @@ export class RealtimeVoiceSession {
         const outputItems = (output?.output as Array<Record<string, unknown>>) ?? [];
         const toolCalls = outputItems.filter((o) => o.type === "function_call");
         if (toolCalls.length === 0) {
-          const expectedReason = this.pendingNoToolResponseReasons.shift();
-          if (expectedReason) {
-            window.electronAPI?.voice.persistTranscript?.({
-              conversationId: this.conversationId ?? "voice-rtc",
-              role: "assistant",
-              text: `[VOICE FOLLOW-UP — ${expectedReason}]`,
-            });
-          } else {
-            // Model responded without calling a tool — persist for terminal visibility
-            window.electronAPI?.voice.persistTranscript?.({
-              conversationId: this.conversationId ?? "voice-rtc",
-              role: "assistant",
-              text: "[NO TOOL CALL — model responded conversationally]",
-            });
-          }
+          // Model responded without calling a tool — persist for terminal visibility
+          window.electronAPI?.voice.persistTranscript?.({
+            conversationId: this.conversationId ?? "voice-rtc",
+            role: "assistant",
+            text: "[NO TOOL CALL — model responded conversationally]",
+          });
         }
         break;
       }
@@ -1228,14 +1199,37 @@ export class RealtimeVoiceSession {
           text: `[ORCHESTRATOR RESULT] ${spokenResult || "(empty)"}`,
         });
         if (!spokenResult || spokenResult === "Working on it.") return;
-        this.requestNarrationResponse(spokenResult, "spoke orchestrator result");
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `[System: the action completed. Here is the result to share with the user: "${spokenResult}"]`,
+              },
+            ],
+          },
+        });
+        this.sendEvent({ type: "response.create" });
       })
       .catch((err) => {
         console.error("[realtime-voice] Orchestrator delegation error:", err);
-        this.requestNarrationResponse(
-          `I ran into an error while doing that: ${(err as Error).message}`,
-          "spoke orchestrator error",
-        );
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `[System: the action failed with error: "${(err as Error).message}". Let the user know briefly.]`,
+              },
+            ],
+          },
+        });
+        this.sendEvent({ type: "response.create" });
       });
   }
 
@@ -1247,7 +1241,7 @@ export class RealtimeVoiceSession {
     }
 
     api
-      .webSearch({ query, category })
+      .webSearch({ query, category, searchHtmlPrompts: getSearchHtmlPromptConfig() })
       .then((result) => {
         window.electronAPI?.voice.persistTranscript?.({
           conversationId: this.conversationId ?? "voice-rtc",
@@ -1255,29 +1249,49 @@ export class RealtimeVoiceSession {
           text: `[WEB SEARCH] ${query} → ${result.results.length} results`,
         });
 
-        // Build a concise spoken summary from the results
+        let resultText: string;
         if (result.results.length === 0) {
-          this.requestNarrationResponse(
-            `I searched for "${query}" but couldn't find any results.`,
-            "spoke web search empty",
-          );
-          return;
+          resultText = `Web search for "${query}" returned no results.`;
+        } else {
+          const summary = result.results
+            .slice(0, 5)
+            .map((r) => `${r.title}: ${r.snippet}`)
+            .join("\n\n");
+          resultText = `Web search results for "${query}":\n\n${summary}`;
         }
 
-        const summary = result.results
-          .slice(0, 5)
-          .map((r) => `${r.title}: ${r.snippet}`)
-          .join("\n\n");
-        const spokenText =
-          `Here's what I found for "${query}":\n\n${summary}`;
-        this.requestNarrationResponse(spokenText, "spoke web search results");
+        // Inject results into the conversation so the model knows the search finished
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `[System: ${resultText}]\n\nSummarize these results for the user conversationally. Be concise.`,
+              },
+            ],
+          },
+        });
+        this.sendEvent({ type: "response.create" });
       })
       .catch((err) => {
         console.error("[realtime-voice] Web search error:", err);
-        this.requestNarrationResponse(
-          `I ran into an error searching for that: ${(err as Error).message}`,
-          "spoke web search error",
-        );
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `[System: Web search failed: ${(err as Error).message}]. Let the user know briefly.`,
+              },
+            ],
+          },
+        });
+        this.sendEvent({ type: "response.create" });
       });
   }
 

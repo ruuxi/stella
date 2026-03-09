@@ -121,13 +121,18 @@ export type StellaHostRunnerOptions = {
   listLocalChatEvents?: (conversationId: string, maxItems: number) => LocalContextEvent[];
 };
 
+type SearchHtmlPromptConfig = {
+  systemPrompt: string;
+  userPromptTemplate: string;
+};
+
 type ChatPayload = {
   conversationId: string;
   userMessageId: string;
   userPrompt: string;
   agentType?: string;
   storageMode?: "cloud" | "local";
-  promptOverrides?: Record<string, string>;
+  searchHtmlPrompts?: SearchHtmlPromptConfig;
 };
 
 type AgentHealth = {
@@ -254,7 +259,7 @@ export const createStellaHostRunner = ({
   let activeCallbacksRef: AgentCallbacks | null = null;
   let activeOrchestratorRunId: string | null = null;
   let activeOrchestratorConversationId: string | null = null;
-  let activePromptOverrides: Record<string, string> | undefined;
+  let activeSearchHtmlPrompts: SearchHtmlPromptConfig | undefined;
   const activeRunAbortControllers = new Map<string, AbortController>();
 
   const skillsPath = path.join(StellaHome, "skills");
@@ -360,14 +365,23 @@ export const createStellaHostRunner = ({
   };
 
   // WebSearch via backend Convex action (Exa API)
-  const webSearch = async (query: string, options?: { category?: string }): Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }> => {
+  const webSearch = async (
+    query: string,
+    options?: { category?: string; searchHtmlPrompts?: SearchHtmlPromptConfig },
+  ): Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }> => {
     try {
       const client = ensureConvexClient();
       if (!client) throw new Error("Not connected to Convex. Sign in or set STELLA_CONVEX_URL.");
+      const searchHtmlPrompts = options?.searchHtmlPrompts ?? activeSearchHtmlPrompts;
       const result = await client.action(convexApi.agent.local_runtime.webSearch, {
         query,
         ...(options?.category ? { category: options.category } : {}),
-        ...(activePromptOverrides ? { promptOverrides: activePromptOverrides } : {}),
+        ...(searchHtmlPrompts
+          ? {
+              searchHtmlSystemPrompt: searchHtmlPrompts.systemPrompt,
+              searchHtmlUserPromptTemplate: searchHtmlPrompts.userPromptTemplate,
+            }
+          : {}),
       }) as {
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
@@ -630,7 +644,7 @@ export const createStellaHostRunner = ({
     disposeConvexClient();
     activeOrchestratorRunId = null;
     activeOrchestratorConversationId = null;
-    activePromptOverrides = undefined;
+    activeSearchHtmlPrompts = undefined;
     for (const controller of activeRunAbortControllers.values()) {
       controller.abort();
     }
@@ -710,7 +724,7 @@ export const createStellaHostRunner = ({
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
     activeCallbacksRef = callbacks;
-    activePromptOverrides = payload.promptOverrides;
+    activeSearchHtmlPrompts = payload.searchHtmlPrompts;
 
     const abortController = new AbortController();
     activeRunAbortControllers.set(runId, abortController);
@@ -721,7 +735,7 @@ export const createStellaHostRunner = ({
         activeOrchestratorRunId = null;
         activeOrchestratorConversationId = null;
         activeCallbacksRef = null;
-        activePromptOverrides = undefined;
+        activeSearchHtmlPrompts = undefined;
       }
     };
 
@@ -825,7 +839,7 @@ export const createStellaHostRunner = ({
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
-    activePromptOverrides = undefined;
+    activeSearchHtmlPrompts = undefined;
 
     const abortController = new AbortController();
     activeRunAbortControllers.set(runId, abortController);
@@ -835,7 +849,7 @@ export const createStellaHostRunner = ({
       if (activeOrchestratorRunId === runId) {
         activeOrchestratorRunId = null;
         activeOrchestratorConversationId = null;
-        activePromptOverrides = undefined;
+        activeSearchHtmlPrompts = undefined;
       }
     };
 
@@ -965,7 +979,7 @@ export const createStellaHostRunner = ({
     if (activeOrchestratorRunId === runId) {
       activeOrchestratorRunId = null;
       activeOrchestratorConversationId = null;
-      activePromptOverrides = undefined;
+      activeSearchHtmlPrompts = undefined;
     }
   };
 

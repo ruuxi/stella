@@ -275,13 +275,18 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     }
   })
 
-  ipcMain.handle('voice:webSearch', async (_event, payload: { query: string; category?: string }) => {
+  ipcMain.handle('voice:webSearch', async (_event, payload: {
+    query: string
+    category?: string
+    searchHtmlPrompts?: { systemPrompt: string; userPromptTemplate: string }
+  }) => {
     const stellaHostRunner = options.getStellaHostRunner()
     if (!stellaHostRunner) {
       return { text: 'Stella runtime not initialized.', results: [] }
     }
     return stellaHostRunner.webSearch(payload.query, {
       category: payload.category,
+      searchHtmlPrompts: payload.searchHtmlPrompts,
     })
   })
 
