@@ -495,6 +495,14 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
     convertToLlm: (messages) => messages.filter((msg) =>
       msg.role === "user" || msg.role === "assistant" || msg.role === "toolResult"),
     getApiKey: () => opts.resolvedLlm.getApiKey(),
+    onPayload: opts.hookEmitter ? async (payload, model) => {
+      const result = await opts.hookEmitter!.emit("before_provider_request", {
+        agentType: opts.agentType,
+        model: model.id,
+        payload,
+      });
+      return result?.payload;
+    } : undefined,
   });
 
   if (opts.abortSignal?.aborted) {
@@ -976,6 +984,14 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
     convertToLlm: (messages) => messages.filter((msg) =>
       msg.role === "user" || msg.role === "assistant" || msg.role === "toolResult"),
     getApiKey: () => opts.resolvedLlm.getApiKey(),
+    onPayload: opts.hookEmitter ? async (payload, model) => {
+      const result = await opts.hookEmitter!.emit("before_provider_request", {
+        agentType: opts.agentType,
+        model: model.id,
+        payload,
+      });
+      return result?.payload;
+    } : undefined,
   });
 
   const abortHandler = () => agent.abort();
