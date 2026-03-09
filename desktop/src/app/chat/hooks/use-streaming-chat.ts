@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { getEventText } from '@/app/chat/lib/event-transforms'
 import { getPlatform } from '@/platform/electron/platform'
 import { useChatStore } from '@/context/chat-store'
@@ -25,6 +25,7 @@ export function useStreamingChat({
   events,
 }: UseStreamingChatOptions) {
   const activeConversationId = conversationId
+  const followUpReplayFloorRef = useRef<number>(0)
   const {
     isLocalStorage,
     storageMode,
@@ -69,6 +70,10 @@ export function useStreamingChat({
   })
 
   useEffect(() => {
+    followUpReplayFloorRef.current = Date.now()
+  }, [activeConversationId])
+
+  useEffect(() => {
     if (!pendingUserMessageId) return
 
     const hasAssistantReply = events.some((event) => {
@@ -92,7 +97,9 @@ export function useStreamingChat({
   useEffect(() => {
     if (isStreaming || pendingUserMessageId || !activeConversationId) return
 
-    const queued = findQueuedFollowUp<AttachmentRef>(events)
+    const queued = findQueuedFollowUp<AttachmentRef>(events, {
+      minTimestamp: followUpReplayFloorRef.current,
+    })
     if (!queued) return
 
     let cancelled = false

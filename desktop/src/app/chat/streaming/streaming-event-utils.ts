@@ -14,6 +14,10 @@ type FollowUpPayload<TAttachment> = {
   attachments?: TAttachment[];
 };
 
+type FindQueuedFollowUpOptions = {
+  minTimestamp?: number;
+};
+
 export const toEventId = (
   event: AppendedEventResponse | null | undefined,
 ): string | null => {
@@ -25,7 +29,9 @@ export const toEventId = (
 
 export const findQueuedFollowUp = <TAttachment>(
   source: EventRecord[],
+  options?: FindQueuedFollowUpOptions,
 ): { event: EventRecord; attachments: TAttachment[] } | null => {
+  const minTimestamp = options?.minTimestamp;
   const responded = new Set<string>();
   for (const event of source) {
     if (event.type !== "assistant_message") continue;
@@ -39,6 +45,7 @@ export const findQueuedFollowUp = <TAttachment>(
 
   for (const event of source) {
     if (event.type !== "user_message") continue;
+    if (typeof minTimestamp === "number" && event.timestamp < minTimestamp) continue;
     if (!event.payload || typeof event.payload !== "object") continue;
     const payload = event.payload as FollowUpPayload<TAttachment>;
     if (payload.mode !== "follow_up") continue;

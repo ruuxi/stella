@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { EventRecord } from "../../../../../src/app/chat/lib/event-transforms";
 
@@ -111,6 +111,10 @@ describe("useConversationEventFeed", () => {
     } as unknown as typeof window.electronAPI;
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("hydrates local events and refreshes when local chat updates fire", async () => {
     const initialEvents = [
       makeEvent("e-1", 1, "user_message", { text: "hello" }),
@@ -209,6 +213,36 @@ describe("useConversationEventFeed", () => {
     expect(mockScheduleGetConversationEventCount).toHaveBeenCalledWith({
       conversationId: "conv-1",
     });
+  });
+
+  it("retries local event loading after a transient startup failure", async () => {
+    const recoveredEvents = [
+      makeEvent("e-1", 1, "user_message", { text: "hello again" }),
+    ];
+    let shouldFail = true;
+
+    mockListLocalEvents.mockImplementation(async () => {
+      if (shouldFail) {
+        shouldFail = false;
+        throw new Error("local chat not ready");
+      }
+      return recoveredEvents;
+    });
+    mockGetLocalEventCount.mockResolvedValue(recoveredEvents.length);
+
+    const { result } = renderHook(() => useConversationEventFeed("conv-1"));
+
+    await waitFor(() => {
+      expect(mockListLocalEvents).toHaveBeenCalledWith("conv-1", 200);
+      expect(result.current.isInitialLoading).toBe(true);
+      expect(result.current.events).toEqual([]);
+    });
+
+    await waitFor(() => {
+      expect(mockListLocalEvents).toHaveBeenCalledTimes(2);
+      expect(result.current.events).toEqual(recoveredEvents);
+      expect(result.current.isInitialLoading).toBe(false);
+    }, { timeout: 2_000 });
   });
 
   it("resets the local window when the conversation changes", async () => {

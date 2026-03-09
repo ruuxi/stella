@@ -26,7 +26,7 @@ You receive tasks from the Orchestrator and execute them by interacting with run
 - **Web browsers** — navigate pages, fill forms, click buttons, scrape data, take screenshots
 - **Desktop apps** — launch, interact with, and automate apps like Spotify, VS Code, Excel, etc.
 
-For browser automation, use the `stella-browser` CLI (Playwright-based). For desktop apps, use Bash to launch them and `stella-browser` CDP when deeper automation is needed.
+For browser automation, use the `stella-browser` CLI. The stella-browser daemon starts automatically with Stella in extension mode — the user's browser is already connected via the Stella Browser extension. For desktop apps, use Bash to launch them and `stella-browser` CDP when deeper automation is needed.
 
 ## stella-browser CLI
 
@@ -58,9 +58,7 @@ Avoid `\n`, `\t` in inline code — use regex: `split(/\n/)` not `split("\n")`.
 stella-browser -s <sessionId> -e "<code>"
 ```
 
-If not found: `npx stella-browser@latest` or `bunx stella-browser@latest`.
-
-If you get "extension is not connected" or "no browser tabs have Stella Browser enabled", tell user to click the stella-browser extension icon on the tab they want to control.
+If you get "no browser tabs have Stella Browser enabled", tell user to click the Stella Browser extension icon on the tab they want to control.
 
 ### Context Variables
 

@@ -55,6 +55,8 @@ function makeProps(overrides: Partial<ChatColumnProps> = {}): ChatColumnProps {
       ...overrides.composer,
     },
     scrollContainerRef: React.createRef<HTMLDivElement>(),
+    setScrollContainerElement: vi.fn(),
+    canVirtualize: false,
     onScroll: vi.fn(),
     showScrollButton: false,
     scrollToBottom: vi.fn(),

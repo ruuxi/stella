@@ -232,6 +232,8 @@ vi.mock("@/app/chat/hooks/use-streaming-chat", () => ({
 vi.mock("@/app/shell/use-full-shell", () => ({
   useScrollManagement: vi.fn(() => ({
     scrollContainerRef: createRef(),
+    setScrollContainerElement: vi.fn(),
+    hasScrollElement: false,
     isNearBottom: true,
     isNearBottomRef: { current: true },
     showScrollButton: false,

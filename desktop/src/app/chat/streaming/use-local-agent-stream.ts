@@ -14,6 +14,7 @@ import {
 
 type LocalAgentEvent = {
   type: 'tool_request' | 'tool_result' | 'assistant_message'
+  agentType?: string
   userMessageId?: string
   toolCallId?: string
   toolName?: string
@@ -54,7 +55,7 @@ export function useLocalAgentStream({
 
   const streamRunIdRef = useRef(0)
   const localRunIdRef = useRef<string | null>(null)
-  const localSeqRef = useRef(0)
+  const localSeqByRunIdRef = useRef(new Map<string, number>())
   const agentStreamCleanupRef = useRef<(() => void) | null>(null)
 
   const resetStreamingState = useCallback(
@@ -83,7 +84,7 @@ export function useLocalAgentStream({
     if (localRunIdRef.current && window.electronAPI?.agent.cancelChat) {
       window.electronAPI.agent.cancelChat(localRunIdRef.current)
       localRunIdRef.current = null
-      localSeqRef.current = 0
+      localSeqByRunIdRef.current.clear()
     }
 
     if (agentStreamCleanupRef.current) {
@@ -99,14 +100,16 @@ export function useLocalAgentStream({
       options?: { userMessageId?: string },
     ) => {
       if (runIdCounter !== streamRunIdRef.current) return
-      if (localRunIdRef.current && event.runId !== localRunIdRef.current) return
-      if (event.seq <= localSeqRef.current) return
+      const currentSeq = localSeqByRunIdRef.current.get(event.runId) ?? 0
+      if (event.seq <= currentSeq) return
 
-      localSeqRef.current = event.seq
+      localSeqByRunIdRef.current.set(event.runId, event.seq)
+      const isPrimaryRun = !localRunIdRef.current || event.runId === localRunIdRef.current
+      const isOrchestratorEvent = (event.agentType ?? 'orchestrator') === 'orchestrator'
 
       switch (event.type) {
         case 'stream':
-          if (event.chunk) {
+          if (isPrimaryRun && isOrchestratorEvent && event.chunk) {
             appendStreamingDelta(event.chunk)
           }
           break
@@ -116,6 +119,7 @@ export function useLocalAgentStream({
           )
           appendAgentEvent({
             type: 'tool_request',
+            agentType: event.agentType,
             toolCallId: event.toolCallId,
             toolName: event.toolName,
           })
@@ -126,6 +130,7 @@ export function useLocalAgentStream({
           )
           appendAgentEvent({
             type: 'tool_result',
+            agentType: event.agentType,
             toolCallId: event.toolCallId,
             toolName: event.toolName,
             resultPreview: event.resultPreview,
@@ -133,7 +138,7 @@ export function useLocalAgentStream({
           break
         case 'error':
           console.error(`[stella:trace] error | fatal=${event.fatal} | ${event.error}`)
-          if (event.fatal) {
+          if (event.fatal && isPrimaryRun && isOrchestratorEvent) {
             showToast({
               title: 'Something went wrong',
               description: event.error || undefined,
@@ -143,6 +148,9 @@ export function useLocalAgentStream({
           }
           break
         case 'end':
+          if (!isPrimaryRun || !isOrchestratorEvent) {
+            break
+          }
           console.log(
             `[stella:trace] end | finalText=${(event.finalText ?? streamingTextRef.current).slice(0, 200)}`,
           )
@@ -163,7 +171,7 @@ export function useLocalAgentStream({
 
           setIsStreaming(false)
           localRunIdRef.current = null
-          localSeqRef.current = 0
+          localSeqByRunIdRef.current.clear()
 
           if (agentStreamCleanupRef.current) {
             agentStreamCleanupRef.current()
@@ -211,7 +219,7 @@ export function useLocalAgentStream({
         .then(({ runId: agentRunId }) => {
           if (runIdCounter !== streamRunIdRef.current) return
           localRunIdRef.current = agentRunId
-          localSeqRef.current = 0
+          localSeqByRunIdRef.current.clear()
         })
         .catch((error) => {
           if (runIdCounter !== streamRunIdRef.current) return
@@ -320,7 +328,7 @@ export function useLocalAgentStream({
     refs: {
       streamRunIdRef,
       localRunIdRef,
-      localSeqRef,
+      localSeqByRunIdRef,
       agentStreamCleanupRef,
     },
     actions: {
