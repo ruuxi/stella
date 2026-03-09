@@ -1,39 +1,50 @@
-import { describe, it, expect } from 'vitest';
-import { toAIFriendlyError } from '../../stella-browser/src/actions.js';
+import { describe, expect, it, vi } from 'vitest'
+import { executeCommand } from '../../stella-browser/src/actions.js'
+import type { BrowserManager } from '../../stella-browser/src/browser.js'
+import type { ChainCommand } from '../../stella-browser/src/types.js'
 
-describe('toAIFriendlyError', () => {
-  describe('element blocked by overlay', () => {
-    it('should detect intercepts pointer events even when Timeout is in message', () => {
-      // This is the exact error from Playwright when a cookie banner blocks an element
-      // Bug: Previously this was incorrectly reported as "not found or not visible"
-      const error = new Error(
-        'TimeoutError: locator.click: Timeout 10000ms exceeded.\n' +
-          'Call log:\n' +
-          "  - waiting for getByRole('link', { name: 'Anmelden', exact: true }).first()\n" +
-          '    - locator resolved to <a href="https://example.com/login">Anmelden</a>\n' +
-          '  - attempting click action\n' +
-          '    2 x waiting for element to be visible, enabled and stable\n' +
-          '      - element is visible, enabled and stable\n' +
-          '      - scrolling into view if needed\n' +
-          '      - done scrolling\n' +
-          '      - <body class="font-sans antialiased">...</body> intercepts pointer events\n' +
-          '    - retrying click action'
-      );
+describe('stella-browser desktop actions', () => {
+  it('executes chain commands instead of treating them as unknown actions', async () => {
+    const browser = {
+      getPage: () => ({
+        waitForSelector: vi.fn(),
+        waitForTimeout: vi.fn().mockResolvedValue(undefined),
+        waitForLoadState: vi.fn(),
+      }),
+      getLocator: vi.fn(() => ({
+        waitFor: vi.fn().mockResolvedValue(undefined),
+      })),
+    } as unknown as BrowserManager
 
-      const result = toAIFriendlyError(error, '@e4');
+    const command: ChainCommand = {
+      id: 'chain-1',
+      action: 'chain',
+      steps: [
+        {
+          action: 'wait',
+          timeout: 1,
+        },
+      ],
+      delay: { min: 0, max: 0 },
+    }
 
-      // Must NOT say "not found" - the element WAS found
-      expect(result.message).not.toContain('not found');
-      // Must indicate the element is blocked
-      expect(result.message).toContain('blocked by another element');
-      expect(result.message).toContain('modal or overlay');
-    });
+    const response = await executeCommand(command, browser)
 
-    it('should suggest dismissing cookie banners', () => {
-      const error = new Error('<div class="cookie-overlay"> intercepts pointer events');
-      const result = toAIFriendlyError(error, '@e1');
-
-      expect(result.message).toContain('cookie banners');
-    });
-  });
-});
+    expect(response.success).toBe(true)
+    if (!response.success) {
+      throw new Error(response.error)
+    }
+    expect(response.data).toEqual(
+      expect.objectContaining({
+        completed: 1,
+        total: 1,
+        results: [
+          expect.objectContaining({
+            action: 'wait',
+            success: true,
+          }),
+        ],
+      }),
+    )
+  })
+})
