@@ -235,6 +235,7 @@ export const createStellaHostRunner = ({
 
   const skillsPath = path.join(StellaHome, "skills");
   const agentsPath = path.join(StellaHome, "agents");
+  const extensionsPath = path.join(StellaHome, "extensions");
   const hookEmitter = new HookEmitter();
 
   let loadedAgents: ParsedAgentLike[] = [];
@@ -642,7 +643,7 @@ export const createStellaHostRunner = ({
         loadedAgents = [];
       });
 
-    void loadExtensions(agentsPath)
+    void loadExtensions(extensionsPath)
       .then((extensions) => {
         // Register extension hooks
         hookEmitter.registerAll(extensions.hooks);

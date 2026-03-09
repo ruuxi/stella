@@ -24,13 +24,13 @@ const ensureDir = async (dirPath: string) => {
 
 export const resolveStellaHome = async (_app: App): Promise<StellaHome> => {
   const homePath = path.resolve(__dirname, "..", "..", "..", ".stella");
+  const workspacePath = path.resolve(__dirname, "..", "..", "..", "workspace");
 
   const agentsPath = path.join(homePath, "agents");
   const skillsPath = path.join(homePath, "skills");
   const statePath = path.join(homePath, "state");
   const logsPath = path.join(homePath, "logs");
   const canvasPath = path.join(homePath, "canvas");
-  const workspacePath = path.join(homePath, "workspace");
   const workspacePanelsPath = path.join(workspacePath, "panels");
   const workspaceAppsPath = path.join(workspacePath, "apps");
 

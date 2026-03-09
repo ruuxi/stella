@@ -1,6 +1,6 @@
 /**
  * Extension loader - auto-discovers tools, hooks, providers, and prompts
- * from the agents directory structure.
+ * from the extensions directory structure.
  */
 
 import { promises as fs } from "fs";
@@ -124,7 +124,7 @@ function extractFrontmatter(content: string): { metadata: Record<string, unknown
 }
 
 /**
- * Load all extensions from an agents directory.
+ * Load all extensions from an extensions directory.
  *
  * Expected structure:
  *   baseDir/
