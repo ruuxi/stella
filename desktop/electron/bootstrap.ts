@@ -28,13 +28,17 @@ import { AudioDuckingService } from "./services/audio-ducking-service.js";
 import { CaptureService } from "./services/capture-service.js";
 import { CredentialService } from "./services/credential-service.js";
 import { ExternalLinkService } from "./services/external-link-service.js";
-import { LocalChatService } from "./services/local-chat-service.js";
 import { MiniBridgeService } from "./services/mini-bridge-service.js";
 import { RadialGestureService } from "./services/radial-gesture-service.js";
 import { SecurityPolicyService } from "./services/security-policy-service.js";
 import { LocalSchedulerService } from "./services/local-scheduler-service.js";
 import { UiStateService } from "./services/ui-state-service.js";
 import { WorkspaceService } from "./services/workspace-service.js";
+import { createDesktopDatabase } from "./storage/database.js";
+import { ChatStore } from "./storage/chat-store.js";
+import { RuntimeStore } from "./storage/runtime-store.js";
+import { TranscriptMirror } from "./storage/transcript-mirror.js";
+import type { SqliteDatabase } from "./storage/shared.js";
 import {
   getOrCreateDeviceIdentity,
   signDeviceHeartbeat,
@@ -66,7 +70,9 @@ export const bootstrapMainProcess = () => {
   let stellaHomePath: string | null = null;
   let stellaHostRunner: StellaHostRunner | null = null;
   let schedulerService: LocalSchedulerService | null = null;
-  let localChatService: LocalChatService | null = null;
+  let desktopDatabase: SqliteDatabase | null = null;
+  let chatStore: ChatStore | null = null;
+  let runtimeStore: RuntimeStore | null = null;
   let windowManager: WindowManager | null = null;
   let overlayController: OverlayWindowController | null = null;
   let hmrMorphOrchestrator: ReturnType<
@@ -307,8 +313,11 @@ export const bootstrapMainProcess = () => {
   const initializeStellaHostRunner = async () => {
     const stellaHome = await resolveStellaHome(app);
     stellaHomePath = stellaHome.homePath;
-    localChatService?.close();
-    localChatService = new LocalChatService(stellaHome.homePath);
+    desktopDatabase?.close();
+    desktopDatabase = createDesktopDatabase(stellaHome.homePath);
+    const transcriptMirror = new TranscriptMirror(path.join(stellaHome.homePath, "state"));
+    chatStore = new ChatStore(desktopDatabase, transcriptMirror);
+    runtimeStore = new RuntimeStore(desktopDatabase, transcriptMirror);
     try {
       await ensureLastResortRecoveryScripts({
         stellaHomePath: stellaHome.homePath,
@@ -340,7 +349,10 @@ export const bootstrapMainProcess = () => {
     stellaHostRunner = createStellaHostRunner({
       deviceId,
       StellaHome: stellaHome.homePath,
+      runtimeStore: runtimeStore!,
       frontendRoot,
+      listLocalChatEvents: (conversationId, maxItems) =>
+        chatStore?.listEvents(conversationId, maxItems) ?? [],
       getHmrMorphOrchestrator: () => hmrMorphOrchestrator,
       requestCredential: (payload) =>
         credentialService.requestCredential(payload),
@@ -354,8 +366,6 @@ export const bootstrapMainProcess = () => {
           }
         }
       },
-      listLocalChatEvents: (conversationId, maxItems) =>
-        localChatService?.listEvents(conversationId, maxItems) ?? [],
       scheduleApi: {
         listCronJobs: async () => schedulerService!.listCronJobs(),
         addCronJob: async (input) => schedulerService!.addCronJob(input),
@@ -393,8 +403,10 @@ export const bootstrapMainProcess = () => {
       stellaHostRunner.stop();
       stellaHostRunner = null;
     }
-    localChatService?.close();
-    localChatService = null;
+    chatStore = null;
+    runtimeStore = null;
+    desktopDatabase?.close();
+    desktopDatabase = null;
     if (schedulerService) {
       schedulerService.stop();
     }
@@ -570,7 +582,7 @@ export const bootstrapMainProcess = () => {
     });
 
     registerLocalChatHandlers({
-      getLocalChatService: () => localChatService,
+      getChatStore: () => chatStore,
       assertPrivilegedSender: (event, channel) =>
         externalLinkService.assertPrivilegedSender(event, channel),
     });
@@ -657,6 +669,10 @@ export const bootstrapMainProcess = () => {
       stellaHostRunner.stop();
       stellaHostRunner = null;
     }
+    chatStore = null;
+    runtimeStore = null;
+    desktopDatabase?.close();
+    desktopDatabase = null;
     if (schedulerService) {
       schedulerService.stop();
     }

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LocalTaskManagerAgentContext } from "../../../electron/core/runtime/tasks/local-task-manager.js";
-import type { JsonlRuntimeStore } from "../../../electron/core/runtime/jsonl_store.js";
 import type { ResolvedLlmRoute } from "../../../electron/core/runtime/model-routing.js";
+import type { RuntimeStore } from "../../../electron/storage/runtime-store.js";
 
 const {
   runCodexAppServerTurnMock,
@@ -98,7 +98,7 @@ const buildOpts = (overrides?: Partial<Parameters<typeof runSubagentTask>[0]>) =
     route: "direct-provider",
     getApiKey: () => "test-key",
   } as ResolvedLlmRoute,
-  store: createStoreStub() as unknown as JsonlRuntimeStore,
+  store: createStoreStub() as unknown as RuntimeStore,
   ...overrides,
 });
 
@@ -123,7 +123,7 @@ describe("runSubagentTask engine selection", () => {
         generalAgentEngine: "codex_local",
         codexLocalMaxConcurrency: 2,
       }),
-      store: store as unknown as JsonlRuntimeStore,
+      store: store as unknown as RuntimeStore,
     }));
 
     expect(result.error).toBeUndefined();
@@ -151,7 +151,7 @@ describe("runSubagentTask engine selection", () => {
       agentContext: buildAgentContext({
         generalAgentEngine: "claude_code_local",
       }),
-      store: store as unknown as JsonlRuntimeStore,
+      store: store as unknown as RuntimeStore,
     }));
 
     expect(result.error).toBeUndefined();
@@ -179,7 +179,7 @@ describe("runSubagentTask engine selection", () => {
       agentContext: buildAgentContext({
         model: "claude-code/sonnet",
       }),
-      store: store as unknown as JsonlRuntimeStore,
+      store: store as unknown as RuntimeStore,
     }));
 
     expect(result.error).toBeUndefined();

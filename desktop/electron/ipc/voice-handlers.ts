@@ -134,7 +134,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       if (!stellaHostRunner) return;
       try {
         stellaHostRunner.appendThreadMessage({
-          conversationId: payload.conversationId,
+          threadKey: payload.conversationId,
           role: payload.role,
           content: payload.text,
         });
