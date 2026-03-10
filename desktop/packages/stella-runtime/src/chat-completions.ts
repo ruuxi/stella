@@ -19,6 +19,9 @@ function readAssistantText(message: AssistantMessage): string {
 
 export const CHAT_COMPLETIONS_PATH = "/api/managed-ai/chat/completions";
 
+export const normalizeManagedChatBaseUrl = (value: string): string =>
+  value.trim().replace(/\/chat\/completions\/?$/i, "").replace(/\/+$/, "");
+
 export type ChatMessage = {
   role: "system" | "user" | "assistant" | "developer";
   content: string | Array<{ type?: string; text?: string }>;
@@ -135,7 +138,7 @@ function buildModel(
     name: "Stella Managed",
     api: "openai-completions",
     provider: "stella-managed",
-    baseUrl: endpoint,
+    baseUrl: normalizeManagedChatBaseUrl(endpoint),
     reasoning: true,
     input: ["text", "image"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
