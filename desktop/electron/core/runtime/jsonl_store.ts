@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { createRequire } from "module";
+import BetterSqliteDatabase from "better-sqlite3";
 import {
   MAX_ACTIVE_RUNTIME_THREADS,
   RUNTIME_THREAD_REMINDER_INTERVAL_TOKENS,
@@ -11,7 +11,6 @@ import {
 } from "./runtime-threads.js";
 import { buildRuntimeThreadKey } from "./thread-runtime.js";
 
-const require = createRequire(import.meta.url);
 
 export type JsonlThreadMessage = {
   timestamp: number;
@@ -210,8 +209,7 @@ const isRuntimeConversationStateMap = (
 };
 
 const openRuntimeDatabase = (dbPath: string): SqliteDatabase => {
-  const BetterSqliteDatabase = require("better-sqlite3") as new (filePath: string) => SqliteDatabase;
-  return new BetterSqliteDatabase(dbPath);
+  return new BetterSqliteDatabase(dbPath) as unknown as SqliteDatabase;
 };
 
 const scoreMemoryMatches = (
