@@ -55,13 +55,24 @@ interface VoiceSessionManagerDeps {
 
 export class VoiceSessionManager {
   private deps: VoiceSessionManagerDeps;
-  private sessionRef: { current: RealtimeVoiceSession | null } = { current: null };
+  private sessionRef: { current: RealtimeVoiceSession | null } = {
+    current: null,
+  };
   private unsubscribeRef: { current: (() => void) | null } = { current: null };
-  private retryTimerRef: { current: ReturnType<typeof setTimeout> | null } = { current: null };
-  private rotateTimerRef: { current: ReturnType<typeof setTimeout> | null } = { current: null };
+  private retryTimerRef: { current: ReturnType<typeof setTimeout> | null } = {
+    current: null,
+  };
+  private rotateTimerRef: { current: ReturnType<typeof setTimeout> | null } = {
+    current: null,
+  };
   private retryAttemptRef: { current: number } = { current: 0 };
-  private connectedConversationIdRef: { current: string | null } = { current: null };
+  private connectedConversationIdRef: { current: string | null } = {
+    current: null,
+  };
+  private assistantSpeaking = false;
+  private userSpeaking = false;
   private aborted = false;
+  private startInFlight = false;
 
   constructor(deps: VoiceSessionManagerDeps) {
     this.deps = deps;
@@ -76,8 +87,11 @@ export class VoiceSessionManager {
   /** Tear down everything and mark aborted. */
   stop(): void {
     this.aborted = true;
+    this.startInFlight = false;
     this.deps.analyserRef.current = null;
     this.deps.outputAnalyserRef.current = null;
+    this.assistantSpeaking = false;
+    this.userSpeaking = false;
     this.deps.onSpeakingChange(false);
     this.deps.onUserSpeakingChange(false);
     this.deps.onStateChange("idle");
@@ -92,10 +106,10 @@ export class VoiceSessionManager {
     session.setInputActive(inputActive);
 
     if (
-      session.state === "connected"
-      && this.connectedConversationIdRef.current
-      && this.connectedConversationIdRef.current !== conversationId
-      && !inputActive
+      session.state === "connected" &&
+      this.connectedConversationIdRef.current &&
+      this.connectedConversationIdRef.current !== conversationId &&
+      !inputActive
     ) {
       this.scheduleRotate(0);
     }
@@ -129,7 +143,10 @@ export class VoiceSessionManager {
     this.sessionRef.current = null;
     if (current) {
       await current.disconnect().catch((err) => {
-        console.debug('[VoiceSessionManager] Disconnect failed during teardown:', (err as Error).message);
+        console.debug(
+          "[VoiceSessionManager] Disconnect failed during teardown:",
+          (err as Error).message,
+        );
       });
     }
   }
@@ -142,7 +159,11 @@ export class VoiceSessionManager {
         this.scheduleRotate(SESSION_ROTATE_IDLE_WAIT_MS);
         return;
       }
-      void this.startSession(false);
+      if (this.isConversationBusy()) {
+        this.scheduleRotate(SESSION_ROTATE_IDLE_WAIT_MS);
+        return;
+      }
+      void this.startSession();
     }, delayMs);
   }
 
@@ -155,8 +176,20 @@ export class VoiceSessionManager {
     this.retryAttemptRef.current += 1;
     this.retryTimerRef.current = setTimeout(() => {
       if (this.aborted) return;
-      void this.startSession(false);
+      if (this.isConversationBusy()) {
+        this.scheduleRotate(SESSION_ROTATE_IDLE_WAIT_MS);
+        return;
+      }
+      void this.startSession();
     }, delayMs);
+  }
+
+  private isConversationBusy(): boolean {
+    return (
+      this.deps.inputActiveRef.current ||
+      this.assistantSpeaking ||
+      this.userSpeaking
+    );
   }
 
   private persistTranscript(role: "user" | "assistant", text: string): void {
@@ -171,7 +204,10 @@ export class VoiceSessionManager {
         text,
       });
     } catch (err) {
-      console.debug('[VoiceSessionManager] Voice persistence failed:', (err as Error).message);
+      console.debug(
+        "[VoiceSessionManager] Voice persistence failed:",
+        (err as Error).message,
+      );
     }
 
     // 2. Persist to localStorage (UI display)
@@ -186,103 +222,169 @@ export class VoiceSessionManager {
         : {}),
     };
     Promise.resolve(this.deps.appendEventRef.current(args)).catch((err) => {
-      console.debug('[VoiceSessionManager] Event persistence failed:', (err as Error).message);
+      console.debug(
+        "[VoiceSessionManager] Event persistence failed:",
+        (err as Error).message,
+      );
     });
   }
 
-  private attachSession(session: RealtimeVoiceSession, targetConversationId: string): void {
+  private attachLiveSession(
+    session: RealtimeVoiceSession,
+    targetConversationId: string,
+  ): void {
     this.sessionRef.current = session;
-    session.setConversationId(this.deps.conversationIdRef.current);
+    session.setConversationId(targetConversationId);
     session.setInputActive(this.deps.inputActiveRef.current);
+    this.deps.analyserRef.current = session.getAnalyser();
+    this.deps.outputAnalyserRef.current = session.getOutputAnalyser();
+    this.connectedConversationIdRef.current = targetConversationId;
+    this.retryAttemptRef.current = 0;
+    this.assistantSpeaking = false;
+    this.userSpeaking = false;
+    this.deps.onSpeakingChange(false);
+    this.deps.onUserSpeakingChange(false);
+    this.deps.onStateChange("connected");
+    this.scheduleRotate();
+    if (
+      !this.deps.inputActiveRef.current &&
+      this.deps.conversationIdRef.current !== targetConversationId
+    ) {
+      this.scheduleRotate(0);
+    }
 
     this.unsubscribeRef.current = session.on((event: VoiceSessionEvent) => {
       if (this.aborted) return;
+      if (this.sessionRef.current !== session) return;
 
-      // The remote output analyser is created after the session is already connected,
-      // so refresh analyser refs on every event rather than only on state changes.
       this.deps.analyserRef.current = session.getAnalyser();
       this.deps.outputAnalyserRef.current = session.getOutputAnalyser();
 
       if (event.type === "state-change") {
-        this.deps.onStateChange(event.state);
-        if (event.state === "connected") {
-          this.connectedConversationIdRef.current = targetConversationId;
-          this.retryAttemptRef.current = 0;
-          this.scheduleRotate();
-          if (
-            !this.deps.inputActiveRef.current
-            && this.deps.conversationIdRef.current !== targetConversationId
-          ) {
-            this.scheduleRotate(0);
-          }
-        } else if (event.state === "error") {
+        if (event.state === "error") {
           this.clearRotateTimer();
           this.connectedConversationIdRef.current = null;
+          this.assistantSpeaking = false;
+          this.userSpeaking = false;
+          this.deps.onSpeakingChange(false);
+          this.deps.onUserSpeakingChange(false);
+          this.deps.onStateChange("error");
           this.scheduleRetry();
+        } else {
+          this.deps.onStateChange(event.state);
         }
         return;
       }
 
       if (event.type === "speaking-start") {
+        this.assistantSpeaking = true;
         this.deps.onSpeakingChange(true);
         return;
       }
       if (event.type === "speaking-end") {
+        this.assistantSpeaking = false;
         this.deps.onSpeakingChange(false);
         return;
       }
       if (event.type === "user-speaking-start") {
+        this.userSpeaking = true;
         this.deps.onUserSpeakingChange(true);
         return;
       }
       if (event.type === "user-speaking-end") {
+        this.userSpeaking = false;
         this.deps.onUserSpeakingChange(false);
         return;
       }
 
-      // Persist finalized voice transcripts as conversation events
       if (event.type === "user-transcript" && event.isFinal && event.text) {
         this.persistTranscript("user", event.text);
-      } else if (event.type === "assistant-transcript" && event.isFinal && event.text) {
+      } else if (
+        event.type === "assistant-transcript" &&
+        event.isFinal &&
+        event.text
+      ) {
         this.persistTranscript("assistant", event.text);
       }
     });
   }
 
   private async startSession(): Promise<void> {
+    if (this.startInFlight || this.aborted) {
+      return;
+    }
+    this.startInFlight = true;
     this.clearRetryTimer();
     this.clearRotateTimer();
 
     const targetConversationId = this.deps.conversationIdRef.current;
-    const session = new RealtimeVoiceSession();
+    let previousSession = this.sessionRef.current;
+    let previousUnsubscribe = this.unsubscribeRef.current;
 
-    if (this.unsubscribeRef.current) {
-      this.unsubscribeRef.current();
+    if (previousSession && previousSession.state !== "connected") {
+      if (previousUnsubscribe) {
+        previousUnsubscribe();
+      }
       this.unsubscribeRef.current = null;
-    }
-    const previous = this.sessionRef.current;
-    this.sessionRef.current = null;
-    if (previous && previous !== session) {
-      await previous.disconnect().catch((err) => {
-        console.debug('[VoiceSessionManager] Previous session disconnect failed:', (err as Error).message);
+      this.sessionRef.current = null;
+      this.connectedConversationIdRef.current = null;
+      previousUnsubscribe = null;
+      await previousSession.disconnect().catch((err) => {
+        console.debug(
+          "[VoiceSessionManager] Stale session disconnect failed:",
+          (err as Error).message,
+        );
       });
-    }
-    if (this.aborted) {
-      await session.disconnect().catch((err) => {
-        console.debug('[VoiceSessionManager] Aborted session disconnect failed:', (err as Error).message);
-      });
-      return;
+      previousSession = null;
     }
 
-    this.attachSession(session, targetConversationId);
+    if (!previousSession) {
+      this.assistantSpeaking = false;
+      this.userSpeaking = false;
+      this.deps.onSpeakingChange(false);
+      this.deps.onUserSpeakingChange(false);
+      this.deps.onStateChange("connecting");
+    }
 
+    const session = new RealtimeVoiceSession();
     try {
       await session.connect(targetConversationId);
+      if (this.aborted) {
+        await session.disconnect().catch((err) => {
+          console.debug(
+            "[VoiceSessionManager] Aborted session disconnect failed:",
+            (err as Error).message,
+          );
+        });
+        return;
+      }
+
+      this.attachLiveSession(session, targetConversationId);
+
+      if (previousSession && previousSession !== session) {
+        previousSession.setInputActive(false);
+        if (previousUnsubscribe) {
+          previousUnsubscribe();
+        }
+        await previousSession.disconnect().catch((err) => {
+          console.debug(
+            "[VoiceSessionManager] Previous session disconnect failed:",
+            (err as Error).message,
+          );
+        });
+      }
     } catch (err) {
       if (this.aborted) return;
-      console.error("[VoiceSessionManager] Failed to connect:", (err as Error).message);
-      this.deps.onStateChange("error");
+      console.error(
+        "[VoiceSessionManager] Failed to connect:",
+        (err as Error).message,
+      );
+      if (!previousSession) {
+        this.deps.onStateChange("error");
+      }
       this.scheduleRetry();
+    } finally {
+      this.startInFlight = false;
     }
   }
 }
@@ -292,7 +394,9 @@ export class VoiceSessionManager {
 // ---------------------------------------------------------------------------
 
 export function useRealtimeVoice(): UseRealtimeVoiceResult {
-  const [runtimeState, setRuntimeState] = useState<VoiceRuntimeSnapshot>(DEFAULT_RUNTIME_STATE);
+  const [runtimeState, setRuntimeState] = useState<VoiceRuntimeSnapshot>(
+    DEFAULT_RUNTIME_STATE,
+  );
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -327,5 +431,3 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
     outputLevel: runtimeState.outputLevel,
   };
 }
-
-
