@@ -20,5 +20,5 @@ swiftc -O -o "$OUTPUT_DIR/selected_text" src/selected_text.swift -framework Appl
 echo "Build successful: $OUTPUT_DIR/selected_text"
 
 echo "Building audio_ducking (macOS)..."
-swiftc -O -o "$OUTPUT_DIR/audio_ducking" src/audio_ducking.swift
+swiftc -O -o "$OUTPUT_DIR/audio_ducking" src/audio_ducking.swift -framework CoreAudio
 echo "Build successful: $OUTPUT_DIR/audio_ducking"

@@ -23,7 +23,7 @@ type AudioDuckingRequest = {
   recoveryFloor: number
 }
 
-const WINDOWS_DUCK_FACTOR = 0.25
+const DEFAULT_DUCK_FACTOR = 0.25
 
 const uniquePids = (values: Array<number | null | undefined>): number[] =>
   [...new Set(values.filter((value): value is number => Number.isInteger(value) && (value ?? 0) > 0))]
@@ -195,10 +195,10 @@ export class AudioDuckingService {
         excludeProcessPaths: this.getExcludedProcessPaths(),
         excludeProcessNames: this.getExcludedProcessNames(),
         recoverExcludedSessions: shouldRecoverSelfSessions,
-        recoveryThreshold: WINDOWS_DUCK_FACTOR + 0.01,
+        recoveryThreshold: DEFAULT_DUCK_FACTOR + 0.01,
         recoveryFloor: 1.0,
         snapshot: [],
-        duckFactor: WINDOWS_DUCK_FACTOR,
+        duckFactor: DEFAULT_DUCK_FACTOR,
       })
     } catch (error) {
       this.active = false
@@ -231,7 +231,7 @@ export class AudioDuckingService {
         recoveryThreshold: 0,
         recoveryFloor: 1.0,
         snapshot,
-        duckFactor: WINDOWS_DUCK_FACTOR,
+        duckFactor: DEFAULT_DUCK_FACTOR,
       })
     } catch (error) {
       console.debug('[audio-ducking] Failed to restore external audio:', (error as Error).message)
