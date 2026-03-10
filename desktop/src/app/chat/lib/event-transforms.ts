@@ -131,6 +131,10 @@ export type TaskItem = {
   status: "running" | "completed" | "error";
   parentTaskId?: string;
   statusText?: string;
+  startedAtMs: number;
+  completedAtMs?: number;
+  lastUpdatedAtMs: number;
+  outputPreview?: string;
 };
 
 // Generic type guard factory — reduces per-event-type boilerplate.
@@ -376,20 +380,37 @@ export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
   }
 
   // Build map of taskId -> latest progress status text
-  const latestProgressByTaskId = new Map<string, string>();
+  const latestProgressByTaskId = new Map<
+    string,
+    EventRecord & { payload: TaskProgressPayload }
+  >();
   for (const event of progressEvents) {
     // Later events overwrite earlier ones — last one wins
-    latestProgressByTaskId.set(event.payload.taskId, event.payload.statusText);
+    latestProgressByTaskId.set(event.payload.taskId, event);
   }
 
   return startedEvents.map((event) => {
     const taskId = event.payload.taskId;
+    const latestProgress = latestProgressByTaskId.get(taskId);
     let status: TaskItem["status"] = "running";
+    let completedAtMs: number | undefined;
+    let lastUpdatedAtMs = event.timestamp;
+    let outputPreview: string | undefined;
 
     if (completedByTaskId.has(taskId)) {
       status = "completed";
+      const completedEvent = completedByTaskId.get(taskId)!;
+      completedAtMs = completedEvent.timestamp;
+      lastUpdatedAtMs = completedEvent.timestamp;
+      outputPreview = completedEvent.payload.result;
     } else if (failedByTaskId.has(taskId)) {
       status = "error";
+      const failedEvent = failedByTaskId.get(taskId)!;
+      completedAtMs = failedEvent.timestamp;
+      lastUpdatedAtMs = failedEvent.timestamp;
+      outputPreview = failedEvent.payload.error;
+    } else if (latestProgress) {
+      lastUpdatedAtMs = latestProgress.timestamp;
     }
 
     return {
@@ -398,7 +419,11 @@ export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
       agentType: event.payload.agentType,
       status,
       parentTaskId: event.payload.parentTaskId,
-      statusText: latestProgressByTaskId.get(taskId),
+      statusText: latestProgress?.payload.statusText,
+      startedAtMs: event.timestamp,
+      completedAtMs,
+      lastUpdatedAtMs,
+      outputPreview,
     };
   });
 }

@@ -1,5 +1,5 @@
 import { DashboardCard } from "./DashboardCard"
-import type { ScheduleItem } from "./schedule-item"
+import type { ActivityItem } from "./schedule-item"
 
 function formatRelativeTime(ms: number): string {
   const now = Date.now()
@@ -21,11 +21,18 @@ function statusDotValue(status?: string): string {
   if (!status) return "none"
   if (status === "ok" || status === "sent" || status === "completed") return "ok"
   if (status === "error" || status === "failed") return "error"
+  if (status === "running") return "running"
   return "none"
 }
 
+function kindLabel(kind: ActivityItem["kind"]): string {
+  if (kind === "scheduled") return "Scheduled"
+  if (kind === "monitoring") return "Monitoring"
+  return "Task"
+}
+
 type ActivityFeedProps = {
-  items: ScheduleItem[]
+  items: ActivityItem[]
 }
 
 export function ActivityFeed({ items }: ActivityFeedProps) {
@@ -37,7 +44,7 @@ export function ActivityFeed({ items }: ActivityFeedProps) {
             <div className="activity-feed-header">
               <span className="activity-feed-name">{item.name}</span>
               <span className="activity-feed-kind" data-kind={item.kind}>
-                {item.kind === "scheduled" ? "Scheduled" : "Monitoring"}
+                {kindLabel(item.kind)}
               </span>
             </div>
             <div className="activity-feed-status">
