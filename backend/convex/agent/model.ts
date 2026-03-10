@@ -123,6 +123,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     providerOptions: {
       openai: {
         reasoningEffort: "low",
+        forceReasoning: true,
       },
     },
   },
@@ -145,6 +146,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
       },
       openai: {
         reasoningEffort: "high",
+        forceReasoning: true,
       },
     },
   },
@@ -203,6 +205,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     providerOptions: {
       openai: {
         reasoningEffort: "high",
+        forceReasoning: true,
       },
     },
   },
@@ -214,6 +217,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     providerOptions: {
       openai: {
         reasoningEffort: "high",
+        forceReasoning: true,
       },
     },
   },
@@ -225,6 +229,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     providerOptions: {
       openai: {
         reasoningEffort: "high",
+        forceReasoning: true,
       },
     },
   },
