@@ -177,8 +177,6 @@ export type ElectronVoiceApi = {
   onRuntimeState: (callback: (state: VoiceRuntimeSnapshot) => void) => () => void
   pushRuntimeState: (state: VoiceRuntimeSnapshot) => void
   setRtcShortcut: (shortcut: string) => void
-  onRtcPreWarm: (callback: (conversationId: string) => void) => () => void
-  onRtcPrefetchToken: (callback: () => void) => () => void
 }
 
 export type ElectronAgentApi = {

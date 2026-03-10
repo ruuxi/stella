@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   RealtimeVoiceSession,
-  claimPreWarmedSession,
   type VoiceSessionEvent,
   type VoiceSessionState,
 } from "@/app/voice/services/realtime-voice";
@@ -26,6 +25,7 @@ type VoiceEventAppendArgs = {
 };
 
 const SESSION_ROTATE_MS = 55 * 60 * 1000;
+const SESSION_ROTATE_IDLE_WAIT_MS = 30_000;
 const RETRY_BASE_MS = 5_000;
 const RETRY_MAX_MS = 60_000;
 const DEFAULT_RUNTIME_STATE: VoiceRuntimeSnapshot = {
@@ -60,6 +60,7 @@ export class VoiceSessionManager {
   private retryTimerRef: { current: ReturnType<typeof setTimeout> | null } = { current: null };
   private rotateTimerRef: { current: ReturnType<typeof setTimeout> | null } = { current: null };
   private retryAttemptRef: { current: number } = { current: 0 };
+  private connectedConversationIdRef: { current: string | null } = { current: null };
   private aborted = false;
 
   constructor(deps: VoiceSessionManagerDeps) {
@@ -69,7 +70,7 @@ export class VoiceSessionManager {
   /** Boot the session lifecycle. */
   start(): void {
     this.aborted = false;
-    void this.startSession(true);
+    void this.startSession();
   }
 
   /** Tear down everything and mark aborted. */
@@ -89,6 +90,15 @@ export class VoiceSessionManager {
     if (!session) return;
     session.setConversationId(conversationId);
     session.setInputActive(inputActive);
+
+    if (
+      session.state === "connected"
+      && this.connectedConversationIdRef.current
+      && this.connectedConversationIdRef.current !== conversationId
+      && !inputActive
+    ) {
+      this.scheduleRotate(0);
+    }
   }
 
   // ---- private helpers ----------------------------------------------------
@@ -110,6 +120,7 @@ export class VoiceSessionManager {
   private async teardownSession(): Promise<void> {
     this.clearRetryTimer();
     this.clearRotateTimer();
+    this.connectedConversationIdRef.current = null;
     if (this.unsubscribeRef.current) {
       this.unsubscribeRef.current();
       this.unsubscribeRef.current = null;
@@ -123,12 +134,16 @@ export class VoiceSessionManager {
     }
   }
 
-  private scheduleRotate(): void {
+  private scheduleRotate(delayMs = SESSION_ROTATE_MS): void {
     this.clearRotateTimer();
     this.rotateTimerRef.current = setTimeout(() => {
       if (this.aborted) return;
+      if (this.deps.inputActiveRef.current) {
+        this.scheduleRotate(SESSION_ROTATE_IDLE_WAIT_MS);
+        return;
+      }
       void this.startSession(false);
-    }, SESSION_ROTATE_MS);
+    }, delayMs);
   }
 
   private scheduleRetry(): void {
@@ -175,7 +190,7 @@ export class VoiceSessionManager {
     });
   }
 
-  private attachSession(session: RealtimeVoiceSession): void {
+  private attachSession(session: RealtimeVoiceSession, targetConversationId: string): void {
     this.sessionRef.current = session;
     session.setConversationId(this.deps.conversationIdRef.current);
     session.setInputActive(this.deps.inputActiveRef.current);
@@ -191,10 +206,18 @@ export class VoiceSessionManager {
       if (event.type === "state-change") {
         this.deps.onStateChange(event.state);
         if (event.state === "connected") {
+          this.connectedConversationIdRef.current = targetConversationId;
           this.retryAttemptRef.current = 0;
           this.scheduleRotate();
+          if (
+            !this.deps.inputActiveRef.current
+            && this.deps.conversationIdRef.current !== targetConversationId
+          ) {
+            this.scheduleRotate(0);
+          }
         } else if (event.state === "error") {
           this.clearRotateTimer();
+          this.connectedConversationIdRef.current = null;
           this.scheduleRetry();
         }
         return;
@@ -226,15 +249,12 @@ export class VoiceSessionManager {
     });
   }
 
-  private async startSession(allowPreWarmed: boolean): Promise<void> {
+  private async startSession(): Promise<void> {
     this.clearRetryTimer();
     this.clearRotateTimer();
 
     const targetConversationId = this.deps.conversationIdRef.current;
-    const preWarmed = allowPreWarmed
-      ? claimPreWarmedSession(targetConversationId)
-      : null;
-    const session = preWarmed ?? new RealtimeVoiceSession();
+    const session = new RealtimeVoiceSession();
 
     if (this.unsubscribeRef.current) {
       this.unsubscribeRef.current();
@@ -254,22 +274,7 @@ export class VoiceSessionManager {
       return;
     }
 
-    this.attachSession(session);
-
-    if (preWarmed) {
-      queueMicrotask(() => {
-        if (this.aborted) return;
-        this.deps.onStateChange(session.state);
-        if (session.state === "connected") {
-          this.deps.analyserRef.current = session.getAnalyser();
-          this.retryAttemptRef.current = 0;
-          this.scheduleRotate();
-        } else if (session.state === "error") {
-          this.scheduleRetry();
-        }
-      });
-      return;
-    }
+    this.attachSession(session, targetConversationId);
 
     try {
       await session.connect(targetConversationId);

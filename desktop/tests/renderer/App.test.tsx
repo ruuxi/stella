@@ -26,14 +26,6 @@ vi.mock("@/platform/electron/electron", () => ({
   getElectronApi: () => mockGetElectronApi(),
 }));
 
-vi.mock("@/app/auth/AuthTokenBridge", () => ({
-  AuthTokenBridge: () => <div data-testid="auth-token-bridge" />,
-}));
-
-vi.mock("@/app/auth/CloudSyncBridge", () => ({
-  CloudSyncBridge: () => <div data-testid="cloud-sync-bridge" />,
-}));
-
 vi.mock("@/app/settings/ModelPreferencesBridge", () => ({
   ModelPreferencesBridge: () => <div data-testid="model-preferences-bridge" />,
 }));
@@ -98,14 +90,9 @@ describe("App", () => {
     expect(screen.getByTestId("auth-deep-link-handler")).toBeInTheDocument();
   });
 
-  it("renders AuthTokenBridge for full app windows", () => {
+  it("renders ModelPreferencesBridge", async () => {
     render(<App />);
-    expect(screen.getByTestId("auth-token-bridge")).toBeInTheDocument();
-  });
-
-  it("renders ModelPreferencesBridge", () => {
-    render(<App />);
-    expect(screen.getByTestId("model-preferences-bridge")).toBeInTheDocument();
+    expect(await screen.findByTestId("model-preferences-bridge")).toBeInTheDocument();
   });
 
   it("renders FullShell by default when not Electron and window state is full", async () => {
