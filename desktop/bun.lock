@@ -35,9 +35,6 @@
         "@radix-ui/react-toggle-group": "^1.1.11",
         "@radix-ui/react-tooltip": "^1.2.8",
         "@sinclair/typebox": "0.34.41",
-        "@stella/stella-agent-core": "workspace:*",
-        "@stella/stella-ai": "workspace:*",
-        "@stella/stella-runtime": "workspace:*",
         "@tailwindcss/vite": "^4.1.18",
         "ai": "^6.0.116",
         "ajv": "^8.17.1",
@@ -104,15 +101,6 @@
         "vitest": "^4.0.18",
         "wait-on": "^9.0.4",
       },
-    },
-    "packages/stella-agent-core": {
-      "name": "@stella/stella-agent-core",
-    },
-    "packages/stella-ai": {
-      "name": "@stella/stella-ai",
-    },
-    "packages/stella-runtime": {
-      "name": "@stella/stella-runtime",
     },
   },
   "overrides": {
@@ -820,12 +808,6 @@
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
     "@standard-schema/utils": ["@standard-schema/utils@0.3.0", "", {}, "sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g=="],
-
-    "@stella/stella-agent-core": ["@stella/stella-agent-core@workspace:packages/stella-agent-core"],
-
-    "@stella/stella-ai": ["@stella/stella-ai@workspace:packages/stella-ai"],
-
-    "@stella/stella-runtime": ["@stella/stella-runtime@workspace:packages/stella-runtime"],
 
     "@szmarczak/http-timer": ["@szmarczak/http-timer@4.0.6", "", { "dependencies": { "defer-to-connect": "^2.0.0" } }, "sha512-4BAffykYOgO+5nzBWYwE3W90sBgLJoUPRWWcL8wlyiM8IB8ipJz3UMJ9KXQd1RKQXpKp8Tutn80HZtWsu2u76w=="],
 

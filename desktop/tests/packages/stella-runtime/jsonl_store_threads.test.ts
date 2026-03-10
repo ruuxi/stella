@@ -31,11 +31,11 @@ vi.mock("better-sqlite3", async () => {
   return { default: BetterSqlite3Mock };
 });
 
-import { JsonlRuntimeStore } from "../../../packages/stella-runtime/src/jsonl_store.js";
+import { JsonlRuntimeStore } from "../../../electron/core/runtime/jsonl_store.js";
 import {
   RUNTIME_THREAD_NAME_POOL,
   RUNTIME_THREAD_REMINDER_INTERVAL_TOKENS,
-} from "../../../packages/stella-runtime/src/runtime-threads.js";
+} from "../../../electron/core/runtime/runtime-threads.js";
 
 const tempHomes: string[] = [];
 

@@ -26,9 +26,9 @@ vi.mock("convex/server", () => ({
   anyApi: {},
 }));
 
-vi.mock("../../../packages/stella-runtime/src/tools/index.js", async () => {
-  const actual = await vi.importActual<typeof import("../../../packages/stella-runtime/src/tools/index.js")>(
-    "../../../packages/stella-runtime/src/tools/index.js",
+vi.mock("../../../electron/core/runtime/tools/index.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../electron/core/runtime/tools/index.js")>(
+    "../../../electron/core/runtime/tools/index.js",
   );
   return {
     ...actual,
@@ -42,12 +42,12 @@ vi.mock("../../../packages/stella-runtime/src/tools/index.js", async () => {
   };
 });
 
-vi.mock("../../../packages/stella-runtime/src/agents/index.js", () => ({
+vi.mock("../../../electron/core/runtime/agents/index.js", () => ({
   loadAgentsFromHome: loadAgentsFromHomeMock,
   loadSkillsFromHome: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../../../packages/stella-runtime/src/extensions/index.js", () => ({
+vi.mock("../../../electron/core/runtime/extensions/index.js", () => ({
   loadExtensions: vi.fn().mockResolvedValue({ tools: [], hooks: [], providers: [], prompts: [] }),
   HookEmitter: class HookEmitter {
     registerAll() {}
@@ -57,7 +57,7 @@ vi.mock("../../../packages/stella-runtime/src/extensions/index.js", () => ({
   },
 }));
 
-vi.mock("../../../packages/stella-runtime/src/tasks/index.js", () => ({
+vi.mock("../../../electron/core/runtime/tasks/index.js", () => ({
   LocalTaskManager: class LocalTaskManager {
     constructor(opts: unknown) {
       localTaskManagerCtorMock(opts);
@@ -67,7 +67,7 @@ vi.mock("../../../packages/stella-runtime/src/tasks/index.js", () => ({
   },
 }));
 
-vi.mock("../../../packages/stella-runtime/src/remote-turn-bridge.js", () => ({
+vi.mock("../../../electron/core/runtime/remote-turn-bridge.js", () => ({
   createRemoteTurnBridge: () => ({
     start: vi.fn(),
     stop: vi.fn(),
@@ -75,14 +75,14 @@ vi.mock("../../../packages/stella-runtime/src/remote-turn-bridge.js", () => ({
   }),
 }));
 
-vi.mock("../../../packages/stella-runtime/src/model-routing.js", () => ({
+vi.mock("../../../electron/core/runtime/model-routing.js", () => ({
   canResolveLlmRoute: vi.fn(() => true),
   resolveLlmRoute: vi.fn(() => ({ model: { id: "test-model" } })),
 }));
 
-vi.mock("../../../packages/stella-runtime/src/agent-runtime.js", async () => {
-  const actual = await vi.importActual<typeof import("../../../packages/stella-runtime/src/agent-runtime.js")>(
-    "../../../packages/stella-runtime/src/agent-runtime.js",
+vi.mock("../../../electron/core/runtime/agent-runtime.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../electron/core/runtime/agent-runtime.js")>(
+    "../../../electron/core/runtime/agent-runtime.js",
   );
   return {
     ...actual,
@@ -92,7 +92,7 @@ vi.mock("../../../packages/stella-runtime/src/agent-runtime.js", async () => {
   };
 });
 
-const { createStellaHostRunner } = await import("../../../packages/stella-runtime/src/runner.js");
+const { createStellaHostRunner } = await import("../../../electron/core/runtime/runner.js");
 
 const tempHomes: string[] = [];
 

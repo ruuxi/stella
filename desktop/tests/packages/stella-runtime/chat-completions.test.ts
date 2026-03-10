@@ -10,7 +10,7 @@ vi.mock("@stella/stella-ai", () => ({
   streamSimple: streamSimpleMock,
 }));
 
-const { callManagedChatCompletion } = await import("../../../packages/stella-runtime/src/chat-completions.js");
+const { callManagedChatCompletion } = await import("../../../electron/core/runtime/chat-completions.js");
 
 describe("managed chat transport", () => {
   it("normalizes a full chat completions endpoint to the API base URL before creating the OpenAI client", async () => {
