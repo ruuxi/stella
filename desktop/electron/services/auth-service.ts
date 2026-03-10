@@ -1,7 +1,6 @@
-import { app, session } from 'electron'
+import { app } from 'electron'
 
 const AUTH_CALLBACK_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/
-const TOKEN_REFRESH_INTERVAL_MS = 60 * 1000
 
 type PiRunnerAuthTarget = {
   setAuthToken: (token: string | null) => void
@@ -41,7 +40,7 @@ export class AuthService {
   private pendingConvexUrl: string | null = null
   private pendingConvexSiteUrl: string | null = null
   private hostAuthAuthenticated = false
-  private authRefreshTimer: NodeJS.Timeout | null = null
+  private hostAuthToken: string | null = null
 
   constructor(private readonly options: AuthServiceOptions) {}
 
@@ -71,87 +70,8 @@ export class AuthService {
     }
   }
 
-  private async parseTokenResponse(response: Response): Promise<string | null> {
-    try {
-      const payload = (await response.json()) as unknown
-      if (!payload || typeof payload !== 'object') {
-        return null
-      }
-      const record = payload as { token?: unknown; data?: { token?: unknown } }
-      const nestedToken = record.data?.token
-      if (typeof nestedToken === 'string' && nestedToken.trim()) {
-        return nestedToken
-      }
-      if (typeof record.token === 'string' && record.token.trim()) {
-        return record.token
-      }
-      return null
-    } catch {
-      return null
-    }
-  }
-
-  private async fetchRunnerAuthToken(): Promise<string | null> {
-    const convexSiteUrl = deriveConvexSiteUrl(this.pendingConvexUrl, this.pendingConvexSiteUrl)
-    if (!convexSiteUrl) {
-      return null
-    }
-
-    const tokenUrl = new URL('/api/auth/convex/token', convexSiteUrl).toString()
-    try {
-      const appSession = session.fromPartition(this.options.sessionPartition)
-      const cookies = await appSession.cookies.get({ url: tokenUrl })
-      const cookieHeader = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ')
-      if (!cookieHeader) {
-        return null
-      }
-
-      const response = await fetch(tokenUrl, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          Cookie: cookieHeader,
-        },
-      })
-      if (!response.ok) {
-        if (response.status !== 401 && response.status !== 403) {
-          console.warn(`[auth] Failed to refresh runner token: ${response.status}`)
-        }
-        return null
-      }
-      return await this.parseTokenResponse(response)
-    } catch (error) {
-      console.warn('[auth] Failed to fetch runner token from session', error)
-      return null
-    }
-  }
-
-  private async refreshRunnerAuthToken() {
-    if (!this.hostAuthAuthenticated) {
-      this.options.getRunner()?.setAuthToken(null)
-      return
-    }
-    const token = await this.fetchRunnerAuthToken()
-    if (token) {
-      this.options.getRunner()?.setAuthToken(token)
-    }
-  }
-
-  private startAuthRefreshLoop() {
-    if (this.authRefreshTimer) {
-      return
-    }
-    void this.refreshRunnerAuthToken()
-    this.authRefreshTimer = setInterval(() => {
-      void this.refreshRunnerAuthToken()
-    }, TOKEN_REFRESH_INTERVAL_MS)
-  }
-
   stopAuthRefreshLoop() {
-    if (this.authRefreshTimer) {
-      clearInterval(this.authRefreshTimer)
-      this.authRefreshTimer = null
-    }
+    this.hostAuthToken = null
     this.options.getRunner()?.setAuthToken(null)
   }
 
@@ -222,10 +142,16 @@ export class AuthService {
       return
     }
 
-    if (token) {
-      this.options.getRunner()?.setAuthToken(token)
+    const normalizedToken = typeof token === 'string' ? token.trim() : ''
+    if (!normalizedToken) {
+      if (!this.hostAuthToken) {
+        this.options.getRunner()?.setAuthToken(null)
+      }
+      return
     }
-    this.startAuthRefreshLoop()
+
+    this.hostAuthToken = normalizedToken
+    this.options.getRunner()?.setAuthToken(normalizedToken)
   }
 
   getHostAuthAuthenticated() {
@@ -236,9 +162,8 @@ export class AuthService {
     this.pendingConvexUrl = config.convexUrl
     this.pendingConvexSiteUrl = config.convexSiteUrl ?? null
     this.options.getRunner()?.setConvexUrl(config.convexUrl)
-
-    if (this.hostAuthAuthenticated) {
-      void this.refreshRunnerAuthToken()
+    if (this.hostAuthToken) {
+      this.options.getRunner()?.setAuthToken(this.hostAuthToken)
     }
   }
 
@@ -251,8 +176,7 @@ export class AuthService {
   }
 
   async getAuthToken(): Promise<string | null> {
-    if (!this.hostAuthAuthenticated) return null
-    return this.fetchRunnerAuthToken()
+    return this.hostAuthToken?.trim() || null
   }
 
   clearPendingAuthCallback() {
