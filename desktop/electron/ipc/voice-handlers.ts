@@ -1,8 +1,8 @@
 import { globalShortcut, ipcMain } from "electron";
-import type { StellaHostRunner } from "../../stella-host-runner.js";
-import type { UiState } from "../../types.js";
-import type { WindowManager } from "../../windows/window-manager.js";
-import type { OverlayWindowController } from "../../windows/overlay-window.js";
+import type { StellaHostRunner } from "../stella-host-runner.js";
+import type { UiState } from "../types.js";
+import type { WindowManager } from "../windows/window-manager.js";
+import type { OverlayWindowController } from "../windows/overlay-window.js";
 
 type VoiceHandlersOptions = {
   uiState: UiState;
