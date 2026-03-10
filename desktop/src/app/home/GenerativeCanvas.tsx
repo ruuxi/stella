@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { StellaAnimation } from "@/app/shell/ascii-creature/StellaAnimation"
 import { DashboardCard } from "./DashboardCard"
+import { sanitizeHtmlFragment } from "@/shared/lib/safe-html"
 
 function getGreeting(): string {
   const h = new Date().getHours()
@@ -14,7 +15,7 @@ export function GenerativeCanvas() {
 
   useEffect(() => {
     return window.electronAPI?.display.onUpdate((html) => {
-      setDisplayHtml(html)
+      setDisplayHtml(sanitizeHtmlFragment(html))
     })
   }, [])
 

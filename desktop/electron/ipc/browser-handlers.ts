@@ -32,11 +32,14 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
 
   ipcMain.handle(
     "browserData:collect",
-    async (): Promise<{
+    async (event): Promise<{
       data: BrowserData | null;
       formatted: string | null;
       error?: string;
     }> => {
+      if (!options.assertPrivilegedSender(event, "browserData:collect")) {
+        throw new Error("Blocked untrusted request.");
+      }
       const stellaHomePath = options.getStellaHomePath();
       if (!stellaHomePath) {
         return {
@@ -91,7 +94,10 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     },
   );
 
-  ipcMain.handle("workspace:listPanels", async () => {
+  ipcMain.handle("workspace:listPanels", async (event) => {
+    if (!options.assertPrivilegedSender(event, "workspace:listPanels")) {
+      throw new Error("Blocked untrusted request.");
+    }
     return options.workspaceService.listWorkspacePanels();
   });
 
@@ -119,14 +125,20 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     },
   );
 
-  ipcMain.handle("identity:getMap", async () => {
+  ipcMain.handle("identity:getMap", async (event) => {
+    if (!options.assertPrivilegedSender(event, "identity:getMap")) {
+      throw new Error("Blocked untrusted request.");
+    }
     const stellaHomePath = options.getStellaHomePath();
     if (!stellaHomePath) return { version: 1, mappings: [] };
     const { loadIdentityMap } = await import("../system/identity-map.js");
     return loadIdentityMap(stellaHomePath);
   });
 
-  ipcMain.handle("identity:depseudonymize", async (_event, text: string) => {
+  ipcMain.handle("identity:depseudonymize", async (event, text: string) => {
+    if (!options.assertPrivilegedSender(event, "identity:depseudonymize")) {
+      throw new Error("Blocked untrusted request.");
+    }
     const stellaHomePath = options.getStellaHomePath();
     if (!stellaHomePath || !text) return text;
     const { loadIdentityMap, depseudonymize } = await import(

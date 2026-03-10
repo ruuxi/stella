@@ -2,6 +2,7 @@ import { promises as fs } from 'fs'
 import { BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, type MessageBoxOptions } from 'electron'
 import path from 'path'
 import type { WindowManager } from '../windows/window-manager.js'
+import { ensurePrivateDir, writePrivateFile } from '../system/private-fs.js'
 
 const SECURITY_POLICY_VERSION = 1
 const SECURITY_APPROVAL_PREFIX = `v${SECURITY_POLICY_VERSION}:`
@@ -43,8 +44,8 @@ export class SecurityPolicyService {
   private async persistPolicy() {
     if (!this.securityPolicyPath) return
     try {
-      await fs.mkdir(path.dirname(this.securityPolicyPath), { recursive: true })
-      await fs.writeFile(
+      await ensurePrivateDir(path.dirname(this.securityPolicyPath))
+      await writePrivateFile(
         this.securityPolicyPath,
         JSON.stringify(
           {
@@ -54,7 +55,6 @@ export class SecurityPolicyService {
           null,
           2,
         ),
-        'utf-8',
       )
     } catch (err) {
       console.debug('[security-policy] Failed to persist policy (best-effort):', err)

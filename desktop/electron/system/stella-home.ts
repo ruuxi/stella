@@ -1,7 +1,7 @@
-import { promises as fs } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { App } from "electron";
+import { ensurePrivateDir } from "./private-fs.js";
 
 export type StellaHome = {
   homePath: string;
@@ -19,7 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const ensureDir = async (dirPath: string) => {
-  await fs.mkdir(dirPath, { recursive: true });
+  await ensurePrivateDir(dirPath);
 };
 
 export const resolveStellaHome = async (_app: App): Promise<StellaHome> => {

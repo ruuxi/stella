@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { protectValue, unprotectValue } from "./protected-storage.js";
+import { ensurePrivateDirSync, writePrivateFileSync } from "../../../system/private-fs.js";
 
 const LLM_CREDENTIALS_FILE = "llm_credentials.json";
 const LLM_CREDENTIAL_SCOPE_PREFIX = "llm-credential";
@@ -55,8 +56,8 @@ const readCredentialFile = (stellaHomePath: string): StoredLlmCredentialFile => 
 
 const writeCredentialFile = (stellaHomePath: string, payload: StoredLlmCredentialFile): void => {
   const filePath = getLlmCredentialStorePath(stellaHomePath);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
+  ensurePrivateDirSync(path.dirname(filePath));
+  writePrivateFileSync(filePath, JSON.stringify(payload, null, 2));
 };
 
 export const listLocalLlmCredentials = (

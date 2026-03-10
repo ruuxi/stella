@@ -23,6 +23,7 @@ import { collectDevEnvironment, formatDevEnvironmentForSynthesis } from "./dev-e
 import { collectSystemSignals, formatSystemSignalsForSynthesis } from "./system-signals.js";
 import { collectMessagesNotes, formatMessagesNotesForSynthesis } from "./messages-notes.js";
 import { addContacts, pseudonymize, loadIdentityMap } from "./identity-map.js";
+import { ensurePrivateDir, writePrivateFile } from "./private-fs.js";
 
 import type { AllUserSignals, AllUserSignalsResult } from "./types.js";
 import type { DiscoveryCategory } from "../../src/shared/contracts/discovery.js";
@@ -51,11 +52,10 @@ const persistSelectedCategories = async (
   try {
     const stateDir = path.join(stellaHome, "state");
     const statePath = path.join(stateDir, DISCOVERY_CATEGORIES_STATE_FILE);
-    await fs.mkdir(stateDir, { recursive: true });
-    await fs.writeFile(
+    await ensurePrivateDir(stateDir);
+    await writePrivateFile(
       statePath,
       JSON.stringify({ categories, updatedAt: Date.now() }, null, 2),
-      "utf-8",
     );
   } catch (error) {
     log("Failed to persist selected discovery categories:", error);

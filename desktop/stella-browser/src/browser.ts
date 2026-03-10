@@ -18,6 +18,7 @@ import os from 'node:os';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import type { LaunchCommand } from './types.js';
 import { applySiteModsToPage } from './actions.js';
+import { assertAllowedCdpUrl } from './cdp-security.js';
 import { type RefMap, type EnhancedSnapshot, getEnhancedSnapshot, parseRef } from './snapshot.js';
 
 // Screencast frame data from CDP
@@ -1212,6 +1213,8 @@ export class BrowserManager {
       // Unknown format - still try as port for backward compatibility
       cdpUrl = `http://localhost:${cdpEndpoint}`;
     }
+
+    assertAllowedCdpUrl(cdpUrl);
 
     const browser = await chromium.connectOverCDP(cdpUrl).catch(() => {
       throw new Error(

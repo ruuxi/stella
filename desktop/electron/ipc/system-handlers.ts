@@ -116,7 +116,15 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
 
   ipcMain.handle(
     "host:setCloudSyncEnabled",
-    (_event, payload: { enabled: boolean }) => {
+    (event, payload: { enabled: boolean }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "host:setCloudSyncEnabled",
+        )
+      ) {
+        throw new Error("Blocked untrusted host:setCloudSyncEnabled request.");
+      }
       options
         .getStellaHostRunner()
         ?.setCloudSyncEnabled(Boolean(payload?.enabled));
@@ -124,14 +132,22 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     },
   );
 
-  ipcMain.handle("app:hardResetLocalState", async () => {
+  ipcMain.handle("app:hardResetLocalState", async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "app:hardResetLocalState",
+      )
+    ) {
+      throw new Error("Blocked untrusted app:hardResetLocalState request.");
+    }
     return options.hardResetLocalState();
   });
 
   ipcMain.handle(
     "credential:submit",
     (
-      _event,
+      event,
       payload: {
         requestId: string;
         secretId: string;
@@ -139,13 +155,29 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         label: string;
       },
     ) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "credential:submit",
+        )
+      ) {
+        throw new Error("Blocked untrusted credential submission.");
+      }
       return options.submitCredential(payload);
     },
   );
 
   ipcMain.handle(
     "credential:cancel",
-    (_event, payload: { requestId: string }) => {
+    (event, payload: { requestId: string }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "credential:cancel",
+        )
+      ) {
+        throw new Error("Blocked untrusted credential cancellation.");
+      }
       return options.cancelCredential(payload);
     },
   );
@@ -220,13 +252,29 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     },
   );
 
-  ipcMain.handle("preferences:getSyncMode", () => {
+  ipcMain.handle("preferences:getSyncMode", (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "preferences:getSyncMode",
+      )
+    ) {
+      throw new Error("Blocked untrusted preferences:getSyncMode request.");
+    }
     const stellaHomePath = options.getStellaHomePath();
     if (!stellaHomePath) return "off";
     return getSyncMode(stellaHomePath);
   });
 
-  ipcMain.handle("preferences:setSyncMode", (_event, mode: string) => {
+  ipcMain.handle("preferences:setSyncMode", (event, mode: string) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "preferences:setSyncMode",
+      )
+    ) {
+      throw new Error("Blocked untrusted preferences:setSyncMode request.");
+    }
     const stellaHomePath = options.getStellaHomePath();
     if (!stellaHomePath) return;
     const prefs = loadLocalPreferences(stellaHomePath);
@@ -237,13 +285,23 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
   ipcMain.handle(
     "preferences:syncLocalModelPreferences",
     (
-      _event,
+      event,
       payload: {
         modelOverrides?: Record<string, string>;
         generalAgentEngine?: string;
         codexLocalMaxConcurrency?: number;
       },
     ) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "preferences:syncLocalModelPreferences",
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted preferences:syncLocalModelPreferences request.",
+        );
+      }
       const stellaHomePath = options.getStellaHomePath();
       if (!stellaHomePath) return { ok: true };
 
