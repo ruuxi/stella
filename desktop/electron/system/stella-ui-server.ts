@@ -1,40 +1,44 @@
 /**
  * stella-ui HTTP bridge server.
  *
- * Runs on localhost with a random port. Receives commands from the
- * stella-ui CLI (invoked by agents via Bash) and forwards them to the
- * renderer via webContents.executeJavaScript, or handles generate
- * commands directly in the main process.
+ * Receives commands from the stella-ui CLI (invoked by agents via Bash)
+ * and forwards them to the renderer, or handles generate commands
+ * directly in the main process.
  */
 
+import crypto from "crypto";
 import fs from "fs";
-import path from "path";
 import http from "http";
+import path from "path";
 import type { BrowserWindow } from "electron";
-import {
-  streamManagedChatCompletion,
-} from "../core/runtime/chat-completions.js";
+import { streamManagedChatCompletion } from "../core/runtime/chat-completions.js";
+import { ensurePrivateDirSync, writePrivateFileSync } from "./private-fs.js";
 
 let server: http.Server | null = null;
+let serverTokenPath: string | null = null;
+let serverToken: string | null = null;
 
-/** Fixed socket path — no port discovery needed. */
-export function getStellaUiSocketPath(): string {
+const TOKEN_HEADER = "x-stella-ui-token";
+
+const resolveStellaUiStatePath = (statePath?: string) =>
+  statePath ?? path.resolve(process.cwd(), ".stella", "state");
+
+export function getStellaUiSocketPath(statePath?: string): string {
   if (process.platform === "win32") {
     return "\\\\.\\pipe\\stella-ui";
   }
-  return path.resolve(process.cwd(), ".stella", "state", "stella-ui.sock");
+  return path.join(resolveStellaUiStatePath(statePath), "stella-ui.sock");
 }
 
-// ---------------------------------------------------------------------------
-// Panel name → file path resolution
-// ---------------------------------------------------------------------------
+export function getStellaUiTokenPath(statePath?: string): string {
+  return path.join(resolveStellaUiStatePath(statePath), "stella-ui.token");
+}
 
-/** Known default home view panels and their source files. */
 const DEFAULT_PANEL_MAP: Record<string, string> = {
   "image gallery": "src/app/home/ImageGallery.tsx",
   "music player": "src/app/home/MusicPlayer.tsx",
-  "generativecanvas": "src/app/home/GenerativeCanvas.tsx",
-  "suggestions": "src/app/home/SuggestionsPanel.tsx",
+  generativecanvas: "src/app/home/GenerativeCanvas.tsx",
+  suggestions: "src/app/home/SuggestionsPanel.tsx",
   "active tasks": "src/app/home/ActiveTasks.tsx",
   "activity feed": "src/app/home/ActivityFeed.tsx",
 };
@@ -42,37 +46,35 @@ const DEFAULT_PANEL_MAP: Record<string, string> = {
 function resolvePanelFile(panelName: string, frontendRoot: string): string | null {
   const normalized = panelName.toLowerCase().trim();
 
-  // Check default panels
   const defaultFile = DEFAULT_PANEL_MAP[normalized];
   if (defaultFile) {
     const fullPath = path.join(frontendRoot, defaultFile);
     if (fs.existsSync(fullPath)) return fullPath;
   }
 
-  // Check workspace pages directory
   const pagesDir = path.join(frontendRoot, "src", "views", "home", "pages");
   try {
     const entries = fs.readdirSync(pagesDir);
     for (const entry of entries) {
       const name = entry.replace(/\.(tsx|jsx)$/, "").toLowerCase();
-      if (name === normalized || name === normalized.replace(/\s+/g, "-") || name === normalized.replace(/\s+/g, "_")) {
+      if (
+        name === normalized ||
+        name === normalized.replace(/\s+/g, "-") ||
+        name === normalized.replace(/\s+/g, "_")
+      ) {
         return path.join(pagesDir, entry);
       }
     }
   } catch {
-    // No pages directory
+    // No pages directory.
   }
 
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// LLM call for generate command
-// ---------------------------------------------------------------------------
-
 const GENERATE_SYSTEM_PROMPT = `You are a React component updater for Stella, a desktop AI assistant.
 You receive the current source code of a React component and a prompt describing what content to display.
-Return ONLY the updated component source code — no explanation, no markdown fences, no commentary.
+Return ONLY the updated component source code - no explanation, no markdown fences, no commentary.
 
 CRITICAL RULES:
 - NEVER change component behavior, hooks, event handlers, callbacks, or state logic.
@@ -119,20 +121,21 @@ async function callGenerateModel(
     throw new Error("Generate model returned no content");
   }
 
-  // Strip markdown fences if the model included them
   return content
     .replace(/^```(?:tsx|typescript|jsx|javascript)?\s*\n?/i, "")
     .replace(/\n?```\s*$/i, "")
     .trim();
 }
 
-// ---------------------------------------------------------------------------
-// Server
-// ---------------------------------------------------------------------------
+const noStoreHeaders = {
+  "Content-Type": "text/plain",
+  "Cache-Control": "no-store",
+};
 
 export function startStellaUiServer(opts: {
   getWindow: () => BrowserWindow | null;
   frontendRoot: string;
+  statePath: string;
   getProxy: () => { baseUrl: string; authToken: string } | null;
 }): number {
   if (server) {
@@ -140,9 +143,19 @@ export function startStellaUiServer(opts: {
     return typeof addr === "object" && addr ? addr.port : 0;
   }
 
+  serverToken = crypto.randomUUID();
+  serverTokenPath = getStellaUiTokenPath(opts.statePath);
+  writePrivateFileSync(serverTokenPath, serverToken);
+
   server = http.createServer(async (req, res) => {
+    if (req.headers[TOKEN_HEADER] !== serverToken) {
+      res.writeHead(401, noStoreHeaders);
+      res.end("Unauthorized");
+      return;
+    }
+
     if (req.method !== "POST") {
-      res.writeHead(405, { "Content-Type": "text/plain" });
+      res.writeHead(405, noStoreHeaders);
       res.end("Method Not Allowed");
       return;
     }
@@ -156,7 +169,7 @@ export function startStellaUiServer(opts: {
     try {
       body = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
     } catch {
-      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.writeHead(400, noStoreHeaders);
       res.end("Invalid JSON");
       return;
     }
@@ -164,48 +177,53 @@ export function startStellaUiServer(opts: {
     const command = String(body.command ?? "");
     const args = Array.isArray(body.args) ? body.args.map(String) : [];
 
-    // Handle generate command in main process (no renderer needed)
     if (command === "generate") {
       const panelName = args[0] ?? "";
       const prompt = args.slice(1).join(" ");
 
       if (!panelName || !prompt) {
-        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.writeHead(400, noStoreHeaders);
         res.end("Usage: stella-ui generate <panel-name> <prompt>");
         return;
       }
 
       const filePath = resolvePanelFile(panelName, opts.frontendRoot);
       if (!filePath) {
-        res.writeHead(404, { "Content-Type": "text/plain" });
-        res.end(`Panel not found: "${panelName}". Available panels: ${Object.keys(DEFAULT_PANEL_MAP).join(", ")}`);
+        res.writeHead(404, noStoreHeaders);
+        res.end(
+          `Panel not found: "${panelName}". Available panels: ${Object.keys(DEFAULT_PANEL_MAP).join(", ")}`,
+        );
         return;
       }
 
       const proxy = opts.getProxy();
       if (!proxy) {
-        res.writeHead(503, { "Content-Type": "text/plain" });
+        res.writeHead(503, noStoreHeaders);
         res.end("LLM proxy not configured yet");
         return;
       }
 
       try {
         const currentSource = fs.readFileSync(filePath, "utf-8");
-        const updatedSource = await callGenerateModel(currentSource, prompt, proxy.baseUrl, proxy.authToken);
+        const updatedSource = await callGenerateModel(
+          currentSource,
+          prompt,
+          proxy.baseUrl,
+          proxy.authToken,
+        );
         fs.writeFileSync(filePath, updatedSource, "utf-8");
-        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.writeHead(200, noStoreHeaders);
         res.end(`Updated ${path.basename(filePath)}`);
       } catch (err) {
-        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.writeHead(500, noStoreHeaders);
         res.end(`Generate failed: ${(err as Error).message}`);
       }
       return;
     }
 
-    // All other commands forward to renderer
     const win = opts.getWindow();
     if (!win || win.isDestroyed()) {
-      res.writeHead(503, { "Content-Type": "text/plain" });
+      res.writeHead(503, noStoreHeaders);
       res.end("Window not available");
       return;
     }
@@ -215,19 +233,24 @@ export function startStellaUiServer(opts: {
         `window.__stellaUI?.handleCommand(${JSON.stringify(command)}, ${JSON.stringify(args)}) ?? "stella-ui handler not loaded"`,
       );
 
-      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.writeHead(200, noStoreHeaders);
       res.end(String(result));
     } catch (err) {
-      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.writeHead(500, noStoreHeaders);
       res.end(`Error: ${(err as Error).message}`);
     }
   });
 
-  const socketPath = getStellaUiSocketPath();
+  const socketPath = getStellaUiSocketPath(opts.statePath);
+  try {
+    fs.unlinkSync(socketPath);
+  } catch {
+    // Ignore stale socket cleanup failures.
+  }
 
-  // Clean up stale socket file from previous run
-  try { fs.unlinkSync(socketPath); } catch { /* doesn't exist */ }
-  fs.mkdirSync(path.dirname(socketPath), { recursive: true });
+  if (process.platform !== "win32") {
+    ensurePrivateDirSync(path.dirname(socketPath));
+  }
 
   server.listen(socketPath);
   return 0;
@@ -238,4 +261,13 @@ export function stopStellaUiServer() {
     server.close();
     server = null;
   }
+  if (serverTokenPath) {
+    try {
+      fs.unlinkSync(serverTokenPath);
+    } catch {
+      // Ignore token cleanup failures.
+    }
+  }
+  serverTokenPath = null;
+  serverToken = null;
 }

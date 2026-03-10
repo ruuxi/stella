@@ -13,6 +13,7 @@ import type {
   IdentityMappingSource,
 } from "./discovery-types.js";
 import { protectValue, unprotectValue } from "../core/runtime/storage/protected-storage.js";
+import { ensurePrivateDir, writePrivateFile } from "./private-fs.js";
 
 const log = (...args: unknown[]) => console.log("[identity-map]", ...args);
 const IDENTITY_NAME_SCOPE = "identity-map-real-name";
@@ -349,11 +350,8 @@ export async function saveIdentityMap(
     })),
   };
 
-  // Ensure state directory exists
-  await fs.mkdir(stateDir, { recursive: true });
-
-  // Write map with pretty formatting
-  await fs.writeFile(mapPath, JSON.stringify(protectedMap, null, 2), "utf-8");
+  await ensurePrivateDir(stateDir);
+  await writePrivateFile(mapPath, JSON.stringify(protectedMap, null, 2));
 }
 
 /**

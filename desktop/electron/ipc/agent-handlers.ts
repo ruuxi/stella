@@ -62,6 +62,12 @@ type SelfModHmrStatePayload = {
   message: string;
 };
 
+const redactSensitiveLogText = (value: string) =>
+  value
+    .replace(/\b(sk-[A-Za-z0-9_-]{12,})\b/g, "[redacted-token]")
+    .replace(/\b(Bearer\s+[A-Za-z0-9._-]{12,})\b/gi, "[redacted-token]")
+    .replace(/\b([A-Za-z0-9_-]{20,}\.[A-Za-z0-9._-]{10,})\b/g, "[redacted-token]");
+
 const AGENT_EVENT_BUFFER_LIMIT = 1000;
 const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1000;
 
@@ -219,7 +225,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       }
 
       console.log(
-        `[stella:trace] IPC agent:startChat | convId=${payload.conversationId} | msgId=${payload.userMessageId} | prompt=${payload.userPrompt.slice(0, 200)}`,
+        `[stella:trace] IPC agent:startChat | convId=${payload.conversationId} | msgId=${payload.userMessageId} | prompt=${redactSensitiveLogText(payload.userPrompt.slice(0, 200))}`,
       );
       const senderWebContentsId = event.sender.id;
       const result = await stellaHostRunner.handleLocalChat(payload, {

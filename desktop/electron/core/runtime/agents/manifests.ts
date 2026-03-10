@@ -9,6 +9,11 @@ type FrontmatterParseResult = {
 
 const FRONTMATTER_DELIM = "---";
 
+const isWithinDirectory = (rootPath: string, candidatePath: string) => {
+  const relative = path.relative(rootPath, candidatePath);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+};
+
 type StellaYamlData = {
   id?: string;
   name?: string;
@@ -392,20 +397,28 @@ export const parseAgentMarkdown = async (
 
 export const listMarkdownFiles = async (baseDir: string, expectedName: string) => {
   const results: string[] = [];
+  const resolvedBaseDir = await fs.realpath(baseDir).catch(() => null);
+  if (!resolvedBaseDir) {
+    return results;
+  }
   let entries: Array<{ name: string; isDirectory: () => boolean }> = [];
   try {
-    entries = await fs.readdir(baseDir, { withFileTypes: true });
+    entries = await fs.readdir(resolvedBaseDir, { withFileTypes: true });
   } catch {
     return results;
   }
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const candidate = path.join(baseDir, entry.name, expectedName);
+    const candidate = path.join(resolvedBaseDir, entry.name, expectedName);
     try {
-      const stat = await fs.stat(candidate);
+      const resolvedCandidate = await fs.realpath(candidate);
+      if (!isWithinDirectory(resolvedBaseDir, resolvedCandidate)) {
+        continue;
+      }
+      const stat = await fs.stat(resolvedCandidate);
       if (stat.isFile()) {
-        results.push(candidate);
+        results.push(resolvedCandidate);
       }
     } catch {
       // Skip missing files.

@@ -10,9 +10,11 @@
 
 import fs from "fs";
 import path from "path";
+import { normalizeSafeExternalUrl } from "./network-guards.js";
 
 const MAX_FETCH_BODY_CHARS = 80_000;
 const FETCH_TIMEOUT_MS = 30_000;
+const MAX_FETCH_REDIRECTS = 5;
 
 // ── WebFetch ──────────────────────────────────────────────────────────────
 
@@ -46,21 +48,47 @@ export const localWebFetch = async (args: {
   url: string;
   prompt?: string;
 }): Promise<string> => {
-  const { url } = args;
-  if (!url) return "Error: URL is required.";
+  if (!args.url) return "Error: URL is required.";
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    let targetUrl = await normalizeSafeExternalUrl(args.url);
 
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Stella/1.0 (Desktop Assistant)",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
-      },
-    });
-    clearTimeout(timeout);
+    let response: Response | null = null;
+    for (let redirectCount = 0; redirectCount <= MAX_FETCH_REDIRECTS; redirectCount += 1) {
+      response = await fetch(targetUrl, {
+        signal: controller.signal,
+        redirect: "manual",
+        headers: {
+          "User-Agent": "Stella/1.0 (Desktop Assistant)",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
+        },
+      });
+
+      const location = response.headers.get("location");
+      if (
+        response.status >= 300 &&
+        response.status < 400 &&
+        location
+      ) {
+        targetUrl = await normalizeSafeExternalUrl(new URL(location, targetUrl).toString());
+        continue;
+      }
+
+      break;
+    }
+    if (!response) {
+      return "Error: No response received.";
+    }
+    if (
+      response.status >= 300 &&
+      response.status < 400 &&
+      response.headers.get("location")
+    ) {
+      return `Error: Too many redirects (limit ${MAX_FETCH_REDIRECTS})`;
+    }
 
     if (!response.ok) {
       return `Error: HTTP ${response.status} ${response.statusText}`;
@@ -91,6 +119,8 @@ export const localWebFetch = async (args: {
       return `Error: Request timed out after ${FETCH_TIMEOUT_MS / 1000}s`;
     }
     return `Error fetching URL: ${msg}`;
+  } finally {
+    clearTimeout(timeout);
   }
 };
 
@@ -110,9 +140,18 @@ export const localActivateSkill = async (args: {
 
   const skillDir = path.join(stellaHome, "skills", skillId);
   const skillFile = path.join(skillDir, "SKILL.md");
+  const skillsRoot = path.join(stellaHome, "skills");
 
   try {
-    const content = fs.readFileSync(skillFile, "utf-8");
+    const [resolvedSkillsRoot, resolvedSkillFile] = [
+      fs.realpathSync(skillsRoot),
+      fs.realpathSync(skillFile),
+    ];
+    const relative = path.relative(resolvedSkillsRoot, resolvedSkillFile);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      return "Error: invalid skill path.";
+    }
+    const content = fs.readFileSync(resolvedSkillFile, "utf-8");
     if (!content.trim()) {
       return `Skill '${skillId}' found but has no content.`;
     }
@@ -121,7 +160,13 @@ export const localActivateSkill = async (args: {
     // Try alternate paths
     const altFile = path.join(stellaHome, "skills", `${skillId}.md`);
     try {
-      return fs.readFileSync(altFile, "utf-8");
+      const resolvedSkillsRoot = fs.realpathSync(skillsRoot);
+      const resolvedAltFile = fs.realpathSync(altFile);
+      const relative = path.relative(resolvedSkillsRoot, resolvedAltFile);
+      if (relative.startsWith("..") || path.isAbsolute(relative)) {
+        return "Error: invalid skill path.";
+      }
+      return fs.readFileSync(resolvedAltFile, "utf-8");
     } catch {
       // List available skills so the agent knows what exists
       const skillsDir = path.join(stellaHome, "skills");

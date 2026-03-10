@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { createPrivateKey, generateKeyPairSync, sign } from "crypto";
 import { protectValue, unprotectValue } from "../core/runtime/storage/protected-storage.js";
+import { ensurePrivateDir, writePrivateFile } from "./private-fs.js";
 
 type DeviceRecord = {
   deviceId: string;
@@ -78,8 +79,8 @@ export const getOrCreateDeviceIdentity = async (
     ...keyPair,
   };
   const record = toStoredDeviceRecord(payload);
-  await fs.mkdir(path.dirname(recordPath), { recursive: true });
-  await fs.writeFile(recordPath, JSON.stringify(record, null, 2), "utf-8");
+  await ensurePrivateDir(path.dirname(recordPath));
+  await writePrivateFile(recordPath, JSON.stringify(record, null, 2));
   return payload;
 };
 
