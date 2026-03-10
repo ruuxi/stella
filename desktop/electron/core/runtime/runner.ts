@@ -240,6 +240,7 @@ export const createStellaHostRunner = ({
   const conversationCallbacks = new Map<string, AgentCallbacks>();
 
   const skillsPath = path.join(StellaHome, "skills");
+  const coreSkillsPath = path.join(StellaHome, "core-skills");
   const agentsPath = path.join(StellaHome, "agents");
   const extensionsPath = path.join(StellaHome, "extensions");
   const hookEmitter = new HookEmitter();
@@ -633,7 +634,7 @@ export const createStellaHostRunner = ({
     isRunning = true;
     syncRemoteTurnBridge();
 
-    void loadSkillsFromHome(skillsPath)
+    void loadSkillsFromHome(skillsPath, coreSkillsPath)
       .then((skills) => {
         toolHost.setSkills(skills);
       })
