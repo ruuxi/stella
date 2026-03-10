@@ -88,7 +88,7 @@ const emptyUsage = (): AssistantMessage["usage"] => ({
 /**
  * Convert ChatMessage[] to a standard Context for the openai-completions provider.
  */
-function buildContext(messages: ChatMessage[]): Context {
+export function buildChatCompletionContext(messages: ChatMessage[]): Context {
   const systemParts: string[] = [];
   const llmMessages: Context["messages"] = [];
 
@@ -172,7 +172,7 @@ const createCompletion = (args: {
     ...args.transport.headers,
     ...args.request.headers,
   }),
-  context: buildContext(args.request.messages),
+  context: buildChatCompletionContext(args.request.messages),
   options: toSimpleOptions(args.body),
 });
 
