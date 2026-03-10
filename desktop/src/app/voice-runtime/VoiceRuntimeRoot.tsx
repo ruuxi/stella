@@ -64,6 +64,7 @@ const runtimeStateEquals = (a: RuntimeVoiceState, b: RuntimeVoiceState) =>
 export function VoiceRuntimeRoot() {
   initRealtimeVoiceIpc();
   const { state } = useUiState();
+  const voiceRtcActive = state.isVoiceRtcActive;
   const analyserRef = useRef<AnalyserNode | null>(null);
   const outputAnalyserRef = useRef<AnalyserNode | null>(null);
   const deviceIdRef = useRef<string | null>(null);
@@ -104,6 +105,23 @@ export function VoiceRuntimeRoot() {
   }, [state.isVoiceRtcActive]);
 
   useEffect(() => {
+    if (!voiceRtcActive) {
+      if (levelTimerRef.current) {
+        clearInterval(levelTimerRef.current);
+        levelTimerRef.current = null;
+      }
+      managerRef.current?.stop();
+      managerRef.current = null;
+      speakingRef.current = false;
+      userSpeakingRef.current = false;
+      sessionStateRef.current = "idle";
+      analyserRef.current = null;
+      outputAnalyserRef.current = null;
+      publishedStateRef.current = DEFAULT_RUNTIME_STATE;
+      window.electronAPI?.voice.pushRuntimeState(DEFAULT_RUNTIME_STATE);
+      return;
+    }
+
     publishRuntimeState(DEFAULT_RUNTIME_STATE);
 
     const manager = new VoiceSessionManager({
@@ -161,7 +179,7 @@ export function VoiceRuntimeRoot() {
       publishedStateRef.current = DEFAULT_RUNTIME_STATE;
       window.electronAPI?.voice.pushRuntimeState(DEFAULT_RUNTIME_STATE);
     };
-  }, []);
+  }, [voiceRtcActive]);
 
   useEffect(() => {
     managerRef.current?.updateSession(

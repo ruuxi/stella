@@ -58,3 +58,10 @@ release/
 native/out/
 native/*.exe
 native/*.obj
+
+# Stella local runtime state
+.stella/state/
+.stella/logs/
+.stella/recovery/
+.stella/canvas/
+.stella/mods/features.json

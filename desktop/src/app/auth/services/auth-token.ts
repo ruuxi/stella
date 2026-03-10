@@ -12,6 +12,7 @@ import { authClient } from "@/app/auth/lib/auth-client";
 
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
+let inflightTokenPromise: Promise<string | null> | null = null;
 
 // JWT lifetime is 5 minutes; refresh 60s early to avoid races
 const REFRESH_MARGIN_MS = 60_000;
@@ -25,36 +26,46 @@ export async function getConvexToken(): Promise<string | null> {
     return cachedToken;
   }
 
-  try {
-    // convexClient() plugin adds .convex.token() but isn't reflected in the base type
-    const convex = (authClient as unknown as { convex: { token(): Promise<{ data?: { token?: string } }> } }).convex;
-    const result = await convex.token();
-    const token: string | undefined = result?.data?.token;
-    if (!token) {
+  if (inflightTokenPromise) {
+    return inflightTokenPromise;
+  }
+
+  inflightTokenPromise = (async () => {
+    try {
+      // convexClient() plugin adds .convex.token() but isn't reflected in the base type
+      const convex = (authClient as unknown as { convex: { token(): Promise<{ data?: { token?: string } }> } }).convex;
+      const result = await convex.token();
+      const token: string | undefined = result?.data?.token;
+      if (!token) {
+        cachedToken = null;
+        tokenExpiresAt = 0;
+        return null;
+      }
+
+      cachedToken = token;
+      // Parse JWT exp claim for precise refresh timing
+      try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        if (typeof payload.exp !== "number") throw new Error("Missing exp claim");
+        const expMs = payload.exp * 1000;
+        tokenExpiresAt = expMs - REFRESH_MARGIN_MS;
+      } catch (err) {
+        console.debug("[auth-token] JWT parse failed, using 4-minute cache:", (err as Error).message);
+        tokenExpiresAt = Date.now() + 4 * 60 * 1000;
+      }
+
+      return token;
+    } catch (err) {
+      console.debug("[auth-token] token fetch failed:", (err as Error).message);
       cachedToken = null;
       tokenExpiresAt = 0;
       return null;
+    } finally {
+      inflightTokenPromise = null;
     }
+  })();
 
-    cachedToken = token;
-    // Parse JWT exp claim for precise refresh timing
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      if (typeof payload.exp !== "number") throw new Error("Missing exp claim");
-      const expMs = payload.exp * 1000;
-      tokenExpiresAt = expMs - REFRESH_MARGIN_MS;
-    } catch (err) {
-      console.debug("[auth-token] JWT parse failed, using 4-minute cache:", (err as Error).message);
-      tokenExpiresAt = Date.now() + 4 * 60 * 1000;
-    }
-
-    return token;
-  } catch (err) {
-    console.debug("[auth-token] token fetch failed:", (err as Error).message);
-    cachedToken = null;
-    tokenExpiresAt = 0;
-    return null;
-  }
+  return inflightTokenPromise;
 }
 
 /**
@@ -74,4 +85,5 @@ export async function getAuthHeaders(
 export function clearCachedToken(): void {
   cachedToken = null;
   tokenExpiresAt = 0;
+  inflightTokenPromise = null;
 }
