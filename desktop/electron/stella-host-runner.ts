@@ -1,5 +1,5 @@
 import path from "path";
-import { createStellaHostRunner as createRuntimeStellaHostRunner, type StellaHostRunnerOptions } from "@stella/stella-runtime";
+import { createStellaHostRunner as createRuntimeStellaHostRunner, type StellaHostRunnerOptions } from "./core/runtime/runner.js";
 import { getDevServerUrl } from "./dev-url.js";
 import { detectSelfModAppliedSince, getGitHead } from "./self-mod/git.js";
 import { createSelfModHmrController } from "./self-mod/hmr.js";

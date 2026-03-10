@@ -3,14 +3,10 @@
  * Transforms to Message[] only at the LLM call boundary.
  */
 
-import {
-	type AssistantMessage,
-	type Context,
-	EventStream,
-	streamSimple,
-	type ToolResultMessage,
-	validateToolArguments,
-} from "@stella/stella-ai";
+import type { AssistantMessage, Context, ToolResultMessage } from "../ai/types.js";
+import { EventStream } from "../ai/utils/event-stream.js";
+import { streamSimple } from "../ai/stream.js";
+import { validateToolArguments } from "../ai/utils/validation.js";
 import type {
 	AgentContext,
 	AgentEvent,

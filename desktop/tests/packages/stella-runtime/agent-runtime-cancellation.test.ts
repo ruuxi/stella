@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LocalTaskManagerAgentContext } from "@stella/stella-runtime/tasks";
+import type { LocalTaskManagerAgentContext } from "../../../electron/core/runtime/tasks/local-task-manager.js";
 import type { JsonlRuntimeStore } from "../../../electron/core/runtime/jsonl_store.js";
 import type { ResolvedLlmRoute } from "../../../electron/core/runtime/model-routing.js";
 
@@ -7,9 +7,9 @@ const { mockPromptImpl } = vi.hoisted(() => ({
   mockPromptImpl: vi.fn(),
 }));
 
-vi.mock("@stella/stella-agent-core", async () => {
-  const actual = await vi.importActual<typeof import("@stella/stella-agent-core")>(
-    "@stella/stella-agent-core",
+vi.mock("../../../electron/core/agent/agent", async () => {
+  const actual = await vi.importActual<typeof import("../../../electron/core/agent/agent.js")>(
+    "../../../electron/core/agent/agent",
   );
 
   class MockAgent {
@@ -73,7 +73,7 @@ vi.mock("@stella/stella-agent-core", async () => {
 import {
   runOrchestratorTurn,
   runSubagentTask,
-} from "@stella/stella-runtime/agent-runtime";
+} from "../../../electron/core/runtime/agent-runtime.js";
 
 type StoreStub = {
   appendThreadMessage: ReturnType<typeof vi.fn>;

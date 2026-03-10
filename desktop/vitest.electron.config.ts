@@ -16,13 +16,6 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: /^@\//, replacement: `${path.resolve(__dirname, './src')}/` },
-      { find: /^@stella\/stella-ai$/, replacement: path.resolve(__dirname, './electron/core/ai/index.ts') },
-      { find: /^@stella\/stella-agent-core$/, replacement: path.resolve(__dirname, './electron/core/agent/index.ts') },
-      { find: /^@stella\/stella-runtime$/, replacement: path.resolve(__dirname, './electron/core/runtime/index.ts') },
-      {
-        find: /^@stella\/stella-runtime\/(.*)$/,
-        replacement: `${path.resolve(__dirname, './electron/core/runtime')}/$1`,
-      },
     ],
   },
 });

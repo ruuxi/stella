@@ -8,7 +8,7 @@ import {
   getSyncMode,
   loadLocalPreferences,
   saveLocalPreferences,
-} from "@stella/stella-runtime/preferences";
+} from "../core/runtime/preferences/local-preferences.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { AuthService } from "../services/auth-service.js";
 import type { ExternalLinkService } from "../services/external-link-service.js";
@@ -16,7 +16,7 @@ import {
   deleteLocalLlmCredential,
   listLocalLlmCredentials,
   saveLocalLlmCredential,
-} from "@stella/stella-runtime/storage";
+} from "../core/runtime/storage/llm-credentials.js";
 
 type SystemHandlersOptions = {
   getDeviceId: () => string | null;

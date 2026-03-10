@@ -1,4 +1,4 @@
-import { completeSimple, readAssistantText } from "@stella/stella-ai";
+import { completeSimple, readAssistantText } from "../ai/stream.js";
 import type { JsonlThreadMessage, JsonlRuntimeStore } from "./jsonl_store.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 

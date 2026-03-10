@@ -3,19 +3,19 @@
  * No transport abstraction - calls streamSimple via the loop.
  */
 
-import {
-	type Api,
-	type AssistantMessage,
-	getModel,
-	type ImageContent,
-	type Message,
-	type Model,
-	type SimpleStreamOptions,
-	streamSimple,
-	type TextContent,
-	type ThinkingBudgets,
-	type Transport,
-} from "@stella/stella-ai";
+import type {
+	Api,
+	AssistantMessage,
+	ImageContent,
+	Message,
+	Model,
+	SimpleStreamOptions,
+	TextContent,
+	ThinkingBudgets,
+	Transport,
+} from "../ai/types.js";
+import { getModel } from "../ai/models.js";
+import { streamSimple } from "../ai/stream.js";
 import { agentLoop, agentLoopContinue } from "./agent-loop.js";
 import type {
 	AgentContext,

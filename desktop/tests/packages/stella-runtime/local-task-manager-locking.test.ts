@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { LocalTaskManager, type LocalTaskManagerAgentContext } from "@stella/stella-runtime/tasks";
+import { LocalTaskManager, type LocalTaskManagerAgentContext } from "../../../electron/core/runtime/tasks/local-task-manager.js";
 
 const createDeferred = () => {
   let resolve!: () => void;

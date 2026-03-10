@@ -5,7 +5,7 @@ const { completeSimpleMock, streamSimpleMock } = vi.hoisted(() => ({
   streamSimpleMock: vi.fn(),
 }));
 
-vi.mock("@stella/stella-ai", () => ({
+vi.mock("../../../electron/core/ai/stream", () => ({
   completeSimple: completeSimpleMock,
   streamSimple: streamSimpleMock,
 }));

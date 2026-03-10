@@ -12,13 +12,6 @@
     "resolveJsonModule": true,
     "types": ["node"],
     "composite": true,
-    "baseUrl": ".",
-    "paths": {
-      "@stella/stella-ai": ["./electron/core/ai/index.ts"],
-      "@stella/stella-agent-core": ["./electron/core/agent/index.ts"],
-      "@stella/stella-runtime": ["./electron/core/runtime/index.ts"],
-      "@stella/stella-runtime/*": ["./electron/core/runtime/*"]
-    }
   },
   "include": ["electron/**/*", "src/shared/contracts/**/*", "src/shared/ai/**/*"],
   "exclude": ["electron/preload.ts", "**/*.test.ts"],

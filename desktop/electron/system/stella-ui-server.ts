@@ -13,7 +13,7 @@ import http from "http";
 import type { BrowserWindow } from "electron";
 import {
   streamManagedChatCompletion,
-} from "@stella/stella-runtime";
+} from "../core/runtime/chat-completions.js";
 
 let server: http.Server | null = null;
 
