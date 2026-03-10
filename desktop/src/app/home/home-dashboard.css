@@ -923,6 +923,10 @@
   color: oklch(0.45 0.12 280);
   background: color-mix(in oklch, oklch(0.45 0.12 280) 8%, transparent);
 }
+.activity-feed-kind[data-kind="task"] {
+  color: oklch(0.5 0.12 230);
+  background: color-mix(in oklch, oklch(0.5 0.12 230) 8%, transparent);
+}
 :root[data-theme="dark"] .activity-feed-kind[data-kind="scheduled"] {
   color: oklch(0.78 0.10 155);
   background: color-mix(in oklch, oklch(0.78 0.10 155) 10%, transparent);
@@ -930,6 +934,10 @@
 :root[data-theme="dark"] .activity-feed-kind[data-kind="monitoring"] {
   color: oklch(0.78 0.10 280);
   background: color-mix(in oklch, oklch(0.78 0.10 280) 10%, transparent);
+}
+:root[data-theme="dark"] .activity-feed-kind[data-kind="task"] {
+  color: oklch(0.8 0.08 230);
+  background: color-mix(in oklch, oklch(0.8 0.08 230) 10%, transparent);
 }
 
 .activity-feed-status {
@@ -951,6 +959,10 @@
 .activity-feed-dot[data-status="error"] {
   background: oklch(0.60 0.20 25);
   box-shadow: 0 0 6px oklch(0.60 0.20 25 / 0.4);
+}
+.activity-feed-dot[data-status="running"] {
+  background: oklch(0.7 0.15 230);
+  box-shadow: 0 0 6px oklch(0.7 0.15 230 / 0.4);
 }
 .activity-feed-dot[data-status="none"] {
   background: color-mix(in oklch, var(--foreground) 20%, transparent);
