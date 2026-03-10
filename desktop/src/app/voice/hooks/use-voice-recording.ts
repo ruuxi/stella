@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { StreamingTranscribeSession } from "@/app/voice/services/speech-to-text";
+import {
+  acquireSharedMicrophone,
+  type SharedMicrophoneLease,
+} from "@/app/voice/services/shared-microphone";
 
 interface UseVoiceRecordingOptions {
   isActive: boolean;
@@ -13,8 +17,9 @@ interface UseVoiceRecordingResult {
 }
 
 const MAX_RECORDING_MS = 5 * 60 * 1000;
-let speechToTextModulePromise: Promise<typeof import("@/app/voice/services/speech-to-text")> | null =
-  null;
+let speechToTextModulePromise: Promise<
+  typeof import("@/app/voice/services/speech-to-text")
+> | null = null;
 
 const loadSpeechToTextModule = () => {
   if (!speechToTextModulePromise) {
@@ -40,6 +45,7 @@ export function useVoiceRecording({
   // Refs to hold session across the effect boundary so cleanup can commit
   const sessionRef = useRef<StreamingTranscribeSession | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const micLeaseRef = useRef<SharedMicrophoneLease | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const maxTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -54,8 +60,11 @@ export function useVoiceRecording({
         maxTimeoutRef.current = null;
       }
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
+      }
+      if (micLeaseRef.current) {
+        micLeaseRef.current.release();
+        micLeaseRef.current = null;
       }
       if (audioContextRef.current) {
         audioContextRef.current.close();
@@ -79,41 +88,42 @@ export function useVoiceRecording({
             onTranscriptRef.current(result.text.trim());
           }
         })
-        .catch((err: unknown) =>
-          console.error("Transcription failed:", err),
-        )
+        .catch((err: unknown) => console.error("Transcription failed:", err))
         .finally(() => setIsTranscribing(false));
     };
 
     void (async () => {
       try {
         const sttModulePromise = loadSpeechToTextModule();
-        const streamPromise = navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
+        const micLeasePromise = acquireSharedMicrophone();
 
         const ctx = new AudioContext();
         audioContextRef.current = ctx;
         const resumePromise =
           ctx.state === "suspended" ? ctx.resume() : Promise.resolve();
-        const workletModulePromise = ctx.audioWorklet.addModule("/audio-capture-processor.js");
+        const workletModulePromise = ctx.audioWorklet.addModule(
+          "/audio-capture-processor.js",
+        );
 
-        const [{ createStreamingSession }, stream] = await Promise.all([
+        const [{ createStreamingSession }, micLease] = await Promise.all([
           sttModulePromise,
-          streamPromise,
+          micLeasePromise,
         ]);
 
+        const stream = micLease.stream;
         if (stopped) {
           ctx.close();
-          stream.getTracks().forEach((t) => t.stop());
+          micLease.release();
           return;
         }
 
+        micLeaseRef.current = micLease;
         streamRef.current = stream;
         await Promise.all([resumePromise, workletModulePromise]);
         if (stopped) {
           ctx.close();
-          stream.getTracks().forEach((t) => t.stop());
+          micLease.release();
+          micLeaseRef.current = null;
           return;
         }
 
@@ -130,7 +140,10 @@ export function useVoiceRecording({
         sessionRef.current = session;
 
         // AudioWorklet streams raw PCM chunks to the session
-        const workletNode = new AudioWorkletNode(ctx, "audio-capture-processor");
+        const workletNode = new AudioWorkletNode(
+          ctx,
+          "audio-capture-processor",
+        );
         workletNode.port.onmessage = (e: MessageEvent<Float32Array>) => {
           if (stopped) return;
           session.sendChunk(e.data, ctx.sampleRate);
@@ -157,4 +170,3 @@ export function useVoiceRecording({
 
   return { analyserRef, isRecording, isTranscribing };
 }
-

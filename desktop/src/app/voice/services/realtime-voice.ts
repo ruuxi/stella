@@ -9,7 +9,14 @@
  */
 
 import { createServiceRequest } from "@/infra/http/service-request";
-import { getSearchHtmlPromptConfig, getVoiceSessionPromptConfig } from "@/prompts";
+import {
+  getSearchHtmlPromptConfig,
+  getVoiceSessionPromptConfig,
+} from "@/prompts";
+import {
+  acquireSharedMicrophone,
+  type SharedMicrophoneLease,
+} from "@/app/voice/services/shared-microphone";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,24 +80,19 @@ const DUPLEX_GATE_OPEN_FRAMES = 4;
 const DUPLEX_GATE_CLOSE_FRAMES = 3;
 const DUPLEX_GATE_MIN_MIC_RMS = 0.025;
 const DUPLEX_GATE_MIN_OUTPUT_RMS = 0.008;
-const DUPLEX_GATE_REOPEN_CORRELATION = 0.20;
+const DUPLEX_GATE_REOPEN_CORRELATION = 0.2;
 const DUPLEX_GATE_STRONG_ECHO_CORRELATION = 0.45;
 const DUPLEX_GATE_NEAR_FIELD_OVERRIDE_RATIO = 3.2;
 const DUPLEX_GATE_LOCAL_PLAYBACK_START_FRAMES = 1;
 const DUPLEX_GATE_LOCAL_PLAYBACK_END_FRAMES = 6;
 const DUPLEX_GATE_ECHO_TAIL_MS = 300;
-const DUPLEX_GATE_LAG_MS = [0, 5, 10, 15, 20, 30, 40, 50, 60, 80, 100, 125, 150, 200];
+const DUPLEX_GATE_LAG_MS = [
+  0, 5, 10, 15, 20, 30, 40, 50, 60, 80, 100, 125, 150, 200,
+];
 
 const RTC_CONFIGURATION: RTCConfiguration = {
   // Pre-gather one ICE candidate batch to shorten negotiation time.
   iceCandidatePoolSize: 1,
-};
-
-const VOICE_MIC_CONSTRAINTS: MediaTrackConstraints = {
-  channelCount: 1,
-  echoCancellation: true,
-  noiseSuppression: true,
-  autoGainControl: true,
 };
 
 const toConvexConversationId = (value: unknown): string | null => {
@@ -119,6 +121,7 @@ export class RealtimeVoiceSession {
   private dc: RTCDataChannel | null = null;
   private audioElement: HTMLAudioElement | null = null;
   private localStream: MediaStream | null = null;
+  private micLease: SharedMicrophoneLease | null = null;
   private inputTrack: MediaStreamTrack | null = null;
   private outboundTrack: MediaStreamTrack | null = null;
   private analyser: AnalyserNode | null = null;
@@ -170,7 +173,12 @@ export class RealtimeVoiceSession {
 
   // Conversation trace log — sequential record of every event for debugging
   private static readonly MAX_TRACE_ENTRIES = 500;
-  private traceLog: Array<{ seq: number; time: number; event: string; detail: string }> = [];
+  private traceLog: Array<{
+    seq: number;
+    time: number;
+    event: string;
+    detail: string;
+  }> = [];
   private traceSeq = 0;
 
   private trace(event: string, detail: string) {
@@ -182,7 +190,12 @@ export class RealtimeVoiceSession {
   }
 
   /** Return the full conversation trace for debugging. */
-  dumpTrace(): Array<{ seq: number; time: number; event: string; detail: string }> {
+  dumpTrace(): Array<{
+    seq: number;
+    time: number;
+    event: string;
+    detail: string;
+  }> {
     return [...this.traceLog];
   }
 
@@ -204,7 +217,12 @@ export class RealtimeVoiceSession {
       this.inputTrack.enabled = active;
     }
     this.updateOutboundGate();
-    if (active && this.localStream && !this.inputTrack && !this.isBufferingPreConnect) {
+    if (
+      active &&
+      this.localStream &&
+      !this.inputTrack &&
+      !this.isBufferingPreConnect
+    ) {
       this.startPreConnectBuffering(this.localStream);
     }
     if (!active && this.isBufferingPreConnect) {
@@ -226,7 +244,10 @@ export class RealtimeVoiceSession {
       try {
         listener(event);
       } catch (err) {
-        console.debug("[realtime-voice] Listener error:", (err as Error).message);
+        console.debug(
+          "[realtime-voice] Listener error:",
+          (err as Error).message,
+        );
       }
     }
   }
@@ -240,17 +261,7 @@ export class RealtimeVoiceSession {
   // Public API
   // ---------------------------------------------------------------------------
 
-  async connect(
-    conversationId: string,
-  ): Promise<void> {
-    const runtime = getVoiceRuntimeState();
-    if (runtime.activeSession && runtime.activeSession !== this) {
-      await runtime.activeSession.disconnect().catch((err) => {
-        console.debug('[RealtimeVoice] Previous session disconnect failed:', (err as Error).message);
-      });
-    }
-    runtime.activeSession = this;
-
+  async connect(conversationId: string): Promise<void> {
     if (this._state !== "idle") {
       throw new Error(`Cannot connect in state: ${this._state}`);
     }
@@ -262,7 +273,8 @@ export class RealtimeVoiceSession {
 
       // A) Create the ephemeral session token in parallel with local setup.
       const keyPromise = (async () => {
-        const { endpoint, headers } = await createServiceRequest("/api/voice/session");
+        const { endpoint, headers } =
+          await createServiceRequest("/api/voice/session");
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { ...headers, "Content-Type": "application/json" },
@@ -270,7 +282,9 @@ export class RealtimeVoiceSession {
         });
         if (!res.ok) {
           const detail = await res.text();
-          throw new Error(`Failed to create voice session: ${res.status} ${detail}`);
+          throw new Error(
+            `Failed to create voice session: ${res.status} ${detail}`,
+          );
         }
         return (await res.json()) as VoiceSessionToken;
       })();
@@ -278,21 +292,26 @@ export class RealtimeVoiceSession {
       // B) Acquire microphone (runs in parallel, awaited later)
       // Start pre-connect buffering as soon as mic is available so user speech
       // during SDP negotiation is captured and flushed when the channel opens.
-      const micPromise = navigator.mediaDevices.getUserMedia({
-        audio: VOICE_MIC_CONSTRAINTS,
-      }).then((stream) => {
+      const micPromise = acquireSharedMicrophone().then((lease) => {
+        const stream = lease.stream;
+        this.micLease = lease;
         if (!this.destroyed && this.inputActive) {
           this.startPreConnectBuffering(stream);
         }
         return stream;
       });
       micPromise.catch((err) => {
-        console.debug('[RealtimeVoice] Mic access failed (non-blocking):', (err as Error).message);
+        console.debug(
+          "[RealtimeVoice] Mic access failed (non-blocking):",
+          (err as Error).message,
+        );
       });
 
       // C) Create RTCPeerConnection + SDP offer locally (no network, no mic needed)
       this.pc = new RTCPeerConnection(RTC_CONFIGURATION);
-      const transceiver = this.pc.addTransceiver("audio", { direction: "sendrecv" });
+      const transceiver = this.pc.addTransceiver("audio", {
+        direction: "sendrecv",
+      });
 
       this.dc = this.pc.createDataChannel("oai-events");
       this.initDataChannelOpenLatch();
@@ -308,11 +327,17 @@ export class RealtimeVoiceSession {
 
       const offer = await this.pc.createOffer();
       await this.pc.setLocalDescription(offer);
-      if (this.destroyed) { this.cleanup(); return; }
+      if (this.destroyed) {
+        this.cleanup();
+        return;
+      }
 
       // ── Phase 2: SDP exchange — needs token, NOT mic ───────────────
       const keyResult = await keyPromise;
-      if (this.destroyed) { this.cleanup(); return; }
+      if (this.destroyed) {
+        this.cleanup();
+        return;
+      }
 
       const { clientSecret, model } = keyResult;
 
@@ -325,13 +350,16 @@ export class RealtimeVoiceSession {
             "Content-Type": "application/sdp",
           },
           body: offer.sdp,
-        }
+        },
       );
-      if (this.destroyed) { this.cleanup(); return; }
+      if (this.destroyed) {
+        this.cleanup();
+        return;
+      }
 
       if (!sdpResponse.ok) {
         throw new Error(
-          `SDP negotiation failed: ${sdpResponse.status} ${await sdpResponse.text()}`
+          `SDP negotiation failed: ${sdpResponse.status} ${await sdpResponse.text()}`,
         );
       }
 
@@ -340,12 +368,16 @@ export class RealtimeVoiceSession {
         type: "answer",
         sdp: answerSdp,
       });
-      if (this.destroyed) { this.cleanup(); return; }
+      if (this.destroyed) {
+        this.cleanup();
+        return;
+      }
 
       // ── Phase 3: Attach mic track (likely already resolved) ────────
       const micStream = await micPromise;
       if (this.destroyed) {
-        micStream.getTracks().forEach((t) => t.stop());
+        this.micLease?.release();
+        this.micLease = null;
         this.cleanup();
         return;
       }
@@ -370,8 +402,11 @@ export class RealtimeVoiceSession {
       }
 
       this.inputTrack.enabled = this.inputActive;
-      await transceiver.sender.replaceTrack(this.outboundTrack ?? this.inputTrack);
+      await transceiver.sender.replaceTrack(
+        this.outboundTrack ?? this.inputTrack,
+      );
 
+      getVoiceRuntimeState().activeSession = this;
       this.trace("CONNECTED", `conv=${conversationId}`);
       this.setState("connected");
     } catch (err) {
@@ -440,7 +475,10 @@ export class RealtimeVoiceSession {
         for (let i = 0; i < float32.length; i++) {
           const sample = float32[i];
           sumSquares += sample * sample;
-          int16[i] = Math.max(-32768, Math.min(32767, Math.round(sample * 32767)));
+          int16[i] = Math.max(
+            -32768,
+            Math.min(32767, Math.round(sample * 32767)),
+          );
         }
         const rms = Math.sqrt(sumSquares / Math.max(1, float32.length));
         if (rms >= PRECONNECT_SPEECH_RMS_THRESHOLD) {
@@ -462,7 +500,10 @@ export class RealtimeVoiceSession {
       source.connect(processor);
       processor.connect(ctx.destination); // required for ScriptProcessorNode to fire
     } catch (err) {
-      console.debug("[realtime-voice] Pre-connect buffering setup failed:", (err as Error).message);
+      console.debug(
+        "[realtime-voice] Pre-connect buffering setup failed:",
+        (err as Error).message,
+      );
       this.isBufferingPreConnect = false;
     }
   }
@@ -476,7 +517,10 @@ export class RealtimeVoiceSession {
     }
     if (this.preConnectCtx) {
       this.preConnectCtx.close().catch((err) => {
-        console.debug('[RealtimeVoice] Pre-connect audio context close failed:', (err as Error).message);
+        console.debug(
+          "[RealtimeVoice] Pre-connect audio context close failed:",
+          (err as Error).message,
+        );
       });
       this.preConnectCtx = null;
     }
@@ -531,7 +575,8 @@ export class RealtimeVoiceSession {
   }
 
   private async waitForFirstTurnBoundary(): Promise<void> {
-    if (!this.isBufferingPreConnect || this.preConnectBuffer.length === 0) return;
+    if (!this.isBufferingPreConnect || this.preConnectBuffer.length === 0)
+      return;
     if (!this.preConnectObservedSpeech) return;
 
     const startedAt = Date.now();
@@ -540,13 +585,18 @@ export class RealtimeVoiceSession {
       const elapsed = now - startedAt;
       const silenceFor = now - this.preConnectLastSpeechAt;
 
-      if (this.preConnectObservedSpeech && silenceFor >= PRECONNECT_SILENCE_MS) {
+      if (
+        this.preConnectObservedSpeech &&
+        silenceFor >= PRECONNECT_SILENCE_MS
+      ) {
         return;
       }
       if (elapsed >= PRECONNECT_BOUNDARY_MAX_WAIT_MS) {
         return;
       }
-      await new Promise((resolve) => setTimeout(resolve, PRECONNECT_BOUNDARY_POLL_MS));
+      await new Promise((resolve) =>
+        setTimeout(resolve, PRECONNECT_BOUNDARY_POLL_MS),
+      );
     }
   }
 
@@ -562,7 +612,10 @@ export class RealtimeVoiceSession {
         const data = JSON.parse(event.data);
         this.handleServerEvent(data);
       } catch (err) {
-        console.debug("[realtime-voice] Failed to parse data channel message:", (err as Error).message);
+        console.debug(
+          "[realtime-voice] Failed to parse data channel message:",
+          (err as Error).message,
+        );
       }
     };
 
@@ -574,7 +627,6 @@ export class RealtimeVoiceSession {
     };
 
     this.dc.onerror = () => {};
-
   }
 
   private setupAudioPlayback(stream: MediaStream) {
@@ -587,7 +639,10 @@ export class RealtimeVoiceSession {
     this.audioElement.srcObject = stream;
     this.audioElement.autoplay = true;
     this.audioElement.play().catch((err) => {
-      console.debug('[RealtimeVoice] Audio playback failed:', (err as Error).message);
+      console.debug(
+        "[RealtimeVoice] Audio playback failed:",
+        (err as Error).message,
+      );
     });
 
     // Create analyser for the output (assistant) audio stream.
@@ -596,7 +651,10 @@ export class RealtimeVoiceSession {
       this.pendingRemoteStream = stream;
       this.attachOutputMonitor(stream);
     } catch (err) {
-      console.debug("[realtime-voice] Output analyser setup failed:", (err as Error).message);
+      console.debug(
+        "[realtime-voice] Output analyser setup failed:",
+        (err as Error).message,
+      );
     }
   }
 
@@ -605,13 +663,14 @@ export class RealtimeVoiceSession {
     try {
       const ctx = new AudioContext();
       this.audioContext = ctx;
-      this.duplexGateLagSamples = DUPLEX_GATE_LAG_MS
-        .map((lagMs) => Math.round((ctx.sampleRate * lagMs) / 1000))
-        .filter((lag, index, values) =>
+      this.duplexGateLagSamples = DUPLEX_GATE_LAG_MS.map((lagMs) =>
+        Math.round((ctx.sampleRate * lagMs) / 1000),
+      ).filter(
+        (lag, index, values) =>
           lag >= 0 &&
           lag < DUPLEX_GATE_ANALYSIS_WINDOW - 64 &&
           values.indexOf(lag) === index,
-        );
+      );
       if (this.duplexGateLagSamples.length === 0) {
         this.duplexGateLagSamples = [0];
       }
@@ -627,7 +686,8 @@ export class RealtimeVoiceSession {
 
       const destination = ctx.createMediaStreamDestination();
       this.gateGainNode.connect(destination);
-      this.outboundTrack = destination.stream.getAudioTracks()[0] ?? this.inputTrack;
+      this.outboundTrack =
+        destination.stream.getAudioTracks()[0] ?? this.inputTrack;
 
       this.gateSilentSink = ctx.createGain();
       this.gateSilentSink.gain.value = 0;
@@ -651,7 +711,10 @@ export class RealtimeVoiceSession {
       this.startDuplexGate();
       this.updateOutboundGate();
     } catch (err) {
-      console.debug("[realtime-voice] Analyser setup failed:", (err as Error).message);
+      console.debug(
+        "[realtime-voice] Analyser setup failed:",
+        (err as Error).message,
+      );
       this.outboundTrack = this.inputTrack;
     }
   }
@@ -675,7 +738,11 @@ export class RealtimeVoiceSession {
     const source = this.audioContext.createMediaStreamSource(stream);
     source.connect(this.outputAnalyser);
 
-    this.outputMonitorNode = this.audioContext.createScriptProcessor(1024, 1, 1);
+    this.outputMonitorNode = this.audioContext.createScriptProcessor(
+      1024,
+      1,
+      1,
+    );
     this.outputMonitorNode.onaudioprocess = (event) => {
       this.recordSampleWindow(
         event.inputBuffer.getChannelData(0),
@@ -696,7 +763,9 @@ export class RealtimeVoiceSession {
     kind: "input" | "output",
   ) {
     let writeIndex =
-      kind === "input" ? this.inputSampleWriteIndex : this.outputSampleWriteIndex;
+      kind === "input"
+        ? this.inputSampleWriteIndex
+        : this.outputSampleWriteIndex;
 
     for (let i = 0; i < input.length; i++) {
       target[writeIndex] = input[i];
@@ -751,7 +820,8 @@ export class RealtimeVoiceSession {
     const inEchoTail =
       !assistantSpeaking &&
       this.assistantSpeakingEndTime > 0 &&
-      performance.now() - this.assistantSpeakingEndTime < DUPLEX_GATE_ECHO_TAIL_MS;
+      performance.now() - this.assistantSpeakingEndTime <
+        DUPLEX_GATE_ECHO_TAIL_MS;
 
     if (!assistantSpeaking && !inEchoTail) {
       this.duplexGateOpen = true;
@@ -772,7 +842,10 @@ export class RealtimeVoiceSession {
         DUPLEX_GATE_OPEN_FRAMES,
         this.duplexGateOpenFrames + 1,
       );
-      if (!this.duplexGateOpen && this.duplexGateOpenFrames >= DUPLEX_GATE_OPEN_FRAMES) {
+      if (
+        !this.duplexGateOpen &&
+        this.duplexGateOpenFrames >= DUPLEX_GATE_OPEN_FRAMES
+      ) {
         this.duplexGateOpen = true;
       }
     } else {
@@ -781,7 +854,10 @@ export class RealtimeVoiceSession {
         DUPLEX_GATE_CLOSE_FRAMES,
         this.duplexGateCloseFrames + 1,
       );
-      if (this.duplexGateOpen && this.duplexGateCloseFrames >= DUPLEX_GATE_CLOSE_FRAMES) {
+      if (
+        this.duplexGateOpen &&
+        this.duplexGateCloseFrames >= DUPLEX_GATE_CLOSE_FRAMES
+      ) {
         this.duplexGateOpen = false;
       }
     }
@@ -794,10 +870,12 @@ export class RealtimeVoiceSession {
   }
 
   private updateAssistantPlaybackState(): boolean {
-    const outputSamples =
-      this.outputWindowFilled
-        ? this.getOrderedWindow(this.outputSampleWindow, this.outputSampleWriteIndex)
-        : null;
+    const outputSamples = this.outputWindowFilled
+      ? this.getOrderedWindow(
+          this.outputSampleWindow,
+          this.outputSampleWriteIndex,
+        )
+      : null;
     const outputRms = outputSamples ? this.computeRms(outputSamples) : 0;
 
     if (outputRms >= DUPLEX_GATE_MIN_OUTPUT_RMS) {
@@ -806,7 +884,10 @@ export class RealtimeVoiceSession {
         DUPLEX_GATE_LOCAL_PLAYBACK_START_FRAMES,
         this.assistantPlaybackActiveFrames + 1,
       );
-      if (this.assistantPlaybackActiveFrames >= DUPLEX_GATE_LOCAL_PLAYBACK_START_FRAMES) {
+      if (
+        this.assistantPlaybackActiveFrames >=
+        DUPLEX_GATE_LOCAL_PLAYBACK_START_FRAMES
+      ) {
         this.assistantPlaybackActive = true;
       }
     } else {
@@ -815,12 +896,16 @@ export class RealtimeVoiceSession {
         DUPLEX_GATE_LOCAL_PLAYBACK_END_FRAMES,
         this.assistantPlaybackSilentFrames + 1,
       );
-      if (this.assistantPlaybackSilentFrames >= DUPLEX_GATE_LOCAL_PLAYBACK_END_FRAMES) {
+      if (
+        this.assistantPlaybackSilentFrames >=
+        DUPLEX_GATE_LOCAL_PLAYBACK_END_FRAMES
+      ) {
         this.assistantPlaybackActive = false;
       }
     }
 
-    const speaking = this.assistantServerSpeaking || this.assistantPlaybackActive;
+    const speaking =
+      this.assistantServerSpeaking || this.assistantPlaybackActive;
     this.syncExternalAudioDucking(speaking);
     return speaking;
   }
@@ -829,7 +914,10 @@ export class RealtimeVoiceSession {
     if (!this.inputWindowFilled) return false;
     if (!this.outputWindowFilled) return false;
 
-    const micSamples = this.getOrderedWindow(this.inputSampleWindow, this.inputSampleWriteIndex);
+    const micSamples = this.getOrderedWindow(
+      this.inputSampleWindow,
+      this.inputSampleWriteIndex,
+    );
     const outputSamples = this.getOrderedWindow(
       this.outputSampleWindow,
       this.outputSampleWriteIndex,
@@ -857,7 +945,10 @@ export class RealtimeVoiceSession {
     return nearFieldRatio >= DUPLEX_GATE_NEAR_FIELD_OVERRIDE_RATIO;
   }
 
-  private getOrderedWindow(source: Float32Array, writeIndex: number): Float32Array {
+  private getOrderedWindow(
+    source: Float32Array,
+    writeIndex: number,
+  ): Float32Array {
     const ordered = new Float32Array(source.length);
     ordered.set(source.subarray(writeIndex), 0);
     ordered.set(source.subarray(0, writeIndex), source.length - writeIndex);
@@ -912,7 +1003,10 @@ export class RealtimeVoiceSession {
     if (this.externalAudioDuckingActive === active) return;
     this.externalAudioDuckingActive = active;
     window.electronAPI?.voice.setAssistantSpeaking(active).catch((err) => {
-      console.debug("[realtime-voice] External audio ducking failed:", (err as Error).message);
+      console.debug(
+        "[realtime-voice] External audio ducking failed:",
+        (err as Error).message,
+      );
     });
   }
 
@@ -934,7 +1028,10 @@ export class RealtimeVoiceSession {
       case "response.output_item.done": {
         const item = event.item as Record<string, unknown> | undefined;
         if (item?.type === "function_call") {
-          this.trace("TOOL_CALL", `${item.name}(${String(item.arguments ?? "").slice(0, 200)})`);
+          this.trace(
+            "TOOL_CALL",
+            `${item.name}(${String(item.arguments ?? "").slice(0, 200)})`,
+          );
           void this.handleFunctionCall(item);
         }
         break;
@@ -1021,8 +1118,11 @@ export class RealtimeVoiceSession {
 
       case "response.done": {
         // Log whether the model used a tool or just spoke
-        const output = (event as Record<string, unknown>).response as Record<string, unknown> | undefined;
-        const outputItems = (output?.output as Array<Record<string, unknown>>) ?? [];
+        const output = (event as Record<string, unknown>).response as
+          | Record<string, unknown>
+          | undefined;
+        const outputItems =
+          (output?.output as Array<Record<string, unknown>>) ?? [];
         const toolCalls = outputItems.filter((o) => o.type === "function_call");
         if (toolCalls.length === 0) {
           // Model responded without calling a tool — persist for terminal visibility
@@ -1056,7 +1156,9 @@ export class RealtimeVoiceSession {
   private runPerformActionAsync(message: string): void {
     const api = window.electronAPI?.voice;
     if (!api?.orchestratorChat || !this.conversationId) {
-      console.warn("[realtime-voice] Cannot delegate to orchestrator: missing IPC or conversation ID");
+      console.warn(
+        "[realtime-voice] Cannot delegate to orchestrator: missing IPC or conversation ID",
+      );
       return;
     }
 
@@ -1115,7 +1217,11 @@ export class RealtimeVoiceSession {
     }
 
     api
-      .webSearch({ query, category, searchHtmlPrompts: getSearchHtmlPromptConfig() })
+      .webSearch({
+        query,
+        category,
+        searchHtmlPrompts: getSearchHtmlPromptConfig(),
+      })
       .then((result) => {
         window.electronAPI?.voice.persistTranscript?.({
           conversationId: this.conversationId ?? "voice-rtc",
@@ -1185,7 +1291,10 @@ export class RealtimeVoiceSession {
     try {
       args = JSON.parse(argsStr || "{}");
     } catch (err) {
-      console.debug("[realtime-voice] Failed to parse tool arguments:", (err as Error).message);
+      console.debug(
+        "[realtime-voice] Failed to parse tool arguments:",
+        (err as Error).message,
+      );
       args = {};
     }
 
@@ -1231,7 +1340,8 @@ export class RealtimeVoiceSession {
       } else if (name === "perform_action") {
         // Delegate to orchestrator. Use the user's actual transcript
         // instead of the model's paraphrase for better fidelity.
-        const message = this.lastUserTranscript || (args.message as string) || "";
+        const message =
+          this.lastUserTranscript || (args.message as string) || "";
         result = "Working on it.";
         this.runPerformActionAsync(message);
       } else {
@@ -1280,6 +1390,10 @@ export class RealtimeVoiceSession {
       this.localStream.getTracks().forEach((t) => t.stop());
       this.localStream = null;
     }
+    if (this.micLease) {
+      this.micLease.release();
+      this.micLease = null;
+    }
     this.inputTrack = null;
 
     if (this.audioElement) {
@@ -1290,7 +1404,10 @@ export class RealtimeVoiceSession {
 
     if (this.audioContext) {
       this.audioContext.close().catch((err) => {
-        console.debug('[RealtimeVoice] Audio context close failed:', (err as Error).message);
+        console.debug(
+          "[RealtimeVoice] Audio context close failed:",
+          (err as Error).message,
+        );
       });
       this.audioContext = null;
       this.analyser = null;
