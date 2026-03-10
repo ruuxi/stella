@@ -2,6 +2,7 @@ import React from "react";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import { DISCOVERY_CATEGORIES } from "./use-onboarding-state";
 import { getPlatform } from "@/platform/electron/platform";
+import { OnboardingSelectionTile } from "./OnboardingSelectionTile";
 
 interface OnboardingDiscoveryProps {
   categoryStates: Record<DiscoveryCategory, boolean>;
@@ -14,22 +15,23 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
 }) => {
   const platform = getPlatform();
   const hasFDACategories = DISCOVERY_CATEGORIES.some(
-    (cat) => cat.requiresFDA && categoryStates[cat.id]
+    (cat) => cat.requiresFDA && categoryStates[cat.id],
   );
 
   return (
     <div className="onboarding-discovery" data-visible={true}>
       <div className="onboarding-discovery-list">
         {DISCOVERY_CATEGORIES.map((cat) => (
-          <button
+          <OnboardingSelectionTile
             key={cat.id}
             className="onboarding-discovery-row"
-            data-active={categoryStates[cat.id]}
+            labelClassName="onboarding-discovery-row-label"
+            descriptionClassName="onboarding-discovery-row-desc"
+            active={categoryStates[cat.id]}
             onClick={() => onToggleCategory(cat.id)}
-          >
-            <span className="onboarding-discovery-row-label">{cat.label}</span>
-            <span className="onboarding-discovery-row-desc">{cat.description}</span>
-          </button>
+            label={cat.label}
+            description={cat.description}
+          />
         ))}
       </div>
       {hasFDACategories && platform === "darwin" && (
@@ -46,4 +48,3 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
     </div>
   );
 };
-

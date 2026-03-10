@@ -1,11 +1,7 @@
-import { Button } from "@/ui/button";
-import { TextField } from "@/ui/text-field";
 import "./auth-panel.css";
-import { useMagicLinkAuth } from "./useMagicLinkAuth";
+import { MagicLinkAuthFlow } from "./MagicLinkAuthFlow";
 
 export const AuthPanel = () => {
-  const { email, setEmail, status, error, handleMagicLinkSubmit } = useMagicLinkAuth();
-
   return (
     <div className="auth-panel">
       <div className="auth-panel-card">
@@ -14,26 +10,12 @@ export const AuthPanel = () => {
           <div className="auth-panel-subtitle">Sign in to continue.</div>
         </div>
 
-        <form className="auth-panel-form" onSubmit={handleMagicLinkSubmit}>
-          <TextField
-            label="Email"
-            type="email"
-            placeholder="you@fromyou.ai"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            autoComplete="email"
-          />
-          <Button type="submit" variant="primary" className="auth-panel-button">
-            {status === "sending" ? "Sending..." : "Send sign-in email"}
-          </Button>
-        </form>
-
-        {status === "sent" && (
-          <div className="auth-panel-status success">
-            Check your inbox for the sign-in link.
-          </div>
-        )}
-        {error && <div className="auth-panel-status error">{error}</div>}
+        <MagicLinkAuthFlow
+          formClassName="auth-panel-form"
+          buttonClassName="auth-panel-button"
+          successClassName="auth-panel-status success"
+          errorClassName="auth-panel-status error"
+        />
       </div>
     </div>
   );
