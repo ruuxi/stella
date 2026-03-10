@@ -26,29 +26,29 @@ vi.mock("convex/server", () => ({
   anyApi: {},
 }));
 
-vi.mock("../../../electron/core/runtime/tools/index.js", async () => {
-  const actual = await vi.importActual<typeof import("../../../electron/core/runtime/tools/index.js")>(
-    "../../../electron/core/runtime/tools/index.js",
-  );
-  return {
-    ...actual,
-    createToolHost: () => ({
-      executeTool: vi.fn(),
-      setSkills: vi.fn(),
-      registerExtensionTools: vi.fn(),
-      killAllShells: vi.fn(),
-      killShellsByPort: vi.fn(),
-    }),
-  };
-});
+vi.mock("../../../electron/core/runtime/tools/host.js", () => ({
+  createToolHost: () => ({
+    executeTool: vi.fn(),
+    setSkills: vi.fn(),
+    registerExtensionTools: vi.fn(),
+    killAllShells: vi.fn(),
+    killShellsByPort: vi.fn(),
+  }),
+}));
 
-vi.mock("../../../electron/core/runtime/agents/index.js", () => ({
+vi.mock("../../../electron/core/runtime/agents/agents.js", () => ({
   loadAgentsFromHome: loadAgentsFromHomeMock,
+}));
+
+vi.mock("../../../electron/core/runtime/agents/skills.js", () => ({
   loadSkillsFromHome: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../../../electron/core/runtime/extensions/index.js", () => ({
+vi.mock("../../../electron/core/runtime/extensions/loader.js", () => ({
   loadExtensions: vi.fn().mockResolvedValue({ tools: [], hooks: [], providers: [], prompts: [] }),
+}));
+
+vi.mock("../../../electron/core/runtime/extensions/hook-emitter.js", () => ({
   HookEmitter: class HookEmitter {
     registerAll() {}
     emit() {
@@ -57,7 +57,7 @@ vi.mock("../../../electron/core/runtime/extensions/index.js", () => ({
   },
 }));
 
-vi.mock("../../../electron/core/runtime/tasks/index.js", () => ({
+vi.mock("../../../electron/core/runtime/tasks/local-task-manager.js", () => ({
   LocalTaskManager: class LocalTaskManager {
     constructor(opts: unknown) {
       localTaskManagerCtorMock(opts);

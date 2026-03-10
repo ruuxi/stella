@@ -1,25 +1,29 @@
 import crypto from "crypto";
 import { Type } from "@sinclair/typebox";
-import { Agent, type AgentMessage, type AgentTool } from "@stella/stella-agent-core";
+import { Agent } from "../agent/agent.js";
+import type { AgentMessage, AgentTool } from "../agent/types.js";
 import {
   DEVICE_TOOL_NAMES,
   TOOL_DESCRIPTIONS,
   TOOL_JSON_SCHEMAS,
+} from "./tools/schemas.js";
+import {
   localActivateSkill,
   localNoResponse,
   localWebFetch,
-  type ToolContext,
-  type ToolResult,
-} from "./tools/index.js";
-import type { HookEmitter } from "./extensions/index.js";
+} from "./tools/local-tool-overrides.js";
+import type { ToolContext, ToolResult } from "./tools/types.js";
+import type { HookEmitter } from "./extensions/hook-emitter.js";
 import {
   isClaudeCodeModel,
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
+} from "./integrations/claude-code-session-runtime.js";
+import {
   runCodexAppServerTurn,
   shutdownCodexAppServerRuntime,
-} from "./integrations/index.js";
-import type { LocalTaskManagerAgentContext } from "./tasks/index.js";
+} from "./integrations/codex-app-server-runtime.js";
+import type { LocalTaskManagerAgentContext } from "./tasks/local-task-manager.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 import {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LocalTaskManagerAgentContext } from "@stella/stella-runtime/tasks";
+import type { LocalTaskManagerAgentContext } from "../../../electron/core/runtime/tasks/local-task-manager.js";
 import type { JsonlRuntimeStore } from "../../../electron/core/runtime/jsonl_store.js";
 import type { ResolvedLlmRoute } from "../../../electron/core/runtime/model-routing.js";
 
@@ -13,21 +13,30 @@ const {
   isClaudeCodeModelMock: vi.fn(),
 }));
 
-vi.mock("@stella/stella-runtime/integrations", async () => {
-  const actual = await vi.importActual<typeof import("@stella/stella-runtime/integrations")>(
-    "@stella/stella-runtime/integrations",
+vi.mock("../../../electron/core/runtime/integrations/claude-code-session-runtime", async () => {
+  const actual = await vi.importActual<typeof import("../../../electron/core/runtime/integrations/claude-code-session-runtime.js")>(
+    "../../../electron/core/runtime/integrations/claude-code-session-runtime",
   );
   return {
     ...actual,
-    runCodexAppServerTurn: runCodexAppServerTurnMock,
-    shutdownCodexAppServerRuntime: vi.fn(),
     isClaudeCodeModel: isClaudeCodeModelMock,
     runClaudeCodeTurn: runClaudeCodeTurnMock,
     shutdownClaudeCodeRuntime: vi.fn(),
   };
 });
 
-import { runSubagentTask } from "@stella/stella-runtime/agent-runtime";
+vi.mock("../../../electron/core/runtime/integrations/codex-app-server-runtime", async () => {
+  const actual = await vi.importActual<typeof import("../../../electron/core/runtime/integrations/codex-app-server-runtime.js")>(
+    "../../../electron/core/runtime/integrations/codex-app-server-runtime",
+  );
+  return {
+    ...actual,
+    runCodexAppServerTurn: runCodexAppServerTurnMock,
+    shutdownCodexAppServerRuntime: vi.fn(),
+  };
+});
+
+import { runSubagentTask } from "../../../electron/core/runtime/agent-runtime.js";
 
 type StoreStub = {
   appendThreadMessage: ReturnType<typeof vi.fn>;

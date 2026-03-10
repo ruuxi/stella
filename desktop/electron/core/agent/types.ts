@@ -5,11 +5,11 @@ import type {
 	Message,
 	Model,
 	SimpleStreamOptions,
-	streamSimple,
 	TextContent,
 	Tool,
 	ToolResultMessage,
-} from "@stella/stella-ai";
+} from "../ai/types.js";
+import type { streamSimple } from "../ai/stream.js";
 import type { Static, TSchema } from "@sinclair/typebox";
 
 /** Stream function - can return sync or Promise for async config lookup */

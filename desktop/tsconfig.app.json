@@ -26,11 +26,7 @@
     /* Path aliases */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@stella/stella-ai": ["./electron/core/ai/index.ts"],
-      "@stella/stella-agent-core": ["./electron/core/agent/index.ts"],
-      "@stella/stella-runtime": ["./electron/core/runtime/index.ts"],
-      "@stella/stella-runtime/*": ["./electron/core/runtime/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src"]

@@ -336,13 +336,6 @@ export default defineConfig({
       { find: /^react\/jsx-dev-runtime$/, replacement: path.resolve(__dirname, "./node_modules/react/jsx-dev-runtime.js") },
       { find: /^react-dom$/, replacement: path.resolve(__dirname, "./node_modules/react-dom/index.js") },
       { find: /^react-dom\/client$/, replacement: path.resolve(__dirname, "./node_modules/react-dom/client.js") },
-      { find: /^@stella\/stella-ai$/, replacement: path.resolve(__dirname, "./electron/core/ai/index.ts") },
-      { find: /^@stella\/stella-agent-core$/, replacement: path.resolve(__dirname, "./electron/core/agent/index.ts") },
-      { find: /^@stella\/stella-runtime$/, replacement: path.resolve(__dirname, "./electron/core/runtime/index.ts") },
-      {
-        find: /^@stella\/stella-runtime\/(.*)$/,
-        replacement: `${path.resolve(__dirname, "./electron/core/runtime")}/$1`,
-      },
     ],
     dedupe: ["react", "react-dom"],
   },

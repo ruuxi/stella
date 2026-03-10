@@ -1,4 +1,5 @@
-import { getModels, type Api, type Model } from "@stella/stella-ai";
+import { getModels } from "../ai/models.js";
+import type { Api, Model } from "../ai/types.js";
 import { normalizeManagedChatBaseUrl } from "./chat-completions.js";
 import { getLocalLlmCredential } from "./storage/llm-credentials.js";
 

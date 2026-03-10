@@ -4,18 +4,18 @@
  */
 
 // Internal import for JSON parsing utility
-import {
-	type Api,
-	type AssistantMessage,
-	type AssistantMessageEvent,
-	type Context,
-	EventStream,
-	type Model,
-	parseStreamingJson,
-	type SimpleStreamOptions,
-	type StopReason,
-	type ToolCall,
-} from "@stella/stella-ai";
+import type {
+	Api,
+	AssistantMessage,
+	AssistantMessageEvent,
+	Context,
+	Model,
+	SimpleStreamOptions,
+	StopReason,
+	ToolCall,
+} from "../ai/types.js";
+import { EventStream } from "../ai/utils/event-stream.js";
+import { parseStreamingJson } from "../ai/utils/json-parse.js";
 
 type StreamingToolCall = ToolCall & { partialJson?: string };
 
