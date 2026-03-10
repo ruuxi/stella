@@ -47,7 +47,7 @@ export function useStreamingChat({
     }) => {
       if (!activeConversationId) return
 
-      chatStoreAppendAgentEvent({
+      return chatStoreAppendAgentEvent({
         conversationId: activeConversationId,
         ...event,
       })

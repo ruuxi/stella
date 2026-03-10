@@ -156,6 +156,127 @@ export function attachmentsEqual(a: Attachment[], b: Attachment[]): boolean {
   return true;
 }
 
+const reactionsEqual = (
+  a: ChannelEnvelope["reactions"] | undefined,
+  b: ChannelEnvelope["reactions"] | undefined,
+): boolean => {
+  const left = a ?? [];
+  const right = b ?? [];
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+
+  for (let i = 0; i < left.length; i += 1) {
+    const av = left[i];
+    const bv = right[i];
+    if (!av || !bv) return false;
+    if (av.emoji !== bv.emoji) return false;
+    if (av.action !== bv.action) return false;
+    if ((av.targetMessageId ?? null) !== (bv.targetMessageId ?? null)) return false;
+  }
+
+  return true;
+};
+
+const channelEnvelopeEqual = (
+  a: ChannelEnvelope | undefined,
+  b: ChannelEnvelope | undefined,
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return a === b;
+
+  return (
+    a.provider === b.provider &&
+    a.kind === b.kind &&
+    reactionsEqual(a.reactions, b.reactions)
+  );
+};
+
+const selfModAppliedEqual = (
+  a: SelfModApplied | undefined,
+  b: SelfModApplied | undefined,
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return a === b;
+  if (a.featureId !== b.featureId || a.batchIndex !== b.batchIndex) {
+    return false;
+  }
+  if (a.files.length !== b.files.length) {
+    return false;
+  }
+  for (let i = 0; i < a.files.length; i += 1) {
+    if (a.files[i] !== b.files[i]) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const taskItemEqual = (a: TaskItem, b: TaskItem): boolean => (
+  a.id === b.id &&
+  a.description === b.description &&
+  a.agentType === b.agentType &&
+  a.status === b.status &&
+  (a.parentTaskId ?? null) === (b.parentTaskId ?? null) &&
+  (a.statusText ?? null) === (b.statusText ?? null)
+);
+
+const runningTasksEqual = (a: TaskItem[], b: TaskItem[]): boolean => {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (!taskItemEqual(a[i], b[i])) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const streamingPropsEqual = (
+  a: StreamingTurnProps | undefined,
+  b: StreamingTurnProps | undefined,
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return a === b;
+
+  return (
+    a.streamingText === b.streamingText &&
+    a.reasoningText === b.reasoningText &&
+    Boolean(a.isStreaming) === Boolean(b.isStreaming) &&
+    (a.pendingUserMessageId ?? null) === (b.pendingUserMessageId ?? null) &&
+    (a.runningTool ?? null) === (b.runningTool ?? null) &&
+    runningTasksEqual(a.runningTasks, b.runningTasks)
+  );
+};
+
+const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean => (
+  a.id === b.id &&
+  a.userText === b.userText &&
+  attachmentsEqual(a.userAttachments, b.userAttachments) &&
+  channelEnvelopeEqual(a.userChannelEnvelope, b.userChannelEnvelope) &&
+  a.assistantText === b.assistantText &&
+  a.assistantMessageId === b.assistantMessageId &&
+  a.assistantEmotesEnabled === b.assistantEmotesEnabled &&
+  (a.webSearchBadgeHtml ?? null) === (b.webSearchBadgeHtml ?? null) &&
+  selfModAppliedEqual(a.selfModApplied, b.selfModApplied)
+);
+
+const areTurnItemPropsEqual = (
+  prev: {
+    turn: TurnViewModel;
+    onOpenAttachment?: (attachment: Attachment) => void;
+    streaming?: StreamingTurnProps;
+  },
+  next: {
+    turn: TurnViewModel;
+    onOpenAttachment?: (attachment: Attachment) => void;
+    streaming?: StreamingTurnProps;
+  },
+): boolean => (
+  prev.onOpenAttachment === next.onOpenAttachment &&
+  turnViewModelEqual(prev.turn, next.turn) &&
+  streamingPropsEqual(prev.streaming, next.streaming)
+);
+
 /** Memoized turn renderer to prevent unnecessary re-renders */
 export const TurnItem = memo(function TurnItem({
   turn,
@@ -347,7 +468,7 @@ export const TurnItem = memo(function TurnItem({
       )}
     </div>
   );
-});
+}, areTurnItemPropsEqual);
 
 /** Streaming indicator component */
 export const StreamingIndicator = memo(function StreamingIndicator({

@@ -27,7 +27,7 @@ type LocalAgentEvent = {
 type UseLocalAgentStreamOptions = {
   activeConversationId: string | null
   storageMode: 'cloud' | 'local'
-  appendAgentEvent: (event: LocalAgentEvent) => void
+  appendAgentEvent: (event: LocalAgentEvent) => Promise<void> | void
 }
 
 type StartStreamArgs = {
@@ -158,10 +158,14 @@ export function useLocalAgentStream({
           console.log(
             `[stella:trace] end | finalText=${(event.finalText ?? streamingTextRef.current).slice(0, 200)}`,
           )
-          appendAgentEvent({
-            type: 'assistant_message',
-            userMessageId: options?.userMessageId,
-            finalText: event.finalText ?? streamingTextRef.current,
+          void Promise.resolve(
+            appendAgentEvent({
+              type: 'assistant_message',
+              userMessageId: options?.userMessageId,
+              finalText: event.finalText ?? streamingTextRef.current,
+            }),
+          ).catch(() => {
+            resetStreamingState(runIdCounter)
           })
 
           if (event.selfModApplied && options?.userMessageId) {
@@ -173,7 +177,6 @@ export function useLocalAgentStream({
             }))
           }
 
-          resetStreamingState(runIdCounter)
           localRunIdRef.current = null
           localSeqByRunIdRef.current.delete(event.runId)
           break

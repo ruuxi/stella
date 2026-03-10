@@ -19,7 +19,7 @@ vi.mock("@/platform/electron/device", () => ({
 }));
 
 const mockAppendEvent = vi.fn(() => Promise.resolve(null));
-const mockAppendAgentEvent = vi.fn();
+const mockAppendAgentEvent = vi.fn(() => Promise.resolve());
 const mockUploadAttachments = vi.fn(() => Promise.resolve([]));
 const mockBuildHistory = vi.fn(() => undefined);
 const mockAgentHealthCheck = vi.fn(() => Promise.resolve({ ready: true }));
@@ -436,6 +436,86 @@ describe("useStreamingChat", () => {
         }),
       );
       expect(unsubscribeCalled).toBe(false);
+    });
+
+    it("keeps streamed text visible until the final assistant event is present in events", async () => {
+      mockAppendEvent.mockResolvedValueOnce({ _id: "user-event-1" });
+
+      const { result, rerender } = renderHook(
+        ({ events }: { events: EventRecord[] }) =>
+          useStreamingChat({ conversationId: "conv-1", events }),
+        {
+          initialProps: { events: [] as EventRecord[] },
+        },
+      );
+
+      await act(async () => {
+        await result.current.sendMessage({
+          text: "hello",
+          selectedText: null,
+          chatContext: null,
+          onClear: vi.fn(),
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const callback = mockAgentOnStream.mock.calls[0]?.[0] as
+        | ((event: AgentStreamEvent) => void)
+        | undefined;
+
+      expect(callback).toBeTypeOf("function");
+
+      expect(result.current.isStreaming).toBe(true);
+      expect(result.current.pendingUserMessageId).toBe("user-event-1");
+
+      await act(async () => {
+        callback?.({
+          type: "end",
+          runId: "run-1",
+          agentType: "orchestrator",
+          seq: 2,
+          finalText: "Hello there",
+        });
+        await Promise.resolve();
+      });
+
+      expect(mockAppendAgentEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          type: "assistant_message",
+          userMessageId: "user-event-1",
+          finalText: "Hello there",
+        }),
+      );
+      expect(result.current.isStreaming).toBe(true);
+      expect(result.current.pendingUserMessageId).toBe("user-event-1");
+
+      rerender({
+        events: [
+          makeEvent({
+            _id: "assistant-event-1",
+            type: "assistant_message",
+            payload: { text: "Hello there", userMessageId: "user-event-1" },
+          }),
+        ],
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(result.current.streamingText).toBe("");
+      expect(result.current.isStreaming).toBe(false);
+      expect(result.current.pendingUserMessageId).toBe("user-event-1");
+
+      act(() => {
+        const queued = [...rafCallbacks];
+        rafCallbacks = [];
+        queued.forEach((cb) => cb(performance.now()));
+      });
+
+      expect(result.current.pendingUserMessageId).toBeNull();
     });
   });
 });
