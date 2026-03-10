@@ -5,11 +5,13 @@ import type { ActionCtx } from "../_generated/server";
 import {
   buildSearchHtmlUserPrompt,
 } from "../prompts/index";
+import { normalizeSafeExternalUrl } from "../lib/url_security";
 import type { ToolOptions } from "./types";
 
 const MAX_WEB_SEARCH_RESULTS = 8;
 const MAX_WEB_SEARCH_HIGHLIGHT_CHARS = 400;
 const MAX_WEB_SEARCH_SNIPPET_CHARS = 300;
+const MAX_WEB_FETCH_REDIRECTS = 5;
 
 /**
  * Wrap external content with safety markers so the LLM knows it's untrusted.
@@ -255,11 +257,32 @@ export const createBackendTools = (
         prompt: z.string().describe("What information you want from this page"),
       }),
       execute: async (args) => {
-        const secureUrl = args.url.replace(/^http:/, "https:");
         try {
-          const response = await fetch(secureUrl, {
-            headers: { "User-Agent": "StellaBackend/1.0" },
-          });
+          let secureUrl = normalizeSafeExternalUrl(args.url);
+          let response: Response | null = null;
+          for (let redirectCount = 0; redirectCount <= MAX_WEB_FETCH_REDIRECTS; redirectCount += 1) {
+            response = await fetch(secureUrl, {
+              redirect: "manual",
+              headers: { "User-Agent": "StellaBackend/1.0" },
+            });
+
+            const location = response.headers.get("location");
+            if (response.status >= 300 && response.status < 400 && location) {
+              secureUrl = normalizeSafeExternalUrl(new URL(location, secureUrl).toString());
+              continue;
+            }
+            break;
+          }
+          if (!response) {
+            return "Failed to fetch (no response)";
+          }
+          if (
+            response.status >= 300 &&
+            response.status < 400 &&
+            response.headers.get("location")
+          ) {
+            return `Failed to fetch (too many redirects, limit ${MAX_WEB_FETCH_REDIRECTS})`;
+          }
           if (!response.ok) {
             return `Failed to fetch (${response.status} ${response.statusText})`;
           }
