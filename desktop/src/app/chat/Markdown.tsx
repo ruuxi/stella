@@ -1,5 +1,5 @@
 import type { ImgHTMLAttributes } from "react";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { Streamdown } from "streamdown";
 import { cn } from "@/shared/lib/utils";
 import {
@@ -22,7 +22,18 @@ type MarkdownImageProps = ImgHTMLAttributes<HTMLImageElement> & {
   node?: unknown;
 };
 
-export function Markdown({
+const areMarkdownPropsEqual = (
+  prev: MarkdownProps,
+  next: MarkdownProps,
+): boolean => (
+  prev.text === next.text &&
+  prev.cacheKey === next.cacheKey &&
+  prev.className === next.className &&
+  Boolean(prev.isAnimating) === Boolean(next.isAnimating) &&
+  Boolean(prev.enableEmotes) === Boolean(next.enableEmotes)
+);
+
+export const Markdown = memo(function Markdown({
   text,
   className,
   isAnimating = false,
@@ -74,4 +85,4 @@ export function Markdown({
       {text}
     </Streamdown>
   );
-}
+}, areMarkdownPropsEqual);

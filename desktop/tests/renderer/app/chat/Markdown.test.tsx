@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-vi.mock("streamdown", () => ({
-  Streamdown: ({
+const { streamdownRenderMock } = vi.hoisted(() => ({
+  streamdownRenderMock: vi.fn(({
     children,
     className,
     isAnimating,
@@ -24,7 +24,17 @@ vi.mock("streamdown", () => ({
     >
       {children}
     </div>
-  ),
+  )),
+}));
+
+vi.mock("streamdown", () => ({
+  Streamdown: (props: {
+    children: string;
+    className?: string;
+    isAnimating?: boolean;
+    remarkPlugins?: unknown[];
+    components?: Record<string, unknown>;
+  }) => streamdownRenderMock(props),
 }));
 
 const mockUseEmojiEmoteLookup = vi.fn((_enabled?: boolean) => new Map());
@@ -44,6 +54,18 @@ vi.mock("../../../../src/app/chat/markdown.css", () => ({}));
 import { Markdown } from "../../../../src/app/chat/Markdown";
 
 describe("Markdown", () => {
+  it("does not rerender Streamdown when props are unchanged", () => {
+    streamdownRenderMock.mockClear();
+
+    const { rerender } = render(<Markdown text="stable" enableEmotes={true} />);
+
+    expect(streamdownRenderMock).toHaveBeenCalledTimes(1);
+
+    rerender(<Markdown text="stable" enableEmotes={true} />);
+
+    expect(streamdownRenderMock).toHaveBeenCalledTimes(1);
+  });
+
   it("renders text content", () => {
     render(<Markdown text="Hello world" />);
     const el = screen.getByTestId("streamdown");

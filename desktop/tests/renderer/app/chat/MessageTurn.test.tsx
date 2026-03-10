@@ -2,6 +2,17 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import { getEventText } from "@/app/chat/lib/event-transforms";
+
+const { markdownRenderMock } = vi.hoisted(() => ({
+  markdownRenderMock: vi.fn(({ text }: { text: string }) => (
+    <div data-testid="markdown">{text}</div>
+  )),
+}));
+
+vi.mock("../../../../src/app/chat/Markdown", () => ({
+  Markdown: (props: { text: string }) => markdownRenderMock(props),
+}));
+
 import {
   TurnItem,
   attachmentsEqual,
@@ -141,6 +152,62 @@ describe("MessageTurn helpers", () => {
 });
 
 describe("TurnItem", () => {
+  it("does not rerender unchanged assistant markdown when turn identity changes", () => {
+    markdownRenderMock.mockClear();
+
+    const turn = {
+      id: "turn-stable",
+      userText: "hello",
+      userAttachments: [],
+      assistantText: "assistant reply",
+      assistantMessageId: "assistant-1",
+      assistantEmotesEnabled: true,
+    };
+
+    const { rerender } = render(<TurnItem turn={turn} />);
+
+    expect(markdownRenderMock).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <TurnItem
+        turn={{
+          ...turn,
+          userAttachments: [],
+        }}
+      />,
+    );
+
+    expect(markdownRenderMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rerenders assistant markdown when assistant content changes", () => {
+    markdownRenderMock.mockClear();
+
+    const turn = {
+      id: "turn-change",
+      userText: "hello",
+      userAttachments: [],
+      assistantText: "assistant reply",
+      assistantMessageId: "assistant-1",
+      assistantEmotesEnabled: true,
+    };
+
+    const { rerender } = render(<TurnItem turn={turn} />);
+
+    expect(markdownRenderMock).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <TurnItem
+        turn={{
+          ...turn,
+          assistantText: "assistant reply updated",
+        }}
+      />,
+    );
+
+    expect(markdownRenderMock).toHaveBeenCalledTimes(2);
+  });
+
   it("renders connector metadata badges and fallback attachment labels", () => {
     render(
       <TurnItem
