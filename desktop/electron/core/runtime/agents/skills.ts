@@ -2,17 +2,21 @@ import type { ParsedSkill } from "./manifests.js";
 import { listMarkdownFiles, parseSkillMarkdown } from "./manifests.js";
 
 export const loadSkillsFromHome = async (
-  skillsPath: string,
+  ...skillsPaths: string[]
 ): Promise<ParsedSkill[]> => {
-  const localSkillFiles = await listMarkdownFiles(skillsPath, "SKILL.md");
-  const localSkills: ParsedSkill[] = [];
+  const allSkills: ParsedSkill[] = [];
+  const seenIds = new Set<string>();
 
-  for (const filePath of localSkillFiles) {
-    const skill = await parseSkillMarkdown(filePath, "local");
-    if (!skill) continue;
-
-    localSkills.push(skill);
+  for (const skillsPath of skillsPaths) {
+    const localSkillFiles = await listMarkdownFiles(skillsPath, "SKILL.md");
+    for (const filePath of localSkillFiles) {
+      const skill = await parseSkillMarkdown(filePath, "local");
+      if (!skill) continue;
+      if (seenIds.has(skill.id)) continue;
+      seenIds.add(skill.id);
+      allSkills.push(skill);
+    }
   }
 
-  return localSkills;
+  return allSkills;
 };
