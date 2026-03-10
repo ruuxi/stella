@@ -172,8 +172,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       outputLevel: number;
     }) => ipcRenderer.send('voice:runtimeState', state),
     setRtcShortcut: (shortcut: string) => ipcRenderer.send('voice-rtc:setShortcut', shortcut),
-    onRtcPreWarm: onIpc<string>('voice-rtc:pre-warm'),
-    onRtcPrefetchToken: onIpcSignal('voice-rtc:prefetch-token'),
   },
 
   agent: {

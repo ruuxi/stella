@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUiState } from "@/context/ui-state";
 import { getOrCreateDeviceId } from "@/platform/electron/device";
 import { appendLocalEvent } from "@/app/chat/services/local-chat-store";
-import { initRealtimeVoiceIpc, type VoiceSessionState } from "@/app/voice/services/realtime-voice";
+import { type VoiceSessionState } from "@/app/voice/services/realtime-voice";
 import { VoiceSessionManager } from "@/app/voice/hooks/use-realtime-voice";
 
 type RuntimeVoiceState = {
@@ -62,9 +62,10 @@ const runtimeStateEquals = (a: RuntimeVoiceState, b: RuntimeVoiceState) =>
   Math.abs(a.outputLevel - b.outputLevel) < 0.01;
 
 export function VoiceRuntimeRoot() {
-  initRealtimeVoiceIpc();
   const { state } = useUiState();
-  const voiceRtcActive = state.isVoiceRtcActive;
+  const [bootConversationId, setBootConversationId] = useState<string | null>(
+    state.conversationId,
+  );
   const analyserRef = useRef<AnalyserNode | null>(null);
   const outputAnalyserRef = useRef<AnalyserNode | null>(null);
   const deviceIdRef = useRef<string | null>(null);
@@ -77,6 +78,7 @@ export function VoiceRuntimeRoot() {
   const speakingRef = useRef(false);
   const userSpeakingRef = useRef(false);
   const sessionStateRef = useRef<VoiceSessionState>("idle");
+  const resolvedConversationId = state.conversationId ?? bootConversationId;
 
   const publishRuntimeState = (patch: Partial<RuntimeVoiceState>) => {
     const next: RuntimeVoiceState = {
@@ -97,31 +99,50 @@ export function VoiceRuntimeRoot() {
   }, []);
 
   useEffect(() => {
-    conversationIdRef.current = state.conversationId ?? "voice-rtc";
-  }, [state.conversationId]);
+    if (state.conversationId) {
+      setBootConversationId(state.conversationId);
+      return;
+    }
+
+    if (bootConversationId) {
+      return;
+    }
+
+    const getDefaultConversationId =
+      window.electronAPI?.localChat.getOrCreateDefaultConversationId;
+    if (!getDefaultConversationId) {
+      setBootConversationId("voice-rtc");
+      return;
+    }
+
+    let cancelled = false;
+    void getDefaultConversationId()
+      .then((conversationId) => {
+        if (!cancelled) {
+          setBootConversationId(conversationId);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBootConversationId("voice-rtc");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bootConversationId, state.conversationId]);
 
   useEffect(() => {
     inputActiveRef.current = state.isVoiceRtcActive;
   }, [state.isVoiceRtcActive]);
 
   useEffect(() => {
-    if (!voiceRtcActive) {
-      if (levelTimerRef.current) {
-        clearInterval(levelTimerRef.current);
-        levelTimerRef.current = null;
-      }
-      managerRef.current?.stop();
-      managerRef.current = null;
-      speakingRef.current = false;
-      userSpeakingRef.current = false;
-      sessionStateRef.current = "idle";
-      analyserRef.current = null;
-      outputAnalyserRef.current = null;
-      publishedStateRef.current = DEFAULT_RUNTIME_STATE;
-      window.electronAPI?.voice.pushRuntimeState(DEFAULT_RUNTIME_STATE);
+    if (!resolvedConversationId || managerRef.current) {
       return;
     }
 
+    conversationIdRef.current = resolvedConversationId;
     publishRuntimeState(DEFAULT_RUNTIME_STATE);
 
     const manager = new VoiceSessionManager({
@@ -163,13 +184,15 @@ export function VoiceRuntimeRoot() {
         outputLevel: computeEnergy(outputAnalyserRef.current),
       });
     }, LEVEL_SAMPLE_MS);
+  }, [resolvedConversationId]);
 
+  useEffect(() => {
     return () => {
       if (levelTimerRef.current) {
         clearInterval(levelTimerRef.current);
         levelTimerRef.current = null;
       }
-      manager.stop();
+      managerRef.current?.stop();
       managerRef.current = null;
       speakingRef.current = false;
       userSpeakingRef.current = false;
@@ -179,14 +202,19 @@ export function VoiceRuntimeRoot() {
       publishedStateRef.current = DEFAULT_RUNTIME_STATE;
       window.electronAPI?.voice.pushRuntimeState(DEFAULT_RUNTIME_STATE);
     };
-  }, [voiceRtcActive]);
+  }, []);
 
   useEffect(() => {
+    if (!resolvedConversationId) {
+      return;
+    }
+
+    conversationIdRef.current = resolvedConversationId;
     managerRef.current?.updateSession(
-      state.conversationId ?? "voice-rtc",
+      resolvedConversationId,
       state.isVoiceRtcActive,
     );
-  }, [state.conversationId, state.isVoiceRtcActive]);
+  }, [resolvedConversationId, state.isVoiceRtcActive]);
 
   return null;
 }
