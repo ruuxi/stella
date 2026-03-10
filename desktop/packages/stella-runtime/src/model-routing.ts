@@ -1,4 +1,5 @@
 import { getModels, type Api, type Model } from "@stella/stella-ai";
+import { normalizeManagedChatBaseUrl } from "./chat-completions.js";
 import { getLocalLlmCredential } from "./storage/llm-credentials.js";
 
 type ManagedProxyConfig = {
@@ -25,7 +26,7 @@ const createManagedProxyModel = (proxyBaseUrl: string, agentType: string): Model
   name: "Stella Managed",
   api: "openai-completions",
   provider: "stella-managed",
-  baseUrl: `${proxyBaseUrl}/chat/completions`,
+  baseUrl: normalizeManagedChatBaseUrl(proxyBaseUrl),
   reasoning: true,
   input: ["text", "image"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
