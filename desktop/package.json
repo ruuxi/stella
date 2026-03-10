@@ -29,7 +29,7 @@
     "emotes:emoji-index": "node scripts/build-emote-emoji-index.mjs",
     "emotes:prune-family": "node scripts/prune-emotes-by-emoji-family.mjs",
     "emotes:optimize": "node scripts/optimize-emotes.mjs",
-    "postinstall": "electron-rebuild --build-from-source -o better-sqlite3"
+    "postinstall": "electron-rebuild -o better-sqlite3"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",
