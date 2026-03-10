@@ -1,126 +1,148 @@
-import { promises as fs } from 'fs'
+import { promises as fs } from "fs";
+import { app, BrowserWindow, globalShortcut, session } from "electron";
+import path from "path";
+import { fileURLToPath } from "url";
+import { getDevServerUrl } from "./dev-url.js";
+import { registerAllIpcHandlers } from "./ipc/ipc-registry.js";
+import { OverlayWindowController } from "./windows/overlay-window.js";
+import type { StellaHostRunner } from "./stella-host-runner.js";
+import { createStellaHostRunner } from "./stella-host-runner.js";
+import { ensureLastResortRecoveryScripts } from "./self-mod/recovery-script.js";
 import {
-  app,
-  BrowserWindow,
-  globalShortcut,
-  session,
-} from 'electron'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import { getDevServerUrl } from './dev-url.js'
-import { registerAllIpcHandlers } from './ipc/ipc-registry.js'
-import { OverlayWindowController } from './windows/overlay-window.js'
-import type { StellaHostRunner } from './stella-host-runner.js'
-import { createStellaHostRunner } from './stella-host-runner.js'
-import { ensureLastResortRecoveryScripts } from './self-mod/recovery-script.js'
-import { cleanupSelectedTextProcess, getSelectedText, initSelectedTextProcess } from './selected-text.js'
-import { AuthService } from './services/auth-service.js'
-import { AudioDuckingService } from './services/audio-ducking-service.js'
-import { CaptureService } from './services/capture-service.js'
-import { CredentialService } from './services/credential-service.js'
-import { ExternalLinkService } from './services/external-link-service.js'
-import { LocalChatService } from './services/local-chat-service.js'
-import { MiniBridgeService } from './services/mini-bridge-service.js'
-import { RadialGestureService } from './services/radial-gesture-service.js'
-import { SecurityPolicyService } from './services/security-policy-service.js'
-import { LocalSchedulerService } from './services/local-scheduler-service.js'
-import { UiStateService } from './services/ui-state-service.js'
-import { WorkspaceService } from './services/workspace-service.js'
-import { getOrCreateDeviceIdentity, signDeviceHeartbeat } from './system/device.js'
-import { resolveStellaHome } from './system/stella-home.js'
-import { initializeWakeWord } from './wake-word/initialize.js'
-import { startStellaUiServer } from './system/stella-ui-server.js'
-import { WindowManager } from './windows/window-manager.js'
-import { createHmrMorphOrchestrator } from './self-mod/hmr-morph.js'
+  cleanupSelectedTextProcess,
+  getSelectedText,
+  initSelectedTextProcess,
+} from "./selected-text.js";
+import { AuthService } from "./services/auth-service.js";
+import { AudioDuckingService } from "./services/audio-ducking-service.js";
+import { CaptureService } from "./services/capture-service.js";
+import { CredentialService } from "./services/credential-service.js";
+import { ExternalLinkService } from "./services/external-link-service.js";
+import { LocalChatService } from "./services/local-chat-service.js";
+import { MiniBridgeService } from "./services/mini-bridge-service.js";
+import { RadialGestureService } from "./services/radial-gesture-service.js";
+import { SecurityPolicyService } from "./services/security-policy-service.js";
+import { LocalSchedulerService } from "./services/local-scheduler-service.js";
+import { UiStateService } from "./services/ui-state-service.js";
+import { WorkspaceService } from "./services/workspace-service.js";
+import {
+  getOrCreateDeviceIdentity,
+  signDeviceHeartbeat,
+} from "./system/device.js";
+import { resolveStellaHome } from "./system/stella-home.js";
+import {
+  initializeWakeWord,
+  type WakeWordController,
+} from "./wake-word/initialize.js";
+import { startStellaUiServer } from "./system/stella-ui-server.js";
+import { WindowManager } from "./windows/window-manager.js";
+import { createHmrMorphOrchestrator } from "./self-mod/hmr-morph.js";
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-const isDev = process.env.NODE_ENV === 'development'
-const AUTH_PROTOCOL = 'Stella'
-const STELLA_SESSION_PARTITION = 'persist:Stella'
-const STARTUP_STAGE_DELAY_MS = 250
+const isDev = process.env.NODE_ENV === "development";
+const AUTH_PROTOCOL = "Stella";
+const STELLA_SESSION_PARTITION = "persist:Stella";
+const STARTUP_STAGE_DELAY_MS = 250;
 
 export const bootstrapMainProcess = () => {
   // __dirname at runtime is dist-electron/electron/; frontendRoot is the project root (desktop/)
-  const frontendRoot = path.resolve(__dirname, '..', '..')
+  const frontendRoot = path.resolve(__dirname, "..", "..");
 
-  let appReady = false
-  let isQuitting = false
-  let deviceId: string | null = null
-  let stellaHomePath: string | null = null
-  let stellaHostRunner: StellaHostRunner | null = null
-  let schedulerService: LocalSchedulerService | null = null
-  let localChatService: LocalChatService | null = null
-  let windowManager: WindowManager | null = null
-  let overlayController: OverlayWindowController | null = null
-  let hmrMorphOrchestrator: ReturnType<typeof createHmrMorphOrchestrator> | null = null
-  let deferredStartupSequence: Promise<void> | null = null
+  let appReady = false;
+  let isQuitting = false;
+  let deviceId: string | null = null;
+  let stellaHomePath: string | null = null;
+  let stellaHostRunner: StellaHostRunner | null = null;
+  let schedulerService: LocalSchedulerService | null = null;
+  let localChatService: LocalChatService | null = null;
+  let windowManager: WindowManager | null = null;
+  let overlayController: OverlayWindowController | null = null;
+  let hmrMorphOrchestrator: ReturnType<
+    typeof createHmrMorphOrchestrator
+  > | null = null;
+  let deferredStartupSequence: Promise<void> | null = null;
+  let wakeWordController: WakeWordController | null = null;
   // --- Core services (no deps or lightweight deps) ---
 
-  const uiStateService = new UiStateService()
-  const workspaceService = new WorkspaceService(() => stellaHomePath, () => isDev)
-  const externalLinkService = new ExternalLinkService()
-  const miniBridgeService = new MiniBridgeService()
+  const uiStateService = new UiStateService();
+  const workspaceService = new WorkspaceService(
+    () => stellaHomePath,
+    () => isDev,
+  );
+  const externalLinkService = new ExternalLinkService();
+  const miniBridgeService = new MiniBridgeService();
   const audioDuckingService = new AudioDuckingService(
     () => windowManager?.getAllWindows() ?? BrowserWindow.getAllWindows(),
-  )
+  );
 
   const securityPolicyService = new SecurityPolicyService({
     getWindowManager: () => windowManager,
-  })
+  });
 
   const credentialService = new CredentialService({
     getWindowManager: () => windowManager,
-  })
+  });
 
   // --- Domain services (depend on core services) ---
 
   const captureService = new CaptureService({
     window: {
-      getAllWindows: () => (windowManager ? windowManager.getAllWindows() : BrowserWindow.getAllWindows()),
+      getAllWindows: () =>
+        windowManager
+          ? windowManager.getAllWindows()
+          : BrowserWindow.getAllWindows(),
       getMiniWindow: () => windowManager?.getMiniWindow() ?? null,
       isMiniShowing: () => windowManager?.isMiniShowing() ?? false,
       showWindow: (target) => windowManager?.showWindow(target),
-      concealMiniWindowForCapture: () => windowManager?.concealMiniWindowForCapture() ?? false,
-      restoreMiniWindowAfterCapture: () => { windowManager?.restoreMiniWindowAfterCapture() },
+      concealMiniWindowForCapture: () =>
+        windowManager?.concealMiniWindowForCapture() ?? false,
+      restoreMiniWindowAfterCapture: () => {
+        windowManager?.restoreMiniWindowAfterCapture();
+      },
     },
     overlay: {
       hideRadial: () => overlayController?.hideRadial(),
       hideModifierBlock: () => overlayController?.hideModifierBlock(),
       startRegionCapture: () => overlayController?.startRegionCapture(),
       endRegionCapture: () => overlayController?.endRegionCapture(),
-      getOverlayBounds: () => overlayController?.getWindow()?.getBounds() ?? null,
+      getOverlayBounds: () =>
+        overlayController?.getWindow()?.getBounds() ?? null,
     },
     updateUiState: (partial) => uiStateService.update(partial),
-  })
+  });
 
   const authService = new AuthService({
     authProtocol: AUTH_PROTOCOL,
     isDev,
-    projectDir: path.resolve(__dirname, '..'),
+    projectDir: path.resolve(__dirname, ".."),
     sessionPartition: STELLA_SESSION_PARTITION,
     getRunner: () => stellaHostRunner,
     onAuthCallback: (url) => {
-      windowManager?.showWindow('full')
-      broadcastAuthCallback(url)
+      windowManager?.showWindow("full");
+      broadcastAuthCallback(url);
     },
     onSecondInstanceFocus: () => {
-      windowManager?.getFullWindow()?.focus()
+      windowManager?.getFullWindow()?.focus();
     },
-  })
+  });
 
   const radialGestureService = new RadialGestureService({
     isAppReady: () => appReady,
     capture: {
-      cancelRadialContextCapture: () => captureService.cancelRadialContextCapture(),
+      cancelRadialContextCapture: () =>
+        captureService.cancelRadialContextCapture(),
       getChatContextSnapshot: () => captureService.getChatContextSnapshot(),
       setPendingChatContext: (ctx) => captureService.setPendingChatContext(ctx),
       clearTransientContext: () => captureService.clearTransientContext(),
-      setRadialContextShouldCommit: (commit) => captureService.setRadialContextShouldCommit(commit),
-      commitStagedRadialContext: (before) => captureService.commitStagedRadialContext(before),
+      setRadialContextShouldCommit: (commit) =>
+        captureService.setRadialContextShouldCommit(commit),
+      commitStagedRadialContext: (before) =>
+        captureService.commitStagedRadialContext(before),
       hasPendingRadialCapture: () => captureService.hasPendingRadialCapture(),
-      captureRadialContext: (x, y, before) => captureService.captureRadialContext(x, y, before),
+      captureRadialContext: (x, y, before) =>
+        captureService.captureRadialContext(x, y, before),
       startRegionCapture: () => captureService.startRegionCapture(),
       captureAutoWindowText: () => captureService.captureAutoWindowText(),
       emptyContext: () => captureService.emptyContext(),
@@ -142,132 +164,183 @@ export const bootstrapMainProcess = () => {
       getMiniWindow: () => windowManager?.getMiniWindow() ?? null,
       showWindow: (target) => windowManager?.showWindow(target),
       hideMiniWindow: (animate) => windowManager?.hideMiniWindow(animate),
-      concealMiniWindowForCapture: () => windowManager?.concealMiniWindowForCapture() ?? false,
-      restoreMiniWindowAfterCapture: () => windowManager?.restoreMiniWindowAfterCapture(),
+      concealMiniWindowForCapture: () =>
+        windowManager?.concealMiniWindowForCapture() ?? false,
+      restoreMiniWindowAfterCapture: () =>
+        windowManager?.restoreMiniWindowAfterCapture(),
     },
     updateUiState: (partial) => uiStateService.update(partial),
-  })
+  });
 
   // --- Initialization helpers ---
 
   const broadcastAuthCallback = (url: string) => {
-    const targets = windowManager ? windowManager.getAllWindows() : BrowserWindow.getAllWindows()
+    const targets = windowManager
+      ? windowManager.getAllWindows()
+      : BrowserWindow.getAllWindows();
     for (const window of targets) {
-      window.webContents.send('auth:callback', { url })
+      window.webContents.send("auth:callback", { url });
     }
-  }
+  };
 
-  const wait = (ms: number) => new Promise<void>((resolve) => {
-    setTimeout(resolve, ms)
-  })
+  const broadcastWakeWordState = () => {
+    const enabled = wakeWordController?.getEnabled() ?? false;
+    const targets = windowManager
+      ? windowManager.getAllWindows()
+      : BrowserWindow.getAllWindows();
+    for (const window of targets) {
+      if (!window.isDestroyed()) {
+        window.webContents.send("voice:wakeWordState", { enabled });
+      }
+    }
+  };
+
+  const syncWakeWordState = () => {
+    const enabled = wakeWordController?.syncState() ?? false;
+    const targets = windowManager
+      ? windowManager.getAllWindows()
+      : BrowserWindow.getAllWindows();
+    for (const window of targets) {
+      if (!window.isDestroyed()) {
+        window.webContents.send("voice:wakeWordState", { enabled });
+      }
+    }
+    return enabled;
+  };
+
+  const wait = (ms: number) =>
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, ms);
+    });
 
   const startDeferredStartup = () => {
     if (deferredStartupSequence) {
-      return deferredStartupSequence
+      return deferredStartupSequence;
     }
 
     const startupTasks: Array<{
-      label: string
-      delayMs?: number
-      run: () => Promise<void> | void
+      label: string;
+      delayMs?: number;
+      run: () => Promise<void> | void;
     }> = [
       {
-        label: 'overlay-window',
+        label: "overlay-window",
         run: () => {
-          overlayController?.create()
+          overlayController?.create();
         },
       },
       {
-        label: 'selected-text',
+        label: "selected-text",
         delayMs: STARTUP_STAGE_DELAY_MS,
         run: () => {
-          initSelectedTextProcess()
-          if (process.platform === 'win32') {
-            setTimeout(() => { void getSelectedText() }, 250)
+          initSelectedTextProcess();
+          if (process.platform === "win32") {
+            setTimeout(() => {
+              void getSelectedText();
+            }, 250);
           }
         },
       },
       {
-        label: 'global-input-hooks',
+        label: "global-input-hooks",
         delayMs: STARTUP_STAGE_DELAY_MS,
         run: () => {
-          radialGestureService.start()
+          radialGestureService.start();
         },
       },
       {
-        label: 'wake-word',
+        label: "wake-word",
         delayMs: STARTUP_STAGE_DELAY_MS,
         run: async () => {
           try {
-            await initializeWakeWord({
+            wakeWordController?.dispose();
+            wakeWordController = await initializeWakeWord({
               isDev,
               electronDir: __dirname,
               uiStateService,
               isAppReady: () => appReady,
-            })
+              onEnabledChange: () => {
+                broadcastWakeWordState();
+              },
+            });
+            broadcastWakeWordState();
           } catch (error) {
-            console.error('[WakeWord] Failed to initialize:', (error as Error).message)
+            console.error(
+              "[WakeWord] Failed to initialize:",
+              (error as Error).message,
+            );
           }
         },
       },
-    ]
+    ];
 
     deferredStartupSequence = (async () => {
       for (const task of startupTasks) {
         if (task.delayMs) {
-          await wait(task.delayMs)
+          await wait(task.delayMs);
         }
         if (isQuitting) {
-          return
+          return;
         }
-        await task.run()
+        await task.run();
       }
     })().catch((error) => {
-      console.error('[startup] Deferred startup failed:', (error as Error).message)
-    })
+      console.error(
+        "[startup] Deferred startup failed:",
+        (error as Error).message,
+      );
+    });
 
-    return deferredStartupSequence
-  }
+    return deferredStartupSequence;
+  };
 
   const initializeStellaHostRunner = async () => {
-    const stellaHome = await resolveStellaHome(app)
-    stellaHomePath = stellaHome.homePath
-    localChatService?.close()
-    localChatService = new LocalChatService(stellaHome.homePath)
+    const stellaHome = await resolveStellaHome(app);
+    stellaHomePath = stellaHome.homePath;
+    localChatService?.close();
+    localChatService = new LocalChatService(stellaHome.homePath);
     try {
       await ensureLastResortRecoveryScripts({
         stellaHomePath: stellaHome.homePath,
         frontendRoot,
-      })
+      });
     } catch (error) {
-      console.warn('[self-mod] Failed to write recovery scripts:', (error as Error).message)
+      console.warn(
+        "[self-mod] Failed to write recovery scripts:",
+        (error as Error).message,
+      );
     }
     securityPolicyService.setSecurityPolicyPath(
-      path.join(stellaHome.statePath, 'security_policy.json'),
-    )
-    await securityPolicyService.loadPolicy()
+      path.join(stellaHome.statePath, "security_policy.json"),
+    );
+    await securityPolicyService.loadPolicy();
 
-    const deviceIdentity = await getOrCreateDeviceIdentity(stellaHome.statePath)
-    deviceId = deviceIdentity.deviceId
+    const deviceIdentity = await getOrCreateDeviceIdentity(
+      stellaHome.statePath,
+    );
+    deviceId = deviceIdentity.deviceId;
     if (!schedulerService) {
       schedulerService = new LocalSchedulerService({
         stellaHome: stellaHome.homePath,
         getRunner: () => stellaHostRunner,
-      })
+      });
     } else {
-      schedulerService.stop()
+      schedulerService.stop();
     }
     stellaHostRunner = createStellaHostRunner({
       deviceId,
       StellaHome: stellaHome.homePath,
       frontendRoot,
       getHmrMorphOrchestrator: () => hmrMorphOrchestrator,
-      requestCredential: (payload) => credentialService.requestCredential(payload),
+      requestCredential: (payload) =>
+        credentialService.requestCredential(payload),
       displayHtml: (html) => {
-        const targets = windowManager ? windowManager.getAllWindows() : BrowserWindow.getAllWindows()
+        const targets = windowManager
+          ? windowManager.getAllWindows()
+          : BrowserWindow.getAllWindows();
         for (const win of targets) {
           if (!win.isDestroyed()) {
-            win.webContents.send('display:update', html)
+            win.webContents.send("display:update", html);
           }
         }
       },
@@ -276,100 +349,103 @@ export const bootstrapMainProcess = () => {
       scheduleApi: {
         listCronJobs: async () => schedulerService!.listCronJobs(),
         addCronJob: async (input) => schedulerService!.addCronJob(input),
-        updateCronJob: async (jobId, patch) => schedulerService!.updateCronJob(jobId, patch),
+        updateCronJob: async (jobId, patch) =>
+          schedulerService!.updateCronJob(jobId, patch),
         removeCronJob: async (jobId) => schedulerService!.removeCronJob(jobId),
         runCronJob: async (jobId) => schedulerService!.runCronJob(jobId),
         getHeartbeatConfig: async (conversationId) =>
           schedulerService!.getHeartbeatConfig(conversationId),
-        upsertHeartbeat: async (input) => schedulerService!.upsertHeartbeat(input),
-        runHeartbeat: async (conversationId) => schedulerService!.runHeartbeat(conversationId),
+        upsertHeartbeat: async (input) =>
+          schedulerService!.upsertHeartbeat(input),
+        runHeartbeat: async (conversationId) =>
+          schedulerService!.runHeartbeat(conversationId),
       },
       signHeartbeatPayload: async (signedAtMs: number) => ({
         publicKey: deviceIdentity.publicKey,
         signature: signDeviceHeartbeat(deviceIdentity, signedAtMs),
       }),
-    })
+    });
 
-    const pendingConvexUrl = authService.getPendingConvexUrl()
+    const pendingConvexUrl = authService.getPendingConvexUrl();
     if (pendingConvexUrl) {
-      stellaHostRunner.setConvexUrl(pendingConvexUrl)
+      stellaHostRunner.setConvexUrl(pendingConvexUrl);
     }
-    stellaHostRunner.start()
-    schedulerService.start()
-  }
+    stellaHostRunner.start();
+    schedulerService.start();
+  };
 
   const hardResetLocalState = async (): Promise<{ ok: true }> => {
-    const hadRunner = Boolean(stellaHostRunner)
+    const hadRunner = Boolean(stellaHostRunner);
 
-    credentialService.cancelAll()
+    credentialService.cancelAll();
 
     if (stellaHostRunner) {
-      stellaHostRunner.stop()
-      stellaHostRunner = null
+      stellaHostRunner.stop();
+      stellaHostRunner = null;
     }
-    localChatService?.close()
-    localChatService = null
+    localChatService?.close();
+    localChatService = null;
     if (schedulerService) {
-      schedulerService.stop()
+      schedulerService.stop();
     }
 
-    authService.setHostAuthState(false)
-    appReady = false
-    authService.clearPendingAuthCallback()
-    uiStateService.state.isVoiceActive = false
-    uiStateService.state.isVoiceRtcActive = false
-    uiStateService.syncVoiceOverlay()
-    captureService.resetForHardReset()
-    windowManager?.hideMiniWindow(false)
+    authService.setHostAuthState(false);
+    appReady = false;
+    authService.clearPendingAuthCallback();
+    uiStateService.state.isVoiceActive = false;
+    uiStateService.state.isVoiceRtcActive = false;
+    uiStateService.syncVoiceOverlay();
+    captureService.resetForHardReset();
+    windowManager?.hideMiniWindow(false);
 
-    securityPolicyService.clearAll()
-    externalLinkService.clearSenderRateLimits()
+    securityPolicyService.clearAll();
+    externalLinkService.clearSenderRateLimits();
 
-    const appSession = session.fromPartition(STELLA_SESSION_PARTITION)
+    const appSession = session.fromPartition(STELLA_SESSION_PARTITION);
     await Promise.allSettled([
       appSession.clearStorageData(),
       appSession.clearCache(),
-    ])
+    ]);
 
-    const homePath = stellaHomePath ?? path.resolve(frontendRoot, '.stella')
+    const homePath = stellaHomePath ?? path.resolve(frontendRoot, ".stella");
     await Promise.allSettled([
       fs.rm(homePath, { recursive: true, force: true }),
-    ])
+    ]);
 
     if (hadRunner) {
-      await initializeStellaHostRunner()
+      await initializeStellaHostRunner();
     }
 
-    uiStateService.broadcast()
-    return { ok: true }
-  }
+    uiStateService.broadcast();
+    return { ok: true };
+  };
 
   // --- Single-instance lock ---
 
   if (!authService.enforceSingleInstanceLock()) {
-    return
+    return;
   }
-  authService.bindOpenUrlHandler()
+  authService.bindOpenUrlHandler();
 
   // --- App lifecycle ---
 
   app.whenReady().then(async () => {
-    authService.registerAuthProtocol()
-    authService.captureInitialAuthUrl(process.argv)
+    authService.registerAuthProtocol();
+    authService.captureInitialAuthUrl(process.argv);
 
-    await initializeStellaHostRunner()
+    await initializeStellaHostRunner();
 
     overlayController = new OverlayWindowController({
-      preloadPath: path.join(__dirname, 'preload.js'),
+      preloadPath: path.join(__dirname, "preload.js"),
       sessionPartition: STELLA_SESSION_PARTITION,
       electronDir: __dirname,
       isDev,
       getDevServerUrl,
-    })
+    });
 
     windowManager = new WindowManager({
       electronDir: __dirname,
-      preloadPath: path.join(__dirname, 'preload.js'),
+      preloadPath: path.join(__dirname, "preload.js"),
       sessionPartition: STELLA_SESSION_PARTITION,
       isDev,
       getDevServerUrl,
@@ -380,38 +456,47 @@ export const bootstrapMainProcess = () => {
       miniBridgeService,
       chatContextSyncBridge: {
         getChatContextVersion: () => captureService.getChatContextVersion(),
-        getLastBroadcastChatContextVersion: () => captureService.getLastBroadcastChatContextVersion(),
+        getLastBroadcastChatContextVersion: () =>
+          captureService.getLastBroadcastChatContextVersion(),
         broadcastChatContext: () => captureService.broadcastChatContext(),
-        waitForMiniChatContext: (version: number) => captureService.waitForMiniChatContext(version),
+        waitForMiniChatContext: (version: number) =>
+          captureService.waitForMiniChatContext(version),
       },
       onDeactivateVoiceModes: () => uiStateService.deactivateVoiceModes(),
       onUpdateUiState: (partial) => uiStateService.update(partial),
       getOverlayController: () => overlayController,
-    })
+    });
 
     // Bind UI state service to window + overlay targets (deferred until both exist)
     uiStateService.bind({
       broadcastTarget: {
-        getAllWindows: () => windowManager ? windowManager.getAllWindows() : BrowserWindow.getAllWindows(),
+        getAllWindows: () =>
+          windowManager
+            ? windowManager.getAllWindows()
+            : BrowserWindow.getAllWindows(),
       },
-      getOverlayTarget: () => overlayController ? {
-        showVoice: (x, y, mode) => overlayController!.showVoice(x, y, mode),
-        hideVoice: () => overlayController!.hideVoice(),
-      } : null,
-    })
+      getOverlayTarget: () =>
+        overlayController
+          ? {
+              showVoice: (x, y, mode) =>
+                overlayController!.showVoice(x, y, mode),
+              hideVoice: () => overlayController!.hideVoice(),
+            }
+          : null,
+    });
 
-    windowManager.createInitialWindows()
+    windowManager.createInitialWindows();
 
     // Start stella-ui server for agent UI control
     startStellaUiServer({
       getWindow: () => windowManager?.getFullWindow() ?? null,
       frontendRoot,
       getProxy: () => stellaHostRunner?.getProxy() ?? null,
-    })
+    });
     hmrMorphOrchestrator = createHmrMorphOrchestrator({
       getFullWindow: () => windowManager?.getFullWindow() ?? null,
       getOverlayController: () => overlayController,
-    })
+    });
 
     registerAllIpcHandlers({
       ui: {
@@ -420,10 +505,14 @@ export const bootstrapMainProcess = () => {
         updateUiState: (partial) => uiStateService.update(partial),
         broadcastUiState: () => uiStateService.broadcast(),
         syncVoiceOverlay: () => uiStateService.syncVoiceOverlay(),
-        setAppReady: (ready) => { appReady = ready },
-        getResumeWakeWordCapture: () => uiStateService.getResumeWakeWordCapture(),
+        setAppReady: (ready) => {
+          appReady = ready;
+        },
+        getResumeWakeWordCapture: () =>
+          uiStateService.getResumeWakeWordCapture(),
         scheduleResumeWakeWord: () => uiStateService.scheduleResumeWakeWord(),
         deactivateVoiceModes: () => uiStateService.deactivateVoiceModes(),
+        syncWakeWordState,
         assertPrivilegedSender: (event, channel) =>
           externalLinkService.assertPrivilegedSender(event, channel),
       },
@@ -442,8 +531,10 @@ export const bootstrapMainProcess = () => {
         ensurePrivilegedActionApproval: (action, message, detail, event) =>
           securityPolicyService.ensureApproval(action, message, detail, event),
         hardResetLocalState,
-        submitCredential: (payload) => credentialService.submitCredential(payload),
-        cancelCredential: (payload) => credentialService.cancelCredential(payload),
+        submitCredential: (payload) =>
+          credentialService.submitCredential(payload),
+        cancelCredential: (payload) =>
+          credentialService.cancelCredential(payload),
       },
       schedule: {
         schedulerService: schedulerService!,
@@ -473,8 +564,7 @@ export const bootstrapMainProcess = () => {
         miniBridgeService,
         windowManager,
       },
-      store: {
-      },
+      store: {},
       voice: {
         uiState: uiStateService.state,
         getAppReady: () => appReady,
@@ -482,63 +572,69 @@ export const bootstrapMainProcess = () => {
         broadcastUiState: () => uiStateService.broadcast(),
         scheduleResumeWakeWord: () => uiStateService.scheduleResumeWakeWord(),
         syncVoiceOverlay: () => uiStateService.syncVoiceOverlay(),
+        syncWakeWordState,
+        getWakeWordEnabled: () => wakeWordController?.getEnabled() ?? false,
+        pushWakeWordAudio: (pcm) => wakeWordController?.pushAudioChunk(pcm),
         getStellaHostRunner: () => stellaHostRunner,
         getOverlayController: () => overlayController,
         getConvexSiteUrl: () => authService.getConvexSiteUrl(),
         getAuthToken: () => authService.getAuthToken(),
-        setAssistantSpeaking: (active) => audioDuckingService.setAssistantSpeaking(active),
+        setAssistantSpeaking: (active) =>
+          audioDuckingService.setAssistantSpeaking(active),
       },
-    })
+    });
 
-    const pendingAuthCallback = authService.consumePendingAuthCallback()
-    const fullWindow = windowManager.getFullWindow()
+    const pendingAuthCallback = authService.consumePendingAuthCallback();
+    const fullWindow = windowManager.getFullWindow();
     if (pendingAuthCallback && fullWindow) {
-      fullWindow.webContents.once('did-finish-load', () => {
-        broadcastAuthCallback(pendingAuthCallback)
-      })
+      fullWindow.webContents.once("did-finish-load", () => {
+        broadcastAuthCallback(pendingAuthCallback);
+      });
     }
 
     if (fullWindow) {
-      fullWindow.webContents.once('did-finish-load', () => {
-        void startDeferredStartup()
-      })
+      fullWindow.webContents.once("did-finish-load", () => {
+        void startDeferredStartup();
+      });
     }
-    windowManager.showWindow('full')
+    windowManager.showWindow("full");
     setTimeout(() => {
-      void startDeferredStartup()
-    }, STARTUP_STAGE_DELAY_MS)
+      void startDeferredStartup();
+    }, STARTUP_STAGE_DELAY_MS);
 
-    app.on('activate', () => {
-      windowManager?.onActivate()
-    })
-  })
+    app.on("activate", () => {
+      windowManager?.onActivate();
+    });
+  });
 
-  app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-      app.quit()
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
+      app.quit();
     }
-  })
+  });
 
-  app.on('before-quit', () => {
-    isQuitting = true
-    authService.stopAuthRefreshLoop()
+  app.on("before-quit", () => {
+    isQuitting = true;
+    authService.stopAuthRefreshLoop();
     if (stellaHostRunner) {
-      stellaHostRunner.killAllShells()
+      stellaHostRunner.killAllShells();
     }
-    schedulerService?.stop()
-    cleanupSelectedTextProcess()
-    overlayController?.destroy()
-  })
+    schedulerService?.stop();
+    wakeWordController?.dispose();
+    wakeWordController = null;
+    cleanupSelectedTextProcess();
+    overlayController?.destroy();
+  });
 
-  app.on('will-quit', () => {
-    globalShortcut.unregisterAll()
-    radialGestureService.stop()
+  app.on("will-quit", () => {
+    globalShortcut.unregisterAll();
+    radialGestureService.stop();
     if (stellaHostRunner) {
-      stellaHostRunner.stop()
-      stellaHostRunner = null
+      stellaHostRunner.stop();
+      stellaHostRunner = null;
     }
     if (schedulerService) {
-      schedulerService.stop()
+      schedulerService.stop();
     }
-  })
-}
+  });
+};
