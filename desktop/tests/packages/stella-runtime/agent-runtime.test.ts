@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LocalTaskManagerAgentContext } from "@stella/stella-runtime/tasks";
-import type { JsonlRuntimeStore } from "../../../packages/stella-runtime/src/jsonl_store.js";
-import type { ResolvedLlmRoute } from "../../../packages/stella-runtime/src/model-routing.js";
+import type { JsonlRuntimeStore } from "../../../electron/core/runtime/jsonl_store.js";
+import type { ResolvedLlmRoute } from "../../../electron/core/runtime/model-routing.js";
 
 const {
   runCodexAppServerTurnMock,

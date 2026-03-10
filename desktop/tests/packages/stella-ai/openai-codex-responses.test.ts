@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { streamOpenAICodexResponses } from "../../../packages/stella-ai/src/providers/openai-codex-responses.js";
-import type { Context, Model } from "../../../packages/stella-ai/src/types.js";
+import { streamOpenAICodexResponses } from "../../../electron/core/ai/providers/openai-codex-responses.js";
+import type { Context, Model } from "../../../electron/core/ai/types.js";
 
 const model: Model<"openai-codex-responses"> = {
 	id: "gpt-5.1-codex-mini",

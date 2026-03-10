@@ -31,7 +31,7 @@ vi.mock("better-sqlite3", async () => {
   return { default: BetterSqlite3Mock };
 });
 
-import { JsonlRuntimeStore } from "../../../packages/stella-runtime/src/jsonl_store.js";
+import { JsonlRuntimeStore } from "../../../electron/core/runtime/jsonl_store.js";
 
 const fileSafeId = (value: string): string => value.replace(/[^a-zA-Z0-9._-]/g, "_");
 

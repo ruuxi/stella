@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createStateContext, handleTask } from "../../../packages/stella-runtime/src/tools/state.js";
+import { createStateContext, handleTask } from "../../../electron/core/runtime/tools/state.js";
 
 describe("TaskCreate delegation controls", () => {
   it("forwards inherited depth and defaults parentTaskId from the current task", async () => {

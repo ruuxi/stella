@@ -14,17 +14,12 @@
     "composite": true,
     "baseUrl": ".",
     "paths": {
-      "@stella/stella-ai": ["./packages/stella-ai/src/index.ts"],
-      "@stella/stella-agent-core": ["./packages/stella-agent-core/src/index.ts"],
-      "@stella/stella-runtime": ["./packages/stella-runtime/src/index.ts"],
-      "@stella/stella-runtime/*": ["./packages/stella-runtime/src/*"]
+      "@stella/stella-ai": ["./electron/core/ai/index.ts"],
+      "@stella/stella-agent-core": ["./electron/core/agent/index.ts"],
+      "@stella/stella-runtime": ["./electron/core/runtime/index.ts"],
+      "@stella/stella-runtime/*": ["./electron/core/runtime/*"]
     }
   },
   "include": ["electron/**/*", "src/shared/contracts/**/*", "src/shared/ai/**/*"],
   "exclude": ["electron/preload.ts", "**/*.test.ts"],
-  "references": [
-    { "path": "./packages/stella-ai" },
-    { "path": "./packages/stella-agent-core" },
-    { "path": "./packages/stella-runtime" }
-  ]
 }

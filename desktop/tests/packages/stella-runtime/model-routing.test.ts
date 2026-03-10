@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveLlmRoute } from "../../../packages/stella-runtime/src/model-routing.js";
+import { resolveLlmRoute } from "../../../electron/core/runtime/model-routing.js";
 
 describe("managed model routing", () => {
   it("uses the managed API base URL instead of duplicating the chat completions path", () => {
