@@ -19,7 +19,7 @@ const freshModule = async (): Promise<TwitchEmotesModule> => {
 // ---------------------------------------------------------------------------
 
 vi.mock("react", () => ({
-  useState: (init: unknown) => [init, vi.fn()],
+  useState: (init: unknown) => [typeof init === "function" ? (init as () => unknown)() : init, vi.fn()],
   useEffect: (fn: () => void) => fn(),
 }));
 

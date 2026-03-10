@@ -1,9 +1,7 @@
 import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
-import { createRequire } from 'module'
-
-const require = createRequire(import.meta.url)
+import BetterSqliteDatabase from 'better-sqlite3'
 
 export type LocalChatEventRecord = {
   _id: string
@@ -137,10 +135,7 @@ const toStoredEventRecord = (
 })
 
 const openDatabase = (dbPath: string): SqliteDatabase => {
-  const BetterSqliteDatabase = require('better-sqlite3') as new (
-    filePath: string,
-  ) => SqliteDatabase
-  return new BetterSqliteDatabase(dbPath)
+  return new BetterSqliteDatabase(dbPath) as unknown as SqliteDatabase
 }
 
 export class LocalChatService {
