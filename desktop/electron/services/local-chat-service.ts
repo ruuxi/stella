@@ -5,8 +5,6 @@ import { createRequire } from 'module'
 
 const require = createRequire(import.meta.url)
 
-declare const globalThis: typeof global & { Bun?: unknown }
-
 export type LocalChatEventRecord = {
   _id: string
   timestamp: number
@@ -47,7 +45,7 @@ type SqliteStatement = {
 type SqliteDatabase = {
   exec(sql: string): void
   prepare(sql: string): SqliteStatement
-  close?: () => void
+  close(): void
 }
 
 type EventRow = {
@@ -139,27 +137,6 @@ const toStoredEventRecord = (
 })
 
 const openDatabase = (dbPath: string): SqliteDatabase => {
-  if (typeof globalThis.Bun !== 'undefined') {
-    const bunSqlite = require('bun:sqlite') as {
-      Database: new (
-        filePath: string,
-        options?: { create?: boolean; readonly?: boolean },
-      ) => SqliteDatabase
-    }
-    return new bunSqlite.Database(dbPath, { create: true })
-  }
-
-  if (!process.versions?.electron) {
-    try {
-      const nodeSqlite = require('node:sqlite') as {
-        DatabaseSync: new (filePath: string) => SqliteDatabase
-      }
-      return new nodeSqlite.DatabaseSync(dbPath)
-    } catch {
-      // Fall through to better-sqlite3 when node:sqlite is unavailable.
-    }
-  }
-
   const BetterSqliteDatabase = require('better-sqlite3') as new (
     filePath: string,
   ) => SqliteDatabase
@@ -575,6 +552,6 @@ export class LocalChatService {
   }
 
   close() {
-    this.db.close?.()
+    this.db.close()
   }
 }

@@ -13,8 +13,6 @@ import { buildRuntimeThreadKey } from "./thread-runtime.js";
 
 const require = createRequire(import.meta.url);
 
-declare const globalThis: typeof global & { Bun?: unknown };
-
 export type JsonlThreadMessage = {
   timestamp: number;
   conversationId: string;
@@ -65,7 +63,7 @@ type SqliteStatement = {
 type SqliteDatabase = {
   exec(sql: string): void;
   prepare(sql: string): SqliteStatement;
-  close?: () => void;
+  close(): void;
 };
 
 const MAX_RECALL_RESULTS = 8;
@@ -212,16 +210,6 @@ const isRuntimeConversationStateMap = (
 };
 
 const openRuntimeDatabase = (dbPath: string): SqliteDatabase => {
-  if (typeof globalThis.Bun !== "undefined") {
-    const bunSqlite = require("bun:sqlite") as {
-      Database: new (
-        filePath: string,
-        options?: { create?: boolean; readonly?: boolean },
-      ) => SqliteDatabase;
-    };
-    return new bunSqlite.Database(dbPath, { create: true });
-  }
-
   const BetterSqliteDatabase = require("better-sqlite3") as new (filePath: string) => SqliteDatabase;
   return new BetterSqliteDatabase(dbPath);
 };
@@ -1067,6 +1055,6 @@ export class JsonlRuntimeStore {
   }
 
   close(): void {
-    this.db?.close?.();
+    this.db?.close();
   }
 }

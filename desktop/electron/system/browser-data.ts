@@ -32,20 +32,12 @@ export type {
   BrowserProfile,
 }
 
-// Declare Bun on globalThis for runtime detection
-declare const globalThis: typeof global & { Bun?: unknown };
-
 type SqliteDatabase = {
   prepare(sql: string): { all(...params: unknown[]): unknown[] };
   close(): void;
 };
 
 const openDatabase = async (dbPath: string): Promise<SqliteDatabase> => {
-  if (typeof globalThis.Bun !== "undefined") {
-    // @ts-expect-error bun:sqlite only available at runtime in Bun
-    const { Database: BunDatabase } = await import("bun:sqlite");
-    return new BunDatabase(dbPath, { readonly: true }) as SqliteDatabase;
-  }
   const { default: Database } = await import("better-sqlite3");
   return new Database(dbPath, { readonly: true }) as SqliteDatabase;
 };
