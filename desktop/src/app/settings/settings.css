@@ -39,7 +39,9 @@
   font-weight: 500;
   font-family: inherit;
   cursor: default;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
   text-align: left;
 }
 
@@ -163,31 +165,14 @@
 
 /* ---- Model Select ---- */
 
+[data-component="native-select"] {
+  width: 220px;
+}
+
 .settings-model-select,
 .settings-runtime-select {
   width: 220px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--border-weak);
   border-radius: var(--radius-full);
-  background: var(--background);
-  color: var(--text-base);
-  font-size: 12px;
-  font-family: inherit;
-  outline: none;
-  cursor: default;
-  transition: border-color 0.15s ease;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 28px;
-}
-
-.settings-model-select:focus,
-.settings-runtime-select:focus {
-  border-color: var(--interactive);
 }
 
 .settings-model-reset-icon {
@@ -203,7 +188,9 @@
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 
 .settings-model-reset-icon:hover {
@@ -223,7 +210,10 @@
   font-weight: 500;
   font-family: inherit;
   cursor: default;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .settings-btn:hover {
@@ -303,20 +293,14 @@
   gap: 6px;
 }
 
-.settings-key-input input {
+.settings-key-input [data-component="input"] {
   width: 180px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--border-weak);
-  border-radius: var(--radius-full);
-  background: var(--background);
-  color: var(--text-base);
-  font-size: 12px;
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.15s ease;
 }
 
-.settings-key-input input:focus {
-  border-color: var(--interactive);
+.settings-key-input [data-slot="input-wrapper"] {
+  border-radius: var(--radius-full);
+}
+
+.settings-key-input [data-slot="input-input"] {
+  height: 30px;
 }

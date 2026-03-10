@@ -22,6 +22,8 @@ import { OnboardingMockWindows } from "./OnboardingMockWindows";
 import { InlineAuth } from "../auth/InlineAuth";
 import { useTheme, useThemeControl } from "@/context/theme-context";
 import { getPlatform } from "@/platform/electron/platform";
+import { OnboardingReveal } from "./OnboardingReveal";
+import { OnboardingSelectionTile } from "./OnboardingSelectionTile";
 import "./Onboarding.css";
 import "@/app/onboarding/selfmod-demo.css";
 
@@ -37,7 +39,6 @@ const STEP_TITLES: Partial<Record<Phase, string>> = {
   personality: "How should I talk?",
 };
 
-
 /* ── Creation conversation steps ── */
 const CREATION_STEPS = [
   {
@@ -52,7 +53,8 @@ const CREATION_STEPS = [
   },
   {
     userText: "Can you modify yourself?",
-    stellaReply: "I can modify myself, self-improve, learn skills, and even change how everything looks on your screen.",
+    stellaReply:
+      "I can modify myself, self-improve, learn skills, and even change how everything looks on your screen.",
     action: "selfmod" as const,
   },
 ];
@@ -69,28 +71,44 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   onDemoChange,
   isAuthenticated,
 }) => {
-  const [phase, setPhase] = useState<Phase>(() => isAuthenticated ? "start" : "auth");
+  const [phase, setPhase] = useState<Phase>(() =>
+    isAuthenticated ? "start" : "auth",
+  );
   const [leaving, setLeaving] = useState(false);
   const [rippleActive, setRippleActive] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatReplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const selfmodFadeSwapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const selfmodFadeCleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selfmodFadeSwapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const selfmodFadeCleanupTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const selfmodExitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Browser selection
   const [browserEnabled, setBrowserEnabled] = useState(false);
-  const [selectedBrowser, setSelectedBrowser] = useState<BrowserId | null>(null);
-  const [detectedBrowser, setDetectedBrowser] = useState<BrowserId | null>(null);
-  const [availableProfiles, setAvailableProfiles] = useState<{ id: string; name: string }[]>([]);
+  const [selectedBrowser, setSelectedBrowser] = useState<BrowserId | null>(
+    null,
+  );
+  const [detectedBrowser, setDetectedBrowser] = useState<BrowserId | null>(
+    null,
+  );
+  const [availableProfiles, setAvailableProfiles] = useState<
+    { id: string; name: string }[]
+  >([]);
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
   const [showNoneWarning, setShowNoneWarning] = useState(false);
   const [activeMockId, setActiveMockId] = useState<string | null>(null);
   const [homeHovered, setHomeHovered] = useState(false);
-  const [voicePermissionGranted, setVoicePermissionGranted] = useState<boolean | null>(null);
+  const [voicePermissionGranted, setVoicePermissionGranted] = useState<
+    boolean | null
+  >(null);
 
   // Discovery category toggles
-  const [categoryStates, setCategoryStates] = useState<Record<DiscoveryCategory, boolean>>(() => {
+  const [categoryStates, setCategoryStates] = useState<
+    Record<DiscoveryCategory, boolean>
+  >(() => {
     const initial: Record<string, boolean> = {};
     for (const cat of DISCOVERY_CATEGORIES) {
       initial[cat.id] = cat.defaultEnabled;
@@ -100,27 +118,41 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   // Notify parent when selections change
   useEffect(() => {
-    const hasAny = Object.values(categoryStates).some((v) => v) || browserEnabled;
+    const hasAny =
+      Object.values(categoryStates).some((v) => v) || browserEnabled;
     onSelectionChange?.(hasAny);
   }, [categoryStates, browserEnabled, onSelectionChange]);
 
   // Personality
-  const [expressionStyle, setExpressionStyle] = useState<"emotes" | "emoji" | "none" | null>(null);
-  const saveExpressionStyle = useMutation(api.data.preferences.setExpressionStyle);
-  const savePreferredBrowser = useMutation(api.data.preferences.setPreferredBrowser);
+  const [expressionStyle, setExpressionStyle] = useState<
+    "emotes" | "emoji" | "none" | null
+  >(null);
+  const saveExpressionStyle = useMutation(
+    api.data.preferences.setExpressionStyle,
+  );
+  const savePreferredBrowser = useMutation(
+    api.data.preferences.setPreferredBrowser,
+  );
 
   // Phone — hover reveal
 
   // Creation conversation — mock chat that opens onboarding demo panels
   type ChatMsg = { role: "stella" | "user"; text: string };
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([
-    { role: "stella", text: "Anything you need, I can make it — apps, live dashboards, creative tools, things that appear right here while we talk. And I\u2019m not static. I can learn new abilities, change how I work, and even completely redesign my own interface. The way I look, the way I behave, what I can do — you shape all of it." },
+    {
+      role: "stella",
+      text: "Anything you need, I can make it — apps, live dashboards, creative tools, things that appear right here while we talk. And I\u2019m not static. I can learn new abilities, change how I work, and even completely redesign my own interface. The way I look, the way I behave, what I can do — you shape all of it.",
+    },
   ]);
   const [chatStep, setChatStep] = useState(0);
   const [chatTyping, setChatTyping] = useState(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
-  const [selfmodLevel, setSelfmodLevel] = useState<"low" | "medium" | "high" | null>(null);
-  const [lastActiveSelfmodLevel, setLastActiveSelfmodLevel] = useState<"low" | "medium" | "high" | null>(null);
+  const [selfmodLevel, setSelfmodLevel] = useState<
+    "low" | "medium" | "high" | null
+  >(null);
+  const [lastActiveSelfmodLevel, setLastActiveSelfmodLevel] = useState<
+    "low" | "medium" | "high" | null
+  >(null);
   const [selfmodIsFading, setSelfmodIsFading] = useState(false);
 
   const clearChatReplyTimer = useCallback(() => {
@@ -148,12 +180,15 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     }
   }, []);
 
-  const applySelfmodLevel = useCallback((nextLevel: "low" | "medium" | "high" | null) => {
-    if (nextLevel) {
-      setLastActiveSelfmodLevel(nextLevel);
-    }
-    setSelfmodLevel(nextLevel);
-  }, []);
+  const applySelfmodLevel = useCallback(
+    (nextLevel: "low" | "medium" | "high" | null) => {
+      if (nextLevel) {
+        setLastActiveSelfmodLevel(nextLevel);
+      }
+      setSelfmodLevel(nextLevel);
+    },
+    [],
+  );
 
   const handleChatSend = useCallback(() => {
     if (chatStep >= CREATION_STEPS.length || chatTyping) return;
@@ -162,7 +197,10 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     setChatTyping(true);
     clearChatReplyTimer();
     chatReplyTimerRef.current = setTimeout(() => {
-      setChatMessages((prev) => [...prev, { role: "stella", text: step.stellaReply }]);
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "stella", text: step.stellaReply },
+      ]);
       setChatTyping(false);
       setChatStep((prev) => prev + 1);
       chatReplyTimerRef.current = null;
@@ -192,35 +230,40 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   }, []);
 
   // Fade-through when transitioning to/from "high" (layout changes can't CSS-transition)
-  const handleSelfmodLevel = useCallback((next: "low" | "medium" | "high" | null) => {
-    const prev = selfmodLevel;
-    if (next === prev) next = null; // toggle off
+  const handleSelfmodLevel = useCallback(
+    (next: "low" | "medium" | "high" | null) => {
+      const prev = selfmodLevel;
+      if (next === prev) next = null; // toggle off
 
-    const needsFade = prev === "high" || next === "high";
-    if (!needsFade) {
-      clearSelfmodFadeTimers();
-      setSelfmodIsFading(false);
-      applySelfmodLevel(next);
-      return;
-    }
-
-    if (selfmodIsFading) {
-      return;
-    }
-
-    setSelfmodIsFading(true);
-    clearSelfmodFadeTimers();
-    selfmodFadeSwapTimerRef.current = setTimeout(() => {
-      applySelfmodLevel(next);
-      selfmodFadeCleanupTimerRef.current = setTimeout(() => {
+      const needsFade = prev === "high" || next === "high";
+      if (!needsFade) {
+        clearSelfmodFadeTimers();
         setSelfmodIsFading(false);
-      }, 50);
-    }, 300);
-  }, [applySelfmodLevel, clearSelfmodFadeTimers, selfmodIsFading, selfmodLevel]);
+        applySelfmodLevel(next);
+        return;
+      }
+
+      if (selfmodIsFading) {
+        return;
+      }
+
+      setSelfmodIsFading(true);
+      clearSelfmodFadeTimers();
+      selfmodFadeSwapTimerRef.current = setTimeout(() => {
+        applySelfmodLevel(next);
+        selfmodFadeCleanupTimerRef.current = setTimeout(() => {
+          setSelfmodIsFading(false);
+        }, 50);
+      }, 300);
+    },
+    [applySelfmodLevel, clearSelfmodFadeTimers, selfmodIsFading, selfmodLevel],
+  );
 
   // Apply/remove selfmod demo on the onboarding surface only.
   useEffect(() => {
-    const selfmodExiting = !(phase === "creation" && selfmodLevel) && Boolean(lastActiveSelfmodLevel);
+    const selfmodExiting =
+      !(phase === "creation" && selfmodLevel) &&
+      Boolean(lastActiveSelfmodLevel);
 
     if (!selfmodExiting) {
       clearSelfmodExitTimer();
@@ -250,7 +293,8 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   }, [phase]);
 
   // Theme (inline)
-  const { themeId, themes, colorMode, gradientMode, gradientColor } = useTheme();
+  const { themeId, themes, colorMode, gradientMode, gradientColor } =
+    useTheme();
   const {
     setTheme,
     setColorMode,
@@ -268,14 +312,17 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     }
   }, []);
 
-  const transitionTo = useCallback((next: Phase) => {
-    clearTimeoutRef();
-    setLeaving(true);
-    timeoutRef.current = setTimeout(() => {
-      setLeaving(false);
-      setPhase(next);
-    }, FADE_OUT_MS + FADE_GAP_MS);
-  }, [clearTimeoutRef]);
+  const transitionTo = useCallback(
+    (next: Phase) => {
+      clearTimeoutRef();
+      setLeaving(true);
+      timeoutRef.current = setTimeout(() => {
+        setLeaving(false);
+        setPhase(next);
+      }, FADE_OUT_MS + FADE_GAP_MS);
+    },
+    [clearTimeoutRef],
+  );
 
   /* ── Center phase handlers ── */
 
@@ -336,7 +383,9 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
         const detected = await window.electronAPI?.browser.detectPreferred?.();
         if (cancelled || !detected?.browser) return;
 
-        const supportedBrowserIds = new Set(BROWSERS.map((browser) => browser.id));
+        const supportedBrowserIds = new Set(
+          BROWSERS.map((browser) => browser.id),
+        );
         const detectedId = detected.browser as BrowserId;
         if (!supportedBrowserIds.has(detectedId)) return;
 
@@ -362,11 +411,15 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
     const loadProfiles = async () => {
       try {
-        const profiles = await window.electronAPI?.browser.listProfiles?.(selectedBrowser);
+        const profiles =
+          await window.electronAPI?.browser.listProfiles?.(selectedBrowser);
         if (!cancelled && profiles) {
           setAvailableProfiles(profiles);
           setSelectedProfile((currentProfile) => {
-            if (currentProfile && profiles.some((profile) => profile.id === currentProfile)) {
+            if (
+              currentProfile &&
+              profiles.some((profile) => profile.id === currentProfile)
+            ) {
               return currentProfile;
             }
             return profiles.length > 0 ? profiles[0].id : null;
@@ -427,7 +480,9 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   /* ── Discovery confirm ── */
   const handleDiscoveryConfirm = () => {
-    const selected = (Object.entries(categoryStates) as [DiscoveryCategory, boolean][])
+    const selected = (
+      Object.entries(categoryStates) as [DiscoveryCategory, boolean][]
+    )
       .filter(([, enabled]) => enabled)
       .map(([id]) => id);
 
@@ -454,7 +509,8 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     }
 
     if (isAuthenticated) {
-      const preferredBrowser = (browserEnabled && selectedBrowser) ? selectedBrowser : "none";
+      const preferredBrowser =
+        browserEnabled && selectedBrowser ? selectedBrowser : "none";
       void savePreferredBrowser({
         browser: preferredBrowser,
       }).catch(() => {
@@ -477,7 +533,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
       const remaining = Object.entries(categoryStates)
         .filter(([k, v]) => k !== id && v)
         .map(([k]) => k);
-      setActiveMockId(browserEnabled ? "browser" : remaining[0] ?? null);
+      setActiveMockId(browserEnabled ? "browser" : (remaining[0] ?? null));
     }
   };
 
@@ -492,7 +548,9 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   const isSplit = SPLIT_PHASES.has(phase);
   const isComplete = phase === "complete";
   const selfmodActive = phase === "creation" && Boolean(selfmodLevel);
-  const renderedSelfmodLevel = selfmodActive ? selfmodLevel : lastActiveSelfmodLevel;
+  const renderedSelfmodLevel = selfmodActive
+    ? selfmodLevel
+    : lastActiveSelfmodLevel;
   const selfmodExiting = !selfmodActive && Boolean(lastActiveSelfmodLevel);
 
   const sortedThemes = [...themes].sort((a, b) => a.name.localeCompare(b.name));
@@ -548,7 +606,10 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
       )}
 
       {phase === "intro" && (
-        <div className="onboarding-moment onboarding-moment--ripple" data-active={rippleActive}>
+        <div
+          className="onboarding-moment onboarding-moment--ripple"
+          data-active={rippleActive}
+        >
           <div className="onboarding-ripple-content">
             <div className="onboarding-text onboarding-text--fade-in">
               Stella is an AI that runs on your computer.
@@ -557,7 +618,10 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
               She's not made for everyone. She's made for you.
             </div>
           </div>
-          <div className="onboarding-choices onboarding-choices--subtle" data-visible={rippleActive}>
+          <div
+            className="onboarding-choices onboarding-choices--subtle"
+            data-visible={rippleActive}
+          >
             <button className="onboarding-choice" onClick={handleIntroContinue}>
               Continue
             </button>
@@ -583,12 +647,16 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
             {/* ── Browser + Discovery (combined) ── */}
             {phase === "browser" && (
               <div className="onboarding-step-content">
-                <div className="onboarding-step-label">What can I learn about you?</div>
+                <div className="onboarding-step-label">
+                  What can I learn about you?
+                </div>
 
                 {/* Browser as top choice with Recommended badge */}
-                <button
+                <OnboardingSelectionTile
                   className="onboarding-discovery-row"
-                  data-active={browserEnabled}
+                  labelClassName="onboarding-discovery-row-label"
+                  descriptionClassName="onboarding-discovery-row-desc"
+                  active={browserEnabled}
                   onClick={() => {
                     const wasEnabled = browserEnabled;
                     setBrowserEnabled((prev) => !prev);
@@ -609,56 +677,63 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                       setActiveMockId("browser");
                     }
                   }}
-                >
-                  <span className="onboarding-discovery-row-label">
-                    Your browser
-                    <span className="onboarding-discovery-recommended">Recommended</span>
-                  </span>
-                  <span className="onboarding-discovery-row-desc">
-                    I can browse the web for you, learn your favorite sites, and pick up on how you like things done
-                  </span>
-                </button>
+                  label={
+                    <>
+                      Your browser
+                      <span className="onboarding-discovery-recommended">
+                        Recommended
+                      </span>
+                    </>
+                  }
+                  description="I can browse the web for you, learn your favorite sites, and pick up on how you like things done"
+                />
 
                 {/* Expanded browser options — always rendered, CSS grid animates reveal */}
-                <div className="onboarding-browser-reveal" data-visible={browserEnabled || undefined}>
-                  <div className="onboarding-browser-reveal-inner">
+                <OnboardingReveal
+                  visible={browserEnabled}
+                  className="onboarding-browser-reveal"
+                  innerClassName="onboarding-browser-reveal-inner"
+                >
+                  <div className="onboarding-pills">
+                    {BROWSERS.filter((b) =>
+                      platform !== "darwin" ? b.id !== "safari" : true,
+                    ).map((b) => (
+                      <button
+                        key={b.id}
+                        className="onboarding-pill onboarding-pill--sm"
+                        data-active={selectedBrowser === b.id}
+                        onClick={() => {
+                          setAvailableProfiles([]);
+                          setSelectedProfile(null);
+                          setSelectedBrowser(b.id);
+                        }}
+                      >
+                        {b.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Profile selection — grid reveal */}
+                  <OnboardingReveal
+                    visible={availableProfiles.length > 1}
+                    className="onboarding-profiles-reveal"
+                    innerClassName="onboarding-profiles-reveal-inner"
+                  >
+                    <div className="onboarding-step-label">Profile</div>
                     <div className="onboarding-pills">
-                      {BROWSERS.filter((b) => platform !== "darwin" ? b.id !== "safari" : true).map((b) => (
+                      {availableProfiles.map((p) => (
                         <button
-                          key={b.id}
+                          key={p.id}
                           className="onboarding-pill onboarding-pill--sm"
-                          data-active={selectedBrowser === b.id}
-                      onClick={() => {
-                        setAvailableProfiles([]);
-                        setSelectedProfile(null);
-                        setSelectedBrowser(b.id);
-                      }}
+                          data-active={selectedProfile === p.id}
+                          onClick={() => setSelectedProfile(p.id)}
                         >
-                          {b.label}
+                          {p.name}
                         </button>
                       ))}
                     </div>
-
-                    {/* Profile selection — grid reveal */}
-                    <div className="onboarding-profiles-reveal" data-visible={availableProfiles.length > 1 || undefined}>
-                      <div className="onboarding-profiles-reveal-inner">
-                        <div className="onboarding-step-label">Profile</div>
-                        <div className="onboarding-pills">
-                          {availableProfiles.map((p) => (
-                            <button
-                              key={p.id}
-                              className="onboarding-pill onboarding-pill--sm"
-                              data-active={selectedProfile === p.id}
-                              onClick={() => setSelectedProfile(p.id)}
-                            >
-                              {p.name}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  </OnboardingReveal>
+                </OnboardingReveal>
 
                 <OnboardingDiscovery
                   categoryStates={categoryStates}
@@ -666,18 +741,28 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                 />
 
                 {/* Warning — always rendered, CSS grid animates reveal */}
-                <div className="onboarding-warning-reveal" data-visible={showNoneWarning || undefined}>
-                  <div className="onboarding-warning-reveal-inner">
-                    <div className="onboarding-discovery-warning">
-                      <span className="onboarding-discovery-warning-badge">Not recommended</span>
-                      <p className="onboarding-discovery-warning-text">
-                        Without this, I'll learn about you over time through our conversations. But I won't be personal to you from the start.
-                      </p>
-                    </div>
+                <OnboardingReveal
+                  visible={showNoneWarning}
+                  className="onboarding-warning-reveal"
+                  innerClassName="onboarding-warning-reveal-inner"
+                >
+                  <div className="onboarding-discovery-warning">
+                    <span className="onboarding-discovery-warning-badge">
+                      Not recommended
+                    </span>
+                    <p className="onboarding-discovery-warning-text">
+                      Without this, I'll learn about you over time through our
+                      conversations. But I won't be personal to you from the
+                      start.
+                    </p>
                   </div>
-                </div>
+                </OnboardingReveal>
 
-                <button className="onboarding-confirm" data-visible={true} onClick={handleDiscoveryConfirm}>
+                <button
+                  className="onboarding-confirm"
+                  data-visible={true}
+                  onClick={handleDiscoveryConfirm}
+                >
                   Continue
                 </button>
               </div>
@@ -686,20 +771,27 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
             {/* ── Memory + Reach ── */}
             {phase === "memory" && (
               <div className="onboarding-step-content">
-                <div className="onboarding-section-title">I'm always here, and I never forget.</div>
+                <div className="onboarding-section-title">
+                  I'm always here, and I never forget.
+                </div>
                 <p className="onboarding-step-desc">
-                  We don't have separate conversations. You can talk to me about anything, anytime, and I'll remember.
+                  We don't have separate conversations. You can talk to me about
+                  anything, anytime, and I'll remember.
                 </p>
                 <p className="onboarding-step-desc">
                   No starting over. No repeating yourself.
                 </p>
 
-                <div className="onboarding-section-title">You can reach me anywhere.</div>
+                <div className="onboarding-section-title">
+                  You can reach me anywhere.
+                </div>
                 <p className="onboarding-step-desc">
-                  You can message me from your phone. If your computer is on, I can take action on it for you.
+                  You can message me from your phone. If your computer is on, I
+                  can take action on it for you.
                 </p>
                 <p className="onboarding-step-desc">
-                  If your computer is off, I'll still respond, but I can't act unless you give me{" "}
+                  If your computer is off, I'll still respond, but I can't act
+                  unless you give me{" "}
                   <span
                     className="onboarding-inline-link"
                     onMouseEnter={() => setHomeHovered(true)}
@@ -710,9 +802,14 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                   .
                 </p>
                 <p className="onboarding-home-hint" data-visible={homeHovered}>
-                  You can get me a server so I have another home and I'm always on.
+                  You can get me a server so I have another home and I'm always
+                  on.
                 </p>
-                <button className="onboarding-confirm" data-visible={true} onClick={nextSplitStep}>
+                <button
+                  className="onboarding-confirm"
+                  data-visible={true}
+                  onClick={nextSplitStep}
+                >
                   Continue
                 </button>
               </div>
@@ -724,19 +821,26 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                 <div className="onboarding-mock-app">
                   {/* Mock main area */}
                   <div className="onboarding-mock-main">
-                    <div className="onboarding-chat-messages" ref={chatScrollRef}>
+                    <div
+                      className="onboarding-chat-messages"
+                      ref={chatScrollRef}
+                    >
                       {chatMessages.map((msg, i) => (
                         <div
                           key={i}
                           className={`onboarding-chat-msg onboarding-chat-msg--${msg.role}`}
                         >
-                          <span className="onboarding-chat-bubble">{msg.text}</span>
+                          <span className="onboarding-chat-bubble">
+                            {msg.text}
+                          </span>
                         </div>
                       ))}
                       {chatTyping && (
                         <div className="onboarding-chat-msg onboarding-chat-msg--stella">
                           <span className="onboarding-chat-typing">
-                            <span /><span /><span />
+                            <span />
+                            <span />
+                            <span />
                           </span>
                         </div>
                       )}
@@ -744,15 +848,30 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
                     <div className="onboarding-chat-composer">
                       <span key={chatStep} className="onboarding-chat-input">
-                        {chatStep < CREATION_STEPS.length ? CREATION_STEPS[chatStep].userText : "Ask me anything..."}
+                        {chatStep < CREATION_STEPS.length
+                          ? CREATION_STEPS[chatStep].userText
+                          : "Ask me anything..."}
                       </span>
                       <button
                         className="onboarding-chat-send"
                         onClick={handleChatSend}
-                        disabled={chatTyping || chatStep >= CREATION_STEPS.length}
-                        data-hidden={chatStep >= CREATION_STEPS.length || undefined}
+                        disabled={
+                          chatTyping || chatStep >= CREATION_STEPS.length
+                        }
+                        data-hidden={
+                          chatStep >= CREATION_STEPS.length || undefined
+                        }
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
                           <path d="M12 19V5M5 12l7-7 7 7" />
                         </svg>
                       </button>
@@ -761,34 +880,41 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                 </div>
 
                 {/* Selfmod controls — always rendered, CSS grid animates reveal */}
-                <div className="onboarding-creation-controls" data-visible={chatStep >= CREATION_STEPS.length || undefined}>
+                <div
+                  className="onboarding-creation-controls"
+                  data-visible={chatStep >= CREATION_STEPS.length || undefined}
+                >
                   <div className="onboarding-creation-controls-inner">
                     <div className="onboarding-chat-selfmod">
                       <div className="onboarding-selfmod-levels">
-                        <button
+                        <OnboardingSelectionTile
                           className="onboarding-selfmod-level"
-                          data-active={selfmodLevel === "low"}
+                          labelClassName="onboarding-selfmod-level-label"
+                          active={selfmodLevel === "low"}
                           onClick={() => handleSelfmodLevel("low")}
-                        >
-                          <span className="onboarding-selfmod-level-label">"Make my messages blue"</span>
-                        </button>
-                        <button
+                          label={`"Make my messages blue"`}
+                        />
+                        <OnboardingSelectionTile
                           className="onboarding-selfmod-level"
-                          data-active={selfmodLevel === "medium"}
+                          labelClassName="onboarding-selfmod-level-label"
+                          active={selfmodLevel === "medium"}
                           onClick={() => handleSelfmodLevel("medium")}
-                        >
-                          <span className="onboarding-selfmod-level-label">"Make the chat feel more modern"</span>
-                        </button>
-                        <button
+                          label={`"Make the chat feel more modern"`}
+                        />
+                        <OnboardingSelectionTile
                           className="onboarding-selfmod-level"
-                          data-active={selfmodLevel === "high"}
+                          labelClassName="onboarding-selfmod-level-label"
+                          active={selfmodLevel === "high"}
                           onClick={() => handleSelfmodLevel("high")}
-                        >
-                          <span className="onboarding-selfmod-level-label">"Give everything a cozy cat theme"</span>
-                        </button>
+                          label={`"Give everything a cozy cat theme"`}
+                        />
                       </div>
                     </div>
-                    <button className="onboarding-confirm" data-visible={chatStep >= CREATION_STEPS.length} onClick={nextSplitStep}>
+                    <button
+                      className="onboarding-confirm"
+                      data-visible={chatStep >= CREATION_STEPS.length}
+                      onClick={nextSplitStep}
+                    >
                       Continue
                     </button>
                   </div>
@@ -801,50 +927,65 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
               <div className="onboarding-step-content">
                 <div className="onboarding-step-label">Voice Interaction</div>
                 <p className="onboarding-step-desc">
-                  I can listen to your voice and instantly transcribe it for you.
-                  When you're done speaking, your text will appear right where you need it.
+                  I can listen to your voice and instantly transcribe it for
+                  you. When you're done speaking, your text will appear right
+                  where you need it.
                 </p>
 
                 <div className="onboarding-voice-demo">
-                  <button 
+                  <button
                     className="onboarding-pill"
                     onClick={async () => {
                       try {
-                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-                        stream.getTracks().forEach(t => t.stop())
-                        setVoicePermissionGranted(true)
+                        const stream =
+                          await navigator.mediaDevices.getUserMedia({
+                            audio: true,
+                          });
+                        stream.getTracks().forEach((t) => t.stop());
+                        setVoicePermissionGranted(true);
                       } catch {
-                        setVoicePermissionGranted(false)
+                        setVoicePermissionGranted(false);
                       }
                     }}
                   >
-                    {voicePermissionGranted === true 
-                      ? "Microphone access granted \u2713" 
-                      : voicePermissionGranted === false 
-                        ? "Microphone access denied" 
+                    {voicePermissionGranted === true
+                      ? "Microphone access granted \u2713"
+                      : voicePermissionGranted === false
+                        ? "Microphone access denied"
                         : "Allow microphone access"}
                   </button>
                 </div>
 
-                <div className="onboarding-step-label" style={{ marginTop: 24 }}>Voice Shortcut</div>
+                <div
+                  className="onboarding-step-label"
+                  style={{ marginTop: 24 }}
+                >
+                  Voice Shortcut
+                </div>
                 <p className="onboarding-step-desc">
-                  Press this shortcut anywhere to start or stop voice dictation. 
+                  Press this shortcut anywhere to start or stop voice dictation.
                   (You can also use the Voice button in the Radial Dial).
                 </p>
                 <div className="onboarding-shortcut-config">
-                  <div className="onboarding-pill" style={{ cursor: "default", opacity: 0.8 }}>
+                  <div
+                    className="onboarding-pill"
+                    style={{ cursor: "default", opacity: 0.8 }}
+                  >
                     {platform === "darwin" ? "Cmd+Shift+V" : "Ctrl+Shift+V"}
                   </div>
                 </div>
 
-                <button 
-                  className="onboarding-confirm" 
-                  data-visible={true} 
+                <button
+                  className="onboarding-confirm"
+                  data-visible={true}
                   onClick={() => {
-                    const finalShortcut = "CommandOrControl+Shift+V"
-                    localStorage.setItem("stella-voice-shortcut", finalShortcut)
-                    window.electronAPI?.voice.setShortcut?.(finalShortcut)
-                    nextSplitStep()
+                    const finalShortcut = "CommandOrControl+Shift+V";
+                    localStorage.setItem(
+                      "stella-voice-shortcut",
+                      finalShortcut,
+                    );
+                    window.electronAPI?.voice.setShortcut?.(finalShortcut);
+                    nextSplitStep();
                   }}
                 >
                   Continue
@@ -894,7 +1035,11 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                   ))}
                 </div>
 
-                <button className="onboarding-confirm" data-visible={true} onClick={nextSplitStep}>
+                <button
+                  className="onboarding-confirm"
+                  data-visible={true}
+                  onClick={nextSplitStep}
+                >
                   Continue
                 </button>
               </div>
@@ -911,11 +1056,16 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                       data-active={expressionStyle === style}
                       onClick={() => {
                         setExpressionStyle(style);
-                        const backendStyle = style === "none" ? "none" as const : "emoji" as const;
+                        const backendStyle =
+                          style === "none"
+                            ? ("none" as const)
+                            : ("emoji" as const);
                         if (isAuthenticated) {
-                          saveExpressionStyle({ style: backendStyle }).catch(() => {
-                            // Expression style sync is best-effort only.
-                          });
+                          saveExpressionStyle({ style: backendStyle }).catch(
+                            () => {
+                              // Expression style sync is best-effort only.
+                            },
+                          );
                         }
                       }}
                     >
@@ -925,9 +1075,20 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                 </div>
                 {expressionStyle && (
                   <p className="onboarding-personality-preview">
-                    {expressionStyle === "emotes" && (<>Got it! I'll get that done for you <img src="/emotes/assets/7tv/catNOD-7eeffb97edbf.webp" alt="catNOD" className="onboarding-emote-preview" /></>)}
-                    {expressionStyle === "emoji" && "Got it! I'll get that done for you 😊"}
-                    {expressionStyle === "none" && "Got it. I'll get that done for you."}
+                    {expressionStyle === "emotes" && (
+                      <>
+                        Got it! I'll get that done for you{" "}
+                        <img
+                          src="/emotes/assets/7tv/catNOD-7eeffb97edbf.webp"
+                          alt="catNOD"
+                          className="onboarding-emote-preview"
+                        />
+                      </>
+                    )}
+                    {expressionStyle === "emoji" &&
+                      "Got it! I'll get that done for you 😊"}
+                    {expressionStyle === "none" &&
+                      "Got it. I'll get that done for you."}
                   </p>
                 )}
                 <button
@@ -945,19 +1106,68 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
           {phase === "creation" && selfmodLevel === "high" && (
             <nav className="onboarding-bottom-bar" aria-hidden="true">
               <div className="onboarding-bottom-bar-item">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                </svg>
                 <span>Apps</span>
               </div>
               <div className="onboarding-bottom-bar-item onboarding-bottom-bar-item--active">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
                 <span>Chat</span>
               </div>
               <div className="onboarding-bottom-bar-item">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
                 <span>Connect</span>
               </div>
               <div className="onboarding-bottom-bar-item">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
                 <span>Settings</span>
               </div>
             </nav>
@@ -967,7 +1177,3 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     </div>
   );
 };
-
-
-
-

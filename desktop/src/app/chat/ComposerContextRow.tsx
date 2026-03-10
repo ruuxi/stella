@@ -1,10 +1,11 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/types/electron";
 import {
-  clearComposerSelectedTextContext,
-  clearComposerWindowContext,
-  removeComposerScreenshotContext,
-} from "./composer-context";
+  PendingCaptureChip,
+  ScreenshotContextChips,
+  SelectedTextChip,
+  WindowContextChip,
+} from "./ComposerContextChips";
 
 type ComposerContextRowProps = {
   chatContext: ChatContext | null;
@@ -21,74 +22,43 @@ export function ComposerContextRow({
 }: ComposerContextRowProps) {
   return (
     <div className="composer-context-row">
-      {chatContext?.regionScreenshots?.map((screenshot, index) => (
-        <div
-          key={index}
-          className="composer-context-chip composer-context-chip--screenshot"
-        >
-          <img
-            src={screenshot.dataUrl}
-            className="composer-context-thumb"
-            alt={`Screenshot ${index + 1}`}
-          />
-          <button
-            type="button"
-            className="composer-context-remove"
-            aria-label="Remove screenshot"
-            onClick={(event) => {
-              event.stopPropagation();
-              removeComposerScreenshotContext(index, setChatContext);
-            }}
-          >
-            &times;
-          </button>
-        </div>
-      ))}
+      {chatContext?.regionScreenshots ? (
+        <ScreenshotContextChips
+          screenshots={chatContext.regionScreenshots}
+          setChatContext={setChatContext}
+          chipClassName="composer-context-chip composer-context-chip--screenshot"
+          imageClassName="composer-context-thumb"
+          removeClassName="composer-context-remove"
+        />
+      ) : null}
 
-      {chatContext?.capturePending && (
-        <div className="composer-context-chip composer-context-chip--pending">
-          <div className="composer-context-pending-inner" />
-        </div>
-      )}
+      {chatContext?.capturePending ? (
+        <PendingCaptureChip
+          className="composer-context-chip composer-context-chip--pending"
+          innerClassName="composer-context-pending-inner"
+        />
+      ) : null}
 
-      {selectedText && (
-        <div className="composer-context-chip composer-context-chip--text">
-          <span className="composer-context-text">&quot;{selectedText}&quot;</span>
-          <button
-            type="button"
-            className="composer-context-remove"
-            aria-label="Remove selected text"
-            onClick={(event) => {
-              event.stopPropagation();
-              clearComposerSelectedTextContext(setSelectedText, setChatContext);
-            }}
-          >
-            &times;
-          </button>
-        </div>
-      )}
+      {selectedText ? (
+        <SelectedTextChip
+          selectedText={selectedText}
+          setSelectedText={setSelectedText}
+          setChatContext={setChatContext}
+          className="composer-context-chip composer-context-chip--text"
+          textClassName="composer-context-text"
+          removeClassName="composer-context-remove"
+        />
+      ) : null}
 
-      {chatContext?.window && (
-        <div className="composer-context-chip composer-context-chip--window">
-          <span className="composer-context-window">
-            {chatContext.window.app}
-            {chatContext.window.title ? ` - ${chatContext.window.title}` : ""}
-          </span>
-          <button
-            type="button"
-            className="composer-context-remove"
-            aria-label="Remove window context"
-            onClick={(event) => {
-              event.stopPropagation();
-              clearComposerWindowContext(setChatContext);
-            }}
-          >
-            &times;
-          </button>
-        </div>
-      )}
+      {chatContext?.window ? (
+        <WindowContextChip
+          chatWindow={chatContext.window}
+          setChatContext={setChatContext}
+          className="composer-context-chip composer-context-chip--window"
+          textClassName="composer-context-window"
+          removeClassName="composer-context-remove"
+        />
+      ) : null}
     </div>
   );
 }
-
-
