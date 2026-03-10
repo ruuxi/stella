@@ -8,6 +8,7 @@
 
 import fs from "fs";
 import path from "path";
+import { ensurePrivateDirSync, writePrivateFileSync } from "../../../system/private-fs.js";
 
 export type LocalPreferences = {
   /** Model overrides keyed by agent type, e.g. "orchestrator" -> "anthropic/claude-opus-4.6" */
@@ -69,9 +70,9 @@ export const saveLocalPreferences = (
   const filePath = prefsPath(stellaHome);
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+    ensurePrivateDirSync(dir);
   }
-  fs.writeFileSync(filePath, JSON.stringify(prefs, null, 2), "utf-8");
+  writePrivateFileSync(filePath, JSON.stringify(prefs, null, 2));
   _cached = prefs;
   try {
     _cachedMtime = fs.statSync(filePath).mtimeMs;

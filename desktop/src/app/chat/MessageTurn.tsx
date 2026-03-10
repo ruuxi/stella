@@ -12,6 +12,7 @@ import {
   type EventRecord,
   type MessagePayload,
 } from "@/app/chat/lib/event-transforms";
+import { sanitizeHtmlFragment } from "@/shared/lib/safe-html";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 
 export type TurnViewModel = {
@@ -293,6 +294,9 @@ export const TurnItem = memo(function TurnItem({
   const assistantText = turn.assistantText;
   const hasAssistantContent = assistantText.trim().length > 0;
   const hasWebSearchBadge = Boolean(turn.webSearchBadgeHtml?.trim().length);
+  const safeWebSearchBadgeHtml = turn.webSearchBadgeHtml
+    ? sanitizeHtmlFragment(turn.webSearchBadgeHtml)
+    : "";
   const hasUserContent =
     userText.trim().length > 0 || userAttachments.length > 0;
   const hasChannelMeta = Boolean(userChannelEnvelope?.provider);
@@ -436,12 +440,12 @@ export const TurnItem = memo(function TurnItem({
             </>
           )}
 
-          {hasWebSearchBadge && turn.webSearchBadgeHtml && (
+          {hasWebSearchBadge && safeWebSearchBadgeHtml && (
             <div className="event-search-badge" data-tool="websearch">
               <span className="event-search-badge-label">Search briefing</span>
               <div
                 className="event-search-badge-body"
-                dangerouslySetInnerHTML={{ __html: turn.webSearchBadgeHtml }}
+                dangerouslySetInnerHTML={{ __html: safeWebSearchBadgeHtml }}
               />
             </div>
           )}

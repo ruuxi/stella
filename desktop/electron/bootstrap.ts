@@ -513,6 +513,7 @@ export const bootstrapMainProcess = () => {
     startStellaUiServer({
       getWindow: () => windowManager?.getFullWindow() ?? null,
       frontendRoot,
+      statePath: path.join(stellaHomePath!, "state"),
       getProxy: () => stellaHostRunner?.getProxy() ?? null,
     });
     hmrMorphOrchestrator = createHmrMorphOrchestrator({

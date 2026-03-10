@@ -162,6 +162,7 @@ export -f __stella_dd __stella_git_stage_feature_dependencies git rm rmdir unlin
 const buildShellEnv = (
   envOverrides?: Record<string, string>,
   options?: {
+    secretStateRoot?: string;
     stellaBrowserBinPath?: string;
     stellaUiCliPath?: string;
   },
@@ -169,6 +170,7 @@ const buildShellEnv = (
   ...(envOverrides ? { ...process.env, ...envOverrides } : process.env),
   STELLA_NODE_BIN: process.execPath,
   STELLA_DEFERRED_DELETE_HELPER: deferredDeleteHelperPath,
+  ...(options?.secretStateRoot ? { STELLA_UI_STATE_DIR: options.secretStateRoot } : {}),
   ...(options?.stellaBrowserBinPath ? { STELLA_BROWSER_BIN: options.stellaBrowserBinPath } : {}),
   ...(options?.stellaUiCliPath ? { STELLA_UI_CLI: options.stellaUiCliPath } : {}),
 });

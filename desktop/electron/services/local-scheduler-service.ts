@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { Cron } from 'croner'
 import type { StellaHostRunner } from '../stella-host-runner.js'
+import { ensurePrivateDirSync, writePrivateFileSync } from '../system/private-fs.js'
 import type {
   LocalCronJobCreateInput,
   LocalCronJobRecord,
@@ -747,9 +748,9 @@ export class LocalSchedulerService {
   private persistState() {
     const dir = path.dirname(this.statePath)
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true })
+      ensurePrivateDirSync(dir)
     }
-    fs.writeFileSync(this.statePath, JSON.stringify(this.state, null, 2), 'utf-8')
+    writePrivateFileSync(this.statePath, JSON.stringify(this.state, null, 2))
   }
 
   private emitChange() {
