@@ -12,7 +12,7 @@ import type {
   IdentityMap,
   IdentityMappingSource,
 } from "./discovery-types.js";
-import { protectValue, unprotectValue } from "@stella/stella-runtime/storage";
+import { protectValue, unprotectValue } from "../core/runtime/storage/protected-storage.js";
 
 const log = (...args: unknown[]) => console.log("[identity-map]", ...args);
 const IDENTITY_NAME_SCOPE = "identity-map-real-name";

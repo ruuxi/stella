@@ -1,13 +1,12 @@
-import {
-  completeSimple,
-  streamSimple,
-  type AssistantMessage,
-  type Context,
-  type Model,
-  type SimpleStreamOptions,
-  type TextContent,
-  type ThinkingLevel,
-} from "@stella/stella-ai";
+import { completeSimple, streamSimple } from "../ai/stream.js";
+import type {
+  AssistantMessage,
+  Context,
+  Model,
+  SimpleStreamOptions,
+  TextContent,
+  ThinkingLevel,
+} from "../ai/types.js";
 
 function readAssistantText(message: AssistantMessage): string {
   return message.content

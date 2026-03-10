@@ -3,15 +3,19 @@ import fs from "fs";
 import path from "path";
 import { ConvexClient } from "convex/browser";
 import { anyApi } from "convex/server";
-import { createToolHost, type ScheduleToolApi, type ToolContext } from "./tools/index.js";
-import { loadAgentsFromHome, loadSkillsFromHome } from "./agents/index.js";
-import { loadExtensions, HookEmitter } from "./extensions/index.js";
+import { createToolHost } from "./tools/host.js";
+import type { ScheduleToolApi } from "./tools/types.js";
+import type { ToolContext } from "./tools/types.js";
+import { loadAgentsFromHome } from "./agents/agents.js";
+import { loadSkillsFromHome } from "./agents/skills.js";
+import { loadExtensions } from "./extensions/loader.js";
+import { HookEmitter } from "./extensions/hook-emitter.js";
 import {
   getCodexLocalMaxConcurrency,
   getGeneralAgentEngine,
   getModelOverride,
-} from "./preferences/index.js";
-import { LocalTaskManager, type LocalTaskManagerAgentContext, type TaskLifecycleEvent } from "./tasks/index.js";
+} from "./preferences/local-preferences.js";
+import { LocalTaskManager, type LocalTaskManagerAgentContext, type TaskLifecycleEvent } from "./tasks/local-task-manager.js";
 import { JsonlRuntimeStore } from "./jsonl_store.js";
 import { buildLocalHistoryFromEvents, type LocalContextEvent } from "./local-history.js";
 import {
@@ -26,7 +30,8 @@ import {
   type RuntimeToolEndEvent,
   type RuntimeToolStartEvent,
 } from "./agent-runtime.js";
-import { registerModel, type Api, type Model } from "@stella/stella-ai";
+import { registerModel } from "../ai/models.js";
+import type { Api, Model } from "../ai/types.js";
 import { canResolveLlmRoute, resolveLlmRoute } from "./model-routing.js";
 import { createRemoteTurnBridge } from "./remote-turn-bridge.js";
 import {
