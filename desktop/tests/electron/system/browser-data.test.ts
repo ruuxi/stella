@@ -6,7 +6,7 @@ import os from "os";
 // Import types only - we'll dynamically import for tests that need real behavior
 import type { BrowserData } from "../../../electron/system/browser-data.js";
 
-// Mock database modules
+// Mock database module
 const mockPrepare = vi.fn();
 const mockAll = vi.fn();
 const mockClose = vi.fn();
@@ -18,11 +18,6 @@ const mockDatabase = vi.fn(() => ({
 
 vi.mock("better-sqlite3", () => ({
   default: mockDatabase,
-}));
-
-// Mock bun:sqlite for Bun runtime
-vi.mock("bun:sqlite", () => ({
-  Database: mockDatabase,
 }));
 
 // Import functions after mocks are set up
@@ -209,7 +204,7 @@ describe("Browser Data Collection - Unit Tests", () => {
       expect(result.domainDetails).toEqual({});
     });
 
-    // Note: This test requires proper SQLite mocking which is difficult with bun:sqlite
+    // Note: This test exercises the error path with the database constructor mocked.
     // The manual-test.ts script provides real integration testing
     it("should handle database errors gracefully", async () => {
       // Chrome history file exists

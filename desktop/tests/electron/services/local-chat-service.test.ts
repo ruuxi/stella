@@ -1,7 +1,36 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('better-sqlite3', async () => {
+  const { DatabaseSync } = await import('node:sqlite')
+
+  class BetterSqlite3Mock {
+    private readonly db: InstanceType<typeof DatabaseSync>
+
+    constructor(filePath: string, options?: { readonly?: boolean }) {
+      this.db = new DatabaseSync(filePath, {
+        readOnly: options?.readonly === true,
+      })
+    }
+
+    exec(sql: string) {
+      this.db.exec(sql)
+    }
+
+    prepare(sql: string) {
+      return this.db.prepare(sql)
+    }
+
+    close() {
+      this.db.close()
+    }
+  }
+
+  return { default: BetterSqlite3Mock }
+})
+
 import { LocalChatService } from '../../../electron/services/local-chat-service.js'
 
 const tempHomes: string[] = []
