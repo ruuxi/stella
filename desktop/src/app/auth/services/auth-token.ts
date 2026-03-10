@@ -17,17 +17,30 @@ let inflightTokenPromise: Promise<string | null> | null = null;
 // JWT lifetime is 5 minutes; refresh 60s early to avoid races
 const REFRESH_MARGIN_MS = 60_000;
 
+type GetConvexTokenOptions = {
+  forceRefresh?: boolean;
+};
+
 /**
  * Get a valid Convex JWT for use in HTTP endpoint Authorization headers.
  * Caches the token and refreshes it before expiry.
  */
-export async function getConvexToken(): Promise<string | null> {
-  if (cachedToken && Date.now() < tokenExpiresAt) {
+export async function getConvexToken(
+  options: GetConvexTokenOptions = {},
+): Promise<string | null> {
+  const forceRefresh = options.forceRefresh ?? false;
+
+  if (!forceRefresh && cachedToken && Date.now() < tokenExpiresAt) {
     return cachedToken;
   }
 
   if (inflightTokenPromise) {
     return inflightTokenPromise;
+  }
+
+  if (forceRefresh) {
+    cachedToken = null;
+    tokenExpiresAt = 0;
   }
 
   inflightTokenPromise = (async () => {
