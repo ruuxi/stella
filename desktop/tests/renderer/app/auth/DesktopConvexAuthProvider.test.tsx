@@ -1,10 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopConvexAuthProvider } from "../../../../src/app/auth/DesktopConvexAuthProvider";
 
 const mockUseSession = vi.fn();
 const mockGetConvexToken = vi.fn();
+const mockAnonymousSignIn = vi.fn();
 let capturedAuthState: {
   isLoading: boolean;
   isAuthenticated: boolean;
@@ -27,6 +28,9 @@ vi.mock("convex/react", () => ({
 vi.mock("@/app/auth/lib/auth-client", () => ({
   authClient: {
     useSession: () => mockUseSession(),
+    signIn: {
+      anonymous: () => mockAnonymousSignIn(),
+    },
   },
 }));
 
@@ -39,11 +43,31 @@ vi.mock("@/infra/convex-client", () => ({
 }));
 
 describe("DesktopConvexAuthProvider", () => {
+  let mockSetAuthState: ReturnType<typeof vi.fn>;
+  let mockSetCloudSyncEnabled: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
+    vi.useFakeTimers();
     capturedAuthState = null;
     vi.clearAllMocks();
     mockUseSession.mockReturnValue({ data: { id: "user-1" }, isPending: false });
     mockGetConvexToken.mockResolvedValue("jwt-token");
+    mockAnonymousSignIn.mockResolvedValue(undefined);
+    mockSetAuthState = vi.fn();
+    mockSetCloudSyncEnabled = vi.fn();
+    ((window as unknown as Record<string, unknown>)).electronAPI = {
+      system: {
+        setAuthState: mockSetAuthState,
+        setCloudSyncEnabled: mockSetCloudSyncEnabled,
+      },
+      platform: "win32",
+    };
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    delete ((window as unknown as Record<string, unknown>)).electronAPI;
   });
 
   it("renders children through ConvexProviderWithAuth", () => {
@@ -89,11 +113,93 @@ describe("DesktopConvexAuthProvider", () => {
     );
 
     await expect(capturedAuthState?.fetchAccessToken()).resolves.toBe("jwt-token");
-    expect(mockGetConvexToken).toHaveBeenCalledWith({ forceRefresh: false });
+    expect(mockGetConvexToken.mock.calls).toContainEqual([{ forceRefresh: false }]);
 
     await expect(
       capturedAuthState?.fetchAccessToken({ forceRefreshToken: true }),
     ).resolves.toBe("jwt-token");
-    expect(mockGetConvexToken).toHaveBeenLastCalledWith({ forceRefresh: true });
+    expect(mockGetConvexToken.mock.calls).toContainEqual([{ forceRefresh: true }]);
+  });
+
+  it("disables cloud sync on mount and unmount", async () => {
+    let result: ReturnType<typeof render>;
+
+    await act(async () => {
+      result = render(
+        <DesktopConvexAuthProvider>
+          <div />
+        </DesktopConvexAuthProvider>,
+      );
+    });
+
+    expect(mockSetCloudSyncEnabled).toHaveBeenCalledWith({ enabled: false });
+
+    mockSetCloudSyncEnabled.mockClear();
+    result!.unmount();
+    expect(mockSetCloudSyncEnabled).toHaveBeenCalledWith({ enabled: false });
+  });
+
+  it("propagates authenticated host state when a session exists", async () => {
+    await act(async () => {
+      render(
+        <DesktopConvexAuthProvider>
+          <div />
+        </DesktopConvexAuthProvider>,
+      );
+    });
+
+    expect(mockGetConvexToken).toHaveBeenCalled();
+    expect(mockSetAuthState).toHaveBeenCalledWith({
+      authenticated: true,
+      token: "jwt-token",
+    });
+    expect(mockAnonymousSignIn).not.toHaveBeenCalled();
+  });
+
+  it("starts anonymous auth when no session exists", async () => {
+    mockUseSession.mockReturnValue({ data: null, isPending: false });
+
+    await act(async () => {
+      render(
+        <DesktopConvexAuthProvider>
+          <div />
+        </DesktopConvexAuthProvider>,
+      );
+    });
+
+    expect(mockAnonymousSignIn).toHaveBeenCalledTimes(1);
+    expect(mockSetAuthState).toHaveBeenCalledWith({ authenticated: false });
+  });
+
+  it("does not start anonymous auth while the session is pending", async () => {
+    mockUseSession.mockReturnValue({ data: null, isPending: true });
+
+    await act(async () => {
+      render(
+        <DesktopConvexAuthProvider>
+          <div />
+        </DesktopConvexAuthProvider>,
+      );
+    });
+
+    expect(mockAnonymousSignIn).not.toHaveBeenCalled();
+    expect(mockSetAuthState).not.toHaveBeenCalled();
+  });
+
+  it("clears host auth state on unmount", async () => {
+    let result: ReturnType<typeof render>;
+
+    await act(async () => {
+      result = render(
+        <DesktopConvexAuthProvider>
+          <div />
+        </DesktopConvexAuthProvider>,
+      );
+    });
+
+    mockSetAuthState.mockClear();
+    result!.unmount();
+
+    expect(mockSetAuthState).toHaveBeenCalledWith({ authenticated: false });
   });
 });

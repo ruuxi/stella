@@ -204,10 +204,6 @@ export const bootstrapMainProcess = () => {
               electronDir: __dirname,
               uiStateService,
               isAppReady: () => appReady,
-              getVoiceTargetWindow: () =>
-                overlayController?.getWindow()
-                ?? windowManager?.getMiniWindow()
-                ?? null,
             })
           } catch (error) {
             console.error('[WakeWord] Failed to initialize:', (error as Error).message)

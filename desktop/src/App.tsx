@@ -1,9 +1,6 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { useUiState } from '@/context/ui-state'
 import { getElectronApi } from '@/platform/electron/electron'
-import { AuthTokenBridge } from './app/auth/AuthTokenBridge'
-import { CloudSyncBridge } from '@/app/auth/CloudSyncBridge'
-import { AutoAnonAuth } from './app/auth/AutoAnonAuth'
 import { AuthDeepLinkHandler } from './app/auth/AuthDeepLinkHandler'
 import { AppBootstrap } from './app/AppBootstrap'
 import { ModelPreferencesBridge } from '@/app/settings/ModelPreferencesBridge'
@@ -47,6 +44,7 @@ function App() {
     <div className={`app window-${windowType}`}>
       <ChatStoreProvider>
         <AppBootstrap />
+        <ModelPreferencesBridge />
         <CredentialRequestLayer />
         {windowType === 'mini' ? <MiniShell /> : <FullShell />}
       </ChatStoreProvider>
@@ -56,10 +54,6 @@ function App() {
   return (
     <>
       <AuthDeepLinkHandler />
-      <AutoAnonAuth />
-      <AuthTokenBridge />
-      <CloudSyncBridge />
-      <ModelPreferencesBridge />
       <Suspense fallback={<div className={`app window-${windowType}`} />}>{shell}</Suspense>
     </>
   )
