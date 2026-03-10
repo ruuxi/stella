@@ -4,6 +4,9 @@ const DEFAULT_CORS_ALLOWED_ORIGINS = [
   "null",
 ];
 
+const PERMISSIONS_POLICY =
+  "accelerometer=(), browsing-topics=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), payment=(), usb=()";
+
 const parseCorsOriginList = (rawValue: string | undefined): string[] =>
   (rawValue ?? "")
     .split(",")
@@ -35,6 +38,7 @@ export const getCorsHeaders = (origin: string | null) => {
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Device-ID, X-Stella-Agent-Type",
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Max-Age": "86400",
+    "Permissions-Policy": PERMISSIONS_POLICY,
     Vary: "Origin",
   };
   if (origin && isAllowedCorsOrigin(origin)) {

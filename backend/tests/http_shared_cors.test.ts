@@ -23,6 +23,7 @@ describe("getCorsHeaders", () => {
     expect(headers["Access-Control-Allow-Methods"]).toContain("POST");
     expect(headers["Access-Control-Allow-Methods"]).toContain("OPTIONS");
     expect(headers["Access-Control-Allow-Credentials"]).toBe("true");
+    expect(headers["Permissions-Policy"]).toContain("camera=()");
     expect(headers["Vary"]).toBe("Origin");
   });
 

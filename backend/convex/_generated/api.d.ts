@@ -86,6 +86,7 @@ import type * as lib_retry_fetch from "../lib/retry_fetch.js";
 import type * as lib_text_utils from "../lib/text_utils.js";
 import type * as lib_thread_compaction from "../lib/thread_compaction.js";
 import type * as lib_tool_call_utils from "../lib/tool_call_utils.js";
+import type * as lib_url_security from "../lib/url_security.js";
 import type * as lib_validator from "../lib/validator.js";
 import type * as managed_execution from "../managed_execution.js";
 import type * as personalized_dashboard from "../personalized_dashboard.js";
@@ -207,6 +208,7 @@ declare const fullApi: ApiFromModules<{
   "lib/text_utils": typeof lib_text_utils;
   "lib/thread_compaction": typeof lib_thread_compaction;
   "lib/tool_call_utils": typeof lib_tool_call_utils;
+  "lib/url_security": typeof lib_url_security;
   "lib/validator": typeof lib_validator;
   managed_execution: typeof managed_execution;
   personalized_dashboard: typeof personalized_dashboard;
