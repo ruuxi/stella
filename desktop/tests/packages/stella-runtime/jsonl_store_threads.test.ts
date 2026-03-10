@@ -2,6 +2,35 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("better-sqlite3", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+
+  class BetterSqlite3Mock {
+    private readonly db: InstanceType<typeof DatabaseSync>;
+
+    constructor(filePath: string, options?: { readonly?: boolean }) {
+      this.db = new DatabaseSync(filePath, {
+        readOnly: options?.readonly === true,
+      });
+    }
+
+    exec(sql: string) {
+      this.db.exec(sql);
+    }
+
+    prepare(sql: string) {
+      return this.db.prepare(sql);
+    }
+
+    close() {
+      this.db.close();
+    }
+  }
+
+  return { default: BetterSqlite3Mock };
+});
+
 import { JsonlRuntimeStore } from "../../../packages/stella-runtime/src/jsonl_store.js";
 import {
   RUNTIME_THREAD_NAME_POOL,
