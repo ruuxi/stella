@@ -4,10 +4,10 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
-import type { LocalChatService } from "../services/local-chat-service.js";
+import type { ChatStore } from "../storage/chat-store.js";
 
 type LocalChatHandlersOptions = {
-  getLocalChatService: () => LocalChatService | null;
+  getChatStore: () => ChatStore | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -22,12 +22,12 @@ const broadcastUpdated = () => {
   }
 };
 
-const getService = (options: LocalChatHandlersOptions) => {
-  const service = options.getLocalChatService();
-  if (!service) {
-    throw new Error("Local chat service not available.");
+const getChatStore = (options: LocalChatHandlersOptions) => {
+  const chatStore = options.getChatStore();
+  if (!chatStore) {
+    throw new Error("Chat store not available.");
   }
-  return service;
+  return chatStore;
 };
 
 export const registerLocalChatHandlers = (
@@ -44,7 +44,7 @@ export const registerLocalChatHandlers = (
         "Blocked untrusted localChat:getOrCreateDefaultConversationId request.",
       );
     }
-    return getService(options).getOrCreateDefaultConversationId();
+    return getChatStore(options).getOrCreateDefaultConversationId();
   });
 
   ipcMain.handle(
@@ -59,7 +59,7 @@ export const registerLocalChatHandlers = (
       if (!options.assertPrivilegedSender(event, "localChat:listEvents")) {
         throw new Error("Blocked untrusted localChat:listEvents request.");
       }
-      return getService(options).listEvents(
+      return getChatStore(options).listEvents(
         payload?.conversationId ?? "",
         payload?.maxItems,
       );
@@ -77,7 +77,7 @@ export const registerLocalChatHandlers = (
       if (!options.assertPrivilegedSender(event, "localChat:getEventCount")) {
         throw new Error("Blocked untrusted localChat:getEventCount request.");
       }
-      return getService(options).getEventCount(payload?.conversationId ?? "");
+      return getChatStore(options).getEventCount(payload?.conversationId ?? "");
     },
   );
 
@@ -100,7 +100,7 @@ export const registerLocalChatHandlers = (
       if (!options.assertPrivilegedSender(event, "localChat:appendEvent")) {
         throw new Error("Blocked untrusted localChat:appendEvent request.");
       }
-      const result = getService(options).appendEvent({
+      const result = getChatStore(options).appendEvent({
         conversationId: payload?.conversationId ?? "",
         type: payload?.type ?? "",
         payload: payload?.payload,
@@ -132,7 +132,7 @@ export const registerLocalChatHandlers = (
           "Blocked untrusted localChat:listSyncMessages request.",
         );
       }
-      return getService(options).listSyncMessages(
+      return getChatStore(options).listSyncMessages(
         payload?.conversationId ?? "",
         payload?.maxMessages,
       );
@@ -154,7 +154,7 @@ export const registerLocalChatHandlers = (
           "Blocked untrusted localChat:getSyncCheckpoint request.",
         );
       }
-      return getService(options).getSyncCheckpoint(
+      return getChatStore(options).getSyncCheckpoint(
         payload?.conversationId ?? "",
       );
     },
@@ -176,7 +176,7 @@ export const registerLocalChatHandlers = (
           "Blocked untrusted localChat:setSyncCheckpoint request.",
         );
       }
-      getService(options).setSyncCheckpoint(
+      getChatStore(options).setSyncCheckpoint(
         payload?.conversationId ?? "",
         payload?.localMessageId ?? "",
       );

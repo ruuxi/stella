@@ -16,7 +16,7 @@ import {
   getModelOverride,
 } from "./preferences/local-preferences.js";
 import { LocalTaskManager, type LocalTaskManagerAgentContext, type TaskLifecycleEvent } from "./tasks/local-task-manager.js";
-import { JsonlRuntimeStore } from "./jsonl_store.js";
+import type { RuntimeStore } from "../../storage/runtime-store.js";
 import { buildLocalHistoryFromEvents, type LocalContextEvent } from "./local-history.js";
 import {
   runOrchestratorTurn,
@@ -92,6 +92,7 @@ export type StellaHostRunnerOptions = {
   }) => Promise<{ secretId: string; provider: string; label: string }>;
   scheduleApi?: ScheduleToolApi;
   displayHtml?: (html: string) => void;
+  runtimeStore: RuntimeStore;
   listLocalChatEvents?: (conversationId: string, maxItems: number) => LocalContextEvent[];
 };
 
@@ -213,9 +214,9 @@ export const createStellaHostRunner = ({
   requestCredential,
   scheduleApi,
   displayHtml,
+  runtimeStore,
   listLocalChatEvents,
 }: StellaHostRunnerOptions) => {
-  const store = new JsonlRuntimeStore(StellaHome);
   const convexApi = anyApi;
 
   const envProxyBaseUrl = sanitizeProxyBase(process.env.STELLA_LLM_PROXY_URL ?? null);
@@ -412,7 +413,7 @@ export const createStellaHostRunner = ({
       runId: args.runId,
       threadId: args.threadId,
     });
-    const storedThreadMessages = store.loadThreadMessages(threadKey);
+    const storedThreadMessages = runtimeStore.loadThreadMessages(threadKey);
 
     let threadHistory: Array<{ role: string; content: string; toolCallId?: string }> | undefined;
     if (args.agentType === "orchestrator" && listLocalChatEvents) {
@@ -458,7 +459,7 @@ export const createStellaHostRunner = ({
 
     const activeThreadsPrompt =
       args.agentType === "orchestrator"
-        ? buildActiveThreadsPrompt(store.listActiveThreads(args.conversationId))
+        ? buildActiveThreadsPrompt(runtimeStore.listActiveThreads(args.conversationId))
         : "";
     const dynamicContextSections = [
       args.agentType === "orchestrator" && frontendRoot
@@ -468,7 +469,7 @@ export const createStellaHostRunner = ({
     ].filter((section) => section.trim().length > 0);
     const reminderState =
       args.agentType === "orchestrator" && activeThreadsPrompt
-        ? store.getOrchestratorReminderState(args.conversationId)
+        ? runtimeStore.getOrchestratorReminderState(args.conversationId)
         : {
             shouldInjectDynamicReminder: false,
             reminderTokensSinceLastInjection: 0,
@@ -500,7 +501,7 @@ export const createStellaHostRunner = ({
       if (agentType !== "general") {
         return null;
       }
-      return store.resolveOrCreateActiveThread({
+      return runtimeStore.resolveOrCreateActiveThread({
         conversationId,
         agentType,
         threadName,
@@ -553,7 +554,7 @@ export const createStellaHostRunner = ({
           deviceId,
           stellaHome: StellaHome,
           resolvedLlm,
-          store,
+          store: runtimeStore,
           abortSignal,
           selfModMonitor,
           onProgress,
@@ -707,7 +708,6 @@ export const createStellaHostRunner = ({
     void selfModHmrController?.forceResumeAll();
     toolHost.killAllShells();
     shutdownSubagentRuntimes();
-    store.close();
   };
 
   const agentHealthCheck = (): AgentHealth => {
@@ -823,7 +823,7 @@ export const createStellaHostRunner = ({
       deviceId,
       stellaHome: StellaHome,
       resolvedLlm,
-      store,
+      store: runtimeStore,
       abortSignal: abortController.signal,
       frontendRoot,
       selfModMonitor,
@@ -939,7 +939,7 @@ export const createStellaHostRunner = ({
         deviceId,
         stellaHome: StellaHome,
         resolvedLlm,
-        store,
+        store: runtimeStore,
         abortSignal: abortController.signal,
         frontendRoot,
         selfModMonitor,
@@ -1098,11 +1098,11 @@ export const createStellaHostRunner = ({
     getActiveOrchestratorRun,
     recoverCrashedRuns,
     appendThreadMessage: (args: {
-      conversationId: string;
+      threadKey: string;
       role: "user" | "assistant";
       content: string;
     }) => {
-      store.appendThreadMessage({ ...args, timestamp: Date.now() });
+      runtimeStore.appendThreadMessage({ ...args, timestamp: Date.now() });
     },
   };
 };

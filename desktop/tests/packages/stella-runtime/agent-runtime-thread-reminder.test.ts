@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LocalTaskManagerAgentContext } from "../../../electron/core/runtime/tasks/local-task-manager.js";
-import type { JsonlRuntimeStore } from "../../../electron/core/runtime/jsonl_store.js";
 import type { ResolvedLlmRoute } from "../../../electron/core/runtime/model-routing.js";
+import type { RuntimeStore } from "../../../electron/storage/runtime-store.js";
 
 const { mockPromptImpl, lastPromptText } = vi.hoisted(() => ({
   mockPromptImpl: vi.fn(),
@@ -137,7 +137,7 @@ describe("agent runtime orchestrator thread reminders", () => {
       deviceId: "device-1",
       stellaHome: "/tmp/stella/.stella",
       resolvedLlm,
-      store: store as unknown as JsonlRuntimeStore,
+      store: store as unknown as RuntimeStore,
       callbacks: {
         onStream: vi.fn(),
         onToolStart: vi.fn(),

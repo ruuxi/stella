@@ -24,7 +24,7 @@ import {
   shutdownCodexAppServerRuntime,
 } from "./integrations/codex-app-server-runtime.js";
 import type { LocalTaskManagerAgentContext } from "./tasks/local-task-manager.js";
-import { JsonlRuntimeStore } from "./jsonl_store.js";
+import type { RuntimeStore } from "../../storage/runtime-store.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 import {
   buildRuntimeThreadKey,
@@ -63,7 +63,6 @@ export type SelfModMonitor = {
     sinceHead: string | null;
   }) => Promise<SelfModAppliedPayload | null>;
 };
-
 
 export type RuntimeStreamEvent = {
   runId: string;
@@ -132,7 +131,7 @@ type BaseRunOptions = {
   deviceId: string;
   stellaHome: string;
   resolvedLlm: ResolvedLlmRoute;
-  store: JsonlRuntimeStore;
+  store: RuntimeStore;
   abortSignal?: AbortSignal;
   frontendRoot?: string;
   selfModMonitor?: SelfModMonitor | null;
@@ -298,21 +297,23 @@ const buildOrchestratorUserPrompt = (context: LocalTaskManagerAgentContext, user
 };
 
 const updateOrchestratorReminderState = (
-  store: JsonlRuntimeStore,
+  store: RuntimeStore,
   args: { conversationId: string; shouldInjectDynamicReminder?: boolean; finalText: string },
 ): void => {
-  const runtimeStore = store as JsonlRuntimeStore & {
-    updateOrchestratorReminderCounter?: (args: {
-      conversationId: string;
-      resetTo?: number;
-      incrementBy?: number;
-    }) => void;
-  };
-  if (typeof runtimeStore.updateOrchestratorReminderCounter !== "function") {
+  const updateCounter = (
+    store as RuntimeStore & {
+      updateOrchestratorReminderCounter?: (args: {
+        conversationId: string;
+        resetTo?: number;
+        incrementBy?: number;
+      }) => void;
+    }
+  ).updateOrchestratorReminderCounter;
+  if (typeof updateCounter !== "function") {
     return;
   }
   if (args.shouldInjectDynamicReminder) {
-    runtimeStore.updateOrchestratorReminderCounter({
+    updateCounter.call(store, {
       conversationId: args.conversationId,
       resetTo: 0,
     });
@@ -320,7 +321,7 @@ const updateOrchestratorReminderState = (
   }
   const outputTokens = estimateRuntimeTokens(args.finalText);
   if (outputTokens > 0) {
-    runtimeStore.updateOrchestratorReminderCounter({
+    updateCounter.call(store, {
       conversationId: args.conversationId,
       incrementBy: outputTokens,
     });
@@ -357,7 +358,7 @@ const createPiTools = (opts: {
   maxTaskDepth?: number;
   delegationAllowlist?: string[];
   toolsAllowlist?: string[];
-  store: JsonlRuntimeStore;
+  store: RuntimeStore;
   toolExecutor: (
     toolName: string,
     args: Record<string, unknown>,
@@ -699,7 +700,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
     const promptText = buildOrchestratorUserPrompt(opts.agentContext, opts.userPrompt);
     opts.store.appendThreadMessage({
       timestamp: now(),
-      conversationId: threadKey,
+      threadKey,
       role: "user",
       content: opts.userPrompt,
     });
@@ -735,7 +736,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
     if (finalText.trim()) {
       opts.store.appendThreadMessage({
         timestamp: now(),
-        conversationId: threadKey,
+        threadKey,
         role: "assistant",
         content: finalText,
       });
@@ -846,7 +847,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
   if (prompt) {
     opts.store.appendThreadMessage({
       timestamp: now(),
-      conversationId: subagentThreadConversationId,
+      threadKey: subagentThreadConversationId,
       role: "user",
       content: prompt,
     });
@@ -905,7 +906,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
       if (result.text.trim()) {
         opts.store.appendThreadMessage({
           timestamp: now(),
-          conversationId: subagentThreadConversationId,
+          threadKey: subagentThreadConversationId,
           role: "assistant",
           content: result.text,
         });
@@ -998,7 +999,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
       if (result.text.trim()) {
         opts.store.appendThreadMessage({
           timestamp: now(),
-          conversationId: subagentThreadConversationId,
+          threadKey: subagentThreadConversationId,
           role: "assistant",
           content: result.text,
         });
@@ -1193,7 +1194,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
     if (result.trim()) {
       opts.store.appendThreadMessage({
         timestamp: now(),
-        conversationId: subagentThreadConversationId,
+        threadKey: subagentThreadConversationId,
         role: "assistant",
         content: result,
       });
