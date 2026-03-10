@@ -1,5 +1,6 @@
 import { completeSimple, readAssistantText } from "../ai/stream.js";
-import type { JsonlThreadMessage, JsonlRuntimeStore } from "./jsonl_store.js";
+import type { RuntimeThreadMessage } from "../../storage/shared.js";
+import type { RuntimeStore } from "../../storage/runtime-store.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 
 const THREAD_CHECKPOINT_MARKER = "[[THREAD_CHECKPOINT]]";
@@ -239,7 +240,7 @@ const generateThreadSummary = async (args: {
 };
 
 export const maybeCompactRuntimeThread = async (args: {
-  store: JsonlRuntimeStore;
+  store: RuntimeStore;
   threadKey: string;
   resolvedLlm: ResolvedLlmRoute;
   agentType: string;
@@ -287,10 +288,10 @@ export const maybeCompactRuntimeThread = async (args: {
   }
 
   const archivedPath = args.store.archiveCurrentThread(args.threadKey);
-  const nextMessages: JsonlThreadMessage[] = [
+  const nextMessages: RuntimeThreadMessage[] = [
     {
       timestamp: Date.now(),
-      conversationId: args.threadKey,
+      threadKey: args.threadKey,
       role: "assistant",
       content: formatThreadCheckpointMessage({
         summary,
@@ -299,7 +300,7 @@ export const maybeCompactRuntimeThread = async (args: {
     },
     ...recentMessages.map((message) => ({
       timestamp: Date.now(),
-      conversationId: args.threadKey,
+      threadKey: args.threadKey,
       role: message.role,
       content: message.content,
       ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),

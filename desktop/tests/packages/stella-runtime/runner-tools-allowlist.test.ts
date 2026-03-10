@@ -3,6 +3,34 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("better-sqlite3", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+
+  class BetterSqlite3Mock {
+    private readonly db: InstanceType<typeof DatabaseSync>;
+
+    constructor(filePath: string, options?: { readonly?: boolean }) {
+      this.db = new DatabaseSync(filePath, {
+        readOnly: options?.readonly === true,
+      });
+    }
+
+    exec(sql: string) {
+      this.db.exec(sql);
+    }
+
+    prepare(sql: string) {
+      return this.db.prepare(sql);
+    }
+
+    close() {
+      this.db.close();
+    }
+  }
+
+  return { default: BetterSqlite3Mock };
+});
+
 const {
   loadAgentsFromHomeMock,
   runOrchestratorTurnMock,
@@ -93,6 +121,9 @@ vi.mock("../../../electron/core/runtime/agent-runtime.js", async () => {
 });
 
 const { createStellaHostRunner } = await import("../../../electron/core/runtime/runner.js");
+const { createDesktopDatabase } = await import("../../../electron/storage/database.js");
+const { RuntimeStore } = await import("../../../electron/storage/runtime-store.js");
+const { TranscriptMirror } = await import("../../../electron/storage/transcript-mirror.js");
 
 const tempHomes: string[] = [];
 
@@ -128,9 +159,16 @@ describe("runtime runner tools allowlist", () => {
   });
 
   it("passes declared agent tool names through without runner hardcoded filtering", async () => {
+    const home = createTempHome();
+    const db = createDesktopDatabase(home);
+    const runtimeStore = new RuntimeStore(
+      db,
+      new TranscriptMirror(path.join(home, "state")),
+    );
     const runner = createStellaHostRunner({
       deviceId: "device-1",
-      StellaHome: createTempHome(),
+      StellaHome: home,
+      runtimeStore,
     });
 
     runner.setConvexUrl("https://example.convex.cloud");
@@ -160,5 +198,6 @@ describe("runtime runner tools allowlist", () => {
     }));
 
     runner.stop();
+    db.close();
   });
 });
