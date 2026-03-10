@@ -3,7 +3,16 @@ import { app, BrowserWindow, globalShortcut, session } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import { getDevServerUrl } from "./dev-url.js";
-import { registerAllIpcHandlers } from "./ipc/ipc-registry.js";
+import { registerAgentHandlers } from "./ipc/agent-handlers.js";
+import { registerBrowserHandlers } from "./ipc/browser-handlers.js";
+import { registerCaptureHandlers } from "./ipc/capture-handlers.js";
+import { registerLocalChatHandlers } from "./ipc/local-chat-handlers.js";
+import { registerMiniBridgeHandlers } from "./ipc/mini-bridge-handlers.js";
+import { registerScheduleHandlers } from "./ipc/schedule-handlers.js";
+import { registerStoreHandlers } from "./ipc/store-handlers.js";
+import { registerSystemHandlers } from "./ipc/system-handlers.js";
+import { registerUiHandlers } from "./ipc/ui-handlers.js";
+import { registerVoiceHandlers } from "./ipc/voice-handlers.js";
 import { OverlayWindowController } from "./windows/overlay-window.js";
 import type { StellaHostRunner } from "./stella-host-runner.js";
 import { createStellaHostRunner } from "./stella-host-runner.js";
@@ -498,90 +507,96 @@ export const bootstrapMainProcess = () => {
       getOverlayController: () => overlayController,
     });
 
-    registerAllIpcHandlers({
-      ui: {
-        uiState: uiStateService.state,
-        windowManager,
-        updateUiState: (partial) => uiStateService.update(partial),
-        broadcastUiState: () => uiStateService.broadcast(),
-        syncVoiceOverlay: () => uiStateService.syncVoiceOverlay(),
-        setAppReady: (ready) => {
-          appReady = ready;
-        },
-        getResumeWakeWordCapture: () =>
-          uiStateService.getResumeWakeWordCapture(),
-        scheduleResumeWakeWord: () => uiStateService.scheduleResumeWakeWord(),
-        deactivateVoiceModes: () => uiStateService.deactivateVoiceModes(),
-        syncWakeWordState,
-        assertPrivilegedSender: (event, channel) =>
-          externalLinkService.assertPrivilegedSender(event, channel),
+    registerUiHandlers({
+      uiState: uiStateService.state,
+      windowManager,
+      updateUiState: (partial) => uiStateService.update(partial),
+      broadcastUiState: () => uiStateService.broadcast(),
+      syncVoiceOverlay: () => uiStateService.syncVoiceOverlay(),
+      setAppReady: (ready) => {
+        appReady = ready;
       },
-      capture: {
-        captureService,
-        windowManager,
-        assertPrivilegedSender: (event, channel) =>
-          externalLinkService.assertPrivilegedSender(event, channel),
-      },
-      system: {
-        getDeviceId: () => deviceId,
-        authService,
-        getStellaHostRunner: () => stellaHostRunner,
-        getStellaHomePath: () => stellaHomePath,
-        externalLinkService,
-        ensurePrivilegedActionApproval: (action, message, detail, event) =>
-          securityPolicyService.ensureApproval(action, message, detail, event),
-        hardResetLocalState,
-        submitCredential: (payload) =>
-          credentialService.submitCredential(payload),
-        cancelCredential: (payload) =>
-          credentialService.cancelCredential(payload),
-      },
-      schedule: {
-        schedulerService: schedulerService!,
-        assertPrivilegedSender: (event, channel) =>
-          externalLinkService.assertPrivilegedSender(event, channel),
-      },
-      browser: {
-        getStellaHomePath: () => stellaHomePath,
-        workspaceService,
-        assertPrivilegedSender: (event, channel) =>
-          externalLinkService.assertPrivilegedSender(event, channel),
-      },
-      agent: {
-        getStellaHostRunner: () => stellaHostRunner,
-        isHostAuthAuthenticated: () => authService.getHostAuthAuthenticated(),
-        frontendRoot,
-        assertPrivilegedSender: (event, channel) =>
-          externalLinkService.assertPrivilegedSender(event, channel),
-        hmrMorphOrchestrator,
-      },
-      localChat: {
-        getLocalChatService: () => localChatService,
-        assertPrivilegedSender: (event, channel) =>
-          externalLinkService.assertPrivilegedSender(event, channel),
-      },
-      miniBridge: {
-        miniBridgeService,
-        windowManager,
-      },
-      store: {},
-      voice: {
-        uiState: uiStateService.state,
-        getAppReady: () => appReady,
-        windowManager,
-        broadcastUiState: () => uiStateService.broadcast(),
-        scheduleResumeWakeWord: () => uiStateService.scheduleResumeWakeWord(),
-        syncVoiceOverlay: () => uiStateService.syncVoiceOverlay(),
-        syncWakeWordState,
-        getWakeWordEnabled: () => wakeWordController?.getEnabled() ?? false,
-        pushWakeWordAudio: (pcm) => wakeWordController?.pushAudioChunk(pcm),
-        getStellaHostRunner: () => stellaHostRunner,
-        getOverlayController: () => overlayController,
-        getConvexSiteUrl: () => authService.getConvexSiteUrl(),
-        getAuthToken: () => authService.getAuthToken(),
-        setAssistantSpeaking: (active) =>
-          audioDuckingService.setAssistantSpeaking(active),
-      },
+      getResumeWakeWordCapture: () => uiStateService.getResumeWakeWordCapture(),
+      scheduleResumeWakeWord: () => uiStateService.scheduleResumeWakeWord(),
+      deactivateVoiceModes: () => uiStateService.deactivateVoiceModes(),
+      syncWakeWordState,
+      assertPrivilegedSender: (event, channel) =>
+        externalLinkService.assertPrivilegedSender(event, channel),
+    });
+
+    registerCaptureHandlers({
+      captureService,
+      windowManager,
+      assertPrivilegedSender: (event, channel) =>
+        externalLinkService.assertPrivilegedSender(event, channel),
+    });
+
+    registerSystemHandlers({
+      getDeviceId: () => deviceId,
+      authService,
+      getStellaHostRunner: () => stellaHostRunner,
+      getStellaHomePath: () => stellaHomePath,
+      externalLinkService,
+      ensurePrivilegedActionApproval: (action, message, detail, event) =>
+        securityPolicyService.ensureApproval(action, message, detail, event),
+      hardResetLocalState,
+      submitCredential: (payload) =>
+        credentialService.submitCredential(payload),
+      cancelCredential: (payload) =>
+        credentialService.cancelCredential(payload),
+    });
+
+    registerScheduleHandlers({
+      schedulerService: schedulerService!,
+      assertPrivilegedSender: (event, channel) =>
+        externalLinkService.assertPrivilegedSender(event, channel),
+    });
+
+    registerBrowserHandlers({
+      getStellaHomePath: () => stellaHomePath,
+      workspaceService,
+      assertPrivilegedSender: (event, channel) =>
+        externalLinkService.assertPrivilegedSender(event, channel),
+    });
+
+    registerAgentHandlers({
+      getStellaHostRunner: () => stellaHostRunner,
+      isHostAuthAuthenticated: () => authService.getHostAuthAuthenticated(),
+      frontendRoot,
+      assertPrivilegedSender: (event, channel) =>
+        externalLinkService.assertPrivilegedSender(event, channel),
+      hmrMorphOrchestrator,
+    });
+
+    registerLocalChatHandlers({
+      getLocalChatService: () => localChatService,
+      assertPrivilegedSender: (event, channel) =>
+        externalLinkService.assertPrivilegedSender(event, channel),
+    });
+
+    registerMiniBridgeHandlers({
+      miniBridgeService,
+      windowManager,
+    });
+
+    registerStoreHandlers({});
+
+    registerVoiceHandlers({
+      uiState: uiStateService.state,
+      getAppReady: () => appReady,
+      windowManager,
+      broadcastUiState: () => uiStateService.broadcast(),
+      scheduleResumeWakeWord: () => uiStateService.scheduleResumeWakeWord(),
+      syncVoiceOverlay: () => uiStateService.syncVoiceOverlay(),
+      syncWakeWordState,
+      getWakeWordEnabled: () => wakeWordController?.getEnabled() ?? false,
+      pushWakeWordAudio: (pcm) => wakeWordController?.pushAudioChunk(pcm),
+      getStellaHostRunner: () => stellaHostRunner,
+      getOverlayController: () => overlayController,
+      getConvexSiteUrl: () => authService.getConvexSiteUrl(),
+      getAuthToken: () => authService.getAuthToken(),
+      setAssistantSpeaking: (active) =>
+        audioDuckingService.setAssistantSpeaking(active),
     });
 
     const pendingAuthCallback = authService.consumePendingAuthCallback();
