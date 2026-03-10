@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain } from "electron";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
-import type { UiState } from "../../types.js";
-import type { WindowManager } from "../../windows/window-manager.js";
+import type { UiState } from "../types.js";
+import type { WindowManager } from "../windows/window-manager.js";
 
 // IPC authorization policy:
 //   Privileged (assertPrivilegedSender):  ui:setState, window:show, app:reload, app:setReady
