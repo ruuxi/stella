@@ -8,6 +8,7 @@ import { registerBrowserHandlers } from "./ipc/browser-handlers.js";
 import { registerCaptureHandlers } from "./ipc/capture-handlers.js";
 import { registerLocalChatHandlers } from "./ipc/local-chat-handlers.js";
 import { registerMiniBridgeHandlers } from "./ipc/mini-bridge-handlers.js";
+import { registerOverlayStreamHandlers } from "./ipc/overlay-stream-handlers.js";
 import { registerScheduleHandlers } from "./ipc/schedule-handlers.js";
 import { registerStoreHandlers } from "./ipc/store-handlers.js";
 import { registerSystemHandlers } from "./ipc/system-handlers.js";
@@ -570,6 +571,14 @@ export const bootstrapMainProcess = () => {
 
     registerLocalChatHandlers({
       getLocalChatService: () => localChatService,
+      assertPrivilegedSender: (event, channel) =>
+        externalLinkService.assertPrivilegedSender(event, channel),
+    });
+
+    registerOverlayStreamHandlers({
+      getStellaHomePath: () => stellaHomePath,
+      getConvexSiteUrl: () => authService.getConvexSiteUrl(),
+      getAuthToken: () => authService.getAuthToken(),
       assertPrivilegedSender: (event, channel) =>
         externalLinkService.assertPrivilegedSender(event, channel),
     });
