@@ -36,8 +36,7 @@ const tightenWindowsAcl = async (targetPath: string) => {
       "icacls",
       [
         targetPath,
-        "/inheritance:r",
-        "/grant:r",
+        "/grant",
         `${username}:F`,
       ],
       {
@@ -62,8 +61,7 @@ const tightenWindowsAclSync = (targetPath: string) => {
   try {
     const child = spawnSync("icacls", [
       targetPath,
-      "/inheritance:r",
-      "/grant:r",
+      "/grant",
       `${username}:F`,
     ], {
       stdio: "ignore",
