@@ -2,6 +2,7 @@ import type { UiState, WindowMode } from "./ui";
 import type { Theme } from "@/theme/themes/types";
 import type { AgentStreamEvent } from "@/app/chat/streaming/streaming-types";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
+import type { ChatMessage } from "@/infra/ai/llm";
 import type { SearchHtmlPromptConfig } from "@/prompts";
 import type {
   RadialWedge as SharedRadialWedge,
@@ -191,6 +192,21 @@ export type ElectronOverlayApi = {
   ) => () => void;
   onHideAutoPanel: (callback: () => void) => () => void;
   hideAutoPanel: () => void;
+  startAutoPanelStream: (payload: {
+    requestId: string;
+    agentType?: string;
+    messages: ChatMessage[];
+  }) => Promise<{ ok: boolean }>;
+  cancelAutoPanelStream: (requestId: string) => void;
+  onAutoPanelChunk: (
+    callback: (data: { requestId: string; chunk: string }) => void,
+  ) => () => void;
+  onAutoPanelComplete: (
+    callback: (data: { requestId: string; text: string }) => void,
+  ) => () => void;
+  onAutoPanelError: (
+    callback: (data: { requestId: string; error: string }) => void,
+  ) => () => void;
 };
 
 export type ElectronMiniApi = {

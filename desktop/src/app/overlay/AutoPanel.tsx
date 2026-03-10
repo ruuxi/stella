@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { streamChatCompletion } from "@/infra/ai/llm";
+import type { ChatMessage } from "@/infra/ai/llm";
 import { Markdown } from "@/app/chat/Markdown";
 import "./auto-panel.css";
 
@@ -74,7 +74,6 @@ export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) 
 
   const requestKey = windowText ? `${windowTitle ?? ""}\u0000${windowText}` : null;
 
-  // Start LLM stream when windowText arrives (non-empty)
   useEffect(() => {
     if (!windowText || !requestKey) {
       requestIdRef.current += 1;
@@ -87,49 +86,102 @@ export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) 
     const userContent = windowTitle
       ? `[${windowTitle}]\n\n${windowText}`
       : windowText;
+    const messages: ChatMessage[] = [
+      {
+        role: "system",
+        content: `You receive text from near the user's cursor on their screen. Be useful like a smart friend glancing over their shoulder.
 
-    void streamChatCompletion({
-      agentType: "auto",
-      messages: [
-        {
-          role: "system",
-          content: `You receive text from near the user's cursor on their screen. Be useful like a smart friend glancing over their shoulder.
-
-Do: summarize, explain, give your take, fact-check, suggest a reply, translate, recommend — whatever fits.
+Do: summarize, explain, give your take, fact-check, suggest a reply, translate, recommend whatever fits.
 Don't: describe the UI, list generic tips, repeat back what they can already see, or pad your response.
 
 Keep it short. 2-4 paragraphs max. No bullet-point dumps unless the content genuinely calls for it.`,
-        },
-        { role: "user", content: userContent },
-      ],
-      onChunk: (chunk) => {
-        if (requestId !== requestIdRef.current) return;
-        setStreamState((prev) =>
-          prev.requestKey === requestKey
-            ? { ...prev, text: prev.text + chunk, error: null, complete: false }
-            : { requestKey, text: chunk, error: null, complete: false },
-        );
       },
-    })
-      .catch((err) => {
-        if (requestId !== requestIdRef.current) return;
-        setStreamState((prev) => ({
-          requestKey,
-          text: prev.requestKey === requestKey ? prev.text : "",
-          error: String((err as Error).message || err),
-          complete: false,
-        }));
-      })
-      .finally(() => {
-        if (requestId !== requestIdRef.current) return;
-        setStreamState((prev) =>
-          prev.requestKey === requestKey
-            ? { ...prev, complete: true }
-            : { requestKey, text: "", error: null, complete: true },
-        );
+      { role: "user", content: userContent },
+    ];
+    const overlayApi = window.electronAPI?.overlay;
+    if (
+      !overlayApi?.startAutoPanelStream
+      || !overlayApi.onAutoPanelChunk
+      || !overlayApi.onAutoPanelComplete
+      || !overlayApi.onAutoPanelError
+    ) {
+      setStreamState({
+        requestKey,
+        text: "",
+        error: "Auto panel streaming is unavailable.",
+        complete: true,
       });
+      return;
+    }
+
+    const ipcRequestId = `auto-panel-${requestId}`;
+    const cleanupChunk = overlayApi.onAutoPanelChunk((data) => {
+      if (data.requestId !== ipcRequestId || requestId !== requestIdRef.current) {
+        return;
+      }
+      setStreamState((prev) =>
+        prev.requestKey === requestKey
+          ? { ...prev, text: prev.text + data.chunk, error: null, complete: false }
+          : { requestKey, text: data.chunk, error: null, complete: false },
+      );
+    });
+    const cleanupComplete = overlayApi.onAutoPanelComplete((data) => {
+      if (data.requestId !== ipcRequestId || requestId !== requestIdRef.current) {
+        return;
+      }
+      setStreamState((prev) =>
+        prev.requestKey === requestKey
+          ? {
+              ...prev,
+              text: prev.text || data.text,
+              error: null,
+              complete: true,
+            }
+          : {
+              requestKey,
+              text: data.text,
+              error: null,
+              complete: true,
+            },
+      );
+    });
+    const cleanupError = overlayApi.onAutoPanelError((data) => {
+      if (data.requestId !== ipcRequestId || requestId !== requestIdRef.current) {
+        return;
+      }
+      setStreamState((prev) => ({
+        requestKey,
+        text: prev.requestKey === requestKey ? prev.text : "",
+        error: data.error,
+        complete: true,
+      }));
+    });
+
+    setStreamState({
+      requestKey,
+      text: "",
+      error: null,
+      complete: false,
+    });
+    void overlayApi.startAutoPanelStream({
+      requestId: ipcRequestId,
+      agentType: "auto",
+      messages,
+    }).catch((err) => {
+      if (requestId !== requestIdRef.current) return;
+      setStreamState((prev) => ({
+        requestKey,
+        text: prev.requestKey === requestKey ? prev.text : "",
+        error: String((err as Error).message || err),
+        complete: true,
+      }));
+    });
 
     return () => {
+      cleanupChunk();
+      cleanupComplete();
+      cleanupError();
+      overlayApi.cancelAutoPanelStream?.(ipcRequestId);
       if (requestIdRef.current === requestId) {
         requestIdRef.current += 1;
       }
@@ -142,7 +194,6 @@ Keep it short. 2-4 paragraphs max. No bullet-point dumps unless the content genu
   const error = activeStreamState?.error ?? null;
   const isStreaming = Boolean(requestKey) && !activeStreamState?.complete;
 
-  // Update fade edges as content grows
   useEffect(() => {
     updateEdges();
   }, [streamingText, updateEdges]);
@@ -153,7 +204,10 @@ Keep it short. 2-4 paragraphs max. No bullet-point dumps unless the content genu
     (e: React.MouseEvent) => {
       e.stopPropagation();
       const el = panelRef.current;
-      if (!el) { onClose(); return; }
+      if (!el) {
+        onClose();
+        return;
+      }
       el.classList.add("sliding-out");
       el.addEventListener("animationend", () => onClose(), { once: true });
     },
