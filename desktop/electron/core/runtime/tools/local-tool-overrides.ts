@@ -126,6 +126,27 @@ export const localWebFetch = async (args: {
 
 // ── ActivateSkill ─────────────────────────────────────────────────────────
 
+const SKILL_DIRS = ["skills", "core-skills"] as const;
+
+const tryReadSkillFile = (
+  stellaHome: string,
+  subdir: string,
+  relativePath: string,
+): string | null => {
+  const skillsRoot = path.join(stellaHome, subdir);
+  const filePath = path.join(skillsRoot, relativePath);
+  try {
+    const resolvedRoot = fs.realpathSync(skillsRoot);
+    const resolvedFile = fs.realpathSync(filePath);
+    const rel = path.relative(resolvedRoot, resolvedFile);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
+    const content = fs.readFileSync(resolvedFile, "utf-8");
+    return content.trim() ? content : null;
+  } catch {
+    return null;
+  }
+};
+
 export const localActivateSkill = async (args: {
   skillId: string;
   stellaHome: string;
@@ -138,52 +159,32 @@ export const localActivateSkill = async (args: {
     return "Error: invalid skillId.";
   }
 
-  const skillDir = path.join(stellaHome, "skills", skillId);
-  const skillFile = path.join(skillDir, "SKILL.md");
-  const skillsRoot = path.join(stellaHome, "skills");
+  // Search user skills first, then core skills
+  for (const subdir of SKILL_DIRS) {
+    const content =
+      tryReadSkillFile(stellaHome, subdir, path.join(skillId, "SKILL.md")) ??
+      tryReadSkillFile(stellaHome, subdir, `${skillId}.md`);
+    if (content) return content;
+  }
 
-  try {
-    const [resolvedSkillsRoot, resolvedSkillFile] = [
-      fs.realpathSync(skillsRoot),
-      fs.realpathSync(skillFile),
-    ];
-    const relative = path.relative(resolvedSkillsRoot, resolvedSkillFile);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) {
-      return "Error: invalid skill path.";
-    }
-    const content = fs.readFileSync(resolvedSkillFile, "utf-8");
-    if (!content.trim()) {
-      return `Skill '${skillId}' found but has no content.`;
-    }
-    return content;
-  } catch {
-    // Try alternate paths
-    const altFile = path.join(stellaHome, "skills", `${skillId}.md`);
+  // Not found — list available skills from both directories
+  const available: string[] = [];
+  for (const subdir of SKILL_DIRS) {
     try {
-      const resolvedSkillsRoot = fs.realpathSync(skillsRoot);
-      const resolvedAltFile = fs.realpathSync(altFile);
-      const relative = path.relative(resolvedSkillsRoot, resolvedAltFile);
-      if (relative.startsWith("..") || path.isAbsolute(relative)) {
-        return "Error: invalid skill path.";
+      const entries = fs.readdirSync(path.join(stellaHome, subdir), { withFileTypes: true });
+      for (const d of entries) {
+        if (d.isDirectory() && !available.includes(d.name)) {
+          available.push(d.name);
+        }
       }
-      return fs.readFileSync(resolvedAltFile, "utf-8");
     } catch {
-      // List available skills so the agent knows what exists
-      const skillsDir = path.join(stellaHome, "skills");
-      let available: string[] = [];
-      try {
-        available = fs.readdirSync(skillsDir, { withFileTypes: true })
-          .filter((d) => d.isDirectory())
-          .map((d) => d.name);
-      } catch {
-        // ignore
-      }
-      const listing = available.length > 0
-        ? `Available skills: ${available.join(", ")}`
-        : "No skills are currently installed.";
-      return `Skill '${skillId}' not found. ${listing}`;
+      // ignore
     }
   }
+  const listing = available.length > 0
+    ? `Available skills: ${available.join(", ")}`
+    : "No skills are currently installed.";
+  return `Skill '${skillId}' not found. ${listing}`;
 };
 
 // ── NoResponse ────────────────────────────────────────────────────────────

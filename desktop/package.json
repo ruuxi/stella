@@ -155,8 +155,8 @@
         ]
       },
       {
-        "from": ".stella/skills",
-        "to": "skills",
+        "from": ".stella/core-skills",
+        "to": "core-skills",
         "filter": ["**/*"]
       },
       {

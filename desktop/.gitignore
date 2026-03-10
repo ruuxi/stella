@@ -65,3 +65,4 @@ native/*.obj
 .stella/recovery/
 .stella/canvas/
 .stella/mods/features.json
+.stella/skills/
