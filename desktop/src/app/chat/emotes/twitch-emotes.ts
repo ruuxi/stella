@@ -142,6 +142,13 @@ const getStorage = () => {
   }
 };
 
+const getFreshEmojiLookupCache = (): ReadonlyMap<string, string> | null => {
+  if (!inMemoryEmojiLookup || inMemoryEmojiLookup.expiresAt <= Date.now()) {
+    return null;
+  }
+  return inMemoryEmojiLookup.map;
+};
+
 const isValidCode = (value: string) => {
   const trimmed = value.trim();
   return trimmed.length >= 2 && !/\s/.test(trimmed);
@@ -763,7 +770,8 @@ export const useTwitchEmoteLookup = (
 export const useEmojiEmoteLookup = (
   enabled: boolean,
 ): ReadonlyMap<string, string> | null => {
-  const [lookup, setLookup] = useState<ReadonlyMap<string, string> | null>(null);
+  const cachedLookup = enabled ? getFreshEmojiLookupCache() : null;
+  const [lookup, setLookup] = useState<ReadonlyMap<string, string> | null>(() => cachedLookup);
 
   useEffect(() => {
     if (!enabled) {
@@ -789,5 +797,5 @@ export const useEmojiEmoteLookup = (
     };
   }, [enabled]);
 
-  return enabled ? lookup : null;
+  return enabled ? lookup ?? cachedLookup : null;
 };

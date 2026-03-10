@@ -40,7 +40,7 @@ type ChatStoreContextValue = {
   cloudFeaturesEnabled: boolean
   isAuthenticated: boolean
   appendEvent: (args: AppendEventArgs) => Promise<AppendedEventResponse | null>
-  appendAgentEvent: (args: AppendAgentEventArgs) => void
+  appendAgentEvent: (args: AppendAgentEventArgs) => Promise<void>
   uploadAttachments: (args: UploadAttachmentsArgs) => Promise<UploadedAttachment[]>
   buildHistory: (conversationId: string) => Promise<LocalHistoryMessage[] | undefined>
 }
@@ -63,9 +63,9 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
   )
 
   const appendAgentEvent = useCallback(
-    (args: AppendAgentEventArgs) => {
+    async (args: AppendAgentEventArgs) => {
       if (args.type === 'assistant_message') {
-        void appendLocalEvent({
+        await appendLocalEvent({
           conversationId: args.conversationId,
           type: 'assistant_message',
           requestId: args.userMessageId,
@@ -73,12 +73,12 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
             text: args.finalText ?? '',
             ...(args.userMessageId ? { userMessageId: args.userMessageId } : {}),
           },
-        }).catch(() => undefined)
+        })
         return
       }
 
       if (args.type === 'tool_request') {
-        void appendLocalEvent({
+        await appendLocalEvent({
           conversationId: args.conversationId,
           type: 'tool_request',
           requestId: args.toolCallId,
@@ -87,11 +87,11 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
             ...(args.args ? { args: args.args } : {}),
             ...(args.agentType ? { agentType: args.agentType } : {}),
           },
-        }).catch(() => undefined)
+        })
         return
       }
 
-      void appendLocalEvent({
+      await appendLocalEvent({
         conversationId: args.conversationId,
         type: 'tool_result',
         requestId: args.toolCallId,
@@ -102,7 +102,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
           ...(args.html ? { html: args.html } : {}),
           ...(args.agentType ? { agentType: args.agentType } : {}),
         },
-      }).catch(() => undefined)
+      })
     },
     [],
   )
