@@ -1,41 +1,26 @@
-import type { WelcomeSuggestion } from '@/app/onboarding/services/synthesis'
-import './welcome-suggestions.css'
-
-const CATEGORY_LABELS: Record<WelcomeSuggestion['category'], string> = {
-  cron: 'Automation',
-  skill: 'Skill',
-  app: 'App',
-}
+import type { WelcomeSuggestion } from "@/app/onboarding/services/synthesis";
+import { SuggestionList } from "@/app/shared/SuggestionList";
 
 type WelcomeSuggestionsProps = {
-  suggestions: WelcomeSuggestion[]
-  onSelect: (suggestion: WelcomeSuggestion) => void
-}
+  suggestions: WelcomeSuggestion[];
+  onSelect: (suggestion: WelcomeSuggestion) => void;
+};
 
-export function WelcomeSuggestions({ suggestions, onSelect }: WelcomeSuggestionsProps) {
-  if (suggestions.length === 0) return null
-
+export function WelcomeSuggestions({
+  suggestions,
+  onSelect,
+}: WelcomeSuggestionsProps) {
   return (
-    <div className="welcome-suggestions">
-      {suggestions.map((s) => (
-        <button
-          key={`${s.category}:${s.title}:${s.prompt}`}
-          className="welcome-suggestion-card"
-          data-category={s.category}
-          onClick={() => onSelect(s)}
-        >
-          <div className="welcome-suggestion-content">
-            <div className="welcome-suggestion-header">
-              <span className="welcome-suggestion-title">{s.title}</span>
-              <span className="welcome-suggestion-badge" data-category={s.category}>
-                {CATEGORY_LABELS[s.category]}
-              </span>
-            </div>
-            <span className="welcome-suggestion-desc">{s.description}</span>
-          </div>
-        </button>
-      ))}
-    </div>
-  )
+    <SuggestionList
+      suggestions={suggestions}
+      onSelect={onSelect}
+      className="suggestion-list--chat welcome-suggestions"
+      itemClassName="welcome-suggestion-card"
+      contentClassName="welcome-suggestion-content"
+      headerClassName="welcome-suggestion-header"
+      titleClassName="welcome-suggestion-title"
+      badgeClassName="welcome-suggestion-badge"
+      descriptionClassName="welcome-suggestion-desc"
+    />
+  );
 }
-

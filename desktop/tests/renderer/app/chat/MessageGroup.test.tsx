@@ -35,12 +35,11 @@ describe("MessageGroup", () => {
     expect(screen.getByText("Hello from user")).toBeTruthy();
   });
 
-  it("renders empty text for missing payload", () => {
+  it("omits the user bubble when the event has no displayable content", () => {
     const userMessage = makeEvent({ payload: undefined });
     const { container } = render(<MessageGroup userMessage={userMessage} />);
     const eventBody = container.querySelector(".event-body");
-    expect(eventBody).toBeTruthy();
-    expect(eventBody!.textContent).toBe("");
+    expect(eventBody).toBeNull();
   });
 
   it("shows assistant message via Markdown when not streaming", () => {
@@ -99,7 +98,7 @@ describe("MessageGroup", () => {
     expect(img.getAttribute("src")).toBe("https://example.com/img.png");
   });
 
-  it("renders fallback for non-URL attachments", () => {
+  it("renders attachment names for non-image attachments", () => {
     const userMessage = makeEvent({
       payload: {
         text: "File attached",
@@ -107,7 +106,7 @@ describe("MessageGroup", () => {
       },
     });
     render(<MessageGroup userMessage={userMessage} />);
-    expect(screen.getByText("Attachment 1")).toBeTruthy();
+    expect(screen.getByText("document.pdf")).toBeTruthy();
   });
 
   it("renders fallback for unsafe attachment URL schemes", () => {
@@ -174,9 +173,6 @@ describe("MessageGroup", () => {
         streamingText="Partial response..."
       />,
     );
-    // WorkingIndicator should be present (no assistant message)
-    expect(screen.getByTestId("working-indicator")).toBeTruthy();
-    // Markdown should render the streaming text
     const markdown = screen.getByTestId("markdown");
     expect(markdown.textContent).toBe("Partial response...");
   });

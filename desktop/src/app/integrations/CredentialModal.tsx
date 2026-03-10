@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Dialog } from "@/ui/dialog";
+import { Button } from "@/ui/button";
+import { TextField } from "@/ui/text-field";
 import "./credential-modal.css";
 
 export type CredentialModalProps = {
@@ -48,41 +50,45 @@ const CredentialModalContent = ({
       <Dialog.Header>
         <Dialog.Title>Connect {provider}</Dialog.Title>
         <Dialog.Description>
-          {description ?? "Enter your API key. This is stored securely and never shown to the AI."}
+          {description ??
+            "Enter your API key. This is stored securely and never shown to the AI."}
         </Dialog.Description>
       </Dialog.Header>
       <Dialog.Body>
-        <label className="credential-field">
-          <span className="credential-label">Label</span>
-          <input
+        <div className="credential-form">
+          <TextField
+            label="Label"
             value={labelValue}
             onChange={(event) => setLabelValue(event.target.value)}
             placeholder={`${provider} key`}
           />
-        </label>
-        <label className="credential-field">
-          <span className="credential-label">API key</span>
-          <input
+          <TextField
+            label="API key"
             type="password"
             value={secret}
             onChange={(event) => setSecret(event.target.value)}
             placeholder={placeholder ?? "Paste your key"}
           />
-        </label>
+        </div>
         {error ? <div className="credential-error">{error}</div> : null}
       </Dialog.Body>
       <div className="credential-actions">
-        <button className="ghost-button" type="button" onClick={onCancel} disabled={submitting}>
-          Cancel
-        </button>
-        <button
-          className="primary-button"
+        <Button
           type="button"
+          variant="secondary"
+          onClick={onCancel}
+          disabled={submitting}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
           onClick={handleSubmit}
           disabled={submitting}
         >
           {submitting ? "Saving..." : "Save"}
-        </button>
+        </Button>
       </div>
     </>
   );
@@ -98,7 +104,10 @@ export const CredentialModal = ({
   onCancel,
 }: CredentialModalProps) => {
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onCancel() : undefined)}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => (!nextOpen ? onCancel() : undefined)}
+    >
       <Dialog.Content className="credential-modal">
         {open ? (
           <CredentialModalContent
@@ -115,4 +124,3 @@ export const CredentialModal = ({
     </Dialog>
   );
 };
-

@@ -15,6 +15,9 @@ import {
   DialogCloseButton,
   DialogBody,
 } from "@/ui/dialog";
+import { Button } from "@/ui/button";
+import { TextField } from "@/ui/text-field";
+import { NativeSelect } from "@/ui/native-select";
 import "@/app/settings/settings.css";
 
 // ---------------------------------------------------------------------------
@@ -34,11 +37,31 @@ interface SettingsDialogProps {
 // ---------------------------------------------------------------------------
 
 const CONFIGURABLE_AGENTS = [
-  { key: "orchestrator", label: "Orchestrator", desc: "Top-level agent that delegates tasks" },
-  { key: "general", label: "General", desc: "Full tool access for general tasks" },
-  { key: "self_mod", label: "Self-Mod", desc: "Platform self-modification agent" },
-  { key: "browser", label: "Browser", desc: "Browser automation via Playwright" },
-  { key: "explore", label: "Explore", desc: "Lightweight read-only exploration" },
+  {
+    key: "orchestrator",
+    label: "Orchestrator",
+    desc: "Top-level agent that delegates tasks",
+  },
+  {
+    key: "general",
+    label: "General",
+    desc: "Full tool access for general tasks",
+  },
+  {
+    key: "self_mod",
+    label: "Self-Mod",
+    desc: "Platform self-modification agent",
+  },
+  {
+    key: "browser",
+    label: "Browser",
+    desc: "Browser automation via Playwright",
+  },
+  {
+    key: "explore",
+    label: "Explore",
+    desc: "Lightweight read-only exploration",
+  },
   { key: "memory", label: "Memory", desc: "Memory search and retrieval" },
 ] as const;
 
@@ -74,9 +97,7 @@ const TABS: { key: SettingsTab; label: string }[] = [
 // Basic Tab
 // ---------------------------------------------------------------------------
 
-function BasicTab({ onSignOut }: {
-  onSignOut?: () => void;
-}) {
+function BasicTab({ onSignOut }: { onSignOut?: () => void }) {
   return (
     <div className="settings-tab-content">
       <div className="settings-card">
@@ -87,19 +108,27 @@ function BasicTab({ onSignOut }: {
               Local only. Conversations stay on this device.
             </div>
             <div className="settings-row-sublabel">
-              Cloud sync and connected mode are not available in the app right now.
+              Cloud sync and connected mode are not available in the app right
+              now.
             </div>
           </div>
         </div>
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-label">Sign Out</div>
-            <div className="settings-row-sublabel">Sign out of your account</div>
+            <div className="settings-row-sublabel">
+              Sign out of your account
+            </div>
           </div>
           <div className="settings-row-control">
-            <button className="settings-btn" onClick={onSignOut}>
+            <Button
+              type="button"
+              variant="ghost"
+              className="settings-btn"
+              onClick={onSignOut}
+            >
               Sign Out
-            </button>
+            </Button>
           </div>
         </div>
         <div className="settings-row">
@@ -113,9 +142,14 @@ function BasicTab({ onSignOut }: {
             </div>
           </div>
           <div className="settings-row-control">
-            <button className="settings-btn settings-btn--danger" disabled>
+            <Button
+              type="button"
+              variant="ghost"
+              className="settings-btn settings-btn--danger"
+              disabled
+            >
               Delete
-            </button>
+            </Button>
           </div>
         </div>
         <div className="settings-row">
@@ -129,9 +163,14 @@ function BasicTab({ onSignOut }: {
             </div>
           </div>
           <div className="settings-row-control">
-            <button className="settings-btn settings-btn--danger" disabled>
+            <Button
+              type="button"
+              variant="ghost"
+              className="settings-btn settings-btn--danger"
+              disabled
+            >
               Delete
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -144,17 +183,23 @@ function BasicTab({ onSignOut }: {
 // ---------------------------------------------------------------------------
 
 function ModelConfigSection() {
-  const overridesJson = useQuery(api.data.preferences.getModelOverrides) as string | undefined;
+  const overridesJson = useQuery(api.data.preferences.getModelOverrides) as
+    | string
+    | undefined;
   const setOverride = useMutation(api.data.preferences.setModelOverride);
   const clearOverride = useMutation(api.data.preferences.clearModelOverride);
-  const generalAgentEngine = useQuery(api.data.preferences.getGeneralAgentEngine) as
-    | "default"
-    | "codex_local"
-    | "claude_code_local"
-    | undefined;
-  const setGeneralAgentEngine = useMutation(api.data.preferences.setGeneralAgentEngine);
-  const codexLocalMaxConcurrency = useQuery(api.data.preferences.getCodexLocalMaxConcurrency) as number | undefined;
-  const setCodexLocalMaxConcurrency = useMutation(api.data.preferences.setCodexLocalMaxConcurrency);
+  const generalAgentEngine = useQuery(
+    api.data.preferences.getGeneralAgentEngine,
+  ) as "default" | "codex_local" | "claude_code_local" | undefined;
+  const setGeneralAgentEngine = useMutation(
+    api.data.preferences.setGeneralAgentEngine,
+  );
+  const codexLocalMaxConcurrency = useQuery(
+    api.data.preferences.getCodexLocalMaxConcurrency,
+  ) as number | undefined;
+  const setCodexLocalMaxConcurrency = useMutation(
+    api.data.preferences.setCodexLocalMaxConcurrency,
+  );
   const { groups } = useModelCatalog();
   const modelNamesById = useMemo(() => {
     const next = new Map<string, string>();
@@ -172,16 +217,21 @@ function ModelConfigSection() {
     }
 
     try {
-      return normalizeModelOverrides(JSON.parse(overridesJson) as Record<string, string>);
+      return normalizeModelOverrides(
+        JSON.parse(overridesJson) as Record<string, string>,
+      );
     } catch {
       return {};
     }
   }, [overridesJson]);
-  const [localOverrides, setLocalOverrides] = useState<Record<string, string | null>>({});
+  const [localOverrides, setLocalOverrides] = useState<
+    Record<string, string | null>
+  >({});
   const [localGeneralAgentEngine, setLocalGeneralAgentEngine] = useState<
     "default" | "codex_local" | "claude_code_local" | null
   >(null);
-  const [localCodexLocalMaxConcurrency, setLocalCodexLocalMaxConcurrency] = useState<number | null>(null);
+  const [localCodexLocalMaxConcurrency, setLocalCodexLocalMaxConcurrency] =
+    useState<number | null>(null);
 
   const pendingLocalOverrides = useMemo(() => {
     const next: Record<string, string | null> = {};
@@ -211,14 +261,19 @@ function ModelConfigSection() {
   }, [pendingLocalOverrides, serverOverrides]);
 
   const effectiveGeneralAgentEngine =
-    (localGeneralAgentEngine !== null && localGeneralAgentEngine !== generalAgentEngine
+    (localGeneralAgentEngine !== null &&
+    localGeneralAgentEngine !== generalAgentEngine
       ? localGeneralAgentEngine
-      : null) ?? generalAgentEngine ?? "default";
+      : null) ??
+    generalAgentEngine ??
+    "default";
   const effectiveCodexLocalMaxConcurrency =
-    (localCodexLocalMaxConcurrency !== null
-    && localCodexLocalMaxConcurrency !== codexLocalMaxConcurrency
+    (localCodexLocalMaxConcurrency !== null &&
+    localCodexLocalMaxConcurrency !== codexLocalMaxConcurrency
       ? localCodexLocalMaxConcurrency
-      : null) ?? codexLocalMaxConcurrency ?? 3;
+      : null) ??
+    codexLocalMaxConcurrency ??
+    3;
 
   const hasAnyOverride = Object.keys(overrides).length > 0;
 
@@ -281,11 +336,12 @@ function ModelConfigSection() {
           <div className="settings-row-info">
             <div className="settings-row-label">Engine</div>
             <div className="settings-row-sublabel">
-              Local engine modes require the corresponding CLI (<code>codex</code> or <code>claude</code>).
+              Local engine modes require the corresponding CLI (
+              <code>codex</code> or <code>claude</code>).
             </div>
           </div>
           <div className="settings-row-control">
-            <select
+            <NativeSelect
               className="settings-runtime-select"
               value={effectiveGeneralAgentEngine}
               onChange={(e) => handleGeneralAgentEngineChange(e.target.value)}
@@ -295,7 +351,7 @@ function ModelConfigSection() {
                   {option.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
         </div>
         {effectiveGeneralAgentEngine === "codex_local" ? (
@@ -307,17 +363,19 @@ function ModelConfigSection() {
               </div>
             </div>
             <div className="settings-row-control">
-              <select
+              <NativeSelect
                 className="settings-runtime-select"
                 value={String(effectiveCodexLocalMaxConcurrency)}
-                onChange={(e) => handleCodexLocalMaxConcurrencyChange(e.target.value)}
+                onChange={(e) =>
+                  handleCodexLocalMaxConcurrencyChange(e.target.value)
+                }
               >
                 {CODEX_LOCAL_CONCURRENCY_OPTIONS.map((value) => (
                   <option key={value} value={value}>
                     {value}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           </div>
         ) : null}
@@ -326,15 +384,19 @@ function ModelConfigSection() {
       <div className="settings-card">
         <div className="settings-card-header">
           <h3 className="settings-card-title">Model Configuration</h3>
-          <button
+          <Button
+            type="button"
+            variant="ghost"
             className="settings-btn settings-btn--reset-all"
             onClick={handleResetAll}
             style={{ visibility: hasAnyOverride ? "visible" : "hidden" }}
           >
             Reset All
-          </button>
+          </Button>
         </div>
-        <p className="settings-card-desc">Override the default model for each agent type.</p>
+        <p className="settings-card-desc">
+          Override the default model for each agent type.
+        </p>
         {CONFIGURABLE_AGENTS.map((agent) => {
           const current = overrides[agent.key] ?? "";
           return (
@@ -350,28 +412,39 @@ function ModelConfigSection() {
                     onClick={() => handleChange(agent.key, "")}
                     title="Reset to default"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <path d="M3 12a9 9 0 1 1 3 6.7" />
                       <polyline points="3 7 3 13 9 13" />
                     </svg>
                   </button>
                 )}
-              <select
-                className="settings-model-select"
-                value={current}
-                onChange={(e) => handleChange(agent.key, e.target.value)}
-              >
-                <option value="">{getDefaultModelOptionLabel(agent.key, modelNamesById)}</option>
-                {groups.map((group) => (
-                  <optgroup key={group.provider} label={group.provider}>
-                    {group.models.map((model) => (
+                <NativeSelect
+                  className="settings-model-select"
+                  value={current}
+                  onChange={(e) => handleChange(agent.key, e.target.value)}
+                >
+                  <option value="">
+                    {getDefaultModelOptionLabel(agent.key, modelNamesById)}
+                  </option>
+                  {groups.map((group) => (
+                    <optgroup key={group.provider} label={group.provider}>
+                      {group.models.map((model) => (
                         <option key={model.id} value={model.id}>
                           {model.name}
                         </option>
                       ))}
                     </optgroup>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             </div>
           );
@@ -384,7 +457,9 @@ function ModelConfigSection() {
 function ApiKeysSection() {
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState("");
-  const [llmCredentials, setLlmCredentials] = useState<LocalLlmCredentialSummary[]>([]);
+  const [llmCredentials, setLlmCredentials] = useState<
+    LocalLlmCredentialSummary[]
+  >([]);
   const [credentialsError, setCredentialsError] = useState<string | null>(null);
   const [isSavingKey, setIsSavingKey] = useState(false);
   const [removingProvider, setRemovingProvider] = useState<string | null>(null);
@@ -395,7 +470,8 @@ function ApiKeysSection() {
       return;
     }
 
-    const nextCredentials = await window.electronAPI.system.listLlmCredentials();
+    const nextCredentials =
+      await window.electronAPI.system.listLlmCredentials();
     setLlmCredentials(nextCredentials);
   }, []);
 
@@ -411,7 +487,9 @@ function ApiKeysSection() {
       } catch (error) {
         if (!cancelled) {
           setCredentialsError(
-            error instanceof Error ? error.message : "Failed to load local API keys.",
+            error instanceof Error
+              ? error.message
+              : "Failed to load local API keys.",
           );
           setLlmCredentials([]);
         }
@@ -425,14 +503,18 @@ function ApiKeysSection() {
   }, [loadCredentials]);
 
   const getCredentialForProvider = (providerKey: string) =>
-    llmCredentials.find((credential) =>
-      credential.provider === providerKey && credential.status === "active");
+    llmCredentials.find(
+      (credential) =>
+        credential.provider === providerKey && credential.status === "active",
+    );
 
   const handleSave = useCallback(
     async (providerKey: string, label: string) => {
       if (!keyInput.trim()) return;
       if (!window.electronAPI?.system.saveLlmCredential) {
-        setCredentialsError("Local API key storage is unavailable in this window.");
+        setCredentialsError(
+          "Local API key storage is unavailable in this window.",
+        );
         return;
       }
       setCredentialsError(null);
@@ -444,7 +526,9 @@ function ApiKeysSection() {
           plaintext: keyInput.trim(),
         });
         setLlmCredentials((prev) => {
-          const next = prev.filter((entry) => entry.provider !== saved.provider);
+          const next = prev.filter(
+            (entry) => entry.provider !== saved.provider,
+          );
           next.push(saved);
           return next.sort((a, b) => a.label.localeCompare(b.label));
         });
@@ -452,7 +536,9 @@ function ApiKeysSection() {
         setEditingProvider(null);
       } catch (error) {
         setCredentialsError(
-          error instanceof Error ? error.message : "Failed to save local API key.",
+          error instanceof Error
+            ? error.message
+            : "Failed to save local API key.",
         );
       } finally {
         setIsSavingKey(false);
@@ -461,34 +547,37 @@ function ApiKeysSection() {
     [keyInput],
   );
 
-  const handleRemove = useCallback(
-    async (providerKey: string) => {
-      if (!window.electronAPI?.system.deleteLlmCredential) {
-        setCredentialsError("Local API key storage is unavailable in this window.");
-        return;
-      }
-      setCredentialsError(null);
-      setRemovingProvider(providerKey);
-      try {
-        await window.electronAPI.system.deleteLlmCredential(providerKey);
-        setLlmCredentials((prev) => prev.filter((entry) => entry.provider !== providerKey));
-      } catch (error) {
-        setCredentialsError(
-          error instanceof Error ? error.message : "Failed to remove local API key.",
-        );
-      } finally {
-        setRemovingProvider(null);
-      }
-    },
-    [],
-  );
+  const handleRemove = useCallback(async (providerKey: string) => {
+    if (!window.electronAPI?.system.deleteLlmCredential) {
+      setCredentialsError(
+        "Local API key storage is unavailable in this window.",
+      );
+      return;
+    }
+    setCredentialsError(null);
+    setRemovingProvider(providerKey);
+    try {
+      await window.electronAPI.system.deleteLlmCredential(providerKey);
+      setLlmCredentials((prev) =>
+        prev.filter((entry) => entry.provider !== providerKey),
+      );
+    } catch (error) {
+      setCredentialsError(
+        error instanceof Error
+          ? error.message
+          : "Failed to remove local API key.",
+      );
+    } finally {
+      setRemovingProvider(null);
+    }
+  }, []);
 
   return (
     <div className="settings-card">
       <h3 className="settings-card-title">API Keys</h3>
       <p className="settings-card-desc">
-        Keys stay on this device. If Stella has a matching local key it calls that provider
-        directly. Otherwise it uses the managed Stella route.
+        Keys stay on this device. If Stella has a matching local key it calls
+        that provider directly. Otherwise it uses the managed Stella route.
       </p>
       {credentialsError ? (
         <p className="settings-card-desc">{credentialsError}</p>
@@ -518,13 +607,16 @@ function ApiKeysSection() {
             <div className="settings-row-control">
               {isEditing ? (
                 <div className="settings-key-input">
-                  <input
+                  <TextField
+                    label={`${provider.label} API key`}
+                    hideLabel={true}
                     type="password"
                     placeholder={provider.placeholder}
                     value={keyInput}
                     onChange={(e) => setKeyInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSave(provider.key, provider.label);
+                      if (e.key === "Enter")
+                        handleSave(provider.key, provider.label);
                       if (e.key === "Escape") {
                         setEditingProvider(null);
                         setKeyInput("");
@@ -532,14 +624,18 @@ function ApiKeysSection() {
                     }}
                     autoFocus
                   />
-                  <button
+                  <Button
+                    type="button"
+                    variant="primary"
                     className="settings-btn settings-btn--primary"
                     onClick={() => handleSave(provider.key, provider.label)}
                     disabled={isSavingKey}
                   >
                     {isSavingKey ? "Saving..." : "Save"}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
                     className="settings-btn"
                     onClick={() => {
                       setEditingProvider(null);
@@ -548,11 +644,13 @@ function ApiKeysSection() {
                     disabled={isSavingKey}
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               ) : (
                 <>
-                  <button
+                  <Button
+                    type="button"
+                    variant="ghost"
                     className="settings-btn"
                     onClick={() => {
                       setEditingProvider(provider.key);
@@ -562,15 +660,17 @@ function ApiKeysSection() {
                     disabled={isSavingKey || Boolean(removingProvider)}
                   >
                     {credential ? "Update Key" : "Add Key"}
-                  </button>
+                  </Button>
                   {credential && (
-                    <button
+                    <Button
+                      type="button"
+                      variant="ghost"
                       className="settings-btn settings-btn--danger"
                       onClick={() => handleRemove(provider.key)}
                       disabled={isRemoving || isSavingKey}
                     >
                       {isRemoving ? "Removing..." : "Remove"}
-                    </button>
+                    </Button>
                   )}
                 </>
               )}
@@ -631,7 +731,11 @@ function SettingsPanel({ children }: { children: React.ReactNode }) {
 // SettingsDialog
 // ---------------------------------------------------------------------------
 
-export const SettingsDialog = ({ open, onOpenChange, onSignOut }: SettingsDialogProps) => {
+export const SettingsDialog = ({
+  open,
+  onOpenChange,
+  onSignOut,
+}: SettingsDialogProps) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>("basic");
 
   return (
@@ -670,6 +774,3 @@ export const SettingsDialog = ({ open, onOpenChange, onSignOut }: SettingsDialog
 };
 
 export default SettingsDialog;
-
-
-
