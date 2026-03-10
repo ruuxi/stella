@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react"
 import { useConversationEvents } from "@/app/chat/hooks/use-conversation-events"
-import { getRunningTasks } from "@/app/chat/lib/event-transforms"
+import { extractTasksFromEvents } from "@/app/chat/lib/event-transforms"
 import { useWelcomeSuggestions } from "@/app/home/hooks/use-welcome-suggestions"
 import type { WelcomeSuggestion } from "@/app/onboarding/services/synthesis"
 import type {
@@ -13,7 +13,7 @@ import { SuggestionsPanel } from "./SuggestionsPanel"
 import { ActiveTasks } from "./ActiveTasks"
 import { ActivityFeed } from "./ActivityFeed"
 import { DashboardCard } from "./DashboardCard"
-import type { ScheduleItem } from "./schedule-item"
+import type { ActivityItem, ScheduleItem } from "./schedule-item"
 import "./home-view.css"
 import "./home-dashboard.css"
 
@@ -111,12 +111,31 @@ type HomeViewProps = {
 export function HomeView({ conversationId }: HomeViewProps) {
   const events = useConversationEvents(conversationId)
   const welcomeSuggestions = useWelcomeSuggestions(events)
-  const runningTasks = useMemo(() => getRunningTasks(events), [events])
   const scheduleItems = useScheduleData()
+  const taskItems = useMemo(() => extractTasksFromEvents(events), [events])
+  const runningTasks = useMemo(
+    () => taskItems.filter((task) => task.status === "running"),
+    [taskItems],
+  )
+  const activityItems = useMemo<ActivityItem[]>(() => {
+    const tasks: ActivityItem[] = taskItems.map((task) => ({
+      id: `task-${task.id}`,
+      kind: "task",
+      name: task.description,
+      description: task.agentType,
+      lastRunAtMs: task.lastUpdatedAtMs,
+      lastStatus: task.status,
+      outputPreview: task.statusText ?? task.outputPreview,
+    }))
+
+    return [...tasks, ...scheduleItems].sort(
+      (a, b) => (b.lastRunAtMs ?? 0) - (a.lastRunAtMs ?? 0),
+    )
+  }, [scheduleItems, taskItems])
 
   const hasSuggestions = welcomeSuggestions.length > 0
   const hasTasks = runningTasks.length > 0
-  const hasSchedule = scheduleItems.length > 0
+  const hasActivity = activityItems.length > 0
 
   const handleSuggestionClick = useCallback((suggestion: WelcomeSuggestion) => {
     window.dispatchEvent(
@@ -141,8 +160,8 @@ export function HomeView({ conversationId }: HomeViewProps) {
             />
           )}
           {hasTasks && <ActiveTasks tasks={runningTasks} />}
-          {hasSchedule && <ActivityFeed items={scheduleItems} />}
-          {!hasSuggestions && !hasTasks && !hasSchedule && (
+          {hasActivity && <ActivityFeed items={activityItems} />}
+          {!hasSuggestions && !hasTasks && !hasActivity && (
             <DashboardCard label="Activity">
               <span className="home-sidebar-empty">
                 Your activity will appear here as you use Stella
@@ -165,4 +184,3 @@ export function HomeView({ conversationId }: HomeViewProps) {
     </div>
   )
 }
-
