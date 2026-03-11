@@ -211,6 +211,40 @@ describe("Tools Module - Unit Tests", () => {
       });
     });
 
+    describe("Write Tool", () => {
+      it("should create a file and parent directories", async () => {
+        const mockFs = fs as unknown as {
+          readFile: ReturnType<typeof vi.fn>;
+          mkdir: ReturnType<typeof vi.fn>;
+          writeFile: ReturnType<typeof vi.fn>;
+        };
+        mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
+        mockFs.mkdir.mockResolvedValue(undefined);
+        mockFs.writeFile.mockResolvedValue(undefined);
+
+        const result = await toolHost.executeTool(
+          "Write",
+          { file_path: "/tmp/generated/test.txt", content: "hello world" },
+          {
+            conversationId: "test",
+            deviceId: "test",
+            requestId: "test",
+          }
+        );
+
+        expect(mockFs.mkdir).toHaveBeenCalledTimes(1);
+        expect(mockFs.mkdir.mock.calls[0]?.[0]).toContain("generated");
+        expect(mockFs.mkdir.mock.calls[0]?.[1]).toEqual({ recursive: true });
+        expect(mockFs.writeFile).toHaveBeenCalledTimes(1);
+        expect(mockFs.writeFile.mock.calls[0]?.[0]).toContain("generated");
+        expect(mockFs.writeFile.mock.calls[0]?.[0]).toContain("test.txt");
+        expect(mockFs.writeFile.mock.calls[0]?.[1]).toBe("hello world");
+        expect(mockFs.writeFile.mock.calls[0]?.[2]).toBe("utf-8");
+        expect(result.result).toContain("Created");
+        expect(result.result).toContain("test.txt");
+      });
+    });
+
     describe("Glob Tool", () => {
       it("should find files matching pattern", async () => {
         const mockFs = fs as unknown as { stat: ReturnType<typeof vi.fn>; readdir: ReturnType<typeof vi.fn> };

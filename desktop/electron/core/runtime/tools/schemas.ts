@@ -11,6 +11,7 @@
 
 export const DEVICE_TOOL_NAMES = [
   "Read",
+  "Write",
   "Edit",
   "Glob",
   "Grep",
@@ -70,6 +71,15 @@ const ReadJsonSchema = {
     limit: { type: "number", description: "Max number of lines to read" },
   },
   required: ["file_path"],
+};
+
+const WriteJsonSchema = {
+  type: "object",
+  properties: {
+    file_path: { type: "string", description: "Absolute path to the file to write" },
+    content: { type: "string", description: "Full file contents to write" },
+  },
+  required: ["file_path", "content"],
 };
 
 const EditJsonSchema = {
@@ -375,10 +385,18 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- Returns content with line numbers (cat -n format).\n" +
     "- Always read a file before editing or overwriting it.\n" +
     "- Can read images (PNG, JPG, etc.) — contents are returned as visual data.",
+  Write:
+    "Write a full file to the local filesystem.\n\n" +
+    "Usage:\n" +
+    "- file_path must be an absolute path.\n" +
+    "- content replaces the full file contents.\n" +
+    "- Creates parent directories when needed.\n" +
+    "- Use this for new files or intentional full-file replacements.\n" +
+    "- Prefer Edit for targeted changes to existing files.",
   Edit:
     "Make exact string replacements in a file.\n\n" +
     "Usage:\n" +
-    "- Review the file content first (e.g. `cat` or `head` via Bash). This tool will fail if you haven't seen the file.\n" +
+    "- Review the file content first (prefer Read; Bash is also fine). This tool will fail if you haven't seen the file.\n" +
     "- old_string must match the file content exactly, including whitespace and indentation.\n" +
     "- The edit will FAIL if old_string appears more than once in the file. Provide more surrounding context to make it unique, or use replace_all=true to change every occurrence.\n" +
     "- Prefer this over Write for modifying existing files.",
@@ -402,7 +420,8 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   Bash:
     "Execute a shell command on the local device.\n\n" +
     "Usage:\n" +
-    "- Use Bash for reading files (`cat`, `head -n`, `tail -n`, `sed -n '10,20p'`), creating/writing files (heredoc, `tee`, echo redirection), and all other shell operations.\n" +
+    "- Use Bash for shell commands, scripts, process control, package installs, and CLI tools.\n" +
+    "- Prefer Read, Write, and Edit for repo file inspection and modifications.\n" +
     "- For targeted edits to existing files, prefer the Edit tool over sed/awk.\n" +
     "- Default timeout is 120 seconds, max 600 seconds.\n" +
     "- When run_in_background=true, returns immediately with a shell_id. Use KillShell to stop it later.\n" +
@@ -565,6 +584,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
 
 export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   Read: ReadJsonSchema,
+  Write: WriteJsonSchema,
   Edit: EditJsonSchema,
   Glob: GlobJsonSchema,
   Grep: GrepJsonSchema,

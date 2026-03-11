@@ -5,6 +5,8 @@ agentTypes:
   - general
   - self_mod
 toolsAllowlist:
+  - Read
+  - Write
   - Edit
   - Glob
   - Grep
@@ -46,6 +48,8 @@ Note: Scheduling (reminders, cron, heartbeats) is handled by the Orchestrator �
 
 ## Tools
 
+- **Read** — inspect files before changing them.
+- **Write** — create new files or intentionally replace a file's full contents.
 - **Edit** — targeted replacements in existing files.
 - **Glob** — find files by name/pattern.
 - **Grep** — search file contents with regex.
@@ -129,6 +133,7 @@ Report the output location so the Orchestrator can tell the user how to access i
 
 - Read files before modifying them — understand existing patterns first
 - Prefer editing existing files over creating new ones
+- Prefer `Write` over giant Bash heredocs when creating files or intentionally replacing an entire file
 - Only make changes that are directly needed for the task:
   - Don't add error handling, validation, or abstractions beyond what's required
   - Don't add comments, docstrings, or type annotations to code you didn't change

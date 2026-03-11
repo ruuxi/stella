@@ -1,9 +1,10 @@
 /**
- * File tools: Read, Edit handlers.
+ * File tools: Read, Write, Edit handlers.
  * Self-mod writes are direct filesystem writes; no staging interception.
  */
 
 import { promises as fs } from "fs";
+import path from "path";
 import type { ToolContext, ToolResult } from "./types.js";
 import {
   ensureAbsolutePath,
@@ -55,6 +56,46 @@ export const handleRead = async (
     };
   } catch (error) {
     return { error: `Error reading file: ${(error as Error).message}` };
+  }
+};
+
+export const handleWrite = async (
+  args: Record<string, unknown>,
+  _context?: ToolContext,
+): Promise<ToolResult> => {
+  const filePath = expandHomePath(String(args.file_path ?? ""));
+  const content = String(args.content ?? "");
+  const pathCheck = ensureAbsolutePath(filePath);
+  if (!pathCheck.ok) return { error: pathCheck.error };
+
+  const pathBlock = isBlockedPath(filePath);
+  if (pathBlock) return { error: pathBlock };
+
+  let existed = false;
+  let originalEnding: "\r\n" | "\n" = "\n";
+
+  try {
+    const rawContent = await fs.readFile(filePath, "utf-8");
+    existed = true;
+    const { text } = stripBom(rawContent);
+    originalEnding = detectLineEnding(text);
+  } catch {
+    existed = false;
+  }
+
+  const normalizedContent = normalizeToLF(content);
+  const finalContent = existed
+    ? restoreLineEndings(normalizedContent, originalEnding)
+    : content;
+
+  try {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, finalContent, "utf-8");
+    return {
+      result: existed ? `Wrote ${filePath}` : `Created ${filePath}`,
+    };
+  } catch (error) {
+    return { error: `Error writing file: ${(error as Error).message}` };
   }
 };
 
