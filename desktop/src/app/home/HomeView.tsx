@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useConversationEvents } from "@/app/chat/hooks/use-conversation-events"
 import { extractTasksFromEvents } from "@/app/chat/lib/event-transforms"
 import { useWelcomeSuggestions } from "@/app/home/hooks/use-welcome-suggestions"
@@ -7,19 +7,13 @@ import type {
   LocalCronJobRecord,
   LocalHeartbeatConfigRecord,
 } from "@/types/electron"
-import { ImageGallery } from "./ImageGallery"
 import { GenerativeCanvas } from "./GenerativeCanvas"
 import { SuggestionsPanel } from "./SuggestionsPanel"
-import { ActiveTasks } from "./ActiveTasks"
 import { ActivityFeed } from "./ActivityFeed"
 import { DashboardCard } from "./DashboardCard"
 import type { ActivityItem, ScheduleItem } from "./schedule-item"
 import "./home-view.css"
 import "./home-dashboard.css"
-
-const MusicPlayer = lazy(() =>
-  import("./MusicPlayer").then((module) => ({ default: module.MusicPlayer })),
-)
 
 function useScheduleData(): ScheduleItem[] {
   const [cronJobs, setCronJobs] = useState<LocalCronJobRecord[]>([])
@@ -113,10 +107,6 @@ export function HomeView({ conversationId }: HomeViewProps) {
   const welcomeSuggestions = useWelcomeSuggestions(events)
   const scheduleItems = useScheduleData()
   const taskItems = useMemo(() => extractTasksFromEvents(events), [events])
-  const runningTasks = useMemo(
-    () => taskItems.filter((task) => task.status === "running"),
-    [taskItems],
-  )
   const activityItems = useMemo<ActivityItem[]>(() => {
     const tasks: ActivityItem[] = taskItems.map((task) => ({
       id: `task-${task.id}`,
@@ -137,7 +127,6 @@ export function HomeView({ conversationId }: HomeViewProps) {
   }, [scheduleItems, taskItems])
 
   const hasSuggestions = welcomeSuggestions.length > 0
-  const hasTasks = runningTasks.length > 0
   const hasActivity = activityItems.length > 0
 
   const handleSuggestionClick = useCallback((suggestion: WelcomeSuggestion) => {
@@ -155,33 +144,20 @@ export function HomeView({ conversationId }: HomeViewProps) {
           <GenerativeCanvas />
         </div>
         <div className="home-zone-sidebar">
-          <ImageGallery />
           {hasSuggestions && (
             <SuggestionsPanel
               suggestions={welcomeSuggestions}
               onSuggestionClick={handleSuggestionClick}
             />
           )}
-          {hasTasks && <ActiveTasks tasks={runningTasks} />}
           {hasActivity && <ActivityFeed items={activityItems} />}
-          {!hasSuggestions && !hasTasks && !hasActivity && (
+          {!hasSuggestions && !hasActivity && (
             <DashboardCard label="Activity">
               <span className="home-sidebar-empty">
                 Your activity will appear here as you use Stella
               </span>
             </DashboardCard>
           )}
-        </div>
-        <div className="home-zone-music">
-          <Suspense
-            fallback={
-              <DashboardCard label="Ambient">
-                <span className="home-sidebar-empty">Loading ambient controls...</span>
-              </DashboardCard>
-            }
-          >
-            <MusicPlayer />
-          </Suspense>
         </div>
       </div>
     </div>
