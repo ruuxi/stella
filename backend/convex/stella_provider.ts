@@ -1,29 +1,43 @@
 /**
- * Stella managed execution endpoint.
+ * Stella provider HTTP surface.
  *
- * This endpoint is only used for Stella-managed requests when the desktop app
- * does not have a matching local PI provider key. It authenticates the user via
- * the normal Convex bearer token, resolves the managed model server-side, then
- * forwards the request to the upstream gateway and streams the response back
- * unchanged.
+ * Stella clients talk to this namespace using `stella/*` model IDs. Stella
+ * resolves the actual upstream provider/model server-side.
  */
 
 import type { ActionCtx } from "./_generated/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { AGENT_MODELS, DEFAULT_MODEL, MANAGED_GATEWAY } from "./agent/model";
+import { getModelConfig, MANAGED_GATEWAY } from "./agent/model";
 import { getClientAddressKey } from "./lib/http_utils";
 import {
   isAnonDeviceHashSaltMissingError,
   logMissingSaltOnce,
 } from "./http_shared/anon_device";
-import { errorResponse, getCorsHeaders } from "./http_shared/cors";
+import {
+  corsPreflightHandler,
+  errorResponse,
+  getCorsHeaders,
+  handleCorsRequest,
+  jsonResponse,
+} from "./http_shared/cors";
+import {
+  STELLA_DEFAULT_MODEL,
+  isStellaModel,
+  listStellaCatalogModels,
+  resolveStellaModelSelection,
+} from "./stella_models";
 
 const MAX_ANON_REQUESTS = 50_000;
 const DEFAULT_RETRY_AFTER_MS = 60_000;
-export const MANAGED_CHAT_COMPLETIONS_PATH = "/chat/completions";
 
-function managedExecutionErrorResponse(
+export const STELLA_API_BASE_PATH = "/api/stella/v1";
+export const STELLA_CHAT_COMPLETIONS_PATH = `${STELLA_API_BASE_PATH}/chat/completions`;
+export const STELLA_MODELS_PATH = `${STELLA_API_BASE_PATH}/models`;
+
+type StellaRequestBody = Record<string, unknown>;
+
+function stellaProviderErrorResponse(
   status: number,
   message: string,
   request: Request,
@@ -50,7 +64,7 @@ async function consumeDeviceRateLimit(
     if (!isAnonDeviceHashSaltMissingError(error)) {
       throw error;
     }
-    logMissingSaltOnce("managed-execution");
+    logMissingSaltOnce("stella-provider");
     return false;
   }
 }
@@ -62,129 +76,20 @@ const STRIP_REQUEST_HEADERS = new Set([
   "content-length",
 ]);
 
-export const managedExecution = httpAction(async (ctx, request) => {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
-    return managedExecutionErrorResponse(401, "Unauthorized", request);
-  }
-
-  const ownerId = identity.subject;
-  const isAnonymous = (identity as Record<string, unknown>).isAnonymous === true;
-
-  const url = new URL(request.url);
-  if (!url.pathname.endsWith(MANAGED_CHAT_COMPLETIONS_PATH)) {
-    return managedExecutionErrorResponse(404, "Managed AI path not found", request);
-  }
-
-  if (isAnonymous) {
-    const allowed = await consumeDeviceRateLimit(
-      ctx,
-      `anon-jwt:${ownerId}`,
-      getClientAddressKey(request),
-    );
-    if (!allowed) {
-      return managedExecutionErrorResponse(
-        429,
-        "Rate limit exceeded. Please create an account for continued access.",
-        request,
-      );
-    }
-  } else {
-    const rateCheck = await ctx.runMutation(
-      internal.ai_proxy_data.checkProxyRateLimit,
-      {
-        ownerId,
-      },
-    );
-
-    if (!rateCheck.allowed) {
-      const response = managedExecutionErrorResponse(429, "Rate limit exceeded", request);
-      response.headers.set(
-        "Retry-After",
-        String(
-          Math.ceil(
-            (rateCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000,
-          ),
-        ),
-      );
-      return response;
-    }
-  }
-
-  const gatewayKey = process.env[MANAGED_GATEWAY.apiKeyEnvVar]?.trim();
-  if (!gatewayKey) {
-    return managedExecutionErrorResponse(
-      503,
-      "Managed AI Gateway is not configured",
-      request,
-    );
-  }
-
-  const requestJson = await parseManagedRequest(request);
-  if (!requestJson) {
-    return managedExecutionErrorResponse(400, "Managed AI request body must be valid JSON", request);
-  }
-
-  const headerAgentType = request.headers.get("X-Stella-Agent-Type")?.trim();
-  const bodyAgentType =
-    typeof requestJson.agentType === "string" && requestJson.agentType.trim().length > 0
-      ? requestJson.agentType.trim()
-      : undefined;
-  const agentType = headerAgentType || bodyAgentType || "general";
-  const serverModelConfig = await resolveManagedModelConfig(ctx, ownerId, agentType);
-  const modelId = serverModelConfig.model;
-  const gatewayUpstream = `${MANAGED_GATEWAY.baseURL}${MANAGED_CHAT_COMPLETIONS_PATH}`;
-
-  console.log(
-    `[managed-execution] agent=${agentType} | resolvedModel=${modelId} | fallback=${serverModelConfig.fallback || "(none)"}`,
-  );
-
-  return await forwardRequest(
-    ctx,
-    request,
-    { url: gatewayUpstream, apiKey: gatewayKey },
-    { ownerId, agentType, modelId },
-    buildUpstreamBody(requestJson, serverModelConfig),
-  );
-});
-
-async function parseManagedRequest(request: Request): Promise<Record<string, unknown> | null> {
+async function parseRequestJson(request: Request): Promise<StellaRequestBody | null> {
   try {
-    return (await request.json()) as Record<string, unknown>;
+    return (await request.json()) as StellaRequestBody;
   } catch {
     return null;
   }
 }
 
-async function resolveManagedModelConfig(
-  ctx: ActionCtx,
-  ownerId: string,
-  agentType: string,
-): Promise<{ model: string; fallback?: string; providerOptions?: Record<string, Record<string, unknown>> }> {
-  const defaults = AGENT_MODELS[agentType] ?? DEFAULT_MODEL;
-  let model = defaults.model;
-  try {
-    const override = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
-      ownerId,
-      key: `model_config:${agentType}`,
-    });
-    if (typeof override === "string" && override.trim().length > 0) {
-      model = override.trim();
-    }
-  } catch {
-    // Preference lookup is best-effort for managed desktop requests.
-  }
-
-  return {
-    model,
-    fallback: defaults.fallback,
-    providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
-  };
-}
-
 function buildUpstreamBody(
-  requestBody: Record<string, unknown>,
-  serverModelConfig: { model: string; providerOptions?: Record<string, Record<string, unknown>> },
+  requestBody: StellaRequestBody,
+  serverModelConfig: {
+    model: string;
+    providerOptions?: Record<string, Record<string, unknown>>;
+  },
 ): string {
   const upstreamBody: Record<string, unknown> = { ...requestBody };
   delete upstreamBody.agentType;
@@ -207,6 +112,22 @@ function buildUpstreamBody(
   }
 
   return JSON.stringify(upstreamBody);
+}
+
+function resolveRequestedStellaModel(
+  agentType: string,
+  requestBody: StellaRequestBody,
+): string {
+  const requestedModel =
+    typeof requestBody.model === "string" && requestBody.model.trim().length > 0
+      ? requestBody.model.trim()
+      : STELLA_DEFAULT_MODEL;
+
+  if (!isStellaModel(requestedModel)) {
+    throw new Error(`Unsupported Stella model selection: ${requestedModel}`);
+  }
+
+  return resolveStellaModelSelection(agentType, requestedModel);
 }
 
 async function forwardRequest(
@@ -243,9 +164,8 @@ async function forwardRequest(
 
     const durationMs = Date.now() - startMs;
     const isStreaming =
-      upstreamResponse.headers.get("content-type")?.includes(
-        "text/event-stream",
-      ) ?? false;
+      upstreamResponse.headers.get("content-type")?.includes("text/event-stream")
+      ?? false;
 
     const origin = request.headers.get("origin");
     const corsHeaders = getCorsHeaders(origin);
@@ -294,11 +214,10 @@ async function forwardRequest(
       };
       if (parsed.usage) {
         inputTokens = parsed.usage.input_tokens ?? parsed.usage.prompt_tokens;
-        outputTokens =
-          parsed.usage.output_tokens ?? parsed.usage.completion_tokens;
+        outputTokens = parsed.usage.output_tokens ?? parsed.usage.completion_tokens;
       }
     } catch {
-      // Compressed or non-JSON — usage tracking will estimate from request.
+      // Fall back to estimated usage logging for non-JSON responses.
     }
 
     await ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
@@ -322,7 +241,7 @@ async function forwardRequest(
       headers: responseHeaders,
     });
   } catch (error) {
-    console.error("[managed-execution] Forward error:", error);
+    console.error("[stella-provider] Forward error:", error);
     const durationMs = Date.now() - startMs;
 
     await ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
@@ -334,10 +253,126 @@ async function forwardRequest(
       estimateFromRequest: true,
     });
 
-    return managedExecutionErrorResponse(
+    return stellaProviderErrorResponse(
       502,
-      "Failed to reach managed AI Gateway",
+      "Failed to reach Stella upstream gateway",
       request,
     );
   }
 }
+
+export const stellaProviderModels = httpAction(async (_ctx, request) =>
+  handleCorsRequest(request, async (origin) =>
+    jsonResponse(
+      {
+        data: listStellaCatalogModels().map((model) => ({
+          id: model.id,
+          name: model.name,
+          provider: model.provider,
+          type: model.type,
+          upstreamModel: model.upstreamModel,
+        })),
+      },
+      200,
+      origin,
+    )),
+);
+
+export const stellaProviderChatCompletions = httpAction(async (ctx, request) => {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    return stellaProviderErrorResponse(401, "Unauthorized", request);
+  }
+
+  const ownerId = identity.subject;
+  const isAnonymous = (identity as Record<string, unknown>).isAnonymous === true;
+
+  const url = new URL(request.url);
+  if (!url.pathname.endsWith("/chat/completions")) {
+    return stellaProviderErrorResponse(404, "Stella provider path not found", request);
+  }
+
+  if (isAnonymous) {
+    const allowed = await consumeDeviceRateLimit(
+      ctx,
+      `anon-jwt:${ownerId}`,
+      getClientAddressKey(request),
+    );
+    if (!allowed) {
+      return stellaProviderErrorResponse(
+        429,
+        "Rate limit exceeded. Please create an account for continued access.",
+        request,
+      );
+    }
+  } else {
+    const rateCheck = await ctx.runMutation(
+      internal.ai_proxy_data.checkProxyRateLimit,
+      {
+        ownerId,
+      },
+    );
+
+    if (!rateCheck.allowed) {
+      const response = stellaProviderErrorResponse(429, "Rate limit exceeded", request);
+      response.headers.set(
+        "Retry-After",
+        String(Math.ceil((rateCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000)),
+      );
+      return response;
+    }
+  }
+
+  const gatewayKey = process.env[MANAGED_GATEWAY.apiKeyEnvVar]?.trim();
+  if (!gatewayKey) {
+    return stellaProviderErrorResponse(
+      503,
+      "Stella upstream gateway is not configured",
+      request,
+    );
+  }
+
+  const requestJson = await parseRequestJson(request);
+  if (!requestJson) {
+    return stellaProviderErrorResponse(400, "Stella request body must be valid JSON", request);
+  }
+
+  const headerAgentType = request.headers.get("X-Stella-Agent-Type")?.trim();
+  const bodyAgentType =
+    typeof requestJson.agentType === "string" && requestJson.agentType.trim().length > 0
+      ? requestJson.agentType.trim()
+      : undefined;
+  const agentType = headerAgentType || bodyAgentType || "general";
+
+  let resolvedModel: string;
+  try {
+    resolvedModel = resolveRequestedStellaModel(agentType, requestJson);
+  } catch (error) {
+    return stellaProviderErrorResponse(
+      400,
+      error instanceof Error ? error.message : "Invalid Stella model selection",
+      request,
+    );
+  }
+
+  const defaults = getModelConfig(agentType);
+  const gatewayUpstream = `${MANAGED_GATEWAY.baseURL}/chat/completions`;
+
+  console.log(`[stella-provider] agent=${agentType} | resolvedModel=${resolvedModel}`);
+
+  return await forwardRequest(
+    ctx,
+    request,
+    { url: gatewayUpstream, apiKey: gatewayKey },
+    { ownerId, agentType, modelId: resolvedModel },
+    buildUpstreamBody(
+      requestJson,
+      {
+        model: resolvedModel,
+        providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
+      },
+    ),
+  );
+});
+
+export { corsPreflightHandler as stellaProviderOptions };

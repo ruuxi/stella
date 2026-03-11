@@ -4,9 +4,9 @@ import {
   DEFAULT_MODEL,
   AGENT_MODELS,
   hasModelConfig,
-  listModelDefaults,
 } from "../convex/agent/model";
 import type { ModelConfig } from "../convex/agent/model";
+import { listStellaDefaultSelections } from "../convex/stella_models";
 
 describe("DEFAULT_MODEL", () => {
   test("has a model string", () => {
@@ -94,17 +94,19 @@ describe("hasModelConfig", () => {
   });
 });
 
-describe("listModelDefaults", () => {
-  test("returns the current default model for each configured agent", () => {
-    const defaults = listModelDefaults();
+describe("listStellaDefaultSelections", () => {
+  test("returns the Stella default alias for each configured agent", () => {
+    const defaults = listStellaDefaultSelections();
     expect(defaults.length).toBe(Object.keys(AGENT_MODELS).length);
     expect(defaults).toContainEqual({
       agentType: "orchestrator",
-      model: "moonshotai/kimi-k2.5",
+      model: "stella/default",
+      resolvedModel: "moonshotai/kimi-k2.5",
     });
     expect(defaults).toContainEqual({
       agentType: "explore",
-      model: "zai/glm-4.7",
+      model: "stella/default",
+      resolvedModel: "zai/glm-4.7",
     });
   });
 });

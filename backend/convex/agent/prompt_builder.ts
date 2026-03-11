@@ -1,10 +1,9 @@
 import type { ActionCtx } from "../_generated/server";
 import { action, internalAction } from "../_generated/server";
-import { ConvexError, Infer, v } from "convex/values";
+import { Infer, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction, requireUserId } from "../auth";
-import { getModelConfig, MANAGED_GATEWAY } from "./model";
 import {
   GENERAL_AGENT_ENGINE_KEY,
   CODEX_LOCAL_MAX_CONCURRENCY_KEY,
@@ -17,6 +16,7 @@ import {
   buildSkillsPromptSection,
   getPlatformSystemGuidance,
 } from "../prompts/index";
+import { STELLA_DEFAULT_MODEL } from "../stella_models";
 
 export type PromptBuildResult = {
   systemPrompt: string;
@@ -123,7 +123,6 @@ const agentContextResultValidator = v.object({
   dynamicContext: v.string(),
   toolsAllowlist: v.optional(v.array(v.string())),
   model: v.string(),
-  fallbackModel: v.optional(v.string()),
   maxTaskDepth: v.number(),
   defaultSkills: v.array(v.string()),
   skillIds: v.array(v.string()),
@@ -133,7 +132,6 @@ const agentContextResultValidator = v.object({
     toolCallId: v.optional(v.string()),
   }))),
   activeThreadId: v.optional(v.string()),
-  gatewayApiKey: v.optional(v.string()),
   generalAgentEngine: v.optional(v.union(
     v.literal("default"),
     v.literal("codex_local"),
@@ -184,8 +182,7 @@ const fetchAgentContextForOwner = async (
   });
 
   // 2. Resolve primary/fallback models for the runtime.
-  const modelDefaults = getModelConfig(args.agentType);
-  let model = modelDefaults.model;
+  let model = STELLA_DEFAULT_MODEL;
   const override = await ctx.runQuery(
     internal.data.preferences.getPreferenceForOwner,
     { ownerId: args.ownerId, key: `model_config:${args.agentType}` },
@@ -247,13 +244,11 @@ const fetchAgentContextForOwner = async (
     dynamicContext: promptBuild.dynamicContext,
     toolsAllowlist: promptBuild.toolsAllowlist,
     model,
-    fallbackModel: modelDefaults.fallback,
     maxTaskDepth: promptBuild.maxTaskDepth,
     defaultSkills: promptBuild.defaultSkills,
     skillIds: promptBuild.skillIds,
     threadHistory,
     activeThreadId,
-    gatewayApiKey: process.env[MANAGED_GATEWAY.apiKeyEnvVar],
     generalAgentEngine,
     codexLocalMaxConcurrency,
   };
@@ -295,9 +290,7 @@ export const fetchLocalAgentContextForRuntime = action({
       platform: args.platform,
       timezone: args.timezone,
     });
-    const modelDefaults = getModelConfig(args.agentType);
-
-    let model = modelDefaults.model;
+    let model = STELLA_DEFAULT_MODEL;
     try {
       const override = await ctx.runQuery(
         internal.data.preferences.getPreferenceForOwner,
@@ -340,27 +333,13 @@ export const fetchLocalAgentContextForRuntime = action({
       dynamicContext: promptBuild.dynamicContext,
       toolsAllowlist: promptBuild.toolsAllowlist,
       model,
-      fallbackModel: modelDefaults.fallback,
       maxTaskDepth: promptBuild.maxTaskDepth,
       defaultSkills: promptBuild.defaultSkills,
       skillIds: promptBuild.skillIds,
       threadHistory: undefined,
       activeThreadId: undefined,
-      gatewayApiKey: process.env[MANAGED_GATEWAY.apiKeyEnvVar],
       generalAgentEngine,
       codexLocalMaxConcurrency,
     };
-  },
-});
-
-export const getGatewayApiKey = internalAction({
-  args: {},
-  returns: v.string(),
-  handler: async () => {
-    const key = process.env[MANAGED_GATEWAY.apiKeyEnvVar];
-    if (!key) {
-      throw new ConvexError(`${MANAGED_GATEWAY.apiKeyEnvVar} is not configured`);
-    }
-    return key;
   },
 });
