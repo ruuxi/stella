@@ -4,11 +4,14 @@ import { useQuery } from "convex/react";
 import { ModelPreferencesBridge } from "@/app/settings/ModelPreferencesBridge";
 
 vi.mock("convex/react", () => ({
-  useConvexAuth: vi.fn(() => ({ isAuthenticated: true })),
   useQuery: vi.fn(() => undefined),
 }));
-
-import { useConvexAuth } from "convex/react";
+const mockUseAuthSessionState = vi.fn(() => ({
+  hasConnectedAccount: true,
+}));
+vi.mock("@/app/auth/hooks/use-auth-session-state", () => ({
+  useAuthSessionState: () => mockUseAuthSessionState(),
+}));
 
 vi.mock("@/convex/api", () => ({
   api: {
@@ -28,6 +31,7 @@ const mockSyncLocalModelPreferences = vi.fn();
 describe("ModelPreferencesBridge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseAuthSessionState.mockReturnValue({ hasConnectedAccount: true });
     window.electronAPI = {
       system: {
         syncLocalModelPreferences: mockSyncLocalModelPreferences,
@@ -100,7 +104,7 @@ describe("ModelPreferencesBridge", () => {
   });
 
   it("skips Convex preference sync when unauthenticated", () => {
-    vi.mocked(useConvexAuth).mockReturnValue({ isAuthenticated: false } as never);
+    mockUseAuthSessionState.mockReturnValue({ hasConnectedAccount: false });
 
     render(<ModelPreferencesBridge />);
 

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useConvexAuth } from "convex/react";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +9,7 @@ import {
   DialogCloseButton,
 } from "@/ui/dialog";
 import { MagicLinkAuthFlow } from "./MagicLinkAuthFlow";
+import { useAuthSessionState } from "./hooks/use-auth-session-state";
 import "./AuthDialog.css";
 
 interface AuthDialogProps {
@@ -18,15 +18,15 @@ interface AuthDialogProps {
 }
 
 export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
-  const { isAuthenticated } = useConvexAuth();
+  const { hasConnectedAccount } = useAuthSessionState();
   const [resetVersion, setResetVersion] = useState(0);
 
   // Close dialog when user becomes authenticated
   useEffect(() => {
-    if (isAuthenticated && open) {
+    if (hasConnectedAccount && open) {
       onOpenChange(false);
     }
-  }, [isAuthenticated, open, onOpenChange]);
+  }, [hasConnectedAccount, open, onOpenChange]);
 
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {

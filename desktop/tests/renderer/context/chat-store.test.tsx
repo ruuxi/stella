@@ -11,13 +11,12 @@ const mockBuildLocalHistoryMessages = vi.fn((conversationId?: string) => {
   return Promise.resolve([{ role: "user" as const, content: "hello" }]);
 });
 
-const mockUseConvexAuth = vi.fn(() => ({
-  isAuthenticated: true,
-  isLoading: false,
+const mockUseAuthSessionState = vi.fn(() => ({
+  hasConnectedAccount: true,
 }));
 
-vi.mock("convex/react", () => ({
-  useConvexAuth: () => mockUseConvexAuth(),
+vi.mock("@/app/auth/hooks/use-auth-session-state", () => ({
+  useAuthSessionState: () => mockUseAuthSessionState(),
 }));
 
 vi.mock("@/app/chat/services/local-chat-store", () => ({
@@ -35,9 +34,8 @@ function wrapper({ children }: { children: ReactNode }) {
 describe("ChatStoreProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseConvexAuth.mockReturnValue({
-      isAuthenticated: true,
-      isLoading: false,
+    mockUseAuthSessionState.mockReturnValue({
+      hasConnectedAccount: true,
     });
   });
 
@@ -57,9 +55,8 @@ describe("ChatStoreProvider", () => {
     });
 
     it("disables cloud features when not authenticated", () => {
-      mockUseConvexAuth.mockReturnValue({
-        isAuthenticated: false,
-        isLoading: false,
+      mockUseAuthSessionState.mockReturnValue({
+        hasConnectedAccount: false,
       });
 
       const { result } = renderHook(() => useChatStore(), { wrapper });

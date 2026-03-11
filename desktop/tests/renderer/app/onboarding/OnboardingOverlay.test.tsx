@@ -43,21 +43,22 @@ vi.mock("@/app/onboarding/use-onboarding-state", () => ({
 }));
 
 const mockResetUserData = vi.fn().mockResolvedValue(undefined);
+const mockUseAuthSessionState = vi.fn();
 
 vi.mock("convex/react", () => ({
-  useConvexAuth: vi.fn(),
   useAction: () => mockResetUserData,
+}));
+
+vi.mock("@/app/auth/hooks/use-auth-session-state", () => ({
+  useAuthSessionState: () => mockUseAuthSessionState(),
 }));
 
 vi.mock("@/convex/api", () => ({
   api: { reset: { resetAllUserData: "resetAllUserData" } },
 }));
 
-// Re-import mock references for per-test overrides
-import { useConvexAuth } from "convex/react";
 import { useOnboardingState } from "@/app/onboarding/use-onboarding-state";
 
-const mockedUseConvexAuth = vi.mocked(useConvexAuth);
 const mockedUseOnboardingState = vi.mocked(useOnboardingState) as any;
 
 // ---------- Helpers ----------
@@ -231,8 +232,8 @@ describe("OnboardingView", () => {
 describe("useOnboardingOverlay", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    mockedUseConvexAuth.mockReturnValue({
-      isAuthenticated: true,
+    mockUseAuthSessionState.mockReturnValue({
+      hasConnectedAccount: true,
       isLoading: false,
     });
     mockedUseOnboardingState.mockReturnValue({
@@ -280,8 +281,8 @@ describe("useOnboardingOverlay", () => {
   });
 
   it("reflects isAuthLoading from useConvexAuth", () => {
-    mockedUseConvexAuth.mockReturnValue({
-      isAuthenticated: false,
+    mockUseAuthSessionState.mockReturnValue({
+      hasConnectedAccount: false,
       isLoading: true,
     });
 
