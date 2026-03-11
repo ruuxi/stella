@@ -71,6 +71,7 @@ export function useLocalAgentStream({
   const streamRunIdRef = useRef(0)
   const localRunIdRef = useRef<string | null>(null)
   const localSeqByRunIdRef = useRef(new Map<string, number>())
+  const userMessageIdByRunIdRef = useRef(new Map<string, string>())
   const agentStreamCleanupRef = useRef<(() => void) | null>(null)
 
   const resetStreamingState = useCallback(
@@ -98,6 +99,7 @@ export function useLocalAgentStream({
   const cancelCurrentStream = useCallback(() => {
     if (localRunIdRef.current && window.electronAPI?.agent.cancelChat) {
       window.electronAPI.agent.cancelChat(localRunIdRef.current)
+      userMessageIdByRunIdRef.current.delete(localRunIdRef.current)
       localRunIdRef.current = null
       localSeqByRunIdRef.current.clear()
     }
@@ -186,21 +188,31 @@ export function useLocalAgentStream({
           if (!isPrimaryRun || !isOrchestratorEvent) {
             break
           }
+          {
+            const linkedUserMessageId = userMessageIdByRunIdRef.current.get(event.runId)
           console.log(
             `[stella:trace] end | finalText=${(event.finalText ?? streamingTextRef.current).slice(0, 200)}`,
           )
           void Promise.resolve(
             appendAgentEvent({
               type: 'assistant_message',
-              userMessageId: options?.userMessageId,
+              userMessageId: linkedUserMessageId,
               finalText: event.finalText ?? streamingTextRef.current,
             }),
-          ).catch(() => {
-            resetStreamingState(runIdCounter)
-          })
+          )
+            .then(() => {
+              if (!linkedUserMessageId) {
+                resetStreamingState(runIdCounter)
+              }
+            })
+            .catch(() => {
+              resetStreamingState(runIdCounter)
+            })
 
-          if (event.selfModApplied && options?.userMessageId) {
-            const userMessageId = options.userMessageId
+          userMessageIdByRunIdRef.current.delete(event.runId)
+
+          if (event.selfModApplied && linkedUserMessageId) {
+            const userMessageId = linkedUserMessageId
             const selfModApplied = event.selfModApplied
             setSelfModMap((previous) => ({
               ...previous,
@@ -210,6 +222,7 @@ export function useLocalAgentStream({
 
           localRunIdRef.current = null
           localSeqByRunIdRef.current.delete(event.runId)
+          }
           break
       }
     },
@@ -246,6 +259,7 @@ export function useLocalAgentStream({
         .then(({ runId: agentRunId }) => {
           if (runIdCounter !== streamRunIdRef.current) return
           localRunIdRef.current = agentRunId
+          userMessageIdByRunIdRef.current.set(agentRunId, args.userMessageId)
           localSeqByRunIdRef.current.clear()
         })
         .catch((error) => {

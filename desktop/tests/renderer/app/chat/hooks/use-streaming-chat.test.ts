@@ -32,6 +32,7 @@ vi.mock("@/context/chat-store", () => ({
     storageMode: "local",
     isLocalStorage: true,
     cloudFeaturesEnabled: false,
+    isAuthenticated: true,
     appendEvent: mockAppendEvent,
     appendAgentEvent: mockAppendAgentEvent,
     uploadAttachments: mockUploadAttachments,
@@ -564,6 +565,70 @@ describe("useStreamingChat", () => {
       });
 
       expect(result.current.pendingUserMessageId).toBeNull();
+    });
+
+    it("clears streaming state when a resumed background run ends without a linked user message", async () => {
+      let streamCallback: ((event: AgentStreamEvent) => void) | undefined
+      const unsubscribe = vi.fn()
+
+      mockAgentOnStream.mockImplementation((callback) => {
+        streamCallback = callback
+        return unsubscribe
+      })
+
+      const mockGetActiveRun = vi
+        .fn()
+        .mockResolvedValueOnce({ runId: "bg-run-1", conversationId: "conv-1" })
+        .mockResolvedValue(null)
+
+      window.electronAPI = {
+        agent: {
+          healthCheck: mockAgentHealthCheck,
+          startChat: mockAgentStartChat,
+          onStream: mockAgentOnStream,
+          getActiveRun: mockGetActiveRun,
+          resumeStream: vi.fn(() =>
+            Promise.resolve({ events: [] as AgentStreamEvent[], exhausted: false }),
+          ),
+        },
+      } as typeof window.electronAPI
+
+      const { result } = renderHook(() =>
+        useStreamingChat({ conversationId: "conv-1", events: [] }),
+      )
+
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(result.current.isStreaming).toBe(true)
+      expect(result.current.pendingUserMessageId).toBeNull()
+
+      await act(async () => {
+        streamCallback?.({
+          type: "end",
+          runId: "bg-run-1",
+          agentType: "orchestrator",
+          seq: 1,
+          finalText: "Background task finished",
+        })
+        await Promise.resolve()
+      })
+
+      expect(mockAppendAgentEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          type: "assistant_message",
+          finalText: "Background task finished",
+        }),
+      )
+      const assistantCall = mockAppendAgentEvent.mock.calls.find(
+        ([arg]) => arg?.type === "assistant_message" && arg?.finalText === "Background task finished",
+      )?.[0] as { userMessageId?: string } | undefined
+      expect(assistantCall?.userMessageId).toBeUndefined()
+      expect(result.current.isStreaming).toBe(false)
     });
   });
 });
