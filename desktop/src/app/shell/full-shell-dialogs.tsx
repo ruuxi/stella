@@ -19,6 +19,7 @@ type FullShellDialogsProps = {
   activeDialog: DialogType
   isDev: boolean
   onDialogOpenChange: (open: boolean) => void
+  onResetMessages: () => void
   onSignOut: () => void
   onResetOnboarding: () => void
   onShowTestDialog: () => void
@@ -26,16 +27,20 @@ type FullShellDialogsProps = {
 }
 
 const DevControls = ({
+  onResetMessages,
   onResetOnboarding,
   onShowTestDialog,
   onShowTraceDialog,
 }: Pick<
   FullShellDialogsProps,
-  'onResetOnboarding' | 'onShowTestDialog' | 'onShowTraceDialog'
+  'onResetMessages' | 'onResetOnboarding' | 'onShowTestDialog' | 'onShowTraceDialog'
 >) => (
   <div className="dev-controls">
     <button className="onboarding-reset" onClick={onResetOnboarding}>
       Reset Onboarding
+    </button>
+    <button className="onboarding-reset" onClick={onResetMessages}>
+      Reset Messages
     </button>
     <button className="onboarding-reset" onClick={onShowTestDialog}>
       Test UI
@@ -50,6 +55,7 @@ export function FullShellDialogs({
   activeDialog,
   isDev,
   onDialogOpenChange,
+  onResetMessages,
   onSignOut,
   onResetOnboarding,
   onShowTestDialog,
@@ -79,6 +85,7 @@ export function FullShellDialogs({
 
       {isDev && (
         <DevControls
+          onResetMessages={onResetMessages}
           onResetOnboarding={onResetOnboarding}
           onShowTestDialog={onShowTestDialog}
           onShowTraceDialog={onShowTraceDialog}

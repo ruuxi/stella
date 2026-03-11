@@ -90,6 +90,28 @@ export const FullShell = () => {
     void secureSignOut()
   }, [setActiveDialog])
 
+  const handleResetMessages = useCallback(() => {
+    if (!window.electronAPI?.system.resetMessages) {
+      return
+    }
+
+    const shouldReset = window.confirm(
+      'Delete all local sqlite/jsonl message storage for this app?',
+    )
+    if (!shouldReset) {
+      return
+    }
+
+    void window.electronAPI.system
+      .resetMessages()
+      .then(() => {
+        window.location.reload()
+      })
+      .catch((error) => {
+        console.error(error)
+      })
+  }, [])
+
   const handleTabSelect = useCallback(
     (view: 'home' | 'app' | 'chat', page?: PersonalPage) => {
       if (view === 'app' && page) {
@@ -269,6 +291,7 @@ export const FullShell = () => {
         activeDialog={activeDialog}
         isDev={isDev}
         onDialogOpenChange={handleDialogOpenChange}
+        onResetMessages={handleResetMessages}
         onSignOut={handleSettingsSignOut}
         onResetOnboarding={onboarding.handleResetOnboarding}
         onShowTestDialog={showTestDialog}

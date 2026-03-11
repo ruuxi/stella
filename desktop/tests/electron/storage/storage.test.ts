@@ -32,6 +32,7 @@ vi.mock("better-sqlite3", async () => {
 });
 
 import { createDesktopDatabase } from "../../../electron/storage/database.js";
+import { resetMessageStorage } from "../../../electron/storage/reset-message-storage.js";
 import { ChatStore } from "../../../electron/storage/chat-store.js";
 import { RuntimeStore } from "../../../electron/storage/runtime-store.js";
 import { TranscriptMirror } from "../../../electron/storage/transcript-mirror.js";
@@ -289,6 +290,41 @@ describe("storage", () => {
     const reopened = createStores(stellaHome);
     expect(fs.existsSync(runtimeTranscriptPath)).toBe(false);
     reopened.close();
+  });
+
+  it("removes sqlite and transcript mirror files while preserving other state files", async () => {
+    const stellaHome = createTempHome();
+    const { chatStore, runtimeStore, close } = createStores(stellaHome);
+
+    chatStore.appendEvent({
+      conversationId: "conv-reset",
+      type: "user_message",
+      eventId: "e-1",
+      timestamp: 1,
+      payload: { text: "hello" },
+    });
+    runtimeStore.appendThreadMessage({
+      timestamp: 2,
+      threadKey: "conv-reset",
+      role: "assistant",
+      content: "hi",
+    });
+
+    const stateDir = path.join(stellaHome, "state");
+    fs.writeFileSync(path.join(stateDir, "preferences.json"), "{}");
+
+    close();
+
+    fs.writeFileSync(path.join(stateDir, "stella.sqlite-wal"), "");
+    fs.writeFileSync(path.join(stateDir, "stella.sqlite-shm"), "");
+
+    await resetMessageStorage(stellaHome);
+
+    expect(fs.existsSync(path.join(stateDir, "stella.sqlite"))).toBe(false);
+    expect(fs.existsSync(path.join(stateDir, "stella.sqlite-wal"))).toBe(false);
+    expect(fs.existsSync(path.join(stateDir, "stella.sqlite-shm"))).toBe(false);
+    expect(fs.existsSync(path.join(stateDir, "transcripts"))).toBe(false);
+    expect(fs.existsSync(path.join(stateDir, "preferences.json"))).toBe(true);
   });
 
   it("reuses named runtime threads, evicts the oldest active one, and tracks reminder state", () => {
