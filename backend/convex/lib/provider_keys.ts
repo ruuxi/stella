@@ -2,7 +2,7 @@
  * Shared BYOK (Bring Your Own Key) resolution utilities.
  *
  * Used by both model_resolver.ts (AI SDK model instances) and
- * managed_execution.ts (managed execution endpoint) to resolve API keys through
+ * stella_provider.ts (Stella provider endpoint) to resolve API keys through
  * a unified lookup chain: user key → OpenRouter → env var.
  */
 

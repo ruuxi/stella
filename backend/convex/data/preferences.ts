@@ -1,7 +1,8 @@
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireUserId } from "../auth";
-import { hasModelConfig, listModelDefaults } from "../agent/model";
+import { hasModelConfig } from "../agent/model";
+import { listStellaDefaultSelections } from "../stella_models";
 
 const accountModeValidator = v.union(v.literal("private_local"), v.literal("connected"));
 const ACCOUNT_MODE_KEY = "account_mode";
@@ -302,9 +303,10 @@ export const getModelDefaults = query({
     v.object({
       agentType: v.string(),
       model: v.string(),
+      resolvedModel: v.string(),
     }),
   ),
-  handler: async () => listModelDefaults(),
+  handler: async () => listStellaDefaultSelections(),
 });
 
 export const setModelOverride = mutation({

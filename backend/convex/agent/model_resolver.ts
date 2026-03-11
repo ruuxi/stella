@@ -23,6 +23,7 @@ import {
   extractModelName,
 } from "../lib/providers";
 import { getUserProviderKey, resolveByokApiKey } from "../lib/provider_keys";
+import { resolveStellaModelSelection } from "../stella_models";
 
 export type ResolvedModelConfig = {
   model: string | LanguageModel;
@@ -253,7 +254,7 @@ export async function resolveModelConfig(
     key: `model_config:${agentType}`,
   });
   if (override) {
-    modelString = override;
+    modelString = resolveStellaModelSelection(agentType, override);
   }
 
   const resolved = await resolveModelViaByokChain(ctx, ownerId, modelString);
