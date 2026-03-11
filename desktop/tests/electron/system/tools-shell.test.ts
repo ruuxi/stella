@@ -18,6 +18,38 @@ vi.mock("../../../electron/core/runtime/tools/utils", async () => {
 });
 
 describe("SkillBash secret mounts", () => {
+  it("rejects skills that are not enabled in the tool context", async () => {
+    const state = createShellState(async () => "secret", "/tmp/test-state");
+    state.skillCache = [
+      {
+        id: "demo-skill",
+        name: "Demo",
+        description: "Demo skill",
+        markdown: "",
+        agentTypes: ["general"],
+        version: 1,
+        source: "local",
+        filePath: "/tmp/demo-skill.md",
+      },
+    ];
+
+    const result = await handleSkillBash(
+      state,
+      {
+        skill_id: "demo-skill",
+        command: "echo hello",
+      },
+      {
+        conversationId: "conv-1",
+        deviceId: "device-1",
+        requestId: "req-1",
+        skillIds: [],
+      },
+    );
+
+    expect(result.error).toContain("Skill 'demo-skill' is not enabled.");
+  });
+
   it("cleans up previously mounted secret files when a later mount secret is missing", async () => {
     writeSecretFileMock.mockResolvedValueOnce("/tmp/secret-a");
     removeSecretFileMock.mockResolvedValue(undefined);

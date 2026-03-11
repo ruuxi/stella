@@ -33,10 +33,12 @@ vi.mock("better-sqlite3", async () => {
 
 const {
   loadAgentsFromHomeMock,
+  loadSkillsFromHomeMock,
   runOrchestratorTurnMock,
   localTaskManagerCtorMock,
 } = vi.hoisted(() => ({
   loadAgentsFromHomeMock: vi.fn(),
+  loadSkillsFromHomeMock: vi.fn(),
   runOrchestratorTurnMock: vi.fn(),
   localTaskManagerCtorMock: vi.fn(),
 }));
@@ -69,7 +71,7 @@ vi.mock("../../../electron/core/runtime/agents/agents.js", () => ({
 }));
 
 vi.mock("../../../electron/core/runtime/agents/skills.js", () => ({
-  loadSkillsFromHome: vi.fn().mockResolvedValue([]),
+  loadSkillsFromHome: loadSkillsFromHomeMock,
 }));
 
 vi.mock("../../../electron/core/runtime/extensions/loader.js", () => ({
@@ -136,6 +138,7 @@ const createTempHome = () => {
 describe("runtime runner tools allowlist", () => {
   beforeEach(() => {
     loadAgentsFromHomeMock.mockReset();
+    loadSkillsFromHomeMock.mockReset();
     runOrchestratorTurnMock.mockReset();
     localTaskManagerCtorMock.mockReset();
     loadAgentsFromHomeMock.mockResolvedValue([
@@ -147,6 +150,7 @@ describe("runtime runner tools allowlist", () => {
         toolsAllowlist: ["Display", "CustomExtensionTool"],
       },
     ]);
+    loadSkillsFromHomeMock.mockResolvedValue([]);
     runOrchestratorTurnMock.mockImplementation(async (opts: { callbacks: { onEnd: (event: { finalText: string }) => void } }) => {
       opts.callbacks.onEnd({ finalText: "done" });
     });
@@ -194,6 +198,82 @@ describe("runtime runner tools allowlist", () => {
     expect(runOrchestratorTurnMock).toHaveBeenCalledWith(expect.objectContaining({
       agentContext: expect.objectContaining({
         toolsAllowlist: ["Display", "CustomExtensionTool"],
+      }),
+    }));
+
+    runner.stop();
+    db.close();
+  });
+
+  it("passes enabled skill IDs into agent context and drops disabled defaults", async () => {
+    loadAgentsFromHomeMock.mockResolvedValue([
+      {
+        id: "orchestrator",
+        name: "Orchestrator",
+        systemPrompt: "prompt",
+        agentTypes: ["orchestrator"],
+        defaultSkills: ["calendar", "disabled-skill"],
+      },
+    ]);
+    loadSkillsFromHomeMock.mockResolvedValue([
+      {
+        id: "calendar",
+        name: "Calendar",
+        description: "Calendar skill",
+        markdown: "Calendar instructions",
+        agentTypes: ["orchestrator"],
+        version: 1,
+        source: "local",
+        filePath: "/tmp/calendar/SKILL.md",
+      },
+      {
+        id: "music",
+        name: "Music",
+        description: "Music skill",
+        markdown: "Music instructions",
+        agentTypes: ["orchestrator"],
+        version: 1,
+        source: "local",
+        filePath: "/tmp/music/SKILL.md",
+      },
+    ]);
+
+    const home = createTempHome();
+    const db = createDesktopDatabase(home);
+    const runtimeStore = new RuntimeStore(
+      db,
+      new TranscriptMirror(path.join(home, "state")),
+    );
+    const runner = createStellaHostRunner({
+      deviceId: "device-1",
+      StellaHome: home,
+      runtimeStore,
+    });
+
+    runner.setConvexUrl("https://example.convex.cloud");
+    runner.setAuthToken("token-1");
+    runner.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await runner.handleLocalChat(
+      {
+        conversationId: "conv-1",
+        userMessageId: "user-1",
+        userPrompt: "hello",
+      },
+      {
+        onStream: vi.fn(),
+        onToolStart: vi.fn(),
+        onToolEnd: vi.fn(),
+        onError: vi.fn(),
+        onEnd: vi.fn(),
+      },
+    );
+
+    expect(runOrchestratorTurnMock).toHaveBeenCalledWith(expect.objectContaining({
+      agentContext: expect.objectContaining({
+        defaultSkills: ["calendar"],
+        skillIds: ["calendar", "music"],
       }),
     }));
 
