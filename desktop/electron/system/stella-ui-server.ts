@@ -11,7 +11,7 @@ import fs from "fs";
 import http from "http";
 import path from "path";
 import type { BrowserWindow } from "electron";
-import { streamManagedChatCompletion } from "../core/runtime/chat-completions.js";
+import { streamStellaChatCompletion } from "../core/runtime/stella-provider.js";
 import { ensurePrivateDirSync, writePrivateFileSync } from "./private-fs.js";
 import { resolveRuntimeStatePath } from "./stella-home.js";
 
@@ -93,7 +93,7 @@ async function callGenerateModel(
   proxyBaseUrl: string,
   authToken: string,
 ): Promise<string> {
-  const fullContent = await streamManagedChatCompletion({
+  const fullContent = await streamStellaChatCompletion({
     transport: {
       endpoint: `${proxyBaseUrl}/chat/completions`,
       headers: {

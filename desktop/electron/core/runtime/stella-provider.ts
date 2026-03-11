@@ -16,9 +16,11 @@ function readAssistantText(message: AssistantMessage): string {
     .trim();
 }
 
-export const CHAT_COMPLETIONS_PATH = "/api/managed-ai/chat/completions";
+export const STELLA_CHAT_COMPLETIONS_PATH = "/api/stella/v1/chat/completions";
+export const STELLA_MODELS_PATH = "/api/stella/v1/models";
+export const STELLA_DEFAULT_MODEL = "stella/default";
 
-export const normalizeManagedChatBaseUrl = (value: string): string =>
+export const normalizeStellaApiBaseUrl = (value: string): string =>
   value.trim().replace(/\/chat\/completions\/?$/i, "").replace(/\/+$/, "");
 
 export type ChatMessage = {
@@ -43,13 +45,14 @@ export type ChatCompletionResponse = {
   };
 };
 
-export type ChatRequestOptions = {
+export type StellaChatRequestOptions = {
   agentType: string;
   messages: ChatMessage[];
+  model?: string;
   headers?: Record<string, string>;
 };
 
-export type ManagedChatTransport = {
+export type StellaTransport = {
   endpoint: string;
   headers?: Record<string, string>;
 };
@@ -85,10 +88,7 @@ const emptyUsage = (): AssistantMessage["usage"] => ({
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 });
 
-/**
- * Convert ChatMessage[] to a standard Context for the openai-completions provider.
- */
-export function buildChatCompletionContext(messages: ChatMessage[]): Context {
+export function buildStellaChatContext(messages: ChatMessage[]): Context {
   const systemParts: string[] = [];
   const llmMessages: Context["messages"] = [];
 
@@ -113,8 +113,8 @@ export function buildChatCompletionContext(messages: ChatMessage[]): Context {
       stopReason: "stop",
       usage: emptyUsage(),
       api: "openai-completions",
-      provider: "stella-managed",
-      model: "default",
+      provider: "stella",
+      model: STELLA_DEFAULT_MODEL,
     });
   }
 
@@ -124,20 +124,18 @@ export function buildChatCompletionContext(messages: ChatMessage[]): Context {
   };
 }
 
-/**
- * Create a standard openai-completions model for non-agentic managed calls.
- */
 function buildModel(
   endpoint: string,
   agentType: string,
+  modelId: string,
   extraHeaders?: Record<string, string>,
 ): Model<"openai-completions"> {
   return {
-    id: "default",
-    name: "Stella Managed",
+    id: modelId,
+    name: modelId === STELLA_DEFAULT_MODEL ? "Stella Recommended" : modelId.replace(/^stella\//, ""),
     api: "openai-completions",
-    provider: "stella-managed",
-    baseUrl: normalizeManagedChatBaseUrl(endpoint),
+    provider: "stella",
+    baseUrl: normalizeStellaApiBaseUrl(endpoint),
     reasoning: true,
     input: ["text", "image"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -164,15 +162,20 @@ type CompletionExecution = {
 };
 
 const createCompletion = (args: {
-  transport: ManagedChatTransport;
-  request: ChatRequestOptions;
+  transport: StellaTransport;
+  request: StellaChatRequestOptions;
   body?: Record<string, unknown>;
 }): CompletionExecution => ({
-  model: buildModel(args.transport.endpoint, args.request.agentType, {
-    ...args.transport.headers,
-    ...args.request.headers,
-  }),
-  context: buildChatCompletionContext(args.request.messages),
+  model: buildModel(
+    args.transport.endpoint,
+    args.request.agentType,
+    args.request.model ?? STELLA_DEFAULT_MODEL,
+    {
+      ...args.transport.headers,
+      ...args.request.headers,
+    },
+  ),
+  context: buildStellaChatContext(args.request.messages),
   options: toSimpleOptions(args.body),
 });
 
@@ -215,9 +218,9 @@ export function extractChatText(response: ChatCompletionResponse): string {
   return "";
 }
 
-export async function callManagedChatCompletion<TResponse = ChatCompletionResponse>(args: {
-  transport: ManagedChatTransport;
-  request: ChatRequestOptions;
+export async function callStellaChatCompletion<TResponse = ChatCompletionResponse>(args: {
+  transport: StellaTransport;
+  request: StellaChatRequestOptions;
   body?: Record<string, unknown>;
   signal?: AbortSignal;
 }): Promise<TResponse> {
@@ -233,9 +236,9 @@ export async function callManagedChatCompletion<TResponse = ChatCompletionRespon
   return messageToResponse(message) as TResponse;
 }
 
-export async function streamManagedChatCompletion(args: {
-  transport: ManagedChatTransport;
-  request: ChatRequestOptions;
+export async function streamStellaChatCompletion(args: {
+  transport: StellaTransport;
+  request: StellaChatRequestOptions;
   body?: Record<string, unknown>;
   onChunk: (chunk: string) => void;
   signal?: AbortSignal;

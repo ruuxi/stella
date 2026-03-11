@@ -38,16 +38,16 @@ describe("ModelPreferencesBridge", () => {
       const path = queryPath as string;
       if (path === "preferences.getModelDefaults") {
         return [
-          { agentType: "orchestrator", model: "moonshotai/kimi-k2.5" },
-          { agentType: "general", model: "moonshotai/kimi-k2.5" },
-          { agentType: "browser", model: "anthropic/claude-sonnet-4.6" },
-          { agentType: "explore", model: "zai/glm-4.7" },
-          { agentType: "app", model: "anthropic/claude-sonnet-4.6" },
+          { agentType: "orchestrator", model: "stella/default", resolvedModel: "moonshotai/kimi-k2.5" },
+          { agentType: "general", model: "stella/default", resolvedModel: "moonshotai/kimi-k2.5" },
+          { agentType: "browser", model: "stella/default", resolvedModel: "anthropic/claude-sonnet-4.6" },
+          { agentType: "explore", model: "stella/default", resolvedModel: "zai/glm-4.7" },
+          { agentType: "app", model: "stella/default", resolvedModel: "anthropic/claude-sonnet-4.6" },
         ];
       }
       if (path === "preferences.getModelOverrides") {
         return JSON.stringify({
-          orchestrator: "moonshotai/kimi-k2.5",
+          orchestrator: "stella/default",
           browser: "openai/gpt-4o",
         });
       }
@@ -67,6 +67,13 @@ describe("ModelPreferencesBridge", () => {
     await waitFor(() => {
       expect(mockSyncLocalModelPreferences).toHaveBeenCalledWith({
         defaultModels: {
+          orchestrator: "stella/default",
+          general: "stella/default",
+          browser: "stella/default",
+          explore: "stella/default",
+          app: "stella/default",
+        },
+        resolvedDefaultModels: {
           orchestrator: "moonshotai/kimi-k2.5",
           general: "moonshotai/kimi-k2.5",
           browser: "anthropic/claude-sonnet-4.6",

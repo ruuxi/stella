@@ -1,38 +1,41 @@
 import { getModels } from "../ai/models.js";
 import type { Api, Model } from "../ai/types.js";
-import { normalizeManagedChatBaseUrl } from "./chat-completions.js";
 import { getLocalLlmCredential } from "./storage/llm-credentials.js";
+import {
+  normalizeStellaApiBaseUrl,
+  STELLA_DEFAULT_MODEL,
+} from "./stella-provider.js";
 
-type ManagedProxyConfig = {
+type StellaProxyConfig = {
   baseUrl: string | null;
   getAuthToken: () => string | null | undefined;
 };
 
 export type ResolvedLlmRoute = {
   model: Model<Api>;
-  route: "direct-provider" | "direct-openrouter" | "direct-gateway" | "managed";
+  route: "direct-provider" | "direct-openrouter" | "direct-gateway" | "stella";
   getApiKey: () => string | undefined;
 };
 
-const MANAGED_CONTEXT_WINDOW = 256_000;
-const MANAGED_MAX_TOKENS = 16_384;
-const MANAGED_DEFAULT_MODEL = "default";
+const STELLA_CONTEXT_WINDOW = 256_000;
+const STELLA_MAX_TOKENS = 16_384;
+const STELLA_PROVIDER = "stella";
 
-/**
- * Create a standard openai-completions model routed through the managed backend proxy.
- * The backend handles actual model selection and upstream provider routing.
- */
-const createManagedProxyModel = (proxyBaseUrl: string, agentType: string): Model<"openai-completions"> => ({
-  id: MANAGED_DEFAULT_MODEL,
-  name: "Stella Managed",
+const createStellaModel = (
+  proxyBaseUrl: string,
+  modelId: string,
+  agentType: string,
+): Model<"openai-completions"> => ({
+  id: modelId,
+  name: modelId === STELLA_DEFAULT_MODEL ? "Stella Recommended" : modelId.replace(/^stella\//, ""),
   api: "openai-completions",
-  provider: "stella-managed",
-  baseUrl: normalizeManagedChatBaseUrl(proxyBaseUrl),
+  provider: STELLA_PROVIDER,
+  baseUrl: normalizeStellaApiBaseUrl(proxyBaseUrl),
   reasoning: true,
   input: ["text", "image"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: MANAGED_CONTEXT_WINDOW,
-  maxTokens: MANAGED_MAX_TOKENS,
+  contextWindow: STELLA_CONTEXT_WINDOW,
+  maxTokens: STELLA_MAX_TOKENS,
   headers: {
     "X-Stella-Agent-Type": agentType,
   },
@@ -45,15 +48,15 @@ const createManagedProxyModel = (proxyBaseUrl: string, agentType: string): Model
   },
 });
 
-const normalizeProxyBase = (value: string | null | undefined): string | null => {
+const normalizeStellaBase = (value: string | null | undefined): string | null => {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
   const normalized = trimmed.replace(/\/+$/, "");
-  if (normalized.includes("/api/managed-ai")) {
+  if (normalized.includes("/api/stella/v1")) {
     return normalized;
   }
-  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/managed-ai`;
+  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/stella/v1`;
 };
 
 const parseModel = (rawModel: string | undefined): { provider: string; modelId: string; fullModelId: string } | null => {
@@ -130,7 +133,6 @@ const getDirectProviderCandidates = (
         ]),
       };
     default: {
-      // Extension providers: check if models exist in the registry under this provider name
       const extensionModels = getModels(provider as never) as Model<Api>[];
       if (extensionModels.length > 0) {
         return {
@@ -180,11 +182,29 @@ const findRegistryModel = (
 const getGatewayCredential = (stellaHomePath: string): string | null =>
   getCredential(stellaHomePath, "vercel-ai-gateway");
 
+const createStellaRoute = (args: {
+  proxy: StellaProxyConfig;
+  agentType: string;
+  modelId: string;
+}): ResolvedLlmRoute | null => {
+  const proxyBaseUrl = normalizeStellaBase(args.proxy.baseUrl);
+  const authToken = args.proxy.getAuthToken()?.trim();
+  if (!proxyBaseUrl || !authToken) {
+    return null;
+  }
+
+  return {
+    route: "stella",
+    model: createStellaModel(proxyBaseUrl, args.modelId, args.agentType),
+    getApiKey: () => args.proxy.getAuthToken()?.trim() || authToken,
+  };
+};
+
 export const canResolveLlmRoute = (args: {
   stellaHomePath: string;
   modelName: string | undefined;
   agentType?: string;
-  proxy: ManagedProxyConfig;
+  proxy: StellaProxyConfig;
 }): boolean => {
   try {
     resolveLlmRoute({
@@ -201,11 +221,21 @@ export const resolveLlmRoute = (args: {
   stellaHomePath: string;
   modelName: string | undefined;
   agentType: string;
-  proxy: ManagedProxyConfig;
+  proxy: StellaProxyConfig;
 }): ResolvedLlmRoute => {
   const parsed = parseModel(args.modelName);
 
-  // When a model is explicitly specified, try direct provider / openrouter / gateway routes
+  if (parsed?.provider === STELLA_PROVIDER) {
+    const route = createStellaRoute({
+      proxy: args.proxy,
+      agentType: args.agentType,
+      modelId: parsed.fullModelId,
+    });
+    if (route) {
+      return route;
+    }
+  }
+
   if (parsed) {
     const { provider, modelId, fullModelId } = parsed;
 
@@ -223,8 +253,6 @@ export const resolveLlmRoute = (args: {
         }
       }
 
-      // Extension providers may not require an API key (e.g., local models like Ollama).
-      // If a model has a baseUrl, allow it through without a stored credential.
       if (!directKey && directProvider.allowBaseUrlWithoutCredential) {
         const directModel = findRegistryModel(directProvider.registryProvider, directProvider.candidates);
         if (directModel?.baseUrl) {
@@ -260,20 +288,27 @@ export const resolveLlmRoute = (args: {
         };
       }
     }
+
+    const stellaRoute = createStellaRoute({
+      proxy: args.proxy,
+      agentType: args.agentType,
+      modelId: `${STELLA_PROVIDER}/${fullModelId}`,
+    });
+    if (stellaRoute) {
+      return stellaRoute;
+    }
   }
 
-  // Managed path — backend proxies to upstream provider using standard OpenAI format.
-  const proxyBaseUrl = normalizeProxyBase(args.proxy.baseUrl);
-  const authToken = args.proxy.getAuthToken()?.trim();
-  if (proxyBaseUrl && authToken) {
-    return {
-      route: "managed",
-      model: createManagedProxyModel(proxyBaseUrl, args.agentType),
-      getApiKey: () => args.proxy.getAuthToken()?.trim() || authToken,
-    };
+  const defaultStellaRoute = createStellaRoute({
+    proxy: args.proxy,
+    agentType: args.agentType,
+    modelId: STELLA_DEFAULT_MODEL,
+  });
+  if (defaultStellaRoute) {
+    return defaultStellaRoute;
   }
 
   throw new Error(
-    "No usable model route is configured. Add a matching local API key in Settings or sign in to use Stella's managed route.",
+    "No usable model route is configured. Add a matching local API key in Settings or sign in to use Stella.",
   );
 };

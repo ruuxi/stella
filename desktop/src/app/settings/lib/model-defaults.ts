@@ -1,6 +1,7 @@
 export type ModelDefaultEntry = {
   agentType: string;
   model: string;
+  resolvedModel: string;
 };
 
 const MODEL_SETTINGS_METADATA: Record<string, { label: string; desc: string }> = {
@@ -32,6 +33,23 @@ export function buildModelDefaultsMap(
   for (const entry of defaults ?? []) {
     const agentType = entry.agentType.trim();
     const model = entry.model.trim();
+    if (!agentType || !model) {
+      continue;
+    }
+    map[agentType] = model;
+  }
+
+  return map;
+}
+
+export function buildResolvedModelDefaultsMap(
+  defaults: readonly ModelDefaultEntry[] | undefined,
+): Record<string, string> {
+  const map: Record<string, string> = {};
+
+  for (const entry of defaults ?? []) {
+    const agentType = entry.agentType.trim();
+    const model = entry.resolvedModel.trim();
     if (!agentType || !model) {
       continue;
     }
@@ -87,6 +105,7 @@ export function getModelDisplayLabel(
 export function getDefaultModelOptionLabel(
   agentType: string,
   defaultModels: Record<string, string>,
+  resolvedDefaultModels: Record<string, string>,
   modelNamesById: ReadonlyMap<string, string>,
 ): string {
   const defaultModel = defaultModels[agentType];
@@ -94,5 +113,11 @@ export function getDefaultModelOptionLabel(
     return "Default";
   }
 
-  return `Default (${getModelDisplayLabel(defaultModel, modelNamesById)})`;
+  const resolvedModel = resolvedDefaultModels[agentType] ?? defaultModel;
+  const resolvedLabel = getModelDisplayLabel(resolvedModel, modelNamesById);
+  if (defaultModel === "stella/default") {
+    return `Stella Recommended (currently ${resolvedLabel})`;
+  }
+
+  return `Default (${resolvedLabel})`;
 }
