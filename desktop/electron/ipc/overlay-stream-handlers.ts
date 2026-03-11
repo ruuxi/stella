@@ -5,7 +5,10 @@ import {
 } from "electron";
 import { readAssistantText, streamSimple } from "../core/ai/stream.js";
 import { resolveLlmRoute } from "../core/runtime/model-routing.js";
-import { getModelOverride } from "../core/runtime/preferences/local-preferences.js";
+import {
+  getDefaultModel,
+  getModelOverride,
+} from "../core/runtime/preferences/local-preferences.js";
 import {
   buildChatCompletionContext,
   type ChatMessage,
@@ -90,6 +93,7 @@ export const registerOverlayStreamHandlers = (
             stellaHomePath,
             modelName:
               getModelOverride(stellaHomePath, agentType)
+              ?? getDefaultModel(stellaHomePath, agentType)
               ?? process.env.STELLA_DEFAULT_MODEL,
             agentType,
             proxy: {

@@ -432,6 +432,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setLocalSyncMode: (mode: string) =>
       ipcRenderer.invoke("preferences:setSyncMode", mode),
     syncLocalModelPreferences: (payload: {
+      defaultModels: Record<string, string>;
       modelOverrides: Record<string, string>;
       generalAgentEngine: "default" | "codex_local" | "claude_code_local";
       codexLocalMaxConcurrency: number;

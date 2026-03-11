@@ -24,11 +24,9 @@ type CatalogApiResponse = {
 
 const FALLBACK_MODELS: CatalogModel[] = [
   { id: "anthropic/claude-opus-4.6", name: "Claude Opus 4.6", provider: "anthropic" },
-  { id: "anthropic/claude-sonnet-4-5-20250929", name: "Claude Sonnet 4.5", provider: "anthropic" },
+  { id: "anthropic/claude-sonnet-4.6", name: "Claude Sonnet 4.6", provider: "anthropic" },
   { id: "anthropic/claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", provider: "anthropic" },
-  { id: "openai/gpt-5.2", name: "GPT-5.2", provider: "openai" },
-  { id: "openai/gpt-4o", name: "GPT-4o", provider: "openai" },
-  { id: "openai/gpt-4o-mini", name: "GPT-4o Mini", provider: "openai" },
+  { id: "openai/gpt-5.4", name: "GPT-5.4", provider: "openai" },
   { id: "google/gemini-2.5-pro", name: "Gemini 2.5 Pro", provider: "google" },
   { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash", provider: "google" },
   { id: "moonshotai/kimi-k2.5", name: "Kimi K2.5", provider: "moonshotai" },

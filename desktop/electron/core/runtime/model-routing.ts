@@ -86,7 +86,12 @@ const getCredential = (stellaHomePath: string, providerId: string): string | nul
 const getDirectProviderCandidates = (
   provider: string,
   modelId: string,
-): { credentialProvider: string; registryProvider: string; candidates: string[] } | null => {
+): {
+  credentialProvider: string;
+  registryProvider: string;
+  candidates: string[];
+  allowBaseUrlWithoutCredential?: boolean;
+} | null => {
   switch (provider) {
     case "anthropic":
       return {
@@ -131,6 +136,7 @@ const getDirectProviderCandidates = (
         return {
           credentialProvider: provider,
           registryProvider: provider,
+          allowBaseUrlWithoutCredential: true,
           candidates: unique([
             modelId,
             modelId.replace(/\./g, "-"),
@@ -219,7 +225,7 @@ export const resolveLlmRoute = (args: {
 
       // Extension providers may not require an API key (e.g., local models like Ollama).
       // If a model has a baseUrl, allow it through without a stored credential.
-      if (!directKey) {
+      if (!directKey && directProvider.allowBaseUrlWithoutCredential) {
         const directModel = findRegistryModel(directProvider.registryProvider, directProvider.candidates);
         if (directModel?.baseUrl) {
           return {

@@ -1,18 +1,62 @@
-export const AGENT_DEFAULT_MODEL_IDS: Record<string, string> = {
-  orchestrator: "moonshotai/kimi-k2-0905:exacto",
-  general: "moonshotai/kimi-k2-0905:exacto",
-  self_mod: "moonshotai/kimi-k2-0905:exacto",
-  browser: "openai/gpt-5.4",
-  explore: "zai/glm-4.7",
-  memory: "zai/glm-4.7",
+export type ModelDefaultEntry = {
+  agentType: string;
+  model: string;
 };
 
-export function getAgentDefaultModel(agentType: string): string | undefined {
-  return AGENT_DEFAULT_MODEL_IDS[agentType];
+const MODEL_SETTINGS_METADATA: Record<string, { label: string; desc: string }> = {
+  orchestrator: {
+    label: "Orchestrator",
+    desc: "Top-level agent that delegates tasks",
+  },
+  general: {
+    label: "General",
+    desc: "Full tool access for general tasks",
+  },
+  browser: {
+    label: "Browser",
+    desc: "Browser automation via Playwright",
+  },
+  explore: {
+    label: "Explore",
+    desc: "Lightweight read-only exploration",
+  },
+};
+
+const MODEL_SETTINGS_ORDER = ["orchestrator", "general", "browser", "explore"] as const;
+
+export function buildModelDefaultsMap(
+  defaults: readonly ModelDefaultEntry[] | undefined,
+): Record<string, string> {
+  const map: Record<string, string> = {};
+
+  for (const entry of defaults ?? []) {
+    const agentType = entry.agentType.trim();
+    const model = entry.model.trim();
+    if (!agentType || !model) {
+      continue;
+    }
+    map[agentType] = model;
+  }
+
+  return map;
+}
+
+export function getConfigurableAgents(
+  defaults: readonly ModelDefaultEntry[] | undefined,
+): Array<{ key: string; label: string; desc: string }> {
+  const availableAgentTypes = new Set((defaults ?? []).map((entry) => entry.agentType));
+  return MODEL_SETTINGS_ORDER
+    .filter((agentType) => availableAgentTypes.has(agentType))
+    .map((agentType) => ({
+      key: agentType,
+      label: MODEL_SETTINGS_METADATA[agentType].label,
+      desc: MODEL_SETTINGS_METADATA[agentType].desc,
+    }));
 }
 
 export function normalizeModelOverrides(
   overrides: Record<string, string>,
+  defaultModels: Record<string, string>,
 ): Record<string, string> {
   const normalized: Record<string, string> = {};
 
@@ -22,7 +66,7 @@ export function normalizeModelOverrides(
       continue;
     }
 
-    const defaultModel = getAgentDefaultModel(agentType);
+    const defaultModel = defaultModels[agentType];
     if (defaultModel && trimmed === defaultModel) {
       continue;
     }
@@ -42,9 +86,10 @@ export function getModelDisplayLabel(
 
 export function getDefaultModelOptionLabel(
   agentType: string,
+  defaultModels: Record<string, string>,
   modelNamesById: ReadonlyMap<string, string>,
 ): string {
-  const defaultModel = getAgentDefaultModel(agentType);
+  const defaultModel = defaultModels[agentType];
   if (!defaultModel) {
     return "Default";
   }
