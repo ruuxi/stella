@@ -64,6 +64,7 @@ const ChatStoreContext = createContext<ChatStoreContextValue | null>(null)
 export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
   const { hasConnectedAccount } = useAuthSessionState()
 
+  // Desktop chat remains intentionally local-only even when the user has an account.
   const cloudFeaturesEnabled = false
   const storageMode: ChatStorageMode = 'local'
   const isLocalStorage = true

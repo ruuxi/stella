@@ -1,15 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import "convex/react";
 import { Sidebar } from "../../../../src/app/sidebar/Sidebar";
 
-vi.mock("convex/react", () => ({
-  useConvexAuth: vi.fn(() => ({ isAuthenticated: false, isLoading: false })),
-  useQuery: vi.fn(() => null),
+const mockUseCurrentUser = vi.fn(() => ({
+  user: null,
+  hasConnectedAccount: false,
 }));
 
-vi.mock("@/convex/api", () => ({
-  api: { auth: { getCurrentUser: "auth:getCurrentUser" } },
+vi.mock("@/app/auth/hooks/use-current-user", () => ({
+  useCurrentUser: () => mockUseCurrentUser(),
 }));
 
 vi.mock("@/app/auth/services/auth", () => ({
