@@ -3,11 +3,21 @@ import { configurePiRuntime, getOrCreateDeviceId } from '@/platform/electron/dev
 import { getOrCreateLocalConversationId } from '@/app/chat/services/local-chat-store'
 import { useUiState } from '@/context/ui-state'
 
-const restoreVoiceShortcut = () => {
+const restoreVoiceShortcut = async () => {
   const savedShortcut = localStorage.getItem('stella-voice-shortcut')
   if (!savedShortcut) return
 
-  window.electronAPI?.voice.setShortcut(savedShortcut)
+  const result = await window.electronAPI?.voice.setShortcut(savedShortcut)
+  if (!result || result.activeShortcut === savedShortcut) {
+    return
+  }
+
+  if (result.activeShortcut) {
+    localStorage.setItem('stella-voice-shortcut', result.activeShortcut)
+    return
+  }
+
+  localStorage.removeItem('stella-voice-shortcut')
 }
 
 export const useConversationBootstrap = () => {
@@ -22,7 +32,7 @@ export const useConversationBootstrap = () => {
       const settleRuntime = () => Promise.allSettled([hostPromise, devicePromise])
       const settleRuntimeAndRestoreShortcut = async () => {
         await settleRuntime()
-        restoreVoiceShortcut()
+        await restoreVoiceShortcut()
       }
 
       const [localConversationId] = await Promise.all([

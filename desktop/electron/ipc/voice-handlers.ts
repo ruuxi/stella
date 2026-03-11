@@ -39,10 +39,82 @@ const DEFAULT_RUNTIME_STATE: VoiceRuntimeSnapshot = {
   outputLevel: 0,
 };
 
+type ShortcutRegistrationResult = {
+  ok: boolean;
+  requestedShortcut: string;
+  activeShortcut: string;
+  error?: string;
+};
+
 export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
-  let currentVoiceShortcut = "CommandOrControl+Shift+V";
-  let currentVoiceRtcShortcut = "CommandOrControl+Shift+D";
+  let currentVoiceShortcut = "";
+  let currentVoiceRtcShortcut = "";
   let runtimeState: VoiceRuntimeSnapshot = DEFAULT_RUNTIME_STATE;
+
+  const applyShortcutRegistration = (
+    label: string,
+    requestedShortcut: string,
+    currentShortcut: string,
+    toggle: () => void,
+  ): ShortcutRegistrationResult => {
+    if (requestedShortcut === currentShortcut) {
+      return {
+        ok: true,
+        requestedShortcut,
+        activeShortcut: currentShortcut,
+      };
+    }
+
+    if (currentShortcut) {
+      globalShortcut.unregister(currentShortcut);
+    }
+
+    if (!requestedShortcut) {
+      return {
+        ok: true,
+        requestedShortcut,
+        activeShortcut: "",
+      };
+    }
+
+    let registrationError: string | undefined;
+    try {
+      const registered = globalShortcut.register(requestedShortcut, toggle);
+      if (registered) {
+        return {
+          ok: true,
+          requestedShortcut,
+          activeShortcut: requestedShortcut,
+        };
+      }
+      registrationError = `${label} shortcut "${requestedShortcut}" is unavailable.`;
+    } catch (error) {
+      registrationError =
+        error instanceof Error
+          ? error.message
+          : `${label} shortcut "${requestedShortcut}" is unavailable.`;
+    }
+
+    let restoredShortcut = "";
+    if (currentShortcut) {
+      try {
+        if (globalShortcut.register(currentShortcut, toggle)) {
+          restoredShortcut = currentShortcut;
+        }
+      } catch {
+        restoredShortcut = "";
+      }
+    }
+
+    return {
+      ok: false,
+      requestedShortcut,
+      activeShortcut: restoredShortcut,
+      error: restoredShortcut
+        ? `${registrationError} Kept "${restoredShortcut}" active instead.`
+        : `${registrationError} No fallback shortcut is active.`,
+    };
+  };
 
   const broadcastRuntimeState = () => {
     for (const window of options.windowManager.getAllWindows()) {
@@ -79,23 +151,54 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     options.syncWakeWordState();
   };
 
-  globalShortcut.register(currentVoiceShortcut, toggleVoice);
-  globalShortcut.register(currentVoiceRtcShortcut, toggleVoiceRtc);
+  const initialVoiceShortcut = applyShortcutRegistration(
+    "Voice",
+    "CommandOrControl+Shift+V",
+    currentVoiceShortcut,
+    toggleVoice,
+  );
+  currentVoiceShortcut = initialVoiceShortcut.activeShortcut;
+  if (!initialVoiceShortcut.ok) {
+    console.warn("[voice]", initialVoiceShortcut.error);
+  }
 
-  ipcMain.on("voice:setShortcut", (_event, shortcut: string) => {
-    globalShortcut.unregister(currentVoiceShortcut);
-    currentVoiceShortcut = shortcut;
-    if (shortcut) {
-      globalShortcut.register(shortcut, toggleVoice);
+  const initialVoiceRtcShortcut = applyShortcutRegistration(
+    "Voice realtime",
+    "CommandOrControl+Shift+D",
+    currentVoiceRtcShortcut,
+    toggleVoiceRtc,
+  );
+  currentVoiceRtcShortcut = initialVoiceRtcShortcut.activeShortcut;
+  if (!initialVoiceRtcShortcut.ok) {
+    console.warn("[voice]", initialVoiceRtcShortcut.error);
+  }
+
+  ipcMain.handle("voice:setShortcut", (_event, shortcut: string) => {
+    const result = applyShortcutRegistration(
+      "Voice",
+      shortcut,
+      currentVoiceShortcut,
+      toggleVoice,
+    );
+    currentVoiceShortcut = result.activeShortcut;
+    if (!result.ok) {
+      console.warn("[voice]", result.error);
     }
+    return result;
   });
 
-  ipcMain.on("voice-rtc:setShortcut", (_event, shortcut: string) => {
-    globalShortcut.unregister(currentVoiceRtcShortcut);
-    currentVoiceRtcShortcut = shortcut;
-    if (shortcut) {
-      globalShortcut.register(shortcut, toggleVoiceRtc);
+  ipcMain.handle("voice-rtc:setShortcut", (_event, shortcut: string) => {
+    const result = applyShortcutRegistration(
+      "Voice realtime",
+      shortcut,
+      currentVoiceRtcShortcut,
+      toggleVoiceRtc,
+    );
+    currentVoiceRtcShortcut = result.activeShortcut;
+    if (!result.ok) {
+      console.warn("[voice]", result.error);
     }
+    return result;
   });
 
   ipcMain.on("voice:transcript", (_event, transcript: string) => {

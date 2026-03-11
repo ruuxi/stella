@@ -115,9 +115,17 @@ beforeEach(() => {
       listProfiles: vi.fn().mockResolvedValue([]),
     },
     voice: {
-      setShortcut: vi.fn(),
+      setShortcut: vi.fn().mockResolvedValue({
+        ok: true,
+        requestedShortcut: "CommandOrControl+Shift+V",
+        activeShortcut: "CommandOrControl+Shift+V",
+      }),
       setAssistantSpeaking: vi.fn().mockResolvedValue({ ok: true }),
-      setRtcShortcut: vi.fn(),
+      setRtcShortcut: vi.fn().mockResolvedValue({
+        ok: true,
+        requestedShortcut: "CommandOrControl+Shift+D",
+        activeShortcut: "CommandOrControl+Shift+D",
+      }),
     },
   };
 
