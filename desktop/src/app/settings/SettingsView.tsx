@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useConvexAuth, useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { useModelCatalog } from "@/app/settings/hooks/use-model-catalog";
 import {
@@ -67,6 +67,10 @@ const TABS: { key: SettingsTab; label: string }[] = [
   { key: "basic", label: "Basic" },
   { key: "models", label: "Models" },
 ];
+
+function getSettingsErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
 
 // ---------------------------------------------------------------------------
 // Basic Tab
@@ -158,22 +162,28 @@ function BasicTab({ onSignOut }: { onSignOut?: () => void }) {
 // ---------------------------------------------------------------------------
 
 function ModelConfigSection() {
-  const overridesJson = useQuery(api.data.preferences.getModelOverrides) as
-    | string
-    | undefined;
-  const modelDefaults = useQuery(api.data.preferences.getModelDefaults) as
-    | ModelDefaultEntry[]
-    | undefined;
+  const { isAuthenticated } = useConvexAuth();
+  const shouldQueryPreferences = isAuthenticated ? {} : "skip";
+  const overridesJson = useQuery(
+    api.data.preferences.getModelOverrides,
+    shouldQueryPreferences,
+  ) as string | undefined;
+  const modelDefaults = useQuery(
+    api.data.preferences.getModelDefaults,
+    shouldQueryPreferences,
+  ) as ModelDefaultEntry[] | undefined;
   const setOverride = useMutation(api.data.preferences.setModelOverride);
   const clearOverride = useMutation(api.data.preferences.clearModelOverride);
   const generalAgentEngine = useQuery(
     api.data.preferences.getGeneralAgentEngine,
+    shouldQueryPreferences,
   ) as "default" | "codex_local" | "claude_code_local" | undefined;
   const setGeneralAgentEngine = useMutation(
     api.data.preferences.setGeneralAgentEngine,
   );
   const codexLocalMaxConcurrency = useQuery(
     api.data.preferences.getCodexLocalMaxConcurrency,
+    shouldQueryPreferences,
   ) as number | undefined;
   const setCodexLocalMaxConcurrency = useMutation(
     api.data.preferences.setCodexLocalMaxConcurrency,
@@ -226,6 +236,21 @@ function ModelConfigSection() {
   >(null);
   const [localCodexLocalMaxConcurrency, setLocalCodexLocalMaxConcurrency] =
     useState<number | null>(null);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [modelConfigError, setModelConfigError] = useState<string | null>(null);
+  const [isSavingRuntimePreference, setIsSavingRuntimePreference] =
+    useState(false);
+  const [isSavingModelPreferences, setIsSavingModelPreferences] =
+    useState(false);
+
+  const runtimePreferencesLoaded =
+    isAuthenticated &&
+    generalAgentEngine !== undefined &&
+    codexLocalMaxConcurrency !== undefined;
+  const modelPreferencesLoaded =
+    isAuthenticated &&
+    modelDefaults !== undefined &&
+    overridesJson !== undefined;
 
   const pendingLocalOverrides = useMemo(() => {
     const next: Record<string, string | null> = {};
@@ -272,51 +297,193 @@ function ModelConfigSection() {
   const hasAnyOverride = Object.keys(overrides).length > 0;
 
   const handleChange = useCallback(
-    (agentType: string, value: string) => {
+    async (agentType: string, value: string) => {
+      if (isSavingModelPreferences) {
+        return;
+      }
+
+      const previousValue = Object.prototype.hasOwnProperty.call(
+        localOverrides,
+        agentType,
+      )
+        ? localOverrides[agentType]
+        : undefined;
+
+      setModelConfigError(null);
+      setIsSavingModelPreferences(true);
+
       if (value === "") {
         setLocalOverrides((prev) => ({ ...prev, [agentType]: null }));
-        clearOverride({ agentType });
+        try {
+          await clearOverride({ agentType });
+        } catch (error) {
+          setLocalOverrides((prev) => {
+            const next = { ...prev };
+            if (previousValue === undefined) {
+              delete next[agentType];
+            } else {
+              next[agentType] = previousValue;
+            }
+            return next;
+          });
+          setModelConfigError(
+            getSettingsErrorMessage(error, "Failed to update model setting."),
+          );
+        } finally {
+          setIsSavingModelPreferences(false);
+        }
       } else {
         setLocalOverrides((prev) => ({ ...prev, [agentType]: value }));
-        setOverride({ agentType, model: value });
+        try {
+          await setOverride({ agentType, model: value });
+        } catch (error) {
+          setLocalOverrides((prev) => {
+            const next = { ...prev };
+            if (previousValue === undefined) {
+              delete next[agentType];
+            } else {
+              next[agentType] = previousValue;
+            }
+            return next;
+          });
+          setModelConfigError(
+            getSettingsErrorMessage(error, "Failed to update model setting."),
+          );
+        } finally {
+          setIsSavingModelPreferences(false);
+        }
       }
     },
-    [setOverride, clearOverride],
+    [clearOverride, isSavingModelPreferences, localOverrides, setOverride],
   );
 
-  const handleResetAll = useCallback(() => {
+  const handleResetAll = useCallback(async () => {
+    if (isSavingModelPreferences || !hasAnyOverride) {
+      return;
+    }
+
+    setModelConfigError(null);
+    setIsSavingModelPreferences(true);
+
     const cleared: Record<string, null> = {};
     for (const key of Object.keys(overrides)) {
       cleared[key] = null;
-      clearOverride({ agentType: key });
     }
     setLocalOverrides((prev) => ({ ...prev, ...cleared }));
-  }, [overrides, clearOverride]);
+
+    const keys = Object.keys(overrides);
+    const previousLocalOverrides = localOverrides;
+    const results = await Promise.allSettled(
+      keys.map(async (key) => {
+        await clearOverride({ agentType: key });
+        return key;
+      }),
+    );
+
+    const failedKeys = results.flatMap((result, index) =>
+      result.status === "rejected" ? [keys[index]] : [],
+    );
+
+    if (failedKeys.length > 0) {
+      setLocalOverrides((prev) => {
+        const next = { ...prev };
+        for (const key of failedKeys) {
+          if (
+            Object.prototype.hasOwnProperty.call(previousLocalOverrides, key)
+          ) {
+            next[key] = previousLocalOverrides[key] ?? null;
+          } else {
+            delete next[key];
+          }
+        }
+        return next;
+      });
+      setModelConfigError(
+        failedKeys.length === 1
+          ? "Failed to reset one model setting."
+          : `Failed to reset ${failedKeys.length} model settings.`,
+      );
+    }
+
+    setIsSavingModelPreferences(false);
+  }, [
+    clearOverride,
+    hasAnyOverride,
+    isSavingModelPreferences,
+    localOverrides,
+    overrides,
+  ]);
 
   const handleGeneralAgentEngineChange = useCallback(
-    (value: string) => {
+    async (value: string) => {
+      if (isSavingRuntimePreference) {
+        return;
+      }
+
       const engine =
         value === "codex_local"
           ? "codex_local"
           : value === "claude_code_local"
             ? "claude_code_local"
             : "default";
+      const previousValue = localGeneralAgentEngine;
+
+      setRuntimeError(null);
+      setIsSavingRuntimePreference(true);
       setLocalGeneralAgentEngine(engine);
-      setGeneralAgentEngine({ engine });
+
+      try {
+        await setGeneralAgentEngine({ engine });
+      } catch (error) {
+        setLocalGeneralAgentEngine(previousValue);
+        setRuntimeError(
+          getSettingsErrorMessage(
+            error,
+            "Failed to update the general agent runtime.",
+          ),
+        );
+      } finally {
+        setIsSavingRuntimePreference(false);
+      }
     },
-    [setGeneralAgentEngine],
+    [isSavingRuntimePreference, localGeneralAgentEngine, setGeneralAgentEngine],
   );
 
   const handleCodexLocalMaxConcurrencyChange = useCallback(
-    (value: string) => {
+    async (value: string) => {
+      if (isSavingRuntimePreference) {
+        return;
+      }
+
       const parsed = Number(value);
       const normalized = Number.isFinite(parsed)
         ? Math.max(1, Math.min(3, Math.floor(parsed)))
         : 3;
+      const previousValue = localCodexLocalMaxConcurrency;
+
+      setRuntimeError(null);
+      setIsSavingRuntimePreference(true);
       setLocalCodexLocalMaxConcurrency(normalized);
-      setCodexLocalMaxConcurrency({ value: normalized });
+
+      try {
+        await setCodexLocalMaxConcurrency({ value: normalized });
+      } catch (error) {
+        setLocalCodexLocalMaxConcurrency(previousValue);
+        setRuntimeError(
+          getSettingsErrorMessage(
+            error,
+            "Failed to update Codex session concurrency.",
+          ),
+        );
+      } finally {
+        setIsSavingRuntimePreference(false);
+      }
     },
-    [setCodexLocalMaxConcurrency],
+    [
+      isSavingRuntimePreference,
+      localCodexLocalMaxConcurrency,
+      setCodexLocalMaxConcurrency,
+    ],
   );
 
   return (
@@ -326,6 +493,19 @@ function ModelConfigSection() {
         <p className="settings-card-desc">
           Choose how the general subagent runs on this device.
         </p>
+        {!isAuthenticated ? (
+          <p className="settings-card-desc">
+            Sign in to manage runtime settings.
+          </p>
+        ) : null}
+        {runtimeError ? (
+          <p
+            className="settings-card-desc settings-card-desc--error"
+            role="alert"
+          >
+            {runtimeError}
+          </p>
+        ) : null}
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-label">Engine</div>
@@ -335,20 +515,38 @@ function ModelConfigSection() {
             </div>
           </div>
           <div className="settings-row-control">
-            <NativeSelect
-              className="settings-runtime-select"
-              value={effectiveGeneralAgentEngine}
-              onChange={(e) => handleGeneralAgentEngineChange(e.target.value)}
-            >
-              {GENERAL_AGENT_ENGINE_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name}
+            {runtimePreferencesLoaded ? (
+              <NativeSelect
+                className="settings-runtime-select"
+                value={effectiveGeneralAgentEngine}
+                onChange={(e) =>
+                  void handleGeneralAgentEngineChange(e.target.value)
+                }
+                disabled={isSavingRuntimePreference}
+              >
+                {GENERAL_AGENT_ENGINE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            ) : (
+              <NativeSelect
+                className="settings-runtime-select"
+                value="loading"
+                disabled
+              >
+                <option value="loading">
+                  {isAuthenticated
+                    ? "Loading saved setting..."
+                    : "Sign in required"}
                 </option>
-              ))}
-            </NativeSelect>
+              </NativeSelect>
+            )}
           </div>
         </div>
-        {effectiveGeneralAgentEngine === "codex_local" ? (
+        {runtimePreferencesLoaded &&
+        effectiveGeneralAgentEngine === "codex_local" ? (
           <div className="settings-row">
             <div className="settings-row-info">
               <div className="settings-row-label">Parallel Codex Sessions</div>
@@ -361,8 +559,9 @@ function ModelConfigSection() {
                 className="settings-runtime-select"
                 value={String(effectiveCodexLocalMaxConcurrency)}
                 onChange={(e) =>
-                  handleCodexLocalMaxConcurrencyChange(e.target.value)
+                  void handleCodexLocalMaxConcurrencyChange(e.target.value)
                 }
+                disabled={isSavingRuntimePreference}
               >
                 {CODEX_LOCAL_CONCURRENCY_OPTIONS.map((value) => (
                   <option key={value} value={value}>
@@ -382,72 +581,94 @@ function ModelConfigSection() {
             type="button"
             variant="ghost"
             className="settings-btn settings-btn--reset-all"
-            onClick={handleResetAll}
+            onClick={() => void handleResetAll()}
             style={{ visibility: hasAnyOverride ? "visible" : "hidden" }}
+            disabled={!modelPreferencesLoaded || isSavingModelPreferences}
           >
-            Reset All
+            {isSavingModelPreferences ? "Resetting..." : "Reset All"}
           </Button>
         </div>
         <p className="settings-card-desc">
           Override the default model for each agent type.
         </p>
-        {configurableAgents.map((agent) => {
-          const current = overrides[agent.key] ?? "";
-          return (
-            <div key={agent.key} className="settings-row">
-              <div className="settings-row-info">
-                <div className="settings-row-label">{agent.label}</div>
-                <div className="settings-row-sublabel">{agent.desc}</div>
-              </div>
-              <div className="settings-row-control">
-                {current && (
-                  <button
-                    className="settings-model-reset-icon"
-                    onClick={() => handleChange(agent.key, "")}
-                    title="Reset to default"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
+        {!isAuthenticated ? (
+          <p className="settings-card-desc">
+            Sign in to manage model settings.
+          </p>
+        ) : null}
+        {modelConfigError ? (
+          <p
+            className="settings-card-desc settings-card-desc--error"
+            role="alert"
+          >
+            {modelConfigError}
+          </p>
+        ) : null}
+        {isAuthenticated && !modelPreferencesLoaded ? (
+          <p className="settings-card-desc">Loading saved model settings...</p>
+        ) : null}
+        {modelPreferencesLoaded &&
+          configurableAgents.map((agent) => {
+            const current = overrides[agent.key] ?? "";
+            return (
+              <div key={agent.key} className="settings-row">
+                <div className="settings-row-info">
+                  <div className="settings-row-label">{agent.label}</div>
+                  <div className="settings-row-sublabel">{agent.desc}</div>
+                </div>
+                <div className="settings-row-control">
+                  {current && (
+                    <button
+                      className="settings-model-reset-icon"
+                      onClick={() => void handleChange(agent.key, "")}
+                      title="Reset to default"
+                      disabled={isSavingModelPreferences}
                     >
-                      <path d="M3 12a9 9 0 1 1 3 6.7" />
-                      <polyline points="3 7 3 13 9 13" />
-                    </svg>
-                  </button>
-                )}
-                <NativeSelect
-                  className="settings-model-select"
-                  value={current}
-                  onChange={(e) => handleChange(agent.key, e.target.value)}
-                >
-                  <option value="">
-                    {getDefaultModelOptionLabel(
-                      agent.key,
-                      defaultModelMap,
-                      resolvedDefaultModelMap,
-                      modelNamesById,
-                    )}
-                  </option>
-                  {groups.map((group) => (
-                    <optgroup key={group.provider} label={group.provider}>
-                      {group.models.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </NativeSelect>
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M3 12a9 9 0 1 1 3 6.7" />
+                        <polyline points="3 7 3 13 9 13" />
+                      </svg>
+                    </button>
+                  )}
+                  <NativeSelect
+                    className="settings-model-select"
+                    value={current}
+                    onChange={(e) =>
+                      void handleChange(agent.key, e.target.value)
+                    }
+                    disabled={isSavingModelPreferences}
+                  >
+                    <option value="">
+                      {getDefaultModelOptionLabel(
+                        agent.key,
+                        defaultModelMap,
+                        resolvedDefaultModelMap,
+                        modelNamesById,
+                      )}
+                    </option>
+                    {groups.map((group) => (
+                      <optgroup key={group.provider} label={group.provider}>
+                        {group.models.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </NativeSelect>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
       </div>
     </>
   );
