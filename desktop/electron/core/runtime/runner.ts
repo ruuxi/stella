@@ -273,10 +273,13 @@ export const createStellaHostRunner = ({
   let activeCallbacksRef: AgentCallbacks | null = null;
   let activeOrchestratorRunId: string | null = null;
   let activeOrchestratorConversationId: string | null = null;
+  let activeOrchestratorRunKind: "foreground" | "background" | null = null;
+  let activeBackgroundTurnPayload: QueuedOrchestratorTurn | null = null;
   let activeSearchHtmlPrompts: SearchHtmlPromptConfig | undefined;
   const queuedOrchestratorTurns: QueuedOrchestratorTurn[] = [];
   const activeRunAbortControllers = new Map<string, AbortController>();
   const conversationCallbacks = new Map<string, AgentCallbacks>();
+  const suppressedBackgroundRunIds = new Set<string>();
 
   const skillsPath = path.join(StellaHome, "skills");
   const coreSkillsPath = path.join(StellaHome, "core-skills");
@@ -536,11 +539,50 @@ export const createStellaHostRunner = ({
     };
   };
 
-  const queueOrchestratorTurn = (turn: QueuedOrchestratorTurn) => {
-    queuedOrchestratorTurns.push(turn);
+  const queueOrchestratorTurn = (
+    turn: QueuedOrchestratorTurn,
+    options?: { front?: boolean },
+  ) => {
+    if (options?.front) {
+      queuedOrchestratorTurns.unshift(turn);
+    } else {
+      queuedOrchestratorTurns.push(turn);
+    }
     queueMicrotask(() => {
       void drainQueuedOrchestratorTurns();
     });
+  };
+
+  const clearActiveOrchestratorRun = (runId: string) => {
+    if (activeOrchestratorRunId !== runId) {
+      return;
+    }
+    activeOrchestratorRunId = null;
+    activeOrchestratorConversationId = null;
+    activeOrchestratorRunKind = null;
+    activeBackgroundTurnPayload = null;
+    activeCallbacksRef = null;
+    activeSearchHtmlPrompts = undefined;
+  };
+
+  const preemptBackgroundOrchestratorTurn = () => {
+    if (!activeOrchestratorRunId || activeOrchestratorRunKind !== "background") {
+      return false;
+    }
+
+    const runId = activeOrchestratorRunId;
+    const queuedTurn = activeBackgroundTurnPayload;
+    const abortController = activeRunAbortControllers.get(runId) ?? null;
+
+    if (queuedTurn) {
+      queuedOrchestratorTurns.unshift(queuedTurn);
+    }
+
+    suppressedBackgroundRunIds.add(runId);
+    clearActiveOrchestratorRun(runId);
+    activeRunAbortControllers.delete(runId);
+    abortController?.abort(new Error("Preempted by foreground orchestrator turn"));
+    return true;
   };
 
   const startBackgroundOrchestratorTurn = async (
@@ -576,6 +618,8 @@ export const createStellaHostRunner = ({
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
+    activeOrchestratorRunKind = "background";
+    activeBackgroundTurnPayload = payload;
     activeCallbacksRef = callbacks;
     activeSearchHtmlPrompts = payload.searchHtmlPrompts;
 
@@ -584,12 +628,7 @@ export const createStellaHostRunner = ({
 
     const cleanupRun = () => {
       activeRunAbortControllers.delete(runId);
-      if (activeOrchestratorRunId === runId) {
-        activeOrchestratorRunId = null;
-        activeOrchestratorConversationId = null;
-        activeCallbacksRef = null;
-        activeSearchHtmlPrompts = undefined;
-      }
+      clearActiveOrchestratorRun(runId);
       queueMicrotask(() => {
         void drainQueuedOrchestratorTurns();
       });
@@ -600,12 +639,20 @@ export const createStellaHostRunner = ({
       onToolStart: callbacks.onToolStart,
       onToolEnd: callbacks.onToolEnd,
       onError: (event) => {
+        if (suppressedBackgroundRunIds.delete(runId)) {
+          cleanupRun();
+          return;
+        }
         callbacks.onError(event);
         if (event.fatal) {
           cleanupRun();
         }
       },
       onEnd: (event) => {
+        if (suppressedBackgroundRunIds.delete(runId)) {
+          cleanupRun();
+          return;
+        }
         cleanupRun();
         callbacks.onEnd(event);
       },
@@ -630,6 +677,10 @@ export const createStellaHostRunner = ({
       webSearch,
       hookEmitter,
     }).catch((error) => {
+      if (suppressedBackgroundRunIds.delete(runId)) {
+        cleanupRun();
+        return;
+      }
       cleanupRun();
       callbacks.onError({
         runId,
@@ -885,6 +936,8 @@ export const createStellaHostRunner = ({
     disposeConvexClient();
     activeOrchestratorRunId = null;
     activeOrchestratorConversationId = null;
+    activeOrchestratorRunKind = null;
+    activeBackgroundTurnPayload = null;
     activeSearchHtmlPrompts = undefined;
     for (const controller of activeRunAbortControllers.values()) {
       controller.abort();
@@ -931,6 +984,10 @@ export const createStellaHostRunner = ({
       throw new Error(health.reason ?? "Stella runtime not ready");
     }
 
+    if (activeOrchestratorRunKind === "background") {
+      preemptBackgroundOrchestratorTurn();
+    }
+
     if (activeOrchestratorRunId) {
       throw new Error("The orchestrator is already running. Wait for it to finish before starting another run.");
     }
@@ -964,6 +1021,8 @@ export const createStellaHostRunner = ({
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
+    activeOrchestratorRunKind = "foreground";
+    activeBackgroundTurnPayload = null;
     activeCallbacksRef = callbacks;
     conversationCallbacks.set(conversationId, callbacks);
     activeSearchHtmlPrompts = payload.searchHtmlPrompts;
@@ -973,12 +1032,7 @@ export const createStellaHostRunner = ({
 
     const cleanupRun = () => {
       activeRunAbortControllers.delete(runId);
-      if (activeOrchestratorRunId === runId) {
-        activeOrchestratorRunId = null;
-        activeOrchestratorConversationId = null;
-        activeCallbacksRef = null;
-        activeSearchHtmlPrompts = undefined;
-      }
+      clearActiveOrchestratorRun(runId);
       queueMicrotask(() => {
         void drainQueuedOrchestratorTurns();
       });
@@ -1050,6 +1104,10 @@ export const createStellaHostRunner = ({
       };
     }
 
+    if (activeOrchestratorRunKind === "background") {
+      preemptBackgroundOrchestratorTurn();
+    }
+
     if (activeOrchestratorRunId) {
       return {
         status: "busy",
@@ -1086,6 +1144,8 @@ export const createStellaHostRunner = ({
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
+    activeOrchestratorRunKind = "foreground";
+    activeBackgroundTurnPayload = null;
     activeSearchHtmlPrompts = undefined;
 
     const abortController = new AbortController();
@@ -1093,11 +1153,7 @@ export const createStellaHostRunner = ({
 
     const cleanupRun = () => {
       activeRunAbortControllers.delete(runId);
-      if (activeOrchestratorRunId === runId) {
-        activeOrchestratorRunId = null;
-        activeOrchestratorConversationId = null;
-        activeSearchHtmlPrompts = undefined;
-      }
+      clearActiveOrchestratorRun(runId);
       queueMicrotask(() => {
         void drainQueuedOrchestratorTurns();
       });
@@ -1156,7 +1212,7 @@ export const createStellaHostRunner = ({
   const remoteTurnBridge = createRemoteTurnBridge({
     deviceId,
     isEnabled: () => isRunning && cloudSyncEnabled,
-    isRunnerBusy: () => Boolean(activeOrchestratorRunId),
+    isRunnerBusy: () => activeOrchestratorRunKind === "foreground",
     subscribeRemoteTurnRequests: ({
       deviceId: targetDeviceId,
       since,
@@ -1227,15 +1283,15 @@ export const createStellaHostRunner = ({
     if (!controller) return;
     controller.abort();
     activeRunAbortControllers.delete(runId);
-    if (activeOrchestratorRunId === runId) {
-      activeOrchestratorRunId = null;
-      activeOrchestratorConversationId = null;
-      activeSearchHtmlPrompts = undefined;
-    }
+    clearActiveOrchestratorRun(runId);
   };
 
   const getActiveOrchestratorRun = (): { runId: string; conversationId: string } | null => {
-    if (!activeOrchestratorRunId || !activeOrchestratorConversationId) {
+    if (
+      !activeOrchestratorRunId ||
+      !activeOrchestratorConversationId ||
+      activeOrchestratorRunKind !== "foreground"
+    ) {
       return null;
     }
     return {
