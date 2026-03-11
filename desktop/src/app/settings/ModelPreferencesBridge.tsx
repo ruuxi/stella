@@ -1,7 +1,11 @@
 import { useEffect, useMemo } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/api";
-import { normalizeModelOverrides } from "@/app/settings/lib/model-defaults";
+import {
+  buildModelDefaultsMap,
+  normalizeModelOverrides,
+  type ModelDefaultEntry,
+} from "@/app/settings/lib/model-defaults";
 
 export const ModelPreferencesBridge = () => {
   const { isAuthenticated } = useConvexAuth();
@@ -10,6 +14,10 @@ export const ModelPreferencesBridge = () => {
     api.data.preferences.getModelOverrides,
     shouldQueryPreferences,
   ) as string | undefined;
+  const modelDefaults = useQuery(
+    api.data.preferences.getModelDefaults,
+    shouldQueryPreferences,
+  ) as ModelDefaultEntry[] | undefined;
   const generalAgentEngine = useQuery(
     api.data.preferences.getGeneralAgentEngine,
     shouldQueryPreferences,
@@ -27,10 +35,16 @@ export const ModelPreferencesBridge = () => {
   const preferencesLoaded =
     !isAuthenticated
     || (
-      overridesJson !== undefined
+      modelDefaults !== undefined
+      && overridesJson !== undefined
       && generalAgentEngine !== undefined
       && codexLocalMaxConcurrency !== undefined
     );
+
+  const defaultModels = useMemo(
+    () => buildModelDefaultsMap(modelDefaults),
+    [modelDefaults],
+  );
 
   const modelOverrides = useMemo<Record<string, string>>(() => {
     if (!overridesJson) {
@@ -38,11 +52,14 @@ export const ModelPreferencesBridge = () => {
     }
 
     try {
-      return normalizeModelOverrides(JSON.parse(overridesJson) as Record<string, string>);
+      return normalizeModelOverrides(
+        JSON.parse(overridesJson) as Record<string, string>,
+        defaultModels,
+      );
     } catch {
       return {};
     }
-  }, [overridesJson]);
+  }, [defaultModels, overridesJson]);
 
   useEffect(() => {
     const systemApi = window.electronAPI?.system;
@@ -57,11 +74,19 @@ export const ModelPreferencesBridge = () => {
     }
 
     void systemApi.syncLocalModelPreferences({
+      defaultModels,
       modelOverrides,
       generalAgentEngine: generalAgentEngine ?? "default",
       codexLocalMaxConcurrency: codexLocalMaxConcurrency ?? 3,
     });
-  }, [codexLocalMaxConcurrency, generalAgentEngine, isAuthenticated, modelOverrides, preferencesLoaded]);
+  }, [
+    codexLocalMaxConcurrency,
+    defaultModels,
+    generalAgentEngine,
+    isAuthenticated,
+    modelOverrides,
+    preferencesLoaded,
+  ]);
 
   return null;
 };
