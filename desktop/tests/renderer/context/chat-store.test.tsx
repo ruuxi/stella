@@ -191,6 +191,34 @@ describe("ChatStoreProvider", () => {
         }),
       );
     });
+
+    it("records task lifecycle events locally", () => {
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      act(() => {
+        result.current.appendAgentEvent({
+          conversationId: "conv-1",
+          type: "task-started",
+          taskId: "task-1",
+          description: "Restyle dashboard",
+          agentType: "general",
+          parentTaskId: "parent-1",
+        });
+      });
+
+      expect(mockAppendLocalEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          type: "task_started",
+          payload: {
+            taskId: "task-1",
+            description: "Restyle dashboard",
+            agentType: "general",
+            parentTaskId: "parent-1",
+          },
+        }),
+      );
+    });
   });
 
   describe("uploadAttachments", () => {
