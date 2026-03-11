@@ -11,6 +11,7 @@ import {
   isAssistantMessage,
   isTaskStarted,
   isTaskCompleted,
+  isTaskCanceled,
   isTaskFailed,
   isTaskProgress,
   extractToolTitle,
@@ -302,6 +303,27 @@ describe("extractTasksFromEvents", () => {
     expect(tasks[0].status).toBe("error");
   });
 
+  it("marks tasks as canceled and keeps them out of the running set", () => {
+    const events = [
+      createEvent({
+        type: "task_started",
+        payload: { taskId: "t1", description: "Work", agentType: "general" },
+      }),
+      createEvent({
+        type: "task_progress",
+        payload: { taskId: "t1", statusText: "Using Bash" },
+      }),
+      createEvent({
+        type: "task_canceled",
+        payload: { taskId: "t1", error: "Canceled by user" },
+      }),
+    ];
+    const tasks = extractTasksFromEvents(events);
+    expect(tasks[0].status).toBe("canceled");
+    expect(tasks[0].outputPreview).toBe("Canceled by user");
+    expect(getRunningTasks(events)).toEqual([]);
+  });
+
   it("attaches statusText from task_progress", () => {
     const events = [
       createEvent({
@@ -370,6 +392,14 @@ describe("type guards - tasks", () => {
     expect(
       isTaskFailed(
         createEvent({ type: "task_failed", payload: { taskId: "t1" } }),
+      ),
+    ).toBe(true);
+  });
+
+  it("isTaskCanceled identifies task_canceled events", () => {
+    expect(
+      isTaskCanceled(
+        createEvent({ type: "task_canceled", payload: { taskId: "t1" } }),
       ),
     ).toBe(true);
   });

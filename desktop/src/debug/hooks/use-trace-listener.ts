@@ -10,6 +10,7 @@ import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import {
   isTaskStarted,
   isTaskCompleted,
+  isTaskCanceled,
   isTaskFailed,
   isTaskProgress,
   isToolRequest,
@@ -25,6 +26,7 @@ import {
   traceStreamEnd,
   traceTaskStarted,
   traceTaskCompleted,
+  traceTaskCanceled,
   traceTaskFailed,
   traceTaskProgress,
   traceUserMessage,
@@ -88,6 +90,9 @@ export function useTraceIpcListener(enabled: boolean) {
         case "task-completed":
           traceTaskCompleted(event.taskId ?? "unknown", event.result);
           break;
+        case "task-canceled":
+          traceTaskCanceled(event.taskId ?? "unknown", event.error);
+          break;
         case "task-failed":
           traceTaskFailed(event.taskId ?? "unknown", event.error);
           break;
@@ -144,6 +149,11 @@ export function useTraceEventMonitor(
 
       if (isTaskFailed(event)) {
         traceTaskFailed(event.payload.taskId, event.payload.error);
+        continue;
+      }
+
+      if (isTaskCanceled(event)) {
+        traceTaskCanceled(event.payload.taskId, event.payload.error);
         continue;
       }
 

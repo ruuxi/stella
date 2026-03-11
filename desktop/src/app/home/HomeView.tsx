@@ -125,7 +125,10 @@ export function HomeView({ conversationId }: HomeViewProps) {
       description: task.agentType,
       lastRunAtMs: task.lastUpdatedAtMs,
       lastStatus: task.status,
-      outputPreview: task.statusText ?? task.outputPreview,
+      outputPreview:
+        task.status === "running"
+          ? task.statusText ?? task.outputPreview
+          : task.outputPreview ?? task.statusText,
     }))
 
     return [...tasks, ...scheduleItems].sort(

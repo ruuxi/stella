@@ -35,6 +35,7 @@ type AgentEventPayload = {
     | "task-started"
     | "task-completed"
     | "task-failed"
+    | "task-canceled"
     | "task-progress";
   runId: string;
   seq: number;

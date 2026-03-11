@@ -162,7 +162,8 @@ const estimateContextEventTokens = (event: {
   if (
     event.type === "task_started" ||
     event.type === "task_completed" ||
-    event.type === "task_failed"
+    event.type === "task_failed" ||
+    event.type === "task_canceled"
   ) {
     return clampEventTokens(
       estimateTextTokens(payload.description) +

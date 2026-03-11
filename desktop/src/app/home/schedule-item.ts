@@ -17,7 +17,7 @@ export type TaskActivityItem = {
   description?: string
   nextRunAtMs?: number
   lastRunAtMs: number
-  lastStatus?: "running" | "completed" | "error"
+  lastStatus?: "running" | "completed" | "error" | "canceled"
   outputPreview?: string
 }
 

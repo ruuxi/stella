@@ -964,6 +964,10 @@
   background: oklch(0.7 0.15 230);
   box-shadow: 0 0 6px oklch(0.7 0.15 230 / 0.4);
 }
+.activity-feed-dot[data-status="canceled"] {
+  background: oklch(0.7 0.15 85);
+  box-shadow: 0 0 6px oklch(0.7 0.15 85 / 0.35);
+}
 .activity-feed-dot[data-status="none"] {
   background: color-mix(in oklch, var(--foreground) 20%, transparent);
 }
