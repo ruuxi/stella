@@ -5,6 +5,7 @@ import { generateText } from "ai";
 import { createManagedModel, MANAGED_GATEWAY } from "../agent/model";
 import { resolveModelConfig } from "../agent/model_resolver";
 import {
+  buildCategoryAnalysisUserMessage,
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
   buildWelcomeSuggestionsPrompt,
@@ -24,7 +25,12 @@ import {
 import { getClientAddressKey } from "../lib/http_utils";
 
 type SynthesizeRequest = {
-  formattedSignals: string;
+  /** @deprecated Use formattedSections instead */
+  formattedSignals?: string;
+  formattedSections?: Record<string, string>;
+  /** Per-category system prompts keyed by category ID */
+  categoryAnalysisSystemPrompts?: Record<string, string>;
+  categoryAnalysisUserPromptTemplate?: string;
   coreMemorySystemPrompt?: string;
   coreMemoryUserPromptTemplate?: string;
   welcomeMessagePromptTemplate?: string;
@@ -73,9 +79,18 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           return errorResponse(400, "Invalid JSON body", origin);
         }
 
-        if (!body?.formattedSignals) {
-          return errorResponse(400, "formattedSignals is required", origin);
+        // Support both new (formattedSections) and legacy (formattedSignals) paths
+        const hasFormattedSections =
+          body?.formattedSections &&
+          typeof body.formattedSections === "object" &&
+          Object.keys(body.formattedSections).length > 0;
+        const hasFormattedSignals =
+          body?.formattedSignals && typeof body.formattedSignals === "string";
+
+        if (!hasFormattedSections && !hasFormattedSignals) {
+          return errorResponse(400, "formattedSections or formattedSignals is required", origin);
         }
+
         const coreMemorySystemPrompt = body.coreMemorySystemPrompt?.trim();
         const coreMemoryUserPromptTemplate = body.coreMemoryUserPromptTemplate?.trim();
         const welcomeMessagePromptTemplate = body.welcomeMessagePromptTemplate?.trim();
@@ -88,6 +103,9 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
         ) {
           return errorResponse(400, "Missing synthesis prompt payload", origin);
         }
+
+        const categoryAnalysisSystemPrompts = body.categoryAnalysisSystemPrompts;
+        const categoryAnalysisUserPromptTemplate = body.categoryAnalysisUserPromptTemplate?.trim();
 
         const apiKey = process.env[MANAGED_GATEWAY.apiKeyEnvVar];
         if (!apiKey) {
@@ -128,13 +146,78 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
               ? createManagedModel(synthesisConfig.model)
               : synthesisConfig.model;
 
+          // -----------------------------------------------------------
+          // Stage 1: Per-category analysis (parallel) or legacy path
+          // -----------------------------------------------------------
+          let synthesisInput: string;
+
+          if (
+            hasFormattedSections &&
+            categoryAnalysisSystemPrompts &&
+            Object.keys(categoryAnalysisSystemPrompts).length > 0 &&
+            categoryAnalysisUserPromptTemplate
+          ) {
+            // New two-stage path: analyze each category with its own system prompt
+            const sections = body.formattedSections!;
+            const categoryKeys = Object.keys(sections).filter(
+              (k) => sections[k] && sections[k].trim().length > 0,
+            );
+
+            console.log(
+              `[synthesize] Running category analysis for ${categoryKeys.length} categories:`,
+              categoryKeys,
+            );
+
+            const analysisResults = await Promise.all(
+              categoryKeys.map(async (category) => {
+                const systemPrompt = categoryAnalysisSystemPrompts[category];
+                if (!systemPrompt) {
+                  // No specific prompt for this category — pass raw data through
+                  return { category, analysis: sections[category] };
+                }
+                const result = await generateText({
+                  model: synthesisModel,
+                  system: systemPrompt,
+                  messages: [{
+                    role: "user",
+                    content: buildCategoryAnalysisUserMessage(
+                      category,
+                      sections[category],
+                      categoryAnalysisUserPromptTemplate,
+                    ),
+                  }],
+                  maxOutputTokens: 8000,
+                  temperature: synthesisConfig.temperature,
+                  providerOptions: synthesisConfig.providerOptions,
+                });
+                return { category, analysis: result.text?.trim() ?? "" };
+              }),
+            );
+
+            // Combine category analyses for core memory synthesis
+            synthesisInput = analysisResults
+              .filter((r) => r.analysis.length > 0)
+              .map((r) => r.analysis)
+              .join("\n\n");
+
+            console.log(
+              `[synthesize] Category analyses complete. Combined length: ${synthesisInput.length} chars`,
+            );
+          } else {
+            // Legacy path: use pre-combined formatted signals
+            synthesisInput = body.formattedSignals!;
+          }
+
+          // -----------------------------------------------------------
+          // Stage 2: Core memory synthesis
+          // -----------------------------------------------------------
           const synthesisResult = await generateText({
             model: synthesisModel,
             system: coreMemorySystemPrompt,
             messages: [{
               role: "user",
               content: buildCoreSynthesisUserMessage(
-                body.formattedSignals,
+                synthesisInput,
                 coreMemoryUserPromptTemplate,
               ),
             }],
@@ -148,6 +231,9 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             return errorResponse(500, "Failed to synthesize core memory", origin);
           }
 
+          // -----------------------------------------------------------
+          // Stage 3: Welcome message + suggestions (parallel)
+          // -----------------------------------------------------------
           const welcomeConfig = await resolveModelConfig(ctx, "welcome", ownerId);
           const welcomeModel =
             typeof welcomeConfig.model === "string"
