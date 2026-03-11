@@ -16,6 +16,7 @@ function defaultProps(overrides: Partial<Parameters<typeof MiniInput>[0]> = {}) 
     isStreaming: false,
     shellVisible: true,
     onSend: vi.fn(),
+    onStop: vi.fn(),
     ...overrides,
   };
 }
@@ -97,6 +98,14 @@ describe("MiniInput", () => {
       <MiniInput {...defaultProps({ isStreaming: true })} />,
     );
     expect(container.querySelector(".mini-composer-stop")).toBeTruthy();
+  });
+
+  it("calls onStop when the stop button is clicked", () => {
+    const onStop = vi.fn();
+    render(<MiniInput {...defaultProps({ isStreaming: true, onStop })} />);
+
+    fireEvent.click(screen.getByLabelText("Stop"));
+    expect(onStop).toHaveBeenCalledTimes(1);
   });
 
   it("calls setSelectedText(null) on Backspace when message is empty and selectedText exists", () => {

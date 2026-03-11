@@ -39,6 +39,7 @@ export type ComposerState = {
   setSelectedText: React.Dispatch<React.SetStateAction<string | null>>;
   canSubmit: boolean;
   onSend: () => void;
+  onStop: () => void;
 };
 
 export type OnboardingState = {
@@ -239,6 +240,7 @@ export const ChatColumn = memo(function ChatColumn({
             canSubmit={composer.canSubmit}
             conversationId={conversationId}
             onSend={composer.onSend}
+            onStop={composer.onStop}
           />
         </div>
       )}

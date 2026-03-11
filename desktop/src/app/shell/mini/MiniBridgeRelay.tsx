@@ -15,10 +15,11 @@ type MiniBridgeRelayProps = {
   isStreaming: boolean;
   pendingUserMessageId: string | null;
   sendMessage: (args: SendMessageArgs) => Promise<void>;
+  cancelCurrentStream: () => void;
 };
 
 const toSnapshot = (
-  props: Omit<MiniBridgeRelayProps, "sendMessage">,
+  props: Omit<MiniBridgeRelayProps, "sendMessage" | "cancelCurrentStream">,
 ): MiniBridgeSnapshot => ({
   conversationId: props.conversationId,
   events: props.events as unknown as MiniBridgeSnapshot["events"],
@@ -41,6 +42,7 @@ export function MiniBridgeRelay({
   isStreaming,
   pendingUserMessageId,
   sendMessage,
+  cancelCurrentStream,
 }: MiniBridgeRelayProps) {
   const snapshot = useMemo(
     () =>
@@ -64,6 +66,7 @@ export function MiniBridgeRelay({
 
   const snapshotRef = useRef(snapshot);
   const sendMessageRef = useRef(sendMessage);
+  const cancelCurrentStreamRef = useRef(cancelCurrentStream);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -72,6 +75,10 @@ export function MiniBridgeRelay({
   useEffect(() => {
     sendMessageRef.current = sendMessage;
   }, [sendMessage]);
+
+  useEffect(() => {
+    cancelCurrentStreamRef.current = cancelCurrentStream;
+  }, [cancelCurrentStream]);
 
   useEffect(() => {
     window.electronAPI?.mini.pushUpdate?.({
@@ -103,6 +110,21 @@ export function MiniBridgeRelay({
           type: "query:snapshot",
           snapshot: snapshotRef.current,
         });
+        return;
+      }
+
+      if (request.type === "mutation:cancelStream") {
+        const activeConversationId = snapshotRef.current.conversationId;
+        if (!activeConversationId || request.conversationId !== activeConversationId) {
+          reply(
+            requestId,
+            toErrorResponse("Conversation mismatch between mini and full windows"),
+          );
+          return;
+        }
+
+        cancelCurrentStreamRef.current();
+        reply(requestId, { type: "mutation:cancelStream", accepted: true });
         return;
       }
 

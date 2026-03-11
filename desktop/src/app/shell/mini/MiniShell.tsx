@@ -32,6 +32,7 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
     pendingUserMessageId,
     events,
     sendMessage,
+    cancelStream,
   } = useMiniChat({
     isActive: shellVisible || previewIndex !== null,
     chatContext,
@@ -85,6 +86,9 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
   const handleSend = useCallback(() => {
     void sendMessage();
   }, [sendMessage]);
+  const handleStop = useCallback(() => {
+    void cancelStream();
+  }, [cancelStream]);
   const closePreview = useCallback(() => {
     setPreviewIndex(null);
   }, [setPreviewIndex]);
@@ -170,6 +174,7 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
           setPreviewIndex={setPreviewIndex}
           isStreaming={isStreaming}
           onSend={handleSend}
+          onStop={handleStop}
         />
       </div>
 
@@ -201,5 +206,4 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
     </div>
   );
 };
-
 

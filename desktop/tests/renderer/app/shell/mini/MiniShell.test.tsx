@@ -32,6 +32,7 @@ const miniChatDefaults = {
   pendingUserMessageId: null as string | null,
   events: [] as any[],
   sendMessage: vi.fn(),
+  cancelStream: vi.fn(),
 };
 
 let miniChatOverrides: Partial<typeof miniChatDefaults> = {};
