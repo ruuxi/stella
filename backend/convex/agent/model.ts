@@ -84,7 +84,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["baseten, fireworks, amazon-bedrock"],
+        order: ["fireworks, baseten, amazon-bedrock"],
       },
     },
   },
@@ -99,7 +99,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["baseten, fireworks, amazon-bedrock"],
+        order: ["fireworks, baseten, amazon-bedrock"],
       },
     },
   },
