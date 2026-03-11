@@ -360,7 +360,10 @@ export type ElectronSystemApi = {
 
 export type ElectronBrowserApi = {
   checkCoreMemoryExists: () => Promise<boolean>;
-  collectData: () => Promise<BrowserDataResult>;
+  collectData: (options?: {
+    selectedBrowser?: string;
+    selectedProfile?: string;
+  }) => Promise<BrowserDataResult>;
   detectPreferred: () => Promise<PreferredBrowserProfile>;
   listProfiles: (browserType: string) => Promise<BrowserProfile[]>;
   writeCoreMemory: (
@@ -368,6 +371,8 @@ export type ElectronBrowserApi = {
   ) => Promise<{ ok: boolean; error?: string }>;
   collectAllSignals: (options?: {
     categories?: DiscoveryCategory[];
+    selectedBrowser?: string;
+    selectedProfile?: string;
   }) => Promise<AllUserSignalsResult>;
   listWorkspacePanels: () => Promise<Array<{ name: string; title: string }>>;
   onWorkspacePanelsChanged: (

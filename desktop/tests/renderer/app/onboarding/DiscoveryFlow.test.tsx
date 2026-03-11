@@ -30,6 +30,7 @@ vi.mock("@/app/onboarding/services/synthesis", () => ({
 }));
 
 const BROWSER_SELECTION_KEY = "stella-selected-browser";
+const BROWSER_PROFILE_KEY = "stella-selected-browser-profile";
 
 function defaultOptions() {
   return {
@@ -533,5 +534,39 @@ describe("useDiscoveryFlow", () => {
     });
 
     expect(synthesizeCoreMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards the selected browser profile during discovery collection", async () => {
+    const collectAllSignals = vi.fn(() =>
+      Promise.resolve({ formattedSections: "signals", error: null }),
+    );
+
+    localStorage.setItem(BROWSER_SELECTION_KEY, "chrome");
+    localStorage.setItem(BROWSER_PROFILE_KEY, "Profile 2");
+    (window as unknown as Record<string, unknown>).electronAPI = {
+      browser: {
+        checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
+        collectAllSignals,
+        writeCoreMemory: vi.fn(() => Promise.resolve()),
+      },
+    };
+
+    const { result } = renderHook(() =>
+      useDiscoveryFlow({
+        conversationId: "conv-profile",
+      }),
+    );
+
+    act(() => {
+      result.current.handleDiscoveryConfirm(["dev_environment"]);
+    });
+
+    await vi.waitFor(() => {
+      expect(collectAllSignals).toHaveBeenCalledWith({
+        categories: ["browsing_bookmarks", "dev_environment"],
+        selectedBrowser: "chrome",
+        selectedProfile: "Profile 2",
+      });
+    });
   });
 });

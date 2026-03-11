@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import type { BrowserBookmarks, BookmarkEntry } from "./discovery-types.js";
+import type { BrowserType } from "../../src/shared/contracts/electron-data.js";
 
 const log = (...args: unknown[]) =>
   console.log("[browser-bookmarks]", ...args);
@@ -38,6 +39,18 @@ interface BookmarksFile {
     synced?: BookmarkNode;
   };
 }
+
+type BookmarkCollectionOptions = {
+  selectedBrowser?: BrowserType | null;
+  selectedProfile?: string | null;
+};
+
+type BrowserBookmarkConfig = {
+  id: BrowserType;
+  name: string;
+  basePath: string;
+  profiles: string[];
+};
 
 function walkBookmarkTree(
   node: unknown,
@@ -78,15 +91,18 @@ function walkBookmarkTree(
   return entries;
 }
 
-export async function collectBrowserBookmarks(): Promise<BrowserBookmarks | null> {
+export async function collectBrowserBookmarks(
+  options: BookmarkCollectionOptions = {},
+): Promise<BrowserBookmarks | null> {
   const appDataDir = getAppDataDir();
   const roamingAppDataDir = getRoamingAppDataDir();
   const platform = os.platform();
 
   const defaultChromiumProfiles = ["Default", "Profile 1", "Profile 2", "Profile 3"];
 
-  const browsers: Array<{ name: string; basePath: string; profiles: string[] }> = [
+  const browsers: BrowserBookmarkConfig[] = [
     {
+      id: "chrome",
       name: "Chrome",
       basePath:
         platform === "darwin"
@@ -95,11 +111,13 @@ export async function collectBrowserBookmarks(): Promise<BrowserBookmarks | null
       profiles: defaultChromiumProfiles,
     },
     {
+      id: "arc",
       name: "Arc",
       basePath: path.join(appDataDir, "Arc", "User Data"),
       profiles: defaultChromiumProfiles,
     },
     {
+      id: "edge",
       name: "Edge",
       basePath:
         platform === "darwin"
@@ -108,6 +126,7 @@ export async function collectBrowserBookmarks(): Promise<BrowserBookmarks | null
       profiles: defaultChromiumProfiles,
     },
     {
+      id: "brave",
       name: "Brave",
       basePath:
         platform === "darwin"
@@ -116,6 +135,7 @@ export async function collectBrowserBookmarks(): Promise<BrowserBookmarks | null
       profiles: defaultChromiumProfiles,
     },
     {
+      id: "vivaldi",
       name: "Vivaldi",
       basePath:
         platform === "darwin"
@@ -124,6 +144,7 @@ export async function collectBrowserBookmarks(): Promise<BrowserBookmarks | null
       profiles: defaultChromiumProfiles,
     },
     {
+      id: "opera",
       name: "Opera",
       basePath:
         platform === "darwin"
@@ -135,8 +156,16 @@ export async function collectBrowserBookmarks(): Promise<BrowserBookmarks | null
     },
   ];
 
-  for (const browser of browsers) {
-    for (const profile of browser.profiles) {
+  const browsersToScan = options.selectedBrowser
+    ? browsers.filter((browser) => browser.id === options.selectedBrowser)
+    : browsers;
+
+  for (const browser of browsersToScan) {
+    const profilesToScan = options.selectedProfile
+      ? [options.selectedProfile]
+      : browser.profiles;
+
+    for (const profile of profilesToScan) {
       try {
         const bookmarksPath = profile
           ? path.join(browser.basePath, profile, "Bookmarks")
@@ -191,7 +220,13 @@ export async function collectBrowserBookmarks(): Promise<BrowserBookmarks | null
     }
   }
 
-  log("No bookmarks found in any browser");
+  if (options.selectedBrowser) {
+    log(
+      `No bookmarks found for selected browser${options.selectedProfile ? ` profile ${options.selectedProfile}` : ""}: ${options.selectedBrowser}`,
+    );
+  } else {
+    log("No bookmarks found in any browser");
+  }
   return null;
 }
 

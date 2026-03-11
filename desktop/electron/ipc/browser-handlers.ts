@@ -32,7 +32,10 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
 
   ipcMain.handle(
     "browserData:collect",
-    async (event): Promise<{
+    async (
+      event,
+      collectOptions?: { selectedBrowser?: BrowserType; selectedProfile?: string },
+    ): Promise<{
       data: BrowserData | null;
       formatted: string | null;
       error?: string;
@@ -49,7 +52,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         };
       }
       try {
-        const data = await collectBrowserData(stellaHomePath);
+        const data = await collectBrowserData(stellaHomePath, collectOptions);
         const formatted = formatBrowserDataForSynthesis(data);
         return { data, formatted };
       } catch (error) {
@@ -105,7 +108,11 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     "signals:collectAll",
     async (
       event,
-      ipcOptions?: { categories?: string[] },
+      ipcOptions?: {
+        categories?: string[];
+        selectedBrowser?: string;
+        selectedProfile?: string;
+      },
     ): Promise<AllUserSignalsResult> => {
       if (!options.assertPrivilegedSender(event, "signals:collectAll")) {
         throw new Error("Blocked untrusted request.");
@@ -121,7 +128,12 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       const categories = ipcOptions?.categories as
         | DiscoveryCategory[]
         | undefined;
-      return collectAllSignals(stellaHomePath, categories);
+      return collectAllSignals(
+        stellaHomePath,
+        categories,
+        ipcOptions?.selectedBrowser,
+        ipcOptions?.selectedProfile,
+      );
     },
   );
 

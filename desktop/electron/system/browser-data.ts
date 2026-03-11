@@ -21,6 +21,7 @@ import type {
   BrowserData,
   PreferredBrowserProfile,
   BrowserProfile,
+  ClusterKeyword,
 } from "../../src/shared/contracts/electron-data.js";
 
 export type {
@@ -30,7 +31,13 @@ export type {
   BrowserData,
   PreferredBrowserProfile,
   BrowserProfile,
+  ClusterKeyword,
 }
+
+export type BrowserCollectionOptions = {
+  selectedBrowser?: BrowserType | null;
+  selectedProfile?: string | null;
+};
 
 type SqliteDatabase = {
   prepare(sql: string): { all(...params: unknown[]): unknown[] };
@@ -733,6 +740,21 @@ ORDER BY visits DESC
 LIMIT 50
 `;
 
+// Query 5: Cluster keywords (Chrome's journey/research topics)
+const CLUSTER_KEYWORDS_QUERY = `
+SELECT ck.keyword, ck.score,
+       MAX(v.visit_time) as latest_visit
+FROM cluster_keywords ck
+JOIN clusters c ON c.cluster_id = ck.cluster_id
+JOIN clusters_and_visits cv ON cv.cluster_id = c.cluster_id
+JOIN visits v ON v.id = cv.visit_id
+WHERE v.visit_time > ?
+  AND LENGTH(ck.keyword) > 1
+GROUP BY ck.keyword
+ORDER BY latest_visit DESC
+LIMIT 40
+`;
+
 // ---------------------------------------------------------------------------
 // Main Collection Logic
 // ---------------------------------------------------------------------------
@@ -777,6 +799,94 @@ const findMostRecentlyModifiedBrowser = async (): Promise<{
   return winner;
 };
 
+const resolveSelectedBrowser = async (
+  options: BrowserCollectionOptions,
+): Promise<{
+  type: BrowserType;
+  historyPath: string;
+  profile: string | null;
+} | null> => {
+  const { selectedBrowser, selectedProfile } = options;
+  if (!selectedBrowser) return null;
+
+  if (selectedProfile) {
+    const historyPath = await getHistoryPathForBrowserProfile(
+      selectedBrowser,
+      selectedProfile,
+    );
+    if (!historyPath) {
+      log(
+        `Selected browser/profile not accessible: ${selectedBrowser} (${selectedProfile})`,
+      );
+      return null;
+    }
+
+    log(
+      `Using selected browser/profile: ${selectedBrowser} (${selectedProfile}) at ${historyPath}`,
+    );
+    return {
+      type: selectedBrowser,
+      historyPath,
+      profile: selectedProfile,
+    };
+  }
+
+  const lastProfile = await getMostRecentlyUsedProfile(selectedBrowser);
+  const historyPath = await getHistoryPathForBrowserProfile(
+    selectedBrowser,
+    lastProfile,
+  );
+  if (historyPath) {
+    log(
+      `Using selected browser: ${selectedBrowser} (${lastProfile} profile) at ${historyPath}`,
+    );
+    return {
+      type: selectedBrowser,
+      historyPath,
+      profile: lastProfile,
+    };
+  }
+
+  if (lastProfile !== "Default") {
+    const defaultHistoryPath = await getHistoryPathForBrowserProfile(
+      selectedBrowser,
+      "Default",
+    );
+    if (defaultHistoryPath) {
+      log(
+        `Using selected browser default profile: ${selectedBrowser} (Default) at ${defaultHistoryPath}`,
+      );
+      return {
+        type: selectedBrowser,
+        historyPath: defaultHistoryPath,
+        profile: "Default",
+      };
+    }
+  }
+
+  const platform = process.platform;
+  const historyPaths = getBrowserHistoryPaths(selectedBrowser, platform);
+  for (const fallbackHistoryPath of historyPaths) {
+    try {
+      await fs.access(fallbackHistoryPath);
+      const fallbackProfile = parseProfileFromHistoryPath(fallbackHistoryPath);
+      log(
+        `Using selected browser fallback path: ${selectedBrowser} (${fallbackProfile ?? "unknown profile"}) at ${fallbackHistoryPath}`,
+      );
+      return {
+        type: selectedBrowser,
+        historyPath: fallbackHistoryPath,
+        profile: fallbackProfile,
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  log(`Selected browser ${selectedBrowser} has no accessible history`);
+  return null;
+};
+
 /**
  * Find the user's browser with history data
  * 
@@ -786,11 +896,17 @@ const findMostRecentlyModifiedBrowser = async (): Promise<{
  * 3. Find most recently modified browser history
  * 4. Fall back to checking all browsers in priority order
  */
-const findBrowser = async (): Promise<{
+const findBrowserWithOptions = async (
+  options: BrowserCollectionOptions = {},
+): Promise<{
   type: BrowserType;
   historyPath: string;
   profile: string | null;
 } | null> => {
+  if (options.selectedBrowser) {
+    return resolveSelectedBrowser(options);
+  }
+
   const platform = process.platform;
 
   // Steps 1 & 2: Detect running browsers and OS default browser in parallel
@@ -1077,24 +1193,54 @@ const queryAllTimeDomains = (db: SqliteDatabase): DomainVisit[] => {
   }
 };
 
+/**
+ * Query Chrome's cluster keywords — research topics from browsing journeys.
+ * These are Chrome's own groupings of related browsing sessions.
+ */
+const queryClusterKeywords = (db: SqliteDatabase, sinceChromeTime: number): ClusterKeyword[] => {
+  try {
+    const rows = db.prepare(CLUSTER_KEYWORDS_QUERY).all(sinceChromeTime) as Array<{
+      keyword: string;
+      score: number;
+      latest_visit: number | bigint;
+    }>;
+
+    // Chrome timestamps: microseconds since 1601-01-01
+    // Convert to ms since Unix epoch: (chromeTime / 1000) - 11644473600000
+    const CHROME_TO_UNIX_MS = 11644473600000n;
+    return rows.map((r) => ({
+      keyword: r.keyword,
+      score: r.score,
+      lastVisit: Number(BigInt(r.latest_visit) / 1000n - CHROME_TO_UNIX_MS),
+    }));
+  } catch {
+    log("Cluster keywords table not available");
+    return [];
+  }
+};
+
 const emptyBrowserData = (browser: BrowserType | null = null): BrowserData => ({
   browser,
   clusterDomains: [],
   recentDomains: [],
   allTimeDomains: [],
   domainDetails: {},
+  clusterKeywords: [],
 });
 
 /**
  * Collect browser data from the user's default browser
  */
 export const collectBrowserData = async (
-  StellaHome: string
+  StellaHome: string,
+  options: BrowserCollectionOptions = {},
 ): Promise<BrowserData> => {
   log("Starting browser data collection...");
 
-  const browser = await findBrowser();
-  if (!browser) return emptyBrowserData();
+  const browser = await findBrowserWithOptions(options);
+  if (!browser) {
+    return emptyBrowserData(options.selectedBrowser ?? null);
+  }
 
   let tempDbPath: string | null = null;
   let db: SqliteDatabase | null = null;
@@ -1107,6 +1253,8 @@ export const collectBrowserData = async (
     const clusterDomains = queryClusterDomains(db);
     const recentDomains = queryRecentDomains(db);
     const rawAllTimeDomains = queryAllTimeDomains(db);
+    const thirtyDaysAgo = toChromeTime(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+    const clusterKeywords = queryClusterKeywords(db, thirtyDaysAgo);
 
     // Soft dedupe: exclude domains from all-time that already appear in recent
     const recentDomainSet = new Set(recentDomains.map((d) => d.domain.toLowerCase()));
@@ -1129,6 +1277,7 @@ export const collectBrowserData = async (
       recentDomains: recentDomains.length,
       allTimeDomains: allTimeDomains.length,
       domainDetails: Object.keys(domainDetails).length,
+      clusterKeywords: clusterKeywords.length,
     });
 
     return {
@@ -1137,6 +1286,7 @@ export const collectBrowserData = async (
       recentDomains,
       allTimeDomains,
       domainDetails,
+      clusterKeywords,
     };
   } catch (error) {
     log("Error collecting browser data:", error);
@@ -1209,11 +1359,24 @@ export const formatBrowserDataForSynthesis = (data: BrowserData): string => {
     }
   }
 
+  if (data.clusterKeywords?.length > 0) {
+    sections.push("\n### Research Topics (Last 30 Days)");
+    sections.push(
+      data.clusterKeywords
+        .map((k) => {
+          const daysAgo = Math.floor((Date.now() - k.lastVisit) / (24 * 60 * 60 * 1000));
+          const recency = daysAgo === 0 ? "today" : daysAgo === 1 ? "yesterday" : `${daysAgo}d ago`;
+          return `- ${k.keyword} (${recency})`;
+        })
+        .join("\n")
+    );
+  }
+
   return sections.join("\n");
 };
 
 export const detectPreferredBrowserProfile = async (): Promise<PreferredBrowserProfile> => {
-  const browser = await findBrowser();
+  const browser = await findBrowserWithOptions();
   if (!browser) {
     return { browser: null, profile: null };
   }

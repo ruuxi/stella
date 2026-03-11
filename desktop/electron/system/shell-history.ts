@@ -65,9 +65,11 @@ const isSensitiveCommand = (line: string): boolean => {
 // Dev Tools Detection
 // ---------------------------------------------------------------------------
 
-// Tools we care about tracking (dev-related)
+// Tools we care about tracking (dev-related + AI coding tools)
 const DEV_TOOLS = new Set([
+  // Version control
   "git",
+  // JS/TS
   "npm",
   "npx",
   "yarn",
@@ -76,44 +78,74 @@ const DEV_TOOLS = new Set([
   "bunx",
   "node",
   "deno",
+  // Python
   "python",
   "python3",
+  "py",
   "pip",
   "pip3",
+  "uv",
+  "poetry",
+  "conda",
+  // Rust
   "cargo",
   "rustc",
+  "rustup",
+  // Go
   "go",
+  // Containers & infra
   "docker",
   "docker-compose",
   "kubectl",
   "terraform",
+  "pulumi",
   "aws",
   "gcloud",
   "az",
+  // Editors & IDEs
   "code",
   "cursor",
   "vim",
   "nvim",
   "nano",
+  "zed",
+  "windsurf",
+  // Build tools
   "make",
   "cmake",
   "gradle",
   "mvn",
+  // .NET
   "dotnet",
+  // Ruby
   "ruby",
   "gem",
   "bundle",
+  // PHP
   "php",
   "composer",
+  // JVM
   "java",
   "javac",
   "scala",
   "sbt",
+  // Apple / mobile
   "swift",
   "xcodebuild",
   "flutter",
   "dart",
+  // Systems
   "zig",
+  // AI coding tools — high signal for user workflow
+  "claude",
+  "codex",
+  "gemini",
+  "aider",
+  "copilot",
+  "cody",
+  "continue",
+  "opencode",
+  "amp",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -318,8 +350,19 @@ export const formatShellAnalysisForSynthesis = (data: ShellAnalysis): string => 
   }
 
   if (data.projectPaths.length > 0) {
-    sections.push("\n### Working Directories");
-    sections.push(data.projectPaths.slice(0, 10).join("\n"));
+    // Filter out short relative paths that are meaningless without context
+    // Keep only paths that have at least 2 segments or are absolute
+    const meaningful = data.projectPaths.filter((p) => {
+      if (path.isAbsolute(p)) return true;
+      // Relative paths need at least 2 segments (e.g. "projects/stella")
+      const segments = p.split(/[\\/]+/).filter(Boolean);
+      return segments.length >= 2;
+    });
+
+    if (meaningful.length > 0) {
+      sections.push("\n### Working Directories");
+      sections.push(meaningful.slice(0, 10).join("\n"));
+    }
   }
 
   return sections.join("\n");
