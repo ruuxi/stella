@@ -117,6 +117,7 @@ export type RuntimeRunCallbacks = {
 
 type BaseRunOptions = {
   runId?: string;
+  rootRunId?: string;
   conversationId: string;
   userMessageId: string;
   agentType: string;
@@ -373,6 +374,7 @@ const formatToolResult = (toolResult: ToolResult): { text: string; details: unkn
 
 const createPiTools = (opts: {
   runId: string;
+  rootRunId?: string;
   conversationId: string;
   agentType: string;
   deviceId: string;
@@ -480,6 +482,7 @@ const createPiTools = (opts: {
         conversationId: opts.conversationId,
         deviceId: opts.deviceId,
         requestId: toolCallId,
+        ...(opts.rootRunId ? { rootRunId: opts.rootRunId } : {}),
         agentType: opts.agentType,
         storageMode: "local",
         ...(typeof opts.taskDepth === "number" ? { taskDepth: opts.taskDepth } : {}),
@@ -582,6 +585,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
 
   const tools = createPiTools({
     runId,
+    rootRunId: opts.rootRunId ?? runId,
     conversationId: opts.conversationId,
     agentType: opts.agentType,
     deviceId: opts.deviceId,
@@ -1082,6 +1086,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
 
   const tools = createPiTools({
     runId,
+    rootRunId: opts.rootRunId ?? runId,
     conversationId: opts.conversationId,
     agentType: opts.agentType,
     deviceId: opts.deviceId,

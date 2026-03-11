@@ -256,9 +256,11 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
           ),
         onTaskEvent: (ev) => {
           const runId =
-            [...agentRunOwners.keys()].find(
+            ev.rootRunId
+            ?? [...agentRunOwners.keys()].find(
               (id) => agentRunOwners.get(id) === senderWebContentsId,
-            ) ?? "unknown";
+            )
+            ?? "unknown";
           emitAgentEvent(
             runId,
             {

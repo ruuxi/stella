@@ -785,6 +785,7 @@ export const createStellaHostRunner = ({
           conversationId,
           userMessageId,
           runId,
+          rootRunId: task.rootRunId,
           agentType,
           userPrompt: `${taskDescription}\n\n${taskPrompt}`,
           agentContext,
