@@ -324,6 +324,7 @@ export type ElectronSystemApi = {
     plaintext: string;
   }) => Promise<LocalLlmCredentialSummary>;
   deleteLlmCredential: (provider: string) => Promise<{ removed: boolean }>;
+  resetMessages: () => Promise<{ ok: boolean }>;
   onCredentialRequest: (
     callback: (
       event: unknown,
