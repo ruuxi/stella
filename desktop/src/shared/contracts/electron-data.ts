@@ -59,6 +59,10 @@ export type MiniBridgeRequest =
       selectedText: string | null
       chatContext: ChatContext | null
     }
+  | {
+      type: 'mutation:cancelStream'
+      conversationId: string
+    }
 
 export type MiniBridgeResponse =
   | {
@@ -67,6 +71,10 @@ export type MiniBridgeResponse =
     }
   | {
       type: 'mutation:sendMessage'
+      accepted: boolean
+    }
+  | {
+      type: 'mutation:cancelStream'
       accepted: boolean
     }
   | {

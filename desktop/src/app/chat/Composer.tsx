@@ -24,6 +24,7 @@ type ComposerProps = {
   canSubmit: boolean;
   conversationId: string | null;
   onSend: () => void;
+  onStop: () => void;
 };
 
 export function Composer({
@@ -37,6 +38,7 @@ export function Composer({
   canSubmit,
   conversationId,
   onSend,
+  onStop,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -196,6 +198,24 @@ export function Composer({
             </div>
 
             <div className="composer-toolbar-right">
+              {isStreaming && (
+                <button
+                  type="button"
+                  className="composer-stop"
+                  onClick={onStop}
+                  title="Stop"
+                  aria-label="Stop"
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <rect x="4" y="4" width="16" height="16" rx="2" />
+                  </svg>
+                </button>
+              )}
               <motion.button
                 type="submit"
                 className="composer-submit"

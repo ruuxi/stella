@@ -40,6 +40,7 @@ export function useFullShellChat({
     pendingUserMessageId,
     selfModMap,
     sendMessage,
+    cancelCurrentStream,
   } = useStreamingChat({
     conversationId: activeConversationId,
     events,
@@ -177,6 +178,7 @@ export function useFullShellChat({
       selfModMap,
       sendMessage,
       sendContextlessMessage,
+      cancelCurrentStream,
     },
     composer: {
       message,
@@ -187,6 +189,7 @@ export function useFullShellChat({
       setSelectedText,
       canSubmit,
       handleSend,
+      handleStop: cancelCurrentStream,
       handleCommandSelect,
     },
     scroll: {

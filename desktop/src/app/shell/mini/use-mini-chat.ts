@@ -136,6 +136,21 @@ export function useMiniChat(opts: {
     setSelectedText,
   ]);
 
+  const cancelStream = useCallback(async () => {
+    if (!window.electronAPI?.mini.request || !activeConversationId) {
+      return;
+    }
+
+    const response = await window.electronAPI.mini.request({
+      type: "mutation:cancelStream",
+      conversationId: activeConversationId,
+    });
+
+    if (response.type === "error") {
+      console.error("[miniBridge] cancelStream failed:", response.message);
+    }
+  }, [activeConversationId]);
+
   const events = useMemo(
     () => (snapshot.events as unknown as EventRecord[]),
     [snapshot.events],
@@ -156,6 +171,7 @@ export function useMiniChat(opts: {
     pendingUserMessageId: snapshot.pendingUserMessageId,
     events,
     sendMessage,
+    cancelStream,
   };
 }
 
