@@ -14,6 +14,7 @@ export type ToolContext = {
   conversationId: string;
   deviceId: string;
   requestId: string;
+  rootRunId?: string;
   agentType?: string;
   storageMode?: "cloud" | "local";
   taskId?: string;
@@ -74,6 +75,7 @@ export type TaskToolRequest = {
   description: string;
   prompt: string;
   agentType: string;
+  rootRunId?: string;
   taskDepth?: number;
   maxTaskDepth?: number;
   parentTaskId?: string;
