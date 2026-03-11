@@ -15,7 +15,7 @@ describe('parseCommand', () => {
       }
     });
 
-    it('should parse navigate with headers', () => {
+    it('should reject navigate with deprecated headers', () => {
       const result = parseCommand(
         cmd({
           id: '1',
@@ -24,11 +24,7 @@ describe('parseCommand', () => {
           headers: { Authorization: 'Bearer token' },
         })
       );
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.command.action).toBe('navigate');
-        expect(result.command.headers).toEqual({ Authorization: 'Bearer token' });
-      }
+      expect(result.success).toBe(false);
     });
 
     it('should reject navigate without url', () => {
@@ -533,6 +529,17 @@ describe('parseCommand', () => {
       if (result.success) {
         expect(result.command.ignoreHTTPSErrors).toBe(false);
       }
+    });
+
+    it('should reject launch with deprecated headers', () => {
+      const result = parseCommand(
+        cmd({
+          id: '1',
+          action: 'launch',
+          headers: { Authorization: 'Bearer token' },
+        })
+      );
+      expect(result.success).toBe(false);
     });
 
     it('should reject launch with non-boolean ignoreHTTPSErrors', () => {
@@ -1066,6 +1073,20 @@ describe('parseCommand', () => {
   });
 
   describe('invalid commands', () => {
+    it('should reject removed headers command', () => {
+      const result = parseCommand(
+        cmd({ id: '1', action: 'headers', headers: { Authorization: 'Bearer token' } })
+      );
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject removed credentials command', () => {
+      const result = parseCommand(
+        cmd({ id: '1', action: 'credentials', username: 'user', password: 'pass' })
+      );
+      expect(result.success).toBe(false);
+    });
+
     it('should reject unknown action', () => {
       const result = parseCommand(cmd({ id: '1', action: 'unknown' }));
       expect(result.success).toBe(false);
