@@ -12,6 +12,7 @@ import { SuggestionsPanel } from "./SuggestionsPanel"
 import { ActivityFeed } from "./ActivityFeed"
 import { DashboardCard } from "./DashboardCard"
 import type { ActivityItem, ScheduleItem } from "./schedule-item"
+import { sortActivityItems } from "./activity-order"
 import "./home-view.css"
 import "./home-dashboard.css"
 
@@ -93,8 +94,7 @@ function useScheduleData(): ScheduleItem[] {
       }
     }
 
-    items.sort((a, b) => (b.lastRunAtMs ?? 0) - (a.lastRunAtMs ?? 0))
-    return items
+    return sortActivityItems(items)
   }, [cronJobs, heartbeats])
 }
 
@@ -121,9 +121,7 @@ export function HomeView({ conversationId }: HomeViewProps) {
           : task.outputPreview ?? task.statusText,
     }))
 
-    return [...tasks, ...scheduleItems].sort(
-      (a, b) => (b.lastRunAtMs ?? 0) - (a.lastRunAtMs ?? 0),
-    )
+    return sortActivityItems([...tasks, ...scheduleItems])
   }, [scheduleItems, taskItems])
 
   const hasSuggestions = welcomeSuggestions.length > 0
