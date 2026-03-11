@@ -264,7 +264,7 @@ async function forwardRequest(
     });
 
     if (isStreaming) {
-      void ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
+      await ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
         ownerId: usage.ownerId,
         agentType: usage.agentType,
         model: usage.modelId,
@@ -301,7 +301,7 @@ async function forwardRequest(
       // Compressed or non-JSON — usage tracking will estimate from request.
     }
 
-    void ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
+    await ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
       ownerId: usage.ownerId,
       agentType: usage.agentType,
       model: usage.modelId,
@@ -325,7 +325,7 @@ async function forwardRequest(
     console.error("[managed-execution] Forward error:", error);
     const durationMs = Date.now() - startMs;
 
-    void ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
+    await ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
       ownerId: usage.ownerId,
       agentType: usage.agentType,
       model: usage.modelId,
