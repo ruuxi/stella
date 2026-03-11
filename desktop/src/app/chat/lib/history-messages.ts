@@ -151,6 +151,14 @@ const formatTaskEvent = (
     }
     return { role: "user", content: lines.join("\n") };
   }
+  if (eventType === "task_canceled") {
+    const lines = ["[Task canceled]"];
+    if (taskId) lines.push(`task_id: ${taskId}`);
+    if (payload.error !== undefined) {
+      lines.push(`error: ${stringifyValue(payload.error)}`);
+    }
+    return { role: "user", content: lines.join("\n") };
+  }
   return null;
 };
 

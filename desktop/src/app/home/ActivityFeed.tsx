@@ -21,6 +21,7 @@ function statusDotValue(status?: string): string {
   if (!status) return "none"
   if (status === "ok" || status === "sent" || status === "completed") return "ok"
   if (status === "error" || status === "failed") return "error"
+  if (status === "canceled" || status === "cancelled") return "canceled"
   if (status === "running") return "running"
   return "none"
 }

@@ -20,6 +20,7 @@ type LocalAgentEvent = {
     | 'task-started'
     | 'task-completed'
     | 'task-failed'
+    | 'task-canceled'
     | 'task-progress'
   agentType?: string
   userMessageId?: string
@@ -158,6 +159,7 @@ export function useLocalAgentStream({
         case 'task-started':
         case 'task-completed':
         case 'task-failed':
+        case 'task-canceled':
         case 'task-progress':
           console.log(
             `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ''}`.trim(),

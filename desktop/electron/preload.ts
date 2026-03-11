@@ -327,6 +327,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
             | "task-started"
             | "task-completed"
             | "task-failed"
+            | "task-canceled"
             | "task-progress";
           runId: string;
           agentType?: string;
@@ -364,6 +365,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         | "task-started"
         | "task-completed"
         | "task-failed"
+        | "task-canceled"
         | "task-progress";
       runId: string;
       agentType?: string;

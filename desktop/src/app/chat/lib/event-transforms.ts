@@ -118,6 +118,11 @@ export type TaskFailedPayload = {
   error?: string;
 };
 
+export type TaskCanceledPayload = {
+  taskId: string;
+  error?: string;
+};
+
 export type TaskProgressPayload = {
   taskId: string;
   statusText: string;
@@ -128,7 +133,7 @@ export type TaskItem = {
   id: string;
   description: string;
   agentType: string;
-  status: "running" | "completed" | "error";
+  status: "running" | "completed" | "error" | "canceled";
   parentTaskId?: string;
   statusText?: string;
   startedAtMs: number;
@@ -179,6 +184,11 @@ export const isTaskCompleted = createEventGuard<TaskCompletedPayload>(
 
 export const isTaskFailed = createEventGuard<TaskFailedPayload>(
   "task_failed",
+  ["taskId"],
+);
+
+export const isTaskCanceled = createEventGuard<TaskCanceledPayload>(
+  "task_canceled",
   ["taskId"],
 );
 
@@ -366,6 +376,7 @@ export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
   const startedEvents = events.filter(isTaskStarted);
   const completedEvents = events.filter(isTaskCompleted);
   const failedEvents = events.filter(isTaskFailed);
+  const canceledEvents = events.filter(isTaskCanceled);
   const progressEvents = events.filter(isTaskProgress);
 
   // Build maps of taskId -> completion/failure events
@@ -377,6 +388,11 @@ export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
   const failedByTaskId = new Map<string, EventRecord & { payload: TaskFailedPayload }>();
   for (const event of failedEvents) {
     failedByTaskId.set(event.payload.taskId, event);
+  }
+
+  const canceledByTaskId = new Map<string, EventRecord & { payload: TaskCanceledPayload }>();
+  for (const event of canceledEvents) {
+    canceledByTaskId.set(event.payload.taskId, event);
   }
 
   // Build map of taskId -> latest progress status text
@@ -403,6 +419,12 @@ export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
       completedAtMs = completedEvent.timestamp;
       lastUpdatedAtMs = completedEvent.timestamp;
       outputPreview = completedEvent.payload.result;
+    } else if (canceledByTaskId.has(taskId)) {
+      status = "canceled";
+      const canceledEvent = canceledByTaskId.get(taskId)!;
+      completedAtMs = canceledEvent.timestamp;
+      lastUpdatedAtMs = canceledEvent.timestamp;
+      outputPreview = canceledEvent.payload.error ?? "Canceled";
     } else if (failedByTaskId.has(taskId)) {
       status = "error";
       const failedEvent = failedByTaskId.get(taskId)!;

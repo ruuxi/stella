@@ -191,6 +191,12 @@ export function traceTaskFailed(taskId: string, error?: string) {
   });
 }
 
+export function traceTaskCanceled(taskId: string, error?: string) {
+  addTrace("agent", "task-canceled", error?.slice(0, 300) ?? "(canceled)", {
+    taskId,
+  });
+}
+
 export function traceTaskProgress(taskId: string, statusText: string) {
   addTrace("agent", "task-progress", statusText.slice(0, 200), {
     taskId,
