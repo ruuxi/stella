@@ -270,6 +270,8 @@ export const createStellaHostRunner = ({
   let convexClientUrl: string | null = null;
   let cloudSyncEnabled = false;
   let isRunning = false;
+  let isInitialized = false;
+  let initializationPromise: Promise<void> | null = null;
 
   let localTaskManager: LocalTaskManager | null = null;
   let activeCallbacksRef: AgentCallbacks | null = null;
@@ -890,22 +892,16 @@ export const createStellaHostRunner = ({
     syncRemoteTurnBridge();
   };
 
-  const start = () => {
-    if (isRunning) return;
-    isRunning = true;
-    syncRemoteTurnBridge();
-
-    void refreshLoadedSkills();
-
-    void loadAgentsFromHome(agentsPath)
+  const initializeRuntime = () => {
+    const skillsLoad = refreshLoadedSkills().then(() => undefined);
+    const agentsLoad = loadAgentsFromHome(agentsPath)
       .then((agents) => {
         loadedAgents = agents;
       })
       .catch(() => {
         loadedAgents = [];
       });
-
-    void loadExtensions(extensionsPath)
+    const extensionsLoad = loadExtensions(extensionsPath)
       .then((extensions) => {
         // Register extension hooks
         hookEmitter.registerAll(extensions.hooks);
@@ -939,7 +935,6 @@ export const createStellaHostRunner = ({
           console.log(`[stella:extensions] Registered provider "${providerDef.name}" with ${providerDef.models.length} model(s)`);
         }
 
-        // Store loaded prompts for access
         loadedPrompts = extensions.prompts;
 
         console.log(`[stella:extensions] Ready: ${extensions.tools.length} tools, ${extensions.hooks.length} hooks, ${extensions.providers.length} providers, ${extensions.prompts.length} prompts`);
@@ -947,10 +942,31 @@ export const createStellaHostRunner = ({
       .catch((error) => {
         console.error("[stella:extensions] Failed to load extensions:", (error as Error).message);
       });
+
+    initializationPromise = Promise.all([
+      skillsLoad,
+      agentsLoad,
+      extensionsLoad,
+    ]).then(() => {
+      isInitialized = true;
+      syncRemoteTurnBridge();
+    });
+
+    return initializationPromise;
+  };
+
+  const start = () => {
+    if (isRunning) return;
+    isRunning = true;
+    isInitialized = false;
+    syncRemoteTurnBridge();
+    void initializeRuntime();
   };
 
   const stop = () => {
     isRunning = false;
+    isInitialized = false;
+    initializationPromise = null;
     remoteTurnBridge.stop();
     disposeConvexClient();
     activeOrchestratorRunId = null;
@@ -971,6 +987,9 @@ export const createStellaHostRunner = ({
   const agentHealthCheck = (): AgentHealth => {
     if (!isRunning) {
       return { ready: false, reason: "Stella runtime is not started", engine: "stella" };
+    }
+    if (!isInitialized) {
+      return { ready: false, reason: "Stella runtime is still initializing", engine: "stella" };
     }
     const orchestratorModel = getConfiguredModel("orchestrator", resolveAgent("orchestrator"));
     if (canResolveLlmRoute({
@@ -1289,7 +1308,7 @@ export const createStellaHostRunner = ({
   });
 
   function syncRemoteTurnBridge() {
-    if (!isRunning || !cloudSyncEnabled) {
+    if (!isRunning || !isInitialized || !cloudSyncEnabled) {
       remoteTurnBridge.stop();
       return;
     }
