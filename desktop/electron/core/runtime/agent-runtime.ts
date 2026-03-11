@@ -930,6 +930,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         runId,
         sessionKey,
         prompt,
+        cwd: opts.frontendRoot,
         abortSignal: opts.abortSignal,
         onProgress: (chunk) => {
           if (!chunk) return;
@@ -1024,6 +1025,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         sessionKey,
         modelId: primaryModelId!,
         prompt,
+        cwd: opts.frontendRoot,
         abortSignal: opts.abortSignal,
         onProgress: (chunk) => {
           if (!chunk) return;

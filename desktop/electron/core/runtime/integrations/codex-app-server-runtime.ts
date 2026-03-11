@@ -341,13 +341,16 @@ class CodexAppServerRuntime {
   }
 
   private async getOrCreateThread(session: SessionState, cwd?: string): Promise<string> {
-    if (session.threadId) return session.threadId;
+    const normalizedCwd = cwd?.trim() || undefined;
+    if (session.threadId && session.cwd === normalizedCwd) {
+      return session.threadId;
+    }
     const params: Record<string, unknown> = {
       approvalPolicy: "never",
       sandbox: "danger-full-access",
     };
-    if (cwd) {
-      params.cwd = cwd;
+    if (normalizedCwd) {
+      params.cwd = normalizedCwd;
     }
     const result = await this.rpcRequest<{
       thread?: { id?: string };
@@ -357,7 +360,7 @@ class CodexAppServerRuntime {
       throw new Error("Codex App Server did not return a thread ID.");
     }
     session.threadId = threadId;
-    session.cwd = cwd;
+    session.cwd = normalizedCwd;
     return threadId;
   }
 

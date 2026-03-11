@@ -816,6 +816,7 @@ export const createStellaHostRunner = ({
           resolvedLlm,
           store: runtimeStore,
           abortSignal,
+          frontendRoot,
           selfModMonitor,
           onProgress,
           callbacks: taskCallbacks ? {
