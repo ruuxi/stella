@@ -167,6 +167,7 @@ export const handleTask = async (
       description,
       prompt,
       agentType,
+      rootRunId: context.rootRunId,
       taskDepth: nextTaskDepth,
       ...(typeof maxTaskDepth === "number" ? { maxTaskDepth } : {}),
       parentTaskId,
