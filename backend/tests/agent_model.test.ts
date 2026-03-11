@@ -1,5 +1,11 @@
 import { describe, test, expect } from "bun:test";
-import { getModelConfig, DEFAULT_MODEL, AGENT_MODELS } from "../convex/agent/model";
+import {
+  getModelConfig,
+  DEFAULT_MODEL,
+  AGENT_MODELS,
+  hasModelConfig,
+  listModelDefaults,
+} from "../convex/agent/model";
 import type { ModelConfig } from "../convex/agent/model";
 
 describe("DEFAULT_MODEL", () => {
@@ -25,8 +31,9 @@ describe("AGENT_MODELS", () => {
     expect(Object.keys(AGENT_MODELS).length).toBeGreaterThan(0);
   });
 
-  test("does not include orchestrator config", () => {
-    expect(AGENT_MODELS.orchestrator).toBeUndefined();
+  test("includes orchestrator config", () => {
+    expect(AGENT_MODELS.orchestrator).toBeDefined();
+    expect(AGENT_MODELS.orchestrator.model).toBe("moonshotai/kimi-k2.5");
   });
 
   test("includes general config", () => {
@@ -48,10 +55,9 @@ describe("AGENT_MODELS", () => {
 });
 
 describe("getModelConfig", () => {
-  test("throws for removed orchestrator agent type", () => {
-    expect(() => getModelConfig("orchestrator")).toThrow(
-      "No model config for agent type: orchestrator",
-    );
+  test("returns orchestrator config for orchestrator", () => {
+    const config = getModelConfig("orchestrator");
+    expect(config).toBe(AGENT_MODELS.orchestrator);
   });
 
   test("returns general config for general", () => {
@@ -73,5 +79,32 @@ describe("getModelConfig", () => {
   test("returned config satisfies ModelConfig type", () => {
     const config: ModelConfig = getModelConfig("general");
     expect(typeof config.model).toBe("string");
+  });
+});
+
+describe("hasModelConfig", () => {
+  test("returns true for configured agent types", () => {
+    expect(hasModelConfig("orchestrator")).toBe(true);
+    expect(hasModelConfig("general")).toBe(true);
+  });
+
+  test("returns false for unknown agent types", () => {
+    expect(hasModelConfig("self_mod")).toBe(false);
+    expect(hasModelConfig("memory")).toBe(false);
+  });
+});
+
+describe("listModelDefaults", () => {
+  test("returns the current default model for each configured agent", () => {
+    const defaults = listModelDefaults();
+    expect(defaults.length).toBe(Object.keys(AGENT_MODELS).length);
+    expect(defaults).toContainEqual({
+      agentType: "orchestrator",
+      model: "moonshotai/kimi-k2.5",
+    });
+    expect(defaults).toContainEqual({
+      agentType: "explore",
+      model: "zai/glm-4.7",
+    });
   });
 });

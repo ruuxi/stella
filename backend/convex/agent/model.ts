@@ -39,8 +39,13 @@ export type ModelConfig = {
   providerOptions?: Record<string, Record<string, JSONValue>>;
 };
 
+export type ModelDefaultEntry = {
+  agentType: string;
+  model: string;
+};
+
 const DEFAULT_MODEL: ModelConfig = {
-  model: "claude-sonnet-4.6",
+  model: "moonshotai/kimi-k2.5",
   fallback: "anthropic/claude-opus-4.5",
   temperature: 1.0,
   maxOutputTokens: 16192,
@@ -70,13 +75,34 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   offline_responder: DEFAULT_MODEL,
 
   orchestrator: {
-    model: "anthropic/claude-sonnet-4.6",
+    model: "moonshotai/kimi-k2.5",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["baseten, amazon-bedrock, fireworks"],
+      },
+    },
   },
 
-  general: DEFAULT_MODEL,
+  general: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["baseten, amazon-bedrock, fireworks"],
+      },
+    },
+  },
 
   explore: {
     model: "zai/glm-4.7",
@@ -242,6 +268,17 @@ export function getModelConfig(agentType: string): ModelConfig {
   const config = AGENT_MODELS[agentType];
   if (!config) throw new Error(`No model config for agent type: ${agentType}`);
   return config;
+}
+
+export function hasModelConfig(agentType: string): boolean {
+  return Object.prototype.hasOwnProperty.call(AGENT_MODELS, agentType);
+}
+
+export function listModelDefaults(): ModelDefaultEntry[] {
+  return Object.entries(AGENT_MODELS).map(([agentType, config]) => ({
+    agentType,
+    model: config.model,
+  }));
 }
 
 export { DEFAULT_MODEL, AGENT_MODELS };

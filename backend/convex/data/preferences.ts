@@ -1,6 +1,7 @@
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireUserId } from "../auth";
+import { hasModelConfig, listModelDefaults } from "../agent/model";
 
 const accountModeValidator = v.union(v.literal("private_local"), v.literal("connected"));
 const ACCOUNT_MODE_KEY = "account_mode";
@@ -285,11 +286,25 @@ export const getModelOverrides = query({
     for (const record of records) {
       if (record.key.startsWith(MODEL_CONFIG_PREFIX)) {
         const agentType = record.key.slice(MODEL_CONFIG_PREFIX.length);
+        if (!hasModelConfig(agentType)) {
+          continue;
+        }
         overrides[agentType] = record.value;
       }
     }
     return JSON.stringify(overrides);
   },
+});
+
+export const getModelDefaults = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      agentType: v.string(),
+      model: v.string(),
+    }),
+  ),
+  handler: async () => listModelDefaults(),
 });
 
 export const setModelOverride = mutation({
@@ -299,6 +314,12 @@ export const setModelOverride = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    if (!hasModelConfig(args.agentType)) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: `Unknown agent type: ${args.agentType}`,
+      });
+    }
     if (args.model.length > 200) {
       throw new ConvexError({
         code: "INVALID_ARGUMENT",
