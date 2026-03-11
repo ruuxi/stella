@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
+import { resolveRuntimeHomePath } from "../system/stella-home.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -11,12 +12,12 @@ const FEATURE_TAG_REGEX = /\[feature:([a-zA-Z0-9_-]+)\]/g;
 const DEFAULT_LOG_SCAN_LIMIT = 500;
 const DEFAULT_RECENT_FEATURE_LIMIT = 8;
 
-const FEATURES_INDEX_PATH = path.join(
-  process.cwd(),
-  ".stella",
-  "mods",
-  "features.json",
-);
+const getFeaturesIndexPath = () =>
+  path.join(
+    resolveRuntimeHomePath(),
+    "mods",
+    "features.json",
+  );
 
 type FeatureIndexEntry = {
   name?: string;
@@ -150,7 +151,7 @@ const parseStatusPath = (line: string): string | null => {
 
 const readFeatureIndex = async (): Promise<FeatureIndex> => {
   try {
-    const raw = await fs.readFile(FEATURES_INDEX_PATH, "utf-8");
+    const raw = await fs.readFile(getFeaturesIndexPath(), "utf-8");
     const parsed = JSON.parse(raw) as Partial<FeatureIndex>;
     if (!parsed || typeof parsed !== "object") {
       throw new Error("Invalid index payload.");
@@ -168,9 +169,10 @@ const readFeatureIndex = async (): Promise<FeatureIndex> => {
 };
 
 const writeFeatureIndex = async (index: FeatureIndex): Promise<void> => {
-  await fs.mkdir(path.dirname(FEATURES_INDEX_PATH), { recursive: true });
+  const featuresIndexPath = getFeaturesIndexPath();
+  await fs.mkdir(path.dirname(featuresIndexPath), { recursive: true });
   await fs.writeFile(
-    FEATURES_INDEX_PATH,
+    featuresIndexPath,
     JSON.stringify(index, null, 2),
     "utf-8",
   );

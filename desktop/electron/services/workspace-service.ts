@@ -32,11 +32,17 @@ export class WorkspaceService {
   constructor(
     private readonly getStellaHomePath: () => string | null,
     private readonly isEnabled: () => boolean = () => true,
+    private readonly getWorkspaceRoot: () => string | null = () => null,
   ) {}
 
   private getPanelsDir() {
     if (!this.isEnabled()) {
       return null
+    }
+
+    const workspaceRoot = this.getWorkspaceRoot()
+    if (workspaceRoot) {
+      return path.resolve(workspaceRoot, 'panels')
     }
 
     const stellaHomePath = this.getStellaHomePath()

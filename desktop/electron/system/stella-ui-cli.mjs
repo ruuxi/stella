@@ -12,9 +12,18 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const resolveStatePath = () =>
-  process.env.STELLA_UI_STATE_DIR || path.resolve(process.cwd(), ".stella", "state");
+  process.env.STELLA_UI_STATE_DIR
+  || path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    "..",
+    ".stella",
+    "state",
+  );
 
 const socketPath =
   process.env.STELLA_UI_SOCKET_PATH ||

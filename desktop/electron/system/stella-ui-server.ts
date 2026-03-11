@@ -13,6 +13,7 @@ import path from "path";
 import type { BrowserWindow } from "electron";
 import { streamManagedChatCompletion } from "../core/runtime/chat-completions.js";
 import { ensurePrivateDirSync, writePrivateFileSync } from "./private-fs.js";
+import { resolveRuntimeStatePath } from "./stella-home.js";
 
 let server: http.Server | null = null;
 let serverTokenPath: string | null = null;
@@ -21,7 +22,7 @@ let serverToken: string | null = null;
 const TOKEN_HEADER = "x-stella-ui-token";
 
 const resolveStellaUiStatePath = (statePath?: string) =>
-  statePath ?? path.resolve(process.cwd(), ".stella", "state");
+  statePath ?? resolveRuntimeStatePath();
 
 export function getStellaUiSocketPath(statePath?: string): string {
   if (process.platform === "win32") {

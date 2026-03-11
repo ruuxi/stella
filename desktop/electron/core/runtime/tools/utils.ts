@@ -8,6 +8,7 @@ import path from "path";
 import os from "os";
 import { spawn } from "child_process";
 import { createHash } from "crypto";
+import { resolveRuntimeStatePath } from "../../../system/stella-home.js";
 
 // Constants
 export const MAX_OUTPUT = 30_000;
@@ -362,10 +363,12 @@ const tightenWindowsAcl = async (resolvedPath: string) => {
   });
 };
 
-const DEFAULT_SECRET_STATE_ROOT = path.resolve(process.cwd(), ".stella", "state");
+const getDefaultSecretStateRoot = () => {
+  return resolveRuntimeStatePath();
+};
 
 const getSecretMountRecordsDir = (stateRoot?: string) =>
-  path.join(stateRoot ?? DEFAULT_SECRET_STATE_ROOT, "secret_mounts", "records");
+  path.join(stateRoot ?? getDefaultSecretStateRoot(), "secret_mounts", "records");
 
 const removeFileIfExists = async (filePath: string) => {
   try {
