@@ -34,11 +34,13 @@ vi.mock("better-sqlite3", async () => {
 const {
   loadAgentsFromHomeMock,
   loadSkillsFromHomeMock,
+  loadExtensionsMock,
   runOrchestratorTurnMock,
   localTaskManagerCtorMock,
 } = vi.hoisted(() => ({
   loadAgentsFromHomeMock: vi.fn(),
   loadSkillsFromHomeMock: vi.fn(),
+  loadExtensionsMock: vi.fn(),
   runOrchestratorTurnMock: vi.fn(),
   localTaskManagerCtorMock: vi.fn(),
 }));
@@ -75,7 +77,7 @@ vi.mock("../../../electron/core/runtime/agents/skills.js", () => ({
 }));
 
 vi.mock("../../../electron/core/runtime/extensions/loader.js", () => ({
-  loadExtensions: vi.fn().mockResolvedValue({ tools: [], hooks: [], providers: [], prompts: [] }),
+  loadExtensions: loadExtensionsMock,
 }));
 
 vi.mock("../../../electron/core/runtime/extensions/hook-emitter.js", () => ({
@@ -139,6 +141,7 @@ describe("runtime runner tools allowlist", () => {
   beforeEach(() => {
     loadAgentsFromHomeMock.mockReset();
     loadSkillsFromHomeMock.mockReset();
+    loadExtensionsMock.mockReset();
     runOrchestratorTurnMock.mockReset();
     localTaskManagerCtorMock.mockReset();
     loadAgentsFromHomeMock.mockResolvedValue([
@@ -151,6 +154,7 @@ describe("runtime runner tools allowlist", () => {
       },
     ]);
     loadSkillsFromHomeMock.mockResolvedValue([]);
+    loadExtensionsMock.mockResolvedValue({ tools: [], hooks: [], providers: [], prompts: [] });
     runOrchestratorTurnMock.mockImplementation(async (opts: { callbacks: { onEnd: (event: { finalText: string }) => void } }) => {
       opts.callbacks.onEnd({ finalText: "done" });
     });
@@ -200,6 +204,91 @@ describe("runtime runner tools allowlist", () => {
         toolsAllowlist: ["Display", "CustomExtensionTool"],
       }),
     }));
+
+    runner.stop();
+    db.close();
+  });
+
+  it("does not report ready or accept chats until skills, agents, and extensions finish loading", async () => {
+    let resolveSkills: ((value: []) => void) | null = null;
+    let resolveAgents: ((value: Array<{
+      id: string;
+      name: string;
+      systemPrompt: string;
+      agentTypes: string[];
+    }>) => void) | null = null;
+    let resolveExtensions: ((value: {
+      tools: [];
+      hooks: [];
+      providers: [];
+      prompts: [];
+    }) => void) | null = null;
+
+    loadSkillsFromHomeMock.mockReturnValueOnce(new Promise((resolve) => {
+      resolveSkills = resolve as typeof resolveSkills;
+    }));
+    loadAgentsFromHomeMock.mockReturnValueOnce(new Promise((resolve) => {
+      resolveAgents = resolve as typeof resolveAgents;
+    }));
+    loadExtensionsMock.mockReturnValueOnce(new Promise((resolve) => {
+      resolveExtensions = resolve as typeof resolveExtensions;
+    }));
+
+    const home = createTempHome();
+    const db = createDesktopDatabase(home);
+    const runtimeStore = new RuntimeStore(
+      db,
+      new TranscriptMirror(path.join(home, "state")),
+    );
+    const runner = createStellaHostRunner({
+      deviceId: "device-1",
+      StellaHome: home,
+      runtimeStore,
+    });
+
+    runner.setConvexUrl("https://example.convex.cloud");
+    runner.setAuthToken("token-1");
+    runner.start();
+
+    expect(runner.agentHealthCheck()).toEqual({
+      ready: false,
+      reason: "Stella runtime is still initializing",
+      engine: "stella",
+    });
+
+    await expect(
+      runner.handleLocalChat(
+        {
+          conversationId: "conv-1",
+          userMessageId: "user-1",
+          userPrompt: "hello",
+        },
+        {
+          onStream: vi.fn(),
+          onToolStart: vi.fn(),
+          onToolEnd: vi.fn(),
+          onError: vi.fn(),
+          onEnd: vi.fn(),
+        },
+      ),
+    ).rejects.toThrow("Stella runtime is still initializing");
+
+    resolveSkills?.([]);
+    resolveAgents?.([
+      {
+        id: "orchestrator",
+        name: "Orchestrator",
+        systemPrompt: "prompt",
+        agentTypes: ["orchestrator"],
+      },
+    ]);
+    resolveExtensions?.({ tools: [], hooks: [], providers: [], prompts: [] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(runner.agentHealthCheck()).toEqual({
+      ready: true,
+      engine: "pi",
+    });
 
     runner.stop();
     db.close();
