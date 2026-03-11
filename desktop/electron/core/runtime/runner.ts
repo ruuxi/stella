@@ -274,7 +274,6 @@ export const createStellaHostRunner = ({
   let initializationPromise: Promise<void> | null = null;
 
   let localTaskManager: LocalTaskManager | null = null;
-  let activeCallbacksRef: AgentCallbacks | null = null;
   let activeOrchestratorRunId: string | null = null;
   let activeOrchestratorConversationId: string | null = null;
   let activeOrchestratorRunKind: "foreground" | "background" | null = null;
@@ -294,7 +293,6 @@ export const createStellaHostRunner = ({
   let loadedAgents: ParsedAgentLike[] = [];
   let loadedSkills: ParsedSkill[] = [];
   let loadedSkillsPromise: Promise<ParsedSkill[]> | null = null;
-  let loadedPrompts: import("./extensions/types.js").PromptTemplate[] = [];
 
   const refreshLoadedSkills = () => {
     const loadPromise = loadSkillsFromHome(skillsPath, coreSkillsPath)
@@ -587,7 +585,6 @@ export const createStellaHostRunner = ({
     activeOrchestratorConversationId = null;
     activeOrchestratorRunKind = null;
     activeBackgroundTurnPayload = null;
-    activeCallbacksRef = null;
     activeSearchHtmlPrompts = undefined;
   };
 
@@ -646,7 +643,6 @@ export const createStellaHostRunner = ({
     activeOrchestratorConversationId = conversationId;
     activeOrchestratorRunKind = "background";
     activeBackgroundTurnPayload = payload;
-    activeCallbacksRef = callbacks;
     activeSearchHtmlPrompts = payload.searchHtmlPrompts;
 
     const abortController = new AbortController();
@@ -934,9 +930,6 @@ export const createStellaHostRunner = ({
           }
           console.log(`[stella:extensions] Registered provider "${providerDef.name}" with ${providerDef.models.length} model(s)`);
         }
-
-        loadedPrompts = extensions.prompts;
-
         console.log(`[stella:extensions] Ready: ${extensions.tools.length} tools, ${extensions.hooks.length} hooks, ${extensions.providers.length} providers, ${extensions.prompts.length} prompts`);
       })
       .catch((error) => {
@@ -1061,7 +1054,6 @@ export const createStellaHostRunner = ({
     activeOrchestratorConversationId = conversationId;
     activeOrchestratorRunKind = "foreground";
     activeBackgroundTurnPayload = null;
-    activeCallbacksRef = callbacks;
     conversationCallbacks.set(conversationId, callbacks);
     activeSearchHtmlPrompts = payload.searchHtmlPrompts;
 
