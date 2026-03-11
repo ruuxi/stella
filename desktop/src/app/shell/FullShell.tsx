@@ -157,6 +157,7 @@ export const FullShell = () => {
         setSelectedText: chat.composer.setSelectedText,
         canSubmit: chat.composer.canSubmit,
         onSend: chat.composer.handleSend,
+        onStop: chat.composer.handleStop,
       },
       setViewportElement: chat.scroll.setScrollContainerElement,
       setContentElement: chat.scroll.setContentElement,
@@ -191,6 +192,7 @@ export const FullShell = () => {
       chat.composer.chatContext,
       chat.composer.handleCommandSelect,
       chat.composer.handleSend,
+      chat.composer.handleStop,
       chat.composer.message,
       chat.composer.selectedText,
       chat.composer.setChatContext,
@@ -242,6 +244,7 @@ export const FullShell = () => {
         isStreaming={chat.conversation.isStreaming}
         pendingUserMessageId={chat.conversation.pendingUserMessageId}
         sendMessage={chat.conversation.sendMessage}
+        cancelCurrentStream={chat.conversation.cancelCurrentStream}
       />
 
       <div className="full-body">

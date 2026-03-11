@@ -28,6 +28,7 @@ const mockUseStreamingChat = vi.fn((options?: unknown) => {
     setQueueNext: vi.fn(),
     selfModMap: {},
     sendMessage: mockSendMessage,
+    cancelCurrentStream: vi.fn(),
     syncWithEvents: vi.fn(),
     processFollowUpQueue: vi.fn(),
   };

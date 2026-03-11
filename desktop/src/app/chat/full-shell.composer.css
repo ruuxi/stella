@@ -111,6 +111,26 @@
   gap: 8px;
 }
 
+.composer-stop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
+  color: var(--text-strong);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.composer-stop:hover {
+  background: color-mix(in oklch, var(--foreground) 16%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
+}
+
 .composer-context-row {
   display: flex;
   flex-wrap: wrap;

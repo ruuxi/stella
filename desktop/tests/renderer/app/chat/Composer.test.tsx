@@ -15,6 +15,7 @@ function defaultProps(overrides: Partial<Parameters<typeof Composer>[0]> = {}) {
     canSubmit: true,
     conversationId: "conv-1",
     onSend: vi.fn(),
+    onStop: vi.fn(),
     ...overrides,
   };
 }
@@ -191,6 +192,14 @@ describe("Composer", () => {
     onSend.mockClear();
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("renders a stop button while streaming and calls onStop", () => {
+    const onStop = vi.fn();
+    render(<Composer {...defaultProps({ isStreaming: true, onStop })} />);
+
+    fireEvent.click(screen.getByLabelText("Stop"));
+    expect(onStop).toHaveBeenCalledTimes(1);
   });
 
   // ---- Submit button state ----

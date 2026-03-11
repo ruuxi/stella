@@ -23,6 +23,7 @@ type Props = {
   isStreaming: boolean;
   shellVisible: boolean;
   onSend: () => void;
+  onStop: () => void;
 };
 
 export const MiniInput = ({
@@ -37,6 +38,7 @@ export const MiniInput = ({
   isStreaming,
   shellVisible,
   onSend,
+  onStop,
 }: Props) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -178,7 +180,13 @@ export const MiniInput = ({
           </div>
           <div className="mini-composer-actions-right">
             {isStreaming && (
-              <button type="button" className="mini-composer-stop" title="Stop">
+              <button
+                type="button"
+                className="mini-composer-stop"
+                title="Stop"
+                aria-label="Stop"
+                onClick={onStop}
+              >
                 <svg
                   width="12"
                   height="12"
