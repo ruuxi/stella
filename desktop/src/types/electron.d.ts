@@ -75,6 +75,12 @@ export type LocalCronJobRecord = SharedLocalCronJobRecord;
 export type LocalHeartbeatConfigRecord = SharedLocalHeartbeatConfigRecord;
 export type ScheduledConversationEvent = SharedScheduledConversationEvent;
 export type VoiceRuntimeSnapshot = SharedVoiceRuntimeSnapshot;
+export type VoiceShortcutRegistrationResult = {
+  ok: boolean;
+  requestedShortcut: string;
+  activeShortcut: string;
+  error?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Namespaced API sub-types
@@ -232,7 +238,7 @@ export type ElectronThemeApi = {
 
 export type ElectronVoiceApi = {
   submitTranscript: (transcript: string) => void;
-  setShortcut: (shortcut: string) => void;
+  setShortcut: (shortcut: string) => Promise<VoiceShortcutRegistrationResult>;
   onTranscript: (callback: (transcript: string) => void) => () => void;
   persistTranscript: (payload: {
     conversationId: string;
@@ -263,7 +269,9 @@ export type ElectronVoiceApi = {
   ) => () => void;
   pushWakeWordAudio: (buffer: ArrayBuffer) => void;
   pushRuntimeState: (state: VoiceRuntimeSnapshot) => void;
-  setRtcShortcut: (shortcut: string) => void;
+  setRtcShortcut: (
+    shortcut: string,
+  ) => Promise<VoiceShortcutRegistrationResult>;
 };
 
 export type ElectronAgentApi = {

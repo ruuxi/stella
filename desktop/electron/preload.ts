@@ -218,7 +218,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     submitTranscript: (transcript: string) =>
       ipcRenderer.send("voice:transcript", transcript),
     setShortcut: (shortcut: string) =>
-      ipcRenderer.send("voice:setShortcut", shortcut),
+      ipcRenderer.invoke("voice:setShortcut", shortcut) as Promise<{
+        ok: boolean;
+        requestedShortcut: string;
+        activeShortcut: string;
+        error?: string;
+      }>,
     onTranscript: onIpc<string>("voice:transcript"),
     persistTranscript: (payload: {
       conversationId: string;
@@ -289,7 +294,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       outputLevel: number;
     }) => ipcRenderer.send("voice:runtimeState", state),
     setRtcShortcut: (shortcut: string) =>
-      ipcRenderer.send("voice-rtc:setShortcut", shortcut),
+      ipcRenderer.invoke("voice-rtc:setShortcut", shortcut) as Promise<{
+        ok: boolean;
+        requestedShortcut: string;
+        activeShortcut: string;
+        error?: string;
+      }>,
   },
 
   agent: {
