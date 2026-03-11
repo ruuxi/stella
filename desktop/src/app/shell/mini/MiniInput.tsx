@@ -57,7 +57,10 @@ export const MiniInput = ({
   const hasScreenshots = composerContextState.hasScreenshotContext;
 
   const canSend =
-    Boolean(message.trim()) || Boolean(selectedText) || hasScreenshots;
+    Boolean(message.trim())
+    || Boolean(selectedText)
+    || Boolean(chatContext?.window)
+    || hasScreenshots;
 
   const placeholder = resolveComposerPlaceholder({
     chatContext,
