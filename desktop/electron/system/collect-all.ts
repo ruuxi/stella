@@ -12,7 +12,11 @@
 
 import { promises as fs } from "fs";
 import path from "path";
-import { collectBrowserData, formatBrowserDataForSynthesis } from "./browser-data.js";
+import {
+  collectBrowserData,
+  detectPreferredBrowserProfile,
+  formatBrowserDataForSynthesis,
+} from "./browser-data.js";
 import { collectDevProjects, formatDevProjectsForSynthesis } from "./dev-projects.js";
 import { analyzeShellHistory, formatShellAnalysisForSynthesis } from "./shell-history.js";
 import { discoverApps, formatAppDiscoveryForSynthesis } from "./app-discovery.js";
@@ -121,18 +125,25 @@ export const collectAllUserSignals = async (
   if (categories.includes("browsing_bookmarks")) {
     const shouldCollectChromium =
       !selectedBrowser || CHROMIUM_BROWSERS.has(selectedBrowser);
-    const selectedChromiumBrowser = shouldCollectChromium
-      ? (selectedBrowser as BrowserType | undefined)
-      : undefined;
+    const preferredChromiumSelection =
+      !selectedBrowser && shouldCollectChromium
+        ? await detectPreferredBrowserProfile()
+        : null;
+    const selectedChromiumBrowser = selectedBrowser
+      ? ((selectedBrowser as BrowserType | undefined))
+      : preferredChromiumSelection?.browser ?? undefined;
+    const selectedChromiumProfile = selectedBrowser
+      ? selectedProfile
+      : preferredChromiumSelection?.profile ?? undefined;
 
-    if (shouldCollectChromium) {
+    if (shouldCollectChromium && selectedChromiumBrowser) {
       tasks.browser = collectBrowserData(StellaHome, {
         selectedBrowser: selectedChromiumBrowser,
-        selectedProfile,
+        selectedProfile: selectedChromiumProfile,
       });
       tasks.bookmarks = collectBrowserBookmarks({
         selectedBrowser: selectedChromiumBrowser,
-        selectedProfile,
+        selectedProfile: selectedChromiumProfile,
       }).catch((e) => {
         log("Bookmark collection failed:", e);
         return null;

@@ -247,6 +247,62 @@ describe("Browser Data Collection - Unit Tests", () => {
       );
     });
 
+    it("falls back within the selected browser when the chosen profile is stale", async () => {
+      const localAppData =
+        process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+      const staleHistoryPath = path.join(
+        localAppData,
+        "Google",
+        "Chrome",
+        "User Data",
+        "Profile 9",
+        "History",
+      );
+      const fallbackHistoryPath = path.join(
+        localAppData,
+        "Google",
+        "Chrome",
+        "User Data",
+        "Default",
+        "History",
+      );
+      const fallbackProfilePath = path.dirname(fallbackHistoryPath);
+
+      mockFs.access.mockImplementation(async (targetPath: string) => {
+        if (targetPath === staleHistoryPath) {
+          throw new Error("ENOENT");
+        }
+        if (targetPath === fallbackHistoryPath) {
+          return undefined;
+        }
+        throw new Error("ENOENT");
+      });
+      mockFs.stat.mockImplementation(async (targetPath: string) => {
+        if (targetPath === fallbackProfilePath) {
+          return { isDirectory: () => true, mtimeMs: Date.now() } as any;
+        }
+        if (targetPath === fallbackHistoryPath) {
+          return { isDirectory: () => false, mtimeMs: Date.now() } as any;
+        }
+        throw new Error("ENOENT");
+      });
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.copyFile.mockResolvedValue(undefined);
+      mockFs.unlink.mockResolvedValue(undefined);
+      mockAll.mockReturnValue([]);
+
+      const result = await collectBrowserData(testStellaHome, {
+        selectedBrowser: "chrome",
+        selectedProfile: "Profile 9",
+      });
+
+      expect(result.browser).toBe("chrome");
+      expect(mockFs.copyFile).toHaveBeenCalledWith(
+        fallbackHistoryPath,
+        expect.stringContaining("browser_history_"),
+      );
+    });
+
     // Note: This test exercises the error path with the database constructor mocked.
     // The manual-test.ts script provides real integration testing
     it("should handle database errors gracefully", async () => {
