@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { ConversationEvents } from "@/app/chat/ConversationEvents";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 
@@ -20,22 +20,36 @@ export const MiniOutput = ({
   showConversation,
 }: Props) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
   const [atTop, setAtTop] = useState(true);
   const [atBottom, setAtBottom] = useState(true);
 
   const updateEdges = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    setAtTop(el.scrollTop <= 1);
-    setAtBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+    const isAtTop = el.scrollTop <= 1;
+    const isAtBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+    shouldAutoScrollRef.current = isAtBottom;
+    setAtTop(isAtTop);
+    setAtBottom(isAtBottom);
   }, []);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (shouldAutoScrollRef.current) {
+      el.scrollTop = el.scrollHeight;
     }
     updateEdges();
-  }, [events.length, streamingText, updateEdges]);
+  }, [
+    events.length,
+    streamingText,
+    reasoningText,
+    isStreaming,
+    pendingUserMessageId,
+    showConversation,
+    updateEdges,
+  ]);
 
   const cls = [
     "mini-content",
