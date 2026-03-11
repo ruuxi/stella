@@ -200,4 +200,156 @@ describe("runtime runner tools allowlist", () => {
     runner.stop();
     db.close();
   });
+
+  it("starts a follow-up orchestrator turn when a task completes", async () => {
+    const home = createTempHome();
+    const db = createDesktopDatabase(home);
+    const runtimeStore = new RuntimeStore(
+      db,
+      new TranscriptMirror(path.join(home, "state")),
+    );
+    const runner = createStellaHostRunner({
+      deviceId: "device-1",
+      StellaHome: home,
+      runtimeStore,
+    });
+
+    runner.setConvexUrl("https://example.convex.cloud");
+    runner.setAuthToken("token-1");
+    runner.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await runner.handleLocalChat(
+      {
+        conversationId: "conv-1",
+        userMessageId: "user-1",
+        userPrompt: "hello",
+      },
+      {
+        onStream: vi.fn(),
+        onToolStart: vi.fn(),
+        onToolEnd: vi.fn(),
+        onError: vi.fn(),
+        onEnd: vi.fn(),
+      },
+    );
+
+    const taskManagerOptions = localTaskManagerCtorMock.mock.calls[0]?.[0] as {
+      onTaskEvent: (event: {
+        type: "task-completed" | "task-failed";
+        conversationId: string;
+        taskId: string;
+        agentType: string;
+        description?: string;
+        result?: string;
+        error?: string;
+      }) => void;
+    };
+
+    taskManagerOptions.onTaskEvent({
+      type: "task-completed",
+      conversationId: "conv-1",
+      taskId: "local:task:1",
+      agentType: "general",
+      description: "Redesign dashboard",
+      result: "The redesign is complete.",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(runOrchestratorTurnMock).toHaveBeenCalledTimes(2);
+    expect(runOrchestratorTurnMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      conversationId: "conv-1",
+      userPrompt: expect.stringContaining("[Task completed]"),
+    }));
+    expect(runOrchestratorTurnMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      userPrompt: expect.stringContaining("result: The redesign is complete."),
+    }));
+
+    runner.stop();
+    db.close();
+  });
+
+  it("queues completed task results until the current orchestrator turn finishes", async () => {
+    let finishFirstTurn: (() => void) | null = null;
+    runOrchestratorTurnMock.mockReset();
+    runOrchestratorTurnMock.mockImplementation((opts: { callbacks: { onEnd: (event: { finalText: string }) => void } }) => {
+      if (!finishFirstTurn) {
+        return new Promise<void>((resolve) => {
+          finishFirstTurn = () => {
+            opts.callbacks.onEnd({ finalText: "done" });
+            resolve();
+          };
+        });
+      }
+      opts.callbacks.onEnd({ finalText: "task result handled" });
+      return Promise.resolve();
+    });
+
+    const home = createTempHome();
+    const db = createDesktopDatabase(home);
+    const runtimeStore = new RuntimeStore(
+      db,
+      new TranscriptMirror(path.join(home, "state")),
+    );
+    const runner = createStellaHostRunner({
+      deviceId: "device-1",
+      StellaHome: home,
+      runtimeStore,
+    });
+
+    runner.setConvexUrl("https://example.convex.cloud");
+    runner.setAuthToken("token-1");
+    runner.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await runner.handleLocalChat(
+      {
+        conversationId: "conv-1",
+        userMessageId: "user-1",
+        userPrompt: "hello",
+      },
+      {
+        onStream: vi.fn(),
+        onToolStart: vi.fn(),
+        onToolEnd: vi.fn(),
+        onError: vi.fn(),
+        onEnd: vi.fn(),
+      },
+    );
+
+    const taskManagerOptions = localTaskManagerCtorMock.mock.calls[0]?.[0] as {
+      onTaskEvent: (event: {
+        type: "task-completed" | "task-failed";
+        conversationId: string;
+        taskId: string;
+        agentType: string;
+        description?: string;
+        result?: string;
+        error?: string;
+      }) => void;
+    };
+
+    taskManagerOptions.onTaskEvent({
+      type: "task-completed",
+      conversationId: "conv-1",
+      taskId: "local:task:2",
+      agentType: "general",
+      result: "Queued result",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(runOrchestratorTurnMock).toHaveBeenCalledTimes(1);
+
+    finishFirstTurn?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(runOrchestratorTurnMock).toHaveBeenCalledTimes(2);
+    expect(runOrchestratorTurnMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      userPrompt: expect.stringContaining("Queued result"),
+    }));
+
+    runner.stop();
+    db.close();
+  });
 });
