@@ -2,11 +2,17 @@ import { promises as fs } from "fs";
 import { ipcMain } from "electron";
 import path from "path";
 
-type StoreHandlersOptions = Record<string, never>;
+type StoreHandlersOptions = {
+  getStellaHomePath: () => string | null;
+};
 
-export const registerStoreHandlers = (_options: StoreHandlersOptions) => {
+export const registerStoreHandlers = (options: StoreHandlersOptions) => {
   ipcMain.handle("theme:listInstalled", async () => {
-    const themesDir = path.resolve(process.cwd(), ".stella", "themes");
+    const stellaHomePath = options.getStellaHomePath();
+    if (!stellaHomePath) {
+      return [];
+    }
+    const themesDir = path.join(stellaHomePath, "themes");
     try {
       const files = await fs.readdir(themesDir);
       const themes = [];

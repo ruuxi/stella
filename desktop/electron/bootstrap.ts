@@ -45,6 +45,7 @@ import {
   signDeviceHeartbeat,
 } from "./system/device.js";
 import { resolveStellaHome } from "./system/stella-home.js";
+import { resolveRuntimeHomePath } from "./system/stella-home.js";
 import {
   initializeWakeWord,
   type WakeWordController,
@@ -60,6 +61,14 @@ const isDev = process.env.NODE_ENV === "development";
 const AUTH_PROTOCOL = "Stella";
 const STELLA_SESSION_PARTITION = "persist:Stella";
 const STARTUP_STAGE_DELAY_MS = 250;
+const HARD_RESET_MUTABLE_HOME_PATHS = [
+  "state",
+  "logs",
+  "cache",
+  "canvas",
+  "recovery",
+  "mods",
+] as const;
 
 export const bootstrapMainProcess = () => {
   // __dirname at runtime is dist-electron/electron/; frontendRoot is the project root (desktop/)
@@ -87,6 +96,7 @@ export const bootstrapMainProcess = () => {
   const workspaceService = new WorkspaceService(
     () => stellaHomePath,
     () => isDev,
+    () => path.resolve(frontendRoot, "workspace"),
   );
   const externalLinkService = new ExternalLinkService();
   const miniBridgeService = new MiniBridgeService();
@@ -441,10 +451,11 @@ export const bootstrapMainProcess = () => {
       appSession.clearCache(),
     ]);
 
-    const homePath = stellaHomePath ?? path.resolve(frontendRoot, ".stella");
-    await Promise.allSettled([
-      fs.rm(homePath, { recursive: true, force: true }),
-    ]);
+    const homePath = stellaHomePath ?? resolveRuntimeHomePath(app);
+    await Promise.allSettled(
+      HARD_RESET_MUTABLE_HOME_PATHS.map((relativePath) =>
+        fs.rm(path.join(homePath, relativePath), { recursive: true, force: true })),
+    );
 
     if (hadRunner) {
       await initializeStellaHostRunner();
@@ -635,7 +646,9 @@ export const bootstrapMainProcess = () => {
       windowManager,
     });
 
-    registerStoreHandlers({});
+    registerStoreHandlers({
+      getStellaHomePath: () => stellaHomePath,
+    });
 
     registerVoiceHandlers({
       uiState: uiStateService.state,
