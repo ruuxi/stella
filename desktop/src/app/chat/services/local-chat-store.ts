@@ -44,6 +44,7 @@ const CONTEXT_EVENT_TYPES = new Set([
   "task_started",
   "task_completed",
   "task_failed",
+  "task_canceled",
   "microcompact_boundary",
 ]);
 

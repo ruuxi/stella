@@ -59,6 +59,7 @@ type RuntimeTaskRecord = {
   toSubagentQueue: string[];
   toOrchestratorQueue: string[];
   messageLog: TaskMessageEntry[];
+  terminalEventEmitted: boolean;
 };
 
 type FsLock = {
@@ -68,7 +69,12 @@ type FsLock = {
 };
 
 export type TaskLifecycleEvent = {
-  type: "task-started" | "task-completed" | "task-failed" | "task-progress";
+  type:
+    | "task-started"
+    | "task-completed"
+    | "task-failed"
+    | "task-canceled"
+    | "task-progress";
   conversationId: string;
   taskId: string;
   agentType: string;
@@ -368,22 +374,35 @@ export class LocalTaskManager implements TaskToolApi {
     }
 
     // Emit task lifecycle event
-    if (task.status === "completed") {
-      this.opts.onTaskEvent?.({
-        type: "task-completed",
-        conversationId: task.conversationId,
-        taskId: task.id,
-        agentType: task.agentType,
-        result: task.result ? truncate(task.result, 500) : undefined,
-      });
-    } else if (task.status === "error" || task.status === "canceled") {
-      this.opts.onTaskEvent?.({
-        type: "task-failed",
-        conversationId: task.conversationId,
-        taskId: task.id,
-        agentType: task.agentType,
-        error: task.error,
-      });
+    if (!task.terminalEventEmitted) {
+      if (task.status === "completed") {
+        this.opts.onTaskEvent?.({
+          type: "task-completed",
+          conversationId: task.conversationId,
+          taskId: task.id,
+          agentType: task.agentType,
+          result: task.result ? truncate(task.result, 500) : undefined,
+        });
+      } else if (task.status === "error") {
+        this.opts.onTaskEvent?.({
+          type: "task-failed",
+          conversationId: task.conversationId,
+          taskId: task.id,
+          agentType: task.agentType,
+          error: task.error,
+        });
+      } else if (task.status === "canceled") {
+        this.opts.onTaskEvent?.({
+          type: "task-canceled",
+          conversationId: task.conversationId,
+          taskId: task.id,
+          agentType: task.agentType,
+          description: task.description,
+          parentTaskId: task.parentTaskId,
+          error: task.error,
+        });
+      }
+      task.terminalEventEmitted = true;
     }
 
     // Sync task completion to Convex in background (non-blocking)
@@ -447,6 +466,7 @@ export class LocalTaskManager implements TaskToolApi {
       toSubagentQueue: [],
       toOrchestratorQueue: [],
       messageLog: [],
+      terminalEventEmitted: false,
     };
 
     this.tasks.set(task.id, task);
@@ -508,10 +528,23 @@ export class LocalTaskManager implements TaskToolApi {
       if (local.status === "completed" || local.status === "error" || local.status === "canceled") {
         return { canceled: true };
       }
+      const previousStatus = local.status;
       local.error = reason ?? "Canceled";
       local.status = "canceled";
       local.completedAt = Date.now();
       local.controller.abort(new Error(local.error));
+      if (!local.terminalEventEmitted && (previousStatus === "pending" || previousStatus === "running")) {
+        this.opts.onTaskEvent?.({
+          type: "task-canceled",
+          conversationId: local.conversationId,
+          taskId: local.id,
+          agentType: local.agentType,
+          description: local.description,
+          parentTaskId: local.parentTaskId,
+          error: local.error,
+        });
+        local.terminalEventEmitted = true;
+      }
       if (local.storageMode === "cloud" && local.cloudTaskId) {
         await this.opts.cancelCloudTaskRecord(local.cloudTaskId, local.error);
       }

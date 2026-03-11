@@ -219,6 +219,30 @@ describe("ChatStoreProvider", () => {
         }),
       );
     });
+
+    it("records canceled tasks locally", () => {
+      const { result } = renderHook(() => useChatStore(), { wrapper });
+
+      act(() => {
+        result.current.appendAgentEvent({
+          conversationId: "conv-1",
+          type: "task-canceled",
+          taskId: "task-1",
+          error: "Canceled by user",
+        });
+      });
+
+      expect(mockAppendLocalEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          type: "task_canceled",
+          payload: {
+            taskId: "task-1",
+            error: "Canceled by user",
+          },
+        }),
+      );
+    });
   });
 
   describe("uploadAttachments", () => {

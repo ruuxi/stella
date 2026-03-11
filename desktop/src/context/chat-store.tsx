@@ -23,6 +23,7 @@ type AppendAgentEventArgs = {
     | 'task-started'
     | 'task-completed'
     | 'task-failed'
+    | 'task-canceled'
     | 'task-progress'
   agentType?: string
   userMessageId?: string
@@ -134,6 +135,18 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
         await appendLocalEvent({
           conversationId: args.conversationId,
           type: 'task_failed',
+          payload: {
+            taskId: args.taskId,
+            ...(args.error ? { error: args.error } : {}),
+          },
+        })
+        return
+      }
+
+      if (args.type === 'task-canceled') {
+        await appendLocalEvent({
+          conversationId: args.conversationId,
+          type: 'task_canceled',
           payload: {
             taskId: args.taskId,
             ...(args.error ? { error: args.error } : {}),

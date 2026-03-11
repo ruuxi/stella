@@ -63,6 +63,7 @@ const LOCAL_CONTEXT_EVENT_TYPES = new Set([
   "task_started",
   "task_completed",
   "task_failed",
+  "task_canceled",
   "microcompact_boundary",
 ]);
 
@@ -211,14 +212,20 @@ const readCoreMemory = (stellaHome: string): string | undefined => {
 };
 
 const buildTaskEventPrompt = (event: TaskLifecycleEvent): string | null => {
-  if (event.type !== "task-completed" && event.type !== "task-failed") {
+  if (
+    event.type !== "task-completed" &&
+    event.type !== "task-failed" &&
+    event.type !== "task-canceled"
+  ) {
     return null;
   }
 
   const lines =
     event.type === "task-completed"
       ? ["[Task completed]"]
-      : ["[Task failed]"];
+      : event.type === "task-canceled"
+        ? ["[Task canceled]"]
+        : ["[Task failed]"];
 
   if (event.taskId) lines.push(`task_id: ${event.taskId}`);
   if (event.agentType) lines.push(`agent_type: ${event.agentType}`);
@@ -226,7 +233,7 @@ const buildTaskEventPrompt = (event: TaskLifecycleEvent): string | null => {
   if (event.type === "task-completed" && event.result) {
     lines.push(`result: ${event.result}`);
   }
-  if (event.type === "task-failed" && event.error) {
+  if ((event.type === "task-failed" || event.type === "task-canceled") && event.error) {
     lines.push(`error: ${event.error}`);
   }
 

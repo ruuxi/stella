@@ -236,7 +236,7 @@ describe("runtime runner tools allowlist", () => {
 
     const taskManagerOptions = localTaskManagerCtorMock.mock.calls[0]?.[0] as {
       onTaskEvent: (event: {
-        type: "task-completed" | "task-failed";
+        type: "task-completed" | "task-failed" | "task-canceled";
         conversationId: string;
         taskId: string;
         agentType: string;
@@ -320,7 +320,7 @@ describe("runtime runner tools allowlist", () => {
 
     const taskManagerOptions = localTaskManagerCtorMock.mock.calls[0]?.[0] as {
       onTaskEvent: (event: {
-        type: "task-completed" | "task-failed";
+        type: "task-completed" | "task-failed" | "task-canceled";
         conversationId: string;
         taskId: string;
         agentType: string;
@@ -347,6 +347,75 @@ describe("runtime runner tools allowlist", () => {
     expect(runOrchestratorTurnMock).toHaveBeenCalledTimes(2);
     expect(runOrchestratorTurnMock).toHaveBeenLastCalledWith(expect.objectContaining({
       userPrompt: expect.stringContaining("Queued result"),
+    }));
+
+    runner.stop();
+    db.close();
+  });
+
+  it("starts a follow-up orchestrator turn when a task is canceled", async () => {
+    const home = createTempHome();
+    const db = createDesktopDatabase(home);
+    const runtimeStore = new RuntimeStore(
+      db,
+      new TranscriptMirror(path.join(home, "state")),
+    );
+    const runner = createStellaHostRunner({
+      deviceId: "device-1",
+      StellaHome: home,
+      runtimeStore,
+    });
+
+    runner.setConvexUrl("https://example.convex.cloud");
+    runner.setAuthToken("token-1");
+    runner.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await runner.handleLocalChat(
+      {
+        conversationId: "conv-1",
+        userMessageId: "user-1",
+        userPrompt: "hello",
+      },
+      {
+        onStream: vi.fn(),
+        onToolStart: vi.fn(),
+        onToolEnd: vi.fn(),
+        onError: vi.fn(),
+        onEnd: vi.fn(),
+      },
+    );
+
+    const taskManagerOptions = localTaskManagerCtorMock.mock.calls[0]?.[0] as {
+      onTaskEvent: (event: {
+        type: "task-completed" | "task-failed" | "task-canceled";
+        conversationId: string;
+        taskId: string;
+        agentType: string;
+        description?: string;
+        result?: string;
+        error?: string;
+      }) => void;
+    };
+
+    taskManagerOptions.onTaskEvent({
+      type: "task-canceled",
+      conversationId: "conv-1",
+      taskId: "local:task:3",
+      agentType: "general",
+      description: "Redesign dashboard",
+      error: "Canceled by user",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(runOrchestratorTurnMock).toHaveBeenCalledTimes(2);
+    expect(runOrchestratorTurnMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      conversationId: "conv-1",
+      userPrompt: expect.stringContaining("[Task canceled]"),
+    }));
+    expect(runOrchestratorTurnMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      userPrompt: expect.stringContaining("error: Canceled by user"),
     }));
 
     runner.stop();

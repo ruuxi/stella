@@ -11,7 +11,7 @@ export type SelfModAppliedData = {
 };
 
 export type AgentStreamEvent = {
-  type: "stream" | "tool-start" | "tool-end" | "error" | "end" | "task-started" | "task-completed" | "task-failed" | "task-progress";
+  type: "stream" | "tool-start" | "tool-end" | "error" | "end" | "task-started" | "task-completed" | "task-failed" | "task-canceled" | "task-progress";
   runId: string;
   seq: number;
   chunk?: string;
