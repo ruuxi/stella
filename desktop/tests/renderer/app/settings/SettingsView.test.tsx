@@ -16,7 +16,14 @@ import SettingsDialog from "../../../../src/app/settings/SettingsView";
 vi.mock("convex/react", () => ({
   useQuery: vi.fn(() => undefined),
   useMutation: vi.fn(() => vi.fn()),
-  useConvexAuth: vi.fn(() => ({ isAuthenticated: true })),
+}));
+
+const mockUseAuthSessionState = vi.fn(() => ({
+  hasConnectedAccount: true,
+}));
+
+vi.mock("@/app/auth/hooks/use-auth-session-state", () => ({
+  useAuthSessionState: () => mockUseAuthSessionState(),
 }));
 
 vi.mock("@/convex/api", () => ({
@@ -272,6 +279,7 @@ const LLM_PROVIDER_ROW_COUNT = 12;
 describe("SettingsDialog rendering", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseAuthSessionState.mockReturnValue({ hasConnectedAccount: true });
     setupElectronApi();
     globalThis.ResizeObserver = class ResizeObserver {
       observe() {}

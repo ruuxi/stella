@@ -1,5 +1,6 @@
-import { useConvexAuth, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
+import { useAuthSessionState } from "./use-auth-session-state";
 
 export type CurrentUser = {
   email?: string;
@@ -8,11 +9,11 @@ export type CurrentUser = {
 } | null | undefined;
 
 export function useCurrentUser(): { user: CurrentUser; isAuthenticated: boolean } {
-  const { isAuthenticated } = useConvexAuth();
+  const { hasConnectedAccount } = useAuthSessionState();
   const user = useQuery(
     api.auth.getCurrentUser,
-    isAuthenticated ? {} : "skip",
+    hasConnectedAccount ? {} : "skip",
   ) as CurrentUser;
-  return { user, isAuthenticated };
+  return { user, isAuthenticated: hasConnectedAccount };
 }
 

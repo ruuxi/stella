@@ -3,9 +3,10 @@
  */
 
 import { useCallback, useRef, useState } from "react";
-import { useConvexAuth, useAction } from "convex/react";
+import { useAction } from "convex/react";
 import { api } from "@/convex/api";
 import { clearCachedToken } from "@/app/auth/services/auth-token";
+import { useAuthSessionState } from "@/app/auth/hooks/use-auth-session-state";
 import {
   StellaAnimation,
   type StellaAnimationHandle,
@@ -73,7 +74,10 @@ export function useOnboardingOverlay() {
     complete: completeOnboarding,
     reset: resetOnboarding,
   } = useOnboardingState();
-  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
+  const {
+    hasConnectedAccount,
+    isLoading: isAuthLoading,
+  } = useAuthSessionState();
   const resetUserData = useAction(api.reset.resetAllUserData);
 
   const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
@@ -128,7 +132,7 @@ export function useOnboardingOverlay() {
       window.location.reload();
     };
 
-    if (!isAuthenticated) {
+    if (!hasConnectedAccount) {
       void finishLocalReset();
       return;
     }
@@ -138,13 +142,13 @@ export function useOnboardingOverlay() {
       .finally(() => {
         void finishLocalReset();
       });
-  }, [isAuthenticated, resetOnboarding, resetUserData]);
+  }, [hasConnectedAccount, resetOnboarding, resetUserData]);
 
   return {
     onboardingDone,
     onboardingExiting,
     completeOnboarding: handleCompleteOnboarding,
-    isAuthenticated,
+    isAuthenticated: hasConnectedAccount,
     isAuthLoading,
     hasExpanded,
     splitMode,

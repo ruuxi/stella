@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
+import { useAuthSessionState } from "@/app/auth/hooks/use-auth-session-state";
 import {
   buildModelDefaultsMap,
   buildResolvedModelDefaultsMap,
@@ -9,8 +10,8 @@ import {
 } from "@/app/settings/lib/model-defaults";
 
 export const ModelPreferencesBridge = () => {
-  const { isAuthenticated } = useConvexAuth();
-  const shouldQueryPreferences = isAuthenticated ? {} : "skip";
+  const { hasConnectedAccount } = useAuthSessionState();
+  const shouldQueryPreferences = hasConnectedAccount ? {} : "skip";
   const overridesJson = useQuery(
     api.data.preferences.getModelOverrides,
     shouldQueryPreferences,
@@ -34,7 +35,7 @@ export const ModelPreferencesBridge = () => {
     | number
     | undefined;
   const preferencesLoaded =
-    !isAuthenticated
+    !hasConnectedAccount
     || (
       modelDefaults !== undefined
       && overridesJson !== undefined
@@ -71,7 +72,7 @@ export const ModelPreferencesBridge = () => {
     if (!systemApi?.syncLocalModelPreferences) {
       return;
     }
-    if (!isAuthenticated) {
+    if (!hasConnectedAccount) {
       return;
     }
     if (!preferencesLoaded) {
@@ -89,7 +90,7 @@ export const ModelPreferencesBridge = () => {
     codexLocalMaxConcurrency,
     defaultModels,
     generalAgentEngine,
-    isAuthenticated,
+    hasConnectedAccount,
     modelOverrides,
     preferencesLoaded,
     resolvedDefaultModels,
