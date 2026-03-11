@@ -30,6 +30,7 @@ export const initializeWakeWord = async (
   const detector = await createWakeWordDetector(modelsDir);
   const feed = createWakeWordAudioFeedManager(detector);
   let lastEnabled = false;
+  let syncRequestId = 0;
 
   const shouldEnableWakeWord = () =>
     deps.isAppReady() &&
@@ -45,15 +46,27 @@ export const initializeWakeWord = async (
   };
 
   const syncState = () => {
+    const requestId = ++syncRequestId;
     const shouldListen = shouldEnableWakeWord();
     if (shouldListen) {
       if (!feed.isListening()) {
         void feed
           .start()
           .then(() => {
+            if (requestId !== syncRequestId) {
+              return;
+            }
+            if (!shouldEnableWakeWord() || !feed.isListening()) {
+              feed.stop();
+              publishEnabledState(false);
+              return;
+            }
             publishEnabledState(true);
           })
           .catch((error) => {
+            if (requestId !== syncRequestId) {
+              return;
+            }
             console.error(
               "[WakeWord] Failed to start listening:",
               (error as Error).message,
@@ -63,10 +76,8 @@ export const initializeWakeWord = async (
       } else {
         publishEnabledState(true);
       }
-    } else if (feed.isListening()) {
-      feed.stop();
-      publishEnabledState(false);
     } else {
+      feed.stop();
       publishEnabledState(false);
     }
     return shouldListen;

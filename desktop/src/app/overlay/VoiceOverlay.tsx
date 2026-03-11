@@ -1,17 +1,31 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useUiState } from "@/context/ui-state";
 import { useVoiceRecording } from "@/app/voice/hooks/use-voice-recording";
 import { useRealtimeVoice } from "@/app/voice/hooks/use-realtime-voice";
 import { useWindowType } from "@/shared/hooks/use-window-type";
-import { StellaAnimation, type VoiceMode } from "@/app/shell/ascii-creature/StellaAnimation";
+import {
+  StellaAnimation,
+  type VoiceMode,
+} from "@/app/shell/ascii-creature/StellaAnimation";
 import "./voice-overlay.css";
 
 interface VoiceOverlayProps {
   onTranscript: (text: string) => void;
+  visible: boolean;
   style?: CSSProperties;
 }
 
-export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
+export function VoiceOverlay({
+  onTranscript,
+  visible,
+  style,
+}: VoiceOverlayProps) {
   const { state, updateState } = useUiState();
   const [showOverlay, setShowOverlay] = useState(false);
   const [exiting, setExiting] = useState(false);
@@ -20,7 +34,8 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
   const retainedStyleRef = useRef<CSSProperties | undefined>(style);
 
   const windowType = useWindowType();
-  const isActiveWindow = windowType === "overlay" || state.window === windowType;
+  const isActiveWindow =
+    windowType === "overlay" || state.window === windowType;
 
   // STT mode
   const { analyserRef: sttAnalyserRef, isRecording } = useVoiceRecording({
@@ -37,19 +52,16 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
     isUserSpeaking,
   } = useRealtimeVoice();
 
-  const isAnyVoiceActive = isActiveWindow && (state.isVoiceActive || state.isVoiceRtcActive);
+  const isAnyVoiceActive =
+    isActiveWindow && (state.isVoiceActive || state.isVoiceRtcActive);
+  const shouldDisplayOverlay = visible && isActiveWindow;
   const isAudioReady = isRecording || isConnected;
 
   useEffect(() => {
-    if (style) {
+    if (shouldDisplayOverlay) {
       retainedStyleRef.current = style;
-      return;
     }
-
-    if (isAnyVoiceActive) {
-      retainedStyleRef.current = undefined;
-    }
-  }, [isAnyVoiceActive, style]);
+  }, [shouldDisplayOverlay, style]);
 
   // Voice mode uses server-reported speaking state for RTC (more reliable
   // than energy thresholds which decay slowly due to analyser smoothing).
@@ -73,7 +85,7 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
       transitionFrameRef.current = null;
     }
 
-    if (isAnyVoiceActive) {
+    if (shouldDisplayOverlay) {
       if (exitTimerRef.current) {
         clearTimeout(exitTimerRef.current);
         exitTimerRef.current = null;
@@ -99,7 +111,7 @@ export function VoiceOverlay({ onTranscript, style }: VoiceOverlayProps) {
       setShowOverlay(false);
       setExiting(false);
     }, 250);
-  }, [isAnyVoiceActive, showOverlay]);
+  }, [shouldDisplayOverlay, showOverlay]);
 
   useEffect(() => {
     return () => {

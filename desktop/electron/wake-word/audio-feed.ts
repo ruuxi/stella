@@ -13,18 +13,26 @@ export function createWakeWordAudioFeedManager(
   detector: WakeWordDetector,
 ): WakeWordAudioFeedManager {
   let listening = false;
+  let desiredListening = false;
   let processing = false;
   let detectionCallback: ((result: WakeWordResult) => void) | null = null;
   const pendingAudio: Int16Array[] = [];
+  let startPromise: Promise<void> | null = null;
+  let startRequestId = 0;
+  let listeningSessionId = 0;
 
-  const processAudioQueue = async () => {
-    if (processing || !listening) {
+  const processAudioQueue = async (sessionId = listeningSessionId) => {
+    if (processing || !listening || sessionId !== listeningSessionId) {
       return;
     }
     processing = true;
 
     try {
-      while (listening && pendingAudio.length > 0) {
+      while (
+        listening &&
+        sessionId === listeningSessionId &&
+        pendingAudio.length > 0
+      ) {
         const incoming = pendingAudio.shift();
         if (!incoming) {
           continue;
@@ -32,6 +40,9 @@ export function createWakeWordAudioFeedManager(
 
         try {
           const result = await detector.predict(incoming);
+          if (!listening || sessionId !== listeningSessionId) {
+            continue;
+          }
           if (result.detected) {
             detectionCallback?.(result);
           }
@@ -47,24 +58,59 @@ export function createWakeWordAudioFeedManager(
     }
   };
 
-  return {
-    async start() {
-      if (listening) {
-        return;
+  const startListening = async (): Promise<void> => {
+    desiredListening = true;
+    pendingAudio.length = 0;
+
+    if (listening) {
+      return;
+    }
+
+    if (startPromise) {
+      await startPromise;
+      if (desiredListening && !listening) {
+        await startListening();
       }
-      pendingAudio.length = 0;
-      await detector.start();
-      listening = true;
-    },
+      return;
+    }
+
+    const requestId = ++startRequestId;
+    const pendingStart = detector
+      .start()
+      .then(() => {
+        if (requestId !== startRequestId || !desiredListening) {
+          detector.stop();
+          return;
+        }
+
+        listening = true;
+        listeningSessionId += 1;
+      })
+      .finally(() => {
+        if (startPromise === pendingStart) {
+          startPromise = null;
+        }
+      });
+
+    startPromise = pendingStart;
+    await pendingStart;
+  };
+
+  return {
+    start: startListening,
 
     stop() {
-      if (!listening) {
-        pendingAudio.length = 0;
-        return;
-      }
+      const shouldStopDetector = listening || startPromise !== null;
+
+      desiredListening = false;
+      startRequestId += 1;
+      listeningSessionId += 1;
       listening = false;
       pendingAudio.length = 0;
-      detector.stop();
+
+      if (shouldStopDetector) {
+        detector.stop();
+      }
     },
 
     pushAudio(pcm: Int16Array) {
@@ -84,6 +130,9 @@ export function createWakeWordAudioFeedManager(
     },
 
     dispose() {
+      desiredListening = false;
+      startRequestId += 1;
+      listeningSessionId += 1;
       listening = false;
       pendingAudio.length = 0;
       detector.dispose();
