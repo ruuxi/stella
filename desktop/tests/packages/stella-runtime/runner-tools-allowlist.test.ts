@@ -421,4 +421,103 @@ describe("runtime runner tools allowlist", () => {
     runner.stop();
     db.close();
   });
+
+  it("preempts a background task follow-up when a new foreground user turn starts", async () => {
+    runOrchestratorTurnMock.mockReset();
+    runOrchestratorTurnMock.mockImplementation((opts: {
+      userMessageId: string;
+      userPrompt: string;
+      abortSignal?: AbortSignal;
+      callbacks: { onEnd: (event: { finalText: string }) => void };
+    }) => {
+      if (opts.userMessageId.startsWith("system:")) {
+        return new Promise<void>((resolve) => {
+          opts.abortSignal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+      }
+
+      opts.callbacks.onEnd({ finalText: "done" });
+      return Promise.resolve();
+    });
+
+    const home = createTempHome();
+    const db = createDesktopDatabase(home);
+    const runtimeStore = new RuntimeStore(
+      db,
+      new TranscriptMirror(path.join(home, "state")),
+    );
+    const runner = createStellaHostRunner({
+      deviceId: "device-1",
+      StellaHome: home,
+      runtimeStore,
+    });
+
+    runner.setConvexUrl("https://example.convex.cloud");
+    runner.setAuthToken("token-1");
+    runner.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await runner.handleLocalChat(
+      {
+        conversationId: "conv-1",
+        userMessageId: "user-1",
+        userPrompt: "hello",
+      },
+      {
+        onStream: vi.fn(),
+        onToolStart: vi.fn(),
+        onToolEnd: vi.fn(),
+        onError: vi.fn(),
+        onEnd: vi.fn(),
+      },
+    );
+
+    const taskManagerOptions = localTaskManagerCtorMock.mock.calls[0]?.[0] as {
+      onTaskEvent: (event: {
+        type: "task-completed" | "task-failed" | "task-canceled";
+        conversationId: string;
+        taskId: string;
+        agentType: string;
+        result?: string;
+      }) => void;
+    };
+
+    taskManagerOptions.onTaskEvent({
+      type: "task-completed",
+      conversationId: "conv-1",
+      taskId: "local:task:4",
+      agentType: "general",
+      result: "Background result",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(runOrchestratorTurnMock).toHaveBeenCalledTimes(2);
+
+    await expect(runner.handleLocalChat(
+      {
+        conversationId: "conv-1",
+        userMessageId: "user-2",
+        userPrompt: "new foreground message",
+      },
+      {
+        onStream: vi.fn(),
+        onToolStart: vi.fn(),
+        onToolEnd: vi.fn(),
+        onError: vi.fn(),
+        onEnd: vi.fn(),
+      },
+    )).resolves.toEqual(expect.objectContaining({
+      runId: expect.stringMatching(/^local:/),
+    }));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(runOrchestratorTurnMock).toHaveBeenCalledWith(expect.objectContaining({
+      userMessageId: "user-2",
+      userPrompt: "new foreground message",
+    }));
+
+    runner.stop();
+    db.close();
+  });
 });
