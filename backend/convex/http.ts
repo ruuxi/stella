@@ -11,8 +11,14 @@ import { registerSkillRoutes } from "./http_routes/skills";
 import { registerMusicRoutes } from "./http_routes/music";
 import { registerVoiceRoutes } from "./http_routes/voice";
 
-// Managed AI endpoint
-import { managedExecution } from "./managed_execution";
+// Stella provider endpoints
+import {
+  STELLA_CHAT_COMPLETIONS_PATH,
+  STELLA_MODELS_PATH,
+  stellaProviderChatCompletions,
+  stellaProviderModels,
+  stellaProviderOptions,
+} from "./stella_provider";
 
 const http = httpRouter();
 
@@ -34,15 +40,20 @@ registerMusicRoutes(http);
 registerVoiceRoutes(http);
 
 // ---------------------------------------------------------------------------
-// Stella managed AI endpoint for desktop runtime and managed frontend requests
+// Stella provider endpoints
 // ---------------------------------------------------------------------------
 
-const proxyOptionsHandler = httpAction(async (_ctx, request) =>
+const stellaModelsOptionsHandler = httpAction(async (_ctx, request) =>
   corsPreflightHandler(request),
 );
 
-// Managed model inference API
-http.route({ path: "/api/managed-ai/chat/completions", method: "OPTIONS", handler: proxyOptionsHandler });
-http.route({ path: "/api/managed-ai/chat/completions", method: "POST", handler: managedExecution });
+http.route({ path: STELLA_MODELS_PATH, method: "OPTIONS", handler: stellaModelsOptionsHandler });
+http.route({ path: STELLA_MODELS_PATH, method: "GET", handler: stellaProviderModels });
+const stellaChatOptionsHandler = httpAction(async (_ctx, request) =>
+  stellaProviderOptions(request),
+);
+
+http.route({ path: STELLA_CHAT_COMPLETIONS_PATH, method: "OPTIONS", handler: stellaChatOptionsHandler });
+http.route({ path: STELLA_CHAT_COMPLETIONS_PATH, method: "POST", handler: stellaProviderChatCompletions });
 
 export default http;

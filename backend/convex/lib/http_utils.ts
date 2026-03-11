@@ -1,7 +1,7 @@
 /**
  * Shared HTTP request utilities.
  *
- * Extracted from managed_execution.ts and http.ts to eliminate duplication.
+ * Shared by the Stella provider endpoint and HTTP routing layer.
  */
 
 export const MAX_CLIENT_ADDRESS_KEY_LENGTH = 128;

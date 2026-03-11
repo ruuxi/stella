@@ -39,11 +39,6 @@ export type ModelConfig = {
   providerOptions?: Record<string, Record<string, JSONValue>>;
 };
 
-export type ModelDefaultEntry = {
-  agentType: string;
-  model: string;
-};
-
 const DEFAULT_MODEL: ModelConfig = {
   model: "moonshotai/kimi-k2.5",
   fallback: "anthropic/claude-opus-4.5",
@@ -287,13 +282,6 @@ export function getModelConfig(agentType: string): ModelConfig {
 
 export function hasModelConfig(agentType: string): boolean {
   return Object.prototype.hasOwnProperty.call(AGENT_MODELS, agentType);
-}
-
-export function listModelDefaults(): ModelDefaultEntry[] {
-  return Object.entries(AGENT_MODELS).map(([agentType, config]) => ({
-    agentType,
-    model: config.model,
-  }));
 }
 
 export { DEFAULT_MODEL, AGENT_MODELS };
