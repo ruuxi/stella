@@ -26,18 +26,6 @@ vi.mock("../../../../src/app/onboarding/OnboardingMockWindows", () => ({
   ),
 }));
 
-vi.mock("../../../../src/app/auth/InlineAuth", () => ({
-  InlineAuth: (props: any) => (
-    <div data-testid="inline-auth">
-      {props.onSkip ? (
-        <button data-testid="inline-auth-skip" onClick={props.onSkip}>
-          Skip for now
-        </button>
-      ) : null}
-    </div>
-  ),
-}));
-
 vi.mock("@/context/theme-context", () => ({
   useTheme: vi.fn(() => ({
     themeId: "oc1",
@@ -145,8 +133,19 @@ describe("OnboardingStep1", () => {
       expect(screen.getByText("Start Stella")).toBeTruthy();
     });
 
+    it("renders Start Stella button in the start phase when unauthenticated", () => {
+      render(<OnboardingStep1 {...makeProps({ isAuthenticated: false })} />);
+      expect(screen.getByText("Start Stella")).toBeTruthy();
+    });
+
     it("renders with data-phase='start' when authenticated", () => {
       const { container } = render(<OnboardingStep1 {...makeProps({ isAuthenticated: true })} />);
+      const dialogue = container.querySelector(".onboarding-dialogue");
+      expect(dialogue?.getAttribute("data-phase")).toBe("start");
+    });
+
+    it("renders with data-phase='start' when unauthenticated", () => {
+      const { container } = render(<OnboardingStep1 {...makeProps({ isAuthenticated: false })} />);
       const dialogue = container.querySelector(".onboarding-dialogue");
       expect(dialogue?.getAttribute("data-phase")).toBe("start");
     });
@@ -158,49 +157,7 @@ describe("OnboardingStep1", () => {
     });
   });
 
-  describe("auth -> start transition", () => {
-    it("starts in auth phase when not authenticated", () => {
-      const { container } = render(<OnboardingStep1 {...makeProps({ isAuthenticated: false })} />);
-      const dialogue = container.querySelector(".onboarding-dialogue");
-      expect(dialogue?.getAttribute("data-phase")).toBe("auth");
-      expect(screen.getByTestId("inline-auth")).toBeTruthy();
-    });
-
-    it("auto-advances to start phase when isAuthenticated becomes true", () => {
-      const props = makeProps({ isAuthenticated: false });
-      const { container, rerender } = render(<OnboardingStep1 {...props} />);
-
-      // Initially in auth phase
-      expect(container.querySelector(".onboarding-dialogue")?.getAttribute("data-phase")).toBe("auth");
-
-      // Reuse same props object to keep callback refs stable (avoids
-      // the "complete" effect re-running and clearing the transition timer)
-      rerender(<OnboardingStep1 {...props} isAuthenticated={true} />);
-
-      // Advance past the transition timeout (FADE_OUT_MS + FADE_GAP_MS = 600)
-      act(() => {
-        vi.advanceTimersByTime(600);
-      });
-
-      expect(container.querySelector(".onboarding-dialogue")?.getAttribute("data-phase")).toBe("start");
-      expect(screen.getByText("Start Stella")).toBeTruthy();
-    });
-
-    it("moves to start phase when skip is clicked in auth phase", () => {
-      const props = makeProps({ isAuthenticated: false });
-      const { container } = render(<OnboardingStep1 {...props} />);
-
-      fireEvent.click(screen.getByTestId("inline-auth-skip"));
-
-      act(() => {
-        vi.advanceTimersByTime(600);
-      });
-
-      expect(props.onInteract).toHaveBeenCalledOnce();
-      expect(container.querySelector(".onboarding-dialogue")?.getAttribute("data-phase")).toBe("start");
-      expect(screen.getByText("Start Stella")).toBeTruthy();
-    });
-
+  describe("start -> intro transition", () => {
     it("calls onAccept and onInteract when Start Stella is clicked", () => {
       const props = makeProps({ isAuthenticated: true });
       render(<OnboardingStep1 {...props} />);
@@ -221,14 +178,6 @@ describe("OnboardingStep1", () => {
       expect(
         screen.getByText("Stella is an AI that runs on your computer.")
       ).toBeTruthy();
-    });
-  });
-
-  describe("auth phase", () => {
-    it("renders InlineAuth in auth phase when not authenticated", () => {
-      render(<OnboardingStep1 {...makeProps({ isAuthenticated: false })} />);
-      expect(screen.getByTestId("inline-auth")).toBeTruthy();
-      expect(screen.getByText("Sign in to begin")).toBeTruthy();
     });
   });
 
