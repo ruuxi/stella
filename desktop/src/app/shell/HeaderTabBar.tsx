@@ -27,6 +27,13 @@ export function HeaderTabBar({ activeView, activePanelName, pages, onTabSelect }
         Home
       </button>
 
+      <button
+        className={`htb-tab htb-tab-fixed ${activeView === "chat" ? "htb-tab--active" : ""}`}
+        onClick={() => onTabSelect("chat")}
+      >
+        Chat
+      </button>
+
       <div className="htb-scroll" ref={scrollRef}>
         {sortedPages.map((page) => (
           <button
@@ -39,13 +46,6 @@ export function HeaderTabBar({ activeView, activePanelName, pages, onTabSelect }
           </button>
         ))}
       </div>
-
-      <button
-        className={`htb-tab htb-tab-fixed ${activeView === "chat" ? "htb-tab--active" : ""}`}
-        onClick={() => onTabSelect("chat")}
-      >
-        Chat
-      </button>
     </div>
   );
 }
