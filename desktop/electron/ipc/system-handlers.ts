@@ -31,6 +31,7 @@ type SystemHandlersOptions = {
     event?: IpcMainEvent | IpcMainInvokeEvent,
   ) => Promise<boolean>;
   hardResetLocalState: () => Promise<{ ok: true }>;
+  resetLocalMessages: () => Promise<{ ok: true }>;
   submitCredential: (payload: {
     requestId: string;
     secretId: string;
@@ -142,6 +143,18 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       throw new Error("Blocked untrusted app:hardResetLocalState request.");
     }
     return options.hardResetLocalState();
+  });
+
+  ipcMain.handle("app:resetLocalMessages", async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "app:resetLocalMessages",
+      )
+    ) {
+      throw new Error("Blocked untrusted app:resetLocalMessages request.");
+    }
+    return options.resetLocalMessages();
   });
 
   ipcMain.handle(

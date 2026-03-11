@@ -464,6 +464,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("llmCredentials:delete", { provider }) as Promise<{
         removed: boolean;
       }>,
+    resetMessages: () =>
+      ipcRenderer.invoke("app:resetLocalMessages") as Promise<{ ok: boolean }>,
     onCredentialRequest: onIpcWithEvent<{
       requestId: string;
       provider: string;

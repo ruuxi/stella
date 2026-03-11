@@ -35,6 +35,7 @@ import { LocalSchedulerService } from "./services/local-scheduler-service.js";
 import { UiStateService } from "./services/ui-state-service.js";
 import { WorkspaceService } from "./services/workspace-service.js";
 import { createDesktopDatabase } from "./storage/database.js";
+import { resetMessageStorage } from "./storage/reset-message-storage.js";
 import { ChatStore } from "./storage/chat-store.js";
 import { RuntimeStore } from "./storage/runtime-store.js";
 import { TranscriptMirror } from "./storage/transcript-mirror.js";
@@ -196,6 +197,17 @@ export const bootstrapMainProcess = () => {
       : BrowserWindow.getAllWindows();
     for (const window of targets) {
       window.webContents.send("auth:callback", { url });
+    }
+  };
+
+  const broadcastLocalChatUpdated = () => {
+    const targets = windowManager
+      ? windowManager.getAllWindows()
+      : BrowserWindow.getAllWindows();
+    for (const window of targets) {
+      if (!window.isDestroyed()) {
+        window.webContents.send("localChat:updated");
+      }
     }
   };
 
@@ -442,6 +454,27 @@ export const bootstrapMainProcess = () => {
     return { ok: true };
   };
 
+  const resetLocalMessages = async (): Promise<{ ok: true }> => {
+    if (!stellaHomePath) {
+      return { ok: true };
+    }
+
+    if (stellaHostRunner) {
+      stellaHostRunner.stop();
+      stellaHostRunner = null;
+    }
+    chatStore = null;
+    runtimeStore = null;
+    desktopDatabase?.close();
+    desktopDatabase = null;
+
+    await resetMessageStorage(stellaHomePath);
+    await initializeStellaHostRunner();
+
+    broadcastLocalChatUpdated();
+    return { ok: true };
+  };
+
   // --- Single-instance lock ---
 
   if (!authService.enforceSingleInstanceLock()) {
@@ -554,6 +587,7 @@ export const bootstrapMainProcess = () => {
       ensurePrivilegedActionApproval: (action, message, detail, event) =>
         securityPolicyService.ensureApproval(action, message, detail, event),
       hardResetLocalState,
+      resetLocalMessages,
       submitCredential: (payload) =>
         credentialService.submitCredential(payload),
       cancelCredential: (payload) =>

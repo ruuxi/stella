@@ -274,6 +274,24 @@ const getAgentCompletion = (agent: Agent): { finalText: string; errorMessage?: s
   return { finalText };
 };
 
+const getPlatformShellPrompt = (): string | null => {
+  if (process.platform === "win32") {
+    return "On Windows, Bash runs in Git Bash. Prefer POSIX commands and /c/... style paths over C:\\ paths when using Bash.";
+  }
+  if (process.platform === "darwin") {
+    return "On macOS, use standard POSIX shell commands and native /Users/... paths when using Bash.";
+  }
+  return null;
+};
+
+const hasShellToolGuidance = (context: LocalTaskManagerAgentContext): boolean => {
+  const toolsAllowlist = context.toolsAllowlist;
+  if (!Array.isArray(toolsAllowlist) || toolsAllowlist.length === 0) {
+    return true;
+  }
+  return toolsAllowlist.includes("Bash") || toolsAllowlist.includes("SkillBash");
+};
+
 const buildSystemPrompt = (context: LocalTaskManagerAgentContext): string => {
   const sections = [context.systemPrompt.trim()];
 
@@ -283,6 +301,11 @@ const buildSystemPrompt = (context: LocalTaskManagerAgentContext): string => {
 
   if (context.coreMemory?.trim()) {
     sections.push(`Core memory:\n${context.coreMemory.trim()}`);
+  }
+
+  const platformShellPrompt = getPlatformShellPrompt();
+  if (platformShellPrompt && hasShellToolGuidance(context)) {
+    sections.push(platformShellPrompt);
   }
 
   return sections.filter(Boolean).join("\n\n");
