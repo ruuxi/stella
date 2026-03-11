@@ -9,13 +9,17 @@ type AuthClient = ReturnType<typeof createAuthClient<{ plugins: typeof plugins }
 
 let _instance: AuthClient | null = null;
 
-/** Lazy-initialized auth client. Throws on first access if VITE_CONVEX_SITE_URL is unset. */
+/** Lazy-initialized auth client. */
 export const authClient = new Proxy({} as AuthClient, {
   get(_target, prop, receiver) {
     if (!_instance) {
-      const baseURL = import.meta.env.VITE_CONVEX_SITE_URL as string | undefined;
+      const baseURL =
+        (import.meta.env.VITE_CONVEX_SITE_URL as string | undefined)
+        ?? (import.meta.env.VITE_CONVEX_HTTP_URL as string | undefined)
+        ?? ((import.meta.env.VITE_CONVEX_URL as string | undefined)
+          ?.replace(".convex.cloud", ".convex.site"));
       if (!baseURL) {
-        throw new Error("VITE_CONVEX_SITE_URL is not set. Cannot initialize auth client.");
+        throw new Error("Convex site URL is not set. Cannot initialize auth client.");
       }
       _instance = createAuthClient({ baseURL, plugins });
     }
