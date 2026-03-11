@@ -2,6 +2,7 @@ export { OFFLINE_RESPONDER_SYSTEM_PROMPT } from "./offline_responder";
 export { buildSuggestionUserMessage } from "./suggestions";
 export { SUGGESTIONS_USER_PROMPT_TEMPLATE } from "./suggestions";
 export {
+  buildCategoryAnalysisUserMessage,
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
   buildWelcomeSuggestionsPrompt,
