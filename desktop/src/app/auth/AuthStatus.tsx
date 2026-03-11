@@ -2,9 +2,9 @@ import { useCurrentUser } from "@/app/auth/hooks/use-current-user";
 import { secureSignOut } from "@/app/auth/services/auth";
 
 export const AuthStatus = () => {
-  const { user, isAuthenticated } = useCurrentUser();
+  const { user, hasConnectedAccount } = useCurrentUser();
 
-  if (!isAuthenticated) {
+  if (!hasConnectedAccount) {
     return null;
   }
 

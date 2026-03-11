@@ -56,6 +56,7 @@ function DesktopAuthRuntimeEffects() {
       return;
     }
 
+    // Cloud sync stays intentionally disabled; auth sessions are local-only for now.
     void systemApi.setCloudSyncEnabled({ enabled: false });
 
     return () => {
