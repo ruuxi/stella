@@ -22,8 +22,11 @@ export const configurePiRuntime = async () => {
   if (!api?.system?.configurePiRuntime || !convexUrl) {
     return;
   }
-  const convexSiteUrl = import.meta.env.VITE_CONVEX_SITE_URL as string | undefined;
   try {
+    const convexSiteUrl =
+      (import.meta.env.VITE_CONVEX_SITE_URL as string | undefined)
+      ?? (import.meta.env.VITE_CONVEX_HTTP_URL as string | undefined)
+      ?? convexUrl.replace(".convex.cloud", ".convex.site");
     const response = await api.system.configurePiRuntime({ convexUrl, convexSiteUrl });
     if (response?.deviceId) {
       cachedDeviceId = response.deviceId;
