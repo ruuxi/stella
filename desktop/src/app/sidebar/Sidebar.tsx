@@ -30,9 +30,9 @@ const AuthButton = ({
 }: {
   onSignIn?: () => void;
 }) => {
-  const { user, isAuthenticated } = useCurrentUser();
+  const { user, hasConnectedAccount } = useCurrentUser();
 
-  const label = isAuthenticated
+  const label = hasConnectedAccount
     ? user?.name ?? user?.email ?? "Account"
     : "Sign in";
 
@@ -41,7 +41,7 @@ const AuthButton = ({
       type="button"
       className="sidebar-nav-item"
       onClick={() => {
-        if (isAuthenticated) {
+        if (hasConnectedAccount) {
           void secureSignOut();
         } else {
           onSignIn?.();
@@ -49,7 +49,7 @@ const AuthButton = ({
       }}
     >
       <span className="sidebar-nav-icon">
-        {isAuthenticated ? <User size={18} /> : <LogIn size={18} />}
+        {hasConnectedAccount ? <User size={18} /> : <LogIn size={18} />}
       </span>
       <span className="sidebar-nav-label">{label}</span>
     </button>

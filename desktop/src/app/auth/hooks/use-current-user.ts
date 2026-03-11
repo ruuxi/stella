@@ -8,12 +8,12 @@ export type CurrentUser = {
   isAnonymous?: boolean;
 } | null | undefined;
 
-export function useCurrentUser(): { user: CurrentUser; isAuthenticated: boolean } {
+export function useCurrentUser(): { user: CurrentUser; hasConnectedAccount: boolean } {
   const { hasConnectedAccount } = useAuthSessionState();
   const user = useQuery(
     api.auth.getCurrentUser,
     hasConnectedAccount ? {} : "skip",
   ) as CurrentUser;
-  return { user, isAuthenticated: hasConnectedAccount };
+  return { user, hasConnectedAccount };
 }
 
