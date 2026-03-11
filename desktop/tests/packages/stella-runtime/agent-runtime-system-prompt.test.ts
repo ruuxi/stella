@@ -222,4 +222,35 @@ describe("agent runtime platform shell prompt", () => {
       expect(capturedSystemPrompts[0]).not.toContain(expectedPlatformPrompt);
     }
   });
+
+  it("includes the runtime skill catalog when skills are available", async () => {
+    const store = createStoreStub();
+
+    await runOrchestratorTurn({
+      conversationId: "conv-1",
+      userMessageId: "user-1",
+      agentType: "orchestrator",
+      userPrompt: "Continue the work",
+      agentContext: buildAgentContext({
+        defaultSkills: ["calendar"],
+        skillIds: ["calendar", "music"],
+      }),
+      toolExecutor: vi.fn().mockResolvedValue({ result: "unused" }),
+      deviceId: "device-1",
+      stellaHome: "/tmp/stella/.stella",
+      resolvedLlm,
+      store: store as unknown as RuntimeStore,
+      callbacks: {
+        onStream: vi.fn(),
+        onToolStart: vi.fn(),
+        onToolEnd: vi.fn(),
+        onError: vi.fn(),
+        onEnd: vi.fn(),
+      },
+    });
+
+    expect(capturedSystemPrompts[0]).toContain("Skills available in this runtime:");
+    expect(capturedSystemPrompts[0]).toContain("Default skills: calendar");
+    expect(capturedSystemPrompts[0]).toContain("Enabled installed skill IDs: calendar, music");
+  });
 });

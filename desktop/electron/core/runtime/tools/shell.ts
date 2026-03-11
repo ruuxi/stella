@@ -329,6 +329,11 @@ export const handleSkillBash = async (
     return { error: "skill_id is required." };
   }
 
+  if (Array.isArray(context?.skillIds) && !context.skillIds.includes(skillId)) {
+    const available = context.skillIds.length > 0 ? context.skillIds.join(", ") : "none";
+    return { error: `Skill '${skillId}' is not enabled. Available skills: ${available}.` };
+  }
+
   // Safety check: reject dangerous commands
   const commandStr = String(args.command ?? "");
   const dangerReason = isDangerousCommand(commandStr);

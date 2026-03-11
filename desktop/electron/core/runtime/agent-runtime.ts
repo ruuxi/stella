@@ -309,6 +309,19 @@ const buildSystemPrompt = (context: LocalTaskManagerAgentContext): string => {
     sections.push(platformShellPrompt);
   }
 
+  const defaultSkills = Array.from(new Set(context.defaultSkills.filter((value) => value.trim().length > 0)));
+  const skillIds = Array.from(new Set(context.skillIds.filter((value) => value.trim().length > 0)));
+  if (defaultSkills.length > 0 || skillIds.length > 0) {
+    const lines = ["Skills available in this runtime:"];
+    if (defaultSkills.length > 0) {
+      lines.push(`Default skills: ${defaultSkills.join(", ")}`);
+    }
+    if (skillIds.length > 0) {
+      lines.push(`Enabled installed skill IDs: ${skillIds.join(", ")}`);
+    }
+    sections.push(lines.join("\n"));
+  }
+
   return sections.filter(Boolean).join("\n\n");
 };
 
@@ -383,6 +396,8 @@ const createPiTools = (opts: {
   maxTaskDepth?: number;
   delegationAllowlist?: string[];
   toolsAllowlist?: string[];
+  defaultSkills?: string[];
+  skillIds?: string[];
   store: RuntimeStore;
   toolExecutor: (
     toolName: string,
@@ -443,7 +458,11 @@ const createPiTools = (opts: {
         const skillId =
           (typeof args.skillId === "string" ? args.skillId : undefined) ??
           (typeof args.skill_id === "string" ? args.skill_id : "");
-        const text = await localActivateSkill({ skillId, stellaHome: opts.stellaHome });
+        const text = await localActivateSkill({
+          skillId,
+          stellaHome: opts.stellaHome,
+          allowedSkillIds: opts.skillIds,
+        });
         return { content: [{ type: "text", text }], details: { text } };
       }
 
@@ -488,6 +507,8 @@ const createPiTools = (opts: {
         ...(typeof opts.taskDepth === "number" ? { taskDepth: opts.taskDepth } : {}),
         ...(typeof opts.maxTaskDepth === "number" ? { maxTaskDepth: opts.maxTaskDepth } : {}),
         ...(opts.delegationAllowlist ? { delegationAllowlist: opts.delegationAllowlist } : {}),
+        ...(opts.defaultSkills ? { defaultSkills: opts.defaultSkills } : {}),
+        ...(opts.skillIds ? { skillIds: opts.skillIds } : {}),
       };
 
       // --- before_tool hook ---
@@ -594,6 +615,8 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
     maxTaskDepth: opts.agentContext.maxTaskDepth,
     delegationAllowlist: opts.agentContext.delegationAllowlist,
     toolsAllowlist: opts.agentContext.toolsAllowlist,
+    defaultSkills: opts.agentContext.defaultSkills,
+    skillIds: opts.agentContext.skillIds,
     store: opts.store,
     toolExecutor: opts.toolExecutor,
     webSearch: opts.webSearch,
@@ -1095,6 +1118,8 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
     maxTaskDepth: opts.agentContext.maxTaskDepth,
     delegationAllowlist: opts.agentContext.delegationAllowlist,
     toolsAllowlist: opts.agentContext.toolsAllowlist,
+    defaultSkills: opts.agentContext.defaultSkills,
+    skillIds: opts.agentContext.skillIds,
     store: opts.store,
     toolExecutor: opts.toolExecutor,
     webSearch: opts.webSearch,
