@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  waitFor,
+} from "@testing-library/react";
 import { useQuery, useMutation } from "convex/react";
 import SettingsDialog from "../../../../src/app/settings/SettingsView";
 
@@ -39,7 +45,11 @@ vi.mock("@/app/settings/hooks/use-model-catalog", () => ({
   useModelCatalog: vi.fn(() => ({
     models: [
       { id: "moonshotai/kimi-k2.5", name: "Kimi K2.5", provider: "moonshotai" },
-      { id: "anthropic/claude-sonnet-4.6", name: "Claude Sonnet 4.6", provider: "anthropic" },
+      {
+        id: "anthropic/claude-sonnet-4.6",
+        name: "Claude Sonnet 4.6",
+        provider: "anthropic",
+      },
       { id: "anthropic/claude-3", name: "Claude 3", provider: "anthropic" },
       { id: "openai/gpt-4o", name: "GPT-4o", provider: "openai" },
       { id: "zai/glm-4.7", name: "GLM 4.7", provider: "zai" },
@@ -47,9 +57,7 @@ vi.mock("@/app/settings/hooks/use-model-catalog", () => ({
     groups: [
       {
         provider: "moonshotai",
-        models: [
-          { id: "moonshotai/kimi-k2.5", name: "Kimi K2.5" },
-        ],
+        models: [{ id: "moonshotai/kimi-k2.5", name: "Kimi K2.5" }],
       },
       {
         provider: "anthropic",
@@ -127,52 +135,86 @@ function defaultProps(
   };
 }
 
-function mockUseQuery(
-  impl: (queryPath: unknown, args?: unknown) => unknown,
-) {
+function mockUseQuery(impl: (queryPath: unknown, args?: unknown) => unknown) {
   vi.mocked(useQuery).mockImplementation(impl as never);
 }
 
-function mockUseMutation(
-  impl: (mutationPath: unknown) => unknown,
-) {
+function mockUseMutation(impl: (mutationPath: unknown) => unknown) {
   vi.mocked(useMutation).mockImplementation(impl as never);
 }
 
 /**
  * Configure useQuery mock to return different values based on query key.
  */
-function setupUseQuery(opts: {
-  modelDefaults?: Array<{ agentType: string; model: string; resolvedModel: string }>;
-  modelOverrides?: string;
-  generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
-  codexLocalMaxConcurrency?: number;
-} = {}) {
+function setupUseQuery(
+  opts: {
+    modelDefaults?: Array<{
+      agentType: string;
+      model: string;
+      resolvedModel: string;
+    }>;
+    modelOverrides?: string;
+    generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
+    codexLocalMaxConcurrency?: number;
+  } = {},
+) {
   mockUseQuery((queryPath: unknown) => {
     const path = queryPath as string;
     if (path === "preferences.getModelDefaults") {
-      return opts.modelDefaults ?? [
-        { agentType: "orchestrator", model: "stella/default", resolvedModel: "moonshotai/kimi-k2.5" },
-        { agentType: "general", model: "stella/default", resolvedModel: "moonshotai/kimi-k2.5" },
-        { agentType: "browser", model: "stella/default", resolvedModel: "anthropic/claude-sonnet-4.6" },
-        { agentType: "explore", model: "stella/default", resolvedModel: "zai/glm-4.7" },
-      ];
+      return Object.prototype.hasOwnProperty.call(opts, "modelDefaults")
+        ? opts.modelDefaults
+        : [
+            {
+              agentType: "orchestrator",
+              model: "stella/default",
+              resolvedModel: "moonshotai/kimi-k2.5",
+            },
+            {
+              agentType: "general",
+              model: "stella/default",
+              resolvedModel: "moonshotai/kimi-k2.5",
+            },
+            {
+              agentType: "browser",
+              model: "stella/default",
+              resolvedModel: "anthropic/claude-sonnet-4.6",
+            },
+            {
+              agentType: "explore",
+              model: "stella/default",
+              resolvedModel: "zai/glm-4.7",
+            },
+          ];
     }
     if (path === "preferences.getModelOverrides") {
-      return opts.modelOverrides ?? undefined;
+      return Object.prototype.hasOwnProperty.call(opts, "modelOverrides")
+        ? opts.modelOverrides
+        : JSON.stringify({});
     }
     if (path === "preferences.getGeneralAgentEngine") {
-      return opts.generalAgentEngine ?? "default";
+      return Object.prototype.hasOwnProperty.call(opts, "generalAgentEngine")
+        ? opts.generalAgentEngine
+        : "default";
     }
     if (path === "preferences.getCodexLocalMaxConcurrency") {
-      return opts.codexLocalMaxConcurrency ?? 3;
+      return Object.prototype.hasOwnProperty.call(
+        opts,
+        "codexLocalMaxConcurrency",
+      )
+        ? opts.codexLocalMaxConcurrency
+        : 3;
     }
     return undefined;
   });
 }
 
 function setupElectronApi(
-  credentials: Array<{ provider: string; label: string; status: "active"; updatedAt?: number }> = [],
+  credentials: Array<{
+    provider: string;
+    label: string;
+    status: "active";
+    updatedAt?: number;
+  }> = [],
 ) {
   mockListLlmCredentials.mockResolvedValue(
     credentials.map((entry, index) => ({
@@ -182,16 +224,18 @@ function setupElectronApi(
       updatedAt: entry.updatedAt ?? index + 1,
     })),
   );
-  mockSaveLlmCredential.mockImplementation(async (payload: {
-    provider: string;
-    label: string;
-    plaintext: string;
-  }) => ({
-    provider: payload.provider,
-    label: payload.label,
-    status: "active" as const,
-    updatedAt: Date.now(),
-  }));
+  mockSaveLlmCredential.mockImplementation(
+    async (payload: {
+      provider: string;
+      label: string;
+      plaintext: string;
+    }) => ({
+      provider: payload.provider,
+      label: payload.label,
+      status: "active" as const,
+      updatedAt: Date.now(),
+    }),
+  );
   mockDeleteLlmCredential.mockResolvedValue({ removed: true });
 
   window.electronAPI = {
@@ -307,8 +351,12 @@ describe("Tab switching", () => {
     await openModelsTab();
 
     // Models tab should now be active
-    expect(screen.getByText("Models").className).toContain("settings-sidebar-tab--active");
-    expect(screen.getByText("Basic").className).not.toContain("settings-sidebar-tab--active");
+    expect(screen.getByText("Models").className).toContain(
+      "settings-sidebar-tab--active",
+    );
+    expect(screen.getByText("Basic").className).not.toContain(
+      "settings-sidebar-tab--active",
+    );
 
     // Models tab content should appear
     expect(screen.getByText("Model Configuration")).toBeTruthy();
@@ -349,7 +397,9 @@ describe("Basic tab privacy copy", () => {
       screen.getByText(/Local only\. Conversations stay on this device\./),
     ).toBeTruthy();
     expect(
-      screen.getByText(/Cloud sync and connected mode are not available in the app right now\./),
+      screen.getByText(
+        /Cloud sync and connected mode are not available in the app right now\./,
+      ),
     ).toBeTruthy();
   });
 });
@@ -373,9 +423,9 @@ describe("BasicTab", () => {
     render(<SettingsDialog {...defaultProps()} />);
     expect(screen.getByText("Sign out of your account")).toBeTruthy();
 
-    const signOutBtn = screen.getAllByRole("button").find(
-      (btn) => btn.textContent === "Sign Out",
-    );
+    const signOutBtn = screen
+      .getAllByRole("button")
+      .find((btn) => btn.textContent === "Sign Out");
     expect(signOutBtn).toBeTruthy();
   });
 
@@ -383,9 +433,9 @@ describe("BasicTab", () => {
     const onSignOut = vi.fn();
     render(<SettingsDialog {...defaultProps({ onSignOut })} />);
 
-    const signOutBtn = screen.getAllByRole("button").find(
-      (btn) => btn.textContent === "Sign Out",
-    );
+    const signOutBtn = screen
+      .getAllByRole("button")
+      .find((btn) => btn.textContent === "Sign Out");
     fireEvent.click(signOutBtn!);
     expect(onSignOut).toHaveBeenCalledTimes(1);
   });
@@ -393,14 +443,18 @@ describe("BasicTab", () => {
   it("renders Delete Data row as disabled until the feature is implemented", () => {
     render(<SettingsDialog {...defaultProps()} />);
     expect(screen.getByText("Delete Data")).toBeTruthy();
-    expect(screen.getByText("Erase all conversations and memories.")).toBeTruthy();
     expect(
-      screen.getAllByText("This action is not available in the desktop app yet.")[0],
+      screen.getByText("Erase all conversations and memories."),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText(
+        "This action is not available in the desktop app yet.",
+      )[0],
     ).toBeTruthy();
 
-    const deleteButtons = screen.getAllByRole("button").filter(
-      (btn) => btn.textContent === "Delete",
-    );
+    const deleteButtons = screen
+      .getAllByRole("button")
+      .filter((btn) => btn.textContent === "Delete");
     expect(deleteButtons.length).toBeGreaterThanOrEqual(1);
     expect(deleteButtons[0].className).toContain("settings-btn--danger");
     expect(deleteButtons[0]).toBeDisabled();
@@ -409,11 +463,13 @@ describe("BasicTab", () => {
   it("renders Delete Account row as disabled until the feature is implemented", () => {
     render(<SettingsDialog {...defaultProps()} />);
     expect(screen.getByText("Delete Account")).toBeTruthy();
-    expect(screen.getByText("Permanently remove your account and all data.")).toBeTruthy();
+    expect(
+      screen.getByText("Permanently remove your account and all data."),
+    ).toBeTruthy();
 
-    const deleteButtons = screen.getAllByRole("button").filter(
-      (btn) => btn.textContent === "Delete",
-    );
+    const deleteButtons = screen
+      .getAllByRole("button")
+      .filter((btn) => btn.textContent === "Delete");
     // There should be two Delete buttons: Delete Data and Delete Account
     expect(deleteButtons.length).toBe(2);
     expect(deleteButtons[1].className).toContain("settings-btn--danger");
@@ -458,38 +514,72 @@ describe("GeneralAgentRuntimeSection", () => {
   });
 
   it("shows Codex concurrency control when engine is codex_local", async () => {
-    setupUseQuery({ generalAgentEngine: "codex_local", codexLocalMaxConcurrency: 2 });
+    setupUseQuery({
+      generalAgentEngine: "codex_local",
+      codexLocalMaxConcurrency: 2,
+    });
     await renderModelsTab();
 
     expect(screen.getByText("Parallel Codex Sessions")).toBeTruthy();
-    const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
+    const selects = document.querySelectorAll(
+      ".settings-runtime-select",
+    ) as NodeListOf<HTMLSelectElement>;
     expect(selects.length).toBe(2);
     expect(selects[1].value).toBe("2");
+  });
+
+  it("waits for saved runtime preferences before rendering editable values", async () => {
+    setupUseQuery({
+      generalAgentEngine: undefined,
+      codexLocalMaxConcurrency: undefined,
+    });
+    await renderModelsTab();
+
+    const select = document.querySelector(
+      ".settings-runtime-select",
+    ) as HTMLSelectElement;
+    expect(select).toBeTruthy();
+    expect(select.disabled).toBe(true);
+    expect(select.value).toBe("loading");
+    expect(select.options[0]?.textContent).toBe("Loading saved setting...");
+    expect(screen.queryByText("Parallel Codex Sessions")).toBeNull();
   });
 
   it("calls setGeneralAgentEngine when engine is changed", async () => {
     const mockSetGeneralAgentEngine = vi.fn();
     mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
-      if (path === "preferences.setGeneralAgentEngine") return mockSetGeneralAgentEngine;
+      if (path === "preferences.setGeneralAgentEngine")
+        return mockSetGeneralAgentEngine;
       return vi.fn();
     });
     setupUseQuery();
     await renderModelsTab();
 
-    const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
-    fireEvent.change(selects[0], { target: { value: "codex_local" } });
+    const selects = document.querySelectorAll(
+      ".settings-runtime-select",
+    ) as NodeListOf<HTMLSelectElement>;
+    await act(async () => {
+      fireEvent.change(selects[0], { target: { value: "codex_local" } });
+      await Promise.resolve();
+    });
 
-    expect(mockSetGeneralAgentEngine).toHaveBeenCalledWith({ engine: "codex_local" });
+    expect(mockSetGeneralAgentEngine).toHaveBeenCalledWith({
+      engine: "codex_local",
+    });
   });
 
   it("shows Claude Code option in General Agent Runtime engine select", async () => {
     setupUseQuery();
     await renderModelsTab();
 
-    const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
+    const selects = document.querySelectorAll(
+      ".settings-runtime-select",
+    ) as NodeListOf<HTMLSelectElement>;
     expect(selects.length).toBeGreaterThanOrEqual(1);
-    const options = Array.from(selects[0].querySelectorAll("option")).map((opt) => opt.value);
+    const options = Array.from(selects[0].querySelectorAll("option")).map(
+      (opt) => opt.value,
+    );
     expect(options).toContain("claude_code_local");
   });
 
@@ -497,30 +587,77 @@ describe("GeneralAgentRuntimeSection", () => {
     const mockSetGeneralAgentEngine = vi.fn();
     mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
-      if (path === "preferences.setGeneralAgentEngine") return mockSetGeneralAgentEngine;
+      if (path === "preferences.setGeneralAgentEngine")
+        return mockSetGeneralAgentEngine;
       return vi.fn();
     });
     setupUseQuery();
     await renderModelsTab();
 
-    const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
-    fireEvent.change(selects[0], { target: { value: "claude_code_local" } });
+    const selects = document.querySelectorAll(
+      ".settings-runtime-select",
+    ) as NodeListOf<HTMLSelectElement>;
+    await act(async () => {
+      fireEvent.change(selects[0], { target: { value: "claude_code_local" } });
+      await Promise.resolve();
+    });
 
-    expect(mockSetGeneralAgentEngine).toHaveBeenCalledWith({ engine: "claude_code_local" });
+    expect(mockSetGeneralAgentEngine).toHaveBeenCalledWith({
+      engine: "claude_code_local",
+    });
+  });
+
+  it("rolls back runtime changes and shows an error when saving fails", async () => {
+    const mockSetGeneralAgentEngine = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Runtime save failed"));
+    mockUseMutation((mutationPath: unknown) => {
+      const path = mutationPath as string;
+      if (path === "preferences.setGeneralAgentEngine")
+        return mockSetGeneralAgentEngine;
+      return vi.fn();
+    });
+    setupUseQuery();
+    await renderModelsTab();
+
+    const selects = document.querySelectorAll(
+      ".settings-runtime-select",
+    ) as NodeListOf<HTMLSelectElement>;
+    await act(async () => {
+      fireEvent.change(selects[0], { target: { value: "codex_local" } });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      const nextSelects = document.querySelectorAll(
+        ".settings-runtime-select",
+      ) as NodeListOf<HTMLSelectElement>;
+      expect(nextSelects[0].value).toBe("default");
+      expect(screen.getByText("Runtime save failed")).toBeTruthy();
+    });
   });
 
   it("calls setCodexLocalMaxConcurrency when Codex concurrency changes", async () => {
     const mockSetCodexLocalMaxConcurrency = vi.fn();
     mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
-      if (path === "preferences.setCodexLocalMaxConcurrency") return mockSetCodexLocalMaxConcurrency;
+      if (path === "preferences.setCodexLocalMaxConcurrency")
+        return mockSetCodexLocalMaxConcurrency;
       return vi.fn();
     });
-    setupUseQuery({ generalAgentEngine: "codex_local", codexLocalMaxConcurrency: 3 });
+    setupUseQuery({
+      generalAgentEngine: "codex_local",
+      codexLocalMaxConcurrency: 3,
+    });
     await renderModelsTab();
 
-    const selects = document.querySelectorAll(".settings-runtime-select") as NodeListOf<HTMLSelectElement>;
-    fireEvent.change(selects[1], { target: { value: "1" } });
+    const selects = document.querySelectorAll(
+      ".settings-runtime-select",
+    ) as NodeListOf<HTMLSelectElement>;
+    await act(async () => {
+      fireEvent.change(selects[1], { target: { value: "1" } });
+      await Promise.resolve();
+    });
 
     expect(mockSetCodexLocalMaxConcurrency).toHaveBeenCalledWith({ value: 1 });
   });
@@ -542,7 +679,9 @@ describe("ModelConfigSection", () => {
     await renderModelsTab();
 
     expect(screen.getByText("Model Configuration")).toBeTruthy();
-    expect(screen.getByText("Override the default model for each agent type.")).toBeTruthy();
+    expect(
+      screen.getByText("Override the default model for each agent type."),
+    ).toBeTruthy();
   });
 
   it("renders all configurable agents with labels and descriptions", async () => {
@@ -556,7 +695,9 @@ describe("ModelConfigSection", () => {
     expect(screen.getByText("Explore")).toBeTruthy();
 
     // Agent descriptions
-    expect(screen.getByText("Top-level agent that delegates tasks")).toBeTruthy();
+    expect(
+      screen.getByText("Top-level agent that delegates tasks"),
+    ).toBeTruthy();
     expect(screen.getByText("Full tool access for general tasks")).toBeTruthy();
     expect(screen.getByText("Browser automation via Playwright")).toBeTruthy();
     expect(screen.getByText("Lightweight read-only exploration")).toBeTruthy();
@@ -566,7 +707,9 @@ describe("ModelConfigSection", () => {
     setupUseQuery();
     await renderModelsTab();
 
-    const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
+    const selects = document.querySelectorAll(
+      ".settings-model-select",
+    ) as NodeListOf<HTMLSelectElement>;
     expect(selects.length).toBe(4);
 
     // Check that defaults appear as the first option in each select
@@ -576,7 +719,9 @@ describe("ModelConfigSection", () => {
     });
 
     expect(defaultTexts).toContain("Stella Recommended (currently Kimi K2.5)");
-    expect(defaultTexts).toContain("Stella Recommended (currently Claude Sonnet 4.6)");
+    expect(defaultTexts).toContain(
+      "Stella Recommended (currently Claude Sonnet 4.6)",
+    );
     expect(defaultTexts).toContain("Stella Recommended (currently GLM 4.7)");
   });
 
@@ -592,14 +737,15 @@ describe("ModelConfigSection", () => {
     expect(labels).toContain("openai");
   });
 
-
   it("selects have current value from overrides", async () => {
     setupUseQuery({
       modelOverrides: JSON.stringify({ orchestrator: "openai/gpt-4o" }),
     });
     await renderModelsTab();
 
-    const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
+    const selects = document.querySelectorAll(
+      ".settings-model-select",
+    ) as NodeListOf<HTMLSelectElement>;
     // First select is orchestrator
     expect(selects[0].value).toBe("openai/gpt-4o");
     // Second select (general) should be empty (default)
@@ -612,9 +758,13 @@ describe("ModelConfigSection", () => {
     });
     await renderModelsTab();
 
-    const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
+    const selects = document.querySelectorAll(
+      ".settings-model-select",
+    ) as NodeListOf<HTMLSelectElement>;
     expect(selects[0].value).toBe("");
-    expect(document.querySelectorAll(".settings-model-reset-icon")).toHaveLength(0);
+    expect(
+      document.querySelectorAll(".settings-model-reset-icon"),
+    ).toHaveLength(0);
   });
 
   it("shows reset icon when agent has an override", async () => {
@@ -629,7 +779,7 @@ describe("ModelConfigSection", () => {
   });
 
   it("does not show reset icon when agent has no override", async () => {
-    setupUseQuery({ modelOverrides: undefined });
+    setupUseQuery({ modelOverrides: JSON.stringify({}) });
     await renderModelsTab();
 
     const resetIcons = document.querySelectorAll(".settings-model-reset-icon");
@@ -648,7 +798,7 @@ describe("ModelConfigSection", () => {
   });
 
   it("hides Reset All button when there are no overrides", async () => {
-    setupUseQuery({ modelOverrides: undefined });
+    setupUseQuery({ modelOverrides: JSON.stringify({}) });
     await renderModelsTab();
 
     const resetAllBtn = screen.getByText("Reset All");
@@ -668,13 +818,51 @@ describe("ModelConfigSection", () => {
     setupUseQuery();
     await renderModelsTab();
 
-    const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
-    fireEvent.change(selects[0], { target: { value: "openai/gpt-4o" } });
+    const selects = document.querySelectorAll(
+      ".settings-model-select",
+    ) as NodeListOf<HTMLSelectElement>;
+    await act(async () => {
+      fireEvent.change(selects[0], { target: { value: "openai/gpt-4o" } });
+      await Promise.resolve();
+    });
 
     expect(mockSetOverride).toHaveBeenCalledWith({
       agentType: "orchestrator",
       model: "openai/gpt-4o",
     });
+  });
+
+  it("rolls back model override changes and shows an error when saving fails", async () => {
+    const mockSetOverride = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Model save failed"));
+    mockUseMutation((mutationPath: unknown) => {
+      const path = mutationPath as string;
+      if (path === "preferences.setModelOverride") return mockSetOverride;
+      return vi.fn();
+    });
+
+    setupUseQuery();
+    await renderModelsTab();
+
+    const selects = document.querySelectorAll(
+      ".settings-model-select",
+    ) as NodeListOf<HTMLSelectElement>;
+    await act(async () => {
+      fireEvent.change(selects[0], { target: { value: "openai/gpt-4o" } });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      const nextSelects = document.querySelectorAll(
+        ".settings-model-select",
+      ) as NodeListOf<HTMLSelectElement>;
+      expect(nextSelects[0].value).toBe("");
+      expect(screen.getByText("Model save failed")).toBeTruthy();
+    });
+    expect(
+      document.querySelectorAll(".settings-model-reset-icon"),
+    ).toHaveLength(0);
   });
 
   it("calls clearModelOverride mutation when empty value is selected", async () => {
@@ -692,10 +880,17 @@ describe("ModelConfigSection", () => {
     });
     await renderModelsTab();
 
-    const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
-    fireEvent.change(selects[0], { target: { value: "" } });
+    const selects = document.querySelectorAll(
+      ".settings-model-select",
+    ) as NodeListOf<HTMLSelectElement>;
+    await act(async () => {
+      fireEvent.change(selects[0], { target: { value: "" } });
+      await Promise.resolve();
+    });
 
-    expect(mockClearOverride).toHaveBeenCalledWith({ agentType: "orchestrator" });
+    expect(mockClearOverride).toHaveBeenCalledWith({
+      agentType: "orchestrator",
+    });
   });
 
   it("calls clearModelOverride when reset icon is clicked", async () => {
@@ -711,10 +906,17 @@ describe("ModelConfigSection", () => {
     });
     await renderModelsTab();
 
-    const resetIcon = document.querySelector(".settings-model-reset-icon") as HTMLElement;
-    fireEvent.click(resetIcon);
+    const resetIcon = document.querySelector(
+      ".settings-model-reset-icon",
+    ) as HTMLElement;
+    await act(async () => {
+      fireEvent.click(resetIcon);
+      await Promise.resolve();
+    });
 
-    expect(mockClearOverride).toHaveBeenCalledWith({ agentType: "orchestrator" });
+    expect(mockClearOverride).toHaveBeenCalledWith({
+      agentType: "orchestrator",
+    });
   });
 
   it("Reset All clears all overrides", async () => {
@@ -733,10 +935,15 @@ describe("ModelConfigSection", () => {
     });
     await renderModelsTab();
 
-    fireEvent.click(screen.getByText("Reset All"));
+    await act(async () => {
+      fireEvent.click(screen.getByText("Reset All"));
+      await Promise.resolve();
+    });
 
     // Should be called for each overridden agent
-    expect(mockClearOverride).toHaveBeenCalledWith({ agentType: "orchestrator" });
+    expect(mockClearOverride).toHaveBeenCalledWith({
+      agentType: "orchestrator",
+    });
     expect(mockClearOverride).toHaveBeenCalledWith({ agentType: "general" });
     expect(mockClearOverride).toHaveBeenCalledTimes(2);
   });
@@ -763,7 +970,9 @@ describe("ApiKeysSection", () => {
 
     expect(screen.getByText("API Keys")).toBeTruthy();
     expect(screen.getByText(/Keys stay on this device/)).toBeTruthy();
-    expect(screen.getByText(/Otherwise it uses your Stella provider access\./)).toBeTruthy();
+    expect(
+      screen.getByText(/Otherwise it uses your Stella provider access\./),
+    ).toBeTruthy();
   });
 
   it("renders all LLM provider rows", async () => {
@@ -1041,6 +1250,3 @@ describe("SettingsPanel", () => {
     expect(panel).toBeTruthy();
   });
 });
-
-
-
