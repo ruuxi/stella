@@ -4,6 +4,7 @@ import { api } from "@/convex/api";
 import { useModelCatalog } from "@/app/settings/hooks/use-model-catalog";
 import {
   buildModelDefaultsMap,
+  buildResolvedModelDefaultsMap,
   getConfigurableAgents,
   getDefaultModelOptionLabel,
   normalizeModelOverrides,
@@ -183,12 +184,19 @@ function ModelConfigSection() {
     for (const group of groups) {
       for (const model of group.models) {
         next.set(model.id, model.name);
+        if (model.upstreamModel) {
+          next.set(model.upstreamModel, model.name);
+        }
       }
     }
     return next;
   }, [groups]);
   const defaultModelMap = useMemo(
     () => buildModelDefaultsMap(modelDefaults),
+    [modelDefaults],
+  );
+  const resolvedDefaultModelMap = useMemo(
+    () => buildResolvedModelDefaultsMap(modelDefaults),
     [modelDefaults],
   );
   const configurableAgents = useMemo(
@@ -422,6 +430,7 @@ function ModelConfigSection() {
                     {getDefaultModelOptionLabel(
                       agent.key,
                       defaultModelMap,
+                      resolvedDefaultModelMap,
                       modelNamesById,
                     )}
                   </option>
@@ -567,7 +576,7 @@ function ApiKeysSection() {
       <h3 className="settings-card-title">API Keys</h3>
       <p className="settings-card-desc">
         Keys stay on this device. If Stella has a matching local key it calls
-        that provider directly. Otherwise it uses the managed Stella route.
+        that provider directly. Otherwise it uses your Stella provider access.
       </p>
       {credentialsError ? (
         <p className="settings-card-desc">{credentialsError}</p>

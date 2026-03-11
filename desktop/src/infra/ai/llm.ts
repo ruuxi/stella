@@ -1,15 +1,15 @@
 import { createServiceRequest } from "@/infra/http/service-request";
 import {
-  callManagedChatCompletion,
-  CHAT_COMPLETIONS_PATH,
+  callStellaChatCompletion,
+  STELLA_CHAT_COMPLETIONS_PATH,
   extractChatText,
-  streamManagedChatCompletion,
+  streamStellaChatCompletion,
   type ChatCompletionResponse,
   type ChatMessage,
-} from "../../../electron/core/runtime/chat-completions.js";
+} from "../../../electron/core/runtime/stella-provider.js";
 
 export {
-  CHAT_COMPLETIONS_PATH,
+  STELLA_CHAT_COMPLETIONS_PATH,
   extractChatText,
   type ChatCompletionResponse,
   type ChatMessage,
@@ -35,7 +35,7 @@ async function createManagedTransport(
   options: ChatRequestBase,
 ) {
   return await createServiceRequest(
-    options.path ?? CHAT_COMPLETIONS_PATH,
+    options.path ?? STELLA_CHAT_COMPLETIONS_PATH,
     options.headers,
   );
 }
@@ -43,7 +43,7 @@ async function createManagedTransport(
 export async function callChatCompletion<TResponse = ChatCompletionResponse>(
   options: ChatJsonRequest,
 ): Promise<TResponse> {
-  return await callManagedChatCompletion<TResponse>({
+  return await callStellaChatCompletion<TResponse>({
     transport: await createManagedTransport(options),
     request: {
       agentType: options.agentType,
@@ -56,7 +56,7 @@ export async function callChatCompletion<TResponse = ChatCompletionResponse>(
 export async function streamChatCompletion(
   options: ChatStreamRequest,
 ): Promise<string> {
-  return await streamManagedChatCompletion({
+  return await streamStellaChatCompletion({
     transport: await createManagedTransport(options),
     request: {
       agentType: options.agentType,

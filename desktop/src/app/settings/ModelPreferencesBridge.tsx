@@ -3,6 +3,7 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import {
   buildModelDefaultsMap,
+  buildResolvedModelDefaultsMap,
   normalizeModelOverrides,
   type ModelDefaultEntry,
 } from "@/app/settings/lib/model-defaults";
@@ -45,6 +46,10 @@ export const ModelPreferencesBridge = () => {
     () => buildModelDefaultsMap(modelDefaults),
     [modelDefaults],
   );
+  const resolvedDefaultModels = useMemo(
+    () => buildResolvedModelDefaultsMap(modelDefaults),
+    [modelDefaults],
+  );
 
   const modelOverrides = useMemo<Record<string, string>>(() => {
     if (!overridesJson) {
@@ -75,6 +80,7 @@ export const ModelPreferencesBridge = () => {
 
     void systemApi.syncLocalModelPreferences({
       defaultModels,
+      resolvedDefaultModels,
       modelOverrides,
       generalAgentEngine: generalAgentEngine ?? "default",
       codexLocalMaxConcurrency: codexLocalMaxConcurrency ?? 3,
@@ -86,6 +92,7 @@ export const ModelPreferencesBridge = () => {
     isAuthenticated,
     modelOverrides,
     preferencesLoaded,
+    resolvedDefaultModels,
   ]);
 
   return null;

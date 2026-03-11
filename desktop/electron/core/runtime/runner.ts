@@ -35,6 +35,7 @@ import { registerModel } from "../ai/models.js";
 import type { Api, Model } from "../ai/types.js";
 import { canResolveLlmRoute, resolveLlmRoute } from "./model-routing.js";
 import { createRemoteTurnBridge } from "./remote-turn-bridge.js";
+import { normalizeStellaApiBaseUrl } from "./stella-provider.js";
 import {
   buildRuntimeThreadKey,
   parseThreadCheckpoint,
@@ -160,15 +161,15 @@ const sanitizeConvexDeploymentUrl = (value: string | null): string | null => {
   return trimmed.replace(/\/+$/, "");
 };
 
-const sanitizeProxyBase = (value: string | null): string | null => {
+const sanitizeStellaBase = (value: string | null): string | null => {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
   const normalized = trimmed.replace(/\/+$/, "");
-  if (normalized.includes("/api/managed-ai")) {
-    return normalized;
+  if (normalized.includes("/api/stella/v1")) {
+    return normalizeStellaApiBaseUrl(normalized);
   }
-  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/managed-ai`;
+  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/stella/v1`;
 };
 
 /** Scan source files for data-stella-label attributes to build panel inventory. */
@@ -257,7 +258,7 @@ export const createStellaHostRunner = ({
 }: StellaHostRunnerOptions) => {
   const convexApi = anyApi;
 
-  const envProxyBaseUrl = sanitizeProxyBase(process.env.STELLA_LLM_PROXY_URL ?? null);
+  const envProxyBaseUrl = sanitizeStellaBase(process.env.STELLA_LLM_PROXY_URL ?? null);
   const envAuthToken = process.env.STELLA_LLM_PROXY_TOKEN ?? null;
   const envConvexDeploymentUrl = sanitizeConvexDeploymentUrl(process.env.STELLA_CONVEX_URL ?? null);
 
@@ -376,7 +377,7 @@ export const createStellaHostRunner = ({
   };
 
   const ensureProxyReady = (): { baseUrl: string; authToken: string } => {
-    const baseUrl = sanitizeProxyBase(proxyBaseUrl);
+    const baseUrl = sanitizeStellaBase(proxyBaseUrl);
     const nextAuthToken = authToken?.trim();
     if (!baseUrl) {
       throw new Error("Stella runtime is missing proxy URL. Set STELLA_LLM_PROXY_URL or configure host URL.");
@@ -848,7 +849,7 @@ export const createStellaHostRunner = ({
       convexDeploymentUrl = nextConvexDeploymentUrl;
     }
     if (!envProxyBaseUrl) {
-      proxyBaseUrl = sanitizeProxyBase(value);
+      proxyBaseUrl = sanitizeStellaBase(value);
     }
     syncRemoteTurnBridge();
   };
@@ -964,7 +965,7 @@ export const createStellaHostRunner = ({
     })) {
       return { ready: true, engine: "pi" };
     }
-    const hasProxyUrl = Boolean(sanitizeProxyBase(proxyBaseUrl));
+    const hasProxyUrl = Boolean(sanitizeStellaBase(proxyBaseUrl));
     const hasAuthToken = Boolean(authToken?.trim());
     if (!hasProxyUrl) {
       return { ready: false, reason: "Missing proxy URL", engine: "pi" };

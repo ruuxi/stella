@@ -10,9 +10,9 @@ import {
   getModelOverride,
 } from "../core/runtime/preferences/local-preferences.js";
 import {
-  buildChatCompletionContext,
+  buildStellaChatContext,
   type ChatMessage,
-} from "../core/runtime/chat-completions.js";
+} from "../core/runtime/stella-provider.js";
 
 type OverlayStreamHandlersOptions = {
   getStellaHomePath: () => string | null;
@@ -103,7 +103,7 @@ export const registerOverlayStreamHandlers = (
 
           const stream = streamSimple(
             resolvedRoute.model,
-            buildChatCompletionContext(messages),
+            buildStellaChatContext(messages),
             {
               apiKey: resolvedRoute.getApiKey(),
               signal: abortController.signal,

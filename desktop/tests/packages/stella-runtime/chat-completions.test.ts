@@ -10,16 +10,16 @@ vi.mock("../../../electron/core/ai/stream", () => ({
   streamSimple: streamSimpleMock,
 }));
 
-const { callManagedChatCompletion } = await import("../../../electron/core/runtime/chat-completions.js");
+const { callStellaChatCompletion } = await import("../../../electron/core/runtime/stella-provider.js");
 
-describe("managed chat transport", () => {
+describe("stella chat transport", () => {
   it("normalizes a full chat completions endpoint to the API base URL before creating the OpenAI client", async () => {
     completeSimpleMock.mockResolvedValue({
       role: "assistant",
       content: [{ type: "text", text: "ok" }],
       api: "openai-completions",
-      provider: "stella-managed",
-      model: "default",
+      provider: "stella",
+      model: "stella/default",
       usage: {
         input: 0,
         output: 0,
@@ -32,9 +32,9 @@ describe("managed chat transport", () => {
       timestamp: Date.now(),
     });
 
-    await callManagedChatCompletion({
+    await callStellaChatCompletion({
       transport: {
-        endpoint: "https://demo.convex.site/api/managed-ai/chat/completions",
+        endpoint: "https://demo.convex.site/api/stella/v1/chat/completions",
         headers: {
           Authorization: "Bearer token-123",
         },
@@ -47,7 +47,7 @@ describe("managed chat transport", () => {
 
     expect(completeSimpleMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        baseUrl: "https://demo.convex.site/api/managed-ai",
+        baseUrl: "https://demo.convex.site/api/stella/v1",
       }),
       expect.anything(),
       expect.anything(),
