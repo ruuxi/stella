@@ -77,10 +77,9 @@
 .home-dashboard {
   display: grid;
   grid-template-columns: 1.76fr 1fr;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: 1fr;
   grid-template-areas:
-    "canvas  sidebar"
-    "music   sidebar";
+    "canvas  sidebar";
   gap: 10px;
   padding: 14px;
   height: 100%;
@@ -118,11 +117,10 @@
 @container home (max-width: 780px) {
   .home-dashboard {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr auto auto;
+    grid-template-rows: 1fr auto;
     grid-template-areas:
       "canvas"
-      "sidebar"
-      "music";
+      "sidebar";
     overflow-y: auto;
     scrollbar-width: none;
     height: auto;
@@ -138,23 +136,6 @@
   .home-zone-sidebar > * {
     flex: 1 1 220px;
   }
-
-  /* Stack music bar vertically on medium screens */
-  .home-zone-music .dashboard-card { flex-direction: column; }
-  .home-zone-music .dashboard-card-header { display: flex; }
-  .home-zone-music .dashboard-card-body {
-    flex-direction: column;
-    gap: 14px;
-  }
-  .home-zone-music .music-waveform {
-    position: relative;
-    width: 100%;
-    height: 48px;
-    opacity: 1;
-  }
-  .home-zone-music .music-moods { flex-wrap: wrap; }
-  .home-zone-music .music-player-center { max-width: none; }
-  .home-zone-music .music-prompt-bar { max-width: none; }
 }
 
 @container home (max-width: 540px) {
@@ -163,8 +144,7 @@
     grid-template-rows: auto;
     grid-template-areas:
       "canvas"
-      "sidebar"
-      "music";
+      "sidebar";
     overflow-y: auto;
     scrollbar-width: none;
     height: auto;
