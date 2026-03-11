@@ -3,7 +3,8 @@
  *
  * Gathers behavioral data:
  * - Screen Time / app usage (knowledgeC.db on macOS, ActivitiesCache.db on Windows)
- * - Dock pins (macOS)
+ * - Dock pins (macOS) / Taskbar pins (Windows)
+ * - Startup / login items (what auto-runs — reveals essential apps)
  * - Filesystem signals (Downloads, Documents, Desktop)
  *
  * NO theme/accessibility/appearance signals — only behavioral data.
@@ -16,6 +17,7 @@ import { exec } from "child_process";
 import type {
   SystemSignals,
   DockPin,
+  StartupItem,
   AppUsageSummary,
   FilesystemSignals,
 } from "./discovery-types.js";
@@ -285,6 +287,86 @@ async function collectAppUsage(stellaHome: string): Promise<AppUsageSummary[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Startup / Login Items
+// ---------------------------------------------------------------------------
+
+/** Apps that auto-start are apps the user considers essential. */
+
+async function collectStartupItemsWindows(): Promise<StartupItem[]> {
+  const items: StartupItem[] = [];
+  const seen = new Set<string>();
+
+  // 1. Registry Run keys (current user)
+  try {
+    const output = await execAsync(
+      'reg query "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" 2>nul'
+    );
+    for (const line of output.split("\n")) {
+      const m = line.trim().match(/^\s*(\S+)\s+REG_SZ\s+(.+)$/i);
+      if (m) {
+        const name = m[1].trim();
+        const valuePath = m[2].trim().replace(/^"(.+?)".*$/, "$1");
+        const key = name.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          items.push({ name, path: valuePath });
+        }
+      }
+    }
+  } catch {
+    // Registry key may not exist
+  }
+
+  // 2. Startup folder shortcuts
+  try {
+    const startupDir = path.join(
+      process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
+      "Microsoft", "Windows", "Start Menu", "Programs", "Startup"
+    );
+    const entries = await fs.readdir(startupDir);
+    for (const entry of entries) {
+      const name = entry.replace(/\.(lnk|url)$/i, "");
+      const key = name.toLowerCase();
+      if (!seen.has(key) && !entry.startsWith("desktop.ini")) {
+        seen.add(key);
+        items.push({ name, path: path.join(startupDir, entry) });
+      }
+    }
+  } catch {
+    // Folder may not exist
+  }
+
+  return items;
+}
+
+async function collectStartupItemsMac(): Promise<StartupItem[]> {
+  const items: StartupItem[] = [];
+
+  // Login items via osascript
+  try {
+    const output = await execAsync(
+      `osascript -e 'tell application "System Events" to get the name of every login item'`
+    );
+    for (const name of output.split(", ")) {
+      const trimmed = name.trim();
+      if (trimmed) {
+        items.push({ name: trimmed, path: "" });
+      }
+    }
+  } catch {
+    // May fail without accessibility permissions
+  }
+
+  return items;
+}
+
+async function collectStartupItems(): Promise<StartupItem[]> {
+  if (os.platform() === "win32") return collectStartupItemsWindows();
+  if (os.platform() === "darwin") return collectStartupItemsMac();
+  return [];
+}
+
+// ---------------------------------------------------------------------------
 // Filesystem Signals
 // ---------------------------------------------------------------------------
 
@@ -365,7 +447,7 @@ async function collectFilesystemSignals(): Promise<FilesystemSignals> {
 // ---------------------------------------------------------------------------
 
 export async function collectSystemSignals(stellaHome: string): Promise<SystemSignals> {
-  const [dockPins, appUsage, filesystem] = await Promise.all([
+  const [dockPins, appUsage, filesystem, startupItems] = await Promise.all([
     withTimeout(collectDockPins(), 3000, []),
     withTimeout(collectAppUsage(stellaHome), 10000, []),
     withTimeout(collectFilesystemSignals(), 5000, {
@@ -373,9 +455,10 @@ export async function collectSystemSignals(stellaHome: string): Promise<SystemSi
       documentsFolders: [],
       desktopFileTypes: {},
     }),
+    withTimeout(collectStartupItems(), 3000, []),
   ]);
 
-  return { dockPins, appUsage, filesystem };
+  return { dockPins, appUsage, filesystem, startupItems };
 }
 
 // ---------------------------------------------------------------------------
@@ -426,19 +509,50 @@ export function formatSystemSignalsForSynthesis(data: SystemSignals): string {
     }
 
     if (hasDocuments) {
-      fsSection.push("**Documents Folders**");
-      fsSection.push(data.filesystem.documentsFolders.join(", "));
+      // Filter out generic OS folders that appear on every machine
+      const OS_NOISE_FOLDERS = new Set([
+        "custom office templates",
+        "my music",
+        "my pictures",
+        "my videos",
+        "my games",
+        "my web sites",
+        "icloud~com~apple~shoebox",
+        "microsoft press content",
+      ]);
+      const meaningful = data.filesystem.documentsFolders
+        .filter((f) => !OS_NOISE_FOLDERS.has(f.toLowerCase()));
+
+      if (meaningful.length > 0) {
+        fsSection.push("**Documents Folders**");
+        fsSection.push(meaningful.join(", "));
+      }
     }
 
     if (hasDesktop) {
-      fsSection.push("**Desktop** (by file type)");
-      const items = Object.entries(data.filesystem.desktopFileTypes)
-        .map(([ext, count]) => `${ext} (${count})`)
-        .join(", ");
-      fsSection.push(items);
+      // Filter out always-present Windows noise types (.lnk shortcuts, .url web shortcuts)
+      const meaningfulDesktopTypes = Object.entries(data.filesystem.desktopFileTypes)
+        .filter(([ext]) => ext !== ".lnk" && ext !== ".url");
+
+      if (meaningfulDesktopTypes.length > 0) {
+        fsSection.push("**Desktop** (by file type)");
+        const items = meaningfulDesktopTypes
+          .map(([ext, count]) => `${ext} (${count})`)
+          .join(", ");
+        fsSection.push(items);
+      }
     }
 
     sections.push(fsSection.join("\n"));
+  }
+
+  // Startup / Login Items
+  if (data.startupItems && data.startupItems.length > 0) {
+    const startupSection = ["### Startup Items"];
+    for (const item of data.startupItems) {
+      startupSection.push(`- ${item.name}`);
+    }
+    sections.push(startupSection.join("\n"));
   }
 
   if (sections.length === 0) {

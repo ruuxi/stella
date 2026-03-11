@@ -1,6 +1,23 @@
 import { resolvePromptText } from "./resolve"
+import type { DiscoveryCategory } from "@/shared/contracts/discovery"
 
 export type { WelcomeSuggestion } from "./types"
+
+const CATEGORY_ANALYSIS_PROMPT_IDS: Record<DiscoveryCategory, `synthesis.category_analysis.${string}.system`> = {
+  browsing_bookmarks: "synthesis.category_analysis.browsing_bookmarks.system",
+  dev_environment: "synthesis.category_analysis.dev_environment.system",
+  apps_system: "synthesis.category_analysis.apps_system.system",
+  messages_notes: "synthesis.category_analysis.messages_notes.system",
+}
+
+export const getCategoryAnalysisPrompt = (category: DiscoveryCategory): string =>
+  resolvePromptText(CATEGORY_ANALYSIS_PROMPT_IDS[category])
+
+export const buildCategoryAnalysisUserMessage = (
+  categoryLabel: string,
+  data: string,
+): string =>
+  resolvePromptText("synthesis.category_analysis.user", { categoryLabel, data })
 
 export const getCoreMemorySynthesisPrompt = (): string =>
   resolvePromptText("synthesis.core_memory.system")

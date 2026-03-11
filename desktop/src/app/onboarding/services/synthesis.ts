@@ -2,12 +2,14 @@
  * Core Memory Synthesis Service
  *
  * Calls the backend synthesis endpoint to:
- * 1. Synthesize collected user signals into a compact CORE_MEMORY profile
- * 2. Generate a personalized welcome message
+ * 1. Analyze each discovery category independently (signal filtering)
+ * 2. Synthesize the combined analyses into a compact CORE_MEMORY profile
+ * 3. Generate a personalized welcome message and suggestions
  */
 
 import { createServiceRequest } from "@/infra/http/service-request";
 import { getSynthesisPromptConfig } from "@/prompts";
+import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 
 export type WelcomeSuggestion = {
   category: "cron" | "skill" | "app";
@@ -27,7 +29,7 @@ type SynthesisRequestOptions = {
 };
 
 export async function synthesizeCoreMemory(
-  formattedSignals: string,
+  formattedSections: Partial<Record<DiscoveryCategory, string>>,
   options: SynthesisRequestOptions = {},
 ): Promise<SynthesisResult> {
   const { endpoint, headers } = await createServiceRequest(
@@ -44,7 +46,7 @@ export async function synthesizeCoreMemory(
     method: "POST",
     headers,
     body: JSON.stringify({
-      formattedSignals,
+      formattedSections,
       ...getSynthesisPromptConfig(),
     }),
   });

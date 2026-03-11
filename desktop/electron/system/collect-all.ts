@@ -4,9 +4,9 @@
  * Orchestrates parallel collection of all user signal sources,
  * organized into 4 onboarding-selectable categories:
  *
- * Category 1 (browsing_bookmarks): Browser history + bookmarks + Safari
+ * Category 1 (browsing_bookmarks): Browser history + bookmarks + Safari + Firefox
  * Category 2 (dev_environment): Dev projects + shell + git config + dotfiles
- * Category 3 (apps_system): Apps + Screen Time + Dock + filesystem
+ * Category 3 (apps_system): Apps + Screen Time + Dock + filesystem + Steam + Music
  * Category 4 (messages_notes): iMessage + Notes + Reminders + Calendar (opt-in)
  */
 
@@ -22,12 +22,21 @@ import { filterLowSignalDomains, tierFormattedSignals } from "./signal-processin
 import { collectDevEnvironment, formatDevEnvironmentForSynthesis } from "./dev-environment.js";
 import { collectSystemSignals, formatSystemSignalsForSynthesis } from "./system-signals.js";
 import { collectMessagesNotes, formatMessagesNotesForSynthesis } from "./messages-notes.js";
+import { collectEditorState, formatEditorStateForSynthesis } from "./editor-state.js";
+import { collectFirefoxData, formatFirefoxDataForSynthesis } from "./firefox-data.js";
+import { collectSteamLibrary, formatSteamLibraryForSynthesis } from "./steam-library.js";
+import { collectMusicLibrary, formatMusicLibraryForSynthesis } from "./music-library.js";
 import { addContacts, pseudonymize, loadIdentityMap } from "./identity-map.js";
 import { ensurePrivateDir, writePrivateFile } from "./private-fs.js";
 
 import type { AllUserSignals, AllUserSignalsResult } from "./types.js";
 import type { DiscoveryCategory } from "../../src/shared/contracts/discovery.js";
 import type { BrowserBookmarks, SafariData, DevEnvironmentSignals, SystemSignals, MessagesNotesSignals } from "./discovery-types.js";
+import type { EditorStateSignals } from "./editor-state.js";
+import type { FirefoxSignals } from "./firefox-data.js";
+import type { SteamLibrarySignals } from "./steam-library.js";
+import type { MusicLibrarySignals } from "./music-library.js";
+import type { BrowserType } from "../../src/shared/contracts/electron-data.js";
 
 const log = (...args: unknown[]) => console.log("[collect-all]", ...args);
 
@@ -39,6 +48,14 @@ const DEFAULT_CATEGORIES: DiscoveryCategory[] = [
 ];
 
 const DISCOVERY_CATEGORIES_STATE_FILE = "discovery_categories.json";
+const CHROMIUM_BROWSERS = new Set([
+  "chrome",
+  "edge",
+  "brave",
+  "arc",
+  "opera",
+  "vivaldi",
+]);
 
 type FormattedCategorySections = Partial<Record<DiscoveryCategory, string>>;
 
@@ -69,9 +86,13 @@ const persistSelectedCategories = async (
 type ExtendedUserSignals = AllUserSignals & {
   bookmarks?: BrowserBookmarks | null;
   safari?: SafariData | null;
+  firefox?: FirefoxSignals | null;
   devEnvironment?: DevEnvironmentSignals;
   systemSignals?: SystemSignals;
   messagesNotes?: MessagesNotesSignals;
+  editorState?: EditorStateSignals | null;
+  steamLibrary?: SteamLibrarySignals | null;
+  musicLibrary?: MusicLibrarySignals | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -79,28 +100,58 @@ type ExtendedUserSignals = AllUserSignals & {
 // ---------------------------------------------------------------------------
 
 /**
- * Collect all user signals in parallel, filtered by selected categories
+ * Collect all user signals in parallel, filtered by selected categories.
+ * When `selectedBrowser` is provided, only that browser's collectors run
+ * (skips Firefox, Safari, and generic bookmarks scan for other browsers).
  */
 export const collectAllUserSignals = async (
   StellaHome: string,
   categories: DiscoveryCategory[] = DEFAULT_CATEGORIES,
+  selectedBrowser?: string | null,
+  selectedProfile?: string | null,
 ): Promise<ExtendedUserSignals> => {
   log("Starting parallel collection for categories:", categories);
+  if (selectedBrowser) log("Selected browser:", selectedBrowser);
+  if (selectedProfile) log("Selected browser profile:", selectedProfile);
   const start = Date.now();
 
   // Build list of promises based on selected categories
   const tasks: Record<string, Promise<unknown>> = {};
 
   if (categories.includes("browsing_bookmarks")) {
-    tasks.browser = collectBrowserData(StellaHome);
-    tasks.bookmarks = collectBrowserBookmarks().catch((e) => {
-      log("Bookmark collection failed:", e);
-      return null;
-    });
-    tasks.safari = collectSafariData(StellaHome).catch((e) => {
-      log("Safari collection failed:", e);
-      return null;
-    });
+    const shouldCollectChromium =
+      !selectedBrowser || CHROMIUM_BROWSERS.has(selectedBrowser);
+    const selectedChromiumBrowser = shouldCollectChromium
+      ? (selectedBrowser as BrowserType | undefined)
+      : undefined;
+
+    if (shouldCollectChromium) {
+      tasks.browser = collectBrowserData(StellaHome, {
+        selectedBrowser: selectedChromiumBrowser,
+        selectedProfile,
+      });
+      tasks.bookmarks = collectBrowserBookmarks({
+        selectedBrowser: selectedChromiumBrowser,
+        selectedProfile,
+      }).catch((e) => {
+        log("Bookmark collection failed:", e);
+        return null;
+      });
+    }
+
+    // Only run Firefox/Safari if no specific browser selected, or if that browser is selected
+    if (!selectedBrowser || selectedBrowser === "firefox") {
+      tasks.firefox = collectFirefoxData(StellaHome).catch((e) => {
+        log("Firefox collection failed:", e);
+        return null;
+      });
+    }
+    if (!selectedBrowser || selectedBrowser === "safari") {
+      tasks.safari = collectSafariData(StellaHome).catch((e) => {
+        log("Safari collection failed:", e);
+        return null;
+      });
+    }
   }
 
   if (categories.includes("dev_environment")) {
@@ -110,6 +161,10 @@ export const collectAllUserSignals = async (
       log("Dev environment collection failed:", e);
       return { gitConfig: null, dotfiles: [], runtimes: [], packageManagers: [], wslDetected: false };
     });
+    tasks.editorState = collectEditorState().catch((e) => {
+      log("Editor state collection failed:", e);
+      return null;
+    });
   }
 
   if (categories.includes("apps_system")) {
@@ -117,6 +172,14 @@ export const collectAllUserSignals = async (
     tasks.system = collectSystemSignals(StellaHome).catch((e) => {
       log("System signals collection failed:", e);
       return { dockPins: [], appUsage: [], filesystem: { downloadsExtensions: {}, documentsFolders: [], desktopFileTypes: {} } };
+    });
+    tasks.steam = collectSteamLibrary().catch((e) => {
+      log("Steam library collection failed:", e);
+      return null;
+    });
+    tasks.music = collectMusicLibrary().catch((e) => {
+      log("Music library collection failed:", e);
+      return null;
     });
   }
 
@@ -148,9 +211,13 @@ export const collectAllUserSignals = async (
     // New signals
     bookmarks: results.bookmarks as BrowserBookmarks | null | undefined,
     safari: results.safari as SafariData | null | undefined,
+    firefox: results.firefox as FirefoxSignals | null | undefined,
     devEnvironment: results.devEnv as DevEnvironmentSignals | undefined,
+    editorState: results.editorState as EditorStateSignals | null | undefined,
     systemSignals: results.system as SystemSignals | undefined,
     messagesNotes: results.messagesNotes as MessagesNotesSignals | undefined,
+    steamLibrary: results.steam as SteamLibrarySignals | null | undefined,
+    musicLibrary: results.music as MusicLibrarySignals | null | undefined,
   };
 };
 
@@ -201,6 +268,11 @@ const formatSignalsForSynthesisWithSections = async (
       if (safariSection) categorySections.push(safariSection);
     }
 
+    if (data.firefox) {
+      const firefoxSection = formatFirefoxDataForSynthesis(data.firefox);
+      if (firefoxSection) categorySections.push(firefoxSection);
+    }
+
     const categoryFormatted = joinSections(categorySections);
     if (categoryFormatted) {
       formattedSections.browsing_bookmarks = categoryFormatted;
@@ -222,6 +294,11 @@ const formatSignalsForSynthesisWithSections = async (
       if (devEnvSection) categorySections.push(devEnvSection);
     }
 
+    if (data.editorState) {
+      const editorSection = formatEditorStateForSynthesis(data.editorState);
+      if (editorSection) categorySections.push(editorSection);
+    }
+
     const categoryFormatted = joinSections(categorySections);
     if (categoryFormatted) {
       formattedSections.dev_environment = categoryFormatted;
@@ -238,6 +315,16 @@ const formatSignalsForSynthesisWithSections = async (
     if (data.systemSignals) {
       const systemSection = formatSystemSignalsForSynthesis(data.systemSignals);
       if (systemSection) categorySections.push(systemSection);
+    }
+
+    if (data.steamLibrary) {
+      const steamSection = formatSteamLibraryForSynthesis(data.steamLibrary);
+      if (steamSection) categorySections.push(steamSection);
+    }
+
+    if (data.musicLibrary) {
+      const musicSection = formatMusicLibraryForSynthesis(data.musicLibrary);
+      if (musicSection) categorySections.push(musicSection);
     }
 
     const categoryFormatted = joinSections(categorySections);
@@ -338,11 +425,18 @@ const formatSignalsForSynthesisWithSections = async (
 export const collectAllSignals = async (
   StellaHome: string,
   categories?: DiscoveryCategory[],
+  selectedBrowser?: string | null,
+  selectedProfile?: string | null,
 ): Promise<AllUserSignalsResult> => {
   try {
     const cats = categories ?? DEFAULT_CATEGORIES;
     await persistSelectedCategories(StellaHome, cats);
-    const data = await collectAllUserSignals(StellaHome, cats);
+    const data = await collectAllUserSignals(
+      StellaHome,
+      cats,
+      selectedBrowser,
+      selectedProfile,
+    );
     const { formatted, formattedSections } = await formatSignalsForSynthesisWithSections(
       data,
       StellaHome,

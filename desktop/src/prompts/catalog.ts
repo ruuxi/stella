@@ -19,6 +19,11 @@ const renderSearchHtmlUser = (
   values: PromptTemplateValues["search_html.user"],
 ): string => interpolateTemplate(template, values)
 
+const renderCategoryAnalysisUser = (
+  template: string,
+  values: PromptTemplateValues["synthesis.category_analysis.user"],
+): string => interpolateTemplate(template, values)
+
 const renderCoreMemoryUser = (
   template: string,
   values: PromptTemplateValues["synthesis.core_memory.user"],
@@ -285,6 +290,113 @@ Your tools describe when to use them. A few behavioral notes:
 - If the user asks about something you haven't checked, say "Let me check" and actually check - don't guess`,
     render: renderStatic,
   },
+  "synthesis.category_analysis.browsing_bookmarks.system": {
+    id: "synthesis.category_analysis.browsing_bookmarks.system",
+    module: "synthesis",
+    title: "Browsing & Bookmarks Analysis Prompt",
+    defaultText: `You are filtering browsing and bookmark discovery data from a user's device. Your output feeds into a core memory generator that needs concrete details.
+
+## What to KEEP
+- Domains with visit counts — these reveal what services and platforms they use daily
+- Content details: YouTube channels/creators they watch, X/Twitter profiles they follow, specific page titles that reveal interests
+- Bookmarks with folder structure and URLs — these are intentionally saved references
+- AI platforms, dev tools, dashboards, and SaaS products they access frequently
+- Entertainment and media sites that reveal hobbies (streaming, gaming, reading, etc.)
+- Any domain or URL that reveals a specific interest, tool, or community
+
+## What to REMOVE
+- CDN, analytics, and infrastructure domains (googleapis, cloudflare, etc.)
+- Authentication/login redirect pages unless they reveal what service is being used
+- Generic search engine visits
+- Duplicate entries that repeat the same signal
+
+## Output
+Preserve visit counts, URLs, content details, and bookmark structure. Keep the data structured (lists, counts). Add 1-2 observations about patterns only if they connect signals that aren't obvious (e.g., "frequent Convex dashboard + docs visits alongside Vercel suggests active full-stack deployment workflow").`,
+    render: renderStatic,
+  },
+  "synthesis.category_analysis.dev_environment.system": {
+    id: "synthesis.category_analysis.dev_environment.system",
+    module: "synthesis",
+    title: "Dev Environment Analysis Prompt",
+    defaultText: `You are filtering development environment discovery data from a user's device. Your output feeds into a core memory generator that needs concrete details.
+
+## What to KEEP (never drop these)
+- Every project path with its full directory path and recency (e.g., C:\\Users\\...\\projects\\my-app, 2d ago)
+- Command frequencies — these show primary tools and languages
+- Working directories — these reveal active project context
+- Git identity (name, email) — critical for personalization
+- Editor workspaces and recently opened paths
+- Package managers, runtimes, and their specific names
+- Dotfiles that reveal configuration preferences
+- WSL/cross-platform indicators
+
+## What to REMOVE
+- Generic version control commands everyone uses (git add, git commit) — but keep git identity
+- Default shell builtins (cd, ls, echo) unless they appear in unusual patterns
+- Redundant paths that point to the same project
+
+## Output
+Preserve the full structured data: project lists with paths, command frequency tables, working directories, git config, runtimes, package managers. The core memory generator needs exact paths to let the AI act on "open my project" requests — dropping any path is a failure.`,
+    render: renderStatic,
+  },
+  "synthesis.category_analysis.apps_system.system": {
+    id: "synthesis.category_analysis.apps_system.system",
+    module: "synthesis",
+    title: "Apps & System Analysis Prompt",
+    defaultText: `You are filtering apps and system discovery data from a user's device. Your output feeds into a core memory generator that needs concrete details.
+
+## What to KEEP
+- Running and recently used apps with their exact names and executable paths
+- Startup items — these reveal what the user considers essential
+- Document folders that reveal interests or tools (e.g., "Obsidian Vault", "ComfyUI", "League of Legends")
+- Steam/game library with titles and playtime — reveals gaming preferences
+- Music library data — reveals taste and listening habits
+- Creative tools, productivity apps, and communication platforms
+
+## What to REMOVE
+- Generic Windows/OS system processes (svchost, explorer, etc.)
+- Default OS utilities that every user has unless they reveal workflow patterns
+- Low-signal download file type counts (everyone downloads .exe and .pdf)
+- Redundant entries where an app appears in both running and startup
+
+## Output
+Preserve app names with exact casing and executable paths, startup item names, document folder names, and game titles with playtime. The core memory generator needs exact app names to let the AI act on "launch Spotify" or "open Discord" requests.`,
+    render: renderStatic,
+  },
+  "synthesis.category_analysis.messages_notes.system": {
+    id: "synthesis.category_analysis.messages_notes.system",
+    module: "synthesis",
+    title: "Messages & Notes Analysis Prompt",
+    defaultText: `You are filtering messages and notes discovery data from a user's device. This data has been pseudonymized — real names are replaced with pseudonyms. Your output feeds into a core memory generator.
+
+## What to KEEP
+- Frequent contacts and communication patterns (who they talk to most)
+- Group chat names — these reveal communities and social circles
+- Note folder names and organization structure — reveals how they think and what they track
+- Calendar recurring events — reveals routines, meetings, and commitments
+- Reminder categories or themes
+
+## What to REMOVE
+- One-off or very infrequent contacts
+- System-generated calendar entries (holidays, etc.)
+- Empty or default note folders
+- Duplicate contact entries
+
+## Output
+Preserve contact pseudonyms with frequency, group chat names, note folder structure, and calendar patterns. Focus on what reveals the user's social world, organizational habits, and routines.`,
+    render: renderStatic,
+  },
+  "synthesis.category_analysis.user": {
+    id: "synthesis.category_analysis.user",
+    module: "synthesis",
+    title: "Category Analysis User Prompt",
+    defaultText: `Filter this {{categoryLabel}} discovery data. Keep all high-signal details (paths, names, specifics). Remove noise and generic entries.
+
+{{data}}
+
+Output the filtered data (300-500 tokens). Preserve paths, names, and structure. No preamble.`,
+    render: renderCategoryAnalysisUser,
+  },
   "synthesis.core_memory.system": {
     id: "synthesis.core_memory.system",
     module: "synthesis",
@@ -330,9 +442,6 @@ Format: "- area: specific details"
 
 [personality]
 <2-3 sentences: work style, values, behavioral patterns. Cite evidence from the signals, not generic traits.>
-
-[how_to_help]
-<2-3 sentences: what context would make the assistant most useful to this person. Focus on their actual projects, tools, and workflows.>
 \`\`\`
 
 ## Rules
@@ -340,7 +449,7 @@ Format: "- area: specific details"
 1. Prefer actionable details over vague descriptions. Paths, app names, project names, service names, and tools matter.
 2. Preserve high-signal details from the input, especially top-tier signals.
 3. Include the full person, not just work, when the input supports it.
-4. Do not hallucinate. Every named entity must come from the provided signals.
+4. NEVER hallucinate or infer. Every fact must come directly from the provided signals. If the data only shows a project name and path but not what it does, write just the name and path — do not guess its purpose. If you don't know what an app does, just list it without a description.
 5. Avoid generic filler. Every sentence should be specific to this user.
 
 ## Skip
@@ -348,6 +457,7 @@ Format: "- area: specific details"
 - generic personality labels
 - duplicate information across sections
 - generic OS utilities unless they are clearly part of the user's workflow
+- invented descriptions for projects or apps whose purpose is not evident in the data
 
 Output only the structured profile.`,
     render: renderStatic,

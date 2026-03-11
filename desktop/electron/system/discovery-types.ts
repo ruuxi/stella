@@ -110,10 +110,16 @@ export type FilesystemSignals = {
   desktopFileTypes: Record<string, number>; // extension → count
 };
 
+export type StartupItem = {
+  name: string;
+  path: string;
+};
+
 export type SystemSignals = {
   dockPins: DockPin[];
   appUsage: AppUsageSummary[];
   filesystem: FilesystemSignals;
+  startupItems: StartupItem[];
 };
 
 // ---------------------------------------------------------------------------

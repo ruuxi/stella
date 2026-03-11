@@ -29,6 +29,14 @@ export type PromptTemplateValues = {
     resultsText: string
   }
   "voice_orchestrator.base": undefined
+  "synthesis.category_analysis.browsing_bookmarks.system": undefined
+  "synthesis.category_analysis.dev_environment.system": undefined
+  "synthesis.category_analysis.apps_system.system": undefined
+  "synthesis.category_analysis.messages_notes.system": undefined
+  "synthesis.category_analysis.user": {
+    categoryLabel: string
+    data: string
+  }
   "synthesis.core_memory.system": undefined
   "synthesis.core_memory.user": {
     rawOutputs: string
