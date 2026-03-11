@@ -40,7 +40,7 @@ export type ModelConfig = {
 };
 
 const DEFAULT_MODEL: ModelConfig = {
-  model: "claude-sonnet-4-6",
+  model: "claude-sonnet-4.6",
   fallback: "anthropic/claude-opus-4.5",
   temperature: 1.0,
   maxOutputTokens: 16192,
@@ -70,7 +70,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   offline_responder: DEFAULT_MODEL,
 
   orchestrator: {
-    model: "anthropic/claude-sonnet-4-6",
+    model: "anthropic/claude-sonnet-4.6",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -91,7 +91,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   browser: {
-    model: "anthropic/claude-sonnet-4-6",
+    model: "anthropic/claude-sonnet-4.6",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -104,7 +104,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
   // "app" is the frontend agent type name for browser/app automation
   app: {
-    model: "anthropic/claude-sonnet-4-6",
+    model: "anthropic/claude-sonnet-4.6",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -156,7 +156,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   thread_compaction_summary: COMPACTION_MODEL,
 
   welcome: {
-    model: "anthropic/claude-sonnet-4-6",
+    model: "anthropic/claude-sonnet-4.6",
     fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
     maxOutputTokens: 2400,
