@@ -364,6 +364,58 @@ describe("useStreamingChat", () => {
       expect(getOrCreateDeviceId).toHaveBeenCalled();
     });
 
+    it("clears the composer when a follow-up is queued during streaming", async () => {
+      mockAppendEvent
+        .mockResolvedValueOnce({ _id: "user-event-1" })
+        .mockResolvedValueOnce({ _id: "follow-up-event-1" });
+
+      const events: EventRecord[] = [
+        makeEvent({
+          _id: "pending-user-1",
+          type: "user_message",
+          payload: { text: "first request" },
+        }),
+      ];
+
+      const { result } = renderHook(() =>
+        useStreamingChat({ conversationId: "conv-1", events }),
+      );
+
+      await act(async () => {
+        await result.current.sendMessage({
+          text: "first request",
+          selectedText: null,
+          chatContext: null,
+          onClear: vi.fn(),
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const onClear = vi.fn();
+      await act(async () => {
+        await result.current.sendMessage({
+          text: "follow-up request",
+          selectedText: null,
+          chatContext: null,
+          onClear,
+        });
+      });
+
+      expect(onClear).toHaveBeenCalledTimes(1);
+      expect(mockAppendEvent).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          type: "user_message",
+          payload: expect.objectContaining({
+            text: "follow-up request",
+            mode: "follow_up",
+          }),
+        }),
+      );
+      expect(mockAgentStartChat).toHaveBeenCalledTimes(1);
+    });
+
     it("persists WebSearch HTML from streamed tool-end events", async () => {
       mockAppendEvent.mockResolvedValueOnce({ _id: "user-event-1" });
 
