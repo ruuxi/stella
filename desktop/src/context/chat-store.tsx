@@ -1,12 +1,12 @@
 import { createContext, useCallback, useContext, useMemo } from 'react'
 import type { ReactNode } from 'react'
-import { useConvexAuth } from 'convex/react'
 import {
   appendLocalEvent,
   buildLocalHistoryMessages,
   type LocalHistoryMessage,
   type LocalAppendEventArgs,
 } from '@/app/chat/services/local-chat-store'
+import { useAuthSessionState } from '@/app/auth/hooks/use-auth-session-state'
 import type { UploadedAttachment } from '@/app/chat/streaming/attachment-upload'
 import type { AppendedEventResponse } from '@/app/chat/streaming/streaming-event-utils'
 
@@ -62,7 +62,7 @@ type ChatStoreContextValue = {
 const ChatStoreContext = createContext<ChatStoreContextValue | null>(null)
 
 export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
-  const { isAuthenticated } = useConvexAuth()
+  const { hasConnectedAccount } = useAuthSessionState()
 
   const cloudFeaturesEnabled = false
   const storageMode: ChatStorageMode = 'local'
@@ -200,7 +200,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
       storageMode,
       isLocalStorage,
       cloudFeaturesEnabled,
-      isAuthenticated,
+      isAuthenticated: hasConnectedAccount,
       appendEvent,
       appendAgentEvent,
       uploadAttachments,
@@ -210,7 +210,7 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
       storageMode,
       isLocalStorage,
       cloudFeaturesEnabled,
-      isAuthenticated,
+      hasConnectedAccount,
       appendEvent,
       appendAgentEvent,
       uploadAttachments,

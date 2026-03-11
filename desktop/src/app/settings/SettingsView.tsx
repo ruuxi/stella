@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { useConvexAuth, useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
+import { useAuthSessionState } from "@/app/auth/hooks/use-auth-session-state";
 import { useModelCatalog } from "@/app/settings/hooks/use-model-catalog";
 import {
   buildModelDefaultsMap,
@@ -162,8 +163,8 @@ function BasicTab({ onSignOut }: { onSignOut?: () => void }) {
 // ---------------------------------------------------------------------------
 
 function ModelConfigSection() {
-  const { isAuthenticated } = useConvexAuth();
-  const shouldQueryPreferences = isAuthenticated ? {} : "skip";
+  const { hasConnectedAccount } = useAuthSessionState();
+  const shouldQueryPreferences = hasConnectedAccount ? {} : "skip";
   const overridesJson = useQuery(
     api.data.preferences.getModelOverrides,
     shouldQueryPreferences,
@@ -244,11 +245,11 @@ function ModelConfigSection() {
     useState(false);
 
   const runtimePreferencesLoaded =
-    isAuthenticated &&
+    hasConnectedAccount &&
     generalAgentEngine !== undefined &&
     codexLocalMaxConcurrency !== undefined;
   const modelPreferencesLoaded =
-    isAuthenticated &&
+    hasConnectedAccount &&
     modelDefaults !== undefined &&
     overridesJson !== undefined;
 
@@ -493,7 +494,7 @@ function ModelConfigSection() {
         <p className="settings-card-desc">
           Choose how the general subagent runs on this device.
         </p>
-        {!isAuthenticated ? (
+        {!hasConnectedAccount ? (
           <p className="settings-card-desc">
             Sign in to manage runtime settings.
           </p>
@@ -537,7 +538,7 @@ function ModelConfigSection() {
                 disabled
               >
                 <option value="loading">
-                  {isAuthenticated
+                  {hasConnectedAccount
                     ? "Loading saved setting..."
                     : "Sign in required"}
                 </option>
@@ -591,7 +592,7 @@ function ModelConfigSection() {
         <p className="settings-card-desc">
           Override the default model for each agent type.
         </p>
-        {!isAuthenticated ? (
+        {!hasConnectedAccount ? (
           <p className="settings-card-desc">
             Sign in to manage model settings.
           </p>
@@ -604,7 +605,7 @@ function ModelConfigSection() {
             {modelConfigError}
           </p>
         ) : null}
-        {isAuthenticated && !modelPreferencesLoaded ? (
+        {hasConnectedAccount && !modelPreferencesLoaded ? (
           <p className="settings-card-desc">Loading saved model settings...</p>
         ) : null}
         {modelPreferencesLoaded &&

@@ -2,9 +2,9 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { AuthDialog } from "../../../../src/app/auth/AuthDialog";
 
-const mockUseConvexAuth = vi.fn();
-vi.mock("convex/react", () => ({
-  useConvexAuth: () => mockUseConvexAuth(),
+const mockUseAuthSessionState = vi.fn();
+vi.mock("@/app/auth/hooks/use-auth-session-state", () => ({
+  useAuthSessionState: () => mockUseAuthSessionState(),
 }));
 
 const mockFetch = vi.fn();
@@ -74,7 +74,9 @@ describe("AuthDialog", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseConvexAuth.mockReturnValue({ isAuthenticated: false });
+    mockUseAuthSessionState.mockReturnValue({
+      hasConnectedAccount: false,
+    });
     mockFetch.mockResolvedValue({});
     delete ((window as unknown as Record<string, unknown>)).electronAPI;
   });
@@ -168,14 +170,22 @@ describe("AuthDialog", () => {
     });
   });
 
-  it("closes dialog when user becomes authenticated", () => {
-    mockUseConvexAuth.mockReturnValue({ isAuthenticated: false });
+  it("closes dialog when user becomes connected", () => {
+    mockUseAuthSessionState.mockReturnValue({ hasConnectedAccount: false });
     const { rerender } = render(<AuthDialog open={true} onOpenChange={onOpenChange} />);
 
-    mockUseConvexAuth.mockReturnValue({ isAuthenticated: true });
+    mockUseAuthSessionState.mockReturnValue({ hasConnectedAccount: true });
     rerender(<AuthDialog open={true} onOpenChange={onOpenChange} />);
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("does not close dialog for anonymous sessions", () => {
+    mockUseAuthSessionState.mockReturnValue({ hasConnectedAccount: false });
+
+    render(<AuthDialog open={true} onOpenChange={onOpenChange} />);
+
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
   it("resets state when dialog closes", () => {

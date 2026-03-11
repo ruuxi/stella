@@ -1,13 +1,14 @@
-import { useConvexAuth, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
+import { useAuthSessionState } from "./use-auth-session-state";
 
 export type AccountMode = "private_local" | "connected";
 
 export function useAccountMode(): AccountMode | undefined {
-  const { isAuthenticated } = useConvexAuth();
+  const { hasConnectedAccount } = useAuthSessionState();
   return useQuery(
     api.data.preferences.getAccountMode,
-    isAuthenticated ? {} : "skip",
+    hasConnectedAccount ? {} : "skip",
   ) as AccountMode | undefined;
 }
 
