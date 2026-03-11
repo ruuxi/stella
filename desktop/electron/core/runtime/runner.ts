@@ -127,6 +127,13 @@ type AgentCallbacks = {
   onHmrResume?: (resumeHmr: () => Promise<void>) => Promise<void>;
 };
 
+type QueuedOrchestratorTurn = {
+  conversationId: string;
+  userPrompt: string;
+  agentType: string;
+  searchHtmlPrompts?: SearchHtmlPromptConfig;
+};
+
 type ParsedAgentLike = {
   id: string;
   name: string;
@@ -202,6 +209,29 @@ const readCoreMemory = (stellaHome: string): string | undefined => {
   }
 };
 
+const buildTaskEventPrompt = (event: TaskLifecycleEvent): string | null => {
+  if (event.type !== "task-completed" && event.type !== "task-failed") {
+    return null;
+  }
+
+  const lines =
+    event.type === "task-completed"
+      ? ["[Task completed]"]
+      : ["[Task failed]"];
+
+  if (event.taskId) lines.push(`task_id: ${event.taskId}`);
+  if (event.agentType) lines.push(`agent_type: ${event.agentType}`);
+  if (event.description) lines.push(`description: ${event.description}`);
+  if (event.type === "task-completed" && event.result) {
+    lines.push(`result: ${event.result}`);
+  }
+  if (event.type === "task-failed" && event.error) {
+    lines.push(`error: ${event.error}`);
+  }
+
+  return lines.join("\n");
+};
+
 export const createStellaHostRunner = ({
   deviceId,
   StellaHome,
@@ -236,6 +266,7 @@ export const createStellaHostRunner = ({
   let activeOrchestratorRunId: string | null = null;
   let activeOrchestratorConversationId: string | null = null;
   let activeSearchHtmlPrompts: SearchHtmlPromptConfig | undefined;
+  const queuedOrchestratorTurns: QueuedOrchestratorTurn[] = [];
   const activeRunAbortControllers = new Map<string, AbortController>();
   const conversationCallbacks = new Map<string, AgentCallbacks>();
 
@@ -496,6 +527,142 @@ export const createStellaHostRunner = ({
     };
   };
 
+  const queueOrchestratorTurn = (turn: QueuedOrchestratorTurn) => {
+    queuedOrchestratorTurns.push(turn);
+    queueMicrotask(() => {
+      void drainQueuedOrchestratorTurns();
+    });
+  };
+
+  const startBackgroundOrchestratorTurn = async (
+    payload: QueuedOrchestratorTurn,
+    callbacks: AgentCallbacks,
+  ): Promise<{ runId: string }> => {
+    if (activeOrchestratorRunId) {
+      throw new Error("The orchestrator is already running.");
+    }
+
+    const runId = `local:bg:${crypto.randomUUID()}`;
+    const conversationId = payload.conversationId;
+    const agentType = payload.agentType;
+    const userPrompt = payload.userPrompt.trim();
+    if (!userPrompt) {
+      throw new Error("Missing user prompt");
+    }
+
+    const agentContext = await buildAgentContext({
+      conversationId,
+      agentType,
+      runId,
+    });
+    const resolvedLlm = resolveLlmRoute({
+      stellaHomePath: StellaHome,
+      modelName: agentContext.model,
+      agentType,
+      proxy: {
+        baseUrl: proxyBaseUrl,
+        getAuthToken: () => authToken?.trim(),
+      },
+    });
+
+    activeOrchestratorRunId = runId;
+    activeOrchestratorConversationId = conversationId;
+    activeCallbacksRef = callbacks;
+    activeSearchHtmlPrompts = payload.searchHtmlPrompts;
+
+    const abortController = new AbortController();
+    activeRunAbortControllers.set(runId, abortController);
+
+    const cleanupRun = () => {
+      activeRunAbortControllers.delete(runId);
+      if (activeOrchestratorRunId === runId) {
+        activeOrchestratorRunId = null;
+        activeOrchestratorConversationId = null;
+        activeCallbacksRef = null;
+        activeSearchHtmlPrompts = undefined;
+      }
+      queueMicrotask(() => {
+        void drainQueuedOrchestratorTurns();
+      });
+    };
+
+    const runtimeCallbacks: RuntimeRunCallbacks = {
+      onStream: callbacks.onStream,
+      onToolStart: callbacks.onToolStart,
+      onToolEnd: callbacks.onToolEnd,
+      onError: (event) => {
+        callbacks.onError(event);
+        if (event.fatal) {
+          cleanupRun();
+        }
+      },
+      onEnd: (event) => {
+        cleanupRun();
+        callbacks.onEnd(event);
+      },
+    };
+
+    void runOrchestratorTurn({
+      runId,
+      conversationId,
+      userMessageId: `system:${crypto.randomUUID()}`,
+      agentType,
+      userPrompt,
+      agentContext,
+      callbacks: runtimeCallbacks,
+      toolExecutor: (toolName, args, context) => toolHost.executeTool(toolName, args, context),
+      deviceId,
+      stellaHome: StellaHome,
+      resolvedLlm,
+      store: runtimeStore,
+      abortSignal: abortController.signal,
+      frontendRoot,
+      selfModMonitor,
+      webSearch,
+      hookEmitter,
+    }).catch((error) => {
+      cleanupRun();
+      callbacks.onError({
+        runId,
+        agentType,
+        seq: Date.now(),
+        error: (error as Error).message || "Stella runtime failed",
+        fatal: true,
+      });
+    });
+
+    return { runId };
+  };
+
+  const drainQueuedOrchestratorTurns = async (): Promise<void> => {
+    if (activeOrchestratorRunId) {
+      return;
+    }
+
+    while (!activeOrchestratorRunId && queuedOrchestratorTurns.length > 0) {
+      const nextTurn = queuedOrchestratorTurns.shift();
+      if (!nextTurn) {
+        return;
+      }
+      const callbacks = conversationCallbacks.get(nextTurn.conversationId);
+      if (!callbacks) {
+        continue;
+      }
+
+      try {
+        await startBackgroundOrchestratorTurn(nextTurn, callbacks);
+      } catch (error) {
+        callbacks.onError({
+          runId: `local:bg:${crypto.randomUUID()}`,
+          agentType: nextTurn.agentType,
+          seq: Date.now(),
+          error: (error as Error).message || "Background orchestrator turn failed",
+          fatal: true,
+        });
+      }
+    }
+  };
+
   localTaskManager = new LocalTaskManager({
     maxConcurrent: 16,
     resolveTaskThread: ({ conversationId, agentType, threadName }) => {
@@ -510,6 +677,15 @@ export const createStellaHostRunner = ({
     },
     onTaskEvent: (event) => {
       conversationCallbacks.get(event.conversationId)?.onTaskEvent?.(event);
+      const userPrompt = buildTaskEventPrompt(event);
+      if (!userPrompt) {
+        return;
+      }
+      queueOrchestratorTurn({
+        conversationId: event.conversationId,
+        userPrompt,
+        agentType: "orchestrator",
+      });
     },
     fetchAgentContext: buildAgentContext,
     runSubagent: async ({
@@ -794,6 +970,9 @@ export const createStellaHostRunner = ({
         activeCallbacksRef = null;
         activeSearchHtmlPrompts = undefined;
       }
+      queueMicrotask(() => {
+        void drainQueuedOrchestratorTurns();
+      });
     };
 
     const runtimeCallbacks: RuntimeRunCallbacks = {
@@ -910,6 +1089,9 @@ export const createStellaHostRunner = ({
         activeOrchestratorConversationId = null;
         activeSearchHtmlPrompts = undefined;
       }
+      queueMicrotask(() => {
+        void drainQueuedOrchestratorTurns();
+      });
     };
 
     let finalText = "";
