@@ -76,7 +76,7 @@ const buildOpts = (overrides?: Partial<Parameters<typeof runSubagentTask>[0]>) =
   agentContext: buildAgentContext(),
   toolExecutor: vi.fn().mockResolvedValue({ result: "unused" }),
   deviceId: "device-1",
-      stellaHome: "/tmp/stella/.stella",
+  stellaHome: "/tmp/stella/.stella",
   resolvedLlm: {
     model: {
       id: "openai/gpt-4.1-mini",
@@ -98,6 +98,7 @@ const buildOpts = (overrides?: Partial<Parameters<typeof runSubagentTask>[0]>) =
     route: "direct-provider",
     getApiKey: () => "test-key",
   } as ResolvedLlmRoute,
+  frontendRoot: "C:/Users/redacted/projects/stella/desktop",
   store: createStoreStub() as unknown as RuntimeStore,
   ...overrides,
 });
@@ -133,6 +134,7 @@ describe("runSubagentTask engine selection", () => {
       sessionKey: expect.stringContaining("conv-1:run:"),
       maxConcurrency: 2,
       prompt: "Solve this task",
+      cwd: "C:/Users/redacted/projects/stella/desktop",
     }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
@@ -160,6 +162,7 @@ describe("runSubagentTask engine selection", () => {
     expect(runClaudeCodeTurnMock).toHaveBeenCalledWith(expect.objectContaining({
       modelId: "openai/gpt-4.1-mini",
       prompt: "Solve this task",
+      cwd: "C:/Users/redacted/projects/stella/desktop",
     }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
@@ -186,6 +189,9 @@ describe("runSubagentTask engine selection", () => {
     expect(result.result).toBe("claude-model-result");
     expect(isClaudeCodeModelMock).toHaveBeenCalledWith("claude-code/sonnet");
     expect(runClaudeCodeTurnMock).toHaveBeenCalledTimes(1);
+    expect(runClaudeCodeTurnMock).toHaveBeenCalledWith(expect.objectContaining({
+      cwd: "C:/Users/redacted/projects/stella/desktop",
+    }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
     expect(store.appendThreadMessage).toHaveBeenCalledTimes(2);
