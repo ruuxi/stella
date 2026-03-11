@@ -403,58 +403,10 @@ describe('BrowserManager', () => {
     });
   });
 
-  describe('scoped headers', () => {
-    it('should register route for scoped headers', async () => {
-      // Test that setScopedHeaders doesn't throw and completes successfully
-      await browser.clearScopedHeaders();
-      await expect(
-        browser.setScopedHeaders('https://example.com', { 'X-Test': 'value' })
-      ).resolves.not.toThrow();
-      await browser.clearScopedHeaders();
-    });
-
-    it('should handle full URL origin', async () => {
-      await browser.clearScopedHeaders();
-      await expect(
-        browser.setScopedHeaders('https://api.example.com/path', { Authorization: 'Bearer token' })
-      ).resolves.not.toThrow();
-      await browser.clearScopedHeaders();
-    });
-
-    it('should handle hostname-only origin', async () => {
-      await browser.clearScopedHeaders();
-      await expect(
-        browser.setScopedHeaders('example.com', { 'X-Custom': 'value' })
-      ).resolves.not.toThrow();
-      await browser.clearScopedHeaders();
-    });
-
-    it('should clear scoped headers for specific origin', async () => {
-      await browser.clearScopedHeaders();
-      await browser.setScopedHeaders('https://example.com', { 'X-Test': 'value' });
-      await expect(browser.clearScopedHeaders('https://example.com')).resolves.not.toThrow();
-    });
-
-    it('should clear all scoped headers', async () => {
-      await browser.setScopedHeaders('https://example.com', { 'X-Test-1': 'value1' });
-      await browser.setScopedHeaders('https://example.org', { 'X-Test-2': 'value2' });
-      await expect(browser.clearScopedHeaders()).resolves.not.toThrow();
-    });
-
-    it('should replace headers when called twice for same origin', async () => {
-      await browser.clearScopedHeaders();
-      await browser.setScopedHeaders('https://example.com', { 'X-First': 'first' });
-      // Second call should replace, not add
-      await expect(
-        browser.setScopedHeaders('https://example.com', { 'X-Second': 'second' })
-      ).resolves.not.toThrow();
-      await browser.clearScopedHeaders();
-    });
-
-    it('should handle clearing non-existent origin gracefully', async () => {
-      await browser.clearScopedHeaders();
-      // Should not throw when clearing headers that were never set
-      await expect(browser.clearScopedHeaders('https://never-set.com')).resolves.not.toThrow();
+  describe('removed auth helpers', () => {
+    it('does not expose legacy scoped-header helpers anymore', () => {
+      expect('setScopedHeaders' in browser).toBe(false);
+      expect('clearScopedHeaders' in browser).toBe(false);
     });
   });
 

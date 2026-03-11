@@ -142,7 +142,7 @@ const UNSUPPORTED = new Set([
   'frame', 'mainframe', 'expose', 'highlight',
   'dialog', 'geolocation', 'permissions', 'viewport',
   'device', 'useragent', 'emulatemedia', 'offline',
-  'headers', 'credentials', 'timezone', 'locale',
+  'timezone', 'locale',
   'addscript', 'addstyle', 'addinitscript',
   'console', 'errors', 'keyboard',
   'window_new', 'upload',
@@ -210,9 +210,6 @@ onCommand(handleCommand);
 
 onStatus((connected) => {
   console.log('[background] Connection status:', connected ? 'connected' : 'disconnected');
-  if (!connected) {
-    closeAgentWindow();
-  }
 });
 
 // Keep service worker alive via offscreen document port

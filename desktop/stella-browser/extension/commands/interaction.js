@@ -47,6 +47,41 @@ async function injectScript(tabId, resolved, actionScript) {
   return result.result?.value;
 }
 
+async function getElementCenter(tabId, selector) {
+  const resolved = resolveSelector(selector);
+  return await injectScript(tabId, resolved, `
+    el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      throw new Error('Element has no visible size');
+    }
+    return {
+      x: Math.round(rect.left + rect.width / 2),
+      y: Math.round(rect.top + rect.height / 2),
+    };
+  `);
+}
+
+async function dragBetweenPoints(tabId, startX, startY, endX, endY, steps = 10) {
+  await ensureDebugger(tabId);
+
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    type: 'mousePressed', x: startX, y: startY, button: 'left', clickCount: 1,
+  });
+
+  for (let i = 1; i <= steps; i++) {
+    const x = startX + (endX - startX) * (i / steps);
+    const y = startY + (endY - startY) * (i / steps);
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      type: 'mouseMoved', x, y, button: 'left',
+    });
+  }
+
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    type: 'mouseReleased', x: endX, y: endY, button: 'left', clickCount: 1,
+  });
+}
+
 // --- Command Handlers ---
 
 export async function handleClick(command) {
@@ -471,32 +506,22 @@ export async function handleMouseUp(command) {
 
 export async function handleDrag(command) {
   const tab = await getActiveTab();
-  const { startX, startY, endX, endY } = command;
+  let { startX, startY, endX, endY } = command;
+
+  if (command.source && command.target) {
+    const sourceCenter = await getElementCenter(tab.id, command.source);
+    const targetCenter = await getElementCenter(tab.id, command.target);
+    startX = sourceCenter.x;
+    startY = sourceCenter.y;
+    endX = targetCenter.x;
+    endY = targetCenter.y;
+  }
+
   if (startX == null || startY == null || endX == null || endY == null) {
     throw new Error('startX, startY, endX, endY are required for drag');
   }
 
-  await ensureDebugger(tab.id);
-
-  // Mouse down at start
-  await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchMouseEvent', {
-    type: 'mousePressed', x: startX, y: startY, button: 'left', clickCount: 1,
-  });
-
-  // Move in steps
-  const steps = command.steps || 10;
-  for (let i = 1; i <= steps; i++) {
-    const x = startX + (endX - startX) * (i / steps);
-    const y = startY + (endY - startY) * (i / steps);
-    await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchMouseEvent', {
-      type: 'mouseMoved', x, y, button: 'left',
-    });
-  }
-
-  // Mouse up at end
-  await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchMouseEvent', {
-    type: 'mouseReleased', x: endX, y: endY, button: 'left', clickCount: 1,
-  });
+  await dragBetweenPoints(tab.id, startX, startY, endX, endY, command.steps || 10);
 
   return { id: command.id, success: true, data: { dragged: true } };
 }
