@@ -24,6 +24,7 @@ type ClaudeCodeTurnRequest = {
   sessionKey: string;
   prompt: string;
   modelId: string;
+  cwd?: string;
   abortSignal?: AbortSignal;
   onProgress?: (chunk: string) => void;
 };
@@ -36,6 +37,7 @@ type QueueJob = {
 
 type SessionState = {
   sessionId: string;
+  cwd?: string;
   lastUsedAt: number;
   turnCount: number;
   running: boolean;
@@ -124,11 +126,31 @@ const parseClaudeCodeModel = (modelId: string): string | undefined => {
   return suffix;
 };
 
-const ensureSessionState = (sessions: Map<string, SessionState>, sessionKey: string): SessionState => {
+const ensureSessionState = (
+  sessions: Map<string, SessionState>,
+  sessionKey: string,
+  cwd?: string,
+): SessionState => {
+  const normalizedCwd = cwd?.trim() || undefined;
   const existing = sessions.get(sessionKey);
-  if (existing) return existing;
+  if (existing) {
+    if (existing.cwd === normalizedCwd) {
+      return existing;
+    }
+    const replacement: SessionState = {
+      sessionId: crypto.randomUUID(),
+      cwd: normalizedCwd,
+      lastUsedAt: Date.now(),
+      turnCount: 0,
+      running: false,
+      queue: [],
+    };
+    sessions.set(sessionKey, replacement);
+    return replacement;
+  }
   const created: SessionState = {
     sessionId: crypto.randomUUID(),
+    cwd: normalizedCwd,
     lastUsedAt: Date.now(),
     turnCount: 0,
     running: false,
@@ -143,7 +165,7 @@ class ClaudeCodeSessionRuntime {
   private readonly activeProcesses = new Map<string, ChildProcessWithoutNullStreams>();
 
   async runTurn(request: ClaudeCodeTurnRequest): Promise<ClaudeCodeTurnResult> {
-    const session = ensureSessionState(this.sessions, request.sessionKey);
+    const session = ensureSessionState(this.sessions, request.sessionKey, request.cwd);
     session.lastUsedAt = Date.now();
 
     return await new Promise<ClaudeCodeTurnResult>((resolve, reject) => {
@@ -207,6 +229,7 @@ class ClaudeCodeSessionRuntime {
     const child = spawn("claude", args, {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
+      cwd: request.cwd,
     });
     this.activeProcesses.set(request.runId, child);
 
