@@ -126,6 +126,10 @@
   margin: 0 0 12px;
 }
 
+.settings-card-desc--error {
+  color: var(--destructive);
+}
+
 /* ---- Rows (inside cards) ---- */
 
 .settings-row {
@@ -196,6 +200,16 @@
 .settings-model-reset-icon:hover {
   color: var(--foreground);
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.settings-model-reset-icon:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.settings-model-reset-icon:disabled:hover {
+  color: var(--text-weak);
+  background: transparent;
 }
 
 /* ---- Buttons ---- */
