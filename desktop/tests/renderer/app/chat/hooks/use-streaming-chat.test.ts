@@ -438,6 +438,54 @@ describe("useStreamingChat", () => {
       expect(unsubscribeCalled).toBe(false);
     });
 
+    it("persists streamed task lifecycle events so activity views can render them", async () => {
+      mockAppendEvent.mockResolvedValueOnce({ _id: "user-event-1" });
+
+      const { result } = renderHook(() =>
+        useStreamingChat({ conversationId: "conv-1", events: [] }),
+      );
+
+      await act(async () => {
+        await result.current.sendMessage({
+          text: "restyle the dashboard",
+          selectedText: null,
+          chatContext: null,
+          onClear: vi.fn(),
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const callback = mockAgentOnStream.mock.calls[0]?.[0] as
+        | ((event: AgentStreamEvent) => void)
+        | undefined;
+
+      expect(callback).toBeTypeOf("function");
+
+      act(() => {
+        callback?.({
+          type: "task-started",
+          runId: "run-1",
+          agentType: "general",
+          seq: 1,
+          taskId: "local:task:123",
+          description: "Restyle Stella dashboard to look like Xbox dashboard",
+          parentTaskId: "parent-task",
+        });
+      });
+
+      expect(mockAppendAgentEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          type: "task-started",
+          taskId: "local:task:123",
+          description: "Restyle Stella dashboard to look like Xbox dashboard",
+          agentType: "general",
+          parentTaskId: "parent-task",
+        }),
+      );
+    });
+
     it("keeps streamed text visible until the final assistant event is present in events", async () => {
       mockAppendEvent.mockResolvedValueOnce({ _id: "user-event-1" });
 

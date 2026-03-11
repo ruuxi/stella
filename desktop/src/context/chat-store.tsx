@@ -16,7 +16,14 @@ type AppendEventArgs = Omit<LocalAppendEventArgs, 'timestamp' | 'eventId'>
 
 type AppendAgentEventArgs = {
   conversationId: string
-  type: 'tool_request' | 'tool_result' | 'assistant_message'
+  type:
+    | 'tool_request'
+    | 'tool_result'
+    | 'assistant_message'
+    | 'task-started'
+    | 'task-completed'
+    | 'task-failed'
+    | 'task-progress'
   agentType?: string
   userMessageId?: string
   toolCallId?: string
@@ -25,6 +32,12 @@ type AppendAgentEventArgs = {
   resultPreview?: string
   html?: string
   finalText?: string
+  taskId?: string
+  description?: string
+  parentTaskId?: string
+  result?: string
+  error?: string
+  statusText?: string
 }
 
 type UploadAttachmentsArgs = {
@@ -86,6 +99,56 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
             toolName: args.toolName,
             ...(args.args ? { args: args.args } : {}),
             ...(args.agentType ? { agentType: args.agentType } : {}),
+          },
+        })
+        return
+      }
+
+      if (args.type === 'task-started') {
+        await appendLocalEvent({
+          conversationId: args.conversationId,
+          type: 'task_started',
+          payload: {
+            taskId: args.taskId,
+            description: args.description,
+            agentType: args.agentType,
+            ...(args.parentTaskId ? { parentTaskId: args.parentTaskId } : {}),
+          },
+        })
+        return
+      }
+
+      if (args.type === 'task-completed') {
+        await appendLocalEvent({
+          conversationId: args.conversationId,
+          type: 'task_completed',
+          payload: {
+            taskId: args.taskId,
+            ...(args.result ? { result: args.result } : {}),
+          },
+        })
+        return
+      }
+
+      if (args.type === 'task-failed') {
+        await appendLocalEvent({
+          conversationId: args.conversationId,
+          type: 'task_failed',
+          payload: {
+            taskId: args.taskId,
+            ...(args.error ? { error: args.error } : {}),
+          },
+        })
+        return
+      }
+
+      if (args.type === 'task-progress') {
+        await appendLocalEvent({
+          conversationId: args.conversationId,
+          type: 'task_progress',
+          payload: {
+            taskId: args.taskId,
+            statusText: args.statusText,
           },
         })
         return
