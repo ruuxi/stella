@@ -431,7 +431,7 @@ export const createStellaHostRunner = ({
   const getConfiguredModel = (agentType: string, agent?: ParsedAgentLike | undefined): string | undefined => {
     const modelFromPrefs = getModelOverride(StellaHome, agentType);
     const defaultModel = getDefaultModel(StellaHome, agentType);
-    return modelFromPrefs ?? defaultModel ?? agent?.model ?? process.env.STELLA_DEFAULT_MODEL;
+    return modelFromPrefs ?? defaultModel ?? agent?.model;
   };
 
   const buildAgentContext = async (args: {
