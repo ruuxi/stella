@@ -234,6 +234,13 @@ export const collectDevProjects = async (): Promise<DevProject[]> => {
 /**
  * Format dev projects for LLM synthesis
  */
+/**
+ * Format dev projects for LLM synthesis.
+ *
+ * Projects are already sorted by most-recent-first from collection.
+ * We cap at 8 for synthesis — enough to show active work, not so many
+ * that stale projects from weeks ago dilute the signal.
+ */
 export const formatDevProjectsForSynthesis = (projects: DevProject[]): string => {
   if (projects.length === 0) return "";
 
@@ -242,7 +249,7 @@ export const formatDevProjectsForSynthesis = (projects: DevProject[]): string =>
   sections.push(
     "\n" +
       projects
-        .slice(0, 15)
+        .slice(0, 8)
         .map((p) => {
           const daysAgo = Math.floor((Date.now() - p.lastActivity) / (24 * 60 * 60 * 1000));
           const recency = daysAgo === 0 ? "today" : daysAgo === 1 ? "yesterday" : `${daysAgo}d ago`;

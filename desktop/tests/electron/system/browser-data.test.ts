@@ -10,6 +10,9 @@ import type { BrowserData } from "../../../electron/system/browser-data.js";
 const mockPrepare = vi.fn();
 const mockAll = vi.fn();
 const mockClose = vi.fn();
+const { mockExec } = vi.hoisted(() => ({
+  mockExec: vi.fn(),
+}));
 
 const mockDatabase = vi.fn(() => ({
   prepare: mockPrepare,
@@ -18,6 +21,10 @@ const mockDatabase = vi.fn(() => ({
 
 vi.mock("better-sqlite3", () => ({
   default: mockDatabase,
+}));
+
+vi.mock("child_process", () => ({
+  exec: mockExec,
 }));
 
 // Import functions after mocks are set up
@@ -53,6 +60,11 @@ describe("Browser Data Collection - Unit Tests", () => {
 
     vi.clearAllMocks();
     mockPrepare.mockReturnValue({ all: mockAll });
+    mockExec.mockImplementation(((_command, _options, callback) => {
+      const cb = typeof _options === "function" ? _options : callback;
+      cb?.(new Error("command unavailable"), "", "command unavailable");
+      return undefined as any;
+    }) as typeof mockExec);
   });
 
   afterEach(() => {
@@ -202,6 +214,37 @@ describe("Browser Data Collection - Unit Tests", () => {
       expect(result.recentDomains).toEqual([]);
       expect(result.allTimeDomains).toEqual([]);
       expect(result.domainDetails).toEqual({});
+    });
+
+    it("uses the selected browser profile when provided", async () => {
+      const selectedHistoryPath = path.join(
+        process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
+        "Google",
+        "Chrome",
+        "User Data",
+        "Profile 2",
+        "History",
+      );
+
+      mockFs.access.mockImplementation(async (targetPath: string) => {
+        if (targetPath === selectedHistoryPath) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.copyFile.mockResolvedValue(undefined);
+      mockFs.unlink.mockResolvedValue(undefined);
+      mockAll.mockReturnValue([]);
+
+      const result = await collectBrowserData(testStellaHome, {
+        selectedBrowser: "chrome",
+        selectedProfile: "Profile 2",
+      });
+
+      expect(result.browser).toBe("chrome");
+      expect(mockFs.copyFile).toHaveBeenCalledWith(
+        selectedHistoryPath,
+        expect.stringContaining("browser_history_"),
+      );
     });
 
     // Note: This test exercises the error path with the database constructor mocked.

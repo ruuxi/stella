@@ -491,14 +491,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   browser: {
     checkCoreMemoryExists: () => ipcRenderer.invoke("browserData:exists"),
-    collectData: () => ipcRenderer.invoke("browserData:collect"),
+    collectData: (options?: {
+      selectedBrowser?: string;
+      selectedProfile?: string;
+    }) => ipcRenderer.invoke("browserData:collect", options),
     detectPreferred: () =>
       ipcRenderer.invoke("browserData:detectPreferredBrowser"),
     listProfiles: (browserType: string) =>
       ipcRenderer.invoke("browserData:listProfiles", browserType),
     writeCoreMemory: (content: string) =>
       ipcRenderer.invoke("browserData:writeCoreMemory", content),
-    collectAllSignals: (options?: { categories?: string[] }) =>
+    collectAllSignals: (options?: {
+      categories?: string[];
+      selectedBrowser?: string;
+      selectedProfile?: string;
+    }) =>
       ipcRenderer.invoke("signals:collectAll", options),
     listWorkspacePanels: () =>
       ipcRenderer.invoke("workspace:listPanels") as Promise<

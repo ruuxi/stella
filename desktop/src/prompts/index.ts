@@ -38,9 +38,11 @@ export {
 } from "./voice_orchestrator"
 export {
   CORE_MEMORY_SYNTHESIS_PROMPT,
+  buildCategoryAnalysisUserMessage,
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
   buildWelcomeSuggestionsPrompt,
+  getCategoryAnalysisPrompt,
   getCoreMemorySynthesisPrompt,
 } from "./synthesis"
 export {

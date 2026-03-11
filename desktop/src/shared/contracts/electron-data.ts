@@ -102,12 +102,19 @@ export type DomainDetail = {
   visitCount: number
 }
 
+export type ClusterKeyword = {
+  keyword: string
+  score: number
+  lastVisit: number // ms since epoch
+}
+
 export type BrowserData = {
   browser: BrowserType | null
   clusterDomains: string[]
   recentDomains: DomainVisit[]
   allTimeDomains: DomainVisit[]
   domainDetails: Record<string, DomainDetail[]>
+  clusterKeywords: ClusterKeyword[]
 }
 
 export type BrowserDataResult = {
