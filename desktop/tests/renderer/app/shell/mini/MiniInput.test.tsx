@@ -93,6 +93,26 @@ describe("MiniInput", () => {
     expect(sendBtn.disabled).toBe(true);
   });
 
+  it("send button is enabled for window-only context", () => {
+    const { container } = render(
+      <MiniInput
+        {...defaultProps({
+          chatContext: {
+            window: {
+              app: "Notepad",
+              title: "readme.txt",
+              bounds: { x: 0, y: 0, width: 800, height: 600 },
+            },
+          },
+        })}
+      />,
+    );
+    const sendBtn = container.querySelector(
+      ".mini-composer-send",
+    ) as HTMLButtonElement;
+    expect(sendBtn.disabled).toBe(false);
+  });
+
   it("shows stop button when isStreaming is true", () => {
     const { container } = render(
       <MiniInput {...defaultProps({ isStreaming: true })} />,

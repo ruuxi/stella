@@ -8,29 +8,25 @@
  * - NoResponse: immediate return
  */
 
-import fs from "fs";
 import path from "path";
+import { loadSkillsFromHome } from "../agents/skills.js";
 import { normalizeSafeExternalUrl } from "./network-guards.js";
 
 const MAX_FETCH_BODY_CHARS = 80_000;
 const FETCH_TIMEOUT_MS = 30_000;
 const MAX_FETCH_REDIRECTS = 5;
 
-// ── WebFetch ──────────────────────────────────────────────────────────────
+// WebFetch
 
 /**
  * Minimal HTML-to-text conversion. Strips tags and decodes common entities.
  * No external dependency needed for this basic extraction.
  */
 const htmlToText = (html: string): string => {
-  // Remove script/style blocks
   let text = html.replace(/<script[\s\S]*?<\/script>/gi, "");
   text = text.replace(/<style[\s\S]*?<\/style>/gi, "");
-  // Replace <br>, <p>, <div>, <li> with newlines
   text = text.replace(/<(?:br|p|div|li|h[1-6]|tr)[^>]*>/gi, "\n");
-  // Strip remaining tags
   text = text.replace(/<[^>]+>/g, "");
-  // Decode common entities
   text = text
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
@@ -38,7 +34,6 @@ const htmlToText = (html: string): string => {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, " ");
-  // Collapse whitespace
   text = text.replace(/[ \t]+/g, " ");
   text = text.replace(/\n{3,}/g, "\n\n");
   return text.trim();
@@ -124,70 +119,48 @@ export const localWebFetch = async (args: {
   }
 };
 
-// ── ActivateSkill ─────────────────────────────────────────────────────────
+// ActivateSkill
 
 const SKILL_DIRS = ["skills", "core-skills"] as const;
 
-const tryReadSkillFile = (
-  stellaHome: string,
-  subdir: string,
-  relativePath: string,
-): string | null => {
-  const skillsRoot = path.join(stellaHome, subdir);
-  const filePath = path.join(skillsRoot, relativePath);
-  try {
-    const resolvedRoot = fs.realpathSync(skillsRoot);
-    const resolvedFile = fs.realpathSync(filePath);
-    const rel = path.relative(resolvedRoot, resolvedFile);
-    if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
-    const content = fs.readFileSync(resolvedFile, "utf-8");
-    return content.trim() ? content : null;
-  } catch {
-    return null;
-  }
-};
-
-export const localActivateSkill = async (args: {
-  skillId: string;
-  stellaHome: string;
-}): Promise<string> => {
-  const { skillId, stellaHome } = args;
-  if (!skillId) return "Error: skillId is required.";
-
-  // Reject path traversal attempts
-  if (/[/\\]|\.\./.test(skillId)) {
-    return "Error: invalid skillId.";
-  }
-
-  // Search user skills first, then core skills
-  for (const subdir of SKILL_DIRS) {
-    const content =
-      tryReadSkillFile(stellaHome, subdir, path.join(skillId, "SKILL.md")) ??
-      tryReadSkillFile(stellaHome, subdir, `${skillId}.md`);
-    if (content) return content;
-  }
-
-  // Not found — list available skills from both directories
-  const available: string[] = [];
-  for (const subdir of SKILL_DIRS) {
-    try {
-      const entries = fs.readdirSync(path.join(stellaHome, subdir), { withFileTypes: true });
-      for (const d of entries) {
-        if (d.isDirectory() && !available.includes(d.name)) {
-          available.push(d.name);
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
+const formatMissingSkillMessage = (skillId: string, available: string[]) => {
   const listing = available.length > 0
     ? `Available skills: ${available.join(", ")}`
     : "No skills are currently installed.";
   return `Skill '${skillId}' not found. ${listing}`;
 };
 
-// ── NoResponse ────────────────────────────────────────────────────────────
+export const localActivateSkill = async (args: {
+  skillId: string;
+  stellaHome: string;
+  allowedSkillIds?: string[];
+}): Promise<string> => {
+  const { skillId, stellaHome, allowedSkillIds } = args;
+  if (!skillId) return "Error: skillId is required.";
+
+  if (/[/\\]|\.\./.test(skillId)) {
+    return "Error: invalid skillId.";
+  }
+
+  const allowed = Array.isArray(allowedSkillIds)
+    ? Array.from(new Set(allowedSkillIds.filter((value) => value.trim().length > 0)))
+    : null;
+  if (allowed && !allowed.includes(skillId)) {
+    return formatMissingSkillMessage(skillId, allowed);
+  }
+
+  const skills = await loadSkillsFromHome(
+    ...SKILL_DIRS.map((subdir) => path.join(stellaHome, subdir)),
+  );
+  const skill = skills.find((entry) => entry.id === skillId);
+  if (skill) {
+    return skill.markdown;
+  }
+
+  return formatMissingSkillMessage(skillId, allowed ?? skills.map((entry) => entry.id));
+};
+
+// NoResponse
 
 export const localNoResponse = async (): Promise<string> => {
   return "";
