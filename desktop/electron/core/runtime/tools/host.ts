@@ -29,7 +29,7 @@ import type {
 import { log, logError, recoverStaleSecretFiles } from "./utils.js";
 
 // Tool handlers
-import { handleRead, handleEdit, setFileToolsConfig } from "./file.js";
+import { handleRead, handleWrite, handleEdit, setFileToolsConfig } from "./file.js";
 import { handleGlob, handleGrep } from "./search.js";
 import {
   createShellState,
@@ -155,6 +155,7 @@ export const createToolHost = ({
   > = {
     // File tools
     Read: (args, context) => handleRead(args, context),
+    Write: (args, context) => handleWrite(args, context),
     Edit: (args, context) => handleEdit(args, context),
 
     // Search tools
