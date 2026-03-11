@@ -11,7 +11,6 @@ export type LocalTaskManagerAgentContext = {
   toolsAllowlist?: string[];
   delegationAllowlist?: string[];
   model?: string;
-  fallbackModel?: string;
   taskDepth?: number;
   maxTaskDepth: number;
   defaultSkills: string[];

@@ -301,6 +301,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       event,
       payload: {
         defaultModels?: Record<string, string>;
+        resolvedDefaultModels?: Record<string, string>;
         modelOverrides?: Record<string, string>;
         generalAgentEngine?: string;
         codexLocalMaxConcurrency?: number;
@@ -331,6 +332,17 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         }
         nextDefaultModels[trimmedAgentType] = trimmedModel;
       }
+      const nextResolvedDefaultModels: Record<string, string> = {};
+      for (const [agentType, model] of Object.entries(
+        payload?.resolvedDefaultModels ?? {},
+      )) {
+        const trimmedAgentType = asTrimmedString(agentType);
+        const trimmedModel = asTrimmedString(model);
+        if (!trimmedAgentType || !trimmedModel) {
+          continue;
+        }
+        nextResolvedDefaultModels[trimmedAgentType] = trimmedModel;
+      }
       const nextOverrides: Record<string, string> = {};
       for (const [agentType, model] of Object.entries(
         payload?.modelOverrides ?? {},
@@ -354,6 +366,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         : 3;
 
       prefs.defaultModels = nextDefaultModels;
+      prefs.resolvedDefaultModels = nextResolvedDefaultModels;
       prefs.modelOverrides = nextOverrides;
       prefs.generalAgentEngine = generalAgentEngine;
       prefs.codexLocalMaxConcurrency = codexLocalMaxConcurrency;

@@ -143,7 +143,7 @@ function mockUseMutation(
  * Configure useQuery mock to return different values based on query key.
  */
 function setupUseQuery(opts: {
-  modelDefaults?: Array<{ agentType: string; model: string }>;
+  modelDefaults?: Array<{ agentType: string; model: string; resolvedModel: string }>;
   modelOverrides?: string;
   generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
   codexLocalMaxConcurrency?: number;
@@ -152,10 +152,10 @@ function setupUseQuery(opts: {
     const path = queryPath as string;
     if (path === "preferences.getModelDefaults") {
       return opts.modelDefaults ?? [
-        { agentType: "orchestrator", model: "moonshotai/kimi-k2.5" },
-        { agentType: "general", model: "moonshotai/kimi-k2.5" },
-        { agentType: "browser", model: "anthropic/claude-sonnet-4.6" },
-        { agentType: "explore", model: "zai/glm-4.7" },
+        { agentType: "orchestrator", model: "stella/default", resolvedModel: "moonshotai/kimi-k2.5" },
+        { agentType: "general", model: "stella/default", resolvedModel: "moonshotai/kimi-k2.5" },
+        { agentType: "browser", model: "stella/default", resolvedModel: "anthropic/claude-sonnet-4.6" },
+        { agentType: "explore", model: "stella/default", resolvedModel: "zai/glm-4.7" },
       ];
     }
     if (path === "preferences.getModelOverrides") {
@@ -575,9 +575,9 @@ describe("ModelConfigSection", () => {
       return firstOption?.textContent;
     });
 
-    expect(defaultTexts).toContain("Default (Kimi K2.5)");
-    expect(defaultTexts).toContain("Default (Claude Sonnet 4.6)");
-    expect(defaultTexts).toContain("Default (GLM 4.7)");
+    expect(defaultTexts).toContain("Stella Recommended (currently Kimi K2.5)");
+    expect(defaultTexts).toContain("Stella Recommended (currently Claude Sonnet 4.6)");
+    expect(defaultTexts).toContain("Stella Recommended (currently GLM 4.7)");
   });
 
   it("shows model options from the catalog in optgroups", async () => {
@@ -608,7 +608,7 @@ describe("ModelConfigSection", () => {
 
   it("treats explicit default overrides as the default option", async () => {
     setupUseQuery({
-      modelOverrides: JSON.stringify({ orchestrator: "moonshotai/kimi-k2.5" }),
+      modelOverrides: JSON.stringify({ orchestrator: "stella/default" }),
     });
     await renderModelsTab();
 
@@ -763,6 +763,7 @@ describe("ApiKeysSection", () => {
 
     expect(screen.getByText("API Keys")).toBeTruthy();
     expect(screen.getByText(/Keys stay on this device/)).toBeTruthy();
+    expect(screen.getByText(/Otherwise it uses your Stella provider access\./)).toBeTruthy();
   });
 
   it("renders all LLM provider rows", async () => {

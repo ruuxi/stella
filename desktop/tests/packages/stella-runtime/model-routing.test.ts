@@ -1,35 +1,35 @@
 import { describe, expect, it } from "vitest";
 import { resolveLlmRoute } from "../../../electron/core/runtime/model-routing.js";
 
-describe("managed model routing", () => {
-  it("uses the managed API base URL instead of duplicating the chat completions path", () => {
+describe("stella model routing", () => {
+  it("uses the stella API base URL instead of duplicating the chat completions path", () => {
     const route = resolveLlmRoute({
       stellaHomePath: "C:/stella-home",
       modelName: undefined,
       agentType: "orchestrator",
       proxy: {
-        baseUrl: "https://demo.convex.site/api/managed-ai/chat/completions",
+        baseUrl: "https://demo.convex.site/api/stella/v1/chat/completions",
         getAuthToken: () => "token-123",
       },
     });
 
-    expect(route.route).toBe("managed");
-    expect(route.model.baseUrl).toBe("https://demo.convex.site/api/managed-ai");
+    expect(route.route).toBe("stella");
+    expect(route.model.baseUrl).toBe("https://demo.convex.site/api/stella/v1");
   });
 
-  it("does not bypass managed routing for kimi models without a local Kimi key", () => {
+  it("routes provider models through stella when no local key exists", () => {
     const route = resolveLlmRoute({
       stellaHomePath: "C:/stella-home",
       modelName: "moonshotai/kimi-k2.5",
       agentType: "orchestrator",
       proxy: {
-        baseUrl: "https://demo.convex.site/api/managed-ai",
+        baseUrl: "https://demo.convex.site/api/stella/v1",
         getAuthToken: () => "token-123",
       },
     });
 
-    expect(route.route).toBe("managed");
-    expect(route.model.provider).toBe("stella-managed");
-    expect(route.model.id).toBe("default");
+    expect(route.route).toBe("stella");
+    expect(route.model.provider).toBe("stella");
+    expect(route.model.id).toBe("stella/moonshotai/kimi-k2.5");
   });
 });
