@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useReducer, useRef, type Dispatch } from "react";
+import {
+  useCallback,
+  useEffect,
+  useReducer,
+  useRef,
+  type Dispatch,
+} from "react";
 import { MINI_SHELL_SIZE } from "@/shared/lib/layout";
 import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
@@ -55,7 +61,7 @@ type OverlayAction =
   | { type: "voice:show"; position: { x: number; y: number } }
   | { type: "voice:hide" }
   | { type: "auto:show"; data: AutoPanelData }
-  | { type: "auto:hide" }
+  | { type: "auto:hide" };
 
 function isSamePosition(
   a: { x: number; y: number } | null,
@@ -77,11 +83,17 @@ const initialState: OverlayState = {
   autoPanel: null,
 };
 
-function overlayReducer(state: OverlayState, action: OverlayAction): OverlayState {
+function overlayReducer(
+  state: OverlayState,
+  action: OverlayAction,
+): OverlayState {
   switch (action.type) {
     case "radial:show": {
       const nextPosition = action.position ?? state.radialPosition;
-      if (state.radialVisible && isSamePosition(state.radialPosition, nextPosition)) {
+      if (
+        state.radialVisible &&
+        isSamePosition(state.radialPosition, nextPosition)
+      ) {
         return state;
       }
       return { ...state, radialVisible: true, radialPosition: nextPosition };
@@ -89,13 +101,18 @@ function overlayReducer(state: OverlayState, action: OverlayAction): OverlayStat
     case "radial:hide":
       return state.radialVisible ? { ...state, radialVisible: false } : state;
     case "modifier":
-      return state.modifierBlock === action.active ? state : { ...state, modifierBlock: action.active };
+      return state.modifierBlock === action.active
+        ? state
+        : { ...state, modifierBlock: action.active };
     case "region":
       return state.regionCaptureActive === action.active
         ? state
         : { ...state, regionCaptureActive: action.active };
     case "mini:show":
-      if (state.miniVisible && isSamePosition(state.miniPosition, action.position)) {
+      if (
+        state.miniVisible &&
+        isSamePosition(state.miniPosition, action.position)
+      ) {
         return state;
       }
       return { ...state, miniVisible: true, miniPosition: action.position };
@@ -108,9 +125,14 @@ function overlayReducer(state: OverlayState, action: OverlayAction): OverlayStat
         ? state
         : { ...state, miniPosition: action.position };
     case "mini:preview":
-      return state.miniPreviewVisible === action.visible ? state : { ...state, miniPreviewVisible: action.visible };
+      return state.miniPreviewVisible === action.visible
+        ? state
+        : { ...state, miniPreviewVisible: action.visible };
     case "voice:show":
-      if (state.voiceVisible && isSamePosition(state.voicePosition, action.position)) {
+      if (
+        state.voiceVisible &&
+        isSamePosition(state.voicePosition, action.position)
+      ) {
         return state;
       }
       return { ...state, voiceVisible: true, voicePosition: action.position };
@@ -136,7 +158,10 @@ const VOICE_CREATURE_SIZE = {
 // region capture, mini show/hide/restore, voice show/hide) into a single hook.
 // Also handles context-menu suppression when modifier block is active.
 // ---------------------------------------------------------------------------
-function useOverlayIPC(dispatch: Dispatch<OverlayAction>, modifierBlock: boolean) {
+function useOverlayIPC(
+  dispatch: Dispatch<OverlayAction>,
+  modifierBlock: boolean,
+) {
   const radialHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Radial dial positioning (driven by radial:show/hide IPC).
@@ -149,13 +174,29 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>, modifierBlock: boolean
 
     // radial:show includes extra screenX/screenY for container positioning
     const cleanupShow = api.radial.onShow(
-      (_event: unknown, data: { centerX: number; centerY: number; x?: number; y?: number; screenX?: number; screenY?: number }) => {
+      (
+        _event: unknown,
+        data: {
+          centerX: number;
+          centerY: number;
+          x?: number;
+          y?: number;
+          screenX?: number;
+          screenY?: number;
+        },
+      ) => {
         if (radialHideTimerRef.current) {
           clearTimeout(radialHideTimerRef.current);
           radialHideTimerRef.current = null;
         }
-        if (typeof data.screenX === "number" && typeof data.screenY === "number") {
-          dispatch({ type: "radial:show", position: { x: data.screenX!, y: data.screenY! } });
+        if (
+          typeof data.screenX === "number" &&
+          typeof data.screenY === "number"
+        ) {
+          dispatch({
+            type: "radial:show",
+            position: { x: data.screenX!, y: data.screenY! },
+          });
         } else {
           dispatch({ type: "radial:show" });
         }
@@ -225,9 +266,11 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>, modifierBlock: boolean
     const api = window.electronAPI;
     if (!api) return;
 
-    const cleanup = api.overlay.onShowMini?.((data: { x: number; y: number }) => {
-      dispatch({ type: "mini:show", position: { x: data.x, y: data.y } });
-    });
+    const cleanup = api.overlay.onShowMini?.(
+      (data: { x: number; y: number }) => {
+        dispatch({ type: "mini:show", position: { x: data.x, y: data.y } });
+      },
+    );
     const cleanupHide = api.overlay.onHideMini?.(() => {
       dispatch({ type: "mini:hide" });
     });
@@ -246,9 +289,11 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>, modifierBlock: boolean
     const api = window.electronAPI;
     if (!api) return;
 
-    const cleanupShow = api.overlay.onShowVoice?.((data: { x: number; y: number; mode: "stt" | "realtime" }) => {
-      dispatch({ type: "voice:show", position: { x: data.x, y: data.y } });
-    });
+    const cleanupShow = api.overlay.onShowVoice?.(
+      (data: { x: number; y: number; mode: "stt" | "realtime" }) => {
+        dispatch({ type: "voice:show", position: { x: data.x, y: data.y } });
+      },
+    );
     const cleanupHide = api.overlay.onHideVoice?.(() => {
       dispatch({ type: "voice:hide" });
     });
@@ -275,7 +320,6 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>, modifierBlock: boolean
       cleanupHide?.();
     };
   }, [dispatch]);
-
 }
 
 // ---------------------------------------------------------------------------
@@ -289,25 +333,38 @@ function useMiniDrag(
   miniRef: React.RefObject<HTMLDivElement | null>,
   dispatch: Dispatch<OverlayAction>,
 ) {
-  const miniDragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const miniDragRef = useRef<{
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+  } | null>(null);
 
-  const handleMiniTitlebarMouseDown = useCallback((e: React.MouseEvent) => {
-    // Only left button, only on the titlebar drag area (not buttons/inputs)
-    if (e.button !== 0) return;
-    const target = e.target as HTMLElement;
-    // Must be inside .mini-titlebar but not inside interactive child areas
-    if (!target.closest(".mini-titlebar")) return;
-    if (target.closest(".mini-titlebar-left, .mini-titlebar-right, button, input, textarea")) return;
-    e.preventDefault();
-    const el = miniRef.current;
-    if (!el) return;
-    miniDragRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      origX: parseInt(el.style.left, 10) || 0,
-      origY: parseInt(el.style.top, 10) || 0,
-    };
-  }, [miniRef]);
+  const handleMiniTitlebarMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      // Only left button, only on the titlebar drag area (not buttons/inputs)
+      if (e.button !== 0) return;
+      const target = e.target as HTMLElement;
+      // Must be inside .mini-titlebar but not inside interactive child areas
+      if (!target.closest(".mini-titlebar")) return;
+      if (
+        target.closest(
+          ".mini-titlebar-left, .mini-titlebar-right, button, input, textarea",
+        )
+      )
+        return;
+      e.preventDefault();
+      const el = miniRef.current;
+      if (!el) return;
+      miniDragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        origX: parseInt(el.style.left, 10) || 0,
+        origY: parseInt(el.style.top, 10) || 0,
+      };
+    },
+    [miniRef],
+  );
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -501,7 +558,10 @@ export function OverlayRoot() {
     if (interactiveRef.current === shouldBeInteractive) return;
     interactiveRef.current = shouldBeInteractive;
     // Safety check to ensure electronAPI is available and properly initialized
-    if (typeof window !== 'undefined' && window.electronAPI?.overlay?.setInteractive) {
+    if (
+      typeof window !== "undefined" &&
+      window.electronAPI?.overlay?.setInteractive
+    ) {
       window.electronAPI.overlay.setInteractive(shouldBeInteractive);
     }
   }, []);
@@ -567,11 +627,14 @@ export function OverlayRoot() {
           visibility: miniDisplayed ? "visible" : "hidden",
         }}
       >
-        <MiniShell onPreviewVisibilityChange={handleMiniPreviewVisibilityChange} />
+        <MiniShell
+          onPreviewVisibilityChange={handleMiniPreviewVisibilityChange}
+        />
       </div>
 
       <VoiceOverlay
         onTranscript={handleVoiceTranscript}
+        visible={state.voiceVisible && Boolean(state.voicePosition)}
         style={
           state.voiceVisible && state.voicePosition
             ? {
