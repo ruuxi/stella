@@ -814,21 +814,20 @@ const resolveSelectedBrowser = async (
       selectedBrowser,
       selectedProfile,
     );
-    if (!historyPath) {
+    if (historyPath) {
       log(
-        `Selected browser/profile not accessible: ${selectedBrowser} (${selectedProfile})`,
+        `Using selected browser/profile: ${selectedBrowser} (${selectedProfile}) at ${historyPath}`,
       );
-      return null;
+      return {
+        type: selectedBrowser,
+        historyPath,
+        profile: selectedProfile,
+      };
     }
 
     log(
-      `Using selected browser/profile: ${selectedBrowser} (${selectedProfile}) at ${historyPath}`,
+      `Selected browser/profile not accessible, falling back to another profile in ${selectedBrowser}: ${selectedProfile}`,
     );
-    return {
-      type: selectedBrowser,
-      historyPath,
-      profile: selectedProfile,
-    };
   }
 
   const lastProfile = await getMostRecentlyUsedProfile(selectedBrowser);

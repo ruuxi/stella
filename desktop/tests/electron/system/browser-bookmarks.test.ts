@@ -74,4 +74,54 @@ describe("collectBrowserBookmarks", () => {
       normalizePath(mockReadFile.mock.calls[0][0]!.toString()),
     ).toContain("/Google/Chrome/User Data/Profile 2/Bookmarks");
   });
+
+  it("falls back to another profile in the selected browser and filters internal URLs", async () => {
+    mockReadFile.mockImplementation(async (filePath: fs.PathLike) => {
+      const normalizedPath = normalizePath(filePath.toString());
+      if (normalizedPath.includes("/BraveSoftware/Brave-Browser/User Data/Profile 9/Bookmarks")) {
+        throw new Error("ENOENT");
+      }
+      if (!normalizedPath.includes("/BraveSoftware/Brave-Browser/User Data/Default/Bookmarks")) {
+        throw new Error("ENOENT");
+      }
+
+      return JSON.stringify({
+        roots: {
+          bookmark_bar: {
+            type: "folder",
+            children: [
+              {
+                type: "url",
+                name: "Internal",
+                url: "brave://settings",
+              },
+              {
+                type: "url",
+                name: "Docs",
+                url: "https://docs.stella.test",
+              },
+            ],
+          },
+        },
+      });
+    });
+
+    const result = await collectBrowserBookmarks({
+      selectedBrowser: "brave",
+      selectedProfile: "Profile 9",
+    });
+
+    expect(result).toEqual({
+      browser: "Brave",
+      bookmarks: [
+        {
+          title: "Docs",
+          url: "https://docs.stella.test",
+          folder: undefined,
+        },
+      ],
+      folders: [],
+    });
+    expect(mockReadFile).toHaveBeenCalledTimes(2);
+  });
 });
