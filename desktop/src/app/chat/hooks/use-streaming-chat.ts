@@ -184,6 +184,8 @@ export function useStreamingChat({
         return
       }
 
+      options.onClear()
+
       if (mode === 'follow_up') {
         console.log(
           `[stella:trace] sendMessage (follow_up queued) | convId=${resolvedConversationId} | eventId=${eventId}`,
@@ -194,7 +196,6 @@ export function useStreamingChat({
       console.log(
         `[stella:trace] sendMessage | convId=${resolvedConversationId} | eventId=${eventId} | text=${combinedText.slice(0, 200)}`,
       )
-      options.onClear()
       startStream({
         userMessageId: eventId,
         userPrompt: combinedText,
