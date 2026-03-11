@@ -52,6 +52,11 @@ type BrowserBookmarkConfig = {
   profiles: string[];
 };
 
+const isSupportedBookmarkUrl = (url: string): boolean => {
+  const normalized = url.trim().toLowerCase();
+  return normalized.startsWith("https://") || normalized.startsWith("http://");
+};
+
 function walkBookmarkTree(
   node: unknown,
   parentFolder?: string
@@ -71,9 +76,7 @@ function walkBookmarkTree(
     if (
       title &&
       url &&
-      !url.startsWith("chrome://") &&
-      !url.startsWith("edge://") &&
-      !url.startsWith("about:")
+      isSupportedBookmarkUrl(url)
     ) {
       entries.push({
         title,
@@ -162,7 +165,10 @@ export async function collectBrowserBookmarks(
 
   for (const browser of browsersToScan) {
     const profilesToScan = options.selectedProfile
-      ? [options.selectedProfile]
+      ? [
+          options.selectedProfile,
+          ...browser.profiles.filter((profile) => profile !== options.selectedProfile),
+        ]
       : browser.profiles;
 
     for (const profile of profilesToScan) {
