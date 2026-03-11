@@ -984,7 +984,23 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                       "stella-voice-shortcut",
                       finalShortcut,
                     );
-                    window.electronAPI?.voice.setShortcut?.(finalShortcut);
+                    void window.electronAPI?.voice.setShortcut?.(finalShortcut)
+                      .then((result) => {
+                        if (!result || result.activeShortcut === finalShortcut) {
+                          return;
+                        }
+                        if (result.activeShortcut) {
+                          localStorage.setItem(
+                            "stella-voice-shortcut",
+                            result.activeShortcut,
+                          );
+                          return;
+                        }
+                        localStorage.removeItem("stella-voice-shortcut");
+                      })
+                      .catch(() => {
+                        // The default shortcut is already the active fallback.
+                      });
                     nextSplitStep();
                   }}
                 >
