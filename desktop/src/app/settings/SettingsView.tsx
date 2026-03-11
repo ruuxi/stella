@@ -3,8 +3,11 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { useModelCatalog } from "@/app/settings/hooks/use-model-catalog";
 import {
+  buildModelDefaultsMap,
+  getConfigurableAgents,
   getDefaultModelOptionLabel,
   normalizeModelOverrides,
+  type ModelDefaultEntry,
 } from "@/app/settings/lib/model-defaults";
 import type { LocalLlmCredentialSummary } from "@/types/electron";
 import {
@@ -35,35 +38,6 @@ interface SettingsDialogProps {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-const CONFIGURABLE_AGENTS = [
-  {
-    key: "orchestrator",
-    label: "Orchestrator",
-    desc: "Top-level agent that delegates tasks",
-  },
-  {
-    key: "general",
-    label: "General",
-    desc: "Full tool access for general tasks",
-  },
-  {
-    key: "self_mod",
-    label: "Self-Mod",
-    desc: "Platform self-modification agent",
-  },
-  {
-    key: "browser",
-    label: "Browser",
-    desc: "Browser automation via Playwright",
-  },
-  {
-    key: "explore",
-    label: "Explore",
-    desc: "Lightweight read-only exploration",
-  },
-  { key: "memory", label: "Memory", desc: "Memory search and retrieval" },
-] as const;
 
 const GENERAL_AGENT_ENGINE_OPTIONS = [
   { id: "default", name: "Stella" },
@@ -186,6 +160,9 @@ function ModelConfigSection() {
   const overridesJson = useQuery(api.data.preferences.getModelOverrides) as
     | string
     | undefined;
+  const modelDefaults = useQuery(api.data.preferences.getModelDefaults) as
+    | ModelDefaultEntry[]
+    | undefined;
   const setOverride = useMutation(api.data.preferences.setModelOverride);
   const clearOverride = useMutation(api.data.preferences.clearModelOverride);
   const generalAgentEngine = useQuery(
@@ -210,6 +187,14 @@ function ModelConfigSection() {
     }
     return next;
   }, [groups]);
+  const defaultModelMap = useMemo(
+    () => buildModelDefaultsMap(modelDefaults),
+    [modelDefaults],
+  );
+  const configurableAgents = useMemo(
+    () => getConfigurableAgents(modelDefaults),
+    [modelDefaults],
+  );
 
   const serverOverrides = useMemo<Record<string, string>>(() => {
     if (!overridesJson) {
@@ -219,11 +204,12 @@ function ModelConfigSection() {
     try {
       return normalizeModelOverrides(
         JSON.parse(overridesJson) as Record<string, string>,
+        defaultModelMap,
       );
     } catch {
       return {};
     }
-  }, [overridesJson]);
+  }, [defaultModelMap, overridesJson]);
   const [localOverrides, setLocalOverrides] = useState<
     Record<string, string | null>
   >({});
@@ -397,7 +383,7 @@ function ModelConfigSection() {
         <p className="settings-card-desc">
           Override the default model for each agent type.
         </p>
-        {CONFIGURABLE_AGENTS.map((agent) => {
+        {configurableAgents.map((agent) => {
           const current = overrides[agent.key] ?? "";
           return (
             <div key={agent.key} className="settings-row">
@@ -433,7 +419,11 @@ function ModelConfigSection() {
                   onChange={(e) => handleChange(agent.key, e.target.value)}
                 >
                   <option value="">
-                    {getDefaultModelOptionLabel(agent.key, modelNamesById)}
+                    {getDefaultModelOptionLabel(
+                      agent.key,
+                      defaultModelMap,
+                      modelNamesById,
+                    )}
                   </option>
                   {groups.map((group) => (
                     <optgroup key={group.provider} label={group.provider}>

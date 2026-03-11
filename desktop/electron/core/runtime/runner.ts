@@ -12,6 +12,7 @@ import { loadExtensions } from "./extensions/loader.js";
 import { HookEmitter } from "./extensions/hook-emitter.js";
 import {
   getCodexLocalMaxConcurrency,
+  getDefaultModel,
   getGeneralAgentEngine,
   getModelOverride,
 } from "./preferences/local-preferences.js";
@@ -419,7 +420,8 @@ export const createStellaHostRunner = ({
     // Fire and forget â€” don't block the agent
   const getConfiguredModel = (agentType: string, agent?: ParsedAgentLike | undefined): string | undefined => {
     const modelFromPrefs = getModelOverride(StellaHome, agentType);
-    return modelFromPrefs ?? agent?.model ?? process.env.STELLA_DEFAULT_MODEL;
+    const defaultModel = getDefaultModel(StellaHome, agentType);
+    return modelFromPrefs ?? defaultModel ?? agent?.model ?? process.env.STELLA_DEFAULT_MODEL;
   };
 
   const buildAgentContext = async (args: {

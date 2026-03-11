@@ -11,6 +11,8 @@ import path from "path";
 import { ensurePrivateDirSync, writePrivateFileSync } from "../../../system/private-fs.js";
 
 export type LocalPreferences = {
+  /** Backend-owned default models keyed by agent type. */
+  defaultModels: Record<string, string>;
   /** Model overrides keyed by agent type, e.g. "orchestrator" -> "anthropic/claude-opus-4.6" */
   modelOverrides: Record<string, string>;
   /** Expression style: "none" | "emoji" | undefined (default) */
@@ -24,6 +26,7 @@ export type LocalPreferences = {
 };
 
 const DEFAULT_PREFERENCES: LocalPreferences = {
+  defaultModels: {},
   modelOverrides: {},
   expressionStyle: undefined,
   generalAgentEngine: "default",
@@ -49,6 +52,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
     const raw = fs.readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(raw) as Partial<LocalPreferences>;
     const prefs: LocalPreferences = {
+      defaultModels: parsed.defaultModels ?? {},
       modelOverrides: parsed.modelOverrides ?? {},
       expressionStyle: parsed.expressionStyle,
       generalAgentEngine: normalizeEngine(parsed.generalAgentEngine),
@@ -59,7 +63,11 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
     _cachedMtime = stat.mtimeMs;
     return prefs;
   } catch {
-    return { ...DEFAULT_PREFERENCES };
+    return {
+      ...DEFAULT_PREFERENCES,
+      defaultModels: {},
+      modelOverrides: {},
+    };
   }
 };
 
@@ -87,6 +95,14 @@ export const getModelOverride = (
 ): string | undefined => {
   const prefs = loadLocalPreferences(stellaHome);
   return prefs.modelOverrides[agentType];
+};
+
+export const getDefaultModel = (
+  stellaHome: string,
+  agentType: string,
+): string | undefined => {
+  const prefs = loadLocalPreferences(stellaHome);
+  return prefs.defaultModels[agentType];
 };
 
 export const getExpressionStyle = (

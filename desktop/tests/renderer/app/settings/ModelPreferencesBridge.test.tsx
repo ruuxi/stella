@@ -14,6 +14,7 @@ vi.mock("@/convex/api", () => ({
   api: {
     data: {
       preferences: {
+        getModelDefaults: "preferences.getModelDefaults",
         getModelOverrides: "preferences.getModelOverrides",
         getGeneralAgentEngine: "preferences.getGeneralAgentEngine",
         getCodexLocalMaxConcurrency: "preferences.getCodexLocalMaxConcurrency",
@@ -35,9 +36,18 @@ describe("ModelPreferencesBridge", () => {
 
     vi.mocked(useQuery).mockImplementation(((queryPath: unknown) => {
       const path = queryPath as string;
+      if (path === "preferences.getModelDefaults") {
+        return [
+          { agentType: "orchestrator", model: "moonshotai/kimi-k2.5" },
+          { agentType: "general", model: "moonshotai/kimi-k2.5" },
+          { agentType: "browser", model: "anthropic/claude-sonnet-4.6" },
+          { agentType: "explore", model: "zai/glm-4.7" },
+          { agentType: "app", model: "anthropic/claude-sonnet-4.6" },
+        ];
+      }
       if (path === "preferences.getModelOverrides") {
         return JSON.stringify({
-          orchestrator: "moonshotai/kimi-k2-0905:exacto",
+          orchestrator: "moonshotai/kimi-k2.5",
           browser: "openai/gpt-4o",
         });
       }
@@ -56,6 +66,13 @@ describe("ModelPreferencesBridge", () => {
 
     await waitFor(() => {
       expect(mockSyncLocalModelPreferences).toHaveBeenCalledWith({
+        defaultModels: {
+          orchestrator: "moonshotai/kimi-k2.5",
+          general: "moonshotai/kimi-k2.5",
+          browser: "anthropic/claude-sonnet-4.6",
+          explore: "zai/glm-4.7",
+          app: "anthropic/claude-sonnet-4.6",
+        },
         modelOverrides: {
           browser: "openai/gpt-4o",
         },

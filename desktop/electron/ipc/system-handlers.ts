@@ -300,6 +300,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     (
       event,
       payload: {
+        defaultModels?: Record<string, string>;
         modelOverrides?: Record<string, string>;
         generalAgentEngine?: string;
         codexLocalMaxConcurrency?: number;
@@ -319,6 +320,17 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       if (!stellaHomePath) return { ok: true };
 
       const prefs = loadLocalPreferences(stellaHomePath);
+      const nextDefaultModels: Record<string, string> = {};
+      for (const [agentType, model] of Object.entries(
+        payload?.defaultModels ?? {},
+      )) {
+        const trimmedAgentType = asTrimmedString(agentType);
+        const trimmedModel = asTrimmedString(model);
+        if (!trimmedAgentType || !trimmedModel) {
+          continue;
+        }
+        nextDefaultModels[trimmedAgentType] = trimmedModel;
+      }
       const nextOverrides: Record<string, string> = {};
       for (const [agentType, model] of Object.entries(
         payload?.modelOverrides ?? {},
@@ -341,6 +353,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         ? Math.max(1, Math.min(3, Math.floor(parsedConcurrency)))
         : 3;
 
+      prefs.defaultModels = nextDefaultModels;
       prefs.modelOverrides = nextOverrides;
       prefs.generalAgentEngine = generalAgentEngine;
       prefs.codexLocalMaxConcurrency = codexLocalMaxConcurrency;

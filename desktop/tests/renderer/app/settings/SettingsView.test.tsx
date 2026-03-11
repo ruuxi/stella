@@ -17,6 +17,7 @@ vi.mock("@/convex/api", () => ({
   api: {
     data: {
       preferences: {
+        getModelDefaults: "preferences.getModelDefaults",
         getModelOverrides: "preferences.getModelOverrides",
         setModelOverride: "preferences.setModelOverride",
         clearModelOverride: "preferences.clearModelOverride",
@@ -37,12 +38,28 @@ vi.mock("@/convex/api", () => ({
 vi.mock("@/app/settings/hooks/use-model-catalog", () => ({
   useModelCatalog: vi.fn(() => ({
     models: [
+      { id: "moonshotai/kimi-k2.5", name: "Kimi K2.5", provider: "moonshotai" },
+      { id: "anthropic/claude-sonnet-4.6", name: "Claude Sonnet 4.6", provider: "anthropic" },
       { id: "anthropic/claude-3", name: "Claude 3", provider: "anthropic" },
       { id: "openai/gpt-4o", name: "GPT-4o", provider: "openai" },
+      { id: "zai/glm-4.7", name: "GLM 4.7", provider: "zai" },
     ],
     groups: [
-      { provider: "anthropic", models: [{ id: "anthropic/claude-3", name: "Claude 3" }] },
+      {
+        provider: "moonshotai",
+        models: [
+          { id: "moonshotai/kimi-k2.5", name: "Kimi K2.5" },
+        ],
+      },
+      {
+        provider: "anthropic",
+        models: [
+          { id: "anthropic/claude-sonnet-4.6", name: "Claude Sonnet 4.6" },
+          { id: "anthropic/claude-3", name: "Claude 3" },
+        ],
+      },
       { provider: "openai", models: [{ id: "openai/gpt-4o", name: "GPT-4o" }] },
+      { provider: "zai", models: [{ id: "zai/glm-4.7", name: "GLM 4.7" }] },
     ],
     loading: false,
   })),
@@ -126,12 +143,21 @@ function mockUseMutation(
  * Configure useQuery mock to return different values based on query key.
  */
 function setupUseQuery(opts: {
+  modelDefaults?: Array<{ agentType: string; model: string }>;
   modelOverrides?: string;
   generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
   codexLocalMaxConcurrency?: number;
 } = {}) {
   mockUseQuery((queryPath: unknown) => {
     const path = queryPath as string;
+    if (path === "preferences.getModelDefaults") {
+      return opts.modelDefaults ?? [
+        { agentType: "orchestrator", model: "moonshotai/kimi-k2.5" },
+        { agentType: "general", model: "moonshotai/kimi-k2.5" },
+        { agentType: "browser", model: "anthropic/claude-sonnet-4.6" },
+        { agentType: "explore", model: "zai/glm-4.7" },
+      ];
+    }
     if (path === "preferences.getModelOverrides") {
       return opts.modelOverrides ?? undefined;
     }
@@ -526,18 +552,14 @@ describe("ModelConfigSection", () => {
     // Agent labels
     expect(screen.getByText("Orchestrator")).toBeTruthy();
     expect(screen.getByText("General")).toBeTruthy();
-    expect(screen.getByText("Self-Mod")).toBeTruthy();
     expect(screen.getByText("Browser")).toBeTruthy();
     expect(screen.getByText("Explore")).toBeTruthy();
-    expect(screen.getByText("Memory")).toBeTruthy();
 
     // Agent descriptions
     expect(screen.getByText("Top-level agent that delegates tasks")).toBeTruthy();
     expect(screen.getByText("Full tool access for general tasks")).toBeTruthy();
-    expect(screen.getByText("Platform self-modification agent")).toBeTruthy();
     expect(screen.getByText("Browser automation via Playwright")).toBeTruthy();
     expect(screen.getByText("Lightweight read-only exploration")).toBeTruthy();
-    expect(screen.getByText("Memory search and retrieval")).toBeTruthy();
   });
 
   it("shows default model labels in select dropdowns", async () => {
@@ -545,7 +567,7 @@ describe("ModelConfigSection", () => {
     await renderModelsTab();
 
     const selects = document.querySelectorAll(".settings-model-select") as NodeListOf<HTMLSelectElement>;
-    expect(selects.length).toBe(6);
+    expect(selects.length).toBe(4);
 
     // Check that defaults appear as the first option in each select
     const defaultTexts = Array.from(selects).map((sel) => {
@@ -553,9 +575,9 @@ describe("ModelConfigSection", () => {
       return firstOption?.textContent;
     });
 
-    expect(defaultTexts).toContain("Default (moonshotai/kimi-k2-0905:exacto)");
-    expect(defaultTexts).toContain("Default (openai/gpt-5.4)");
-    expect(defaultTexts).toContain("Default (zai/glm-4.7)");
+    expect(defaultTexts).toContain("Default (Kimi K2.5)");
+    expect(defaultTexts).toContain("Default (Claude Sonnet 4.6)");
+    expect(defaultTexts).toContain("Default (GLM 4.7)");
   });
 
   it("shows model options from the catalog in optgroups", async () => {
@@ -586,7 +608,7 @@ describe("ModelConfigSection", () => {
 
   it("treats explicit default overrides as the default option", async () => {
     setupUseQuery({
-      modelOverrides: JSON.stringify({ orchestrator: "moonshotai/kimi-k2-0905:exacto" }),
+      modelOverrides: JSON.stringify({ orchestrator: "moonshotai/kimi-k2.5" }),
     });
     await renderModelsTab();
 
