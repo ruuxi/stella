@@ -22,6 +22,8 @@ export type ToolContext = {
   taskDepth?: number;
   maxTaskDepth?: number;
   delegationAllowlist?: string[];
+  defaultSkills?: string[];
+  skillIds?: string[];
 };
 
 export type ToolResult = {

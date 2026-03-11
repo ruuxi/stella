@@ -7,6 +7,7 @@ import { createToolHost } from "./tools/host.js";
 import type { ScheduleToolApi } from "./tools/types.js";
 import type { ToolContext } from "./tools/types.js";
 import { loadAgentsFromHome } from "./agents/agents.js";
+import type { ParsedSkill } from "./agents/manifests.js";
 import { loadSkillsFromHome } from "./agents/skills.js";
 import { loadExtensions } from "./extensions/loader.js";
 import { HookEmitter } from "./extensions/hook-emitter.js";
@@ -289,7 +290,25 @@ export const createStellaHostRunner = ({
   const hookEmitter = new HookEmitter();
 
   let loadedAgents: ParsedAgentLike[] = [];
+  let loadedSkills: ParsedSkill[] = [];
+  let loadedSkillsPromise: Promise<ParsedSkill[]> | null = null;
   let loadedPrompts: import("./extensions/types.js").PromptTemplate[] = [];
+
+  const refreshLoadedSkills = () => {
+    const loadPromise = loadSkillsFromHome(skillsPath, coreSkillsPath)
+      .then((skills) => {
+        loadedSkills = skills;
+        toolHost.setSkills(skills);
+        return skills;
+      })
+      .catch(() => {
+        loadedSkills = [];
+        toolHost.setSkills([]);
+        return [];
+      });
+    loadedSkillsPromise = loadPromise;
+    return loadPromise;
+  };
 
   const disposeConvexClient = () => {
     const client = convexClient;
@@ -441,6 +460,10 @@ export const createStellaHostRunner = ({
     runId: string;
     threadId?: string;
   }): Promise<LocalTaskManagerAgentContext> => {
+    const availableSkills = loadedSkillsPromise
+      ? await loadedSkillsPromise
+      : loadedSkills;
+    const availableSkillIds = Array.from(new Set(availableSkills.map((skill) => skill.id)));
     const agent = resolveAgent(args.agentType);
     const model = getConfiguredModel(args.agentType, agent);
     const resolvedLlm = resolveLlmRoute({
@@ -529,8 +552,8 @@ export const createStellaHostRunner = ({
       delegationAllowlist: agent?.delegationAllowlist,
       model,
       maxTaskDepth: agent?.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH,
-      defaultSkills: agent?.defaultSkills ?? [],
-      skillIds: [],
+      defaultSkills: (agent?.defaultSkills ?? []).filter((skillId) => availableSkillIds.includes(skillId)),
+      skillIds: availableSkillIds,
       coreMemory: readCoreMemory(StellaHome),
       threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
       activeThreadId: threadKey,
@@ -872,13 +895,7 @@ export const createStellaHostRunner = ({
     isRunning = true;
     syncRemoteTurnBridge();
 
-    void loadSkillsFromHome(skillsPath, coreSkillsPath)
-      .then((skills) => {
-        toolHost.setSkills(skills);
-      })
-      .catch(() => {
-        // Skills are optional at startup.
-      });
+    void refreshLoadedSkills();
 
     void loadAgentsFromHome(agentsPath)
       .then((agents) => {
