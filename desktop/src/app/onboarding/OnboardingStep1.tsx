@@ -19,7 +19,6 @@ import {
 } from "./use-onboarding-state";
 import { OnboardingDiscovery } from "./OnboardingDiscovery";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
-import { InlineAuth } from "../auth/InlineAuth";
 import { useTheme, useThemeControl } from "@/context/theme-context";
 import { getPlatform } from "@/platform/electron/platform";
 import { OnboardingReveal } from "./OnboardingReveal";
@@ -71,9 +70,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   onDemoChange,
   isAuthenticated,
 }) => {
-  const [phase, setPhase] = useState<Phase>(() =>
-    isAuthenticated ? "start" : "auth",
-  );
+  const [phase, setPhase] = useState<Phase>("start");
   const [leaving, setLeaving] = useState(false);
   const [rippleActive, setRippleActive] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -337,26 +334,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     }, 1600);
   };
 
-  const handleAuthSkip = useCallback(() => {
-    if (phase !== "auth" || leaving) return;
-    onInteract?.();
-    transitionTo("start");
-  }, [phase, leaving, onInteract, transitionTo]);
-
-  // Auto-advance from auth to start once signed in
-  useEffect(() => {
-    if (!(isAuthenticated && phase === "auth" && !leaving)) return;
-
-    const timeout = setTimeout(() => {
-      onInteract?.();
-      transitionTo("start");
-    }, 0);
-
-    return () => {
-      clearTimeout(timeout);
-    };
-  }, [isAuthenticated, phase, leaving, onInteract, transitionTo]);
-
   // Intro fade-in
   useEffect(() => {
     if (phase !== "intro") return;
@@ -595,13 +572,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
           <button className="onboarding-start-button" onClick={handleStart}>
             Start Stella
           </button>
-        </div>
-      )}
-
-      {phase === "auth" && (
-        <div className="onboarding-moment onboarding-moment--auth">
-          <div className="onboarding-text">Sign in to begin</div>
-          <InlineAuth onSkip={handleAuthSkip} />
         </div>
       )}
 
