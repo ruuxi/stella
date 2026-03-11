@@ -93,8 +93,7 @@ export const registerOverlayStreamHandlers = (
             stellaHomePath,
             modelName:
               getModelOverride(stellaHomePath, agentType)
-              ?? getDefaultModel(stellaHomePath, agentType)
-              ?? process.env.STELLA_DEFAULT_MODEL,
+              ?? getDefaultModel(stellaHomePath, agentType),
             agentType,
             proxy: {
               baseUrl: options.getConvexSiteUrl(),
