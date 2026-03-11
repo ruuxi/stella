@@ -33,7 +33,7 @@ const launchSchema = baseCommandSchema.extend({
     .optional(),
   executablePath: z.string().optional(),
   extensions: z.array(z.string()).optional(),
-  headers: z.record(z.string()).optional(),
+  headers: z.never().optional(),
   proxy: z
     .object({
       server: z.string().min(1),
@@ -54,7 +54,7 @@ const navigateSchema = baseCommandSchema.extend({
   action: z.literal('navigate'),
   url: z.string().min(1),
   waitUntil: z.enum(['load', 'domcontentloaded', 'networkidle']).optional(),
-  headers: z.record(z.string()).optional(),
+  headers: z.never().optional(),
 });
 
 const clickSchema = baseCommandSchema.extend({
@@ -502,11 +502,6 @@ const offlineSchema = baseCommandSchema.extend({
   offline: z.boolean(),
 });
 
-const headersSchema = baseCommandSchema.extend({
-  action: z.literal('headers'),
-  headers: z.record(z.string()),
-});
-
 const pauseSchema = baseCommandSchema.extend({
   action: z.literal('pause'),
 });
@@ -565,12 +560,6 @@ const timezoneSchema = baseCommandSchema.extend({
 const localeSchema = baseCommandSchema.extend({
   action: z.literal('locale'),
   locale: z.string().min(1),
-});
-
-const credentialsSchema = baseCommandSchema.extend({
-  action: z.literal('credentials'),
-  username: z.string(),
-  password: z.string(),
 });
 
 const mouseMoveSchema = baseCommandSchema.extend({
@@ -940,7 +929,6 @@ const commandSchema = z.discriminatedUnion('action', [
   addStyleSchema,
   emulateMediaSchema,
   offlineSchema,
-  headersSchema,
   pauseSchema,
   getByAltTextSchema,
   getByTitleSchema,
@@ -951,7 +939,6 @@ const commandSchema = z.discriminatedUnion('action', [
   setContentSchema,
   timezoneSchema,
   localeSchema,
-  credentialsSchema,
   mouseMoveSchema,
   mouseDownSchema,
   mouseUpSchema,

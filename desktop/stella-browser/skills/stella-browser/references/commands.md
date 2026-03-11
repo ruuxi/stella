@@ -131,8 +131,6 @@ stella-browser set viewport 1920 1080          # Set viewport size
 stella-browser set device "iPhone 14"          # Emulate device
 stella-browser set geo 37.7749 -122.4194       # Set geolocation (alias: geolocation)
 stella-browser set offline on                  # Toggle offline mode
-stella-browser set headers '{"X-Key":"v"}'     # Extra HTTP headers
-stella-browser set credentials user pass       # HTTP basic auth (alias: auth)
 stella-browser set media dark                  # Emulate color scheme
 stella-browser set media light reduced-motion  # Light mode + reduced motion
 ```
@@ -223,7 +221,6 @@ stella-browser --full ...              # Full page screenshot (-f)
 stella-browser --cdp <port> ...        # Connect via Chrome DevTools Protocol
 stella-browser -p <provider> ...       # Cloud browser provider (--provider)
 stella-browser --proxy <url> ...       # Use proxy server
-stella-browser --headers <json> ...    # HTTP headers scoped to URL's origin
 stella-browser --executable-path <p>   # Custom browser executable
 stella-browser --extension <path> ...  # Load browser extension (repeatable)
 stella-browser --ignore-https-errors   # Ignore SSL certificate errors
