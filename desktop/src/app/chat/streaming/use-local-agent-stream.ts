@@ -13,7 +13,14 @@ import {
 } from './agent-stream-errors'
 
 type LocalAgentEvent = {
-  type: 'tool_request' | 'tool_result' | 'assistant_message'
+  type:
+    | 'tool_request'
+    | 'tool_result'
+    | 'assistant_message'
+    | 'task-started'
+    | 'task-completed'
+    | 'task-failed'
+    | 'task-progress'
   agentType?: string
   userMessageId?: string
   toolCallId?: string
@@ -22,6 +29,12 @@ type LocalAgentEvent = {
   resultPreview?: string
   html?: string
   finalText?: string
+  taskId?: string
+  description?: string
+  parentTaskId?: string
+  result?: string
+  error?: string
+  statusText?: string
 }
 
 type UseLocalAgentStreamOptions = {
@@ -138,6 +151,24 @@ export function useLocalAgentStream({
             toolName: event.toolName,
             resultPreview: event.resultPreview,
             html: event.html,
+          })
+          break
+        case 'task-started':
+        case 'task-completed':
+        case 'task-failed':
+        case 'task-progress':
+          console.log(
+            `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ''}`.trim(),
+          )
+          appendAgentEvent({
+            type: event.type,
+            agentType: event.agentType,
+            taskId: event.taskId,
+            description: event.description,
+            parentTaskId: event.parentTaskId,
+            result: event.result,
+            error: event.error,
+            statusText: event.statusText,
           })
           break
         case 'error':
