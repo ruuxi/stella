@@ -15,8 +15,8 @@ import type { JSONValue } from "@ai-sdk/provider";
  * Change `baseURL` and `apiKeyEnvVar` to point to any OpenAI-compatible gateway.
  */
 export const MANAGED_GATEWAY = {
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKeyEnvVar: "OPENROUTER_API_KEY",
+  baseURL: "https://ai-gateway.vercel.sh/v1",
+  apiKeyEnvVar: "AI_GATEWAY_API_KEY",
 } as const;
 
 /**
@@ -54,7 +54,7 @@ const DEFAULT_MODEL: ModelConfig = {
       reasoningEffort: "low",
     },
     gateway: {
-      order: ["amazon-bedrock, fireworks"],
+      order: ["baseten, fireworks, amazon-bedrock"],
     },
   },
 };
@@ -84,7 +84,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["baseten, amazon-bedrock, fireworks"],
+        order: ["baseten, fireworks, amazon-bedrock"],
       },
     },
   },
@@ -99,7 +99,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["baseten, amazon-bedrock, fireworks"],
+        order: ["baseten, fireworks, amazon-bedrock"],
       },
     },
   },
@@ -111,17 +111,20 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     maxOutputTokens: 16192,
     providerOptions: {
       gateway: {
-        order: ["cerebras"],
+        order: ["cerebras, baseten, fireworks, amazon-bedrock"],
       },
     },
   },
 
   browser: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "openai/gpt-5.4",
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
       gateway: {
         order: ["amazon-bedrock, fireworks"],
       },
@@ -130,11 +133,14 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
   // "app" is the frontend agent type name for browser/app automation
   app: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "openai/gpt-5.4",
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
       gateway: {
         order: ["amazon-bedrock, fireworks"],
       },
@@ -159,6 +165,15 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
     maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
   },
 
   synthesis: {
