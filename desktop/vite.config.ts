@@ -324,13 +324,14 @@ export default defineConfig({
   server: {
     port: 5714,
     strictPort: false,
+    forwardConsole: true,
     fs: {
       allow: [VITE_WORKSPACE_ROOT, STELLA_WORKSPACE_PANELS_DIR],
     },
   },
   resolve: {
+    tsconfigPaths: true,
     alias: [
-      { find: /^@\//, replacement: `${path.resolve(__dirname, "./src")}/` },
       { find: /^react$/, replacement: path.resolve(__dirname, "./node_modules/react/index.js") },
       { find: /^react\/jsx-runtime$/, replacement: path.resolve(__dirname, "./node_modules/react/jsx-runtime.js") },
       { find: /^react\/jsx-dev-runtime$/, replacement: path.resolve(__dirname, "./node_modules/react/jsx-dev-runtime.js") },
