@@ -21,21 +21,36 @@ vi.mock("@/app/chat/hooks/use-command-suggestions", () => ({
 }));
 
 function makeProps(overrides: Partial<ChatColumnProps> = {}): ChatColumnProps {
+  const {
+    conversation: conversationOverrides = {},
+    composer: composerOverrides = {},
+    scroll: scrollOverrides = {},
+    ...restOverrides
+  } = overrides;
+  const {
+    streaming: conversationStreamingOverrides,
+    history: conversationHistoryOverrides,
+    ...conversationRestOverrides
+  } = conversationOverrides;
+
   return {
-    events: [],
-    streaming: {
-      text: "",
-      reasoningText: "",
-      isStreaming: false,
-      pendingUserMessageId: null,
-      selfModMap: {},
-      ...overrides.streaming,
-    },
-    history: {
-      hasOlderEvents: false,
-      isLoadingOlder: false,
-      isInitialLoading: false,
-      ...overrides.history,
+    conversation: {
+      events: [],
+      streaming: {
+        text: "",
+        reasoningText: "",
+        isStreaming: false,
+        pendingUserMessageId: null,
+        selfModMap: {},
+        ...(conversationStreamingOverrides ?? {}),
+      },
+      history: {
+        hasOlderEvents: false,
+        isLoadingOlder: false,
+        isInitialLoading: false,
+        ...(conversationHistoryOverrides ?? {}),
+      },
+      ...conversationRestOverrides,
     },
     composer: {
       message: "",
@@ -47,17 +62,21 @@ function makeProps(overrides: Partial<ChatColumnProps> = {}): ChatColumnProps {
       canSubmit: true,
       onSend: vi.fn(),
       onStop: vi.fn(),
-      ...overrides.composer,
+      onCommandSelect: vi.fn(),
+      ...composerOverrides,
     },
-    setViewportElement: vi.fn(),
-    setContentElement: vi.fn(),
-    onScroll: vi.fn(),
-    showScrollButton: false,
-    scrollToBottom: vi.fn(),
-    overflowAnchor: "none",
-    thumbState: { top: 0, height: 0, visible: false },
+    scroll: {
+      setViewportElement: vi.fn(),
+      setContentElement: vi.fn(),
+      onScroll: vi.fn(),
+      showScrollButton: false,
+      scrollToBottom: vi.fn(),
+      overflowAnchor: "none",
+      thumbState: { top: 0, height: 0, visible: false },
+      ...scrollOverrides,
+    },
     conversationId: null,
-    ...overrides,
+    ...restOverrides,
   };
 }
 
@@ -79,8 +98,12 @@ describe("ChatColumn", () => {
     render(
       <ChatColumn
         {...makeProps({
-          showScrollButton: true,
-          events,
+          conversation: {
+            events,
+          } as ChatColumnProps["conversation"],
+          scroll: {
+            showScrollButton: true,
+          } as ChatColumnProps["scroll"],
         })}
       />,
     );
@@ -95,9 +118,13 @@ describe("ChatColumn", () => {
     render(
       <ChatColumn
         {...makeProps({
-          showScrollButton: true,
-          scrollToBottom,
-          events,
+          conversation: {
+            events,
+          } as ChatColumnProps["conversation"],
+          scroll: {
+            showScrollButton: true,
+            scrollToBottom,
+          } as ChatColumnProps["scroll"],
         })}
       />,
     );

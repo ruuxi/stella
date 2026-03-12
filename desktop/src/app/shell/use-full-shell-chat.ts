@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CommandSuggestion } from '@/app/chat/hooks/use-command-suggestions'
+import type {
+  ChatColumnComposer,
+  ChatColumnConversation,
+  ChatColumnScroll,
+} from '@/app/chat/chat-column-types'
 import { useConversationEventFeed } from '@/app/chat/hooks/use-conversation-events'
 import { useReturnDetection, formatDuration } from '@/app/chat/hooks/use-return-detection'
 import { useStreamingChat } from '@/app/chat/hooks/use-streaming-chat'
@@ -165,9 +170,86 @@ export function useFullShellChat({
     activeConversationId && (message.trim() || hasComposerContext(chatContext, selectedText)),
   )
 
+  const chatColumnConversation = useMemo<ChatColumnConversation>(
+    () => ({
+      events,
+      streaming: {
+        text: streamingText,
+        reasoningText,
+        isStreaming,
+        pendingUserMessageId,
+        selfModMap,
+      },
+      history: {
+        hasOlderEvents,
+        isLoadingOlder,
+        isInitialLoading,
+      },
+    }),
+    [
+      events,
+      streamingText,
+      reasoningText,
+      isStreaming,
+      pendingUserMessageId,
+      selfModMap,
+      hasOlderEvents,
+      isLoadingOlder,
+      isInitialLoading,
+    ],
+  )
+
+  const chatColumnComposer = useMemo<ChatColumnComposer>(
+    () => ({
+      message,
+      setMessage,
+      chatContext,
+      setChatContext,
+      selectedText,
+      setSelectedText,
+      canSubmit,
+      onSend: handleSend,
+      onStop: cancelCurrentStream,
+      onCommandSelect: handleCommandSelect,
+    }),
+    [
+      message,
+      setMessage,
+      chatContext,
+      setChatContext,
+      selectedText,
+      setSelectedText,
+      canSubmit,
+      handleSend,
+      cancelCurrentStream,
+      handleCommandSelect,
+    ],
+  )
+
+  const chatColumnScroll = useMemo<ChatColumnScroll>(
+    () => ({
+      setViewportElement: setScrollContainerElement,
+      setContentElement,
+      onScroll: handleScroll,
+      showScrollButton,
+      scrollToBottom,
+      overflowAnchor,
+      thumbState,
+    }),
+    [
+      setScrollContainerElement,
+      setContentElement,
+      handleScroll,
+      showScrollButton,
+      scrollToBottom,
+      overflowAnchor,
+      thumbState,
+    ],
+  )
+
   return {
     conversation: {
-      events,
+      ...chatColumnConversation,
       hasOlderEvents,
       isLoadingOlder,
       isInitialLoading,
@@ -181,26 +263,15 @@ export function useFullShellChat({
       cancelCurrentStream,
     },
     composer: {
-      message,
-      setMessage,
-      chatContext,
-      setChatContext,
-      selectedText,
-      setSelectedText,
-      canSubmit,
+      ...chatColumnComposer,
       handleSend,
       handleStop: cancelCurrentStream,
       handleCommandSelect,
     },
     scroll: {
-      setScrollContainerElement,
-      setContentElement,
+      ...chatColumnScroll,
       hasScrollElement,
-      handleScroll,
-      showScrollButton,
-      scrollToBottom,
-      overflowAnchor,
-      thumbState,
+      setScrollContainerElement,
     },
   }
 }
