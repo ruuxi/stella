@@ -4,15 +4,12 @@
 
 import { memo, useCallback, useRef } from "react";
 import { ConversationEvents } from "./ConversationEvents";
-import { OnboardingView } from "../onboarding/OnboardingOverlay";
 import { Composer } from "./Composer";
 import { CommandChips } from "@/app/chat/CommandChips";
 import { useCommandSuggestions, type CommandSuggestion } from "@/app/chat/hooks/use-command-suggestions";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
-import type { StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAnimation";
 import type { ChatContext } from "@/types/electron";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
-import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import type { ThumbState } from "@/app/shell/use-full-shell";
 import "./full-shell.chat.css";
 
@@ -42,24 +39,6 @@ export type ComposerState = {
   onStop: () => void;
 };
 
-export type OnboardingState = {
-  done: boolean;
-  exiting: boolean;
-  isAuthenticated: boolean;
-  hasExpanded: boolean;
-  splitMode: boolean;
-  hasDiscoverySelections?: boolean;
-  key: number;
-  stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
-  triggerFlash: () => void;
-  startBirthAnimation: () => void;
-  completeOnboarding: () => void;
-  handleEnterSplit: () => void;
-  onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
-  onSelectionChange?: (hasSelections: boolean) => void;
-  onDemoChange?: (demo: "dj-studio" | "weather-station" | null) => void;
-};
-
 export type ChatColumnProps = {
   events: EventRecord[];
   streaming: StreamingState;
@@ -76,7 +55,8 @@ export type ChatColumnProps = {
   overflowAnchor: "auto" | "none";
   /** Custom scrollbar thumb state */
   thumbState: ThumbState;
-  onboarding: OnboardingState;
+  /** Whether the composer should animate in (e.g. after onboarding exit) */
+  composerEntering?: boolean;
   conversationId: string | null;
   onCommandSelect?: (suggestion: CommandSuggestion) => void;
 };
@@ -93,12 +73,11 @@ export const ChatColumn = memo(function ChatColumn({
   scrollToBottom,
   overflowAnchor,
   thumbState,
-  onboarding,
+  composerEntering,
   conversationId,
   onCommandSelect,
 }: ChatColumnProps) {
   const suggestions = useCommandSuggestions(events, streaming.isStreaming);
-  const showConversation = onboarding.done;
 
   // --- Custom scrollbar thumb drag ---
   const isDraggingRef = useRef(false);
@@ -151,62 +130,40 @@ export const ChatColumn = memo(function ChatColumn({
           onScroll={onScroll}
           style={{ overflowAnchor }}
         >
-          {showConversation ? (
-            <div className="session-messages" ref={setContentElement}>
-              <ConversationEvents
-                events={events}
-                streamingText={streaming.text}
-                reasoningText={streaming.reasoningText}
-                isStreaming={streaming.isStreaming}
-                pendingUserMessageId={streaming.pendingUserMessageId}
-                selfModMap={streaming.selfModMap}
-                hasOlderEvents={history.hasOlderEvents}
-                isLoadingOlder={history.isLoadingOlder}
-                isLoadingHistory={history.isInitialLoading}
-              />
-              {!streaming.isStreaming && suggestions.length > 0 && onCommandSelect && (
-                <CommandChips
-                  suggestions={suggestions}
-                  onSelect={onCommandSelect}
-                />
-              )}
-            </div>
-          ) : (
-            <OnboardingView
-              hasExpanded={onboarding.hasExpanded}
-              onboardingDone={onboarding.done}
-              onboardingExiting={onboarding.exiting}
-              isAuthenticated={onboarding.isAuthenticated}
-              splitMode={onboarding.splitMode}
-              hasDiscoverySelections={onboarding.hasDiscoverySelections}
-              stellaAnimationRef={onboarding.stellaAnimationRef}
-              onboardingKey={onboarding.key}
-              triggerFlash={onboarding.triggerFlash}
-              startBirthAnimation={onboarding.startBirthAnimation}
-              completeOnboarding={onboarding.completeOnboarding}
-              handleEnterSplit={onboarding.handleEnterSplit}
-              onDiscoveryConfirm={onboarding.onDiscoveryConfirm}
-              onSelectionChange={onboarding.onSelectionChange}
-              onDemoChange={onboarding.onDemoChange}
+          <div className="session-messages" ref={setContentElement}>
+            <ConversationEvents
+              events={events}
+              streamingText={streaming.text}
+              reasoningText={streaming.reasoningText}
+              isStreaming={streaming.isStreaming}
+              pendingUserMessageId={streaming.pendingUserMessageId}
+              selfModMap={streaming.selfModMap}
+              hasOlderEvents={history.hasOlderEvents}
+              isLoadingOlder={history.isLoadingOlder}
+              isLoadingHistory={history.isInitialLoading}
             />
-          )}
+            {!streaming.isStreaming && suggestions.length > 0 && onCommandSelect && (
+              <CommandChips
+                suggestions={suggestions}
+                onSelect={onCommandSelect}
+              />
+            )}
+          </div>
         </div>
 
         {/* Custom scrollbar thumb overlay */}
-        {showConversation && (
-          <div className="chat-scrollbar">
-            <div
-              className={`chat-scrollbar__thumb${thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
-              style={{ top: `${thumbState.top}px`, height: `${thumbState.height}px` }}
-              onPointerDown={handleThumbDown}
-              onPointerMove={handleThumbMove}
-              onPointerUp={handleThumbUp}
-              onPointerCancel={handleThumbUp}
-            />
-          </div>
-        )}
+        <div className="chat-scrollbar">
+          <div
+            className={`chat-scrollbar__thumb${thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
+            style={{ top: `${thumbState.top}px`, height: `${thumbState.height}px` }}
+            onPointerDown={handleThumbDown}
+            onPointerMove={handleThumbMove}
+            onPointerUp={handleThumbUp}
+            onPointerCancel={handleThumbUp}
+          />
+        </div>
 
-        {showScrollButton && showConversation && (
+        {showScrollButton && (
           <button
             className="scroll-to-bottom"
             onClick={() => scrollToBottom("smooth")}
@@ -227,23 +184,21 @@ export const ChatColumn = memo(function ChatColumn({
       </div>
 
       {/* Composer — normal flow below the scroll viewport */}
-      {showConversation && (
-        <div className={onboarding.exiting ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
-          <Composer
-            message={composer.message}
-            setMessage={composer.setMessage}
-            chatContext={composer.chatContext}
-            setChatContext={composer.setChatContext}
-            selectedText={composer.selectedText}
-            setSelectedText={composer.setSelectedText}
-            isStreaming={streaming.isStreaming}
-            canSubmit={composer.canSubmit}
-            conversationId={conversationId}
-            onSend={composer.onSend}
-            onStop={composer.onStop}
-          />
-        </div>
-      )}
+      <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
+        <Composer
+          message={composer.message}
+          setMessage={composer.setMessage}
+          chatContext={composer.chatContext}
+          setChatContext={composer.setChatContext}
+          selectedText={composer.selectedText}
+          setSelectedText={composer.setSelectedText}
+          isStreaming={streaming.isStreaming}
+          canSubmit={composer.canSubmit}
+          conversationId={conversationId}
+          onSend={composer.onSend}
+          onStop={composer.onStop}
+        />
+      </div>
     </div>
   );
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useOrbMessage } from '@/app/shell/hooks/use-orb-message'
 import { useUiState } from '@/context/ui-state'
 import { useWorkspace } from '@/context/workspace-state'
@@ -8,7 +8,7 @@ import { useTheme } from '@/context/theme-context'
 import { WorkspaceArea } from '../canvas/WorkspaceArea'
 import { ChatColumn, type ChatColumnProps } from '../chat/ChatColumn'
 import { useDiscoveryFlow } from '../onboarding/DiscoveryFlow'
-import { useOnboardingOverlay } from '../onboarding/OnboardingOverlay'
+import { useOnboardingOverlay, OnboardingView } from '../onboarding/OnboardingOverlay'
 import { Sidebar } from '../sidebar/Sidebar'
 import { FloatingOrb, type FloatingOrbHandle } from './FloatingOrb'
 import { FullShellDialogs } from './full-shell-dialogs'
@@ -23,6 +23,10 @@ import { useDialogManager } from './use-dialog-manager'
 import { useFullShellChat } from './use-full-shell-chat'
 import { useFullShellVoiceTranscript } from './use-full-shell-voice-transcript'
 import { useLocalWorkspacePanels } from './use-local-workspace-panels'
+
+const OnboardingCanvas = lazy(() =>
+  import('../onboarding/OnboardingCanvas').then((m) => ({ default: m.OnboardingCanvas }))
+)
 
 export const FullShell = () => {
   const { state, setView } = useUiState()
@@ -166,23 +170,7 @@ export const FullShell = () => {
       scrollToBottom: chat.scroll.scrollToBottom,
       overflowAnchor: chat.scroll.overflowAnchor,
       thumbState: chat.scroll.thumbState,
-      onboarding: {
-        done: onboarding.onboardingDone,
-        exiting: onboarding.onboardingExiting,
-        isAuthenticated: onboarding.isAuthenticated,
-        hasExpanded: onboarding.hasExpanded,
-        splitMode: onboarding.splitMode,
-        hasDiscoverySelections: onboarding.hasDiscoverySelections,
-        key: onboarding.onboardingKey,
-        stellaAnimationRef: onboarding.stellaAnimationRef,
-        triggerFlash: onboarding.triggerFlash,
-        startBirthAnimation: onboarding.startBirthAnimation,
-        completeOnboarding: onboarding.completeOnboarding,
-        handleEnterSplit: onboarding.handleEnterSplit,
-        onDiscoveryConfirm: handleDiscoveryConfirm,
-        onSelectionChange: onboarding.setHasDiscoverySelections,
-        onDemoChange: handleDemoChange,
-      },
+      composerEntering: onboarding.onboardingExiting,
       conversationId: activeConversationId,
       onCommandSelect: chat.composer.handleCommandSelect,
     }),
@@ -214,23 +202,11 @@ export const FullShell = () => {
       chat.scroll.showScrollButton,
       chat.scroll.overflowAnchor,
       chat.scroll.thumbState,
-      handleDemoChange,
-      handleDiscoveryConfirm,
-      onboarding.completeOnboarding,
-      onboarding.handleEnterSplit,
-      onboarding.hasDiscoverySelections,
-      onboarding.hasExpanded,
-      onboarding.isAuthenticated,
-      onboarding.onboardingDone,
       onboarding.onboardingExiting,
-      onboarding.onboardingKey,
-      onboarding.setHasDiscoverySelections,
-      onboarding.splitMode,
-      onboarding.startBirthAnimation,
-      onboarding.stellaAnimationRef,
-      onboarding.triggerFlash,
     ],
   )
+
+  const showOnboardingDemos = activeDemo || demoClosing
 
   return (
     <div className="window-shell full">
@@ -286,7 +262,32 @@ export const FullShell = () => {
             </div>
           </>
         ) : (
-          <ChatColumn {...chatColumnProps} />
+          <div className="onboarding-layout" data-split={onboarding.splitMode || undefined}>
+            <OnboardingView
+              hasExpanded={onboarding.hasExpanded}
+              onboardingDone={onboarding.onboardingDone}
+              onboardingExiting={onboarding.onboardingExiting}
+              isAuthenticated={onboarding.isAuthenticated}
+              splitMode={onboarding.splitMode}
+              hasDiscoverySelections={onboarding.hasDiscoverySelections}
+              stellaAnimationRef={onboarding.stellaAnimationRef}
+              onboardingKey={onboarding.onboardingKey}
+              triggerFlash={onboarding.triggerFlash}
+              startBirthAnimation={onboarding.startBirthAnimation}
+              completeOnboarding={onboarding.completeOnboarding}
+              handleEnterSplit={onboarding.handleEnterSplit}
+              onDiscoveryConfirm={handleDiscoveryConfirm}
+              onSelectionChange={onboarding.setHasDiscoverySelections}
+              onDemoChange={handleDemoChange}
+            />
+            {showOnboardingDemos && (
+              <div className="onboarding-demo-area">
+                <Suspense fallback={null}>
+                  <OnboardingCanvas activeDemo={activeDemo} />
+                </Suspense>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
