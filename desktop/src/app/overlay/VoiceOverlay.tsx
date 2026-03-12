@@ -54,14 +54,19 @@ export function VoiceOverlay({
 
   const isAnyVoiceActive =
     isActiveWindow && (state.isVoiceActive || state.isVoiceRtcActive);
-  const shouldDisplayOverlay = visible && isActiveWindow;
+  const shouldDisplayOverlay = isAnyVoiceActive || (visible && isActiveWindow);
   const isAudioReady = isRecording || isConnected;
 
   useEffect(() => {
-    if (shouldDisplayOverlay) {
+    if (style) {
       retainedStyleRef.current = style;
+      return;
     }
-  }, [shouldDisplayOverlay, style]);
+
+    if (isAnyVoiceActive) {
+      retainedStyleRef.current = undefined;
+    }
+  }, [isAnyVoiceActive, style]);
 
   // Voice mode uses server-reported speaking state for RTC (more reliable
   // than energy thresholds which decay slowly due to analyser smoothing).

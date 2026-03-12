@@ -119,6 +119,7 @@ const buildVoiceSessionRequestBody = (
 export class RealtimeVoiceSession {
   private pc: RTCPeerConnection | null = null;
   private dc: RTCDataChannel | null = null;
+  private sender: RTCRtpSender | null = null;
   private audioElement: HTMLAudioElement | null = null;
   private localStream: MediaStream | null = null;
   private micLease: SharedMicrophoneLease | null = null;
@@ -129,6 +130,7 @@ export class RealtimeVoiceSession {
   private outputAnalyser: AnalyserNode | null = null;
   private gateGainNode: GainNode | null = null;
   private gateSilentSink: GainNode | null = null;
+  private inputSourceNode: MediaStreamAudioSourceNode | null = null;
   private inputMonitorNode: ScriptProcessorNode | null = null;
   private outputMonitorNode: ScriptProcessorNode | null = null;
   private outputMonitorSource: MediaStreamAudioSourceNode | null = null;
@@ -209,24 +211,14 @@ export class RealtimeVoiceSession {
 
   /**
    * Toggle whether mic audio is actively sent to Realtime.
-   * Session stays connected; we only gate the input track.
+   * Session stays connected; microphone capture is suspended while inactive.
    */
   setInputActive(active: boolean) {
     this.inputActive = active;
-    if (this.inputTrack && this.inputTrack.readyState === "live") {
-      this.inputTrack.enabled = active;
-    }
-    this.updateOutboundGate();
-    if (
-      active &&
-      this.localStream &&
-      !this.inputTrack &&
-      !this.isBufferingPreConnect
-    ) {
-      this.startPreConnectBuffering(this.localStream);
-    }
-    if (!active && this.isBufferingPreConnect) {
-      this.stopPreConnectBuffering();
+    if (active) {
+      void this.resumeMicrophoneCapture();
+    } else {
+      void this.suspendMicrophoneCapture();
     }
   }
 
@@ -312,6 +304,7 @@ export class RealtimeVoiceSession {
       const transceiver = this.pc.addTransceiver("audio", {
         direction: "sendrecv",
       });
+      this.sender = transceiver.sender;
 
       this.dc = this.pc.createDataChannel("oai-events");
       this.initDataChannelOpenLatch();
@@ -402,9 +395,10 @@ export class RealtimeVoiceSession {
       }
 
       this.inputTrack.enabled = this.inputActive;
-      await transceiver.sender.replaceTrack(
-        this.outboundTrack ?? this.inputTrack,
-      );
+      await this.sender.replaceTrack(this.outboundTrack ?? this.inputTrack);
+      if (!this.inputActive) {
+        await this.suspendMicrophoneCapture();
+      }
 
       getVoiceRuntimeState().activeSession = this;
       this.trace("CONNECTED", `conv=${conversationId}`);
@@ -659,56 +653,55 @@ export class RealtimeVoiceSession {
   }
 
   private setupLocalAudioPipeline(stream: MediaStream) {
-    if (this.audioContext) return;
     try {
-      const ctx = new AudioContext();
-      this.audioContext = ctx;
-      this.duplexGateLagSamples = DUPLEX_GATE_LAG_MS.map((lagMs) =>
-        Math.round((ctx.sampleRate * lagMs) / 1000),
-      ).filter(
-        (lag, index, values) =>
-          lag >= 0 &&
-          lag < DUPLEX_GATE_ANALYSIS_WINDOW - 64 &&
-          values.indexOf(lag) === index,
-      );
-      if (this.duplexGateLagSamples.length === 0) {
-        this.duplexGateLagSamples = [0];
-      }
-
-      const source = ctx.createMediaStreamSource(stream);
-      this.analyser = ctx.createAnalyser();
-      this.analyser.fftSize = 256;
-      source.connect(this.analyser);
-
-      this.gateGainNode = ctx.createGain();
-      this.gateGainNode.gain.value = 1;
-      source.connect(this.gateGainNode);
-
-      const destination = ctx.createMediaStreamDestination();
-      this.gateGainNode.connect(destination);
-      this.outboundTrack =
-        destination.stream.getAudioTracks()[0] ?? this.inputTrack;
-
-      this.gateSilentSink = ctx.createGain();
-      this.gateSilentSink.gain.value = 0;
-      this.gateSilentSink.connect(ctx.destination);
-
-      this.inputMonitorNode = ctx.createScriptProcessor(1024, 1, 1);
-      this.inputMonitorNode.onaudioprocess = (event) => {
-        this.recordSampleWindow(
-          event.inputBuffer.getChannelData(0),
-          this.inputSampleWindow,
-          "input",
+      if (!this.audioContext) {
+        const ctx = new AudioContext();
+        this.audioContext = ctx;
+        this.duplexGateLagSamples = DUPLEX_GATE_LAG_MS.map((lagMs) =>
+          Math.round((ctx.sampleRate * lagMs) / 1000),
+        ).filter(
+          (lag, index, values) =>
+            lag >= 0 &&
+            lag < DUPLEX_GATE_ANALYSIS_WINDOW - 64 &&
+            values.indexOf(lag) === index,
         );
-      };
-      source.connect(this.inputMonitorNode);
-      this.inputMonitorNode.connect(this.gateSilentSink);
+        if (this.duplexGateLagSamples.length === 0) {
+          this.duplexGateLagSamples = [0];
+        }
 
-      if (this.pendingRemoteStream) {
-        this.attachOutputMonitor(this.pendingRemoteStream);
+        this.analyser = ctx.createAnalyser();
+        this.analyser.fftSize = 256;
+
+        this.gateGainNode = ctx.createGain();
+        this.gateGainNode.gain.value = 1;
+
+        const destination = ctx.createMediaStreamDestination();
+        this.gateGainNode.connect(destination);
+        this.outboundTrack =
+          destination.stream.getAudioTracks()[0] ?? this.inputTrack;
+
+        this.gateSilentSink = ctx.createGain();
+        this.gateSilentSink.gain.value = 0;
+        this.gateSilentSink.connect(ctx.destination);
+
+        this.inputMonitorNode = ctx.createScriptProcessor(1024, 1, 1);
+        this.inputMonitorNode.onaudioprocess = (event) => {
+          this.recordSampleWindow(
+            event.inputBuffer.getChannelData(0),
+            this.inputSampleWindow,
+            "input",
+          );
+        };
+        this.inputMonitorNode.connect(this.gateSilentSink);
+
+        if (this.pendingRemoteStream) {
+          this.attachOutputMonitor(this.pendingRemoteStream);
+        }
+
+        this.startDuplexGate();
       }
 
-      this.startDuplexGate();
+      this.attachLocalInputStream(stream);
       this.updateOutboundGate();
     } catch (err) {
       console.debug(
@@ -717,6 +710,115 @@ export class RealtimeVoiceSession {
       );
       this.outboundTrack = this.inputTrack;
     }
+  }
+
+  private attachLocalInputStream(stream: MediaStream) {
+    if (
+      !this.audioContext ||
+      !this.analyser ||
+      !this.gateGainNode ||
+      !this.inputMonitorNode
+    ) {
+      return;
+    }
+
+    if (this.inputSourceNode) {
+      this.inputSourceNode.disconnect();
+      this.inputSourceNode = null;
+    }
+
+    const source = this.audioContext.createMediaStreamSource(stream);
+    source.connect(this.analyser);
+    source.connect(this.gateGainNode);
+    source.connect(this.inputMonitorNode);
+    this.inputSourceNode = source;
+  }
+
+  private resetInputMonitoringState() {
+    this.inputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
+    this.inputSampleWriteIndex = 0;
+    this.inputWindowFilled = false;
+    this.duplexGateOpen = false;
+    this.duplexGateOpenFrames = 0;
+    this.duplexGateCloseFrames = 0;
+  }
+
+  private async suspendMicrophoneCapture() {
+    if (!this.inputTrack && !this.localStream && !this.micLease) {
+      this.resetInputMonitoringState();
+      this.updateOutboundGate();
+      return;
+    }
+
+    if (this.isBufferingPreConnect) {
+      this.stopPreConnectBuffering();
+    }
+
+    if (this.inputTrack && this.inputTrack.readyState === "live") {
+      this.inputTrack.enabled = false;
+    }
+
+    if (this.inputSourceNode) {
+      this.inputSourceNode.disconnect();
+      this.inputSourceNode = null;
+    }
+
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream = null;
+    }
+
+    if (this.micLease) {
+      this.micLease.release();
+      this.micLease = null;
+    }
+
+    this.inputTrack = null;
+    this.resetInputMonitoringState();
+
+    if (this.sender) {
+      await this.sender.replaceTrack(this.outboundTrack ?? null);
+    }
+
+    this.updateOutboundGate();
+  }
+
+  private async resumeMicrophoneCapture() {
+    if (!this.inputActive || this.destroyed) {
+      return;
+    }
+
+    if (this.inputTrack && this.inputTrack.readyState === "live") {
+      this.inputTrack.enabled = true;
+      this.updateOutboundGate();
+      return;
+    }
+
+    const lease = await acquireSharedMicrophone();
+    if (!this.inputActive || this.destroyed) {
+      lease.release();
+      return;
+    }
+
+    this.micLease = lease;
+    this.localStream = lease.stream;
+    this.inputTrack = this.localStream.getTracks()[0] ?? null;
+
+    if (!this.inputTrack) {
+      this.micLease.release();
+      this.micLease = null;
+      this.localStream = null;
+      throw new Error("No microphone track available");
+    }
+
+    this.setupLocalAudioPipeline(this.localStream);
+    this.inputTrack.enabled = true;
+
+    if (this.sender) {
+      await this.sender.replaceTrack(this.outboundTrack ?? this.inputTrack);
+    }
+
+    this.updateOutboundGate();
   }
 
   private attachOutputMonitor(stream: MediaStream) {
@@ -1395,6 +1497,8 @@ export class RealtimeVoiceSession {
       this.micLease = null;
     }
     this.inputTrack = null;
+    this.inputSourceNode = null;
+    this.sender = null;
 
     if (this.audioElement) {
       this.audioElement.pause();

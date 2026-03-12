@@ -105,6 +105,7 @@ type LocalTaskManagerOpts = {
     userMessageId: string;
     agentType: string;
     taskId?: string;
+    rootRunId?: string;
     taskDescription: string;
     taskPrompt: string;
     agentContext: LocalTaskManagerAgentContext;
@@ -304,6 +305,7 @@ export class LocalTaskManager implements TaskToolApi {
         userMessageId: runId,
         agentType: task.agentType,
         ...(task.cloudTaskId ? { taskId: task.cloudTaskId } : {}),
+        rootRunId: task.rootRunId,
         taskDescription: task.description,
         taskPrompt: task.prompt,
         agentContext: context,
