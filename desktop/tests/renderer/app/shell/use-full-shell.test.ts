@@ -1,8 +1,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useScrollManagement } from "../../../../src/app/shell/use-full-shell";
+import { useChatScrollManagement } from "../../../../src/app/shell/use-chat-scroll-management";
 
-const makeOptions = (overrides: Partial<Parameters<typeof useScrollManagement>[0]> = {}) => ({
+const makeOptions = (overrides: Partial<Parameters<typeof useChatScrollManagement>[0]> = {}) => ({
   itemCount: 0,
   hasOlderEvents: false,
   isLoadingOlder: false,
@@ -11,7 +11,7 @@ const makeOptions = (overrides: Partial<Parameters<typeof useScrollManagement>[0
   ...overrides,
 });
 
-describe("useScrollManagement (column-reverse)", () => {
+describe("useChatScrollManagement (column-reverse)", () => {
   let rafCallbacks: FrameRequestCallback[];
 
   beforeEach(() => {
@@ -29,19 +29,19 @@ describe("useScrollManagement (column-reverse)", () => {
   });
 
   it("starts at bottom (isNearBottom=true, showScrollButton=false)", () => {
-    const { result } = renderHook(() => useScrollManagement(makeOptions()));
+    const { result } = renderHook(() => useChatScrollManagement(makeOptions()));
     expect(result.current.isNearBottom).toBe(true);
     expect(result.current.showScrollButton).toBe(false);
     expect(result.current.overflowAnchor).toBe("none");
   });
 
   it("provides a scrollContainerRef", () => {
-    const { result } = renderHook(() => useScrollManagement(makeOptions()));
+    const { result } = renderHook(() => useChatScrollManagement(makeOptions()));
     expect(result.current.scrollContainerRef).toBeDefined();
   });
 
   it("handleScroll batches via requestAnimationFrame", () => {
-    const { result } = renderHook(() => useScrollManagement(makeOptions()));
+    const { result } = renderHook(() => useChatScrollManagement(makeOptions()));
 
     act(() => {
       result.current.handleScroll();
@@ -58,7 +58,7 @@ describe("useScrollManagement (column-reverse)", () => {
   });
 
   it("scrollToBottom('instant') sets scrollTop to 0 (column-reverse bottom)", () => {
-    const { result } = renderHook(() => useScrollManagement(makeOptions()));
+    const { result } = renderHook(() => useChatScrollManagement(makeOptions()));
 
     const mockDiv = {
       scrollTop: -500,
@@ -80,7 +80,7 @@ describe("useScrollManagement (column-reverse)", () => {
   });
 
   it("scrollToBottom('smooth') uses motion spring animation", () => {
-    const { result } = renderHook(() => useScrollManagement(makeOptions()));
+    const { result } = renderHook(() => useChatScrollManagement(makeOptions()));
 
     const mockDiv = {
       scrollTop: -500,
@@ -103,7 +103,7 @@ describe("useScrollManagement (column-reverse)", () => {
   });
 
   it("scrollToBottom does nothing if no container", () => {
-    const { result } = renderHook(() => useScrollManagement(makeOptions()));
+    const { result } = renderHook(() => useChatScrollManagement(makeOptions()));
     act(() => {
       result.current.scrollToBottom();
     });
@@ -111,7 +111,7 @@ describe("useScrollManagement (column-reverse)", () => {
   });
 
   it("detects user scroll away from bottom", () => {
-    const { result } = renderHook(() => useScrollManagement(makeOptions()));
+    const { result } = renderHook(() => useChatScrollManagement(makeOptions()));
 
     const mockDiv = {
       scrollTop: -200, // 200px from bottom in column-reverse
@@ -141,7 +141,7 @@ describe("useScrollManagement (column-reverse)", () => {
   });
 
   it("re-engages auto-follow when user scrolls back to bottom", () => {
-    const { result } = renderHook(() => useScrollManagement(makeOptions()));
+    const { result } = renderHook(() => useChatScrollManagement(makeOptions()));
 
     const mockDiv = {
       scrollTop: -200,
@@ -184,7 +184,7 @@ describe("useScrollManagement (column-reverse)", () => {
   it("requests older history when user scrolls near the top", () => {
     const onLoadOlder = vi.fn();
     const { result } = renderHook(() =>
-      useScrollManagement(
+      useChatScrollManagement(
         makeOptions({
           itemCount: 20,
           hasOlderEvents: true,
@@ -219,12 +219,12 @@ describe("useScrollManagement (column-reverse)", () => {
   });
 
   it("cleans up RAF on unmount", () => {
-    const { unmount } = renderHook(() => useScrollManagement(makeOptions()));
+    const { unmount } = renderHook(() => useChatScrollManagement(makeOptions()));
     unmount();
   });
 
   it("resetScrollState clears user-scrolled state", () => {
-    const { result } = renderHook(() => useScrollManagement(makeOptions()));
+    const { result } = renderHook(() => useChatScrollManagement(makeOptions()));
 
     const mockDiv = {
       scrollTop: -200,
@@ -258,7 +258,7 @@ describe("useScrollManagement (column-reverse)", () => {
   });
 
   it("returns thumbState for custom scrollbar", () => {
-    const { result } = renderHook(() => useScrollManagement(makeOptions()));
+    const { result } = renderHook(() => useChatScrollManagement(makeOptions()));
     expect(result.current.thumbState).toEqual({ top: 0, height: 0, visible: false });
   });
 });
