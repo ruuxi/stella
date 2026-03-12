@@ -8,7 +8,7 @@ import {
   oklchToHex,
   generateScale,
   generateGradientTokens,
-} from "../../../src/theme/color";
+} from "@/shared/theme/color";
 
 describe("hexToRgb", () => {
   it("converts a 6-digit hex to normalized RGB", () => {

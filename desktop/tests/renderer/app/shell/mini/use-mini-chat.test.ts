@@ -18,7 +18,7 @@ import type {
   ChatContext,
   MiniBridgeRequest,
   MiniBridgeUpdate,
-} from "@/types/electron";
+} from "@/shared/types/electron";
 
 function makeSnapshot(overrides?: Partial<MiniBridgeUpdate["snapshot"]>) {
   return {

@@ -4,7 +4,7 @@ import {
   type VoiceSessionEvent,
   type VoiceSessionState,
 } from "@/features/voice/services/realtime-voice";
-import type { VoiceRuntimeSnapshot } from "@/types/electron";
+import type { VoiceRuntimeSnapshot } from "@/shared/types/electron";
 
 interface UseRealtimeVoiceResult {
   isConnected: boolean;

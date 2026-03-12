@@ -1,11 +1,11 @@
-﻿import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { SendMessageArgs } from "@/app/chat/streaming/chat-types";
 import type {
   MiniBridgeRequestEnvelope,
   MiniBridgeResponse,
   MiniBridgeSnapshot,
-} from "@/types/electron";
+} from "@/shared/types/electron";
 
 type MiniBridgeRelayProps = {
   conversationId: string | null;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getElectronApi } from '@/platform/electron/electron'
-import type { ChatContext, ChatContextUpdate } from '@/types/electron'
+import type { ChatContext, ChatContextUpdate } from '@/shared/types/electron'
 
 export function useChatContextSync() {
   const [chatContext, setChatContext] = useState<ChatContext | null>(null)

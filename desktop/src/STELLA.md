@@ -7,7 +7,7 @@ Use these top-level folders as the default placement rules for renderer changes:
 - `shell/`: Window chrome and app hosting. This owns `FullShell`, `MiniShell`, overlay UI, sidebar, header tabs, and shell-only helpers.
 - `systems/`: Background boot and always-on runtime roots. Examples: app bootstrap hooks and voice runtime roots.
 - `features/`: Reusable product capabilities that are not navigable apps on their own. Examples: `voice`, `music`.
-- `shared/`: Truly cross-cutting contracts, hooks, utilities, or components used across multiple areas of the renderer.
+- `shared/`: Truly cross-cutting contracts, hooks, utilities, components, and foundations used across multiple areas of the renderer. This includes shared `theme`, `styles`, and most renderer-side `types`.
 - `ui/`: Generic design-system primitives.
 
 Placement rules:
@@ -17,6 +17,7 @@ Placement rules:
 - Only add subfolders when there is a real seam. Avoid generic buckets like `services/` unless a folder has enough internal complexity to justify them.
 - Put navigable app code under `src/app/`.
 - Do not use `src/apps/`. That was a temporary rename during the ongoing structure refactor.
+- Keep global renderer foundations under `src/shared/` rather than creating new top-level buckets for theme/style/type concerns.
 
 Navigation model:
 

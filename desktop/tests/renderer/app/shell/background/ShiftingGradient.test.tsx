@@ -37,7 +37,7 @@ vi.mock("@/context/theme-context", () => ({
 }));
 
 // Mock generateGradientTokens to return predictable values
-vi.mock("@/theme/color", () => ({
+vi.mock("@/shared/theme/color", () => ({
   generateGradientTokens: () => ({
     textInteractive: "#8b5cf6",
     surfaceInfoStrong: "#3b82f6",

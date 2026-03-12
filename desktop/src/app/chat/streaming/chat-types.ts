@@ -1,4 +1,4 @@
-import type { ChatContext } from '@/types/electron'
+import type { ChatContext } from '@/shared/types/electron'
 
 export type AttachmentRef = {
   id?: string

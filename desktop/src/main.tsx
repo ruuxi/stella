@@ -1,8 +1,8 @@
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import './ui/register-styles'
-import './styles/app-base.css'
-import './styles/app-components.css'
+import './shared/styles/app-base.css'
+import './shared/styles/app-components.css'
 
 import './platform/dev/vite-error-recovery'
 import { initStellaUiHandler } from './platform/electron/stella-ui-handler'
