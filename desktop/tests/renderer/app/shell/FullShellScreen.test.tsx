@@ -100,8 +100,8 @@ vi.mock("@/app/chat/hooks/use-conversation-events", () => ({
     mockUseConversationEventFeed(conversationId),
 }));
 
-vi.mock("@/app/workspace/hooks/use-canvas-commands", () => ({
-  useCanvasCommands: vi.fn(),
+vi.mock("@/app/workspace/hooks/use-workspace-panel-commands", () => ({
+  useWorkspacePanelCommands: vi.fn(),
 }));
 
 vi.mock("@/platform/electron/electron", () => ({

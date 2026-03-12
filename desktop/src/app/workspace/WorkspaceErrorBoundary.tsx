@@ -31,9 +31,9 @@ export class WorkspaceErrorBoundary extends Component<Props, State> {
 
     if (error) {
       return (
-        <div className="canvas-error">
-          <div className="canvas-error-title">This component ran into a problem</div>
-          <button className="canvas-error-retry" onClick={this.handleRetry}>
+        <div className="workspace-error">
+          <div className="workspace-error-title">This component ran into a problem</div>
+          <button className="workspace-error-retry" onClick={this.handleRetry}>
             Retry
           </button>
         </div>

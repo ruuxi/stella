@@ -54,9 +54,9 @@ const isSafeCanvasUrl = (value?: string): boolean => {
 
 /**
  * Watches conversation events for `canvas_command` type and dispatches
- * to the canvas state (open/close).
+ * to workspace panel state (open/close).
  */
-export const useCanvasCommands = (
+export const useWorkspacePanelCommands = (
   events: EventRecord[],
   conversationId?: string | null,
 ) => {
@@ -112,7 +112,7 @@ export const useCanvasCommands = (
           break
         }
         case 'close': {
-          // Kill dev server shell if canvas had a localhost URL
+          // Kill dev server shell if the workspace panel used a localhost URL
           const port = getLocalhostPort(state.activePanel?.url)
           if (port) {
             window.electronAPI?.system.shellKillByPort(port)

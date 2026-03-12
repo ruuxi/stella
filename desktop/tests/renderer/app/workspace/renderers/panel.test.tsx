@@ -123,18 +123,18 @@ describe("PanelRenderer", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelector(".canvas-error")).toBeTruthy();
+      expect(container.querySelector(".workspace-error")).toBeTruthy();
     });
-    expect(container.querySelector(".canvas-error-title")).toBeTruthy();
-    expect(container.querySelector(".canvas-error-message")).toBeTruthy();
-    expect(container.querySelector(".canvas-error-retry")).toBeTruthy();
+    expect(container.querySelector(".workspace-error-title")).toBeTruthy();
+    expect(container.querySelector(".workspace-error-message")).toBeTruthy();
+    expect(container.querySelector(".workspace-error-retry")).toBeTruthy();
   });
 
   it("applies correct CSS classes to loading view", () => {
     const { container } = render(
       <PanelRenderer panel={{ name: "test" }} />
     );
-    expect(container.querySelector(".canvas-vite-loading")).toBeTruthy();
+    expect(container.querySelector(".workspace-panel-loading")).toBeTruthy();
   });
 
   it("shows a dev-only error outside the Vite dev server", async () => {
