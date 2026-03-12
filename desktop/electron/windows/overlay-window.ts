@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain, screen } from 'electron'
 import { RADIAL_SIZE } from '../layout-constants.js'
+import type { SelfModHmrState } from '../../src/shared/contracts/electron-data.js'
 import { loadWindow } from './window-load.js'
 
 const getAllDisplaysBounds = () => {
@@ -444,8 +445,17 @@ export class OverlayWindowController {
     this.overlayWindow.send('overlay:morphReverse', { screenshotDataUrl })
   }
 
+  setMorphState(state: SelfModHmrState) {
+    this.overlayWindow.send('overlay:morphState', state)
+  }
+
   endMorph() {
     this.activeMorph = false
+    this.setMorphState({
+      phase: 'idle',
+      paused: false,
+      requiresFullReload: false,
+    })
     this.overlayWindow.send('overlay:morphEnd')
     this.hideOverlayIfIdle()
   }

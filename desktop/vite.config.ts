@@ -324,12 +324,25 @@ function selfModHmrControl(): Plugin {
       requiresFullReload = Boolean(persisted.requiresFullReload);
       writePersistedSelfModHmrState({ paused, requiresFullReload });
 
+      const invalidateQueuedModules = () => {
+        if (queuedModules.size === 0) {
+          return;
+        }
+
+        const seen = new Set<ModuleNode>();
+        const timestamp = Date.now();
+        for (const mod of queuedModules) {
+          server.moduleGraph.invalidateModule(mod, seen, timestamp, true);
+        }
+      };
+
       const flushQueuedUpdates = async () => {
         if (queuedModules.size === 0 && !requiresFullReload) {
           return;
         }
 
         if (requiresFullReload) {
+          invalidateQueuedModules();
           server.ws.send({ type: "full-reload", path: "*" });
           clearQueue();
           writePersistedSelfModHmrState({ paused, requiresFullReload });
@@ -351,6 +364,7 @@ function selfModHmrControl(): Plugin {
         }
 
         if (reloadFailed) {
+          invalidateQueuedModules();
           server.ws.send({ type: "full-reload", path: "*" });
         }
 
