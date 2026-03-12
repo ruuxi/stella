@@ -15,8 +15,10 @@ import {
 } from "@/prompts";
 import {
   acquireSharedMicrophone,
+  consumeRecentVoiceHandoffPcm,
   type SharedMicrophoneLease,
 } from "@/app/voice/services/shared-microphone";
+import { encodeInt16PacketToBase64 } from "@/app/voice/services/audio-encoding";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,6 +76,7 @@ const PRECONNECT_SILENCE_MS = 280;
 const PRECONNECT_BOUNDARY_MAX_WAIT_MS = 1800;
 const PRECONNECT_BOUNDARY_POLL_MS = 40;
 const DATA_CHANNEL_OPEN_TIMEOUT_MS = 8_000;
+const WAKE_WORD_HANDOFF_CHUNK_SAMPLES = 2048;
 const DUPLEX_GATE_ANALYSIS_WINDOW = 8192;
 const DUPLEX_GATE_INTERVAL_MS = 50;
 const DUPLEX_GATE_OPEN_FRAMES = 4;
@@ -538,6 +541,27 @@ export class RealtimeVoiceSession {
     }
   }
 
+  private flushWakeWordHandoffPcm(pcm: Int16Array) {
+    if (pcm.length === 0) {
+      return;
+    }
+
+    for (
+      let offset = 0;
+      offset < pcm.length;
+      offset += WAKE_WORD_HANDOFF_CHUNK_SAMPLES
+    ) {
+      const chunk = pcm.subarray(
+        offset,
+        Math.min(offset + WAKE_WORD_HANDOFF_CHUNK_SAMPLES, pcm.length),
+      );
+      this.sendEvent({
+        type: "input_audio_buffer.append",
+        audio: encodeInt16PacketToBase64(chunk),
+      });
+    }
+  }
+
   private initDataChannelOpenLatch() {
     this.dataChannelOpenPromise = new Promise<void>((resolve) => {
       this.resolveDataChannelOpenPromise = resolve;
@@ -818,6 +842,7 @@ export class RealtimeVoiceSession {
       await this.sender.replaceTrack(this.outboundTrack ?? this.inputTrack);
     }
 
+    this.flushWakeWordHandoffPcm(consumeRecentVoiceHandoffPcm());
     this.updateOutboundGate();
   }
 
