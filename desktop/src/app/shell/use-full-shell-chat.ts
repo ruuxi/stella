@@ -11,7 +11,7 @@ import { useStreamingChat } from '@/app/chat/hooks/use-streaming-chat'
 import { useTraceEventMonitor, useTraceIpcListener } from '@/debug/hooks/use-trace-listener'
 import { hasComposerContext } from '@/app/chat/streaming/message-context'
 import { useChatContextSync } from './use-chat-context-sync'
-import { useScrollManagement } from './use-full-shell'
+import { useChatScrollManagement } from './use-chat-scroll-management'
 
 const NO_OP = () => {}
 
@@ -95,7 +95,7 @@ export function useFullShellChat({
     resetScrollState,
     overflowAnchor,
     thumbState,
-  } = useScrollManagement({
+  } = useChatScrollManagement({
     itemCount: events.length,
     hasOlderEvents,
     isLoadingOlder,
@@ -127,7 +127,7 @@ export function useFullShellChat({
     return () => cancelAnimationFrame(raf)
   }, [activeView, resetScrollState, scrollToBottom])
 
-  // Auto-scroll is now driven by the content ResizeObserver in useScrollManagement.
+  // Auto-scroll is now driven by the content ResizeObserver in useChatScrollManagement.
   // No need for individual effects on events.length, streamingText, reasoningText, etc.
 
   const handleSend = useCallback(() => {

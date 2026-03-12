@@ -235,8 +235,8 @@ vi.mock("@/app/chat/hooks/use-streaming-chat", () => ({
   useStreamingChat: (options: unknown) => mockUseStreamingChat(options),
 }));
 
-vi.mock("@/app/shell/use-full-shell", () => ({
-  useScrollManagement: vi.fn(() => ({
+vi.mock("@/app/shell/use-chat-scroll-management", () => ({
+  useChatScrollManagement: vi.fn(() => ({
     scrollContainerRef: createRef(),
     setScrollContainerElement: vi.fn(),
     setContentElement: vi.fn(),

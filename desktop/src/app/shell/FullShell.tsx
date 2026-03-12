@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useRef } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import type { OnboardingDemo } from '@/app/onboarding/OnboardingCanvas'
 import { useOrbMessage } from '@/app/shell/hooks/use-orb-message'
 import { useUiState } from '@/context/ui-state'
 import { useWorkspace } from '@/context/workspace-state'
@@ -17,9 +18,8 @@ import './full-shell.layout.css'
 import './full-shell.panels.css'
 import { ShiftingGradient } from './background/ShiftingGradient'
 import { TitleBar } from './TitleBar'
-import type { PersonalPage } from './types'
-import { useDemoAnimation } from './use-demo-animation'
-import { useDialogManager } from './use-dialog-manager'
+import type { PersonalPage } from './HeaderTabBar'
+import type { DialogType } from './full-shell-dialogs'
 import { useFullShellChat } from './use-full-shell-chat'
 import { useFullShellVoiceTranscript } from './use-full-shell-voice-transcript'
 import { useLocalWorkspacePanels } from './use-local-workspace-panels'
@@ -36,10 +36,12 @@ export const FullShell = () => {
   const { gradientMode, gradientColor } = useTheme()
   const isDev = import.meta.env.DEV
   const orbRef = useRef<FloatingOrbHandle>(null)
+  const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null)
+  const [demoClosing, setDemoClosing] = useState(false)
+  const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [activeDialog, setActiveDialog] = useState<DialogType>(null)
   const onboarding = useOnboardingOverlay()
   const { personalPages } = useLocalWorkspacePanels()
-  const { activeDemo, demoClosing, handleDemoChange } = useDemoAnimation()
-  const { activeDialog, setActiveDialog } = useDialogManager()
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
     conversationId: activeConversationId,
   })
@@ -79,6 +81,26 @@ export const FullShell = () => {
   const showHomeView = useCallback(() => {
     setView('home')
   }, [setView])
+
+  const handleDemoChange = useCallback((demo: OnboardingDemo) => {
+    if (demo) {
+      if (demoCloseTimerRef.current) {
+        clearTimeout(demoCloseTimerRef.current)
+        demoCloseTimerRef.current = null
+      }
+
+      setDemoClosing(false)
+      setActiveDemo(demo)
+      return
+    }
+
+    setActiveDemo(null)
+    setDemoClosing(true)
+    demoCloseTimerRef.current = setTimeout(() => {
+      setDemoClosing(false)
+      demoCloseTimerRef.current = null
+    }, 400)
+  }, [])
 
   const handleDialogOpenChange = useCallback(
     (open: boolean) => {
@@ -132,6 +154,14 @@ export const FullShell = () => {
   useEffect(() => {
     window.electronAPI?.ui.setAppReady?.(onboarding.onboardingDone)
   }, [onboarding.onboardingDone])
+
+  useEffect(() => {
+    return () => {
+      if (demoCloseTimerRef.current) {
+        clearTimeout(demoCloseTimerRef.current)
+      }
+    }
+  }, [])
 
   const isOrbVisible = state.view !== 'chat' && onboarding.onboardingDone
   const orbMessage = useOrbMessage(chat.conversation.events, isOrbVisible)
