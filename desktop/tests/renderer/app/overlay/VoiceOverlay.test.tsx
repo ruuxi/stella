@@ -31,10 +31,17 @@ describe("VoiceOverlay", () => {
   beforeEach(() => {
     vi.useFakeTimers();
 
-    vi.stubGlobal("requestAnimationFrame", ((callback: FrameRequestCallback) =>
-      window.setTimeout(() => callback(0), 0)) as typeof requestAnimationFrame);
-    vi.stubGlobal("cancelAnimationFrame", ((id: number) =>
-      window.clearTimeout(id)) as typeof cancelAnimationFrame);
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      ((callback: FrameRequestCallback) => {
+        callback(0);
+        return 0;
+      }) as typeof requestAnimationFrame,
+    );
+    vi.stubGlobal(
+      "cancelAnimationFrame",
+      vi.fn() as typeof cancelAnimationFrame,
+    );
 
     mockUseUiState.mockReturnValue({
       state: {
@@ -68,7 +75,7 @@ describe("VoiceOverlay", () => {
     vi.unstubAllGlobals();
   });
 
-  it("does not render when voice is active but explicit overlay visibility is false", () => {
+  it("keeps rendering while voice stays active even if explicit overlay visibility drops", () => {
     const { container } = render(
       <VoiceOverlay
         onTranscript={vi.fn()}
@@ -81,10 +88,10 @@ describe("VoiceOverlay", () => {
       vi.runAllTimers();
     });
 
-    expect(container.querySelector(".voice-overlay")).toBeNull();
+    expect(container.querySelector(".voice-overlay")).not.toBeNull();
   });
 
-  it("hides after explicit visibility is removed even if shared voice state stays active", () => {
+  it("hides after voice state turns inactive and explicit visibility is removed", () => {
     const { container, rerender } = render(
       <VoiceOverlay
         onTranscript={vi.fn()}
@@ -98,6 +105,18 @@ describe("VoiceOverlay", () => {
     });
 
     expect(container.querySelector(".voice-overlay")).not.toBeNull();
+
+    mockUseUiState.mockReturnValue({
+      state: {
+        mode: "voice",
+        window: "overlay",
+        view: "home",
+        conversationId: "conv-1",
+        isVoiceActive: false,
+        isVoiceRtcActive: false,
+      },
+      updateState: vi.fn(),
+    });
 
     rerender(
       <VoiceOverlay onTranscript={vi.fn()} visible={false} style={undefined} />,

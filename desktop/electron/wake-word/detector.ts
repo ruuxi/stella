@@ -7,8 +7,67 @@
  * With Silero VAD pre-filter, confidence stacking, and threshold calibration.
  */
 
-import * as ort from "onnxruntime-node";
 import path from "path";
+
+type OrtModule = typeof import("onnxruntime-node");
+type OrtSession = import("onnxruntime-node").InferenceSession;
+type OrtSessionOptions = import("onnxruntime-node").InferenceSession.SessionOptions;
+type OrtTensor = import("onnxruntime-node").Tensor;
+type OrtValueMetadata = import("onnxruntime-node").InferenceSession.ValueMetadata;
+
+const NativeFloat16Array = globalThis.Float16Array;
+let ortModulePromise: Promise<OrtModule> | null = null;
+
+async function loadOrtModule(): Promise<OrtModule> {
+  if (!ortModulePromise) {
+    const originalFloat16Array = globalThis.Float16Array;
+    try {
+      // onnxruntime-node 1.24.x decides float16 CPU tensor handling on the first
+      // Tensor construction, not just at import time. Hide Float16Array so the
+      // runtime locks onto Uint16Array-backed float16 tensors.
+      Object.defineProperty(globalThis, "Float16Array", {
+        configurable: true,
+        value: undefined,
+        writable: true,
+      });
+    } catch {
+      // ignore; we'll restore whatever state we can after import
+    }
+
+    ortModulePromise = import("onnxruntime-node")
+      .then((ort) => {
+        // Force the one-time typed-array check while Float16Array is hidden.
+        new ort.Tensor("float16", new Uint16Array(1), [1]);
+        return ort;
+      })
+      .finally(() => {
+        try {
+          Object.defineProperty(globalThis, "Float16Array", {
+            configurable: true,
+            value: originalFloat16Array,
+            writable: true,
+          });
+        } catch {
+          globalThis.Float16Array = originalFloat16Array;
+        }
+      });
+  }
+  return ortModulePromise;
+}
+
+function toFloat16Buffer(values: Float32Array): Uint16Array {
+  if (!NativeFloat16Array) {
+    throw new Error("Float16Array is not available; cannot prepare fp16 wake-word input");
+  }
+  const half = new NativeFloat16Array(values);
+  return new Uint16Array(half.buffer, half.byteOffset, half.length);
+}
+
+function isTensorMetadata(
+  metadata: OrtValueMetadata | undefined,
+): metadata is Extract<OrtValueMetadata, { isTensor: true }> {
+  return Boolean(metadata?.isTensor);
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,7 +135,8 @@ function computeRms(pcm: Int16Array): number {
 export async function createWakeWordDetector(
   modelDir: string
 ): Promise<WakeWordDetector> {
-  const opts: ort.InferenceSession.SessionOptions = {
+  const ort = await loadOrtModule();
+  const opts: OrtSessionOptions = {
     executionProviders:
       process.platform === "win32"
         ? ["dml", "cpu"]
@@ -89,14 +149,17 @@ export async function createWakeWordDetector(
   const modelPaths = {
     melspec: path.join(modelDir, "melspectrogram.onnx"),
     embedding: path.join(modelDir, "embedding_model.onnx"),
-    wakeword: path.join(modelDir, "stella_wakeword.onnx"),
+    wakeword: path.join(modelDir, "stella_wakeword_fp16.onnx"),
     vad: path.join(modelDir, "silero_vad.onnx"),
   };
 
-  let melspecSession: ort.InferenceSession;
-  let embeddingSession: ort.InferenceSession;
-  let wakewordSession: ort.InferenceSession;
-  let vadSession: ort.InferenceSession;
+  let melspecSession: OrtSession;
+  let embeddingSession: OrtSession;
+  let wakewordSession: OrtSession;
+  let vadSession: OrtSession;
+  let wakewordInputType: "float16" | "float32" = "float32";
+  let wakewordInputName = "x";
+  let wakewordOutputName = "";
 
   const silenceEmbedding = new Float32Array(EMBEDDING_DIM);
 
@@ -109,11 +172,21 @@ export async function createWakeWordDetector(
         ort.InferenceSession.create(modelPaths.vad, opts),
       ]);
 
+    const wakewordMetadata = wakewordSession.inputMetadata.find(
+      (meta) => meta.name === wakewordSession.inputNames[0],
+    );
+    wakewordInputName = wakewordSession.inputNames[0] ?? "x";
+    wakewordOutputName = wakewordSession.outputNames[0] ?? "";
+    wakewordInputType =
+      isTensorMetadata(wakewordMetadata) && wakewordMetadata.type === "float16"
+        ? "float16"
+        : "float32";
+
     const silenceMelWindow = new Float32Array(EMBEDDING_WINDOW * MEL_BINS).fill(1.0);
     const results = await embeddingSession.run({
       input_1: new ort.Tensor("float32", silenceMelWindow, [1, EMBEDDING_WINDOW, MEL_BINS, 1]),
     });
-    const output = results[Object.keys(results)[0]] as ort.Tensor;
+    const output = results[Object.keys(results)[0]] as OrtTensor;
     silenceEmbedding.set(new Float32Array(output.data as Float32Array).subarray(0, EMBEDDING_DIM));
   }
 
@@ -169,8 +242,8 @@ export async function createWakeWordDetector(
         state: new ort.Tensor("float32", new Float32Array(vadState), [2, 1, VAD_STATE_DIM]),
         sr: new ort.Tensor("int64", BigInt64Array.from([BigInt(SAMPLE_RATE)]), []),
       });
-      scores.push((results.output as ort.Tensor).data[0] as number);
-      vadState = new Float32Array((results.stateN as ort.Tensor).data as Float32Array);
+      scores.push((results.output as OrtTensor).data[0] as number);
+      vadState = new Float32Array((results.stateN as OrtTensor).data as Float32Array);
       vadContext = input.slice(input.length - VAD_CONTEXT_SIZE);
     }
     return scores.length > 0 ? scores.reduce((a, b) => a + b) / scores.length : 0;
@@ -180,7 +253,7 @@ export async function createWakeWordDetector(
     const results = await melspecSession.run({
       input: new ort.Tensor("float32", audioFloat, [1, audioFloat.length]),
     });
-    const output = results[Object.keys(results)[0]] as ort.Tensor;
+    const output = results[Object.keys(results)[0]] as OrtTensor;
     const rawData = new Float32Array(output.data as Float32Array);
     for (let i = 0; i < rawData.length; i++) {
       rawData[i] = rawData[i] / 10.0 + 2.0;
@@ -218,15 +291,19 @@ export async function createWakeWordDetector(
     const results = await embeddingSession.run({
       input_1: new ort.Tensor("float32", melWindow, [1, EMBEDDING_WINDOW, MEL_BINS, 1]),
     });
-    const output = results[Object.keys(results)[0]] as ort.Tensor;
+    const output = results[Object.keys(results)[0]] as OrtTensor;
     return new Float32Array(output.data as Float32Array);
   }
 
   async function runClassifier(features: Float32Array): Promise<number> {
+    const classifierInput =
+      wakewordInputType === "float16"
+        ? new ort.Tensor("float16", toFloat16Buffer(features), [1, MODEL_INPUT_FRAMES, EMBEDDING_DIM])
+        : new ort.Tensor("float32", features, [1, MODEL_INPUT_FRAMES, EMBEDDING_DIM]);
     const results = await wakewordSession.run({
-      x: new ort.Tensor("float32", features, [1, MODEL_INPUT_FRAMES, EMBEDDING_DIM]),
+      [wakewordInputName]: classifierInput,
     });
-    const output = results[Object.keys(results)[0]] as ort.Tensor;
+    const output = results[wakewordOutputName || Object.keys(results)[0]] as OrtTensor;
     return output.data[0] as number;
   }
 

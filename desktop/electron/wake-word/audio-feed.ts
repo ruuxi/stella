@@ -46,8 +46,11 @@ export function createWakeWordAudioFeedManager(
           if (result.detected) {
             detectionCallback?.(result);
           }
-        } catch {
-          // Ignore detector errors and continue listening.
+        } catch (error) {
+          console.error(
+            "[WakeWord] Detector prediction failed:",
+            error instanceof Error ? error.message : String(error),
+          );
         }
       }
     } finally {
