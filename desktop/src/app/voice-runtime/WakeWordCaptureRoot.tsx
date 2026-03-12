@@ -7,10 +7,12 @@ import {
 } from "@/app/voice/services/audio-encoding";
 import {
   acquireSharedMicrophone,
+  bufferRecentVoiceHandoffPcm,
   type SharedMicrophoneLease,
 } from "@/app/voice/services/shared-microphone";
 
 const WAKE_WORD_CHUNK_SAMPLES = 1280;
+const VOICE_HANDOFF_SAMPLE_RATE = 24_000;
 
 const combinePcm = (left: Int16Array, right: Int16Array): Int16Array => {
   if (left.length === 0) {
@@ -167,6 +169,13 @@ export function WakeWordCaptureRoot() {
           if (!samples || samples.length === 0) {
             return;
           }
+          const handoffSamples = resampleLinear(
+            samples,
+            audioContext.sampleRate,
+            VOICE_HANDOFF_SAMPLE_RATE,
+          );
+          bufferRecentVoiceHandoffPcm(floatToInt16Pcm(handoffSamples));
+
           const resampled = resampleLinear(
             samples,
             audioContext.sampleRate,
