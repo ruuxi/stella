@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { isOrchestratorChatMessagePayload } from "../../../../../src/app/chat/emotes/message-source";
 
 describe("isOrchestratorChatMessagePayload", () => {
@@ -31,3 +31,5 @@ describe("isOrchestratorChatMessagePayload", () => {
     ).toBe(true);
   });
 });
+
+

@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { render, screen, fireEvent, act, renderHook } from "@testing-library/react";
 import React from "react";
-import { OnboardingView, useOnboardingOverlay } from "../../../../src/app/onboarding/OnboardingOverlay";
+import { OnboardingView, useOnboardingOverlay } from "../../../../src/global/onboarding/OnboardingOverlay";
 
 // ---------- Mocks ----------
 
-vi.mock("@/app/shell/ascii-creature/StellaAnimation", () => ({
+vi.mock("@/shell/ascii-creature/StellaAnimation", () => ({
   StellaAnimation: React.forwardRef((_props: any, ref: any) => {
     React.useImperativeHandle(ref, () => ({
       triggerFlash: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock("@/app/shell/ascii-creature/StellaAnimation", () => ({
   }),
 }));
 
-vi.mock("@/app/onboarding/OnboardingStep1", () => ({
+vi.mock("@/global/onboarding/OnboardingStep1", () => ({
   OnboardingStep1: (props: any) => (
     <div data-testid="onboarding-step1">
       <button data-testid="complete-btn" onClick={props.onComplete}>
@@ -38,7 +38,7 @@ vi.mock("@/app/onboarding/OnboardingStep1", () => ({
   ),
 }));
 
-vi.mock("@/app/onboarding/use-onboarding-state", () => ({
+vi.mock("@/global/onboarding/use-onboarding-state", () => ({
   useOnboardingState: vi.fn(),
 }));
 
@@ -49,7 +49,7 @@ vi.mock("convex/react", () => ({
   useAction: () => mockResetUserData,
 }));
 
-vi.mock("@/app/auth/hooks/use-auth-session-state", () => ({
+vi.mock("@/global/auth/hooks/use-auth-session-state", () => ({
   useAuthSessionState: () => mockUseAuthSessionState(),
 }));
 
@@ -57,7 +57,7 @@ vi.mock("@/convex/api", () => ({
   api: { reset: { resetAllUserData: "resetAllUserData" } },
 }));
 
-import { useOnboardingState } from "@/app/onboarding/use-onboarding-state";
+import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
 
 const mockedUseOnboardingState = vi.mocked(useOnboardingState) as any;
 
@@ -463,6 +463,8 @@ describe("useOnboardingOverlay", () => {
     expect(result.current.hasDiscoverySelections).toBe(true);
   });
 });
+
+
 
 
 

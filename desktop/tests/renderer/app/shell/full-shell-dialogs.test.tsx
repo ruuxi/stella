@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { FullShellDialogs } from '../../../../src/app/shell/full-shell-dialogs'
+import { FullShellDialogs } from '../../../../src/shell/full-shell-dialogs'
 
 describe('FullShellDialogs', () => {
   it('shows the reset messages dev control alongside onboarding and test controls', () => {
@@ -33,3 +33,4 @@ describe('FullShellDialogs', () => {
     expect(onShowTraceDialog).toHaveBeenCalledTimes(1)
   })
 })
+

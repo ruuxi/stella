@@ -1,4 +1,4 @@
-import type { EventRecord } from '@/app/chat/lib/event-transforms'
+﻿import type { EventRecord } from '@/app/chat/lib/event-transforms'
 
 export type CommandSuggestion = {
   commandId: string
@@ -9,7 +9,7 @@ export type CommandSuggestion = {
 /**
  * Derives the latest command suggestions from conversation events.
  * Returns empty when streaming or no suggestions are available.
- * Purely derived from props — no internal state or refs.
+ * Purely derived from props â€” no internal state or refs.
  */
 export const useCommandSuggestions = (
   events: EventRecord[],
@@ -44,3 +44,5 @@ export const useCommandSuggestions = (
 
   return []
 }
+
+

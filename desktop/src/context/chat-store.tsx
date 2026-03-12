@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo } from 'react'
+﻿import { createContext, useCallback, useContext, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import {
   appendLocalEvent,
@@ -6,7 +6,7 @@ import {
   type LocalHistoryMessage,
   type LocalAppendEventArgs,
 } from '@/app/chat/services/local-chat-store'
-import { useAuthSessionState } from '@/app/auth/hooks/use-auth-session-state'
+import { useAuthSessionState } from '@/global/auth/hooks/use-auth-session-state'
 import type { UploadedAttachment } from '@/app/chat/streaming/attachment-upload'
 import type { AppendedEventResponse } from '@/app/chat/streaming/streaming-event-utils'
 
@@ -233,3 +233,5 @@ export const useChatStore = () => {
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const useOptionalChatStore = () => useContext(ChatStoreContext)
+
+

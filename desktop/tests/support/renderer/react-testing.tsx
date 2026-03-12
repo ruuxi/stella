@@ -238,7 +238,7 @@ export function renderHook<TResult, TProps = void>(
     return null
   }
 
-  const rendered = render(<HookHost hookProps={hookProps} />, {
+  const rendered = render(createElement(HookHost, { hookProps }), {
     wrapper: options.wrapper,
   })
 
@@ -250,7 +250,7 @@ export function renderHook<TResult, TProps = void>(
     },
     rerender: (nextProps = hookProps) => {
       hookProps = nextProps
-      rendered.rerender(<HookHost hookProps={hookProps} />)
+      rendered.rerender(createElement(HookHost, { hookProps }))
     },
     unmount: rendered.unmount,
   }

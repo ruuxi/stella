@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { DJStudio } from "../../../../../src/app/onboarding/panels/DJStudioDemo";
+import { DJStudio } from "../../../../../src/global/onboarding/panels/DJStudioDemo";
 
 /* ── Mock AudioContext ── */
 
@@ -391,3 +391,4 @@ describe("DJStudioDemo", () => {
     });
   });
 });
+

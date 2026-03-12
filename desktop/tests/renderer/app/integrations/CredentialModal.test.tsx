@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { CredentialModal } from "../../../../src/app/integrations/CredentialModal";
+import { CredentialModal } from "../../../../src/global/integrations/CredentialModal";
 
 vi.mock("@/ui/dialog", () => {
   const DialogRoot = ({
@@ -232,4 +232,5 @@ describe("CredentialModal", () => {
     expect(defaultProps.onCancel).toHaveBeenCalled();
   });
 });
+
 

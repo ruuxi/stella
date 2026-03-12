@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { WeatherStation } from "../../../../../src/app/onboarding/panels/WeatherStationDemo";
+import { WeatherStation } from "../../../../../src/global/onboarding/panels/WeatherStationDemo";
 
 describe("WeatherStationDemo", () => {
   describe("initial rendering", () => {
@@ -226,3 +226,4 @@ describe("WeatherStationDemo", () => {
     });
   });
 });
+

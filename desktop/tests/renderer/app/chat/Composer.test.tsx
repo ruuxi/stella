@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { Composer } from "../../../../src/app/chat/Composer";
 import type { ChatContext } from "@/types/electron";
@@ -421,7 +421,7 @@ describe("Composer", () => {
       const form = container.querySelector(".composer-form")!;
       expect(form.classList.contains("expanded")).toBe(true);
 
-      // Step 2: Shrink the text — scrollHeight back to small.
+      // Step 2: Shrink the text â€” scrollHeight back to small.
       // The rAF callback enters the expanded branch: removes "expanded",
       // reads scrollHeight (30), adds "expanded" back, then since 30 <= 44,
       // calls setComposerExpanded(false).
@@ -509,4 +509,6 @@ describe("Composer", () => {
     });
   });
 });
+
+
 

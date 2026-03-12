@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { synthesizeCoreMemory } from "../../../../../src/app/onboarding/services/synthesis";
+import { synthesizeCoreMemory } from "../../../../../src/global/onboarding/services/synthesis";
 import { createServiceRequest } from "@/infra/http/service-request";
 
 vi.mock("@/infra/http/service-request", () => ({
@@ -80,3 +80,4 @@ describe("synthesizeCoreMemory", () => {
     );
   });
 });
+

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+﻿import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 const mockAreLocalWorkspacePanelsEnabled = vi.fn(() => true);
@@ -10,7 +10,7 @@ vi.mock("@/shared/lib/local-workspace-panels", () => ({
 }));
 
 // Mock the error boundary to pass through children
-vi.mock("../../../../../src/app/canvas/WorkspaceErrorBoundary", () => ({
+vi.mock("../../../../../src/app/workspace/WorkspaceErrorBoundary", () => ({
   WorkspaceErrorBoundary: ({
     children,
   }: {
@@ -28,7 +28,7 @@ vi.mock("@/ui/spinner", () => ({
 
 // Import the component directly. The dynamic import to /workspace/panels/...
 // will fail in jsdom, which lets us test the error handling paths.
-import PanelRenderer from "../../../../../src/app/canvas/renderers/panel";
+import PanelRenderer from "../../../../../src/app/workspace/renderers/panel";
 
 describe("PanelRenderer", () => {
   afterEach(() => {
@@ -150,4 +150,6 @@ describe("PanelRenderer", () => {
     ).toBeTruthy();
   });
 });
+
+
 

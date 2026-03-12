@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+﻿import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
-import { MiniOutput } from "../../../../../src/app/shell/mini/MiniOutput";
+import { MiniOutput } from "../../../../../src/shell/mini/MiniOutput";
 
 vi.mock("@/app/chat/ConversationEvents", () => ({
   ConversationEvents: (props: Record<string, unknown>) => (
@@ -133,4 +133,7 @@ describe("MiniOutput", () => {
     expect(scroll.getScrollTop()).toBe(200);
   });
 });
+
+
+
 

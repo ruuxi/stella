@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, act } from "@testing-library/react";
-import { ShiftingGradient } from "../../../../../src/app/shell/background/ShiftingGradient";
+import { ShiftingGradient } from "../../../../../src/shell/background/ShiftingGradient";
 
 // Mock the theme context
 const mockThemeValues = {
@@ -343,4 +343,5 @@ describe("ShiftingGradient", () => {
     mockThemeValues.resolvedColorMode = "light";
   });
 });
+
 

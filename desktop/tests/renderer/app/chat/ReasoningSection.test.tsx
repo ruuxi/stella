@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ReasoningSection } from "../../../../src/app/chat/ReasoningSection";
 
@@ -24,7 +24,7 @@ describe("ReasoningSection", () => {
     const { container } = render(<ReasoningSection content="" isStreaming={true} />);
     const heading = container.querySelector(".reasoning-heading-text");
     expect(heading).toBeTruthy();
-    // No placeholder shimmer in body — heading is sufficient
+    // No placeholder shimmer in body â€” heading is sufficient
     expect(container.querySelector(".reasoning-placeholder-shimmer")).toBeNull();
   });
 
@@ -132,3 +132,5 @@ describe("ReasoningSection", () => {
     expect(container.querySelector("[data-streaming='false']")).toBeTruthy();
   });
 });
+
+

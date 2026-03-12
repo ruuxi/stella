@@ -1,7 +1,7 @@
 import { render, screen, act } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { CredentialRequestLayer } from "../../../../src/app/auth/CredentialRequestLayer";
-import type { PendingCredentialRequest } from "../../../../src/app/auth/CredentialRequestLayer";
+import { CredentialRequestLayer } from "../../../../src/global/auth/CredentialRequestLayer";
+import type { PendingCredentialRequest } from "../../../../src/global/auth/CredentialRequestLayer";
 
 const mockCreateSecret = vi.fn();
 vi.mock("convex/react", () => ({
@@ -26,7 +26,7 @@ vi.mock("@/platform/electron/electron", () => ({
 let capturedOnSubmit: ((payload: { label: string; secret: string }) => Promise<void>) | undefined;
 let capturedOnCancel: (() => void) | undefined;
 
-vi.mock("@/app/integrations/CredentialModal", () => ({
+vi.mock("@/global/integrations/CredentialModal", () => ({
   CredentialModal: ({
     open,
     provider,
@@ -181,6 +181,8 @@ describe("CredentialRequestLayer", () => {
     expect(unsubscribe).toHaveBeenCalled();
   });
 });
+
+
 
 
 

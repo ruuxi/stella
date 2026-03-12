@@ -26,15 +26,15 @@ vi.mock("@/platform/electron/electron", () => ({
   getElectronApi: () => mockGetElectronApi(),
 }));
 
-vi.mock("@/app/settings/ModelPreferencesBridge", () => ({
+vi.mock("@/global/settings/ModelPreferencesBridge", () => ({
   ModelPreferencesBridge: () => <div data-testid="model-preferences-bridge" />,
 }));
 
-vi.mock("@/app/auth/AuthDeepLinkHandler", () => ({
+vi.mock("@/global/auth/AuthDeepLinkHandler", () => ({
   AuthDeepLinkHandler: () => <div data-testid="auth-deep-link-handler" />,
 }));
 
-vi.mock("@/app/AppBootstrap", () => ({
+vi.mock("@/systems/boot/AppBootstrap", () => ({
   AppBootstrap: () => <div data-testid="app-bootstrap" />,
 }));
 
@@ -42,23 +42,23 @@ vi.mock("@/context/chat-store", () => ({
   ChatStoreProvider: ({ children }: any) => <>{children}</>,
 }));
 
-vi.mock("@/app/auth/CredentialRequestLayer", () => ({
+vi.mock("@/global/auth/CredentialRequestLayer", () => ({
   CredentialRequestLayer: () => <div data-testid="credential-request-layer" />,
 }));
 
-vi.mock("@/app/shell/FullShell", () => ({
+vi.mock("@/shell/FullShell", () => ({
   FullShell: () => <div data-testid="full-shell" />,
 }));
 
-vi.mock("@/app/shell/mini/MiniShell", () => ({
+vi.mock("@/shell/mini/MiniShell", () => ({
   MiniShell: () => <div data-testid="mini-shell" />,
 }));
 
-vi.mock("@/app/overlay/RadialShell", () => ({
+vi.mock("@/shell/overlay/RadialShell", () => ({
   RadialShell: () => <div data-testid="radial-shell" />,
 }));
 
-vi.mock("@/app/overlay/RegionCapture", () => ({
+vi.mock("@/shell/overlay/RegionCapture", () => ({
   RegionCapture: () => <div data-testid="region-capture" />,
 }));
 
@@ -213,6 +213,8 @@ describe("getWindowType (tested indirectly)", () => {
     expect(screen.queryByTestId("full-shell")).not.toBeInTheDocument();
   });
 });
+
+
 
 
 

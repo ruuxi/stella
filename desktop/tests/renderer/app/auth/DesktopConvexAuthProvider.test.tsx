@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DesktopConvexAuthProvider } from "../../../../src/app/auth/DesktopConvexAuthProvider";
+import { DesktopConvexAuthProvider } from "../../../../src/global/auth/DesktopConvexAuthProvider";
 
 const mockUseSession = vi.fn();
 const mockGetConvexToken = vi.fn();
@@ -25,7 +25,7 @@ vi.mock("convex/react", () => ({
   },
 }));
 
-vi.mock("@/app/auth/lib/auth-client", () => ({
+vi.mock("@/global/auth/lib/auth-client", () => ({
   authClient: {
     useSession: () => mockUseSession(),
     signIn: {
@@ -34,7 +34,7 @@ vi.mock("@/app/auth/lib/auth-client", () => ({
   },
 }));
 
-vi.mock("@/app/auth/services/auth-token", () => ({
+vi.mock("@/global/auth/services/auth-token", () => ({
   getConvexToken: (options?: { forceRefresh?: boolean }) => mockGetConvexToken(options),
 }));
 
@@ -203,3 +203,5 @@ describe("DesktopConvexAuthProvider", () => {
     expect(mockSetAuthState).toHaveBeenCalledWith({ authenticated: false });
   });
 });
+
+

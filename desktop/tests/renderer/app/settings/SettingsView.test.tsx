@@ -7,7 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { useQuery, useMutation } from "convex/react";
-import SettingsDialog from "../../../../src/app/settings/SettingsView";
+import SettingsDialog from "../../../../src/global/settings/SettingsView";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -22,7 +22,7 @@ const mockUseAuthSessionState = vi.fn(() => ({
   hasConnectedAccount: true,
 }));
 
-vi.mock("@/app/auth/hooks/use-auth-session-state", () => ({
+vi.mock("@/global/auth/hooks/use-auth-session-state", () => ({
   useAuthSessionState: () => mockUseAuthSessionState(),
 }));
 
@@ -48,7 +48,7 @@ vi.mock("@/convex/api", () => ({
   },
 }));
 
-vi.mock("@/app/settings/hooks/use-model-catalog", () => ({
+vi.mock("@/global/settings/hooks/use-model-catalog", () => ({
   useModelCatalog: vi.fn(() => ({
     models: [
       { id: "moonshotai/kimi-k2.5", name: "Kimi K2.5", provider: "moonshotai" },
@@ -1258,3 +1258,5 @@ describe("SettingsPanel", () => {
     expect(panel).toBeTruthy();
   });
 });
+
+

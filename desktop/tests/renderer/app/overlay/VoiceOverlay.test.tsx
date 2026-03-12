@@ -1,6 +1,6 @@
 import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { VoiceOverlay } from "../../../../src/app/overlay/VoiceOverlay";
+import { VoiceOverlay } from "../../../../src/shell/overlay/VoiceOverlay";
 
 const mockUseUiState = vi.fn();
 const mockUseVoiceRecording = vi.fn();
@@ -11,11 +11,11 @@ vi.mock("@/context/ui-state", () => ({
   useUiState: () => mockUseUiState(),
 }));
 
-vi.mock("@/app/voice/hooks/use-voice-recording", () => ({
+vi.mock("@/features/voice/hooks/use-voice-recording", () => ({
   useVoiceRecording: (...args: unknown[]) => mockUseVoiceRecording(...args),
 }));
 
-vi.mock("@/app/voice/hooks/use-realtime-voice", () => ({
+vi.mock("@/features/voice/hooks/use-realtime-voice", () => ({
   useRealtimeVoice: () => mockUseRealtimeVoice(),
 }));
 
@@ -23,7 +23,7 @@ vi.mock("@/shared/hooks/use-window-type", () => ({
   useWindowType: () => mockUseWindowType(),
 }));
 
-vi.mock("@/app/shell/ascii-creature/StellaAnimation", () => ({
+vi.mock("@/shell/ascii-creature/StellaAnimation", () => ({
   StellaAnimation: () => <div data-testid="stella-animation" />,
 }));
 
@@ -129,3 +129,5 @@ describe("VoiceOverlay", () => {
     expect(container.querySelector(".voice-overlay")).toBeNull();
   });
 });
+
+

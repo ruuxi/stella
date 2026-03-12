@@ -1,4 +1,4 @@
-import type { WelcomeSuggestion } from '@/app/onboarding/services/synthesis'
+﻿import type { WelcomeSuggestion } from '@/global/onboarding/services/synthesis'
 import type { EventRecord } from '@/app/chat/lib/event-transforms'
 
 /**
@@ -28,4 +28,6 @@ export const useWelcomeSuggestions = (
 
   return []
 }
+
+
 

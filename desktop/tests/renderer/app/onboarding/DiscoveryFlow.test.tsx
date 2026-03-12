@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useDiscoveryFlow } from "../../../../src/app/onboarding/DiscoveryFlow";
+import { useDiscoveryFlow } from "../../../../src/global/onboarding/DiscoveryFlow";
 
 const mockChatStoreAppendEvent = vi.fn(() => Promise.resolve({ _id: "event-123" }));
 
@@ -23,7 +23,7 @@ vi.mock("@/platform/electron/device", () => ({
   getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
 }));
 
-vi.mock("@/app/onboarding/services/synthesis", () => ({
+vi.mock("@/global/onboarding/services/synthesis", () => ({
   synthesizeCoreMemory: vi.fn(() =>
     Promise.resolve({ coreMemory: null }),
   ),
@@ -157,7 +157,7 @@ describe("useDiscoveryFlow", () => {
   it("still runs synthesis when not authenticated", async () => {
     const checkCoreMemoryExists = vi.fn(() => Promise.resolve(false));
     const collectAllSignals = vi.fn(() =>
-      Promise.resolve({ formatted: "signals", error: null }),
+      Promise.resolve({ formattedSections: "signals", error: null }),
     );
     (window as unknown as Record<string, unknown>).electronAPI = {
       browser: {
@@ -208,7 +208,7 @@ describe("useDiscoveryFlow", () => {
 
   it("skips synthesis when core memory already exists", async () => {
     const { synthesizeCoreMemory } = await import(
-      "@/app/onboarding/services/synthesis"
+      "@/global/onboarding/services/synthesis"
     );
 
     (window as unknown as Record<string, unknown>).electronAPI = {
@@ -239,14 +239,14 @@ describe("useDiscoveryFlow", () => {
 
   it("skips synthesis when collectAllSignals returns error", async () => {
     const { synthesizeCoreMemory } = await import(
-      "@/app/onboarding/services/synthesis"
+      "@/global/onboarding/services/synthesis"
     );
 
     (window as unknown as Record<string, unknown>).electronAPI = {
       browser: {
         checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
         collectAllSignals: vi.fn(() =>
-          Promise.resolve({ error: "some error", formatted: null }),
+          Promise.resolve({ error: "some error", formattedSections: null }),
         ),
       },
     };
@@ -269,7 +269,7 @@ describe("useDiscoveryFlow", () => {
 
   it("runs full synthesis flow and posts welcome message", async () => {
     const { synthesizeCoreMemory } = await import(
-      "@/app/onboarding/services/synthesis"
+      "@/global/onboarding/services/synthesis"
     );
     const { getOrCreateDeviceId } = await import("@/platform/electron/device");
 
@@ -293,7 +293,7 @@ describe("useDiscoveryFlow", () => {
         checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
         collectAllSignals: vi.fn(() =>
           Promise.resolve({
-            formatted: "## Dev projects\n- project-a",
+            formattedSections: "## Dev projects\n- project-a",
             error: null,
           }),
         ),
@@ -348,7 +348,7 @@ describe("useDiscoveryFlow", () => {
 
   it("posts welcome message without suggestions when suggestions are empty", async () => {
     const { synthesizeCoreMemory } = await import(
-      "@/app/onboarding/services/synthesis"
+      "@/global/onboarding/services/synthesis"
     );
 
     vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
@@ -361,7 +361,7 @@ describe("useDiscoveryFlow", () => {
       browser: {
         checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
         collectAllSignals: vi.fn(() =>
-          Promise.resolve({ formatted: "signals", error: null }),
+          Promise.resolve({ formattedSections: "signals", error: null }),
         ),
         writeCoreMemory: vi.fn(() => Promise.resolve()),
       },
@@ -392,7 +392,7 @@ describe("useDiscoveryFlow", () => {
     setLocalMode(false);
 
     const { synthesizeCoreMemory } = await import(
-      "@/app/onboarding/services/synthesis"
+      "@/global/onboarding/services/synthesis"
     );
 
     vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
@@ -405,7 +405,7 @@ describe("useDiscoveryFlow", () => {
       browser: {
         checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
         collectAllSignals: vi.fn(() =>
-          Promise.resolve({ formatted: "local unauth signals", error: null }),
+          Promise.resolve({ formattedSections: "local unauth signals", error: null }),
         ),
         writeCoreMemory,
       },
@@ -433,7 +433,7 @@ describe("useDiscoveryFlow", () => {
 
   it("skips welcome message when synthesizeCoreMemory returns no welcomeMessage", async () => {
     const { synthesizeCoreMemory } = await import(
-      "@/app/onboarding/services/synthesis"
+      "@/global/onboarding/services/synthesis"
     );
 
     vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
@@ -445,7 +445,7 @@ describe("useDiscoveryFlow", () => {
       browser: {
         checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
         collectAllSignals: vi.fn(() =>
-          Promise.resolve({ formatted: "signals", error: null }),
+          Promise.resolve({ formattedSections: "signals", error: null }),
         ),
         writeCoreMemory: vi.fn(() => Promise.resolve()),
       },
@@ -494,7 +494,7 @@ describe("useDiscoveryFlow", () => {
 
   it("only runs synthesis once even when called multiple times (synthesizedRef guard)", async () => {
     const { synthesizeCoreMemory } = await import(
-      "@/app/onboarding/services/synthesis"
+      "@/global/onboarding/services/synthesis"
     );
 
     vi.mocked(synthesizeCoreMemory).mockResolvedValue({
@@ -506,7 +506,7 @@ describe("useDiscoveryFlow", () => {
       browser: {
         checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
         collectAllSignals: vi.fn(() =>
-          Promise.resolve({ formatted: "data", error: null }),
+          Promise.resolve({ formattedSections: "data", error: null }),
         ),
         writeCoreMemory: vi.fn(() => Promise.resolve()),
       },
@@ -570,3 +570,5 @@ describe("useDiscoveryFlow", () => {
     });
   });
 });
+
+

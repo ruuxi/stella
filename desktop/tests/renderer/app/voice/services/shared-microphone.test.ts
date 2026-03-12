@@ -4,7 +4,7 @@ import {
   bufferRecentVoiceHandoffPcm,
   consumeRecentVoiceHandoffPcm,
   resetSharedMicrophoneForTests,
-} from "../../../../../src/app/voice/services/shared-microphone";
+} from "../../../../../src/features/voice/services/shared-microphone";
 
 class MockMediaStreamTrack {
   stop = vi.fn();
@@ -97,3 +97,4 @@ describe("shared microphone", () => {
     expect(Array.from(consumeRecentVoiceHandoffPcm())).toEqual([]);
   });
 });
+

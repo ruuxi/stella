@@ -6,7 +6,7 @@ vi.mock("@/platform/electron/electron", () => ({
   getElectronApi: vi.fn(() => undefined),
 }));
 
-import { useContextCapture } from "../../../../../src/app/shell/mini/use-context-capture";
+import { useContextCapture } from "../../../../../src/shell/mini/use-context-capture";
 import { getElectronApi } from "@/platform/electron/electron";
 
 const mockGetElectronApi = getElectronApi as ReturnType<typeof vi.fn>;
@@ -346,5 +346,6 @@ describe("useContextCapture", () => {
     });
   });
 });
+
 
 

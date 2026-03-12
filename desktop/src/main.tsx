@@ -9,8 +9,8 @@ import { initStellaUiHandler } from './platform/electron/stella-ui-handler'
 
 initStellaUiHandler()
 import { App } from './App.tsx'
-import { DesktopConvexAuthProvider } from './app/auth/DesktopConvexAuthProvider'
-import { ErrorBoundary } from './app/ErrorBoundary'
+import { DesktopConvexAuthProvider } from './global/auth/DesktopConvexAuthProvider'
+import { ErrorBoundary } from './shell/ErrorBoundary'
 import { AppProviders } from './context/AppProviders'
 
 document.documentElement.dataset.stellaWindow = 'full'
@@ -28,5 +28,6 @@ createRoot(document.getElementById('root')!).render(
     {appTree}
   </DesktopConvexAuthProvider>,
 )
+
 
 
