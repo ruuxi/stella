@@ -2,6 +2,7 @@
  * Composer: Input bar, attachment handling, send/stream logic, stop button, context chips.
  */
 
+import type { Dispatch, SetStateAction } from "react";
 import { useRef, useState, useEffect } from "react";
 import { animate } from "motion";
 import { motion } from "motion/react";
@@ -15,7 +16,7 @@ import "./full-shell.composer.css";
 
 type ComposerProps = {
   message: string;
-  setMessage: (message: string) => void;
+  setMessage: Dispatch<SetStateAction<string>>;
   chatContext: ChatContext | null;
   setChatContext: React.Dispatch<React.SetStateAction<ChatContext | null>>;
   selectedText: string | null;
