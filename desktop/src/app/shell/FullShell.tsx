@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef } from 'react'
 import { useOrbMessage } from '@/app/shell/hooks/use-orb-message'
 import { useUiState } from '@/context/ui-state'
 import { useWorkspace } from '@/context/workspace-state'
@@ -6,7 +6,7 @@ import { secureSignOut } from '@/app/auth/services/auth'
 import { MiniBridgeRelay } from '@/app/shell/mini/MiniBridgeRelay'
 import { useTheme } from '@/context/theme-context'
 import { WorkspaceArea } from '../canvas/WorkspaceArea'
-import { ChatColumn, type ChatColumnProps } from '../chat/ChatColumn'
+import { ChatColumn } from '../chat/ChatColumn'
 import { useDiscoveryFlow } from '../onboarding/DiscoveryFlow'
 import { useOnboardingOverlay, OnboardingView } from '../onboarding/OnboardingOverlay'
 import { Sidebar } from '../sidebar/Sidebar'
@@ -137,75 +137,6 @@ export const FullShell = () => {
   const orbMessage = useOrbMessage(chat.conversation.events, isOrbVisible)
   const appReady = onboarding.onboardingDone
 
-  const chatColumnProps = useMemo<ChatColumnProps>(
-    () => ({
-      events: chat.conversation.events,
-      streaming: {
-        text: chat.conversation.streamingText,
-        reasoningText: chat.conversation.reasoningText,
-        isStreaming: chat.conversation.isStreaming,
-        pendingUserMessageId: chat.conversation.pendingUserMessageId,
-        selfModMap: chat.conversation.selfModMap,
-      },
-      history: {
-        hasOlderEvents: chat.conversation.hasOlderEvents,
-        isLoadingOlder: chat.conversation.isLoadingOlder,
-        isInitialLoading: chat.conversation.isInitialLoading,
-      },
-      composer: {
-        message: chat.composer.message,
-        setMessage: chat.composer.setMessage,
-        chatContext: chat.composer.chatContext,
-        setChatContext: chat.composer.setChatContext,
-        selectedText: chat.composer.selectedText,
-        setSelectedText: chat.composer.setSelectedText,
-        canSubmit: chat.composer.canSubmit,
-        onSend: chat.composer.handleSend,
-        onStop: chat.composer.handleStop,
-      },
-      setViewportElement: chat.scroll.setScrollContainerElement,
-      setContentElement: chat.scroll.setContentElement,
-      onScroll: chat.scroll.handleScroll,
-      showScrollButton: chat.scroll.showScrollButton,
-      scrollToBottom: chat.scroll.scrollToBottom,
-      overflowAnchor: chat.scroll.overflowAnchor,
-      thumbState: chat.scroll.thumbState,
-      composerEntering: onboarding.onboardingExiting,
-      conversationId: activeConversationId,
-      onCommandSelect: chat.composer.handleCommandSelect,
-    }),
-    [
-      activeConversationId,
-      chat.composer.canSubmit,
-      chat.composer.chatContext,
-      chat.composer.handleCommandSelect,
-      chat.composer.handleSend,
-      chat.composer.handleStop,
-      chat.composer.message,
-      chat.composer.selectedText,
-      chat.composer.setChatContext,
-      chat.composer.setMessage,
-      chat.composer.setSelectedText,
-      chat.conversation.events,
-      chat.conversation.hasOlderEvents,
-      chat.conversation.isInitialLoading,
-      chat.conversation.isLoadingOlder,
-      chat.conversation.isStreaming,
-      chat.conversation.pendingUserMessageId,
-      chat.conversation.reasoningText,
-      chat.conversation.selfModMap,
-      chat.conversation.streamingText,
-      chat.scroll.handleScroll,
-      chat.scroll.setScrollContainerElement,
-      chat.scroll.setContentElement,
-      chat.scroll.scrollToBottom,
-      chat.scroll.showScrollButton,
-      chat.scroll.overflowAnchor,
-      chat.scroll.thumbState,
-      onboarding.onboardingExiting,
-    ],
-  )
-
   const showOnboardingDemos = activeDemo || demoClosing
 
   return (
@@ -242,7 +173,13 @@ export const FullShell = () => {
               />
 
               {state.view === 'chat' ? (
-                <ChatColumn {...chatColumnProps} />
+                <ChatColumn
+                  conversation={chat.conversation}
+                  composer={chat.composer}
+                  scroll={chat.scroll}
+                  composerEntering={onboarding.onboardingExiting}
+                  conversationId={activeConversationId}
+                />
               ) : (
                 <WorkspaceArea
                   view={state.view}

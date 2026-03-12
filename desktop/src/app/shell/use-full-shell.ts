@@ -13,6 +13,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { animate } from 'motion'
 
+type ThumbState = {
+  top: number
+  height: number
+  visible: boolean
+}
+
 /** Sub-pixel threshold for "at bottom" detection */
 const AT_BOTTOM_THRESHOLD = 2
 
@@ -42,12 +48,6 @@ type ScrollManagementOptions = {
   onLoadOlder?: () => void
   /** Whether the AI is currently streaming/working */
   isWorking?: boolean
-}
-
-export type ThumbState = {
-  top: number
-  height: number
-  visible: boolean
 }
 
 export function useScrollManagement({

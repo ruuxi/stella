@@ -6,78 +6,23 @@ import { memo, useCallback, useRef } from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { CommandChips } from "@/app/chat/CommandChips";
-import { useCommandSuggestions, type CommandSuggestion } from "@/app/chat/hooks/use-command-suggestions";
-import type { EventRecord } from "@/app/chat/lib/event-transforms";
-import type { ChatContext } from "@/types/electron";
-import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
-import type { ThumbState } from "@/app/shell/use-full-shell";
+import { useCommandSuggestions } from "@/app/chat/hooks/use-command-suggestions";
+import type { ChatColumnProps } from "./chat-column-types";
 import "./full-shell.chat.css";
 
-export type StreamingState = {
-  text: string;
-  reasoningText: string;
-  isStreaming: boolean;
-  pendingUserMessageId: string | null;
-  selfModMap: Record<string, SelfModAppliedData>;
-};
-
-export type HistoryState = {
-  hasOlderEvents: boolean;
-  isLoadingOlder: boolean;
-  isInitialLoading: boolean;
-};
-
-export type ComposerState = {
-  message: string;
-  setMessage: (message: string) => void;
-  chatContext: ChatContext | null;
-  setChatContext: React.Dispatch<React.SetStateAction<ChatContext | null>>;
-  selectedText: string | null;
-  setSelectedText: React.Dispatch<React.SetStateAction<string | null>>;
-  canSubmit: boolean;
-  onSend: () => void;
-  onStop: () => void;
-};
-
-export type ChatColumnProps = {
-  events: EventRecord[];
-  streaming: StreamingState;
-  history: HistoryState;
-  composer: ComposerState;
-  /** Callback ref — assign to the column-reverse scroll viewport */
-  setViewportElement: React.RefCallback<HTMLDivElement>;
-  /** Callback ref — assign to the content wrapper inside the viewport */
-  setContentElement: React.RefCallback<HTMLDivElement>;
-  onScroll: () => void;
-  showScrollButton: boolean;
-  scrollToBottom: (behavior?: ScrollBehavior) => void;
-  /** overflow-anchor style for the viewport */
-  overflowAnchor: "auto" | "none";
-  /** Custom scrollbar thumb state */
-  thumbState: ThumbState;
-  /** Whether the composer should animate in (e.g. after onboarding exit) */
-  composerEntering?: boolean;
-  conversationId: string | null;
-  onCommandSelect?: (suggestion: CommandSuggestion) => void;
-};
+export type { ChatColumnProps } from "./chat-column-types";
 
 export const ChatColumn = memo(function ChatColumn({
-  events,
-  streaming,
-  history,
+  conversation,
   composer,
-  setViewportElement,
-  setContentElement,
-  onScroll,
-  showScrollButton,
-  scrollToBottom,
-  overflowAnchor,
-  thumbState,
+  scroll,
   composerEntering,
   conversationId,
-  onCommandSelect,
 }: ChatColumnProps) {
-  const suggestions = useCommandSuggestions(events, streaming.isStreaming);
+  const suggestions = useCommandSuggestions(
+    conversation.events,
+    conversation.streaming.isStreaming,
+  );
 
   // --- Custom scrollbar thumb drag ---
   const isDraggingRef = useRef(false);
@@ -88,9 +33,9 @@ export const ChatColumn = memo(function ChatColumn({
   const assignViewport = useCallback(
     (node: HTMLDivElement | null) => {
       viewportForDragRef.current = node;
-      setViewportElement(node);
+      scroll.setViewportElement(node);
     },
-    [setViewportElement],
+    [scroll.setViewportElement],
   );
 
   const handleThumbDown = useCallback((e: React.PointerEvent) => {
@@ -110,7 +55,7 @@ export const ChatColumn = memo(function ChatColumn({
     const trackHeight = el.clientHeight;
     const scrollRange = el.scrollHeight - el.clientHeight;
     const dy = e.clientY - dragStartRef.current.y;
-    // In column-reverse, dragging thumb down → scrolling toward top (more negative scrollTop)
+    // In column-reverse, dragging thumb down means scrolling toward top.
     const scrollDelta = -(dy / trackHeight) * scrollRange;
     el.scrollTop = dragStartRef.current.scrollTop + scrollDelta;
   }, []);
@@ -122,40 +67,45 @@ export const ChatColumn = memo(function ChatColumn({
 
   return (
     <div className="full-body-main">
-      {/* Viewport region — scroll container + overlays (scrollbar, scroll-to-bottom) */}
+      {/* Viewport region: scroll container + overlays (scrollbar, scroll-to-bottom) */}
       <div className="chat-viewport-region">
         <div
           className="session-content"
           ref={assignViewport}
-          onScroll={onScroll}
-          style={{ overflowAnchor }}
+          onScroll={scroll.onScroll}
+          style={{ overflowAnchor: scroll.overflowAnchor }}
         >
-          <div className="session-messages" ref={setContentElement}>
+          <div className="session-messages" ref={scroll.setContentElement}>
             <ConversationEvents
-              events={events}
-              streamingText={streaming.text}
-              reasoningText={streaming.reasoningText}
-              isStreaming={streaming.isStreaming}
-              pendingUserMessageId={streaming.pendingUserMessageId}
-              selfModMap={streaming.selfModMap}
-              hasOlderEvents={history.hasOlderEvents}
-              isLoadingOlder={history.isLoadingOlder}
-              isLoadingHistory={history.isInitialLoading}
+              events={conversation.events}
+              streamingText={conversation.streaming.text}
+              reasoningText={conversation.streaming.reasoningText}
+              isStreaming={conversation.streaming.isStreaming}
+              pendingUserMessageId={conversation.streaming.pendingUserMessageId}
+              selfModMap={conversation.streaming.selfModMap}
+              hasOlderEvents={conversation.history.hasOlderEvents}
+              isLoadingOlder={conversation.history.isLoadingOlder}
+              isLoadingHistory={conversation.history.isInitialLoading}
             />
-            {!streaming.isStreaming && suggestions.length > 0 && onCommandSelect && (
-              <CommandChips
-                suggestions={suggestions}
-                onSelect={onCommandSelect}
-              />
-            )}
+            {!conversation.streaming.isStreaming &&
+              suggestions.length > 0 &&
+              composer.onCommandSelect && (
+                <CommandChips
+                  suggestions={suggestions}
+                  onSelect={composer.onCommandSelect}
+                />
+              )}
           </div>
         </div>
 
         {/* Custom scrollbar thumb overlay */}
         <div className="chat-scrollbar">
           <div
-            className={`chat-scrollbar__thumb${thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
-            style={{ top: `${thumbState.top}px`, height: `${thumbState.height}px` }}
+            className={`chat-scrollbar__thumb${scroll.thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
+            style={{
+              top: `${scroll.thumbState.top}px`,
+              height: `${scroll.thumbState.height}px`,
+            }}
             onPointerDown={handleThumbDown}
             onPointerMove={handleThumbMove}
             onPointerUp={handleThumbUp}
@@ -163,10 +113,10 @@ export const ChatColumn = memo(function ChatColumn({
           />
         </div>
 
-        {showScrollButton && (
+        {scroll.showScrollButton && (
           <button
             className="scroll-to-bottom"
-            onClick={() => scrollToBottom("smooth")}
+            onClick={() => scroll.scrollToBottom("smooth")}
             aria-label="Scroll to bottom"
           >
             <svg
@@ -183,7 +133,7 @@ export const ChatColumn = memo(function ChatColumn({
         )}
       </div>
 
-      {/* Composer — normal flow below the scroll viewport */}
+      {/* Composer: normal flow below the scroll viewport */}
       <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
         <Composer
           message={composer.message}
@@ -192,7 +142,7 @@ export const ChatColumn = memo(function ChatColumn({
           setChatContext={composer.setChatContext}
           selectedText={composer.selectedText}
           setSelectedText={composer.setSelectedText}
-          isStreaming={streaming.isStreaming}
+          isStreaming={conversation.streaming.isStreaming}
           canSubmit={composer.canSubmit}
           conversationId={conversationId}
           onSend={composer.onSend}
