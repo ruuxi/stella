@@ -1,5 +1,9 @@
 const SHARED_MIC_STATE_KEY = "__stellaSharedMicrophoneState";
 const SHARED_MIC_RELEASE_GRACE_MS = 45_000;
+const RECENT_VOICE_HANDOFF_SAMPLE_RATE = 24_000;
+const RECENT_VOICE_HANDOFF_DURATION_SECONDS = 2;
+const RECENT_VOICE_HANDOFF_MAX_SAMPLES =
+  RECENT_VOICE_HANDOFF_SAMPLE_RATE * RECENT_VOICE_HANDOFF_DURATION_SECONDS;
 
 export const SHARED_MIC_CONSTRAINTS: MediaTrackConstraints = {
   channelCount: 1,
@@ -18,6 +22,7 @@ type SharedMicrophoneState = {
   acquirePromise: Promise<MediaStream> | null;
   activeLeaseCount: number;
   releaseTimer: ReturnType<typeof setTimeout> | null;
+  recentVoiceHandoffPcm: Int16Array;
 };
 
 const getSharedMicrophoneState = (): SharedMicrophoneState => {
@@ -31,6 +36,7 @@ const getSharedMicrophoneState = (): SharedMicrophoneState => {
       acquirePromise: null,
       activeLeaseCount: 0,
       releaseTimer: null,
+      recentVoiceHandoffPcm: new Int16Array(0),
     };
   }
 
@@ -113,6 +119,44 @@ export async function acquireSharedMicrophone(): Promise<SharedMicrophoneLease> 
   };
 }
 
+export function bufferRecentVoiceHandoffPcm(pcm: Int16Array): void {
+  if (pcm.length === 0) {
+    return;
+  }
+
+  const state = getSharedMicrophoneState();
+  const existing = state.recentVoiceHandoffPcm;
+
+  if (pcm.length >= RECENT_VOICE_HANDOFF_MAX_SAMPLES) {
+    state.recentVoiceHandoffPcm = pcm.slice(
+      pcm.length - RECENT_VOICE_HANDOFF_MAX_SAMPLES,
+    );
+    return;
+  }
+
+  const nextLength = Math.min(
+    RECENT_VOICE_HANDOFF_MAX_SAMPLES,
+    existing.length + pcm.length,
+  );
+  const next = new Int16Array(nextLength);
+  const keepFromExisting = Math.max(0, nextLength - pcm.length);
+
+  if (keepFromExisting > 0) {
+    const existingStart = Math.max(0, existing.length - keepFromExisting);
+    next.set(existing.subarray(existingStart), 0);
+  }
+
+  next.set(pcm.subarray(pcm.length - Math.min(pcm.length, nextLength)), nextLength - Math.min(pcm.length, nextLength));
+  state.recentVoiceHandoffPcm = next;
+}
+
+export function consumeRecentVoiceHandoffPcm(): Int16Array {
+  const state = getSharedMicrophoneState();
+  const pcm = state.recentVoiceHandoffPcm;
+  state.recentVoiceHandoffPcm = new Int16Array(0);
+  return pcm;
+}
+
 export function resetSharedMicrophoneForTests(): void {
   const state = getSharedMicrophoneState();
   clearReleaseTimer(state);
@@ -120,4 +164,5 @@ export function resetSharedMicrophoneForTests(): void {
   state.rootStream = null;
   state.acquirePromise = null;
   state.activeLeaseCount = 0;
+  state.recentVoiceHandoffPcm = new Int16Array(0);
 }
