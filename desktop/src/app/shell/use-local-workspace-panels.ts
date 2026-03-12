@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getElectronApi } from '@/platform/electron/electron'
 import { areLocalWorkspacePanelsEnabled } from '@/shared/lib/local-workspace-panels'
-import type { PersonalPage } from './types'
+import type { PersonalPage } from './HeaderTabBar'
 
 type LocalWorkspacePanel = {
   name: string

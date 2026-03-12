@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
-import type { DialogType } from './types'
+
+export type DialogType = 'auth' | 'connect' | 'settings' | 'test' | 'trace' | null
 
 const SettingsDialog = lazy(() => import('../settings/SettingsView'))
 const AuthDialog = lazy(() =>
