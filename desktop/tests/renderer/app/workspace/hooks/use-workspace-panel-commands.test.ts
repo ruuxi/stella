@@ -1,7 +1,7 @@
 ﻿import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
-import { useCanvasCommands } from "../../../../../src/app/workspace/hooks/use-canvas-commands";
+import { useWorkspacePanelCommands } from "../../../../../src/app/workspace/hooks/use-workspace-panel-commands";
 
 const mockUseCanvas = vi.fn();
 const mockSetView = vi.fn();
@@ -22,7 +22,7 @@ const createEvent = (
   ...overrides,
 });
 
-describe("useCanvasCommands", () => {
+describe("useWorkspacePanelCommands", () => {
   const createWorkspaceValue = (activePanelUrl?: string | null) => {
     const openPanel = vi.fn();
     const closePanel = vi.fn();
@@ -54,7 +54,7 @@ describe("useCanvasCommands", () => {
       }),
     ];
 
-    const { rerender } = renderHook(({ list }) => useCanvasCommands(list), {
+    const { rerender } = renderHook(({ list }) => useWorkspacePanelCommands(list), {
       initialProps: { list: events },
     });
 
@@ -78,7 +78,7 @@ describe("useCanvasCommands", () => {
       payload: { action: "open", name: "demo" },
     });
 
-    const { rerender } = renderHook(({ list }) => useCanvasCommands(list), {
+    const { rerender } = renderHook(({ list }) => useWorkspacePanelCommands(list), {
       initialProps: { list: [event] },
     });
     expect(openPanel).toHaveBeenCalledTimes(1);
@@ -107,7 +107,7 @@ describe("useCanvasCommands", () => {
       payload: { action: "open", name: "appended" },
     });
 
-    const { rerender } = renderHook(({ list }) => useCanvasCommands(list, "conv-1"), {
+    const { rerender } = renderHook(({ list }) => useWorkspacePanelCommands(list, "conv-1"), {
       initialProps: { list: [latestEvent] },
     });
 
@@ -137,7 +137,7 @@ describe("useCanvasCommands", () => {
       }),
     ];
 
-    renderHook(() => useCanvasCommands(events));
+    renderHook(() => useWorkspacePanelCommands(events));
 
     expect(window.electronAPI?.system.shellKillByPort).toHaveBeenCalledWith(4173);
     expect(closePanel).toHaveBeenCalledTimes(1);
@@ -154,7 +154,7 @@ describe("useCanvasCommands", () => {
       }),
     ];
 
-    renderHook(() => useCanvasCommands(events));
+    renderHook(() => useWorkspacePanelCommands(events));
 
     expect(window.electronAPI?.system.shellKillByPort).not.toHaveBeenCalled();
     expect(closePanel).toHaveBeenCalledTimes(1);
@@ -169,7 +169,7 @@ describe("useCanvasCommands", () => {
       createEvent({ _id: "other", type: "assistant_message", payload: { text: "ignore" } }),
     ];
 
-    renderHook(() => useCanvasCommands(events));
+    renderHook(() => useWorkspacePanelCommands(events));
 
     expect(openPanel).not.toHaveBeenCalled();
     expect(closePanel).not.toHaveBeenCalled();
@@ -191,7 +191,7 @@ describe("useCanvasCommands", () => {
       }),
     ];
 
-    renderHook(() => useCanvasCommands(events));
+    renderHook(() => useWorkspacePanelCommands(events));
     expect(openPanel).not.toHaveBeenCalled();
   });
 });
