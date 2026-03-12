@@ -1,17 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import React from "react";
-import type { StellaAnimationHandle } from "@/app/shell/ascii-creature/StellaAnimation";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import { ChatColumn } from "../../../../src/app/chat/ChatColumn";
 import type { ChatColumnProps } from "../../../../src/app/chat/ChatColumn";
 
 vi.mock("../../../../src/app/chat/ConversationEvents", () => ({
   ConversationEvents: () => <div data-testid="conversation-events" />,
-}));
-
-vi.mock("../../../../src/app/onboarding/OnboardingOverlay", () => ({
-  OnboardingView: () => <div data-testid="onboarding-view" />,
 }));
 
 vi.mock("../../../../src/app/chat/Composer", () => ({
@@ -52,6 +46,7 @@ function makeProps(overrides: Partial<ChatColumnProps> = {}): ChatColumnProps {
       setSelectedText: vi.fn(),
       canSubmit: true,
       onSend: vi.fn(),
+      onStop: vi.fn(),
       ...overrides.composer,
     },
     setViewportElement: vi.fn(),
@@ -61,68 +56,23 @@ function makeProps(overrides: Partial<ChatColumnProps> = {}): ChatColumnProps {
     scrollToBottom: vi.fn(),
     overflowAnchor: "none",
     thumbState: { top: 0, height: 0, visible: false },
-    onboarding: {
-      done: true,
-      exiting: false,
-      isAuthenticated: true,
-      hasExpanded: false,
-      splitMode: false,
-      key: 0,
-      stellaAnimationRef: React.createRef<StellaAnimationHandle | null>(),
-      triggerFlash: vi.fn(),
-      startBirthAnimation: vi.fn(),
-      completeOnboarding: vi.fn(),
-      handleEnterSplit: vi.fn(),
-      onDiscoveryConfirm: vi.fn(),
-      ...overrides.onboarding,
-    },
     conversationId: null,
     ...overrides,
   };
 }
 
 describe("ChatColumn", () => {
-  it("shows OnboardingView when onboardingDone=false", () => {
-    render(<ChatColumn {...makeProps({ onboarding: { ...makeProps().onboarding, done: false } })} />);
-    expect(screen.getByTestId("onboarding-view")).toBeTruthy();
-    expect(screen.queryByTestId("conversation-events")).toBeNull();
-  });
-
-  it("shows ConversationEvents when authenticated + onboardingDone", () => {
-    render(
-      <ChatColumn
-        {...makeProps({ onboarding: { ...makeProps().onboarding, isAuthenticated: true, done: true } })}
-      />,
-    );
+  it("shows ConversationEvents", () => {
+    render(<ChatColumn {...makeProps()} />);
     expect(screen.getByTestId("conversation-events")).toBeTruthy();
-    expect(screen.queryByTestId("onboarding-view")).toBeNull();
   });
 
-  it("shows ConversationEvents when unauthenticated + onboardingDone", () => {
-    render(
-      <ChatColumn
-        {...makeProps({ onboarding: { ...makeProps().onboarding, isAuthenticated: false, done: true } })}
-      />,
-    );
-    expect(screen.getByTestId("conversation-events")).toBeTruthy();
-    expect(screen.queryByTestId("onboarding-view")).toBeNull();
-  });
-
-  it("shows Composer when authenticated + onboardingDone", () => {
-    render(
-      <ChatColumn
-        {...makeProps({ onboarding: { ...makeProps().onboarding, isAuthenticated: true, done: true } })}
-      />,
-    );
+  it("shows Composer", () => {
+    render(<ChatColumn {...makeProps()} />);
     expect(screen.getByTestId("composer")).toBeTruthy();
   });
 
-  it("shows Composer when unauthenticated after onboarding", () => {
-    render(<ChatColumn {...makeProps({ onboarding: { ...makeProps().onboarding, isAuthenticated: false } })} />);
-    expect(screen.getByTestId("composer")).toBeTruthy();
-  });
-
-  it("shows scroll-to-bottom button when showScrollButton=true and conversation visible", () => {
+  it("shows scroll-to-bottom button when showScrollButton=true", () => {
     const events: EventRecord[] = [
       { _id: "event-1", timestamp: 1, type: "user_message", payload: { text: "hi" } },
     ];
@@ -130,20 +80,7 @@ describe("ChatColumn", () => {
       <ChatColumn
         {...makeProps({
           showScrollButton: true,
-          onboarding: { ...makeProps().onboarding, isAuthenticated: true, done: true },
           events,
-        })}
-      />,
-    );
-    expect(screen.getByLabelText("Scroll to bottom")).toBeTruthy();
-  });
-
-  it("shows scroll-to-bottom button when unauthenticated after onboarding", () => {
-    render(
-      <ChatColumn
-        {...makeProps({
-          showScrollButton: true,
-          onboarding: { ...makeProps().onboarding, isAuthenticated: false, done: true },
         })}
       />,
     );
@@ -160,7 +97,6 @@ describe("ChatColumn", () => {
         {...makeProps({
           showScrollButton: true,
           scrollToBottom,
-          onboarding: { ...makeProps().onboarding, isAuthenticated: true, done: true },
           events,
         })}
       />,
@@ -172,5 +108,17 @@ describe("ChatColumn", () => {
   it("has class full-body-main", () => {
     const { container } = render(<ChatColumn {...makeProps()} />);
     expect(container.querySelector(".full-body-main")).toBeTruthy();
+  });
+
+  it("applies composer-wrap--entering class when composerEntering is true", () => {
+    const { container } = render(
+      <ChatColumn {...makeProps({ composerEntering: true })} />,
+    );
+    expect(container.querySelector(".composer-wrap--entering")).toBeTruthy();
+  });
+
+  it("does not apply composer-wrap--entering class by default", () => {
+    const { container } = render(<ChatColumn {...makeProps()} />);
+    expect(container.querySelector(".composer-wrap--entering")).toBeNull();
   });
 });

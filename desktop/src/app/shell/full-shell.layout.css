@@ -138,6 +138,22 @@
   min-height: 0;
 }
 
+.onboarding-layout {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  position: relative;
+}
+
+.onboarding-demo-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .content-area {
   flex: 1;
   min-width: 0;
