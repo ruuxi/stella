@@ -13,6 +13,18 @@ bun run lint             # ESLint
 bun run electron:build   # Package for distribution
 ```
 
+## Storage
+
+Chats, event transcripts, and agent/runtime state are stored locally in the Electron layer.
+
+## Platform
+
+Always handle both Windows and MacOS when implementing.
+
+## Self-Modifying
+
+Stella Agent can edit the frontend when requested. Possible due to remaining a dev server with Vite HMR, not a packaged desktop app.
+
 ## Conventions
 
 - **Path alias**: `@/*` maps to `src/`
