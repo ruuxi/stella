@@ -9,6 +9,16 @@ bun run dev         # Convex dev server (watches + syncs)
 bun run deploy      # Deploy to Convex cloud
 ```
 
+## Storage
+
+- Auth/identity, account mode, cloud-backed records, Stella provider/auth HTTP flows, and connector handoff live on Convex.
+- Offline orchestrator: backend-owned, separate from normal desktop persistence — only active if the user's local machine is offline.
+
+## Provider & Routing
+
+- **Stella provider default**: text/model requests default to `stella/default`; the backend resolves the current recommended model, while users can still pin explicit models or use local BYOK keys.
+- **Separate service routes**: non-LLM services keep their own paths/providers; for example, music uses its own route and provider flow.
+
 ## Convex Conventions
 
 See `convex_rules.md` for full reference. Key gotchas:
