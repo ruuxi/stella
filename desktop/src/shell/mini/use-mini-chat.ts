@@ -1,11 +1,11 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUiState } from "@/context/ui-state";
 import { useIpcQuery } from "@/shared/hooks/use-ipc-query";
 import type {
   ChatContext,
   MiniBridgeResponse,
   MiniBridgeSnapshot,
-} from "@/types/electron";
+} from "@/shared/types/electron";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 
 const createEmptySnapshot = (conversationId: string | null): MiniBridgeSnapshot => ({

@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { ThemeProvider, useTheme, useThemeControl } from "../../../src/context/theme-context";
-import { getThemesSnapshot, registerTheme, unregisterTheme, type ThemeColors } from "../../../src/theme/themes";
+import { getThemesSnapshot, registerTheme, unregisterTheme, type ThemeColors } from "../../../src/shared/theme/themes";
 
 /** Combines read + control hooks for tests that need both. */
 function useThemeCombined() {

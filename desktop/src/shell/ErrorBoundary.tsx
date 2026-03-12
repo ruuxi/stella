@@ -1,5 +1,5 @@
 import { Component, type ReactNode, type ErrorInfo } from "react";
-import type { SelfModFeatureSummary } from "@/types/electron";
+import type { SelfModFeatureSummary } from "@/shared/types/electron";
 import "./error-boundary.css";
 
 type Props = { children: ReactNode };

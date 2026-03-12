@@ -37,7 +37,7 @@ vi.mock("@/context/ui-state", () => ({
 
 // We need to test helper functions directly, so we import the module
 // and also mock hexToRgb at the color module level
-vi.mock("@/theme/color", () => ({
+vi.mock("@/shared/theme/color", () => ({
   hexToRgb: (hex: string) => {
     // Simple implementation for testing
     const h = hex.replace("#", "");

@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { themes, getThemeById, defaultTheme, registerTheme, unregisterTheme } from "../../../../src/theme/themes/index";
-import type { Theme, ThemeColors } from "../../../../src/theme/themes/types";
+import { themes, getThemeById, defaultTheme, registerTheme, unregisterTheme } from "@/shared/theme/themes/index";
+import type { Theme, ThemeColors } from "@/shared/theme/themes/types";
 
 const makeColors = (bg: string): ThemeColors => ({
   background: bg,

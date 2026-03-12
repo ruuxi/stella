@@ -11,7 +11,7 @@ import {
   normalizeModelOverrides,
   type ModelDefaultEntry,
 } from "@/global/settings/lib/model-defaults";
-import type { LocalLlmCredentialSummary } from "@/types/electron";
+import type { LocalLlmCredentialSummary } from "@/shared/types/electron";
 import {
   Dialog,
   DialogContent,

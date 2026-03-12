@@ -12,7 +12,7 @@ import { cssToVec3 } from '@/shared/lib/color'
 import { RADIAL_SIZE } from '@/shared/lib/layout'
 import { getElectronApi } from '@/platform/electron/electron'
 import { useTheme } from '@/context/theme-context'
-import type { RadialWedge } from '@/types/electron'
+import type { RadialWedge } from '@/shared/types/electron'
 import {
   cancelAnimation,
   destroyBlob,

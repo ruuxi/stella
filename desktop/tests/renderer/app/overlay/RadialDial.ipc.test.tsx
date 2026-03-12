@@ -29,7 +29,7 @@ vi.mock("@/shell/ascii-creature/StellaAnimation", () => ({
   StellaAnimation: () => <div data-testid="stella-animation" />,
 }));
 
-vi.mock("@/theme/color", () => ({
+vi.mock("@/shared/theme/color", () => ({
   generateGradientTokens: vi.fn(),
 }));
 

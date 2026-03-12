@@ -1,4 +1,4 @@
-import type { ChatContext } from '@/types/electron'
+import type { ChatContext } from '@/shared/types/electron'
 import type { AttachmentRef } from './chat-types'
 
 type BuildCombinedPromptArgs = {
