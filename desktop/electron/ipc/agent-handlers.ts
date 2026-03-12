@@ -6,6 +6,7 @@ import {
 } from "electron";
 import { promises as fs } from "fs";
 import path from "path";
+import type { SelfModHmrState } from "../../src/shared/contracts/electron-data.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import {
   getLastGitFeatureId,
@@ -58,10 +59,7 @@ type AgentEventPayload = {
   statusText?: string;
 };
 
-type SelfModHmrStatePayload = {
-  paused: boolean;
-  message: string;
-};
+type SelfModHmrStatePayload = SelfModHmrState;
 
 const redactSensitiveLogText = (value: string) =>
   value
@@ -287,8 +285,12 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         },
         onSelfModHmrState: (ev) => emitSelfModHmrState(ev, senderWebContentsId),
         onHmrResume: options.hmrMorphOrchestrator
-          ? (resumeHmr) =>
-              options.hmrMorphOrchestrator!.runTransition({ resumeHmr })
+          ? ({ resumeHmr, reportState, requiresFullReload }) =>
+              options.hmrMorphOrchestrator!.runTransition({
+                resumeHmr,
+                reportState,
+                requiresFullReload,
+              })
           : undefined,
       });
 

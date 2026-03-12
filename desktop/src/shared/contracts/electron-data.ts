@@ -190,6 +190,20 @@ export type SelfModFeatureSummary = {
   taintedFiles?: string[]
 }
 
+export type SelfModHmrPhase =
+  | 'idle'
+  | 'paused'
+  | 'morph-forward'
+  | 'applying'
+  | 'reloading'
+  | 'morph-reverse'
+
+export type SelfModHmrState = {
+  phase: SelfModHmrPhase
+  paused: boolean
+  requiresFullReload: boolean
+}
+
 export type AgentHealth =
   | {
       ready: true

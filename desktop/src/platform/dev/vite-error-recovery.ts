@@ -114,16 +114,33 @@ async function injectRevertButton(overlay: Element) {
   overlay.after(container);
 }
 
+const scheduledInjectTimers = new Set<number>();
+const scheduleOverlayInjection = (overlay: HTMLElement) => {
+  const timer = window.setTimeout(() => {
+    scheduledInjectTimers.delete(timer);
+    void injectRevertButton(overlay);
+  }, 100);
+  scheduledInjectTimers.add(timer);
+};
+
 const observer = new MutationObserver((mutations) => {
   for (const mutation of mutations) {
     for (const node of mutation.addedNodes) {
       if (node instanceof HTMLElement && node.tagName === "VITE-ERROR-OVERLAY") {
-        setTimeout(() => {
-          void injectRevertButton(node);
-        }, 100);
+        scheduleOverlayInjection(node);
       }
     }
   }
 });
 
 observer.observe(document.documentElement, { childList: true, subtree: true });
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    observer.disconnect();
+    for (const timer of scheduledInjectTimers) {
+      window.clearTimeout(timer);
+    }
+    scheduledInjectTimers.clear();
+  });
+}
