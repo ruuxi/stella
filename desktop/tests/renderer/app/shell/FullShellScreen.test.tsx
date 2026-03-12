@@ -218,6 +218,11 @@ vi.mock("@/app/onboarding/OnboardingOverlay", () => ({
     handleEnterSplit: vi.fn(),
     handleResetOnboarding: vi.fn(),
   })),
+  OnboardingView: () => <div data-testid="onboarding-view" />,
+}));
+
+vi.mock("@/app/onboarding/OnboardingCanvas", () => ({
+  OnboardingCanvas: () => <div data-testid="onboarding-canvas" />,
 }));
 
 vi.mock("@/app/onboarding/DiscoveryFlow", () => ({
