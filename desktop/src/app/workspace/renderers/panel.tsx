@@ -6,7 +6,7 @@ import {
   areLocalWorkspacePanelsEnabled,
   LOCAL_WORKSPACE_PANELS_DEV_ONLY_MESSAGE,
 } from '@/shared/lib/local-workspace-panels'
-import './canvas-renderers.css'
+import './workspace-renderers.css'
 
 const PANEL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 const PANEL_IMPORT_ATTEMPTS = 3
@@ -197,7 +197,7 @@ const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
 
   if (loading) {
     return (
-      <div className="canvas-vite-loading">
+      <div className="workspace-panel-loading">
         <Spinner size="md" />
         <span>Loading panel...</span>
       </div>
@@ -206,10 +206,10 @@ const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
 
   if (error) {
     return (
-      <div className="canvas-error">
-        <div className="canvas-error-title">Panel Error</div>
-        <div className="canvas-error-message">{error}</div>
-        <button className="canvas-error-retry" onClick={handleRetry}>
+      <div className="workspace-error">
+        <div className="workspace-error-title">Panel Error</div>
+        <div className="workspace-error-message">{error}</div>
+        <button className="workspace-error-retry" onClick={handleRetry}>
           Retry
         </button>
       </div>
@@ -218,10 +218,10 @@ const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
 
   if (!Component) {
     return (
-      <div className="canvas-error">
-        <div className="canvas-error-title">Panel Error</div>
-        <div className="canvas-error-message">Panel component is unavailable.</div>
-        <button className="canvas-error-retry" onClick={handleRetry}>
+      <div className="workspace-error">
+        <div className="workspace-error-title">Panel Error</div>
+        <div className="workspace-error-message">Panel component is unavailable.</div>
+        <button className="workspace-error-retry" onClick={handleRetry}>
           Retry
         </button>
       </div>
@@ -229,9 +229,9 @@ const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
   }
 
   return (
-    <div className="canvas-vite-wrap">
+    <div className="workspace-panel-wrap">
       <WorkspaceErrorBoundary key={retryKey} onRetry={handleRetry}>
-        <div className="canvas-vite-content">
+        <div className="workspace-panel-content">
           <Component />
         </div>
       </WorkspaceErrorBoundary>
