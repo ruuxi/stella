@@ -7,6 +7,25 @@ import type {
   TextContent,
   ThinkingLevel,
 } from "../ai/types.js";
+import {
+  STELLA_CHAT_COMPLETIONS_PATH,
+  STELLA_MODELS_PATH,
+  STELLA_DEFAULT_MODEL,
+  extractChatText,
+  normalizeStellaApiBaseUrl,
+  type ChatCompletionResponse,
+  type ChatMessage,
+} from "../../../src/shared/ai/stella.js";
+
+export {
+  STELLA_CHAT_COMPLETIONS_PATH,
+  STELLA_MODELS_PATH,
+  STELLA_DEFAULT_MODEL,
+  extractChatText,
+  normalizeStellaApiBaseUrl,
+  type ChatCompletionResponse,
+  type ChatMessage,
+};
 
 function readAssistantText(message: AssistantMessage): string {
   return message.content
@@ -15,35 +34,6 @@ function readAssistantText(message: AssistantMessage): string {
     .join("")
     .trim();
 }
-
-export const STELLA_CHAT_COMPLETIONS_PATH = "/api/stella/v1/chat/completions";
-export const STELLA_MODELS_PATH = "/api/stella/v1/models";
-export const STELLA_DEFAULT_MODEL = "stella/default";
-
-export const normalizeStellaApiBaseUrl = (value: string): string =>
-  value.trim().replace(/\/chat\/completions\/?$/i, "").replace(/\/+$/, "");
-
-export type ChatMessage = {
-  role: "system" | "user" | "assistant" | "developer";
-  content: string | Array<{ type?: string; text?: string }>;
-};
-
-export type ChatCompletionResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string | Array<{ type?: string; text?: string }>;
-    };
-    delta?: {
-      content?: string;
-    };
-  }>;
-  usage?: {
-    input_tokens?: number;
-    prompt_tokens?: number;
-    output_tokens?: number;
-    completion_tokens?: number;
-  };
-};
 
 export type StellaChatRequestOptions = {
   agentType: string;
@@ -64,10 +54,15 @@ const toSimpleOptions = (
   const reasoningValue = body?.reasoning_effort;
   return {
     maxTokens: typeof maxTokensValue === "number" ? maxTokensValue : undefined,
-    temperature: typeof body?.temperature === "number" ? body.temperature : undefined,
+    temperature:
+      typeof body?.temperature === "number" ? body.temperature : undefined,
     reasoning:
-      reasoningValue === "minimal" || reasoningValue === "low" || reasoningValue === "medium" || reasoningValue === "high" || reasoningValue === "xhigh"
-        ? reasoningValue as ThinkingLevel
+      reasoningValue === "minimal" ||
+      reasoningValue === "low" ||
+      reasoningValue === "medium" ||
+      reasoningValue === "high" ||
+      reasoningValue === "xhigh"
+        ? (reasoningValue as ThinkingLevel)
         : undefined,
   };
 };
@@ -78,13 +73,20 @@ const toTextBlocks = (content: ChatMessage["content"]): TextContent[] => {
     return text ? [{ type: "text", text }] : [];
   }
   return content
-    .filter((part): part is { type?: string; text: string } => typeof part?.text === "string")
+    .filter(
+      (part): part is { type?: string; text: string } =>
+        typeof part?.text === "string",
+    )
     .map((part) => ({ type: "text" as const, text: part.text.trim() }))
     .filter((part) => part.text.length > 0);
 };
 
 const emptyUsage = (): AssistantMessage["usage"] => ({
-  input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 });
 
@@ -95,14 +97,21 @@ export function buildStellaChatContext(messages: ChatMessage[]): Context {
   for (const message of messages) {
     const blocks = toTextBlocks(message.content);
     if (message.role === "system" || message.role === "developer") {
-      const text = blocks.map((b) => b.text).join("\n").trim();
+      const text = blocks
+        .map((b) => b.text)
+        .join("\n")
+        .trim();
       if (text) systemParts.push(text);
       continue;
     }
     if (blocks.length === 0) continue;
 
     if (message.role === "user") {
-      llmMessages.push({ role: "user", content: blocks, timestamp: Date.now() });
+      llmMessages.push({
+        role: "user",
+        content: blocks,
+        timestamp: Date.now(),
+      });
       continue;
     }
 
@@ -119,7 +128,9 @@ export function buildStellaChatContext(messages: ChatMessage[]): Context {
   }
 
   return {
-    ...(systemParts.length > 0 ? { systemPrompt: systemParts.join("\n\n") } : {}),
+    ...(systemParts.length > 0
+      ? { systemPrompt: systemParts.join("\n\n") }
+      : {}),
     messages: llmMessages,
   };
 }
@@ -132,7 +143,10 @@ function buildModel(
 ): Model<"openai-completions"> {
   return {
     id: modelId,
-    name: modelId === STELLA_DEFAULT_MODEL ? "Stella Recommended" : modelId.replace(/^stella\//, ""),
+    name:
+      modelId === STELLA_DEFAULT_MODEL
+        ? "Stella Recommended"
+        : modelId.replace(/^stella\//, ""),
     api: "openai-completions",
     provider: "stella",
     baseUrl: normalizeStellaApiBaseUrl(endpoint),
@@ -186,14 +200,21 @@ const ensureSuccess = (message: AssistantMessage): AssistantMessage => {
   return message;
 };
 
-const messageToResponse = (message: AssistantMessage): ChatCompletionResponse => ({
-  choices: [{
-    message: {
-      content: message.content
-        .filter((part): part is { type: "text"; text: string } => part.type === "text")
-        .map((part) => ({ type: "text", text: part.text })),
+const messageToResponse = (
+  message: AssistantMessage,
+): ChatCompletionResponse => ({
+  choices: [
+    {
+      message: {
+        content: message.content
+          .filter(
+            (part): part is { type: "text"; text: string } =>
+              part.type === "text",
+          )
+          .map((part) => ({ type: "text", text: part.text })),
+      },
     },
-  }],
+  ],
   usage: {
     input_tokens: message.usage.input,
     prompt_tokens: message.usage.input + message.usage.cacheRead,
@@ -202,37 +223,21 @@ const messageToResponse = (message: AssistantMessage): ChatCompletionResponse =>
   },
 });
 
-export function extractChatText(response: ChatCompletionResponse): string {
-  const content = response.choices?.[0]?.message?.content;
-  if (typeof content === "string") {
-    return content.trim();
-  }
-  if (Array.isArray(content)) {
-    return content
-      .filter((part) => part?.type === "text" && typeof part.text === "string")
-      .map((part) => part.text!.trim())
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-  }
-  return "";
-}
-
-export async function callStellaChatCompletion<TResponse = ChatCompletionResponse>(args: {
+export async function callStellaChatCompletion<
+  TResponse = ChatCompletionResponse,
+>(args: {
   transport: StellaTransport;
   request: StellaChatRequestOptions;
   body?: Record<string, unknown>;
   signal?: AbortSignal;
 }): Promise<TResponse> {
   const execution = createCompletion(args);
-  const message = ensureSuccess(await completeSimple(
-    execution.model,
-    execution.context,
-    {
+  const message = ensureSuccess(
+    await completeSimple(execution.model, execution.context, {
       ...execution.options,
       signal: args.signal,
-    },
-  ));
+    }),
+  );
   return messageToResponse(message) as TResponse;
 }
 
@@ -244,14 +249,10 @@ export async function streamStellaChatCompletion(args: {
   signal?: AbortSignal;
 }): Promise<string> {
   const execution = createCompletion(args);
-  const stream = streamSimple(
-    execution.model,
-    execution.context,
-    {
-      ...execution.options,
-      signal: args.signal,
-    },
-  );
+  const stream = streamSimple(execution.model, execution.context, {
+    ...execution.options,
+    signal: args.signal,
+  });
 
   let fullContent = "";
   for await (const event of stream) {
