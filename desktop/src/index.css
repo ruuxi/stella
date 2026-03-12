@@ -1,4 +1,4 @@
-@import "./styles/fonts.css";
+@import "./shared/styles/fonts.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 

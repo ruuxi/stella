@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback, memo, type CSSProperties } from "react";
 import { useTheme } from "@/context/theme-context";
-import { generateGradientTokens } from "@/theme/color";
+import { generateGradientTokens } from "@/shared/theme/color";
 import { cssToRgb } from "@/shared/lib/color";
 import { cn } from "@/shared/lib/utils";
 

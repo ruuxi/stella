@@ -6,7 +6,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { useRef, useState, useEffect } from "react";
 import { animate } from "motion";
 import { motion } from "motion/react";
-import type { ChatContext } from "@/types/electron";
+import type { ChatContext } from "@/shared/types/electron";
 import { ComposerContextRow } from "./ComposerContextRow";
 import {
   resolveComposerContextState,

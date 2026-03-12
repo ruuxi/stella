@@ -17,8 +17,8 @@ import {
   getThemesSnapshot,
   type Theme,
   type ThemeColors,
-} from "../theme/themes";
-import { generateGradientTokens } from "../theme/color";
+} from "../shared/theme/themes";
+import { generateGradientTokens } from "../shared/theme/color";
 
 type ColorMode = "light" | "dark" | "system";
 type GradientMode = "soft" | "crisp";

@@ -1,5 +1,5 @@
-﻿import type { UiState, WindowMode } from "./ui";
-import type { Theme } from "@/theme/themes/types";
+import type { UiState, WindowMode } from "./ui";
+import type { Theme } from "@/shared/theme/themes/types";
 import type { AgentStreamEvent } from "@/app/chat/streaming/streaming-types";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { ChatMessage } from "@/infra/ai/llm";

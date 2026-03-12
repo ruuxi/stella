@@ -1,5 +1,5 @@
-﻿import { useCallback, useEffect, useRef } from "react";
-import type { ChatContext } from "@/types/electron";
+import { useCallback, useEffect, useRef } from "react";
+import type { ChatContext } from "@/shared/types/electron";
 import {
   resolveComposerContextState,
   resolveComposerPlaceholder,

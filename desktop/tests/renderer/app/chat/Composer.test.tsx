@@ -1,7 +1,7 @@
-﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { Composer } from "../../../../src/app/chat/Composer";
-import type { ChatContext } from "@/types/electron";
+import type { ChatContext } from "@/shared/types/electron";
 
 function defaultProps(overrides: Partial<Parameters<typeof Composer>[0]> = {}) {
   return {

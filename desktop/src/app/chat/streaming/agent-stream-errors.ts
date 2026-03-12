@@ -1,4 +1,4 @@
-import type { AgentHealth } from '@/types/electron'
+import type { AgentHealth } from '@/shared/types/electron'
 
 const isTokenReadinessIssue = (reason: string | null): boolean => {
   if (!reason) return false

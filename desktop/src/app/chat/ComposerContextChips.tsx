@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { ChatContext } from "@/types/electron";
+import type { ChatContext } from "@/shared/types/electron";
 import { cn } from "@/shared/lib/utils";
 import {
   clearComposerSelectedTextContext,
