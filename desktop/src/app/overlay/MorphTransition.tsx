@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cssToVec3 } from "@/shared/lib/color";
+import type { SelfModHmrState } from "@/shared/contracts/electron-data";
 
 type MorphPhase = "idle" | "rippling" | "crossfading" | "calming";
 
@@ -17,6 +18,12 @@ const IDLE_STATE: MorphState = {
   y: 0,
   width: 0,
   height: 0,
+};
+
+const IDLE_HMR_STATE: SelfModHmrState = {
+  phase: "idle",
+  paused: false,
+  requiresFullReload: false,
 };
 
 const RAMP_UP_MS = 600;
@@ -282,6 +289,7 @@ function tweenRef(
 
 export function MorphTransition() {
   const [state, setState] = useState<MorphState>(IDLE_STATE);
+  const [hmrState, setHmrState] = useState<SelfModHmrState>(IDLE_HMR_STATE);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glCtxRef = useRef<GLContext | null>(null);
   const reverseImgRef = useRef<HTMLImageElement | null>(null);
@@ -297,7 +305,8 @@ export function MorphTransition() {
     if (
       typeof api.onMorphForward !== "function" ||
       typeof api.onMorphReverse !== "function" ||
-      typeof api.onMorphEnd !== "function"
+      typeof api.onMorphEnd !== "function" ||
+      typeof api.onMorphState !== "function"
     ) {
       return;
     }
@@ -370,6 +379,12 @@ export function MorphTransition() {
     );
 
     unsubs.push(
+      api.onMorphState((nextState) => {
+        setHmrState(nextState);
+      }),
+    );
+
+    unsubs.push(
       api.onMorphEnd(() => {
         stopLoopRef.current?.();
         stopLoopRef.current = null;
@@ -377,11 +392,14 @@ export function MorphTransition() {
           cleanupGL(glCtxRef.current);
           glCtxRef.current = null;
         }
+        setHmrState(IDLE_HMR_STATE);
         setState(IDLE_STATE);
       }),
     );
 
-    return () => unsubs.forEach((u) => u());
+    return () => {
+      unsubs.forEach((u) => u());
+    };
   }, []);
 
   if (state.phase === "idle") return null;
@@ -389,6 +407,8 @@ export function MorphTransition() {
   return (
     <canvas
       ref={canvasRef}
+      data-selfmod-hmr-phase={hmrState.phase}
+      data-selfmod-full-reload={hmrState.requiresFullReload || undefined}
       style={{
         position: "fixed",
         left: state.x,

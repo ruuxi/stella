@@ -6,6 +6,7 @@ import type {
   MiniBridgeResponse,
   MiniBridgeResponseEnvelope,
   MiniBridgeUpdate,
+  SelfModHmrState,
 } from "../src/shared/contracts/electron-data.js";
 
 // ---------------------------------------------------------------------------
@@ -145,6 +146,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "overlay:morphReverse",
     ),
     onMorphEnd: onIpcSignal("overlay:morphEnd"),
+    onMorphState: onIpc<SelfModHmrState>("overlay:morphState"),
     morphDone: () => ipcRenderer.send("overlay:morphDone"),
     onShowAutoPanel: onIpc<{
       x: number;
@@ -401,9 +403,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       result?: string;
       statusText?: string;
     }>("agent:event"),
-    onSelfModHmrState: onIpc<{ paused: boolean; message: string }>(
-      "agent:selfModHmrState",
-    ),
+    onSelfModHmrState: onIpc<SelfModHmrState>("agent:selfModHmrState"),
     selfModRevert: (featureId?: string, steps?: number) =>
       ipcRenderer.invoke("selfmod:revert", { featureId, steps }),
     getLastSelfModFeature: () => ipcRenderer.invoke("selfmod:lastFeature"),

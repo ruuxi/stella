@@ -29,6 +29,8 @@ import type {
   AllUserSignals as SharedAllUserSignals,
   AllUserSignalsResult as SharedAllUserSignalsResult,
   SelfModFeatureSummary as SharedSelfModFeatureSummary,
+  SelfModHmrPhase as SharedSelfModHmrPhase,
+  SelfModHmrState as SharedSelfModHmrState,
   AgentHealth as SharedAgentHealth,
   LocalLlmCredentialSummary as SharedLocalLlmCredentialSummary,
   LocalCronSchedule as SharedLocalCronSchedule,
@@ -66,6 +68,8 @@ export type AllUserSignals = SharedAllUserSignals;
 export type AllUserSignalsResult = SharedAllUserSignalsResult;
 export type AgentStreamIpcEvent = AgentStreamEvent;
 export type SelfModFeatureSummary = SharedSelfModFeatureSummary;
+export type SelfModHmrPhase = SharedSelfModHmrPhase;
+export type SelfModHmrState = SharedSelfModHmrState;
 export type AgentHealth = SharedAgentHealth;
 export type LocalLlmCredentialSummary = SharedLocalLlmCredentialSummary;
 export type LocalCronSchedule = SharedLocalCronSchedule;
@@ -185,6 +189,7 @@ export type ElectronOverlayApi = {
     callback: (data: { screenshotDataUrl: string }) => void,
   ) => () => void;
   onMorphEnd: (callback: () => void) => () => void;
+  onMorphState: (callback: (state: SelfModHmrState) => void) => () => void;
   morphDone: () => void;
   onShowAutoPanel: (
     callback: (data: {
@@ -291,9 +296,7 @@ export type ElectronAgentApi = {
     exhausted: boolean;
   }>;
   onStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void;
-  onSelfModHmrState: (
-    callback: (event: { paused: boolean; message: string }) => void,
-  ) => () => void;
+  onSelfModHmrState: (callback: (event: SelfModHmrState) => void) => () => void;
   selfModRevert: (featureId?: string, steps?: number) => Promise<unknown>;
   getLastSelfModFeature: () => Promise<string | null>;
   listSelfModFeatures: (limit?: number) => Promise<SelfModFeatureSummary[]>;

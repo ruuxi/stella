@@ -37,6 +37,7 @@ import type { Api, Model } from "../ai/types.js";
 import { canResolveLlmRoute, resolveLlmRoute } from "./model-routing.js";
 import { createRemoteTurnBridge } from "./remote-turn-bridge.js";
 import { normalizeStellaApiBaseUrl } from "./stella-provider.js";
+import type { SelfModHmrState } from "../../../src/shared/contracts/electron-data.js";
 import {
   buildRuntimeThreadKey,
   parseThreadCheckpoint,
@@ -83,7 +84,11 @@ export type StellaHostRunnerOptions = {
     getStatus: () => Promise<{ queuedFiles: number; requiresFullReload: boolean } | null>;
   } | null;
   getHmrMorphOrchestrator?: () => {
-    runTransition: (args: { resumeHmr: () => Promise<void> }) => Promise<void>;
+    runTransition: (args: {
+      resumeHmr: () => Promise<void>;
+      reportState?: (state: SelfModHmrState) => void;
+      requiresFullReload: boolean;
+    }) => Promise<void>;
   } | null;
   signHeartbeatPayload?: (
     signedAtMs: number,
@@ -127,9 +132,23 @@ type AgentCallbacks = {
   onError: (event: RuntimeErrorEvent) => void;
   onEnd: (event: RuntimeEndEvent) => void;
   onTaskEvent?: (event: TaskLifecycleEvent) => void;
-  onSelfModHmrState?: (event: { paused: boolean; message: string }) => void;
-  onHmrResume?: (resumeHmr: () => Promise<void>) => Promise<void>;
+  onSelfModHmrState?: (event: SelfModHmrState) => void;
+  onHmrResume?: (args: {
+    resumeHmr: () => Promise<void>;
+    reportState?: (state: SelfModHmrState) => void;
+    requiresFullReload: boolean;
+  }) => Promise<void>;
 };
+
+const createSelfModHmrState = (
+  phase: SelfModHmrState["phase"],
+  paused: boolean,
+  requiresFullReload = false,
+): SelfModHmrState => ({
+  phase,
+  paused,
+  requiresFullReload,
+});
 
 type QueuedOrchestratorTurn = {
   conversationId: string;
@@ -802,6 +821,12 @@ export const createStellaHostRunner = ({
         },
       });
       const taskCallbacks = conversationCallbacks.get(conversationId) ?? null;
+      const reportSelfModHmrState = (state: SelfModHmrState) => {
+        taskCallbacks?.onSelfModHmrState?.(state);
+      };
+      if (shouldControlHmr && pauseApplied) {
+        reportSelfModHmrState(createSelfModHmrState("paused", true));
+      }
       try {
         return await runSubagentTask({
           conversationId,
@@ -833,6 +858,7 @@ export const createStellaHostRunner = ({
       } finally {
         if (shouldControlHmr && selfModHmrController) {
           const status = await selfModHmrController.getStatus().catch(() => null);
+          const requiresFullReload = Boolean(status?.requiresFullReload);
           const shouldMorph = Boolean(
             status && (status.queuedFiles > 0 || status.requiresFullReload),
           );
@@ -845,14 +871,33 @@ export const createStellaHostRunner = ({
 
           try {
             const morphOrchestrator = getHmrMorphOrchestrator?.() ?? null;
-            if (shouldMorph && morphOrchestrator) {
-              await morphOrchestrator.runTransition({ resumeHmr });
+            if (shouldMorph && taskCallbacks?.onHmrResume) {
+              await taskCallbacks.onHmrResume({
+                resumeHmr,
+                reportState: reportSelfModHmrState,
+                requiresFullReload,
+              });
+            } else if (shouldMorph && morphOrchestrator) {
+              await morphOrchestrator.runTransition({
+                resumeHmr,
+                reportState: reportSelfModHmrState,
+                requiresFullReload,
+              });
             } else {
+              reportSelfModHmrState(
+                createSelfModHmrState(
+                  requiresFullReload ? "reloading" : "applying",
+                  false,
+                  requiresFullReload,
+                ),
+              );
               await resumeHmr();
+              reportSelfModHmrState(createSelfModHmrState("idle", false));
             }
           } catch (error) {
             console.warn("[self-mod-hmr] Failed to resume general subagent HMR:", (error as Error).message);
             await selfModHmrController.resume(runId).catch(() => undefined);
+            reportSelfModHmrState(createSelfModHmrState("idle", false));
           }
         }
       }
