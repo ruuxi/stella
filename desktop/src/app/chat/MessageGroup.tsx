@@ -1,4 +1,4 @@
-import type { Attachment, EventRecord } from "@/app/chat/lib/event-transforms";
+﻿import type { Attachment, EventRecord } from "@/app/chat/lib/event-transforms";
 import {
   StreamingIndicator,
   TurnItem,
@@ -51,3 +51,5 @@ export function MessageGroup({
     </div>
   );
 }
+
+

@@ -1,15 +1,15 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { extractEmojiToken, resolveEmojiToEmote } from "../../../../../src/app/chat/emotes/emoji-resolver";
 
 const entries = [
-  { code: "PogA", emoji: "✨", confidence: 0.7 },
-  { code: "PogB", emoji: "✨", confidence: 0.9 },
-  { code: "SadA", emoji: "😢", confidence: 0.8 },
+  { code: "PogA", emoji: "âœ¨", confidence: 0.7 },
+  { code: "PogB", emoji: "âœ¨", confidence: 0.9 },
+  { code: "SadA", emoji: "ðŸ˜¢", confidence: 0.8 },
 ];
 
 describe("extractEmojiToken", () => {
   it("extracts first emoji from mixed text", () => {
-    expect(extractEmojiToken("hello ✨ wow")).toBe("✨");
+    expect(extractEmojiToken("hello âœ¨ wow")).toBe("âœ¨");
   });
 
   it("returns null when no emoji exists", () => {
@@ -19,24 +19,26 @@ describe("extractEmojiToken", () => {
 
 describe("resolveEmojiToEmote", () => {
   it("matches exact emoji only", () => {
-    const match = resolveEmojiToEmote("😢", entries);
+    const match = resolveEmojiToEmote("ðŸ˜¢", entries);
     expect(match?.code).toBe("SadA");
-    expect(match?.emoji).toBe("😢");
+    expect(match?.emoji).toBe("ðŸ˜¢");
   });
 
   it("picks highest confidence by default", () => {
-    const match = resolveEmojiToEmote("✨", entries);
+    const match = resolveEmojiToEmote("âœ¨", entries);
     expect(match?.code).toBe("PogB");
     expect(match?.candidates).toBe(2);
   });
 
   it("uses seed for deterministic variation", () => {
-    const a = resolveEmojiToEmote("✨", entries, { seed: "conv-1" });
-    const b = resolveEmojiToEmote("✨", entries, { seed: "conv-1" });
+    const a = resolveEmojiToEmote("âœ¨", entries, { seed: "conv-1" });
+    const b = resolveEmojiToEmote("âœ¨", entries, { seed: "conv-1" });
     expect(a?.code).toBe(b?.code);
   });
 
   it("returns null for unknown emoji", () => {
-    expect(resolveEmojiToEmote("🤖", entries)).toBeNull();
+    expect(resolveEmojiToEmote("ðŸ¤–", entries)).toBeNull();
   });
 });
+
+

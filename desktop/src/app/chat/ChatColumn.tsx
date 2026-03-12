@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ChatColumn: column-reverse scroll viewport, message rendering, custom scrollbar, composer.
  */
 
@@ -152,3 +152,5 @@ export const ChatColumn = memo(function ChatColumn({
     </div>
   );
 });
+
+

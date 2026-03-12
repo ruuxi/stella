@@ -1,4 +1,4 @@
-import { memo } from "react";
+﻿import { memo } from "react";
 import type { Attachment, ChannelEnvelope, TaskItem } from "@/app/chat/lib/event-transforms";
 import { WorkingIndicator } from "@/app/chat/WorkingIndicator";
 import { TaskIndicator } from "@/app/chat/TaskIndicator";
@@ -541,5 +541,7 @@ export const StreamingIndicator = memo(function StreamingIndicator({
     </div>
   );
 });
+
+
 
 

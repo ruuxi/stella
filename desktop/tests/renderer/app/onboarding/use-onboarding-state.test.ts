@@ -7,7 +7,7 @@ import {
   SPLIT_STEP_ORDER,
   DISCOVERY_CATEGORIES,
   BROWSERS,
-} from "../../../../src/app/onboarding/use-onboarding-state";
+} from "../../../../src/global/onboarding/use-onboarding-state";
 
 const ONBOARDING_KEY = "stella-onboarding-complete";
 
@@ -105,3 +105,4 @@ describe("BROWSERS", () => {
     }
   });
 });
+

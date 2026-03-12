@@ -1,8 +1,8 @@
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DeferredVoiceRuntime } from "../../../../src/app/voice-runtime/DeferredVoiceRuntime";
+import { DeferredVoiceRuntime } from "../../../../src/systems/voice/DeferredVoiceRuntime";
 
-vi.mock("@/app/voice-runtime/VoiceRuntimeRoot", () => ({
+vi.mock("@/systems/voice/VoiceRuntimeRoot", () => ({
   VoiceRuntimeRoot: () => <div data-testid="voice-runtime-root" />,
 }));
 
@@ -32,3 +32,5 @@ describe("DeferredVoiceRuntime", () => {
     expect(await screen.findByTestId("voice-runtime-root")).toBeInTheDocument();
   });
 });
+
+

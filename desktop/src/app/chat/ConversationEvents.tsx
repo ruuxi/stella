@@ -1,4 +1,4 @@
-import { memo } from "react";
+﻿import { memo } from "react";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { Attachment, TaskItem } from "@/app/chat/lib/event-transforms";
 import {
@@ -168,10 +168,12 @@ export const ConversationEvents = memo(function ConversationEvents({
         onOpenAttachment={onOpenAttachment}
       />
 
-      {/* Persistent task progress — visible even when orchestrator is not streaming */}
+      {/* Persistent task progress â€” visible even when orchestrator is not streaming */}
       {!showStreaming && runningTasks.length > 0 && (
         <TaskIndicator tasks={runningTasks} />
       )}
     </div>
   );
 });
+
+

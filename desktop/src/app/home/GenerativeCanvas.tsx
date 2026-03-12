@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { StellaAnimation } from "@/app/shell/ascii-creature/StellaAnimation"
+import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation"
 import { DashboardCard } from "./DashboardCard"
 import { sanitizeHtmlFragment } from "@/shared/lib/safe-html"
 
@@ -44,3 +44,4 @@ export function GenerativeCanvas() {
     </DashboardCard>
   )
 }
+

@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { WorkspaceProvider, useWorkspace } from "@/context/workspace-state";
-import { TitleBar } from "../../../../src/app/shell/TitleBar";
+import { TitleBar } from "../../../../src/shell/TitleBar";
 import { useEffect } from "react";
 
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -240,4 +240,5 @@ describe("TitleBar", () => {
     expect(container.querySelector(".title-bar-drag-region")).toBeTruthy();
   });
 });
+
 

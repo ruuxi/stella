@@ -18,13 +18,13 @@ vi.mock("@/context/theme-context", () => ({
   }),
 }));
 
-vi.mock("@/app/shell/ascii-creature/StellaAnimation", () => ({
+vi.mock("@/shell/ascii-creature/StellaAnimation", () => ({
   StellaAnimation: () => <div data-testid="stella-animation" />,
 }));
 
 let closeComplete: (() => void) | null = null;
 
-vi.mock("../../../../src/app/overlay/radial-blob", () => ({
+vi.mock("../../../../src/shell/overlay/radial-blob", () => ({
   initBlob: vi.fn(() => true),
   startOpen: vi.fn(
     (
@@ -50,7 +50,7 @@ vi.mock("../../../../src/app/overlay/radial-blob", () => ({
   destroyBlob: vi.fn(),
 }));
 
-import { RadialDial } from "../../../../src/app/overlay/RadialDial";
+import { RadialDial } from "../../../../src/shell/overlay/RadialDial";
 
 let showCallback: ((event: unknown, data: { centerX: number; centerY: number; x?: number; y?: number }) => void) | null = null;
 let hideCallback: (() => void) | null = null;
@@ -125,3 +125,5 @@ describe("RadialDial close races", () => {
     expect((window as any).electronAPI.radial.animDone).not.toHaveBeenCalled();
   });
 });
+
+

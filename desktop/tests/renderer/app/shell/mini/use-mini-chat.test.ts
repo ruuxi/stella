@@ -13,7 +13,7 @@ vi.mock("@/context/ui-state", () => ({
   })),
 }));
 
-import { useMiniChat } from "../../../../../src/app/shell/mini/use-mini-chat";
+import { useMiniChat } from "../../../../../src/shell/mini/use-mini-chat";
 import type {
   ChatContext,
   MiniBridgeRequest,
@@ -162,5 +162,6 @@ describe("useMiniChat", () => {
     });
   });
 });
+
 
 

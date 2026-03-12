@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { computeStatus } from "../../../../src/app/chat/status-utils";
 
 describe("computeStatus", () => {
@@ -121,3 +121,5 @@ describe("computeStatus", () => {
     });
   });
 });
+
+

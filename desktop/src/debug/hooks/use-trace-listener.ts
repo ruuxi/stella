@@ -1,7 +1,7 @@
-/**
+﻿/**
  * Hook that captures agent IPC stream events and conversation events
  * into the global trace store. Runs independently of the streaming chat
- * hook — captures ALL events without runId filtering, so sub-agent
+ * hook â€” captures ALL events without runId filtering, so sub-agent
  * tool calls and lifecycle events are visible.
  */
 
@@ -99,7 +99,7 @@ export function useTraceIpcListener(enabled: boolean) {
         case "task-progress":
           traceTaskProgress(event.taskId ?? "unknown", event.statusText ?? "");
           break;
-        // "stream" events are high-frequency text deltas — skip for trace
+        // "stream" events are high-frequency text deltas â€” skip for trace
       }
     });
 
@@ -218,3 +218,5 @@ export function useTraceRunRegistration(runId: string | null) {
     }
   }, [runId]);
 }
+
+

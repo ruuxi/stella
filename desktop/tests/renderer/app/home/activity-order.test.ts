@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+﻿import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActivityItem } from "../../../../src/app/home/schedule-item";
 import { sortActivityItems } from "../../../../src/app/home/activity-order";
 
@@ -88,3 +88,5 @@ describe("sortActivityItems", () => {
     ]);
   });
 });
+
+

@@ -1,27 +1,27 @@
 import { act, render } from "@testing-library/react";
 import type { CSSProperties } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { OverlayRoot } from "../../../../src/app/overlay/OverlayRoot";
+import { OverlayRoot } from "../../../../src/shell/overlay/OverlayRoot";
 
-vi.mock("../../../../src/app/overlay/RadialDial", () => ({
+vi.mock("../../../../src/shell/overlay/RadialDial", () => ({
   RadialDial: () => <div data-testid="radial-dial" />,
 }));
 
-vi.mock("../../../../src/app/overlay/RegionCapture", () => ({
+vi.mock("../../../../src/shell/overlay/RegionCapture", () => ({
   RegionCapture: () => <div data-testid="region-capture" />,
 }));
 
-vi.mock("../../../../src/app/shell/mini/MiniShell", () => ({
+vi.mock("../../../../src/shell/mini/MiniShell", () => ({
   MiniShell: () => <div data-testid="mini-shell" />,
 }));
 
-vi.mock("@/app/overlay/VoiceOverlay", () => ({
+vi.mock("@/shell/overlay/VoiceOverlay", () => ({
   VoiceOverlay: ({ style }: { style?: CSSProperties }) => (
     <div data-testid="voice-overlay" style={style} />
   ),
 }));
 
-vi.mock("@/app/overlay/MorphTransition", () => ({
+vi.mock("@/shell/overlay/MorphTransition", () => ({
   MorphTransition: () => null,
 }));
 
@@ -112,3 +112,5 @@ describe("OverlayRoot radial lifecycle", () => {
     expect(shell.style.pointerEvents).toBe("auto");
   });
 });
+
+

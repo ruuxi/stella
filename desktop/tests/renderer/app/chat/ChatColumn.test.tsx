@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+﻿import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import { ChatColumn } from "../../../../src/app/chat/ChatColumn";
@@ -149,3 +149,6 @@ describe("ChatColumn", () => {
     expect(container.querySelector(".composer-wrap--entering")).toBeNull();
   });
 });
+
+
+

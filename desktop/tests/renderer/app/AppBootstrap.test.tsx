@@ -1,6 +1,6 @@
-import { render, waitFor } from "@testing-library/react";
+﻿import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { AppBootstrap } from "../../../src/app/AppBootstrap";
+import { AppBootstrap } from "../../../src/systems/boot/AppBootstrap";
 
 const mockSetConversationId = vi.fn();
 vi.mock("../../../src/context/ui-state", () => ({
@@ -91,3 +91,6 @@ describe("AppBootstrap", () => {
     });
   });
 });
+
+
+

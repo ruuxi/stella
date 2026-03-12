@@ -1,4 +1,4 @@
-import { getAuthHeaders } from "@/app/auth/services/auth-token";
+import { getAuthHeaders } from "@/global/auth/services/auth-token";
 import { getOrCreateDeviceId } from "@/platform/electron/device";
 
 type ServiceRequest = {
@@ -65,3 +65,4 @@ export const createServiceRequest = async (
     headers: requestHeaders,
   };
 };
+

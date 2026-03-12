@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import {
   extractStepsFromEvents,
   groupEventsIntoTurns,
@@ -496,5 +496,7 @@ describe("Integration: Full conversation flow", () => {
     expect(getCurrentRunningTool(events)).toBe("write");
   });
 });
+
+
 
 

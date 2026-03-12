@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useChatScrollManagement } from "../../../../src/app/shell/use-chat-scroll-management";
+import { useChatScrollManagement } from "../../../../src/shell/use-chat-scroll-management";
 
 const makeOptions = (overrides: Partial<Parameters<typeof useChatScrollManagement>[0]> = {}) => ({
   itemCount: 0,
@@ -262,3 +262,4 @@ describe("useChatScrollManagement (column-reverse)", () => {
     expect(result.current.thumbState).toEqual({ top: 0, height: 0, visible: false });
   });
 });
+

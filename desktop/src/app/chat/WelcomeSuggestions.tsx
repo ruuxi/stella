@@ -1,5 +1,5 @@
-import type { WelcomeSuggestion } from "@/app/onboarding/services/synthesis";
-import { SuggestionList } from "@/app/shared/SuggestionList";
+import type { WelcomeSuggestion } from "@/global/onboarding/services/synthesis";
+import { SuggestionList } from "@/shared/components/SuggestionList";
 
 type WelcomeSuggestionsProps = {
   suggestions: WelcomeSuggestion[];
@@ -24,3 +24,4 @@ export function WelcomeSuggestions({
     />
   );
 }
+

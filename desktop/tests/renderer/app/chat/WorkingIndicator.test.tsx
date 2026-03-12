@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";
 import { WorkingIndicator } from "../../../../src/app/chat/WorkingIndicator";
 
@@ -150,3 +150,5 @@ describe("WorkingIndicator", () => {
     expect(getStatusText(container)).toContain("First task");
   });
 });
+
+

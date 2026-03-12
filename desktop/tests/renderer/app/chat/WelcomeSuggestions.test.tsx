@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { WelcomeSuggestions } from "../../../../src/app/chat/WelcomeSuggestions";
 
@@ -120,3 +120,5 @@ describe("WelcomeSuggestions", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 });
+
+

@@ -1,23 +1,23 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { useUiState } from '@/context/ui-state'
 import { getElectronApi } from '@/platform/electron/electron'
-import { AuthDeepLinkHandler } from './app/auth/AuthDeepLinkHandler'
-import { AppBootstrap } from './app/AppBootstrap'
-import { ModelPreferencesBridge } from '@/app/settings/ModelPreferencesBridge'
+import { AuthDeepLinkHandler } from './global/auth/AuthDeepLinkHandler'
+import { AppBootstrap } from './systems/boot/AppBootstrap'
+import { ModelPreferencesBridge } from '@/global/settings/ModelPreferencesBridge'
 import { ChatStoreProvider } from '@/context/chat-store'
 
 type WindowType = 'full' | 'mini'
 const AUTO_REPAIR_SIGNATURE_KEY = 'stella:auto-repair:last-signature'
 const CredentialRequestLayer = lazy(() =>
-  import('./app/auth/CredentialRequestLayer').then((module) => ({
+  import('./global/auth/CredentialRequestLayer').then((module) => ({
     default: module.CredentialRequestLayer,
   })),
 )
 const FullShell = lazy(() =>
-  import('./app/shell/FullShell').then((module) => ({ default: module.FullShell })),
+  import('./shell/FullShell').then((module) => ({ default: module.FullShell })),
 )
 const MiniShell = lazy(() =>
-  import('./app/shell/mini/MiniShell').then((module) => ({ default: module.MiniShell })),
+  import('./shell/mini/MiniShell').then((module) => ({ default: module.MiniShell })),
 )
 function getWindowType(isElectron: boolean, windowParam: string | null, fallback: string): WindowType {
   if (!isElectron) {
@@ -60,3 +60,4 @@ function App() {
 }
 
 export { App }
+

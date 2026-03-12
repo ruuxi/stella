@@ -1,4 +1,4 @@
-import type { UiState, WindowMode } from "./ui";
+﻿import type { UiState, WindowMode } from "./ui";
 import type { Theme } from "@/theme/themes/types";
 import type { AgentStreamEvent } from "@/app/chat/streaming/streaming-types";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
@@ -446,7 +446,7 @@ export type ElectronLocalChatApi = {
 };
 
 // ---------------------------------------------------------------------------
-// Main ElectronApi — composed from namespaced sub-types
+// Main ElectronApi â€” composed from namespaced sub-types
 // ---------------------------------------------------------------------------
 
 export type ElectronDisplayApi = {
@@ -478,3 +478,5 @@ declare global {
 }
 
 export {};
+
+

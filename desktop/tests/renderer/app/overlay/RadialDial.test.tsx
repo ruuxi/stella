@@ -27,7 +27,7 @@ vi.mock("@/context/theme-context", () => ({
 }));
 
 // Mock StellaAnimation as a simple div
-vi.mock("@/app/shell/ascii-creature/StellaAnimation", () => ({
+vi.mock("@/shell/ascii-creature/StellaAnimation", () => ({
   StellaAnimation: () => <div data-testid="stella-animation" />,
 }));
 
@@ -51,7 +51,7 @@ vi.mock("@/theme/color", () => ({
   generateGradientTokens: vi.fn(),
 }));
 
-import { RadialDial } from "../../../../src/app/overlay/RadialDial";
+import { RadialDial } from "../../../../src/shell/overlay/RadialDial";
 
 // ---------- Tests ----------
 
@@ -296,6 +296,8 @@ describe("RadialDial helper functions (via rendering)", () => {
     expect(stroke).toBe("rgba(51, 51, 51, 0.5)");
   });
 });
+
+
 
 
 

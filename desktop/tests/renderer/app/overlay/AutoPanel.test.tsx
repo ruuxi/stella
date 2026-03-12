@@ -1,6 +1,6 @@
-import { act, render, screen } from "@testing-library/react";
+﻿import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AutoPanel } from "../../../../src/app/overlay/AutoPanel";
+import { AutoPanel } from "../../../../src/shell/overlay/AutoPanel";
 
 vi.mock("../../../../src/app/chat/Markdown", () => ({
   Markdown: ({ text }: { text: string }) => <div>{text}</div>,
@@ -69,3 +69,5 @@ describe("AutoPanel", () => {
     expect(screen.getByText("Sounds good.")).toBeInTheDocument();
   });
 });
+
+

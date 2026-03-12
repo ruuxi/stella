@@ -1,9 +1,15 @@
 import { resolvePromptText } from "./resolve"
 import type { DiscoveryCategory } from "@/shared/contracts/discovery"
+import type { PromptId } from "./types"
 
 export type { WelcomeSuggestion } from "./types"
 
-const CATEGORY_ANALYSIS_PROMPT_IDS: Record<DiscoveryCategory, `synthesis.category_analysis.${string}.system`> = {
+type CategoryAnalysisPromptId = Extract<
+  PromptId,
+  `synthesis.category_analysis.${string}.system`
+>
+
+const CATEGORY_ANALYSIS_PROMPT_IDS: Record<DiscoveryCategory, CategoryAnalysisPromptId> = {
   browsing_bookmarks: "synthesis.category_analysis.browsing_bookmarks.system",
   dev_environment: "synthesis.category_analysis.dev_environment.system",
   apps_system: "synthesis.category_analysis.apps_system.system",

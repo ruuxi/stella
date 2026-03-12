@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ConnectDialog } from "../../../../src/app/integrations/ConnectDialog";
-import { INTEGRATIONS } from "../../../../src/app/integrations/integration-configs";
+import { ConnectDialog } from "../../../../src/global/integrations/ConnectDialog";
+import { INTEGRATIONS } from "../../../../src/global/integrations/integration-configs";
 
 vi.mock("@/ui/dialog", () => ({
   Dialog: ({ open, onOpenChange, children }: { open: boolean; onOpenChange: (open: boolean) => void; children: React.ReactNode }) =>
@@ -20,7 +20,7 @@ vi.mock("@/ui/dialog", () => ({
   DialogCloseButton: () => <button type="button">X</button>,
 }));
 
-vi.mock("../../../../src/app/integrations/IntegrationCard", () => ({
+vi.mock("../../../../src/global/integrations/IntegrationCard", () => ({
   IntegrationGridCard: ({
     integration,
     isSelected,
@@ -83,4 +83,5 @@ describe("ConnectDialog", () => {
     expect(screen.queryByTestId("detail-area")).toBeNull();
   });
 });
+
 

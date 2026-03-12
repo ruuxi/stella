@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 // Mock dependencies before importing module under test
-vi.mock("@/app/auth/lib/auth-client", () => ({
+vi.mock("@/global/auth/lib/auth-client", () => ({
   authClient: {
     signOut: vi.fn().mockResolvedValue(undefined),
   },
@@ -21,8 +21,8 @@ vi.mock("@/convex/api", () => ({
   },
 }));
 
-import { secureSignOut, secureSignOutAllDevices } from "../../../../../src/app/auth/services/auth";
-import { authClient } from "@/app/auth/lib/auth-client";
+import { secureSignOut, secureSignOutAllDevices } from "../../../../../src/global/auth/services/auth";
+import { authClient } from "@/global/auth/lib/auth-client";
 import { convexClient } from "@/infra/convex-client";
 
 describe("secureSignOut", () => {
@@ -66,3 +66,5 @@ describe("secureSignOutAllDevices", () => {
     expect(authClient.signOut).toHaveBeenCalled();
   });
 });
+
+

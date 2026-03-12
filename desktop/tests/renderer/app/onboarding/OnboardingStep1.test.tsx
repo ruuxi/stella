@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
-import { OnboardingStep1 } from "../../../../src/app/onboarding/OnboardingStep1";
+import { OnboardingStep1 } from "../../../../src/global/onboarding/OnboardingStep1";
 
 /* ── Mock child components ── */
 
-vi.mock("../../../../src/app/onboarding/OnboardingDiscovery", () => ({
+vi.mock("../../../../src/global/onboarding/OnboardingDiscovery", () => ({
   OnboardingDiscovery: (props: any) => (
     <div data-testid="onboarding-discovery">
       {/* Expose toggle callback for testing */}
@@ -20,7 +20,7 @@ vi.mock("../../../../src/app/onboarding/OnboardingDiscovery", () => ({
   ),
 }));
 
-vi.mock("../../../../src/app/onboarding/OnboardingMockWindows", () => ({
+vi.mock("../../../../src/global/onboarding/OnboardingMockWindows", () => ({
   OnboardingMockWindows: (props: any) => (
     <div data-testid="onboarding-mock-windows" data-active-id={props.activeWindowId} />
   ),
@@ -733,6 +733,7 @@ describe("OnboardingStep1", () => {
     });
   });
 });
+
 
 
 
