@@ -63,6 +63,44 @@ function toFloat16Buffer(values: Float32Array): Uint16Array {
   return new Uint16Array(half.buffer, half.byteOffset, half.length);
 }
 
+export function float16BitsToNumber(bits: number): number {
+  const sign = (bits & 0x8000) ? -1 : 1;
+  const exponent = (bits >> 10) & 0x1f;
+  const fraction = bits & 0x03ff;
+
+  if (exponent === 0) {
+    if (fraction === 0) {
+      return sign * 0;
+    }
+    return sign * 2 ** (-14) * (fraction / 1024);
+  }
+
+  if (exponent === 0x1f) {
+    return fraction === 0 ? sign * Infinity : Number.NaN;
+  }
+
+  return sign * 2 ** (exponent - 15) * (1 + fraction / 1024);
+}
+
+export function readScalarTensorValue(
+  tensor: OrtTensor,
+  tensorType: "float16" | "float32",
+): number {
+  if (tensorType === "float16") {
+    const data = tensor.data as Uint16Array;
+    if (!data || data.length === 0) {
+      return 0;
+    }
+    return float16BitsToNumber(data[0] ?? 0);
+  }
+
+  const data = tensor.data as Float32Array | Float64Array | number[];
+  if (!data || data.length === 0) {
+    return 0;
+  }
+  return Number(data[0] ?? 0);
+}
+
 function isTensorMetadata(
   metadata: OrtValueMetadata | undefined,
 ): metadata is Extract<OrtValueMetadata, { isTensor: true }> {
@@ -116,8 +154,9 @@ const STACK_REQUIRED = 3;
 const COOLDOWN_MS = 1000;
 const WARMUP_FRAMES = 0;
 
-const DEFAULT_THRESHOLD = 0.60;
-const MIN_THRESHOLD = 0.3;
+// Calibrated from the current Stella fp16 export benchmark (iter_030).
+const DEFAULT_THRESHOLD = 0.70;
+const MIN_THRESHOLD = 0.5;
 
 // RMS gate — skip all inference when audio is near-silent
 const RMS_THRESHOLD = 250; // int16 scale; ~0.009 normalized
@@ -158,6 +197,7 @@ export async function createWakeWordDetector(
   let wakewordSession: OrtSession;
   let vadSession: OrtSession;
   let wakewordInputType: "float16" | "float32" = "float32";
+  let wakewordOutputType: "float16" | "float32" = "float32";
   let wakewordInputName = "x";
   let wakewordOutputName = "";
 
@@ -175,10 +215,18 @@ export async function createWakeWordDetector(
     const wakewordMetadata = wakewordSession.inputMetadata.find(
       (meta) => meta.name === wakewordSession.inputNames[0],
     );
+    const wakewordOutputMetadata = wakewordSession.outputMetadata.find(
+      (meta) => meta.name === wakewordSession.outputNames[0],
+    );
     wakewordInputName = wakewordSession.inputNames[0] ?? "x";
     wakewordOutputName = wakewordSession.outputNames[0] ?? "";
     wakewordInputType =
       isTensorMetadata(wakewordMetadata) && wakewordMetadata.type === "float16"
+        ? "float16"
+        : "float32";
+    wakewordOutputType =
+      isTensorMetadata(wakewordOutputMetadata) &&
+      wakewordOutputMetadata.type === "float16"
         ? "float16"
         : "float32";
 
@@ -304,7 +352,7 @@ export async function createWakeWordDetector(
       [wakewordInputName]: classifierInput,
     });
     const output = results[wakewordOutputName || Object.keys(results)[0]] as OrtTensor;
-    return output.data[0] as number;
+    return readScalarTensorValue(output, wakewordOutputType);
   }
 
   function bufferRawData(data: Int16Array) {
