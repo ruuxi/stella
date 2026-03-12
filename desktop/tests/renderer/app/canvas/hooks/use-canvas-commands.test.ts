@@ -1,7 +1,7 @@
-import { renderHook } from "@testing-library/react";
+﻿import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
-import { useCanvasCommands } from "../../../../../src/app/canvas/hooks/use-canvas-commands";
+import { useCanvasCommands } from "../../../../../src/app/workspace/hooks/use-canvas-commands";
 
 const mockUseCanvas = vi.fn();
 const mockSetView = vi.fn();
@@ -195,3 +195,6 @@ describe("useCanvasCommands", () => {
     expect(openPanel).not.toHaveBeenCalled();
   });
 });
+
+
+

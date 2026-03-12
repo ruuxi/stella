@@ -31,7 +31,7 @@ const voiceSessionMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/app/voice/services/realtime-voice", () => ({
+vi.mock("@/features/voice/services/realtime-voice", () => ({
   RealtimeVoiceSession: class {
     state: "idle" | "connecting" | "connected" | "error" | "disconnecting" =
       "idle";
@@ -71,7 +71,7 @@ vi.mock("@/app/voice/services/realtime-voice", () => ({
   },
 }));
 
-import { VoiceSessionManager } from "../../../../../src/app/voice/hooks/use-realtime-voice";
+import { VoiceSessionManager } from "../../../../../src/features/voice/hooks/use-realtime-voice";
 
 describe("VoiceSessionManager", () => {
   beforeEach(() => {
@@ -175,3 +175,5 @@ describe("VoiceSessionManager", () => {
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 });
+
+

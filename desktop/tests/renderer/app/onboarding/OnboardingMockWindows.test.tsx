@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { OnboardingMockWindows } from "../../../../src/app/onboarding/OnboardingMockWindows";
+import { OnboardingMockWindows } from "../../../../src/global/onboarding/OnboardingMockWindows";
 
 describe("OnboardingMockWindows", () => {
   // ----------------------------------------------------------------
@@ -208,3 +208,4 @@ describe("OnboardingMockWindows", () => {
     expect(labels[1].textContent).toBe("Screen Time (7d)");
   });
 });
+

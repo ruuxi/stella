@@ -1,10 +1,10 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { AuthStatus } from "../../../../src/app/auth/AuthStatus";
+import { AuthStatus } from "../../../../src/global/auth/AuthStatus";
 
 const mockUseAuthSessionState = vi.fn();
 const mockUseQuery = vi.fn();
-vi.mock("@/app/auth/hooks/use-auth-session-state", () => ({
+vi.mock("@/global/auth/hooks/use-auth-session-state", () => ({
   useAuthSessionState: () => mockUseAuthSessionState(),
 }));
 
@@ -21,7 +21,7 @@ vi.mock("@/convex/api", () => ({
 }));
 
 const mockSecureSignOut = vi.fn();
-vi.mock("@/app/auth/services/auth", () => ({
+vi.mock("@/global/auth/services/auth", () => ({
   secureSignOut: () => mockSecureSignOut(),
 }));
 
@@ -114,3 +114,5 @@ describe("AuthStatus", () => {
     expect(mockUseQuery).toHaveBeenCalledWith("getCurrentUser", "skip");
   });
 });
+
+

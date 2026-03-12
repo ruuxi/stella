@@ -1,6 +1,6 @@
 import { memo } from "react";
-import type { WelcomeSuggestion } from "@/app/onboarding/services/synthesis";
-import { SuggestionList } from "@/app/shared/SuggestionList";
+import type { WelcomeSuggestion } from "@/global/onboarding/services/synthesis";
+import { SuggestionList } from "@/shared/components/SuggestionList";
 import { DashboardCard } from "./DashboardCard";
 
 type SuggestionsPanelProps = {
@@ -37,3 +37,4 @@ function SuggestionsPanelView({
 }
 
 export const SuggestionsPanel = memo(SuggestionsPanelView);
+

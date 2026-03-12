@@ -1,7 +1,7 @@
 import { render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useQuery } from "convex/react";
-import { ModelPreferencesBridge } from "@/app/settings/ModelPreferencesBridge";
+import { ModelPreferencesBridge } from "@/global/settings/ModelPreferencesBridge";
 
 vi.mock("convex/react", () => ({
   useQuery: vi.fn(() => undefined),
@@ -9,7 +9,7 @@ vi.mock("convex/react", () => ({
 const mockUseAuthSessionState = vi.fn(() => ({
   hasConnectedAccount: true,
 }));
-vi.mock("@/app/auth/hooks/use-auth-session-state", () => ({
+vi.mock("@/global/auth/hooks/use-auth-session-state", () => ({
   useAuthSessionState: () => mockUseAuthSessionState(),
 }));
 
@@ -111,3 +111,4 @@ describe("ModelPreferencesBridge", () => {
     expect(mockSyncLocalModelPreferences).not.toHaveBeenCalled();
   });
 });
+

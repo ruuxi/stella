@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+﻿import { useCallback, useEffect, useRef } from 'react'
 import { getEventText } from '@/app/chat/lib/event-transforms'
 import { getPlatform } from '@/platform/electron/platform'
 import { useChatStore } from '@/context/chat-store'
@@ -225,3 +225,5 @@ export function useStreamingChat({
     resetStreamingState,
   }
 }
+
+

@@ -1,4 +1,4 @@
-import type { CommandSuggestion } from '@/app/chat/hooks/use-command-suggestions'
+﻿import type { CommandSuggestion } from '@/app/chat/hooks/use-command-suggestions'
 import './command-chips.css'
 
 type CommandChipsProps = {
@@ -24,4 +24,6 @@ export function CommandChips({ suggestions, onSelect }: CommandChipsProps) {
     </div>
   )
 }
+
+
 

@@ -1,6 +1,6 @@
 import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { WakeWordCaptureRoot } from "../../../../src/app/voice-runtime/WakeWordCaptureRoot";
+import { WakeWordCaptureRoot } from "../../../../src/systems/voice/WakeWordCaptureRoot";
 
 const mockUseUiState = vi.fn();
 const mockAcquireSharedMicrophone = vi.fn();
@@ -18,13 +18,13 @@ vi.mock("@/context/ui-state", () => ({
   useUiState: () => mockUseUiState(),
 }));
 
-vi.mock("@/app/voice/services/shared-microphone", () => ({
+vi.mock("@/features/voice/services/shared-microphone", () => ({
   acquireSharedMicrophone: () => mockAcquireSharedMicrophone(),
   bufferRecentVoiceHandoffPcm: (...args: unknown[]) =>
     mockBufferRecentVoiceHandoffPcm(...args),
 }));
 
-vi.mock("@/app/voice/services/audio-encoding", () => ({
+vi.mock("@/features/voice/services/audio-encoding", () => ({
   TARGET_WAV_SAMPLE_RATE: 16000,
   resampleLinear: (...args: unknown[]) => mockResampleLinear(...args),
   floatToInt16Pcm: (...args: unknown[]) => mockFloatToInt16Pcm(...args),
@@ -160,3 +160,5 @@ describe("WakeWordCaptureRoot", () => {
     expect(mockAcquireSharedMicrophone).not.toHaveBeenCalled();
   });
 });
+
+

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { MiniShell } from "../../../../../src/app/shell/mini/MiniShell";
+import { MiniShell } from "../../../../../src/shell/mini/MiniShell";
 
 const mockSetWindow = vi.fn();
 
@@ -20,7 +20,7 @@ const contextCaptureDefaults = {
 
 let contextCaptureOverrides: Partial<typeof contextCaptureDefaults> = {};
 
-vi.mock("../../../../../src/app/shell/mini/use-context-capture", () => ({
+vi.mock("../../../../../src/shell/mini/use-context-capture", () => ({
   useContextCapture: () => ({ ...contextCaptureDefaults, ...contextCaptureOverrides }),
 }));
 
@@ -37,23 +37,23 @@ const miniChatDefaults = {
 
 let miniChatOverrides: Partial<typeof miniChatDefaults> = {};
 
-vi.mock("../../../../../src/app/shell/mini/use-mini-chat", () => ({
+vi.mock("../../../../../src/shell/mini/use-mini-chat", () => ({
   useMiniChat: () => ({ ...miniChatDefaults, ...miniChatOverrides }),
 }));
 
-vi.mock("../../../../../src/app/shell/mini/MiniInput", () => ({
+vi.mock("../../../../../src/shell/mini/MiniInput", () => ({
   MiniInput: () => <div data-testid="mini-input" />,
 }));
 
-vi.mock("../../../../../src/app/shell/mini/MiniOutput", () => ({
+vi.mock("../../../../../src/shell/mini/MiniOutput", () => ({
   MiniOutput: () => <div data-testid="mini-output" />,
 }));
 
-vi.mock("@/app/shell/ascii-creature/StellaAnimation", () => ({
+vi.mock("@/shell/ascii-creature/StellaAnimation", () => ({
   StellaAnimation: () => <div data-testid="stella-animation" />,
 }));
 
-vi.mock("@/app/overlay/VoiceOverlay", () => ({
+vi.mock("@/shell/overlay/VoiceOverlay", () => ({
   VoiceOverlay: () => null,
 }));
 
@@ -156,5 +156,7 @@ describe("MiniShell", () => {
     expect(onPreviewVisibilityChange).toHaveBeenCalledWith(false);
   });
 });
+
+
 
 

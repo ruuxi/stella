@@ -1,9 +1,9 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { AuthPanel } from "../../../../src/app/auth/AuthPanel";
+import { AuthPanel } from "../../../../src/global/auth/AuthPanel";
 
 const mockFetch = vi.fn();
-vi.mock("@/app/auth/lib/auth-client", () => ({
+vi.mock("@/global/auth/lib/auth-client", () => ({
   authClient: {
     $fetch: (...args: unknown[]) => mockFetch(...args),
   },
@@ -189,4 +189,6 @@ describe("AuthPanel", () => {
     });
   });
 });
+
+
 

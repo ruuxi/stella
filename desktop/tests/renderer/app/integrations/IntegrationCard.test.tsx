@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Integration } from "../../../../src/app/integrations/integration-configs";
-import { IntegrationDetailArea, IntegrationGridCard } from "../../../../src/app/integrations/IntegrationCard";
+import type { Integration } from "../../../../src/global/integrations/integration-configs";
+import { IntegrationDetailArea, IntegrationGridCard } from "../../../../src/global/integrations/IntegrationCard";
 
 const mockUseQuery = vi.fn();
 const mockUseMutation = vi.fn();
@@ -189,4 +189,5 @@ describe("IntegrationCard", () => {
     });
   });
 });
+
 

@@ -1,10 +1,10 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { AuthDeepLinkHandler } from "../../../../src/app/auth/AuthDeepLinkHandler";
+import { AuthDeepLinkHandler } from "../../../../src/global/auth/AuthDeepLinkHandler";
 
 const mockClientFetch = vi.fn();
 const mockGetSession = vi.fn();
-vi.mock("@/app/auth/lib/auth-client", () => ({
+vi.mock("@/global/auth/lib/auth-client", () => ({
   authClient: {
     $fetch: (...args: unknown[]) => mockClientFetch(...args),
     getSession: () => mockGetSession(),
@@ -130,3 +130,5 @@ describe("AuthDeepLinkHandler", () => {
     });
   });
 });
+
+

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
-import { RegionCapture } from "../../../../src/app/overlay/RegionCapture";
+import { RegionCapture } from "../../../../src/shell/overlay/RegionCapture";
 
 describe("RegionCapture", () => {
   afterEach(() => {
@@ -102,3 +102,4 @@ describe("RegionCapture", () => {
     expect(cancelRegion).toHaveBeenCalled();
   });
 });
+

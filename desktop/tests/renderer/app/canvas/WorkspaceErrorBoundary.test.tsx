@@ -1,6 +1,6 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+﻿import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { WorkspaceErrorBoundary } from "../../../../src/app/canvas/WorkspaceErrorBoundary";
+import { WorkspaceErrorBoundary } from "../../../../src/app/workspace/WorkspaceErrorBoundary";
 
 // Suppress console.error for expected error boundary logs
 beforeEach(() => {
@@ -69,3 +69,5 @@ describe("WorkspaceErrorBoundary", () => {
     // it will show the error again. But the callback was called.
   });
 });
+
+

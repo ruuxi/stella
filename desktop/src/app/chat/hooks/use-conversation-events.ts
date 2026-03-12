@@ -1,4 +1,4 @@
-import { usePaginatedQuery } from "convex/react";
+﻿import { usePaginatedQuery } from "convex/react";
 import {
   startTransition,
   useCallback,
@@ -372,3 +372,5 @@ export const useStepsFromEvents = (events: EventRecord[]): StepItem[] => {
 export const useMessageTurns = (events: EventRecord[]): MessageTurn[] => {
   return useMemo(() => groupEventsIntoTurns(events), [events]);
 };
+
+

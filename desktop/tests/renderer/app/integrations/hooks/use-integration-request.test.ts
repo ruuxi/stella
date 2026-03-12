@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useIntegrationRequest } from "../../../../../src/app/integrations/hooks/use-integration-request";
+import { useIntegrationRequest } from "../../../../../src/global/integrations/hooks/use-integration-request";
 
 const mockUseAction = vi.fn();
 
@@ -126,3 +126,4 @@ describe("useIntegrationRequest", () => {
     expect(result.current.error).toBeNull();
   });
 });
+

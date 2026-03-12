@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { Attachment } from "@/app/chat/lib/event-transforms";
@@ -177,4 +177,7 @@ describe("MessageGroup", () => {
     expect(markdown.textContent).toBe("Partial response...");
   });
 });
+
+
+
 

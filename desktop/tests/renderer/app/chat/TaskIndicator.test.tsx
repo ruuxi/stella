@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { TaskIndicator } from "../../../../src/app/chat/TaskIndicator";
 
@@ -136,3 +136,5 @@ describe("TaskIndicator", () => {
     expect(stellas.length).toBe(2);
   });
 });
+
+

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+﻿import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Helpers to dynamically import the module with fresh module-level state.
@@ -2248,3 +2248,5 @@ describe("twitch-emotes", () => {
     });
   });
 });
+
+

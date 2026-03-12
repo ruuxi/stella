@@ -1,21 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { Sidebar } from "../../../../src/app/sidebar/Sidebar";
+import { Sidebar } from "../../../../src/shell/sidebar/Sidebar";
 
 const mockUseCurrentUser = vi.fn(() => ({
   user: null,
   hasConnectedAccount: false,
 }));
 
-vi.mock("@/app/auth/hooks/use-current-user", () => ({
+vi.mock("@/global/auth/hooks/use-current-user", () => ({
   useCurrentUser: () => mockUseCurrentUser(),
 }));
 
-vi.mock("@/app/auth/services/auth", () => ({
+vi.mock("@/global/auth/services/auth", () => ({
   secureSignOut: vi.fn(),
 }));
 
-vi.mock("../../../../src/app/settings/ThemePicker", () => ({
+vi.mock("../../../../src/global/settings/ThemePicker", () => ({
   ThemePicker: () => <div data-testid="theme-picker" />,
 }));
 
@@ -61,4 +61,6 @@ describe("Sidebar", () => {
     expect(screen.getByText("Settings")).toBeTruthy();
   });
 });
+
+
 

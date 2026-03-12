@@ -1,14 +1,14 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { AuthDialog } from "../../../../src/app/auth/AuthDialog";
+import { AuthDialog } from "../../../../src/global/auth/AuthDialog";
 
 const mockUseAuthSessionState = vi.fn();
-vi.mock("@/app/auth/hooks/use-auth-session-state", () => ({
+vi.mock("@/global/auth/hooks/use-auth-session-state", () => ({
   useAuthSessionState: () => mockUseAuthSessionState(),
 }));
 
 const mockFetch = vi.fn();
-vi.mock("@/app/auth/lib/auth-client", () => ({
+vi.mock("@/global/auth/lib/auth-client", () => ({
   authClient: {
     $fetch: (...args: unknown[]) => mockFetch(...args),
   },
@@ -67,7 +67,7 @@ vi.mock("@/ui/dialog", () => ({
   DialogCloseButton: () => <button type="button">X</button>,
 }));
 
-vi.mock("../../../../src/app/auth/AuthDialog.css", () => ({}));
+vi.mock("../../../../src/global/auth/AuthDialog.css", () => ({}));
 
 describe("AuthDialog", () => {
   const onOpenChange = vi.fn();
@@ -223,4 +223,6 @@ describe("AuthDialog", () => {
     });
   });
 });
+
+
 

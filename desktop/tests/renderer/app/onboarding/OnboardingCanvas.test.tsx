@@ -4,11 +4,11 @@ import { render, screen, act, waitFor } from "@testing-library/react";
 // Mock the lazy-loaded demo components. React.lazy needs the import to return
 // a module with a default export. The vi.mock factory replaces the entire
 // import() result, so the lazy() wrapper will resolve with these components.
-vi.mock("../../../../src/app/onboarding/panels/DJStudioDemo", () => ({
+vi.mock("../../../../src/global/onboarding/panels/DJStudioDemo", () => ({
   DJStudio: () => <div data-testid="dj-studio-demo">DJ Studio Demo</div>,
 }));
 
-vi.mock("../../../../src/app/onboarding/panels/WeatherStationDemo", () => ({
+vi.mock("../../../../src/global/onboarding/panels/WeatherStationDemo", () => ({
   WeatherStation: () => (
     <div data-testid="weather-station-demo">Weather Station Demo</div>
   ),
@@ -19,8 +19,8 @@ vi.mock("@/ui/spinner", () => ({
   Spinner: () => <div data-testid="spinner">Loading...</div>,
 }));
 
-import { OnboardingCanvas } from "../../../../src/app/onboarding/OnboardingCanvas";
-import type { OnboardingDemo } from "../../../../src/app/onboarding/OnboardingCanvas";
+import { OnboardingCanvas } from "../../../../src/global/onboarding/OnboardingCanvas";
+import type { OnboardingDemo } from "../../../../src/global/onboarding/OnboardingCanvas";
 
 describe("OnboardingCanvas", () => {
   let rafCallbacks: FrameRequestCallback[];
@@ -212,4 +212,5 @@ describe("OnboardingCanvas", () => {
     expect(canvas).not.toBeNull();
   });
 });
+
 

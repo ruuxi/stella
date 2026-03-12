@@ -1,4 +1,4 @@
-import { type EventRecord } from "@/app/chat/lib/event-transforms";
+﻿import { type EventRecord } from "@/app/chat/lib/event-transforms";
 import {
   eventsToHistoryMessages,
   formatMessageTimestamp,
@@ -210,3 +210,5 @@ export const setLocalSyncCheckpoint = async (conversationId: string, localMessag
 
 export const subscribeToLocalChatUpdates = (listener: () => void): (() => void) =>
   getLocalChatApi().onUpdated(listener);
+
+

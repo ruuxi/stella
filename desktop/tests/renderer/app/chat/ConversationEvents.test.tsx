@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+﻿import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ConversationEvents } from "../../../../src/app/chat/ConversationEvents";
 
@@ -39,3 +39,5 @@ describe("ConversationEvents", () => {
     expect(screen.getByText("Start a conversation")).toBeInTheDocument();
   });
 });
+
+

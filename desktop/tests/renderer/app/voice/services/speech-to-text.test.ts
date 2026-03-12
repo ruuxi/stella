@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { transcribeAudio } from "../../../../../src/app/voice/services/speech-to-text";
+import { transcribeAudio } from "../../../../../src/features/voice/services/speech-to-text";
 import { getOrCreateDeviceId } from "@/platform/electron/device";
 
 vi.mock("@/platform/electron/device", () => ({
@@ -218,3 +218,4 @@ describe("transcribeAudio", () => {
     );
   });
 });
+

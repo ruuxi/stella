@@ -1,6 +1,6 @@
-import { render } from "@testing-library/react";
+﻿import { render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { VoiceRuntimeRoot } from "../../../../src/app/voice-runtime/VoiceRuntimeRoot";
+import { VoiceRuntimeRoot } from "../../../../src/systems/voice/VoiceRuntimeRoot";
 
 const mockUseUiState = vi.fn();
 const mockGetOrCreateDeviceId = vi.fn();
@@ -20,7 +20,7 @@ vi.mock("@/app/chat/services/local-chat-store", () => ({
   appendLocalEvent: vi.fn(),
 }));
 
-vi.mock("@/app/voice/hooks/use-realtime-voice", () => ({
+vi.mock("@/features/voice/hooks/use-realtime-voice", () => ({
   VoiceSessionManager: class {
     start = mockManagerStart;
     stop = mockManagerStop;
@@ -77,3 +77,6 @@ describe("VoiceRuntimeRoot", () => {
     expect(mockManagerUpdateSession).toHaveBeenCalledWith("conv-2", true);
   });
 });
+
+
+

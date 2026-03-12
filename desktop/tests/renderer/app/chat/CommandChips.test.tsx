@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { CommandChips } from "../../../../src/app/chat/CommandChips";
 
@@ -76,3 +76,5 @@ describe("CommandChips", () => {
     expect(screen.getByText("Summarize").getAttribute("title")).toBe("Summarize notes");
   });
 });
+
+

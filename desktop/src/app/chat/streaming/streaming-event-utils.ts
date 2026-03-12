@@ -1,4 +1,4 @@
-import type { EventRecord } from "@/app/chat/lib/event-transforms";
+﻿import type { EventRecord } from "@/app/chat/lib/event-transforms";
 
 export type AppendedEventResponse = {
   _id?: string;
@@ -55,4 +55,6 @@ export const findQueuedFollowUp = <TAttachment>(
 
   return null;
 };
+
+
 

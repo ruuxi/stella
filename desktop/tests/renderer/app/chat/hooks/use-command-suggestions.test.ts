@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import {
   type CommandSuggestion,
   useCommandSuggestions,
@@ -65,3 +65,5 @@ describe("useCommandSuggestions", () => {
     expect(useCommandSuggestions(invalidPayload, false)).toEqual([]);
   });
 });
+
+

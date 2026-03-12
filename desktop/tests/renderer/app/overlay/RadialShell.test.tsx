@@ -3,11 +3,11 @@ import { render, screen } from "@testing-library/react";
 
 // --- Mocks ---
 
-vi.mock("@/app/overlay/RadialDial", () => ({
+vi.mock("@/shell/overlay/RadialDial", () => ({
   RadialDial: () => <div data-testid="radial-dial" />,
 }));
 
-import { RadialShell } from "@/app/overlay/RadialShell";
+import { RadialShell } from "@/shell/overlay/RadialShell";
 
 // --- Tests ---
 
@@ -22,5 +22,6 @@ describe("RadialShell", () => {
     expect(screen.getByTestId("radial-dial")).toBeInTheDocument();
   });
 });
+
 
 

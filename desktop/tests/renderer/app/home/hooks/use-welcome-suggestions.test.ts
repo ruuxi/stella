@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import type { WelcomeSuggestion } from "@/app/onboarding/services/synthesis";
+﻿import { describe, expect, it } from "vitest";
+import type { WelcomeSuggestion } from "@/global/onboarding/services/synthesis";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import { useWelcomeSuggestions } from "../../../../../src/app/home/hooks/use-welcome-suggestions";
 
@@ -57,4 +57,7 @@ describe("useWelcomeSuggestions", () => {
     expect(useWelcomeSuggestions(events)).toEqual([]);
   });
 });
+
+
+
 

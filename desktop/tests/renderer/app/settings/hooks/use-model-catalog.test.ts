@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useModelCatalog } from "../../../../../src/app/settings/hooks/use-model-catalog";
+import { useModelCatalog } from "../../../../../src/global/settings/hooks/use-model-catalog";
 
 describe("useModelCatalog", () => {
   beforeEach(() => {
@@ -81,3 +81,4 @@ describe("useModelCatalog", () => {
     expect(result.current.groups.some((g) => g.provider === "google")).toBe(true);
   });
 });
+

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+﻿import { useCallback, useEffect, useMemo, useState } from "react"
 import { useConversationEvents } from "@/app/chat/hooks/use-conversation-events"
 import { extractTasksFromEvents } from "@/app/chat/lib/event-transforms"
 import { useWelcomeSuggestions } from "@/app/home/hooks/use-welcome-suggestions"
-import type { WelcomeSuggestion } from "@/app/onboarding/services/synthesis"
+import type { WelcomeSuggestion } from "@/global/onboarding/services/synthesis"
 import type {
   LocalCronJobRecord,
   LocalHeartbeatConfigRecord,
@@ -161,3 +161,5 @@ export function HomeView({ conversationId }: HomeViewProps) {
     </div>
   )
 }
+
+

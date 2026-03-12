@@ -1,8 +1,8 @@
-import { cn } from "@/shared/lib/utils";
+﻿import { cn } from "@/shared/lib/utils";
 import { computeStatus } from "./status-utils";
 import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import { getAgentLabel } from "./agent-labels";
-import { StellaAnimation } from "@/app/shell/ascii-creature/StellaAnimation";
+import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
 import { TextShimmer } from "./TextShimmer";
 import "./indicators.css";
 
@@ -54,5 +54,7 @@ export function WorkingIndicator({
     </div>
   );
 }
+
+
 
 
