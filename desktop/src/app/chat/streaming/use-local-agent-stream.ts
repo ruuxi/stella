@@ -7,7 +7,6 @@ import type { AgentStreamEvent, SelfModAppliedData } from './streaming-types'
 import type { AttachmentRef } from './chat-types'
 import {
   getAgentHealthReason,
-  isOrchestratorBusyError,
   resolveAgentNotReadyToast,
   trySyncHostToken,
 } from './agent-stream-errors'
@@ -268,16 +267,6 @@ export function useLocalAgentStream({
           if (runIdCounter !== streamRunIdRef.current) return
 
           console.error('Failed to start local agent chat:', (error as Error).message)
-
-          if (isOrchestratorBusyError(error)) {
-            showToast({
-              title: 'Stella is finishing your previous request',
-              description: 'Try sending your next message in a moment.',
-              variant: 'loading',
-            })
-            resetStreamingState(runIdCounter)
-            return
-          }
 
           showToast({
             title: "Stella couldn't start this reply",
