@@ -11,6 +11,7 @@
 .orb-body {
   pointer-events: auto;
   position: relative;
+  z-index: 2;
   width: 56px;
   height: 56px;
   border-radius: 50%;
@@ -22,6 +23,7 @@
   justify-content: center;
   cursor: grab;
   transition: transform 0.15s, box-shadow 0.15s;
+  flex-shrink: 0;
 }
 .orb-body:hover {
   transform: scale(1.06);
@@ -49,51 +51,83 @@
   translate: -50% -50%;
 }
 
-.orb-bubble {
-  pointer-events: none;
-  max-width: 300px;
-  padding: 10px 14px;
-  border-radius: 12px 12px 4px 12px;
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.45;
-  color: var(--foreground);
-  opacity: 0.85;
+/* ── Mini Chat Panel ── */
+.orb-mini-chat {
+  pointer-events: auto;
+  position: fixed;
+  z-index: 9999;
+  width: 396px; /* 340 + 56 orb width */
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
 }
 
-/* Input is absolutely positioned relative to the orb container so it doesn't cause layout shift */
-.orb-input-form {
+/* Scrollable message area */
+.orb-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 4px 10px;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--foreground) 15%, transparent) transparent;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 24px, black 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 24px, black 100%);
+}
+
+/* Individual message bubbles */
+.orb-msg {
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  border-radius: 14px;
+  max-width: 88%;
+  width: fit-content;
+  word-break: break-word;
+}
+
+.orb-msg--user {
+  margin-left: auto;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--text-strong);
+  border-bottom-right-radius: 4px;
+}
+
+.orb-msg--assistant {
+  margin-right: auto;
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  color: var(--text-strong);
+  border-bottom-left-radius: 4px;
+}
+
+.orb-msg--streaming {
+  opacity: 0.8;
+}
+
+/* Input bar — sits behind the orb, same height & roundness */
+.orb-chat-input-form {
   pointer-events: auto;
   position: absolute;
-  bottom: 0;
-  right: 64px; /* orb width (56) + gap (8) */
-  width: 280px;
-  padding: 8px 14px;
-  border-radius: 24px;
+  right: 0;
+  top: 0;
+  height: 56px;
+  width: 396px;
+  box-sizing: border-box;
+  padding: 0 60px 0 20px;
+  display: flex;
+  align-items: center;
+  border-radius: 28px;
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  animation: orb-input-slide 0.2s ease-out;
+  z-index: 1;
 }
 
-@keyframes orb-input-slide {
-  from {
-    width: 56px;
-    opacity: 0;
-    right: 0;
-  }
-  to {
-    width: 280px;
-    opacity: 1;
-    right: 64px;
-  }
-}
-
-.orb-input {
+.orb-chat-input {
   flex: 1;
   width: 100%;
   background: none;
@@ -103,7 +137,7 @@
   font-family: inherit;
   color: var(--foreground);
 }
-.orb-input::placeholder {
+.orb-chat-input::placeholder {
   color: var(--foreground);
   opacity: 0.35;
 }

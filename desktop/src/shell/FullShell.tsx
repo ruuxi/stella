@@ -1,6 +1,5 @@
 ﻿import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { OnboardingDemo } from '@/global/onboarding/OnboardingCanvas'
-import { useOrbMessage } from '@/shell/hooks/use-orb-message'
 import { useUiState } from '@/context/ui-state'
 import { useWorkspace } from '@/context/workspace-state'
 import { secureSignOut } from '@/global/auth/services/auth'
@@ -163,7 +162,6 @@ export const FullShell = () => {
   }, [])
 
   const isOrbVisible = state.view !== 'chat' && onboarding.onboardingDone
-  const orbMessage = useOrbMessage(chat.conversation.events, isOrbVisible)
   const appReady = onboarding.onboardingDone
 
   const showOnboardingDemos = activeDemo || demoClosing
@@ -224,7 +222,8 @@ export const FullShell = () => {
               <FloatingOrb
                 ref={orbRef}
                 visible={isOrbVisible}
-                bubbleText={orbMessage.text}
+                events={chat.conversation.events}
+                streamingText={chat.conversation.streamingText}
                 isStreaming={chat.conversation.isStreaming}
                 onSend={chat.conversation.sendContextlessMessage}
               />
