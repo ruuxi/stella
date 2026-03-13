@@ -253,4 +253,54 @@ describe("agent runtime platform shell prompt", () => {
     expect(capturedSystemPrompts[0]).toContain("Default skills: calendar");
     expect(capturedSystemPrompts[0]).toContain("Enabled installed skill IDs: calendar, music");
   });
+
+  it("appends the documentation section for the general agent only", async () => {
+    const store = createStoreStub();
+
+    await runSubagentTask({
+      conversationId: "conv-1",
+      userMessageId: "user-1",
+      agentType: "general",
+      userPrompt: "Continue the work",
+      agentContext: buildAgentContext(),
+      toolExecutor: vi.fn().mockResolvedValue({ result: "unused" }),
+      deviceId: "device-1",
+      stellaHome: "/tmp/stella/.stella",
+      frontendRoot: "/tmp/stella/desktop",
+      resolvedLlm,
+      store: store as unknown as RuntimeStore,
+      callbacks: { onError: vi.fn(), onEnd: vi.fn() },
+    });
+
+    expect(capturedSystemPrompts[0]).toContain("Documentation:");
+    expect(capturedSystemPrompts[0]).toContain("read `src/STELLA.md` first");
+    expect(capturedSystemPrompts[0]).not.toContain("nearer `STELLA.md`");
+  });
+
+  it("does not append the documentation section for the orchestrator", async () => {
+    const store = createStoreStub();
+
+    await runOrchestratorTurn({
+      conversationId: "conv-1",
+      userMessageId: "user-1",
+      agentType: "orchestrator",
+      userPrompt: "Continue the work",
+      agentContext: buildAgentContext(),
+      toolExecutor: vi.fn().mockResolvedValue({ result: "unused" }),
+      deviceId: "device-1",
+      stellaHome: "/tmp/stella/.stella",
+      frontendRoot: "/tmp/stella/desktop",
+      resolvedLlm,
+      store: store as unknown as RuntimeStore,
+      callbacks: {
+        onStream: vi.fn(),
+        onToolStart: vi.fn(),
+        onToolEnd: vi.fn(),
+        onError: vi.fn(),
+        onEnd: vi.fn(),
+      },
+    });
+
+    expect(capturedSystemPrompts[0]).not.toContain("Documentation:");
+  });
 });
