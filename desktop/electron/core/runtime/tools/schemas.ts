@@ -225,23 +225,13 @@ const DisplayJsonSchema = {
   properties: {
     i_have_read_guidelines: {
       type: "boolean",
-      description: "Confirm you have already called DisplayGuidelines in this conversation. Must be true.",
+      description: "Confirm you have already called DisplayGuidelines in this conversation.",
     },
     html: {
       type: "string",
       description:
-        "HTML or SVG content to render on the canvas panel. The container auto-styles semantic elements and provides pre-built SVG classes.\n\n" +
-        "Call DisplayGuidelines first to load detailed design rules for your content type. " +
-        "Output HTML content fragments — no DOCTYPE/<html>/<head>/<body>. " +
-        "Scripts are allowed and execute after rendering. " +
-        "SVG can be included inline. " +
-        "Use <style> sparingly (short), then content HTML, then <script> last.\n\n" +
-        "Quick reference (full rules in DisplayGuidelines):\n" +
-        "- Colors: ONLY var(--foreground) and var(--background) with opacity tiers.\n" +
-        "- Surfaces: color-mix(in oklch, var(--foreground) 3%, transparent).\n" +
-        "- Headlines: Georgia, serif. Section labels: h3 (10px uppercase).\n" +
-        "- Layout via inline styles: flexbox or grid. Prefer inline styles over <style> blocks.\n" +
-        "- SVG uses pre-built classes: .t, .ts, .th, .box, .node, .arr, .c-{color}.",
+        "HTML or SVG content to render. For SVG: raw SVG starting with <svg>. " +
+        "For HTML: raw content fragment, no DOCTYPE/<html>/<head>/<body>.",
     },
   },
   required: ["i_have_read_guidelines", "html"],
@@ -256,12 +246,7 @@ const DisplayGuidelinesJsonSchema = {
         type: "string",
         enum: ["interactive", "chart", "mockup", "art", "diagram"],
       },
-      description: "Which design modules to load. Pick all that fit the content you plan to display: " +
-        "'interactive' for explainers with controls/sliders, " +
-        "'chart' for Chart.js data visualizations, " +
-        "'mockup' for UI mockups and cards, " +
-        "'art' for illustrations and generative art, " +
-        "'diagram' for SVG flowcharts/structural/illustrative diagrams.",
+      description: "Which module(s) to load. Pick all that fit.",
     },
   },
   required: ["modules"],
@@ -460,22 +445,13 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "FOLLOW-UPS: In multi-turn conversations, expand referential language — " +
     "'competitors' should include the specific company being discussed, 'how do I set it up' should include what 'it' refers to.",
   Display:
-    "Render rich visual content — HTML, SVG, interactive widgets, charts — on the canvas panel of the home dashboard.\n\n" +
-    "Usage:\n" +
-    "- IMPORTANT: Call DisplayGuidelines once before your first Display call to load design rules. Set i_have_read_guidelines: true.\n" +
-    "- Use for ANY content that benefits from visual presentation: data, charts, diagrams, explanations, comparisons, interactive explainers, UI mockups.\n" +
-    "- Scripts are allowed. Use Chart.js, mermaid.js, or custom JS for interactivity.\n" +
-    "- SVG diagrams can be included inline in the HTML.\n" +
-    "- Content streams with DOM-diffing — structure code so useful content appears early: <style> (short) → content HTML → <script> last.\n" +
-    "- Colors: ONLY var(--foreground)/var(--background) with opacity. Surfaces: color-mix(in oklch, var(--foreground) N%, transparent).\n" +
-    "- The container provides pre-built SVG classes (.t, .ts, .th, .box, .node, .arr, .c-{color}) — see DisplayGuidelines for details.",
+    "Show visual content — SVG graphics, diagrams, charts, or interactive HTML widgets — on the canvas panel. " +
+    "Use for flowcharts, dashboards, forms, calculators, data tables, games, illustrations, or any visual content. " +
+    "The content is rendered with full CSS/JS support including Canvas and CDN libraries. " +
+    "IMPORTANT: Call DisplayGuidelines once before your first Display call.",
   DisplayGuidelines:
-    "Load design guidelines for the Display tool. Call once before your first Display call.\n\n" +
-    "Usage:\n" +
-    "- Returns detailed design system rules, CSS patterns, typography, layout examples, and anti-patterns.\n" +
-    "- Pick the modules that match your content: interactive, chart, mockup, art, diagram.\n" +
-    "- Do NOT mention this call to the user — it is an internal setup step.\n" +
-    "- After calling, set i_have_read_guidelines: true on your Display calls.",
+    "Returns design guidelines for Display (CSS patterns, colors, typography, layout rules, examples). " +
+    "Call once before your first Display call. Do NOT mention this call to the user — it is an internal setup step.",
   HeartbeatGet:
     "Get the current heartbeat configuration for this conversation.\n\n" +
     "Returns the full local heartbeat config or null if none exists.",

@@ -194,6 +194,9 @@ const getToolResultPreview = (toolName: string, result: unknown): string => {
   return textFromUnknown(result).slice(0, MAX_RESULT_PREVIEW);
 };
 
+const stripScriptTags = (html: string): string =>
+  html.replace(/<script\b[\s\S]*?<\/script>/gi, "");
+
 const now = () => Date.now();
 
 const toAgentMessages = (
@@ -721,7 +724,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
           block.name === "Display" &&
           typeof block.arguments?.html === "string"
         ) {
-          const html = block.arguments.html as string;
+          const html = stripScriptTags(block.arguments.html as string);
           if (html.length > 20 && html !== displayStreamLastHtml) {
             displayStreamLastHtml = html;
             // Debounce at 150ms for smooth rendering
@@ -939,6 +942,10 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
     });
     throw error;
   } finally {
+    if (displayStreamTimer) {
+      clearTimeout(displayStreamTimer);
+      displayStreamTimer = null;
+    }
     unsubscribe();
     opts.abortSignal?.removeEventListener("abort", abortHandler);
   }
