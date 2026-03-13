@@ -10,6 +10,12 @@ import { useReturnDetection, formatDuration } from '@/app/chat/hooks/use-return-
 import { useStreamingChat } from '@/app/chat/hooks/use-streaming-chat'
 import { useTraceEventMonitor, useTraceIpcListener } from '@/debug/hooks/use-trace-listener'
 import { hasComposerContext } from '@/app/chat/streaming/message-context'
+import type { MessageMetadata } from '@/app/chat/lib/event-transforms'
+import {
+  STELLA_SEND_MESSAGE_EVENT,
+  type StellaSendMessageDetail,
+  toStellaMessageMetadata,
+} from '@/shared/lib/stella-send-message'
 import { useChatContextSync } from './use-chat-context-sync'
 import { useChatScrollManagement } from './use-chat-scroll-management'
 
@@ -60,12 +66,13 @@ export function useFullShellChat({
     sendMessageRef.current = sendMessage
   }, [sendMessage])
 
-  const sendContextlessMessage = useCallback((text: string) => {
+  const sendContextlessMessage = useCallback((text: string, metadata?: MessageMetadata) => {
     void sendMessageRef.current({
       text,
       selectedText: null,
       chatContext: null,
       onClear: NO_OP,
+      metadata,
     })
   }, [])
 
@@ -154,15 +161,15 @@ export function useFullShellChat({
 
   useEffect(() => {
     const handleSuggestionMessage = (event: Event) => {
-      const detail = (event as CustomEvent<{ text: string }>).detail
+      const detail = (event as CustomEvent<StellaSendMessageDetail>).detail
       if (detail?.text) {
-        sendContextlessMessage(detail.text)
+        sendContextlessMessage(detail.text, toStellaMessageMetadata(detail))
       }
     }
 
-    window.addEventListener('stella:send-message', handleSuggestionMessage)
+    window.addEventListener(STELLA_SEND_MESSAGE_EVENT, handleSuggestionMessage)
     return () => {
-      window.removeEventListener('stella:send-message', handleSuggestionMessage)
+      window.removeEventListener(STELLA_SEND_MESSAGE_EVENT, handleSuggestionMessage)
     }
   }, [sendContextlessMessage])
 

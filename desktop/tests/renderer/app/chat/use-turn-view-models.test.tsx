@@ -101,6 +101,40 @@ describe("useTurnViewModels", () => {
     expect(result.current.processedStreamingText).toBe("draft");
   });
 
+  it("filters hidden trigger prompts from the rendered turns while keeping the reply", () => {
+    const events: EventRecord[] = [
+      {
+        _id: "hidden-user",
+        timestamp: 1,
+        type: "user_message",
+        payload: {
+          text: "internal sidebar trigger",
+          metadata: {
+            ui: { visibility: "hidden" },
+            trigger: { kind: "workspace_creation_request", source: "sidebar" },
+          },
+        },
+      },
+      {
+        _id: "assistant-1",
+        timestamp: 2,
+        type: "assistant_message",
+        payload: {
+          text: "You could make a focused notes app or a lightweight dashboard.",
+          userMessageId: "hidden-user",
+        },
+      },
+    ];
+
+    const { result } = renderHook(() =>
+      useTurnViewModels({ events }),
+    );
+
+    expect(result.current.turns).toHaveLength(1);
+    expect(result.current.turns[0].userText).toBe("");
+    expect(result.current.turns[0].assistantText).toContain("focused notes app");
+  });
+
   it("attaches WebSearch HTML to the turn view model for badge rendering", () => {
     const events: EventRecord[] = [
       {

@@ -1,6 +1,6 @@
 ﻿import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { createRef } from "react";
+import { createRef, forwardRef, useImperativeHandle } from "react";
 
 // --- Mocks ---
 
@@ -42,13 +42,15 @@ vi.mock("convex/react", () => ({
 }));
 
 const mockSetView = vi.fn();
+const mockSetWindow = vi.fn();
+const mockOrbOpenChat = vi.fn();
 vi.mock("@/context/ui-state", () => ({
   useUiState: vi.fn(() => ({
     state: { mode: "chat", window: "full", view: "home", conversationId: "conv-123" },
     setMode: vi.fn(),
     setView: mockSetView,
     setConversationId: vi.fn(),
-    setWindow: vi.fn(),
+    setWindow: mockSetWindow,
     updateState: vi.fn(),
   })),
 }));
@@ -138,6 +140,7 @@ vi.mock("@/shell/sidebar/Sidebar", () => ({
     <div data-testid="sidebar">
       <button data-testid="sidebar-home" onClick={props.onHome}>Home</button>
       <button data-testid="sidebar-chat" onClick={props.onChat}>Chat</button>
+      <button data-testid="sidebar-new-app" onClick={props.onNewApp}>New App</button>
       <button data-testid="sidebar-signin" onClick={props.onSignIn}>Sign In</button>
       <button data-testid="sidebar-connect" onClick={props.onConnect}>Connect</button>
       <button data-testid="sidebar-settings" onClick={props.onSettings}>Settings</button>
@@ -169,7 +172,13 @@ vi.mock("@/shell/HeaderTabBar", () => ({
 }));
 
 vi.mock("@/shell/FloatingOrb", () => ({
-  FloatingOrb: () => <div data-testid="floating-orb" />,
+  FloatingOrb: forwardRef((_props: any, ref) => {
+    useImperativeHandle(ref, () => ({
+      openChat: mockOrbOpenChat,
+      openWithText: vi.fn(),
+    }));
+    return <div data-testid="floating-orb" />;
+  }),
 }));
 
 vi.mock("@/shell/hooks/use-orb-message", () => ({
@@ -267,7 +276,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
       setMode: vi.fn(),
       setView: mockSetView,
       setConversationId: vi.fn(),
-      setWindow: vi.fn(),
+      setWindow: mockSetWindow,
       updateState: vi.fn(),
     } as any);
     vi.mocked(getElectronApi).mockReturnValue(undefined);
@@ -306,7 +315,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
       setMode: vi.fn(),
       setView: mockSetView,
       setConversationId: vi.fn(),
-      setWindow: vi.fn(),
+      setWindow: mockSetWindow,
       updateState: vi.fn(),
     } as any);
 
@@ -358,17 +367,59 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(mockSetView).toHaveBeenCalledWith("chat");
   });
 
+  it("opens the floating orb chat and sends a hidden workspace-creation prompt via sidebar", () => {
+    render(<FullShell />);
+
+    fireEvent.click(screen.getByTestId("sidebar-new-app"));
+
+    expect(mockOrbOpenChat).toHaveBeenCalledTimes(1);
+    expect(mockSetWindow).not.toHaveBeenCalled();
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("create a new workspace"),
+        selectedText: null,
+        chatContext: null,
+        metadata: expect.objectContaining({
+          ui: expect.objectContaining({ visibility: "hidden" }),
+          trigger: expect.objectContaining({
+            kind: "workspace_creation_request",
+            source: "sidebar",
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("leaves chat view and opens the orb chat when New App is clicked from chat", () => {
+    vi.mocked(useUiState).mockReturnValue({
+      state: { mode: "chat", window: "full", view: "chat", conversationId: "conv-123" },
+      setMode: vi.fn(),
+      setView: mockSetView,
+      setConversationId: vi.fn(),
+      setWindow: mockSetWindow,
+      updateState: vi.fn(),
+    } as any);
+
+    render(<FullShell />);
+    fireEvent.click(screen.getByTestId("sidebar-new-app"));
+
+    expect(mockOrbOpenChat).toHaveBeenCalledTimes(1);
+    expect(mockSetView).toHaveBeenCalledWith("home");
+  });
+
   it("routes stella:send-message events to sendMessage", () => {
     render(<FullShell />);
     window.dispatchEvent(
       new CustomEvent("stella:send-message", { detail: { text: "Ping from home" } }),
     );
-    expect(mockSendMessage).toHaveBeenCalledWith({
-      text: "Ping from home",
-      selectedText: null,
-      chatContext: null,
-      onClear: expect.any(Function),
-    });
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Ping from home",
+        selectedText: null,
+        chatContext: null,
+        onClear: expect.any(Function),
+      }),
+    );
   });
 
   it("renders the shell with correct base class", () => {

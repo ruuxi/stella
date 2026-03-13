@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { useUiState } from "@/context/ui-state";
+import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
 import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
 import { MiniInput } from "./MiniInput";
@@ -41,7 +42,7 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
     setSelectedText,
   });
 
-  const hasConversation = events.length > 0 || Boolean(streamingText);
+  const hasConversation = filterEventsForUiDisplay(events).length > 0 || Boolean(streamingText);
   const previewScreenshot =
     previewIndex !== null ? chatContext?.regionScreenshots?.[previewIndex] : null;
   const hasPreview = previewIndex !== null;
@@ -206,4 +207,3 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
     </div>
   );
 };
-

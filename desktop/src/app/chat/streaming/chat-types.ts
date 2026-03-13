@@ -1,3 +1,4 @@
+import type { MessageMetadata } from '@/app/chat/lib/event-transforms'
 import type { ChatContext } from '@/shared/types/electron'
 
 export type AttachmentRef = {
@@ -11,4 +12,5 @@ export type SendMessageArgs = {
   selectedText: string | null
   chatContext: ChatContext | null
   onClear: () => void
+  metadata?: MessageMetadata
 }

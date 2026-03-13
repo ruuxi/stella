@@ -7,6 +7,7 @@ import type {
   LocalCronJobRecord,
   LocalHeartbeatConfigRecord,
 } from "@/shared/types/electron"
+import { dispatchStellaSendMessage } from "@/shared/lib/stella-send-message"
 import { GenerativeCanvas } from "./GenerativeCanvas"
 import { SuggestionsPanel } from "./SuggestionsPanel"
 import { ActivityFeed } from "./ActivityFeed"
@@ -128,11 +129,7 @@ export function HomeView({ conversationId }: HomeViewProps) {
   const hasActivity = activityItems.length > 0
 
   const handleSuggestionClick = useCallback((suggestion: WelcomeSuggestion) => {
-    window.dispatchEvent(
-      new CustomEvent("stella:send-message", {
-        detail: { text: suggestion.prompt },
-      }),
-    )
+    dispatchStellaSendMessage({ text: suggestion.prompt })
   }, [])
 
   return (
