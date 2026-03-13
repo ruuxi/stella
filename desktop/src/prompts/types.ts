@@ -23,11 +23,6 @@ export type WelcomeSuggestion = {
 
 export type PromptTemplateValues = {
   "offline_responder.system": undefined
-  "search_html.system": undefined
-  "search_html.user": {
-    query: string
-    resultsText: string
-  }
   "voice_orchestrator.base": undefined
   "synthesis.category_analysis.browsing_bookmarks.system": undefined
   "synthesis.category_analysis.dev_environment.system": undefined

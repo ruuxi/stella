@@ -11,7 +11,6 @@ export {
 export { getPromptTemplateText, resolvePrompt, resolvePromptText } from "./resolve"
 export {
   getPersonalizedDashboardPromptConfig,
-  getSearchHtmlPromptConfig,
   getSkillMetadataPromptConfig,
   getSkillSelectionPromptConfig,
   getSynthesisPromptConfig,
@@ -57,4 +56,3 @@ export {
   getMusicSystemPrompt,
 } from "./music"
 export type { MusicMood, PromptSet } from "./music"
-export type { SearchHtmlPromptConfig } from "./transport"

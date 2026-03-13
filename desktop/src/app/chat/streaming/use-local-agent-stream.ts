@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
 import { showToast } from '@/ui/toast'
-import { getSearchHtmlPromptConfig } from '@/prompts'
 import { useRafStringAccumulator } from '@/shared/hooks/use-raf-state'
 import { useResumeAgentRun } from '../hooks/use-resume-agent-run'
 import type { AgentStreamEvent, SelfModAppliedData } from './streaming-types'
@@ -27,7 +26,6 @@ type LocalAgentEvent = {
   toolName?: string
   args?: Record<string, unknown>
   resultPreview?: string
-  html?: string
   finalText?: string
   taskId?: string
   description?: string
@@ -174,7 +172,6 @@ export function useLocalAgentStream({
             toolCallId: event.toolCallId,
             toolName: event.toolName,
             resultPreview: event.resultPreview,
-            html: event.html,
           })
           break
         case 'task-started':
@@ -302,7 +299,6 @@ export function useLocalAgentStream({
           userMessageId: args.userMessageId,
           userPrompt: args.userPrompt,
           storageMode,
-          searchHtmlPrompts: getSearchHtmlPromptConfig(),
         })
         .then(({ runId: agentRunId }) => {
           if (runIdCounter !== streamRunIdRef.current) return
@@ -431,7 +427,6 @@ export function useLocalAgentStream({
           userMessageId: args.userMessageId,
           userPrompt: args.userPrompt,
           storageMode,
-          searchHtmlPrompts: getSearchHtmlPromptConfig(),
         })
         .then(({ runId: agentRunId }) => {
           if (runIdCounter !== streamRunIdRef.current) {

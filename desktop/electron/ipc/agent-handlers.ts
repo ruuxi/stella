@@ -45,7 +45,6 @@ type AgentEventPayload = {
   toolName?: string;
   args?: Record<string, unknown>;
   resultPreview?: string;
-  html?: string;
   error?: string;
   fatal?: boolean;
   finalText?: string;
@@ -197,10 +196,6 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         userPrompt: string;
         agentType?: string;
         storageMode?: "cloud" | "local";
-        searchHtmlPrompts?: {
-          systemPrompt: string;
-          userPromptTemplate: string;
-        };
       },
     ) => {
       if (!options.assertPrivilegedSender(event, "agent:startChat")) {
