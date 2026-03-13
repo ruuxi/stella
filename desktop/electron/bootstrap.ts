@@ -573,8 +573,6 @@ export const bootstrapMainProcess = () => {
           : null,
     });
 
-    windowManager.createInitialWindows();
-
     // Start stella-ui server for agent UI control
     startStellaUiServer({
       getWindow: () => windowManager?.getFullWindow() ?? null,
@@ -693,6 +691,8 @@ export const bootstrapMainProcess = () => {
       getConvexSiteUrl: () => authService.getConvexSiteUrl(),
       getAuthToken: () => authService.getAuthToken(),
     });
+
+    windowManager.createInitialWindows();
 
     const pendingAuthCallback = authService.consumePendingAuthCallback();
     const fullWindow = windowManager.getFullWindow();
