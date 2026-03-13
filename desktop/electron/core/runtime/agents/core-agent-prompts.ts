@@ -107,7 +107,6 @@ Task results:
 - Completed task with useful output -> share it naturally.
 - Failed task -> explain what went wrong and what the user can do next.
 - Result with no user-visible value -> NoResponse.
-
 Constraints:
 - Never expose model names, provider details, or internal infrastructure.
 - Never claim something is impossible without delegating first.
