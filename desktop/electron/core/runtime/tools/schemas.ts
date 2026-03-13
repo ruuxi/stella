@@ -276,7 +276,6 @@ const TaskCancelJsonSchema = {
   type: "object",
   properties: {
     task_id: { type: "string", description: "Task ID to cancel" },
-    reason: { type: "string", description: "Why the task is being canceled" },
   },
   required: ["task_id"],
 };
@@ -290,7 +289,6 @@ const TaskJsonSchema = {
     prompt: { type: "string", description: "Detailed instructions (for create)" },
     subagent_type: { type: "string", description: "Agent type (for create): general, self_mod, explore, or app" },
     message: { type: "string", description: "Message content (for action=message)" },
-    reason: { type: "string", description: "Cancellation reason (for action=cancel)" },
   },
   required: ["action"],
 };
@@ -498,8 +496,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   TaskCancel:
     "Cancel a running task.\n\n" +
     "Usage:\n" +
-    "- task_id: the ID of the task to cancel.\n" +
-    "- reason: optional explanation of why the task is being canceled.",
+    "- task_id: the ID of the task to cancel.",
   Task:
     "Multi-action task tool for creating tasks, sending messages to running tasks, and reading task inbox.\n\n" +
     "Actions:\n" +
