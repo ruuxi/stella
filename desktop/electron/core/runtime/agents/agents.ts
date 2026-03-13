@@ -1,4 +1,5 @@
 import type { ParsedAgent } from "./manifests.js";
+import { buildBundledCoreAgents } from "./core-agent-prompts.js";
 import { listMarkdownFiles, parseAgentMarkdown } from "./manifests.js";
 
 export const loadAgentsFromHome = async (
@@ -12,5 +13,14 @@ export const loadAgentsFromHome = async (
     if (agent) localAgents.push(agent);
   }
 
-  return localAgents;
+  const localAgentIds = new Set(localAgents.map((agent) => agent.id));
+  const localAgentTypes = new Set(localAgents.flatMap((agent) => agent.agentTypes));
+  const bundledAgents = buildBundledCoreAgents().filter((agent) => {
+    if (localAgentIds.has(agent.id)) {
+      return false;
+    }
+    return !agent.agentTypes.some((agentType) => localAgentTypes.has(agentType));
+  });
+
+  return [...localAgents, ...bundledAgents];
 };

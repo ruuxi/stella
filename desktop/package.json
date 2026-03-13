@@ -160,11 +160,6 @@
         "filter": ["**/*"]
       },
       {
-        "from": ".stella/agents",
-        "to": "agents",
-        "filter": ["**/*"]
-      },
-      {
         "from": ".stella/extensions",
         "to": "extensions",
         "filter": ["**/*"]
