@@ -49,6 +49,7 @@ export const initializeWakeWord = async (
     const requestId = ++syncRequestId;
     const shouldListen = shouldEnableWakeWord();
     if (shouldListen) {
+      publishEnabledState(true);
       if (!feed.isListening()) {
         void feed
           .start()
@@ -118,7 +119,7 @@ export const initializeWakeWord = async (
       feed.pushAudio(pcm);
     },
     syncState,
-    getEnabled: () => feed.isListening(),
+    getEnabled: () => lastEnabled,
     dispose: () => {
       feed.dispose();
       publishEnabledState(false);

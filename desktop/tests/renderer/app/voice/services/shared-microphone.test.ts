@@ -4,6 +4,22 @@ import {
   resetSharedMicrophoneForTests,
 } from "../../../../../src/features/voice/services/shared-microphone";
 
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+};
+
+const createDeferred = <T>(): Deferred<T> => {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+};
+
 class MockMediaStreamTrack {
   stop = vi.fn();
 }
@@ -63,6 +79,27 @@ describe("shared microphone", () => {
     await vi.advanceTimersByTimeAsync(45_000);
 
     expect(rootStream.track.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares a pending root acquisition across simultaneous leases", async () => {
+    const rootStream = new MockMediaStream();
+    const deferred = createDeferred<MediaStream>();
+    getUserMediaMock.mockReturnValue(deferred.promise);
+
+    const leaseAPromise = acquireSharedMicrophone();
+    const leaseBPromise = acquireSharedMicrophone();
+
+    expect(getUserMediaMock).toHaveBeenCalledTimes(1);
+
+    deferred.resolve(rootStream as unknown as MediaStream);
+
+    const [leaseA, leaseB] = await Promise.all([leaseAPromise, leaseBPromise]);
+
+    expect(getUserMediaMock).toHaveBeenCalledTimes(1);
+    expect(leaseA.stream).not.toBe(leaseB.stream);
+
+    leaseA.release();
+    leaseB.release();
   });
 
   it("keeps the warm microphone alive during the release grace window", async () => {
