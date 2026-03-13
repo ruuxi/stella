@@ -35,6 +35,9 @@ describe("stella-home", () => {
     fs.mkdirSync(path.join(desktopRoot, ".stella", "extensions", "skills"), {
       recursive: true,
     });
+    fs.mkdirSync(path.join(desktopRoot, ".stella", "agents"), {
+      recursive: true,
+    });
     fs.writeFileSync(
       path.join(desktopRoot, ".stella", "core-skills", "theme-factory", "SKILL.md"),
       "theme",
@@ -57,6 +60,12 @@ describe("stella-home", () => {
     expect(stellaHome.homePath).toBe(path.join(installRoot, ".stella"));
     expect(stellaHome.workspacePath).toBe(path.join(desktopRoot, "workspace"));
     expect(fs.existsSync(path.join(stellaHome.homePath, "agents"))).toBe(true);
+    expect(
+      fs.existsSync(path.join(stellaHome.homePath, "agents", "general", "AGENT.md")),
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(stellaHome.homePath, "agents", "self_mod", "AGENT.md")),
+    ).toBe(true);
     expect(
       fs.existsSync(path.join(stellaHome.homePath, "core-skills", "theme-factory", "SKILL.md")),
     ).toBe(true);
