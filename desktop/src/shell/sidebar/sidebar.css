@@ -27,7 +27,7 @@
   padding: 0 14px 6px;
   background: none;
   border: none;
-  cursor: default;
+  cursor: pointer;
   font-family: inherit;
   transition: opacity 0.15s ease;
 }

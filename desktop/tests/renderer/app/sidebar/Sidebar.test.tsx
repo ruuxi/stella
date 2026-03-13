@@ -30,6 +30,12 @@ describe("Sidebar", () => {
     expect(screen.getByText("Connect")).toBeTruthy();
   });
 
+  it("renders app nav items: Home and Chat", () => {
+    render(<Sidebar />);
+    expect(screen.getByText("Home")).toBeTruthy();
+    expect(screen.getByText("Chat")).toBeTruthy();
+  });
+
   it("calls onConnect when clicking Connect", () => {
     const onConnect = vi.fn();
     render(<Sidebar onConnect={onConnect} />);
@@ -49,6 +55,13 @@ describe("Sidebar", () => {
     render(<Sidebar onHome={onHome} />);
     fireEvent.click(screen.getByText("Stella"));
     expect(onHome).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onChat when clicking Chat", () => {
+    const onChat = vi.fn();
+    render(<Sidebar onChat={onChat} />);
+    fireEvent.click(screen.getByText("Chat"));
+    expect(onChat).toHaveBeenCalledTimes(1);
   });
 
   it("shows 'Sign in' when unauthenticated", () => {
