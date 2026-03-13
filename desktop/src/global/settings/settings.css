@@ -318,3 +318,117 @@
 .settings-key-input [data-slot="input-input"] {
   height: 30px;
 }
+
+/* ---- Billing ---- */
+
+.settings-billing-current-plan-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  color: var(--text-base);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.settings-row--billing-usage {
+  align-items: flex-start;
+}
+
+.settings-row-control--billing-meter {
+  width: 180px;
+}
+
+.settings-billing-meter-track {
+  width: 100%;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  overflow: hidden;
+}
+
+.settings-billing-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--interactive) 80%, transparent),
+    var(--interactive)
+  );
+}
+
+.settings-billing-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-billing-plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: var(--radius-lg, 8px);
+  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+}
+
+.settings-billing-plan-card[data-active] {
+  border-color: color-mix(in oklch, var(--interactive) 35%, var(--foreground) 12%);
+  background: color-mix(in oklch, var(--interactive) 10%, transparent);
+}
+
+.settings-billing-plan-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.settings-billing-plan-price {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-base);
+}
+
+.settings-billing-plan-limit {
+  font-size: 11px;
+  color: var(--text-weak);
+}
+
+.settings-billing-plan-cta {
+  margin-top: 4px;
+  width: 100%;
+  justify-content: center;
+}
+
+.settings-billing-plan-included {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-weak);
+}
+
+.settings-billing-checkout-shell {
+  border-radius: var(--radius-lg, 8px);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.settings-billing-checkout-shell iframe {
+  width: 100%;
+  min-height: 620px;
+}
+
+@media (max-width: 900px) {
+  .settings-billing-plan-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-row-control--billing-meter {
+    width: 150px;
+  }
+}

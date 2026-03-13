@@ -23,13 +23,14 @@ import {
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import { NativeSelect } from "@/ui/native-select";
+import { BillingTab } from "@/global/settings/BillingTab";
 import "@/global/settings/settings.css";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type SettingsTab = "basic" | "models";
+type SettingsTab = "basic" | "models" | "billing";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -70,6 +71,7 @@ const LLM_PROVIDERS = [
 const TABS: { key: SettingsTab; label: string }[] = [
   { key: "basic", label: "Basic" },
   { key: "models", label: "Models" },
+  { key: "billing", label: "Billing" },
 ];
 
 function getSettingsErrorMessage(error: unknown, fallback: string) {
@@ -1078,8 +1080,10 @@ export const SettingsDialog = ({
             <SettingsPanel>
               {activeTab === "basic" ? (
                 <BasicTab onSignOut={onSignOut} />
-              ) : (
+              ) : activeTab === "models" ? (
                 <ModelsTab />
+              ) : (
+                <BillingTab />
               )}
             </SettingsPanel>
           </div>
@@ -1090,4 +1094,3 @@ export const SettingsDialog = ({
 };
 
 export default SettingsDialog;
-
