@@ -72,9 +72,11 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
 
   const containerRef = useRef<HTMLDivElement>(null);
   const chatPanelRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const stellaRef = useRef<StellaAnimationHandle>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [inputBarHeight, setInputBarHeight] = useState(56);
   const dragStartRef = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null);
   const hasDraggedRef = useRef(false);
 
@@ -86,6 +88,18 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
       setIsChatOpen(true);
     },
   }));
+
+  // Track input bar height so the chat panel adjusts upward
+  useEffect(() => {
+    const form = formRef.current;
+    if (!form || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const h = entries[0]?.borderBoxSize?.[0]?.blockSize ?? entries[0]?.contentRect.height;
+      if (h && h > 0) setInputBarHeight(h);
+    });
+    ro.observe(form);
+    return () => ro.disconnect();
+  }, [isChatOpen]);
 
   // Focus input when chat opened
   useEffect(() => {
@@ -130,26 +144,6 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isChatOpen]);
 
-  // Close on click outside
-  useEffect(() => {
-    if (!isChatOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      const inOrb = containerRef.current?.contains(target);
-      const inChat = chatPanelRef.current?.contains(target);
-      if (!inOrb && !inChat) {
-        setIsChatOpen(false);
-        setInputText("");
-      }
-    };
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handleClick);
-    }, 100);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handleClick);
-    };
-  }, [isChatOpen]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -219,7 +213,7 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
           className="orb-mini-chat"
           style={{
             right: `${position.right}px`,
-            bottom: `${position.bottom + 64}px`,
+            bottom: `${position.bottom + inputBarHeight + 8}px`,
           }}
           initial={{ opacity: 0, y: 12, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -269,6 +263,7 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
         <AnimatePresence>
           {isChatOpen && (
             <motion.form
+              ref={formRef}
               key="orb-input-bar"
               className="orb-chat-input-form"
               style={{ transformOrigin: "right center" }}
@@ -278,12 +273,18 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
               transition={{ type: "spring", duration: 0.3, bounce: 0 }}
               onSubmit={handleSubmit}
             >
-              <input
+              <textarea
                 ref={inputRef}
                 className="orb-chat-input"
-                type="text"
                 value={inputText}
+                rows={1}
                 onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit(e);
+                  }
+                }}
                 placeholder="Ask Stella..."
               />
             </motion.form>
