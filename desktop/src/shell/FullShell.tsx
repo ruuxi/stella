@@ -22,6 +22,7 @@ import type { DialogType } from './full-shell-dialogs'
 import { useFullShellChat } from './use-full-shell-chat'
 import { useFullShellVoiceTranscript } from './use-full-shell-voice-transcript'
 import { useLocalWorkspacePanels } from './use-local-workspace-panels'
+import { useDevProjects } from '@/context/dev-projects-state'
 import {
   dispatchStellaSendMessage,
   WORKSPACE_CREATION_TRIGGER_KIND,
@@ -45,6 +46,7 @@ export const FullShell = () => {
   const [activeDialog, setActiveDialog] = useState<DialogType>(null)
   const onboarding = useOnboardingOverlay()
   const { personalPages } = useLocalWorkspacePanels()
+  const { projects, pickProjectDirectory } = useDevProjects()
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
     conversationId: activeConversationId,
   })
@@ -89,7 +91,7 @@ export const FullShell = () => {
     setView('chat')
   }, [setView])
 
-  const handleNewApp = useCallback(() => {
+  const handleNewAppAskStella = useCallback(() => {
     dispatchStellaSendMessage({
       text: "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.",
       uiVisibility: 'hidden',
@@ -101,6 +103,28 @@ export const FullShell = () => {
       setView('home')
     }
   }, [setView, state.view])
+
+  const handleProjectSelect = useCallback(
+    (project: (typeof projects)[number]) => {
+      openPanel({
+        name: `dev-project:${project.id}`,
+        title: project.name,
+        kind: 'dev-project',
+        projectId: project.id,
+      })
+      setView('app')
+    },
+    [openPanel, projects, setView],
+  )
+
+  const handleNewAppLocalProject = useCallback(async () => {
+    const project = await pickProjectDirectory()
+    if (!project) {
+      return
+    }
+
+    handleProjectSelect(project)
+  }, [handleProjectSelect, pickProjectDirectory])
 
   const handleDemoChange = useCallback((demo: OnboardingDemo) => {
     if (demo) {
@@ -180,6 +204,8 @@ export const FullShell = () => {
 
   const isOrbVisible = state.view !== 'chat' && onboarding.onboardingDone
   const appReady = onboarding.onboardingDone
+  const activeProjectId =
+    activePanel?.kind === 'dev-project' && activePanel.projectId ? activePanel.projectId : null
 
   const showOnboardingDemos = activeDemo || demoClosing
 
@@ -208,7 +234,11 @@ export const FullShell = () => {
               onSettings={showSettingsDialog}
               onHome={showHomeView}
               onChat={showChatView}
-              onNewApp={handleNewApp}
+              onNewAppAskStella={handleNewAppAskStella}
+              onNewAppLocalProject={handleNewAppLocalProject}
+              projects={projects}
+              activeProjectId={activeProjectId}
+              onProjectSelect={handleProjectSelect}
             />
 
             <div className="content-area">

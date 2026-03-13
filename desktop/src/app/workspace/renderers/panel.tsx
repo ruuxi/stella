@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, type ComponentType } from 'react'
 import { WorkspaceErrorBoundary } from '../WorkspaceErrorBoundary'
 import { Spinner } from '@/ui/spinner'
 import type { WorkspacePanel } from '@/context/workspace-state'
+import { DevProjectPanel } from './dev-project-panel'
 import {
   areLocalWorkspacePanelsEnabled,
   LOCAL_WORKSPACE_PANELS_DEV_ONLY_MESSAGE,
@@ -146,6 +147,27 @@ const toPanelLoadMessage = (error: unknown): string => {
 }
 
 const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
+  if (panel.kind === 'dev-project') {
+    if (!panel.projectId) {
+      return (
+        <div className="workspace-error">
+          <div className="workspace-error-title">Project Error</div>
+          <div className="workspace-error-message">Project information is unavailable.</div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="workspace-panel-wrap">
+        <WorkspaceErrorBoundary>
+          <div className="workspace-panel-content">
+            <DevProjectPanel projectId={panel.projectId} />
+          </div>
+        </WorkspaceErrorBoundary>
+      </div>
+    )
+  }
+
   const { name } = panel
   const [Component, setComponent] = useState<PanelComponent | null>(null)
   const [error, setError] = useState<string | null>(null)

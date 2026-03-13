@@ -1,7 +1,11 @@
+import type { LocalDevProjectRecord } from "@/shared/types/electron";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import type { ViewType } from "@/shared/contracts/ui";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/ui/dropdown-menu";
+import AlertCircle from "lucide-react/dist/esm/icons/circle-alert";
+import Folder from "lucide-react/dist/esm/icons/folder";
 import House from "lucide-react/dist/esm/icons/house";
 import Link2 from "lucide-react/dist/esm/icons/link-2";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square";
@@ -23,6 +27,11 @@ interface SidebarProps {
   onHome?: () => void;
   onChat?: () => void;
   onNewApp?: () => void;
+  onNewAppAskStella?: () => void;
+  onNewAppLocalProject?: () => void;
+  projects?: LocalDevProjectRecord[];
+  activeProjectId?: string | null;
+  onProjectSelect?: (project: LocalDevProjectRecord) => void;
 }
 
 const AuthButton = ({
@@ -68,7 +77,26 @@ export const Sidebar = ({
   onHome,
   onChat,
   onNewApp,
+  onNewAppAskStella,
+  onNewAppLocalProject,
+  projects = [],
+  activeProjectId,
+  onProjectSelect,
 }: SidebarProps) => {
+  const handleAskStella = onNewAppAskStella ?? onNewApp;
+  const getProjectMeta = (project: LocalDevProjectRecord) => {
+    switch (project.runtime.status) {
+      case "running":
+        return "Live preview open";
+      case "starting":
+        return "Starting now";
+      case "error":
+        return "Needs attention";
+      default:
+        return "Ready to start";
+    }
+  };
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header" />
@@ -99,12 +127,53 @@ export const Sidebar = ({
           </span>
           <span className="sidebar-nav-label">Chat</span>
         </button>
-        <button type="button" className="sidebar-nav-item" onClick={onNewApp}>
-          <span className="sidebar-nav-icon">
-            <PlusSquare size={18} />
-          </span>
-          <span className="sidebar-nav-label">New App</span>
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className="sidebar-nav-item">
+              <span className="sidebar-nav-icon">
+                <PlusSquare size={18} />
+              </span>
+              <span className="sidebar-nav-label">New App</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="start">
+            <DropdownMenuItem onClick={handleAskStella}>Ask Stella</DropdownMenuItem>
+            <DropdownMenuItem onClick={onNewAppLocalProject}>Local Project</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {projects.length > 0 && (
+          <>
+            <div className="sidebar-nav-section-label">Projects</div>
+            {projects.map((project) => (
+              <button
+                key={project.id}
+                type="button"
+                className={`sidebar-nav-item sidebar-nav-item--project ${activeProjectId === project.id ? "sidebar-nav-item--active" : ""}`}
+                onClick={() => onProjectSelect?.(project)}
+                title={project.name}
+              >
+                <span className="sidebar-nav-icon">
+                  <Folder size={18} />
+                </span>
+                <span className="sidebar-project-copy">
+                  <span className="sidebar-project-label">{project.name}</span>
+                  <span className="sidebar-project-meta">{getProjectMeta(project)}</span>
+                </span>
+                {project.runtime.status === "running" && (
+                  <span className="sidebar-page-status sidebar-page-status--ready" aria-label="Running" />
+                )}
+                {project.runtime.status === "starting" && (
+                  <span className="sidebar-page-status sidebar-page-status--running" aria-label="Starting" />
+                )}
+                {project.runtime.status === "error" && (
+                  <span className="sidebar-page-status sidebar-page-status--failed" aria-label="Error">
+                    <AlertCircle size={12} />
+                  </span>
+                )}
+              </button>
+            ))}
+          </>
+        )}
       </nav>
       <div className="sidebar-footer">
         <div className="sidebar-footer-item">
@@ -136,4 +205,3 @@ export const Sidebar = ({
     </aside>
   );
 };
-

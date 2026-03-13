@@ -8,6 +8,10 @@ export type WorkspacePanel = {
   title?: string
   /** Optional source URL for localhost/dev-server backed panels. */
   url?: string
+  /** Distinguishes built-in workspace routes from local dev projects. */
+  kind?: 'local-panel' | 'dev-project'
+  /** Backing local dev project identifier for persisted workspace pages. */
+  projectId?: string
 }
 
 export type WorkspaceState = {

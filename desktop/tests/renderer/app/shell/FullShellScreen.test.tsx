@@ -1,6 +1,7 @@
 ﻿import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { createRef, forwardRef, useImperativeHandle } from "react";
+import type { LocalDevProjectRecord } from "@/shared/types/electron";
 
 // --- Mocks ---
 
@@ -66,6 +67,32 @@ vi.mock("@/context/workspace-state", () => ({
     closePanel: mockClosePanel,
     setChatWidth: mockSetChatWidth,
     setChatOpen: mockSetChatOpen,
+  })),
+}));
+
+const mockPickProjectDirectory = vi.fn();
+const mockProjects: LocalDevProjectRecord[] = [
+  {
+    id: "project-1",
+    name: "stella-site",
+    path: "C:/Users/redacted/projects/stella-site",
+    source: "manual",
+    framework: "vite",
+    packageManager: "pnpm",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    runtime: { status: "stopped" },
+  },
+]
+
+vi.mock("@/context/dev-projects-state", () => ({
+  useDevProjects: vi.fn(() => ({
+    projects: mockProjects,
+    isLoading: false,
+    refreshProjects: vi.fn(),
+    pickProjectDirectory: mockPickProjectDirectory,
+    startProject: vi.fn(),
+    stopProject: vi.fn(),
   })),
 }));
 
@@ -140,10 +167,20 @@ vi.mock("@/shell/sidebar/Sidebar", () => ({
     <div data-testid="sidebar">
       <button data-testid="sidebar-home" onClick={props.onHome}>Home</button>
       <button data-testid="sidebar-chat" onClick={props.onChat}>Chat</button>
-      <button data-testid="sidebar-new-app" onClick={props.onNewApp}>New App</button>
+      <button data-testid="sidebar-new-app" onClick={props.onNewAppAskStella}>Ask Stella</button>
+      <button data-testid="sidebar-new-local-project" onClick={props.onNewAppLocalProject}>Local Project</button>
       <button data-testid="sidebar-signin" onClick={props.onSignIn}>Sign In</button>
       <button data-testid="sidebar-connect" onClick={props.onConnect}>Connect</button>
       <button data-testid="sidebar-settings" onClick={props.onSettings}>Settings</button>
+      {(props.projects ?? []).map((project: any) => (
+        <button
+          key={project.id}
+          data-testid={`sidebar-project-${project.id}`}
+          onClick={() => props.onProjectSelect?.(project)}
+        >
+          {project.name}
+        </button>
+      ))}
       <span data-testid="sidebar-active-view">{props.activeView}</span>
     </div>
   ),
@@ -271,6 +308,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAreLocalWorkspacePanelsEnabled.mockReturnValue(true);
+    mockPickProjectDirectory.mockResolvedValue(null);
     vi.mocked(useUiState).mockReturnValue({
       state: { mode: "chat", window: "full", view: "home", conversationId: "conv-123" },
       setMode: vi.fn(),
@@ -405,6 +443,37 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
 
     expect(mockOrbOpenChat).toHaveBeenCalledTimes(1);
     expect(mockSetView).toHaveBeenCalledWith("home");
+  });
+
+  it("opens a manually selected local project in app view", async () => {
+    mockPickProjectDirectory.mockResolvedValue(mockProjects[0]);
+
+    render(<FullShell />);
+    fireEvent.click(screen.getByTestId("sidebar-new-local-project"));
+
+    expect(mockPickProjectDirectory).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockOpenPanel).toHaveBeenCalledWith({
+        name: "dev-project:project-1",
+        title: "stella-site",
+        kind: "dev-project",
+        projectId: "project-1",
+      });
+      expect(mockSetView).toHaveBeenCalledWith("app");
+    });
+  });
+
+  it("opens sidebar projects in app view", () => {
+    render(<FullShell />);
+    fireEvent.click(screen.getByTestId("sidebar-project-project-1"));
+
+    expect(mockOpenPanel).toHaveBeenCalledWith({
+      name: "dev-project:project-1",
+      title: "stella-site",
+      kind: "dev-project",
+      projectId: "project-1",
+    });
+    expect(mockSetView).toHaveBeenCalledWith("app");
   });
 
   it("routes stella:send-message events to sendMessage", () => {
