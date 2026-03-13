@@ -146,29 +146,28 @@ const toPanelLoadMessage = (error: unknown): string => {
   return `Failed to load panel: ${formatUnknownError(error)}`
 }
 
-const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
-  if (panel.kind === 'dev-project') {
-    if (!panel.projectId) {
-      return (
-        <div className="workspace-error">
-          <div className="workspace-error-title">Project Error</div>
-          <div className="workspace-error-message">Project information is unavailable.</div>
-        </div>
-      )
-    }
-
+const DevProjectPanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
+  if (!panel.projectId) {
     return (
-      <div className="workspace-panel-wrap">
-        <WorkspaceErrorBoundary>
-          <div className="workspace-panel-content">
-            <DevProjectPanel projectId={panel.projectId} />
-          </div>
-        </WorkspaceErrorBoundary>
+      <div className="workspace-error">
+        <div className="workspace-error-title">Project Error</div>
+        <div className="workspace-error-message">Project information is unavailable.</div>
       </div>
     )
   }
 
-  const { name } = panel
+  return (
+    <div className="workspace-panel-wrap">
+      <WorkspaceErrorBoundary>
+        <div className="workspace-panel-content">
+          <DevProjectPanel projectId={panel.projectId} />
+        </div>
+      </WorkspaceErrorBoundary>
+    </div>
+  )
+}
+
+const LocalWorkspacePanelRenderer = ({ name }: { name: string }) => {
   const [Component, setComponent] = useState<PanelComponent | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -260,6 +259,13 @@ const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
     </div>
   )
 }
+
+const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) =>
+  panel.kind === 'dev-project' ? (
+    <DevProjectPanelRenderer panel={panel} />
+  ) : (
+    <LocalWorkspacePanelRenderer name={panel.name} />
+  )
 
 export default PanelRenderer
 
