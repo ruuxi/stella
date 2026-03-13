@@ -296,7 +296,7 @@ const TaskCreateJsonSchema = {
   properties: {
     description: { type: "string", description: "Short summary of the task (shown in task list)" },
     prompt: { type: "string", description: "Detailed instructions for the subagent — this is the agent's ONLY context" },
-    subagent_type: { type: "string", enum: ["general", "explore", "app"], description: "Which agent executes the task: 'general' (code/files/shell/UI), 'explore' (read-only codebase search), 'app' (browser/desktop app automation). Default: general" },
+    subagent_type: { type: "string", enum: ["general", "self_mod", "explore", "app"], description: "Which agent executes the task: 'general' (external code/files/shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), 'app' (browser/desktop app automation). Default: general" },
     thread_name: { type: "string", description: "Existing thread name to continue. Omit to start fresh and the runtime will assign a short name automatically." },
     command_id: { type: "string", description: "Command ID from a suggestion chip — system injects full instructions automatically" },
   },
@@ -327,7 +327,7 @@ const TaskJsonSchema = {
     task_id: { type: "string", description: "Task ID (required for cancel, message, inbox)" },
     description: { type: "string", description: "Task summary (for create)" },
     prompt: { type: "string", description: "Detailed instructions (for create)" },
-    subagent_type: { type: "string", description: "Agent type (for create): general, explore, or app" },
+    subagent_type: { type: "string", description: "Agent type (for create): general, self_mod, explore, or app" },
     message: { type: "string", description: "Message content (for action=message)" },
     reason: { type: "string", description: "Cancellation reason (for action=cancel)" },
   },
@@ -529,7 +529,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Usage:\n" +
     "- description: short summary shown in the task list.\n" +
     "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, relevant file paths, and expected output.\n" +
-    "- subagent_type: 'general' (code, files, shell, Stella UI), 'explore' (read-only codebase search), or 'app' (browser and desktop app automation).\n" +
+    "- subagent_type: 'general' (external code, files, shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), or 'app' (browser and desktop app automation).\n" +
     "- thread_name: optional active thread name to continue. Omit it to start fresh and the runtime will assign a short Greek/Roman name automatically.\n" +
     "- Returns a task_id for tracking with TaskOutput or canceling with TaskCancel.",
   TaskOutput:

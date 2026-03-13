@@ -12,10 +12,11 @@ import { loadSkillsFromHome } from "./agents/skills.js";
 import { loadExtensions } from "./extensions/loader.js";
 import { HookEmitter } from "./extensions/hook-emitter.js";
 import {
-  getCodexLocalMaxConcurrency,
   getDefaultModel,
   getGeneralAgentEngine,
+  getMaxAgentConcurrency,
   getModelOverride,
+  getSelfModAgentEngine,
 } from "./preferences/local-preferences.js";
 import { LocalTaskManager, type LocalTaskManagerAgentContext, type TaskLifecycleEvent } from "./tasks/local-task-manager.js";
 import type { RuntimeStore } from "../../storage/runtime-store.js";
@@ -575,9 +576,16 @@ export const createStellaHostRunner = ({
       coreMemory: readCoreMemory(StellaHome),
       threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
       activeThreadId: threadKey,
-      generalAgentEngine: args.agentType === "general" ? getGeneralAgentEngine(StellaHome) : undefined,
-      codexLocalMaxConcurrency:
-        args.agentType === "general" ? getCodexLocalMaxConcurrency(StellaHome) : undefined,
+      agentEngine:
+        args.agentType === "general"
+          ? getGeneralAgentEngine(StellaHome)
+          : args.agentType === "self_mod"
+            ? getSelfModAgentEngine(StellaHome)
+            : undefined,
+      maxAgentConcurrency:
+        args.agentType === "general" || args.agentType === "self_mod"
+          ? getMaxAgentConcurrency(StellaHome)
+          : undefined,
     };
   };
 
@@ -764,9 +772,10 @@ export const createStellaHostRunner = ({
   };
 
   localTaskManager = new LocalTaskManager({
-    maxConcurrent: 16,
+    maxConcurrent: 24,
+    getMaxConcurrent: () => getMaxAgentConcurrency(StellaHome),
     resolveTaskThread: ({ conversationId, agentType, threadName }) => {
-      if (agentType !== "general") {
+      if (agentType !== "general" && agentType !== "self_mod") {
         return null;
       }
       return runtimeStore.resolveOrCreateActiveThread({
@@ -801,13 +810,13 @@ export const createStellaHostRunner = ({
       toolExecutor,
     }) => {
       const runId = `local:sub:${crypto.randomUUID()}`;
-      const shouldControlHmr = agentType === "general";
+      const shouldControlHmr = agentType === "self_mod";
       const pauseApplied = shouldControlHmr && selfModHmrController
         ? await selfModHmrController.pause(runId)
         : true;
 
       if (shouldControlHmr && !pauseApplied) {
-        console.warn("[self-mod-hmr] Pause endpoint unavailable for general subagent.");
+        console.warn("[self-mod-hmr] Pause endpoint unavailable for self_mod subagent.");
       }
 
       const resolvedLlm = resolveLlmRoute({
@@ -864,7 +873,7 @@ export const createStellaHostRunner = ({
           const resumeHmr = async () => {
             const resumeApplied = await selfModHmrController.resume(runId);
             if (!resumeApplied) {
-              console.warn("[self-mod-hmr] Resume endpoint unavailable for general subagent.");
+              console.warn("[self-mod-hmr] Resume endpoint unavailable for self_mod subagent.");
             }
           };
 
@@ -894,7 +903,7 @@ export const createStellaHostRunner = ({
               reportSelfModHmrState(createSelfModHmrState("idle", false));
             }
           } catch (error) {
-            console.warn("[self-mod-hmr] Failed to resume general subagent HMR:", (error as Error).message);
+            console.warn("[self-mod-hmr] Failed to resume self_mod subagent HMR:", (error as Error).message);
             await selfModHmrController.resume(runId).catch(() => undefined);
             reportSelfModHmrState(createSelfModHmrState("idle", false));
           }

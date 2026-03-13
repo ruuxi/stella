@@ -111,7 +111,7 @@ describe("runSubagentTask engine selection", () => {
     isClaudeCodeModelMock.mockReturnValue(false);
   });
 
-  it("uses Codex app server when generalAgentEngine is codex_local", async () => {
+  it("uses Codex app server when agentEngine is codex_local", async () => {
     const store = createStoreStub();
     runCodexAppServerTurnMock.mockResolvedValue({
       text: "codex-result",
@@ -121,8 +121,8 @@ describe("runSubagentTask engine selection", () => {
 
     const result = await runSubagentTask(buildOpts({
       agentContext: buildAgentContext({
-        generalAgentEngine: "codex_local",
-        codexLocalMaxConcurrency: 2,
+        agentEngine: "codex_local",
+        maxAgentConcurrency: 12,
       }),
       store: store as unknown as RuntimeStore,
     }));
@@ -132,9 +132,9 @@ describe("runSubagentTask engine selection", () => {
     expect(runCodexAppServerTurnMock).toHaveBeenCalledTimes(1);
     expect(runCodexAppServerTurnMock).toHaveBeenCalledWith(expect.objectContaining({
       sessionKey: expect.stringContaining("conv-1:run:"),
-      maxConcurrency: 2,
+      maxConcurrency: 12,
       prompt: expect.stringContaining("Solve this task"),
-      developerInstructions: expect.stringContaining("Documentation:"),
+      developerInstructions: expect.stringContaining("system"),
       cwd: "C:/Users/redacted/projects/stella/desktop",
     }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
@@ -143,7 +143,7 @@ describe("runSubagentTask engine selection", () => {
     expect(runClaudeCodeTurnMock).not.toHaveBeenCalled();
   });
 
-  it("uses Claude Code when generalAgentEngine is claude_code_local", async () => {
+  it("uses Claude Code when agentEngine is claude_code_local", async () => {
     const store = createStoreStub();
     runClaudeCodeTurnMock.mockResolvedValue({
       text: "claude-result",
@@ -152,7 +152,7 @@ describe("runSubagentTask engine selection", () => {
 
     const result = await runSubagentTask(buildOpts({
       agentContext: buildAgentContext({
-        generalAgentEngine: "claude_code_local",
+        agentEngine: "claude_code_local",
       }),
       store: store as unknown as RuntimeStore,
     }));
@@ -163,7 +163,7 @@ describe("runSubagentTask engine selection", () => {
     expect(runClaudeCodeTurnMock).toHaveBeenCalledWith(expect.objectContaining({
       modelId: "openai/gpt-4.1-mini",
       prompt: "Solve this task",
-      systemPrompt: expect.stringContaining("Documentation:"),
+      systemPrompt: expect.stringContaining("system"),
       cwd: "C:/Users/redacted/projects/stella/desktop",
     }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
@@ -193,7 +193,7 @@ describe("runSubagentTask engine selection", () => {
     expect(runClaudeCodeTurnMock).toHaveBeenCalledTimes(1);
     expect(runClaudeCodeTurnMock).toHaveBeenCalledWith(expect.objectContaining({
       cwd: "C:/Users/redacted/projects/stella/desktop",
-      systemPrompt: expect.stringContaining("Documentation:"),
+      systemPrompt: expect.stringContaining("system"),
     }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
@@ -201,7 +201,7 @@ describe("runSubagentTask engine selection", () => {
     expect(runCodexAppServerTurnMock).not.toHaveBeenCalled();
   });
 
-  it("passes the raw prompt through for local Codex runs", async () => {
+  it("appends Stella documentation guidance for self_mod local Codex runs", async () => {
     const store = createStoreStub();
     runCodexAppServerTurnMock.mockResolvedValue({
       text: "codex-result",
@@ -210,8 +210,9 @@ describe("runSubagentTask engine selection", () => {
     });
 
     await runSubagentTask(buildOpts({
+      agentType: "self_mod",
       agentContext: buildAgentContext({
-        generalAgentEngine: "codex_local",
+        agentEngine: "codex_local",
       }),
       store: store as unknown as RuntimeStore,
     }));

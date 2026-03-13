@@ -21,8 +21,10 @@ export type LocalPreferences = {
   expressionStyle?: string;
   /** General agent engine: "default" | "codex_local" | "claude_code_local" */
   generalAgentEngine: "default" | "codex_local" | "claude_code_local";
-  /** Max concurrency for Codex local engine */
-  codexLocalMaxConcurrency: number;
+  /** Self-mod agent engine: "default" | "codex_local" | "claude_code_local" */
+  selfModAgentEngine: "default" | "codex_local" | "claude_code_local";
+  /** Shared max concurrency across all agent task execution */
+  maxAgentConcurrency: number;
   /** Sync mode: "on" | "off". Defaults to off so cloud persistence is opt-in. */
   syncMode: "on" | "off";
 };
@@ -33,7 +35,8 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   modelOverrides: {},
   expressionStyle: undefined,
   generalAgentEngine: "default",
-  codexLocalMaxConcurrency: 3,
+  selfModAgentEngine: "default",
+  maxAgentConcurrency: 24,
   syncMode: "off",
 };
 
@@ -60,7 +63,8 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       modelOverrides: parsed.modelOverrides ?? {},
       expressionStyle: parsed.expressionStyle,
       generalAgentEngine: normalizeEngine(parsed.generalAgentEngine),
-      codexLocalMaxConcurrency: normalizeConcurrency(parsed.codexLocalMaxConcurrency),
+      selfModAgentEngine: normalizeEngine(parsed.selfModAgentEngine),
+      maxAgentConcurrency: normalizeConcurrency(parsed.maxAgentConcurrency),
       syncMode: parsed.syncMode === "on" ? "on" : "off",
     };
     _cached = prefs;
@@ -122,10 +126,16 @@ export const getGeneralAgentEngine = (
   return loadLocalPreferences(stellaHome).generalAgentEngine;
 };
 
-export const getCodexLocalMaxConcurrency = (
+export const getSelfModAgentEngine = (
+  stellaHome: string,
+): "default" | "codex_local" | "claude_code_local" => {
+  return loadLocalPreferences(stellaHome).selfModAgentEngine;
+};
+
+export const getMaxAgentConcurrency = (
   stellaHome: string,
 ): number => {
-  return loadLocalPreferences(stellaHome).codexLocalMaxConcurrency;
+  return loadLocalPreferences(stellaHome).maxAgentConcurrency;
 };
 
 export const getSyncMode = (
@@ -146,6 +156,7 @@ const normalizeEngine = (
 
 const normalizeConcurrency = (value: unknown): number => {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 3;
-  return Math.max(1, Math.min(3, Math.floor(parsed)));
+  if (!Number.isFinite(parsed) || parsed < 1) return 24;
+  const rounded = Math.floor(parsed);
+  return rounded < 1 ? 24 : Math.min(24, rounded);
 };

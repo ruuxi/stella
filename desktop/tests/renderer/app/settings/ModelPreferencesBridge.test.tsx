@@ -20,7 +20,8 @@ vi.mock("@/convex/api", () => ({
         getModelDefaults: "preferences.getModelDefaults",
         getModelOverrides: "preferences.getModelOverrides",
         getGeneralAgentEngine: "preferences.getGeneralAgentEngine",
-        getCodexLocalMaxConcurrency: "preferences.getCodexLocalMaxConcurrency",
+        getSelfModAgentEngine: "preferences.getSelfModAgentEngine",
+        getMaxAgentConcurrency: "preferences.getMaxAgentConcurrency",
       },
     },
   },
@@ -44,6 +45,7 @@ describe("ModelPreferencesBridge", () => {
         return [
           { agentType: "orchestrator", model: "stella/default", resolvedModel: "moonshotai/kimi-k2.5" },
           { agentType: "general", model: "stella/default", resolvedModel: "moonshotai/kimi-k2.5" },
+          { agentType: "self_mod", model: "stella/default", resolvedModel: "moonshotai/kimi-k2.5" },
           { agentType: "browser", model: "stella/default", resolvedModel: "anthropic/claude-sonnet-4.6" },
           { agentType: "explore", model: "stella/default", resolvedModel: "zai/glm-4.7" },
           { agentType: "app", model: "stella/default", resolvedModel: "anthropic/claude-sonnet-4.6" },
@@ -58,8 +60,11 @@ describe("ModelPreferencesBridge", () => {
       if (path === "preferences.getGeneralAgentEngine") {
         return "claude_code_local";
       }
-      if (path === "preferences.getCodexLocalMaxConcurrency") {
-        return 2;
+      if (path === "preferences.getSelfModAgentEngine") {
+        return "codex_local";
+      }
+      if (path === "preferences.getMaxAgentConcurrency") {
+        return 24;
       }
       return undefined;
     }) as never);
@@ -73,6 +78,7 @@ describe("ModelPreferencesBridge", () => {
         defaultModels: {
           orchestrator: "stella/default",
           general: "stella/default",
+          self_mod: "stella/default",
           browser: "stella/default",
           explore: "stella/default",
           app: "stella/default",
@@ -80,6 +86,7 @@ describe("ModelPreferencesBridge", () => {
         resolvedDefaultModels: {
           orchestrator: "moonshotai/kimi-k2.5",
           general: "moonshotai/kimi-k2.5",
+          self_mod: "moonshotai/kimi-k2.5",
           browser: "anthropic/claude-sonnet-4.6",
           explore: "zai/glm-4.7",
           app: "anthropic/claude-sonnet-4.6",
@@ -88,7 +95,8 @@ describe("ModelPreferencesBridge", () => {
           browser: "openai/gpt-4o",
         },
         generalAgentEngine: "claude_code_local",
-        codexLocalMaxConcurrency: 2,
+        selfModAgentEngine: "codex_local",
+        maxAgentConcurrency: 24,
       });
     });
   });

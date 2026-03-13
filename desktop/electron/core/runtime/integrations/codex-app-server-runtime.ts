@@ -4,9 +4,9 @@ const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
 const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
 const REQUEST_TIMEOUT_MS = 30_000;
-const DEFAULT_MAX_CONCURRENCY = 3;
+const DEFAULT_MAX_CONCURRENCY = 24;
 const MIN_MAX_CONCURRENCY = 1;
-const MAX_MAX_CONCURRENCY = 3;
+const MAX_MAX_CONCURRENCY = 24;
 
 type CodexUsage = {
   inputTokens?: number;

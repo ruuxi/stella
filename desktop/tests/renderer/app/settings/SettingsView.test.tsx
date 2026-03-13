@@ -36,8 +36,10 @@ vi.mock("@/convex/api", () => ({
         clearModelOverride: "preferences.clearModelOverride",
         getGeneralAgentEngine: "preferences.getGeneralAgentEngine",
         setGeneralAgentEngine: "preferences.setGeneralAgentEngine",
-        getCodexLocalMaxConcurrency: "preferences.getCodexLocalMaxConcurrency",
-        setCodexLocalMaxConcurrency: "preferences.setCodexLocalMaxConcurrency",
+        getSelfModAgentEngine: "preferences.getSelfModAgentEngine",
+        setSelfModAgentEngine: "preferences.setSelfModAgentEngine",
+        getMaxAgentConcurrency: "preferences.getMaxAgentConcurrency",
+        setMaxAgentConcurrency: "preferences.setMaxAgentConcurrency",
       },
       secrets: {
         listSecrets: "secrets.listSecrets",
@@ -162,7 +164,8 @@ function setupUseQuery(
     }>;
     modelOverrides?: string;
     generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
-    codexLocalMaxConcurrency?: number;
+    selfModAgentEngine?: "default" | "codex_local" | "claude_code_local";
+    maxAgentConcurrency?: number;
   } = {},
 ) {
   mockUseQuery((queryPath: unknown) => {
@@ -178,6 +181,11 @@ function setupUseQuery(
             },
             {
               agentType: "general",
+              model: "stella/default",
+              resolvedModel: "moonshotai/kimi-k2.5",
+            },
+            {
+              agentType: "self_mod",
               model: "stella/default",
               resolvedModel: "moonshotai/kimi-k2.5",
             },
@@ -203,13 +211,18 @@ function setupUseQuery(
         ? opts.generalAgentEngine
         : "default";
     }
-    if (path === "preferences.getCodexLocalMaxConcurrency") {
+    if (path === "preferences.getSelfModAgentEngine") {
+      return Object.prototype.hasOwnProperty.call(opts, "selfModAgentEngine")
+        ? opts.selfModAgentEngine
+        : "default";
+    }
+    if (path === "preferences.getMaxAgentConcurrency") {
       return Object.prototype.hasOwnProperty.call(
         opts,
-        "codexLocalMaxConcurrency",
+        "maxAgentConcurrency",
       )
-        ? opts.codexLocalMaxConcurrency
-        : 3;
+        ? opts.maxAgentConcurrency
+        : 24;
     }
     return undefined;
   });
@@ -495,7 +508,7 @@ describe("BasicTab", () => {
 // Tests: ModelConfigSection
 // ---------------------------------------------------------------------------
 
-describe("GeneralAgentRuntimeSection", () => {
+describe("AgentRuntimeSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupElectronApi();
@@ -506,51 +519,59 @@ describe("GeneralAgentRuntimeSection", () => {
     } as unknown as typeof globalThis.ResizeObserver;
   });
 
-  it("renders General Agent Runtime section on Models tab", async () => {
+  it("renders Agent Runtime section on Models tab", async () => {
     setupUseQuery();
     await renderModelsTab();
 
-    expect(screen.getByText("General Agent Runtime")).toBeTruthy();
+    expect(screen.getByText("Agent Runtime")).toBeTruthy();
     expect(screen.getByText("Engine")).toBeTruthy();
+    expect(screen.getByText("Self Mod Engine")).toBeTruthy();
+    expect(screen.getByText("Max Agent Concurrency")).toBeTruthy();
   });
 
-  it("hides Codex concurrency control when engine is default", async () => {
+  it("shows shared local concurrency control even when engines are default", async () => {
     setupUseQuery({ generalAgentEngine: "default" });
     await renderModelsTab();
 
-    expect(screen.queryByText("Parallel Codex Sessions")).toBeNull();
+    expect(screen.getByText("Max Agent Concurrency")).toBeTruthy();
   });
 
-  it("shows Codex concurrency control when engine is codex_local", async () => {
+  it("shows saved runtime values for both agents and shared concurrency", async () => {
     setupUseQuery({
       generalAgentEngine: "codex_local",
-      codexLocalMaxConcurrency: 2,
+      selfModAgentEngine: "claude_code_local",
+      maxAgentConcurrency: 24,
     });
     await renderModelsTab();
 
-    expect(screen.getByText("Parallel Codex Sessions")).toBeTruthy();
+    expect(screen.getByText("Max Agent Concurrency")).toBeTruthy();
     const selects = document.querySelectorAll(
       ".settings-runtime-select",
     ) as NodeListOf<HTMLSelectElement>;
-    expect(selects.length).toBe(2);
-    expect(selects[1].value).toBe("2");
+    expect(selects.length).toBe(3);
+    expect(selects[0].value).toBe("codex_local");
+    expect(selects[1].value).toBe("claude_code_local");
+    expect(selects[2].value).toBe("24");
   });
 
   it("waits for saved runtime preferences before rendering editable values", async () => {
     setupUseQuery({
       generalAgentEngine: undefined,
-      codexLocalMaxConcurrency: undefined,
+      selfModAgentEngine: undefined,
+      maxAgentConcurrency: undefined,
     });
     await renderModelsTab();
 
-    const select = document.querySelector(
+    const selects = document.querySelectorAll(
       ".settings-runtime-select",
-    ) as HTMLSelectElement;
-    expect(select).toBeTruthy();
-    expect(select.disabled).toBe(true);
-    expect(select.value).toBe("loading");
-    expect(select.options[0]?.textContent).toBe("Loading saved setting...");
-    expect(screen.queryByText("Parallel Codex Sessions")).toBeNull();
+    ) as NodeListOf<HTMLSelectElement>;
+    expect(selects.length).toBe(3);
+    expect(selects[0].disabled).toBe(true);
+    expect(selects[1].disabled).toBe(true);
+    expect(selects[2].disabled).toBe(true);
+    expect(selects[0].value).toBe("loading");
+    expect(selects[1].value).toBe("loading");
+    expect(selects[2].value).toBe("loading");
   });
 
   it("calls setGeneralAgentEngine when engine is changed", async () => {
@@ -577,7 +598,7 @@ describe("GeneralAgentRuntimeSection", () => {
     });
   });
 
-  it("shows Claude Code option in General Agent Runtime engine select", async () => {
+  it("shows Claude Code option in agent runtime engine selects", async () => {
     setupUseQuery();
     await renderModelsTab();
 
@@ -645,17 +666,16 @@ describe("GeneralAgentRuntimeSection", () => {
     });
   });
 
-  it("calls setCodexLocalMaxConcurrency when Codex concurrency changes", async () => {
-    const mockSetCodexLocalMaxConcurrency = vi.fn();
+  it("calls setSelfModAgentEngine when self-mod engine changes", async () => {
+    const mockSetSelfModAgentEngine = vi.fn();
     mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
-      if (path === "preferences.setCodexLocalMaxConcurrency")
-        return mockSetCodexLocalMaxConcurrency;
+      if (path === "preferences.setSelfModAgentEngine")
+        return mockSetSelfModAgentEngine;
       return vi.fn();
     });
     setupUseQuery({
-      generalAgentEngine: "codex_local",
-      codexLocalMaxConcurrency: 3,
+      selfModAgentEngine: "default",
     });
     await renderModelsTab();
 
@@ -663,11 +683,37 @@ describe("GeneralAgentRuntimeSection", () => {
       ".settings-runtime-select",
     ) as NodeListOf<HTMLSelectElement>;
     await act(async () => {
-      fireEvent.change(selects[1], { target: { value: "1" } });
+      fireEvent.change(selects[1], { target: { value: "codex_local" } });
       await Promise.resolve();
     });
 
-    expect(mockSetCodexLocalMaxConcurrency).toHaveBeenCalledWith({ value: 1 });
+    expect(mockSetSelfModAgentEngine).toHaveBeenCalledWith({
+      engine: "codex_local",
+    });
+  });
+
+  it("calls setMaxAgentConcurrency when max agent concurrency changes", async () => {
+    const mockSetMaxAgentConcurrency = vi.fn();
+    mockUseMutation((mutationPath: unknown) => {
+      const path = mutationPath as string;
+      if (path === "preferences.setMaxAgentConcurrency")
+        return mockSetMaxAgentConcurrency;
+      return vi.fn();
+    });
+    setupUseQuery({
+      maxAgentConcurrency: 24,
+    });
+    await renderModelsTab();
+
+    const selects = document.querySelectorAll(
+      ".settings-runtime-select",
+    ) as NodeListOf<HTMLSelectElement>;
+    await act(async () => {
+      fireEvent.change(selects[2], { target: { value: "12" } });
+      await Promise.resolve();
+    });
+
+    expect(mockSetMaxAgentConcurrency).toHaveBeenCalledWith({ value: 12 });
   });
 });
 
@@ -699,6 +745,7 @@ describe("ModelConfigSection", () => {
     // Agent labels
     expect(screen.getByText("Orchestrator")).toBeTruthy();
     expect(screen.getByText("General")).toBeTruthy();
+    expect(screen.getByText("Self Mod")).toBeTruthy();
     expect(screen.getByText("Browser")).toBeTruthy();
     expect(screen.getByText("Explore")).toBeTruthy();
 
@@ -707,6 +754,9 @@ describe("ModelConfigSection", () => {
       screen.getByText("Top-level agent that delegates tasks"),
     ).toBeTruthy();
     expect(screen.getByText("Full tool access for general tasks")).toBeTruthy();
+    expect(
+      screen.getByText("Stella internal code, prompts, runtime, and UI"),
+    ).toBeTruthy();
     expect(screen.getByText("Browser automation via Playwright")).toBeTruthy();
     expect(screen.getByText("Lightweight read-only exploration")).toBeTruthy();
   });
@@ -718,7 +768,7 @@ describe("ModelConfigSection", () => {
     const selects = document.querySelectorAll(
       ".settings-model-select",
     ) as NodeListOf<HTMLSelectElement>;
-    expect(selects.length).toBe(4);
+    expect(selects.length).toBe(5);
 
     // Check that defaults appear as the first option in each select
     const defaultTexts = Array.from(selects).map((sel) => {

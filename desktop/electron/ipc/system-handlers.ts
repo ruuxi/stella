@@ -304,7 +304,8 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         resolvedDefaultModels?: Record<string, string>;
         modelOverrides?: Record<string, string>;
         generalAgentEngine?: string;
-        codexLocalMaxConcurrency?: number;
+        selfModAgentEngine?: string;
+        maxAgentConcurrency?: number;
       },
     ) => {
       if (
@@ -360,16 +361,22 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         payload?.generalAgentEngine === "claude_code_local"
           ? payload.generalAgentEngine
           : "default";
-      const parsedConcurrency = Number(payload?.codexLocalMaxConcurrency);
-      const codexLocalMaxConcurrency = Number.isFinite(parsedConcurrency)
-        ? Math.max(1, Math.min(3, Math.floor(parsedConcurrency)))
-        : 3;
+      const selfModAgentEngine =
+        payload?.selfModAgentEngine === "codex_local" ||
+        payload?.selfModAgentEngine === "claude_code_local"
+          ? payload.selfModAgentEngine
+          : "default";
+      const parsedConcurrency = Number(payload?.maxAgentConcurrency);
+      const maxAgentConcurrency = Number.isFinite(parsedConcurrency) && parsedConcurrency >= 1
+        ? Math.min(24, Math.floor(parsedConcurrency))
+        : 24;
 
       prefs.defaultModels = nextDefaultModels;
       prefs.resolvedDefaultModels = nextResolvedDefaultModels;
       prefs.modelOverrides = nextOverrides;
       prefs.generalAgentEngine = generalAgentEngine;
-      prefs.codexLocalMaxConcurrency = codexLocalMaxConcurrency;
+      prefs.selfModAgentEngine = selfModAgentEngine;
+      prefs.maxAgentConcurrency = maxAgentConcurrency;
       saveLocalPreferences(stellaHomePath, prefs);
       return { ok: true };
     },
