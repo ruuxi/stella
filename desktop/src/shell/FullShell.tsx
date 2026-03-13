@@ -82,6 +82,10 @@ export const FullShell = () => {
     setView('home')
   }, [setView])
 
+  const showChatView = useCallback(() => {
+    setView('chat')
+  }, [setView])
+
   const handleDemoChange = useCallback((demo: OnboardingDemo) => {
     if (demo) {
       if (demoCloseTimerRef.current) {
@@ -139,14 +143,9 @@ export const FullShell = () => {
   }, [])
 
   const handleTabSelect = useCallback(
-    (view: 'home' | 'app' | 'chat', page?: PersonalPage) => {
-      if (view === 'app' && page) {
-        openPanel({ name: page.panelName, title: page.title })
-        setView('app')
-        return
-      }
-
-      setView(view)
+    (page: PersonalPage) => {
+      openPanel({ name: page.panelName, title: page.title })
+      setView('app')
     },
     [openPanel, setView],
   )
@@ -188,19 +187,22 @@ export const FullShell = () => {
         {appReady ? (
           <>
             <Sidebar
+              activeView={state.view}
               onSignIn={showAuthDialog}
               onConnect={showConnectDialog}
               onSettings={showSettingsDialog}
               onHome={showHomeView}
+              onChat={showChatView}
             />
 
             <div className="content-area">
-              <HeaderTabBar
-                activeView={state.view}
-                activePanelName={activePanel?.name}
-                pages={personalPages}
-                onTabSelect={handleTabSelect}
-              />
+              {state.view !== 'chat' && personalPages.length > 0 && (
+                <HeaderTabBar
+                  activePanelName={activePanel?.name}
+                  pages={personalPages}
+                  onTabSelect={handleTabSelect}
+                />
+              )}
 
               {state.view === 'chat' ? (
                 <ChatColumn

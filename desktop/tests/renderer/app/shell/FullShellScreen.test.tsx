@@ -136,12 +136,12 @@ vi.mock("@/shell/TitleBar", () => ({
 vi.mock("@/shell/sidebar/Sidebar", () => ({
   Sidebar: (props: any) => (
     <div data-testid="sidebar">
-      <button data-testid="sidebar-store" onClick={props.onStore}>Store</button>
       <button data-testid="sidebar-home" onClick={props.onHome}>Home</button>
+      <button data-testid="sidebar-chat" onClick={props.onChat}>Chat</button>
       <button data-testid="sidebar-signin" onClick={props.onSignIn}>Sign In</button>
       <button data-testid="sidebar-connect" onClick={props.onConnect}>Connect</button>
       <button data-testid="sidebar-settings" onClick={props.onSettings}>Settings</button>
-      {props.storeActive && <span data-testid="store-active" />}
+      <span data-testid="sidebar-active-view">{props.activeView}</span>
     </div>
   ),
 }));
@@ -154,12 +154,12 @@ vi.mock("@/app/workspace/WorkspaceArea", () => ({
 
 vi.mock("@/shell/HeaderTabBar", () => ({
   HeaderTabBar: (props: any) => (
-    <div data-testid="header-tab-bar" data-view={props.activeView}>
+    <div data-testid="header-tab-bar">
       {(props.pages ?? []).map((page: any) => (
         <button
           key={page.pageId}
           data-testid={`tab-page-${page.pageId}`}
-          onClick={() => props.onTabSelect?.("app", page)}
+          onClick={() => props.onTabSelect?.(page)}
         >
           {page.title}
         </button>
@@ -288,16 +288,32 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(screen.getByTestId("sidebar")).toBeInTheDocument();
   });
 
-  it("renders WorkspaceArea and HeaderTabBar in home view", () => {
+  it("renders WorkspaceArea in home view", () => {
     render(<FullShell />);
     expect(screen.getByTestId("workspace-area")).toBeInTheDocument();
-    expect(screen.getByTestId("header-tab-bar")).toBeInTheDocument();
+    expect(screen.queryByTestId("header-tab-bar")).not.toBeInTheDocument();
     expect(screen.getByTestId("floating-orb")).toBeInTheDocument();
   });
 
   it("passes conversationId to useConversationEventFeed", () => {
     render(<FullShell />);
     expect(mockUseConversationEventFeed).toHaveBeenCalledWith("conv-123");
+  });
+
+  it("renders chat without the workspace header tabs", () => {
+    vi.mocked(useUiState).mockReturnValue({
+      state: { mode: "chat", window: "full", view: "chat", conversationId: "conv-123" },
+      setMode: vi.fn(),
+      setView: mockSetView,
+      setConversationId: vi.fn(),
+      setWindow: vi.fn(),
+      updateState: vi.fn(),
+    } as any);
+
+    render(<FullShell />);
+
+    expect(screen.getByTestId("chat-column")).toBeInTheDocument();
+    expect(screen.queryByTestId("header-tab-bar")).not.toBeInTheDocument();
   });
 
   it("passes conversationId to useStreamingChat without storageMode", () => {
@@ -334,6 +350,12 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     render(<FullShell />);
     fireEvent.click(screen.getByTestId("sidebar-home"));
     expect(mockSetView).toHaveBeenCalledWith("home");
+  });
+
+  it("navigates chat via sidebar onChat", () => {
+    render(<FullShell />);
+    fireEvent.click(screen.getByTestId("sidebar-chat"));
+    expect(mockSetView).toHaveBeenCalledWith("chat");
   });
 
   it("routes stella:send-message events to sendMessage", () => {
