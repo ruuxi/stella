@@ -145,6 +145,31 @@
   text-overflow: ellipsis;
 }
 
+.sidebar-nav-item--project {
+  gap: 10px;
+}
+
+.sidebar-project-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-project-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-project-meta {
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--text-weaker);
+  text-transform: capitalize;
+}
+
 .sidebar-nav-section-label {
   margin-top: 10px;
   margin-bottom: 4px;
