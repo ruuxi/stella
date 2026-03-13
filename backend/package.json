@@ -17,6 +17,7 @@
     "ai": "^6.0.116",
     "better-auth": "1.4.9",
     "convex": "^1.32.0",
+    "stripe": "^20.4.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {

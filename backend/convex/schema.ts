@@ -6,6 +6,7 @@ import { integrationsSchema } from "./schema/integrations";
 import { devicesSchema } from "./schema/devices";
 import { usersSchema } from "./schema/users";
 import { telemetrySchema } from "./schema/telemetry";
+import { billingSchema } from "./schema/billing";
 
 export default defineSchema({
   ...conversationsSchema,
@@ -15,4 +16,5 @@ export default defineSchema({
   ...devicesSchema,
   ...usersSchema,
   ...telemetrySchema,
+  ...billingSchema,
 });

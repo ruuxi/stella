@@ -157,10 +157,16 @@ export const checkProxyRateLimit = internalMutation({
   args: {
     ownerId: v.string(),
     estimatedTokens: v.optional(v.number()),
+    tokensPerMinuteLimit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const configuredLimit =
+      typeof args.tokensPerMinuteLimit === "number"
+        ? Math.floor(args.tokensPerMinuteLimit)
+        : null;
     const limitStr = process.env.PROXY_TOKENS_PER_MINUTE;
-    const limit = limitStr ? parseInt(limitStr, 10) : DEFAULT_PROXY_TOKENS_PER_MINUTE;
+    const envLimit = limitStr ? parseInt(limitStr, 10) : DEFAULT_PROXY_TOKENS_PER_MINUTE;
+    const limit = configuredLimit && configuredLimit > 0 ? configuredLimit : envLimit;
     if (!Number.isFinite(limit) || limit <= 0) {
       return { allowed: true };
     }

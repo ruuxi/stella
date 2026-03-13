@@ -44,6 +44,13 @@ export const telemetrySchema = {
     inputTokens: v.optional(v.number()),
     outputTokens: v.optional(v.number()),
     totalTokens: v.optional(v.number()),
+    costMicroCents: v.optional(v.number()),
+    billingPlan: v.optional(v.union(
+      v.literal("free"),
+      v.literal("go"),
+      v.literal("pro"),
+      v.literal("plus"),
+    )),
     durationMs: v.number(),
     success: v.boolean(),
     fallbackUsed: v.optional(v.boolean()),
