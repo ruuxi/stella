@@ -1539,16 +1539,6 @@ export const createStellaHostRunner = ({
     clearActiveOrchestratorRun(runId);
   };
 
-  const requestQueuedTurnCheckpoint = (conversationId?: string) => {
-    if (
-      conversationId &&
-      activeOrchestratorConversationId &&
-      activeOrchestratorConversationId !== conversationId
-    ) {
-      return false;
-    }
-    return requestActiveOrchestratorCheckpoint();
-  };
 
   const getActiveOrchestratorRun = (): { runId: string; conversationId: string } | null => {
     if (
@@ -1606,7 +1596,6 @@ export const createStellaHostRunner = ({
     handleLocalChat,
     runAutomationTurn,
     cancelLocalChat,
-    requestQueuedTurnCheckpoint,
     getActiveOrchestratorRun,
     recoverCrashedRuns,
     appendThreadMessage: (args: {
@@ -1618,3 +1607,4 @@ export const createStellaHostRunner = ({
     },
   };
 };
+

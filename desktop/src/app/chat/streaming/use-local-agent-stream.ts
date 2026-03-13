@@ -72,6 +72,10 @@ export function useLocalAgentStream({
   const localRunIdRef = useRef<string | null>(null)
   const localSeqByRunIdRef = useRef(new Map<string, number>())
   const userMessageIdByRunIdRef = useRef(new Map<string, string>())
+  const queuedRunStartsRef = useRef<Array<{ runId: string; userMessageId: string }>>(
+    [],
+  )
+  const pendingQueuedStartCountRef = useRef(0)
   const agentStreamCleanupRef = useRef<(() => void) | null>(null)
 
   const resetStreamingState = useCallback(
@@ -96,26 +100,44 @@ export function useLocalAgentStream({
     [resetReasoningText, resetStreamingText],
   )
 
+  const activateNextQueuedRun = useCallback(() => {
+    if (localRunIdRef.current) {
+      return
+    }
+
+    const nextRun = queuedRunStartsRef.current.shift()
+    if (!nextRun) {
+      return
+    }
+
+    localRunIdRef.current = nextRun.runId
+    userMessageIdByRunIdRef.current.set(nextRun.runId, nextRun.userMessageId)
+    resetStreamingText()
+    resetReasoningText()
+    setIsStreaming(true)
+    setPendingUserMessageId(nextRun.userMessageId)
+  }, [resetReasoningText, resetStreamingText])
+
   const cancelCurrentStream = useCallback(() => {
     if (localRunIdRef.current && window.electronAPI?.agent.cancelChat) {
       window.electronAPI.agent.cancelChat(localRunIdRef.current)
       userMessageIdByRunIdRef.current.delete(localRunIdRef.current)
+      localSeqByRunIdRef.current.delete(localRunIdRef.current)
       localRunIdRef.current = null
-      localSeqByRunIdRef.current.clear()
     }
 
-    if (agentStreamCleanupRef.current) {
+    if (
+      pendingQueuedStartCountRef.current === 0 &&
+      queuedRunStartsRef.current.length === 0 &&
+      agentStreamCleanupRef.current
+    ) {
       agentStreamCleanupRef.current()
       agentStreamCleanupRef.current = null
     }
   }, [])
 
   const handleAgentEvent = useCallback(
-    (
-      event: AgentStreamEvent,
-      runIdCounter: number,
-      options?: { userMessageId?: string },
-    ) => {
+    (event: AgentStreamEvent, runIdCounter: number) => {
       if (runIdCounter !== streamRunIdRef.current) return
       const currentSeq = localSeqByRunIdRef.current.get(event.runId) ?? 0
       if (event.seq <= currentSeq) return
@@ -177,12 +199,20 @@ export function useLocalAgentStream({
         case 'error':
           console.error(`[stella:trace] error | fatal=${event.fatal} | ${event.error}`)
           if (event.fatal && isPrimaryRun && isOrchestratorEvent) {
+            if (localRunIdRef.current === event.runId) {
+              localRunIdRef.current = null
+            }
+            userMessageIdByRunIdRef.current.delete(event.runId)
+            localSeqByRunIdRef.current.delete(event.runId)
             showToast({
               title: 'Something went wrong',
               description: event.error || undefined,
               variant: 'error',
             })
-            resetStreamingState(runIdCounter)
+            if (queuedRunStartsRef.current.length === 0) {
+              resetStreamingState(runIdCounter)
+            }
+            activateNextQueuedRun()
           }
           break
         case 'end':
@@ -191,48 +221,71 @@ export function useLocalAgentStream({
           }
           {
             const linkedUserMessageId = userMessageIdByRunIdRef.current.get(event.runId)
-          console.log(
-            `[stella:trace] end | finalText=${(event.finalText ?? streamingTextRef.current).slice(0, 200)}`,
-          )
-          void Promise.resolve(
-            appendAgentEvent({
-              type: 'assistant_message',
-              userMessageId: linkedUserMessageId,
-              finalText: event.finalText ?? streamingTextRef.current,
-            }),
-          )
-            .then(() => {
-              if (!linkedUserMessageId) {
-                resetStreamingState(runIdCounter)
-              }
-            })
-            .catch(() => {
-              resetStreamingState(runIdCounter)
-            })
+            console.log(
+              `[stella:trace] end | finalText=${(event.finalText ?? streamingTextRef.current).slice(0, 200)}`,
+            )
+            void Promise.resolve(
+              appendAgentEvent({
+                type: 'assistant_message',
+                userMessageId: linkedUserMessageId,
+                finalText: event.finalText ?? streamingTextRef.current,
+              }),
+            )
+              .then(() => {
+                if (!linkedUserMessageId && queuedRunStartsRef.current.length === 0) {
+                  resetStreamingState(runIdCounter)
+                }
+                if (localRunIdRef.current === event.runId) {
+                  localRunIdRef.current = null
+                }
+                localSeqByRunIdRef.current.delete(event.runId)
+                activateNextQueuedRun()
+              })
+              .catch(() => {
+                if (queuedRunStartsRef.current.length === 0) {
+                  resetStreamingState(runIdCounter)
+                }
+                if (localRunIdRef.current === event.runId) {
+                  localRunIdRef.current = null
+                }
+                localSeqByRunIdRef.current.delete(event.runId)
+                activateNextQueuedRun()
+              })
 
-          userMessageIdByRunIdRef.current.delete(event.runId)
+            userMessageIdByRunIdRef.current.delete(event.runId)
 
-          if (event.selfModApplied && linkedUserMessageId) {
-            const userMessageId = linkedUserMessageId
-            const selfModApplied = event.selfModApplied
-            setSelfModMap((previous) => ({
-              ...previous,
-              [userMessageId]: selfModApplied,
-            }))
-          }
-
-          localRunIdRef.current = null
-          localSeqByRunIdRef.current.delete(event.runId)
+            if (event.selfModApplied && linkedUserMessageId) {
+              const userMessageId = linkedUserMessageId
+              const selfModApplied = event.selfModApplied
+              setSelfModMap((previous) => ({
+                ...previous,
+                [userMessageId]: selfModApplied,
+              }))
+            }
           }
           break
       }
     },
     [
+      activateNextQueuedRun,
       appendAgentEvent,
       appendStreamingDelta,
       resetStreamingState,
       streamingTextRef,
     ],
+  )
+
+  const ensureAgentStreamSubscription = useCallback(
+    (runIdCounter: number) => {
+      if (!window.electronAPI?.agent.onStream || agentStreamCleanupRef.current) {
+        return
+      }
+
+      agentStreamCleanupRef.current = window.electronAPI.agent.onStream((event) => {
+        handleAgentEvent(event, runIdCounter)
+      })
+    },
+    [handleAgentEvent],
   )
 
   const startLocalStream = useCallback(
@@ -241,13 +294,7 @@ export function useLocalAgentStream({
         return
       }
 
-      const cleanup = window.electronAPI.agent.onStream((event) => {
-        handleAgentEvent(event, runIdCounter, {
-          userMessageId: args.userMessageId,
-        })
-      })
-
-      agentStreamCleanupRef.current = cleanup
+      ensureAgentStreamSubscription(runIdCounter)
 
       window.electronAPI.agent
         .startChat({
@@ -261,7 +308,6 @@ export function useLocalAgentStream({
           if (runIdCounter !== streamRunIdRef.current) return
           localRunIdRef.current = agentRunId
           userMessageIdByRunIdRef.current.set(agentRunId, args.userMessageId)
-          localSeqByRunIdRef.current.clear()
         })
         .catch((error) => {
           if (runIdCounter !== streamRunIdRef.current) return
@@ -276,7 +322,12 @@ export function useLocalAgentStream({
           resetStreamingState(runIdCounter)
         })
     },
-    [activeConversationId, handleAgentEvent, resetStreamingState, storageMode],
+    [
+      activeConversationId,
+      ensureAgentStreamSubscription,
+      resetStreamingState,
+      storageMode,
+    ],
   )
 
   const startStream = useCallback(
@@ -287,6 +338,11 @@ export function useLocalAgentStream({
 
       const runId = streamRunIdRef.current + 1
       streamRunIdRef.current = runId
+      localRunIdRef.current = null
+      localSeqByRunIdRef.current.clear()
+      userMessageIdByRunIdRef.current.clear()
+      queuedRunStartsRef.current = []
+      pendingQueuedStartCountRef.current = 0
       resetStreamingText()
       resetReasoningText()
       setIsStreaming(true)
@@ -354,6 +410,68 @@ export function useLocalAgentStream({
     ],
   )
 
+  const queueStream = useCallback(
+    (args: StartStreamArgs) => {
+      if (!activeConversationId || !window.electronAPI) {
+        return
+      }
+
+      const runIdCounter = streamRunIdRef.current
+      if (!runIdCounter) {
+        startStream(args)
+        return
+      }
+
+      pendingQueuedStartCountRef.current += 1
+      ensureAgentStreamSubscription(runIdCounter)
+
+      window.electronAPI.agent
+        .startChat({
+          conversationId: activeConversationId,
+          userMessageId: args.userMessageId,
+          userPrompt: args.userPrompt,
+          storageMode,
+          searchHtmlPrompts: getSearchHtmlPromptConfig(),
+        })
+        .then(({ runId: agentRunId }) => {
+          if (runIdCounter !== streamRunIdRef.current) {
+            return
+          }
+
+          queuedRunStartsRef.current.push({
+            runId: agentRunId,
+            userMessageId: args.userMessageId,
+          })
+          activateNextQueuedRun()
+        })
+        .catch((error) => {
+          if (runIdCounter !== streamRunIdRef.current) {
+            return
+          }
+
+          console.error('Failed to queue local agent chat:', (error as Error).message)
+          showToast({
+            title: "Stella couldn't queue this reply",
+            description: (error as Error).message || 'Please try again.',
+            variant: 'error',
+          })
+        })
+        .finally(() => {
+          pendingQueuedStartCountRef.current = Math.max(
+            0,
+            pendingQueuedStartCountRef.current - 1,
+          )
+        })
+    },
+    [
+      activateNextQueuedRun,
+      activeConversationId,
+      ensureAgentStreamSubscription,
+      startStream,
+      storageMode,
+    ],
+  )
+
   useResumeAgentRun({
     activeConversationId,
     isStreaming,
@@ -380,7 +498,9 @@ export function useLocalAgentStream({
     pendingUserMessageId,
     selfModMap,
     startStream,
+    queueStream,
     cancelCurrentStream,
     resetStreamingState,
   }
 }
+
