@@ -59,6 +59,8 @@
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@sinclair/typebox": "0.34.41",
+    "@stripe/react-stripe-js": "^5.6.1",
+    "@stripe/stripe-js": "^8.9.0",
     "@tailwindcss/vite": "^4.1.18",
     "ai": "^6.0.116",
     "ajv": "^8.17.1",

@@ -6,7 +6,7 @@ import {
   act,
   waitFor,
 } from "@testing-library/react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import SettingsDialog from "../../../../src/global/settings/SettingsView";
 
 // ---------------------------------------------------------------------------
@@ -16,6 +16,18 @@ import SettingsDialog from "../../../../src/global/settings/SettingsView";
 vi.mock("convex/react", () => ({
   useQuery: vi.fn(() => undefined),
   useMutation: vi.fn(() => vi.fn()),
+  useAction: vi.fn(() => vi.fn()),
+}));
+
+vi.mock("@stripe/stripe-js", () => ({
+  loadStripe: vi.fn(() => Promise.resolve(null)),
+}));
+
+vi.mock("@stripe/react-stripe-js", () => ({
+  EmbeddedCheckoutProvider: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="stripe-embedded-checkout-provider">{children}</div>
+  ),
+  EmbeddedCheckout: () => <div data-testid="stripe-embedded-checkout" />,
 }));
 
 const mockUseAuthSessionState = vi.fn(() => ({
@@ -28,6 +40,11 @@ vi.mock("@/global/auth/hooks/use-auth-session-state", () => ({
 
 vi.mock("@/convex/api", () => ({
   api: {
+    billing: {
+      getSubscriptionStatus: "billing.getSubscriptionStatus",
+      createEmbeddedCheckoutSession: "billing.createEmbeddedCheckoutSession",
+      createBillingPortalSession: "billing.createBillingPortalSession",
+    },
     data: {
       preferences: {
         getModelDefaults: "preferences.getModelDefaults",
@@ -85,6 +102,119 @@ vi.mock("@/global/settings/hooks/use-model-catalog", () => ({
 const mockListLlmCredentials = vi.fn();
 const mockSaveLlmCredential = vi.fn();
 const mockDeleteLlmCredential = vi.fn();
+const mockOpenExternal = vi.fn();
+const mockCreateEmbeddedCheckoutSession = vi.fn();
+const mockCreateBillingPortalSession = vi.fn();
+
+type BillingStatusFixture = {
+  authenticated: boolean;
+  isAnonymous: boolean;
+  plan: "free" | "go" | "pro" | "plus";
+  subscriptionStatus: string;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: number | null;
+  usage: {
+    rollingUsedUsd: number;
+    rollingLimitUsd: number;
+    weeklyUsedUsd: number;
+    weeklyLimitUsd: number;
+    monthlyUsedUsd: number;
+    monthlyLimitUsd: number;
+  };
+  plans: {
+    free: {
+      label: string;
+      monthlyPriceCents: number;
+      rollingLimitUsd: number;
+      rollingWindowHours: number;
+      weeklyLimitUsd: number;
+      monthlyLimitUsd: number;
+      tokensPerMinute: number;
+    };
+    go: {
+      label: string;
+      monthlyPriceCents: number;
+      rollingLimitUsd: number;
+      rollingWindowHours: number;
+      weeklyLimitUsd: number;
+      monthlyLimitUsd: number;
+      tokensPerMinute: number;
+    };
+    pro: {
+      label: string;
+      monthlyPriceCents: number;
+      rollingLimitUsd: number;
+      rollingWindowHours: number;
+      weeklyLimitUsd: number;
+      monthlyLimitUsd: number;
+      tokensPerMinute: number;
+    };
+    plus: {
+      label: string;
+      monthlyPriceCents: number;
+      rollingLimitUsd: number;
+      rollingWindowHours: number;
+      weeklyLimitUsd: number;
+      monthlyLimitUsd: number;
+      tokensPerMinute: number;
+    };
+  };
+};
+
+const DEFAULT_BILLING_STATUS: BillingStatusFixture = {
+  authenticated: true,
+  isAnonymous: false,
+  plan: "free",
+  subscriptionStatus: "none",
+  cancelAtPeriodEnd: false,
+  currentPeriodEnd: null,
+  usage: {
+    rollingUsedUsd: 0,
+    rollingLimitUsd: 3,
+    weeklyUsedUsd: 0,
+    weeklyLimitUsd: 8,
+    monthlyUsedUsd: 0,
+    monthlyLimitUsd: 15,
+  },
+  plans: {
+    free: {
+      label: "Free",
+      monthlyPriceCents: 0,
+      rollingLimitUsd: 3,
+      rollingWindowHours: 5,
+      weeklyLimitUsd: 8,
+      monthlyLimitUsd: 15,
+      tokensPerMinute: 150_000,
+    },
+    go: {
+      label: "Go",
+      monthlyPriceCents: 1_000,
+      rollingLimitUsd: 12,
+      rollingWindowHours: 5,
+      weeklyLimitUsd: 30,
+      monthlyLimitUsd: 60,
+      tokensPerMinute: 500_000,
+    },
+    pro: {
+      label: "Pro",
+      monthlyPriceCents: 10_000,
+      rollingLimitUsd: 60,
+      rollingWindowHours: 5,
+      weeklyLimitUsd: 150,
+      monthlyLimitUsd: 300,
+      tokensPerMinute: 1_500_000,
+    },
+    plus: {
+      label: "Plus",
+      monthlyPriceCents: 20_000,
+      rollingLimitUsd: 240,
+      rollingWindowHours: 5,
+      weeklyLimitUsd: 600,
+      monthlyLimitUsd: 1_200,
+      tokensPerMinute: 3_000_000,
+    },
+  },
+};
 
 // Lightweight mock of the Radix-based Dialog components so that the dialog
 // content is rendered synchronously in jsdom when `open` is true.
@@ -152,6 +282,34 @@ function mockUseMutation(impl: (mutationPath: unknown) => unknown) {
   vi.mocked(useMutation).mockImplementation(impl as never);
 }
 
+function mockUseAction(impl: (actionPath: unknown) => unknown) {
+  vi.mocked(useAction).mockImplementation(impl as never);
+}
+
+function setupUseAction() {
+  mockCreateEmbeddedCheckoutSession.mockReset();
+  mockCreateBillingPortalSession.mockReset();
+  mockCreateEmbeddedCheckoutSession.mockResolvedValue({
+    publishableKey: "pk_test_checkout",
+    clientSecret: "cs_test_checkout",
+    sessionId: "sess_test_checkout",
+  });
+  mockCreateBillingPortalSession.mockResolvedValue({
+    url: "https://billing.stella.app/portal",
+  });
+
+  mockUseAction((actionPath: unknown) => {
+    const path = actionPath as string;
+    if (path === "billing.createEmbeddedCheckoutSession") {
+      return mockCreateEmbeddedCheckoutSession;
+    }
+    if (path === "billing.createBillingPortalSession") {
+      return mockCreateBillingPortalSession;
+    }
+    return vi.fn();
+  });
+}
+
 /**
  * Configure useQuery mock to return different values based on query key.
  */
@@ -166,6 +324,7 @@ function setupUseQuery(
     generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
     selfModAgentEngine?: "default" | "codex_local" | "claude_code_local";
     maxAgentConcurrency?: number;
+    billingStatus?: BillingStatusFixture;
   } = {},
 ) {
   mockUseQuery((queryPath: unknown) => {
@@ -224,6 +383,9 @@ function setupUseQuery(
         ? opts.maxAgentConcurrency
         : 24;
     }
+    if (path === "billing.getSubscriptionStatus") {
+      return opts.billingStatus ?? DEFAULT_BILLING_STATUS;
+    }
     return undefined;
   });
 }
@@ -236,6 +398,9 @@ function setupElectronApi(
     updatedAt?: number;
   }> = [],
 ) {
+  setupUseAction();
+  mockOpenExternal.mockReset();
+
   mockListLlmCredentials.mockResolvedValue(
     credentials.map((entry, index) => ({
       provider: entry.provider,
@@ -263,6 +428,7 @@ function setupElectronApi(
       listLlmCredentials: mockListLlmCredentials,
       saveLlmCredential: mockSaveLlmCredential,
       deleteLlmCredential: mockDeleteLlmCredential,
+      openExternal: mockOpenExternal,
     },
   } as unknown as typeof window.electronAPI;
 }
@@ -281,6 +447,22 @@ async function openModelsTab() {
 async function renderModelsTab() {
   render(<SettingsDialog {...defaultProps()} />);
   await openModelsTab();
+}
+
+async function openBillingTab() {
+  await act(async () => {
+    fireEvent.click(screen.getByText("Billing"));
+    await Promise.resolve();
+  });
+  await waitFor(() => {
+    expect(screen.getByText("Current plan")).toBeTruthy();
+    expect(screen.getByText("Plans")).toBeTruthy();
+  });
+}
+
+async function renderBillingTab() {
+  render(<SettingsDialog {...defaultProps()} />);
+  await openBillingTab();
 }
 
 const LLM_PROVIDER_ROW_COUNT = 12;
@@ -343,10 +525,11 @@ describe("Tab switching", () => {
     } as unknown as typeof globalThis.ResizeObserver;
   });
 
-  it("shows Basic and Models tabs in sidebar", () => {
+  it("shows Basic, Models, and Billing tabs in sidebar", () => {
     render(<SettingsDialog {...defaultProps()} />);
     expect(screen.getByText("Basic")).toBeTruthy();
     expect(screen.getByText("Models")).toBeTruthy();
+    expect(screen.getByText("Billing")).toBeTruthy();
   });
 
   it("shows Basic tab as active by default", () => {
@@ -396,6 +579,75 @@ describe("Tab switching", () => {
     fireEvent.click(screen.getByText("Basic"));
     expect(screen.getByText("Storage")).toBeTruthy();
     expect(screen.queryByText("Model Configuration")).toBeNull();
+  });
+});
+
+describe("BillingTab", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupUseQuery();
+    setupElectronApi();
+    globalThis.ResizeObserver = class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof globalThis.ResizeObserver;
+  });
+
+  it("renders billing status and plan cards when Billing is selected", async () => {
+    await renderBillingTab();
+
+    expect(screen.getByText("Current plan")).toBeTruthy();
+    expect(screen.getByText("Plans")).toBeTruthy();
+    expect(screen.getByText("Choose Go")).toBeTruthy();
+    expect(screen.getByText("Choose Pro")).toBeTruthy();
+    expect(screen.getByText("Choose Plus")).toBeTruthy();
+  });
+
+  it("starts embedded checkout for a paid plan", async () => {
+    await renderBillingTab();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Choose Go"));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mockCreateEmbeddedCheckoutSession).toHaveBeenCalledWith(
+        expect.objectContaining({ plan: "go" }),
+      );
+      expect(screen.getByText("Checkout")).toBeTruthy();
+      expect(screen.getByTestId("stripe-embedded-checkout")).toBeTruthy();
+    });
+
+    const checkoutArgs = mockCreateEmbeddedCheckoutSession.mock.calls[0]?.[0] as {
+      returnUrl: string;
+    };
+    expect(checkoutArgs.returnUrl).toContain("billingCheckout=complete");
+  });
+
+  it("opens billing portal in the host shell", async () => {
+    setupUseQuery({
+      billingStatus: {
+        ...DEFAULT_BILLING_STATUS,
+        plan: "go",
+        subscriptionStatus: "active",
+      },
+    });
+
+    await renderBillingTab();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Manage Billing"));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mockCreateBillingPortalSession).toHaveBeenCalled();
+      expect(mockOpenExternal).toHaveBeenCalledWith(
+        "https://billing.stella.app/portal",
+      );
+    });
   });
 });
 
@@ -1308,5 +1560,3 @@ describe("SettingsPanel", () => {
     expect(panel).toBeTruthy();
   });
 });
-
-
