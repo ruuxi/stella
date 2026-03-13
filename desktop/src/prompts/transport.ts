@@ -1,15 +1,5 @@
 import { getPromptTemplateText } from "./resolve";
 
-export type SearchHtmlPromptConfig = {
-  systemPrompt: string
-  userPromptTemplate: string
-}
-
-export const getSearchHtmlPromptConfig = (): SearchHtmlPromptConfig => ({
-  systemPrompt: getPromptTemplateText("search_html.system").trim(),
-  userPromptTemplate: getPromptTemplateText("search_html.user").trim(),
-})
-
 export const getVoiceSessionPromptConfig = (): { basePrompt: string } => ({
   basePrompt: getPromptTemplateText("voice_orchestrator.base").trim(),
 })

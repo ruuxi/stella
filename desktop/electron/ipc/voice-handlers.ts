@@ -431,10 +431,6 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       payload: {
         query: string;
         category?: string;
-        searchHtmlPrompts?: {
-          systemPrompt: string;
-          userPromptTemplate: string;
-        };
       },
     ) => {
       const stellaHostRunner = options.getStellaHostRunner();
@@ -443,7 +439,6 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       }
       return stellaHostRunner.webSearch(payload.query, {
         category: payload.category,
-        searchHtmlPrompts: payload.searchHtmlPrompts,
       });
     },
   );

@@ -237,12 +237,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     webSearch: (payload: {
       query: string;
       category?: string;
-      searchHtmlPrompts?: { systemPrompt: string; userPromptTemplate: string };
     }) =>
       ipcRenderer.invoke("voice:webSearch", payload) as Promise<{
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
-        html?: string;
       }>,
     setAssistantSpeaking: (active: boolean) =>
       ipcRenderer.invoke("voice:setAssistantSpeaking", active) as Promise<{
@@ -321,7 +319,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       userPrompt: string;
       agentType?: string;
       storageMode?: "cloud" | "local";
-      searchHtmlPrompts?: { systemPrompt: string; userPromptTemplate: string };
     }) =>
       ipcRenderer.invoke("agent:startChat", payload) as Promise<{
         runId: string;
@@ -349,7 +346,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
           toolName?: string;
           args?: Record<string, unknown>;
           resultPreview?: string;
-          html?: string;
           error?: string;
           fatal?: boolean;
           finalText?: string;

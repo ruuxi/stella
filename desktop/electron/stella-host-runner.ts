@@ -16,12 +16,10 @@ export type StellaHostRunner = Omit<RuntimeStellaHostRunner, "webSearch"> & {
     query: string,
     options?: {
       category?: string;
-      searchHtmlPrompts?: { systemPrompt: string; userPromptTemplate: string };
     },
   ) => Promise<{
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;
-    html?: string;
   }>;
 };
 

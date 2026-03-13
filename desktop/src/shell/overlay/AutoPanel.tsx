@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useRef, useState } from "react";
+import morphdom from "morphdom";
 import type { ChatMessage } from "@/infra/ai/llm";
-import { Markdown } from "@/app/chat/Markdown";
 import "./auto-panel.css";
 
 type AutoPanelProps = {
@@ -60,7 +60,9 @@ export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) 
     complete: false,
   });
   const scrollRef = useRef<HTMLDivElement>(null);
+  const displayRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
+  const morphTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [atTop, setAtTop] = useState(true);
   const [atBottom, setAtBottom] = useState(true);
@@ -89,12 +91,22 @@ export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) 
     const messages: ChatMessage[] = [
       {
         role: "system",
-        content: `You receive text from near the user's cursor on their screen. Be useful like a smart friend glancing over their shoulder.
+        content: `You receive text from near the user's cursor on their screen. Output a clean HTML fragment that helps the user understand or act on the content.
+
+DESIGN RULES:
+- Colors: ONLY var(--foreground) and var(--background). Use opacity for hierarchy.
+- Opacity tiers: 0.92 (headings), 0.65 (body), 0.42 (secondary), 0.25 (meta).
+- Surfaces: color-mix(in oklch, var(--foreground) 3%, transparent).
+- Borders/dividers: color-mix(in oklch, var(--foreground) 5-7%, transparent).
+- Font: 13px base, line-height 1.55. Headlines: Georgia, serif; font-weight 500.
+- Layout: flexbox via inline styles. No cards, no background surfaces on items.
+- No <style> blocks, no class names, no scripts, no external resources.
+- Target width: ~500px. Design for a narrow panel.
 
 Do: summarize, explain, give your take, fact-check, suggest a reply, translate, recommend whatever fits.
 Don't: describe the UI, list generic tips, repeat back what they can already see, or pad your response.
 
-Keep it short. 2-4 paragraphs max. No bullet-point dumps unless the content genuinely calls for it.`,
+Keep it concise. 2-4 sections max. Output raw HTML only — no markdown, no code fences.`,
       },
       { role: "user", content: userContent },
     ];
@@ -194,6 +206,43 @@ Keep it short. 2-4 paragraphs max. No bullet-point dumps unless the content genu
   const error = activeStreamState?.error ?? null;
   const isStreaming = Boolean(requestKey) && !activeStreamState?.complete;
 
+  const applyHtml = useCallback((html: string) => {
+    const container = displayRef.current;
+    if (!container) return;
+
+    const target = document.createElement("div");
+    target.className = "auto-panel-display";
+    target.innerHTML = html;
+
+    morphdom(container, target, {
+      onBeforeElUpdated(fromEl, toEl) {
+        if (fromEl.isEqualNode(toEl)) return false;
+        return true;
+      },
+      onNodeAdded(node) {
+        if (
+          node.nodeType === 1 &&
+          (node as Element).tagName !== "STYLE" &&
+          (node as Element).tagName !== "SCRIPT"
+        ) {
+          (node as HTMLElement).style.animation = "_autoPanelFadeIn 0.3s ease both";
+        }
+        return node;
+      },
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!streamingText) return;
+    if (morphTimerRef.current) clearTimeout(morphTimerRef.current);
+    morphTimerRef.current = setTimeout(() => {
+      applyHtml(streamingText);
+    }, 150);
+    return () => {
+      if (morphTimerRef.current) clearTimeout(morphTimerRef.current);
+    };
+  }, [streamingText, applyHtml]);
+
   useEffect(() => {
     updateEdges();
   }, [streamingText, updateEdges]);
@@ -256,7 +305,7 @@ Keep it short. 2-4 paragraphs max. No bullet-point dumps unless the content genu
         ) : error ? (
           <p className="auto-panel-error">{error}</p>
         ) : streamingText ? (
-          <Markdown text={streamingText} isAnimating={isStreaming} />
+          <div ref={displayRef} className="auto-panel-display" />
         ) : (
           <div className="auto-panel-text">
             {isStreaming ? <SkeletonLoader /> : "No response."}

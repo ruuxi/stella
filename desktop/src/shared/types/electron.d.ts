@@ -3,7 +3,6 @@ import type { Theme } from "@/shared/theme/themes/types";
 import type { AgentStreamEvent } from "@/app/chat/streaming/streaming-types";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { ChatMessage } from "@/infra/ai/llm";
-import type { SearchHtmlPromptConfig } from "@/prompts";
 import type {
   RadialWedge as SharedRadialWedge,
   ChatContext as SharedChatContext,
@@ -257,11 +256,9 @@ export type ElectronVoiceApi = {
   webSearch: (payload: {
     query: string;
     category?: string;
-    searchHtmlPrompts?: SearchHtmlPromptConfig;
   }) => Promise<{
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;
-    html?: string;
   }>;
   setAssistantSpeaking: (active: boolean) => Promise<{ ok: boolean }>;
   getRuntimeState: () => Promise<VoiceRuntimeSnapshot>;
@@ -288,7 +285,6 @@ export type ElectronAgentApi = {
     userPrompt: string;
     agentType?: string;
     storageMode?: "cloud" | "local";
-    searchHtmlPrompts?: SearchHtmlPromptConfig;
   }) => Promise<{ runId: string }>;
   cancelChat: (runId: string) => void;
   resumeStream: (payload: { runId: string; lastSeq: number }) => Promise<{
