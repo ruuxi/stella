@@ -24,6 +24,7 @@ import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import { NativeSelect } from "@/ui/native-select";
 import { BillingTab } from "@/global/settings/BillingTab";
+import { hasBillingCheckoutCompletionMarker } from "@/global/settings/lib/billing-checkout";
 import "@/global/settings/settings.css";
 
 // ---------------------------------------------------------------------------
@@ -1054,7 +1055,10 @@ export const SettingsDialog = ({
   onOpenChange,
   onSignOut,
 }: SettingsDialogProps) => {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("basic");
+  const [selectedTab, setSelectedTab] = useState<SettingsTab>(() =>
+    hasBillingCheckoutCompletionMarker() ? "billing" : "basic",
+  );
+  const activeTab = hasBillingCheckoutCompletionMarker() ? "billing" : selectedTab;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1071,7 +1075,7 @@ export const SettingsDialog = ({
                   key={tab.key}
                   type="button"
                   className={`settings-sidebar-tab${activeTab === tab.key ? " settings-sidebar-tab--active" : ""}`}
-                  onClick={() => setActiveTab(tab.key)}
+                  onClick={() => setSelectedTab(tab.key)}
                 >
                   {tab.label}
                 </button>
