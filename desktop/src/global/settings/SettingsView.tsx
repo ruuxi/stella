@@ -47,7 +47,10 @@ const GENERAL_AGENT_ENGINE_OPTIONS = [
   { id: "claude_code_local", name: "Claude Code" },
 ] as const;
 
-const CODEX_LOCAL_CONCURRENCY_OPTIONS = [1, 2, 3] as const;
+const MAX_AGENT_CONCURRENCY_OPTIONS = Array.from(
+  { length: 24 },
+  (_, index) => index + 1,
+);
 
 const LLM_PROVIDERS = [
   { key: "anthropic", label: "Anthropic", placeholder: "sk-ant-..." },
@@ -182,12 +185,19 @@ function ModelConfigSection() {
   const setGeneralAgentEngine = useMutation(
     api.data.preferences.setGeneralAgentEngine,
   );
-  const codexLocalMaxConcurrency = useQuery(
-    api.data.preferences.getCodexLocalMaxConcurrency,
+  const selfModAgentEngine = useQuery(
+    api.data.preferences.getSelfModAgentEngine,
+    shouldQueryPreferences,
+  ) as "default" | "codex_local" | "claude_code_local" | undefined;
+  const setSelfModAgentEngine = useMutation(
+    api.data.preferences.setSelfModAgentEngine,
+  );
+  const maxAgentConcurrency = useQuery(
+    api.data.preferences.getMaxAgentConcurrency,
     shouldQueryPreferences,
   ) as number | undefined;
-  const setCodexLocalMaxConcurrency = useMutation(
-    api.data.preferences.setCodexLocalMaxConcurrency,
+  const setMaxAgentConcurrency = useMutation(
+    api.data.preferences.setMaxAgentConcurrency,
   );
   const { groups } = useModelCatalog();
   const modelNamesById = useMemo(() => {
@@ -235,7 +245,10 @@ function ModelConfigSection() {
   const [localGeneralAgentEngine, setLocalGeneralAgentEngine] = useState<
     "default" | "codex_local" | "claude_code_local" | null
   >(null);
-  const [localCodexLocalMaxConcurrency, setLocalCodexLocalMaxConcurrency] =
+  const [localSelfModAgentEngine, setLocalSelfModAgentEngine] = useState<
+    "default" | "codex_local" | "claude_code_local" | null
+  >(null);
+  const [localMaxAgentConcurrency, setLocalMaxAgentConcurrency] =
     useState<number | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [modelConfigError, setModelConfigError] = useState<string | null>(null);
@@ -247,7 +260,8 @@ function ModelConfigSection() {
   const runtimePreferencesLoaded =
     hasConnectedAccount &&
     generalAgentEngine !== undefined &&
-    codexLocalMaxConcurrency !== undefined;
+    selfModAgentEngine !== undefined &&
+    maxAgentConcurrency !== undefined;
   const modelPreferencesLoaded =
     hasConnectedAccount &&
     modelDefaults !== undefined &&
@@ -287,13 +301,20 @@ function ModelConfigSection() {
       : null) ??
     generalAgentEngine ??
     "default";
-  const effectiveCodexLocalMaxConcurrency =
-    (localCodexLocalMaxConcurrency !== null &&
-    localCodexLocalMaxConcurrency !== codexLocalMaxConcurrency
-      ? localCodexLocalMaxConcurrency
+  const effectiveSelfModAgentEngine =
+    (localSelfModAgentEngine !== null &&
+    localSelfModAgentEngine !== selfModAgentEngine
+      ? localSelfModAgentEngine
       : null) ??
-    codexLocalMaxConcurrency ??
-    3;
+    selfModAgentEngine ??
+    "default";
+  const effectiveMaxAgentConcurrency =
+    (localMaxAgentConcurrency !== null &&
+    localMaxAgentConcurrency !== maxAgentConcurrency
+      ? localMaxAgentConcurrency
+      : null) ??
+    maxAgentConcurrency ??
+    24;
 
   const hasAnyOverride = Object.keys(overrides).length > 0;
 
@@ -415,8 +436,8 @@ function ModelConfigSection() {
     overrides,
   ]);
 
-  const handleGeneralAgentEngineChange = useCallback(
-    async (value: string) => {
+  const handleAgentEngineChange = useCallback(
+    async (agentType: "general" | "self_mod", value: string) => {
       if (isSavingRuntimePreference) {
         return;
       }
@@ -427,53 +448,37 @@ function ModelConfigSection() {
           : value === "claude_code_local"
             ? "claude_code_local"
             : "default";
-      const previousValue = localGeneralAgentEngine;
+      const previousValue =
+        agentType === "general"
+          ? localGeneralAgentEngine
+          : localSelfModAgentEngine;
 
       setRuntimeError(null);
       setIsSavingRuntimePreference(true);
-      setLocalGeneralAgentEngine(engine);
+      if (agentType === "general") {
+        setLocalGeneralAgentEngine(engine);
+      } else {
+        setLocalSelfModAgentEngine(engine);
+      }
 
       try {
-        await setGeneralAgentEngine({ engine });
+        if (agentType === "general") {
+          await setGeneralAgentEngine({ engine });
+        } else {
+          await setSelfModAgentEngine({ engine });
+        }
       } catch (error) {
-        setLocalGeneralAgentEngine(previousValue);
+        if (agentType === "general") {
+          setLocalGeneralAgentEngine(previousValue);
+        } else {
+          setLocalSelfModAgentEngine(previousValue);
+        }
         setRuntimeError(
           getSettingsErrorMessage(
             error,
-            "Failed to update the general agent runtime.",
-          ),
-        );
-      } finally {
-        setIsSavingRuntimePreference(false);
-      }
-    },
-    [isSavingRuntimePreference, localGeneralAgentEngine, setGeneralAgentEngine],
-  );
-
-  const handleCodexLocalMaxConcurrencyChange = useCallback(
-    async (value: string) => {
-      if (isSavingRuntimePreference) {
-        return;
-      }
-
-      const parsed = Number(value);
-      const normalized = Number.isFinite(parsed)
-        ? Math.max(1, Math.min(3, Math.floor(parsed)))
-        : 3;
-      const previousValue = localCodexLocalMaxConcurrency;
-
-      setRuntimeError(null);
-      setIsSavingRuntimePreference(true);
-      setLocalCodexLocalMaxConcurrency(normalized);
-
-      try {
-        await setCodexLocalMaxConcurrency({ value: normalized });
-      } catch (error) {
-        setLocalCodexLocalMaxConcurrency(previousValue);
-        setRuntimeError(
-          getSettingsErrorMessage(
-            error,
-            "Failed to update Codex session concurrency.",
+            agentType === "general"
+              ? "Failed to update the general agent runtime."
+              : "Failed to update the self-mod agent runtime.",
           ),
         );
       } finally {
@@ -482,17 +487,56 @@ function ModelConfigSection() {
     },
     [
       isSavingRuntimePreference,
-      localCodexLocalMaxConcurrency,
-      setCodexLocalMaxConcurrency,
+      localGeneralAgentEngine,
+      localSelfModAgentEngine,
+      setGeneralAgentEngine,
+      setSelfModAgentEngine,
+    ],
+  );
+
+  const handleMaxAgentConcurrencyChange = useCallback(
+    async (value: string) => {
+      if (isSavingRuntimePreference) {
+        return;
+      }
+
+      const parsed = Number(value);
+      const normalized = Number.isFinite(parsed) && parsed >= 1
+        ? Math.floor(parsed)
+        : 24;
+      const previousValue = localMaxAgentConcurrency;
+
+      setRuntimeError(null);
+      setIsSavingRuntimePreference(true);
+      setLocalMaxAgentConcurrency(normalized);
+
+      try {
+        await setMaxAgentConcurrency({ value: normalized });
+      } catch (error) {
+        setLocalMaxAgentConcurrency(previousValue);
+        setRuntimeError(
+          getSettingsErrorMessage(
+            error,
+            "Failed to update max agent concurrency.",
+          ),
+        );
+      } finally {
+        setIsSavingRuntimePreference(false);
+      }
+    },
+    [
+      isSavingRuntimePreference,
+      localMaxAgentConcurrency,
+      setMaxAgentConcurrency,
     ],
   );
 
   return (
     <>
       <div className="settings-card">
-        <h3 className="settings-card-title">General Agent Runtime</h3>
+        <h3 className="settings-card-title">Agent Runtime</h3>
         <p className="settings-card-desc">
-          Choose how the general subagent runs on this device.
+          Choose how the General and Self Mod agents run on this device.
         </p>
         {!hasConnectedAccount ? (
           <p className="settings-card-desc">
@@ -511,7 +555,7 @@ function ModelConfigSection() {
           <div className="settings-row-info">
             <div className="settings-row-label">Engine</div>
             <div className="settings-row-sublabel">
-              Local engine modes require the corresponding CLI (
+              General agent. Local engine modes require the corresponding CLI (
               <code>codex</code> or <code>claude</code>).
             </div>
           </div>
@@ -521,7 +565,7 @@ function ModelConfigSection() {
                 className="settings-runtime-select"
                 value={effectiveGeneralAgentEngine}
                 onChange={(e) =>
-                  void handleGeneralAgentEngineChange(e.target.value)
+                  void handleAgentEngineChange("general", e.target.value)
                 }
                 disabled={isSavingRuntimePreference}
               >
@@ -546,33 +590,84 @@ function ModelConfigSection() {
             )}
           </div>
         </div>
-        {runtimePreferencesLoaded &&
-        effectiveGeneralAgentEngine === "codex_local" ? (
-          <div className="settings-row">
-            <div className="settings-row-info">
-              <div className="settings-row-label">Parallel Codex Sessions</div>
-              <div className="settings-row-sublabel">
-                Number of general-agent Codex tasks to run in parallel.
-              </div>
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Self Mod Engine</div>
+            <div className="settings-row-sublabel">
+              Stella-internal work. Local engine modes require the corresponding
+              CLI (<code>codex</code> or <code>claude</code>).
             </div>
-            <div className="settings-row-control">
+          </div>
+          <div className="settings-row-control">
+            {runtimePreferencesLoaded ? (
               <NativeSelect
                 className="settings-runtime-select"
-                value={String(effectiveCodexLocalMaxConcurrency)}
+                value={effectiveSelfModAgentEngine}
                 onChange={(e) =>
-                  void handleCodexLocalMaxConcurrencyChange(e.target.value)
+                  void handleAgentEngineChange("self_mod", e.target.value)
                 }
                 disabled={isSavingRuntimePreference}
               >
-                {CODEX_LOCAL_CONCURRENCY_OPTIONS.map((value) => (
+                {GENERAL_AGENT_ENGINE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            ) : (
+              <NativeSelect
+                className="settings-runtime-select"
+                value="loading"
+                disabled
+              >
+                <option value="loading">
+                  {hasConnectedAccount
+                    ? "Loading saved setting..."
+                    : "Sign in required"}
+                </option>
+              </NativeSelect>
+            )}
+          </div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Max Agent Concurrency</div>
+            <div className="settings-row-sublabel">
+              Maximum number of agent tasks running at once across General,
+              Self Mod, Codex, and Claude Code.
+            </div>
+          </div>
+          <div className="settings-row-control">
+            {runtimePreferencesLoaded ? (
+              <NativeSelect
+                className="settings-runtime-select"
+                value={String(effectiveMaxAgentConcurrency)}
+                onChange={(e) =>
+                  void handleMaxAgentConcurrencyChange(e.target.value)
+                }
+                disabled={isSavingRuntimePreference}
+              >
+                {MAX_AGENT_CONCURRENCY_OPTIONS.map((value) => (
                   <option key={value} value={value}>
                     {value}
                   </option>
                 ))}
               </NativeSelect>
-            </div>
+            ) : (
+              <NativeSelect
+                className="settings-runtime-select"
+                value="loading"
+                disabled
+              >
+                <option value="loading">
+                  {hasConnectedAccount
+                    ? "Loading saved setting..."
+                    : "Sign in required"}
+                </option>
+              </NativeSelect>
+            )}
           </div>
-        ) : null}
+        </div>
       </div>
 
       <div className="settings-card">

@@ -325,7 +325,7 @@ const buildSystemPrompt = (context: LocalTaskManagerAgentContext): string => {
   return sections.filter(Boolean).join("\n\n");
 };
 
-const buildGeneralAgentDocumentationPrompt = (frontendRoot?: string): string => {
+const buildSelfModDocumentationPrompt = (frontendRoot?: string): string => {
   if (!frontendRoot?.trim()) return "";
   return [
     "Documentation:",
@@ -886,7 +886,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
   const prompt = opts.userPrompt.trim();
   const effectiveSystemPrompt = [
     buildSystemPrompt(opts.agentContext),
-    opts.agentType === "general" ? buildGeneralAgentDocumentationPrompt(opts.frontendRoot) : "",
+    opts.agentType === "self_mod" ? buildSelfModDocumentationPrompt(opts.frontendRoot) : "",
   ]
     .filter((section) => section.trim().length > 0)
     .join("\n\n");
@@ -933,12 +933,12 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
   }
 
   const primaryModelId = opts.agentContext.model;
-  const isGeneralAgent = opts.agentType === "general";
+  const usesLocalCliRuntime = opts.agentType === "general" || opts.agentType === "self_mod";
   const sessionKey = opts.agentContext.activeThreadId
     ? `${opts.conversationId}:${opts.agentContext.activeThreadId}`
     : `${opts.conversationId}:run:${runId}`;
 
-  if (isGeneralAgent && opts.agentContext.generalAgentEngine === "codex_local") {
+  if (usesLocalCliRuntime && opts.agentContext.agentEngine === "codex_local") {
     try {
       const result = await runCodexAppServerTurn({
         runId,
@@ -967,7 +967,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
             chunk,
           });
         },
-        maxConcurrency: opts.agentContext.codexLocalMaxConcurrency,
+        maxConcurrency: opts.agentContext.maxAgentConcurrency,
       });
       if (result.text.trim()) {
         opts.store.appendThreadMessage({
@@ -1031,8 +1031,8 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
   }
 
   if (
-    isGeneralAgent &&
-    (opts.agentContext.generalAgentEngine === "claude_code_local" || (primaryModelId && isClaudeCodeModel(primaryModelId)))
+    usesLocalCliRuntime &&
+    (opts.agentContext.agentEngine === "claude_code_local" || (primaryModelId && isClaudeCodeModel(primaryModelId)))
   ) {
     try {
       const result = await runClaudeCodeTurn({

@@ -448,7 +448,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       resolvedDefaultModels: Record<string, string>;
       modelOverrides: Record<string, string>;
       generalAgentEngine: "default" | "codex_local" | "claude_code_local";
-      codexLocalMaxConcurrency: number;
+      selfModAgentEngine: "default" | "codex_local" | "claude_code_local";
+      maxAgentConcurrency: number;
     }) =>
       ipcRenderer.invoke(
         "preferences:syncLocalModelPreferences",

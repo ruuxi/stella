@@ -18,8 +18,8 @@ export type LocalTaskManagerAgentContext = {
   coreMemory?: string;
   threadHistory?: Array<{ role: string; content: string; toolCallId?: string }>;
   activeThreadId?: string;
-  generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
-  codexLocalMaxConcurrency?: number;
+  agentEngine?: "default" | "codex_local" | "claude_code_local";
+  maxAgentConcurrency?: number;
 };
 
 export type LocalTaskManagerStatus = "pending" | "running" | "completed" | "error" | "canceled";
@@ -88,6 +88,7 @@ export type TaskLifecycleEvent = {
 
 type LocalTaskManagerOpts = {
   maxConcurrent?: number;
+  getMaxConcurrent?: () => number;
   resolveTaskThread?: (args: {
     conversationId: string;
     agentType: string;
@@ -206,7 +207,7 @@ const isTaskCreateTool = (toolName: string): boolean =>
   toolName === "Task" || toolName === "TaskCreate";
 
 export class LocalTaskManager implements TaskToolApi {
-  private readonly maxConcurrent: number;
+  private readonly defaultMaxConcurrent: number;
   private readonly opts: LocalTaskManagerOpts;
   private readonly tasks = new Map<string, RuntimeTaskRecord>();
   private readonly pendingQueue: string[] = [];
@@ -218,11 +219,15 @@ export class LocalTaskManager implements TaskToolApi {
 
   constructor(opts: LocalTaskManagerOpts) {
     this.opts = opts;
-    this.maxConcurrent = Math.max(1, opts.maxConcurrent ?? 3);
+    this.defaultMaxConcurrent = Math.max(1, opts.maxConcurrent ?? 3);
   }
 
   private tryStartNext(): void {
-    while (this.runningCount < this.maxConcurrent && this.pendingQueue.length > 0) {
+    const maxConcurrent = Math.max(
+      1,
+      optsValueOrDefault(this.opts.getMaxConcurrent?.(), this.defaultMaxConcurrent),
+    );
+    while (this.runningCount < maxConcurrent && this.pendingQueue.length > 0) {
       const taskId = this.pendingQueue.shift();
       if (!taskId) break;
       const task = this.tasks.get(taskId);
@@ -603,3 +608,6 @@ export class LocalTaskManager implements TaskToolApi {
     return out;
   }
 }
+
+const optsValueOrDefault = (value: number | undefined, fallback: number): number =>
+  Number.isFinite(value) ? Math.floor(value!) : fallback;

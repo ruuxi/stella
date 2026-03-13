@@ -13,6 +13,10 @@ const MODEL_SETTINGS_METADATA: Record<string, { label: string; desc: string }> =
     label: "General",
     desc: "Full tool access for general tasks",
   },
+  self_mod: {
+    label: "Self Mod",
+    desc: "Stella internal code, prompts, runtime, and UI",
+  },
   browser: {
     label: "Browser",
     desc: "Browser automation via Playwright",
@@ -23,7 +27,7 @@ const MODEL_SETTINGS_METADATA: Record<string, { label: string; desc: string }> =
   },
 };
 
-const MODEL_SETTINGS_ORDER = ["orchestrator", "general", "browser", "explore"] as const;
+const MODEL_SETTINGS_ORDER = ["orchestrator", "general", "self_mod", "browser", "explore"] as const;
 
 export function buildModelDefaultsMap(
   defaults: readonly ModelDefaultEntry[] | undefined,
