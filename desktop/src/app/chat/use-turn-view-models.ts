@@ -6,6 +6,7 @@ import {
   getCurrentRunningTool,
   getRunningTasks,
 } from "@/app/chat/lib/event-transforms";
+import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
 import { useDepseudonymize } from "@/app/chat/hooks/use-depseudonymize";
 import { isOrchestratorChatMessagePayload } from "@/app/chat/emotes/message-source";
 import {
@@ -83,7 +84,8 @@ export function useTurnViewModels(opts: {
   const maxTurns =
     typeof maxItems === "number" ? Math.max(0, Math.floor(maxItems)) : null;
 
-  const allTurns = useMemo(() => groupEventsIntoTurns(events), [events]);
+  const displayEvents = useMemo(() => filterEventsForUiDisplay(events), [events]);
+  const allTurns = useMemo(() => groupEventsIntoTurns(displayEvents), [displayEvents]);
 
   const slicedTurns = useMemo(() => {
     if (maxTurns === null) return allTurns;
@@ -171,10 +173,10 @@ export function useTurnViewModels(opts: {
 
   const { runningTool, runningTasks } = useMemo(
     () => ({
-      runningTool: getCurrentRunningTool(events),
-      runningTasks: getRunningTasks(events),
-    }),
-    [events],
+    runningTool: getCurrentRunningTool(events),
+    runningTasks: getRunningTasks(events),
+  }),
+  [events],
   );
 
   const hasPendingTurn = useMemo(() => {

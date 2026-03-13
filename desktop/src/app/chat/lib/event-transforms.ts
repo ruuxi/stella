@@ -81,6 +81,17 @@ export type MessagePayload = {
     outputTokens?: number;
     totalTokens?: number;
   };
+  metadata?: MessageMetadata;
+};
+
+export type MessageMetadata = {
+  ui?: {
+    visibility?: "visible" | "hidden";
+  };
+  trigger?: {
+    kind?: string;
+    source?: string;
+  };
 };
 
 /**
