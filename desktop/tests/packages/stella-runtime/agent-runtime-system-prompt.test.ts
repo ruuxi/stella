@@ -254,13 +254,13 @@ describe("agent runtime platform shell prompt", () => {
     expect(capturedSystemPrompts[0]).toContain("Enabled installed skill IDs: calendar, music");
   });
 
-  it("appends the documentation section for the general agent only", async () => {
+  it("appends the documentation section for the self_mod agent only", async () => {
     const store = createStoreStub();
 
     await runSubagentTask({
       conversationId: "conv-1",
       userMessageId: "user-1",
-      agentType: "general",
+      agentType: "self_mod",
       userPrompt: "Continue the work",
       agentContext: buildAgentContext(),
       toolExecutor: vi.fn().mockResolvedValue({ result: "unused" }),

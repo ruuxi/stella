@@ -328,7 +328,8 @@ export type ElectronSystemApi = {
     resolvedDefaultModels: Record<string, string>;
     modelOverrides: Record<string, string>;
     generalAgentEngine: "default" | "codex_local" | "claude_code_local";
-    codexLocalMaxConcurrency: number;
+    selfModAgentEngine: "default" | "codex_local" | "claude_code_local";
+    maxAgentConcurrency: number;
   }) => Promise<{ ok: boolean }>;
   listLlmCredentials: () => Promise<LocalLlmCredentialSummary[]>;
   saveLlmCredential: (payload: {

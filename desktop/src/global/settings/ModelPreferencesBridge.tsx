@@ -28,8 +28,16 @@ export const ModelPreferencesBridge = () => {
     | "codex_local"
     | "claude_code_local"
     | undefined;
-  const codexLocalMaxConcurrency = useQuery(
-    api.data.preferences.getCodexLocalMaxConcurrency,
+  const selfModAgentEngine = useQuery(
+    api.data.preferences.getSelfModAgentEngine,
+    shouldQueryPreferences,
+  ) as
+    | "default"
+    | "codex_local"
+    | "claude_code_local"
+    | undefined;
+  const maxAgentConcurrency = useQuery(
+    api.data.preferences.getMaxAgentConcurrency,
     shouldQueryPreferences,
   ) as
     | number
@@ -40,7 +48,8 @@ export const ModelPreferencesBridge = () => {
       modelDefaults !== undefined
       && overridesJson !== undefined
       && generalAgentEngine !== undefined
-      && codexLocalMaxConcurrency !== undefined
+      && selfModAgentEngine !== undefined
+      && maxAgentConcurrency !== undefined
     );
 
   const defaultModels = useMemo(
@@ -84,16 +93,18 @@ export const ModelPreferencesBridge = () => {
       resolvedDefaultModels,
       modelOverrides,
       generalAgentEngine: generalAgentEngine ?? "default",
-      codexLocalMaxConcurrency: codexLocalMaxConcurrency ?? 3,
+      selfModAgentEngine: selfModAgentEngine ?? "default",
+      maxAgentConcurrency: maxAgentConcurrency ?? 24,
     });
   }, [
-    codexLocalMaxConcurrency,
     defaultModels,
     generalAgentEngine,
     hasConnectedAccount,
+    maxAgentConcurrency,
     modelOverrides,
     preferencesLoaded,
     resolvedDefaultModels,
+    selfModAgentEngine,
   ]);
 
   return null;
