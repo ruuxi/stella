@@ -1,13 +1,11 @@
 import { describe, test, expect } from "bun:test";
 import {
   GENERAL_AGENT_ENGINE_KEY,
-  CODEX_LOCAL_MAX_CONCURRENCY_KEY,
-  DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY,
-  MIN_CODEX_LOCAL_MAX_CONCURRENCY,
-  MAX_CODEX_LOCAL_MAX_CONCURRENCY,
+  SELF_MOD_AGENT_ENGINE_KEY,
+  MAX_AGENT_CONCURRENCY_KEY,
   PREFERRED_BROWSER_KEY,
   normalizeGeneralAgentEngine,
-  normalizeCodexLocalMaxConcurrency,
+  normalizeMaxAgentConcurrency,
   normalizeSyncMode,
 } from "../convex/data/preferences";
 
@@ -16,18 +14,18 @@ describe("preference key constants", () => {
     expect(GENERAL_AGENT_ENGINE_KEY).toBe("general_agent_engine");
   });
 
-  test("CODEX_LOCAL_MAX_CONCURRENCY_KEY is a string", () => {
-    expect(typeof CODEX_LOCAL_MAX_CONCURRENCY_KEY).toBe("string");
+  test("SELF_MOD_AGENT_ENGINE_KEY is a string", () => {
+    expect(SELF_MOD_AGENT_ENGINE_KEY).toBe("self_mod_agent_engine");
+  });
+
+  test("MAX_AGENT_CONCURRENCY_KEY is a string", () => {
+    expect(MAX_AGENT_CONCURRENCY_KEY).toBe("max_agent_concurrency");
   });
 
   test("PREFERRED_BROWSER_KEY is a string", () => {
     expect(typeof PREFERRED_BROWSER_KEY).toBe("string");
   });
 
-  test("concurrency bounds are consistent", () => {
-    expect(MIN_CODEX_LOCAL_MAX_CONCURRENCY).toBeLessThanOrEqual(DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY);
-    expect(DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY).toBeLessThanOrEqual(MAX_CODEX_LOCAL_MAX_CONCURRENCY);
-  });
 });
 
 describe("normalizeGeneralAgentEngine", () => {
@@ -52,31 +50,30 @@ describe("normalizeGeneralAgentEngine", () => {
   });
 });
 
-describe("normalizeCodexLocalMaxConcurrency", () => {
-  test("clamps null (Number(null)=0) to min", () => {
-    expect(normalizeCodexLocalMaxConcurrency(null)).toBe(MIN_CODEX_LOCAL_MAX_CONCURRENCY);
+describe("normalizeMaxAgentConcurrency", () => {
+  test("falls back for null", () => {
+    expect(normalizeMaxAgentConcurrency(null)).toBe(24);
   });
 
   test("returns default for undefined", () => {
-    expect(normalizeCodexLocalMaxConcurrency(undefined)).toBe(DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY);
+    expect(normalizeMaxAgentConcurrency(undefined)).toBe(24);
   });
 
-  test("clamps to min", () => {
-    expect(normalizeCodexLocalMaxConcurrency("0")).toBe(MIN_CODEX_LOCAL_MAX_CONCURRENCY);
-  });
-
-  test("clamps to max", () => {
-    expect(normalizeCodexLocalMaxConcurrency("999")).toBe(MAX_CODEX_LOCAL_MAX_CONCURRENCY);
+  test("falls back for non-positive values", () => {
+    expect(normalizeMaxAgentConcurrency("0")).toBe(24);
+    expect(normalizeMaxAgentConcurrency("-3")).toBe(24);
   });
 
   test("parses valid number", () => {
-    const result = normalizeCodexLocalMaxConcurrency("2");
-    expect(result).toBeGreaterThanOrEqual(MIN_CODEX_LOCAL_MAX_CONCURRENCY);
-    expect(result).toBeLessThanOrEqual(MAX_CODEX_LOCAL_MAX_CONCURRENCY);
+    expect(normalizeMaxAgentConcurrency("12")).toBe(12);
+  });
+
+  test("caps oversized values at 24", () => {
+    expect(normalizeMaxAgentConcurrency("999")).toBe(24);
   });
 
   test("returns default for non-numeric", () => {
-    expect(normalizeCodexLocalMaxConcurrency("abc")).toBe(DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY);
+    expect(normalizeMaxAgentConcurrency("abc")).toBe(24);
   });
 });
 

@@ -14,10 +14,8 @@ const generalAgentEngineValidator = v.union(
   v.literal("claude_code_local"),
 );
 export const GENERAL_AGENT_ENGINE_KEY = "general_agent_engine";
-export const CODEX_LOCAL_MAX_CONCURRENCY_KEY = "codex_local_max_concurrency";
-export const DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY = 3;
-export const MIN_CODEX_LOCAL_MAX_CONCURRENCY = 1;
-export const MAX_CODEX_LOCAL_MAX_CONCURRENCY = 3;
+export const SELF_MOD_AGENT_ENGINE_KEY = "self_mod_agent_engine";
+export const MAX_AGENT_CONCURRENCY_KEY = "max_agent_concurrency";
 export const PREFERRED_BROWSER_KEY = "preferred_browser";
 const preferredBrowserValidator = v.union(
   v.literal("arc"),
@@ -46,14 +44,11 @@ export const normalizeGeneralAgentEngine = (
   return "default";
 };
 
-export const normalizeCodexLocalMaxConcurrency = (value: string | null | undefined): number => {
+export const normalizeMaxAgentConcurrency = (value: string | null | undefined): number => {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY;
+  if (!Number.isFinite(parsed) || parsed < 1) return 24;
   const rounded = Math.floor(parsed);
-  return Math.max(
-    MIN_CODEX_LOCAL_MAX_CONCURRENCY,
-    Math.min(MAX_CODEX_LOCAL_MAX_CONCURRENCY, rounded),
-  );
+  return rounded < 1 ? 24 : Math.min(24, rounded);
 };
 
 export const upsertPreferenceRecord = async (
@@ -239,7 +234,34 @@ export const setGeneralAgentEngine = mutation({
   },
 });
 
-export const getCodexLocalMaxConcurrency = query({
+export const getSelfModAgentEngine = query({
+  args: {},
+  returns: generalAgentEngineValidator,
+  handler: async (ctx) => {
+    const ownerId = await requireUserId(ctx);
+    const record = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_ownerId_and_key", (q) =>
+        q.eq("ownerId", ownerId).eq("key", SELF_MOD_AGENT_ENGINE_KEY),
+      )
+      .unique();
+    return normalizeGeneralAgentEngine(record?.value ?? null);
+  },
+});
+
+export const setSelfModAgentEngine = mutation({
+  args: {
+    engine: generalAgentEngineValidator,
+  },
+  returns: generalAgentEngineValidator,
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+    await upsertPreferenceRecord(ctx, ownerId, SELF_MOD_AGENT_ENGINE_KEY, args.engine);
+    return args.engine;
+  },
+});
+
+export const getMaxAgentConcurrency = query({
   args: {},
   returns: v.number(),
   handler: async (ctx) => {
@@ -247,22 +269,22 @@ export const getCodexLocalMaxConcurrency = query({
     const record = await ctx.db
       .query("user_preferences")
       .withIndex("by_ownerId_and_key", (q) =>
-        q.eq("ownerId", ownerId).eq("key", CODEX_LOCAL_MAX_CONCURRENCY_KEY),
+        q.eq("ownerId", ownerId).eq("key", MAX_AGENT_CONCURRENCY_KEY),
       )
       .unique();
-    return normalizeCodexLocalMaxConcurrency(record?.value ?? null);
+    return normalizeMaxAgentConcurrency(record?.value ?? null);
   },
 });
 
-export const setCodexLocalMaxConcurrency = mutation({
+export const setMaxAgentConcurrency = mutation({
   args: {
     value: v.number(),
   },
   returns: v.number(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const normalized = normalizeCodexLocalMaxConcurrency(String(args.value));
-    await upsertPreferenceRecord(ctx, ownerId, CODEX_LOCAL_MAX_CONCURRENCY_KEY, String(normalized));
+    const normalized = normalizeMaxAgentConcurrency(String(args.value));
+    await upsertPreferenceRecord(ctx, ownerId, MAX_AGENT_CONCURRENCY_KEY, String(normalized));
     return normalized;
   },
 });
