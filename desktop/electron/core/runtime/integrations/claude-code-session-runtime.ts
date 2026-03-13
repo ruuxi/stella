@@ -23,6 +23,7 @@ type ClaudeCodeTurnRequest = {
   runId: string;
   sessionKey: string;
   prompt: string;
+  systemPrompt?: string;
   modelId: string;
   cwd?: string;
   abortSignal?: AbortSignal;
@@ -217,6 +218,9 @@ class ClaudeCodeSessionRuntime {
   ): Promise<ClaudeCodeTurnResult> {
     const modelName = parseClaudeCodeModel(request.modelId);
     const args = ["-p", "--output-format", "stream-json", "--verbose"];
+    if (request.systemPrompt?.trim()) {
+      args.push("--append-system-prompt", request.systemPrompt.trim());
+    }
     if (modelName) {
       args.push("--model", modelName);
     }

@@ -325,6 +325,14 @@ const buildSystemPrompt = (context: LocalTaskManagerAgentContext): string => {
   return sections.filter(Boolean).join("\n\n");
 };
 
+const buildGeneralAgentDocumentationPrompt = (frontendRoot?: string): string => {
+  if (!frontendRoot?.trim()) return "";
+  return [
+    "Documentation:",
+    "- If you are working on renderer structure, file placement, or ownership boundaries, read `src/STELLA.md` first.",
+  ].join("\n");
+};
+
 const buildOrchestratorUserPrompt = (context: LocalTaskManagerAgentContext, userPrompt: string): string => {
   const reminder = context.orchestratorReminderText?.trim();
   if (!context.shouldInjectDynamicReminder || !reminder) {
@@ -876,6 +884,12 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
 }> {
   const runId = opts.runId ?? `local:sub:${crypto.randomUUID()}`;
   const prompt = opts.userPrompt.trim();
+  const effectiveSystemPrompt = [
+    buildSystemPrompt(opts.agentContext),
+    opts.agentType === "general" ? buildGeneralAgentDocumentationPrompt(opts.frontendRoot) : "",
+  ]
+    .filter((section) => section.trim().length > 0)
+    .join("\n\n");
   const subagentThreadConversationId = buildRuntimeThreadKey({
     conversationId: opts.conversationId,
     agentType: opts.agentType,
@@ -930,6 +944,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         runId,
         sessionKey,
         prompt,
+        developerInstructions: effectiveSystemPrompt,
         cwd: opts.frontendRoot,
         abortSignal: opts.abortSignal,
         onProgress: (chunk) => {
@@ -1025,6 +1040,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         sessionKey,
         modelId: primaryModelId!,
         prompt,
+        systemPrompt: effectiveSystemPrompt,
         cwd: opts.frontendRoot,
         abortSignal: opts.abortSignal,
         onProgress: (chunk) => {
@@ -1137,7 +1153,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
 
   const agent = new Agent({
     initialState: {
-      systemPrompt: buildSystemPrompt(opts.agentContext),
+      systemPrompt: effectiveSystemPrompt,
       model: opts.resolvedLlm.model,
       thinkingLevel: "medium",
       tools,

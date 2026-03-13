@@ -16,8 +16,8 @@ Placement rules:
 - Only move code into `shared/` when it is genuinely reused across boundaries.
 - Only add subfolders when there is a real seam. Avoid generic buckets like `services/` unless a folder has enough internal complexity to justify them.
 - Put navigable app code under `src/app/`.
-- Do not use `src/apps/`. That was a temporary rename during the ongoing structure refactor.
 - Keep global renderer foundations under `src/shared/` rather than creating new top-level buckets for theme/style/type concerns.
+- If a subtree needs more specific guidance, add another `STELLA.md` in that subtree. Nearer `STELLA.md` files override broader parent guidance.
 
 Navigation model:
 
