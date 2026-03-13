@@ -175,6 +175,7 @@ export function useStreamingChat({
           attachments,
           platform,
           timezone,
+          ...(options.metadata ? { metadata: options.metadata } : {}),
           ...(mode && { mode }),
         },
       })

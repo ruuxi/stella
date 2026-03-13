@@ -5,6 +5,7 @@ import { StellaAnimation, type StellaAnimationHandle } from "@/shell/ascii-creat
 import { Markdown } from "@/app/chat/Markdown";
 import { getDisplayMessageText } from "@/app/chat/MessageTurn";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
+import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
 import "./floating-orb.css";
 
 const ORB_POSITION_KEY = "stella:orb-position";
@@ -26,6 +27,7 @@ function savePosition(pos: { right: number; bottom: number }) {
 }
 
 export interface FloatingOrbHandle {
+  openChat(): void;
   openWithText(text: string): void;
 }
 
@@ -45,7 +47,7 @@ interface FloatingOrbProps {
 
 function extractChatMessages(events: EventRecord[]): MiniChatMessage[] {
   const messages: MiniChatMessage[] = [];
-  for (const event of events) {
+  for (const event of filterEventsForUiDisplay(events)) {
     if (event.type === "user_message" || event.type === "assistant_message") {
       const text = getDisplayMessageText(event);
       if (!text.trim()) continue;
@@ -83,6 +85,9 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
   const chatMessages = useMemo(() => extractChatMessages(events), [events]);
 
   useImperativeHandle(ref, () => ({
+    openChat() {
+      setIsChatOpen(true);
+    },
     openWithText(text: string) {
       setInputText(text);
       setIsChatOpen(true);

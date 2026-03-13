@@ -34,6 +34,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     expect(screen.getByText("Home")).toBeTruthy();
     expect(screen.getByText("Chat")).toBeTruthy();
+    expect(screen.getByText("New App")).toBeTruthy();
   });
 
   it("calls onConnect when clicking Connect", () => {
@@ -46,7 +47,7 @@ describe("Sidebar", () => {
   it("calls onSettings when clicking Settings", () => {
     const onSettings = vi.fn();
     render(<Sidebar onSettings={onSettings} />);
-    fireEvent.click(screen.getByText("Settings"));
+    fireEvent.click(screen.getByTitle("Settings"));
     expect(onSettings).toHaveBeenCalledTimes(1);
   });
 
@@ -64,6 +65,13 @@ describe("Sidebar", () => {
     expect(onChat).toHaveBeenCalledTimes(1);
   });
 
+  it("calls onNewApp when clicking New App", () => {
+    const onNewApp = vi.fn();
+    render(<Sidebar onNewApp={onNewApp} />);
+    fireEvent.click(screen.getByText("New App"));
+    expect(onNewApp).toHaveBeenCalledTimes(1);
+  });
+
   it("shows 'Sign in' when unauthenticated", () => {
     render(<Sidebar />);
     expect(screen.getByText("Sign in")).toBeTruthy();
@@ -71,7 +79,7 @@ describe("Sidebar", () => {
 
   it("renders settings item", () => {
     render(<Sidebar />);
-    expect(screen.getByText("Settings")).toBeTruthy();
+    expect(screen.getByTitle("Settings")).toBeTruthy();
   });
 });
 

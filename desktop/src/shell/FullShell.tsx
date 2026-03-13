@@ -22,6 +22,10 @@ import type { DialogType } from './full-shell-dialogs'
 import { useFullShellChat } from './use-full-shell-chat'
 import { useFullShellVoiceTranscript } from './use-full-shell-voice-transcript'
 import { useLocalWorkspacePanels } from './use-local-workspace-panels'
+import {
+  dispatchStellaSendMessage,
+  WORKSPACE_CREATION_TRIGGER_KIND,
+} from '@/shared/lib/stella-send-message'
 
 const OnboardingCanvas = lazy(() =>
   import('@/global/onboarding/OnboardingCanvas').then((m) => ({ default: m.OnboardingCanvas }))
@@ -84,6 +88,19 @@ export const FullShell = () => {
   const showChatView = useCallback(() => {
     setView('chat')
   }, [setView])
+
+  const handleNewApp = useCallback(() => {
+    dispatchStellaSendMessage({
+      text: "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.",
+      uiVisibility: 'hidden',
+      triggerKind: WORKSPACE_CREATION_TRIGGER_KIND,
+      triggerSource: 'sidebar',
+    })
+    orbRef.current?.openChat()
+    if (state.view === 'chat') {
+      setView('home')
+    }
+  }, [setView, state.view])
 
   const handleDemoChange = useCallback((demo: OnboardingDemo) => {
     if (demo) {
@@ -191,6 +208,7 @@ export const FullShell = () => {
               onSettings={showSettingsDialog}
               onHome={showHomeView}
               onChat={showChatView}
+              onNewApp={handleNewApp}
             />
 
             <div className="content-area">
@@ -272,5 +290,3 @@ export const FullShell = () => {
     </div>
   )
 }
-
-

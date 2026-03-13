@@ -89,6 +89,7 @@
 }
 
 .orb-msg--user {
+  font-size: 14px;
   margin-left: auto;
   background: color-mix(in srgb, var(--primary) 30%, var(--background));
   color: var(--text-strong);

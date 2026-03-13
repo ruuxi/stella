@@ -5,6 +5,7 @@ import type { ViewType } from "@/shared/contracts/ui";
 import House from "lucide-react/dist/esm/icons/house";
 import Link2 from "lucide-react/dist/esm/icons/link-2";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square";
+import PlusSquare from "lucide-react/dist/esm/icons/square-plus";
 import Settings from "lucide-react/dist/esm/icons/settings";
 import User from "lucide-react/dist/esm/icons/user";
 import LogIn from "lucide-react/dist/esm/icons/log-in";
@@ -21,6 +22,7 @@ interface SidebarProps {
   onSettings?: () => void;
   onHome?: () => void;
   onChat?: () => void;
+  onNewApp?: () => void;
 }
 
 const AuthButton = ({
@@ -65,6 +67,7 @@ export const Sidebar = ({
   onSettings,
   onHome,
   onChat,
+  onNewApp,
 }: SidebarProps) => {
   return (
     <aside className="sidebar">
@@ -95,6 +98,12 @@ export const Sidebar = ({
             <MessageSquare size={18} />
           </span>
           <span className="sidebar-nav-label">Chat</span>
+        </button>
+        <button type="button" className="sidebar-nav-item" onClick={onNewApp}>
+          <span className="sidebar-nav-icon">
+            <PlusSquare size={18} />
+          </span>
+          <span className="sidebar-nav-label">New App</span>
         </button>
       </nav>
       <div className="sidebar-footer">
@@ -127,5 +136,4 @@ export const Sidebar = ({
     </aside>
   );
 };
-
 
