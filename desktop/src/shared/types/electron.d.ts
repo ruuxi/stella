@@ -262,7 +262,6 @@ export type ElectronVoiceApi = {
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;
   }>;
-  setAssistantSpeaking: (active: boolean) => Promise<{ ok: boolean }>;
   getRuntimeState: () => Promise<VoiceRuntimeSnapshot>;
   onRuntimeState: (
     callback: (state: VoiceRuntimeSnapshot) => void,

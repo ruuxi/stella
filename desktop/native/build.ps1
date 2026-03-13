@@ -8,8 +8,7 @@ $targets = @(
     @{ kind = "cpp"; src = "src\mouse_block.cpp"; out = (Join-Path $outputDir "mouse_block.exe") },
     @{ kind = "cpp"; src = "src\window_info.cpp"; out = (Join-Path $outputDir "window_info.exe") },
     @{ kind = "cpp"; src = "src\window_text.cpp"; out = (Join-Path $outputDir "window_text.exe") },
-    @{ kind = "cpp"; src = "src\selected_text.cpp"; out = (Join-Path $outputDir "selected_text.exe") },
-    @{ kind = "csharp"; src = "src\audio_ducking.cs"; out = (Join-Path $outputDir "audio_ducking.exe") }
+    @{ kind = "cpp"; src = "src\selected_text.cpp"; out = (Join-Path $outputDir "selected_text.exe") }
 )
 
 function Build-WithMSVC($vcvars, $srcFile, $outFile) {

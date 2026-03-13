@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   acquireSharedMicrophone,
-  bufferRecentVoiceHandoffPcm,
-  consumeRecentVoiceHandoffPcm,
   resetSharedMicrophoneForTests,
 } from "../../../../../src/features/voice/services/shared-microphone";
 
@@ -85,16 +83,6 @@ describe("shared microphone", () => {
     await vi.advanceTimersByTimeAsync(45_000);
 
     expect(rootStream.track.stop).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps only the freshest recent voice handoff audio", () => {
-    bufferRecentVoiceHandoffPcm(new Int16Array([1, 2, 3]));
-    bufferRecentVoiceHandoffPcm(new Int16Array([4, 5]));
-
-    expect(Array.from(consumeRecentVoiceHandoffPcm())).toEqual([
-      1, 2, 3, 4, 5,
-    ]);
-    expect(Array.from(consumeRecentVoiceHandoffPcm())).toEqual([]);
   });
 });
 

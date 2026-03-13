@@ -14,10 +14,8 @@ import {
 } from "@/prompts";
 import {
   acquireSharedMicrophone,
-  consumeRecentVoiceHandoffPcm,
   type SharedMicrophoneLease,
 } from "@/features/voice/services/shared-microphone";
-import { encodeInt16PacketToBase64 } from "@/features/voice/services/audio-encoding";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,28 +67,6 @@ const getVoiceRuntimeState = (): VoiceRuntimeState => {
 };
 
 const CONVEX_CONVERSATION_ID_PATTERN = /^[a-z][a-z0-9]+$/;
-const PRECONNECT_BUFFER_CHUNK_LIMIT = 36; // ~3s at 24kHz with 2048-sample chunks
-const PRECONNECT_SPEECH_RMS_THRESHOLD = 0.012;
-const PRECONNECT_SILENCE_MS = 280;
-const PRECONNECT_BOUNDARY_MAX_WAIT_MS = 1800;
-const PRECONNECT_BOUNDARY_POLL_MS = 40;
-const DATA_CHANNEL_OPEN_TIMEOUT_MS = 8_000;
-const WAKE_WORD_HANDOFF_CHUNK_SAMPLES = 2048;
-const DUPLEX_GATE_ANALYSIS_WINDOW = 8192;
-const DUPLEX_GATE_INTERVAL_MS = 50;
-const DUPLEX_GATE_OPEN_FRAMES = 4;
-const DUPLEX_GATE_CLOSE_FRAMES = 3;
-const DUPLEX_GATE_MIN_MIC_RMS = 0.025;
-const DUPLEX_GATE_MIN_OUTPUT_RMS = 0.008;
-const DUPLEX_GATE_REOPEN_CORRELATION = 0.2;
-const DUPLEX_GATE_STRONG_ECHO_CORRELATION = 0.45;
-const DUPLEX_GATE_NEAR_FIELD_OVERRIDE_RATIO = 3.2;
-const DUPLEX_GATE_LOCAL_PLAYBACK_START_FRAMES = 1;
-const DUPLEX_GATE_LOCAL_PLAYBACK_END_FRAMES = 6;
-const DUPLEX_GATE_ECHO_TAIL_MS = 300;
-const DUPLEX_GATE_LAG_MS = [
-  0, 5, 10, 15, 20, 30, 40, 50, 60, 80, 100, 125, 150, 200,
-];
 
 const RTC_CONFIGURATION: RTCConfiguration = {
   // Pre-gather one ICE candidate batch to shorten negotiation time.
@@ -126,46 +102,14 @@ export class RealtimeVoiceSession {
   private localStream: MediaStream | null = null;
   private micLease: SharedMicrophoneLease | null = null;
   private inputTrack: MediaStreamTrack | null = null;
-  private outboundTrack: MediaStreamTrack | null = null;
   private analyser: AnalyserNode | null = null;
   private audioContext: AudioContext | null = null;
   private outputAnalyser: AnalyserNode | null = null;
-  private gateGainNode: GainNode | null = null;
-  private gateSilentSink: GainNode | null = null;
   private inputSourceNode: MediaStreamAudioSourceNode | null = null;
-  private inputMonitorNode: ScriptProcessorNode | null = null;
-  private outputMonitorNode: ScriptProcessorNode | null = null;
   private outputMonitorSource: MediaStreamAudioSourceNode | null = null;
   private pendingRemoteStream: MediaStream | null = null;
-  private duplexGateTimer: ReturnType<typeof setInterval> | null = null;
-  private duplexGateOpen = true;
-  private duplexGateOpenFrames = 0;
-  private duplexGateCloseFrames = 0;
-  private assistantServerSpeaking = false;
-  private assistantPlaybackActive = false;
-  private assistantPlaybackActiveFrames = 0;
-  private assistantPlaybackSilentFrames = 0;
-  private inputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
-  private outputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
-  private inputSampleWriteIndex = 0;
-  private outputSampleWriteIndex = 0;
-  private inputWindowFilled = false;
-  private outputWindowFilled = false;
-  private duplexGateLagSamples: number[] = [0];
   private destroyed = false;
   private inputActive = false;
-  private externalAudioDuckingActive = false;
-  private assistantSpeakingEndTime = 0;
-
-  // Pre-connection audio buffer — captures mic audio while SDP negotiation is in progress
-  private preConnectBuffer: string[] = []; // base64-encoded PCM chunks
-  private preConnectRecorder: ScriptProcessorNode | null = null;
-  private preConnectCtx: AudioContext | null = null;
-  private isBufferingPreConnect = false;
-  private preConnectObservedSpeech = false;
-  private preConnectLastSpeechAt = 0;
-  private dataChannelOpenPromise: Promise<void> | null = null;
-  private resolveDataChannelOpenPromise: (() => void) | null = null;
 
   private _state: VoiceSessionState = "idle";
   private listeners = new Set<VoiceSessionListener>();
@@ -284,14 +228,9 @@ export class RealtimeVoiceSession {
       })();
 
       // B) Acquire microphone (runs in parallel, awaited later)
-      // Start pre-connect buffering as soon as mic is available so user speech
-      // during SDP negotiation is captured and flushed when the channel opens.
       const micPromise = acquireSharedMicrophone().then((lease) => {
         const stream = lease.stream;
         this.micLease = lease;
-        if (!this.destroyed && this.inputActive) {
-          this.startPreConnectBuffering(stream);
-        }
         return stream;
       });
       micPromise.catch((err) => {
@@ -309,7 +248,6 @@ export class RealtimeVoiceSession {
       this.sender = transceiver.sender;
 
       this.dc = this.pc.createDataChannel("oai-events");
-      this.initDataChannelOpenLatch();
       this.setupDataChannel();
 
       this.pc.ontrack = (event) => {
@@ -383,21 +321,8 @@ export class RealtimeVoiceSession {
       }
       this.setupLocalAudioPipeline(micStream);
 
-      if (this.inputActive) {
-        if (!this.isBufferingPreConnect) {
-          this.startPreConnectBuffering(micStream);
-        }
-        await this.waitForDataChannelOpen();
-        await this.waitForFirstTurnBoundary();
-
-        const bufferedChunks = this.consumePreConnectBuffer();
-        this.flushPreConnectChunks(bufferedChunks);
-      } else {
-        this.stopPreConnectBuffering();
-      }
-
       this.inputTrack.enabled = this.inputActive;
-      await this.sender.replaceTrack(this.outboundTrack ?? this.inputTrack);
+      await this.sender.replaceTrack(this.inputTrack);
       if (!this.inputActive) {
         await this.suspendMicrophoneCapture();
       }
@@ -445,184 +370,10 @@ export class RealtimeVoiceSession {
   // WebRTC internals
   // ---------------------------------------------------------------------------
 
-  /** Start capturing mic audio into a buffer while we wait for the data channel. */
-  private startPreConnectBuffering(micStream: MediaStream) {
-    if (this.isBufferingPreConnect) return;
-    this.isBufferingPreConnect = true;
-    this.preConnectBuffer = [];
-    this.preConnectObservedSpeech = false;
-    this.preConnectLastSpeechAt = Date.now();
-
-    try {
-      const ctx = new AudioContext({ sampleRate: 24000 }); // OpenAI Realtime expects 24kHz
-      this.preConnectCtx = ctx;
-      const source = ctx.createMediaStreamSource(micStream);
-
-      // ScriptProcessorNode to capture raw PCM (deprecated but universally supported)
-      const processor = ctx.createScriptProcessor(2048, 1, 1);
-      this.preConnectRecorder = processor;
-
-      processor.onaudioprocess = (e) => {
-        if (!this.isBufferingPreConnect) return;
-        const float32 = e.inputBuffer.getChannelData(0);
-        let sumSquares = 0;
-        // Convert to 16-bit PCM then base64 (matching OpenAI's input_audio_buffer.append format)
-        const int16 = new Int16Array(float32.length);
-        for (let i = 0; i < float32.length; i++) {
-          const sample = float32[i];
-          sumSquares += sample * sample;
-          int16[i] = Math.max(
-            -32768,
-            Math.min(32767, Math.round(sample * 32767)),
-          );
-        }
-        const rms = Math.sqrt(sumSquares / Math.max(1, float32.length));
-        if (rms >= PRECONNECT_SPEECH_RMS_THRESHOLD) {
-          this.preConnectObservedSpeech = true;
-          this.preConnectLastSpeechAt = Date.now();
-        }
-        const bytes = new Uint8Array(int16.buffer);
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        if (this.preConnectBuffer.length >= PRECONNECT_BUFFER_CHUNK_LIMIT) {
-          // Keep the freshest speech to avoid large stale-audio backlogs.
-          this.preConnectBuffer.shift();
-        }
-        this.preConnectBuffer.push(btoa(binary));
-      };
-
-      source.connect(processor);
-      processor.connect(ctx.destination); // required for ScriptProcessorNode to fire
-    } catch (err) {
-      console.debug(
-        "[realtime-voice] Pre-connect buffering setup failed:",
-        (err as Error).message,
-      );
-      this.isBufferingPreConnect = false;
-    }
-  }
-
-  /** Stop pre-connect buffering and clean up the capture nodes. */
-  private stopPreConnectBuffering() {
-    this.isBufferingPreConnect = false;
-    if (this.preConnectRecorder) {
-      this.preConnectRecorder.disconnect();
-      this.preConnectRecorder = null;
-    }
-    if (this.preConnectCtx) {
-      this.preConnectCtx.close().catch((err) => {
-        console.debug(
-          "[RealtimeVoice] Pre-connect audio context close failed:",
-          (err as Error).message,
-        );
-      });
-      this.preConnectCtx = null;
-    }
-  }
-
-  private consumePreConnectBuffer(): string[] {
-    const chunks = this.preConnectBuffer;
-    this.stopPreConnectBuffering();
-    this.preConnectBuffer = [];
-    return chunks;
-  }
-
-  /** Flush buffered pre-connect audio into the Realtime API via the data channel. */
-  private flushPreConnectChunks(chunks: string[]) {
-    if (chunks.length === 0) return;
-    for (const chunk of chunks) {
-      this.sendEvent({
-        type: "input_audio_buffer.append",
-        audio: chunk,
-      });
-    }
-  }
-
-  private flushWakeWordHandoffPcm(pcm: Int16Array) {
-    if (pcm.length === 0) {
-      return;
-    }
-
-    for (
-      let offset = 0;
-      offset < pcm.length;
-      offset += WAKE_WORD_HANDOFF_CHUNK_SAMPLES
-    ) {
-      const chunk = pcm.subarray(
-        offset,
-        Math.min(offset + WAKE_WORD_HANDOFF_CHUNK_SAMPLES, pcm.length),
-      );
-      this.sendEvent({
-        type: "input_audio_buffer.append",
-        audio: encodeInt16PacketToBase64(chunk),
-      });
-    }
-  }
-
-  private initDataChannelOpenLatch() {
-    this.dataChannelOpenPromise = new Promise<void>((resolve) => {
-      this.resolveDataChannelOpenPromise = resolve;
-    });
-  }
-
-  private markDataChannelOpen() {
-    if (this.resolveDataChannelOpenPromise) {
-      this.resolveDataChannelOpenPromise();
-      this.resolveDataChannelOpenPromise = null;
-    }
-  }
-
-  private async waitForDataChannelOpen(): Promise<void> {
-    if (this.dc?.readyState === "open") return;
-    if (!this.dataChannelOpenPromise) {
-      this.initDataChannelOpenLatch();
-    }
-    const latch = this.dataChannelOpenPromise!;
-    await Promise.race([
-      latch,
-      new Promise<never>((_, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error("Timed out waiting for data channel to open"));
-        }, DATA_CHANNEL_OPEN_TIMEOUT_MS);
-        latch.finally(() => clearTimeout(timeout));
-      }),
-    ]);
-  }
-
-  private async waitForFirstTurnBoundary(): Promise<void> {
-    if (!this.isBufferingPreConnect || this.preConnectBuffer.length === 0)
-      return;
-    if (!this.preConnectObservedSpeech) return;
-
-    const startedAt = Date.now();
-    while (!this.destroyed && this.isBufferingPreConnect) {
-      const now = Date.now();
-      const elapsed = now - startedAt;
-      const silenceFor = now - this.preConnectLastSpeechAt;
-
-      if (
-        this.preConnectObservedSpeech &&
-        silenceFor >= PRECONNECT_SILENCE_MS
-      ) {
-        return;
-      }
-      if (elapsed >= PRECONNECT_BOUNDARY_MAX_WAIT_MS) {
-        return;
-      }
-      await new Promise((resolve) =>
-        setTimeout(resolve, PRECONNECT_BOUNDARY_POLL_MS),
-      );
-    }
-  }
-
   private setupDataChannel() {
     if (!this.dc) return;
 
-    this.dc.onopen = () => {
-      this.markDataChannelOpen();
-    };
+    this.dc.onopen = () => {};
 
     this.dc.onmessage = (event) => {
       try {
@@ -680,68 +431,25 @@ export class RealtimeVoiceSession {
       if (!this.audioContext) {
         const ctx = new AudioContext();
         this.audioContext = ctx;
-        this.duplexGateLagSamples = DUPLEX_GATE_LAG_MS.map((lagMs) =>
-          Math.round((ctx.sampleRate * lagMs) / 1000),
-        ).filter(
-          (lag, index, values) =>
-            lag >= 0 &&
-            lag < DUPLEX_GATE_ANALYSIS_WINDOW - 64 &&
-            values.indexOf(lag) === index,
-        );
-        if (this.duplexGateLagSamples.length === 0) {
-          this.duplexGateLagSamples = [0];
-        }
-
         this.analyser = ctx.createAnalyser();
         this.analyser.fftSize = 256;
-
-        this.gateGainNode = ctx.createGain();
-        this.gateGainNode.gain.value = 1;
-
-        const destination = ctx.createMediaStreamDestination();
-        this.gateGainNode.connect(destination);
-        this.outboundTrack =
-          destination.stream.getAudioTracks()[0] ?? this.inputTrack;
-
-        this.gateSilentSink = ctx.createGain();
-        this.gateSilentSink.gain.value = 0;
-        this.gateSilentSink.connect(ctx.destination);
-
-        this.inputMonitorNode = ctx.createScriptProcessor(1024, 1, 1);
-        this.inputMonitorNode.onaudioprocess = (event) => {
-          this.recordSampleWindow(
-            event.inputBuffer.getChannelData(0),
-            this.inputSampleWindow,
-            "input",
-          );
-        };
-        this.inputMonitorNode.connect(this.gateSilentSink);
 
         if (this.pendingRemoteStream) {
           this.attachOutputMonitor(this.pendingRemoteStream);
         }
-
-        this.startDuplexGate();
       }
 
       this.attachLocalInputStream(stream);
-      this.updateOutboundGate();
     } catch (err) {
       console.debug(
         "[realtime-voice] Analyser setup failed:",
         (err as Error).message,
       );
-      this.outboundTrack = this.inputTrack;
     }
   }
 
   private attachLocalInputStream(stream: MediaStream) {
-    if (
-      !this.audioContext ||
-      !this.analyser ||
-      !this.gateGainNode ||
-      !this.inputMonitorNode
-    ) {
+    if (!this.audioContext || !this.analyser) {
       return;
     }
 
@@ -752,29 +460,12 @@ export class RealtimeVoiceSession {
 
     const source = this.audioContext.createMediaStreamSource(stream);
     source.connect(this.analyser);
-    source.connect(this.gateGainNode);
-    source.connect(this.inputMonitorNode);
     this.inputSourceNode = source;
-  }
-
-  private resetInputMonitoringState() {
-    this.inputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
-    this.inputSampleWriteIndex = 0;
-    this.inputWindowFilled = false;
-    this.duplexGateOpen = false;
-    this.duplexGateOpenFrames = 0;
-    this.duplexGateCloseFrames = 0;
   }
 
   private async suspendMicrophoneCapture() {
     if (!this.inputTrack && !this.localStream && !this.micLease) {
-      this.resetInputMonitoringState();
-      this.updateOutboundGate();
       return;
-    }
-
-    if (this.isBufferingPreConnect) {
-      this.stopPreConnectBuffering();
     }
 
     if (this.inputTrack && this.inputTrack.readyState === "live") {
@@ -797,13 +488,10 @@ export class RealtimeVoiceSession {
     }
 
     this.inputTrack = null;
-    this.resetInputMonitoringState();
 
     if (this.sender) {
-      await this.sender.replaceTrack(this.outboundTrack ?? null);
+      await this.sender.replaceTrack(null);
     }
-
-    this.updateOutboundGate();
   }
 
   private async resumeMicrophoneCapture() {
@@ -813,7 +501,6 @@ export class RealtimeVoiceSession {
 
     if (this.inputTrack && this.inputTrack.readyState === "live") {
       this.inputTrack.enabled = true;
-      this.updateOutboundGate();
       return;
     }
 
@@ -838,11 +525,8 @@ export class RealtimeVoiceSession {
     this.inputTrack.enabled = true;
 
     if (this.sender) {
-      await this.sender.replaceTrack(this.outboundTrack ?? this.inputTrack);
+      await this.sender.replaceTrack(this.inputTrack);
     }
-
-    this.flushWakeWordHandoffPcm(consumeRecentVoiceHandoffPcm());
-    this.updateOutboundGate();
   }
 
   private attachOutputMonitor(stream: MediaStream) {
@@ -854,286 +538,18 @@ export class RealtimeVoiceSession {
       this.outputMonitorSource.disconnect();
       this.outputMonitorSource = null;
     }
-    if (this.outputMonitorNode) {
-      this.outputMonitorNode.disconnect();
-      this.outputMonitorNode = null;
-    }
 
     this.outputAnalyser = this.audioContext.createAnalyser();
     this.outputAnalyser.fftSize = 256;
     const source = this.audioContext.createMediaStreamSource(stream);
     source.connect(this.outputAnalyser);
-
-    this.outputMonitorNode = this.audioContext.createScriptProcessor(
-      1024,
-      1,
-      1,
-    );
-    this.outputMonitorNode.onaudioprocess = (event) => {
-      this.recordSampleWindow(
-        event.inputBuffer.getChannelData(0),
-        this.outputSampleWindow,
-        "output",
-      );
-    };
-    source.connect(this.outputMonitorNode);
-    if (this.gateSilentSink) {
-      this.outputMonitorNode.connect(this.gateSilentSink);
-    }
     this.outputMonitorSource = source;
-  }
-
-  private recordSampleWindow(
-    input: Float32Array,
-    target: Float32Array,
-    kind: "input" | "output",
-  ) {
-    let writeIndex =
-      kind === "input"
-        ? this.inputSampleWriteIndex
-        : this.outputSampleWriteIndex;
-
-    for (let i = 0; i < input.length; i++) {
-      target[writeIndex] = input[i];
-      writeIndex = (writeIndex + 1) % target.length;
-    }
-
-    if (kind === "input") {
-      this.inputSampleWriteIndex = writeIndex;
-      if (!this.inputWindowFilled && writeIndex === 0) {
-        this.inputWindowFilled = true;
-      }
-      return;
-    }
-
-    this.outputSampleWriteIndex = writeIndex;
-    if (!this.outputWindowFilled && writeIndex === 0) {
-      this.outputWindowFilled = true;
-    }
-  }
-
-  private startDuplexGate() {
-    if (this.duplexGateTimer) return;
-    this.duplexGateTimer = setInterval(() => {
-      this.updateOutboundGate();
-    }, DUPLEX_GATE_INTERVAL_MS);
-  }
-
-  private stopDuplexGate() {
-    if (this.duplexGateTimer) {
-      clearInterval(this.duplexGateTimer);
-      this.duplexGateTimer = null;
-    }
-  }
-
-  private updateOutboundGate() {
-    if (!this.gateGainNode) return;
-    const assistantSpeaking = this.updateAssistantPlaybackState();
-    if (!this.inputActive) {
-      this.duplexGateOpen = false;
-      this.duplexGateOpenFrames = 0;
-      this.duplexGateCloseFrames = 0;
-      this.gateGainNode.gain.setTargetAtTime(
-        0,
-        this.audioContext?.currentTime ?? 0,
-        0.01,
-      );
-      return;
-    }
-
-    // Echo tail guard: keep gate suppressed briefly after assistant stops
-    // to let room reverb and residual echo die out
-    const inEchoTail =
-      !assistantSpeaking &&
-      this.assistantSpeakingEndTime > 0 &&
-      performance.now() - this.assistantSpeakingEndTime <
-        DUPLEX_GATE_ECHO_TAIL_MS;
-
-    if (!assistantSpeaking && !inEchoTail) {
-      this.duplexGateOpen = true;
-      this.duplexGateOpenFrames = 0;
-      this.duplexGateCloseFrames = 0;
-      this.gateGainNode.gain.setTargetAtTime(
-        1,
-        this.audioContext?.currentTime ?? 0,
-        0.01,
-      );
-      return;
-    }
-
-    const nextOpen = this.computeOutboundGateState();
-    if (nextOpen) {
-      this.duplexGateCloseFrames = 0;
-      this.duplexGateOpenFrames = Math.min(
-        DUPLEX_GATE_OPEN_FRAMES,
-        this.duplexGateOpenFrames + 1,
-      );
-      if (
-        !this.duplexGateOpen &&
-        this.duplexGateOpenFrames >= DUPLEX_GATE_OPEN_FRAMES
-      ) {
-        this.duplexGateOpen = true;
-      }
-    } else {
-      this.duplexGateOpenFrames = 0;
-      this.duplexGateCloseFrames = Math.min(
-        DUPLEX_GATE_CLOSE_FRAMES,
-        this.duplexGateCloseFrames + 1,
-      );
-      if (
-        this.duplexGateOpen &&
-        this.duplexGateCloseFrames >= DUPLEX_GATE_CLOSE_FRAMES
-      ) {
-        this.duplexGateOpen = false;
-      }
-    }
-
-    this.gateGainNode.gain.setTargetAtTime(
-      this.duplexGateOpen ? 1 : 0,
-      this.audioContext?.currentTime ?? 0,
-      this.duplexGateOpen ? 0.01 : 0.02,
-    );
-  }
-
-  private updateAssistantPlaybackState(): boolean {
-    const outputSamples = this.outputWindowFilled
-      ? this.getOrderedWindow(
-          this.outputSampleWindow,
-          this.outputSampleWriteIndex,
-        )
-      : null;
-    const outputRms = outputSamples ? this.computeRms(outputSamples) : 0;
-
-    if (outputRms >= DUPLEX_GATE_MIN_OUTPUT_RMS) {
-      this.assistantPlaybackSilentFrames = 0;
-      this.assistantPlaybackActiveFrames = Math.min(
-        DUPLEX_GATE_LOCAL_PLAYBACK_START_FRAMES,
-        this.assistantPlaybackActiveFrames + 1,
-      );
-      if (
-        this.assistantPlaybackActiveFrames >=
-        DUPLEX_GATE_LOCAL_PLAYBACK_START_FRAMES
-      ) {
-        this.assistantPlaybackActive = true;
-      }
-    } else {
-      this.assistantPlaybackActiveFrames = 0;
-      this.assistantPlaybackSilentFrames = Math.min(
-        DUPLEX_GATE_LOCAL_PLAYBACK_END_FRAMES,
-        this.assistantPlaybackSilentFrames + 1,
-      );
-      if (
-        this.assistantPlaybackSilentFrames >=
-        DUPLEX_GATE_LOCAL_PLAYBACK_END_FRAMES
-      ) {
-        this.assistantPlaybackActive = false;
-      }
-    }
-
-    const speaking =
-      this.assistantServerSpeaking || this.assistantPlaybackActive;
-    this.syncExternalAudioDucking(speaking);
-    return speaking;
-  }
-
-  private computeOutboundGateState(): boolean {
-    if (!this.inputWindowFilled) return false;
-    if (!this.outputWindowFilled) return false;
-
-    const micSamples = this.getOrderedWindow(
-      this.inputSampleWindow,
-      this.inputSampleWriteIndex,
-    );
-    const outputSamples = this.getOrderedWindow(
-      this.outputSampleWindow,
-      this.outputSampleWriteIndex,
-    );
-    const micRms = this.computeRms(micSamples);
-    const outputRms = this.computeRms(outputSamples);
-
-    if (micRms < DUPLEX_GATE_MIN_MIC_RMS) {
-      return false;
-    }
-
-    const correlation = this.computeMaxCorrelation(micSamples, outputSamples);
-    const nearFieldRatio = micRms / Math.max(outputRms, 1e-4);
-    if (
-      correlation >= DUPLEX_GATE_STRONG_ECHO_CORRELATION &&
-      nearFieldRatio < DUPLEX_GATE_NEAR_FIELD_OVERRIDE_RATIO
-    ) {
-      return false;
-    }
-
-    if (correlation <= DUPLEX_GATE_REOPEN_CORRELATION) {
-      return true;
-    }
-
-    return nearFieldRatio >= DUPLEX_GATE_NEAR_FIELD_OVERRIDE_RATIO;
-  }
-
-  private getOrderedWindow(
-    source: Float32Array,
-    writeIndex: number,
-  ): Float32Array {
-    const ordered = new Float32Array(source.length);
-    ordered.set(source.subarray(writeIndex), 0);
-    ordered.set(source.subarray(0, writeIndex), source.length - writeIndex);
-    return ordered;
-  }
-
-  private computeRms(samples: Float32Array): number {
-    let sumSquares = 0;
-    for (let i = 0; i < samples.length; i++) {
-      const sample = samples[i];
-      sumSquares += sample * sample;
-    }
-    return Math.sqrt(sumSquares / Math.max(1, samples.length));
-  }
-
-  private computeMaxCorrelation(
-    micSamples: Float32Array,
-    outputSamples: Float32Array,
-  ): number {
-    let maxCorrelation = -1;
-
-    for (const lag of this.duplexGateLagSamples) {
-      const available = micSamples.length - lag;
-      if (available <= 32) continue;
-
-      let dot = 0;
-      let micEnergy = 0;
-      let outputEnergy = 0;
-      for (let i = 0; i < available; i++) {
-        const mic = micSamples[i + lag];
-        const output = outputSamples[i];
-        dot += mic * output;
-        micEnergy += mic * mic;
-        outputEnergy += output * output;
-      }
-
-      const denominator = Math.sqrt(micEnergy * outputEnergy);
-      if (denominator <= 1e-6) continue;
-      maxCorrelation = Math.max(maxCorrelation, dot / denominator);
-    }
-
-    return maxCorrelation;
   }
 
   private sendEvent(event: Record<string, unknown>) {
     if (this.dc?.readyState === "open") {
       this.dc.send(JSON.stringify(event));
     }
-  }
-
-  private syncExternalAudioDucking(active: boolean) {
-    if (this.externalAudioDuckingActive === active) return;
-    this.externalAudioDuckingActive = active;
-    window.electronAPI?.voice.setAssistantSpeaking(active).catch((err) => {
-      console.debug(
-        "[realtime-voice] External audio ducking failed:",
-        (err as Error).message,
-      );
-    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1219,18 +635,10 @@ export class RealtimeVoiceSession {
       }
 
       case "output_audio.started":
-        this.assistantServerSpeaking = true;
-        this.duplexGateOpen = false;
-        this.duplexGateOpenFrames = 0;
-        this.duplexGateCloseFrames = 0;
-        this.updateOutboundGate();
         this.emit({ type: "speaking-start" });
         break;
 
       case "output_audio.done":
-        this.assistantServerSpeaking = false;
-        this.assistantSpeakingEndTime = performance.now();
-        this.updateOutboundGate();
         this.emit({ type: "speaking-end" });
         break;
 
@@ -1520,8 +928,11 @@ export class RealtimeVoiceSession {
       this.micLease = null;
     }
     this.inputTrack = null;
-    this.inputSourceNode = null;
     this.sender = null;
+    if (this.inputSourceNode) {
+      this.inputSourceNode.disconnect();
+      this.inputSourceNode = null;
+    }
 
     if (this.audioElement) {
       this.audioElement.pause();
@@ -1540,38 +951,12 @@ export class RealtimeVoiceSession {
       this.analyser = null;
     }
     this.outputAnalyser = null;
-    this.gateGainNode = null;
-    this.gateSilentSink = null;
-    this.inputMonitorNode = null;
-    this.outputMonitorNode = null;
+    if (this.outputMonitorSource) {
+      this.outputMonitorSource.disconnect();
+    }
     this.outputMonitorSource = null;
     this.pendingRemoteStream = null;
-    this.outboundTrack = null;
-    this.stopDuplexGate();
-    this.duplexGateOpen = true;
-    this.duplexGateOpenFrames = 0;
-    this.duplexGateCloseFrames = 0;
-    this.assistantServerSpeaking = false;
-    this.assistantPlaybackActive = false;
-    this.assistantPlaybackActiveFrames = 0;
-    this.assistantPlaybackSilentFrames = 0;
-    this.inputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
-    this.outputSampleWindow = new Float32Array(DUPLEX_GATE_ANALYSIS_WINDOW);
-    this.inputSampleWriteIndex = 0;
-    this.outputSampleWriteIndex = 0;
-    this.inputWindowFilled = false;
-    this.outputWindowFilled = false;
-    this.duplexGateLagSamples = [0];
-    this.assistantSpeakingEndTime = 0;
-    this.syncExternalAudioDucking(false);
 
     this.assistantTranscriptBuffer = "";
-    this.stopPreConnectBuffering();
-    this.preConnectBuffer = [];
-    this.preConnectObservedSpeech = false;
-    this.preConnectLastSpeechAt = 0;
-    this.dataChannelOpenPromise = null;
-    this.resolveDataChannelOpenPromise = null;
   }
 }
-
