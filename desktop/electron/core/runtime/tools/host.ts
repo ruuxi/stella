@@ -188,8 +188,24 @@ export const createToolHost = ({
     AskUserQuestion: (args) => handleAskUser(args),
     RequestCredential: (args) => handleRequestCredential(userConfig, args),
 
+    // Display guidelines tool
+    DisplayGuidelines: async (args) => {
+      const modules = (args.modules as string[]) ?? [];
+      if (!modules.length) return { error: "modules parameter is required." };
+      try {
+        const { getDisplayGuidelines } = await import("./display-guidelines.js");
+        const guidelines = getDisplayGuidelines(modules);
+        return { result: guidelines };
+      } catch (error) {
+        return { error: `Failed to load guidelines: ${(error as Error).message}` };
+      }
+    },
+
     // Display tool
     Display: async (args) => {
+      if (!args.i_have_read_guidelines) {
+        return { error: "You must call DisplayGuidelines before Display. Set i_have_read_guidelines: true after doing so." };
+      }
       const html = String(args.html ?? "");
       if (!html) return { error: "html parameter is required." };
       if (displayHtml) {

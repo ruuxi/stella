@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
+import morphdom from "morphdom"
 import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation"
 import { DashboardCard } from "./DashboardCard"
-import { sanitizeHtmlFragment } from "@/shared/lib/safe-html"
 
 function getGreeting(): string {
   const h = new Date().getHours()
@@ -11,24 +11,75 @@ function getGreeting(): string {
 }
 
 export function GenerativeCanvas() {
-  const [displayHtml, setDisplayHtml] = useState<string | null>(null)
+  const [hasContent, setHasContent] = useState(false)
+  const displayRef = useRef<HTMLDivElement>(null)
+  const pendingHtmlRef = useRef<string | null>(null)
+
+  const applyHtml = useCallback((html: string) => {
+    const container = displayRef.current
+    if (!container) {
+      // Ref not mounted yet — stash HTML for when the display div appears
+      pendingHtmlRef.current = html
+      setHasContent(true)
+      return
+    }
+
+    // Build a target node for morphdom to diff against
+    const target = document.createElement("div")
+    target.className = "canvas-display"
+    target.innerHTML = html
+
+    morphdom(container, target, {
+      onBeforeElUpdated(fromEl, toEl) {
+        if (fromEl.isEqualNode(toEl)) return false
+        return true
+      },
+      onNodeAdded(node) {
+        if (
+          node.nodeType === 1 &&
+          (node as Element).tagName !== "STYLE" &&
+          (node as Element).tagName !== "SCRIPT"
+        ) {
+          ;(node as HTMLElement).style.animation = "_canvasFadeIn 0.3s ease both"
+        }
+        return node
+      },
+    })
+
+    // Execute scripts after morphdom diff (scripts are inert after innerHTML)
+    container.querySelectorAll("script").forEach((old) => {
+      const fresh = document.createElement("script")
+      if (old.src) {
+        fresh.src = old.src
+      } else {
+        fresh.textContent = old.textContent
+      }
+      old.parentNode?.replaceChild(fresh, old)
+    })
+  }, [])
+
+  // Apply pending HTML once the display div mounts
+  useEffect(() => {
+    if (hasContent && displayRef.current && pendingHtmlRef.current) {
+      const html = pendingHtmlRef.current
+      pendingHtmlRef.current = null
+      applyHtml(html)
+    }
+  }, [hasContent, applyHtml])
 
   useEffect(() => {
     return window.electronAPI?.display.onUpdate((html) => {
-      setDisplayHtml(sanitizeHtmlFragment(html))
+      applyHtml(html)
     })
-  }, [])
+  }, [applyHtml])
 
   return (
     <DashboardCard
       data-stella-label="Canvas"
-      data-stella-state={displayHtml ? "has content" : "idle"}
+      data-stella-state={hasContent ? "has content" : "idle"}
     >
-      {displayHtml ? (
-        <div
-          className="canvas-display"
-          dangerouslySetInnerHTML={{ __html: displayHtml }}
-        />
+      {hasContent ? (
+        <div ref={displayRef} className="canvas-display" />
       ) : (
         <div className="canvas-container">
           <div className="canvas-rings-outer" />

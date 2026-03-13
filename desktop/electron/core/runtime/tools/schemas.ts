@@ -23,6 +23,7 @@ export const DEVICE_TOOL_NAMES = [
   "SkillBash",
   "MediaGenerate",
   "Display",
+  "DisplayGuidelines",
   "HeartbeatGet",
   "HeartbeatUpsert",
   "HeartbeatRun",
@@ -222,73 +223,48 @@ const WebSearchJsonSchema = {
 const DisplayJsonSchema = {
   type: "object",
   properties: {
+    i_have_read_guidelines: {
+      type: "boolean",
+      description: "Confirm you have already called DisplayGuidelines in this conversation. Must be true.",
+    },
     html: {
       type: "string",
       description:
-        "HTML content to render on the canvas panel. The container auto-styles semantic elements.\n\n" +
-        "DESIGN: refined informational display — clean, structured, editorial. Typography and whitespace do the work. Not generic cards.\n\n" +
-        "RULES:\n" +
-        "- Headlines: font-family: Georgia, serif; font-weight: 500. Use h2 for topic title (19-22px, opacity 0.92), h3 for section labels (10px, uppercase, letter-spacing 0.1em, opacity 0.35). Avoid h1.\n" +
-        "- Colors: ONLY var(--foreground) and var(--background). Opacity tiers: 0.92 (title), 0.88 (key values), 0.65 (body), 0.42 (secondary text), 0.25-0.3 (meta). Never hardcode colors.\n" +
-        "- Metric blocks: use a grid row with joined segments — background: color-mix(in oklch, var(--foreground) 3%, transparent). First segment border-radius: 8px 0 0 8px, last: 0 8px 8px 0. Large serif numbers (22px), tiny uppercase labels (10px, 0.08em spacing, 0.32 opacity).\n" +
-        "- Dividers: <div> with height: 1px, background: color-mix(in oklch, var(--foreground) 4-5%, transparent). Top accent divider can use linear-gradient(90deg, color-mix(in oklch, var(--foreground) 15%, transparent), transparent).\n" +
-        "- Left accent bars for list items: width: 3px, border-radius: 2px, background: color-mix(in oklch, var(--foreground) 10%, transparent), align-self: stretch.\n" +
-        "- Tables: subtle surface (2.5% foreground), border-radius 8px, overflow hidden. No header row — use label/value pairs. Cell borders: 1px solid color-mix(in oklch, var(--foreground) 4%, transparent).\n" +
-        "- Source/meta: <small> with font-size: 10px, opacity 0.18-0.25, letter-spacing 0.03em.\n" +
-        "- Layout: flexbox via inline styles. No <style> blocks, no class names, no scripts, no external resources.\n\n" +
-        "REFERENCE — adapt this structure to any content type:\n\n" +
-        '<div style="display: flex; flex-direction: column; gap: 0;">\n' +
-        '  <div style="margin-bottom: 6px;">\n' +
-        '    <h3 style="margin: 0 0 4px; font-size: 10px; letter-spacing: 0.12em; opacity: 0.3;">Market Overview</h3>\n' +
-        '    <h2 style="font-size: 22px; font-weight: 500; opacity: 0.92; margin: 0; font-family: Georgia, serif; letter-spacing: -0.02em;">NVIDIA Corporation</h2>\n' +
-        "  </div>\n" +
-        '  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">\n' +
-        '    <small style="font-size: 11px; opacity: 0.35; margin: 0;">NASDAQ: NVDA</small>\n' +
-        '    <small style="opacity: 0.15; margin: 0;">&middot;</small>\n' +
-        '    <small style="font-size: 11px; opacity: 0.3; margin: 0;">As of 3:42 PM EST</small>\n' +
-        "  </div>\n" +
-        '  <div style="height: 1px; background: linear-gradient(90deg, color-mix(in oklch, var(--foreground) 15%, transparent), transparent); margin-bottom: 20px;"></div>\n' +
-        '  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px; margin-bottom: 20px;">\n' +
-        '    <div style="padding: 12px 14px; background: color-mix(in oklch, var(--foreground) 3%, transparent); border-radius: 8px 0 0 8px;">\n' +
-        '      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.32; margin-bottom: 6px;">Price</div>\n' +
-        '      <div style="font-size: 22px; font-weight: 400; opacity: 0.88; font-family: Georgia, serif; letter-spacing: -0.02em;">$892.40</div>\n' +
-        '      <div style="font-size: 11px; opacity: 0.45; margin-top: 3px;">+2.34%</div>\n' +
-        "    </div>\n" +
-        '    <div style="padding: 12px 14px; background: color-mix(in oklch, var(--foreground) 3%, transparent);">\n' +
-        '      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.32; margin-bottom: 6px;">Mkt Cap</div>\n' +
-        '      <div style="font-size: 22px; font-weight: 400; opacity: 0.88; font-family: Georgia, serif; letter-spacing: -0.02em;">$2.19T</div>\n' +
-        '      <div style="font-size: 11px; opacity: 0.45; margin-top: 3px;">Mega cap</div>\n' +
-        "    </div>\n" +
-        '    <div style="padding: 12px 14px; background: color-mix(in oklch, var(--foreground) 3%, transparent); border-radius: 0 8px 8px 0;">\n' +
-        '      <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.32; margin-bottom: 6px;">P/E</div>\n' +
-        '      <div style="font-size: 22px; font-weight: 400; opacity: 0.88; font-family: Georgia, serif; letter-spacing: -0.02em;">64.2</div>\n' +
-        '      <div style="font-size: 11px; opacity: 0.45; margin-top: 3px;">TTM</div>\n' +
-        "    </div>\n" +
-        "  </div>\n" +
-        '  <div style="margin-bottom: 20px;">\n' +
-        '    <h3 style="font-size: 10px; letter-spacing: 0.1em; opacity: 0.35; margin-bottom: 10px;">Summary</h3>\n' +
-        '    <p style="font-size: 12.5px; opacity: 0.55; line-height: 1.65;">Brief analysis paragraph here.</p>\n' +
-        "  </div>\n" +
-        '  <div style="height: 1px; background: color-mix(in oklch, var(--foreground) 5%, transparent); margin-bottom: 18px;"></div>\n' +
-        '  <div style="margin-bottom: 20px;">\n' +
-        '    <h3 style="font-size: 10px; letter-spacing: 0.1em; opacity: 0.35; margin-bottom: 12px;">Key Points</h3>\n' +
-        '    <div style="display: flex; flex-direction: column; gap: 10px;">\n' +
-        '      <div style="display: flex; gap: 10px; align-items: flex-start;">\n' +
-        '        <div style="width: 3px; align-self: stretch; border-radius: 2px; background: color-mix(in oklch, var(--foreground) 10%, transparent); flex-shrink: 0; margin-top: 2px;"></div>\n' +
-        '        <div>\n' +
-        '          <p style="font-size: 12.5px; opacity: 0.65; margin-bottom: 3px; line-height: 1.45;"><strong style="opacity: 0.8;">Bold lead</strong> followed by supporting detail.</p>\n' +
-        '          <small style="font-size: 10px; opacity: 0.25;">Source &middot; Date</small>\n' +
-        "        </div>\n" +
-        "      </div>\n" +
-        "    </div>\n" +
-        "  </div>\n" +
-        '  <div style="padding-top: 8px;">\n' +
-        '    <small style="font-size: 10px; opacity: 0.18; letter-spacing: 0.03em;">Sources &middot; Timestamp</small>\n' +
-        "  </div>\n" +
-        "</div>",
+        "HTML or SVG content to render on the canvas panel. The container auto-styles semantic elements and provides pre-built SVG classes.\n\n" +
+        "Call DisplayGuidelines first to load detailed design rules for your content type. " +
+        "Output HTML content fragments — no DOCTYPE/<html>/<head>/<body>. " +
+        "Scripts are allowed and execute after rendering. " +
+        "SVG can be included inline. " +
+        "Use <style> sparingly (short), then content HTML, then <script> last.\n\n" +
+        "Quick reference (full rules in DisplayGuidelines):\n" +
+        "- Colors: ONLY var(--foreground) and var(--background) with opacity tiers.\n" +
+        "- Surfaces: color-mix(in oklch, var(--foreground) 3%, transparent).\n" +
+        "- Headlines: Georgia, serif. Section labels: h3 (10px uppercase).\n" +
+        "- Layout via inline styles: flexbox or grid. Prefer inline styles over <style> blocks.\n" +
+        "- SVG uses pre-built classes: .t, .ts, .th, .box, .node, .arr, .c-{color}.",
     },
   },
-  required: ["html"],
+  required: ["i_have_read_guidelines", "html"],
+};
+
+const DisplayGuidelinesJsonSchema = {
+  type: "object",
+  properties: {
+    modules: {
+      type: "array",
+      items: {
+        type: "string",
+        enum: ["interactive", "chart", "mockup", "art", "diagram"],
+      },
+      description: "Which design modules to load. Pick all that fit the content you plan to display: " +
+        "'interactive' for explainers with controls/sliders, " +
+        "'chart' for Chart.js data visualizations, " +
+        "'mockup' for UI mockups and cards, " +
+        "'art' for illustrations and generative art, " +
+        "'diagram' for SVG flowcharts/structural/illustrative diagrams.",
+    },
+  },
+  required: ["modules"],
 };
 
 const TaskCreateJsonSchema = {
@@ -484,16 +460,22 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "FOLLOW-UPS: In multi-turn conversations, expand referential language — " +
     "'competitors' should include the specific company being discussed, 'how do I set it up' should include what 'it' refers to.",
   Display:
-    "Render HTML on the canvas panel of the home dashboard.\n\n" +
+    "Render rich visual content — HTML, SVG, interactive widgets, charts — on the canvas panel of the home dashboard.\n\n" +
     "Usage:\n" +
-    "- Outputs rich visual content on the home screen instead of plain text in chat.\n" +
-    "- Use for ANY content that benefits from visual presentation: data, research, explanations, comparisons, formatted text.\n" +
-    "- Follow the design system and reference example in the schema description exactly — same opacity tiers, same element patterns.\n" +
-    "- Headlines: Georgia, serif. Section labels: h3 (10px uppercase). Metric blocks: joined grid segments with large serif numbers.\n" +
-    "- Key points/items: left accent bar pattern (3px bar + content). Tables: subtle surface, no header row.\n" +
-    "- Colors: ONLY var(--foreground)/var(--background) with opacity. Dividers: color-mix. Never hardcode colors.\n" +
-    "- Layout via inline styles: flexbox or grid. No <style> blocks, no class names, no scripts.\n" +
-    "- Adapt the reference structure to the content — stocks get metric blocks, explanations get accent-bar sections, data gets tables.",
+    "- IMPORTANT: Call DisplayGuidelines once before your first Display call to load design rules. Set i_have_read_guidelines: true.\n" +
+    "- Use for ANY content that benefits from visual presentation: data, charts, diagrams, explanations, comparisons, interactive explainers, UI mockups.\n" +
+    "- Scripts are allowed. Use Chart.js, mermaid.js, or custom JS for interactivity.\n" +
+    "- SVG diagrams can be included inline in the HTML.\n" +
+    "- Content streams with DOM-diffing — structure code so useful content appears early: <style> (short) → content HTML → <script> last.\n" +
+    "- Colors: ONLY var(--foreground)/var(--background) with opacity. Surfaces: color-mix(in oklch, var(--foreground) N%, transparent).\n" +
+    "- The container provides pre-built SVG classes (.t, .ts, .th, .box, .node, .arr, .c-{color}) — see DisplayGuidelines for details.",
+  DisplayGuidelines:
+    "Load design guidelines for the Display tool. Call once before your first Display call.\n\n" +
+    "Usage:\n" +
+    "- Returns detailed design system rules, CSS patterns, typography, layout examples, and anti-patterns.\n" +
+    "- Pick the modules that match your content: interactive, chart, mockup, art, diagram.\n" +
+    "- Do NOT mention this call to the user — it is an internal setup step.\n" +
+    "- After calling, set i_have_read_guidelines: true on your Display calls.",
   HeartbeatGet:
     "Get the current heartbeat configuration for this conversation.\n\n" +
     "Returns the full local heartbeat config or null if none exists.",
@@ -597,6 +579,7 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   MediaGenerate: MediaGenerateJsonSchema,
   WebSearch: WebSearchJsonSchema,
   Display: DisplayJsonSchema,
+  DisplayGuidelines: DisplayGuidelinesJsonSchema,
   TaskCreate: TaskCreateJsonSchema,
   TaskOutput: TaskOutputJsonSchema,
   TaskCancel: TaskCancelJsonSchema,
