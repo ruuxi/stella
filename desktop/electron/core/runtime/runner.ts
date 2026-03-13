@@ -105,18 +105,12 @@ export type StellaHostRunnerOptions = {
   listLocalChatEvents?: (conversationId: string, maxItems: number) => LocalContextEvent[];
 };
 
-type SearchHtmlPromptConfig = {
-  systemPrompt: string;
-  userPromptTemplate: string;
-};
-
 type ChatPayload = {
   conversationId: string;
   userMessageId: string;
   userPrompt: string;
   agentType?: string;
   storageMode?: "cloud" | "local";
-  searchHtmlPrompts?: SearchHtmlPromptConfig;
 };
 
 type AgentHealth = {
@@ -296,7 +290,6 @@ export const createStellaHostRunner = ({
   let localTaskManager: LocalTaskManager | null = null;
   let activeOrchestratorRunId: string | null = null;
   let activeOrchestratorConversationId: string | null = null;
-  let activeSearchHtmlPrompts: SearchHtmlPromptConfig | undefined;
   const queuedOrchestratorTurns: QueuedOrchestratorTurn[] = [];
   const activeRunAbortControllers = new Map<string, AbortController>();
   const conversationCallbacks = new Map<string, AgentCallbacks>();
@@ -431,36 +424,21 @@ export const createStellaHostRunner = ({
   // WebSearch via backend Convex action (Exa API)
   const webSearch = async (
     query: string,
-    options?: { category?: string; searchHtmlPrompts?: SearchHtmlPromptConfig },
-  ): Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }> => {
+    options?: { category?: string },
+  ): Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }> }> => {
     try {
       const client = ensureConvexClient();
       if (!client) throw new Error("Not connected to Convex. Sign in or set STELLA_CONVEX_URL.");
-      const searchHtmlPrompts = options?.searchHtmlPrompts ?? activeSearchHtmlPrompts;
       const result = await client.action(convexApi.agent.local_runtime.webSearch, {
         query,
         ...(options?.category ? { category: options.category } : {}),
-        ...(searchHtmlPrompts
-          ? {
-              searchHtmlSystemPrompt: searchHtmlPrompts.systemPrompt,
-              searchHtmlUserPromptTemplate: searchHtmlPrompts.userPromptTemplate,
-            }
-          : {}),
       }) as {
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
-        html?: string;
       };
-      if (result.html && displayHtml) {
-        displayHtml(result.html);
-      }
       return {
-        ...result,
-        text: result.html?.trim()
-          ? result.html
-          : result.text?.trim()
-            ? result.text
-            : "WebSearch returned no response.",
+        text: result.text || "WebSearch returned no response.",
+        results: result.results,
       };
     } catch (error) {
       return { text: `WebSearch failed: ${(error as Error).message}`, results: [] };
@@ -621,7 +599,6 @@ export const createStellaHostRunner = ({
     }
     activeOrchestratorRunId = null;
     activeOrchestratorConversationId = null;
-    activeSearchHtmlPrompts = undefined;
     activeToolExecutionCount = 0;
     interruptAfterTool = false;
     activeInterruptedReplayTurn = null;
@@ -668,7 +645,6 @@ export const createStellaHostRunner = ({
       userPrompt: string;
       agentType: string;
       userMessageId: string;
-      searchHtmlPrompts?: SearchHtmlPromptConfig;
     },
     callbacks: AgentCallbacks,
   ): Promise<{ runId: string }> => {
@@ -701,7 +677,6 @@ export const createStellaHostRunner = ({
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
-    activeSearchHtmlPrompts = startArgs.searchHtmlPrompts;
     activeInterruptedReplayTurn = payload.requeueOnInterrupt ? payload : null;
 
     const abortController = new AbortController();
@@ -1079,7 +1054,6 @@ export const createStellaHostRunner = ({
     disposeConvexClient();
     activeOrchestratorRunId = null;
     activeOrchestratorConversationId = null;
-    activeSearchHtmlPrompts = undefined;
     activeToolExecutionCount = 0;
     interruptAfterTool = false;
     activeInterruptedReplayTurn = null;
@@ -1160,7 +1134,6 @@ export const createStellaHostRunner = ({
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
-    activeSearchHtmlPrompts = payload.searchHtmlPrompts;
 
     const abortController = new AbortController();
     activeRunAbortControllers.set(runId, abortController);
@@ -1327,7 +1300,6 @@ export const createStellaHostRunner = ({
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
-    activeSearchHtmlPrompts = undefined;
     activeInterruptedReplayTurn = queuedTurn.requeueOnInterrupt ? queuedTurn : null;
 
     const abortController = new AbortController();

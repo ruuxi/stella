@@ -88,7 +88,6 @@ export type RuntimeToolEndEvent = {
   toolCallId: string;
   toolName: string;
   resultPreview: string;
-  html?: string;
 };
 
 export type RuntimeErrorEvent = {
@@ -141,9 +140,8 @@ type BaseRunOptions = {
     query: string,
     options?: {
       category?: string;
-      searchHtmlPrompts?: { systemPrompt: string; userPromptTemplate: string };
     },
-  ) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>;
+  ) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }> }>;
   hookEmitter?: HookEmitter;
   displayHtml?: (html: string) => void;
 };
@@ -174,25 +172,8 @@ const resolveLocalCliCwd = ({
   return normalizedFrontendRoot && normalizedFrontendRoot.length > 0 ? normalizedFrontendRoot : undefined;
 };
 
-const getToolResultHtml = (
-  toolName: string,
-  result: unknown,
-): string | undefined => {
-  if (toolName.toLowerCase() !== "websearch") return undefined;
-  if (!result || typeof result !== "object") return undefined;
-  const details = (result as { details?: unknown }).details;
-  if (!details || typeof details !== "object") return undefined;
-  const html = (details as { html?: unknown }).html;
-  return typeof html === "string" && html.trim().length > 0 ? html : undefined;
-};
-
-const getToolResultPreview = (toolName: string, result: unknown): string => {
-  const html = getToolResultHtml(toolName, result);
-  if (html) {
-    return "HTML search briefing ready.";
-  }
-  return textFromUnknown(result).slice(0, MAX_RESULT_PREVIEW);
-};
+const getToolResultPreview = (_toolName: string, result: unknown): string =>
+  textFromUnknown(result).slice(0, MAX_RESULT_PREVIEW);
 
 const stripScriptTags = (html: string): string =>
   html.replace(/<script\b[\s\S]*?<\/script>/gi, "");
@@ -439,9 +420,8 @@ const createPiTools = (opts: {
     query: string,
     options?: {
       category?: string;
-      searchHtmlPrompts?: { systemPrompt: string; userPromptTemplate: string };
     },
-  ) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>;
+  ) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }> }>;
   hookEmitter?: HookEmitter;
 }): AgentTool[] => {
   const requested = Array.isArray(opts.toolsAllowlist) && opts.toolsAllowlist.length > 0
@@ -466,13 +446,8 @@ const createPiTools = (opts: {
         }
         const category = typeof args.category === "string" ? args.category : undefined;
         const result = await opts.webSearch(query, { category });
-        const toolText = result.html?.trim()
-          ? result.html
-          : result.text?.trim()
-            ? result.text
-            : "WebSearch returned no response.";
         return {
-          content: [{ type: "text", text: toolText }],
+          content: [{ type: "text", text: result.text || "WebSearch returned no response." }],
           details: result,
         };
       }
@@ -770,7 +745,6 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
 
     if (event.type === "tool_execution_end") {
       const preview = getToolResultPreview(event.toolName, event.result);
-      const html = getToolResultHtml(event.toolName, event.result);
       console.log(`[stella:trace] tool exec end   | ${event.toolName} | callId=${event.toolCallId} | result=${preview.slice(0, 200)}`);
       const s = nextSeq();
       opts.callbacks.onToolEnd({
@@ -780,7 +754,6 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         resultPreview: preview,
-        ...(html ? { html } : {}),
       });
       opts.store.recordRunEvent({
         timestamp: now(),
@@ -1303,7 +1276,6 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
 
     if (event.type === "tool_execution_end") {
       const preview = getToolResultPreview(event.toolName, event.result);
-      const html = getToolResultHtml(event.toolName, event.result);
       const s = nextSeq();
       opts.store.recordRunEvent({
         timestamp: now(),
@@ -1323,7 +1295,6 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         resultPreview: preview,
-        ...(html ? { html } : {}),
       });
     }
   });

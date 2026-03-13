@@ -10,7 +10,6 @@
 
 import { createServiceRequest } from "@/infra/http/service-request";
 import {
-  getSearchHtmlPromptConfig,
   getVoiceSessionPromptConfig,
 } from "@/prompts";
 import {
@@ -1347,7 +1346,6 @@ export class RealtimeVoiceSession {
       .webSearch({
         query,
         category,
-        searchHtmlPrompts: getSearchHtmlPromptConfig(),
       })
       .then((result) => {
         window.electronAPI?.voice.persistTranscript?.({
