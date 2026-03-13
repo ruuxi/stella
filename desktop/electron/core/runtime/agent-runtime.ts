@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import os from "os";
 import { Type } from "@sinclair/typebox";
 import { Agent } from "../agent/agent.js";
 import type { AgentMessage, AgentTool } from "../agent/types.js";
@@ -153,6 +154,23 @@ type OrchestratorRunOptions = BaseRunOptions & {
 type SubagentRunOptions = BaseRunOptions & {
   onProgress?: (chunk: string) => void;
   callbacks?: Partial<RuntimeRunCallbacks>;
+};
+
+const resolveLocalCliCwd = ({
+  agentType,
+  frontendRoot,
+}: {
+  agentType: string;
+  frontendRoot?: string;
+}): string | undefined => {
+  if (agentType === "general") {
+    const homeDirectory = os.homedir().trim();
+    if (homeDirectory) {
+      return homeDirectory;
+    }
+  }
+  const normalizedFrontendRoot = frontendRoot?.trim();
+  return normalizedFrontendRoot && normalizedFrontendRoot.length > 0 ? normalizedFrontendRoot : undefined;
 };
 
 const getToolResultHtml = (
@@ -934,6 +952,10 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
 
   const primaryModelId = opts.agentContext.model;
   const usesLocalCliRuntime = opts.agentType === "general" || opts.agentType === "self_mod";
+  const localCliCwd = resolveLocalCliCwd({
+    agentType: opts.agentType,
+    frontendRoot: opts.frontendRoot,
+  });
   const sessionKey = opts.agentContext.activeThreadId
     ? `${opts.conversationId}:${opts.agentContext.activeThreadId}`
     : `${opts.conversationId}:run:${runId}`;
@@ -945,7 +967,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         sessionKey,
         prompt,
         developerInstructions: effectiveSystemPrompt,
-        cwd: opts.frontendRoot,
+        cwd: localCliCwd,
         abortSignal: opts.abortSignal,
         onProgress: (chunk) => {
           if (!chunk) return;
@@ -1041,7 +1063,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
         modelId: primaryModelId!,
         prompt,
         systemPrompt: effectiveSystemPrompt,
-        cwd: opts.frontendRoot,
+        cwd: localCliCwd,
         abortSignal: opts.abortSignal,
         onProgress: (chunk) => {
           if (!chunk) return;
