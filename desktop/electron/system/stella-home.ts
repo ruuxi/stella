@@ -4,6 +4,7 @@ import type { Dirent } from "fs";
 import { fileURLToPath } from "url";
 import type { App } from "electron";
 import { ensurePrivateDir } from "./private-fs.js";
+import { buildBundledCoreAgents } from "../core/runtime/agents/core-agent-prompts.js";
 
 export type StellaHome = {
   desktopRoot: string;
@@ -26,6 +27,76 @@ const __dirname = path.dirname(__filename);
 
 const ensureDir = async (dirPath: string) => {
   await ensurePrivateDir(dirPath);
+};
+
+const hasSeededAgentFiles = async (agentsPath: string): Promise<boolean> => {
+  try {
+    const entries = await fs.readdir(agentsPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      try {
+        const stat = await fs.stat(path.join(agentsPath, entry.name, "AGENT.md"));
+        if (stat.isFile()) return true;
+      } catch {
+        // Ignore incomplete agent dirs.
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
+};
+
+const toYamlList = (values: readonly string[]): string[] =>
+  values.map((value) => `  - ${value}`);
+
+const serializeBundledAgentMarkdown = (agent: ReturnType<typeof buildBundledCoreAgents>[number]): string => {
+  const lines = [
+    "---",
+    `id: ${agent.id}`,
+    `name: ${agent.name}`,
+    `description: ${agent.description}`,
+    "agentTypes:",
+    ...toYamlList(agent.agentTypes),
+  ];
+
+  if (agent.toolsAllowlist?.length) {
+    lines.push("toolsAllowlist:", ...toYamlList(agent.toolsAllowlist));
+  }
+  if (agent.delegationAllowlist?.length) {
+    lines.push("delegationAllowlist:", ...toYamlList(agent.delegationAllowlist));
+  }
+  if (agent.defaultSkills?.length) {
+    lines.push("defaultSkills:", ...toYamlList(agent.defaultSkills));
+  }
+  if (agent.model) {
+    lines.push(`model: ${agent.model}`);
+  }
+  if (typeof agent.maxTaskDepth === "number") {
+    lines.push(`maxTaskDepth: ${agent.maxTaskDepth}`);
+  }
+
+  lines.push("---", "", agent.systemPrompt.trimEnd(), "");
+  return lines.join("\n");
+};
+
+const seedBundledAgentsIfEmpty = async (agentsPath: string) => {
+  if (await hasSeededAgentFiles(agentsPath)) {
+    return;
+  }
+
+  const bundledAgents = buildBundledCoreAgents();
+  await Promise.all(
+    bundledAgents.map(async (agent) => {
+      const agentDir = path.join(agentsPath, agent.id);
+      await ensureDir(agentDir);
+      await fs.writeFile(
+        path.join(agentDir, "AGENT.md"),
+        serializeBundledAgentMarkdown(agent),
+        "utf-8",
+      );
+    }),
+  );
 };
 
 export const resolveDesktopRoot = (app?: App): string =>
@@ -114,6 +185,7 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
     seedMissingEntries(path.join(bundledDefaultsPath, "canvas"), canvasPath),
     seedMissingEntries(path.join(bundledDefaultsPath, "mods"), path.join(homePath, "mods")),
   ]);
+  await seedBundledAgentsIfEmpty(agentsPath);
 
   return {
     desktopRoot,
