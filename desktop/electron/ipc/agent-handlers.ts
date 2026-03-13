@@ -311,6 +311,24 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
   });
 
   ipcMain.handle(
+    "agent:interruptQueuedTurn",
+    async (event, payload: { conversationId?: string } | undefined) => {
+      if (!options.assertPrivilegedSender(event, "agent:interruptQueuedTurn")) {
+        throw new Error("Blocked untrusted request.");
+      }
+      const stellaHostRunner = options.getStellaHostRunner();
+      if (!stellaHostRunner || typeof stellaHostRunner.requestQueuedTurnCheckpoint !== "function") {
+        return { requested: false };
+      }
+      return {
+        requested: stellaHostRunner.requestQueuedTurnCheckpoint(
+          typeof payload?.conversationId === "string" ? payload.conversationId : undefined,
+        ),
+      };
+    },
+  );
+
+  ipcMain.handle(
     "selfmod:revert",
     async (event, payload: { featureId?: string; steps?: number }) => {
       if (!options.assertPrivilegedSender(event, "selfmod:revert")) {
