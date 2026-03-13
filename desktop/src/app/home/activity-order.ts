@@ -88,5 +88,5 @@ export function sortActivityItems(
   items: ActivityItem[],
   now = Date.now(),
 ): ActivityItem[] {
-  return [...items].sort((a, b) => compareActivityItems(a, b, now));
+  return items.toSorted((a, b) => compareActivityItems(a, b, now));
 }
