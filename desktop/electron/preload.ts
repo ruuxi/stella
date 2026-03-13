@@ -327,10 +327,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         runId: string;
       }>,
     cancelChat: (runId: string) => ipcRenderer.send("agent:cancelChat", runId),
-    interruptQueuedTurn: (payload?: { conversationId?: string }) =>
-      ipcRenderer.invoke("agent:interruptQueuedTurn", payload) as Promise<{
-        requested: boolean;
-      }>,
     resumeStream: (payload: { runId: string; lastSeq: number }) =>
       ipcRenderer.invoke("agent:resume", payload) as Promise<{
         events: Array<{
@@ -575,3 +571,4 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onUpdated: onIpcSignal("localChat:updated"),
   },
 });
+

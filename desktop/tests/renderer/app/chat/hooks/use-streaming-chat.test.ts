@@ -210,7 +210,7 @@ describe("useStreamingChat", () => {
       expect(mockAgentStartChat).not.toHaveBeenCalled();
     });
 
-    it("starts queued follow_up events created after mount", async () => {
+    it("does not replay follow_up events created after mount from renderer state", async () => {
       const { rerender } = renderHook(
         ({ events }: { events: EventRecord[] }) =>
           useStreamingChat({ conversationId: "conv-1", events }),
@@ -235,14 +235,7 @@ describe("useStreamingChat", () => {
         await Promise.resolve();
       });
 
-      expect(mockAgentStartChat).toHaveBeenCalledTimes(1);
-      expect(mockAgentStartChat).toHaveBeenCalledWith(
-        expect.objectContaining({
-          conversationId: "conv-1",
-          userMessageId: "msg-2",
-          userPrompt: "open the browser again",
-        }),
-      );
+      expect(mockAgentStartChat).not.toHaveBeenCalled();
     });
   });
 
@@ -413,7 +406,14 @@ describe("useStreamingChat", () => {
           }),
         }),
       );
-      expect(mockAgentStartChat).toHaveBeenCalledTimes(1);
+      expect(mockAgentStartChat).toHaveBeenCalledTimes(2);
+      expect(mockAgentStartChat).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          userMessageId: "follow-up-event-1",
+          userPrompt: "follow-up request",
+        }),
+      );
     });
 
     it("persists WebSearch HTML from streamed tool-end events", async () => {

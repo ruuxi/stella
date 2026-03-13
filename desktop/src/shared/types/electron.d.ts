@@ -291,9 +291,6 @@ export type ElectronAgentApi = {
     searchHtmlPrompts?: SearchHtmlPromptConfig;
   }) => Promise<{ runId: string }>;
   cancelChat: (runId: string) => void;
-  interruptQueuedTurn: (payload?: {
-    conversationId?: string;
-  }) => Promise<{ requested: boolean }>;
   resumeStream: (payload: { runId: string; lastSeq: number }) => Promise<{
     events: AgentStreamIpcEvent[];
     exhausted: boolean;
@@ -482,5 +479,6 @@ declare global {
 }
 
 export {};
+
 
 
