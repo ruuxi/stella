@@ -37,6 +37,11 @@ export const STELLA_MODELS_PATH = `${STELLA_API_BASE_PATH}/models`;
 
 type StellaRequestBody = Record<string, unknown>;
 
+type TokenEstimate = {
+  inputTokens: number;
+  outputTokens: number;
+};
+
 function stellaProviderErrorResponse(
   status: number,
   message: string,
@@ -130,12 +135,56 @@ function resolveRequestedStellaModel(
   return resolveStellaModelSelection(agentType, requestedModel);
 }
 
+function estimateRequestTokens(requestBody: StellaRequestBody): TokenEstimate {
+  const messages = Array.isArray(requestBody.messages)
+    ? requestBody.messages as Array<Record<string, unknown>>
+    : [];
+
+  let inputTextLength = 0;
+  for (const message of messages) {
+    const content = message?.content;
+    if (typeof content === "string") {
+      inputTextLength += content.length;
+      continue;
+    }
+
+    if (!Array.isArray(content)) {
+      continue;
+    }
+
+    for (const part of content) {
+      if (!part || typeof part !== "object") {
+        continue;
+      }
+      const text = (part as Record<string, unknown>).text;
+      if (typeof text === "string") {
+        inputTextLength += text.length;
+      }
+    }
+  }
+
+  const maxCompletionTokens =
+    typeof requestBody.max_completion_tokens === "number"
+      ? requestBody.max_completion_tokens
+      : typeof requestBody.max_tokens === "number"
+        ? requestBody.max_tokens
+        : typeof requestBody.maxOutputTokens === "number"
+          ? requestBody.maxOutputTokens
+          : 1024;
+
+  return {
+    inputTokens: Math.max(1, Math.ceil(inputTextLength / 4)),
+    outputTokens: Math.max(0, Math.min(16_384, Math.floor(maxCompletionTokens))),
+  };
+}
+
 async function forwardRequest(
   ctx: ActionCtx,
   request: Request,
   upstream: { url: string; apiKey: string },
   usage: { ownerId: string; agentType: string; modelId: string },
   requestBody: string,
+  tokenEstimate: TokenEstimate,
 ): Promise<Response> {
   const forwardHeaders: Record<string, string> = {};
   request.headers.forEach((value, key) => {
@@ -184,13 +233,14 @@ async function forwardRequest(
     });
 
     if (isStreaming) {
-      await ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
+      await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
         ownerId: usage.ownerId,
         agentType: usage.agentType,
         model: usage.modelId,
         durationMs,
         success: upstreamResponse.ok,
-        estimateFromRequest: true,
+        inputTokens: tokenEstimate.inputTokens,
+        outputTokens: tokenEstimate.outputTokens,
       });
 
       return new Response(upstreamResponse.body, {
@@ -220,15 +270,17 @@ async function forwardRequest(
       // Fall back to estimated usage logging for non-JSON responses.
     }
 
-    await ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
+    const billedInputTokens = inputTokens ?? tokenEstimate.inputTokens;
+    const billedOutputTokens = outputTokens ?? tokenEstimate.outputTokens;
+
+    await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
       ownerId: usage.ownerId,
       agentType: usage.agentType,
       model: usage.modelId,
       durationMs,
       success: upstreamResponse.ok,
-      inputTokens,
-      outputTokens,
-      estimateFromRequest: !inputTokens && !outputTokens,
+      inputTokens: billedInputTokens,
+      outputTokens: billedOutputTokens,
     });
 
     const encoding = upstreamResponse.headers.get("content-encoding");
@@ -244,13 +296,14 @@ async function forwardRequest(
     console.error("[stella-provider] Forward error:", error);
     const durationMs = Date.now() - startMs;
 
-    await ctx.scheduler.runAfter(0, internal.agent.hooks.logProxyUsage, {
+    await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
       ownerId: usage.ownerId,
       agentType: usage.agentType,
       model: usage.modelId,
       durationMs,
       success: false,
-      estimateFromRequest: true,
+      inputTokens: tokenEstimate.inputTokens,
+      outputTokens: tokenEstimate.outputTokens,
     });
 
     return stellaProviderErrorResponse(
@@ -306,10 +359,27 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
       );
     }
   } else {
+    const subscriptionCheck = await ctx.runMutation(
+      internal.billing.enforceManagedUsageLimit,
+      {
+        ownerId,
+      },
+    );
+
+    if (!subscriptionCheck.allowed) {
+      const response = stellaProviderErrorResponse(429, subscriptionCheck.message, request);
+      response.headers.set(
+        "Retry-After",
+        String(Math.ceil((subscriptionCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000)),
+      );
+      return response;
+    }
+
     const rateCheck = await ctx.runMutation(
       internal.ai_proxy_data.checkProxyRateLimit,
       {
         ownerId,
+        tokensPerMinuteLimit: subscriptionCheck.tokensPerMinute,
       },
     );
 
@@ -357,6 +427,7 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
 
   const defaults = getModelConfig(agentType);
   const gatewayUpstream = `${MANAGED_GATEWAY.baseURL}/chat/completions`;
+  const tokenEstimate = estimateRequestTokens(requestJson);
 
   console.log(`[stella-provider] agent=${agentType} | resolvedModel=${resolvedModel}`);
 
@@ -372,6 +443,7 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
         providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
       },
     ),
+    tokenEstimate,
   );
 });
 
