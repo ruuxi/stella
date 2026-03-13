@@ -54,7 +54,9 @@ class MockAudioWorkletNode {
   };
 
   constructor() {
-    lastWorkletNode = this;
+    lastWorkletNode = {
+      port: this.port,
+    };
   }
 
   connect = vi.fn();
@@ -128,6 +130,37 @@ describe("WakeWordCaptureRoot", () => {
         }
       ).electronAPI.voice.pushWakeWordAudio,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases wake-word mic capture when rtc voice input becomes active", async () => {
+    const release = vi.fn();
+    mockAcquireSharedMicrophone.mockResolvedValue({
+      stream: { id: "mic-stream" },
+      release,
+    });
+
+    const { rerender } = render(<WakeWordCaptureRoot />);
+
+    await waitFor(() => {
+      expect(mockAcquireSharedMicrophone).toHaveBeenCalledTimes(1);
+    });
+
+    mockUseUiState.mockReturnValue({
+      state: {
+        mode: "voice",
+        window: "overlay",
+        view: "home",
+        conversationId: "conv-1",
+        isVoiceActive: false,
+        isVoiceRtcActive: true,
+      },
+    });
+
+    rerender(<WakeWordCaptureRoot />);
+
+    await waitFor(() => {
+      expect(release).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("stays idle while voice is active", async () => {

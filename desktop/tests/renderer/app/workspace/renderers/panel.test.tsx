@@ -26,6 +26,12 @@ vi.mock("@/ui/spinner", () => ({
   ),
 }));
 
+vi.mock("../../../../../src/app/workspace/renderers/dev-project-panel", () => ({
+  DevProjectPanel: ({ projectId }: { projectId: string }) => (
+    <div data-testid="dev-project-panel">{projectId}</div>
+  ),
+}));
+
 // Import the component directly. The dynamic import to /workspace/panels/...
 // will fail in jsdom, which lets us test the error handling paths.
 import PanelRenderer from "../../../../../src/app/workspace/renderers/panel";
@@ -148,6 +154,24 @@ describe("PanelRenderer", () => {
     expect(
       screen.getByText("Local workspace panels are only available while running the Vite dev server."),
     ).toBeTruthy();
+  });
+
+  it("keeps rendering stable when switching between local panels and dev projects", () => {
+    const { rerender } = render(<PanelRenderer panel={{ name: "test-panel" }} />);
+
+    expect(screen.getByTestId("spinner")).toBeTruthy();
+
+    rerender(
+      <PanelRenderer
+        panel={{ name: "dev-project:project-1", kind: "dev-project", projectId: "project-1" }}
+      />,
+    );
+
+    expect(screen.getByTestId("dev-project-panel")).toHaveTextContent("project-1");
+
+    rerender(<PanelRenderer panel={{ name: "test-panel" }} />);
+
+    expect(screen.getByTestId("spinner")).toBeTruthy();
   });
 });
 

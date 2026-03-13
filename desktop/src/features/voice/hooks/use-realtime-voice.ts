@@ -115,6 +115,14 @@ export class VoiceSessionManager {
     }
   }
 
+  getAnalyser(): AnalyserNode | null {
+    return this.sessionRef.current?.getAnalyser() ?? null;
+  }
+
+  getOutputAnalyser(): AnalyserNode | null {
+    return this.sessionRef.current?.getOutputAnalyser() ?? null;
+  }
+
   // ---- private helpers ----------------------------------------------------
 
   private clearRetryTimer(): void {
@@ -347,6 +355,7 @@ export class VoiceSessionManager {
     }
 
     const session = new RealtimeVoiceSession();
+    session.setInputActive(this.deps.inputActiveRef.current);
     try {
       await session.connect(targetConversationId);
       if (this.aborted) {
