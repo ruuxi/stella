@@ -45,6 +45,9 @@ import {
 } from "./thread-runtime.js";
 import { buildActiveThreadsPrompt } from "./runtime-threads.js";
 
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
 const DEFAULT_MAX_TASK_DEPTH = 8;
 const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;
 const MIN_LOCAL_HISTORY_TOKENS = 8_000;
@@ -424,7 +427,7 @@ export const createStellaHostRunner = ({
   // WebSearch via backend Convex action (Exa API)
   const webSearch = async (
     query: string,
-    options?: { category?: string },
+    options?: { category?: string; displayResults?: boolean },
   ): Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }> }> => {
     try {
       const client = ensureConvexClient();
@@ -436,6 +439,20 @@ export const createStellaHostRunner = ({
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
       };
+      // Display results visually (used by voice flow which can't call Display tool)
+      if (options?.displayResults && displayHtml && result.results.length > 0) {
+        const itemsHtml = result.results
+          .slice(0, 6)
+          .map(
+            (r) =>
+              `<div style="margin-bottom:12px"><div style="font-size:13px;opacity:0.92"><a href="${r.url}" style="color:var(--foreground);text-decoration:underline;text-underline-offset:2px;text-decoration-color:color-mix(in oklch,var(--foreground) 20%,transparent)">${escapeHtml(r.title)}</a></div><div style="font-size:12px;opacity:0.55;margin-top:2px">${escapeHtml(r.snippet)}</div></div>`,
+          )
+          .join("");
+        displayHtml(
+          `<div><h2 style="font-family:Georgia,serif;font-size:15px;font-weight:500;opacity:0.92;margin:0 0 12px">${escapeHtml(query)}</h2>${itemsHtml}</div>`,
+        );
+      }
+
       return {
         text: result.text || "WebSearch returned no response.",
         results: result.results,

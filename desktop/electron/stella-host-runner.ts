@@ -16,6 +16,7 @@ export type StellaHostRunner = Omit<RuntimeStellaHostRunner, "webSearch"> & {
     query: string,
     options?: {
       category?: string;
+      displayResults?: boolean;
     },
   ) => Promise<{
     text: string;
