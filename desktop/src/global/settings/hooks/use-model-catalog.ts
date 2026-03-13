@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { createServiceRequest } from "@/infra/http/service-request";
 import { extractProvider as localExtractProvider } from "@/global/settings/lib/model-providers";
-import { STELLA_MODELS_PATH } from "@/shared/ai/stella";
+import { STELLA_MODELS_PATH } from "../../../../electron/core/runtime/stella-provider.js";
 
 export type CatalogModel = {
   id: string;
@@ -29,73 +29,22 @@ type CatalogApiResponse = {
 
 const FALLBACK_STELLA_MODELS: CatalogModel[] = [
   { id: "stella/default", name: "Stella Recommended", provider: "stella" },
-  {
-    id: "stella/anthropic/claude-opus-4.5",
-    name: "Claude Opus 4.5",
-    provider: "stella",
-    upstreamModel: "anthropic/claude-opus-4.5",
-  },
-  {
-    id: "stella/anthropic/claude-sonnet-4.6",
-    name: "Claude Sonnet 4.6",
-    provider: "stella",
-    upstreamModel: "anthropic/claude-sonnet-4.6",
-  },
-  {
-    id: "stella/google/gemini-3-flash",
-    name: "Gemini 3 Flash",
-    provider: "stella",
-    upstreamModel: "google/gemini-3-flash",
-  },
-  {
-    id: "stella/inception/mercury-2",
-    name: "Mercury 2",
-    provider: "stella",
-    upstreamModel: "inception/mercury-2",
-  },
-  {
-    id: "stella/moonshotai/kimi-k2.5",
-    name: "Kimi K2.5",
-    provider: "stella",
-    upstreamModel: "moonshotai/kimi-k2.5",
-  },
-  {
-    id: "stella/openai/gpt-5.4",
-    name: "GPT-5.4",
-    provider: "stella",
-    upstreamModel: "openai/gpt-5.4",
-  },
-  {
-    id: "stella/zai/glm-4.7",
-    name: "GLM 4.7",
-    provider: "stella",
-    upstreamModel: "zai/glm-4.7",
-  },
+  { id: "stella/anthropic/claude-opus-4.5", name: "Claude Opus 4.5", provider: "stella", upstreamModel: "anthropic/claude-opus-4.5" },
+  { id: "stella/anthropic/claude-sonnet-4.6", name: "Claude Sonnet 4.6", provider: "stella", upstreamModel: "anthropic/claude-sonnet-4.6" },
+  { id: "stella/google/gemini-3-flash", name: "Gemini 3 Flash", provider: "stella", upstreamModel: "google/gemini-3-flash" },
+  { id: "stella/inception/mercury-2", name: "Mercury 2", provider: "stella", upstreamModel: "inception/mercury-2" },
+  { id: "stella/moonshotai/kimi-k2.5", name: "Kimi K2.5", provider: "stella", upstreamModel: "moonshotai/kimi-k2.5" },
+  { id: "stella/openai/gpt-5.4", name: "GPT-5.4", provider: "stella", upstreamModel: "openai/gpt-5.4" },
+  { id: "stella/zai/glm-4.7", name: "GLM 4.7", provider: "stella", upstreamModel: "zai/glm-4.7" },
 ];
 
 const FALLBACK_DIRECT_MODELS: CatalogModel[] = [
-  {
-    id: "anthropic/claude-opus-4.6",
-    name: "Claude Opus 4.6",
-    provider: "anthropic",
-  },
-  {
-    id: "anthropic/claude-sonnet-4.6",
-    name: "Claude Sonnet 4.6",
-    provider: "anthropic",
-  },
-  {
-    id: "anthropic/claude-haiku-4-5-20251001",
-    name: "Claude Haiku 4.5",
-    provider: "anthropic",
-  },
+  { id: "anthropic/claude-opus-4.6", name: "Claude Opus 4.6", provider: "anthropic" },
+  { id: "anthropic/claude-sonnet-4.6", name: "Claude Sonnet 4.6", provider: "anthropic" },
+  { id: "anthropic/claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", provider: "anthropic" },
   { id: "openai/gpt-5.4", name: "GPT-5.4", provider: "openai" },
   { id: "google/gemini-2.5-pro", name: "Gemini 2.5 Pro", provider: "google" },
-  {
-    id: "google/gemini-2.5-flash",
-    name: "Gemini 2.5 Flash",
-    provider: "google",
-  },
+  { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash", provider: "google" },
   { id: "moonshotai/kimi-k2.5", name: "Kimi K2.5", provider: "moonshotai" },
   { id: "zai/glm-4.7", name: "GLM 4.7", provider: "zai" },
 ];
@@ -118,15 +67,10 @@ function groupByProvider(models: CatalogModel[]): ProviderGroup[] {
     list.push(model);
     map.set(model.provider, list);
   }
-  return Array.from(map.entries()).map(([provider, models]) => ({
-    provider,
-    models,
-  }));
+  return Array.from(map.entries()).map(([provider, models]) => ({ provider, models }));
 }
 
-function mergeCatalogModels(
-  ...lists: Array<CatalogModel[] | null | undefined>
-): CatalogModel[] {
+function mergeCatalogModels(...lists: Array<CatalogModel[] | null | undefined>): CatalogModel[] {
   const merged = new Map<string, CatalogModel>();
   for (const list of lists) {
     for (const model of list ?? []) {
@@ -239,9 +183,7 @@ export function useModelCatalog() {
     }
 
     fetchCatalog();
-    return () => {
-      canceled = true;
-    };
+    return () => { canceled = true; };
   }, []);
 
   return { models, groups, loading };
