@@ -439,6 +439,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       }
       return stellaHostRunner.webSearch(payload.query, {
         category: payload.category,
+        displayResults: true,
       });
     },
   );
