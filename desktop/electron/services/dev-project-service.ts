@@ -63,6 +63,7 @@ type StartCommand = {
   command: string
   args: string[]
   env: NodeJS.ProcessEnv
+  shell?: boolean
 }
 
 const createDefaultRegistryState = (): DevProjectRegistryState => ({
@@ -72,7 +73,7 @@ const createDefaultRegistryState = (): DevProjectRegistryState => ({
 })
 
 const normalizeProjectPath = (value: string) =>
-  path.resolve(value).replace(/[\\\/]+$/, '').toLowerCase()
+  path.resolve(value).replace(/[\\/]+$/, '').toLowerCase()
 
 const readJsonFile = async <T>(filePath: string): Promise<T | null> => {
   try {
@@ -323,6 +324,9 @@ const resolveCommandBinary = (manager: LocalDevProjectPackageManager) => {
   }
 }
 
+const shouldLaunchInShell = (command: string) =>
+  process.platform === 'win32' && /\.cmd$/i.test(command)
+
 const buildStartCommand = (
   projectPath: string,
   metadata: ProjectMetadata,
@@ -367,6 +371,7 @@ const buildStartCommand = (
     command,
     args,
     env: baseEnv,
+    shell: shouldLaunchInShell(command),
   }
 }
 
@@ -560,6 +565,7 @@ export class DevProjectService {
     const child = spawn(command.command, command.args, {
       cwd: storedProject.path,
       env: command.env,
+      shell: command.shell,
       stdio: 'pipe',
       windowsHide: true,
     })
