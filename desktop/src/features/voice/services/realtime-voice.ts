@@ -110,6 +110,7 @@ export class RealtimeVoiceSession {
   private pendingRemoteStream: MediaStream | null = null;
   private destroyed = false;
   private inputActive = false;
+  private inputSyncPromise: Promise<void> = Promise.resolve();
 
   private _state: VoiceSessionState = "idle";
   private listeners = new Set<VoiceSessionListener>();
@@ -161,11 +162,12 @@ export class RealtimeVoiceSession {
    */
   setInputActive(active: boolean) {
     this.inputActive = active;
-    if (active) {
-      void this.resumeMicrophoneCapture();
-    } else {
-      void this.suspendMicrophoneCapture();
-    }
+    void this.syncInputState().catch((err) => {
+      console.debug(
+        "[realtime-voice] Failed to sync microphone state:",
+        (err as Error).message,
+      );
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -227,20 +229,7 @@ export class RealtimeVoiceSession {
         return (await res.json()) as VoiceSessionToken;
       })();
 
-      // B) Acquire microphone (runs in parallel, awaited later)
-      const micPromise = acquireSharedMicrophone().then((lease) => {
-        const stream = lease.stream;
-        this.micLease = lease;
-        return stream;
-      });
-      micPromise.catch((err) => {
-        console.debug(
-          "[RealtimeVoice] Mic access failed (non-blocking):",
-          (err as Error).message,
-        );
-      });
-
-      // C) Create RTCPeerConnection + SDP offer locally (no network, no mic needed)
+      // B) Create RTCPeerConnection + SDP offer locally (no network, no mic needed)
       this.pc = new RTCPeerConnection(RTC_CONFIGURATION);
       const transceiver = this.pc.addTransceiver("audio", {
         direction: "sendrecv",
@@ -307,25 +296,7 @@ export class RealtimeVoiceSession {
       }
 
       // ── Phase 3: Attach mic track (likely already resolved) ────────
-      const micStream = await micPromise;
-      if (this.destroyed) {
-        this.micLease?.release();
-        this.micLease = null;
-        this.cleanup();
-        return;
-      }
-      this.localStream = micStream;
-      this.inputTrack = micStream.getTracks()[0] ?? null;
-      if (!this.inputTrack) {
-        throw new Error("No microphone track available");
-      }
-      this.setupLocalAudioPipeline(micStream);
-
-      this.inputTrack.enabled = this.inputActive;
-      await this.sender.replaceTrack(this.inputTrack);
-      if (!this.inputActive) {
-        await this.suspendMicrophoneCapture();
-      }
+      await this.syncInputState();
 
       getVoiceRuntimeState().activeSession = this;
       this.trace("CONNECTED", `conv=${conversationId}`);
@@ -463,9 +434,43 @@ export class RealtimeVoiceSession {
     this.inputSourceNode = source;
   }
 
+  private syncInputState(): Promise<void> {
+    this.inputSyncPromise = this.inputSyncPromise
+      .catch(() => undefined)
+      .then(async () => {
+        if (this.destroyed) {
+          return;
+        }
+
+        if (this.inputActive) {
+          await this.resumeMicrophoneCapture();
+          if (!this.inputActive || this.destroyed) {
+            await this.suspendMicrophoneCapture();
+          }
+          return;
+        }
+
+        await this.suspendMicrophoneCapture();
+      });
+
+    return this.inputSyncPromise;
+  }
+
   private async suspendMicrophoneCapture() {
     if (!this.inputTrack && !this.localStream && !this.micLease) {
       return;
+    }
+
+    const sender = this.sender;
+    if (sender) {
+      try {
+        await sender.replaceTrack(null);
+      } catch (err) {
+        console.debug(
+          "[RealtimeVoice] Failed to detach microphone track:",
+          (err as Error).message,
+        );
+      }
     }
 
     if (this.inputTrack && this.inputTrack.readyState === "live") {
@@ -488,14 +493,14 @@ export class RealtimeVoiceSession {
     }
 
     this.inputTrack = null;
-
-    if (this.sender) {
-      await this.sender.replaceTrack(null);
-    }
   }
 
   private async resumeMicrophoneCapture() {
     if (!this.inputActive || this.destroyed) {
+      return;
+    }
+
+    if (!this.sender) {
       return;
     }
 
@@ -524,8 +529,23 @@ export class RealtimeVoiceSession {
     this.setupLocalAudioPipeline(this.localStream);
     this.inputTrack.enabled = true;
 
-    if (this.sender) {
+    try {
       await this.sender.replaceTrack(this.inputTrack);
+    } catch (err) {
+      if (this.inputSourceNode) {
+        this.inputSourceNode.disconnect();
+        this.inputSourceNode = null;
+      }
+      if (this.localStream) {
+        this.localStream.getTracks().forEach((track) => track.stop());
+        this.localStream = null;
+      }
+      if (this.micLease) {
+        this.micLease.release();
+        this.micLease = null;
+      }
+      this.inputTrack = null;
+      throw err;
     }
   }
 

@@ -99,20 +99,33 @@ export function VoiceRuntimeRoot() {
   }, []);
 
   useEffect(() => {
-    if (state.conversationId) {
-      setBootConversationId(state.conversationId);
+    if (!state.conversationId || state.conversationId === bootConversationId) {
       return;
     }
 
-    if (bootConversationId) {
+    const timer = window.setTimeout(() => {
+      setBootConversationId(state.conversationId);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [bootConversationId, state.conversationId]);
+
+  useEffect(() => {
+    if (state.conversationId || bootConversationId) {
       return;
     }
 
     const getDefaultConversationId =
       window.electronAPI?.localChat.getOrCreateDefaultConversationId;
     if (!getDefaultConversationId) {
-      setBootConversationId("voice-rtc");
-      return;
+      const timer = window.setTimeout(() => {
+        setBootConversationId("voice-rtc");
+      }, 0);
+      return () => {
+        window.clearTimeout(timer);
+      };
     }
 
     let cancelled = false;
@@ -175,6 +188,9 @@ export function VoiceRuntimeRoot() {
     manager.start();
 
     levelTimerRef.current = setInterval(() => {
+      analyserRef.current = manager.getAnalyser();
+      outputAnalyserRef.current = manager.getOutputAnalyser();
+
       publishRuntimeState({
         sessionState: sessionStateRef.current,
         isConnected: sessionStateRef.current === "connected",

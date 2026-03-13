@@ -136,6 +136,36 @@ describe("VoiceSessionManager", () => {
     expect(onUserSpeakingChange).toHaveBeenCalledWith(false);
   });
 
+  it("keeps the warm rtc session connected when input activation changes", async () => {
+    const conversationIdRef = { current: "conv-1" };
+    const inputActiveRef = { current: false };
+
+    const manager = new VoiceSessionManager({
+      conversationIdRef,
+      inputActiveRef,
+      appendEventRef: { current: vi.fn() },
+      deviceIdRef: { current: null },
+      analyserRef: { current: null },
+      outputAnalyserRef: { current: null },
+      onStateChange: vi.fn(),
+      onSpeakingChange: vi.fn(),
+      onUserSpeakingChange: vi.fn(),
+    });
+
+    manager.start();
+    await Promise.resolve();
+
+    const session = voiceSessionMocks.instances[0]!;
+    expect(session.connect).toHaveBeenCalledTimes(1);
+
+    inputActiveRef.current = true;
+    manager.updateSession("conv-1", true);
+
+    expect(session.setInputActive).toHaveBeenLastCalledWith(true);
+    expect(voiceSessionMocks.instances).toHaveLength(1);
+    expect(session.disconnect).not.toHaveBeenCalled();
+  });
+
   it("keeps the current live session if a replacement connection fails", async () => {
     const onStateChange = vi.fn();
     const consoleErrorSpy = vi
