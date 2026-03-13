@@ -83,8 +83,6 @@ export const webSearch = action({
     category: v.optional(v.string()),
     conversationId: v.optional(v.id("conversations")),
     agentType: v.optional(v.string()),
-    searchHtmlSystemPrompt: v.optional(v.string()),
-    searchHtmlUserPromptTemplate: v.optional(v.string()),
   },
   returns: v.object({
     text: v.string(),
@@ -95,7 +93,6 @@ export const webSearch = action({
         snippet: v.string(),
       }),
     ),
-    html: v.optional(v.string()),
   }),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
@@ -104,14 +101,6 @@ export const webSearch = action({
     }
     return await executeWebSearch(ctx, args.query, {
       ownerId,
-      includeHtml: true,
-      searchHtmlPromptConfig:
-        args.searchHtmlSystemPrompt?.trim() && args.searchHtmlUserPromptTemplate?.trim()
-          ? {
-              systemPrompt: args.searchHtmlSystemPrompt.trim(),
-              userPromptTemplate: args.searchHtmlUserPromptTemplate.trim(),
-            }
-          : undefined,
       category: args.category,
     });
   },

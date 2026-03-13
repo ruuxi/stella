@@ -158,14 +158,16 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   auto: {
-    model: "inception/mercury-2",
-    fallback: "moonshotai/kimi-k2.5",
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
-    maxOutputTokens: 4096,
+    maxOutputTokens: 16192,
     providerOptions: {
       openai: {
         reasoningEffort: "low",
-        forceReasoning: true,
+      },
+      gateway: {
+        order: ["fireworks, baseten, amazon-bedrock"],
       },
     },
   },

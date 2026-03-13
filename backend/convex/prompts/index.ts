@@ -14,7 +14,6 @@ export {
   buildPersonalizedDashboardPageUserMessage,
 } from "./personalized_dashboard";
 export type { PersonalizedDashboardPageAssignment } from "./personalized_dashboard";
-export { buildSearchHtmlUserPrompt } from "./search_html";
 export {
   THREAD_COMPACTION_SYSTEM_PROMPT,
   THREAD_COMPACTION_PROMPT,
