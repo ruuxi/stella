@@ -41,6 +41,11 @@ describe("AGENT_MODELS", () => {
     expect(typeof AGENT_MODELS.general.model).toBe("string");
   });
 
+  test("includes self_mod config", () => {
+    expect(AGENT_MODELS.self_mod).toBeDefined();
+    expect(typeof AGENT_MODELS.self_mod.model).toBe("string");
+  });
+
   test("includes mercury config", () => {
     expect(AGENT_MODELS.mercury).toBeDefined();
     expect(AGENT_MODELS.mercury.model).toBe("inception/mercury-2");
@@ -65,6 +70,11 @@ describe("getModelConfig", () => {
     expect(config).toBe(AGENT_MODELS.general);
   });
 
+  test("returns self_mod config for self_mod", () => {
+    const config = getModelConfig("self_mod");
+    expect(config).toBe(AGENT_MODELS.self_mod);
+  });
+
   test("returns mercury config for mercury", () => {
     const config = getModelConfig("mercury");
     expect(config).toBe(AGENT_MODELS.mercury);
@@ -86,10 +96,10 @@ describe("hasModelConfig", () => {
   test("returns true for configured agent types", () => {
     expect(hasModelConfig("orchestrator")).toBe(true);
     expect(hasModelConfig("general")).toBe(true);
+    expect(hasModelConfig("self_mod")).toBe(true);
   });
 
   test("returns false for unknown agent types", () => {
-    expect(hasModelConfig("self_mod")).toBe(false);
     expect(hasModelConfig("memory")).toBe(false);
   });
 });

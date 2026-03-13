@@ -6,10 +6,10 @@ import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction, requireUserId } from "../auth";
 import {
   GENERAL_AGENT_ENGINE_KEY,
-  CODEX_LOCAL_MAX_CONCURRENCY_KEY,
-  DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY,
+  MAX_AGENT_CONCURRENCY_KEY,
+  SELF_MOD_AGENT_ENGINE_KEY,
   normalizeGeneralAgentEngine,
-  normalizeCodexLocalMaxConcurrency,
+  normalizeMaxAgentConcurrency,
 } from "../data/preferences";
 import { SKILLS_DISABLED_AGENT_TYPES } from "../lib/agent_constants";
 import {
@@ -132,12 +132,12 @@ const agentContextResultValidator = v.object({
     toolCallId: v.optional(v.string()),
   }))),
   activeThreadId: v.optional(v.string()),
-  generalAgentEngine: v.optional(v.union(
+  agentEngine: v.optional(v.union(
     v.literal("default"),
     v.literal("codex_local"),
     v.literal("claude_code_local"),
   )),
-  codexLocalMaxConcurrency: v.optional(v.number()),
+  maxAgentConcurrency: v.optional(v.number()),
 });
 type AgentContextResult = Infer<typeof agentContextResultValidator>;
 
@@ -191,21 +191,24 @@ const fetchAgentContextForOwner = async (
     model = override.trim();
   }
 
-  let generalAgentEngine: "default" | "codex_local" | "claude_code_local" | undefined;
-  let codexLocalMaxConcurrency: number | undefined;
-  if (args.agentType === "general") {
-    generalAgentEngine = "default";
-    codexLocalMaxConcurrency = DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY;
+  let agentEngine: "default" | "codex_local" | "claude_code_local" | undefined;
+  let maxAgentConcurrency: number | undefined;
+  if (args.agentType === "general" || args.agentType === "self_mod") {
+    const engineKey = args.agentType === "self_mod"
+      ? SELF_MOD_AGENT_ENGINE_KEY
+      : GENERAL_AGENT_ENGINE_KEY;
+    agentEngine = "default";
+    maxAgentConcurrency = 24;
     const enginePreference = await ctx.runQuery(
       internal.data.preferences.getPreferenceForOwner,
-      { ownerId: args.ownerId, key: GENERAL_AGENT_ENGINE_KEY },
+      { ownerId: args.ownerId, key: engineKey },
     );
-    generalAgentEngine = normalizeGeneralAgentEngine(enginePreference);
+    agentEngine = normalizeGeneralAgentEngine(enginePreference);
     const concurrencyPreference = await ctx.runQuery(
       internal.data.preferences.getPreferenceForOwner,
-      { ownerId: args.ownerId, key: CODEX_LOCAL_MAX_CONCURRENCY_KEY },
+      { ownerId: args.ownerId, key: MAX_AGENT_CONCURRENCY_KEY },
     );
-    codexLocalMaxConcurrency = normalizeCodexLocalMaxConcurrency(concurrencyPreference);
+    maxAgentConcurrency = normalizeMaxAgentConcurrency(concurrencyPreference);
   }
 
   // 3. Get thread history if we have an active thread
@@ -249,8 +252,8 @@ const fetchAgentContextForOwner = async (
     skillIds: promptBuild.skillIds,
     threadHistory,
     activeThreadId,
-    generalAgentEngine,
-    codexLocalMaxConcurrency,
+    agentEngine,
+    maxAgentConcurrency,
   };
 };
 
@@ -303,26 +306,29 @@ export const fetchLocalAgentContextForRuntime = action({
       // Ignore model override lookup errors for local bootstrap.
     }
 
-    let generalAgentEngine: "default" | "codex_local" | "claude_code_local" | undefined;
-    let codexLocalMaxConcurrency: number | undefined;
-    if (args.agentType === "general") {
-      generalAgentEngine = "default";
-      codexLocalMaxConcurrency = DEFAULT_CODEX_LOCAL_MAX_CONCURRENCY;
+    let agentEngine: "default" | "codex_local" | "claude_code_local" | undefined;
+    let maxAgentConcurrency: number | undefined;
+    if (args.agentType === "general" || args.agentType === "self_mod") {
+      const engineKey = args.agentType === "self_mod"
+        ? SELF_MOD_AGENT_ENGINE_KEY
+        : GENERAL_AGENT_ENGINE_KEY;
+      agentEngine = "default";
+      maxAgentConcurrency = 24;
       try {
         const enginePreference = await ctx.runQuery(
           internal.data.preferences.getPreferenceForOwner,
-          { ownerId, key: GENERAL_AGENT_ENGINE_KEY },
+          { ownerId, key: engineKey },
         );
-        generalAgentEngine = normalizeGeneralAgentEngine(enginePreference);
+        agentEngine = normalizeGeneralAgentEngine(enginePreference);
       } catch {
         // Ignore preference lookup errors; defaults remain valid.
       }
       try {
         const concurrencyPreference = await ctx.runQuery(
           internal.data.preferences.getPreferenceForOwner,
-          { ownerId, key: CODEX_LOCAL_MAX_CONCURRENCY_KEY },
+          { ownerId, key: MAX_AGENT_CONCURRENCY_KEY },
         );
-        codexLocalMaxConcurrency = normalizeCodexLocalMaxConcurrency(concurrencyPreference);
+        maxAgentConcurrency = normalizeMaxAgentConcurrency(concurrencyPreference);
       } catch {
         // Ignore preference lookup errors; defaults remain valid.
       }
@@ -338,8 +344,8 @@ export const fetchLocalAgentContextForRuntime = action({
       skillIds: promptBuild.skillIds,
       threadHistory: undefined,
       activeThreadId: undefined,
-      generalAgentEngine,
-      codexLocalMaxConcurrency,
+      agentEngine,
+      maxAgentConcurrency,
     };
   },
 });
