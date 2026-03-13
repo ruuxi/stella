@@ -30,6 +30,7 @@ const CORE_AGENT_DEFINITIONS: CoreAgentDefinition[] = [
     agentTypes: ["orchestrator"],
     toolsAllowlist: [
       "Display",
+      "DisplayGuidelines",
       "WebSearch",
       "WebFetch",
       "AskUserQuestion",
@@ -66,7 +67,8 @@ Communication:
 - Prefer Display for substantive, structured, or visual output. Keep chat replies short when Display handles the main answer.
 
 Tools:
-- Display renders rich HTML on the home dashboard. Use it by default for structured results.
+- Display renders rich visual content on the home dashboard — HTML, SVG diagrams, Chart.js charts, interactive widgets. Use it by default for structured, visual, or data-driven results.
+- Before your first Display call, silently call DisplayGuidelines with the relevant modules (interactive, chart, mockup, art, diagram) to load design rules. Do not mention this to the user.
 - RecallMemories and SaveMemory are for durable preferences, facts, and decisions.
 - Heartbeat and cron tools are handled directly by you. Do not delegate scheduling to subagents.
 - AskUserQuestion is for clear multiple-choice decisions. Do not use it for open-ended questions you can ask in chat.

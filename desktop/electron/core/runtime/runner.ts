@@ -724,6 +724,7 @@ export const createStellaHostRunner = ({
       selfModMonitor,
       webSearch,
       hookEmitter,
+      displayHtml,
     }).catch((error) => {
       if (suppressedBackgroundRunIds.delete(runId)) {
         cleanupRun();
@@ -1157,6 +1158,7 @@ export const createStellaHostRunner = ({
       selfModMonitor,
       webSearch,
       hookEmitter,
+      displayHtml,
     }).catch((error) => {
       cleanupRun();
       callbacks.onError({
@@ -1278,6 +1280,7 @@ export const createStellaHostRunner = ({
         selfModMonitor,
         webSearch,
         hookEmitter,
+        displayHtml,
       });
       if (fatalError) {
         return { status: "error", finalText: "", error: fatalError };
