@@ -212,6 +212,41 @@
   align-items: center;
 }
 
+.sidebar-footer-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar-footer-row .sidebar-nav-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  color: var(--text-weak);
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-icon-button:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+}
+
+.sidebar-icon-button:active {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
 /* Push the title bar to start after the sidebar */
 .window-shell.full .title-bar {
   left: 220px;

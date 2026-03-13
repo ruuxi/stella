@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { ThemePicker } from "@/global/settings/ThemePicker";
@@ -23,12 +22,6 @@ interface SidebarProps {
   onHome?: () => void;
   onChat?: () => void;
 }
-
-type NavAction = "connect";
-
-const utilityNavItems: { action: NavAction; label: string; icon: ReactNode }[] = [
-  { action: "connect", label: "Connect", icon: <Link2 size={18} /> },
-];
 
 const AuthButton = ({
   onSignIn,
@@ -73,10 +66,6 @@ export const Sidebar = ({
   onHome,
   onChat,
 }: SidebarProps) => {
-  const actionHandlers: Record<NavAction, (() => void) | undefined> = {
-    connect: onConnect,
-  };
-
   return (
     <aside className="sidebar">
       <div className="sidebar-header" />
@@ -107,18 +96,6 @@ export const Sidebar = ({
           </span>
           <span className="sidebar-nav-label">Chat</span>
         </button>
-        <div className="sidebar-nav-section-label">Global</div>
-        {utilityNavItems.map((item) => (
-          <button
-            key={item.action}
-            className="sidebar-nav-item"
-            type="button"
-            onClick={actionHandlers[item.action]}
-          >
-            <span className="sidebar-nav-icon">{item.icon}</span>
-            <span className="sidebar-nav-label">{item.label}</span>
-          </button>
-        ))}
       </nav>
       <div className="sidebar-footer">
         <div className="sidebar-footer-item">
@@ -129,13 +106,23 @@ export const Sidebar = ({
             onThemeSelect={onThemeSelect}
           />
         </div>
-        <button type="button" className="sidebar-nav-item" onClick={onSettings}>
+        <button type="button" className="sidebar-nav-item" onClick={onConnect}>
           <span className="sidebar-nav-icon">
-            <Settings size={18} />
+            <Link2 size={18} />
           </span>
-          <span className="sidebar-nav-label">Settings</span>
+          <span className="sidebar-nav-label">Connect</span>
         </button>
-        <AuthButton onSignIn={onSignIn} />
+        <div className="sidebar-footer-row">
+          <AuthButton onSignIn={onSignIn} />
+          <button
+            type="button"
+            className="sidebar-icon-button"
+            onClick={onSettings}
+            title="Settings"
+          >
+            <Settings size={18} />
+          </button>
+        </div>
       </div>
     </aside>
   );
