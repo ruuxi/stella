@@ -106,7 +106,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   await ensureDir(workspaceAppsPath);
 
   await Promise.all([
-    seedMissingEntries(path.join(bundledDefaultsPath, "agents"), agentsPath),
     seedMissingEntries(path.join(bundledDefaultsPath, "core-skills"), coreSkillsPath),
     seedMissingEntries(path.join(bundledDefaultsPath, "skills"), skillsPath),
     seedMissingEntries(path.join(bundledDefaultsPath, "extensions"), extensionsPath),
