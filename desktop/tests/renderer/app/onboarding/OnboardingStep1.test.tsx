@@ -108,7 +108,6 @@ beforeEach(() => {
         requestedShortcut: "CommandOrControl+Shift+V",
         activeShortcut: "CommandOrControl+Shift+V",
       }),
-      setAssistantSpeaking: vi.fn().mockResolvedValue({ ok: true }),
       setRtcShortcut: vi.fn().mockResolvedValue({
         ok: true,
         requestedShortcut: "CommandOrControl+Shift+D",

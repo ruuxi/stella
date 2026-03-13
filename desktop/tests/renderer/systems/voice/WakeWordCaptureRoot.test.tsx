@@ -4,7 +4,6 @@ import { WakeWordCaptureRoot } from "../../../../src/systems/voice/WakeWordCaptu
 
 const mockUseUiState = vi.fn();
 const mockAcquireSharedMicrophone = vi.fn();
-const mockBufferRecentVoiceHandoffPcm = vi.fn();
 const mockResampleLinear = vi.fn();
 const mockFloatToInt16Pcm = vi.fn();
 
@@ -20,8 +19,6 @@ vi.mock("@/context/ui-state", () => ({
 
 vi.mock("@/features/voice/services/shared-microphone", () => ({
   acquireSharedMicrophone: () => mockAcquireSharedMicrophone(),
-  bufferRecentVoiceHandoffPcm: (...args: unknown[]) =>
-    mockBufferRecentVoiceHandoffPcm(...args),
 }));
 
 vi.mock("@/features/voice/services/audio-encoding", () => ({
@@ -122,7 +119,6 @@ describe("WakeWordCaptureRoot", () => {
 
     expect(mockResampleLinear).toHaveBeenCalled();
     expect(mockFloatToInt16Pcm).toHaveBeenCalled();
-    expect(mockBufferRecentVoiceHandoffPcm).toHaveBeenCalledTimes(1);
     expect(
       (
         window as unknown as {

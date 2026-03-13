@@ -158,15 +158,6 @@ const WARMUP_FRAMES = 0;
 const DEFAULT_THRESHOLD = 0.70;
 const MIN_THRESHOLD = 0.5;
 
-// RMS gate — skip all inference when audio is near-silent
-const RMS_THRESHOLD = 250; // int16 scale; ~0.009 normalized
-
-function computeRms(pcm: Int16Array): number {
-  let sum = 0;
-  for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
-  return Math.sqrt(sum / pcm.length);
-}
-
 // ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
@@ -270,9 +261,6 @@ export async function createWakeWordDetector(
   let vadState = new Float32Array(2 * 1 * VAD_STATE_DIM);
   let vadContext = new Float32Array(VAD_CONTEXT_SIZE);
 
-  const VAD_HANGOVER_FRAMES = 15;
-  let vadHangover = 0;
-
   async function runVad(pcm: Int16Array): Promise<number> {
     const scores: number[] = [];
     for (let i = 0; i <= pcm.length - VAD_FRAME_SIZE; i += VAD_FRAME_SIZE) {
@@ -369,26 +357,7 @@ export async function createWakeWordDetector(
     const none: WakeWordResult = { detected: false, score: 0, vadScore: 0 };
     if (!listening) return none;
 
-    const rms = computeRms(pcm);
-    const isLoud = rms >= RMS_THRESHOLD;
-
-    let vadScore = 0;
-    if (isLoud || vadHangover > 0) {
-      vadScore = await runVad(pcm);
-      if (vadScore >= VAD_THRESHOLD) {
-        vadHangover = VAD_HANGOVER_FRAMES;
-      } else if (vadHangover > 0) {
-        vadHangover--;
-      }
-    }
-
-    if (!isLoud && vadHangover === 0) {
-      bufferRawData(pcm);
-      if (featureRows > MODEL_INPUT_FRAMES || accumulatedSamples > 0) {
-        resetToSilence();
-      }
-      return { detected: false, score: 0, vadScore };
-    }
+    const vadScore = await runVad(pcm);
 
     if (rawRemainder.length > 0) {
       const combined = new Int16Array(rawRemainder.length + pcm.length);
@@ -431,8 +400,6 @@ export async function createWakeWordDetector(
         return { detected: false, score: 0, vadScore };
       }
     }
-
-    if (vadHangover === 0) return { detected: false, score: 0, vadScore };
 
     if (accumulatedSamples >= CHUNK_SAMPLES) {
       const nChunks = Math.floor(accumulatedSamples / CHUNK_SAMPLES);
@@ -514,7 +481,6 @@ export async function createWakeWordDetector(
     
     vadState.fill(0);
     vadContext.fill(0);
-    vadHangover = 0;
   }
 
   function resetState() {

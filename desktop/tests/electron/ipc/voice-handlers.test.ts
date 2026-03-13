@@ -45,7 +45,6 @@ const createOptions = () => ({
   getOverlayController: () => null,
   getConvexSiteUrl: () => null,
   getAuthToken: () => null,
-  setAssistantSpeaking: vi.fn().mockResolvedValue(undefined),
 });
 
 describe("registerVoiceHandlers", () => {
