@@ -151,11 +151,12 @@ const createSelfModHmrState = (
 });
 
 type QueuedOrchestratorTurn = {
-  conversationId: string;
-  userPrompt: string;
-  agentType: string;
-  searchHtmlPrompts?: SearchHtmlPromptConfig;
+  priority: "user" | "system";
+  requeueOnInterrupt: boolean;
+  execute: () => Promise<void>;
 };
+
+const QUEUED_TURN_INTERRUPT_ERROR = "Interrupted by queued orchestrator turn";
 
 type ParsedAgentLike = {
   id: string;
@@ -295,13 +296,14 @@ export const createStellaHostRunner = ({
   let localTaskManager: LocalTaskManager | null = null;
   let activeOrchestratorRunId: string | null = null;
   let activeOrchestratorConversationId: string | null = null;
-  let activeOrchestratorRunKind: "foreground" | "background" | null = null;
-  let activeBackgroundTurnPayload: QueuedOrchestratorTurn | null = null;
   let activeSearchHtmlPrompts: SearchHtmlPromptConfig | undefined;
   const queuedOrchestratorTurns: QueuedOrchestratorTurn[] = [];
   const activeRunAbortControllers = new Map<string, AbortController>();
   const conversationCallbacks = new Map<string, AgentCallbacks>();
-  const suppressedBackgroundRunIds = new Set<string>();
+  const interruptedRunIds = new Set<string>();
+  let activeToolExecutionCount = 0;
+  let interruptAfterTool = false;
+  let activeInterruptedReplayTurn: QueuedOrchestratorTurn | null = null;
 
   const skillsPath = path.join(StellaHome, "skills");
   const coreSkillsPath = path.join(StellaHome, "core-skills");
@@ -591,12 +593,22 @@ export const createStellaHostRunner = ({
 
   const queueOrchestratorTurn = (
     turn: QueuedOrchestratorTurn,
-    options?: { front?: boolean },
   ) => {
-    if (options?.front) {
-      queuedOrchestratorTurns.unshift(turn);
+    if (turn.priority === "user") {
+      const firstSystemIndex = queuedOrchestratorTurns.findIndex(
+        (entry) => entry.priority !== "user",
+      );
+      if (firstSystemIndex === -1) {
+        queuedOrchestratorTurns.push(turn);
+      } else {
+        queuedOrchestratorTurns.splice(firstSystemIndex, 0, turn);
+      }
     } else {
       queuedOrchestratorTurns.push(turn);
+    }
+    if (activeOrchestratorRunId) {
+      requestActiveOrchestratorCheckpoint();
+      return;
     }
     queueMicrotask(() => {
       void drainQueuedOrchestratorTurns();
@@ -609,43 +621,65 @@ export const createStellaHostRunner = ({
     }
     activeOrchestratorRunId = null;
     activeOrchestratorConversationId = null;
-    activeOrchestratorRunKind = null;
-    activeBackgroundTurnPayload = null;
     activeSearchHtmlPrompts = undefined;
+    activeToolExecutionCount = 0;
+    interruptAfterTool = false;
+    activeInterruptedReplayTurn = null;
   };
 
-  const preemptBackgroundOrchestratorTurn = () => {
-    if (!activeOrchestratorRunId || activeOrchestratorRunKind !== "background") {
+  const abortActiveOrchestratorRunForQueuedTurn = () => {
+    if (!activeOrchestratorRunId) {
       return false;
     }
-
     const runId = activeOrchestratorRunId;
-    const queuedTurn = activeBackgroundTurnPayload;
     const abortController = activeRunAbortControllers.get(runId) ?? null;
-
-    if (queuedTurn) {
-      queuedOrchestratorTurns.unshift(queuedTurn);
+    if (!abortController || interruptedRunIds.has(runId)) {
+      return false;
     }
-
-    suppressedBackgroundRunIds.add(runId);
-    clearActiveOrchestratorRun(runId);
-    activeRunAbortControllers.delete(runId);
-    abortController?.abort(new Error("Preempted by foreground orchestrator turn"));
+    interruptedRunIds.add(runId);
+    abortController.abort(new Error(QUEUED_TURN_INTERRUPT_ERROR));
     return true;
   };
 
-  const startBackgroundOrchestratorTurn = async (
+  const requestActiveOrchestratorCheckpoint = () => {
+    if (!activeOrchestratorRunId) {
+      return false;
+    }
+    if (activeToolExecutionCount > 0) {
+      interruptAfterTool = true;
+      return true;
+    }
+    interruptAfterTool = false;
+    return abortActiveOrchestratorRunForQueuedTurn();
+  };
+
+  const maybeInterruptAfterToolCheckpoint = () => {
+    if (!interruptAfterTool || activeToolExecutionCount > 0) {
+      return;
+    }
+    interruptAfterTool = false;
+    abortActiveOrchestratorRunForQueuedTurn();
+  };
+
+  const startStreamingOrchestratorTurn = async (
     payload: QueuedOrchestratorTurn,
+    startArgs: {
+      conversationId: string;
+      userPrompt: string;
+      agentType: string;
+      userMessageId: string;
+      searchHtmlPrompts?: SearchHtmlPromptConfig;
+    },
     callbacks: AgentCallbacks,
   ): Promise<{ runId: string }> => {
     if (activeOrchestratorRunId) {
       throw new Error("The orchestrator is already running.");
     }
 
-    const runId = `local:bg:${crypto.randomUUID()}`;
-    const conversationId = payload.conversationId;
-    const agentType = payload.agentType;
-    const userPrompt = payload.userPrompt.trim();
+    const runId = `local:${crypto.randomUUID()}`;
+    const conversationId = startArgs.conversationId;
+    const agentType = startArgs.agentType;
+    const userPrompt = startArgs.userPrompt.trim();
     if (!userPrompt) {
       throw new Error("Missing user prompt");
     }
@@ -667,9 +701,8 @@ export const createStellaHostRunner = ({
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
-    activeOrchestratorRunKind = "background";
-    activeBackgroundTurnPayload = payload;
-    activeSearchHtmlPrompts = payload.searchHtmlPrompts;
+    activeSearchHtmlPrompts = startArgs.searchHtmlPrompts;
+    activeInterruptedReplayTurn = payload.requeueOnInterrupt ? payload : null;
 
     const abortController = new AbortController();
     activeRunAbortControllers.set(runId, abortController);
@@ -684,11 +717,24 @@ export const createStellaHostRunner = ({
 
     const runtimeCallbacks: RuntimeRunCallbacks = {
       onStream: callbacks.onStream,
-      onToolStart: callbacks.onToolStart,
-      onToolEnd: callbacks.onToolEnd,
+      onToolStart: (event) => {
+        activeToolExecutionCount += 1;
+        callbacks.onToolStart(event);
+      },
+      onToolEnd: (event) => {
+        activeToolExecutionCount = Math.max(0, activeToolExecutionCount - 1);
+        callbacks.onToolEnd(event);
+        if (activeOrchestratorRunId === runId) {
+          maybeInterruptAfterToolCheckpoint();
+        }
+      },
       onError: (event) => {
-        if (suppressedBackgroundRunIds.delete(runId)) {
+        if (interruptedRunIds.delete(runId)) {
+          const replayTurn = activeInterruptedReplayTurn;
           cleanupRun();
+          if (replayTurn) {
+            queueOrchestratorTurn(replayTurn);
+          }
           return;
         }
         callbacks.onError(event);
@@ -697,8 +743,12 @@ export const createStellaHostRunner = ({
         }
       },
       onEnd: (event) => {
-        if (suppressedBackgroundRunIds.delete(runId)) {
+        if (interruptedRunIds.delete(runId)) {
+          const replayTurn = activeInterruptedReplayTurn;
           cleanupRun();
+          if (replayTurn) {
+            queueOrchestratorTurn(replayTurn);
+          }
           return;
         }
         cleanupRun();
@@ -709,7 +759,7 @@ export const createStellaHostRunner = ({
     void runOrchestratorTurn({
       runId,
       conversationId,
-      userMessageId: `system:${crypto.randomUUID()}`,
+      userMessageId: startArgs.userMessageId,
       agentType,
       userPrompt,
       agentContext,
@@ -726,8 +776,12 @@ export const createStellaHostRunner = ({
       hookEmitter,
       displayHtml,
     }).catch((error) => {
-      if (suppressedBackgroundRunIds.delete(runId)) {
+      if (interruptedRunIds.delete(runId)) {
+        const replayTurn = activeInterruptedReplayTurn;
         cleanupRun();
+        if (replayTurn) {
+          queueOrchestratorTurn(replayTurn);
+        }
         return;
       }
       cleanupRun();
@@ -753,21 +807,10 @@ export const createStellaHostRunner = ({
       if (!nextTurn) {
         return;
       }
-      const callbacks = conversationCallbacks.get(nextTurn.conversationId);
-      if (!callbacks) {
-        continue;
-      }
-
       try {
-        await startBackgroundOrchestratorTurn(nextTurn, callbacks);
-      } catch (error) {
-        callbacks.onError({
-          runId: `local:bg:${crypto.randomUUID()}`,
-          agentType: nextTurn.agentType,
-          seq: Date.now(),
-          error: (error as Error).message || "Background orchestrator turn failed",
-          fatal: true,
-        });
+        await nextTurn.execute();
+      } catch {
+        // Individual queued turn handlers are responsible for notifying callers.
       }
     }
   };
@@ -791,11 +834,27 @@ export const createStellaHostRunner = ({
       if (!userPrompt) {
         return;
       }
-      queueOrchestratorTurn({
-        conversationId: event.conversationId,
-        userPrompt,
-        agentType: "orchestrator",
-      });
+      const queuedTurn: QueuedOrchestratorTurn = {
+        priority: "system",
+        requeueOnInterrupt: true,
+        execute: async () => {
+          const callbacks = conversationCallbacks.get(event.conversationId);
+          if (!callbacks) {
+            return;
+          }
+          await startStreamingOrchestratorTurn(
+            queuedTurn,
+            {
+              conversationId: event.conversationId,
+              userPrompt,
+              agentType: "orchestrator",
+              userMessageId: `system:${crypto.randomUUID()}`,
+            },
+            callbacks,
+          );
+        },
+      };
+      queueOrchestratorTurn(queuedTurn);
     },
     fetchAgentContext: buildAgentContext,
     runSubagent: async ({
@@ -1020,14 +1079,16 @@ export const createStellaHostRunner = ({
     disposeConvexClient();
     activeOrchestratorRunId = null;
     activeOrchestratorConversationId = null;
-    activeOrchestratorRunKind = null;
-    activeBackgroundTurnPayload = null;
     activeSearchHtmlPrompts = undefined;
+    activeToolExecutionCount = 0;
+    interruptAfterTool = false;
+    activeInterruptedReplayTurn = null;
     for (const controller of activeRunAbortControllers.values()) {
       controller.abort();
     }
     activeRunAbortControllers.clear();
     conversationCallbacks.clear();
+    interruptedRunIds.clear();
     void selfModHmrController?.forceResumeAll();
     toolHost.killAllShells();
     shutdownSubagentRuntimes();
@@ -1062,19 +1123,10 @@ export const createStellaHostRunner = ({
     return { ready: false, reason: "No usable model route", engine: "pi" };
   };
 
-  const handleLocalChat = async (
+  const startLocalChatTurn = async (
     payload: ChatPayload,
     callbacks: AgentCallbacks,
   ): Promise<{ runId: string }> => {
-    const health = agentHealthCheck();
-    if (!health.ready) {
-      throw new Error(health.reason ?? "Stella runtime not ready");
-    }
-
-    if (activeOrchestratorRunKind === "background") {
-      preemptBackgroundOrchestratorTurn();
-    }
-
     if (activeOrchestratorRunId) {
       throw new Error("The orchestrator is already running. Wait for it to finish before starting another run.");
     }
@@ -1108,9 +1160,6 @@ export const createStellaHostRunner = ({
 
     activeOrchestratorRunId = runId;
     activeOrchestratorConversationId = conversationId;
-    activeOrchestratorRunKind = "foreground";
-    activeBackgroundTurnPayload = null;
-    conversationCallbacks.set(conversationId, callbacks);
     activeSearchHtmlPrompts = payload.searchHtmlPrompts;
 
     const abortController = new AbortController();
@@ -1126,15 +1175,32 @@ export const createStellaHostRunner = ({
 
     const runtimeCallbacks: RuntimeRunCallbacks = {
       onStream: callbacks.onStream,
-      onToolStart: callbacks.onToolStart,
-      onToolEnd: callbacks.onToolEnd,
+      onToolStart: (event) => {
+        activeToolExecutionCount += 1;
+        callbacks.onToolStart(event);
+      },
+      onToolEnd: (event) => {
+        activeToolExecutionCount = Math.max(0, activeToolExecutionCount - 1);
+        callbacks.onToolEnd(event);
+        if (activeOrchestratorRunId === runId) {
+          maybeInterruptAfterToolCheckpoint();
+        }
+      },
       onError: (event) => {
+        if (interruptedRunIds.delete(runId)) {
+          cleanupRun();
+          return;
+        }
         callbacks.onError(event);
         if (event.fatal) {
           cleanupRun();
         }
       },
       onEnd: (event) => {
+        if (interruptedRunIds.delete(runId)) {
+          cleanupRun();
+          return;
+        }
         cleanupRun();
         callbacks.onEnd(event);
       },
@@ -1160,6 +1226,10 @@ export const createStellaHostRunner = ({
       hookEmitter,
       displayHtml,
     }).catch((error) => {
+      if (interruptedRunIds.delete(runId)) {
+        cleanupRun();
+        return;
+      }
       cleanupRun();
       callbacks.onError({
         runId,
@@ -1167,6 +1237,185 @@ export const createStellaHostRunner = ({
         seq: Date.now(),
         error: (error as Error).message || "Stella runtime failed",
         fatal: true,
+      });
+    });
+
+    return { runId };
+  };
+
+  const handleLocalChat = async (
+    payload: ChatPayload,
+    callbacks: AgentCallbacks,
+  ): Promise<{ runId: string }> => {
+    const health = agentHealthCheck();
+    if (!health.ready) {
+      throw new Error(health.reason ?? "Stella runtime not ready");
+    }
+
+    conversationCallbacks.set(payload.conversationId, callbacks);
+
+    const queuedTurn: QueuedOrchestratorTurn = {
+      priority: "user",
+      requeueOnInterrupt: false,
+      execute: async () => {
+        await startLocalChatTurn(payload, callbacks);
+      },
+    };
+
+    if (activeOrchestratorRunId) {
+      return await new Promise<{ runId: string }>((resolve, reject) => {
+        queueOrchestratorTurn({
+          ...queuedTurn,
+          execute: async () => {
+            try {
+              resolve(await startLocalChatTurn(payload, callbacks));
+            } catch (error) {
+              reject(error instanceof Error ? error : new Error(String(error)));
+            }
+          },
+        });
+      });
+    }
+
+    return await startLocalChatTurn(payload, callbacks);
+  };
+
+  const startAutomationTurn = async (
+    queuedTurn: QueuedOrchestratorTurn,
+    payload: {
+      conversationId: string;
+      userPrompt: string;
+      agentType?: string;
+    },
+    resolveResult: (value:
+      | { status: "ok"; finalText: string }
+      | { status: "busy"; finalText: ""; error: string }
+      | { status: "error"; finalText: ""; error: string }
+    ) => void,
+  ): Promise<{ runId: string }> => {
+    if (activeOrchestratorRunId) {
+      throw new Error("The orchestrator is already running.");
+    }
+
+    const conversationId = payload.conversationId.trim();
+    const userPrompt = payload.userPrompt.trim();
+    const agentType = payload.agentType ?? "orchestrator";
+    if (!conversationId) {
+      resolveResult({ status: "error", finalText: "", error: "Missing conversationId" });
+      return { runId: "" };
+    }
+    if (!userPrompt) {
+      resolveResult({ status: "error", finalText: "", error: "Missing user prompt" });
+      return { runId: "" };
+    }
+
+    const runId = `local:auto:${crypto.randomUUID()}`;
+    const agentContext = await buildAgentContext({
+      conversationId,
+      agentType,
+      runId,
+    });
+    const resolvedLlm = resolveLlmRoute({
+      stellaHomePath: StellaHome,
+      modelName: agentContext.model,
+      agentType,
+      proxy: {
+        baseUrl: proxyBaseUrl,
+        getAuthToken: () => authToken?.trim(),
+      },
+    });
+
+    activeOrchestratorRunId = runId;
+    activeOrchestratorConversationId = conversationId;
+    activeSearchHtmlPrompts = undefined;
+    activeInterruptedReplayTurn = queuedTurn.requeueOnInterrupt ? queuedTurn : null;
+
+    const abortController = new AbortController();
+    activeRunAbortControllers.set(runId, abortController);
+
+    const cleanupRun = () => {
+      activeRunAbortControllers.delete(runId);
+      clearActiveOrchestratorRun(runId);
+      queueMicrotask(() => {
+        void drainQueuedOrchestratorTurns();
+      });
+    };
+
+    void runOrchestratorTurn({
+      runId,
+      conversationId,
+      userMessageId: `automation:${crypto.randomUUID()}`,
+      agentType,
+      userPrompt,
+      agentContext,
+      callbacks: {
+        onStream: () => {},
+        onToolStart: () => {
+          activeToolExecutionCount += 1;
+        },
+        onToolEnd: () => {
+          activeToolExecutionCount = Math.max(0, activeToolExecutionCount - 1);
+          if (activeOrchestratorRunId === runId) {
+            maybeInterruptAfterToolCheckpoint();
+          }
+        },
+        onError: (event) => {
+          if (interruptedRunIds.delete(runId)) {
+            const replayTurn = activeInterruptedReplayTurn;
+            cleanupRun();
+            if (replayTurn) {
+              queueOrchestratorTurn(replayTurn);
+            }
+            return;
+          }
+          cleanupRun();
+          resolveResult({
+            status: "error",
+            finalText: "",
+            error: event.error || "Stella runtime failed",
+          });
+        },
+        onEnd: (event) => {
+          if (interruptedRunIds.delete(runId)) {
+            const replayTurn = activeInterruptedReplayTurn;
+            cleanupRun();
+            if (replayTurn) {
+              queueOrchestratorTurn(replayTurn);
+            }
+            return;
+          }
+          cleanupRun();
+          resolveResult({
+            status: "ok",
+            finalText: event.finalText,
+          });
+        },
+      },
+      toolExecutor: (toolName, args, context) => toolHost.executeTool(toolName, args, context),
+      deviceId,
+      stellaHome: StellaHome,
+      resolvedLlm,
+      store: runtimeStore,
+      abortSignal: abortController.signal,
+      frontendRoot,
+      selfModMonitor,
+      webSearch,
+      hookEmitter,
+      displayHtml,
+    }).catch((error) => {
+      if (interruptedRunIds.delete(runId)) {
+        const replayTurn = activeInterruptedReplayTurn;
+        cleanupRun();
+        if (replayTurn) {
+          queueOrchestratorTurn(replayTurn);
+        }
+        return;
+      }
+      cleanupRun();
+      resolveResult({
+        status: "error",
+        finalText: "",
+        error: (error as Error).message || "Stella runtime failed",
       });
     });
 
@@ -1191,116 +1440,32 @@ export const createStellaHostRunner = ({
       };
     }
 
-    if (activeOrchestratorRunKind === "background") {
-      preemptBackgroundOrchestratorTurn();
-    }
-
-    if (activeOrchestratorRunId) {
-      return {
-        status: "busy",
-        finalText: "",
-        error: "The orchestrator is already running.",
-      };
-    }
-
-    const conversationId = payload.conversationId.trim();
-    const userPrompt = payload.userPrompt.trim();
-    const agentType = payload.agentType ?? "orchestrator";
-    if (!conversationId) {
-      return { status: "error", finalText: "", error: "Missing conversationId" };
-    }
-    if (!userPrompt) {
-      return { status: "error", finalText: "", error: "Missing user prompt" };
-    }
-
-    const runId = `local:auto:${crypto.randomUUID()}`;
-    const agentContext = await buildAgentContext({
-      conversationId,
-      agentType,
-      runId,
-    });
-    const resolvedLlm = resolveLlmRoute({
-      stellaHomePath: StellaHome,
-      modelName: agentContext.model,
-      agentType,
-      proxy: {
-        baseUrl: proxyBaseUrl,
-        getAuthToken: () => authToken?.trim(),
-      },
-    });
-
-    activeOrchestratorRunId = runId;
-    activeOrchestratorConversationId = conversationId;
-    activeOrchestratorRunKind = "foreground";
-    activeBackgroundTurnPayload = null;
-    activeSearchHtmlPrompts = undefined;
-
-    const abortController = new AbortController();
-    activeRunAbortControllers.set(runId, abortController);
-
-    const cleanupRun = () => {
-      activeRunAbortControllers.delete(runId);
-      clearActiveOrchestratorRun(runId);
-      queueMicrotask(() => {
-        void drainQueuedOrchestratorTurns();
-      });
-    };
-
-    let finalText = "";
-    let fatalError: string | null = null;
-
-    try {
-      await runOrchestratorTurn({
-        runId,
-        conversationId,
-        userMessageId: `automation:${crypto.randomUUID()}`,
-        agentType,
-        userPrompt,
-        agentContext,
-        callbacks: {
-          onStream: () => {},
-          onToolStart: () => {},
-          onToolEnd: () => {},
-          onError: (event) => {
-            if (event.fatal) {
-              fatalError = event.error;
-            }
-          },
-          onEnd: (event) => {
-            finalText = event.finalText;
-          },
+    return await new Promise<
+      | { status: "ok"; finalText: string }
+      | { status: "busy"; finalText: ""; error: string }
+      | { status: "error"; finalText: ""; error: string }
+    >((resolve) => {
+      const queuedTurn: QueuedOrchestratorTurn = {
+        priority: "system",
+        requeueOnInterrupt: true,
+        execute: async () => {
+          await startAutomationTurn(queuedTurn, payload, resolve);
         },
-        toolExecutor: (toolName, args, context) => toolHost.executeTool(toolName, args, context),
-        deviceId,
-        stellaHome: StellaHome,
-        resolvedLlm,
-        store: runtimeStore,
-        abortSignal: abortController.signal,
-        frontendRoot,
-        selfModMonitor,
-        webSearch,
-        hookEmitter,
-        displayHtml,
-      });
-      if (fatalError) {
-        return { status: "error", finalText: "", error: fatalError };
-      }
-      return { status: "ok", finalText };
-    } catch (error) {
-      return {
-        status: "error",
-        finalText: "",
-        error: (error as Error).message || "Stella runtime failed",
       };
-    } finally {
-      cleanupRun();
-    }
+
+      if (activeOrchestratorRunId) {
+        queueOrchestratorTurn(queuedTurn);
+        return;
+      }
+
+      void queuedTurn.execute();
+    });
   };
 
   const remoteTurnBridge = createRemoteTurnBridge({
     deviceId,
     isEnabled: () => isRunning && cloudSyncEnabled,
-    isRunnerBusy: () => activeOrchestratorRunKind === "foreground",
+    isRunnerBusy: () => false,
     subscribeRemoteTurnRequests: ({
       deviceId: targetDeviceId,
       since,
@@ -1374,11 +1539,21 @@ export const createStellaHostRunner = ({
     clearActiveOrchestratorRun(runId);
   };
 
+  const requestQueuedTurnCheckpoint = (conversationId?: string) => {
+    if (
+      conversationId &&
+      activeOrchestratorConversationId &&
+      activeOrchestratorConversationId !== conversationId
+    ) {
+      return false;
+    }
+    return requestActiveOrchestratorCheckpoint();
+  };
+
   const getActiveOrchestratorRun = (): { runId: string; conversationId: string } | null => {
     if (
       !activeOrchestratorRunId ||
-      !activeOrchestratorConversationId ||
-      activeOrchestratorRunKind !== "foreground"
+      !activeOrchestratorConversationId
     ) {
       return null;
     }
@@ -1431,6 +1606,7 @@ export const createStellaHostRunner = ({
     handleLocalChat,
     runAutomationTurn,
     cancelLocalChat,
+    requestQueuedTurnCheckpoint,
     getActiveOrchestratorRun,
     recoverCrashedRuns,
     appendThreadMessage: (args: {

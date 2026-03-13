@@ -188,6 +188,11 @@ export function useStreamingChat({
       options.onClear()
 
       if (mode === 'follow_up') {
+        void window.electronAPI?.agent
+          ?.interruptQueuedTurn?.({
+            conversationId: resolvedConversationId,
+          })
+          .catch(() => undefined)
         console.log(
           `[stella:trace] sendMessage (follow_up queued) | convId=${resolvedConversationId} | eventId=${eventId}`,
         )
