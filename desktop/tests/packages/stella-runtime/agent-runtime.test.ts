@@ -133,7 +133,8 @@ describe("runSubagentTask engine selection", () => {
     expect(runCodexAppServerTurnMock).toHaveBeenCalledWith(expect.objectContaining({
       sessionKey: expect.stringContaining("conv-1:run:"),
       maxConcurrency: 2,
-      prompt: "Solve this task",
+      prompt: expect.stringContaining("Solve this task"),
+      developerInstructions: expect.stringContaining("Documentation:"),
       cwd: "C:/Users/redacted/projects/stella/desktop",
     }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
@@ -162,6 +163,7 @@ describe("runSubagentTask engine selection", () => {
     expect(runClaudeCodeTurnMock).toHaveBeenCalledWith(expect.objectContaining({
       modelId: "openai/gpt-4.1-mini",
       prompt: "Solve this task",
+      systemPrompt: expect.stringContaining("Documentation:"),
       cwd: "C:/Users/redacted/projects/stella/desktop",
     }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
@@ -191,10 +193,32 @@ describe("runSubagentTask engine selection", () => {
     expect(runClaudeCodeTurnMock).toHaveBeenCalledTimes(1);
     expect(runClaudeCodeTurnMock).toHaveBeenCalledWith(expect.objectContaining({
       cwd: "C:/Users/redacted/projects/stella/desktop",
+      systemPrompt: expect.stringContaining("Documentation:"),
     }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
     expect(store.appendThreadMessage).toHaveBeenCalledTimes(2);
     expect(runCodexAppServerTurnMock).not.toHaveBeenCalled();
+  });
+
+  it("passes the raw prompt through for local Codex runs", async () => {
+    const store = createStoreStub();
+    runCodexAppServerTurnMock.mockResolvedValue({
+      text: "codex-result",
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+
+    await runSubagentTask(buildOpts({
+      agentContext: buildAgentContext({
+        generalAgentEngine: "codex_local",
+      }),
+      store: store as unknown as RuntimeStore,
+    }));
+
+    expect(runCodexAppServerTurnMock).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: "Solve this task",
+      developerInstructions: expect.stringContaining("read `src/STELLA.md` first"),
+    }));
   });
 });

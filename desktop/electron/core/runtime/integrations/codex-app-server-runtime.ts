@@ -24,6 +24,7 @@ type CodexAppServerTurnRequest = {
   runId: string;
   sessionKey: string;
   prompt: string;
+  developerInstructions?: string;
   cwd?: string;
   abortSignal?: AbortSignal;
   onProgress?: (chunk: string) => void;
@@ -39,6 +40,7 @@ type QueueJob = {
 type SessionState = {
   threadId?: string;
   cwd?: string;
+  developerInstructions?: string;
   lastUsedAt: number;
   running: boolean;
   queue: QueueJob[];
@@ -144,6 +146,7 @@ const ensureSessionState = (sessions: Map<string, SessionState>, sessionKey: str
   const created: SessionState = {
     threadId: undefined,
     cwd: undefined,
+    developerInstructions: undefined,
     lastUsedAt: Date.now(),
     running: false,
     queue: [],
@@ -262,7 +265,7 @@ class CodexAppServerRuntime {
 
     await this.ensureProcessReady();
 
-    const threadId = await this.getOrCreateThread(session, request.cwd);
+    const threadId = await this.getOrCreateThread(session, request.cwd, request.developerInstructions);
     const startResult = await this.rpcRequest<{
       turn?: { id?: string };
       turnId?: string;
@@ -340,9 +343,18 @@ class CodexAppServerRuntime {
     };
   }
 
-  private async getOrCreateThread(session: SessionState, cwd?: string): Promise<string> {
+  private async getOrCreateThread(
+    session: SessionState,
+    cwd?: string,
+    developerInstructions?: string,
+  ): Promise<string> {
     const normalizedCwd = cwd?.trim() || undefined;
-    if (session.threadId && session.cwd === normalizedCwd) {
+    const normalizedDeveloperInstructions = developerInstructions?.trim() || undefined;
+    if (
+      session.threadId &&
+      session.cwd === normalizedCwd &&
+      session.developerInstructions === normalizedDeveloperInstructions
+    ) {
       return session.threadId;
     }
     const params: Record<string, unknown> = {
@@ -351,6 +363,9 @@ class CodexAppServerRuntime {
     };
     if (normalizedCwd) {
       params.cwd = normalizedCwd;
+    }
+    if (normalizedDeveloperInstructions) {
+      params.developerInstructions = normalizedDeveloperInstructions;
     }
     const result = await this.rpcRequest<{
       thread?: { id?: string };
@@ -361,6 +376,7 @@ class CodexAppServerRuntime {
     }
     session.threadId = threadId;
     session.cwd = normalizedCwd;
+    session.developerInstructions = normalizedDeveloperInstructions;
     return threadId;
   }
 
