@@ -145,6 +145,7 @@ type BaseRunOptions = {
     },
   ) => Promise<{ text: string; results: Array<{ title: string; url: string; snippet: string }>; html?: string }>;
   hookEmitter?: HookEmitter;
+  displayHtml?: (html: string) => void;
 };
 
 type OrchestratorRunOptions = BaseRunOptions & {
@@ -683,6 +684,10 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
   const abortHandler = () => agent.abort();
   opts.abortSignal?.addEventListener("abort", abortHandler);
 
+  // Streaming state for Display tool DOM-diffing
+  let displayStreamTimer: ReturnType<typeof setTimeout> | null = null;
+  let displayStreamLastHtml = "";
+
   const unsubscribe = agent.subscribe((event) => {
     if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
       const chunk = event.assistantMessageEvent.delta;
@@ -698,6 +703,41 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
         type: "stream",
         chunk,
       });
+      return;
+    }
+
+    // Stream Display tool HTML as it's being generated (morphdom diffing on frontend)
+    if (
+      event.type === "message_update" &&
+      event.assistantMessageEvent.type === "toolcall_delta" &&
+      opts.displayHtml
+    ) {
+      try {
+        const partial = event.assistantMessageEvent.partial;
+        const contentIndex = event.assistantMessageEvent.contentIndex;
+        const block = partial?.content?.[contentIndex] as { type?: string; name?: string; arguments?: Record<string, unknown> } | undefined;
+        if (
+          block?.type === "toolCall" &&
+          block.name === "Display" &&
+          typeof block.arguments?.html === "string"
+        ) {
+          const html = block.arguments.html as string;
+          if (html.length > 20 && html !== displayStreamLastHtml) {
+            displayStreamLastHtml = html;
+            // Debounce at 150ms for smooth rendering
+            if (!displayStreamTimer) {
+              displayStreamTimer = setTimeout(() => {
+                displayStreamTimer = null;
+                if (displayStreamLastHtml && opts.displayHtml) {
+                  opts.displayHtml(displayStreamLastHtml);
+                }
+              }, 150);
+            }
+          }
+        }
+      } catch {
+        // Ignore parsing errors during streaming
+      }
       return;
     }
 
@@ -786,6 +826,15 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
       content: [{ type: "text", text: promptText }],
       timestamp: now(),
     });
+
+    // Flush any pending display stream update
+    if (displayStreamTimer) {
+      clearTimeout(displayStreamTimer);
+      displayStreamTimer = null;
+      if (displayStreamLastHtml && opts.displayHtml) {
+        opts.displayHtml(displayStreamLastHtml);
+      }
+    }
 
     const { finalText, errorMessage } = getAgentCompletion(agent);
     if (errorMessage) {

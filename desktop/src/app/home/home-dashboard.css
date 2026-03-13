@@ -303,6 +303,13 @@
   letter-spacing: 0.01em;
 }
 
+/* --- Canvas Display fade-in for morphdom streaming --- */
+
+@keyframes _canvasFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
 /* --- Canvas Display (rendered HTML from Display tool) --- */
 
 .canvas-display {
@@ -415,6 +422,199 @@
 .canvas-display strong { font-weight: 600; opacity: 0.85; }
 .canvas-display em { font-style: italic; }
 .canvas-display small { font-size: 11px; opacity: 0.5; }
+
+/* --- Canvas Display: SVG pre-built classes --- */
+
+.canvas-display svg .t   { font-family: var(--font-family-sans, Inter, sans-serif); font-size: 14px; font-weight: 400; fill: var(--foreground); opacity: 0.92; }
+.canvas-display svg .ts  { font-family: var(--font-family-sans, Inter, sans-serif); font-size: 12px; font-weight: 400; fill: var(--foreground); opacity: 0.65; }
+.canvas-display svg .th  { font-family: var(--font-family-sans, Inter, sans-serif); font-size: 14px; font-weight: 500; fill: var(--foreground); opacity: 0.92; }
+
+.canvas-display svg .box {
+  fill: color-mix(in oklch, var(--foreground) 3%, transparent);
+  stroke: color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+
+.canvas-display svg .node { cursor: pointer; }
+.canvas-display svg .node:hover { opacity: 0.85; }
+
+.canvas-display svg .arr {
+  stroke: var(--foreground);
+  stroke-width: 1.5;
+  opacity: 0.42;
+  fill: none;
+}
+
+.canvas-display svg .leader {
+  stroke: var(--foreground);
+  stroke-width: 0.5;
+  stroke-dasharray: 3 3;
+  opacity: 0.3;
+  fill: none;
+}
+
+/* Color ramp classes for SVG nodes — light mode */
+.canvas-display svg .c-purple > rect,
+.canvas-display svg .c-purple > circle,
+.canvas-display svg .c-purple > ellipse,
+.canvas-display svg rect.c-purple,
+.canvas-display svg circle.c-purple,
+.canvas-display svg ellipse.c-purple { fill: #EEEDFE; stroke: #534AB7; }
+.canvas-display svg .c-purple .th { fill: #3C3489; }
+.canvas-display svg .c-purple .ts { fill: #534AB7; }
+
+.canvas-display svg .c-teal > rect,
+.canvas-display svg .c-teal > circle,
+.canvas-display svg .c-teal > ellipse,
+.canvas-display svg rect.c-teal,
+.canvas-display svg circle.c-teal,
+.canvas-display svg ellipse.c-teal { fill: #E1F5EE; stroke: #0F6E56; }
+.canvas-display svg .c-teal .th { fill: #085041; }
+.canvas-display svg .c-teal .ts { fill: #0F6E56; }
+
+.canvas-display svg .c-coral > rect,
+.canvas-display svg .c-coral > circle,
+.canvas-display svg .c-coral > ellipse,
+.canvas-display svg rect.c-coral,
+.canvas-display svg circle.c-coral,
+.canvas-display svg ellipse.c-coral { fill: #FAECE7; stroke: #993C1D; }
+.canvas-display svg .c-coral .th { fill: #712B13; }
+.canvas-display svg .c-coral .ts { fill: #993C1D; }
+
+.canvas-display svg .c-pink > rect,
+.canvas-display svg .c-pink > circle,
+.canvas-display svg .c-pink > ellipse,
+.canvas-display svg rect.c-pink,
+.canvas-display svg circle.c-pink,
+.canvas-display svg ellipse.c-pink { fill: #FBEAF0; stroke: #993556; }
+.canvas-display svg .c-pink .th { fill: #72243E; }
+.canvas-display svg .c-pink .ts { fill: #993556; }
+
+.canvas-display svg .c-gray > rect,
+.canvas-display svg .c-gray > circle,
+.canvas-display svg .c-gray > ellipse,
+.canvas-display svg rect.c-gray,
+.canvas-display svg circle.c-gray,
+.canvas-display svg ellipse.c-gray { fill: #F1EFE8; stroke: #5F5E5A; }
+.canvas-display svg .c-gray .th { fill: #444441; }
+.canvas-display svg .c-gray .ts { fill: #5F5E5A; }
+
+.canvas-display svg .c-blue > rect,
+.canvas-display svg .c-blue > circle,
+.canvas-display svg .c-blue > ellipse,
+.canvas-display svg rect.c-blue,
+.canvas-display svg circle.c-blue,
+.canvas-display svg ellipse.c-blue { fill: #E6F1FB; stroke: #185FA5; }
+.canvas-display svg .c-blue .th { fill: #0C447C; }
+.canvas-display svg .c-blue .ts { fill: #185FA5; }
+
+.canvas-display svg .c-green > rect,
+.canvas-display svg .c-green > circle,
+.canvas-display svg .c-green > ellipse,
+.canvas-display svg rect.c-green,
+.canvas-display svg circle.c-green,
+.canvas-display svg ellipse.c-green { fill: #EAF3DE; stroke: #3B6D11; }
+.canvas-display svg .c-green .th { fill: #27500A; }
+.canvas-display svg .c-green .ts { fill: #3B6D11; }
+
+.canvas-display svg .c-amber > rect,
+.canvas-display svg .c-amber > circle,
+.canvas-display svg .c-amber > ellipse,
+.canvas-display svg rect.c-amber,
+.canvas-display svg circle.c-amber,
+.canvas-display svg ellipse.c-amber { fill: #FAEEDA; stroke: #854F0B; }
+.canvas-display svg .c-amber .th { fill: #633806; }
+.canvas-display svg .c-amber .ts { fill: #854F0B; }
+
+.canvas-display svg .c-red > rect,
+.canvas-display svg .c-red > circle,
+.canvas-display svg .c-red > ellipse,
+.canvas-display svg rect.c-red,
+.canvas-display svg circle.c-red,
+.canvas-display svg ellipse.c-red { fill: #FCEBEB; stroke: #A32D2D; }
+.canvas-display svg .c-red .th { fill: #791F1F; }
+.canvas-display svg .c-red .ts { fill: #A32D2D; }
+
+/* Dark mode overrides for SVG color ramps */
+:root[data-theme="dark"] .canvas-display svg .c-purple > rect,
+:root[data-theme="dark"] .canvas-display svg .c-purple > circle,
+:root[data-theme="dark"] .canvas-display svg .c-purple > ellipse,
+:root[data-theme="dark"] .canvas-display svg rect.c-purple,
+:root[data-theme="dark"] .canvas-display svg circle.c-purple,
+:root[data-theme="dark"] .canvas-display svg ellipse.c-purple { fill: #3C3489; stroke: #AFA9EC; }
+:root[data-theme="dark"] .canvas-display svg .c-purple .th { fill: #CECBF6; }
+:root[data-theme="dark"] .canvas-display svg .c-purple .ts { fill: #AFA9EC; }
+
+:root[data-theme="dark"] .canvas-display svg .c-teal > rect,
+:root[data-theme="dark"] .canvas-display svg .c-teal > circle,
+:root[data-theme="dark"] .canvas-display svg .c-teal > ellipse,
+:root[data-theme="dark"] .canvas-display svg rect.c-teal,
+:root[data-theme="dark"] .canvas-display svg circle.c-teal,
+:root[data-theme="dark"] .canvas-display svg ellipse.c-teal { fill: #085041; stroke: #5DCAA5; }
+:root[data-theme="dark"] .canvas-display svg .c-teal .th { fill: #9FE1CB; }
+:root[data-theme="dark"] .canvas-display svg .c-teal .ts { fill: #5DCAA5; }
+
+:root[data-theme="dark"] .canvas-display svg .c-coral > rect,
+:root[data-theme="dark"] .canvas-display svg .c-coral > circle,
+:root[data-theme="dark"] .canvas-display svg .c-coral > ellipse,
+:root[data-theme="dark"] .canvas-display svg rect.c-coral,
+:root[data-theme="dark"] .canvas-display svg circle.c-coral,
+:root[data-theme="dark"] .canvas-display svg ellipse.c-coral { fill: #712B13; stroke: #F0997B; }
+:root[data-theme="dark"] .canvas-display svg .c-coral .th { fill: #F5C4B3; }
+:root[data-theme="dark"] .canvas-display svg .c-coral .ts { fill: #F0997B; }
+
+:root[data-theme="dark"] .canvas-display svg .c-pink > rect,
+:root[data-theme="dark"] .canvas-display svg .c-pink > circle,
+:root[data-theme="dark"] .canvas-display svg .c-pink > ellipse,
+:root[data-theme="dark"] .canvas-display svg rect.c-pink,
+:root[data-theme="dark"] .canvas-display svg circle.c-pink,
+:root[data-theme="dark"] .canvas-display svg ellipse.c-pink { fill: #72243E; stroke: #ED93B1; }
+:root[data-theme="dark"] .canvas-display svg .c-pink .th { fill: #F4C0D1; }
+:root[data-theme="dark"] .canvas-display svg .c-pink .ts { fill: #ED93B1; }
+
+:root[data-theme="dark"] .canvas-display svg .c-gray > rect,
+:root[data-theme="dark"] .canvas-display svg .c-gray > circle,
+:root[data-theme="dark"] .canvas-display svg .c-gray > ellipse,
+:root[data-theme="dark"] .canvas-display svg rect.c-gray,
+:root[data-theme="dark"] .canvas-display svg circle.c-gray,
+:root[data-theme="dark"] .canvas-display svg ellipse.c-gray { fill: #444441; stroke: #B4B2A9; }
+:root[data-theme="dark"] .canvas-display svg .c-gray .th { fill: #D3D1C7; }
+:root[data-theme="dark"] .canvas-display svg .c-gray .ts { fill: #B4B2A9; }
+
+:root[data-theme="dark"] .canvas-display svg .c-blue > rect,
+:root[data-theme="dark"] .canvas-display svg .c-blue > circle,
+:root[data-theme="dark"] .canvas-display svg .c-blue > ellipse,
+:root[data-theme="dark"] .canvas-display svg rect.c-blue,
+:root[data-theme="dark"] .canvas-display svg circle.c-blue,
+:root[data-theme="dark"] .canvas-display svg ellipse.c-blue { fill: #0C447C; stroke: #85B7EB; }
+:root[data-theme="dark"] .canvas-display svg .c-blue .th { fill: #B5D4F4; }
+:root[data-theme="dark"] .canvas-display svg .c-blue .ts { fill: #85B7EB; }
+
+:root[data-theme="dark"] .canvas-display svg .c-green > rect,
+:root[data-theme="dark"] .canvas-display svg .c-green > circle,
+:root[data-theme="dark"] .canvas-display svg .c-green > ellipse,
+:root[data-theme="dark"] .canvas-display svg rect.c-green,
+:root[data-theme="dark"] .canvas-display svg circle.c-green,
+:root[data-theme="dark"] .canvas-display svg ellipse.c-green { fill: #27500A; stroke: #97C459; }
+:root[data-theme="dark"] .canvas-display svg .c-green .th { fill: #C0DD97; }
+:root[data-theme="dark"] .canvas-display svg .c-green .ts { fill: #97C459; }
+
+:root[data-theme="dark"] .canvas-display svg .c-amber > rect,
+:root[data-theme="dark"] .canvas-display svg .c-amber > circle,
+:root[data-theme="dark"] .canvas-display svg .c-amber > ellipse,
+:root[data-theme="dark"] .canvas-display svg rect.c-amber,
+:root[data-theme="dark"] .canvas-display svg circle.c-amber,
+:root[data-theme="dark"] .canvas-display svg ellipse.c-amber { fill: #633806; stroke: #EF9F27; }
+:root[data-theme="dark"] .canvas-display svg .c-amber .th { fill: #FAC775; }
+:root[data-theme="dark"] .canvas-display svg .c-amber .ts { fill: #EF9F27; }
+
+:root[data-theme="dark"] .canvas-display svg .c-red > rect,
+:root[data-theme="dark"] .canvas-display svg .c-red > circle,
+:root[data-theme="dark"] .canvas-display svg .c-red > ellipse,
+:root[data-theme="dark"] .canvas-display svg rect.c-red,
+:root[data-theme="dark"] .canvas-display svg circle.c-red,
+:root[data-theme="dark"] .canvas-display svg ellipse.c-red { fill: #791F1F; stroke: #F09595; }
+:root[data-theme="dark"] .canvas-display svg .c-red .th { fill: #F7C1C1; }
+:root[data-theme="dark"] .canvas-display svg .c-red .ts { fill: #F09595; }
 
 /* --- Skeleton --- */
 
