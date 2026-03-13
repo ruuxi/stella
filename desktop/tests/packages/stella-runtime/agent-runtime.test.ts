@@ -1,3 +1,4 @@
+import os from "os";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LocalTaskManagerAgentContext } from "../../../electron/core/runtime/tasks/local-task-manager.js";
 import type { ResolvedLlmRoute } from "../../../electron/core/runtime/model-routing.js";
@@ -103,6 +104,8 @@ const buildOpts = (overrides?: Partial<Parameters<typeof runSubagentTask>[0]>) =
   ...overrides,
 });
 
+const generalAgentHome = os.homedir();
+
 describe("runSubagentTask engine selection", () => {
   beforeEach(() => {
     runCodexAppServerTurnMock.mockReset();
@@ -135,7 +138,7 @@ describe("runSubagentTask engine selection", () => {
       maxConcurrency: 12,
       prompt: expect.stringContaining("Solve this task"),
       developerInstructions: expect.stringContaining("system"),
-      cwd: "C:/Users/redacted/projects/stella/desktop",
+      cwd: generalAgentHome,
     }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
@@ -164,7 +167,7 @@ describe("runSubagentTask engine selection", () => {
       modelId: "openai/gpt-4.1-mini",
       prompt: "Solve this task",
       systemPrompt: expect.stringContaining("system"),
-      cwd: "C:/Users/redacted/projects/stella/desktop",
+      cwd: generalAgentHome,
     }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
@@ -192,7 +195,7 @@ describe("runSubagentTask engine selection", () => {
     expect(isClaudeCodeModelMock).toHaveBeenCalledWith("claude-code/sonnet");
     expect(runClaudeCodeTurnMock).toHaveBeenCalledTimes(1);
     expect(runClaudeCodeTurnMock).toHaveBeenCalledWith(expect.objectContaining({
-      cwd: "C:/Users/redacted/projects/stella/desktop",
+      cwd: generalAgentHome,
       systemPrompt: expect.stringContaining("system"),
     }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
@@ -220,6 +223,7 @@ describe("runSubagentTask engine selection", () => {
     expect(runCodexAppServerTurnMock).toHaveBeenCalledWith(expect.objectContaining({
       prompt: "Solve this task",
       developerInstructions: expect.stringContaining("read `src/STELLA.md` first"),
+      cwd: "C:/Users/redacted/projects/stella/desktop",
     }));
   });
 });
