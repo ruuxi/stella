@@ -10,6 +10,7 @@ import { registerSpeechToTextRoutes } from "./http_routes/speech_to_text";
 import { registerSkillRoutes } from "./http_routes/skills";
 import { registerMusicRoutes } from "./http_routes/music";
 import { registerVoiceRoutes } from "./http_routes/voice";
+import { registerStripeRoutes } from "./http_routes/stripe";
 
 // Stella provider endpoints
 import {
@@ -38,6 +39,7 @@ registerSkillRoutes(http);
 registerConnectorWebhookRoutes(http);
 registerMusicRoutes(http);
 registerVoiceRoutes(http);
+registerStripeRoutes(http);
 
 // ---------------------------------------------------------------------------
 // Stella provider endpoints
