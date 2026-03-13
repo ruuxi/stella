@@ -49,11 +49,16 @@ export function GenerativeCanvas() {
     // Execute scripts after morphdom diff (scripts are inert after innerHTML)
     container.querySelectorAll("script").forEach((old) => {
       const fresh = document.createElement("script")
-      if (old.src) {
-        fresh.src = old.src
-      } else {
+
+      // Preserve all attributes (type=module, onload, crossorigin, integrity, etc.)
+      for (const { name, value } of Array.from(old.attributes)) {
+        fresh.setAttribute(name, value)
+      }
+
+      if (!old.src) {
         fresh.textContent = old.textContent
       }
+
       old.parentNode?.replaceChild(fresh, old)
     })
   }, [])
@@ -95,4 +100,3 @@ export function GenerativeCanvas() {
     </DashboardCard>
   )
 }
-
