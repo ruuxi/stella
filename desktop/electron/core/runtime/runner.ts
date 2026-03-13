@@ -47,8 +47,7 @@ import { buildActiveThreadsPrompt } from "./runtime-threads.js";
 const DEFAULT_MAX_TASK_DEPTH = 8;
 const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;
 const MIN_LOCAL_HISTORY_TOKENS = 8_000;
-// Minimal fallback prompts â€” real prompts live in bundled AGENT.md files
-// Active runtime agent definitions are loaded from install-root `.stella/agents`.
+// Minimal fallback prompts in case bundled core agents and local overrides both fail to load.
 const DEFAULT_ORCHESTRATOR_PROMPT =
   "You are Stella's orchestrator. Coordinate specialized work and keep work non-blocking by default. " +
   "For user-facing output, prefer Display for most substantive, structured, or multi-item responses and keep plain text mainly for acknowledgments, brief confirmations, and short replies. " +

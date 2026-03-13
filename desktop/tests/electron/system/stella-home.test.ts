@@ -29,20 +29,12 @@ describe("stella-home", () => {
   it("resolves runtime home at the install root and preserves desktop workspace", async () => {
     const installRoot = createTempRoot();
     const desktopRoot = path.join(installRoot, "desktop");
-    fs.mkdirSync(path.join(desktopRoot, ".stella", "agents", "core-general"), {
-      recursive: true,
-    });
     fs.mkdirSync(path.join(desktopRoot, ".stella", "core-skills", "theme-factory"), {
       recursive: true,
     });
     fs.mkdirSync(path.join(desktopRoot, ".stella", "extensions", "skills"), {
       recursive: true,
     });
-    fs.writeFileSync(
-      path.join(desktopRoot, ".stella", "agents", "core-general", "AGENT.md"),
-      "general",
-      "utf-8",
-    );
     fs.writeFileSync(
       path.join(desktopRoot, ".stella", "core-skills", "theme-factory", "SKILL.md"),
       "theme",
@@ -64,9 +56,7 @@ describe("stella-home", () => {
     expect(resolveInstallRoot(mockApp)).toBe(installRoot);
     expect(stellaHome.homePath).toBe(path.join(installRoot, ".stella"));
     expect(stellaHome.workspacePath).toBe(path.join(desktopRoot, "workspace"));
-    expect(
-      fs.existsSync(path.join(stellaHome.homePath, "agents", "core-general", "AGENT.md")),
-    ).toBe(true);
+    expect(fs.existsSync(path.join(stellaHome.homePath, "agents"))).toBe(true);
     expect(
       fs.existsSync(path.join(stellaHome.homePath, "core-skills", "theme-factory", "SKILL.md")),
     ).toBe(true);
