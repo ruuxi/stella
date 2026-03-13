@@ -99,6 +99,21 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
+  self_mod: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks, baseten, amazon-bedrock"],
+      },
+    },
+  },
+
   explore: {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",
