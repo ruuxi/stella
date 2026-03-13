@@ -591,17 +591,26 @@ describe("runtime runner tools allowlist", () => {
     db.close();
   });
 
-  it("preempts a background task follow-up when a new foreground user turn starts", async () => {
+  it("interrupts an active system follow-up so the queued user turn starts next", async () => {
     runOrchestratorTurnMock.mockReset();
     runOrchestratorTurnMock.mockImplementation((opts: {
       userMessageId: string;
       userPrompt: string;
       abortSignal?: AbortSignal;
-      callbacks: { onEnd: (event: { finalText: string }) => void };
+      callbacks: {
+        onEnd: (event: { finalText: string }) => void;
+        onError: (event: { error: string; fatal: boolean }) => void;
+      };
     }) => {
       if (opts.userMessageId.startsWith("system:")) {
         return new Promise<void>((resolve) => {
-          opts.abortSignal?.addEventListener("abort", () => resolve(), { once: true });
+          opts.abortSignal?.addEventListener("abort", () => {
+            opts.callbacks.onError({
+              error: "Interrupted by queued orchestrator turn",
+              fatal: true,
+            });
+            resolve();
+          }, { once: true });
         });
       }
 

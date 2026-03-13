@@ -1,18 +1,14 @@
-﻿import { useCallback, useEffect, useRef } from 'react'
-import { getEventText } from '@/app/chat/lib/event-transforms'
+import { useCallback, useEffect } from 'react'
 import { getPlatform } from '@/platform/electron/platform'
 import { useChatStore } from '@/context/chat-store'
 import { getOrCreateDeviceId } from '@/platform/electron/device'
-import type { AttachmentRef, SendMessageArgs } from '../streaming/chat-types'
+import type { SendMessageArgs } from '../streaming/chat-types'
 import type { EventRecord } from '@/app/chat/lib/event-transforms'
 import {
   buildCombinedPrompt,
   buildLocalScreenshotAttachments,
 } from '../streaming/message-context'
-import {
-  findQueuedFollowUp,
-  toEventId,
-} from '../streaming/streaming-event-utils'
+import { toEventId } from '../streaming/streaming-event-utils'
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
 
 type UseStreamingChatOptions = {
@@ -25,7 +21,6 @@ export function useStreamingChat({
   events,
 }: UseStreamingChatOptions) {
   const activeConversationId = conversationId
-  const followUpReplayFloorRef = useRef<number>(0)
   const {
     isLocalStorage,
     storageMode,
@@ -62,6 +57,7 @@ export function useStreamingChat({
     pendingUserMessageId,
     selfModMap,
     startStream,
+    queueStream,
     cancelCurrentStream,
     resetStreamingState,
   } = useLocalAgentStream({
@@ -69,10 +65,6 @@ export function useStreamingChat({
     storageMode,
     appendAgentEvent: appendLocalAgentEvent,
   })
-
-  useEffect(() => {
-    followUpReplayFloorRef.current = Date.now()
-  }, [activeConversationId])
 
   useEffect(() => {
     if (!pendingUserMessageId) return
@@ -94,34 +86,6 @@ export function useStreamingChat({
       resetStreamingState()
     }
   }, [events, pendingUserMessageId, resetStreamingState])
-
-  useEffect(() => {
-    if (isStreaming || pendingUserMessageId || !activeConversationId) return
-
-    const queued = findQueuedFollowUp<AttachmentRef>(events, {
-      minTimestamp: followUpReplayFloorRef.current,
-    })
-    if (!queued) return
-
-    let cancelled = false
-
-    void Promise.resolve().then(() => {
-      if (cancelled) return
-
-      const userPrompt = getEventText(queued.event)
-      if (!userPrompt) return
-
-      startStream({
-        userMessageId: queued.event._id,
-        userPrompt,
-        attachments: queued.attachments,
-      })
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [activeConversationId, events, isStreaming, pendingUserMessageId, startStream])
 
   const sendMessage = useCallback(
     async (options: SendMessageArgs) => {
@@ -188,14 +152,14 @@ export function useStreamingChat({
       options.onClear()
 
       if (mode === 'follow_up') {
-        void window.electronAPI?.agent
-          ?.interruptQueuedTurn?.({
-            conversationId: resolvedConversationId,
-          })
-          .catch(() => undefined)
         console.log(
           `[stella:trace] sendMessage (follow_up queued) | convId=${resolvedConversationId} | eventId=${eventId}`,
         )
+        queueStream({
+          userMessageId: eventId,
+          userPrompt: combinedText,
+          attachments,
+        })
         return
       }
 
@@ -216,6 +180,7 @@ export function useStreamingChat({
       isLocalStorage,
       isStreaming,
       pendingUserMessageId,
+      queueStream,
       startStream,
     ],
   )
@@ -231,5 +196,3 @@ export function useStreamingChat({
     resetStreamingState,
   }
 }
-
-
