@@ -1,9 +1,13 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import {
+  consumeBillingCheckoutCompletionMarker,
+  withCheckoutMarker,
+} from "@/global/settings/lib/billing-checkout";
 import { Button } from "@/ui/button";
 
 type BillingPlan = "free" | "go" | "pro" | "plus";
@@ -85,12 +89,6 @@ const toSafeString = (value: unknown) =>
 const getSettingsErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
 
-const withCheckoutMarker = (rawUrl: string) => {
-  const parsed = new URL(rawUrl);
-  parsed.searchParams.set("billingCheckout", "complete");
-  return parsed.toString();
-};
-
 const resolveCheckoutReturnUrl = () => {
   const configuredCandidates = [
     import.meta.env.VITE_BILLING_RETURN_URL as string | undefined,
@@ -156,6 +154,16 @@ export function BillingTab() {
       return;
     }
     window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
+
+  useEffect(() => {
+    if (!consumeBillingCheckoutCompletionMarker()) {
+      return;
+    }
+
+    setCheckoutSession(null);
+    setBillingError(null);
+    setCheckoutNotice("Checkout complete. Stella is syncing your billing status now.");
   }, []);
 
   const handleCheckoutComplete = useCallback(() => {

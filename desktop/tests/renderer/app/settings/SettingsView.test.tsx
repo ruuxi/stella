@@ -7,6 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { useQuery, useMutation, useAction } from "convex/react";
+import { loadStripe } from "@stripe/stripe-js";
 import SettingsDialog from "../../../../src/global/settings/SettingsView";
 
 // ---------------------------------------------------------------------------
@@ -585,6 +586,7 @@ describe("Tab switching", () => {
 describe("BillingTab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.replaceState({}, "", "/");
     setupUseQuery();
     setupElectronApi();
     globalThis.ResizeObserver = class ResizeObserver {
@@ -616,6 +618,7 @@ describe("BillingTab", () => {
       expect(mockCreateEmbeddedCheckoutSession).toHaveBeenCalledWith(
         expect.objectContaining({ plan: "go" }),
       );
+      expect(loadStripe).toHaveBeenCalledWith("pk_test_checkout");
       expect(screen.getByText("Checkout")).toBeTruthy();
       expect(screen.getByTestId("stripe-embedded-checkout")).toBeTruthy();
     });
@@ -624,6 +627,24 @@ describe("BillingTab", () => {
       returnUrl: string;
     };
     expect(checkoutArgs.returnUrl).toContain("billingCheckout=complete");
+  });
+
+  it("reconciles redirect-based checkout returns on mount", async () => {
+    window.history.replaceState({}, "", "/?billingCheckout=complete");
+
+    render(<SettingsDialog {...defaultProps()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Current plan")).toBeTruthy();
+      expect(
+        screen.getByText("Checkout complete. Stella is syncing your billing status now."),
+      ).toBeTruthy();
+    });
+
+    expect(screen.getByRole("button", { name: "Billing" }).className).toContain(
+      "settings-sidebar-tab--active",
+    );
+    expect(window.location.search).toBe("");
   });
 
   it("opens billing portal in the host shell", async () => {
