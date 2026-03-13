@@ -1,6 +1,10 @@
-import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from "react";
+import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { StellaAnimation, type StellaAnimationHandle } from "@/shell/ascii-creature/StellaAnimation";
+import { Markdown } from "@/app/chat/Markdown";
+import { getDisplayMessageText } from "@/app/chat/MessageTurn";
+import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import "./floating-orb.css";
 
 const ORB_POSITION_KEY = "stella:orb-position";
@@ -25,62 +29,119 @@ export interface FloatingOrbHandle {
   openWithText(text: string): void;
 }
 
+type MiniChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+};
+
 interface FloatingOrbProps {
   visible: boolean;
-  bubbleText: string | null;
+  events: EventRecord[];
+  streamingText: string;
   isStreaming: boolean;
   onSend: (text: string) => void;
 }
 
-export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(function FloatingOrb({ visible, bubbleText, isStreaming, onSend }, ref) {
+function extractChatMessages(events: EventRecord[]): MiniChatMessage[] {
+  const messages: MiniChatMessage[] = [];
+  for (const event of events) {
+    if (event.type === "user_message" || event.type === "assistant_message") {
+      const text = getDisplayMessageText(event);
+      if (!text.trim()) continue;
+      // Skip system-like messages (e.g. "[System: ...")
+      if (text.startsWith("[System:")) continue;
+      messages.push({
+        id: event._id,
+        role: event.type === "user_message" ? "user" : "assistant",
+        text,
+      });
+    }
+  }
+  return messages;
+}
+
+export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(function FloatingOrb(
+  { visible, events, streamingText, isStreaming, onSend },
+  ref,
+) {
   const [position, setPosition] = useState(loadPosition);
   const [isDragging, setIsDragging] = useState(false);
-  const [isInputOpen, setIsInputOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [inputText, setInputText] = useState("");
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const chatPanelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const stellaRef = useRef<StellaAnimationHandle>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null);
   const hasDraggedRef = useRef(false);
+
+  const chatMessages = useMemo(() => extractChatMessages(events), [events]);
 
   useImperativeHandle(ref, () => ({
     openWithText(text: string) {
       setInputText(text);
-      setIsInputOpen(true);
+      setIsChatOpen(true);
     },
   }));
 
-  // Focus input when opened
+  // Focus input when chat opened
   useEffect(() => {
-    if (isInputOpen && inputRef.current) {
+    if (isChatOpen && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [isInputOpen]);
+  }, [isChatOpen]);
 
-  // Close input on Escape
+  // Track whether the chat was just opened so we can skip the smooth scroll
+  const justOpenedRef = useRef(false);
+
+  // When chat opens, mark it and instant-scroll on next frame
   useEffect(() => {
-    if (!isInputOpen) return;
+    if (isChatOpen) {
+      justOpenedRef.current = true;
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
+      });
+    }
+  }, [isChatOpen]);
+
+  // Smooth-scroll only for new messages / streaming updates (not on open)
+  useEffect(() => {
+    if (!isChatOpen) return;
+    if (justOpenedRef.current) {
+      justOpenedRef.current = false;
+      return;
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [isChatOpen, chatMessages.length, streamingText]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!isChatOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setIsInputOpen(false);
+        setIsChatOpen(false);
         setInputText("");
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isInputOpen]);
+  }, [isChatOpen]);
 
-  // Close input on click outside
+  // Close on click outside
   useEffect(() => {
-    if (!isInputOpen) return;
+    if (!isChatOpen) return;
     const handleClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsInputOpen(false);
+      const target = e.target as Node;
+      const inOrb = containerRef.current?.contains(target);
+      const inChat = chatPanelRef.current?.contains(target);
+      if (!inOrb && !inChat) {
+        setIsChatOpen(false);
         setInputText("");
       }
     };
-    // Delay to avoid closing on the same click that opened it
     const timer = setTimeout(() => {
       document.addEventListener("mousedown", handleClick);
     }, 100);
@@ -88,7 +149,7 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
       clearTimeout(timer);
       document.removeEventListener("mousedown", handleClick);
     };
-  }, [isInputOpen]);
+  }, [isChatOpen]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -126,9 +187,9 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
           return pos;
         });
       } else {
-        // Click — toggle input and flash
+        // Click — toggle chat and flash
         stellaRef.current?.triggerFlash();
-        setIsInputOpen((prev) => !prev);
+        setIsChatOpen((prev) => !prev);
       }
     };
 
@@ -142,62 +203,102 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
     if (!text) return;
     onSend(text);
     setInputText("");
-    setIsInputOpen(false);
   }, [inputText, onSend]);
 
   if (!visible) return null;
 
-  return (
-    <div
-      ref={containerRef}
-      className="orb-container"
-      style={{
-        right: `${position.right}px`,
-        bottom: `${position.bottom}px`,
-      }}
-    >
-      <AnimatePresence>
-        {bubbleText && (
-          <motion.div
-            key="orb-bubble"
-            className="orb-bubble"
-            initial={{ opacity: 0, filter: "blur(2px)", y: 6 }}
-            animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
-            exit={{ opacity: 0, filter: "blur(2px)", y: 6 }}
-            transition={{
-              type: "spring",
-              duration: 0.45,
-              bounce: 0,
-            }}
-          >
-            {bubbleText}
-          </motion.div>
-        )}
-      </AnimatePresence>
+  const hasStreamingContent = isStreaming && streamingText.trim().length > 0;
 
-      {isInputOpen && (
-        <form className="orb-input-form" onSubmit={handleSubmit}>
-          <input
-            ref={inputRef}
-            className="orb-input"
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="Ask Stella..."
-          />
-        </form>
+  // Chat messages panel — above the orb, wider (spans from left edge to orb right)
+  const miniChatPanel = (
+    <AnimatePresence>
+      {isChatOpen && (
+        <motion.div
+          ref={chatPanelRef}
+          key="orb-mini-chat"
+          className="orb-mini-chat"
+          style={{
+            right: `${position.right}px`,
+            bottom: `${position.bottom + 64}px`,
+          }}
+          initial={{ opacity: 0, y: 12, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 12, scale: 0.97 }}
+          transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+        >
+          <div className="orb-chat-messages">
+            {chatMessages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`orb-msg orb-msg--${msg.role}`}
+              >
+                {msg.role === "assistant" ? (
+                  <Markdown text={msg.text} enableEmotes />
+                ) : (
+                  msg.text
+                )}
+              </div>
+            ))}
+
+            {hasStreamingContent && (
+              <div className="orb-msg orb-msg--assistant orb-msg--streaming">
+                <Markdown text={streamingText} isAnimating enableEmotes />
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+        </motion.div>
       )}
+    </AnimatePresence>
+  );
+
+  return (
+    <>
+      {createPortal(miniChatPanel, document.body)}
 
       <div
-        className={`orb-body ${isDragging ? "orb-body--dragging" : ""} ${isStreaming ? "orb-body--streaming" : ""}`}
-        onMouseDown={handleMouseDown}
+        ref={containerRef}
+        className="orb-container"
+        style={{
+          right: `${position.right}px`,
+          bottom: `${position.bottom}px`,
+        }}
       >
-        <div className="orb-animation-scale">
-          <StellaAnimation ref={stellaRef} width={20} height={20} maxDpr={1} frameSkip={2} />
+        <AnimatePresence>
+          {isChatOpen && (
+            <motion.form
+              key="orb-input-bar"
+              className="orb-chat-input-form"
+              style={{ transformOrigin: "right center" }}
+              initial={{ opacity: 0, scaleX: 0.5 }}
+              animate={{ opacity: 1, scaleX: 1 }}
+              exit={{ opacity: 0, scaleX: 0.5 }}
+              transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+              onSubmit={handleSubmit}
+            >
+              <input
+                ref={inputRef}
+                className="orb-chat-input"
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder="Ask Stella..."
+              />
+            </motion.form>
+          )}
+        </AnimatePresence>
+
+        <div
+          className={`orb-body ${isDragging ? "orb-body--dragging" : ""} ${isStreaming ? "orb-body--streaming" : ""}`}
+          onMouseDown={handleMouseDown}
+        >
+          <div className="orb-animation-scale">
+            <StellaAnimation ref={stellaRef} width={20} height={20} maxDpr={1} frameSkip={2} />
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 });
-
-
