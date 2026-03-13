@@ -242,10 +242,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
       }>,
-    setAssistantSpeaking: (active: boolean) =>
-      ipcRenderer.invoke("voice:setAssistantSpeaking", active) as Promise<{
-        ok: boolean;
-      }>,
     getRuntimeState: () =>
       ipcRenderer.invoke("voice:getRuntimeState") as Promise<{
         sessionState:

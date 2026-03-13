@@ -25,7 +25,6 @@ import {
   initSelectedTextProcess,
 } from "./selected-text.js";
 import { AuthService } from "./services/auth-service.js";
-import { AudioDuckingService } from "./services/audio-ducking-service.js";
 import { CaptureService } from "./services/capture-service.js";
 import { CredentialService } from "./services/credential-service.js";
 import { ExternalLinkService } from "./services/external-link-service.js";
@@ -103,9 +102,6 @@ export const bootstrapMainProcess = () => {
   const devProjectService = new DevProjectService(() => stellaHomePath);
   const externalLinkService = new ExternalLinkService();
   const miniBridgeService = new MiniBridgeService();
-  const audioDuckingService = new AudioDuckingService(
-    () => windowManager?.getAllWindows() ?? BrowserWindow.getAllWindows(),
-  );
 
   const securityPolicyService = new SecurityPolicyService({
     getWindowManager: () => windowManager,
@@ -696,8 +692,6 @@ export const bootstrapMainProcess = () => {
       getOverlayController: () => overlayController,
       getConvexSiteUrl: () => authService.getConvexSiteUrl(),
       getAuthToken: () => authService.getAuthToken(),
-      setAssistantSpeaking: (active) =>
-        audioDuckingService.setAssistantSpeaking(active),
     });
 
     const pendingAuthCallback = authService.consumePendingAuthCallback();

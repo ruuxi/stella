@@ -18,7 +18,6 @@ type VoiceHandlersOptions = {
   getOverlayController: () => OverlayWindowController | null;
   getConvexSiteUrl: () => string | null;
   getAuthToken: () => Promise<string | null> | string | null;
-  setAssistantSpeaking: (active: boolean) => Promise<void>;
 };
 
 type VoiceRuntimeSnapshot = {
@@ -441,14 +440,6 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
         category: payload.category,
         displayResults: true,
       });
-    },
-  );
-
-  ipcMain.handle(
-    "voice:setAssistantSpeaking",
-    async (_event, active: boolean) => {
-      await options.setAssistantSpeaking(Boolean(active));
-      return { ok: true };
     },
   );
 
