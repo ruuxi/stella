@@ -1,10 +1,6 @@
-import { generateText, tool, ToolSet } from "ai";
-import { getModelConfig, createManagedModel } from "../agent/model";
+import { tool, ToolSet } from "ai";
 import { z } from "zod";
 import type { ActionCtx } from "../_generated/server";
-import {
-  buildSearchHtmlUserPrompt,
-} from "../prompts/index";
 import { normalizeSafeExternalUrl } from "../lib/url_security";
 import type { ToolOptions } from "./types";
 
@@ -28,20 +24,7 @@ export type SearchHit = {
 export type WebSearchResponse = {
   text: string;
   results: SearchHit[];
-  html?: string;
 };
-
-export type SearchHtmlPromptConfig = {
-  systemPrompt: string;
-  userPromptTemplate: string;
-};
-
-const sanitizeGeneratedHtml = (value: string): string =>
-  value
-    .trim()
-    .replace(/^```(?:html|tsx?)?\s*\n?/i, "")
-    .replace(/\n?```\s*$/i, "")
-    .trim();
 
 const formatWebSearchText = (query: string, results: SearchHit[]): string => {
   if (results.length === 0) {
@@ -62,53 +45,11 @@ const formatWebSearchText = (query: string, results: SearchHit[]): string => {
   );
 };
 
-const SEARCH_HTML_CONFIG = getModelConfig("search_html");
-const SEARCH_HTML_MODEL = createManagedModel(SEARCH_HTML_CONFIG.model);
-
-const generateSearchHtml = async (
-  options: {
-    query: string;
-    results: SearchHit[];
-    promptConfig?: SearchHtmlPromptConfig;
-  },
-): Promise<string | undefined> => {
-  if (
-    options.results.length === 0 ||
-    !options.promptConfig?.systemPrompt.trim() ||
-    !options.promptConfig.userPromptTemplate.trim()
-  ) {
-    return undefined;
-  }
-
-  const resultsText = options.results
-    .map((result, index) => `${index + 1}. ${result.title}\n   ${result.url}\n   ${result.snippet}`)
-    .join("\n\n");
-
-  const prompt = buildSearchHtmlUserPrompt({
-    query: options.query,
-    resultsText,
-    promptTemplate: options.promptConfig.userPromptTemplate,
-  });
-
-  const result = await generateText({
-    model: SEARCH_HTML_MODEL,
-    temperature: SEARCH_HTML_CONFIG.temperature,
-    maxOutputTokens: SEARCH_HTML_CONFIG.maxOutputTokens,
-    system: options.promptConfig.systemPrompt,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const html = sanitizeGeneratedHtml(result.text ?? "");
-  return html || undefined;
-};
-
 export const executeWebSearch = async (
   ctx: Pick<ActionCtx, "runQuery">,
   queryInput: string,
   options: {
     ownerId?: string;
-    includeHtml?: boolean;
-    searchHtmlPromptConfig?: SearchHtmlPromptConfig;
     category?: string;
   } = {},
 ): Promise<WebSearchResponse> => {
@@ -173,28 +114,10 @@ export const executeWebSearch = async (
       };
     });
 
-    const searchResult: WebSearchResponse = {
+    return {
       text: formatWebSearchText(query, results),
       results,
     };
-
-    if (options.includeHtml && results.length > 0) {
-      try {
-        searchResult.html = await generateSearchHtml({
-          query,
-          results,
-          promptConfig: options.searchHtmlPromptConfig,
-        });
-      } catch (error) {
-        console.warn(
-          `[web-search] Search HTML generation failed for "${query}": ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }
-
-    return searchResult;
   } catch (error) {
     return {
       text: `WebSearch failed: ${(error as Error).message}`,
@@ -238,7 +161,6 @@ export const createBackendTools = (
       execute: async (args) => {
         const result = await executeWebSearch(ctx, args.query, {
           ownerId: options.ownerId,
-          includeHtml: false,
           category: args.category,
         });
         return result.text;
