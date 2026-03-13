@@ -113,7 +113,8 @@ export const useWorkspacePanelCommands = (
         }
         case 'close': {
           // Kill dev server shell if the workspace panel used a localhost URL
-          const port = getLocalhostPort(state.activePanel?.url)
+          const shouldKillDevServer = state.activePanel?.kind !== 'dev-project'
+          const port = shouldKillDevServer ? getLocalhostPort(state.activePanel?.url) : null
           if (port) {
             window.electronAPI?.system.shellKillByPort(port)
           }

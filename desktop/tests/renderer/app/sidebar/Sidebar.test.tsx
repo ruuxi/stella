@@ -19,6 +19,23 @@ vi.mock("../../../../src/global/settings/ThemePicker", () => ({
   ThemePicker: () => <div data-testid="theme-picker" />,
 }));
 
+vi.mock("../../../../src/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: any) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }: any) => <div>{children}</div>,
+  DropdownMenuContent: ({ children }: any) => <div>{children}</div>,
+  DropdownMenuItem: ({ children, onClick, onSelect }: any) => (
+    <button
+      type="button"
+      onClick={() => {
+        onClick?.();
+        onSelect?.();
+      }}
+    >
+      {children}
+    </button>
+  ),
+}));
+
 describe("Sidebar", () => {
   it("renders sidebar with brand 'Stella'", () => {
     render(<Sidebar />);
@@ -65,11 +82,18 @@ describe("Sidebar", () => {
     expect(onChat).toHaveBeenCalledTimes(1);
   });
 
-  it("calls onNewApp when clicking New App", () => {
-    const onNewApp = vi.fn();
-    render(<Sidebar onNewApp={onNewApp} />);
-    fireEvent.click(screen.getByText("New App"));
-    expect(onNewApp).toHaveBeenCalledTimes(1);
+  it("calls Ask Stella from the New App menu", () => {
+    const onNewAppAskStella = vi.fn();
+    render(<Sidebar onNewAppAskStella={onNewAppAskStella} />);
+    fireEvent.click(screen.getByText("Ask Stella"));
+    expect(onNewAppAskStella).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls Local Project from the New App menu", () => {
+    const onNewAppLocalProject = vi.fn();
+    render(<Sidebar onNewAppLocalProject={onNewAppLocalProject} />);
+    fireEvent.click(screen.getByText("Local Project"));
+    expect(onNewAppLocalProject).toHaveBeenCalledTimes(1);
   });
 
   it("shows 'Sign in' when unauthenticated", () => {
@@ -80,6 +104,28 @@ describe("Sidebar", () => {
   it("renders settings item", () => {
     render(<Sidebar />);
     expect(screen.getByTitle("Settings")).toBeTruthy();
+  });
+
+  it("renders local project items", () => {
+    render(
+      <Sidebar
+        projects={[
+          {
+            id: "project-1",
+            name: "stella-site",
+            path: "C:/Users/redacted/projects/stella-site",
+            source: "manual",
+            framework: "vite",
+            packageManager: "pnpm",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            runtime: { status: "stopped" },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("stella-site")).toBeTruthy();
   });
 });
 

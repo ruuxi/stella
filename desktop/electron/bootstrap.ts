@@ -9,6 +9,7 @@ import { registerCaptureHandlers } from "./ipc/capture-handlers.js";
 import { registerLocalChatHandlers } from "./ipc/local-chat-handlers.js";
 import { registerMiniBridgeHandlers } from "./ipc/mini-bridge-handlers.js";
 import { registerOverlayStreamHandlers } from "./ipc/overlay-stream-handlers.js";
+import { registerProjectHandlers } from "./ipc/project-handlers.js";
 import { registerScheduleHandlers } from "./ipc/schedule-handlers.js";
 import { registerStoreHandlers } from "./ipc/store-handlers.js";
 import { registerSystemHandlers } from "./ipc/system-handlers.js";
@@ -31,6 +32,7 @@ import { ExternalLinkService } from "./services/external-link-service.js";
 import { MiniBridgeService } from "./services/mini-bridge-service.js";
 import { RadialGestureService } from "./services/radial-gesture-service.js";
 import { SecurityPolicyService } from "./services/security-policy-service.js";
+import { DevProjectService } from "./services/dev-project-service.js";
 import { LocalSchedulerService } from "./services/local-scheduler-service.js";
 import { UiStateService } from "./services/ui-state-service.js";
 import { WorkspaceService } from "./services/workspace-service.js";
@@ -98,6 +100,7 @@ export const bootstrapMainProcess = () => {
     () => isDev,
     () => path.resolve(frontendRoot, "workspace"),
   );
+  const devProjectService = new DevProjectService(() => stellaHomePath);
   const externalLinkService = new ExternalLinkService();
   const miniBridgeService = new MiniBridgeService();
   const audioDuckingService = new AudioDuckingService(
@@ -232,6 +235,29 @@ export const bootstrapMainProcess = () => {
       }
     }
   };
+
+  const broadcastDevProjectsChanged = () => {
+    const targets = windowManager
+      ? windowManager.getAllWindows()
+      : BrowserWindow.getAllWindows();
+
+    void devProjectService
+      .listProjects()
+      .then((projects) => {
+        for (const window of targets) {
+          if (!window.isDestroyed()) {
+            window.webContents.send("projects:changed", projects);
+          }
+        }
+      })
+      .catch((error) => {
+        console.debug("[dev-projects] Failed to broadcast project changes:", error);
+      });
+  };
+
+  devProjectService.subscribe(() => {
+    broadcastDevProjectsChanged();
+  });
 
   const syncWakeWordState = () => {
     const enabled = wakeWordController?.syncState() ?? false;
@@ -618,6 +644,12 @@ export const bootstrapMainProcess = () => {
         externalLinkService.assertPrivilegedSender(event, channel),
     });
 
+    registerProjectHandlers({
+      devProjectService,
+      assertPrivilegedSender: (event, channel) =>
+        externalLinkService.assertPrivilegedSender(event, channel),
+    });
+
     registerAgentHandlers({
       getStellaHostRunner: () => stellaHostRunner,
       isHostAuthAuthenticated: () => authService.getHostAuthAuthenticated(),
@@ -700,6 +732,7 @@ export const bootstrapMainProcess = () => {
   app.on("before-quit", () => {
     isQuitting = true;
     authService.stopAuthRefreshLoop();
+    void devProjectService.stopAll();
     if (stellaHostRunner) {
       stellaHostRunner.killAllShells();
     }

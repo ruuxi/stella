@@ -72,6 +72,8 @@ export function useDiscoveryFlow({
 
         if (!result || result.error || !result.formattedSections) return;
 
+        void window.electronAPI?.projects?.list?.().catch(() => undefined);
+
         const synthesisResult = await synthesizeCoreMemory(result.formattedSections, {
           includeAuth: isAuthenticated,
         });

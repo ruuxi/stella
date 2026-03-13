@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { DevProjectsProvider } from './dev-projects-state'
 import { ThemeProvider } from './theme-context'
 import { UiStateProvider } from './ui-state'
 import { WorkspaceProvider } from './workspace-state'
@@ -9,7 +10,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <ThemeProvider>
       <ToastProvider>
         <UiStateProvider>
-          <WorkspaceProvider>{children}</WorkspaceProvider>
+          <DevProjectsProvider>
+            <WorkspaceProvider>{children}</WorkspaceProvider>
+          </DevProjectsProvider>
         </UiStateProvider>
       </ToastProvider>
     </ThemeProvider>
