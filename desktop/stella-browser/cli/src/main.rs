@@ -70,10 +70,8 @@ fn should_use_legacy_daemon(cmd: &serde_json::Value, provider: Option<&str>) -> 
         return true;
     }
 
-    matches!(
-        cmd.get("action").and_then(|value| value.as_str()),
-        Some("site_mod_set" | "site_mod_list" | "site_mod_remove" | "site_mod_toggle")
-    )
+    let _ = cmd;
+    false
 }
 
 fn run_session(args: &[String], session: &str, json_mode: bool) {
