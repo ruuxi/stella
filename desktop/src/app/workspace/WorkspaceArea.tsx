@@ -15,6 +15,7 @@ const PanelRenderer = lazy(() => import('@/app/workspace/renderers/panel'))
 const OnboardingCanvas = lazy(() =>
   import('@/global/onboarding/OnboardingCanvas').then((m) => ({ default: m.OnboardingCanvas }))
 )
+const StoreView = lazy(() => import('@/global/store/StoreView'))
 
 
 type WorkspaceAreaProps = {
@@ -58,6 +59,19 @@ export function WorkspaceArea({
         <div className="workspace-content">
           <Suspense fallback={<div className="workspace-placeholder"><Spinner size="md" /></div>}>
             <PanelRenderer panel={activePanel} />
+          </Suspense>
+        </div>
+      </div>
+    )
+  }
+
+  // Store view
+  if (view === 'store') {
+    return (
+      <div className="workspace-area">
+        <div className="workspace-content workspace-content--full">
+          <Suspense fallback={<div className="workspace-placeholder"><Spinner size="md" /></div>}>
+            <StoreView />
           </Suspense>
         </div>
       </div>

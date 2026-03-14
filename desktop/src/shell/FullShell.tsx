@@ -75,6 +75,10 @@ export const FullShell = () => {
     setActiveDialog('settings')
   }, [setActiveDialog])
 
+  const showStoreView = useCallback(() => {
+    setView('store')
+  }, [setView])
+
   const showTestDialog = useCallback(() => {
     setActiveDialog('test')
   }, [setActiveDialog])
@@ -232,6 +236,7 @@ export const FullShell = () => {
               onSignIn={showAuthDialog}
               onConnect={showConnectDialog}
               onSettings={showSettingsDialog}
+              onStore={showStoreView}
               onHome={showHomeView}
               onChat={showChatView}
               onNewAppAskStella={handleNewAppAskStella}

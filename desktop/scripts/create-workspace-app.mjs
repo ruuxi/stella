@@ -4,9 +4,23 @@ import { dirname, join, resolve, sep } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const rawName = process.argv[2]?.trim()
+
+// Parse arguments: <app-name> [--template <template-name>]
+const args = process.argv.slice(2)
+let rawName = ''
+let templateName = 'workspace-app'
+
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i]
+  if (arg === '--template' && args[i + 1]) {
+    templateName = args[++i]
+  } else if (!arg.startsWith('--') && !rawName) {
+    rawName = arg.trim()
+  }
+}
+
 if (!rawName) {
-  console.error('Usage: node scripts/create-workspace-app.mjs <app-name>')
+  console.error('Usage: node scripts/create-workspace-app.mjs <app-name> [--template game]')
   process.exit(1)
 }
 if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(rawName)) {
@@ -14,7 +28,13 @@ if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(rawName)) {
   process.exit(1)
 }
 
-const src = join(__dirname, '..', 'templates', 'workspace-app')
+// Resolve template: "game" is shorthand for "workspace-game-app"
+const templateMap = {
+  game: 'workspace-game-app',
+}
+const resolvedTemplate = templateMap[templateName] ?? templateName
+
+const src = join(__dirname, '..', 'templates', resolvedTemplate)
 const appsDir = join(__dirname, '..', 'workspace', 'apps')
 mkdirSync(appsDir, { recursive: true })
 const dest = join(appsDir, rawName)
@@ -28,11 +48,21 @@ if (!resolvedDest.startsWith(`${resolvedAppsDir}${sep}`)) {
 
 cpSync(src, dest, { recursive: true })
 
-// Replace {{name}} placeholder in package.json and index.html
-for (const file of ['package.json', 'index.html', 'src/App.tsx']) {
+// Files that may contain placeholders
+const placeholderFiles = [
+  'package.json',
+  'index.html',
+  'src/App.tsx',
+]
+
+for (const file of placeholderFiles) {
   const filePath = join(dest, file)
-  const content = readFileSync(filePath, 'utf-8')
-  writeFileSync(filePath, content.replaceAll('{{name}}', rawName), 'utf-8')
+  try {
+    const content = readFileSync(filePath, 'utf-8')
+    writeFileSync(filePath, content.replaceAll('{{name}}', rawName), 'utf-8')
+  } catch {
+    // File may not exist in this template — skip
+  }
 }
 
-console.log(`Created app: ${dest}`)
+console.log(`Created app: ${dest} (template: ${resolvedTemplate})`)
