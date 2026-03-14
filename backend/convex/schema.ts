@@ -7,6 +7,7 @@ import { devicesSchema } from "./schema/devices";
 import { usersSchema } from "./schema/users";
 import { telemetrySchema } from "./schema/telemetry";
 import { billingSchema } from "./schema/billing";
+import { storeSchema } from "./schema/store";
 
 export default defineSchema({
   ...conversationsSchema,
@@ -17,4 +18,5 @@ export default defineSchema({
   ...usersSchema,
   ...telemetrySchema,
   ...billingSchema,
+  ...storeSchema,
 });
