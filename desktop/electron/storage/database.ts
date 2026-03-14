@@ -151,5 +151,62 @@ export const createDesktopDatabase = (stellaHome: string): SqliteDatabase => {
     );
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS self_mod_features (
+      feature_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      package_id TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_self_mod_features_package
+    ON self_mod_features(package_id, updated_at);
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS self_mod_batches (
+      batch_id TEXT PRIMARY KEY,
+      feature_id TEXT NOT NULL,
+      run_id TEXT,
+      ordinal INTEGER NOT NULL,
+      state TEXT NOT NULL,
+      commit_hash TEXT,
+      files_json TEXT NOT NULL,
+      blocked_files_json TEXT,
+      package_id TEXT,
+      release_number INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_self_mod_batches_feature
+    ON self_mod_batches(feature_id, ordinal, created_at);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_self_mod_batches_package
+    ON self_mod_batches(package_id, release_number, updated_at);
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS store_mod_installs (
+      install_id TEXT PRIMARY KEY,
+      package_id TEXT NOT NULL,
+      feature_id TEXT NOT NULL,
+      release_number INTEGER NOT NULL,
+      apply_commit_hashes_json TEXT NOT NULL,
+      state TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_store_mod_installs_package
+    ON store_mod_installs(package_id, updated_at);
+  `);
+
   return db;
 };
