@@ -23,7 +23,7 @@ const NO_OP = () => {}
 
 type UseFullShellChatOptions = {
   activeConversationId: string | null
-  activeView: 'home' | 'app' | 'chat'
+  activeView: import('@/shared/contracts/ui').ViewType
   isDev: boolean
 }
 
