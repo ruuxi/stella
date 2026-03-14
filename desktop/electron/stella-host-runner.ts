@@ -41,10 +41,16 @@ export const createStellaHostRunner = (
       detectAppliedSince: detectSelfModAppliedSince,
     },
     selfModLifecycle: {
-      beginRun: async ({ runId, taskDescription }) => {
+      beginRun: async ({ runId, taskDescription, featureId, packageId, releaseNumber, mode, displayName, description }) => {
         await options.storeModService.beginSelfModRun({
           runId,
           taskDescription,
+          featureId,
+          packageId,
+          releaseNumber,
+          applyMode: mode,
+          displayName,
+          description,
         });
       },
       finalizeRun: async ({ runId, succeeded }) => {

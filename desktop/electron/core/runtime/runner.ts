@@ -4,8 +4,7 @@ import path from "path";
 import { ConvexClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { createToolHost } from "./tools/host.js";
-import type { ScheduleToolApi } from "./tools/types.js";
-import type { ToolContext } from "./tools/types.js";
+import type { ScheduleToolApi, TaskToolRequest, ToolContext } from "./tools/types.js";
 import { loadAgentsFromHome } from "./agents/agents.js";
 import type { ParsedSkill } from "./agents/manifests.js";
 import { loadSkillsFromHome } from "./agents/skills.js";
@@ -92,6 +91,12 @@ export type StellaHostRunnerOptions = {
       taskDescription: string;
       taskPrompt: string;
       conversationId: string;
+      featureId?: string;
+      packageId?: string;
+      releaseNumber?: number;
+      mode?: "author" | "install" | "update";
+      displayName?: string;
+      description?: string;
     }) => Promise<void> | void;
     finalizeRun: (args: {
       runId: string;
@@ -99,6 +104,12 @@ export type StellaHostRunnerOptions = {
       taskPrompt: string;
       conversationId: string;
       succeeded: boolean;
+      featureId?: string;
+      packageId?: string;
+      releaseNumber?: number;
+      mode?: "author" | "install" | "update";
+      displayName?: string;
+      description?: string;
     }) => Promise<void> | void;
     cancelRun?: (runId: string) => Promise<void> | void;
   } | null;
@@ -686,7 +697,6 @@ export const createStellaHostRunner = ({
   };
 
 
-    // Fire and forget â€” don't block the agent
   const getConfiguredModel = (agentType: string, agent?: ParsedAgentLike | undefined): string | undefined => {
     const modelFromPrefs = getModelOverride(StellaHome, agentType);
     const defaultModel = getDefaultModel(StellaHome, agentType);
@@ -1081,6 +1091,7 @@ export const createStellaHostRunner = ({
       taskDescription,
       taskPrompt,
       abortSignal,
+      selfModMetadata,
       onProgress,
       toolExecutor,
     }) => {
@@ -1116,6 +1127,7 @@ export const createStellaHostRunner = ({
           taskDescription,
           taskPrompt,
           conversationId,
+          ...(selfModMetadata ?? {}),
         }));
       }
       let subagentSucceeded = false;
@@ -1158,6 +1170,7 @@ export const createStellaHostRunner = ({
               taskPrompt,
               conversationId,
               succeeded: true,
+              ...(selfModMetadata ?? {}),
             }));
           } else if (typeof selfModLifecycle.cancelRun === "function") {
             await Promise.resolve(selfModLifecycle.cancelRun(runId));
@@ -1215,6 +1228,52 @@ export const createStellaHostRunner = ({
     getCloudTaskRecord: async () => null,
     cancelCloudTaskRecord: async () => ({ canceled: false }),
   });
+
+  const runBlockingLocalTask = async (
+    request: Omit<TaskToolRequest, "storageMode">,
+  ): Promise<
+    | { status: "ok"; finalText: string; taskId: string }
+    | { status: "error"; finalText: ""; error: string; taskId?: string }
+  > => {
+    if (!localTaskManager) {
+      return {
+        status: "error",
+        finalText: "",
+        error: "Task manager is unavailable.",
+      };
+    }
+    const { taskId } = await localTaskManager.createTask({
+      ...request,
+      storageMode: "local",
+    });
+    while (true) {
+      const snapshot = await localTaskManager.getTask(taskId);
+      if (!snapshot) {
+        return {
+          status: "error",
+          finalText: "",
+          error: "Task record disappeared before completion.",
+          taskId,
+        };
+      }
+      if (snapshot.status === "completed") {
+        return {
+          status: "ok",
+          finalText: snapshot.result ?? "",
+          taskId,
+        };
+      }
+      if (snapshot.status === "error" || snapshot.status === "canceled") {
+        return {
+          status: "error",
+          finalText: "",
+          error: snapshot.error ?? "Task failed",
+          taskId,
+        };
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 250));
+    }
+  };
 
   const setConvexUrl = (value: string | null) => {
     if (!envConvexDeploymentUrl) {
@@ -1837,6 +1896,7 @@ export const createStellaHostRunner = ({
     createStoreReleaseUpdate,
     handleLocalChat,
     runAutomationTurn,
+    runBlockingLocalTask,
     cancelLocalChat,
     getActiveOrchestratorRun,
     recoverCrashedRuns,

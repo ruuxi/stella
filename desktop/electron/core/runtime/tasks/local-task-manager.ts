@@ -54,6 +54,7 @@ type RuntimeTaskRecord = {
   threadName?: string;
   commandId?: string;
   systemPromptOverride?: string;
+  selfModMetadata?: TaskToolRequest["selfModMetadata"];
   recentActivity: string[];
   progressBuffer: string;
   toSubagentQueue: string[];
@@ -113,6 +114,7 @@ type LocalTaskManagerOpts = {
     persistToConvex: boolean;
     enableRemoteTools: boolean;
     abortSignal: AbortSignal;
+    selfModMetadata?: TaskToolRequest["selfModMetadata"];
     onProgress?: (chunk: string) => void;
     onToolStart?: (event: { runId: string; seq: number; toolCallId: string; toolName: string }) => void;
     onToolEnd?: (event: { runId: string; seq: number; toolCallId: string; toolName: string; resultPreview: string; html?: string }) => void;
@@ -317,6 +319,7 @@ export class LocalTaskManager implements TaskToolApi {
         persistToConvex: task.storageMode === "cloud",
         enableRemoteTools: true,
         abortSignal: task.controller.signal,
+        selfModMetadata: task.selfModMetadata,
         onProgress: (chunk) => {
           if (task.controller.signal.aborted || task.status === "canceled") return;
           if (typeof chunk !== "string" || !chunk) return;
@@ -475,6 +478,7 @@ export class LocalTaskManager implements TaskToolApi {
       threadName: resolvedThread?.threadName ?? request.threadName,
       commandId: request.commandId,
       systemPromptOverride: request.systemPromptOverride,
+      selfModMetadata: request.selfModMetadata,
       recentActivity: [],
       progressBuffer: "",
       toSubagentQueue: [],

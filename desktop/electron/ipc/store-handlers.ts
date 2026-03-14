@@ -2,15 +2,15 @@ import { promises as fs } from "fs";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import path from "path";
 import type {
-  InstalledStoreModRecord,
   SelfModBatchRecord,
   SelfModFeatureRecord,
+  InstalledStoreModRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
 } from "../../src/shared/contracts/electron-data.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
-import { commitGitOperation, revertGitCommits, stageFeatureDependencyFiles, stageGitFiles } from "../self-mod/git.js";
+import { revertGitCommits } from "../self-mod/git.js";
 import type { StoreModService } from "../self-mod/store-mod-service.js";
 
 type StoreHandlersOptions = {
@@ -29,10 +29,45 @@ const readJsonArtifact = async (artifactUrl: string): Promise<StoreReleaseArtifa
   if (!response.ok) {
     throw new Error(`Failed to download release artifact (${response.status}).`);
   }
-  return await response.json() as StoreReleaseArtifact;
+  const payload = await response.json();
+  return payload as StoreReleaseArtifact;
 };
 
 const ensureRepoRoot = (options: StoreHandlersOptions): string => options.getFrontendRoot();
+
+const writeBlueprintArtifact = async (args: {
+  stellaHomePath: string;
+  packageId: string;
+  releaseNumber: number;
+  artifact: StoreReleaseArtifact;
+}): Promise<string> => {
+  const releaseDir = path.join(
+    args.stellaHomePath,
+    "mods",
+    "store-blueprints",
+    args.packageId,
+  );
+  await fs.mkdir(releaseDir, { recursive: true });
+  const filePath = path.join(releaseDir, `release-${args.releaseNumber}.json`);
+  await fs.writeFile(filePath, JSON.stringify(args.artifact, null, 2), "utf-8");
+  return filePath;
+};
+
+const buildStoreInstallPrompt = (args: {
+  blueprintPath: string;
+  packageRecord: StorePackageRecord;
+  release: StorePackageReleaseRecord;
+  mode: "install" | "update";
+}): string => [
+  `${args.mode === "update" ? "Update" : "Install"} the Stella store package "${args.packageRecord.displayName}" (${args.packageRecord.packageId}).`,
+  `Use the blueprint JSON at "${args.blueprintPath.replace(/\\/g, "/")}" as the reference implementation.`,
+  "Read that blueprint before making changes.",
+  "The blueprint contains exact commit patches and reference file content from the published release.",
+  "Apply the intended changes to the current local Stella codebase.",
+  "Stella installations may differ, so adapt the implementation instead of blindly copying text.",
+  "Create missing files when the blueprint expects them, update existing files to preserve the intended behavior, and delete files only when the blueprint clearly marks them as removed.",
+  `Target featureId: ${args.packageRecord.featureId}. Target releaseNumber: ${args.release.releaseNumber}.`,
+].join("\n\n");
 
 const resolveRequestedReleaseNumber = async (args: {
   runner: StellaHostRunner;
@@ -128,15 +163,17 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       if (!service || !runner) {
         throw new Error("Store publishing is unavailable.");
       }
+      const existing = payload.packageId
+        ? await runner.getStorePackage(payload.packageId)
+        : null;
 
       return await service.publishRelease({
         ...payload,
-        publish: async (args) => {
-          const existing = await runner.getStorePackage(args.packageId);
-          return existing
-            ? await runner.createStoreReleaseUpdate(args)
-            : await runner.createFirstStoreRelease(args);
-        },
+        releaseNumber: existing ? existing.latestReleaseNumber + 1 : 1,
+        publish: (args) =>
+          existing
+            ? runner.createStoreReleaseUpdate(args)
+            : runner.createFirstStoreRelease(args),
       });
     },
   );
@@ -202,14 +239,17 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       if (!service || !runner) {
         throw new Error("Store install is unavailable.");
       }
-      const repoRoot = ensureRepoRoot(options);
+      const stellaHomePath = options.getStellaHomePath();
+      if (!stellaHomePath) {
+        throw new Error("Stella home path is unavailable.");
+      }
       const releaseNumber = await resolveRequestedReleaseNumber({
         runner,
         packageId: payload.packageId,
         releaseNumber: payload.releaseNumber,
       });
 
-      return await service.installRelease({
+      const result = await service.installRelease({
         packageId: payload.packageId,
         releaseNumber,
         fetchRelease: async ({ packageId, releaseNumber }) => {
@@ -228,24 +268,38 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
             artifact,
           };
         },
-        commitApply: async ({ packageId, featureId, releaseNumber, touchedFiles }) => {
-          await stageGitFiles(repoRoot, touchedFiles);
-          await stageFeatureDependencyFiles(repoRoot);
-          const commitHash = await commitGitOperation({
-            repoRoot,
-            subject: `Store install ${packageId}@${releaseNumber} [feature:${featureId}]`,
-            bodyLines: [
-              `Stella-Package-Id: ${packageId}`,
-              `Stella-Feature-Id: ${featureId}`,
-              `Stella-Release-Number: ${releaseNumber}`,
-            ],
+        applyRelease: async ({ package: packageRecord, release, artifact, mode }) => {
+          const blueprintPath = await writeBlueprintArtifact({
+            stellaHomePath,
+            packageId: packageRecord.packageId,
+            releaseNumber: release.releaseNumber,
+            artifact,
           });
-          if (!commitHash) {
-            throw new Error("Install produced no staged changes to commit.");
+          const taskResult = await runner.runBlockingLocalTask({
+            conversationId: `store:${packageRecord.packageId}`,
+            description: `${mode === "update" ? "Update" : "Install"} ${packageRecord.displayName} from store`,
+            prompt: buildStoreInstallPrompt({
+              blueprintPath,
+              packageRecord,
+              release,
+              mode,
+            }),
+            agentType: "self_mod",
+            selfModMetadata: {
+              featureId: packageRecord.featureId,
+              packageId: packageRecord.packageId,
+              releaseNumber: release.releaseNumber,
+              mode,
+              displayName: packageRecord.displayName,
+              description: packageRecord.description,
+            },
+          });
+          if (taskResult.status !== "ok") {
+            throw new Error(taskResult.error);
           }
-          return commitHash;
         },
-      }) satisfies InstalledStoreModRecord;
+      });
+      return result.installRecord satisfies InstalledStoreModRecord;
     },
   );
 
