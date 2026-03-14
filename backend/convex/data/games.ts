@@ -9,9 +9,14 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { ConvexError, v } from "convex/values";
-import { requireUserId, requireSensitiveUserIdAction } from "../auth";
+import {
+  requireSensitiveUserIdentityAction,
+  requireUserId,
+  requireSensitiveUserIdAction,
+} from "../auth";
 import { requireBoundedString } from "../shared_validators";
 import { gameStatusValidator } from "../schema/games";
+import { signHostedGameToken } from "../lib/game_auth";
 
 const JOIN_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const JOIN_CODE_LENGTH = 4;
@@ -39,6 +44,44 @@ const normalizeGameId = (value: string): string => {
   }
   return normalized;
 };
+
+const isAnonymousIdentity = (
+  identity: Awaited<ReturnType<typeof requireSensitiveUserIdentityAction>>,
+): boolean => (identity as Record<string, unknown>).isAnonymous === true;
+
+const getIdentityDisplayName = (
+  identity: Awaited<ReturnType<typeof requireSensitiveUserIdentityAction>>,
+): string => {
+  const record = identity as Record<string, unknown>;
+  const candidates = [
+    record.name,
+    record.nickname,
+    record.email,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim().slice(0, 120);
+    }
+  }
+  return "Player";
+};
+
+type HostedGameAuthTokenResult = {
+  gameId: string;
+  joinCode: string;
+  displayName: string;
+  gameToken: string;
+  expiresAt: number;
+  spacetimeSessionId?: string;
+};
+
+type HostedGameLookupResult = {
+  gameId: string;
+  joinCode: string;
+  deploymentPath?: string;
+  status: "active" | "archived";
+  spacetimeSessionId?: string;
+} | null;
 
 const getGameByGameId = async (
   ctx: QueryCtx | MutationCtx,
@@ -159,6 +202,12 @@ export const getGameByGameIdInternal = internalQuery({
   args: { ownerId: v.string(), gameId: v.string() },
   handler: async (ctx, args) =>
     await getOwnedGame(ctx, args.ownerId, args.gameId),
+});
+
+export const getGameByPublicGameIdInternal = internalQuery({
+  args: { gameId: v.string() },
+  handler: async (ctx, args) =>
+    await getGameByGameId(ctx, args.gameId),
 });
 
 export const recordGameAsset = internalMutation({
@@ -465,5 +514,73 @@ export const createGame = action({
     );
 
     return { gameId: result.gameId, joinCode: result.joinCode };
+  },
+});
+
+export const issueHostedGameAuthToken = action({
+  args: {
+    gameId: v.optional(v.string()),
+    joinCode: v.optional(v.string()),
+  },
+  returns: v.object({
+    gameId: v.string(),
+    joinCode: v.string(),
+    displayName: v.string(),
+    gameToken: v.string(),
+    expiresAt: v.number(),
+    spacetimeSessionId: v.optional(v.string()),
+  }),
+  handler: async (ctx, args): Promise<HostedGameAuthTokenResult> => {
+    const identity = await requireSensitiveUserIdentityAction(ctx);
+    if (isAnonymousIdentity(identity)) {
+      throw new ConvexError({
+        code: "UNAUTHORIZED",
+        message: "Sign in with an account to join multiplayer games.",
+      });
+    }
+
+    const normalizedGameId = args.gameId ? normalizeGameId(args.gameId) : null;
+    const normalizedJoinCode = args.joinCode?.toUpperCase().trim() || null;
+    if (!normalizedGameId && !normalizedJoinCode) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "A game ID or join code is required.",
+      });
+    }
+
+    const game: HostedGameLookupResult = normalizedJoinCode
+      ? await ctx.runQuery(internal.data.games.getGameByJoinCodeInternal, {
+          joinCode: normalizedJoinCode,
+        })
+      : await ctx.runQuery(internal.data.games.getGameByPublicGameIdInternal, {
+          gameId: normalizedGameId!,
+        });
+
+    if (!game || game.status !== "active" || !game.deploymentPath) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Game not found or not available to launch.",
+      });
+    }
+
+    const displayName = getIdentityDisplayName(identity);
+    const { token, payload } = await signHostedGameToken({
+      userId: identity.subject,
+      gameId: game.gameId,
+      joinCode: game.joinCode,
+      spacetimeSessionId: game.spacetimeSessionId,
+      displayName,
+    });
+
+    return {
+      gameId: game.gameId,
+      joinCode: game.joinCode,
+      displayName,
+      gameToken: token,
+      expiresAt: payload.exp,
+      ...(game.spacetimeSessionId
+        ? { spacetimeSessionId: game.spacetimeSessionId }
+        : {}),
+    };
   },
 });
