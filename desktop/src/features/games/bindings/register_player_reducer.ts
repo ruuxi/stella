@@ -11,6 +11,5 @@ import {
 } from "spacetimedb";
 
 export default {
-  convexToken: __t.string(),
-  displayName: __t.string(),
+  gameToken: __t.string(),
 };

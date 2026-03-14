@@ -166,6 +166,9 @@ const tablesSchema = __schema({
   game_sessions: __table({
     name: 'game_sessions',
     indexes: [
+      { accessor: 'game_id', name: 'game_sessions_game_id_idx_btree', algorithm: 'btree', columns: [
+        'gameId',
+      ] },
       { accessor: 'game_type', name: 'game_sessions_game_type_idx_btree', algorithm: 'btree', columns: [
         'gameType',
       ] },
