@@ -94,8 +94,7 @@ function BasicTab({ onSignOut }: { onSignOut?: () => void }) {
               Local only. Conversations stay on this device.
             </div>
             <div className="settings-row-sublabel">
-              Cloud sync and connected mode are not available in the app right
-              now.
+              Cloud sync is not available in the app right now.
             </div>
           </div>
         </div>
