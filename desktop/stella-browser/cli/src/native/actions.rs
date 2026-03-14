@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
@@ -21,6 +22,7 @@ use super::policy::{ActionPolicy, ConfirmActions, PolicyResult};
 use super::providers;
 use super::recording::{self, RecordingState};
 use super::screenshot::{self, ScreenshotOptions};
+use super::site_mods;
 use super::snapshot::{self, SnapshotOptions};
 use super::state;
 use super::storage;
@@ -104,6 +106,7 @@ pub struct DaemonState {
     pub tracked_requests: Vec<TrackedRequest>,
     pub request_tracking: bool,
     pub active_frame_id: Option<String>,
+    pub site_mod_script_ids: HashMap<String, String>,
     /// Shared slot for stream server to receive CDP client when browser launches.
     pub stream_client: Option<Arc<RwLock<Option<Arc<CdpClient>>>>>,
 }
@@ -138,6 +141,7 @@ impl DaemonState {
             tracked_requests: Vec::new(),
             request_tracking: false,
             active_frame_id: None,
+            site_mod_script_ids: HashMap::new(),
             stream_client: None,
         }
     }
@@ -475,6 +479,10 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
         }
     }
 
+    if !new_targets.is_empty() {
+        let _ = sync_site_mod_scripts(state).await;
+    }
+
     // Handle Fetch.requestPaused events (route interception + domain filter)
     for paused in &fetch_paused {
         if let Some(ref browser) = state.browser {
@@ -730,6 +738,10 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
         "auth_show" => handle_auth_show(cmd).await,
         "confirm" => handle_confirm(cmd, state).await,
         "deny" => handle_deny(cmd, state).await,
+        "site_mod_set" => handle_site_mod_set(cmd, state).await,
+        "site_mod_list" => handle_site_mod_list().await,
+        "site_mod_remove" => handle_site_mod_remove(cmd, state).await,
+        "site_mod_toggle" => handle_site_mod_toggle(cmd, state).await,
         "swipe" => handle_swipe(cmd, state).await,
         "device_list" => handle_device_list().await,
         "input_mouse" => handle_input_mouse(cmd, state).await,
@@ -764,6 +776,7 @@ async fn auto_launch(state: &mut DaemonState) -> Result<(), String> {
         state.subscribe_to_browser_events();
         state.update_stream_client().await;
         try_auto_restore_state(state).await;
+        sync_site_mod_scripts(state).await?;
         return Ok(());
     }
 
@@ -773,6 +786,7 @@ async fn auto_launch(state: &mut DaemonState) -> Result<(), String> {
         state.subscribe_to_browser_events();
         state.update_stream_client().await;
         try_auto_restore_state(state).await;
+        sync_site_mod_scripts(state).await?;
         return Ok(());
     }
 
@@ -781,6 +795,7 @@ async fn auto_launch(state: &mut DaemonState) -> Result<(), String> {
     state.subscribe_to_browser_events();
     state.update_stream_client().await;
     try_auto_restore_state(state).await;
+    sync_site_mod_scripts(state).await?;
     Ok(())
 }
 
@@ -854,6 +869,37 @@ async fn try_auto_restore_state(state: &mut DaemonState) {
     }
 }
 
+async fn sync_site_mod_scripts(state: &mut DaemonState) -> Result<(), String> {
+    let Some(mgr) = state.browser.as_ref() else {
+        state.site_mod_script_ids.clear();
+        return Ok(());
+    };
+
+    let session_ids = mgr.page_session_ids();
+    let script = site_mods::build_injection_script(&site_mods::get_mods());
+    let previous_ids = std::mem::take(&mut state.site_mod_script_ids);
+
+    for session_id in &session_ids {
+        if let Some(old_id) = previous_ids.get(session_id) {
+            let _ = mgr
+                .remove_script_to_evaluate_in_session(session_id, old_id)
+                .await;
+        }
+
+        if let Some(ref source) = script {
+            let identifier = mgr
+                .add_script_to_evaluate_in_session(session_id, source)
+                .await?;
+            state
+                .site_mod_script_ids
+                .insert(session_id.clone(), identifier);
+            let _ = mgr.evaluate_in_session(session_id, source).await;
+        }
+    }
+
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Phase 1 handlers
 // ---------------------------------------------------------------------------
@@ -883,6 +929,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
         if let Some(ref mut b) = state.browser {
             b.close().await?;
             state.browser = None;
+            state.site_mod_script_ids.clear();
             state.update_stream_client().await;
         }
     } else {
@@ -922,6 +969,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
         state.browser = Some(BrowserManager::connect_cdp(url).await?);
         state.subscribe_to_browser_events();
         state.update_stream_client().await;
+        sync_site_mod_scripts(state).await?;
         return Ok(json!({ "launched": true }));
     }
 
@@ -929,6 +977,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
         state.browser = Some(BrowserManager::connect_cdp(&port.to_string()).await?);
         state.subscribe_to_browser_events();
         state.update_stream_client().await;
+        sync_site_mod_scripts(state).await?;
         return Ok(json!({ "launched": true }));
     }
 
@@ -936,6 +985,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
         state.browser = Some(BrowserManager::connect_auto().await?);
         state.subscribe_to_browser_events();
         state.update_stream_client().await;
+        sync_site_mod_scripts(state).await?;
         return Ok(json!({ "launched": true }));
     }
 
@@ -954,6 +1004,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
                         state.browser = Some(mgr);
                         state.subscribe_to_browser_events();
                         state.update_stream_client().await;
+                        sync_site_mod_scripts(state).await?;
                         return Ok(json!({ "launched": true, "provider": provider }));
                     }
                     Err(e) => {
@@ -1040,6 +1091,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
     state.browser = Some(BrowserManager::launch(options, engine.as_deref()).await?);
     state.subscribe_to_browser_events();
     state.update_stream_client().await;
+    sync_site_mod_scripts(state).await?;
 
     if let Some(ref filter) = state.domain_filter {
         if let Some(ref mgr) = state.browser {
@@ -1319,6 +1371,7 @@ async fn handle_close(state: &mut DaemonState) -> Result<Value, String> {
         mgr.close().await?;
     }
     state.browser = None;
+    state.site_mod_script_ids.clear();
     state.update_stream_client().await;
 
     // Close WebDriver sessions
@@ -3172,6 +3225,67 @@ async fn handle_addstyle(cmd: &Value, state: &DaemonState) -> Result<Value, Stri
     }
 
     Ok(json!({ "added": true }))
+}
+
+async fn handle_site_mod_set(cmd: &Value, state: &mut DaemonState) -> Result<Value, String> {
+    let pattern = cmd
+        .get("pattern")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing 'pattern' parameter")?;
+    let css = cmd.get("css").and_then(|v| v.as_str()).map(String::from);
+    let js = cmd.get("js").and_then(|v| v.as_str()).map(String::from);
+    let label = cmd.get("label").and_then(|v| v.as_str()).map(String::from);
+
+    if css.is_none() && js.is_none() {
+        return Err("At least one of 'css' or 'js' is required".to_string());
+    }
+
+    let (mod_rule, total) = site_mods::set_mod(pattern, css, js, label)?;
+    sync_site_mod_scripts(state).await?;
+
+    Ok(json!({
+        "pattern": pattern,
+        "mod": mod_rule,
+        "total": total,
+    }))
+}
+
+async fn handle_site_mod_list() -> Result<Value, String> {
+    let rules = site_mods::list_rules();
+    Ok(json!({
+        "rules": rules,
+        "total": rules.len(),
+    }))
+}
+
+async fn handle_site_mod_remove(cmd: &Value, state: &mut DaemonState) -> Result<Value, String> {
+    let pattern = cmd
+        .get("pattern")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing 'pattern' parameter")?;
+    let (removed, total) = site_mods::remove_mod(pattern)?;
+    sync_site_mod_scripts(state).await?;
+
+    Ok(json!({
+        "pattern": pattern,
+        "removed": removed,
+        "total": total,
+    }))
+}
+
+async fn handle_site_mod_toggle(cmd: &Value, state: &mut DaemonState) -> Result<Value, String> {
+    let pattern = cmd
+        .get("pattern")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing 'pattern' parameter")?;
+    let enabled = cmd.get("enabled").and_then(|v| v.as_bool());
+    let enabled = site_mods::toggle_mod(pattern, enabled)?;
+    sync_site_mod_scripts(state).await?;
+
+    Ok(json!({
+        "pattern": pattern,
+        "enabled": enabled,
+    }))
 }
 
 async fn handle_clipboard(cmd: &Value, state: &DaemonState) -> Result<Value, String> {
