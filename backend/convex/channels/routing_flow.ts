@@ -3,7 +3,6 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 
 export type DmPolicy = "pairing" | "allowlist" | "open" | "disabled";
-export type AccountMode = "private_local" | "connected";
 export type DmPolicyConfig = {
   policy: DmPolicy;
   allowlist: string[];
@@ -25,20 +24,8 @@ export type ChannelConnection = {
 type QueryRunnerCtx = Pick<ActionCtx, "runQuery">;
 type QueryMutationRunnerCtx = Pick<ActionCtx, "runQuery" | "runMutation">;
 
-export const ACCOUNT_MODE_CONNECTED: AccountMode = "connected";
-export const CONNECTED_MODE_REQUIRED_ERROR =
-  "Connectors require Connected mode. Enable Connected mode in Settings.";
-
-export const isOwnerInConnectedMode = async (args: {
-  ctx: QueryRunnerCtx;
-  ownerId: string;
-}): Promise<boolean> => {
-  const accountMode = await args.ctx.runQuery(
-    internal.data.preferences.getAccountModeForOwner,
-    { ownerId: args.ownerId },
-  );
-  return accountMode === ACCOUNT_MODE_CONNECTED;
-};
+export const SIGN_IN_REQUIRED_ERROR =
+  "Connectors require a signed-in account. Please sign in to use this feature.";
 
 export const findConnection = async (args: {
   ctx: QueryRunnerCtx;
@@ -150,10 +137,6 @@ export const resolveConnectionForIncomingMessage = async (args: {
 
   if (connection) {
     return connection;
-  }
-
-  if (!(await isOwnerInConnectedMode({ ctx: args.ctx, ownerId: policyOwnerId }))) {
-    return null;
   }
 
   return await ensureOwnerConnection({
