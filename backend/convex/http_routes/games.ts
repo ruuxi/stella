@@ -86,10 +86,12 @@ const joinRedirectHandler = httpAction(async (ctx, request) => {
     );
   }
 
-  const sessionParam = game.spacetimeSessionId
-    ? `?session=${encodeURIComponent(game.spacetimeSessionId)}`
-    : "";
-  const redirectUrl = `${GAMES_BASE_PATH}/${game.gameId}/${sessionParam}`;
+  const params = new URLSearchParams();
+  params.set("code", game.joinCode);
+  if (game.spacetimeSessionId) {
+    params.set("session", game.spacetimeSessionId);
+  }
+  const redirectUrl = `${GAMES_BASE_PATH}/${game.gameId}/?${params.toString()}`;
 
   return new Response(null, {
     status: 302,
