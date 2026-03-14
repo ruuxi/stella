@@ -58,19 +58,8 @@ fn parse_proxy(proxy_str: &str) -> serde_json::Value {
 }
 
 fn should_use_legacy_daemon(cmd: &serde_json::Value, provider: Option<&str>) -> bool {
-    if provider == Some("extension") {
-        return true;
-    }
-
-    if env::var("STELLA_BROWSER_USER_BROWSER")
-        .ok()
-        .as_deref()
-        == Some("1")
-    {
-        return true;
-    }
-
     let _ = cmd;
+    let _ = provider;
     false
 }
 

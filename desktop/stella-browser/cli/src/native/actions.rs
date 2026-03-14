@@ -2,6 +2,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{broadcast, RwLock};
 
 use super::auth;
@@ -15,6 +16,7 @@ use super::cdp::types::{
 use super::cookies;
 use super::diff;
 use super::element::RefMap;
+use super::extension_bridge::ExtensionBridge;
 use super::inspect_server::InspectServer;
 use super::interaction;
 use super::network::{self, DomainFilter, EventTracker};
@@ -28,6 +30,7 @@ use super::state;
 use super::storage;
 use super::stream;
 use super::tracing::{self as native_tracing, TracingState};
+use super::user_browser;
 use super::webdriver::appium::AppiumManager;
 use super::webdriver::backend::{BrowserBackend, WebDriverBackend, WEBDRIVER_UNSUPPORTED_ACTIONS};
 use super::webdriver::ios;
@@ -107,6 +110,7 @@ pub struct DaemonState {
     pub request_tracking: bool,
     pub active_frame_id: Option<String>,
     pub site_mod_script_ids: HashMap<String, String>,
+    pub extension_bridge: Option<ExtensionBridge>,
     /// Shared slot for stream server to receive CDP client when browser launches.
     pub stream_client: Option<Arc<RwLock<Option<Arc<CdpClient>>>>>,
 }
@@ -142,6 +146,7 @@ impl DaemonState {
             request_tracking: false,
             active_frame_id: None,
             site_mod_script_ids: HashMap::new(),
+            extension_bridge: None,
             stream_client: None,
         }
     }
@@ -422,6 +427,7 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
+    let extension_requested = extension_mode_requested() || state.extension_bridge.is_some();
 
     // Drain pending CDP events (console, errors, screencast frames, target lifecycle, fetch)
     let (pending_acks, new_targets, destroyed_targets, fetch_paused) = state.drain_cdp_events();
@@ -558,7 +564,9 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
     );
     if !skip_launch {
         // Check if existing connection is stale and needs re-launch
-        let needs_launch = if let Some(ref mgr) = state.browser {
+        let needs_launch = if extension_requested {
+            state.extension_bridge.is_none()
+        } else if let Some(ref mgr) = state.browser {
             !mgr.is_connection_alive().await
         } else {
             true
@@ -595,6 +603,24 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
                 action
             ),
         );
+    }
+
+    if state.extension_bridge.is_some() && action != "launch" {
+        if action == "close" {
+            return match handle_close(state).await {
+                Ok(data) => success_response(&id, data),
+                Err(e) => error_response(&id, &e),
+            };
+        }
+
+        let bridge = state
+            .extension_bridge
+            .as_ref()
+            .expect("checked is_some above");
+        return match bridge.execute_command(cmd).await {
+            Ok(response) => response,
+            Err(e) => error_response(&id, &e),
+        };
     }
 
     let result = match action {
@@ -767,6 +793,11 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
 // ---------------------------------------------------------------------------
 
 async fn auto_launch(state: &mut DaemonState) -> Result<(), String> {
+    if extension_mode_requested() {
+        launch_extension_from_env(state).await?;
+        return Ok(());
+    }
+
     let options = launch_options_from_env();
     let engine = env::var("STELLA_BROWSER_ENGINE").ok();
 
@@ -796,6 +827,50 @@ async fn auto_launch(state: &mut DaemonState) -> Result<(), String> {
     state.update_stream_client().await;
     try_auto_restore_state(state).await;
     sync_site_mod_scripts(state).await?;
+    Ok(())
+}
+
+fn extension_mode_requested() -> bool {
+    env::var("STELLA_BROWSER_PROVIDER")
+        .ok()
+        .as_deref()
+        == Some("extension")
+        || env::var("STELLA_BROWSER_USER_BROWSER")
+            .ok()
+            .as_deref()
+            == Some("1")
+}
+
+async fn launch_extension_from_env(state: &mut DaemonState) -> Result<(), String> {
+    if state.extension_bridge.is_some() {
+        return Ok(());
+    }
+
+    let port = env::var("STELLA_BROWSER_EXT_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(9224);
+    let token = env::var("STELLA_BROWSER_EXT_TOKEN").ok();
+    let socket_dir = super::daemon::get_daemon_socket_dir();
+    let mut bridge = ExtensionBridge::new(
+        state.session_id.clone(),
+        socket_dir,
+        port,
+        token,
+        Duration::from_secs(60),
+    );
+    bridge.start().await?;
+
+    if env::var("STELLA_BROWSER_USER_BROWSER")
+        .ok()
+        .as_deref()
+        == Some("1")
+    {
+        user_browser::relaunch_for_extension_bridge(&[]).await?;
+    }
+
+    state.extension_bridge = Some(bridge);
     Ok(())
 }
 
@@ -905,6 +980,35 @@ async fn sync_site_mod_scripts(state: &mut DaemonState) -> Result<(), String> {
 // ---------------------------------------------------------------------------
 
 async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, String> {
+    let provider = cmd
+        .get("provider")
+        .and_then(|v| v.as_str())
+        .map(|value| value.to_lowercase());
+    let user_browser_mode = env::var("STELLA_BROWSER_USER_BROWSER")
+        .ok()
+        .as_deref()
+        == Some("1");
+
+    if provider.as_deref() == Some("extension") || user_browser_mode {
+        if let Some(ref mut mgr) = state.browser {
+            let _ = mgr.close().await;
+        }
+        state.browser = None;
+        state.update_stream_client().await;
+        if let Some(ref mut bridge) = state.extension_bridge {
+            let _ = bridge.stop().await;
+        }
+        state.extension_bridge = None;
+
+        launch_extension_from_env(state).await?;
+        return Ok(json!({
+            "launched": true,
+            "provider": "extension",
+            "port": state.extension_bridge.as_ref().map(|bridge| bridge.port()).unwrap_or(9224),
+            "userBrowser": user_browser_mode,
+        }));
+    }
+
     let headless = cmd
         .get("headless")
         .and_then(|v| v.as_bool())
@@ -989,7 +1093,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
         return Ok(json!({ "launched": true }));
     }
 
-    if let Some(provider) = cmd.get("provider").and_then(|v| v.as_str()) {
+    if let Some(provider) = provider.as_deref() {
         match provider.to_lowercase().as_str() {
             "ios" => {
                 return launch_ios(cmd, state).await;
@@ -1353,6 +1457,14 @@ async fn handle_evaluate(cmd: &Value, state: &DaemonState) -> Result<Value, Stri
 }
 
 async fn handle_close(state: &mut DaemonState) -> Result<Value, String> {
+    if let Some(ref bridge) = state.extension_bridge {
+        let close_cmd = json!({
+            "id": "extension-close",
+            "action": "close",
+        });
+        let _ = bridge.execute_command(&close_cmd).await;
+    }
+
     if let Some(ref mgr) = state.browser {
         if let Some(ref session_name) = state.session_name {
             if let Ok(session_id) = mgr.active_session_id() {
@@ -1373,6 +1485,10 @@ async fn handle_close(state: &mut DaemonState) -> Result<Value, String> {
     state.browser = None;
     state.site_mod_script_ids.clear();
     state.update_stream_client().await;
+    if let Some(ref mut bridge) = state.extension_bridge {
+        let _ = bridge.stop().await;
+    }
+    state.extension_bridge = None;
 
     // Close WebDriver sessions
     if let Some(ref mut wb) = state.webdriver_backend {
