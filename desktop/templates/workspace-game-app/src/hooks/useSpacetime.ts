@@ -34,14 +34,14 @@ export function useGameConnectionBuilder() {
           );
           saveToken(token);
 
-          // Subscribe to all game tables for the active session
-          conn
-            .subscriptionBuilder()
-            .subscribe(tables.gameSessions)
-            .subscribe(tables.gamePlayers)
-            .subscribe(tables.gameObjects)
-            .subscribe(tables.gameActions)
-            .subscribe(tables.gameChat);
+          conn.subscriptionBuilder().subscribe([
+            tables.game_sessions,
+            tables.game_players,
+            tables.game_objects,
+            tables.game_actions,
+            tables.game_chat,
+            tables.my_private_state,
+          ]);
         })
         .onConnectError((_ctx, error) => {
           console.error("[game] Connection error:", error.message);
