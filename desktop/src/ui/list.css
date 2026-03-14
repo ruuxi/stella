@@ -38,7 +38,7 @@
   max-width: 100%;
   color: var(--muted-foreground);
   white-space: nowrap;
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Plus Jakarta Sans", sans-serif);
   font-size: 14px;
   font-weight: 400;
   line-height: 1.43;
@@ -65,7 +65,7 @@
   position: sticky;
   top: 0;
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Plus Jakarta Sans", sans-serif);
   font-size: 14px;
   font-weight: 500;
   line-height: 1.43;
@@ -85,7 +85,7 @@
   align-items: center;
   color: var(--foreground);
   scroll-margin-top: 28px;
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Plus Jakarta Sans", sans-serif);
   font-size: 14px;
   font-weight: 500;
   line-height: 1.43;

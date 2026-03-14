@@ -545,7 +545,7 @@ VISUAL DESIGN:
 - Card borders: color-mix(in oklch, var(--foreground) 8%, transparent) to 12%.
 - Text: var(--foreground) with opacity layering (100% primary, 72% secondary, 48% tertiary).
 - Section labels: 10px, uppercase, letter-spacing: 0.08em.
-- Font: Inter, system-ui, sans-serif.
+- Font: Plus Jakarta Sans, system-ui, sans-serif.
 - Border radii: 10px-12px for cards.
 - Spacing: 8px base grid. 16px card padding, 12px between cards, 24px section gaps.
 - Responsive: CSS grid with auto-fill/minmax for card layouts. Minimum card width: 280px.
