@@ -197,6 +197,34 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 				const choice = chunk.choices?.[0];
 				if (!choice) continue;
 
+				if (!chunk.usage && "usage" in choice && choice.usage) {
+					const fallbackUsage = choice.usage as {
+						prompt_tokens?: number;
+						completion_tokens?: number;
+						prompt_tokens_details?: { cached_tokens?: number };
+						completion_tokens_details?: { reasoning_tokens?: number };
+					};
+					const cachedTokens = fallbackUsage.prompt_tokens_details?.cached_tokens || 0;
+					const reasoningTokens = fallbackUsage.completion_tokens_details?.reasoning_tokens || 0;
+					const input = (fallbackUsage.prompt_tokens || 0) - cachedTokens;
+					const outputTokens = (fallbackUsage.completion_tokens || 0) + reasoningTokens;
+					output.usage = {
+						input,
+						output: outputTokens,
+						cacheRead: cachedTokens,
+						cacheWrite: 0,
+						totalTokens: input + outputTokens + cachedTokens,
+						cost: {
+							input: 0,
+							output: 0,
+							cacheRead: 0,
+							cacheWrite: 0,
+							total: 0,
+						},
+					};
+					calculateCost(model, output.usage);
+				}
+
 				if (choice.finish_reason) {
 					output.stopReason = mapStopReason(choice.finish_reason);
 				}
@@ -594,15 +622,11 @@ export function convertMessages<TApi extends Api>(
 			// Filter out empty text blocks to avoid API validation errors
 			const nonEmptyTextBlocks = textBlocks.filter((b) => b.text && b.text.trim().length > 0);
 			if (nonEmptyTextBlocks.length > 0) {
-				// GitHub Copilot requires assistant content as a string, not an array.
-				// Sending as array causes Claude models to re-answer all previous prompts.
-				if (model.provider === "github-copilot") {
-					assistantMsg.content = nonEmptyTextBlocks.map((b) => sanitizeSurrogates(b.text)).join("");
-				} else {
-					assistantMsg.content = nonEmptyTextBlocks.map((b) => {
-						return { type: "text", text: sanitizeSurrogates(b.text) };
-					});
-				}
+				// Always send assistant content as a plain string (OpenAI Chat Completions
+				// API standard format). Sending as an array of {type:"text", text:"..."}
+				// objects is non-standard and causes some providers to mirror the
+				// content-block structure literally in their output.
+				assistantMsg.content = nonEmptyTextBlocks.map((b) => sanitizeSurrogates(b.text)).join("");
 			}
 
 			// Handle thinking blocks
@@ -755,10 +779,11 @@ export function convertTools(
 	}));
 }
 
-function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"]): StopReason {
+function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"] | string): StopReason {
 	if (reason === null) return "stop";
 	switch (reason) {
 		case "stop":
+		case "end":
 			return "stop";
 		case "length":
 			return "length";
@@ -768,7 +793,7 @@ function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"]): Sto
 		case "content_filter":
 			return "error";
 		default: {
-			const _exhaustive: never = reason;
+			const _exhaustive: never = reason as never;
 			throw new Error(`Unhandled stop reason: ${_exhaustive}`);
 		}
 	}
