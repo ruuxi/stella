@@ -31,6 +31,10 @@ function observeFrontEndResult(
     detected: result.detected ?? false,
     score: result.score ?? 0,
     vadScore: result.vadScore,
+    vadGate: {
+      threshold: 0.5,
+      gateOpen: result.vadScore >= 0.5,
+    },
   });
 }
 
@@ -87,6 +91,23 @@ describe("WakeWordAudioFeedManager", () => {
     const speech = frontEnd.process(createPcmChunk(0.03));
     expect(speech.frontEnd.gateOpen).toBe(true);
     expect(speech.frontEnd.signalPresent).toBe(true);
+  });
+
+  it("does not relearn speech-like chunks into the noise floor when VAD stays open", () => {
+    const frontEnd = createWakeWordAdaptiveNoiseFloor({
+      floorSlowRiseRate: 0.35,
+      signalHoldFrames: 0,
+    });
+
+    frontEnd.process(createPcmChunk(0.006));
+    const baselineFloor = frontEnd.getState().nextNoiseFloor;
+
+    for (let i = 0; i < 6; i += 1) {
+      frontEnd.process(createPcmChunk(0.018));
+      observeFrontEndResult(frontEnd, { vadScore: 0.82 });
+    }
+
+    expect(frontEnd.getState().nextNoiseFloor).toBeCloseTo(baselineFloor, 5);
   });
 
   it("holds the front-end gate open briefly across short signal dropouts", () => {
