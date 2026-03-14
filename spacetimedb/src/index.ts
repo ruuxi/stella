@@ -1,5 +1,6 @@
 import { ScheduleAt, type Identity, type ScheduleAt as ScheduleAtValue } from "spacetimedb";
 import { SenderError, schema, t, table, type ReducerCtx } from "spacetimedb/server";
+import nacl from "tweetnacl";
 
 const JOIN_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const EMPTY_JSON_OBJECT = "{}";
@@ -7,11 +8,17 @@ const MAX_CHAT_MESSAGE_LENGTH = 500;
 const FREEFORM_TURN_SLOT = 0;
 const TICK_INTERVAL_MIN_MS = 100;
 const TICK_INTERVAL_MAX_MS = 60_000;
+const GAME_AUTH_ISSUER = "stella-game";
+const GAME_AUTH_AUDIENCE = "stella-hosted-game";
+const GAME_AUTH_VERSION = 1;
+const GAME_REGISTRATION_TTL_MS = 24n * 60n * 60n * 1000n;
+const GAME_AUTH_PUBLIC_KEY_BASE64URL = "HQU9NBm0-pzP56UJ-VUX4VNxcR25YxwFp21yy0WlLiY";
 
 const gameSessions = table(
   { name: "game_sessions", public: true },
   {
     session_id: t.u64().primaryKey().autoInc(),
+    game_id: t.string().index(),
     join_code: t.string().unique(),
     host_identity: t.identity(),
     host_convex_id: t.string(),
@@ -178,9 +185,22 @@ const identityMap = table(
   {
     id: t.u64().primaryKey().autoInc(),
     stdb_identity: t.identity().unique(),
+    game_id: t.string().index(),
     convex_user_id: t.string().index(),
     display_name: t.string(),
+    expires_at: t.u64(),
     registered_at: t.u64(),
+  },
+);
+
+const usedGameTokens = table(
+  { name: "used_game_tokens" },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    jti: t.string().unique(),
+    stdb_identity: t.identity().index(),
+    game_id: t.string().index(),
+    used_at: t.u64(),
   },
 );
 
@@ -193,6 +213,7 @@ const spacetime = schema(
   gameChat,
   gameTickSchedule,
   identityMap,
+  usedGameTokens,
 );
 
 type StellaDb = ReducerCtx<typeof spacetime.schemaType>["db"];
@@ -201,6 +222,7 @@ type GamePlayerRow = ReturnType<StellaDb["gamePlayers"]["id"]["find"]> extends i
 type PrivateStateRow = ReturnType<StellaDb["playerPrivateState"]["id"]["find"]> extends infer T ? Exclude<T, null> : never;
 type GameObjectRow = ReturnType<StellaDb["gameObjects"]["id"]["find"]> extends infer T ? Exclude<T, null> : never;
 type IdentityMapRow = ReturnType<StellaDb["identityMap"]["stdb_identity"]["find"]> extends infer T ? Exclude<T, null> : never;
+type UsedGameTokenRow = ReturnType<StellaDb["usedGameTokens"]["jti"]["find"]> extends infer T ? Exclude<T, null> : never;
 
 const privateStateViewRow = t.row("MyPrivateStateRow", {
   id: t.u64(),
@@ -264,7 +286,26 @@ function collectRows<T>(rows: Iterable<T>): T[] {
   return Array.from(rows);
 }
 
-function base64UrlDecode(input: string): string {
+type GameAuthPayload = {
+  v: number;
+  iss: string;
+  aud: string;
+  sub: string;
+  gameId: string;
+  joinCode: string;
+  spacetimeSessionId?: string;
+  displayName: string;
+  isAnonymous: boolean;
+  iat: number;
+  exp: number;
+  jti: string;
+};
+
+function nowMillis(ctx: ReducerCtx<typeof spacetime.schemaType>): bigint {
+  return nowMicros(ctx) / 1000n;
+}
+
+function base64UrlDecodeToBytes(input: string): Uint8Array {
   const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
   const remainder = normalized.length % 4;
   const padded =
@@ -274,7 +315,7 @@ function base64UrlDecode(input: string): string {
         ? `${normalized}==`
         : remainder === 3
           ? `${normalized}=`
-          : fail("Invalid JWT payload encoding.");
+          : fail("Invalid token encoding.");
 
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   let bits = 0;
@@ -285,7 +326,7 @@ function base64UrlDecode(input: string): string {
     if (char === "=") break;
     const index = alphabet.indexOf(char);
     if (index < 0) {
-      fail("Invalid JWT payload encoding.");
+      fail("Invalid token encoding.");
     }
     value = (value << 6) | index;
     bits += 6;
@@ -295,21 +336,80 @@ function base64UrlDecode(input: string): string {
     }
   }
 
-  return new TextDecoder().decode(new Uint8Array(bytes));
+  return new Uint8Array(bytes);
 }
 
-function decodeJwtSubject(token: string): string {
+function base64UrlDecodeToString(input: string): string {
+  return new TextDecoder().decode(base64UrlDecodeToBytes(input));
+}
+
+function parseGameAuthPayload(rawPayload: Record<string, unknown>): GameAuthPayload {
+  const version = typeof rawPayload.v === "number" ? rawPayload.v : null;
+  const issuer = toOptionalString(rawPayload.iss);
+  const audience = toOptionalString(rawPayload.aud);
+  const subject = toOptionalString(rawPayload.sub);
+  const gameId = toOptionalString(rawPayload.gameId);
+  const joinCode = toOptionalString(rawPayload.joinCode);
+  const displayName = toOptionalString(rawPayload.displayName);
+  const tokenId = toOptionalString(rawPayload.jti);
+  const issuedAt = typeof rawPayload.iat === "number" ? rawPayload.iat : null;
+  const expiresAt = typeof rawPayload.exp === "number" ? rawPayload.exp : null;
+  const spacetimeSessionId = toOptionalString(rawPayload.spacetimeSessionId) ?? undefined;
+
+  if (version !== GAME_AUTH_VERSION) {
+    fail("Unsupported game launch token version.");
+  }
+  if (issuer !== GAME_AUTH_ISSUER || audience !== GAME_AUTH_AUDIENCE) {
+    fail("Invalid game launch token issuer.");
+  }
+  if (!subject || !gameId || !joinCode || !displayName || !tokenId) {
+    fail("Game launch token is missing required claims.");
+  }
+  if (rawPayload.isAnonymous !== false) {
+    fail("Anonymous launch tokens are not allowed.");
+  }
+  if (issuedAt === null || expiresAt === null || !Number.isFinite(issuedAt) || !Number.isFinite(expiresAt)) {
+    fail("Game launch token timestamps are invalid.");
+  }
+
+  return {
+    v: version,
+    iss: issuer,
+    aud: audience,
+    sub: subject,
+    gameId,
+    joinCode,
+    ...(spacetimeSessionId ? { spacetimeSessionId } : {}),
+    displayName,
+    isAnonymous: false,
+    iat: issuedAt,
+    exp: expiresAt,
+    jti: tokenId,
+  };
+}
+
+function verifyGameLaunchToken(token: string, ctx: ReducerCtx<typeof spacetime.schemaType>): GameAuthPayload {
   const parts = token.split(".");
-  if (parts.length < 2) {
-    fail("convex_token is not a valid JWT.");
+  if (parts.length !== 2) {
+    fail("game_token is not valid.");
   }
-  const payloadText = base64UrlDecode(parts[1]);
-  const payload = parseJsonRecord(payloadText, "convex_token");
-  const subject = toOptionalString(payload.sub);
-  if (!subject) {
-    fail("convex_token is missing a subject.");
+
+  const payloadBytes = base64UrlDecodeToBytes(parts[0]);
+  const signatureBytes = base64UrlDecodeToBytes(parts[1]);
+  const publicKey = base64UrlDecodeToBytes(GAME_AUTH_PUBLIC_KEY_BASE64URL);
+  if (!nacl.sign.detached.verify(payloadBytes, signatureBytes, publicKey)) {
+    fail("game_token signature is invalid.");
   }
-  return subject;
+
+  const payloadRecord = parseJsonRecord(
+    new TextDecoder().decode(payloadBytes),
+    "game_token",
+  );
+  const payload = parseGameAuthPayload(payloadRecord);
+  if (BigInt(payload.exp) < nowMillis(ctx)) {
+    fail("Game launch token has expired.");
+  }
+  return payload;
 }
 
 function getIdentityRegistration(ctx: ReducerCtx<typeof spacetime.schemaType>): IdentityMapRow | null {
@@ -317,7 +417,23 @@ function getIdentityRegistration(ctx: ReducerCtx<typeof spacetime.schemaType>): 
 }
 
 function requireIdentityRegistration(ctx: ReducerCtx<typeof spacetime.schemaType>): IdentityMapRow {
-  return getIdentityRegistration(ctx) ?? fail("Register this player first.");
+  const registration = getIdentityRegistration(ctx) ?? fail("Register this player first.");
+  if (registration.expires_at < nowMillis(ctx)) {
+    ctx.db.identityMap.stdb_identity.delete(ctx.sender);
+    fail("Game access expired. Reopen this game from Stella.");
+  }
+  return registration;
+}
+
+function requireRegistrationForGame(
+  ctx: ReducerCtx<typeof spacetime.schemaType>,
+  gameId: string,
+): IdentityMapRow {
+  const registration = requireIdentityRegistration(ctx);
+  if (registration.game_id !== gameId) {
+    fail("This game launch is not valid for the current game.");
+  }
+  return registration;
 }
 
 function getSession(ctx: ReducerCtx<typeof spacetime.schemaType>, sessionId: bigint): GameSessionRow {
@@ -374,6 +490,7 @@ function requireHostPlayer(
   ctx: ReducerCtx<typeof spacetime.schemaType>,
   session: GameSessionRow,
 ): GamePlayerRow {
+  requireRegistrationForGame(ctx, session.game_id);
   const player = getRequiredPlayerByIdentity(ctx, session.session_id, ctx.sender);
   if (player.is_host !== 1) {
     fail("Only the host can do that.");
@@ -385,6 +502,7 @@ function requireHostOrTurnPlayer(
   ctx: ReducerCtx<typeof spacetime.schemaType>,
   session: GameSessionRow,
 ): GamePlayerRow {
+  requireRegistrationForGame(ctx, session.game_id);
   const player = getRequiredPlayerByIdentity(ctx, session.session_id, ctx.sender);
   if (player.is_host === 1) {
     return player;
@@ -547,24 +665,34 @@ function logGameAction(
 spacetime.reducer(
   "register_player",
   {
-    convex_token: t.string(),
-    display_name: t.string(),
+    game_token: t.string(),
   },
-  (ctx, { convex_token, display_name }) => {
-    const convexUserId = decodeJwtSubject(convex_token);
-    const trimmedName = display_name.trim();
-    if (!trimmedName) {
-      fail("display_name is required.");
+  (ctx, { game_token }) => {
+    const payload = verifyGameLaunchToken(game_token, ctx);
+    const existingTokenUse: UsedGameTokenRow | null = ctx.db.usedGameTokens.jti.find(payload.jti);
+    if (existingTokenUse) {
+      fail("This game launch token has already been used.");
     }
 
     const current = ctx.db.identityMap.stdb_identity.find(ctx.sender);
     const registeredAt = nowMicros(ctx);
+    const expiresAt = nowMillis(ctx) + GAME_REGISTRATION_TTL_MS;
+
+    ctx.db.usedGameTokens.insert({
+      id: 0n,
+      jti: payload.jti,
+      stdb_identity: ctx.sender,
+      game_id: payload.gameId,
+      used_at: registeredAt,
+    });
 
     if (current) {
       ctx.db.identityMap.stdb_identity.update({
         ...current,
-        convex_user_id: convexUserId,
-        display_name: trimmedName,
+        game_id: payload.gameId,
+        convex_user_id: payload.sub,
+        display_name: payload.displayName,
+        expires_at: expiresAt,
         registered_at: registeredAt,
       });
       return;
@@ -573,8 +701,10 @@ spacetime.reducer(
     ctx.db.identityMap.insert({
       id: 0n,
       stdb_identity: ctx.sender,
-      convex_user_id: convexUserId,
-      display_name: trimmedName,
+      game_id: payload.gameId,
+      convex_user_id: payload.sub,
+      display_name: payload.displayName,
+      expires_at: expiresAt,
       registered_at: registeredAt,
     });
   },
@@ -602,6 +732,7 @@ spacetime.reducer(
     const createdAt = nowMicros(ctx);
     const session = ctx.db.gameSessions.insert({
       session_id: 0n,
+      game_id: registration.game_id,
       join_code: generateJoinCode(ctx),
       host_identity: ctx.sender,
       host_convex_id: registration.convex_user_id,
@@ -644,6 +775,9 @@ spacetime.reducer(
   (ctx, { join_code }) => {
     const registration = requireIdentityRegistration(ctx);
     const session = getSessionByJoinCode(ctx, join_code);
+    if (session.game_id !== registration.game_id) {
+      fail("This launch token cannot join that session.");
+    }
     validateSessionStatus(session, ["lobby"]);
 
     const players = getPlayersForSession(ctx, session.session_id);
@@ -684,6 +818,7 @@ spacetime.reducer(
   },
   (ctx, { session_id }) => {
     const session = getSession(ctx, session_id);
+    requireRegistrationForGame(ctx, session.game_id);
     const player = getRequiredPlayerByIdentity(ctx, session.session_id, ctx.sender);
 
     if (session.status === "lobby") {
@@ -800,6 +935,7 @@ spacetime.reducer(
   },
   (ctx, { session_id, action_type, payload_json, result_json }) => {
     const session = getSession(ctx, session_id);
+    requireRegistrationForGame(ctx, session.game_id);
     validateSessionStatus(session, ["active"]);
     const player = getRequiredPlayerByIdentity(ctx, session.session_id, ctx.sender);
 
@@ -979,6 +1115,7 @@ spacetime.reducer(
   },
   (ctx, { session_id, target_player_slot, state_key, state_value }) => {
     const session = getSession(ctx, session_id);
+    requireRegistrationForGame(ctx, session.game_id);
     const caller = getRequiredPlayerByIdentity(ctx, session.session_id, ctx.sender);
     const targetPlayer = getRequiredPlayerBySlot(ctx, session.session_id, target_player_slot);
     const trimmedKey = state_key.trim();
@@ -1027,6 +1164,7 @@ spacetime.reducer(
   },
   (ctx, { session_id, message, message_type }) => {
     const session = getSession(ctx, session_id);
+    requireRegistrationForGame(ctx, session.game_id);
     const player = getRequiredPlayerByIdentity(ctx, session.session_id, ctx.sender);
     const trimmedMessage = message.trim();
     if (!trimmedMessage) {
@@ -1058,13 +1196,14 @@ spacetime.reducer(
     session_id: t.u64(),
   },
   (ctx, { session_id }) => {
+    const session = getSession(ctx, session_id);
+    requireHostPlayer(ctx, session);
     const schedule = getTickScheduleForSession(ctx, session_id);
     if (!schedule) {
       fail("No active tick timer for this session.");
     }
 
-    const session = ctx.db.gameSessions.session_id.find(session_id);
-    if (!session || session.status !== "active") {
+    if (session.status !== "active") {
       deleteTickSchedulesForSession(ctx, session_id);
       return;
     }
