@@ -8,7 +8,6 @@ import { v } from "convex/values";
 import { requireUserId } from "../auth";
 import {
   ensureOwnerConnection,
-  isOwnerInConnectedMode,
   type DmPolicy,
 } from "./routing_flow";
 import { upsertPreferenceRecord } from "../data/preferences";
@@ -259,10 +258,8 @@ export const getConnection = query({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
+    if ((identity as Record<string, unknown>).isAnonymous === true) return null;
     const ownerId = identity.subject;
-    if (!(await isOwnerInConnectedMode({ ctx, ownerId }))) {
-      return null;
-    }
 
     return await ctx.db
       .query("channel_connections")

@@ -182,20 +182,16 @@ describe("security regressions", () => {
 
     expect(pipelineSource).toContain("const transient = syncMode === SYNC_MODE_OFF");
     expect(pipelineSource).toContain("const userMessageId = transient");
-    expect(routingFlowSource).toContain("isOwnerInConnectedMode");
     expect(routingFlowSource).toContain("resolveConnectionForIncomingMessage");
     expect(pipelineSource).toContain("const candidates = buildDesktopTurnCandidates({");
     expect(pipelineSource).not.toContain("runtimeMode === \"cloud_247\"");
     expect(pipelineSource).toContain("const usedBackendFallback =");
   });
 
-  test("connection resolver does not auto-create links when account mode is private local", () => {
-    const source = readBackendFile("convex/channels/routing_flow.ts");
-    expect(source).toContain("isOwnerInConnectedMode");
-    expect(source).toContain("if (!(await isOwnerInConnectedMode");
-    expect(source).toMatch(
-      /policyOwnerId[\s\S]*?isOwnerInConnectedMode[\s\S]*?return null;[\s\S]*?ensureOwnerConnection/,
-    );
+  test("link code generation requires signed-in (non-anonymous) user", () => {
+    const source = readBackendFile("convex/channels/link_codes.ts");
+    expect(source).toContain("isAnonymous");
+    expect(source).toContain("SIGN_IN_REQUIRED_ERROR");
   });
 
   test("transient channel retention is tightened and cleanup failures are retained", () => {

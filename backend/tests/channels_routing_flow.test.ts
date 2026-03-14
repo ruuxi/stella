@@ -1,8 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   shouldBlockInboundByDmPolicy,
-  CONNECTED_MODE_REQUIRED_ERROR,
-  ACCOUNT_MODE_CONNECTED,
+  SIGN_IN_REQUIRED_ERROR,
   type DmPolicyConfig,
 } from "../convex/channels/routing_flow";
 
@@ -108,11 +107,7 @@ describe("shouldBlockInboundByDmPolicy", () => {
 });
 
 describe("constants", () => {
-  test("ACCOUNT_MODE_CONNECTED is 'connected'", () => {
-    expect(ACCOUNT_MODE_CONNECTED).toBe("connected");
-  });
-
-  test("CONNECTED_MODE_REQUIRED_ERROR is defined", () => {
-    expect(CONNECTED_MODE_REQUIRED_ERROR).toContain("Connected mode");
+  test("SIGN_IN_REQUIRED_ERROR is defined", () => {
+    expect(SIGN_IN_REQUIRED_ERROR).toContain("signed-in");
   });
 });
