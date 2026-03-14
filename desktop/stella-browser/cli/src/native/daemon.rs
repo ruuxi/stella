@@ -127,6 +127,9 @@ async fn run_socket_server(
                 if let Some(ref mut mgr) = s.browser {
                     let _ = mgr.close().await;
                 }
+                if let Some(ref mut bridge) = s.extension_bridge {
+                    let _ = bridge.stop().await;
+                }
                 break;
             }
             _ = reset_rx.recv(), if idle_timeout_ms.is_some() => {
@@ -136,6 +139,9 @@ async fn run_socket_server(
                 let mut s = state.lock().await;
                 if let Some(ref mut mgr) = s.browser {
                     let _ = mgr.close().await;
+                }
+                if let Some(ref mut bridge) = s.extension_bridge {
+                    let _ = bridge.stop().await;
                 }
                 break;
             }
@@ -200,6 +206,9 @@ async fn run_socket_server(
                 if let Some(ref mut mgr) = s.browser {
                     let _ = mgr.close().await;
                 }
+                if let Some(ref mut bridge) = s.extension_bridge {
+                    let _ = bridge.stop().await;
+                }
                 let _ = fs::remove_file(&port_path);
                 break;
             }
@@ -210,6 +219,9 @@ async fn run_socket_server(
                 let mut s = state.lock().await;
                 if let Some(ref mut mgr) = s.browser {
                     let _ = mgr.close().await;
+                }
+                if let Some(ref mut bridge) = s.extension_bridge {
+                    let _ = bridge.stop().await;
                 }
                 let _ = fs::remove_file(&port_path);
                 break;
@@ -334,7 +346,7 @@ async fn shutdown_signal() {
     }
 }
 
-fn get_daemon_socket_dir() -> PathBuf {
+pub fn get_daemon_socket_dir() -> PathBuf {
     if let Ok(dir) = env::var("STELLA_BROWSER_SOCKET_DIR") {
         if !dir.is_empty() {
             return PathBuf::from(dir);
