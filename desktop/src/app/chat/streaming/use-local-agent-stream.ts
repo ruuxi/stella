@@ -70,6 +70,7 @@ export function useLocalAgentStream({
   const localRunIdRef = useRef<string | null>(null)
   const localSeqByRunIdRef = useRef(new Map<string, number>())
   const userMessageIdByRunIdRef = useRef(new Map<string, string>())
+  const cancelledStreamRunIdsRef = useRef(new Set<number>())
   const queuedRunStartsRef = useRef<Array<{ runId: string; userMessageId: string }>>(
     [],
   )
@@ -117,22 +118,28 @@ export function useLocalAgentStream({
   }, [resetReasoningText, resetStreamingText])
 
   const cancelCurrentStream = useCallback(() => {
-    if (localRunIdRef.current && window.electronAPI?.agent.cancelChat) {
-      window.electronAPI.agent.cancelChat(localRunIdRef.current)
-      userMessageIdByRunIdRef.current.delete(localRunIdRef.current)
-      localSeqByRunIdRef.current.delete(localRunIdRef.current)
-      localRunIdRef.current = null
+    const runIdCounter = streamRunIdRef.current
+    if (runIdCounter > 0) {
+      cancelledStreamRunIdsRef.current.add(runIdCounter)
+      streamRunIdRef.current = runIdCounter + 1
     }
 
-    if (
-      pendingQueuedStartCountRef.current === 0 &&
-      queuedRunStartsRef.current.length === 0 &&
-      agentStreamCleanupRef.current
-    ) {
+    if (localRunIdRef.current && window.electronAPI?.agent.cancelChat) {
+      window.electronAPI.agent.cancelChat(localRunIdRef.current)
+    }
+
+    userMessageIdByRunIdRef.current.clear()
+    localSeqByRunIdRef.current.clear()
+    queuedRunStartsRef.current = []
+    pendingQueuedStartCountRef.current = 0
+    localRunIdRef.current = null
+    resetStreamingState()
+
+    if (agentStreamCleanupRef.current) {
       agentStreamCleanupRef.current()
       agentStreamCleanupRef.current = null
     }
-  }, [])
+  }, [resetStreamingState])
 
   const handleAgentEvent = useCallback(
     (event: AgentStreamEvent, runIdCounter: number) => {
@@ -301,11 +308,21 @@ export function useLocalAgentStream({
           storageMode,
         })
         .then(({ runId: agentRunId }) => {
-          if (runIdCounter !== streamRunIdRef.current) return
+          const wasCancelled = cancelledStreamRunIdsRef.current.has(runIdCounter)
+          if (runIdCounter !== streamRunIdRef.current) {
+            if (wasCancelled && window.electronAPI?.agent.cancelChat) {
+              window.electronAPI.agent.cancelChat(agentRunId)
+              cancelledStreamRunIdsRef.current.delete(runIdCounter)
+            }
+            return
+          }
+
+          cancelledStreamRunIdsRef.current.delete(runIdCounter)
           localRunIdRef.current = agentRunId
           userMessageIdByRunIdRef.current.set(agentRunId, args.userMessageId)
         })
         .catch((error) => {
+          cancelledStreamRunIdsRef.current.delete(runIdCounter)
           if (runIdCounter !== streamRunIdRef.current) return
 
           console.error('Failed to start local agent chat:', (error as Error).message)
@@ -429,10 +446,16 @@ export function useLocalAgentStream({
           storageMode,
         })
         .then(({ runId: agentRunId }) => {
+          const wasCancelled = cancelledStreamRunIdsRef.current.has(runIdCounter)
           if (runIdCounter !== streamRunIdRef.current) {
+            if (wasCancelled && window.electronAPI?.agent.cancelChat) {
+              window.electronAPI.agent.cancelChat(agentRunId)
+              cancelledStreamRunIdsRef.current.delete(runIdCounter)
+            }
             return
           }
 
+          cancelledStreamRunIdsRef.current.delete(runIdCounter)
           queuedRunStartsRef.current.push({
             runId: agentRunId,
             userMessageId: args.userMessageId,
@@ -440,6 +463,7 @@ export function useLocalAgentStream({
           activateNextQueuedRun()
         })
         .catch((error) => {
+          cancelledStreamRunIdsRef.current.delete(runIdCounter)
           if (runIdCounter !== streamRunIdRef.current) {
             return
           }
