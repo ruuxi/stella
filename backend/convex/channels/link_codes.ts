@@ -6,12 +6,10 @@ import {
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { ActionCtx } from "../_generated/server";
-import { requireUserId } from "../auth";
 import { hashSha256Hex } from "../lib/crypto_utils";
 import {
-  CONNECTED_MODE_REQUIRED_ERROR,
+  SIGN_IN_REQUIRED_ERROR,
   evaluateLinkingDmPolicy,
-  isOwnerInConnectedMode,
 } from "./routing_flow";
 
 // ---------------------------------------------------------------------------
@@ -183,10 +181,14 @@ export const generateLinkCode = mutation({
   args: { provider: v.string() },
   returns: v.object({ code: v.string() }),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    if (!(await isOwnerInConnectedMode({ ctx, ownerId }))) {
-      throw new Error(CONNECTED_MODE_REQUIRED_ERROR);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error(SIGN_IN_REQUIRED_ERROR);
     }
+    if ((identity as Record<string, unknown>).isAnonymous === true) {
+      throw new Error(SIGN_IN_REQUIRED_ERROR);
+    }
+    const ownerId = identity.subject;
 
     const code = generateSecureLinkCode(6);
 
@@ -226,8 +228,6 @@ export async function processLinkCode(args: {
     { provider: args.provider, code: args.code },
   );
   if (!ownerId) return "invalid_code";
-
-  if (!(await isOwnerInConnectedMode({ ctx: args.ctx, ownerId }))) return "linking_disabled";
 
   const policy = await args.ctx.runQuery(internal.channels.utils.getDmPolicyConfig, {
     ownerId,

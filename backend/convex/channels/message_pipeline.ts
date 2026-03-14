@@ -6,7 +6,6 @@ import type { RunAgentTurnResult } from "../automation/runner";
 import { optionalChannelEnvelopeValidator } from "../shared_validators";
 import {
   ensureOwnerConnection,
-  isOwnerInConnectedMode,
   resolveConnectionForIncomingMessage,
 } from "./routing_flow";
 import { sleep } from "../lib/async";
@@ -54,8 +53,6 @@ type ProcessIncomingMessageArgs = {
 
 export const DM_POLICY_DEFAULT = "pairing" as const;
 export const SYNC_MODE_OFF: SyncMode = "off";
-export const CONNECTED_MODE_REQUIRED_MESSAGE =
-  "Connectors are disabled in Private Local mode. Enable Connected mode in Stella Settings to continue.";
 export const EXECUTION_NOT_AVAILABLE_MESSAGE =
   "Your desktop is offline right now. Open Stella on your desktop and try again.";
 export const TRANSIENT_CLEANUP_MAX_ATTEMPTS = 4;
@@ -236,13 +233,6 @@ const persistInboundAssistantMessage = async (args: {
 export async function processIncomingMessage(
   args: ProcessIncomingMessageArgs,
 ): Promise<{ text: string; deferred?: boolean } | null> {
-  if (args.ownerId && !(await isOwnerInConnectedMode({ ctx: args.ctx, ownerId: args.ownerId }))) {
-    if (args.respond === false) {
-      return { text: "" };
-    }
-    return { text: CONNECTED_MODE_REQUIRED_MESSAGE };
-  }
-
   const connection = await resolveConnectionForIncomingMessage({
     ctx: args.ctx,
     ownerId: args.ownerId,
@@ -253,13 +243,6 @@ export async function processIncomingMessage(
   });
   if (!connection) {
     return null;
-  }
-
-  if (!(await isOwnerInConnectedMode({ ctx: args.ctx, ownerId: connection.ownerId }))) {
-    if (args.respond === false) {
-      return { text: "" };
-    }
-    return { text: CONNECTED_MODE_REQUIRED_MESSAGE };
   }
 
   const conversationId = await resolveConversationIdForIncomingMessage({
