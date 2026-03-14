@@ -39,6 +39,12 @@ import { canResolveLlmRoute, resolveLlmRoute } from "./model-routing.js";
 import { createRemoteTurnBridge } from "./remote-turn-bridge.js";
 import { normalizeStellaApiBaseUrl } from "./stella-provider.js";
 import type { SelfModHmrState } from "../../../src/shared/contracts/electron-data.js";
+import type {
+  StorePackageRecord,
+  StorePackageReleaseRecord,
+  StoreReleaseArtifact,
+  StoreReleaseManifest,
+} from "../../../src/shared/contracts/electron-data.js";
 import {
   buildRuntimeThreadKey,
   parseThreadCheckpoint,
@@ -80,6 +86,22 @@ export type StellaHostRunnerOptions = {
   stellaBrowserBinPath?: string;
   stellaUiCliPath?: string;
   selfModMonitor?: SelfModMonitor | null;
+  selfModLifecycle?: {
+    beginRun: (args: {
+      runId: string;
+      taskDescription: string;
+      taskPrompt: string;
+      conversationId: string;
+    }) => Promise<void> | void;
+    finalizeRun: (args: {
+      runId: string;
+      taskDescription: string;
+      taskPrompt: string;
+      conversationId: string;
+      succeeded: boolean;
+    }) => Promise<void> | void;
+    cancelRun?: (runId: string) => Promise<void> | void;
+  } | null;
   selfModHmrController?: {
     pause: (runId: string) => Promise<boolean>;
     resume: (runId: string) => Promise<boolean>;
@@ -266,6 +288,7 @@ export const createStellaHostRunner = ({
   stellaBrowserBinPath,
   stellaUiCliPath,
   selfModMonitor,
+  selfModLifecycle,
   selfModHmrController,
   getHmrMorphOrchestrator,
   requestCredential,
@@ -460,6 +483,206 @@ export const createStellaHostRunner = ({
     } catch (error) {
       return { text: `WebSearch failed: ${(error as Error).message}`, results: [] };
     }
+  };
+
+  const ensureStoreClient = (): ConvexClient => {
+    const client = ensureConvexClient();
+    if (!client) {
+      throw new Error("Not connected to Convex. Sign in or set STELLA_CONVEX_URL.");
+    }
+    return client;
+  };
+
+  const toSharedStorePackage = (value: unknown): StorePackageRecord | null => {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    const record = value as Record<string, unknown>;
+    if (
+      typeof record.packageId !== "string"
+      || typeof record.featureId !== "string"
+      || typeof record.displayName !== "string"
+      || typeof record.description !== "string"
+      || typeof record.latestReleaseNumber !== "number"
+      || typeof record.createdAt !== "number"
+      || typeof record.updatedAt !== "number"
+    ) {
+      return null;
+    }
+    return {
+      packageId: record.packageId,
+      featureId: record.featureId,
+      displayName: record.displayName,
+      description: record.description,
+      latestReleaseNumber: record.latestReleaseNumber,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    };
+  };
+
+  const toSharedStoreRelease = (args: {
+    release: unknown;
+    packageRecord: StorePackageRecord;
+  }): StorePackageReleaseRecord | null => {
+    if (!args.release || typeof args.release !== "object") {
+      return null;
+    }
+    const record = args.release as Record<string, unknown>;
+    const manifest = record.manifest && typeof record.manifest === "object"
+      ? record.manifest as Record<string, unknown>
+      : null;
+    if (
+      !manifest
+      || typeof record.packageId !== "string"
+      || typeof record.releaseNumber !== "number"
+      || typeof record.createdAt !== "number"
+      || typeof record.artifactStorageKey !== "string"
+      || typeof manifest.featureId !== "string"
+      || !Array.isArray(manifest.includedBatchIds)
+      || !Array.isArray(manifest.includedCommitHashes)
+      || !Array.isArray(manifest.changedFiles)
+    ) {
+      return null;
+    }
+    return {
+      packageId: record.packageId,
+      releaseNumber: record.releaseNumber,
+      manifest: {
+        featureId: manifest.featureId,
+        packageId: record.packageId,
+        releaseNumber: record.releaseNumber,
+        displayName: args.packageRecord.displayName,
+        description: args.packageRecord.description,
+        ...(typeof record.releaseNotes === "string" ? { releaseNotes: record.releaseNotes } : {}),
+        batchIds: manifest.includedBatchIds.filter((value): value is string => typeof value === "string"),
+        commitHashes: manifest.includedCommitHashes.filter((value): value is string => typeof value === "string"),
+        files: manifest.changedFiles.filter((value): value is string => typeof value === "string"),
+        createdAt: record.createdAt,
+      },
+      storageKey: record.artifactStorageKey,
+      ...(record.artifactUrl == null || typeof record.artifactUrl === "string"
+        ? { artifactUrl: record.artifactUrl as string | null | undefined }
+        : {}),
+      createdAt: record.createdAt,
+    };
+  };
+
+  const toBackendStoreManifest = (manifest: StoreReleaseManifest): {
+    featureId: string;
+    includedBatchIds: string[];
+    includedCommitHashes: string[];
+    changedFiles: string[];
+    summary?: string;
+  } => ({
+    featureId: manifest.featureId,
+    includedBatchIds: [...manifest.batchIds],
+    includedCommitHashes: [...manifest.commitHashes],
+    changedFiles: [...manifest.files],
+    ...(manifest.releaseNotes ? { summary: manifest.releaseNotes } : {}),
+  });
+
+  const listStorePackages = async (): Promise<StorePackageRecord[]> => {
+    const client = ensureStoreClient();
+    const records = await client.query(convexApi.data.store_packages.listPackages, {}) as unknown[];
+    return records
+      .map((record) => toSharedStorePackage(record))
+      .filter((record): record is StorePackageRecord => Boolean(record));
+  };
+
+  const getStorePackage = async (packageId: string): Promise<StorePackageRecord | null> => {
+    const client = ensureStoreClient();
+    const record = await client.query(convexApi.data.store_packages.getPackage, { packageId }) as unknown;
+    return toSharedStorePackage(record);
+  };
+
+  const listStorePackageReleases = async (packageId: string): Promise<StorePackageReleaseRecord[]> => {
+    const client = ensureStoreClient();
+    const packageRecord = await getStorePackage(packageId);
+    if (!packageRecord) {
+      return [];
+    }
+    const records = await client.query(convexApi.data.store_packages.listReleases, { packageId }) as unknown[];
+    return records
+      .map((record) => toSharedStoreRelease({ release: record, packageRecord }))
+      .filter((record): record is StorePackageReleaseRecord => Boolean(record));
+  };
+
+  const getStorePackageRelease = async (
+    packageId: string,
+    releaseNumber: number,
+  ): Promise<StorePackageReleaseRecord | null> => {
+    const client = ensureStoreClient();
+    const packageRecord = await getStorePackage(packageId);
+    if (!packageRecord) {
+      return null;
+    }
+    const record = await client.query(
+      convexApi.data.store_packages.getRelease,
+      { packageId, releaseNumber },
+    ) as unknown;
+    return toSharedStoreRelease({ release: record, packageRecord });
+  };
+
+  const createFirstStoreRelease = async (args: {
+    packageId: string;
+    featureId: string;
+    displayName: string;
+    description: string;
+    releaseNotes?: string;
+    manifest: StoreReleaseManifest;
+    artifact: StoreReleaseArtifact;
+  }): Promise<StorePackageReleaseRecord> => {
+    const client = ensureStoreClient();
+    const result = await client.action(convexApi.data.store_packages.createFirstRelease, {
+      packageId: args.packageId,
+      displayName: args.displayName,
+      description: args.description,
+      releaseNotes: args.releaseNotes,
+      manifest: toBackendStoreManifest(args.manifest),
+      artifactBody: JSON.stringify(args.artifact),
+      artifactContentType: "application/json",
+    }) as {
+      package?: unknown;
+      release?: unknown;
+    };
+    const packageRecord = toSharedStorePackage(result.package);
+    const releaseRecord = packageRecord
+      ? toSharedStoreRelease({ release: result.release, packageRecord })
+      : null;
+    if (!releaseRecord) {
+      throw new Error("Store publish returned an invalid release payload.");
+    }
+    return releaseRecord;
+  };
+
+  const createStoreReleaseUpdate = async (args: {
+    packageId: string;
+    featureId: string;
+    displayName: string;
+    description: string;
+    releaseNotes?: string;
+    manifest: StoreReleaseManifest;
+    artifact: StoreReleaseArtifact;
+  }): Promise<StorePackageReleaseRecord> => {
+    const client = ensureStoreClient();
+    const result = await client.action(convexApi.data.store_packages.createUpdateRelease, {
+      packageId: args.packageId,
+      releaseNotes: args.releaseNotes,
+      manifest: toBackendStoreManifest(args.manifest),
+      artifactBody: JSON.stringify(args.artifact),
+      artifactContentType: "application/json",
+    }) as {
+      package?: unknown;
+      release?: unknown;
+    };
+    const packageRecord = toSharedStorePackage(result.package);
+    const releaseRecord = packageRecord
+      ? toSharedStoreRelease({ release: result.release, packageRecord })
+      : null;
+    if (!releaseRecord) {
+      throw new Error("Store publish returned an invalid release payload.");
+    }
+    return releaseRecord;
   };
 
 
@@ -887,8 +1110,17 @@ export const createStellaHostRunner = ({
       if (shouldControlHmr && pauseApplied) {
         reportSelfModHmrState(createSelfModHmrState("paused", true));
       }
+      if (shouldControlHmr && selfModLifecycle) {
+        await Promise.resolve(selfModLifecycle.beginRun({
+          runId,
+          taskDescription,
+          taskPrompt,
+          conversationId,
+        }));
+      }
+      let subagentSucceeded = false;
       try {
-        return await runSubagentTask({
+        const result = await runSubagentTask({
           conversationId,
           userMessageId,
           runId,
@@ -915,7 +1147,22 @@ export const createStellaHostRunner = ({
           webSearch,
           hookEmitter,
         });
+        subagentSucceeded = !result.error;
+        return result;
       } finally {
+        if (shouldControlHmr && selfModLifecycle) {
+          if (subagentSucceeded) {
+            await Promise.resolve(selfModLifecycle.finalizeRun({
+              runId,
+              taskDescription,
+              taskPrompt,
+              conversationId,
+              succeeded: true,
+            }));
+          } else if (typeof selfModLifecycle.cancelRun === "function") {
+            await Promise.resolve(selfModLifecycle.cancelRun(runId));
+          }
+        }
         if (shouldControlHmr && selfModHmrController) {
           const status = await selfModHmrController.getStatus().catch(() => null);
           const requiresFullReload = Boolean(status?.requiresFullReload);
@@ -1582,6 +1829,12 @@ export const createStellaHostRunner = ({
     ) => toolHost.executeTool(toolName, toolArgs, context),
     agentHealthCheck,
     webSearch,
+    listStorePackages,
+    getStorePackage,
+    listStorePackageReleases,
+    getStorePackageRelease,
+    createFirstStoreRelease,
+    createStoreReleaseUpdate,
     handleLocalChat,
     runAutomationTurn,
     cancelLocalChat,

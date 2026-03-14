@@ -29,6 +29,14 @@ import type {
   AllUserSignals as SharedAllUserSignals,
   AllUserSignalsResult as SharedAllUserSignalsResult,
   SelfModFeatureSummary as SharedSelfModFeatureSummary,
+  SelfModFeatureRecord as SharedSelfModFeatureRecord,
+  SelfModBatchRecord as SharedSelfModBatchRecord,
+  StoreReleaseDraft as SharedStoreReleaseDraft,
+  StoreReleaseArtifact as SharedStoreReleaseArtifact,
+  StoreReleaseManifest as SharedStoreReleaseManifest,
+  StorePackageRecord as SharedStorePackageRecord,
+  StorePackageReleaseRecord as SharedStorePackageReleaseRecord,
+  InstalledStoreModRecord as SharedInstalledStoreModRecord,
   SelfModHmrPhase as SharedSelfModHmrPhase,
   SelfModHmrState as SharedSelfModHmrState,
   AgentHealth as SharedAgentHealth,
@@ -69,6 +77,14 @@ export type AllUserSignals = SharedAllUserSignals;
 export type AllUserSignalsResult = SharedAllUserSignalsResult;
 export type AgentStreamIpcEvent = AgentStreamEvent;
 export type SelfModFeatureSummary = SharedSelfModFeatureSummary;
+export type SelfModFeatureRecord = SharedSelfModFeatureRecord;
+export type SelfModBatchRecord = SharedSelfModBatchRecord;
+export type StoreReleaseDraft = SharedStoreReleaseDraft;
+export type StoreReleaseArtifact = SharedStoreReleaseArtifact;
+export type StoreReleaseManifest = SharedStoreReleaseManifest;
+export type StorePackageRecord = SharedStorePackageRecord;
+export type StorePackageReleaseRecord = SharedStorePackageReleaseRecord;
+export type InstalledStoreModRecord = SharedInstalledStoreModRecord;
 export type SelfModHmrPhase = SharedSelfModHmrPhase;
 export type SelfModHmrState = SharedSelfModHmrState;
 export type AgentHealth = SharedAgentHealth;
@@ -415,6 +431,39 @@ export type ElectronScheduleApi = {
   onUpdated: (callback: () => void) => () => void;
 };
 
+export type ElectronStoreApi = {
+  listSelfModFeatures: (limit?: number) => Promise<SelfModFeatureRecord[]>;
+  listFeatureBatches: (featureId: string) => Promise<SelfModBatchRecord[]>;
+  getReleaseDraft: (payload: {
+    featureId: string;
+    batchIds?: string[];
+  }) => Promise<StoreReleaseDraft>;
+  publishRelease: (payload: {
+    featureId: string;
+    packageId?: string;
+    displayName?: string;
+    description?: string;
+    releaseNotes?: string;
+    batchIds?: string[];
+  }) => Promise<StorePackageReleaseRecord>;
+  listPackages: () => Promise<StorePackageRecord[]>;
+  getPackage: (packageId: string) => Promise<StorePackageRecord | null>;
+  listPackageReleases: (packageId: string) => Promise<StorePackageReleaseRecord[]>;
+  getPackageRelease: (payload: {
+    packageId: string;
+    releaseNumber: number;
+  }) => Promise<StorePackageReleaseRecord | null>;
+  listInstalledMods: () => Promise<InstalledStoreModRecord[]>;
+  installRelease: (payload: {
+    packageId: string;
+    releaseNumber?: number;
+  }) => Promise<InstalledStoreModRecord>;
+  uninstallPackage: (packageId: string) => Promise<{
+    packageId: string;
+    revertedCommits: string[];
+  }>;
+};
+
 export type ElectronLocalChatApi = {
   getOrCreateDefaultConversationId: () => Promise<string>;
   listEvents: (payload: {
@@ -479,6 +528,7 @@ export type ElectronApi = {
   browser: ElectronBrowserApi;
   projects: ElectronProjectsApi;
   schedule: ElectronScheduleApi;
+  store: ElectronStoreApi;
   localChat: ElectronLocalChatApi;
 };
 

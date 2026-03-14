@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import { execFile } from "child_process";
+import os from "os";
 import { promisify } from "util";
 import path from "path";
 import { resolveRuntimeHomePath } from "../system/stella-home.js";
@@ -58,6 +59,20 @@ export type SelfModAppliedPayload = {
   featureId: string;
   files: string[];
   batchIndex: number;
+};
+
+export type GitFeatureCommitArgs = {
+  repoRoot: string;
+  featureId: string;
+  batchId: string;
+  ordinal: number;
+  taskDescription?: string;
+};
+
+export type GitCustomCommitArgs = {
+  repoRoot: string;
+  subject: string;
+  bodyLines?: string[];
 };
 
 const humanizeFeatureId = (featureId: string): string =>
@@ -192,17 +207,58 @@ const listTaggedCommits = async (
 };
 
 const listDirtyFiles = async (repoRoot: string): Promise<string[]> => {
-  const output = await runGit(repoRoot, [
+  const result = await execFileAsync("git", [
     "-c",
     "core.quotepath=false",
     "status",
     "--porcelain",
-  ]);
+  ], {
+    cwd: repoRoot,
+    windowsHide: true,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  const output = result.stdout.replace(/\r?\n$/, "");
   if (!output) return [];
   return output
     .split("\n")
     .map((line) => parseStatusPath(line))
     .filter((line): line is string => Boolean(line));
+};
+
+const listDependencyFiles = async (repoRoot: string): Promise<string[]> => {
+  const candidates = [
+    "package.json",
+    "bun.lock",
+    "bun.lockb",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "npm-shrinkwrap.json",
+  ];
+  const existing: string[] = [];
+  for (const relativePath of candidates) {
+    try {
+      await fs.access(path.join(repoRoot, relativePath));
+      existing.push(relativePath);
+    } catch {
+      // Ignore missing dependency files.
+    }
+  }
+  return existing;
+};
+
+const hasStagedChanges = async (repoRoot: string): Promise<boolean> => {
+  try {
+    await execFileAsync("git", ["diff", "--cached", "--quiet", "--exit-code"], {
+      cwd: repoRoot,
+      windowsHide: true,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    return false;
+  } catch (error) {
+    const err = error as { code?: number | string };
+    return err.code === 1 || err.code === "1";
+  }
 };
 
 export const getGitHead = async (repoRoot: string): Promise<string | null> => {
@@ -318,7 +374,7 @@ export const getLastGitFeatureId = async (
   return recent[0]?.featureId ?? null;
 };
 
-const listFeatureCommitHashes = async (
+export const listFeatureCommitHashes = async (
   repoRoot: string,
   featureId: string,
 ): Promise<string[]> => {
@@ -395,6 +451,206 @@ const getChangedFilesForCommit = async (
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
+};
+
+export const listGitDirtyFiles = async (repoRoot: string): Promise<string[]> => {
+  await assertGitRepository(repoRoot);
+  return await listDirtyFiles(repoRoot);
+};
+
+export const stageGitFiles = async (
+  repoRoot: string,
+  files: string[],
+): Promise<void> => {
+  await assertGitRepository(repoRoot);
+  const uniqueFiles = Array.from(new Set(files.map(normalizeGitPath).filter(Boolean)));
+  if (uniqueFiles.length === 0) {
+    return;
+  }
+  await runGit(repoRoot, ["add", "--", ...uniqueFiles]);
+};
+
+export const stageFeatureDependencyFiles = async (repoRoot: string): Promise<string[]> => {
+  await assertGitRepository(repoRoot);
+  const dependencyFiles = await listDependencyFiles(repoRoot);
+  if (dependencyFiles.length > 0) {
+    await runGit(repoRoot, ["add", "--", ...dependencyFiles]);
+  }
+  return dependencyFiles;
+};
+
+export const commitGitFeatureBatch = async (
+  args: GitFeatureCommitArgs,
+): Promise<string | null> => {
+  await assertGitRepository(args.repoRoot);
+  if (!(await hasStagedChanges(args.repoRoot))) {
+    return null;
+  }
+
+  const subject = `Self-mod batch ${args.ordinal} [feature:${args.featureId}]`;
+  const bodyLines = [
+    `Stella-Batch-Id: ${args.batchId}`,
+    `Stella-Feature-Id: ${args.featureId}`,
+  ];
+  if (args.taskDescription?.trim()) {
+    bodyLines.push(`Stella-Task: ${args.taskDescription.trim()}`);
+  }
+
+  return await commitGitOperation({
+    repoRoot: args.repoRoot,
+    subject,
+    bodyLines,
+  });
+};
+
+export const commitGitOperation = async (
+  args: GitCustomCommitArgs,
+): Promise<string | null> => {
+  await assertGitRepository(args.repoRoot);
+  if (!(await hasStagedChanges(args.repoRoot))) {
+    return null;
+  }
+
+  await runGit(args.repoRoot, [
+    "commit",
+    "-m",
+    args.subject,
+    "-m",
+    (args.bodyLines ?? []).join("\n"),
+  ]);
+  return await getGitHead(args.repoRoot);
+};
+
+export const getCommitFileSnapshot = async (args: {
+  repoRoot: string;
+  commitHash: string;
+  filePath: string;
+}): Promise<{ path: string; deleted: boolean; contentBase64?: string }> => {
+  await assertGitRepository(args.repoRoot);
+  const gitPath = normalizeGitPath(args.filePath);
+  try {
+    const result = await execFileAsync(
+      "git",
+      ["show", `${args.commitHash}:${gitPath}`],
+      {
+        cwd: args.repoRoot,
+        windowsHide: true,
+        maxBuffer: 25 * 1024 * 1024,
+        encoding: "buffer",
+      } as never,
+    );
+    const buffer =
+      Buffer.isBuffer(result.stdout)
+        ? result.stdout
+        : Buffer.from(result.stdout as unknown as string);
+    return {
+      path: gitPath,
+      deleted: false,
+      contentBase64: buffer.toString("base64"),
+    };
+  } catch {
+    return {
+      path: gitPath,
+      deleted: true,
+    };
+  }
+};
+
+export const getCommitSelectionSnapshots = async (args: {
+  repoRoot: string;
+  commitHashes: string[];
+  files: string[];
+}): Promise<Array<{ path: string; deleted: boolean; contentBase64?: string }>> => {
+  await assertGitRepository(args.repoRoot);
+  const commitHashes = Array.from(new Set(args.commitHashes.map((hash) => hash.trim()).filter(Boolean)));
+  const files = Array.from(new Set(args.files.map(normalizeGitPath).filter(Boolean)));
+  if (commitHashes.length === 0 || files.length === 0) {
+    return [];
+  }
+
+  const firstCommitHash = commitHashes[0];
+  let baseCommitHash: string;
+  try {
+    baseCommitHash = await runGit(args.repoRoot, ["rev-parse", `${firstCommitHash}^`]);
+  } catch {
+    throw new Error("Selected batches could not be reconstructed from git history.");
+  }
+
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stella-store-release-"));
+  const worktreePath = path.join(tempRoot, "worktree");
+
+  try {
+    await runGit(args.repoRoot, ["worktree", "add", "--detach", worktreePath, baseCommitHash]);
+    try {
+      for (const commitHash of commitHashes) {
+        try {
+          await runGit(worktreePath, ["cherry-pick", "--allow-empty", commitHash]);
+        } catch (error) {
+          try {
+            await runGit(worktreePath, ["cherry-pick", "--abort"]);
+          } catch {
+            // Best effort only.
+          }
+          throw new Error(
+            `Selected batches could not be reconstructed: ${(error as Error).message}`,
+          );
+        }
+      }
+
+      const snapshots: Array<{ path: string; deleted: boolean; contentBase64?: string }> = [];
+      for (const filePath of files) {
+        const absolutePath = path.join(worktreePath, filePath);
+        try {
+          const buffer = await fs.readFile(absolutePath);
+          snapshots.push({
+            path: filePath,
+            deleted: false,
+            contentBase64: buffer.toString("base64"),
+          });
+        } catch {
+          snapshots.push({
+            path: filePath,
+            deleted: true,
+          });
+        }
+      }
+      return snapshots;
+    } finally {
+      await runGit(args.repoRoot, ["worktree", "remove", "--force", worktreePath]).catch(() => undefined);
+    }
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
+  }
+};
+
+export const listCommitFiles = async (
+  repoRoot: string,
+  commitHash: string,
+): Promise<string[]> => {
+  await assertGitRepository(repoRoot);
+  return await getChangedFilesForCommit(repoRoot, commitHash);
+};
+
+export const revertGitCommits = async (args: {
+  repoRoot: string;
+  commitHashes: string[];
+}): Promise<string[]> => {
+  await assertGitRepository(args.repoRoot);
+  const reverted: string[] = [];
+  for (const hash of args.commitHashes) {
+    try {
+      await runGit(args.repoRoot, ["revert", "--no-edit", hash]);
+      reverted.push(hash);
+    } catch (error) {
+      try {
+        await runGit(args.repoRoot, ["revert", "--abort"]);
+      } catch {
+        // Best effort only.
+      }
+      throw error;
+    }
+  }
+  return reverted;
 };
 
 /** Batch version: returns a map of commitHash → normalized file paths. */
