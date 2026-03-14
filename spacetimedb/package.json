@@ -6,8 +6,8 @@
   "scripts": {
     "build": "spacetime build",
     "publish:dev": "spacetime publish stella-games-dev",
-    "publish:prod": "spacetime publish stella-games -s maincloud",
-    "generate": "spacetime generate --lang typescript --out-dir ../desktop/src/features/games/bindings",
+    "publish:prod": "spacetime publish stella-w08uu -s maincloud",
+    "generate": "spacetime generate stella-w08uu --lang typescript --out-dir ../desktop/src/features/games/bindings --js-path dist/bundle.js --yes",
     "logs": "spacetime logs stella-games -s maincloud"
   },
   "dependencies": {
