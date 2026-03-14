@@ -12,6 +12,7 @@ import {
 
 export default __t.row({
   sessionId: __t.u64().primaryKey().name("session_id"),
+  gameId: __t.string().name("game_id"),
   joinCode: __t.string().name("join_code"),
   hostIdentity: __t.identity().name("host_identity"),
   hostConvexId: __t.string().name("host_convex_id"),

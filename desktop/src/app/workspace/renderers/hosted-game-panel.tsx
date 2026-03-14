@@ -1,4 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useAction } from 'convex/react'
+import { api } from '@/convex/api'
 import { Button } from '@/ui/button'
 import { Spinner } from '@/ui/spinner'
 import type { WorkspacePanel } from '@/context/workspace-state'
@@ -6,9 +8,29 @@ import { useWorkspace } from '@/context/workspace-state'
 
 export function HostedGamePanel({ panel }: { panel: WorkspacePanel }) {
   const { closePanel } = useWorkspace()
+  const iframeRef = useRef<HTMLIFrameElement | null>(null)
+  const issueHostedGameAuthToken = useAction(api.data.games.issueHostedGameAuthToken)
   const [isLoading, setIsLoading] = useState(true)
   const [hasError, setHasError] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [launchAuth, setLaunchAuth] = useState<{
+    gameToken: string
+    joinCode: string
+    displayName: string
+    spacetimeSessionId?: string
+  } | null>(null)
   const [copied, setCopied] = useState(false)
+  const missingLaunchMetadata = !panel.gameId && !panel.joinCode
+  const targetOrigin = useMemo(() => {
+    if (!panel.gameUrl) {
+      return null
+    }
+    try {
+      return new URL(panel.gameUrl).origin
+    } catch {
+      return null
+    }
+  }, [panel.gameUrl])
 
   const handleLoad = useCallback(() => {
     setIsLoading(false)
@@ -27,6 +49,69 @@ export function HostedGamePanel({ panel }: { panel: WorkspacePanel }) {
     })
   }, [panel.joinCode])
 
+  useEffect(() => {
+    let cancelled = false
+
+    if (missingLaunchMetadata) {
+      return
+    }
+
+    void (async () => {
+      if (!cancelled) {
+        setAuthError(null)
+        setLaunchAuth(null)
+      }
+      try {
+        const auth = await issueHostedGameAuthToken({
+          ...(panel.gameId ? { gameId: panel.gameId } : {}),
+          ...(panel.joinCode ? { joinCode: panel.joinCode } : {}),
+        })
+        if (cancelled) {
+          return
+        }
+        setLaunchAuth({
+          gameToken: auth.gameToken,
+          joinCode: auth.joinCode,
+          displayName: auth.displayName,
+          ...(auth.spacetimeSessionId
+            ? { spacetimeSessionId: auth.spacetimeSessionId }
+            : {}),
+        })
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+        setAuthError(
+          error instanceof Error
+            ? error.message
+            : 'This game could not be authorized.',
+        )
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [issueHostedGameAuthToken, missingLaunchMetadata, panel.gameId, panel.joinCode])
+
+  useEffect(() => {
+    if (!launchAuth || !targetOrigin || !iframeRef.current?.contentWindow) {
+      return
+    }
+    iframeRef.current.contentWindow.postMessage(
+      {
+        type: 'stella:game-auth',
+        gameToken: launchAuth.gameToken,
+        joinCode: launchAuth.joinCode,
+        displayName: launchAuth.displayName,
+        ...(launchAuth.spacetimeSessionId
+          ? { spacetimeSessionId: launchAuth.spacetimeSessionId }
+          : {}),
+      },
+      targetOrigin,
+    )
+  }, [launchAuth, targetOrigin, isLoading])
+
   if (!panel.gameUrl) {
     return (
       <div className="workspace-error">
@@ -34,6 +119,26 @@ export function HostedGamePanel({ panel }: { panel: WorkspacePanel }) {
         <div className="workspace-error-message">
           This game has not been deployed yet.
         </div>
+      </div>
+    )
+  }
+
+  if (missingLaunchMetadata) {
+    return (
+      <div className="workspace-error">
+        <div className="workspace-error-title">Game Unavailable</div>
+        <div className="workspace-error-message">
+          This game is missing launch metadata.
+        </div>
+      </div>
+    )
+  }
+
+  if (authError) {
+    return (
+      <div className="workspace-error">
+        <div className="workspace-error-title">Game Access Required</div>
+        <div className="workspace-error-message">{authError}</div>
       </div>
     )
   }
@@ -89,10 +194,11 @@ export function HostedGamePanel({ panel }: { panel: WorkspacePanel }) {
         {isLoading && (
           <div style={styles.loadingOverlay}>
             <Spinner size="md" />
-            <span>Loading game...</span>
+            <span>{launchAuth ? 'Loading game...' : 'Authorizing game...'}</span>
           </div>
         )}
         <iframe
+          ref={iframeRef}
           title={`${panel.title || panel.name} game`}
           src={panel.gameUrl}
           style={{
