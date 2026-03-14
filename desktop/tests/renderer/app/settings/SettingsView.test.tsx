@@ -203,7 +203,7 @@ const DEFAULT_BILLING_STATUS: BillingStatusFixture = {
       rollingWindowHours: 5,
       weeklyLimitUsd: 150,
       monthlyLimitUsd: 300,
-      tokensPerMinute: 1_500_000,
+      tokensPerMinute: 2_500_000,
     },
     plus: {
       label: "Plus",
@@ -212,7 +212,7 @@ const DEFAULT_BILLING_STATUS: BillingStatusFixture = {
       rollingWindowHours: 5,
       weeklyLimitUsd: 600,
       monthlyLimitUsd: 1_200,
-      tokensPerMinute: 3_000_000,
+      tokensPerMinute: 10_000_000,
     },
   },
 };
