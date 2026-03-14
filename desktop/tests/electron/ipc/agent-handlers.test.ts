@@ -63,6 +63,7 @@ describe("registerAgentHandlers", () => {
         cancelLocalChat: vi.fn(),
         getActiveOrchestratorRun: () => null,
       }) as never,
+      getAppSessionStartedAt: () => 0,
       isHostAuthAuthenticated: () => true,
       frontendRoot: "C:/Users/redacted/projects/stella/desktop",
       assertPrivilegedSender: () => true,
@@ -115,5 +116,21 @@ describe("registerAgentHandlers", () => {
       }),
     ]);
     expect(oldRunReplay.events).toEqual([]);
+  });
+
+  it("returns the app session start timestamp", async () => {
+    registerAgentHandlers({
+      getStellaHostRunner: () => null,
+      getAppSessionStartedAt: () => 1234,
+      isHostAuthAuthenticated: () => true,
+      frontendRoot: "C:/Users/redacted/projects/stella/desktop",
+      assertPrivilegedSender: () => true,
+      hmrMorphOrchestrator: null,
+    });
+
+    const getAppSessionStartedAt = ipcHandleHandlers.get("agent:getAppSessionStartedAt");
+
+    expect(getAppSessionStartedAt).toBeTypeOf("function");
+    await expect(getAppSessionStartedAt?.()).resolves.toBe(1234);
   });
 });

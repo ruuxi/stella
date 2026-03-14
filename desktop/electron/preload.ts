@@ -309,6 +309,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
         runId: string;
         conversationId: string;
       } | null>,
+    getAppSessionStartedAt: () =>
+      ipcRenderer.invoke("agent:getAppSessionStartedAt") as Promise<number>,
     startChat: (payload: {
       conversationId: string;
       userMessageId: string;

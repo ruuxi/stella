@@ -296,6 +296,7 @@ export type ElectronVoiceApi = {
 export type ElectronAgentApi = {
   healthCheck: () => Promise<AgentHealth | null>;
   getActiveRun: () => Promise<{ runId: string; conversationId: string } | null>;
+  getAppSessionStartedAt: () => Promise<number>;
   startChat: (payload: {
     conversationId: string;
     userMessageId: string;

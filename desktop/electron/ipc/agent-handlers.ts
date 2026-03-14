@@ -17,6 +17,7 @@ import type { HmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
 
 type AgentHandlersOptions = {
   getStellaHostRunner: () => StellaHostRunner | null;
+  getAppSessionStartedAt: () => number;
   isHostAuthAuthenticated: () => boolean;
   frontendRoot: string;
   assertPrivilegedSender: (
@@ -162,6 +163,10 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     const health = stellaHostRunner.agentHealthCheck();
     if (!health?.ready) return null;
     return stellaHostRunner.getActiveOrchestratorRun();
+  });
+
+  ipcMain.handle("agent:getAppSessionStartedAt", async () => {
+    return options.getAppSessionStartedAt();
   });
 
   ipcMain.handle(
@@ -371,4 +376,3 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     return { ok: true };
   });
 };
-
