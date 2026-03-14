@@ -10,12 +10,21 @@ import { useTable, useReducer, useSpacetimeDB } from "spacetimedb/react";
 import { tables, reducers } from "./bindings";
 import { Lobby } from "./components/Lobby";
 import { GameView } from "./components/GameView";
-import { getSessionFromUrl, getJoinCodeFromUrl } from "./lib/session";
+import {
+  bootstrapLaunchStateFromUrl,
+  getJoinCodeFromUrl,
+  getLaunchConvexToken,
+  getLaunchDisplayName,
+  getSessionFromUrl,
+  saveLaunchDisplayName,
+} from "./lib/session";
+
+bootstrapLaunchStateFromUrl();
 
 function GameRouter() {
   const { isActive, identity } = useSpacetimeDB();
-  const [sessions] = useTable(tables.gameSessions);
-  const [players] = useTable(tables.gamePlayers);
+  const [sessions] = useTable(tables.game_sessions);
+  const [players] = useTable(tables.game_players);
 
   const startGame = useReducer(reducers.startGame);
 
@@ -39,7 +48,7 @@ function GameRouter() {
 
   const handleStartGame = useCallback(() => {
     if (!session) return;
-    void startGame(session.sessionId, "{}");
+    void startGame({ sessionId: session.sessionId });
   }, [session, startGame]);
 
   if (!isActive) {
@@ -80,31 +89,58 @@ function GameRouter() {
  */
 function JoinOrCreate() {
   const [joinCode, setJoinCode] = useState(getJoinCodeFromUrl() ?? "");
-  const [name, setName] = useState("");
+  const [name, setName] = useState(getLaunchDisplayName() ?? "");
   const [error, setError] = useState<string | null>(null);
 
+  const registerPlayer = useReducer(reducers.registerPlayer);
   const joinSession = useReducer(reducers.joinSession);
   const createSession = useReducer(reducers.createSession);
+
+  const ensureRegistered = useCallback(async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      throw new Error("Enter your name to continue.");
+    }
+
+    const convexToken = getLaunchConvexToken();
+    if (!convexToken) {
+      throw new Error("Open this game from Stella to join or host a session.");
+    }
+
+    saveLaunchDisplayName(trimmedName);
+    await registerPlayer({
+      convexToken,
+      displayName: trimmedName,
+    });
+  }, [name, registerPlayer]);
 
   const handleJoin = useCallback(async () => {
     if (!joinCode.trim() || !name.trim()) return;
     setError(null);
     try {
-      await joinSession(joinCode.trim().toUpperCase(), name.trim(), "", "");
+      await ensureRegistered();
+      await joinSession({
+        joinCode: joinCode.trim().toUpperCase(),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to join");
     }
-  }, [joinCode, name, joinSession]);
+  }, [ensureRegistered, joinCode, name, joinSession]);
 
   const handleCreate = useCallback(async () => {
     if (!name.trim()) return;
     setError(null);
     try {
-      await createSession("custom", "{}", name.trim(), "", "", 8);
+      await ensureRegistered();
+      await createSession({
+        gameType: "custom",
+        configJson: "{}",
+        maxPlayers: 8,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create");
     }
-  }, [name, createSession]);
+  }, [createSession, ensureRegistered, name]);
 
   return (
     <div style={styles.joinContainer}>
