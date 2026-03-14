@@ -27,6 +27,12 @@ export type HostedGameAuthMessage = {
 
 export const getSessionFromUrl = (): string | null => {
   const params = new URLSearchParams(window.location.search);
+  if (params.has("session")) {
+    return params.get("session");
+  }
+  if (params.has("code")) {
+    return null;
+  }
   return params.get("session") ?? getSavedSessionId() ?? null;
 };
 
