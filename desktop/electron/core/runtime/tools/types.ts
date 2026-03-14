@@ -86,6 +86,14 @@ export type TaskToolRequest = {
   commandId?: string;
   systemPromptOverride?: string;
   storageMode: "cloud" | "local";
+  selfModMetadata?: {
+    featureId?: string;
+    packageId?: string;
+    releaseNumber?: number;
+    mode?: "author" | "install" | "update";
+    displayName?: string;
+    description?: string;
+  };
 };
 
 export type TaskToolSnapshot = {

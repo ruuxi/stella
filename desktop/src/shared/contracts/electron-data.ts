@@ -249,15 +249,30 @@ export type SelfModFeatureRecord = {
   updatedAt: number
 }
 
-export type StoreReleaseArtifactFile = {
+export type StoreReleaseBlueprintFile = {
   path: string
+  changeType: 'create' | 'update' | 'delete'
   deleted?: boolean
-  contentBase64?: string
+  referenceContentBase64?: string
+}
+
+export type StoreReleaseBlueprintBatch = {
+  batchId: string
+  ordinal: number
+  commitHash: string
+  files: string[]
+  subject: string
+  body: string
+  patch: string
 }
 
 export type StoreReleaseArtifact = {
+  kind: 'self_mod_blueprint'
+  schemaVersion: 1
   manifest: StoreReleaseManifest
-  files: StoreReleaseArtifactFile[]
+  applyGuidance: string
+  batches: StoreReleaseBlueprintBatch[]
+  files: StoreReleaseBlueprintFile[]
 }
 
 export type StoreReleaseManifest = {

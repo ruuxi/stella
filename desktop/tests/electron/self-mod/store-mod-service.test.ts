@@ -35,6 +35,11 @@ vi.mock("better-sqlite3", async () => {
 import { createDesktopDatabase } from "../../../electron/storage/database.js";
 import { StoreModStore } from "../../../electron/storage/store-mod-store.js";
 import { StoreModService } from "../../../electron/self-mod/store-mod-service.js";
+import type {
+  StorePackageRecord,
+  StorePackageReleaseRecord,
+  StoreReleaseArtifact,
+} from "../../../src/shared/contracts/electron-data.js";
 
 const tempDirs: string[] = [];
 const openDatabases = new Set<{ close(): void }>();
@@ -185,6 +190,170 @@ describe("StoreModService", () => {
       batchIds: ["batch-4", "batch-2"],
     });
     expect(explicitDraft.selectedBatchIds).toEqual(["batch-2", "batch-4"]);
+
+    close();
+  });
+
+  it("publishes a blueprint artifact built from selected batches", async () => {
+    const { repoRoot, service, store, close } = createServiceHarness();
+
+    await service.beginSelfModRun({
+      runId: "run-blueprint-1",
+      taskDescription: "Weather widget",
+    });
+    writeFile(repoRoot, "src/weather-one.ts", "export const weatherOne = 1;\n");
+    const firstBatch = await service.finalizeSelfModRun({
+      runId: "run-blueprint-1",
+      succeeded: true,
+    });
+
+    await service.beginSelfModRun({
+      runId: "run-blueprint-2",
+      taskDescription: "Weather widget",
+    });
+    writeFile(repoRoot, "src/weather-two.ts", "export const weatherTwo = 2;\n");
+    const secondBatch = await service.finalizeSelfModRun({
+      runId: "run-blueprint-2",
+      succeeded: true,
+    });
+
+    expect(firstBatch?.commitHash).toBeTruthy();
+    expect(secondBatch?.commitHash).toBeTruthy();
+
+    let capturedArtifact: StoreReleaseArtifact | null = null;
+    let capturedManifest: StorePackageReleaseRecord["manifest"] | null = null;
+
+    await service.publishRelease({
+      featureId: firstBatch!.featureId,
+      packageId: "weather-widget",
+      releaseNumber: 1,
+      displayName: "Weather Widget",
+      description: "Blueprint publish test",
+      publish: async (args) => {
+        capturedArtifact = args.artifact;
+        capturedManifest = {
+          ...args.manifest,
+          releaseNumber: 1,
+        };
+        return {
+          packageId: args.packageId,
+          releaseNumber: 1,
+          manifest: {
+            ...args.manifest,
+            releaseNumber: 1,
+          },
+          storageKey: "storage:weather-widget:1",
+          createdAt: Date.now(),
+        };
+      },
+    });
+
+    expect(capturedArtifact?.kind).toBe("self_mod_blueprint");
+    expect(capturedArtifact?.schemaVersion).toBe(1);
+    expect(capturedArtifact?.manifest.releaseNumber).toBe(1);
+    expect(capturedArtifact?.batches).toHaveLength(2);
+    expect(capturedArtifact?.batches[0]?.patch).toContain("weather-one.ts");
+    expect(capturedArtifact?.files.map((file) => file.path).sort()).toEqual([
+      "src/weather-one.ts",
+      "src/weather-two.ts",
+    ]);
+    expect(capturedManifest?.batchIds).toEqual([firstBatch!.batchId, secondBatch!.batchId]);
+    expect(
+      store.listBatches(firstBatch!.featureId).map((batch) => batch.state),
+    ).toEqual(["published", "published"]);
+
+    close();
+  });
+
+  it("records store install commits through the self-mod lifecycle", async () => {
+    const { repoRoot, service, close } = createServiceHarness();
+
+    const packageRecord: StorePackageRecord = {
+      packageId: "weather-widget",
+      featureId: "weather-widget-store",
+      displayName: "Weather Widget",
+      description: "Install flow test",
+      latestReleaseNumber: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    const releaseRecord: StorePackageReleaseRecord = {
+      packageId: "weather-widget",
+      releaseNumber: 1,
+      manifest: {
+        packageId: "weather-widget",
+        featureId: "weather-widget-store",
+        releaseNumber: 1,
+        displayName: "Weather Widget",
+        description: "Install flow test",
+        batchIds: ["batch:published:1"],
+        commitHashes: ["published-commit-1"],
+        files: ["src/installed.ts"],
+        createdAt: Date.now(),
+      },
+      storageKey: "storage:weather-widget:1",
+      createdAt: Date.now(),
+    };
+    const artifact: StoreReleaseArtifact = {
+      kind: "self_mod_blueprint",
+      schemaVersion: 1,
+      manifest: releaseRecord.manifest,
+      applyGuidance: "Use the blueprint as reference.",
+      batches: [
+        {
+          batchId: "batch:published:1",
+          ordinal: 1,
+          commitHash: "published-commit-1",
+          files: ["src/installed.ts"],
+          subject: "Install Weather Widget",
+          body: "",
+          patch: "diff --git a/src/installed.ts b/src/installed.ts",
+        },
+      ],
+      files: [
+        {
+          path: "src/installed.ts",
+          changeType: "create",
+          referenceContentBase64: Buffer.from("export const installed = true;\n", "utf8").toString("base64"),
+        },
+      ],
+    };
+
+    const result = await service.installRelease({
+      packageId: packageRecord.packageId,
+      releaseNumber: releaseRecord.releaseNumber,
+      fetchRelease: async () => ({
+        package: packageRecord,
+        release: releaseRecord,
+        artifact,
+      }),
+      applyRelease: async () => {
+        await service.beginSelfModRun({
+          runId: "run-install-1",
+          taskDescription: "Install Weather Widget",
+          featureId: packageRecord.featureId,
+          packageId: packageRecord.packageId,
+          releaseNumber: releaseRecord.releaseNumber,
+          applyMode: "install",
+          displayName: packageRecord.displayName,
+          description: packageRecord.description,
+        });
+        writeFile(repoRoot, "src/installed.ts", "export const installed = true;\n");
+        await service.finalizeSelfModRun({
+          runId: "run-install-1",
+          succeeded: true,
+        });
+      },
+    });
+
+    expect(result.installRecord.packageId).toBe("weather-widget");
+    expect(result.installRecord.featureId).toBe("weather-widget-store");
+    expect(result.installRecord.releaseNumber).toBe(1);
+    expect(result.installRecord.applyCommitHashes).toHaveLength(1);
+    expect(service.getInstalledModByPackageId("weather-widget")?.state).toBe("installed");
+    expect(
+      service.listFeatureBatches("weather-widget-store").map((batch) => batch.state),
+    ).toEqual(["published"]);
 
     close();
   });
