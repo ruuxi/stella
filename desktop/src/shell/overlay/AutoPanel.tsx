@@ -117,12 +117,8 @@ Keep it concise. 2-4 sections max. Output raw HTML only — no markdown, no code
       || !overlayApi.onAutoPanelComplete
       || !overlayApi.onAutoPanelError
     ) {
-      setStreamState({
-        requestKey,
-        text: "",
-        error: "Auto panel streaming is unavailable.",
-        complete: true,
-      });
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard clause for missing IPC bridge
+      setStreamState({ requestKey, text: "", error: "Auto panel streaming is unavailable.", complete: true });
       return;
     }
 
