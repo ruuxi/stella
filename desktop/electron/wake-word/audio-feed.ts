@@ -139,10 +139,13 @@ export function createWakeWordAdaptiveNoiseFloor(
     },
 
     observeResult(result: WakeWordResult) {
+      const speechConfirmedByVad =
+        result.vadGate?.gateOpen ??
+        result.vadScore >= resolvedOptions.speechVadThreshold;
       if (
         !lastState.signalPresent ||
         result.detected ||
-        result.vadScore >= resolvedOptions.speechVadThreshold ||
+        speechConfirmedByVad ||
         lastState.inputLevel <= lastState.noiseFloor
       ) {
         return;

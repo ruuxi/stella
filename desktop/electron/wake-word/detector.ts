@@ -116,6 +116,8 @@ export interface WakeWordResult {
   score: number;
   vadScore: number;
   frontEnd?: WakeWordFrontEndState;
+  vadGate?: WakeWordVadGateState;
+  inference?: WakeWordInferenceState;
 }
 
 export interface WakeWordFrontEndState {
@@ -126,6 +128,15 @@ export interface WakeWordFrontEndState {
   signalDelta: number;
   signalPresent: boolean;
   gateOpen: boolean;
+}
+
+export interface WakeWordVadGateState {
+  threshold: number;
+  gateOpen: boolean;
+}
+
+export interface WakeWordInferenceState {
+  classifierRan: boolean;
 }
 
 export interface WakeWordDetector {
@@ -158,6 +169,7 @@ const RAW_BUFFER_MAX = SAMPLE_RATE * 10; // 10 seconds
 const VAD_FRAME_SIZE = 512; // 32ms
 const VAD_CONTEXT_SIZE = 64; // context window prepended to each frame
 const VAD_STATE_DIM = 128;
+export const WAKE_WORD_VAD_GATE_THRESHOLD = 0.5;
 
 const STACK_WINDOW = 5;
 const STACK_REQUIRED = 3;
@@ -167,6 +179,16 @@ const WARMUP_FRAMES = 0;
 // Calibrated from the current Stella fp16 export benchmark (iter_030).
 const DEFAULT_THRESHOLD = 0.70;
 const MIN_THRESHOLD = 0.5;
+
+export function createWakeWordVadGateState(
+  vadScore: number,
+  threshold = WAKE_WORD_VAD_GATE_THRESHOLD,
+): WakeWordVadGateState {
+  return {
+    threshold,
+    gateOpen: vadScore >= threshold,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Implementation
@@ -363,17 +385,12 @@ export async function createWakeWordDetector(
     rawBufferLen += data.length;
   }
 
-  async function predict(pcm: Int16Array): Promise<WakeWordResult> {
-    const none: WakeWordResult = { detected: false, score: 0, vadScore: 0 };
-    if (!listening) return none;
-
-    const vadScore = await runVad(pcm);
-
+  function queueStreamingAudio(pcm: Int16Array): boolean {
     if (rawRemainder.length > 0) {
       const combined = new Int16Array(rawRemainder.length + pcm.length);
       combined.set(rawRemainder);
       combined.set(pcm, rawRemainder.length);
-      
+
       if (accumulatedSamples + combined.length >= CHUNK_SAMPLES) {
         const totalSamples = accumulatedSamples + combined.length;
         const remainder = totalSamples % CHUNK_SAMPLES;
@@ -386,34 +403,56 @@ export async function createWakeWordDetector(
           accumulatedSamples += combined.length;
           rawRemainder = new Int16Array(0);
         }
-      } else {
-        accumulatedSamples += combined.length;
-        bufferRawData(combined);
-        rawRemainder = new Int16Array(0);
-        return { detected: false, score: 0, vadScore };
+        return true;
       }
-    } else {
-      if (accumulatedSamples + pcm.length >= CHUNK_SAMPLES) {
-        const totalSamples = accumulatedSamples + pcm.length;
-        const remainder = totalSamples % CHUNK_SAMPLES;
-        if (remainder !== 0) {
-          bufferRawData(pcm.slice(0, pcm.length - remainder));
-          accumulatedSamples += pcm.length - remainder;
-          rawRemainder = pcm.slice(pcm.length - remainder);
-        } else {
-          bufferRawData(pcm);
-          accumulatedSamples += pcm.length;
-        }
-      } else {
-        accumulatedSamples += pcm.length;
-        bufferRawData(pcm);
-        return { detected: false, score: 0, vadScore };
-      }
+
+      accumulatedSamples += combined.length;
+      bufferRawData(combined);
+      rawRemainder = new Int16Array(0);
+      return false;
     }
 
-    if (accumulatedSamples >= CHUNK_SAMPLES) {
-      const nChunks = Math.floor(accumulatedSamples / CHUNK_SAMPLES);
-      const samplesToProcess = nChunks * CHUNK_SAMPLES;
+    if (accumulatedSamples + pcm.length >= CHUNK_SAMPLES) {
+      const totalSamples = accumulatedSamples + pcm.length;
+      const remainder = totalSamples % CHUNK_SAMPLES;
+      if (remainder !== 0) {
+        bufferRawData(pcm.slice(0, pcm.length - remainder));
+        accumulatedSamples += pcm.length - remainder;
+        rawRemainder = pcm.slice(pcm.length - remainder);
+      } else {
+        bufferRawData(pcm);
+        accumulatedSamples += pcm.length;
+      }
+      return true;
+    }
+
+    accumulatedSamples += pcm.length;
+    bufferRawData(pcm);
+    return false;
+  }
+
+  function appendFeatureFrame(embedding: Float32Array) {
+    if (featureRows >= FEATURE_BUFFER_MAX) {
+      featureBuffer.copyWithin(0, EMBEDDING_DIM, featureRows * EMBEDDING_DIM);
+      featureRows = FEATURE_BUFFER_MAX - 1;
+    }
+
+    featureBuffer.set(
+      embedding.subarray(0, EMBEDDING_DIM),
+      featureRows * EMBEDDING_DIM,
+    );
+    featureRows++;
+  }
+
+  async function advanceFeatureBuffer(vadGateOpen: boolean): Promise<void> {
+    if (accumulatedSamples < CHUNK_SAMPLES) {
+      return;
+    }
+
+    const nChunks = Math.floor(accumulatedSamples / CHUNK_SAMPLES);
+    const samplesToProcess = nChunks * CHUNK_SAMPLES;
+
+    if (vadGateOpen) {
       await streamingMelspec(samplesToProcess);
 
       for (let i = nChunks - 1; i >= 0; i--) {
@@ -421,26 +460,99 @@ export async function createWakeWordDetector(
         const endMel = melRows - offset;
         const startMel = endMel - EMBEDDING_WINDOW;
 
-        if (startMel < 0 || endMel > melRows) continue;
+        if (startMel < 0 || endMel > melRows) {
+          continue;
+        }
 
         const melWindow = melBuffer.slice(startMel * MEL_BINS, endMel * MEL_BINS);
         const embedding = await computeEmbedding(melWindow);
-
-        if (featureRows >= FEATURE_BUFFER_MAX) {
-          featureBuffer.copyWithin(0, EMBEDDING_DIM, featureRows * EMBEDDING_DIM);
-          featureRows = FEATURE_BUFFER_MAX - 1;
-        }
-        
-        featureBuffer.set(embedding.subarray(0, EMBEDDING_DIM), featureRows * EMBEDDING_DIM);
-        featureRows++;
+        appendFeatureFrame(embedding);
       }
-
-      accumulatedSamples = accumulatedSamples - samplesToProcess;
+    } else {
+      for (let i = 0; i < nChunks; i += 1) {
+        appendFeatureFrame(silenceEmbedding);
+      }
     }
+
+    accumulatedSamples -= samplesToProcess;
+  }
+
+  function updateDetectionStack(score: number): boolean {
+    recentScores.push(score);
+    if (recentScores.length > STACK_WINDOW) {
+      recentScores.shift();
+    }
+
+    let consecutive = 0;
+    for (let j = recentScores.length - 1; j >= 0; j -= 1) {
+      if (recentScores[j] >= threshold) {
+        consecutive++;
+      } else {
+        break;
+      }
+    }
+
+    const now = Date.now();
+    const detected =
+      consecutive >= STACK_REQUIRED &&
+      now - lastActivationTime > COOLDOWN_MS;
+
+    if (detected) {
+      lastActivationTime = now;
+      recentScores.length = 0;
+    }
+
+    return detected;
+  }
+
+  async function predict(pcm: Int16Array): Promise<WakeWordResult> {
+    const none: WakeWordResult = {
+      detected: false,
+      score: 0,
+      vadScore: 0,
+      vadGate: createWakeWordVadGateState(0),
+      inference: { classifierRan: false },
+    };
+    if (!listening) return none;
+
+    const vadScore = await runVad(pcm);
+    const vadGate = createWakeWordVadGateState(vadScore);
+    const gatedPcm = vadGate.gateOpen ? pcm : new Int16Array(pcm.length);
+
+    if (!queueStreamingAudio(gatedPcm)) {
+      return {
+        detected: false,
+        score: 0,
+        vadScore,
+        vadGate,
+        inference: { classifierRan: false },
+      };
+    }
+
+    // Hard VAD gate: keep the stream aligned with silence frames, but only
+    // spend wake-word feature/classifier compute when the chunk looks like speech.
+    await advanceFeatureBuffer(vadGate.gateOpen);
 
     if (warmupFrames > 0) {
       warmupFrames--;
-      return { detected: false, score: 0, vadScore };
+      return {
+        detected: false,
+        score: 0,
+        vadScore,
+        vadGate,
+        inference: { classifierRan: false },
+      };
+    }
+
+    if (!vadGate.gateOpen) {
+      updateDetectionStack(0);
+      return {
+        detected: false,
+        score: 0,
+        vadScore,
+        vadGate,
+        inference: { classifierRan: false },
+      };
     }
 
     const features = new Float32Array(MODEL_INPUT_FRAMES * EMBEDDING_DIM);
@@ -456,25 +568,15 @@ export async function createWakeWordDetector(
 
     const score = await runClassifier(features);
     const finalScore = featureRows < 5 ? 0.0 : score;
+    const detected = updateDetectionStack(finalScore);
 
-    recentScores.push(finalScore);
-    if (recentScores.length > STACK_WINDOW) recentScores.shift();
-
-    let consecutive = 0;
-    for (let j = recentScores.length - 1; j >= 0; j--) {
-      if (recentScores[j] >= threshold) consecutive++;
-      else break;
-    }
-
-    const now = Date.now();
-    const detected = consecutive >= STACK_REQUIRED && now - lastActivationTime > COOLDOWN_MS;
-
-    if (detected) {
-      lastActivationTime = now;
-      recentScores.length = 0;
-    }
-
-    return { detected, score: finalScore, vadScore };
+    return {
+      detected,
+      score: finalScore,
+      vadScore,
+      vadGate,
+      inference: { classifierRan: true },
+    };
   }
 
   function resetToSilence() {
