@@ -12,4 +12,6 @@ import {
 
 export default {
   joinCode: __t.string(),
+  requestedTeamId: __t.option(__t.i32()),
+  requestedRoleKey: __t.option(__t.string()),
 };

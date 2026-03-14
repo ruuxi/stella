@@ -12,6 +12,6 @@ import {
 
 export default {
   sessionId: __t.u64(),
-  targetPlayerSlot: __t.u32(),
-  scoreDelta: __t.i64(),
+  entityId: __t.option(__t.u64()),
+  simulationTick: __t.option(__t.u32()),
 };

@@ -38,155 +38,264 @@ import RegisterPlayerReducer from "./register_player_reducer";
 import CreateSessionReducer from "./create_session_reducer";
 import JoinSessionReducer from "./join_session_reducer";
 import LeaveSessionReducer from "./leave_session_reducer";
-import StartGameReducer from "./start_game_reducer";
-import EndGameReducer from "./end_game_reducer";
-import PauseGameReducer from "./pause_game_reducer";
-import SubmitActionReducer from "./submit_action_reducer";
+import StartSessionReducer from "./start_session_reducer";
+import PauseSessionReducer from "./pause_session_reducer";
+import ResumeSessionReducer from "./resume_session_reducer";
+import EndSessionReducer from "./end_session_reducer";
+import ConfigureSessionRuntimeReducer from "./configure_session_runtime_reducer";
 import UpdateSessionStateReducer from "./update_session_state_reducer";
-import CreateObjectReducer from "./create_object_reducer";
-import UpdateObjectReducer from "./update_object_reducer";
-import RemoveObjectReducer from "./remove_object_reducer";
-import UpdatePlayerScoreReducer from "./update_player_score_reducer";
-import UpdatePlayerPrivateStateReducer from "./update_player_private_state_reducer";
-import SendChatReducer from "./send_chat_reducer";
-import GameTickReducer from "./game_tick_reducer";
-import StartTickTimerReducer from "./start_tick_timer_reducer";
-import StopTickTimerReducer from "./stop_tick_timer_reducer";
+import SpawnEntityReducer from "./spawn_entity_reducer";
+import UpdateEntityTransformReducer from "./update_entity_transform_reducer";
+import DespawnEntityReducer from "./despawn_entity_reducer";
+import UpsertEntityComponentReducer from "./upsert_entity_component_reducer";
+import RemoveEntityComponentReducer from "./remove_entity_component_reducer";
+import UpsertSessionResourceReducer from "./upsert_session_resource_reducer";
+import RemoveSessionResourceReducer from "./remove_session_resource_reducer";
+import EmitSessionEventReducer from "./emit_session_event_reducer";
+import SubmitInputFrameReducer from "./submit_input_frame_reducer";
+import CaptureSnapshotReducer from "./capture_snapshot_reducer";
+import PruneSnapshotsReducer from "./prune_snapshots_reducer";
+import AssignPlayerPawnReducer from "./assign_player_pawn_reducer";
+import UpdatePlayerPresenceReducer from "./update_player_presence_reducer";
+import AdjustPlayerScoreReducer from "./adjust_player_score_reducer";
+import UpsertPrivateStateReducer from "./upsert_private_state_reducer";
+import RemovePrivateStateReducer from "./remove_private_state_reducer";
+import StartTickLoopReducer from "./start_tick_loop_reducer";
+import StopTickLoopReducer from "./stop_tick_loop_reducer";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
-import GameActionsRow from "./game_actions_table";
-import GameChatRow from "./game_chat_table";
-import GameObjectsRow from "./game_objects_table";
-import GamePlayersRow from "./game_players_table";
-import GameSessionsRow from "./game_sessions_table";
+import EntitiesRow from "./entities_table";
+import EntityComponentsRow from "./entity_components_table";
+import InputFramesRow from "./input_frames_table";
 import MyPrivateStateRow from "./my_private_state_table";
+import PlayersRow from "./players_table";
+import SessionEventsRow from "./session_events_table";
+import SessionResourcesRow from "./session_resources_table";
+import SessionsRow from "./sessions_table";
 
 /** Type-only namespace exports for generated type groups. */
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
-  game_actions: __table({
-    name: 'game_actions',
+  entities: __table({
+    name: 'entities',
     indexes: [
-      { accessor: 'action_type', name: 'game_actions_action_type_idx_btree', algorithm: 'btree', columns: [
-        'actionType',
+      { accessor: 'archetype', name: 'entities_archetype_idx_btree', algorithm: 'btree', columns: [
+        'archetype',
       ] },
-      { accessor: 'id', name: 'game_actions_id_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'id', name: 'entities_id_idx_btree', algorithm: 'btree', columns: [
         'id',
       ] },
-      { accessor: 'session_id', name: 'game_actions_session_id_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'session_archetype', name: 'entities_session_id_archetype_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'archetype',
+      ] },
+      { accessor: 'session_entity_key', name: 'entities_session_id_entity_key_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'entityKey',
+      ] },
+      { accessor: 'session_id', name: 'entities_session_id_idx_btree', algorithm: 'btree', columns: [
         'sessionId',
       ] },
-      { accessor: 'session_turn', name: 'game_actions_session_id_turn_number_idx_btree', algorithm: 'btree', columns: [
-        'sessionId',
-        'turnNumber',
-      ] },
-    ],
-    constraints: [
-      { name: 'game_actions_id_key', constraint: 'unique', columns: ['id'] },
-    ],
-  }, GameActionsRow),
-  game_chat: __table({
-    name: 'game_chat',
-    indexes: [
-      { accessor: 'id', name: 'game_chat_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
-      { accessor: 'session_id', name: 'game_chat_session_id_idx_btree', algorithm: 'btree', columns: [
-        'sessionId',
-      ] },
-    ],
-    constraints: [
-      { name: 'game_chat_id_key', constraint: 'unique', columns: ['id'] },
-    ],
-  }, GameChatRow),
-  game_objects: __table({
-    name: 'game_objects',
-    indexes: [
-      { accessor: 'id', name: 'game_objects_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
-      { accessor: 'object_type', name: 'game_objects_object_type_idx_btree', algorithm: 'btree', columns: [
-        'objectType',
-      ] },
-      { accessor: 'session_id', name: 'game_objects_session_id_idx_btree', algorithm: 'btree', columns: [
-        'sessionId',
-      ] },
-      { accessor: 'session_object_key', name: 'game_objects_session_id_object_key_idx_btree', algorithm: 'btree', columns: [
-        'sessionId',
-        'objectKey',
-      ] },
-      { accessor: 'session_object_type', name: 'game_objects_session_id_object_type_idx_btree', algorithm: 'btree', columns: [
-        'sessionId',
-        'objectType',
-      ] },
-      { accessor: 'session_owner_slot', name: 'game_objects_session_id_owner_slot_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'session_owner_slot', name: 'entities_session_id_owner_slot_idx_btree', algorithm: 'btree', columns: [
         'sessionId',
         'ownerSlot',
       ] },
+      { accessor: 'session_replication_group', name: 'entities_session_id_replication_group_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'replicationGroup',
+      ] },
+      { accessor: 'session_visibility_scope', name: 'entities_session_id_visibility_scope_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'visibilityScope',
+      ] },
+      { accessor: 'session_zone', name: 'entities_session_id_zone_key_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'zoneKey',
+      ] },
     ],
     constraints: [
-      { name: 'game_objects_id_key', constraint: 'unique', columns: ['id'] },
+      { name: 'entities_id_key', constraint: 'unique', columns: ['id'] },
     ],
-  }, GameObjectsRow),
-  game_players: __table({
-    name: 'game_players',
+  }, EntitiesRow),
+  entity_components: __table({
+    name: 'entity_components',
     indexes: [
-      { accessor: 'convex_user_id', name: 'game_players_convex_user_id_idx_btree', algorithm: 'btree', columns: [
-        'convexUserId',
+      { accessor: 'entity_id', name: 'entity_components_entity_id_idx_btree', algorithm: 'btree', columns: [
+        'entityId',
       ] },
-      { accessor: 'id', name: 'game_players_id_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'id', name: 'entity_components_id_idx_btree', algorithm: 'btree', columns: [
         'id',
       ] },
-      { accessor: 'player_identity', name: 'game_players_player_identity_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'session_component_name', name: 'entity_components_session_id_component_name_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'componentName',
+      ] },
+      { accessor: 'session_entity_component', name: 'entity_components_session_id_entity_id_component_name_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'entityId',
+        'componentName',
+      ] },
+      { accessor: 'session_id', name: 'entity_components_session_id_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+      ] },
+      { accessor: 'session_replication_group', name: 'entity_components_session_id_replication_group_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'replicationGroup',
+      ] },
+      { accessor: 'session_visibility_scope', name: 'entity_components_session_id_visibility_scope_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'visibilityScope',
+      ] },
+    ],
+    constraints: [
+      { name: 'entity_components_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, EntityComponentsRow),
+  input_frames: __table({
+    name: 'input_frames',
+    indexes: [
+      { accessor: 'id', name: 'input_frames_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'session_tick', name: 'input_frames_session_id_client_tick_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'clientTick',
+      ] },
+      { accessor: 'session_id', name: 'input_frames_session_id_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+      ] },
+      { accessor: 'session_player_seq', name: 'input_frames_session_id_player_slot_input_seq_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'playerSlot',
+        'inputSeq',
+      ] },
+    ],
+    constraints: [
+      { name: 'input_frames_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, InputFramesRow),
+  players: __table({
+    name: 'players',
+    indexes: [
+      { accessor: 'id', name: 'players_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'player_identity', name: 'players_player_identity_idx_btree', algorithm: 'btree', columns: [
         'playerIdentity',
       ] },
-      { accessor: 'session_convex_user', name: 'game_players_session_id_convex_user_id_idx_btree', algorithm: 'btree', columns: [
-        'sessionId',
-        'convexUserId',
-      ] },
-      { accessor: 'session_id', name: 'game_players_session_id_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'session_id', name: 'players_session_id_idx_btree', algorithm: 'btree', columns: [
         'sessionId',
       ] },
-      { accessor: 'session_identity', name: 'game_players_session_id_player_identity_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'session_identity', name: 'players_session_id_player_identity_idx_btree', algorithm: 'btree', columns: [
         'sessionId',
         'playerIdentity',
       ] },
-      { accessor: 'session_slot', name: 'game_players_session_id_slot_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'session_slot', name: 'players_session_id_slot_idx_btree', algorithm: 'btree', columns: [
         'sessionId',
         'slot',
       ] },
+      { accessor: 'session_team', name: 'players_session_id_team_id_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'teamId',
+      ] },
+      { accessor: 'session_user', name: 'players_session_id_user_id_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'userId',
+      ] },
+      { accessor: 'user_id', name: 'players_user_id_idx_btree', algorithm: 'btree', columns: [
+        'userId',
+      ] },
     ],
     constraints: [
-      { name: 'game_players_id_key', constraint: 'unique', columns: ['id'] },
+      { name: 'players_id_key', constraint: 'unique', columns: ['id'] },
     ],
-  }, GamePlayersRow),
-  game_sessions: __table({
-    name: 'game_sessions',
+  }, PlayersRow),
+  session_events: __table({
+    name: 'session_events',
     indexes: [
-      { accessor: 'game_id', name: 'game_sessions_game_id_idx_btree', algorithm: 'btree', columns: [
-        'gameId',
+      { accessor: 'event_kind', name: 'session_events_event_kind_idx_btree', algorithm: 'btree', columns: [
+        'eventKind',
       ] },
-      { accessor: 'game_type', name: 'game_sessions_game_type_idx_btree', algorithm: 'btree', columns: [
-        'gameType',
+      { accessor: 'id', name: 'session_events_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
       ] },
-      { accessor: 'join_code', name: 'game_sessions_join_code_idx_btree', algorithm: 'btree', columns: [
-        'joinCode',
+      { accessor: 'session_kind', name: 'session_events_session_id_event_kind_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'eventKind',
       ] },
-      { accessor: 'session_id', name: 'game_sessions_session_id_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'session_scope', name: 'session_events_session_id_event_scope_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'eventScope',
+      ] },
+      { accessor: 'session_id', name: 'session_events_session_id_idx_btree', algorithm: 'btree', columns: [
         'sessionId',
       ] },
-      { accessor: 'status', name: 'game_sessions_status_idx_btree', algorithm: 'btree', columns: [
-        'status',
+      { accessor: 'session_replication_group', name: 'session_events_session_id_replication_group_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'replicationGroup',
+      ] },
+      { accessor: 'session_tick', name: 'session_events_session_id_simulation_tick_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'simulationTick',
       ] },
     ],
     constraints: [
-      { name: 'game_sessions_join_code_key', constraint: 'unique', columns: ['joinCode'] },
-      { name: 'game_sessions_session_id_key', constraint: 'unique', columns: ['sessionId'] },
+      { name: 'session_events_id_key', constraint: 'unique', columns: ['id'] },
     ],
-  }, GameSessionsRow),
+  }, SessionEventsRow),
+  session_resources: __table({
+    name: 'session_resources',
+    indexes: [
+      { accessor: 'id', name: 'session_resources_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'session_id', name: 'session_resources_session_id_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+      ] },
+      { accessor: 'session_replication_group', name: 'session_resources_session_id_replication_group_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'replicationGroup',
+      ] },
+      { accessor: 'session_resource_key', name: 'session_resources_session_id_resource_key_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'resourceKey',
+      ] },
+      { accessor: 'session_visibility_scope', name: 'session_resources_session_id_visibility_scope_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+        'visibilityScope',
+      ] },
+    ],
+    constraints: [
+      { name: 'session_resources_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, SessionResourcesRow),
+  sessions: __table({
+    name: 'sessions',
+    indexes: [
+      { accessor: 'game_id', name: 'sessions_game_id_idx_btree', algorithm: 'btree', columns: [
+        'gameId',
+      ] },
+      { accessor: 'game_type', name: 'sessions_game_type_idx_btree', algorithm: 'btree', columns: [
+        'gameType',
+      ] },
+      { accessor: 'join_code', name: 'sessions_join_code_idx_btree', algorithm: 'btree', columns: [
+        'joinCode',
+      ] },
+      { accessor: 'lifecycle_state', name: 'sessions_lifecycle_state_idx_btree', algorithm: 'btree', columns: [
+        'lifecycleState',
+      ] },
+      { accessor: 'session_id', name: 'sessions_session_id_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+      ] },
+    ],
+    constraints: [
+      { name: 'sessions_join_code_key', constraint: 'unique', columns: ['joinCode'] },
+      { name: 'sessions_session_id_key', constraint: 'unique', columns: ['sessionId'] },
+    ],
+  }, SessionsRow),
   my_private_state: __table({
     name: 'my_private_state',
     indexes: [
@@ -202,20 +311,30 @@ const reducersSchema = __reducers(
   __reducerSchema("create_session", CreateSessionReducer),
   __reducerSchema("join_session", JoinSessionReducer),
   __reducerSchema("leave_session", LeaveSessionReducer),
-  __reducerSchema("start_game", StartGameReducer),
-  __reducerSchema("end_game", EndGameReducer),
-  __reducerSchema("pause_game", PauseGameReducer),
-  __reducerSchema("submit_action", SubmitActionReducer),
+  __reducerSchema("start_session", StartSessionReducer),
+  __reducerSchema("pause_session", PauseSessionReducer),
+  __reducerSchema("resume_session", ResumeSessionReducer),
+  __reducerSchema("end_session", EndSessionReducer),
+  __reducerSchema("configure_session_runtime", ConfigureSessionRuntimeReducer),
   __reducerSchema("update_session_state", UpdateSessionStateReducer),
-  __reducerSchema("create_object", CreateObjectReducer),
-  __reducerSchema("update_object", UpdateObjectReducer),
-  __reducerSchema("remove_object", RemoveObjectReducer),
-  __reducerSchema("update_player_score", UpdatePlayerScoreReducer),
-  __reducerSchema("update_player_private_state", UpdatePlayerPrivateStateReducer),
-  __reducerSchema("send_chat", SendChatReducer),
-  __reducerSchema("game_tick", GameTickReducer),
-  __reducerSchema("start_tick_timer", StartTickTimerReducer),
-  __reducerSchema("stop_tick_timer", StopTickTimerReducer),
+  __reducerSchema("spawn_entity", SpawnEntityReducer),
+  __reducerSchema("update_entity_transform", UpdateEntityTransformReducer),
+  __reducerSchema("despawn_entity", DespawnEntityReducer),
+  __reducerSchema("upsert_entity_component", UpsertEntityComponentReducer),
+  __reducerSchema("remove_entity_component", RemoveEntityComponentReducer),
+  __reducerSchema("upsert_session_resource", UpsertSessionResourceReducer),
+  __reducerSchema("remove_session_resource", RemoveSessionResourceReducer),
+  __reducerSchema("emit_session_event", EmitSessionEventReducer),
+  __reducerSchema("submit_input_frame", SubmitInputFrameReducer),
+  __reducerSchema("capture_snapshot", CaptureSnapshotReducer),
+  __reducerSchema("prune_snapshots", PruneSnapshotsReducer),
+  __reducerSchema("assign_player_pawn", AssignPlayerPawnReducer),
+  __reducerSchema("update_player_presence", UpdatePlayerPresenceReducer),
+  __reducerSchema("adjust_player_score", AdjustPlayerScoreReducer),
+  __reducerSchema("upsert_private_state", UpsertPrivateStateReducer),
+  __reducerSchema("remove_private_state", RemovePrivateStateReducer),
+  __reducerSchema("start_tick_loop", StartTickLoopReducer),
+  __reducerSchema("stop_tick_loop", StopTickLoopReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

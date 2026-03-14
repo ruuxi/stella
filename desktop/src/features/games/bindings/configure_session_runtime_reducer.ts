@@ -12,11 +12,9 @@ import {
 
 export default {
   sessionId: __t.u64(),
-  expectedSimulationTick: __t.u32(),
-  lifecycleState: __t.string(),
-  phaseKey: __t.string(),
-  activeTurnSlot: __t.i32(),
-  simulationTick: __t.u32(),
-  publicStateJson: __t.string(),
-  metadataJson: __t.string(),
+  runtimeKind: __t.string(),
+  tickRateHz: __t.u32(),
+  snapshotRateHz: __t.u32(),
+  interestMode: __t.string(),
+  partitionSize: __t.f32(),
 };

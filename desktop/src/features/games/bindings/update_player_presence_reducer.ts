@@ -12,5 +12,5 @@ import {
 
 export default {
   sessionId: __t.u64(),
-  intervalMs: __t.u32(),
+  presenceJson: __t.string(),
 };

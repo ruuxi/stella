@@ -12,11 +12,7 @@ import {
 
 export default {
   sessionId: __t.u64(),
-  expectedSimulationTick: __t.u32(),
-  lifecycleState: __t.string(),
-  phaseKey: __t.string(),
-  activeTurnSlot: __t.i32(),
-  simulationTick: __t.u32(),
-  publicStateJson: __t.string(),
-  metadataJson: __t.string(),
+  targetPlayerSlot: __t.option(__t.u32()),
+  stateKey: __t.string(),
+  stateJson: __t.string(),
 };

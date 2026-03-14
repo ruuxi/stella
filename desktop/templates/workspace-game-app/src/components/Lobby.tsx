@@ -1,6 +1,5 @@
 /**
- * Game lobby — waiting room before the game starts.
- * Shows the join code, player list, and a start button for the host.
+ * Game lobby waiting room.
  */
 
 import { useTable } from "spacetimedb/react";
@@ -14,9 +13,11 @@ type LobbyProps = {
 };
 
 export function Lobby({ sessionId, joinCode, isHost, onStartGame }: LobbyProps) {
-  const [players, playersReady] = useTable(tables.game_players);
-  const sessionPlayers = players.filter(
-    (p) => p.sessionId === sessionId,
+  const [players, playersReady] = useTable(
+    tables.players.where((row) => row.sessionId.eq(sessionId)),
+  );
+  const connectedPlayers = players.filter(
+    (player) => player.lifecycleState === "connected",
   );
 
   return (
@@ -35,39 +36,35 @@ export function Lobby({ sessionId, joinCode, isHost, onStartGame }: LobbyProps) 
       </div>
 
       <div style={styles.playerList}>
-        <div style={styles.sectionLabel}>
-          Players ({sessionPlayers.length})
-        </div>
-        {!playersReady && <div style={styles.loading}>Connecting...</div>}
-        {sessionPlayers.map((player) => (
+        <div style={styles.sectionLabel}>Players ({players.length})</div>
+        {!playersReady ? <div style={styles.loading}>Connecting...</div> : null}
+        {players.map((player) => (
           <div key={String(player.id)} style={styles.playerRow}>
             <span style={styles.playerName}>{player.displayName}</span>
-            {player.isHost === 1 && <span style={styles.hostBadge}>Host</span>}
+            {player.isHost ? <span style={styles.hostBadge}>Host</span> : null}
             <span
               style={{
                 ...styles.statusDot,
                 backgroundColor:
-                  player.status === "connected" ? "#4ade80" : "#94a3b8",
+                  player.lifecycleState === "connected" ? "#4ade80" : "#94a3b8",
               }}
             />
           </div>
         ))}
       </div>
 
-      {isHost && (
+      {isHost ? (
         <button
           style={{
             ...styles.startButton,
-            opacity: sessionPlayers.length < 2 ? 0.5 : 1,
+            opacity: connectedPlayers.length < 2 ? 0.5 : 1,
           }}
-          disabled={sessionPlayers.length < 2}
+          disabled={connectedPlayers.length < 2}
           onClick={onStartGame}
         >
           Start Game
         </button>
-      )}
-
-      {!isHost && (
+      ) : (
         <div style={styles.waitingText}>Waiting for the host to start...</div>
       )}
     </div>
@@ -95,7 +92,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   codeLabel: {
     fontSize: 12,
-    textTransform: "uppercase" as const,
+    textTransform: "uppercase",
     letterSpacing: "0.08em",
     opacity: 0.6,
   },
@@ -123,7 +120,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sectionLabel: {
     fontSize: 11,
-    textTransform: "uppercase" as const,
+    textTransform: "uppercase",
     letterSpacing: "0.08em",
     opacity: 0.5,
     marginBottom: 4,

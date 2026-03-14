@@ -12,7 +12,6 @@ import {
 
 export default {
   sessionId: __t.u64(),
-  targetPlayerSlot: __t.u32(),
-  stateKey: __t.string(),
-  stateValue: __t.string(),
+  playerSlot: __t.u32(),
+  pawnEntityId: __t.option(__t.u64()),
 };

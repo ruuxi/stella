@@ -11,10 +11,14 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  id: __t.u64(),
+  id: __t.u64().primaryKey(),
   sessionId: __t.u64().name("session_id"),
-  playerIdentity: __t.identity().name("player_identity"),
-  stateKey: __t.string().name("state_key"),
-  stateJson: __t.string().name("state_json"),
+  resourceKey: __t.string().name("resource_key"),
+  resourceScope: __t.string().name("resource_scope"),
+  replicationGroup: __t.string().name("replication_group"),
+  visibilityScope: __t.string().name("visibility_scope"),
+  visibilityKey: __t.option(__t.string()).name("visibility_key"),
+  ownerSlot: __t.i32().name("owner_slot"),
+  dataJson: __t.string().name("data_json"),
   updatedAt: __t.u64().name("updated_at"),
 });

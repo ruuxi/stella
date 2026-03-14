@@ -10,97 +10,96 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export const GameActions = __t.object("GameActions", {
-  id: __t.u64(),
-  sessionId: __t.u64(),
-  playerSlot: __t.u32(),
-  turnNumber: __t.u32(),
-  actionType: __t.string(),
-  payloadJson: __t.string(),
-  resultJson: __t.string(),
-  timestamp: __t.u64(),
-});
-export type GameActions = __Infer<typeof GameActions>;
-
-export const GameChat = __t.object("GameChat", {
-  id: __t.u64(),
-  sessionId: __t.u64(),
-  playerSlot: __t.u32(),
-  displayName: __t.string(),
-  message: __t.string(),
-  messageType: __t.string(),
-  timestamp: __t.u64(),
-});
-export type GameChat = __Infer<typeof GameChat>;
-
-export const GameObjects = __t.object("GameObjects", {
-  id: __t.u64(),
-  sessionId: __t.u64(),
-  objectType: __t.string(),
-  objectKey: __t.string(),
-  ownerSlot: __t.i32(),
-  positionJson: __t.string(),
-  stateJson: __t.string(),
-  sortOrder: __t.u32(),
-  createdAt: __t.u64(),
-  updatedAt: __t.u64(),
-});
-export type GameObjects = __Infer<typeof GameObjects>;
-
-export const GamePlayers = __t.object("GamePlayers", {
-  id: __t.u64(),
-  sessionId: __t.u64(),
-  playerIdentity: __t.identity(),
-  convexUserId: __t.string(),
-  displayName: __t.string(),
-  avatarUrl: __t.string(),
-  slot: __t.u32(),
-  score: __t.i64(),
-  status: __t.string(),
-  isHost: __t.u8(),
-  metadataJson: __t.string(),
-  joinedAt: __t.u64(),
-  lastSeenAt: __t.u64(),
-});
-export type GamePlayers = __Infer<typeof GamePlayers>;
-
-export const GameSessions = __t.object("GameSessions", {
-  sessionId: __t.u64(),
-  gameId: __t.string(),
-  joinCode: __t.string(),
-  hostIdentity: __t.identity(),
-  hostConvexId: __t.string(),
-  gameType: __t.string(),
-  status: __t.string(),
-  configJson: __t.string(),
-  stateJson: __t.string(),
-  currentTurnPlayerSlot: __t.u32(),
-  turnNumber: __t.u32(),
-  maxPlayers: __t.u32(),
-  createdAt: __t.u64(),
-  updatedAt: __t.u64(),
-  startedAt: __t.u64(),
-  endedAt: __t.u64(),
-});
-export type GameSessions = __Infer<typeof GameSessions>;
-
-export const GameTickSchedule = __t.object("GameTickSchedule", {
-  scheduledId: __t.u64(),
-  scheduledAt: __t.scheduleAt(),
-  sessionId: __t.u64(),
-});
-export type GameTickSchedule = __Infer<typeof GameTickSchedule>;
-
-export const IdentityMap = __t.object("IdentityMap", {
+export const AuthRegistrations = __t.object("AuthRegistrations", {
   id: __t.u64(),
   stdbIdentity: __t.identity(),
   gameId: __t.string(),
-  convexUserId: __t.string(),
+  userId: __t.string(),
   displayName: __t.string(),
   expiresAt: __t.u64(),
   registeredAt: __t.u64(),
 });
-export type IdentityMap = __Infer<typeof IdentityMap>;
+export type AuthRegistrations = __Infer<typeof AuthRegistrations>;
+
+export const Entities = __t.object("Entities", {
+  id: __t.u64(),
+  sessionId: __t.u64(),
+  entityKey: __t.string(),
+  archetype: __t.string(),
+  parentEntityId: __t.option(__t.u64()),
+  ownerSlot: __t.i32(),
+  authority: __t.string(),
+  replicationGroup: __t.string(),
+  zoneKey: __t.string(),
+  visibilityScope: __t.string(),
+  visibilityKey: __t.option(__t.string()),
+  x: __t.f32(),
+  y: __t.f32(),
+  z: __t.f32(),
+  qx: __t.f32(),
+  qy: __t.f32(),
+  qz: __t.f32(),
+  qw: __t.f32(),
+  sx: __t.f32(),
+  sy: __t.f32(),
+  sz: __t.f32(),
+  vx: __t.f32(),
+  vy: __t.f32(),
+  vz: __t.f32(),
+  simulationTick: __t.u32(),
+  lifecycleState: __t.string(),
+  stateJson: __t.string(),
+  createdAt: __t.u64(),
+  updatedAt: __t.u64(),
+});
+export type Entities = __Infer<typeof Entities>;
+
+export const EntityComponents = __t.object("EntityComponents", {
+  id: __t.u64(),
+  sessionId: __t.u64(),
+  entityId: __t.u64(),
+  componentName: __t.string(),
+  schemaKey: __t.string(),
+  replicationGroup: __t.string(),
+  visibilityScope: __t.string(),
+  visibilityKey: __t.option(__t.string()),
+  ownerSlot: __t.i32(),
+  dataJson: __t.string(),
+  updatedAt: __t.u64(),
+});
+export type EntityComponents = __Infer<typeof EntityComponents>;
+
+export const EntitySnapshots = __t.object("EntitySnapshots", {
+  id: __t.u64(),
+  sessionId: __t.u64(),
+  entityId: __t.u64(),
+  simulationTick: __t.u32(),
+  x: __t.f32(),
+  y: __t.f32(),
+  z: __t.f32(),
+  qx: __t.f32(),
+  qy: __t.f32(),
+  qz: __t.f32(),
+  qw: __t.f32(),
+  vx: __t.f32(),
+  vy: __t.f32(),
+  vz: __t.f32(),
+  stateJson: __t.string(),
+  capturedAt: __t.u64(),
+});
+export type EntitySnapshots = __Infer<typeof EntitySnapshots>;
+
+export const InputFrames = __t.object("InputFrames", {
+  id: __t.u64(),
+  sessionId: __t.u64(),
+  playerSlot: __t.u32(),
+  inputSeq: __t.u64(),
+  clientTick: __t.u32(),
+  inputKind: __t.string(),
+  inputJson: __t.string(),
+  createdAt: __t.u64(),
+});
+export type InputFrames = __Infer<typeof InputFrames>;
 
 export const MyPrivateState = __t.object("MyPrivateState", {});
 export type MyPrivateState = __Infer<typeof MyPrivateState>;
@@ -110,7 +109,7 @@ export const MyPrivateStateRow = __t.object("MyPrivateStateRow", {
   sessionId: __t.u64(),
   playerIdentity: __t.identity(),
   stateKey: __t.string(),
-  stateValue: __t.string(),
+  stateJson: __t.string(),
   updatedAt: __t.u64(),
 });
 export type MyPrivateStateRow = __Infer<typeof MyPrivateStateRow>;
@@ -120,10 +119,97 @@ export const PlayerPrivateState = __t.object("PlayerPrivateState", {
   sessionId: __t.u64(),
   playerIdentity: __t.identity(),
   stateKey: __t.string(),
-  stateValue: __t.string(),
+  stateJson: __t.string(),
   updatedAt: __t.u64(),
 });
 export type PlayerPrivateState = __Infer<typeof PlayerPrivateState>;
+
+export const Players = __t.object("Players", {
+  id: __t.u64(),
+  sessionId: __t.u64(),
+  playerIdentity: __t.identity(),
+  userId: __t.string(),
+  displayName: __t.string(),
+  avatarUrl: __t.string(),
+  slot: __t.u32(),
+  teamId: __t.i32(),
+  roleKey: __t.string(),
+  pawnEntityId: __t.option(__t.u64()),
+  score: __t.i64(),
+  lifecycleState: __t.string(),
+  isHost: __t.bool(),
+  presenceJson: __t.string(),
+  lastInputSeq: __t.u64(),
+  metadataJson: __t.string(),
+  joinedAt: __t.u64(),
+  lastSeenAt: __t.u64(),
+});
+export type Players = __Infer<typeof Players>;
+
+export const SessionEvents = __t.object("SessionEvents", {
+  id: __t.u64(),
+  sessionId: __t.u64(),
+  originSlot: __t.option(__t.u32()),
+  targetEntityId: __t.option(__t.u64()),
+  eventKind: __t.string(),
+  eventScope: __t.string(),
+  replicationGroup: __t.string(),
+  visibilityScope: __t.string(),
+  visibilityKey: __t.option(__t.string()),
+  simulationTick: __t.u32(),
+  dataJson: __t.string(),
+  createdAt: __t.u64(),
+});
+export type SessionEvents = __Infer<typeof SessionEvents>;
+
+export const SessionResources = __t.object("SessionResources", {
+  id: __t.u64(),
+  sessionId: __t.u64(),
+  resourceKey: __t.string(),
+  resourceScope: __t.string(),
+  replicationGroup: __t.string(),
+  visibilityScope: __t.string(),
+  visibilityKey: __t.option(__t.string()),
+  ownerSlot: __t.i32(),
+  dataJson: __t.string(),
+  updatedAt: __t.u64(),
+});
+export type SessionResources = __Infer<typeof SessionResources>;
+
+export const Sessions = __t.object("Sessions", {
+  sessionId: __t.u64(),
+  gameId: __t.string(),
+  joinCode: __t.string(),
+  hostIdentity: __t.identity(),
+  hostUserId: __t.string(),
+  gameType: __t.string(),
+  lifecycleState: __t.string(),
+  phaseKey: __t.string(),
+  runtimeKind: __t.string(),
+  rulesetKey: __t.string(),
+  minPlayers: __t.u32(),
+  maxPlayers: __t.u32(),
+  activeTurnSlot: __t.i32(),
+  simulationTick: __t.u32(),
+  tickRateHz: __t.u32(),
+  snapshotRateHz: __t.u32(),
+  interestMode: __t.string(),
+  partitionSize: __t.f32(),
+  publicStateJson: __t.string(),
+  metadataJson: __t.string(),
+  createdAt: __t.u64(),
+  updatedAt: __t.u64(),
+  startedAt: __t.u64(),
+  endedAt: __t.u64(),
+});
+export type Sessions = __Infer<typeof Sessions>;
+
+export const TickSchedules = __t.object("TickSchedules", {
+  scheduledId: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+  sessionId: __t.u64(),
+});
+export type TickSchedules = __Infer<typeof TickSchedules>;
 
 export const UsedGameTokens = __t.object("UsedGameTokens", {
   id: __t.u64(),
