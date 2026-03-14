@@ -1,52 +1,76 @@
 /**
  * Session and join code utilities.
- * Reads session info from URL parameters for the join flow.
+ * Reads session info from URL parameters for the join flow and the
+ * Stella-hosted launch handoff.
  */
 
 import {
-  getSavedConvexToken,
+  clearLaunchAuth,
+  getSavedLaunchAuth,
   getSavedDisplayName,
-  saveConvexToken,
+  getSavedJoinCode,
+  getSavedSessionId,
+  saveLaunchAuth,
   saveDisplayName,
 } from "./connection";
 
-const CONVEX_TOKEN_QUERY_KEYS = ["token", "convexToken"];
-const DISPLAY_NAME_QUERY_KEY = "name";
+export const GAME_AUTH_MESSAGE_TYPE = "stella:game-auth";
+
+export type HostedGameAuthMessage = {
+  type: typeof GAME_AUTH_MESSAGE_TYPE;
+  gameToken: string;
+  displayName?: string;
+  joinCode?: string;
+  spacetimeSessionId?: string;
+};
 
 export const getSessionFromUrl = (): string | null => {
   const params = new URLSearchParams(window.location.search);
-  return params.get("session");
+  return params.get("session") ?? getSavedSessionId() ?? null;
 };
 
 export const getJoinCodeFromUrl = (): string | null => {
   const params = new URLSearchParams(window.location.search);
-  return params.get("code");
+  return params.get("code") ?? getSavedJoinCode() ?? null;
 };
 
-export const bootstrapLaunchStateFromUrl = (): void => {
-  const params = new URLSearchParams(window.location.search);
-  for (const key of CONVEX_TOKEN_QUERY_KEYS) {
-    const token = params.get(key)?.trim();
-    if (token) {
-      saveConvexToken(token);
-      break;
-    }
-  }
-
-  const displayName = params.get(DISPLAY_NAME_QUERY_KEY)?.trim();
-  if (displayName) {
-    saveDisplayName(displayName);
-  }
-};
-
-export const getLaunchConvexToken = (): string | undefined =>
-  getSavedConvexToken();
+export const getLaunchGameToken = (): string | undefined =>
+  getSavedLaunchAuth()?.gameToken;
 
 export const getLaunchDisplayName = (): string | undefined =>
   getSavedDisplayName();
 
 export const saveLaunchDisplayName = (displayName: string): void => {
   saveDisplayName(displayName);
+};
+
+export const saveHostedLaunchAuth = (message: HostedGameAuthMessage): void => {
+  saveLaunchAuth({
+    gameToken: message.gameToken,
+    ...(message.displayName ? { displayName: message.displayName } : {}),
+    ...(message.joinCode ? { joinCode: message.joinCode } : {}),
+    ...(message.spacetimeSessionId
+      ? { spacetimeSessionId: message.spacetimeSessionId }
+      : {}),
+  });
+};
+
+export const clearHostedLaunchAuth = (): void => {
+  clearLaunchAuth();
+};
+
+export const isHostedGameAuthMessage = (
+  value: unknown,
+): value is HostedGameAuthMessage => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    record.type === GAME_AUTH_MESSAGE_TYPE &&
+    typeof record.gameToken === "string" &&
+    record.gameToken.trim().length > 0
+  );
 };
 
 export const buildJoinUrl = (baseUrl: string, joinCode: string): string =>

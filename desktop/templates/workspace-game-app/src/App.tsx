@@ -5,23 +5,84 @@
  * Manages the connection to SpacetimeDB and the game lifecycle.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useTable, useReducer, useSpacetimeDB } from "spacetimedb/react";
 import { tables, reducers } from "./bindings";
 import { Lobby } from "./components/Lobby";
 import { GameView } from "./components/GameView";
 import {
-  bootstrapLaunchStateFromUrl,
+  clearHostedLaunchAuth,
   getJoinCodeFromUrl,
-  getLaunchConvexToken,
   getLaunchDisplayName,
+  getLaunchGameToken,
   getSessionFromUrl,
-  saveLaunchDisplayName,
+  isHostedGameAuthMessage,
+  saveHostedLaunchAuth,
 } from "./lib/session";
 
-bootstrapLaunchStateFromUrl();
+type LaunchAuthState =
+  | { status: "waiting"; displayName?: string }
+  | { status: "ready"; gameToken: string; displayName?: string }
+  | { status: "blocked"; displayName?: string };
+
+function useHostedLaunchAuth(): LaunchAuthState {
+  const [state, setState] = useState<LaunchAuthState>(() => {
+    const gameToken = getLaunchGameToken();
+    const displayName = getLaunchDisplayName();
+    if (gameToken) {
+      return { status: "ready", gameToken, ...(displayName ? { displayName } : {}) };
+    }
+    return { status: "waiting", ...(displayName ? { displayName } : {}) };
+  });
+
+  useEffect(() => {
+    const receiveAuth = (event: MessageEvent) => {
+      if (event.source !== window.parent) {
+        return;
+      }
+      if (!isHostedGameAuthMessage(event.data)) {
+        return;
+      }
+      saveHostedLaunchAuth(event.data);
+      setState({
+        status: "ready",
+        gameToken: event.data.gameToken,
+        ...(event.data.displayName ? { displayName: event.data.displayName } : {}),
+      });
+    };
+
+    window.addEventListener("message", receiveAuth);
+
+    const blockTimer = window.setTimeout(() => {
+      const gameToken = getLaunchGameToken();
+      if (gameToken) {
+        setState({
+          status: "ready",
+          gameToken,
+          ...(getLaunchDisplayName() ? { displayName: getLaunchDisplayName()! } : {}),
+        });
+        return;
+      }
+      if (window.parent === window) {
+        clearHostedLaunchAuth();
+        setState({
+          status: "blocked",
+          ...(getLaunchDisplayName() ? { displayName: getLaunchDisplayName()! } : {}),
+        });
+      }
+    }, 1500);
+
+    return () => {
+      window.removeEventListener("message", receiveAuth);
+      window.clearTimeout(blockTimer);
+    };
+  }, []);
+
+  return state;
+}
 
 function GameRouter() {
+  const launchAuth = useHostedLaunchAuth();
   const { isActive, identity } = useSpacetimeDB();
   const [sessions] = useTable(tables.game_sessions);
   const [players] = useTable(tables.game_players);
@@ -51,6 +112,14 @@ function GameRouter() {
     void startGame({ sessionId: session.sessionId });
   }, [session, startGame]);
 
+  if (launchAuth.status === "blocked") {
+    return <LaunchBlocked displayName={launchAuth.displayName} />;
+  }
+
+  if (launchAuth.status === "waiting") {
+    return <WaitingForStella displayName={launchAuth.displayName} />;
+  }
+
   if (!isActive) {
     return (
       <div style={styles.connecting}>
@@ -61,7 +130,7 @@ function GameRouter() {
   }
 
   if (!session) {
-    return <JoinOrCreate />;
+    return <JoinOrCreate launchAuth={launchAuth} />;
   }
 
   if (session.status === "lobby") {
@@ -87,35 +156,26 @@ function GameRouter() {
 /**
  * Join or create screen — shown when no session is active.
  */
-function JoinOrCreate() {
+function JoinOrCreate({ launchAuth }: { launchAuth: Extract<LaunchAuthState, { status: "ready" }> }) {
   const [joinCode, setJoinCode] = useState(getJoinCodeFromUrl() ?? "");
-  const [name, setName] = useState(getLaunchDisplayName() ?? "");
   const [error, setError] = useState<string | null>(null);
 
   const registerPlayer = useReducer(reducers.registerPlayer);
   const joinSession = useReducer(reducers.joinSession);
   const createSession = useReducer(reducers.createSession);
+  const displayName = useMemo(
+    () => launchAuth.displayName ?? getLaunchDisplayName() ?? "Player",
+    [launchAuth.displayName],
+  );
 
   const ensureRegistered = useCallback(async () => {
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      throw new Error("Enter your name to continue.");
-    }
-
-    const convexToken = getLaunchConvexToken();
-    if (!convexToken) {
-      throw new Error("Open this game from Stella to join or host a session.");
-    }
-
-    saveLaunchDisplayName(trimmedName);
     await registerPlayer({
-      convexToken,
-      displayName: trimmedName,
+      gameToken: launchAuth.gameToken,
     });
-  }, [name, registerPlayer]);
+  }, [launchAuth, registerPlayer]);
 
   const handleJoin = useCallback(async () => {
-    if (!joinCode.trim() || !name.trim()) return;
+    if (!joinCode.trim()) return;
     setError(null);
     try {
       await ensureRegistered();
@@ -125,10 +185,9 @@ function JoinOrCreate() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to join");
     }
-  }, [ensureRegistered, joinCode, name, joinSession]);
+  }, [ensureRegistered, joinCode, joinSession]);
 
   const handleCreate = useCallback(async () => {
-    if (!name.trim()) return;
     setError(null);
     try {
       await ensureRegistered();
@@ -140,20 +199,13 @@ function JoinOrCreate() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create");
     }
-  }, [createSession, ensureRegistered, name]);
+  }, [createSession, ensureRegistered]);
 
   return (
     <div style={styles.joinContainer}>
       <div style={styles.joinCard}>
         <h2 style={styles.joinTitle}>{{name}}</h2>
-
-        <input
-          type="text"
-          placeholder="Your name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={styles.input}
-        />
+        <div style={styles.signedInAs}>Signed in as {displayName}</div>
 
         <div style={styles.divider} />
 
@@ -167,7 +219,7 @@ function JoinOrCreate() {
         />
         <button
           onClick={handleJoin}
-          disabled={!joinCode.trim() || !name.trim()}
+          disabled={!joinCode.trim()}
           style={styles.primaryButton}
         >
           Join Game
@@ -177,13 +229,36 @@ function JoinOrCreate() {
 
         <button
           onClick={handleCreate}
-          disabled={!name.trim()}
           style={styles.secondaryButton}
         >
           Create New Game
         </button>
 
         {error && <div style={styles.error}>{error}</div>}
+      </div>
+    </div>
+  );
+}
+
+function WaitingForStella({ displayName }: { displayName?: string }) {
+  return (
+    <div style={styles.connecting}>
+      <div style={styles.spinner} />
+      <span>Waiting for Stella to authorize this game...</span>
+      {displayName ? <span style={styles.helperText}>Signed in as {displayName}</span> : null}
+    </div>
+  );
+}
+
+function LaunchBlocked({ displayName }: { displayName?: string }) {
+  return (
+    <div style={styles.joinContainer}>
+      <div style={styles.joinCard}>
+        <h2 style={styles.joinTitle}>Open From Stella</h2>
+        <p style={styles.blockedMessage}>
+          This game needs a Stella launch token before it can join or host multiplayer sessions.
+        </p>
+        {displayName ? <div style={styles.signedInAs}>Signed in as {displayName}</div> : null}
       </div>
     </div>
   );
@@ -234,6 +309,22 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 20,
     fontWeight: 600,
     margin: "0 0 8px",
+  },
+  signedInAs: {
+    fontSize: 14,
+    opacity: 0.72,
+    textAlign: "center" as const,
+  },
+  helperText: {
+    fontSize: 13,
+    opacity: 0.6,
+  },
+  blockedMessage: {
+    margin: 0,
+    fontSize: 14,
+    lineHeight: 1.5,
+    textAlign: "center" as const,
+    opacity: 0.8,
   },
   input: {
     width: "100%",

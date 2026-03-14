@@ -16,8 +16,10 @@ export const SPACETIMEDB_MODULE =
     ?.VITE_SPACETIMEDB_MODULE ?? "{{spacetimedbModule}}";
 
 const SPACETIMEDB_TOKEN_KEY = "spacetimedb_token";
-const CONVEX_TOKEN_KEY = "stella_game_convex_token";
 const DISPLAY_NAME_KEY = "stella_game_display_name";
+const GAME_AUTH_TOKEN_KEY = "stella_game_auth_token";
+const GAME_JOIN_CODE_KEY = "stella_game_join_code";
+const GAME_SESSION_ID_KEY = "stella_game_session_id";
 
 export const getSavedToken = (): string | undefined => {
   try {
@@ -35,25 +37,32 @@ export const saveToken = (token: string): void => {
   }
 };
 
-export const getSavedConvexToken = (): string | undefined => {
+export type SavedLaunchAuth = {
+  gameToken: string;
+  displayName?: string;
+  joinCode?: string;
+  spacetimeSessionId?: string;
+};
+
+export const getSavedGameAuthToken = (): string | undefined => {
   try {
-    return localStorage.getItem(CONVEX_TOKEN_KEY) ?? undefined;
+    return sessionStorage.getItem(GAME_AUTH_TOKEN_KEY) ?? undefined;
   } catch {
     return undefined;
   }
 };
 
-export const saveConvexToken = (token: string): void => {
+export const saveGameAuthToken = (token: string): void => {
   try {
-    localStorage.setItem(CONVEX_TOKEN_KEY, token);
+    sessionStorage.setItem(GAME_AUTH_TOKEN_KEY, token);
   } catch {
-    // localStorage may not be available
+    // sessionStorage may not be available
   }
 };
 
 export const getSavedDisplayName = (): string | undefined => {
   try {
-    return localStorage.getItem(DISPLAY_NAME_KEY) ?? undefined;
+    return sessionStorage.getItem(DISPLAY_NAME_KEY) ?? undefined;
   } catch {
     return undefined;
   }
@@ -61,8 +70,82 @@ export const getSavedDisplayName = (): string | undefined => {
 
 export const saveDisplayName = (displayName: string): void => {
   try {
-    localStorage.setItem(DISPLAY_NAME_KEY, displayName);
+    sessionStorage.setItem(DISPLAY_NAME_KEY, displayName);
   } catch {
-    // localStorage may not be available
+    // sessionStorage may not be available
+  }
+};
+
+export const saveJoinCode = (joinCode: string): void => {
+  try {
+    sessionStorage.setItem(GAME_JOIN_CODE_KEY, joinCode);
+  } catch {
+    // sessionStorage may not be available
+  }
+};
+
+export const getSavedJoinCode = (): string | undefined => {
+  try {
+    return sessionStorage.getItem(GAME_JOIN_CODE_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const saveSessionId = (sessionId: string): void => {
+  try {
+    sessionStorage.setItem(GAME_SESSION_ID_KEY, sessionId);
+  } catch {
+    // sessionStorage may not be available
+  }
+};
+
+export const getSavedSessionId = (): string | undefined => {
+  try {
+    return sessionStorage.getItem(GAME_SESSION_ID_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const saveLaunchAuth = (auth: SavedLaunchAuth): void => {
+  saveGameAuthToken(auth.gameToken);
+  if (auth.displayName) {
+    saveDisplayName(auth.displayName);
+  }
+  if (auth.joinCode) {
+    saveJoinCode(auth.joinCode);
+  }
+  if (auth.spacetimeSessionId) {
+    saveSessionId(auth.spacetimeSessionId);
+  }
+};
+
+export const getSavedLaunchAuth = (): SavedLaunchAuth | null => {
+  const gameToken = getSavedGameAuthToken();
+  if (!gameToken) {
+    return null;
+  }
+
+  const displayName = getSavedDisplayName();
+  const joinCode = getSavedJoinCode();
+  const spacetimeSessionId = getSavedSessionId();
+
+  return {
+    gameToken,
+    ...(displayName ? { displayName } : {}),
+    ...(joinCode ? { joinCode } : {}),
+    ...(spacetimeSessionId ? { spacetimeSessionId } : {}),
+  };
+};
+
+export const clearLaunchAuth = (): void => {
+  try {
+    sessionStorage.removeItem(GAME_AUTH_TOKEN_KEY);
+    sessionStorage.removeItem(DISPLAY_NAME_KEY);
+    sessionStorage.removeItem(GAME_JOIN_CODE_KEY);
+    sessionStorage.removeItem(GAME_SESSION_ID_KEY);
+  } catch {
+    // sessionStorage may not be available
   }
 };

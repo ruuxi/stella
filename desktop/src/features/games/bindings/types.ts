@@ -66,6 +66,7 @@ export type GamePlayers = __Infer<typeof GamePlayers>;
 
 export const GameSessions = __t.object("GameSessions", {
   sessionId: __t.u64(),
+  gameId: __t.string(),
   joinCode: __t.string(),
   hostIdentity: __t.identity(),
   hostConvexId: __t.string(),
@@ -93,8 +94,10 @@ export type GameTickSchedule = __Infer<typeof GameTickSchedule>;
 export const IdentityMap = __t.object("IdentityMap", {
   id: __t.u64(),
   stdbIdentity: __t.identity(),
+  gameId: __t.string(),
   convexUserId: __t.string(),
   displayName: __t.string(),
+  expiresAt: __t.u64(),
   registeredAt: __t.u64(),
 });
 export type IdentityMap = __Infer<typeof IdentityMap>;
@@ -121,4 +124,13 @@ export const PlayerPrivateState = __t.object("PlayerPrivateState", {
   updatedAt: __t.u64(),
 });
 export type PlayerPrivateState = __Infer<typeof PlayerPrivateState>;
+
+export const UsedGameTokens = __t.object("UsedGameTokens", {
+  id: __t.u64(),
+  jti: __t.string(),
+  stdbIdentity: __t.identity(),
+  gameId: __t.string(),
+  usedAt: __t.u64(),
+});
+export type UsedGameTokens = __Infer<typeof UsedGameTokens>;
 
