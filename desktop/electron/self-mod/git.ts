@@ -67,12 +67,23 @@ export type GitFeatureCommitArgs = {
   batchId: string;
   ordinal: number;
   taskDescription?: string;
+  packageId?: string;
+  releaseNumber?: number;
+  source?: "author" | "install" | "update";
 };
 
 export type GitCustomCommitArgs = {
   repoRoot: string;
   subject: string;
   bodyLines?: string[];
+};
+
+export type GitCommitReference = {
+  commitHash: string;
+  subject: string;
+  body: string;
+  files: string[];
+  patch: string;
 };
 
 const humanizeFeatureId = (featureId: string): string =>
@@ -487,11 +498,23 @@ export const commitGitFeatureBatch = async (
     return null;
   }
 
-  const subject = `Self-mod batch ${args.ordinal} [feature:${args.featureId}]`;
+  const subjectPrefix =
+    args.source === "install"
+      ? "Store install"
+      : args.source === "update"
+        ? "Store update"
+        : "Self-mod batch";
+  const subject = `${subjectPrefix} ${args.ordinal} [feature:${args.featureId}]`;
   const bodyLines = [
     `Stella-Batch-Id: ${args.batchId}`,
     `Stella-Feature-Id: ${args.featureId}`,
   ];
+  if (args.packageId?.trim()) {
+    bodyLines.push(`Stella-Package-Id: ${args.packageId.trim()}`);
+  }
+  if (typeof args.releaseNumber === "number" && Number.isFinite(args.releaseNumber)) {
+    bodyLines.push(`Stella-Release-Number: ${Math.max(1, Math.floor(args.releaseNumber))}`);
+  }
   if (args.taskDescription?.trim()) {
     bodyLines.push(`Stella-Task: ${args.taskDescription.trim()}`);
   }
@@ -554,6 +577,35 @@ export const getCommitFileSnapshot = async (args: {
       deleted: true,
     };
   }
+};
+
+export const getCommitReference = async (args: {
+  repoRoot: string;
+  commitHash: string;
+}): Promise<GitCommitReference> => {
+  await assertGitRepository(args.repoRoot);
+  const format = `%s${LOG_FIELD_SEPARATOR}%b`;
+  const output = await runGit(args.repoRoot, [
+    "show",
+    "--stat=0",
+    `--format=${format}`,
+    args.commitHash,
+  ]);
+  const [subject = "", body = ""] = output.split(LOG_FIELD_SEPARATOR);
+  const files = await getChangedFilesForCommit(args.repoRoot, args.commitHash);
+  const patch = await runGit(args.repoRoot, [
+    "show",
+    "--format=",
+    "--unified=3",
+    args.commitHash,
+  ]);
+  return {
+    commitHash: args.commitHash,
+    subject,
+    body,
+    files,
+    patch,
+  };
 };
 
 export const getCommitSelectionSnapshots = async (args: {

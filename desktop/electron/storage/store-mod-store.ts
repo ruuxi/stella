@@ -4,7 +4,7 @@ import type {
   SelfModFeatureRecord,
 } from "../../src/shared/contracts/electron-data.js";
 import type { SqliteDatabase } from "./shared.js";
-import { generateLocalId, parseJsonRecord, toJsonString } from "./shared.js";
+import { generateLocalId } from "./shared.js";
 
 type FeatureRow = {
   featureId: string;
@@ -42,10 +42,6 @@ type InstallRow = {
 };
 
 const parseJsonStringArray = (value: string | null): string[] => {
-  const record = parseJsonRecord(value);
-  if (record) {
-    return [];
-  }
   if (!value) return [];
   try {
     const parsed = JSON.parse(value) as unknown;

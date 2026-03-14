@@ -1,5 +1,3 @@
-import { promises as fs } from "fs";
-import path from "path";
 import type {
   InstalledStoreModRecord,
   SelfModBatchRecord,
@@ -7,12 +5,15 @@ import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
+  StoreReleaseBlueprintBatch,
+  StoreReleaseBlueprintFile,
   StoreReleaseDraft,
   StoreReleaseManifest,
 } from "../../src/shared/contracts/electron-data.js";
 import { StoreModStore } from "../storage/store-mod-store.js";
 import {
   commitGitFeatureBatch,
+  getCommitReference,
   getCommitSelectionSnapshots,
   listGitDirtyFiles,
   stageFeatureDependencyFiles,
@@ -21,15 +22,17 @@ import {
 
 type ActiveSelfModRun = {
   featureId: string;
-  name: string;
-  description: string;
   baselineDirtyFiles: Set<string>;
   taskDescription: string;
+  packageId?: string;
+  releaseNumber?: number;
+  applyMode: "author" | "install" | "update";
 };
 
 type PublishReleaseArgs = {
   packageId: string;
   featureId: string;
+  releaseNumber: number;
   displayName: string;
   description: string;
   releaseNotes?: string;
@@ -82,10 +85,6 @@ const deriveFeatureId = (taskDescription: string): string => {
 const normalizeFileList = (files: string[]): string[] =>
   Array.from(new Set(files.map((file) => file.trim().replace(/\\/g, "/")).filter(Boolean))).sort();
 
-const ensureParentDir = async (repoRoot: string, relativePath: string) => {
-  await fs.mkdir(path.dirname(path.join(repoRoot, relativePath)), { recursive: true });
-};
-
 const sortBatchesByOrdinal = (batches: SelfModBatchRecord[]) =>
   [...batches].sort((a, b) => a.ordinal - b.ordinal || a.createdAt - b.createdAt);
 
@@ -111,6 +110,46 @@ const selectDefaultBatchIds = (batches: SelfModBatchRecord[]): string[] => {
   return selection;
 };
 
+const DEFAULT_BLUEPRINT_APPLY_GUIDANCE =
+  "Treat this release blueprint as the reference implementation for the feature. " +
+  "Stella installations can differ, so adapt the changes to the current local codebase instead of blindly copying text. " +
+  "Create missing files when the blueprint expects them, update existing files to preserve the intended behavior, " +
+  "and delete files only when the blueprint clearly marks them as removed.";
+
+const trimOrUndefined = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+const normalizeReleaseNumber = (value: number | undefined): number | undefined =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.max(1, Math.floor(value))
+    : undefined;
+
+const buildBlueprintFileChangeType = (args: {
+  filePath: string;
+  deleted: boolean;
+  batches: StoreReleaseBlueprintBatch[];
+}): StoreReleaseBlueprintFile["changeType"] => {
+  if (args.deleted) {
+    return "delete";
+  }
+  const normalizedPath = args.filePath.replace(/\\/g, "/");
+  for (const batch of args.batches) {
+    const normalizedPatch = batch.patch.replace(/\r\n/g, "\n");
+    if (
+      normalizedPatch.includes(`diff --git a/${normalizedPath} b/${normalizedPath}`)
+      && (
+        normalizedPatch.includes("new file mode")
+        || normalizedPatch.includes(`--- /dev/null\n+++ b/${normalizedPath}`)
+      )
+    ) {
+      return "create";
+    }
+  }
+  return "update";
+};
+
 export class StoreModService {
   private readonly activeRuns = new Map<string, ActiveSelfModRun>();
 
@@ -122,23 +161,35 @@ export class StoreModService {
   async beginSelfModRun(args: {
     runId: string;
     taskDescription: string;
+    featureId?: string;
+    packageId?: string;
+    releaseNumber?: number;
+    applyMode?: "author" | "install" | "update";
+    displayName?: string;
+    description?: string;
   }): Promise<SelfModFeatureRecord> {
     const taskDescription = args.taskDescription.trim() || "Self mod update";
-    const featureId = deriveFeatureId(taskDescription);
-    const name = humanize(featureId.replace(/-[a-z0-9]{1,6}$/, ""));
-    const description = taskDescription;
+    const featureId = trimOrUndefined(args.featureId) ?? deriveFeatureId(taskDescription);
+    const name = trimOrUndefined(args.displayName)
+      ?? humanize(featureId.replace(/-[a-z0-9]{1,6}$/, ""));
+    const description = trimOrUndefined(args.description) ?? taskDescription;
     const baselineDirtyFiles = new Set(await listGitDirtyFiles(this.repoRoot));
+    const packageId = trimOrUndefined(args.packageId);
+    const releaseNumber = normalizeReleaseNumber(args.releaseNumber);
+    const applyMode = args.applyMode ?? "author";
     const feature = this.store.upsertFeature({
       featureId,
       name,
       description,
+      ...(packageId ? { packageId } : {}),
     });
     this.activeRuns.set(args.runId, {
       featureId,
-      name,
-      description,
       baselineDirtyFiles,
       taskDescription,
+      ...(packageId ? { packageId } : {}),
+      ...(releaseNumber == null ? {} : { releaseNumber }),
+      applyMode,
     });
     return feature;
   }
@@ -166,6 +217,8 @@ export class StoreModService {
     const blockedFiles = currentDirtyFiles.filter((file) => baselineDirty.has(file));
     const safeFiles = currentDirtyFiles.filter((file) => !baselineDirty.has(file));
     const ordinal = this.store.getNextFeatureOrdinal(activeRun.featureId);
+    const batchState: SelfModBatchRecord["state"] =
+      activeRun.applyMode === "author" ? "committed" : "published";
 
     if (safeFiles.length === 0) {
       return this.store.createBatch({
@@ -175,6 +228,8 @@ export class StoreModService {
         state: "blocked",
         files: currentDirtyFiles,
         blockedFiles,
+        ...(activeRun.packageId ? { packageId: activeRun.packageId } : {}),
+        ...(activeRun.releaseNumber == null ? {} : { releaseNumber: activeRun.releaseNumber }),
       });
     }
 
@@ -187,21 +242,40 @@ export class StoreModService {
       batchId,
       ordinal,
       taskDescription: activeRun.taskDescription,
+      ...(activeRun.packageId ? { packageId: activeRun.packageId } : {}),
+      ...(activeRun.releaseNumber == null ? {} : { releaseNumber: activeRun.releaseNumber }),
+      source: activeRun.applyMode,
     });
     if (!commitHash) {
       return null;
     }
 
-    return this.store.createBatch({
+    const batch = this.store.createBatch({
       batchId,
       featureId: activeRun.featureId,
       runId: args.runId,
       ordinal,
-      state: "committed",
+      state: batchState,
       commitHash,
       files: safeFiles,
       blockedFiles,
+      ...(activeRun.packageId ? { packageId: activeRun.packageId } : {}),
+      ...(activeRun.releaseNumber == null ? {} : { releaseNumber: activeRun.releaseNumber }),
     });
+    if (
+      activeRun.packageId
+      && activeRun.releaseNumber != null
+      && activeRun.applyMode !== "author"
+    ) {
+      this.store.bindFeaturePackage(activeRun.featureId, activeRun.packageId);
+      this.store.recordInstallCommit({
+        packageId: activeRun.packageId,
+        featureId: activeRun.featureId,
+        releaseNumber: activeRun.releaseNumber,
+        applyCommitHash: commitHash,
+      });
+    }
+    return batch;
   }
 
   listLocalFeatures(limit?: number): SelfModFeatureRecord[] {
@@ -261,6 +335,7 @@ export class StoreModService {
     featureId: string;
     batchIds?: string[];
     packageId?: string;
+    releaseNumber?: number;
     displayName?: string;
     description?: string;
     releaseNotes?: string;
@@ -279,10 +354,12 @@ export class StoreModService {
     if (!displayName || !description) {
       throw new Error("displayName and description are required.");
     }
+    const releaseNumber = normalizeReleaseNumber(args.releaseNumber) ?? 1;
 
     const artifact = await this.buildReleaseArtifact({
       featureId: draft.feature.featureId,
       packageId,
+      releaseNumber,
       displayName,
       description,
       releaseNotes: args.releaseNotes?.trim(),
@@ -292,6 +369,7 @@ export class StoreModService {
     const release = await args.publish({
       packageId,
       featureId: draft.feature.featureId,
+      releaseNumber,
       displayName,
       description,
       releaseNotes: args.releaseNotes?.trim(),
@@ -314,31 +392,32 @@ export class StoreModService {
       packageId: string;
       releaseNumber: number;
     }) => Promise<FetchReleaseResult>;
-    commitApply: (args: {
-      packageId: string;
-      featureId: string;
-      releaseNumber: number;
-      touchedFiles: string[];
-    }) => Promise<string>;
-  }): Promise<InstalledStoreModRecord> {
+    applyRelease: (args: {
+      package: StorePackageRecord;
+      release: StorePackageReleaseRecord;
+      artifact: StoreReleaseArtifact;
+      mode: "install" | "update";
+    }) => Promise<void>;
+  }): Promise<{ installRecord: InstalledStoreModRecord }> {
     const payload = await args.fetchRelease({
       packageId: args.packageId,
       releaseNumber: args.releaseNumber,
     });
-    await this.applyArtifact(payload.artifact);
-    const touchedFiles = normalizeFileList(payload.artifact.files.map((file) => file.path));
-    const commitHash = await args.commitApply({
-      packageId: payload.package.packageId,
-      featureId: payload.package.featureId,
-      releaseNumber: payload.release.releaseNumber,
-      touchedFiles,
+    const existingInstall = this.store.getInstalledModByPackageId(payload.package.packageId);
+    const mode: "install" | "update" = existingInstall ? "update" : "install";
+    await args.applyRelease({
+      package: payload.package,
+      release: payload.release,
+      artifact: payload.artifact,
+      mode,
     });
-    return this.store.recordInstallCommit({
-      packageId: payload.package.packageId,
-      featureId: payload.package.featureId,
-      releaseNumber: payload.release.releaseNumber,
-      applyCommitHash: commitHash,
-    });
+    const installRecord = this.store.getInstalledModByPackageId(payload.package.packageId);
+    if (!installRecord) {
+      throw new Error("Store install completed without recording a local install commit.");
+    }
+    return {
+      installRecord,
+    };
   }
 
   markInstallUninstalled(installId: string): void {
@@ -364,6 +443,7 @@ export class StoreModService {
   private async buildReleaseArtifact(args: {
     featureId: string;
     packageId: string;
+    releaseNumber: number;
     displayName: string;
     description: string;
     releaseNotes?: string;
@@ -374,47 +454,63 @@ export class StoreModService {
       throw new Error("Selected batches do not have committed changes.");
     }
 
+    const batchReferences = await Promise.all(
+      orderedBatches.map(async (batch) => {
+        const reference = await getCommitReference({
+          repoRoot: this.repoRoot,
+          commitHash: batch.commitHash!,
+        });
+        return {
+          batchId: batch.batchId,
+          ordinal: batch.ordinal,
+          commitHash: batch.commitHash!,
+          files: [...reference.files],
+          subject: reference.subject,
+          body: reference.body,
+          patch: reference.patch,
+        } satisfies StoreReleaseBlueprintBatch;
+      }),
+    );
+    const commitHashes = orderedBatches.map((batch) => batch.commitHash!).filter(Boolean);
+
     const files = normalizeFileList(
       orderedBatches.flatMap((batch) => batch.files),
     );
     const snapshots = await getCommitSelectionSnapshots({
       repoRoot: this.repoRoot,
-      commitHashes: orderedBatches.map((batch) => batch.commitHash!).filter(Boolean),
+      commitHashes,
       files,
     });
 
     const manifest: StoreReleaseManifest = {
       featureId: args.featureId,
       packageId: args.packageId,
-      releaseNumber: 0,
+      releaseNumber: args.releaseNumber,
       displayName: args.displayName,
       description: args.description,
       ...(args.releaseNotes ? { releaseNotes: args.releaseNotes } : {}),
       batchIds: orderedBatches.map((batch) => batch.batchId),
-      commitHashes: orderedBatches.map((batch) => batch.commitHash!).filter(Boolean),
+      commitHashes,
       files,
       createdAt: Date.now(),
     };
 
     return {
+      kind: "self_mod_blueprint",
+      schemaVersion: 1,
       manifest,
-      files: snapshots,
+      applyGuidance: DEFAULT_BLUEPRINT_APPLY_GUIDANCE,
+      batches: batchReferences,
+      files: snapshots.map((snapshot) => ({
+        path: snapshot.path,
+        changeType: buildBlueprintFileChangeType({
+          filePath: snapshot.path,
+          deleted: snapshot.deleted,
+          batches: batchReferences,
+        }),
+        ...(snapshot.deleted ? { deleted: true } : {}),
+        ...(snapshot.contentBase64 ? { referenceContentBase64: snapshot.contentBase64 } : {}),
+      })),
     };
-  }
-
-  private async applyArtifact(artifact: StoreReleaseArtifact): Promise<void> {
-    for (const file of artifact.files) {
-      const relativePath = file.path.replace(/\\/g, "/");
-      const absolutePath = path.join(this.repoRoot, relativePath);
-      if (file.deleted) {
-        await fs.rm(absolutePath, { force: true });
-        continue;
-      }
-      if (!file.contentBase64) {
-        continue;
-      }
-      await ensureParentDir(this.repoRoot, relativePath);
-      await fs.writeFile(absolutePath, Buffer.from(file.contentBase64, "base64"));
-    }
   }
 }
