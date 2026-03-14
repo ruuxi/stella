@@ -115,6 +115,17 @@ export interface WakeWordResult {
   detected: boolean;
   score: number;
   vadScore: number;
+  frontEnd?: WakeWordFrontEndState;
+}
+
+export interface WakeWordFrontEndState {
+  inputLevel: number;
+  noiseFloor: number;
+  nextNoiseFloor: number;
+  signalThreshold: number;
+  signalDelta: number;
+  signalPresent: boolean;
+  gateOpen: boolean;
 }
 
 export interface WakeWordDetector {
@@ -147,7 +158,6 @@ const RAW_BUFFER_MAX = SAMPLE_RATE * 10; // 10 seconds
 const VAD_FRAME_SIZE = 512; // 32ms
 const VAD_CONTEXT_SIZE = 64; // context window prepended to each frame
 const VAD_STATE_DIM = 128;
-const VAD_THRESHOLD = 0.5;
 
 const STACK_WINDOW = 5;
 const STACK_REQUIRED = 3;
