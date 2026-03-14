@@ -17,6 +17,7 @@ interface UseVoiceRecordingResult {
 }
 
 const MAX_RECORDING_MS = 5 * 60 * 1000;
+const VOICE_RECORDING_MIC_USE_CASE = "speech-recording" as const;
 let speechToTextModulePromise: Promise<
   typeof import("@/features/voice/services/speech-to-text")
 > | null = null;
@@ -95,7 +96,9 @@ export function useVoiceRecording({
     void (async () => {
       try {
         const sttModulePromise = loadSpeechToTextModule();
-        const micLeasePromise = acquireSharedMicrophone();
+        const micLeasePromise = acquireSharedMicrophone({
+          useCase: VOICE_RECORDING_MIC_USE_CASE,
+        });
 
         const ctx = new AudioContext();
         audioContextRef.current = ctx;

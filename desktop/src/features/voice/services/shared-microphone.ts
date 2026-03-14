@@ -1,12 +1,24 @@
 const SHARED_MIC_STATE_KEY = "__stellaSharedMicrophoneState";
 const SHARED_MIC_RELEASE_GRACE_MS = 45_000;
 
-export const SHARED_MIC_CONSTRAINTS: MediaTrackConstraints = {
+export type SharedMicrophoneUseCase =
+  | "voice-rtc"
+  | "speech-recording"
+  | "wake-word";
+
+export interface SharedMicrophoneAcquireOptions {
+  useCase?: SharedMicrophoneUseCase;
+}
+
+// All renderer voice features intentionally share one speech-capture profile
+// so browser/OS echo cancellation is configured consistently everywhere.
+export const SHARED_MIC_SPEECH_CAPTURE_CONSTRAINTS: MediaTrackConstraints = {
   channelCount: 1,
   echoCancellation: true,
   noiseSuppression: true,
   autoGainControl: true,
 };
+export const SHARED_MIC_CONSTRAINTS = SHARED_MIC_SPEECH_CAPTURE_CONSTRAINTS;
 
 export interface SharedMicrophoneLease {
   stream: MediaStream;
@@ -48,6 +60,18 @@ const stopStream = (stream: MediaStream | null) => {
   stream?.getTracks().forEach((track) => track.stop());
 };
 
+const hasLiveTrack = (stream: MediaStream | null) => {
+  return (
+    stream?.getTracks().some((track) => track.readyState !== "ended") ?? false
+  );
+};
+
+const getSharedMicrophoneConstraints = (
+  _useCase: SharedMicrophoneUseCase,
+): MediaTrackConstraints => {
+  return { ...SHARED_MIC_SPEECH_CAPTURE_CONSTRAINTS };
+};
+
 const scheduleRootRelease = (state: SharedMicrophoneState) => {
   clearReleaseTimer(state);
   state.releaseTimer = setTimeout(() => {
@@ -62,14 +86,20 @@ const scheduleRootRelease = (state: SharedMicrophoneState) => {
 
 const acquireRootStream = async (
   state: SharedMicrophoneState,
+  useCase: SharedMicrophoneUseCase,
 ): Promise<MediaStream> => {
-  if (state.rootStream) {
+  if (state.rootStream && hasLiveTrack(state.rootStream)) {
     return state.rootStream;
+  }
+
+  if (state.rootStream) {
+    stopStream(state.rootStream);
+    state.rootStream = null;
   }
 
   if (!state.acquirePromise) {
     state.acquirePromise = navigator.mediaDevices
-      .getUserMedia({ audio: SHARED_MIC_CONSTRAINTS })
+      .getUserMedia({ audio: getSharedMicrophoneConstraints(useCase) })
       .then((stream) => {
         state.rootStream = stream;
         return stream;
@@ -86,11 +116,14 @@ const acquireRootStream = async (
   return state.acquirePromise;
 };
 
-export async function acquireSharedMicrophone(): Promise<SharedMicrophoneLease> {
+export async function acquireSharedMicrophone(
+  options: SharedMicrophoneAcquireOptions = {},
+): Promise<SharedMicrophoneLease> {
   const state = getSharedMicrophoneState();
+  const useCase = options.useCase ?? "voice-rtc";
   clearReleaseTimer(state);
 
-  const rootStream = await acquireRootStream(state);
+  const rootStream = await acquireRootStream(state, useCase);
   state.activeLeaseCount += 1;
 
   const stream = rootStream.clone();
