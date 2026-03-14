@@ -12,8 +12,8 @@
   pointer-events: auto;
   position: relative;
   z-index: 2;
-  width: 56px;
-  height: 56px;
+  width: clamp(40px, 7vmin, 56px);
+  height: clamp(40px, 7vmin, 56px);
   border-radius: 50%;
   overflow: hidden;
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
@@ -56,8 +56,9 @@
   pointer-events: auto;
   position: fixed;
   z-index: 9999;
-  width: 520px;
-  max-height: 600px;
+  width: clamp(280px, 55vmin, 520px);
+  max-width: calc(100vw - 48px);
+  max-height: min(600px, calc(100vh - 120px));
   display: flex;
   flex-direction: column;
 }
@@ -113,13 +114,14 @@
   position: absolute;
   right: 0;
   bottom: 0;
-  min-height: 56px;
-  width: 520px;
+  min-height: clamp(40px, 7vmin, 56px);
+  width: clamp(280px, 55vmin, 520px);
+  max-width: calc(100vw - 48px);
   box-sizing: border-box;
-  padding: 12px 60px 12px 20px;
+  padding: 12px clamp(44px, calc(7vmin + 4px), 60px) 12px 20px;
   display: flex;
   align-items: center;
-  border-radius: 12px 28px 28px 12px;
+  border-radius: 12px clamp(20px, 3.5vmin, 28px) clamp(20px, 3.5vmin, 28px) 12px;
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
   backdrop-filter: blur(12px);
