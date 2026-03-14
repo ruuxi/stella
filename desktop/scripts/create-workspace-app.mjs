@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { cpSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { spawnSync } from 'child_process'
 import { dirname, join, resolve, sep } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -51,11 +52,37 @@ if (!resolvedDest.startsWith(`${resolvedAppsDir}${sep}`)) {
 
 cpSync(src, dest, { recursive: true })
 
-// For game template: copy full bindings so the app is self-contained
+// For the game template, generate a fresh binding set in the new app.
 if (resolvedTemplate === 'workspace-game-app') {
-  const bindingsSrc = join(__dirname, '..', 'src', 'features', 'games', 'bindings')
   const bindingsDest = join(dest, 'src', 'bindings')
-  cpSync(bindingsSrc, bindingsDest, { recursive: true })
+  const generateBindingsScript = join(__dirname, 'generate-game-bindings.mjs')
+  rmSync(bindingsDest, { recursive: true, force: true })
+
+  const generateResult = spawnSync(
+    process.execPath,
+    [
+      generateBindingsScript,
+      '--database',
+      spacetimeDbModule,
+      '--out-dir',
+      bindingsDest,
+      '--force',
+    ],
+    {
+      cwd: join(__dirname, '..'),
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    },
+  )
+
+  if (generateResult.status !== 0) {
+    const details = [generateResult.stderr, generateResult.stdout]
+      .filter(Boolean)
+      .join('\n')
+      .trim()
+    console.error(details || 'Failed to generate SpacetimeDB bindings.')
+    process.exit(generateResult.status ?? 1)
+  }
 }
 
 // Files that may contain placeholders

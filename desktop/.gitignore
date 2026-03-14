@@ -59,6 +59,7 @@ workspace/
 native/out/
 native/*.exe
 native/*.obj
+src/features/games/generated-bindings/
 
 # Stella local runtime state
 .stella/state/

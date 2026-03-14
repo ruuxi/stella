@@ -43,6 +43,12 @@ const getContentType = (filePath: string): string => {
   return CONTENT_TYPE_MAP[ext] ?? "application/octet-stream";
 };
 
+const isTextContentType = (contentType: string): boolean =>
+  contentType.startsWith("text/")
+  || contentType === "application/javascript"
+  || contentType === "application/json"
+  || contentType === "image/svg+xml";
+
 const resolveAppsDir = (frontendRoot: string): string =>
   path.join(frontendRoot, WORKSPACE_APPS_DIR);
 
@@ -83,15 +89,12 @@ const runCommand = (
   cwd: string,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> =>
   new Promise((resolve) => {
-    const isWindows = process.platform === "win32";
-    const shell = isWindows;
-    const cmd = isWindows && !command.endsWith(".cmd") && !command.includes(path.sep)
-      ? `${command}.cmd`
+    const cmd = process.platform === "win32" && command === "npm"
+      ? "npm.cmd"
       : command;
 
     const child = spawn(cmd, args, {
       cwd,
-      shell,
       env: { ...process.env, BROWSER: "none" },
       stdio: "pipe",
     });
@@ -137,7 +140,7 @@ export const registerGameHandlers = (deps: GameHandlerDeps) => {
       args.push("--spacetimedb-module", payload.spacetimedbModule);
     }
 
-    const result = await runCommand("node", args, frontendRoot);
+    const result = await runCommand(process.execPath, args, frontendRoot);
     if (result.exitCode !== 0) {
       throw new Error(`Failed to create game app: ${result.stderr || result.stdout}`);
     }
@@ -204,11 +207,16 @@ export const registerGameHandlers = (deps: GameHandlerDeps) => {
     // Read all files and prepare for upload
     const filePayloads = await Promise.all(
       files.map(async (file) => {
-        const content = await fs.readFile(file.absolutePath, "utf-8");
+        const contentType = getContentType(file.absolutePath);
+        const fileBuffer = await fs.readFile(file.absolutePath);
+        const encoding = isTextContentType(contentType) ? "utf8" : "base64";
         return {
           path: file.relativePath,
-          content,
-          contentType: getContentType(file.absolutePath),
+          content: encoding === "utf8"
+            ? fileBuffer.toString("utf-8")
+            : fileBuffer.toString("base64"),
+          contentType,
+          encoding,
         };
       }),
     );

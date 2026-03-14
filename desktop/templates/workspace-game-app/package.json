@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "generate": "spacetime generate --lang typescript --out-dir src/bindings"
+    "dev": "npm run generate && vite",
+    "build": "npm run generate && vite build",
+    "generate": "spacetime generate {{spacetimedbModule}} --lang typescript --out-dir src/bindings --module-path ../../../../spacetimedb --yes"
   },
   "dependencies": {
     "react": "^19.2.0",

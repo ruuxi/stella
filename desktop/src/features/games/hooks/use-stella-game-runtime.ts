@@ -82,11 +82,12 @@ export function useStellaGameRuntime(sessionId?: bigint | null) {
 
   return useMemo(() => {
     const session = sessions[0] ?? null;
+    const identity = connection.identity;
     const myPlayer =
-      sessionId == null || !connection.identity
+      sessionId == null || !identity
         ? null
         : players.find((player) =>
-            player.playerIdentity.isEqual(connection.identity),
+            player.playerIdentity.isEqual(identity),
           ) ?? null;
 
     const current: SessionScopedRuntime = {

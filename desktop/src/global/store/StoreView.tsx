@@ -346,10 +346,14 @@ function StoreCard({
 function FeaturedCard({
   pkg,
   isAdded,
+  isWorking,
+  onAction,
   onClick,
 }: {
   pkg: StorePackageRecord
   isAdded: boolean
+  isWorking: boolean
+  onAction: () => void
   onClick: () => void
 }) {
   return (
@@ -367,9 +371,14 @@ function FeaturedCard({
         </div>
         <button
           className="store-action-btn store-action-btn--lg"
-          data-variant={isAdded ? "added" : "get"}
+          data-variant={isWorking ? "working" : isAdded ? "added" : "get"}
+          disabled={isWorking}
+          onClick={(e) => {
+            e.stopPropagation()
+            onAction()
+          }}
         >
-          {isAdded ? "Added" : "Get"}
+          {isWorking ? "Adding..." : isAdded ? "Added" : "Get"}
         </button>
       </div>
     </div>
@@ -450,7 +459,7 @@ function DiscoverTab({
   loading: boolean
   error: string | null
   onSelect: (packageId: string) => void
-  onInstall: (packageId: string) => void
+  onInstall: (packageId: string) => Promise<void>
 }) {
   const [working, setWorking] = useState<string | null>(null)
 
@@ -458,7 +467,7 @@ function DiscoverTab({
     async (packageId: string) => {
       setWorking(packageId)
       try {
-        onInstall(packageId)
+        await onInstall(packageId)
       } finally {
         setWorking(null)
       }
@@ -489,12 +498,21 @@ function DiscoverTab({
   const featured = packages[0]
   const rest = packages.slice(1)
   const featuredIsAdded = installedMap.has(featured.packageId)
+  const featuredIsWorking = working === featured.packageId
 
   return (
     <>
       <FeaturedCard
         pkg={featured}
         isAdded={featuredIsAdded}
+        isWorking={featuredIsWorking}
+        onAction={() => {
+          if (featuredIsAdded) {
+            onSelect(featured.packageId)
+            return
+          }
+          void handleInstall(featured.packageId)
+        }}
         onClick={() => onSelect(featured.packageId)}
       />
 
@@ -795,8 +813,8 @@ function PackageDetailView({
   packageId: string
   installedMap: Map<string, InstalledStoreModRecord>
   onBack: () => void
-  onInstall: (packageId: string) => void
-  onRemove: (packageId: string) => void
+  onInstall: (packageId: string) => Promise<void>
+  onRemove: (packageId: string) => Promise<void>
 }) {
   const { pkg, releases, loading, error } = usePackageDetail(packageId)
   const [working, setWorking] = useState(false)
@@ -805,7 +823,7 @@ function PackageDetailView({
   const handleInstall = useCallback(async () => {
     setWorking(true)
     try {
-      onInstall(packageId)
+      await onInstall(packageId)
     } finally {
       setWorking(false)
     }
@@ -814,7 +832,7 @@ function PackageDetailView({
   const handleRemove = useCallback(async () => {
     setWorking(true)
     try {
-      onRemove(packageId)
+      await onRemove(packageId)
     } finally {
       setWorking(false)
     }
@@ -960,7 +978,7 @@ export function StoreView() {
       try {
         await api.installRelease({ packageId })
         showToast({ title: "Added to Stella!", variant: "success" })
-        void reloadPackages()
+        await reloadPackages()
       } catch (err) {
         showToast({
           title:
@@ -979,7 +997,7 @@ export function StoreView() {
       try {
         await api.uninstallPackage(packageId)
         showToast({ title: "Removed from Stella", variant: "success" })
-        void reloadPackages()
+        await reloadPackages()
       } catch (err) {
         showToast({
           title:
@@ -1000,8 +1018,8 @@ export function StoreView() {
             packageId={selectedPackageId}
             installedMap={installedMap}
             onBack={() => setSelectedPackageId(null)}
-            onInstall={(pkgId) => void handleInstall(pkgId)}
-            onRemove={(pkgId) => void handleRemove(pkgId)}
+            onInstall={handleInstall}
+            onRemove={handleRemove}
           />
         </div>
       </div>
@@ -1039,7 +1057,7 @@ export function StoreView() {
             loading={packagesLoading}
             error={packagesError}
             onSelect={setSelectedPackageId}
-            onInstall={(pkgId) => void handleInstall(pkgId)}
+            onInstall={handleInstall}
           />
         ) : (
           <CreationsTab
