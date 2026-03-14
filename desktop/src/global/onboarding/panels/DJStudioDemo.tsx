@@ -212,7 +212,7 @@ const css = `
     flex-direction: column;
     height: 100%;
     padding-top: 32px;
-    font-family: var(--font-family-sans, "Inter", sans-serif);
+    font-family: var(--font-family-sans, "Plus Jakarta Sans", sans-serif);
     background: transparent;
     color: var(--foreground);
     overflow: hidden;
