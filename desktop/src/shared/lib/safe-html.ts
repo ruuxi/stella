@@ -21,6 +21,7 @@ const URL_ATTRS = new Set([
 const hasUnsafeProtocol = (value: string) => {
   const normalized = value
     .trim()
+    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f\s]+/g, "")
     .toLowerCase();
   return (

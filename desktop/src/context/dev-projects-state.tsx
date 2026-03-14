@@ -191,6 +191,7 @@ export function DevProjectsProvider({ children }: { children: ReactNode }) {
   return <DevProjectsContext.Provider value={value}>{children}</DevProjectsContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useDevProjects = () => {
   const context = useContext(DevProjectsContext)
   if (!context) {

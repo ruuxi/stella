@@ -57,16 +57,13 @@ export function VoiceOverlay({
   const shouldDisplayOverlay = isAnyVoiceActive || (visible && isActiveWindow);
   const isAudioReady = isRecording || isConnected;
 
-  useEffect(() => {
-    if (style) {
-      retainedStyleRef.current = style;
-      return;
-    }
-
-    if (isAnyVoiceActive) {
-      retainedStyleRef.current = undefined;
-    }
-  }, [isAnyVoiceActive, style]);
+  /* eslint-disable react-hooks/refs -- retainedStyleRef caches latest style prop; always re-derived from props so render-time access is safe */
+  if (style) {
+    retainedStyleRef.current = style;
+  } else if (isAnyVoiceActive) {
+    retainedStyleRef.current = undefined;
+  }
+  /* eslint-enable react-hooks/refs */
 
   // Voice mode uses server-reported speaking state for RTC (more reliable
   // than energy thresholds which decay slowly due to analyser smoothing).
@@ -142,6 +139,7 @@ export function VoiceOverlay({
 
   if (!showOverlay) return null;
 
+  // eslint-disable-next-line react-hooks/refs -- ref is always synced with style prop during render
   const overlayStyle = style ?? retainedStyleRef.current;
 
   return (

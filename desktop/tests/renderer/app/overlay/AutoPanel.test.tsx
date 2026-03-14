@@ -9,12 +9,12 @@ vi.mock("../../../../src/app/chat/Markdown", () => ({
 describe("AutoPanel", () => {
   let chunkCallback: ((data: { requestId: string; chunk: string }) => void) | null;
   let completeCallback: ((data: { requestId: string; text: string }) => void) | null;
-  let errorCallback: ((data: { requestId: string; error: string }) => void) | null;
+  let _errorCallback: ((data: { requestId: string; error: string }) => void) | null;
 
   beforeEach(() => {
     chunkCallback = null;
     completeCallback = null;
-    errorCallback = null;
+    _errorCallback = null;
 
     (window as unknown as { electronAPI: unknown }).electronAPI = {
       overlay: {
@@ -28,8 +28,8 @@ describe("AutoPanel", () => {
           completeCallback = callback;
           return vi.fn();
         }),
-        onAutoPanelError: vi.fn((callback: typeof errorCallback) => {
-          errorCallback = callback;
+        onAutoPanelError: vi.fn((callback: typeof _errorCallback) => {
+          _errorCallback = callback;
           return vi.fn();
         }),
       },
