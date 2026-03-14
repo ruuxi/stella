@@ -14,6 +14,38 @@ export type PlanConfig = {
 
 export type PlanCatalog = Record<SubscriptionPlan, PlanConfig>;
 
+const OPENCODE_GO_FALLBACK_LIMITS = {
+  rollingLimitUsd: 12,
+  rollingWindowHours: 5,
+  weeklyLimitUsd: 30,
+  monthlyLimitUsd: 60,
+  tokensPerMinute: 500_000,
+} as const;
+
+const OPENCODE_BLACK_USAGE_MULTIPLIERS = {
+  pro: 5,
+  plus: 20,
+} as const;
+
+const scalePlanValue = (value: number, multiplier: number) =>
+  Math.max(0, Math.floor(value * multiplier));
+
+const buildBlackTierFallback = (
+  label: string,
+  monthlyPriceCents: number,
+  multiplier: number,
+): PlanConfig => ({
+  label,
+  monthlyPriceCents,
+  // OpenCode Black absolute limits are secret-backed. Use documented Go limits as
+  // the fallback baseline, then scale by published Black multipliers.
+  rollingLimitUsd: scalePlanValue(OPENCODE_GO_FALLBACK_LIMITS.rollingLimitUsd, multiplier),
+  rollingWindowHours: OPENCODE_GO_FALLBACK_LIMITS.rollingWindowHours,
+  weeklyLimitUsd: scalePlanValue(OPENCODE_GO_FALLBACK_LIMITS.weeklyLimitUsd, multiplier),
+  monthlyLimitUsd: scalePlanValue(OPENCODE_GO_FALLBACK_LIMITS.monthlyLimitUsd, multiplier),
+  tokensPerMinute: scalePlanValue(OPENCODE_GO_FALLBACK_LIMITS.tokensPerMinute, multiplier),
+});
+
 const DEFAULT_PLAN_CATALOG: PlanCatalog = {
   free: {
     label: "Free",
@@ -26,34 +58,16 @@ const DEFAULT_PLAN_CATALOG: PlanCatalog = {
   },
   go: {
     label: "Go",
-    // OpenCode Go reference pricing.
+    // OpenCode Go reference pricing + limits from docs.
     monthlyPriceCents: 1_000,
-    rollingLimitUsd: 12,
-    rollingWindowHours: 5,
-    weeklyLimitUsd: 30,
-    monthlyLimitUsd: 60,
-    tokensPerMinute: 500_000,
+    rollingLimitUsd: OPENCODE_GO_FALLBACK_LIMITS.rollingLimitUsd,
+    rollingWindowHours: OPENCODE_GO_FALLBACK_LIMITS.rollingWindowHours,
+    weeklyLimitUsd: OPENCODE_GO_FALLBACK_LIMITS.weeklyLimitUsd,
+    monthlyLimitUsd: OPENCODE_GO_FALLBACK_LIMITS.monthlyLimitUsd,
+    tokensPerMinute: OPENCODE_GO_FALLBACK_LIMITS.tokensPerMinute,
   },
-  pro: {
-    label: "Pro",
-    // Middle tier added for Stella. Defaults mirror OpenCode's published 5x multiplier pattern.
-    monthlyPriceCents: 10_000,
-    rollingLimitUsd: 60,
-    rollingWindowHours: 5,
-    weeklyLimitUsd: 150,
-    monthlyLimitUsd: 300,
-    tokensPerMinute: 1_500_000,
-  },
-  plus: {
-    label: "Plus",
-    // Highest tier defaults mirror OpenCode's published 20x multiplier pattern.
-    monthlyPriceCents: 20_000,
-    rollingLimitUsd: 240,
-    rollingWindowHours: 5,
-    weeklyLimitUsd: 600,
-    monthlyLimitUsd: 1_200,
-    tokensPerMinute: 3_000_000,
-  },
+  pro: buildBlackTierFallback("Pro", 10_000, OPENCODE_BLACK_USAGE_MULTIPLIERS.pro),
+  plus: buildBlackTierFallback("Plus", 20_000, OPENCODE_BLACK_USAGE_MULTIPLIERS.plus),
 };
 
 const parsePositiveNumber = (value: unknown, fallback: number): number => {
