@@ -3,7 +3,10 @@ mod commands;
 mod connection;
 mod flags;
 mod install;
+mod native;
 mod output;
+#[cfg(test)]
+mod test_utils;
 
 use serde_json::json;
 use std::env;
@@ -52,6 +55,25 @@ fn parse_proxy(proxy_str: &str) -> serde_json::Value {
         "username": &creds[..colon_pos],
         "password": &creds[colon_pos + 1..]
     })
+}
+
+fn should_use_legacy_daemon(cmd: &serde_json::Value, provider: Option<&str>) -> bool {
+    if provider == Some("extension") {
+        return true;
+    }
+
+    if env::var("STELLA_BROWSER_USER_BROWSER")
+        .ok()
+        .as_deref()
+        == Some("1")
+    {
+        return true;
+    }
+
+    matches!(
+        cmd.get("action").and_then(|value| value.as_str()),
+        Some("site_mod_set" | "site_mod_list" | "site_mod_remove" | "site_mod_toggle")
+    )
 }
 
 fn run_session(args: &[String], session: &str, json_mode: bool) {
@@ -133,6 +155,18 @@ fn main() {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
 
+    if env::var("STELLA_BROWSER_DAEMON").is_ok() {
+        #[cfg(unix)]
+        unsafe {
+            libc::signal(libc::SIGPIPE, libc::SIG_IGN);
+        }
+
+        let session = env::var("STELLA_BROWSER_SESSION").unwrap_or_else(|_| "default".to_string());
+        let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+        rt.block_on(native::daemon::run_daemon(&session));
+        return;
+    }
+
     let args: Vec<String> = env::args().skip(1).collect();
     let flags = parse_flags(&args);
     let clean = clean_args(&args);
@@ -208,6 +242,8 @@ fn main() {
         }
     };
 
+    let use_legacy_daemon = should_use_legacy_daemon(&cmd, flags.provider.as_deref());
+
     let daemon_result = match ensure_daemon(
         &flags.session,
         flags.headed,
@@ -223,6 +259,7 @@ fn main() {
         flags.state.as_deref(),
         flags.provider.as_deref(),
         flags.device.as_deref(),
+        use_legacy_daemon,
     ) {
         Ok(result) => result,
         Err(e) => {

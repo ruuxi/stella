@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -116,10 +116,16 @@ fn get_pid_path(session: &str) -> PathBuf {
     get_socket_dir().join(format!("{}.pid", session))
 }
 
+fn get_kind_path(session: &str) -> PathBuf {
+    get_socket_dir().join(format!("{}.kind", session))
+}
+
 /// Clean up stale socket and PID files for a session
 fn cleanup_stale_files(session: &str) {
     let pid_path = get_pid_path(session);
     let _ = fs::remove_file(&pid_path);
+    let kind_path = get_kind_path(session);
+    let _ = fs::remove_file(&kind_path);
 
     #[cfg(unix)]
     {
@@ -203,6 +209,288 @@ pub struct DaemonResult {
     pub already_running: bool,
 }
 
+fn read_daemon_kind(session: &str) -> Option<String> {
+    fs::read_to_string(get_kind_path(session))
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn write_daemon_kind(session: &str, kind: &str) -> Result<(), String> {
+    fs::write(get_kind_path(session), kind)
+        .map_err(|e| format!("Failed to write daemon kind file: {}", e))
+}
+
+fn stop_daemon(session: &str) {
+    let _ = send_command_once(&json!({ "id": "daemon-switch", "action": "close" }), session);
+
+    for _ in 0..50 {
+        if !is_daemon_running(session) || !daemon_ready(session) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    cleanup_stale_files(session);
+}
+
+fn apply_daemon_env(
+    cmd: &mut Command,
+    session: &str,
+    headed: bool,
+    executable_path: Option<&str>,
+    extensions: &[String],
+    args: Option<&str>,
+    user_agent: Option<&str>,
+    proxy: Option<&str>,
+    proxy_bypass: Option<&str>,
+    ignore_https_errors: bool,
+    allow_file_access: bool,
+    profile: Option<&str>,
+    state: Option<&str>,
+    provider: Option<&str>,
+    device: Option<&str>,
+) {
+    cmd.env("STELLA_BROWSER_DAEMON", "1")
+        .env("STELLA_BROWSER_SESSION", session);
+
+    if headed {
+        cmd.env("STELLA_BROWSER_HEADED", "1");
+    }
+
+    if let Some(path) = executable_path {
+        cmd.env("STELLA_BROWSER_EXECUTABLE_PATH", path);
+    }
+
+    if !extensions.is_empty() {
+        cmd.env("STELLA_BROWSER_EXTENSIONS", extensions.join(","));
+    }
+
+    if let Some(a) = args {
+        cmd.env("STELLA_BROWSER_ARGS", a);
+    }
+
+    if let Some(ua) = user_agent {
+        cmd.env("STELLA_BROWSER_USER_AGENT", ua);
+    }
+
+    if let Some(p) = proxy {
+        cmd.env("STELLA_BROWSER_PROXY", p);
+    }
+
+    if let Some(pb) = proxy_bypass {
+        cmd.env("STELLA_BROWSER_PROXY_BYPASS", pb);
+    }
+
+    if ignore_https_errors {
+        cmd.env("STELLA_BROWSER_IGNORE_HTTPS_ERRORS", "1");
+    }
+
+    if allow_file_access {
+        cmd.env("STELLA_BROWSER_ALLOW_FILE_ACCESS", "1");
+    }
+
+    if let Some(prof) = profile {
+        cmd.env("STELLA_BROWSER_PROFILE", prof);
+    }
+
+    if let Some(st) = state {
+        cmd.env("STELLA_BROWSER_STATE", st);
+    }
+
+    if let Some(p) = provider {
+        cmd.env("STELLA_BROWSER_PROVIDER", p);
+    }
+
+    if let Some(d) = device {
+        cmd.env("STELLA_BROWSER_IOS_DEVICE", d);
+    }
+}
+
+fn spawn_native_daemon(
+    exe_path: &PathBuf,
+    session: &str,
+    headed: bool,
+    executable_path: Option<&str>,
+    extensions: &[String],
+    args: Option<&str>,
+    user_agent: Option<&str>,
+    proxy: Option<&str>,
+    proxy_bypass: Option<&str>,
+    ignore_https_errors: bool,
+    allow_file_access: bool,
+    profile: Option<&str>,
+    state: Option<&str>,
+    provider: Option<&str>,
+    device: Option<&str>,
+) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+
+        let mut cmd = Command::new(exe_path);
+        apply_daemon_env(
+            &mut cmd,
+            session,
+            headed,
+            executable_path,
+            extensions,
+            args,
+            user_agent,
+            proxy,
+            proxy_bypass,
+            ignore_https_errors,
+            allow_file_access,
+            profile,
+            state,
+            provider,
+            device,
+        );
+
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("Failed to start native daemon: {}", e))?;
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+
+        let mut cmd = Command::new(exe_path);
+        apply_daemon_env(
+            &mut cmd,
+            session,
+            headed,
+            executable_path,
+            extensions,
+            args,
+            user_agent,
+            proxy,
+            proxy_bypass,
+            ignore_https_errors,
+            allow_file_access,
+            profile,
+            state,
+            provider,
+            device,
+        );
+
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("Failed to start native daemon: {}", e))?;
+    }
+
+    Ok(())
+}
+
+fn spawn_legacy_daemon(
+    daemon_path: &PathBuf,
+    session: &str,
+    headed: bool,
+    executable_path: Option<&str>,
+    extensions: &[String],
+    args: Option<&str>,
+    user_agent: Option<&str>,
+    proxy: Option<&str>,
+    proxy_bypass: Option<&str>,
+    ignore_https_errors: bool,
+    allow_file_access: bool,
+    profile: Option<&str>,
+    state: Option<&str>,
+    provider: Option<&str>,
+    device: Option<&str>,
+) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+
+        let mut cmd = Command::new("node");
+        cmd.arg(daemon_path);
+        apply_daemon_env(
+            &mut cmd,
+            session,
+            headed,
+            executable_path,
+            extensions,
+            args,
+            user_agent,
+            proxy,
+            proxy_bypass,
+            ignore_https_errors,
+            allow_file_access,
+            profile,
+            state,
+            provider,
+            device,
+        );
+
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("Failed to start legacy daemon: {}", e))?;
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+
+        let mut cmd = Command::new("node");
+        cmd.arg(daemon_path);
+        apply_daemon_env(
+            &mut cmd,
+            session,
+            headed,
+            executable_path,
+            extensions,
+            args,
+            user_agent,
+            proxy,
+            proxy_bypass,
+            ignore_https_errors,
+            allow_file_access,
+            profile,
+            state,
+            provider,
+            device,
+        );
+
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("Failed to start legacy daemon: {}", e))?;
+    }
+
+    Ok(())
+}
+
 pub fn ensure_daemon(
     session: &str,
     headed: bool,
@@ -218,12 +506,26 @@ pub fn ensure_daemon(
     state: Option<&str>,
     provider: Option<&str>,
     device: Option<&str>,
+    use_legacy_daemon: bool,
 ) -> Result<DaemonResult, String> {
+    let desired_kind = if use_legacy_daemon { "legacy" } else { "native" };
+
     // Check if daemon is running AND responsive
     if is_daemon_running(session) && daemon_ready(session) {
-        // Double-check it's actually responsive by waiting and checking again
-        // This handles the race condition where daemon is shutting down
-        // (daemon has a 100ms shutdown delay, so we wait longer)
+        let current_kind = read_daemon_kind(session).unwrap_or_else(|| "legacy".to_string());
+        if current_kind == desired_kind {
+            thread::sleep(Duration::from_millis(150));
+            if daemon_ready(session) {
+                return Ok(DaemonResult {
+                    already_running: true,
+                });
+            }
+        } else {
+            stop_daemon(session);
+        }
+    }
+
+    if is_daemon_running(session) && daemon_ready(session) {
         thread::sleep(Duration::from_millis(150));
         if daemon_ready(session) {
             return Ok(DaemonResult {
@@ -278,179 +580,63 @@ pub fn ensure_daemon(
     let exe_path = exe_path.canonicalize().unwrap_or(exe_path);
     let exe_dir = exe_path.parent().unwrap();
 
-    let mut daemon_paths = vec![
-        exe_dir.join("daemon.js"),
-        exe_dir.join("../dist/daemon.js"),
-        PathBuf::from("dist/daemon.js"),
-    ];
+    if use_legacy_daemon {
+        let mut daemon_paths = vec![
+            exe_dir.join("daemon.js"),
+            exe_dir.join("../dist/daemon.js"),
+            PathBuf::from("dist/daemon.js"),
+        ];
 
-    // Check STELLA_BROWSER_HOME environment variable
-    if let Ok(home) = env::var("STELLA_BROWSER_HOME") {
-        let home_path = PathBuf::from(&home);
-        daemon_paths.insert(0, home_path.join("dist/daemon.js"));
-        daemon_paths.insert(1, home_path.join("daemon.js"));
-    }
-
-    let daemon_path = daemon_paths
-        .iter()
-        .find(|p| p.exists())
-        .ok_or("Daemon not found. Set STELLA_BROWSER_HOME environment variable or run from project directory.")?;
-
-    // Spawn daemon as a fully detached background process
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-
-        let mut cmd = Command::new("node");
-        cmd.arg(daemon_path)
-            .env("STELLA_BROWSER_DAEMON", "1")
-            .env("STELLA_BROWSER_SESSION", session);
-
-        if headed {
-            cmd.env("STELLA_BROWSER_HEADED", "1");
+        if let Ok(home) = env::var("STELLA_BROWSER_HOME") {
+            let home_path = PathBuf::from(&home);
+            daemon_paths.insert(0, home_path.join("dist/daemon.js"));
+            daemon_paths.insert(1, home_path.join("daemon.js"));
         }
 
-        if let Some(path) = executable_path {
-            cmd.env("STELLA_BROWSER_EXECUTABLE_PATH", path);
-        }
+        let daemon_path = daemon_paths.iter().find(|p| p.exists()).ok_or(
+            "Legacy daemon not found. Set STELLA_BROWSER_HOME or build the TypeScript daemon.",
+        )?;
 
-        if !extensions.is_empty() {
-            cmd.env("STELLA_BROWSER_EXTENSIONS", extensions.join(","));
-        }
-
-        if let Some(a) = args {
-            cmd.env("STELLA_BROWSER_ARGS", a);
-        }
-
-        if let Some(ua) = user_agent {
-            cmd.env("STELLA_BROWSER_USER_AGENT", ua);
-        }
-
-        if let Some(p) = proxy {
-            cmd.env("STELLA_BROWSER_PROXY", p);
-        }
-
-        if let Some(pb) = proxy_bypass {
-            cmd.env("STELLA_BROWSER_PROXY_BYPASS", pb);
-        }
-
-        if ignore_https_errors {
-            cmd.env("STELLA_BROWSER_IGNORE_HTTPS_ERRORS", "1");
-        }
-
-        if allow_file_access {
-            cmd.env("STELLA_BROWSER_ALLOW_FILE_ACCESS", "1");
-        }
-
-        if let Some(prof) = profile {
-            cmd.env("STELLA_BROWSER_PROFILE", prof);
-        }
-
-        if let Some(st) = state {
-            cmd.env("STELLA_BROWSER_STATE", st);
-        }
-
-        if let Some(p) = provider {
-            cmd.env("STELLA_BROWSER_PROVIDER", p);
-        }
-
-        if let Some(d) = device {
-            cmd.env("STELLA_BROWSER_IOS_DEVICE", d);
-        }
-
-        // Create new process group and session to fully detach
-        unsafe {
-            cmd.pre_exec(|| {
-                // Create new session (detach from terminal)
-                libc::setsid();
-                Ok(())
-            });
-        }
-
-        cmd.stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|e| format!("Failed to start daemon: {}", e))?;
-    }
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-
-        // On Windows, call node directly. Command::new handles PATH resolution (node.exe or node.cmd)
-        // and automatically quotes arguments containing spaces.
-        let mut cmd = Command::new("node");
-        cmd.arg(daemon_path)
-            .env("STELLA_BROWSER_DAEMON", "1")
-            .env("STELLA_BROWSER_SESSION", session);
-
-        if headed {
-            cmd.env("STELLA_BROWSER_HEADED", "1");
-        }
-
-        if let Some(path) = executable_path {
-            cmd.env("STELLA_BROWSER_EXECUTABLE_PATH", path);
-        }
-
-        if !extensions.is_empty() {
-            cmd.env("STELLA_BROWSER_EXTENSIONS", extensions.join(","));
-        }
-
-        if let Some(a) = args {
-            cmd.env("STELLA_BROWSER_ARGS", a);
-        }
-
-        if let Some(ua) = user_agent {
-            cmd.env("STELLA_BROWSER_USER_AGENT", ua);
-        }
-
-        if let Some(p) = proxy {
-            cmd.env("STELLA_BROWSER_PROXY", p);
-        }
-
-        if let Some(pb) = proxy_bypass {
-            cmd.env("STELLA_BROWSER_PROXY_BYPASS", pb);
-        }
-
-        if ignore_https_errors {
-            cmd.env("STELLA_BROWSER_IGNORE_HTTPS_ERRORS", "1");
-        }
-
-        if allow_file_access {
-            cmd.env("STELLA_BROWSER_ALLOW_FILE_ACCESS", "1");
-        }
-
-        if let Some(prof) = profile {
-            cmd.env("STELLA_BROWSER_PROFILE", prof);
-        }
-
-        if let Some(st) = state {
-            cmd.env("STELLA_BROWSER_STATE", st);
-        }
-
-        if let Some(p) = provider {
-            cmd.env("STELLA_BROWSER_PROVIDER", p);
-        }
-
-        if let Some(d) = device {
-            cmd.env("STELLA_BROWSER_IOS_DEVICE", d);
-        }
-
-        // CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        const DETACHED_PROCESS: u32 = 0x00000008;
-
-        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|e| format!("Failed to start daemon: {}", e))?;
+        spawn_legacy_daemon(
+            daemon_path,
+            session,
+            headed,
+            executable_path,
+            extensions,
+            args,
+            user_agent,
+            proxy,
+            proxy_bypass,
+            ignore_https_errors,
+            allow_file_access,
+            profile,
+            state,
+            provider,
+            device,
+        )?;
+    } else {
+        spawn_native_daemon(
+            &exe_path,
+            session,
+            headed,
+            executable_path,
+            extensions,
+            args,
+            user_agent,
+            proxy,
+            proxy_bypass,
+            ignore_https_errors,
+            allow_file_access,
+            profile,
+            state,
+            provider,
+            device,
+        )?;
     }
 
     for _ in 0..50 {
         if daemon_ready(session) {
+            write_daemon_kind(session, desired_kind)?;
             return Ok(DaemonResult {
                 already_running: false,
             });
@@ -458,9 +644,17 @@ pub fn ensure_daemon(
         thread::sleep(Duration::from_millis(100));
     }
 
-    Err(format!(
-        "Daemon failed to start (socket: {})",
+    #[cfg(unix)]
+    let endpoint_info = format!(
+        "socket: {}",
         get_socket_dir().join(format!("{}.sock", session)).display()
+    );
+    #[cfg(windows)]
+    let endpoint_info = format!("port: 127.0.0.1:{}", get_port_for_session(session));
+
+    Err(format!(
+        "{} daemon failed to start ({})",
+        desired_kind, endpoint_info
     ))
 }
 
