@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   acquireSharedMicrophone,
   resetSharedMicrophoneForTests,
+  SHARED_MIC_SPEECH_CAPTURE_CONSTRAINTS,
 } from "../../../../../src/features/voice/services/shared-microphone";
 
 type Deferred<T> = {
@@ -21,6 +22,7 @@ const createDeferred = <T>(): Deferred<T> => {
 };
 
 class MockMediaStreamTrack {
+  readyState: MediaStreamTrackState = "live";
   stop = vi.fn();
 }
 
@@ -65,10 +67,13 @@ describe("shared microphone", () => {
     const rootStream = new MockMediaStream();
     getUserMediaMock.mockResolvedValue(rootStream as unknown as MediaStream);
 
-    const leaseA = await acquireSharedMicrophone();
-    const leaseB = await acquireSharedMicrophone();
+    const leaseA = await acquireSharedMicrophone({ useCase: "voice-rtc" });
+    const leaseB = await acquireSharedMicrophone({ useCase: "wake-word" });
 
     expect(getUserMediaMock).toHaveBeenCalledTimes(1);
+    expect(getUserMediaMock).toHaveBeenCalledWith({
+      audio: SHARED_MIC_SPEECH_CAPTURE_CONSTRAINTS,
+    });
     expect(leaseA.stream).not.toBe(leaseB.stream);
 
     leaseA.release();
@@ -86,8 +91,10 @@ describe("shared microphone", () => {
     const deferred = createDeferred<MediaStream>();
     getUserMediaMock.mockReturnValue(deferred.promise);
 
-    const leaseAPromise = acquireSharedMicrophone();
-    const leaseBPromise = acquireSharedMicrophone();
+    const leaseAPromise = acquireSharedMicrophone({ useCase: "voice-rtc" });
+    const leaseBPromise = acquireSharedMicrophone({
+      useCase: "speech-recording",
+    });
 
     expect(getUserMediaMock).toHaveBeenCalledTimes(1);
 
@@ -106,12 +113,14 @@ describe("shared microphone", () => {
     const rootStream = new MockMediaStream();
     getUserMediaMock.mockResolvedValue(rootStream as unknown as MediaStream);
 
-    const leaseA = await acquireSharedMicrophone();
+    const leaseA = await acquireSharedMicrophone({ useCase: "wake-word" });
     leaseA.release();
 
     await vi.advanceTimersByTimeAsync(30_000);
 
-    const leaseB = await acquireSharedMicrophone();
+    const leaseB = await acquireSharedMicrophone({
+      useCase: "speech-recording",
+    });
 
     expect(getUserMediaMock).toHaveBeenCalledTimes(1);
     expect(rootStream.track.stop).not.toHaveBeenCalled();

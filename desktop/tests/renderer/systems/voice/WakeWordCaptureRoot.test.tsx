@@ -18,7 +18,8 @@ vi.mock("@/context/ui-state", () => ({
 }));
 
 vi.mock("@/features/voice/services/shared-microphone", () => ({
-  acquireSharedMicrophone: () => mockAcquireSharedMicrophone(),
+  acquireSharedMicrophone: (...args: unknown[]) =>
+    mockAcquireSharedMicrophone(...args),
 }));
 
 vi.mock("@/features/voice/services/audio-encoding", () => ({
@@ -110,6 +111,9 @@ describe("WakeWordCaptureRoot", () => {
 
     await waitFor(() => {
       expect(mockAcquireSharedMicrophone).toHaveBeenCalledTimes(1);
+      expect(mockAcquireSharedMicrophone).toHaveBeenCalledWith({
+        useCase: "wake-word",
+      });
       expect(lastWorkletNode).not.toBeNull();
     });
 

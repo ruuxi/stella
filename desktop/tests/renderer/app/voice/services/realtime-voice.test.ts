@@ -1,3 +1,4 @@
+import { waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockCreateServiceRequest = vi.fn();
@@ -13,7 +14,8 @@ vi.mock("@/prompts", () => ({
 }));
 
 vi.mock("@/features/voice/services/shared-microphone", () => ({
-  acquireSharedMicrophone: () => mockAcquireSharedMicrophone(),
+  acquireSharedMicrophone: (...args: unknown[]) =>
+    mockAcquireSharedMicrophone(...args),
 }));
 
 class MockDataChannel {
@@ -42,6 +44,19 @@ class MockPeerConnection {
   setLocalDescription = vi.fn(async () => undefined);
   setRemoteDescription = vi.fn(async () => undefined);
   close = vi.fn();
+}
+
+class MockAudioContext {
+  state: AudioContextState = "running";
+  destination = {};
+  close = vi.fn().mockResolvedValue(undefined);
+  createAnalyser = vi.fn(() => ({
+    fftSize: 0,
+  }));
+  createMediaStreamSource = vi.fn(() => ({
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  }));
 }
 
 let lastPeerConnection: MockPeerConnection | null = null;
@@ -93,6 +108,10 @@ describe("RealtimeVoiceSession", () => {
         }
       } as unknown as typeof RTCPeerConnection,
     );
+    vi.stubGlobal(
+      "AudioContext",
+      MockAudioContext as unknown as typeof AudioContext,
+    );
   });
 
   afterEach(() => {
@@ -108,6 +127,45 @@ describe("RealtimeVoiceSession", () => {
     expect(session.state).toBe("connected");
     expect(mockAcquireSharedMicrophone).not.toHaveBeenCalled();
     expect(lastPeerConnection?.sender.replaceTrack).not.toHaveBeenCalled();
+
+    await session.disconnect();
+  });
+
+  it("acquires the shared speech-capture mic only while rtc input is active", async () => {
+    const track = {
+      enabled: false,
+      readyState: "live",
+      stop: vi.fn(),
+    };
+    const release = vi.fn();
+    mockAcquireSharedMicrophone.mockResolvedValue({
+      stream: {
+        getTracks: () => [track],
+      },
+      release,
+    });
+
+    const session = new RealtimeVoiceSession();
+    await session.connect("convone");
+
+    session.setInputActive(true);
+
+    await waitFor(() => {
+      expect(mockAcquireSharedMicrophone).toHaveBeenCalledWith({
+        useCase: "voice-rtc",
+      });
+      expect(lastPeerConnection?.sender.replaceTrack).toHaveBeenCalledWith(track);
+    });
+
+    session.setInputActive(false);
+
+    await waitFor(() => {
+      expect(lastPeerConnection?.sender.replaceTrack).toHaveBeenLastCalledWith(
+        null,
+      );
+      expect(track.enabled).toBe(false);
+      expect(release).toHaveBeenCalledTimes(1);
+    });
 
     await session.disconnect();
   });
