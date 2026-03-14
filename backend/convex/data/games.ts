@@ -412,6 +412,7 @@ export const deployGameBuild = action({
         path: v.string(),
         content: v.string(),
         contentType: v.string(),
+        encoding: v.union(v.literal("utf8"), v.literal("base64")),
       }),
     ),
   },
@@ -448,7 +449,11 @@ export const deployGameBuild = action({
     // Upload each file to Convex storage
     let totalSize = 0;
     for (const file of args.files) {
-      const blob = new Blob([file.content], { type: file.contentType });
+      const blobPart =
+        file.encoding === "base64"
+          ? Uint8Array.from(atob(file.content), (char) => char.charCodeAt(0))
+          : file.content;
+      const blob = new Blob([blobPart], { type: file.contentType });
       const storageKey = await ctx.storage.store(blob);
 
       await ctx.runMutation(internal.data.games.recordGameAsset, {
