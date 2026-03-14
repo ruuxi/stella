@@ -223,6 +223,95 @@ export type SelfModFeatureSummary = {
   taintedFiles?: string[]
 }
 
+export type SelfModBatchState = 'committed' | 'blocked' | 'published'
+
+export type SelfModBatchRecord = {
+  batchId: string
+  featureId: string
+  runId?: string
+  ordinal: number
+  state: SelfModBatchState
+  commitHash?: string
+  files: string[]
+  blockedFiles?: string[]
+  packageId?: string
+  releaseNumber?: number
+  createdAt: number
+  updatedAt: number
+}
+
+export type SelfModFeatureRecord = {
+  featureId: string
+  name: string
+  description: string
+  packageId?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type StoreReleaseArtifactFile = {
+  path: string
+  deleted?: boolean
+  contentBase64?: string
+}
+
+export type StoreReleaseArtifact = {
+  manifest: StoreReleaseManifest
+  files: StoreReleaseArtifactFile[]
+}
+
+export type StoreReleaseManifest = {
+  featureId: string
+  packageId: string
+  releaseNumber: number
+  displayName: string
+  description: string
+  releaseNotes?: string
+  batchIds: string[]
+  commitHashes: string[]
+  files: string[]
+  createdAt: number
+}
+
+export type StorePackageRecord = {
+  packageId: string
+  featureId: string
+  displayName: string
+  description: string
+  latestReleaseNumber: number
+  createdAt: number
+  updatedAt: number
+}
+
+export type StoreReleaseDraft = {
+  feature: SelfModFeatureRecord
+  batches: SelfModBatchRecord[]
+  selectedBatchIds: string[]
+  packageId?: string
+  displayName: string
+  description: string
+}
+
+export type StorePackageReleaseRecord = {
+  packageId: string
+  releaseNumber: number
+  manifest: StoreReleaseManifest
+  storageKey: string
+  artifactUrl?: string | null
+  createdAt: number
+}
+
+export type InstalledStoreModRecord = {
+  installId: string
+  packageId: string
+  featureId: string
+  releaseNumber: number
+  applyCommitHashes: string[]
+  state: 'installed' | 'uninstalled'
+  createdAt: number
+  updatedAt: number
+}
+
 export type SelfModHmrPhase =
   | 'idle'
   | 'paused'

@@ -39,6 +39,7 @@ import { createDesktopDatabase } from "./storage/database.js";
 import { resetMessageStorage } from "./storage/reset-message-storage.js";
 import { ChatStore } from "./storage/chat-store.js";
 import { RuntimeStore } from "./storage/runtime-store.js";
+import { StoreModStore } from "./storage/store-mod-store.js";
 import { TranscriptMirror } from "./storage/transcript-mirror.js";
 import type { SqliteDatabase } from "./storage/shared.js";
 import {
@@ -54,6 +55,7 @@ import {
 import { startStellaUiServer } from "./system/stella-ui-server.js";
 import { WindowManager } from "./windows/window-manager.js";
 import { createHmrMorphOrchestrator } from "./self-mod/hmr-morph.js";
+import { StoreModService } from "./self-mod/store-mod-service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,6 +86,8 @@ export const bootstrapMainProcess = () => {
   let desktopDatabase: SqliteDatabase | null = null;
   let chatStore: ChatStore | null = null;
   let runtimeStore: RuntimeStore | null = null;
+  let storeModStore: StoreModStore | null = null;
+  let storeModService: StoreModService | null = null;
   let windowManager: WindowManager | null = null;
   let overlayController: OverlayWindowController | null = null;
   let hmrMorphOrchestrator: ReturnType<
@@ -362,6 +366,8 @@ export const bootstrapMainProcess = () => {
     const transcriptMirror = new TranscriptMirror(path.join(stellaHome.homePath, "state"));
     chatStore = new ChatStore(desktopDatabase, transcriptMirror);
     runtimeStore = new RuntimeStore(desktopDatabase, transcriptMirror);
+    storeModStore = new StoreModStore(desktopDatabase);
+    storeModService = new StoreModService(frontendRoot, storeModStore);
     try {
       await ensureLastResortRecoveryScripts({
         stellaHomePath: stellaHome.homePath,
@@ -394,6 +400,7 @@ export const bootstrapMainProcess = () => {
       deviceId,
       StellaHome: stellaHome.homePath,
       runtimeStore: runtimeStore!,
+      storeModService: storeModService!,
       frontendRoot,
       listLocalChatEvents: (conversationId, maxItems) =>
         chatStore?.listEvents(conversationId, maxItems) ?? [],
@@ -449,6 +456,8 @@ export const bootstrapMainProcess = () => {
     }
     chatStore = null;
     runtimeStore = null;
+    storeModStore = null;
+    storeModService = null;
     desktopDatabase?.close();
     desktopDatabase = null;
     if (schedulerService) {
@@ -498,6 +507,8 @@ export const bootstrapMainProcess = () => {
     }
     chatStore = null;
     runtimeStore = null;
+    storeModStore = null;
+    storeModService = null;
     desktopDatabase?.close();
     desktopDatabase = null;
 
@@ -674,6 +685,11 @@ export const bootstrapMainProcess = () => {
 
     registerStoreHandlers({
       getStellaHomePath: () => stellaHomePath,
+      getFrontendRoot: () => frontendRoot,
+      getStellaHostRunner: () => stellaHostRunner,
+      getStoreModService: () => storeModService,
+      assertPrivilegedSender: (event, channel) =>
+        externalLinkService.assertPrivilegedSender(event, channel),
     });
 
     registerVoiceHandlers({
@@ -746,6 +762,8 @@ export const bootstrapMainProcess = () => {
     }
     chatStore = null;
     runtimeStore = null;
+    storeModStore = null;
+    storeModService = null;
     desktopDatabase?.close();
     desktopDatabase = null;
     if (schedulerService) {

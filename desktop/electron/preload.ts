@@ -542,6 +542,35 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onUpdated: onIpcSignal("schedule:updated"),
   },
 
+  store: {
+    listSelfModFeatures: (limit?: number) =>
+      ipcRenderer.invoke("store:listLocalFeatures", { limit }),
+    listFeatureBatches: (featureId: string) =>
+      ipcRenderer.invoke("store:listFeatureBatches", { featureId }),
+    getReleaseDraft: (payload: { featureId: string; batchIds?: string[] }) =>
+      ipcRenderer.invoke("store:createReleaseDraft", payload),
+    publishRelease: (payload: {
+      featureId: string;
+      packageId?: string;
+      displayName?: string;
+      description?: string;
+      releaseNotes?: string;
+      batchIds?: string[];
+    }) => ipcRenderer.invoke("store:publishRelease", payload),
+    listPackages: () => ipcRenderer.invoke("store:listPackages"),
+    getPackage: (packageId: string) =>
+      ipcRenderer.invoke("store:getPackage", { packageId }),
+    listPackageReleases: (packageId: string) =>
+      ipcRenderer.invoke("store:listReleases", { packageId }),
+    getPackageRelease: (payload: { packageId: string; releaseNumber: number }) =>
+      ipcRenderer.invoke("store:getRelease", payload),
+    listInstalledMods: () => ipcRenderer.invoke("store:listInstalledMods"),
+    installRelease: (payload: { packageId: string; releaseNumber?: number }) =>
+      ipcRenderer.invoke("store:installRelease", payload),
+    uninstallPackage: (packageId: string) =>
+      ipcRenderer.invoke("store:uninstallMod", { packageId }),
+  },
+
   localChat: {
     getOrCreateDefaultConversationId: () =>
       ipcRenderer.invoke("localChat:getOrCreateDefaultConversationId"),

@@ -3,10 +3,11 @@ import { createStellaHostRunner as createRuntimeStellaHostRunner, type StellaHos
 import { getDevServerUrl } from "./dev-url.js";
 import { detectSelfModAppliedSince, getGitHead } from "./self-mod/git.js";
 import { createSelfModHmrController } from "./self-mod/hmr.js";
+import type { StoreModService } from "./self-mod/store-mod-service.js";
 
 type ElectronStellaHostRunnerOptions = Omit<
   StellaHostRunnerOptions,
-  "selfModHmrController" | "selfModMonitor" | "stellaBrowserBinPath" | "stellaUiCliPath"
+  "selfModHmrController" | "selfModMonitor" | "stellaBrowserBinPath" | "stellaUiCliPath" | "selfModLifecycle"
 >;
 
 type RuntimeStellaHostRunner = ReturnType<typeof createRuntimeStellaHostRunner>;
@@ -25,7 +26,9 @@ export type StellaHostRunner = Omit<RuntimeStellaHostRunner, "webSearch"> & {
 };
 
 export const createStellaHostRunner = (
-  options: ElectronStellaHostRunnerOptions,
+  options: ElectronStellaHostRunnerOptions & {
+    storeModService: StoreModService;
+  },
 ): StellaHostRunner =>
   createRuntimeStellaHostRunner({
     ...options,
@@ -36,6 +39,23 @@ export const createStellaHostRunner = (
     selfModMonitor: {
       getBaselineHead: getGitHead,
       detectAppliedSince: detectSelfModAppliedSince,
+    },
+    selfModLifecycle: {
+      beginRun: async ({ runId, taskDescription }) => {
+        await options.storeModService.beginSelfModRun({
+          runId,
+          taskDescription,
+        });
+      },
+      finalizeRun: async ({ runId, succeeded }) => {
+        await options.storeModService.finalizeSelfModRun({
+          runId,
+          succeeded,
+        });
+      },
+      cancelRun: (runId) => {
+        options.storeModService.cancelSelfModRun(runId);
+      },
     },
     stellaBrowserBinPath: options.frontendRoot
       ? path.join(options.frontendRoot, "stella-browser", "bin", "stella-browser.js")
