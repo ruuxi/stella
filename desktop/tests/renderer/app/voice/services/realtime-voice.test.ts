@@ -169,4 +169,74 @@ describe("RealtimeVoiceSession", () => {
 
     await session.disconnect();
   });
+
+  it.each(["goodbye", "close"])(
+    "stops rtc input immediately for %s without disconnecting the warm session",
+    async (toolName) => {
+      const track = {
+        enabled: false,
+        readyState: "live",
+        stop: vi.fn(),
+      };
+      const release = vi.fn();
+      const setUiState = vi.fn();
+
+      mockAcquireSharedMicrophone.mockResolvedValue({
+        stream: {
+          getTracks: () => [track],
+        },
+        release,
+      });
+
+      (
+        window as unknown as {
+          electronAPI: {
+            ui: { setState: typeof setUiState };
+            voice: { persistTranscript: ReturnType<typeof vi.fn> };
+          };
+        }
+      ).electronAPI = {
+        ui: {
+          setState: setUiState,
+        },
+        voice: {
+          persistTranscript: vi.fn(),
+        },
+      };
+
+      const session = new RealtimeVoiceSession();
+      await session.connect("convone");
+      session.setInputActive(true);
+
+      await waitFor(() => {
+        expect(lastPeerConnection?.sender.replaceTrack).toHaveBeenCalledWith(track);
+      });
+
+      lastPeerConnection?.dataChannel.onmessage?.({
+        data: JSON.stringify({
+          type: "response.output_item.done",
+          item: {
+            type: "function_call",
+            name: toolName,
+            call_id: "call-1",
+            arguments: "{}",
+          },
+        }),
+      } as MessageEvent<string>);
+
+      await waitFor(() => {
+        expect(setUiState).toHaveBeenCalledWith({ isVoiceRtcActive: false });
+        expect(lastPeerConnection?.sender.replaceTrack).toHaveBeenLastCalledWith(
+          null,
+        );
+        expect(release).toHaveBeenCalledTimes(1);
+      });
+
+      expect(session.state).toBe("connected");
+      expect(lastPeerConnection?.close).not.toHaveBeenCalled();
+      expect(lastPeerConnection?.dataChannel.close).not.toHaveBeenCalled();
+
+      await session.disconnect();
+    },
+  );
 });
