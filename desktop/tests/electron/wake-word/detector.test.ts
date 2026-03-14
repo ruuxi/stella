@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  WAKE_WORD_VAD_GATE_THRESHOLD,
+  createWakeWordVadGateState,
   float16BitsToNumber,
   readScalarTensorValue,
 } from "../../../electron/wake-word/detector.js";
@@ -25,5 +27,23 @@ describe("wake-word detector scalar decoding", () => {
     } as never;
 
     expect(readScalarTensorValue(tensor, "float32")).toBeCloseTo(0.875);
+  });
+
+  it("closes the hard VAD gate below the speech threshold", () => {
+    expect(createWakeWordVadGateState(0.49)).toEqual({
+      threshold: WAKE_WORD_VAD_GATE_THRESHOLD,
+      gateOpen: false,
+    });
+  });
+
+  it("opens the hard VAD gate at or above the speech threshold", () => {
+    expect(createWakeWordVadGateState(0.5)).toEqual({
+      threshold: WAKE_WORD_VAD_GATE_THRESHOLD,
+      gateOpen: true,
+    });
+    expect(createWakeWordVadGateState(0.82)).toEqual({
+      threshold: WAKE_WORD_VAD_GATE_THRESHOLD,
+      gateOpen: true,
+    });
   });
 });
