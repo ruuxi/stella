@@ -84,7 +84,7 @@ function BotSetupView({
   integration: Integration;
   isExpanded: boolean;
 }) {
-  const generateCode = useMutation(api.channels.utils.generateLinkCode);
+  const generateCode = useMutation(api.channels.link_codes.generateLinkCode);
   const createSlackInstallUrl = useMutation(api.data.integrations.createSlackInstallUrl);
   const [code, setCode] = useState<string | null>(null);
   const [botLink, setBotLink] = useState<string | null>(() =>
