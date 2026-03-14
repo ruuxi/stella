@@ -10,7 +10,7 @@
   cursor: default;
   outline: none;
   white-space: nowrap;
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
 }
 
 [data-component="button"][data-variant="primary"] {

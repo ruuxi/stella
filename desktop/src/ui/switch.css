@@ -35,7 +35,7 @@
 [data-component="switch"] [data-slot="switch-label"] {
   user-select: none;
   color: var(--foreground);
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 12px;
   font-weight: 400;
   line-height: 1.67;
@@ -43,7 +43,7 @@
 
 [data-component="switch"] [data-slot="switch-description"] {
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 12px;
   font-weight: 400;
   line-height: 1.5;

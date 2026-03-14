@@ -29,7 +29,7 @@
   align-items: center;
   gap: 12px;
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 14px;
   font-weight: 500;
   line-height: 1.43;
@@ -134,7 +134,7 @@
 [data-component="tabs"][data-variant="settings"] [data-slot="tabs-section-title"] {
   width: 100%;
   padding: 0 0 0 4px;
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 12px;
   font-weight: 500;
   color: var(--muted-foreground);

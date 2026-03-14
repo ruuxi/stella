@@ -1,22 +1,22 @@
 /* Self-hosted fonts with metric-adjusted fallbacks */
 
-/* Inter - Variable font (100-900 weight range) */
+/* Satoshi - Variable font (300-900 weight range) */
 @font-face {
-  font-family: "Inter";
-  src: url("../../assets/fonts/inter.woff2") format("woff2-variations");
+  font-family: "Satoshi";
+  src: url("../../assets/fonts/satoshi.woff2") format("woff2-variations");
   font-display: swap;
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 300 900;
 }
 
-/* Inter Fallback - Metric-adjusted local font to prevent layout shift */
+/* Satoshi Fallback - Metric-adjusted local font to prevent layout shift */
 @font-face {
-  font-family: "Inter Fallback";
+  font-family: "Satoshi Fallback";
   src: local("Arial");
-  size-adjust: 100%;
-  ascent-override: 97%;
+  size-adjust: 102%;
+  ascent-override: 96%;
   descent-override: 25%;
-  line-gap-override: 1%;
+  line-gap-override: 0%;
 }
 
 /* IBM Plex Mono - Regular (400) */
