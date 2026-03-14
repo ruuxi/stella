@@ -11,6 +11,7 @@ import {
 } from "@/features/voice/services/shared-microphone";
 
 const WAKE_WORD_CHUNK_SAMPLES = 1280;
+const WAKE_WORD_MIC_USE_CASE = "wake-word" as const;
 
 const combinePcm = (left: Int16Array, right: Int16Array): Int16Array => {
   if (left.length === 0) {
@@ -130,7 +131,9 @@ export function WakeWordCaptureRoot() {
 
     void (async () => {
       try {
-        micLease = await acquireSharedMicrophone();
+        micLease = await acquireSharedMicrophone({
+          useCase: WAKE_WORD_MIC_USE_CASE,
+        });
         if (stopped) {
           cleanup();
           return;

@@ -72,6 +72,7 @@ const RTC_CONFIGURATION: RTCConfiguration = {
   // Pre-gather one ICE candidate batch to shorten negotiation time.
   iceCandidatePoolSize: 1,
 };
+const RTC_VOICE_MIC_USE_CASE = "voice-rtc" as const;
 
 const toConvexConversationId = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -477,22 +478,7 @@ export class RealtimeVoiceSession {
       this.inputTrack.enabled = false;
     }
 
-    if (this.inputSourceNode) {
-      this.inputSourceNode.disconnect();
-      this.inputSourceNode = null;
-    }
-
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => track.stop());
-      this.localStream = null;
-    }
-
-    if (this.micLease) {
-      this.micLease.release();
-      this.micLease = null;
-    }
-
-    this.inputTrack = null;
+    this.releaseLocalMicrophoneCapture();
   }
 
   private async resumeMicrophoneCapture() {
@@ -509,7 +495,9 @@ export class RealtimeVoiceSession {
       return;
     }
 
-    const lease = await acquireSharedMicrophone();
+    const lease = await acquireSharedMicrophone({
+      useCase: RTC_VOICE_MIC_USE_CASE,
+    });
     if (!this.inputActive || this.destroyed) {
       lease.release();
       return;
@@ -532,21 +520,28 @@ export class RealtimeVoiceSession {
     try {
       await this.sender.replaceTrack(this.inputTrack);
     } catch (err) {
-      if (this.inputSourceNode) {
-        this.inputSourceNode.disconnect();
-        this.inputSourceNode = null;
-      }
-      if (this.localStream) {
-        this.localStream.getTracks().forEach((track) => track.stop());
-        this.localStream = null;
-      }
-      if (this.micLease) {
-        this.micLease.release();
-        this.micLease = null;
-      }
-      this.inputTrack = null;
+      this.releaseLocalMicrophoneCapture();
       throw err;
     }
+  }
+
+  private releaseLocalMicrophoneCapture() {
+    if (this.inputSourceNode) {
+      this.inputSourceNode.disconnect();
+      this.inputSourceNode = null;
+    }
+
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream = null;
+    }
+
+    if (this.micLease) {
+      this.micLease.release();
+      this.micLease = null;
+    }
+
+    this.inputTrack = null;
   }
 
   private attachOutputMonitor(stream: MediaStream) {
@@ -939,20 +934,8 @@ export class RealtimeVoiceSession {
       this.pc = null;
     }
 
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((t) => t.stop());
-      this.localStream = null;
-    }
-    if (this.micLease) {
-      this.micLease.release();
-      this.micLease = null;
-    }
-    this.inputTrack = null;
+    this.releaseLocalMicrophoneCapture();
     this.sender = null;
-    if (this.inputSourceNode) {
-      this.inputSourceNode.disconnect();
-      this.inputSourceNode = null;
-    }
 
     if (this.audioElement) {
       this.audioElement.pause();
