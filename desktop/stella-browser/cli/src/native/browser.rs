@@ -568,7 +568,14 @@ impl BrowserManager {
 
     pub async fn evaluate(&self, script: &str, _args: Option<Value>) -> Result<Value, String> {
         let session_id = self.active_session_id()?.to_string();
+        self.evaluate_in_session(&session_id, script).await
+    }
 
+    pub async fn evaluate_in_session(
+        &self,
+        session_id: &str,
+        script: &str,
+    ) -> Result<Value, String> {
         let result: EvaluateResult = self
             .client
             .send_command_typed(
@@ -578,7 +585,7 @@ impl BrowserManager {
                     return_by_value: Some(true),
                     await_promise: Some(true),
                 },
-                Some(&session_id),
+                Some(session_id),
             )
             .await?;
 
@@ -1069,6 +1076,14 @@ impl BrowserManager {
 
     pub async fn add_script_to_evaluate(&self, source: &str) -> Result<String, String> {
         let session_id = self.active_session_id()?;
+        self.add_script_to_evaluate_in_session(session_id, source).await
+    }
+
+    pub async fn add_script_to_evaluate_in_session(
+        &self,
+        session_id: &str,
+        source: &str,
+    ) -> Result<String, String> {
         let result = self
             .client
             .send_command(
@@ -1082,6 +1097,25 @@ impl BrowserManager {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string())
+    }
+
+    pub async fn remove_script_to_evaluate_in_session(
+        &self,
+        session_id: &str,
+        identifier: &str,
+    ) -> Result<(), String> {
+        self.client
+            .send_command(
+                "Page.removeScriptToEvaluateOnNewDocument",
+                Some(json!({ "identifier": identifier })),
+                Some(session_id),
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub fn page_session_ids(&self) -> Vec<String> {
+        self.pages.iter().map(|page| page.session_id.clone()).collect()
     }
 
     pub fn add_page(&mut self, page: PageInfo) {
