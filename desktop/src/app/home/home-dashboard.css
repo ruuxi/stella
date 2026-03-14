@@ -1054,13 +1054,14 @@
 }
 
 .activity-feed-item {
-  padding: 10px 12px;
+  position: relative;
+  padding: 10px 12px 10px 16px;
   border-radius: 10px;
   border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
   background: color-mix(in oklch, var(--foreground) 2%, transparent);
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   transition: border-color 0.2s, background 0.2s;
 }
 .activity-feed-item:hover {
@@ -1068,11 +1069,36 @@
   background: color-mix(in oklch, var(--foreground) 3.5%, transparent);
 }
 
+/* Status accent — left edge bar */
+.activity-feed-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  transition: background 0.3s;
+}
+.activity-feed-item[data-status="ok"]::before {
+  background: oklch(0.65 0.18 145);
+}
+.activity-feed-item[data-status="error"]::before {
+  background: oklch(0.60 0.20 25);
+}
+.activity-feed-item[data-status="running"]::before {
+  background: oklch(0.7 0.15 230);
+}
+.activity-feed-item[data-status="canceled"]::before {
+  background: oklch(0.7 0.15 85);
+}
+
 .activity-feed-header {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
 }
 
 .activity-feed-name {
@@ -1086,70 +1112,28 @@
   min-width: 0;
 }
 
-.activity-feed-kind {
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  flex-shrink: 0;
-  padding: 2px 6px;
-  border-radius: 5px;
-}
-.activity-feed-kind[data-kind="scheduled"] {
-  color: oklch(0.45 0.12 155);
-  background: color-mix(in oklch, oklch(0.45 0.12 155) 8%, transparent);
-}
-.activity-feed-kind[data-kind="monitoring"] {
-  color: oklch(0.45 0.12 280);
-  background: color-mix(in oklch, oklch(0.45 0.12 280) 8%, transparent);
-}
-.activity-feed-kind[data-kind="task"] {
-  color: oklch(0.5 0.12 230);
-  background: color-mix(in oklch, oklch(0.5 0.12 230) 8%, transparent);
-}
-:root[data-theme="dark"] .activity-feed-kind[data-kind="scheduled"] {
-  color: oklch(0.78 0.10 155);
-  background: color-mix(in oklch, oklch(0.78 0.10 155) 10%, transparent);
-}
-:root[data-theme="dark"] .activity-feed-kind[data-kind="monitoring"] {
-  color: oklch(0.78 0.10 280);
-  background: color-mix(in oklch, oklch(0.78 0.10 280) 10%, transparent);
-}
-:root[data-theme="dark"] .activity-feed-kind[data-kind="task"] {
-  color: oklch(0.8 0.08 230);
-  background: color-mix(in oklch, oklch(0.8 0.08 230) 10%, transparent);
-}
-
-.activity-feed-status {
+/* Meta row — kind + next-run inline */
+.activity-feed-meta {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.activity-feed-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
+.activity-feed-kind {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--foreground);
+  opacity: 0.4;
 }
-.activity-feed-dot[data-status="ok"] {
-  background: oklch(0.65 0.18 145);
-  box-shadow: 0 0 6px oklch(0.65 0.18 145 / 0.4);
-}
-.activity-feed-dot[data-status="error"] {
-  background: oklch(0.60 0.20 25);
-  box-shadow: 0 0 6px oklch(0.60 0.20 25 / 0.4);
-}
-.activity-feed-dot[data-status="running"] {
-  background: oklch(0.7 0.15 230);
-  box-shadow: 0 0 6px oklch(0.7 0.15 230 / 0.4);
-}
-.activity-feed-dot[data-status="canceled"] {
-  background: oklch(0.7 0.15 85);
-  box-shadow: 0 0 6px oklch(0.7 0.15 85 / 0.35);
-}
-.activity-feed-dot[data-status="none"] {
-  background: color-mix(in oklch, var(--foreground) 20%, transparent);
+
+.activity-feed-sep {
+  color: var(--foreground);
+  opacity: 0.2;
+  font-size: 10px;
+  line-height: 1;
 }
 
 .activity-feed-time {
