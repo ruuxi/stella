@@ -1,39 +1,22 @@
 /* Self-hosted fonts with metric-adjusted fallbacks */
 
-/* Plus Jakarta Sans - Variable font (200-800 weight range) */
-/* Latin subset */
+/* Inter - Variable font (100-900 weight range) */
 @font-face {
-  font-family: "Plus Jakarta Sans";
-  src: url("../../assets/fonts/plus-jakarta-sans.woff2") format("woff2-variations");
+  font-family: "Inter";
+  src: url("../../assets/fonts/inter.woff2") format("woff2-variations");
   font-display: swap;
   font-style: normal;
-  font-weight: 200 800;
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
-    U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
-    U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  font-weight: 100 900;
 }
 
-/* Latin-ext subset */
+/* Inter Fallback - Metric-adjusted local font to prevent layout shift */
 @font-face {
-  font-family: "Plus Jakarta Sans";
-  src: url("../../assets/fonts/plus-jakarta-sans-ext.woff2") format("woff2-variations");
-  font-display: swap;
-  font-style: normal;
-  font-weight: 200 800;
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
-    U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
-    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
-    U+A720-A7FF;
-}
-
-/* Plus Jakarta Sans Fallback - Metric-adjusted local font to prevent layout shift */
-@font-face {
-  font-family: "Plus Jakarta Sans Fallback";
+  font-family: "Inter Fallback";
   src: local("Arial");
-  size-adjust: 98%;
-  ascent-override: 101%;
-  descent-override: 26%;
-  line-gap-override: 0%;
+  size-adjust: 100%;
+  ascent-override: 97%;
+  descent-override: 25%;
+  line-gap-override: 1%;
 }
 
 /* IBM Plex Mono - Regular (400) */
