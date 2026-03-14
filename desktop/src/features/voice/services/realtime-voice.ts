@@ -567,6 +567,13 @@ export class RealtimeVoiceSession {
     }
   }
 
+  private closeRealtimeVoiceInput() {
+    // Goodbye ends the live turn immediately, but the warm RTC session stays
+    // connected so any already-started assistant audio can finish naturally.
+    this.setInputActive(false);
+    window.electronAPI?.ui.setState({ isVoiceRtcActive: false });
+  }
+
   // ---------------------------------------------------------------------------
   // Server event handling
   // ---------------------------------------------------------------------------
@@ -863,9 +870,9 @@ export class RealtimeVoiceSession {
         });
         this.emit({ type: "tool-end", name, callId, result: "ok" });
         return;
-      } else if (name === "goodbye") {
+      } else if (name === "goodbye" || name === "close") {
         // The model already spoke its farewell before calling the tool.
-        // Just send the tool output silently and disconnect.
+        // Stop live RTC input now, but keep the warm session/output alive.
         this.sendEvent({
           type: "conversation.item.create",
           item: {
@@ -875,11 +882,7 @@ export class RealtimeVoiceSession {
           },
         });
         this.emit({ type: "tool-end", name, callId, result: "ok" });
-
-        // Brief delay so the farewell audio finishes playing
-        setTimeout(() => {
-          window.electronAPI?.ui.setState({ isVoiceRtcActive: false });
-        }, 2000);
+        this.closeRealtimeVoiceInput();
         return;
       } else if (name === "web_search") {
         const query = (args.query as string) || this.lastUserTranscript || "";
