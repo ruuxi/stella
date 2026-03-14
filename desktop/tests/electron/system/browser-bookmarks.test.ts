@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "fs";
 import os from "os";
-import path from "path";
-
 import { collectBrowserBookmarks } from "../../../electron/system/browser-bookmarks.js";
 
 const normalizePath = (value: string) => value.replaceAll("\\", "/");
@@ -20,15 +18,6 @@ describe("collectBrowserBookmarks", () => {
   });
 
   it("reads bookmarks only from the selected browser profile", async () => {
-    const expectedBookmarksPath = path.join(
-      "C:\\Users\\Test\\AppData\\Local",
-      "Google",
-      "Chrome",
-      "User Data",
-      "Profile 2",
-      "Bookmarks",
-    );
-
     mockReadFile.mockImplementation(async (filePath: fs.PathLike) => {
       const normalizedPath = normalizePath(filePath.toString());
       if (
