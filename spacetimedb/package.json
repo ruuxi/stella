@@ -1,0 +1,19 @@
+{
+  "name": "stella-spacetimedb-module",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "spacetime build",
+    "publish:dev": "spacetime publish stella-games-dev",
+    "publish:prod": "spacetime publish stella-games -s maincloud",
+    "generate": "spacetime generate --lang typescript --out-dir ../desktop/src/features/games/bindings",
+    "logs": "spacetime logs stella-games -s maincloud"
+  },
+  "dependencies": {
+    "spacetimedb": "^1.4.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}
