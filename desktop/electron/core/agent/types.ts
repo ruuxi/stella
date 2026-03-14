@@ -1,5 +1,6 @@
 import type {
 	Api,
+	AssistantMessage,
 	AssistantMessageEvent,
 	ImageContent,
 	Message,
@@ -16,6 +17,61 @@ import type { Static, TSchema } from "@sinclair/typebox";
 export type StreamFn = (
 	...args: Parameters<typeof streamSimple>
 ) => ReturnType<typeof streamSimple> | Promise<ReturnType<typeof streamSimple>>;
+
+/**
+ * Configuration for how tool calls from a single assistant message are executed.
+ *
+ * - "sequential": each tool call is prepared, executed, and finalized before the next one starts.
+ * - "parallel": tool calls are prepared sequentially, then allowed tools execute concurrently.
+ *   Final tool results are still emitted in assistant source order.
+ */
+export type ToolExecutionMode = "sequential" | "parallel";
+
+/** A single tool call content block emitted by an assistant message. */
+export type AgentToolCall = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
+
+/**
+ * Result returned from `beforeToolCall`.
+ *
+ * Returning `{ block: true }` prevents the tool from executing. The loop emits an error tool result instead.
+ * `reason` becomes the text shown in that error result. If omitted, a default blocked message is used.
+ */
+export interface BeforeToolCallResult {
+	block?: boolean;
+	reason?: string;
+}
+
+/**
+ * Partial override returned from `afterToolCall`.
+ *
+ * Merge semantics are field-by-field:
+ * - `content`: if provided, replaces the tool result content array in full
+ * - `details`: if provided, replaces the tool result details value in full
+ * - `isError`: if provided, replaces the tool result error flag
+ */
+export interface AfterToolCallResult {
+	content?: (TextContent | ImageContent)[];
+	details?: unknown;
+	isError?: boolean;
+}
+
+/** Context passed to `beforeToolCall`. */
+export interface BeforeToolCallContext {
+	assistantMessage: AssistantMessage;
+	toolCall: AgentToolCall;
+	args: unknown;
+	context: AgentContext;
+}
+
+/** Context passed to `afterToolCall`. */
+export interface AfterToolCallContext {
+	assistantMessage: AssistantMessage;
+	toolCall: AgentToolCall;
+	args: unknown;
+	result: AgentToolResult<unknown>;
+	isError: boolean;
+	context: AgentContext;
+}
 
 /**
  * Configuration for the agent loop.
@@ -96,6 +152,38 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * Use this for follow-up messages that should wait until the agent finishes.
 	 */
 	getFollowUpMessages?: () => Promise<AgentMessage[]>;
+
+	/**
+	 * Tool execution mode.
+	 * - "sequential": execute tool calls one by one
+	 * - "parallel": preflight tool calls sequentially, then execute allowed tools concurrently
+	 *
+	 * Default: "parallel"
+	 */
+	toolExecution?: ToolExecutionMode;
+
+	/**
+	 * Called before a tool is executed, after arguments have been validated.
+	 *
+	 * Return `{ block: true }` to prevent execution. The loop emits an error tool result instead.
+	 */
+	beforeToolCall?: (
+		context: BeforeToolCallContext,
+		signal?: AbortSignal,
+	) => Promise<BeforeToolCallResult | undefined>;
+
+	/**
+	 * Called after a tool finishes executing, before final tool events are emitted.
+	 *
+	 * Return an `AfterToolCallResult` to override parts of the executed tool result:
+	 * - `content` replaces the full content array
+	 * - `details` replaces the full details payload
+	 * - `isError` replaces the error flag
+	 */
+	afterToolCall?: (
+		context: AfterToolCallContext,
+		signal?: AbortSignal,
+	) => Promise<AfterToolCallResult | undefined>;
 }
 
 /**
