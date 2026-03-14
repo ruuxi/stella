@@ -4,7 +4,7 @@
 
 [data-component="native-select"] [data-slot="native-select-label"] {
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.5;
@@ -24,7 +24,7 @@
   border-radius: var(--radius-md, 6px);
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.67;

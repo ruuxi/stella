@@ -5,7 +5,7 @@
 [data-component="input"] [data-slot="input-input"] {
   width: 100%;
   color: var(--foreground);
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 14px;
   font-weight: 400;
   line-height: 1.43;
@@ -28,7 +28,7 @@
 
 [data-component="input"][data-variant="normal"] [data-slot="input-label"] {
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.5;
@@ -75,7 +75,7 @@
 
 [data-component="input"][data-variant="normal"] [data-slot="input-error"] {
   color: var(--destructive);
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.5;
@@ -83,7 +83,7 @@
 
 [data-component="input"][data-variant="normal"] [data-slot="input-description"] {
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 12px;
   font-weight: 400;
   line-height: 1.5;

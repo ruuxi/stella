@@ -41,7 +41,7 @@
   cursor: default;
   user-select: none;
   outline: none;
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.67;
@@ -83,7 +83,7 @@
 
 [data-slot="dropdown-menu-group-label"] {
   padding: 4px 8px;
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 11px;
   font-weight: 500;
   line-height: 1.67;

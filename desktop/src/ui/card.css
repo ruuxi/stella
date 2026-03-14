@@ -14,7 +14,7 @@
   background-color: color-mix(in srgb, var(--destructive) 10%, transparent);
   border: 1px solid var(--destructive);
   color: var(--destructive);
-  font-family: var(--font-family-sans, "Inter", sans-serif);
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 12px;
   font-weight: 400;
   line-height: 1.67;
