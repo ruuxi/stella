@@ -94,7 +94,7 @@ const WEATHER_ICON: Record<WeatherType, string> = {
 /* ── Animated weather effects (CSS) ── */
 
 const css = `
-  .wx-root { position: relative; padding: 24px; display: flex; flex-direction: column; gap: 20px; height: 100%; font-family: var(--font-family-sans, Inter, sans-serif); color: var(--foreground); background: transparent; overflow: hidden; }
+  .wx-root { position: relative; padding: 24px; display: flex; flex-direction: column; gap: 20px; height: 100%; font-family: var(--font-family-sans, "Satoshi", sans-serif); color: var(--foreground); background: transparent; overflow: hidden; }
   .wx-root * { box-sizing: border-box; }
 
   /* ── Hero scene container ── */
