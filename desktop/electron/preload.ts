@@ -573,6 +573,50 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("store:uninstallMod", { packageId }),
   },
 
+  games: {
+    create: (payload: { gameId: string; spacetimedbModule?: string }) =>
+      ipcRenderer.invoke("games:create", payload) as Promise<{
+        gameId: string;
+        path: string;
+      }>,
+    build: (gameId: string) =>
+      ipcRenderer.invoke("games:build", { gameId }) as Promise<{
+        gameId: string;
+        distPath: string;
+      }>,
+    deploy: (gameId: string) =>
+      ipcRenderer.invoke("games:deploy", { gameId }) as Promise<{
+        gameId: string;
+        deploymentPath: string;
+        assetCount: number;
+      }>,
+    getJoinInfo: (gameId: string) =>
+      ipcRenderer.invoke("games:getJoinInfo", { gameId }) as Promise<{
+        gameId: string;
+        joinCode: string;
+        displayName: string;
+        deploymentPath?: string;
+      }>,
+    list: () =>
+      ipcRenderer.invoke("games:list") as Promise<
+        Array<{
+          gameId: string;
+          displayName: string;
+          description: string;
+          gameType: string;
+          joinCode: string;
+          status: string;
+          deploymentPath?: string;
+          createdAt: number;
+          updatedAt: number;
+        }>
+      >,
+    archive: (gameId: string) =>
+      ipcRenderer.invoke("games:archive", { gameId }) as Promise<{
+        archived: boolean;
+      }>,
+  },
+
   localChat: {
     getOrCreateDefaultConversationId: () =>
       ipcRenderer.invoke("localChat:getOrCreateDefaultConversationId"),

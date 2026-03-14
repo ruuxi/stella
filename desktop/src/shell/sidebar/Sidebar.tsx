@@ -11,6 +11,7 @@ import Link2 from "lucide-react/dist/esm/icons/link-2";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square";
 import PlusSquare from "lucide-react/dist/esm/icons/square-plus";
 import Settings from "lucide-react/dist/esm/icons/settings";
+import Sparkles from "lucide-react/dist/esm/icons/sparkles";
 import User from "lucide-react/dist/esm/icons/user";
 import LogIn from "lucide-react/dist/esm/icons/log-in";
 import "./sidebar.css";
@@ -24,6 +25,7 @@ interface SidebarProps {
   onSignIn?: () => void;
   onConnect?: () => void;
   onSettings?: () => void;
+  onStore?: () => void;
   onHome?: () => void;
   onChat?: () => void;
   onNewApp?: () => void;
@@ -74,6 +76,7 @@ export const Sidebar = ({
   onSignIn,
   onConnect,
   onSettings,
+  onStore,
   onHome,
   onChat,
   onNewApp,
@@ -184,6 +187,16 @@ export const Sidebar = ({
             onThemeSelect={onThemeSelect}
           />
         </div>
+        <button
+          type="button"
+          className={`sidebar-nav-item ${activeView === "store" ? "sidebar-nav-item--active" : ""}`}
+          onClick={onStore}
+        >
+          <span className="sidebar-nav-icon">
+            <Sparkles size={18} />
+          </span>
+          <span className="sidebar-nav-label">Store</span>
+        </button>
         <button type="button" className="sidebar-nav-item" onClick={onConnect}>
           <span className="sidebar-nav-icon">
             <Link2 size={18} />

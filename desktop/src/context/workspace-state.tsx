@@ -8,10 +8,16 @@ export type WorkspacePanel = {
   title?: string
   /** Optional source URL for localhost/dev-server backed panels. */
   url?: string
-  /** Distinguishes built-in workspace routes from local dev projects. */
-  kind?: 'local-panel' | 'dev-project'
+  /** Distinguishes built-in workspace routes from local dev projects and hosted games. */
+  kind?: 'local-panel' | 'dev-project' | 'hosted-game'
   /** Backing local dev project identifier for persisted workspace pages. */
   projectId?: string
+  /** Game identifier for hosted-game panels. */
+  gameId?: string
+  /** Fully-qualified URL for the hosted game client. */
+  gameUrl?: string
+  /** Join code for sharing the game. */
+  joinCode?: string
 }
 
 export type WorkspaceState = {

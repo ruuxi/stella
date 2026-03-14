@@ -3,6 +3,7 @@ import { WorkspaceErrorBoundary } from '../WorkspaceErrorBoundary'
 import { Spinner } from '@/ui/spinner'
 import type { WorkspacePanel } from '@/context/workspace-state'
 import { DevProjectPanel } from './dev-project-panel'
+import { HostedGamePanel } from './hosted-game-panel'
 import {
   areLocalWorkspacePanelsEnabled,
   LOCAL_WORKSPACE_PANELS_DEV_ONLY_MESSAGE,
@@ -260,8 +261,20 @@ const LocalWorkspacePanelRenderer = ({ name }: { name: string }) => {
   )
 }
 
+const HostedGamePanelRenderer = ({ panel }: { panel: WorkspacePanel }) => (
+  <div className="workspace-panel-wrap">
+    <WorkspaceErrorBoundary>
+      <div className="workspace-panel-content">
+        <HostedGamePanel panel={panel} />
+      </div>
+    </WorkspaceErrorBoundary>
+  </div>
+)
+
 const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) =>
-  panel.kind === 'dev-project' ? (
+  panel.kind === 'hosted-game' ? (
+    <HostedGamePanelRenderer panel={panel} />
+  ) : panel.kind === 'dev-project' ? (
     <DevProjectPanelRenderer panel={panel} />
   ) : (
     <LocalWorkspacePanelRenderer name={panel.name} />
