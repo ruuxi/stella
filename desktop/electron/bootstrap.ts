@@ -76,6 +76,7 @@ const HARD_RESET_MUTABLE_HOME_PATHS = [
 export const bootstrapMainProcess = () => {
   // __dirname at runtime is dist-electron/electron/; frontendRoot is the project root (desktop/)
   const frontendRoot = path.resolve(__dirname, "..", "..");
+  const appSessionStartedAt = Date.now();
 
   let appReady = false;
   let isQuitting = false;
@@ -657,6 +658,7 @@ export const bootstrapMainProcess = () => {
 
     registerAgentHandlers({
       getStellaHostRunner: () => stellaHostRunner,
+      getAppSessionStartedAt: () => appSessionStartedAt,
       isHostAuthAuthenticated: () => authService.getHostAuthAuthenticated(),
       frontendRoot,
       assertPrivilegedSender: (event, channel) =>

@@ -382,7 +382,11 @@ export function getCurrentRunningTool(events: EventRecord[]): string | undefined
 }
 
 // Extract tasks from events
-export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
+export function extractTasksFromEvents(
+  events: EventRecord[],
+  options?: { appSessionStartedAtMs?: number | null },
+): TaskItem[] {
+  const appSessionStartedAtMs = options?.appSessionStartedAtMs ?? null;
   const startedEvents = events.filter(isTaskStarted);
   const completedEvents = events.filter(isTaskCompleted);
   const failedEvents = events.filter(isTaskFailed);
@@ -445,6 +449,15 @@ export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
       lastUpdatedAtMs = latestProgress.timestamp;
     }
 
+    if (
+      status === "running"
+      && appSessionStartedAtMs !== null
+      && lastUpdatedAtMs < appSessionStartedAtMs
+    ) {
+      status = "canceled";
+      outputPreview = outputPreview ?? "Stopped when Stella restarted.";
+    }
+
     return {
       id: taskId,
       description: event.payload.description,
@@ -461,8 +474,11 @@ export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
 }
 
 // Get currently running tasks
-export function getRunningTasks(events: EventRecord[]): TaskItem[] {
-  const tasks = extractTasksFromEvents(events);
+export function getRunningTasks(
+  events: EventRecord[],
+  options?: { appSessionStartedAtMs?: number | null },
+): TaskItem[] {
+  const tasks = extractTasksFromEvents(events, options);
   return tasks.filter((t) => t.status === "running");
 }
 

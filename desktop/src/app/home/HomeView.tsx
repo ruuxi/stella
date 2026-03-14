@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useConversationEvents } from "@/app/chat/hooks/use-conversation-events"
+import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-started-at"
 import { extractTasksFromEvents } from "@/app/chat/lib/event-transforms"
 import { useWelcomeSuggestions } from "@/app/home/hooks/use-welcome-suggestions"
 import type { WelcomeSuggestion } from "@/global/onboarding/services/synthesis"
@@ -105,9 +106,13 @@ type HomeViewProps = {
 
 export function HomeView({ conversationId }: HomeViewProps) {
   const events = useConversationEvents(conversationId)
+  const appSessionStartedAtMs = useAgentSessionStartedAt()
   const welcomeSuggestions = useWelcomeSuggestions(events)
   const scheduleItems = useScheduleData()
-  const taskItems = useMemo(() => extractTasksFromEvents(events), [events])
+  const taskItems = useMemo(
+    () => extractTasksFromEvents(events, { appSessionStartedAtMs }),
+    [appSessionStartedAtMs, events],
+  )
   const activityItems = useMemo<ActivityItem[]>(() => {
     const tasks: ActivityItem[] = taskItems.map((task) => ({
       id: `task-${task.id}`,

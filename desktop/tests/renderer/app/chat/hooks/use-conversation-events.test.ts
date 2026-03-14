@@ -338,6 +338,45 @@ describe("extractTasksFromEvents", () => {
     const tasks = extractTasksFromEvents(events);
     expect(tasks[0].statusText).toBe("50% done");
   });
+
+  it("downgrades stale running tasks after app restart", () => {
+    const events = [
+      createEvent({
+        timestamp: 1_000,
+        type: "task_started",
+        payload: { taskId: "t1", description: "Work", agentType: "general" },
+      }),
+      createEvent({
+        timestamp: 1_500,
+        type: "task_progress",
+        payload: { taskId: "t1", statusText: "Using Bash" },
+      }),
+    ];
+
+    const tasks = extractTasksFromEvents(events, { appSessionStartedAtMs: 2_000 });
+    expect(tasks[0].status).toBe("canceled");
+    expect(tasks[0].outputPreview).toBe("Stopped when Stella restarted.");
+    expect(getRunningTasks(events, { appSessionStartedAtMs: 2_000 })).toEqual([]);
+  });
+
+  it("keeps current-session running tasks visible", () => {
+    const events = [
+      createEvent({
+        timestamp: 3_000,
+        type: "task_started",
+        payload: { taskId: "t1", description: "Work", agentType: "general" },
+      }),
+      createEvent({
+        timestamp: 3_500,
+        type: "task_progress",
+        payload: { taskId: "t1", statusText: "Using Bash" },
+      }),
+    ];
+
+    const tasks = extractTasksFromEvents(events, { appSessionStartedAtMs: 2_000 });
+    expect(tasks[0].status).toBe("running");
+    expect(getRunningTasks(events, { appSessionStartedAtMs: 2_000 })).toHaveLength(1);
+  });
 });
 
 describe("getRunningTasks", () => {
