@@ -58,6 +58,8 @@ Write to the same file again, then report the panel name again. Vite recompiles 
 
 For multi-file apps that need their own npm dependencies, persistent state, or complex project structure.
 
+If the app is a Stella multiplayer game or needs the shared realtime game runtime, activate the `multiplayer-game` skill before scaffolding or editing it. Do not activate it for single-player apps.
+
 ## Workflow
 1. Scaffold: `Bash(command="cd desktop && node scripts/create-workspace-app.mjs my-app")`
 2. Add deps: `Bash(command="cd desktop/workspace/apps/my-app && bun add three @react-three/fiber")`
