@@ -2,6 +2,7 @@ import type OpenAI from "openai";
 import type {
 	Tool as OpenAITool,
 	ResponseCreateParamsStreaming,
+	ResponseFunctionCallOutputItemList,
 	ResponseFunctionToolCall,
 	ResponseInput,
 	ResponseInputContent,
@@ -20,6 +21,7 @@ import type {
 	Model,
 	StopReason,
 	TextContent,
+	TextSignatureV1,
 	ThinkingContent,
 	Tool,
 	ToolCall,
@@ -46,6 +48,32 @@ function shortHash(str: string): string {
 	h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
 	h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
 	return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36);
+}
+
+function encodeTextSignatureV1(id: string, phase?: TextSignatureV1["phase"]): string {
+	const payload: TextSignatureV1 = { v: 1, id };
+	if (phase) payload.phase = phase;
+	return JSON.stringify(payload);
+}
+
+function parseTextSignature(
+	signature: string | undefined,
+): { id: string; phase?: TextSignatureV1["phase"] } | undefined {
+	if (!signature) return undefined;
+	if (signature.startsWith("{")) {
+		try {
+			const parsed = JSON.parse(signature) as Partial<TextSignatureV1>;
+			if (parsed.v === 1 && typeof parsed.id === "string") {
+				if (parsed.phase === "commentary" || parsed.phase === "final_answer") {
+					return { id: parsed.id, phase: parsed.phase };
+				}
+				return { id: parsed.id };
+			}
+		} catch {
+			// Fall through to legacy plain-string handling.
+		}
+	}
+	return { id: signature };
 }
 
 export interface OpenAIResponsesStreamOptions {
@@ -154,20 +182,25 @@ export function convertResponsesMessages<TApi extends Api>(
 					}
 				} else if (block.type === "text") {
 					const textBlock = block as TextContent;
+					const parsedSignature = parseTextSignature(textBlock.textSignature);
 					// OpenAI requires id to be max 64 characters
-					let msgId = textBlock.textSignature;
+					let msgId = parsedSignature?.id;
 					if (!msgId) {
 						msgId = `msg_${msgIndex}`;
 					} else if (msgId.length > 64) {
 						msgId = `msg_${shortHash(msgId)}`;
 					}
-					output.push({
+					const responseMessage = {
 						type: "message",
 						role: "assistant",
 						content: [{ type: "output_text", text: sanitizeSurrogates(textBlock.text), annotations: [] }],
 						status: "completed",
 						id: msgId,
-					} satisfies ResponseOutputMessage);
+					} as ResponseOutputMessage & { phase?: TextSignatureV1["phase"] };
+					if (parsedSignature?.phase) {
+						responseMessage.phase = parsedSignature.phase;
+					}
+					output.push(responseMessage);
 				} else if (block.type === "toolCall") {
 					const toolCall = block as ToolCall;
 					const [callId, itemIdRaw] = toolCall.id.split("|");
@@ -192,48 +225,44 @@ export function convertResponsesMessages<TApi extends Api>(
 			if (output.length === 0) continue;
 			messages.push(...output);
 		} else if (msg.role === "toolResult") {
-			// Extract text and image content
 			const textResult = msg.content
 				.filter((c): c is TextContent => c.type === "text")
 				.map((c) => c.text)
 				.join("\n");
 			const hasImages = msg.content.some((c): c is ImageContent => c.type === "image");
-
-			// Always send function_call_output with text (or placeholder if only images)
 			const hasText = textResult.length > 0;
 			const [callId] = msg.toolCallId.split("|");
-			messages.push({
-				type: "function_call_output",
-				call_id: callId,
-				output: sanitizeSurrogates(hasText ? textResult : "(see attached image)"),
-			});
 
-			// If there are images and model supports them, send a follow-up user message with images
+			let output: string | ResponseFunctionCallOutputItemList;
 			if (hasImages && model.input.includes("image")) {
-				const contentParts: ResponseInputContent[] = [];
+				const contentParts: ResponseFunctionCallOutputItemList = [];
 
-				// Add text prefix
-				contentParts.push({
-					type: "input_text",
-					text: "Attached image(s) from tool result:",
-				} satisfies ResponseInputText);
+				if (hasText) {
+					contentParts.push({
+						type: "input_text",
+						text: sanitizeSurrogates(textResult),
+					});
+				}
 
-				// Add images
 				for (const block of msg.content) {
 					if (block.type === "image") {
 						contentParts.push({
 							type: "input_image",
 							detail: "auto",
 							image_url: `data:${block.mimeType};base64,${block.data}`,
-						} satisfies ResponseInputImage);
+						});
 					}
 				}
-
-				messages.push({
-					role: "user",
-					content: contentParts,
-				});
+				output = contentParts;
+			} else {
+				output = sanitizeSurrogates(hasText ? textResult : "(see attached image)");
 			}
+
+			messages.push({
+				type: "function_call_output",
+				call_id: callId,
+				output,
+			});
 		}
 		msgIndex++;
 	}
@@ -405,7 +434,10 @@ export async function processResponsesStream<TApi extends Api>(
 				currentBlock = null;
 			} else if (item.type === "message" && currentBlock?.type === "text") {
 				currentBlock.text = item.content.map((c) => (c.type === "output_text" ? c.text : c.refusal)).join("");
-				currentBlock.textSignature = item.id;
+				currentBlock.textSignature = encodeTextSignatureV1(
+					item.id,
+					(item as ResponseOutputMessage & { phase?: TextSignatureV1["phase"] }).phase ?? undefined,
+				);
 				stream.push({
 					type: "text_end",
 					contentIndex: blockIndex(),
@@ -456,7 +488,14 @@ export async function processResponsesStream<TApi extends Api>(
 			const message = event.message ? `Error Code ${event.code}: ${event.message}` : "Unknown error";
 			throw new Error(message);
 		} else if (event.type === "response.failed") {
-			throw new Error("Unknown error");
+			const error = event.response?.error;
+			const details = event.response?.incomplete_details;
+			const message = error
+				? `${error.code || "unknown"}: ${error.message || "no message"}`
+				: details?.reason
+					? `incomplete: ${details.reason}`
+					: "Unknown error (no error details in response)";
+			throw new Error(message);
 		}
 	}
 }
