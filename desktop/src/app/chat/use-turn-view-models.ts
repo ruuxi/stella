@@ -8,6 +8,7 @@ import {
 } from "@/app/chat/lib/event-transforms";
 import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
 import { useDepseudonymize } from "@/app/chat/hooks/use-depseudonymize";
+import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-started-at";
 import { isOrchestratorChatMessagePayload } from "@/app/chat/emotes/message-source";
 import {
   type TurnViewModel,
@@ -90,6 +91,7 @@ export function useTurnViewModels(opts: {
   }, [allTurns, maxTurns, pendingUserMessageId, showStreaming]);
 
   const depseudonymize = useDepseudonymize();
+  const appSessionStartedAtMs = useAgentSessionStartedAt();
 
   const baseTurns = useMemo(() => {
     return slicedTurns.map((turn): BaseTurnViewModel => {
@@ -151,10 +153,10 @@ export function useTurnViewModels(opts: {
 
   const { runningTool, runningTasks } = useMemo(
     () => ({
-    runningTool: getCurrentRunningTool(events),
-    runningTasks: getRunningTasks(events),
-  }),
-  [events],
+      runningTool: getCurrentRunningTool(events),
+      runningTasks: getRunningTasks(events, { appSessionStartedAtMs }),
+    }),
+    [appSessionStartedAtMs, events],
   );
 
   const hasPendingTurn = useMemo(() => {
