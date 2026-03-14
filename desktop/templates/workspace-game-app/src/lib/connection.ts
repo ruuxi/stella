@@ -2,7 +2,7 @@
  * SpacetimeDB connection configuration.
  *
  * After deploying the SpacetimeDB module, generate bindings:
- *   spacetime generate --lang typescript --out-dir src/bindings
+ *   spacetime generate {{spacetimedbModule}} --lang typescript --out-dir src/bindings --module-path ../../../../spacetimedb --yes
  *
  * Then import DbConnection and tables from the generated bindings.
  */
@@ -20,6 +20,18 @@ const DISPLAY_NAME_KEY = "stella_game_display_name";
 const GAME_AUTH_TOKEN_KEY = "stella_game_auth_token";
 const GAME_JOIN_CODE_KEY = "stella_game_join_code";
 const GAME_SESSION_ID_KEY = "stella_game_session_id";
+
+const writeSessionValue = (key: string, value: string | undefined): void => {
+  try {
+    if (value) {
+      sessionStorage.setItem(key, value);
+      return;
+    }
+    sessionStorage.removeItem(key);
+  } catch {
+    // sessionStorage may not be available
+  }
+};
 
 export const getSavedToken = (): string | undefined => {
   try {
@@ -110,15 +122,9 @@ export const getSavedSessionId = (): string | undefined => {
 
 export const saveLaunchAuth = (auth: SavedLaunchAuth): void => {
   saveGameAuthToken(auth.gameToken);
-  if (auth.displayName) {
-    saveDisplayName(auth.displayName);
-  }
-  if (auth.joinCode) {
-    saveJoinCode(auth.joinCode);
-  }
-  if (auth.spacetimeSessionId) {
-    saveSessionId(auth.spacetimeSessionId);
-  }
+  writeSessionValue(DISPLAY_NAME_KEY, auth.displayName);
+  writeSessionValue(GAME_JOIN_CODE_KEY, auth.joinCode);
+  writeSessionValue(GAME_SESSION_ID_KEY, auth.spacetimeSessionId);
 };
 
 export const getSavedLaunchAuth = (): SavedLaunchAuth | null => {
