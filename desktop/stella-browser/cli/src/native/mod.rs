@@ -15,6 +15,8 @@ pub mod diff;
 #[allow(dead_code)]
 pub mod element;
 #[allow(dead_code)]
+pub mod extension_bridge;
+#[allow(dead_code)]
 pub mod inspect_server;
 #[allow(dead_code)]
 pub mod interaction;
@@ -40,6 +42,8 @@ pub mod storage;
 pub mod stream;
 #[allow(dead_code)]
 pub mod tracing;
+#[allow(dead_code)]
+pub mod user_browser;
 #[allow(dead_code)]
 pub mod webdriver;
 
