@@ -12,11 +12,12 @@ import {
 
 export default {
   sessionId: __t.u64(),
-  expectedSimulationTick: __t.u32(),
-  lifecycleState: __t.string(),
-  phaseKey: __t.string(),
-  activeTurnSlot: __t.i32(),
-  simulationTick: __t.u32(),
-  publicStateJson: __t.string(),
-  metadataJson: __t.string(),
+  entityId: __t.u64(),
+  componentName: __t.string(),
+  schemaKey: __t.string(),
+  replicationGroup: __t.string(),
+  visibilityScope: __t.string(),
+  visibilityKey: __t.option(__t.string()),
+  ownerSlot: __t.i32(),
+  dataJson: __t.string(),
 };

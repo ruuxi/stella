@@ -11,6 +11,7 @@ import {
   getSavedJoinCode,
   getSavedSessionId,
   saveLaunchAuth,
+  saveSessionId,
   saveDisplayName,
 } from "./connection";
 
@@ -40,8 +41,17 @@ export const getLaunchGameToken = (): string | undefined =>
 export const getLaunchDisplayName = (): string | undefined =>
   getSavedDisplayName();
 
+export type DecodedHostedGameToken = {
+  gameId?: string;
+  userId?: string;
+};
+
 export const saveLaunchDisplayName = (displayName: string): void => {
   saveDisplayName(displayName);
+};
+
+export const saveActiveSessionId = (sessionId: bigint): void => {
+  saveSessionId(sessionId.toString());
 };
 
 export const saveHostedLaunchAuth = (message: HostedGameAuthMessage): void => {
@@ -57,6 +67,40 @@ export const saveHostedLaunchAuth = (message: HostedGameAuthMessage): void => {
 
 export const clearHostedLaunchAuth = (): void => {
   clearLaunchAuth();
+};
+
+export const decodeHostedGameToken = (
+  token: string,
+): DecodedHostedGameToken | null => {
+  const [payload] = token.split(".");
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const remainder = normalized.length % 4;
+    const padded =
+      remainder === 0
+        ? normalized
+        : remainder === 2
+          ? `${normalized}==`
+          : remainder === 3
+            ? `${normalized}=`
+            : null;
+
+    if (!padded) {
+      return null;
+    }
+
+    const decoded = JSON.parse(window.atob(padded)) as Record<string, unknown>;
+    return {
+      ...(typeof decoded.gameId === "string" ? { gameId: decoded.gameId } : {}),
+      ...(typeof decoded.sub === "string" ? { userId: decoded.sub } : {}),
+    };
+  } catch {
+    return null;
+  }
 };
 
 export const isHostedGameAuthMessage = (

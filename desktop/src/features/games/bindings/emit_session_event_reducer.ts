@@ -12,10 +12,12 @@ import {
 
 export default {
   sessionId: __t.u64(),
-  objectType: __t.string(),
-  objectKey: __t.string(),
-  ownerSlot: __t.i32(),
-  positionJson: __t.string(),
-  stateJson: __t.string(),
-  sortOrder: __t.u32(),
+  eventKind: __t.string(),
+  eventScope: __t.string(),
+  replicationGroup: __t.string(),
+  visibilityScope: __t.string(),
+  visibilityKey: __t.option(__t.string()),
+  targetEntityId: __t.option(__t.u64()),
+  simulationTick: __t.u32(),
+  dataJson: __t.string(),
 };

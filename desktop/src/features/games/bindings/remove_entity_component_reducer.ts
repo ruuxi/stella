@@ -10,12 +10,8 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default __t.row({
-  id: __t.u64().primaryKey(),
-  sessionId: __t.u64().name("session_id"),
-  playerSlot: __t.u32().name("player_slot"),
-  displayName: __t.string().name("display_name"),
-  message: __t.string(),
-  messageType: __t.string().name("message_type"),
-  timestamp: __t.u64(),
-});
+export default {
+  sessionId: __t.u64(),
+  entityId: __t.u64(),
+  componentName: __t.string(),
+};

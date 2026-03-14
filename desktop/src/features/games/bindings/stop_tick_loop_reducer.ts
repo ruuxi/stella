@@ -12,7 +12,4 @@ import {
 
 export default {
   sessionId: __t.u64(),
-  actionType: __t.string(),
-  payloadJson: __t.string(),
-  resultJson: __t.string(),
 };

@@ -51,6 +51,13 @@ if (!resolvedDest.startsWith(`${resolvedAppsDir}${sep}`)) {
 
 cpSync(src, dest, { recursive: true })
 
+// For game template: copy full bindings so the app is self-contained
+if (resolvedTemplate === 'workspace-game-app') {
+  const bindingsSrc = join(__dirname, '..', 'src', 'features', 'games', 'bindings')
+  const bindingsDest = join(dest, 'src', 'bindings')
+  cpSync(bindingsSrc, bindingsDest, { recursive: true })
+}
+
 // Files that may contain placeholders
 const placeholderFiles = [
   'package.json',
