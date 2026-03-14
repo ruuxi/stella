@@ -18,8 +18,24 @@ vi.mock("@/platform/electron/device", () => ({
   getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
 }));
 
-const mockAppendEvent = vi.fn(() => Promise.resolve(null));
-const mockAppendAgentEvent = vi.fn(() => Promise.resolve());
+const mockAppendEvent = vi.fn<
+  () => Promise<{ _id?: string; id?: string } | null>
+>(() => Promise.resolve(null));
+const mockAppendAgentEvent = vi.fn<
+  (args: {
+    conversationId: string;
+    type: string;
+    userMessageId?: string;
+    toolCallId?: string;
+    toolName?: string;
+    resultPreview?: string;
+    finalText?: string;
+    taskId?: string;
+    description?: string;
+    agentType?: string;
+    parentTaskId?: string;
+  }) => Promise<void>
+>(() => Promise.resolve());
 const mockUploadAttachments = vi.fn(() => Promise.resolve([]));
 const mockBuildHistory = vi.fn(() => undefined);
 const mockAgentHealthCheck = vi.fn(() => Promise.resolve({ ready: true }));
@@ -96,7 +112,7 @@ describe("useStreamingChat", () => {
         startChat: mockAgentStartChat,
         onStream: mockAgentOnStream,
       },
-    } as typeof window.electronAPI;
+    } as unknown as typeof window.electronAPI;
   });
 
   afterEach(() => {
@@ -416,7 +432,7 @@ describe("useStreamingChat", () => {
       );
     });
 
-    it("persists WebSearch HTML from streamed tool-end events", async () => {
+    it("persists WebSearch tool results from streamed tool-end events", async () => {
       mockAppendEvent.mockResolvedValueOnce({ _id: "user-event-1" });
 
       const { result } = renderHook(() =>
@@ -424,16 +440,7 @@ describe("useStreamingChat", () => {
       );
 
       let unsubscribeCalled = false;
-      mockAgentOnStream.mockImplementation((_callback: (event: {
-        type: string;
-        runId: string;
-        seq: number;
-        toolCallId?: string;
-        toolName?: string;
-        resultPreview?: string;
-        html?: string;
-        agentType?: string;
-      }) => void) => {
+      mockAgentOnStream.mockImplementation((_callback: (event: AgentStreamEvent) => void) => {
         return () => {
           unsubscribeCalled = true;
         };
@@ -451,16 +458,7 @@ describe("useStreamingChat", () => {
       });
 
       const callback = mockAgentOnStream.mock.calls[0]?.[0] as
-        | ((event: {
-            type: string;
-            runId: string;
-            seq: number;
-            toolCallId?: string;
-            toolName?: string;
-            resultPreview?: string;
-            html?: string;
-            agentType?: string;
-          }) => void)
+        | ((event: AgentStreamEvent) => void)
         | undefined;
 
       expect(callback).toBeTypeOf("function");
@@ -474,7 +472,6 @@ describe("useStreamingChat", () => {
           toolCallId: "tool-1",
           toolName: "WebSearch",
           resultPreview: "HTML search briefing ready.",
-          html: "<section><h3>Briefing</h3></section>",
         });
       });
 
@@ -485,7 +482,7 @@ describe("useStreamingChat", () => {
           toolCallId: "tool-1",
           toolName: "WebSearch",
           resultPreview: "HTML search briefing ready.",
-          html: "<section><h3>Briefing</h3></section>",
+          agentType: "orchestrator",
         }),
       );
       expect(unsubscribeCalled).toBe(false);
@@ -643,7 +640,7 @@ describe("useStreamingChat", () => {
             Promise.resolve({ events: [] as AgentStreamEvent[], exhausted: false }),
           ),
         },
-      } as typeof window.electronAPI
+      } as unknown as typeof window.electronAPI
 
       const { result } = renderHook(() =>
         useStreamingChat({ conversationId: "conv-1", events: [] }),
