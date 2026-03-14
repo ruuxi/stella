@@ -39,7 +39,7 @@
   overflow: clip;
   color: var(--foreground);
   transition: background-color 0.15s ease;
-  font-family: var(--font-family-sans, "Plus Jakarta Sans", sans-serif);
+  font-family: var(--font-family-sans, "Inter", sans-serif);
   font-size: 12px;
   font-weight: 400;
   line-height: 1.67;

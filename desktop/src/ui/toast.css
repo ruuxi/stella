@@ -57,7 +57,7 @@
 
 [data-component="toast"] [data-slot="toast-title"] {
   color: var(--foreground);
-  font-family: var(--font-family-sans, "Plus Jakarta Sans", sans-serif);
+  font-family: var(--font-family-sans, "Inter", sans-serif);
   font-size: 14px;
   font-weight: 500;
   line-height: 1.43;
@@ -66,7 +66,7 @@
 
 [data-component="toast"] [data-slot="toast-description"] {
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Plus Jakarta Sans", sans-serif);
+  font-family: var(--font-family-sans, "Inter", sans-serif);
   font-size: 14px;
   font-weight: 400;
   line-height: 1.71;
