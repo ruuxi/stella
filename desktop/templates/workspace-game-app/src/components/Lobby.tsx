@@ -14,7 +14,7 @@ type LobbyProps = {
 };
 
 export function Lobby({ sessionId, joinCode, isHost, onStartGame }: LobbyProps) {
-  const [players, playersReady] = useTable(tables.gamePlayers);
+  const [players, playersReady] = useTable(tables.game_players);
   const sessionPlayers = players.filter(
     (p) => p.sessionId === sessionId,
   );

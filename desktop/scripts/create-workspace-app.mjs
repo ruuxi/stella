@@ -9,11 +9,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)
 let rawName = ''
 let templateName = 'workspace-app'
+let spacetimeDbModule = 'stella-w08uu'
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i]
   if (arg === '--template' && args[i + 1]) {
     templateName = args[++i]
+  } else if (arg === '--spacetimedb-module' && args[i + 1]) {
+    spacetimeDbModule = args[++i]
   } else if (!arg.startsWith('--') && !rawName) {
     rawName = arg.trim()
   }
@@ -53,13 +56,17 @@ const placeholderFiles = [
   'package.json',
   'index.html',
   'src/App.tsx',
+  'src/lib/connection.ts',
 ]
 
 for (const file of placeholderFiles) {
   const filePath = join(dest, file)
   try {
     const content = readFileSync(filePath, 'utf-8')
-    writeFileSync(filePath, content.replaceAll('{{name}}', rawName), 'utf-8')
+    const updated = content
+      .replaceAll('{{name}}', rawName)
+      .replaceAll('{{spacetimedbModule}}', spacetimeDbModule)
+    writeFileSync(filePath, updated, 'utf-8')
   } catch {
     // File may not exist in this template — skip
   }
