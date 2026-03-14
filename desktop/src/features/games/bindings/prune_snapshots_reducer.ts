@@ -11,9 +11,6 @@ import {
 } from "spacetimedb";
 
 export default {
-  id: __t.u64(),
-  ownerSlot: __t.i32(),
-  positionJson: __t.string(),
-  stateJson: __t.string(),
-  sortOrder: __t.u32(),
+  sessionId: __t.u64(),
+  keepSinceTick: __t.u32(),
 };

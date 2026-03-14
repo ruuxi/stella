@@ -12,6 +12,6 @@ import {
 
 export default {
   sessionId: __t.u64(),
-  message: __t.string(),
-  messageType: __t.string(),
+  playerSlot: __t.u32(),
+  scoreDelta: __t.i64(),
 };

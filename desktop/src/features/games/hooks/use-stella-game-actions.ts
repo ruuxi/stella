@@ -3,62 +3,95 @@ import { useReducer } from "spacetimedb/react";
 import { reducers } from "@/features/games/bindings";
 
 export function useStellaGameActions() {
+  const registerPlayer = useReducer(reducers.registerPlayer);
   const createSession = useReducer(reducers.createSession);
   const joinSession = useReducer(reducers.joinSession);
   const leaveSession = useReducer(reducers.leaveSession);
-  const startGame = useReducer(reducers.startGame);
-  const endGame = useReducer(reducers.endGame);
-  const pauseGame = useReducer(reducers.pauseGame);
-  const submitAction = useReducer(reducers.submitAction);
+  const startSession = useReducer(reducers.startSession);
+  const pauseSession = useReducer(reducers.pauseSession);
+  const resumeSession = useReducer(reducers.resumeSession);
+  const endSession = useReducer(reducers.endSession);
+  const configureSessionRuntime = useReducer(reducers.configureSessionRuntime);
   const updateSessionState = useReducer(reducers.updateSessionState);
-  const createObject = useReducer(reducers.createObject);
-  const updateObject = useReducer(reducers.updateObject);
-  const removeObject = useReducer(reducers.removeObject);
-  const updatePlayerScore = useReducer(reducers.updatePlayerScore);
-  const updatePlayerPrivateState = useReducer(reducers.updatePlayerPrivateState);
-  const sendChat = useReducer(reducers.sendChat);
-  const gameTick = useReducer(reducers.gameTick);
-  const startTickTimer = useReducer(reducers.startTickTimer);
-  const stopTickTimer = useReducer(reducers.stopTickTimer);
+  const spawnEntity = useReducer(reducers.spawnEntity);
+  const updateEntityTransform = useReducer(reducers.updateEntityTransform);
+  const despawnEntity = useReducer(reducers.despawnEntity);
+  const upsertEntityComponent = useReducer(reducers.upsertEntityComponent);
+  const removeEntityComponent = useReducer(reducers.removeEntityComponent);
+  const upsertSessionResource = useReducer(reducers.upsertSessionResource);
+  const removeSessionResource = useReducer(reducers.removeSessionResource);
+  const emitSessionEvent = useReducer(reducers.emitSessionEvent);
+  const submitInputFrame = useReducer(reducers.submitInputFrame);
+  const captureSnapshot = useReducer(reducers.captureSnapshot);
+  const pruneSnapshots = useReducer(reducers.pruneSnapshots);
+  const assignPlayerPawn = useReducer(reducers.assignPlayerPawn);
+  const updatePlayerPresence = useReducer(reducers.updatePlayerPresence);
+  const adjustPlayerScore = useReducer(reducers.adjustPlayerScore);
+  const upsertPrivateState = useReducer(reducers.upsertPrivateState);
+  const removePrivateState = useReducer(reducers.removePrivateState);
+  const startTickLoop = useReducer(reducers.startTickLoop);
+  const stopTickLoop = useReducer(reducers.stopTickLoop);
 
   return useMemo(
     () => ({
+      registerPlayer,
       createSession,
       joinSession,
       leaveSession,
-      startGame,
-      endGame,
-      pauseGame,
-      submitAction,
+      startSession,
+      pauseSession,
+      resumeSession,
+      endSession,
+      configureSessionRuntime,
       updateSessionState,
-      createObject,
-      updateObject,
-      removeObject,
-      updatePlayerScore,
-      updatePlayerPrivateState,
-      sendChat,
-      gameTick,
-      startTickTimer,
-      stopTickTimer,
+      spawnEntity,
+      updateEntityTransform,
+      despawnEntity,
+      upsertEntityComponent,
+      removeEntityComponent,
+      upsertSessionResource,
+      removeSessionResource,
+      emitSessionEvent,
+      submitInputFrame,
+      captureSnapshot,
+      pruneSnapshots,
+      assignPlayerPawn,
+      updatePlayerPresence,
+      adjustPlayerScore,
+      upsertPrivateState,
+      removePrivateState,
+      startTickLoop,
+      stopTickLoop,
     }),
     [
-      createObject,
+      adjustPlayerScore,
+      assignPlayerPawn,
+      captureSnapshot,
+      configureSessionRuntime,
       createSession,
-      endGame,
-      gameTick,
+      despawnEntity,
+      emitSessionEvent,
+      endSession,
       joinSession,
       leaveSession,
-      pauseGame,
-      removeObject,
-      sendChat,
-      startGame,
-      startTickTimer,
-      stopTickTimer,
-      submitAction,
-      updateObject,
-      updatePlayerPrivateState,
-      updatePlayerScore,
+      pauseSession,
+      pruneSnapshots,
+      registerPlayer,
+      removeEntityComponent,
+      removePrivateState,
+      removeSessionResource,
+      resumeSession,
+      spawnEntity,
+      startSession,
+      startTickLoop,
+      stopTickLoop,
+      submitInputFrame,
+      updateEntityTransform,
+      updatePlayerPresence,
       updateSessionState,
+      upsertEntityComponent,
+      upsertPrivateState,
+      upsertSessionResource,
     ],
   );
 }

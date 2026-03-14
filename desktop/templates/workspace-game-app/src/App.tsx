@@ -1,36 +1,58 @@
 /**
- * Game app root — routes between lobby and active game.
+ * Game app root.
  *
- * Reads session info from URL parameters for the join flow.
- * Manages the connection to SpacetimeDB and the game lifecycle.
+ * Handles the hosted launch handshake, registers the player with the Stella
+ * game runtime, and routes between lobby and active play.
  */
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useTable, useReducer, useSpacetimeDB } from "spacetimedb/react";
-import { tables, reducers } from "./bindings";
+import { reducers, tables } from "./bindings";
 import { Lobby } from "./components/Lobby";
 import { GameView } from "./components/GameView";
 import {
   clearHostedLaunchAuth,
+  decodeHostedGameToken,
   getJoinCodeFromUrl,
   getLaunchDisplayName,
   getLaunchGameToken,
   getSessionFromUrl,
   isHostedGameAuthMessage,
+  saveActiveSessionId,
   saveHostedLaunchAuth,
 } from "./lib/session";
+
+const NO_GAME_ID = "__stella:no-game__";
+const NO_USER_ID = "__stella:no-user__";
+const NO_SESSION_USER_ID = "__stella:no-session__";
 
 type LaunchAuthState =
   | { status: "waiting"; displayName?: string }
   | { status: "ready"; gameToken: string; displayName?: string }
   | { status: "blocked"; displayName?: string };
 
+function parseSessionId(value: string | null): bigint | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
 function useHostedLaunchAuth(): LaunchAuthState {
   const [state, setState] = useState<LaunchAuthState>(() => {
     const gameToken = getLaunchGameToken();
     const displayName = getLaunchDisplayName();
     if (gameToken) {
-      return { status: "ready", gameToken, ...(displayName ? { displayName } : {}) };
+      return {
+        status: "ready",
+        gameToken,
+        ...(displayName ? { displayName } : {}),
+      };
     }
     return { status: "waiting", ...(displayName ? { displayName } : {}) };
   });
@@ -43,6 +65,7 @@ function useHostedLaunchAuth(): LaunchAuthState {
       if (!isHostedGameAuthMessage(event.data)) {
         return;
       }
+
       saveHostedLaunchAuth(event.data);
       setState({
         status: "ready",
@@ -59,15 +82,20 @@ function useHostedLaunchAuth(): LaunchAuthState {
         setState({
           status: "ready",
           gameToken,
-          ...(getLaunchDisplayName() ? { displayName: getLaunchDisplayName()! } : {}),
+          ...(getLaunchDisplayName()
+            ? { displayName: getLaunchDisplayName()! }
+            : {}),
         });
         return;
       }
+
       if (window.parent === window) {
         clearHostedLaunchAuth();
         setState({
           status: "blocked",
-          ...(getLaunchDisplayName() ? { displayName: getLaunchDisplayName()! } : {}),
+          ...(getLaunchDisplayName()
+            ? { displayName: getLaunchDisplayName()! }
+            : {}),
         });
       }
     }, 1500);
@@ -84,33 +112,90 @@ function useHostedLaunchAuth(): LaunchAuthState {
 function GameRouter() {
   const launchAuth = useHostedLaunchAuth();
   const { isActive, identity } = useSpacetimeDB();
-  const [sessions] = useTable(tables.game_sessions);
-  const [players] = useTable(tables.game_players);
+  const requestedSessionId = parseSessionId(getSessionFromUrl());
+  const joinCode = getJoinCodeFromUrl()?.trim().toUpperCase() ?? "";
+  const launchContext = useMemo(
+    () =>
+      launchAuth.status === "ready"
+        ? decodeHostedGameToken(launchAuth.gameToken)
+        : null,
+    [launchAuth],
+  );
+  const gameId = launchContext?.gameId ?? NO_GAME_ID;
+  const userId = launchContext?.userId ?? NO_USER_ID;
 
-  const startGame = useReducer(reducers.startGame);
+  const [sessions] = useTable(
+    tables.sessions.where((row) => row.gameId.eq(gameId)),
+  );
+  const [membershipPlayers] = useTable(
+    requestedSessionId !== null
+      ? tables.players.where((row) => row.sessionId.eq(requestedSessionId))
+      : tables.players.where((row) => row.userId.eq(userId)),
+  );
 
-  // Find the active session (from URL param or first available)
-  const urlSession = getSessionFromUrl();
-  const session = urlSession
-    ? sessions.find((s) => String(s.sessionId) === urlSession)
-    : sessions[0] ?? null;
+  const session = useMemo(() => {
+    if (requestedSessionId !== null) {
+      return (
+        sessions.find((candidate) => candidate.sessionId === requestedSessionId) ??
+        null
+      );
+    }
 
-  // Find our player in the session
-  const myPlayer =
-    session && identity
-      ? players.find(
-          (p) =>
-            p.sessionId === session.sessionId &&
-            p.playerIdentity.isEqual(identity),
-        )
-      : null;
+    const sessionIds = new Set(
+      membershipPlayers.map((player) => player.sessionId.toString()),
+    );
 
-  const isHost = myPlayer?.isHost === 1;
+    return (
+      sessions
+        .filter((candidate) => sessionIds.has(candidate.sessionId.toString()))
+        .sort((left, right) =>
+          left.updatedAt === right.updatedAt
+            ? 0
+            : left.updatedAt > right.updatedAt
+              ? -1
+              : 1,
+        )[0] ?? null
+    );
+  }, [membershipPlayers, requestedSessionId, sessions]);
 
-  const handleStartGame = useCallback(() => {
-    if (!session) return;
-    void startGame({ sessionId: session.sessionId });
-  }, [session, startGame]);
+  const [sessionPlayers] = useTable(
+    session
+      ? tables.players.where((row) => row.sessionId.eq(session.sessionId))
+      : tables.players.where((row) => row.userId.eq(NO_SESSION_USER_ID)),
+  );
+
+  const myPlayer = useMemo(() => {
+    if (!session) {
+      return null;
+    }
+
+    return (
+      sessionPlayers.find((player) =>
+        identity
+          ? player.playerIdentity.isEqual(identity)
+          : player.userId === userId,
+      ) ?? null
+    );
+  }, [identity, session, sessionPlayers, userId]);
+
+  const startSession = useReducer(reducers.startSession);
+  const startTickLoop = useReducer(reducers.startTickLoop);
+  const isHost = myPlayer?.isHost ?? false;
+
+  useEffect(() => {
+    if (session) {
+      saveActiveSessionId(session.sessionId);
+    }
+  }, [session]);
+
+  const handleStartGame = useCallback(async () => {
+    if (!session) {
+      return;
+    }
+
+    await startSession({ sessionId: session.sessionId });
+    await startTickLoop({ sessionId: session.sessionId });
+  }, [session, startSession, startTickLoop]);
 
   if (launchAuth.status === "blocked") {
     return <LaunchBlocked displayName={launchAuth.displayName} />;
@@ -129,11 +214,11 @@ function GameRouter() {
     );
   }
 
-  if (!session) {
-    return <JoinOrCreate launchAuth={launchAuth} />;
+  if (!session || !myPlayer) {
+    return <JoinOrCreate joinCode={joinCode} launchAuth={launchAuth} />;
   }
 
-  if (session.status === "lobby") {
+  if (session.lifecycleState === "lobby") {
     return (
       <Lobby
         sessionId={session.sessionId}
@@ -147,19 +232,21 @@ function GameRouter() {
   return (
     <GameView
       sessionId={session.sessionId}
-      playerSlot={myPlayer?.slot ?? 0}
+      playerSlot={Number(myPlayer.slot)}
       isHost={isHost}
     />
   );
 }
 
-/**
- * Join or create screen — shown when no session is active.
- */
-function JoinOrCreate({ launchAuth }: { launchAuth: Extract<LaunchAuthState, { status: "ready" }> }) {
-  const [joinCode, setJoinCode] = useState(getJoinCodeFromUrl() ?? "");
+function JoinOrCreate({
+  joinCode: initialJoinCode,
+  launchAuth,
+}: {
+  joinCode: string;
+  launchAuth: Extract<LaunchAuthState, { status: "ready" }>;
+}) {
+  const [joinCode, setJoinCode] = useState(initialJoinCode);
   const [error, setError] = useState<string | null>(null);
-
   const registerPlayer = useReducer(reducers.registerPlayer);
   const joinSession = useReducer(reducers.joinSession);
   const createSession = useReducer(reducers.createSession);
@@ -172,10 +259,13 @@ function JoinOrCreate({ launchAuth }: { launchAuth: Extract<LaunchAuthState, { s
     await registerPlayer({
       gameToken: launchAuth.gameToken,
     });
-  }, [launchAuth, registerPlayer]);
+  }, [launchAuth.gameToken, registerPlayer]);
 
   const handleJoin = useCallback(async () => {
-    if (!joinCode.trim()) return;
+    if (!joinCode.trim()) {
+      return;
+    }
+
     setError(null);
     try {
       await ensureRegistered();
@@ -193,8 +283,16 @@ function JoinOrCreate({ launchAuth }: { launchAuth: Extract<LaunchAuthState, { s
       await ensureRegistered();
       await createSession({
         gameType: "custom",
-        configJson: "{}",
+        rulesetKey: "generated",
+        minPlayers: 2,
         maxPlayers: 8,
+        runtimeKind: "authoritative",
+        tickRateHz: 20,
+        snapshotRateHz: 20,
+        interestMode: "session",
+        partitionSize: 32,
+        publicStateJson: "{}",
+        metadataJson: "{}",
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create");
@@ -213,9 +311,16 @@ function JoinOrCreate({ launchAuth }: { launchAuth: Extract<LaunchAuthState, { s
           type="text"
           placeholder="Join code (e.g. W3KN)"
           value={joinCode}
-          onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+          onChange={(event) =>
+            setJoinCode(event.target.value.toUpperCase())
+          }
           maxLength={4}
-          style={{ ...styles.input, textAlign: "center", letterSpacing: "0.2em", fontSize: 20 }}
+          style={{
+            ...styles.input,
+            textAlign: "center",
+            letterSpacing: "0.2em",
+            fontSize: 20,
+          }}
         />
         <button
           onClick={handleJoin}
@@ -227,14 +332,11 @@ function JoinOrCreate({ launchAuth }: { launchAuth: Extract<LaunchAuthState, { s
 
         <div style={styles.orText}>or</div>
 
-        <button
-          onClick={handleCreate}
-          style={styles.secondaryButton}
-        >
+        <button onClick={handleCreate} style={styles.secondaryButton}>
           Create New Game
         </button>
 
-        {error && <div style={styles.error}>{error}</div>}
+        {error ? <div style={styles.error}>{error}</div> : null}
       </div>
     </div>
   );
@@ -245,7 +347,9 @@ function WaitingForStella({ displayName }: { displayName?: string }) {
     <div style={styles.connecting}>
       <div style={styles.spinner} />
       <span>Waiting for Stella to authorize this game...</span>
-      {displayName ? <span style={styles.helperText}>Signed in as {displayName}</span> : null}
+      {displayName ? (
+        <span style={styles.helperText}>Signed in as {displayName}</span>
+      ) : null}
     </div>
   );
 }
@@ -256,9 +360,12 @@ function LaunchBlocked({ displayName }: { displayName?: string }) {
       <div style={styles.joinCard}>
         <h2 style={styles.joinTitle}>Open From Stella</h2>
         <p style={styles.blockedMessage}>
-          This game needs a Stella launch token before it can join or host multiplayer sessions.
+          This game needs a Stella launch token before it can join or host
+          multiplayer sessions.
         </p>
-        {displayName ? <div style={styles.signedInAs}>Signed in as {displayName}</div> : null}
+        {displayName ? (
+          <div style={styles.signedInAs}>Signed in as {displayName}</div>
+        ) : null}
       </div>
     </div>
   );
@@ -313,7 +420,7 @@ const styles: Record<string, React.CSSProperties> = {
   signedInAs: {
     fontSize: 14,
     opacity: 0.72,
-    textAlign: "center" as const,
+    textAlign: "center",
   },
   helperText: {
     fontSize: 13,
@@ -323,7 +430,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: 14,
     lineHeight: 1.5,
-    textAlign: "center" as const,
+    textAlign: "center",
     opacity: 0.8,
   },
   input: {
@@ -335,7 +442,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: "inherit",
     fontSize: 15,
     outline: "none",
-    boxSizing: "border-box" as const,
+    boxSizing: "border-box",
   },
   divider: {
     width: "100%",
@@ -371,6 +478,6 @@ const styles: Record<string, React.CSSProperties> = {
   error: {
     fontSize: 13,
     color: "#f87171",
-    textAlign: "center" as const,
+    textAlign: "center",
   },
 };

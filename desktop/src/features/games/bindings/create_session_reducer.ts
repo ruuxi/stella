@@ -12,6 +12,14 @@ import {
 
 export default {
   gameType: __t.string(),
-  configJson: __t.string(),
+  rulesetKey: __t.string(),
+  minPlayers: __t.u32(),
   maxPlayers: __t.u32(),
+  runtimeKind: __t.string(),
+  tickRateHz: __t.u32(),
+  snapshotRateHz: __t.u32(),
+  interestMode: __t.string(),
+  partitionSize: __t.f32(),
+  publicStateJson: __t.string(),
+  metadataJson: __t.string(),
 };
