@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { Agent } from "../../agent/agent.js";
 import {
-  AGENT_IDS,
+  shouldIncludeStellaDocumentation,
   RUNTIME_RUN_EVENT_TYPES,
 } from "../../../../src/shared/contracts/agent-runtime.js";
 import { createDisplayStreamController } from "./display-stream.js";
@@ -394,7 +394,7 @@ export const runPiSubagentTask = async (
   const prompt = opts.userPrompt.trim();
   const effectiveSystemPrompt = [
     buildSystemPrompt(opts.agentContext),
-    opts.agentType === AGENT_IDS.SELF_MOD
+    shouldIncludeStellaDocumentation(opts.agentType)
       ? buildSelfModDocumentationPrompt(opts.frontendRoot)
       : "",
   ]

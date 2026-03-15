@@ -1,33 +1,10 @@
+import { MODEL_SETTINGS_AGENTS } from "@/shared/contracts/agent-runtime";
+
 export type ModelDefaultEntry = {
   agentType: string;
   model: string;
   resolvedModel: string;
 };
-
-const MODEL_SETTINGS_METADATA: Record<string, { label: string; desc: string }> = {
-  orchestrator: {
-    label: "Orchestrator",
-    desc: "Top-level agent that delegates tasks",
-  },
-  general: {
-    label: "General",
-    desc: "Full tool access for general tasks",
-  },
-  self_mod: {
-    label: "Self Mod",
-    desc: "Stella internal code, prompts, runtime, and UI",
-  },
-  browser: {
-    label: "Browser",
-    desc: "Browser automation via Playwright",
-  },
-  explore: {
-    label: "Explore",
-    desc: "Lightweight read-only exploration",
-  },
-};
-
-const MODEL_SETTINGS_ORDER = ["orchestrator", "general", "self_mod", "browser", "explore"] as const;
 
 export function buildModelDefaultsMap(
   defaults: readonly ModelDefaultEntry[] | undefined,
@@ -67,13 +44,9 @@ export function getConfigurableAgents(
   defaults: readonly ModelDefaultEntry[] | undefined,
 ): Array<{ key: string; label: string; desc: string }> {
   const availableAgentTypes = new Set((defaults ?? []).map((entry) => entry.agentType));
-  return MODEL_SETTINGS_ORDER
-    .filter((agentType) => availableAgentTypes.has(agentType))
-    .map((agentType) => ({
-      key: agentType,
-      label: MODEL_SETTINGS_METADATA[agentType].label,
-      desc: MODEL_SETTINGS_METADATA[agentType].desc,
-    }));
+  return MODEL_SETTINGS_AGENTS.filter((agent) =>
+    availableAgentTypes.has(agent.key),
+  );
 }
 
 export function normalizeModelOverrides(

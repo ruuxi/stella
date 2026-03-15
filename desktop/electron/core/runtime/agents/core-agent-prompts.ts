@@ -1,6 +1,31 @@
 import type { ParsedAgent } from "./manifests.js";
+import {
+  AGENT_IDS,
+  getAgentDefinition,
+  type BundledCoreAgentId,
+} from "../../../../src/shared/contracts/agent-runtime.js";
 
 type CoreAgentDefinition = Omit<ParsedAgent, "version" | "source" | "filePath">;
+
+const createCoreAgentDefinition = (
+  agentId: BundledCoreAgentId,
+  overrides: Omit<CoreAgentDefinition, "id" | "name" | "description" | "agentTypes"> & {
+    agentTypes?: string[];
+  },
+): CoreAgentDefinition => {
+  const agent = getAgentDefinition(agentId);
+  if (!agent?.bundledCore) {
+    throw new Error(`Missing bundled core agent metadata for ${agentId}`);
+  }
+
+  return {
+    id: agent.id,
+    name: agent.name,
+    description: agent.description,
+    agentTypes: overrides.agentTypes ?? [agent.id],
+    ...overrides,
+  };
+};
 
 const GENERAL_EXECUTOR_TOOLS = [
   "Read",
@@ -24,11 +49,7 @@ const GENERAL_EXECUTOR_TOOLS = [
 ] as const;
 
 const CORE_AGENT_DEFINITIONS: CoreAgentDefinition[] = [
-  {
-    id: "orchestrator",
-    name: "Orchestrator",
-    description: "Coordinates work across agents, talks to the user, manages memory and scheduling.",
-    agentTypes: ["orchestrator"],
+  createCoreAgentDefinition(AGENT_IDS.ORCHESTRATOR, {
     toolsAllowlist: [
       "Display",
       "DisplayGuidelines",
@@ -43,7 +64,12 @@ const CORE_AGENT_DEFINITIONS: CoreAgentDefinition[] = [
       "SaveMemory",
       "RecallMemories",
     ],
-    delegationAllowlist: ["general", "self_mod", "explore", "app"],
+    delegationAllowlist: [
+      AGENT_IDS.GENERAL,
+      AGENT_IDS.SELF_MOD,
+      AGENT_IDS.EXPLORE,
+      AGENT_IDS.APP,
+    ],
     maxTaskDepth: 2,
     systemPrompt: `You are Stella, a personal AI assistant who lives on the user's computer.
 
@@ -113,12 +139,8 @@ Constraints:
 - Never expose model names, provider details, or internal infrastructure.
 - Never claim something is impossible without delegating first.
 - Your only execution happens through delegation and your own small coordination toolset.`,
-  },
-  {
-    id: "schedule",
-    name: "Schedule",
-    description: "Applies local cron and heartbeat changes from plain-language scheduling requests.",
-    agentTypes: ["schedule"],
+  }),
+  createCoreAgentDefinition(AGENT_IDS.SCHEDULE, {
     toolsAllowlist: [
       "HeartbeatGet",
       "HeartbeatUpsert",
@@ -148,14 +170,10 @@ Output:
 - Return plain text only.
 - Summarize what changed in concise natural language.
 - If nothing changed, say so clearly.`,
-  },
-  {
-    id: "general",
-    name: "General",
-    description: "Executes tasks: coding, file operations, shell commands, UI interaction, and web lookups.",
-    agentTypes: ["general"],
+  }),
+  createCoreAgentDefinition(AGENT_IDS.GENERAL, {
     toolsAllowlist: [...GENERAL_EXECUTOR_TOOLS],
-    delegationAllowlist: ["explore"],
+    delegationAllowlist: [AGENT_IDS.EXPLORE],
     maxTaskDepth: 2,
     systemPrompt: `You are the General Agent for Stella, the hands that get things done.
 
@@ -199,14 +217,10 @@ Output:
 
 Constraints:
 - Never expose model names, provider details, or internal infrastructure.`,
-  },
-  {
-    id: "self_mod",
-    name: "Self Mod",
-    description: "Modifies Stella itself: runtime, prompts, settings, dashboard UI, and internal product code.",
-    agentTypes: ["self_mod"],
+  }),
+  createCoreAgentDefinition(AGENT_IDS.SELF_MOD, {
     toolsAllowlist: [...GENERAL_EXECUTOR_TOOLS],
-    delegationAllowlist: ["explore"],
+    delegationAllowlist: [AGENT_IDS.EXPLORE],
     maxTaskDepth: 2,
     systemPrompt: `You are the Self_Mod Agent for Stella. You specialize in modifying Stella itself.
 
@@ -245,12 +259,8 @@ Output:
 
 Constraints:
 - Never expose model names, provider details, or internal infrastructure.`,
-  },
-  {
-    id: "explore",
-    name: "Explore",
-    description: "Read-only codebase investigation: searches files, reads code, traces imports.",
-    agentTypes: ["explore"],
+  }),
+  createCoreAgentDefinition(AGENT_IDS.EXPLORE, {
     toolsAllowlist: ["Read", "Glob", "Grep"],
     systemPrompt: `You are the Explore Agent for Stella, the investigator for codebase search and discovery tasks.
 
@@ -278,12 +288,8 @@ Output:
 Constraints:
 - Read-only only.
 - Never expose model names, provider details, or internal infrastructure.`,
-  },
-  {
-    id: "app",
-    name: "App",
-    description: "Controls applications: browser automation, desktop app control, navigation, forms, and screenshots.",
-    agentTypes: ["app"],
+  }),
+  createCoreAgentDefinition(AGENT_IDS.APP, {
     defaultSkills: ["electron"],
     toolsAllowlist: [
       "Bash",
@@ -325,7 +331,7 @@ Output:
 Constraints:
 - Handle platform differences when needed.
 - Never expose model names, provider details, or internal infrastructure.`,
-  },
+  }),
 ];
 
 export const buildBundledCoreAgents = (): ParsedAgent[] =>

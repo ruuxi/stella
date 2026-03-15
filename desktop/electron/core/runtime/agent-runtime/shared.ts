@@ -6,7 +6,7 @@ import type { HookEmitter } from "../extensions/hook-emitter.js";
 import { selectRecentByTokenBudget } from "../local-history.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import { estimateRuntimeTokens } from "../runtime-threads.js";
-import { AGENT_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
+import { getLocalCliWorkingDirectory } from "../../../../src/shared/contracts/agent-runtime.js";
 
 const MAX_RESULT_PREVIEW = 200;
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
@@ -40,7 +40,7 @@ export const resolveLocalCliCwd = ({
   agentType: string;
   frontendRoot?: string;
 }): string | undefined => {
-  if (agentType === AGENT_IDS.GENERAL) {
+  if (getLocalCliWorkingDirectory(agentType) === "home") {
     const homeDirectory = os.homedir().trim();
     if (homeDirectory) {
       return homeDirectory;
