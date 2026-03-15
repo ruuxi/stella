@@ -10,6 +10,8 @@ import fs from "fs";
 import path from "path";
 import { ensurePrivateDirSync, writePrivateFileSync } from "../../../system/private-fs.js";
 
+type AgentEngine = "default" | "claude_code_local";
+
 export type LocalPreferences = {
   /** Backend-owned default models keyed by agent type. */
   defaultModels: Record<string, string>;
@@ -19,15 +21,17 @@ export type LocalPreferences = {
   modelOverrides: Record<string, string>;
   /** Expression style: "none" | "emoji" | undefined (default) */
   expressionStyle?: string;
-  /** General agent engine: "default" | "codex_local" | "claude_code_local" */
-  generalAgentEngine: "default" | "codex_local" | "claude_code_local";
-  /** Self-mod agent engine: "default" | "codex_local" | "claude_code_local" */
-  selfModAgentEngine: "default" | "codex_local" | "claude_code_local";
+  /** General agent engine: "default" | "claude_code_local" */
+  generalAgentEngine: AgentEngine;
+  /** Self-mod agent engine: "default" | "claude_code_local" */
+  selfModAgentEngine: AgentEngine;
   /** Shared max concurrency across all agent task execution */
   maxAgentConcurrency: number;
   /** Sync mode: "on" | "off". Defaults to off so cloud persistence is opt-in. */
   syncMode: "on" | "off";
 };
+
+const DEFAULT_MAX_AGENT_CONCURRENCY = 24;
 
 const DEFAULT_PREFERENCES: LocalPreferences = {
   defaultModels: {},
@@ -36,7 +40,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   expressionStyle: undefined,
   generalAgentEngine: "default",
   selfModAgentEngine: "default",
-  maxAgentConcurrency: 24,
+  maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
   syncMode: "off",
 };
 
@@ -58,9 +62,11 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
     const raw = fs.readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(raw) as Partial<LocalPreferences>;
     const prefs: LocalPreferences = {
-      defaultModels: parsed.defaultModels ?? {},
-      resolvedDefaultModels: parsed.resolvedDefaultModels ?? {},
-      modelOverrides: parsed.modelOverrides ?? {},
+      ...DEFAULT_PREFERENCES,
+      defaultModels: parsed.defaultModels ?? DEFAULT_PREFERENCES.defaultModels,
+      resolvedDefaultModels:
+        parsed.resolvedDefaultModels ?? DEFAULT_PREFERENCES.resolvedDefaultModels,
+      modelOverrides: parsed.modelOverrides ?? DEFAULT_PREFERENCES.modelOverrides,
       expressionStyle: parsed.expressionStyle,
       generalAgentEngine: normalizeEngine(parsed.generalAgentEngine),
       selfModAgentEngine: normalizeEngine(parsed.selfModAgentEngine),
@@ -71,12 +77,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
     _cachedMtime = stat.mtimeMs;
     return prefs;
   } catch {
-    return {
-      ...DEFAULT_PREFERENCES,
-      defaultModels: {},
-      resolvedDefaultModels: {},
-      modelOverrides: {},
-    };
+    return { ...DEFAULT_PREFERENCES };
   }
 };
 
@@ -122,13 +123,13 @@ export const getExpressionStyle = (
 
 export const getGeneralAgentEngine = (
   stellaHome: string,
-): "default" | "codex_local" | "claude_code_local" => {
+): AgentEngine => {
   return loadLocalPreferences(stellaHome).generalAgentEngine;
 };
 
 export const getSelfModAgentEngine = (
   stellaHome: string,
-): "default" | "codex_local" | "claude_code_local" => {
+): AgentEngine => {
   return loadLocalPreferences(stellaHome).selfModAgentEngine;
 };
 
@@ -148,15 +149,16 @@ export const getSyncMode = (
 
 const normalizeEngine = (
   value: unknown,
-): "default" | "codex_local" | "claude_code_local" => {
-  if (value === "codex_local") return "codex_local";
+): AgentEngine => {
   if (value === "claude_code_local") return "claude_code_local";
   return "default";
 };
 
 const normalizeConcurrency = (value: unknown): number => {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 1) return 24;
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return DEFAULT_MAX_AGENT_CONCURRENCY;
+  }
   const rounded = Math.floor(parsed);
-  return rounded < 1 ? 24 : Math.min(24, rounded);
+  return Math.min(DEFAULT_MAX_AGENT_CONCURRENCY, rounded);
 };

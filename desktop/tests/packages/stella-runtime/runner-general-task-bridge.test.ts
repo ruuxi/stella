@@ -37,15 +37,13 @@ const {
   loadSkillsFromHomeMock,
   loadExtensionsMock,
   runOrchestratorTurnMock,
-  runCodexAppServerTurnMock,
   runClaudeCodeTurnMock,
 } = vi.hoisted(() => ({
-  generalEngineState: { value: "codex_local" as "codex_local" | "claude_code_local" },
+  generalEngineState: { value: "claude_code_local" as "default" | "claude_code_local" },
   loadAgentsFromHomeMock: vi.fn(),
   loadSkillsFromHomeMock: vi.fn(),
   loadExtensionsMock: vi.fn(),
   runOrchestratorTurnMock: vi.fn(),
-  runCodexAppServerTurnMock: vi.fn(),
   runClaudeCodeTurnMock: vi.fn(),
 }));
 
@@ -131,17 +129,6 @@ vi.mock("../../../electron/core/runtime/preferences/local-preferences.js", async
   };
 });
 
-vi.mock("../../../electron/core/runtime/integrations/codex-app-server-runtime", async () => {
-  const actual = await vi.importActual<typeof import("../../../electron/core/runtime/integrations/codex-app-server-runtime.js")>(
-    "../../../electron/core/runtime/integrations/codex-app-server-runtime",
-  );
-  return {
-    ...actual,
-    runCodexAppServerTurn: runCodexAppServerTurnMock,
-    shutdownCodexAppServerRuntime: vi.fn(),
-  };
-});
-
 vi.mock("../../../electron/core/runtime/integrations/claude-code-session-runtime", async () => {
   const actual = await vi.importActual<typeof import("../../../electron/core/runtime/integrations/claude-code-session-runtime.js")>(
     "../../../electron/core/runtime/integrations/claude-code-session-runtime",
@@ -193,7 +180,6 @@ describe("runner general task bridge", () => {
     loadSkillsFromHomeMock.mockReset();
     loadExtensionsMock.mockReset();
     runOrchestratorTurnMock.mockReset();
-    runCodexAppServerTurnMock.mockReset();
     runClaudeCodeTurnMock.mockReset();
 
     loadAgentsFromHomeMock.mockResolvedValue([
@@ -235,34 +221,15 @@ describe("runner general task bridge", () => {
     }
   });
 
-  it.each([
-    {
-      engine: "codex_local" as const,
-      runtime: "codex" as const,
-      completionText: "General codex completion",
-    },
-    {
-      engine: "claude_code_local" as const,
-      runtime: "claude" as const,
-      completionText: "General claude completion",
-    },
-  ])(
-    "delivers TaskCreate work to general and routes completion back to orchestrator for $engine",
-    async ({ engine, runtime, completionText }) => {
-      generalEngineState.value = engine;
-
-      if (runtime === "codex") {
-        runCodexAppServerTurnMock.mockResolvedValue({
-          text: completionText,
-          threadId: "thread-1",
-          turnId: "turn-1",
-        });
-      } else {
-        runClaudeCodeTurnMock.mockResolvedValue({
-          text: completionText,
-          sessionId: "session-1",
-        });
-      }
+  it(
+    "delivers TaskCreate work to general and routes Claude Code completion back to orchestrator",
+    async () => {
+      generalEngineState.value = "claude_code_local";
+      const completionText = "General claude completion";
+      runClaudeCodeTurnMock.mockResolvedValue({
+        text: completionText,
+        sessionId: "session-1",
+      });
 
       const home = createTempHome();
       const db = createDesktopDatabase(home);
@@ -352,25 +319,13 @@ describe("runner general task bridge", () => {
         expect(followUpPrompt).toContain("agent_type: general");
         expect(followUpPrompt).toContain(`result: ${completionText}`);
 
-        if (runtime === "codex") {
-          expect(runCodexAppServerTurnMock).toHaveBeenCalledTimes(1);
-          expect(runClaudeCodeTurnMock).not.toHaveBeenCalled();
-          const codexRequest = runCodexAppServerTurnMock.mock.calls[0]?.[0] as {
-            prompt?: string;
-            cwd?: string;
-          };
-          expect(codexRequest.prompt).toBe(`${taskDescription}\n\n${taskPrompt}`);
-          expect(codexRequest.cwd).toBe(os.homedir());
-        } else {
-          expect(runClaudeCodeTurnMock).toHaveBeenCalledTimes(1);
-          expect(runCodexAppServerTurnMock).not.toHaveBeenCalled();
-          const claudeRequest = runClaudeCodeTurnMock.mock.calls[0]?.[0] as {
-            prompt?: string;
-            cwd?: string;
-          };
-          expect(claudeRequest.prompt).toBe(`${taskDescription}\n\n${taskPrompt}`);
-          expect(claudeRequest.cwd).toBe(os.homedir());
-        }
+        expect(runClaudeCodeTurnMock).toHaveBeenCalledTimes(1);
+        const claudeRequest = runClaudeCodeTurnMock.mock.calls[0]?.[0] as {
+          prompt?: string;
+          cwd?: string;
+        };
+        expect(claudeRequest.prompt).toBe(`${taskDescription}\n\n${taskPrompt}`);
+        expect(claudeRequest.cwd).toBe(os.homedir());
 
         const taskOutputResult = await runner.executeTool(
           "TaskOutput",

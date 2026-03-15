@@ -18,7 +18,7 @@ export type LocalTaskManagerAgentContext = {
   coreMemory?: string;
   threadHistory?: Array<{ role: string; content: string; toolCallId?: string }>;
   activeThreadId?: string;
-  agentEngine?: "default" | "codex_local" | "claude_code_local";
+  agentEngine?: "default" | "claude_code_local";
   maxAgentConcurrency?: number;
 };
 

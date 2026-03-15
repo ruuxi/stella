@@ -61,7 +61,7 @@ describe("ModelPreferencesBridge", () => {
         return "claude_code_local";
       }
       if (path === "preferences.getSelfModAgentEngine") {
-        return "codex_local";
+        return "default";
       }
       if (path === "preferences.getMaxAgentConcurrency") {
         return 24;
@@ -95,7 +95,7 @@ describe("ModelPreferencesBridge", () => {
           browser: "openai/gpt-4o",
         },
         generalAgentEngine: "claude_code_local",
-        selfModAgentEngine: "codex_local",
+        selfModAgentEngine: "default",
         maxAgentConcurrency: 24,
       });
     });
