@@ -2,8 +2,8 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import { Cron } from 'croner'
-import type { StellaHostRunner } from '../stella-host-runner.js'
 import { ensurePrivateDirSync, writePrivateFileSync } from '../system/private-fs.js'
+import type { StellaHostRunnerTarget } from './lifecycle-targets.js'
 import type {
   LocalCronJobCreateInput,
   LocalCronJobRecord,
@@ -37,7 +37,7 @@ type LocalSchedulerState = {
 
 type LocalSchedulerServiceOptions = {
   stellaHome: string
-  getRunner: () => StellaHostRunner | null
+  runnerTarget: StellaHostRunnerTarget
 }
 
 const createEmptyState = (): LocalSchedulerState => ({
@@ -828,7 +828,7 @@ export class LocalSchedulerService {
   }
 
   private getRunner() {
-    return this.options.getRunner()
+    return this.options.runnerTarget.getRunner()
   }
 
   private getNextDueItem(now: number):

@@ -1,18 +1,14 @@
 import { app } from 'electron'
+import type { PiRunnerTarget } from './lifecycle-targets.js'
 
 const AUTH_CALLBACK_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/
-
-type PiRunnerAuthTarget = {
-  setAuthToken: (token: string | null) => void
-  setConvexUrl: (url: string) => void
-}
 
 type AuthServiceOptions = {
   authProtocol: string
   isDev: boolean
   projectDir: string
   sessionPartition: string
-  getRunner: () => PiRunnerAuthTarget | null
+  runnerTarget: PiRunnerTarget
   onAuthCallback: (url: string) => void
   onSecondInstanceFocus: () => void
 }
@@ -72,7 +68,7 @@ export class AuthService {
 
   stopAuthRefreshLoop() {
     this.hostAuthToken = null
-    this.options.getRunner()?.setAuthToken(null)
+    this.options.runnerTarget.getRunner()?.setAuthToken(null)
   }
 
   registerAuthProtocol() {
@@ -145,13 +141,13 @@ export class AuthService {
     const normalizedToken = typeof token === 'string' ? token.trim() : ''
     if (!normalizedToken) {
       if (!this.hostAuthToken) {
-        this.options.getRunner()?.setAuthToken(null)
+        this.options.runnerTarget.getRunner()?.setAuthToken(null)
       }
       return
     }
 
     this.hostAuthToken = normalizedToken
-    this.options.getRunner()?.setAuthToken(normalizedToken)
+    this.options.runnerTarget.getRunner()?.setAuthToken(normalizedToken)
   }
 
   getHostAuthAuthenticated() {
@@ -161,9 +157,9 @@ export class AuthService {
   configurePiRuntime(config: { convexUrl: string; convexSiteUrl?: string }) {
     this.pendingConvexUrl = config.convexUrl
     this.pendingConvexSiteUrl = config.convexSiteUrl ?? null
-    this.options.getRunner()?.setConvexUrl(config.convexUrl)
+    this.options.runnerTarget.getRunner()?.setConvexUrl(config.convexUrl)
     if (this.hostAuthToken) {
-      this.options.getRunner()?.setAuthToken(this.hostAuthToken)
+      this.options.runnerTarget.getRunner()?.setAuthToken(this.hostAuthToken)
     }
   }
 

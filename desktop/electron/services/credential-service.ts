@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { BrowserWindow } from 'electron'
 import type { CredentialRequestPayload, CredentialResponsePayload } from '../types.js'
-import type { WindowManager } from '../windows/window-manager.js'
+import type { WindowManagerTarget } from './lifecycle-targets.js'
 
 export class CredentialService {
   private readonly pending = new Map<
@@ -13,17 +13,13 @@ export class CredentialService {
     }
   >()
 
-  private getWindowManager: () => WindowManager | null
-
-  constructor(options: { getWindowManager: () => WindowManager | null }) {
-    this.getWindowManager = options.getWindowManager
-  }
+  constructor(private readonly options: { windowManagerTarget: WindowManagerTarget }) {}
 
   async requestCredential(payload: Omit<CredentialRequestPayload, 'requestId'>) {
     const requestId = randomUUID()
     const request: CredentialRequestPayload = { requestId, ...payload }
 
-    const windowManager = this.getWindowManager()
+    const windowManager = this.options.windowManagerTarget.getWindowManager()
     const focused = BrowserWindow.getFocusedWindow()
     const fullWindow = windowManager?.getFullWindow() ?? null
     const targetWindows = focused ? [focused] : fullWindow ? [fullWindow] : BrowserWindow.getAllWindows()

@@ -17,7 +17,7 @@ export const registerBootstrapIpcHandlers = (
   context: BootstrapContext,
   resetFlows: BootstrapResetFlows,
 ) => {
-  const { config, services, state } = context;
+  const { config, lifecycle, services, state } = context;
 
   registerUiHandlers({
     uiState: services.uiStateService.state,
@@ -48,8 +48,8 @@ export const registerBootstrapIpcHandlers = (
   registerSystemHandlers({
     getDeviceId: () => state.deviceId,
     authService: services.authService,
-    getStellaHostRunner: () => state.stellaHostRunner,
-    getStellaHomePath: () => state.stellaHomePath,
+    getStellaHostRunner: lifecycle.getRunner,
+    getStellaHomePath: lifecycle.getStellaHomePath,
     externalLinkService: services.externalLinkService,
     ensurePrivilegedActionApproval: (action, message, detail, event) =>
       services.securityPolicyService.ensureApproval(
@@ -73,7 +73,7 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerBrowserHandlers({
-    getStellaHomePath: () => state.stellaHomePath,
+    getStellaHomePath: lifecycle.getStellaHomePath,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
@@ -85,7 +85,7 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerAgentHandlers({
-    getStellaHostRunner: () => state.stellaHostRunner,
+    getStellaHostRunner: lifecycle.getRunner,
     getAppSessionStartedAt: () => state.appSessionStartedAt,
     isHostAuthAuthenticated: () =>
       services.authService.getHostAuthAuthenticated(),
@@ -102,7 +102,7 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerOverlayStreamHandlers({
-    getStellaHomePath: () => state.stellaHomePath,
+    getStellaHomePath: lifecycle.getStellaHomePath,
     getConvexSiteUrl: () => services.authService.getConvexSiteUrl(),
     getAuthToken: () => services.authService.getAuthToken(),
     assertPrivilegedSender: (event, channel) =>
@@ -115,9 +115,9 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerStoreHandlers({
-    getStellaHomePath: () => state.stellaHomePath,
+    getStellaHomePath: lifecycle.getStellaHomePath,
     getFrontendRoot: () => config.frontendRoot,
-    getStellaHostRunner: () => state.stellaHostRunner,
+    getStellaHostRunner: lifecycle.getRunner,
     getStoreModService: () => state.storeModService,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
@@ -134,7 +134,7 @@ export const registerBootstrapIpcHandlers = (
     syncWakeWordState: () => syncWakeWordState(context),
     getWakeWordEnabled: () => state.wakeWordController?.getEnabled() ?? false,
     pushWakeWordAudio: (pcm) => state.wakeWordController?.pushAudioChunk(pcm),
-    getStellaHostRunner: () => state.stellaHostRunner,
+    getStellaHostRunner: lifecycle.getRunner,
     getOverlayController: () => state.overlayController,
     getConvexSiteUrl: () => services.authService.getConvexSiteUrl(),
     getAuthToken: () => services.authService.getAuthToken(),
