@@ -29,15 +29,6 @@ export const ChatColumn = memo(function ChatColumn({
   const dragStartRef = useRef<{ y: number; scrollTop: number } | null>(null);
   const viewportForDragRef = useRef<HTMLDivElement | null>(null);
 
-  // Capture viewport ref for drag operations
-  const assignViewport = useCallback(
-    (node: HTMLDivElement | null) => {
-      viewportForDragRef.current = node;
-      scroll.setViewportElement(node);
-    },
-    [scroll.setViewportElement],
-  );
-
   const handleThumbDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -65,6 +56,25 @@ export const ChatColumn = memo(function ChatColumn({
     dragStartRef.current = null;
   }, []);
 
+  const {
+    onScroll,
+    overflowAnchor,
+    setContentElement,
+    setViewportElement,
+    showScrollButton,
+    scrollToBottom,
+    thumbState,
+  } = scroll;
+
+  // Capture viewport ref for drag operations
+  const assignViewport = useCallback(
+    (node: HTMLDivElement | null) => {
+      viewportForDragRef.current = node;
+      setViewportElement(node);
+    },
+    [setViewportElement],
+  );
+
   return (
     <div className="full-body-main">
       {/* Viewport region: scroll container + overlays (scrollbar, scroll-to-bottom) */}
@@ -72,10 +82,10 @@ export const ChatColumn = memo(function ChatColumn({
         <div
           className="session-content"
           ref={assignViewport}
-          onScroll={scroll.onScroll}
-          style={{ overflowAnchor: scroll.overflowAnchor }}
+          onScroll={onScroll}
+          style={{ overflowAnchor }}
         >
-          <div className="session-messages" ref={scroll.setContentElement}>
+          <div className="session-messages" ref={setContentElement}>
             <ConversationEvents
               events={conversation.events}
               streamingText={conversation.streaming.text}
@@ -101,10 +111,10 @@ export const ChatColumn = memo(function ChatColumn({
         {/* Custom scrollbar thumb overlay */}
         <div className="chat-scrollbar">
           <div
-            className={`chat-scrollbar__thumb${scroll.thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
+            className={`chat-scrollbar__thumb${thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
             style={{
-              top: `${scroll.thumbState.top}px`,
-              height: `${scroll.thumbState.height}px`,
+              top: `${thumbState.top}px`,
+              height: `${thumbState.height}px`,
             }}
             onPointerDown={handleThumbDown}
             onPointerMove={handleThumbMove}
@@ -113,10 +123,10 @@ export const ChatColumn = memo(function ChatColumn({
           />
         </div>
 
-        {scroll.showScrollButton && (
+        {showScrollButton && (
           <button
             className="scroll-to-bottom"
-            onClick={() => scroll.scrollToBottom("smooth")}
+            onClick={() => scrollToBottom("smooth")}
             aria-label="Scroll to bottom"
           >
             <svg

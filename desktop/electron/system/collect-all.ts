@@ -10,7 +10,6 @@
  * Category 4 (messages_notes): iMessage + Notes + Reminders + Calendar (opt-in)
  */
 
-import { promises as fs } from "fs";
 import path from "path";
 import {
   collectBrowserData,
