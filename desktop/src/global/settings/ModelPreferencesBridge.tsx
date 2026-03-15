@@ -23,19 +23,11 @@ export const ModelPreferencesBridge = () => {
   const generalAgentEngine = useQuery(
     api.data.preferences.getGeneralAgentEngine,
     shouldQueryPreferences,
-  ) as
-    | "default"
-    | "codex_local"
-    | "claude_code_local"
-    | undefined;
+  ) as "default" | "claude_code_local" | undefined;
   const selfModAgentEngine = useQuery(
     api.data.preferences.getSelfModAgentEngine,
     shouldQueryPreferences,
-  ) as
-    | "default"
-    | "codex_local"
-    | "claude_code_local"
-    | undefined;
+  ) as "default" | "claude_code_local" | undefined;
   const maxAgentConcurrency = useQuery(
     api.data.preferences.getMaxAgentConcurrency,
     shouldQueryPreferences,

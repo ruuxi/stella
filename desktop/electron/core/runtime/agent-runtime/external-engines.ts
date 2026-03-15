@@ -4,10 +4,6 @@ import {
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
 } from "../integrations/claude-code-session-runtime.js";
-import {
-  runCodexAppServerTurn,
-  shutdownCodexAppServerRuntime,
-} from "../integrations/codex-app-server-runtime.js";
 import { now, resolveLocalCliCwd } from "./shared.js";
 import {
   appendThreadMessage,
@@ -59,12 +55,11 @@ export const runExternalSubagentTurn = async (
     return null;
   }
 
-  const wantsCodexRuntime = opts.agentContext.agentEngine === "codex_local";
   const wantsClaudeRuntime =
     opts.agentContext.agentEngine === "claude_code_local" ||
     (primaryModelId && isClaudeCodeModel(primaryModelId));
 
-  if (!wantsCodexRuntime && !wantsClaudeRuntime) {
+  if (!wantsClaudeRuntime) {
     return null;
   }
 
@@ -125,73 +120,6 @@ export const runExternalSubagentTurn = async (
   const sessionKey = opts.agentContext.activeThreadId
     ? `${opts.conversationId}:${opts.agentContext.activeThreadId}`
     : `${opts.conversationId}:run:${runId}`;
-
-  if (wantsCodexRuntime) {
-    try {
-      const result = await runCodexAppServerTurn({
-        runId,
-        sessionKey,
-        prompt,
-        developerInstructions: effectiveSystemPrompt,
-        cwd: localCliCwd,
-        abortSignal: opts.abortSignal,
-        onProgress: (chunk) => {
-          emitStreamChunk(opts, runId, nextSeq, chunk);
-        },
-        maxConcurrency: opts.agentContext.maxAgentConcurrency,
-      });
-      await persistAssistantReply({
-        store: opts.store,
-        threadKey,
-        resolvedLlm: opts.resolvedLlm,
-        agentType: opts.agentType,
-        content: result.text,
-      });
-      const endSeq = nextSeq();
-      opts.store.recordRunEvent({
-        timestamp: now(),
-        runId,
-        conversationId: opts.conversationId,
-        agentType: opts.agentType,
-        seq: endSeq,
-        type: RUNTIME_RUN_EVENT_TYPES.RUN_END,
-        finalText: result.text,
-      });
-      opts.callbacks?.onEnd?.({
-        runId,
-        agentType: opts.agentType,
-        seq: endSeq,
-        finalText: result.text,
-        persisted: true,
-      });
-      return { runId, result: result.text };
-    } catch (error) {
-      const errorMessage = `Codex App Server execution failed: ${(error as Error).message || "Unknown error"}`;
-      const errSeq = nextSeq();
-      opts.store.recordRunEvent({
-        timestamp: now(),
-        runId,
-        conversationId: opts.conversationId,
-        agentType: opts.agentType,
-        seq: errSeq,
-        type: RUNTIME_RUN_EVENT_TYPES.ERROR,
-        error: errorMessage,
-        fatal: true,
-      });
-      opts.callbacks?.onError?.({
-        runId,
-        agentType: opts.agentType,
-        seq: errSeq,
-        error: errorMessage,
-        fatal: true,
-      });
-      return {
-        runId,
-        result: "",
-        error: errorMessage,
-      };
-    }
-  }
 
   try {
     const result = await runClaudeCodeTurn({
@@ -260,6 +188,5 @@ export const runExternalSubagentTurn = async (
 };
 
 export const shutdownSubagentEngineIntegrations = (): void => {
-  shutdownCodexAppServerRuntime();
   shutdownClaudeCodeRuntime();
 };

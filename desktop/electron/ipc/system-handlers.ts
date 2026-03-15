@@ -357,12 +357,10 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       }
 
       const generalAgentEngine =
-        payload?.generalAgentEngine === "codex_local" ||
         payload?.generalAgentEngine === "claude_code_local"
           ? payload.generalAgentEngine
           : "default";
       const selfModAgentEngine =
-        payload?.selfModAgentEngine === "codex_local" ||
         payload?.selfModAgentEngine === "claude_code_local"
           ? payload.selfModAgentEngine
           : "default";
