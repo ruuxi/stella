@@ -1,12 +1,19 @@
-// NEVER convert to top-level import - breaks browser/Vite builds (web-ui)
-let _os: typeof import("node:os") | null = null;
+import type { Tool as OpenAITool, ResponseInput, ResponseStreamEvent } from "openai/resources/responses/responses.js";
+import type * as NodeOs from "node:os";
+
+// NEVER convert to top-level runtime imports - breaks browser/Vite builds (web-ui)
+let _os: typeof NodeOs | null = null;
+
+type DynamicImport = (specifier: string) => Promise<unknown>;
+
+const dynamicImport: DynamicImport = (specifier) => import(specifier);
+const NODE_OS_SPECIFIER = "node:" + "os";
+
 if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
-	import("node:os").then((m) => {
-		_os = m;
+	dynamicImport(NODE_OS_SPECIFIER).then((m) => {
+		_os = m as typeof NodeOs;
 	});
 }
-
-import type { Tool as OpenAITool, ResponseInput, ResponseStreamEvent } from "openai/resources/responses/responses.js";
 import { getEnvApiKey } from "../env-api-keys.js";
 import { supportsXhigh } from "../models.js";
 import type {
@@ -135,9 +142,17 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 			let body = buildRequestBody(model, context, options);
 			const nextBody = await options?.onPayload?.(body, model);
 			if (nextBody !== undefined) {
-				body = nextBody as typeof body;
+				body = nextBody as RequestBody;
 			}
-			const headers = buildHeaders(model.headers, options?.headers, accountId, apiKey, options?.sessionId);
+			const websocketRequestId = options?.sessionId || createCodexRequestId();
+			const sseHeaders = buildSSEHeaders(model.headers, options?.headers, accountId, apiKey, options?.sessionId);
+			const websocketHeaders = buildWebSocketHeaders(
+				model.headers,
+				options?.headers,
+				accountId,
+				apiKey,
+				websocketRequestId,
+			);
 			const bodyJson = JSON.stringify(body);
 			const transport = options?.transport || "sse";
 
@@ -147,7 +162,7 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 					await processWebSocketStream(
 						resolveCodexWebSocketUrl(model.baseUrl),
 						body,
-						headers,
+						websocketHeaders,
 						output,
 						stream,
 						model,
@@ -186,7 +201,7 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 				try {
 					response = await fetch(resolveCodexUrl(model.baseUrl), {
 						method: "POST",
-						headers,
+						headers: sseHeaders,
 						body: bodyJson,
 						signal: options?.signal,
 					});
@@ -319,7 +334,8 @@ function buildRequestBody(
 
 function clampReasoningEffort(modelId: string, effort: string): string {
 	const id = modelId.includes("/") ? modelId.split("/").pop()! : modelId;
-	if ((id.startsWith("gpt-5.2") || id.startsWith("gpt-5.3")) && effort === "minimal") return "low";
+	if ((id.startsWith("gpt-5.2") || id.startsWith("gpt-5.3") || id.startsWith("gpt-5.4")) && effort === "minimal")
+		return "low";
 	if (id === "gpt-5.1" && effort === "xhigh") return "high";
 	if (id === "gpt-5.1-codex-mini") return effort === "high" || effort === "xhigh" ? "high" : "medium";
 	return effort;
@@ -369,13 +385,13 @@ async function* mapCodexEvents(events: AsyncIterable<Record<string, unknown>>): 
 			throw new Error(msg || "Codex response failed");
 		}
 
-		if (type === "response.done" || type === "response.completed") {
+		if (type === "response.done" || type === "response.completed" || type === "response.incomplete") {
 			const response = (event as { response?: { status?: unknown } }).response;
 			const normalizedResponse = response
 				? { ...response, status: normalizeCodexStatus(response.status) }
 				: response;
 			yield { ...event, type: "response.completed", response: normalizedResponse } as ResponseStreamEvent;
-			continue;
+			return;
 		}
 
 		yield event as unknown as ResponseStreamEvent;
@@ -398,43 +414,39 @@ async function* parseSSE(response: Response): AsyncGenerator<Record<string, unkn
 	const decoder = new TextDecoder();
 	let buffer = "";
 
-	const consumeChunk = function* (chunk: string): Generator<Record<string, unknown>> {
-		const dataLines = chunk
-			.split(/\r?\n/)
-			.filter((line) => line.startsWith("data:"))
-			.map((line) => line.slice(5).trim());
-		if (dataLines.length === 0) return;
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			buffer += decoder.decode(value, { stream: true });
 
-		const data = dataLines.join("\n").trim();
-		if (!data || data === "[DONE]") return;
+			let idx = buffer.indexOf("\n\n");
+			while (idx !== -1) {
+				const chunk = buffer.slice(0, idx);
+				buffer = buffer.slice(idx + 2);
 
+				const dataLines = chunk
+					.split("\n")
+					.filter((l) => l.startsWith("data:"))
+					.map((l) => l.slice(5).trim());
+				if (dataLines.length > 0) {
+					const data = dataLines.join("\n").trim();
+					if (data && data !== "[DONE]") {
+						try {
+							yield JSON.parse(data);
+						} catch {}
+					}
+				}
+				idx = buffer.indexOf("\n\n");
+			}
+		}
+	} finally {
 		try {
-			yield JSON.parse(data);
-		} catch {
-			// Ignore malformed partial events and keep reading.
-		}
-	};
-
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		buffer += decoder.decode(value, { stream: true });
-
-		let match = buffer.match(/\r?\n\r?\n/);
-		while (match) {
-			const idx = match.index ?? -1;
-			if (idx < 0) break;
-			const chunk = buffer.slice(0, idx);
-			buffer = buffer.slice(idx + match[0].length);
-
-			yield* consumeChunk(chunk);
-			match = buffer.match(/\r?\n\r?\n/);
-		}
-	}
-
-	buffer += decoder.decode();
-	if (buffer.trim().length > 0) {
-		yield* consumeChunk(buffer);
+			await reader.cancel();
+		} catch {}
+		try {
+			reader.releaseLock();
+		} catch {}
 	}
 }
 
@@ -496,9 +508,7 @@ function isWebSocketReusable(socket: WebSocketLike): boolean {
 function closeWebSocketSilently(socket: WebSocketLike, code = 1000, reason = "done"): void {
 	try {
 		socket.close(code, reason);
-	} catch {
-		// Some runtimes throw when closing an already-closed socket.
-	}
+	} catch {}
 }
 
 function scheduleSessionWebSocketExpiry(sessionId: string, entry: CachedWebSocketConnection): void {
@@ -519,7 +529,7 @@ async function connectWebSocket(url: string, headers: Headers, signal?: AbortSig
 	}
 
 	const wsHeaders = headersToRecord(headers);
-	wsHeaders["OpenAI-Beta"] = OPENAI_BETA_RESPONSES_WEBSOCKETS;
+	delete wsHeaders["OpenAI-Beta"];
 
 	return new Promise<WebSocketLike>((resolve, reject) => {
 		let settled = false;
@@ -539,16 +549,18 @@ async function connectWebSocket(url: string, headers: Headers, signal?: AbortSig
 			resolve(socket);
 		};
 		const onError: WebSocketListener = (event) => {
+			const error = extractWebSocketError(event);
 			if (settled) return;
 			settled = true;
 			cleanup();
-			reject(extractWebSocketError(event));
+			reject(error);
 		};
 		const onClose: WebSocketListener = (event) => {
+			const error = extractWebSocketCloseError(event);
 			if (settled) return;
 			settled = true;
 			cleanup();
-			reject(extractWebSocketCloseError(event));
+			reject(error);
 		};
 		const onAbort = () => {
 			if (settled) return;
@@ -708,15 +720,13 @@ async function* parseWebSocket(socket: WebSocketLike, signal?: AbortSignal): Asy
 			try {
 				const parsed = JSON.parse(text) as Record<string, unknown>;
 				const type = typeof parsed.type === "string" ? parsed.type : "";
-				if (type === "response.completed" || type === "response.done") {
+				if (type === "response.completed" || type === "response.done" || type === "response.incomplete") {
 					sawCompletion = true;
 					done = true;
 				}
 				queue.push(parsed);
 				wake();
-			} catch {
-				return;
-			}
+			} catch {}
 		})();
 	};
 
@@ -833,9 +843,7 @@ async function parseErrorResponse(response: Response): Promise<{ message: string
 			}
 			message = err.message || friendlyMessage || message;
 		}
-	} catch {
-		// Preserve the raw response text when the error body is not valid JSON.
-	}
+	} catch {}
 
 	return { message, friendlyMessage };
 }
@@ -857,29 +865,64 @@ function extractAccountId(token: string): string {
 	}
 }
 
-function buildHeaders(
+function createCodexRequestId(): string {
+	if (typeof globalThis.crypto?.randomUUID === "function") {
+		return globalThis.crypto.randomUUID();
+	}
+	return `codex_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function buildBaseCodexHeaders(
+	initHeaders: Record<string, string> | undefined,
+	additionalHeaders: Record<string, string> | undefined,
+	accountId: string,
+	token: string,
+): Headers {
+	const headers = new Headers(initHeaders);
+	for (const [key, value] of Object.entries(additionalHeaders || {})) {
+		headers.set(key, value);
+	}
+	headers.set("Authorization", `Bearer ${token}`);
+	headers.set("chatgpt-account-id", accountId);
+	headers.set("originator", "pi");
+	const userAgent = _os ? `pi (${_os.platform()} ${_os.release()}; ${_os.arch()})` : "pi (browser)";
+	headers.set("User-Agent", userAgent);
+	return headers;
+}
+
+function buildSSEHeaders(
 	initHeaders: Record<string, string> | undefined,
 	additionalHeaders: Record<string, string> | undefined,
 	accountId: string,
 	token: string,
 	sessionId?: string,
 ): Headers {
-	const headers = new Headers(initHeaders);
-	headers.set("Authorization", `Bearer ${token}`);
-	headers.set("chatgpt-account-id", accountId);
+	const headers = buildBaseCodexHeaders(initHeaders, additionalHeaders, accountId, token);
 	headers.set("OpenAI-Beta", "responses=experimental");
-	headers.set("originator", "pi");
-	const userAgent = _os ? `pi (${_os.platform()} ${_os.release()}; ${_os.arch()})` : "pi (browser)";
-	headers.set("User-Agent", userAgent);
 	headers.set("accept", "text/event-stream");
 	headers.set("content-type", "application/json");
-	for (const [key, value] of Object.entries(additionalHeaders || {})) {
-		headers.set(key, value);
-	}
 
 	if (sessionId) {
 		headers.set("session_id", sessionId);
 	}
 
+	return headers;
+}
+
+function buildWebSocketHeaders(
+	initHeaders: Record<string, string> | undefined,
+	additionalHeaders: Record<string, string> | undefined,
+	accountId: string,
+	token: string,
+	requestId: string,
+): Headers {
+	const headers = buildBaseCodexHeaders(initHeaders, additionalHeaders, accountId, token);
+	headers.delete("accept");
+	headers.delete("content-type");
+	headers.delete("OpenAI-Beta");
+	headers.delete("openai-beta");
+	headers.set("OpenAI-Beta", OPENAI_BETA_RESPONSES_WEBSOCKETS);
+	headers.set("x-client-request-id", requestId);
+	headers.set("session_id", requestId);
 	return headers;
 }

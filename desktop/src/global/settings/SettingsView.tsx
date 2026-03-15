@@ -45,7 +45,6 @@ interface SettingsDialogProps {
 
 const GENERAL_AGENT_ENGINE_OPTIONS = [
   { id: "default", name: "Stella" },
-  { id: "codex_local", name: "Codex" },
   { id: "claude_code_local", name: "Claude Code" },
 ] as const;
 
@@ -57,6 +56,7 @@ const MAX_AGENT_CONCURRENCY_OPTIONS = Array.from(
 const LLM_PROVIDERS = [
   { key: "anthropic", label: "Anthropic", placeholder: "sk-ant-..." },
   { key: "openai", label: "OpenAI", placeholder: "sk-..." },
+  { key: "openai-codex", label: "OpenAI Codex", placeholder: "eyJ..." },
   { key: "google", label: "Google", placeholder: "AIza..." },
   { key: "kimi-coding", label: "Kimi (Moonshot AI)", placeholder: "sk-..." },
   { key: "zai", label: "Z.AI", placeholder: "..." },
@@ -183,14 +183,14 @@ function ModelConfigSection() {
   const generalAgentEngine = useQuery(
     api.data.preferences.getGeneralAgentEngine,
     shouldQueryPreferences,
-  ) as "default" | "codex_local" | "claude_code_local" | undefined;
+  ) as "default" | "claude_code_local" | undefined;
   const setGeneralAgentEngine = useMutation(
     api.data.preferences.setGeneralAgentEngine,
   );
   const selfModAgentEngine = useQuery(
     api.data.preferences.getSelfModAgentEngine,
     shouldQueryPreferences,
-  ) as "default" | "codex_local" | "claude_code_local" | undefined;
+  ) as "default" | "claude_code_local" | undefined;
   const setSelfModAgentEngine = useMutation(
     api.data.preferences.setSelfModAgentEngine,
   );
@@ -245,10 +245,10 @@ function ModelConfigSection() {
     Record<string, string | null>
   >({});
   const [localGeneralAgentEngine, setLocalGeneralAgentEngine] = useState<
-    "default" | "codex_local" | "claude_code_local" | null
+    "default" | "claude_code_local" | null
   >(null);
   const [localSelfModAgentEngine, setLocalSelfModAgentEngine] = useState<
-    "default" | "codex_local" | "claude_code_local" | null
+    "default" | "claude_code_local" | null
   >(null);
   const [localMaxAgentConcurrency, setLocalMaxAgentConcurrency] =
     useState<number | null>(null);
@@ -445,11 +445,9 @@ function ModelConfigSection() {
       }
 
       const engine =
-        value === "codex_local"
-          ? "codex_local"
-          : value === "claude_code_local"
-            ? "claude_code_local"
-            : "default";
+        value === "claude_code_local"
+          ? "claude_code_local"
+          : "default";
       const previousValue =
         agentType === "general"
           ? localGeneralAgentEngine
@@ -557,8 +555,8 @@ function ModelConfigSection() {
           <div className="settings-row-info">
             <div className="settings-row-label">Engine</div>
             <div className="settings-row-sublabel">
-              General agent. Local engine modes require the corresponding CLI (
-              <code>codex</code> or <code>claude</code>).
+              General agent. Local CLI mode requires the corresponding{" "}
+              <code>claude</code> CLI.
             </div>
           </div>
           <div className="settings-row-control">
@@ -596,8 +594,8 @@ function ModelConfigSection() {
           <div className="settings-row-info">
             <div className="settings-row-label">Self Mod Engine</div>
             <div className="settings-row-sublabel">
-              Stella-internal work. Local engine modes require the corresponding
-              CLI (<code>codex</code> or <code>claude</code>).
+              Stella-internal work. Local CLI mode requires the corresponding{" "}
+              <code>claude</code> CLI.
             </div>
           </div>
           <div className="settings-row-control">
@@ -635,8 +633,8 @@ function ModelConfigSection() {
           <div className="settings-row-info">
             <div className="settings-row-label">Max Agent Concurrency</div>
             <div className="settings-row-sublabel">
-              Maximum number of agent tasks running at once across General,
-              Self Mod, Codex, and Claude Code.
+              Maximum number of local agent tasks running at once across
+              General, Self Mod, and Claude Code.
             </div>
           </div>
           <div className="settings-row-control">
@@ -892,10 +890,11 @@ function ApiKeysSection() {
 
   return (
     <div className="settings-card">
-      <h3 className="settings-card-title">API Keys</h3>
+      <h3 className="settings-card-title">Provider Credentials</h3>
       <p className="settings-card-desc">
-        Keys stay on this device. If Stella has a matching local key it calls
-        that provider directly. Otherwise it uses your Stella provider access.
+        Credentials stay on this device. If Stella has matching local provider
+        credentials it calls that provider directly. Otherwise it uses your
+        Stella provider access.
       </p>
       {credentialsError ? (
         <p className="settings-card-desc">{credentialsError}</p>
@@ -977,7 +976,7 @@ function ApiKeysSection() {
                     }}
                     disabled={isSavingKey || Boolean(removingProvider)}
                   >
-                    {credential ? "Update Key" : "Add Key"}
+                    {credential ? "Update Credential" : "Add Credential"}
                   </Button>
                   {credential && (
                     <Button

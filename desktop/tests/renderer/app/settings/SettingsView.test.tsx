@@ -322,8 +322,8 @@ function setupUseQuery(
       resolvedModel: string;
     }>;
     modelOverrides?: string;
-    generalAgentEngine?: "default" | "codex_local" | "claude_code_local";
-    selfModAgentEngine?: "default" | "codex_local" | "claude_code_local";
+    generalAgentEngine?: "default" | "claude_code_local";
+    selfModAgentEngine?: "default" | "claude_code_local";
     maxAgentConcurrency?: number;
     billingStatus?: BillingStatusFixture;
   } = {},
@@ -441,7 +441,7 @@ async function openModelsTab() {
   });
   await waitFor(() => {
     expect(mockListLlmCredentials).toHaveBeenCalled();
-    expect(screen.getByText("API Keys")).toBeTruthy();
+    expect(screen.getByText("Provider Credentials")).toBeTruthy();
   });
 }
 
@@ -466,7 +466,7 @@ async function renderBillingTab() {
   await openBillingTab();
 }
 
-const LLM_PROVIDER_ROW_COUNT = 12;
+const LLM_PROVIDER_ROW_COUNT = 13;
 
 // ---------------------------------------------------------------------------
 // Tests: Dialog rendering
@@ -565,7 +565,7 @@ describe("Tab switching", () => {
 
     // Models tab content should appear
     expect(screen.getByText("Model Configuration")).toBeTruthy();
-    expect(screen.getByText("API Keys")).toBeTruthy();
+    expect(screen.getByText("Provider Credentials")).toBeTruthy();
 
     // Basic tab content should be hidden
     expect(screen.queryByText("Storage")).toBeNull();
@@ -692,7 +692,7 @@ describe("Basic tab privacy copy", () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        /Cloud sync and connected mode are not available in the app right now\./,
+        /Cloud sync is not available in the app right now\./,
       ),
     ).toBeTruthy();
   });
@@ -811,7 +811,7 @@ describe("AgentRuntimeSection", () => {
 
   it("shows saved runtime values for both agents and shared concurrency", async () => {
     setupUseQuery({
-      generalAgentEngine: "codex_local",
+      generalAgentEngine: "default",
       selfModAgentEngine: "claude_code_local",
       maxAgentConcurrency: 24,
     });
@@ -822,7 +822,7 @@ describe("AgentRuntimeSection", () => {
       ".settings-runtime-select",
     ) as NodeListOf<HTMLSelectElement>;
     expect(selects.length).toBe(3);
-    expect(selects[0].value).toBe("codex_local");
+    expect(selects[0].value).toBe("default");
     expect(selects[1].value).toBe("claude_code_local");
     expect(selects[2].value).toBe("24");
   });
@@ -847,7 +847,7 @@ describe("AgentRuntimeSection", () => {
     expect(selects[2].value).toBe("loading");
   });
 
-  it("calls setGeneralAgentEngine when engine is changed", async () => {
+  it("calls setGeneralAgentEngine when engine is changed back to default", async () => {
     const mockSetGeneralAgentEngine = vi.fn();
     mockUseMutation((mutationPath: unknown) => {
       const path = mutationPath as string;
@@ -855,19 +855,21 @@ describe("AgentRuntimeSection", () => {
         return mockSetGeneralAgentEngine;
       return vi.fn();
     });
-    setupUseQuery();
+    setupUseQuery({
+      generalAgentEngine: "claude_code_local",
+    });
     await renderModelsTab();
 
     const selects = document.querySelectorAll(
       ".settings-runtime-select",
     ) as NodeListOf<HTMLSelectElement>;
     await act(async () => {
-      fireEvent.change(selects[0], { target: { value: "codex_local" } });
+      fireEvent.change(selects[0], { target: { value: "default" } });
       await Promise.resolve();
     });
 
     expect(mockSetGeneralAgentEngine).toHaveBeenCalledWith({
-      engine: "codex_local",
+      engine: "default",
     });
   });
 
@@ -926,7 +928,7 @@ describe("AgentRuntimeSection", () => {
       ".settings-runtime-select",
     ) as NodeListOf<HTMLSelectElement>;
     await act(async () => {
-      fireEvent.change(selects[0], { target: { value: "codex_local" } });
+      fireEvent.change(selects[0], { target: { value: "claude_code_local" } });
       await Promise.resolve();
     });
 
@@ -956,12 +958,12 @@ describe("AgentRuntimeSection", () => {
       ".settings-runtime-select",
     ) as NodeListOf<HTMLSelectElement>;
     await act(async () => {
-      fireEvent.change(selects[1], { target: { value: "codex_local" } });
+      fireEvent.change(selects[1], { target: { value: "claude_code_local" } });
       await Promise.resolve();
     });
 
     expect(mockSetSelfModAgentEngine).toHaveBeenCalledWith({
-      engine: "codex_local",
+      engine: "claude_code_local",
     });
   });
 
@@ -1295,12 +1297,12 @@ describe("ApiKeysSection", () => {
     } as unknown as typeof globalThis.ResizeObserver;
   });
 
-  it("renders API Keys title and description", async () => {
+  it("renders provider credentials title and description", async () => {
     setupUseQuery();
     await renderModelsTab();
 
-    expect(screen.getByText("API Keys")).toBeTruthy();
-    expect(screen.getByText(/Keys stay on this device/)).toBeTruthy();
+    expect(screen.getByText("Provider Credentials")).toBeTruthy();
+    expect(screen.getByText(/Credentials stay on this device/)).toBeTruthy();
     expect(
       screen.getByText(/Otherwise it uses your Stella provider access\./),
     ).toBeTruthy();
@@ -1312,6 +1314,7 @@ describe("ApiKeysSection", () => {
 
     expect(screen.getByText("Anthropic")).toBeTruthy();
     expect(screen.getByText("OpenAI")).toBeTruthy();
+    expect(screen.getByText("OpenAI Codex")).toBeTruthy();
     expect(screen.getByText("Google")).toBeTruthy();
     expect(screen.getByText("Kimi (Moonshot AI)")).toBeTruthy();
     expect(screen.getByText("Z.AI")).toBeTruthy();
@@ -1345,32 +1348,32 @@ describe("ApiKeysSection", () => {
     expect(noKeyStatuses.length).toBe(LLM_PROVIDER_ROW_COUNT - 1);
   });
 
-  it("shows 'Add Key' button when provider has no local credential", async () => {
+  it("shows 'Add Credential' button when provider has no local credential", async () => {
     setupUseQuery();
     setupElectronApi([]);
     await renderModelsTab();
 
-    const addKeyButtons = screen.getAllByText("Add Key");
+    const addKeyButtons = screen.getAllByText("Add Credential");
     expect(addKeyButtons.length).toBe(LLM_PROVIDER_ROW_COUNT);
   });
 
-  it("shows 'Update Key' and 'Remove' buttons when provider has a local credential", async () => {
+  it("shows 'Update Credential' and 'Remove' buttons when provider has a local credential", async () => {
     setupUseQuery();
     setupElectronApi([
       { provider: "anthropic", label: "Anthropic", status: "active" },
     ]);
     await renderModelsTab();
 
-    expect(screen.getByText("Update Key")).toBeTruthy();
+    expect(screen.getByText("Update Credential")).toBeTruthy();
     expect(screen.getByText("Remove")).toBeTruthy();
   });
 
-  it("shows input field with Save/Cancel when Add Key is clicked", async () => {
+  it("shows input field with Save/Cancel when Add Credential is clicked", async () => {
     setupUseQuery();
     setupElectronApi([]);
     await renderModelsTab();
 
-    const addKeyButtons = screen.getAllByText("Add Key");
+    const addKeyButtons = screen.getAllByText("Add Credential");
     fireEvent.click(addKeyButtons[0]);
 
     const input = screen.getByPlaceholderText("sk-ant-...");
@@ -1384,7 +1387,7 @@ describe("ApiKeysSection", () => {
     setupElectronApi([]);
     await renderModelsTab();
 
-    const addKeyButtons = screen.getAllByText("Add Key");
+    const addKeyButtons = screen.getAllByText("Add Credential");
     fireEvent.click(addKeyButtons[0]);
 
     expect(screen.getByPlaceholderText("sk-ant-...")).toBeTruthy();
@@ -1400,7 +1403,7 @@ describe("ApiKeysSection", () => {
     setupElectronApi([]);
     await renderModelsTab();
 
-    const addKeyButtons = screen.getAllByText("Add Key");
+    const addKeyButtons = screen.getAllByText("Add Credential");
     fireEvent.click(addKeyButtons[0]);
 
     const input = screen.getByPlaceholderText("sk-ant-...");
@@ -1422,7 +1425,7 @@ describe("ApiKeysSection", () => {
     setupElectronApi([]);
     await renderModelsTab();
 
-    const addKeyButtons = screen.getAllByText("Add Key");
+    const addKeyButtons = screen.getAllByText("Add Credential");
     fireEvent.click(addKeyButtons[0]);
 
     await act(async () => {
@@ -1439,7 +1442,7 @@ describe("ApiKeysSection", () => {
     ]);
     await renderModelsTab();
 
-    fireEvent.click(screen.getByText("Update Key"));
+    fireEvent.click(screen.getByText("Update Credential"));
 
     const input = screen.getByPlaceholderText("sk-ant-...");
     fireEvent.change(input, { target: { value: "sk-ant-new-key" } });
@@ -1474,7 +1477,7 @@ describe("ApiKeysSection", () => {
     setupElectronApi([]);
     await renderModelsTab();
 
-    const addKeyButtons = screen.getAllByText("Add Key");
+    const addKeyButtons = screen.getAllByText("Add Credential");
     fireEvent.click(addKeyButtons[0]);
 
     const input = screen.getByPlaceholderText("sk-ant-...");
@@ -1496,7 +1499,7 @@ describe("ApiKeysSection", () => {
     setupElectronApi([]);
     await renderModelsTab();
 
-    const addKeyButtons = screen.getAllByText("Add Key");
+    const addKeyButtons = screen.getAllByText("Add Credential");
     fireEvent.click(addKeyButtons[0]);
 
     const input = screen.getByPlaceholderText("sk-ant-...");
@@ -1531,7 +1534,7 @@ describe("ApiKeysSection", () => {
     setupElectronApi([]);
     await renderModelsTab();
 
-    const addKeyButtons = screen.getAllByText("Add Key");
+    const addKeyButtons = screen.getAllByText("Add Credential");
 
     fireEvent.click(addKeyButtons[0]);
     expect(screen.getByPlaceholderText("sk-ant-...")).toBeTruthy();
@@ -1546,7 +1549,7 @@ describe("ApiKeysSection", () => {
     setupElectronApi([]);
     await renderModelsTab();
 
-    const addKeyButtons = screen.getAllByText("Add Key");
+    const addKeyButtons = screen.getAllByText("Add Credential");
     fireEvent.click(addKeyButtons[0]);
 
     const input = screen.getByPlaceholderText("sk-ant-...") as HTMLInputElement;

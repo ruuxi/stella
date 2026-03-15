@@ -5,11 +5,9 @@ import type { ResolvedLlmRoute } from "../../../electron/core/runtime/model-rout
 import type { RuntimeStore } from "../../../electron/storage/runtime-store.js";
 
 const {
-  runCodexAppServerTurnMock,
   runClaudeCodeTurnMock,
   isClaudeCodeModelMock,
 } = vi.hoisted(() => ({
-  runCodexAppServerTurnMock: vi.fn(),
   runClaudeCodeTurnMock: vi.fn(),
   isClaudeCodeModelMock: vi.fn(),
 }));
@@ -23,17 +21,6 @@ vi.mock("../../../electron/core/runtime/integrations/claude-code-session-runtime
     isClaudeCodeModel: isClaudeCodeModelMock,
     runClaudeCodeTurn: runClaudeCodeTurnMock,
     shutdownClaudeCodeRuntime: vi.fn(),
-  };
-});
-
-vi.mock("../../../electron/core/runtime/integrations/codex-app-server-runtime", async () => {
-  const actual = await vi.importActual<typeof import("../../../electron/core/runtime/integrations/codex-app-server-runtime.js")>(
-    "../../../electron/core/runtime/integrations/codex-app-server-runtime",
-  );
-  return {
-    ...actual,
-    runCodexAppServerTurn: runCodexAppServerTurnMock,
-    shutdownCodexAppServerRuntime: vi.fn(),
   };
 });
 
@@ -106,44 +93,11 @@ const buildOpts = (overrides?: Partial<Parameters<typeof runSubagentTask>[0]>) =
 
 const generalAgentHome = os.homedir();
 
-describe("runSubagentTask engine selection", () => {
+describe("runSubagentTask external engine selection", () => {
   beforeEach(() => {
-    runCodexAppServerTurnMock.mockReset();
     runClaudeCodeTurnMock.mockReset();
     isClaudeCodeModelMock.mockReset();
     isClaudeCodeModelMock.mockReturnValue(false);
-  });
-
-  it("uses Codex app server when agentEngine is codex_local", async () => {
-    const store = createStoreStub();
-    runCodexAppServerTurnMock.mockResolvedValue({
-      text: "codex-result",
-      threadId: "thread-1",
-      turnId: "turn-1",
-    });
-
-    const result = await runSubagentTask(buildOpts({
-      agentContext: buildAgentContext({
-        agentEngine: "codex_local",
-        maxAgentConcurrency: 12,
-      }),
-      store: store as unknown as RuntimeStore,
-    }));
-
-    expect(result.error).toBeUndefined();
-    expect(result.result).toBe("codex-result");
-    expect(runCodexAppServerTurnMock).toHaveBeenCalledTimes(1);
-    expect(runCodexAppServerTurnMock).toHaveBeenCalledWith(expect.objectContaining({
-      sessionKey: expect.stringContaining("conv-1:run:"),
-      maxConcurrency: 12,
-      prompt: expect.stringContaining("Solve this task"),
-      developerInstructions: expect.stringContaining("system"),
-      cwd: generalAgentHome,
-    }));
-    expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
-    expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
-    expect(store.appendThreadMessage).toHaveBeenCalledTimes(2);
-    expect(runClaudeCodeTurnMock).not.toHaveBeenCalled();
   });
 
   it("uses Claude Code when agentEngine is claude_code_local", async () => {
@@ -172,7 +126,6 @@ describe("runSubagentTask engine selection", () => {
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
     expect(store.appendThreadMessage).toHaveBeenCalledTimes(2);
-    expect(runCodexAppServerTurnMock).not.toHaveBeenCalled();
   });
 
   it("uses Claude Code when model is claude-code/* for general agent", async () => {
@@ -201,28 +154,26 @@ describe("runSubagentTask engine selection", () => {
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
     expect(store.appendThreadMessage).toHaveBeenCalledTimes(2);
-    expect(runCodexAppServerTurnMock).not.toHaveBeenCalled();
   });
 
-  it("appends Stella documentation guidance for self_mod local Codex runs", async () => {
+  it("appends Stella documentation guidance for self_mod local Claude runs", async () => {
     const store = createStoreStub();
-    runCodexAppServerTurnMock.mockResolvedValue({
-      text: "codex-result",
-      threadId: "thread-1",
-      turnId: "turn-1",
+    runClaudeCodeTurnMock.mockResolvedValue({
+      text: "claude-result",
+      sessionId: "session-1",
     });
 
     await runSubagentTask(buildOpts({
       agentType: "self_mod",
       agentContext: buildAgentContext({
-        agentEngine: "codex_local",
+        agentEngine: "claude_code_local",
       }),
       store: store as unknown as RuntimeStore,
     }));
 
-    expect(runCodexAppServerTurnMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(runClaudeCodeTurnMock).toHaveBeenCalledWith(expect.objectContaining({
       prompt: "Solve this task",
-      developerInstructions: expect.stringContaining("read `src/STELLA.md` first"),
+      systemPrompt: expect.stringContaining("read `src/STELLA.md` first"),
       cwd: "C:/Users/redacted/projects/stella/desktop",
     }));
   });
