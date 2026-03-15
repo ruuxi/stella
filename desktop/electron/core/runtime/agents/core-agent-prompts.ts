@@ -34,16 +34,9 @@ const CORE_AGENT_DEFINITIONS: CoreAgentDefinition[] = [
       "WebSearch",
       "WebFetch",
       "AskUserQuestion",
+      "Schedule",
       "TaskCreate",
       "TaskCancel",
-      "HeartbeatGet",
-      "HeartbeatUpsert",
-      "HeartbeatRun",
-      "CronList",
-      "CronAdd",
-      "CronUpdate",
-      "CronRemove",
-      "CronRun",
       "NoResponse",
       "SaveMemory",
       "RecallMemories",
@@ -68,7 +61,7 @@ Communication:
 
 Tools:
 - RecallMemories and SaveMemory are for durable preferences, facts, and decisions.
-- Heartbeat and cron tools are handled directly by you. Do not delegate scheduling to subagents.
+- Use Schedule for local cron and heartbeat changes.
 - AskUserQuestion is for clear multiple-choice decisions. Do not use it for open-ended questions you can ask in chat.
 
 Display:
@@ -100,6 +93,7 @@ Routing:
 - Modify Stella itself -> Self_Mod.
 - Find or understand code with no action requested -> Explore.
 - Use an external app or website -> App.
+- Local cron and heartbeat changes -> Schedule.
 - If a request needs both research and action, send it directly to General or Self_Mod instead of chaining Explore first.
 
 Delegation:
@@ -116,6 +110,41 @@ Constraints:
 - Never expose model names, provider details, or internal infrastructure.
 - Never claim something is impossible without delegating first.
 - Your only execution happens through delegation and your own small coordination toolset.`,
+  },
+  {
+    id: "schedule",
+    name: "Schedule",
+    description: "Applies local cron and heartbeat changes from plain-language scheduling requests.",
+    agentTypes: ["schedule"],
+    toolsAllowlist: [
+      "HeartbeatGet",
+      "HeartbeatUpsert",
+      "HeartbeatRun",
+      "CronList",
+      "CronAdd",
+      "CronUpdate",
+      "CronRemove",
+      "CronRun",
+    ],
+    maxTaskDepth: 1,
+    systemPrompt: `You are Stella's Schedule Agent. You convert plain-language scheduling requests into local cron and heartbeat changes.
+
+Role:
+- You receive one-off scheduling requests from the Orchestrator.
+- Your output goes back to the Orchestrator, not directly to the user.
+- Use only the available cron and heartbeat tools.
+
+Behavior:
+- Default to the current conversation unless the request explicitly says otherwise.
+- Inspect existing cron and heartbeat state when that helps avoid duplicate or conflicting schedules.
+- Prefer updating the existing heartbeat for a conversation over creating redundant state.
+- Make conservative, reasonable assumptions when details are missing.
+- If you make an important assumption, mention it briefly in your final response.
+
+Output:
+- Return plain text only.
+- Summarize what changed in concise natural language.
+- If nothing changed, say so clearly.`,
   },
   {
     id: "general",

@@ -57,6 +57,7 @@ import {
   handleHeartbeatGet,
   handleHeartbeatRun,
   handleHeartbeatUpsert,
+  handleSchedule,
 } from "./schedule.js";
 
 import type { ToolDefinition } from "../extensions/types.js";
@@ -217,6 +218,7 @@ export const createToolHost = ({
 
     // Media tools (not yet implemented)
     MediaGenerate: async () => notConfigured("MediaGenerate"),
+    Schedule: (args, context) => handleSchedule(taskApi, args, context),
     HeartbeatGet: (args, context) => handleHeartbeatGet(scheduleApi, args, context),
     HeartbeatUpsert: (args, context) => handleHeartbeatUpsert(scheduleApi, args, context),
     HeartbeatRun: (args, context) => handleHeartbeatRun(scheduleApi, args, context),
