@@ -509,11 +509,11 @@ export async function startDaemon(options?: {
   setInterval(() => {}, 1 << 30);
 }
 
-// Run daemon if this is the entry point
-if (process.argv[1]?.endsWith('daemon.js') || process.env.STELLA_BROWSER_DAEMON === '1') {
-  startDaemon().catch((err) => {
-    console.error('Daemon error:', err);
-    cleanupSocket();
-    process.exit(1);
-  });
+// The JS daemon is no longer a supported runtime entry point.
+// The native Rust CLI owns daemon startup now; this module remains for shared helpers.
+if (process.argv[1]?.endsWith('daemon.js')) {
+  console.error(
+    'The legacy JavaScript daemon has been retired. Use the native stella-browser CLI instead.'
+  );
+  process.exit(1);
 }

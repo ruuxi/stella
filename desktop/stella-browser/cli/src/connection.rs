@@ -398,99 +398,6 @@ fn spawn_native_daemon(
     Ok(())
 }
 
-fn spawn_legacy_daemon(
-    daemon_path: &PathBuf,
-    session: &str,
-    headed: bool,
-    executable_path: Option<&str>,
-    extensions: &[String],
-    args: Option<&str>,
-    user_agent: Option<&str>,
-    proxy: Option<&str>,
-    proxy_bypass: Option<&str>,
-    ignore_https_errors: bool,
-    allow_file_access: bool,
-    profile: Option<&str>,
-    state: Option<&str>,
-    provider: Option<&str>,
-    device: Option<&str>,
-) -> Result<(), String> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-
-        let mut cmd = Command::new("node");
-        cmd.arg(daemon_path);
-        apply_daemon_env(
-            &mut cmd,
-            session,
-            headed,
-            executable_path,
-            extensions,
-            args,
-            user_agent,
-            proxy,
-            proxy_bypass,
-            ignore_https_errors,
-            allow_file_access,
-            profile,
-            state,
-            provider,
-            device,
-        );
-
-        unsafe {
-            cmd.pre_exec(|| {
-                libc::setsid();
-                Ok(())
-            });
-        }
-
-        cmd.stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|e| format!("Failed to start legacy daemon: {}", e))?;
-    }
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        const DETACHED_PROCESS: u32 = 0x00000008;
-
-        let mut cmd = Command::new("node");
-        cmd.arg(daemon_path);
-        apply_daemon_env(
-            &mut cmd,
-            session,
-            headed,
-            executable_path,
-            extensions,
-            args,
-            user_agent,
-            proxy,
-            proxy_bypass,
-            ignore_https_errors,
-            allow_file_access,
-            profile,
-            state,
-            provider,
-            device,
-        );
-
-        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|e| format!("Failed to start legacy daemon: {}", e))?;
-    }
-
-    Ok(())
-}
-
 pub fn ensure_daemon(
     session: &str,
     headed: bool,
@@ -506,9 +413,8 @@ pub fn ensure_daemon(
     state: Option<&str>,
     provider: Option<&str>,
     device: Option<&str>,
-    use_legacy_daemon: bool,
 ) -> Result<DaemonResult, String> {
-    let desired_kind = if use_legacy_daemon { "legacy" } else { "native" };
+    let desired_kind = "native";
 
     // Check if daemon is running AND responsive
     if is_daemon_running(session) && daemon_ready(session) {
@@ -578,61 +484,23 @@ pub fn ensure_daemon(
     let exe_path = env::current_exe().map_err(|e| e.to_string())?;
     // Canonicalize to resolve symlinks (e.g., npm global bin symlink -> actual binary)
     let exe_path = exe_path.canonicalize().unwrap_or(exe_path);
-    let exe_dir = exe_path.parent().unwrap();
-
-    if use_legacy_daemon {
-        let mut daemon_paths = vec![
-            exe_dir.join("daemon.js"),
-            exe_dir.join("../dist/daemon.js"),
-            PathBuf::from("dist/daemon.js"),
-        ];
-
-        if let Ok(home) = env::var("STELLA_BROWSER_HOME") {
-            let home_path = PathBuf::from(&home);
-            daemon_paths.insert(0, home_path.join("dist/daemon.js"));
-            daemon_paths.insert(1, home_path.join("daemon.js"));
-        }
-
-        let daemon_path = daemon_paths.iter().find(|p| p.exists()).ok_or(
-            "Legacy daemon not found. Set STELLA_BROWSER_HOME or build the TypeScript daemon.",
-        )?;
-
-        spawn_legacy_daemon(
-            daemon_path,
-            session,
-            headed,
-            executable_path,
-            extensions,
-            args,
-            user_agent,
-            proxy,
-            proxy_bypass,
-            ignore_https_errors,
-            allow_file_access,
-            profile,
-            state,
-            provider,
-            device,
-        )?;
-    } else {
-        spawn_native_daemon(
-            &exe_path,
-            session,
-            headed,
-            executable_path,
-            extensions,
-            args,
-            user_agent,
-            proxy,
-            proxy_bypass,
-            ignore_https_errors,
-            allow_file_access,
-            profile,
-            state,
-            provider,
-            device,
-        )?;
-    }
+    spawn_native_daemon(
+        &exe_path,
+        session,
+        headed,
+        executable_path,
+        extensions,
+        args,
+        user_agent,
+        proxy,
+        proxy_bypass,
+        ignore_https_errors,
+        allow_file_access,
+        profile,
+        state,
+        provider,
+        device,
+    )?;
 
     for _ in 0..50 {
         if daemon_ready(session) {
