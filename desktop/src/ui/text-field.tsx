@@ -34,6 +34,8 @@ export const TextField = React.forwardRef<HTMLInputElement | HTMLTextAreaElement
       variant = "normal",
       multiline,
     } = props;
+    const textareaValue =
+      multiline ? props.textareaProps?.value ?? props.value : undefined;
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
     const setTextareaRef = React.useCallback((node: HTMLTextAreaElement | null) => {
       textareaRef.current = node;
@@ -53,7 +55,7 @@ export const TextField = React.forwardRef<HTMLInputElement | HTMLTextAreaElement
         textarea.style.height = "auto";
         textarea.style.height = `${textarea.scrollHeight}px`;
       }
-    }, [multiline, props.textareaProps?.value, multiline ? props.value : undefined]);
+    }, [multiline, textareaValue]);
 
     return (
       <div data-component="input" data-variant={variant}>

@@ -118,7 +118,7 @@ export const FullShell = () => {
       })
       setView('app')
     },
-    [openPanel, projects, setView],
+    [openPanel, setView],
   )
 
   const handleNewAppLocalProject = useCallback(async () => {

@@ -77,7 +77,9 @@ const findActiveProfile = async (): Promise<string | null> => {
       try {
         await fs.access(placesPath);
         return profilePath;
-      } catch { /* places.sqlite doesn't exist */ }
+      } catch {
+        // places.sqlite doesn't exist
+      }
     }
 
     // Fallback: find any profile with places.sqlite
@@ -86,9 +88,13 @@ const findActiveProfile = async (): Promise<string | null> => {
       try {
         await fs.access(placesPath);
         return path.join(profilesDir, entry);
-      } catch { /* try next */ }
+      } catch {
+        // try next
+      }
     }
-  } catch { /* profiles dir doesn't exist */ }
+  } catch {
+    // profiles dir doesn't exist
+  }
 
   return null;
 };
@@ -176,7 +182,9 @@ export const collectFirefoxData = async (
     for (const ext of ["-wal", "-shm"]) {
       try {
         await fs.copyFile(sourcePath + ext, tempPath + ext);
-      } catch { /* optional files */ }
+      } catch {
+        // optional files
+      }
     }
 
     db = await openDatabase(tempPath);
@@ -219,9 +227,17 @@ export const collectFirefoxData = async (
   } finally {
     db?.close?.();
     // Clean up temp file
-    try { await fs.unlink(tempPath); } catch {}
+    try {
+      await fs.unlink(tempPath);
+    } catch {
+      // temp file may already be gone
+    }
     for (const ext of ["-wal", "-shm"]) {
-      try { await fs.unlink(tempPath + ext); } catch {}
+      try {
+        await fs.unlink(tempPath + ext);
+      } catch {
+        // sidecar file may not exist
+      }
     }
   }
 };

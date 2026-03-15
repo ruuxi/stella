@@ -1,4 +1,3 @@
-import path from "path";
 import {
   MAX_ACTIVE_RUNTIME_THREADS,
   RUNTIME_THREAD_REMINDER_INTERVAL_TOKENS,
@@ -16,7 +15,6 @@ import {
   type RuntimeRunEvent,
   type RuntimeThreadMessage,
   escapeSqlLike,
-  fileSafeId,
   parseRuntimeSelfModApplied,
   parseJsonTags,
   scoreMemoryMatches,

@@ -240,7 +240,7 @@ const getPlaytimeData = async (
     if (appsIdx === -1) return playtime;
 
     // Find the apps block
-    let braceStart = content.indexOf("{", appsIdx);
+    const braceStart = content.indexOf("{", appsIdx);
     if (braceStart === -1) return playtime;
     let depth = 1;
     let pos = braceStart + 1;

@@ -23,20 +23,16 @@ export function GrowIn({
   duration = 500,
   className,
 }: GrowInProps) {
+  const canAnimate = shouldAnimate && typeof ResizeObserver !== "undefined";
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
-  const [settled, setSettled] = useState(!shouldAnimate);
+  const [settled, setSettled] = useState(!canAnimate);
   const controlsRef = useRef<ReturnType<typeof animate> | null>(null);
 
   useEffect(() => {
     const inner = innerRef.current;
     const outer = outerRef.current;
-    if (!inner || !outer || !shouldAnimate) return;
-    if (typeof ResizeObserver === "undefined") {
-      // Fallback for environments without ResizeObserver (e.g. jsdom)
-      setSettled(true);
-      return;
-    }
+    if (!inner || !outer || !canAnimate) return;
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -62,9 +58,9 @@ export function GrowIn({
       observer.disconnect();
       controlsRef.current?.stop();
     };
-  }, [shouldAnimate, duration]);
+  }, [canAnimate, duration]);
 
-  if (!shouldAnimate) {
+  if (!canAnimate) {
     return <div className={className}>{children}</div>;
   }
 
