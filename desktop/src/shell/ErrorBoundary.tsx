@@ -1,4 +1,4 @@
-import { Component, type ReactNode, type ErrorInfo } from "react";
+import { Component, type ReactNode, type ErrorInfo, type MouseEvent } from "react";
 import type { SelfModFeatureSummary } from "@/shared/types/electron";
 import "./error-boundary.css";
 
@@ -7,8 +7,10 @@ type State = {
   hasError: boolean;
   revertingFeatureId: string | null;
   features: SelfModFeatureSummary[];
-  autoRepairStatus: "idle" | "running" | "failed";
-  autoRepairMessage: string;
+  repairStatus: "idle" | "running" | "failed";
+  repairMessage: string;
+  caughtError: Error | null;
+  caughtErrorInfo: ErrorInfo | null;
 };
 
 const AUTO_REPAIR_SIGNATURE_KEY = "stella:auto-repair:last-signature";
@@ -36,8 +38,10 @@ export class ErrorBoundary extends Component<Props, State> {
     hasError: false,
     revertingFeatureId: null,
     features: [],
-    autoRepairStatus: "idle",
-    autoRepairMessage: "",
+    repairStatus: "idle",
+    repairMessage: "",
+    caughtError: null,
+    caughtErrorInfo: null,
   };
 
   static getDerivedStateFromError(): Partial<State> {
@@ -46,8 +50,8 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("ErrorBoundary caught:", error, info);
+    this.setState({ caughtError: error, caughtErrorInfo: info });
     void this.loadFeatures();
-    void this.startAutoRepair(error, info);
   }
 
   loadFeatures = async () => {
@@ -72,16 +76,15 @@ export class ErrorBoundary extends Component<Props, State> {
     }
   };
 
-  startAutoRepair = async (error: Error, info: ErrorInfo) => {
-    if (this.state.autoRepairStatus === "running") {
-      return;
-    }
+  handleRepair = async (_e?: MouseEvent) => {
+    const { caughtError, caughtErrorInfo, repairStatus } = this.state;
+    if (repairStatus === "running" || !caughtError) return;
 
     const api = window.electronAPI;
     if (!api?.agent?.startChat || !api?.agent?.healthCheck || !api?.ui?.getState) {
       this.setState({
-        autoRepairStatus: "failed",
-        autoRepairMessage: "Automatic repair is unavailable right now.",
+        repairStatus: "failed",
+        repairMessage: "Repair is unavailable right now.",
       });
       return;
     }
@@ -89,26 +92,26 @@ export class ErrorBoundary extends Component<Props, State> {
     const health = await api.agent.healthCheck();
     if (!health?.ready) {
       this.setState({
-        autoRepairStatus: "failed",
-        autoRepairMessage: "Automatic repair is unavailable right now.",
+        repairStatus: "failed",
+        repairMessage: "Repair is unavailable right now.",
       });
       return;
     }
 
-    const signature = `${error.name}:${error.message}:${info.componentStack ?? ""}`.slice(0, 12_000);
+    const signature = `${caughtError.name}:${caughtError.message}:${caughtErrorInfo?.componentStack ?? ""}`.slice(0, 12_000);
     const previousSignature = sessionStorage.getItem(AUTO_REPAIR_SIGNATURE_KEY);
     if (previousSignature === signature) {
       this.setState({
-        autoRepairStatus: "failed",
-        autoRepairMessage: "Automatic repair was already attempted for this crash.",
+        repairStatus: "failed",
+        repairMessage: "A repair was already attempted for this crash.",
       });
       return;
     }
     sessionStorage.setItem(AUTO_REPAIR_SIGNATURE_KEY, signature);
 
     this.setState({
-      autoRepairStatus: "running",
-      autoRepairMessage: "Stella is attempting an automatic repair.",
+      repairStatus: "running",
+      repairMessage: "Stella is fixing this...",
     });
 
     try {
@@ -118,11 +121,11 @@ export class ErrorBoundary extends Component<Props, State> {
           ? uiState.conversationId
           : null;
       if (!conversationId) {
-        throw new Error("No active conversation for auto-repair.");
+        throw new Error("No active conversation for repair.");
       }
 
       const userMessageId = `auto-repair-${Date.now()}`;
-      const prompt = buildAutoRepairPrompt(error, info.componentStack ?? "");
+      const prompt = buildAutoRepairPrompt(caughtError, caughtErrorInfo?.componentStack ?? "");
 
       const { runId } = await api.agent.startChat({
         conversationId,
@@ -144,16 +147,16 @@ export class ErrorBoundary extends Component<Props, State> {
         if (event.type === "error" && event.fatal) {
           unsubscribe();
           this.setState({
-            autoRepairStatus: "failed",
-            autoRepairMessage: "Automatic repair could not complete. You can undo recent updates below.",
+            repairStatus: "failed",
+            repairMessage: "Repair could not complete. You can undo recent updates below.",
           });
         }
       });
     } catch (repairError) {
-      console.error("ErrorBoundary auto-repair failed:", repairError);
+      console.error("ErrorBoundary repair failed:", repairError);
       this.setState({
-        autoRepairStatus: "failed",
-        autoRepairMessage: "Automatic repair could not start. You can undo recent updates below.",
+        repairStatus: "failed",
+        repairMessage: "Repair could not start. You can undo recent updates below.",
       });
     }
   };
@@ -173,9 +176,17 @@ export class ErrorBoundary extends Component<Props, State> {
             An unexpected error occurred. You can try undoing recent changes or
             reloading.
           </p>
-          {this.state.autoRepairStatus !== "idle" && (
+          {this.state.repairStatus === "idle" && this.state.caughtError && (
+            <button
+              className="error-boundary-btn error-boundary-btn--fix"
+              onClick={this.handleRepair}
+            >
+              Fix with Stella
+            </button>
+          )}
+          {this.state.repairStatus !== "idle" && (
             <p className="error-boundary-status">
-              {this.state.autoRepairMessage}
+              {this.state.repairMessage}
             </p>
           )}
           {this.state.features.length > 0 && (
