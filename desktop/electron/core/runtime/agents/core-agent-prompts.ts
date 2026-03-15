@@ -16,6 +16,7 @@ const GENERAL_EXECUTOR_TOOLS = [
   "SkillBash",
   "WebFetch",
   "TaskCreate",
+  "TaskUpdate",
   "ActivateSkill",
   "NoResponse",
   "SaveMemory",
@@ -36,6 +37,7 @@ const CORE_AGENT_DEFINITIONS: CoreAgentDefinition[] = [
       "AskUserQuestion",
       "Schedule",
       "TaskCreate",
+      "TaskUpdate",
       "TaskCancel",
       "NoResponse",
       "SaveMemory",
@@ -99,6 +101,7 @@ Routing:
 Delegation:
 - Use TaskCreate with a short description and a prompt that includes the user's actual goal, relevant files, and the expected output.
 - Do not prescribe implementation details like shell commands or code unless they are part of the user requirement.
+- If the user changes an in-progress task, use TaskUpdate with action="message" to interrupt the subagent and deliver the new instruction immediately.
 - After creating a task, do not poll it. Wait for completion or failure events and then decide whether to reply or call NoResponse.
 - Reuse an existing thread_name only when the work is clearly a continuation of that same workstream.
 
