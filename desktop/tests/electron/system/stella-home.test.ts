@@ -4,6 +4,7 @@ import path from "path";
 import type { App } from "electron";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  resolveBundledDefaultsPath,
   resolveDesktopRoot,
   resolveInstallRoot,
   resolveStellaHome,
@@ -29,34 +30,49 @@ describe("stella-home", () => {
   it("resolves runtime home at the install root and preserves desktop workspace", async () => {
     const installRoot = createTempRoot();
     const desktopRoot = path.join(installRoot, "desktop");
-    fs.mkdirSync(path.join(desktopRoot, ".stella", "core-skills", "theme-factory"), {
+    fs.mkdirSync(path.join(desktopRoot, "resources", "stella-defaults", "core-skills", "theme-factory"), {
       recursive: true,
     });
-    fs.mkdirSync(path.join(desktopRoot, ".stella", "extensions", "skills"), {
-      recursive: true,
-    });
-    fs.mkdirSync(path.join(desktopRoot, ".stella", "agents"), {
+    fs.mkdirSync(path.join(desktopRoot, "resources", "stella-defaults", "extensions", "skills"), {
       recursive: true,
     });
     fs.writeFileSync(
-      path.join(desktopRoot, ".stella", "core-skills", "theme-factory", "SKILL.md"),
+      path.join(
+        desktopRoot,
+        "resources",
+        "stella-defaults",
+        "core-skills",
+        "theme-factory",
+        "SKILL.md",
+      ),
       "theme",
       "utf-8",
     );
     fs.writeFileSync(
-      path.join(desktopRoot, ".stella", "extensions", "skills", ".gitkeep"),
+      path.join(
+        desktopRoot,
+        "resources",
+        "stella-defaults",
+        "extensions",
+        "skills",
+        ".gitkeep",
+      ),
       "",
       "utf-8",
     );
 
     const mockApp = {
       getAppPath: () => desktopRoot,
+      isPackaged: false,
     } as App;
 
     const stellaHome = await resolveStellaHome(mockApp);
 
     expect(resolveDesktopRoot(mockApp)).toBe(desktopRoot);
     expect(resolveInstallRoot(mockApp)).toBe(installRoot);
+    expect(resolveBundledDefaultsPath(mockApp)).toBe(
+      path.join(desktopRoot, "resources", "stella-defaults"),
+    );
     expect(stellaHome.homePath).toBe(path.join(installRoot, ".stella"));
     expect(stellaHome.workspacePath).toBe(path.join(desktopRoot, "workspace"));
     expect(fs.existsSync(path.join(stellaHome.homePath, "agents"))).toBe(true);
