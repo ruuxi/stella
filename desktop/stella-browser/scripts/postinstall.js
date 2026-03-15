@@ -103,9 +103,9 @@ async function main() {
     console.log(`✓ Downloaded native binary: ${binaryName}`);
   } catch (err) {
     console.log(`⚠ Could not download native binary: ${err.message}`);
-    console.log('  stella-browser now requires a native binary to run.');
+    console.log(`  The CLI will use Node.js fallback (slightly slower startup)`);
     console.log('');
-    console.log('To build the native binary locally from source:');
+    console.log('To build the native binary locally:');
     console.log('  1. Install Rust: https://rustup.rs');
     console.log('  2. Run: npm run build:native');
   }
