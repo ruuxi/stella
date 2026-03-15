@@ -43,7 +43,7 @@ impl ExtensionBridge {
     ) -> Self {
         let token = token
             .map(|value| value.trim().to_string())
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            .unwrap_or_default();
         let (connected_tx, _) = watch::channel(false);
 
         Self {
@@ -189,6 +189,10 @@ impl ExtensionBridge {
         }
 
         self.send_command(command, self.command_timeout).await
+    }
+
+    pub async fn wait_for_connection(&self, timeout: Duration) -> bool {
+        self.wait_for_reconnect(timeout).await
     }
 
     async fn verify_connection(&self) -> bool {

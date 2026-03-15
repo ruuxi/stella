@@ -82,8 +82,8 @@ impl Connection {
 }
 
 /// Get the base directory for socket/pid files.
-/// Priority: STELLA_BROWSER_SOCKET_DIR > XDG_RUNTIME_DIR > ~/.stella-browser > tmpdir
-pub fn get_socket_dir() -> PathBuf {
+/// Priority: STELLA_BROWSER_SOCKET_DIR > repo-local .stella > XDG_RUNTIME_DIR > home dir fallback > tmpdir
+pub fn get_storage_root_dir() -> PathBuf {
     // 1. Explicit override (ignore empty string)
     if let Ok(dir) = env::var("STELLA_BROWSER_SOCKET_DIR") {
         if !dir.is_empty() {
@@ -91,20 +91,61 @@ pub fn get_socket_dir() -> PathBuf {
         }
     }
 
-    // 2. XDG_RUNTIME_DIR (Linux standard, ignore empty string)
+    // 2. Prefer the repo-local .stella directory when available
+    if let Some(dir) = find_repo_local_storage_dir() {
+        return dir;
+    }
+
+    // 3. XDG_RUNTIME_DIR (Linux standard, ignore empty string)
     if let Ok(runtime_dir) = env::var("XDG_RUNTIME_DIR") {
         if !runtime_dir.is_empty() {
             return PathBuf::from(runtime_dir).join("stella-browser");
         }
     }
 
-    // 3. Home directory fallback (like Docker Desktop's ~/.docker/run/)
+    // 4. Home directory fallback
     if let Some(home) = dirs::home_dir() {
         return home.join(".stella-browser");
     }
 
-    // 4. Last resort: temp dir
+    // 5. Last resort: temp dir
     env::temp_dir().join("stella-browser")
+}
+
+pub fn get_socket_dir() -> PathBuf {
+    get_storage_root_dir()
+}
+
+fn find_repo_local_storage_dir() -> Option<PathBuf> {
+    fn search_from(start: PathBuf) -> Option<PathBuf> {
+        let home_dir = dirs::home_dir();
+        for ancestor in start.ancestors().take(4) {
+            if home_dir.as_ref().is_some_and(|home| ancestor == home) {
+                continue;
+            }
+            let candidate = ancestor.join(".stella");
+            if candidate.is_dir() {
+                return Some(candidate.join("stella-browser"));
+            }
+        }
+        None
+    }
+
+    if let Ok(current_dir) = env::current_dir() {
+        if let Some(dir) = search_from(current_dir) {
+            return Some(dir);
+        }
+    }
+
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(parent) = exe_path.parent() {
+            if let Some(dir) = search_from(parent.to_path_buf()) {
+                return Some(dir);
+            }
+        }
+    }
+
+    None
 }
 
 #[cfg(unix)]
@@ -126,6 +167,10 @@ fn cleanup_stale_files(session: &str) {
     let _ = fs::remove_file(&pid_path);
     let kind_path = get_kind_path(session);
     let _ = fs::remove_file(&kind_path);
+    let ext_port_path = get_ext_port_path(session);
+    let _ = fs::remove_file(&ext_port_path);
+    let ext_token_path = get_ext_token_path(session);
+    let _ = fs::remove_file(&ext_token_path);
 
     #[cfg(unix)]
     {
@@ -143,6 +188,14 @@ fn cleanup_stale_files(session: &str) {
 #[cfg(windows)]
 fn get_port_path(session: &str) -> PathBuf {
     get_socket_dir().join(format!("{}.port", session))
+}
+
+fn get_ext_port_path(session: &str) -> PathBuf {
+    get_socket_dir().join(format!("{}.ext-port", session))
+}
+
+fn get_ext_token_path(session: &str) -> PathBuf {
+    get_socket_dir().join(format!("{}.ext-token", session))
 }
 
 #[cfg(windows)]
@@ -234,6 +287,40 @@ fn stop_daemon(session: &str) {
     cleanup_stale_files(session);
 }
 
+pub fn cleanup_competing_extension_sessions(current_session: &str, port: u16) {
+    let socket_dir = get_socket_dir();
+    let Ok(entries) = fs::read_dir(&socket_dir) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        let Some(session) = name.strip_suffix(".ext-port") else {
+            continue;
+        };
+        if session == current_session {
+            continue;
+        }
+
+        let matches_port = fs::read_to_string(&path)
+            .ok()
+            .and_then(|value| value.trim().parse::<u16>().ok())
+            == Some(port);
+        if !matches_port {
+            continue;
+        }
+
+        if is_daemon_running(session) || daemon_ready(session) {
+            stop_daemon(session);
+        } else {
+            cleanup_stale_files(session);
+        }
+    }
+}
+
 fn apply_daemon_env(
     cmd: &mut Command,
     session: &str,
@@ -300,6 +387,24 @@ fn apply_daemon_env(
 
     if let Some(p) = provider {
         cmd.env("STELLA_BROWSER_PROVIDER", p);
+    }
+
+    if env::var("STELLA_BROWSER_USER_BROWSER")
+        .ok()
+        .as_deref()
+        == Some("1")
+    {
+        cmd.env("STELLA_BROWSER_USER_BROWSER", "1");
+    }
+
+    if let Ok(port) = env::var("STELLA_BROWSER_EXT_PORT") {
+        if !port.trim().is_empty() {
+            cmd.env("STELLA_BROWSER_EXT_PORT", port);
+        }
+    }
+
+    if let Ok(token) = env::var("STELLA_BROWSER_EXT_TOKEN") {
+        cmd.env("STELLA_BROWSER_EXT_TOKEN", token);
     }
 
     if let Some(d) = device {
@@ -630,16 +735,22 @@ mod tests {
     struct EnvGuard<'a> {
         _lock: MutexGuard<'a, ()>,
         vars: Vec<(String, Option<String>)>,
+        current_dir: PathBuf,
     }
 
     impl<'a> EnvGuard<'a> {
         fn new(var_names: &[&str]) -> Self {
             let lock = ENV_MUTEX.lock().unwrap();
+            let current_dir = env::current_dir().unwrap();
             let vars = var_names
                 .iter()
                 .map(|&name| (name.to_string(), env::var(name).ok()))
                 .collect();
-            Self { _lock: lock, vars }
+            Self {
+                _lock: lock,
+                vars,
+                current_dir,
+            }
         }
     }
 
@@ -651,6 +762,7 @@ mod tests {
                     None => env::remove_var(name),
                 }
             }
+            let _ = env::set_current_dir(&self.current_dir);
         }
     }
 
@@ -673,12 +785,15 @@ mod tests {
 
         assert!(get_socket_dir()
             .to_string_lossy()
-            .ends_with(".stella-browser"));
+            .contains(".stella"));
     }
 
     #[test]
     fn test_get_socket_dir_xdg_runtime() {
         let _guard = EnvGuard::new(&["STELLA_BROWSER_SOCKET_DIR", "XDG_RUNTIME_DIR"]);
+        let temp_dir = env::temp_dir().join("stella-browser-xdg-runtime-test");
+        let _ = fs::create_dir_all(&temp_dir);
+        env::set_current_dir(&temp_dir).unwrap();
 
         env::remove_var("STELLA_BROWSER_SOCKET_DIR");
         env::set_var("XDG_RUNTIME_DIR", "/run/user/1000");
@@ -698,13 +813,15 @@ mod tests {
 
         assert!(get_socket_dir()
             .to_string_lossy()
-            .ends_with(".stella-browser"));
+            .contains(".stella"));
     }
 
     #[test]
     fn test_get_socket_dir_home_fallback() {
         let _guard = EnvGuard::new(&["STELLA_BROWSER_SOCKET_DIR", "XDG_RUNTIME_DIR"]);
-
+        let temp_dir = env::temp_dir().join("stella-browser-home-fallback-test");
+        let _ = fs::create_dir_all(&temp_dir);
+        env::set_current_dir(&temp_dir).unwrap();
         env::remove_var("STELLA_BROWSER_SOCKET_DIR");
         env::remove_var("XDG_RUNTIME_DIR");
 
@@ -713,6 +830,41 @@ mod tests {
         assert!(
             result.to_string_lossy().contains("home") || result.to_string_lossy().contains("Users")
         );
+    }
+
+    #[test]
+    fn test_cleanup_competing_extension_sessions_removes_stale_matching_session_files() {
+        let _guard = EnvGuard::new(&["STELLA_BROWSER_SOCKET_DIR", "XDG_RUNTIME_DIR"]);
+
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp_dir = env::temp_dir().join(format!("stella-browser-conn-test-{unique}"));
+        fs::create_dir_all(&temp_dir).unwrap();
+        env::set_var("STELLA_BROWSER_SOCKET_DIR", &temp_dir);
+        env::remove_var("XDG_RUNTIME_DIR");
+
+        fs::write(temp_dir.join("default.ext-port"), "9224").unwrap();
+        fs::write(temp_dir.join("other.ext-port"), "9224").unwrap();
+        fs::write(temp_dir.join("other.ext-token"), "").unwrap();
+        fs::write(temp_dir.join("other.pid"), "12345").unwrap();
+        fs::write(temp_dir.join("other.kind"), "native").unwrap();
+        fs::write(temp_dir.join("other.port"), "50000").unwrap();
+        fs::write(temp_dir.join("other.sock"), "").unwrap();
+        fs::write(temp_dir.join("different.ext-port"), "9333").unwrap();
+
+        cleanup_competing_extension_sessions("default", 9224);
+
+        assert!(temp_dir.join("default.ext-port").exists());
+        assert!(!temp_dir.join("other.ext-port").exists());
+        assert!(!temp_dir.join("other.ext-token").exists());
+        assert!(!temp_dir.join("other.pid").exists());
+        assert!(!temp_dir.join("other.kind").exists());
+        assert!(!temp_dir.join("other.port").exists());
+        assert!(temp_dir.join("different.ext-port").exists());
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 
     // === Transient Error Detection Tests ===

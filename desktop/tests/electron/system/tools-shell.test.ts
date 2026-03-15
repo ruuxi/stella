@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { createShellState, handleSkillBash } from "../../../electron/core/runtime/tools/shell.js";
+import {
+  createShellState,
+  handleSkillBash,
+  normalizeAppAgentShellCommand,
+} from "../../../electron/core/runtime/tools/shell.js";
 
 const { writeSecretFileMock, removeSecretFileMock } = vi.hoisted(() => ({
   writeSecretFileMock: vi.fn(),
@@ -88,5 +92,16 @@ describe("SkillBash secret mounts", () => {
 
     expect(result.error).toContain("Missing secret for provider-b.");
     expect(removeSecretFileMock).toHaveBeenCalledWith("/tmp/secret-a");
+  });
+});
+
+describe("normalizeAppAgentShellCommand", () => {
+  it("strips inline STELLA_BROWSER_SESSION overrides from stella-browser commands", () => {
+    const command =
+      "STELLA_BROWSER_SESSION=youtube_open_test stella-browser open https://youtube.com && STELLA_BROWSER_SESSION=youtube_open_test stella-browser title";
+
+    expect(normalizeAppAgentShellCommand(command)).toBe(
+      "stella-browser open https://youtube.com && stella-browser title",
+    );
   });
 });

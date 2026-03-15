@@ -144,6 +144,12 @@ describe('extension background reconnect handling', () => {
         onConnect: {
           addListener: vi.fn(),
         },
+        onStartup: {
+          addListener: vi.fn(),
+        },
+        onInstalled: {
+          addListener: vi.fn(),
+        },
         onMessage: {
           addListener: vi.fn(),
         },
@@ -169,5 +175,10 @@ describe('extension background reconnect handling', () => {
     await statusListener?.(false)
 
     expect(closeAgentWindowMock).not.toHaveBeenCalled()
+  })
+
+  it('registers startup hooks to reconnect after browser relaunch', async () => {
+    expect((globalThis as any).chrome.runtime.onStartup.addListener).toHaveBeenCalledTimes(1)
+    expect((globalThis as any).chrome.runtime.onInstalled.addListener).toHaveBeenCalledTimes(1)
   })
 })

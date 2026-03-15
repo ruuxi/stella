@@ -241,8 +241,6 @@ async function ensureOffscreen() {
 
 ensureOffscreen();
 
-// Auto-connect on service worker load (this runs on every SW start, including
-// browser startup and extension install/update — no need for separate listeners)
 async function autoConnect() {
   const config = await chrome.storage.local.get(['port', 'token']);
   const port = config.port || 9224;
@@ -251,7 +249,23 @@ async function autoConnect() {
   connect(port, token);
 }
 
+async function initializeConnection() {
+  await ensureOffscreen();
+  await autoConnect();
+}
+
+// Attempt to connect when the service worker is already awake.
 autoConnect();
+
+// Also register explicit startup hooks so Chrome can wake the MV3 service
+// worker and reconnect after a browser relaunch/session restore.
+chrome.runtime.onStartup?.addListener(() => {
+  void initializeConnection();
+});
+
+chrome.runtime.onInstalled?.addListener(() => {
+  void initializeConnection();
+});
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
