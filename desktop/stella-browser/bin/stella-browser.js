@@ -93,7 +93,7 @@ function main() {
   // Spawn the native binary with inherited stdio
   const child = spawn(binaryPath, process.argv.slice(2), {
     stdio: 'inherit',
-    windowsHide: false,
+    windowsHide: true,
   });
 
   child.on('error', (err) => {
