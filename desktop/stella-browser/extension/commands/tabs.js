@@ -10,6 +10,47 @@
 let agentWindowId = null;
 let stellaGroupId = null;
 
+async function ensureStellaGroup(windowId) {
+  const tabs = await chrome.tabs.query({ windowId });
+  if (tabs.length === 0) {
+    stellaGroupId = null;
+    return;
+  }
+
+  if (stellaGroupId != null) {
+    try {
+      await chrome.tabGroups.get(stellaGroupId);
+      return;
+    } catch {
+      stellaGroupId = null;
+    }
+  }
+
+  const existingGroupId = tabs.find(tab => typeof tab.groupId === 'number' && tab.groupId >= 0)?.groupId;
+  if (existingGroupId != null) {
+    try {
+      await chrome.tabGroups.update(existingGroupId, {
+        title: 'Stella',
+        color: 'purple',
+      });
+      stellaGroupId = existingGroupId;
+      return;
+    } catch {
+      stellaGroupId = null;
+    }
+  }
+
+  const groupId = await chrome.tabs.group({
+    tabIds: tabs.map(t => t.id),
+    createProperties: { windowId },
+  });
+  await chrome.tabGroups.update(groupId, {
+    title: 'Stella',
+    color: 'purple',
+  });
+  stellaGroupId = groupId;
+}
+
 /**
  * Ensure the agent has a dedicated window with a Stella tab group.
  * Creates lazily on first use. If the window was closed by the user,
@@ -37,18 +78,7 @@ async function ensureAgentWindow() {
   agentWindowId = win.id;
 
   // Group the initial tab under "Stella"
-  const tabs = await chrome.tabs.query({ windowId: agentWindowId });
-  if (tabs.length > 0) {
-    const groupId = await chrome.tabs.group({
-      tabIds: tabs.map(t => t.id),
-      createProperties: { windowId: agentWindowId },
-    });
-    await chrome.tabGroups.update(groupId, {
-      title: 'Stella',
-      color: 'purple',
-    });
-    stellaGroupId = groupId;
-  }
+  await ensureStellaGroup(agentWindowId);
 
   console.log('[tabs] Created agent window', agentWindowId, 'with Stella group', stellaGroupId);
   return agentWindowId;
@@ -107,6 +137,7 @@ export async function closeAgentWindow() {
  */
 export async function getActiveTab() {
   const windowId = await ensureAgentWindow();
+  await ensureStellaGroup(windowId);
   const [tab] = await chrome.tabs.query({ active: true, windowId });
   if (!tab) throw new Error('No active tab found');
   return tab;
