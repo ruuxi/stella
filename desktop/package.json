@@ -161,13 +161,13 @@
         ]
       },
       {
-        "from": ".stella/core-skills",
-        "to": "core-skills",
+        "from": "resources/stella-defaults/core-skills",
+        "to": "stella-defaults/core-skills",
         "filter": ["**/*"]
       },
       {
-        "from": ".stella/extensions",
-        "to": "extensions",
+        "from": "resources/stella-defaults/extensions",
+        "to": "stella-defaults/extensions",
         "filter": ["**/*"]
       },
       {
