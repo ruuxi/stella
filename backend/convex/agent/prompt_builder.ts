@@ -11,7 +11,7 @@ import {
   normalizeGeneralAgentEngine,
   normalizeMaxAgentConcurrency,
 } from "../data/preferences";
-import { SKILLS_DISABLED_AGENT_TYPES } from "../lib/agent_constants";
+import { AGENT_IDS, SKILLS_DISABLED_AGENT_TYPES } from "../lib/agent_constants";
 import {
   buildSkillsPromptSection,
   getPlatformSystemGuidance,
@@ -49,10 +49,13 @@ export const buildSystemPrompt = async (
     timezone?: string;
   },
 ): Promise<PromptBuildResult> => {
-  const agent = await ctx.runQuery(internal.agent.agents.getAgentConfigInternal, {
-    agentType,
-    ownerId: options?.ownerId,
-  });
+  const agent = await ctx.runQuery(
+    internal.agent.agents.getAgentConfigInternal,
+    {
+      agentType,
+      ownerId: options?.ownerId,
+    },
+  );
 
   const skills = SKILLS_DISABLED_AGENT_TYPES.has(agentType)
     ? []
@@ -62,8 +65,8 @@ export const buildSystemPrompt = async (
       });
 
   const skillsSection = buildSkillsPromptSection(
-    skills.map((
-      skill: {
+    skills.map(
+      (skill: {
         id: string;
         name: string;
         description: string;
@@ -71,16 +74,16 @@ export const buildSystemPrompt = async (
         requiresSecrets?: string[];
         publicIntegration?: boolean;
         secretMounts?: Record<string, unknown>;
-      },
-    ) => ({
-      id: skill.id,
-      name: skill.name,
-      description: skill.description,
-      execution: skill.execution,
-      requiresSecrets: skill.requiresSecrets,
-      publicIntegration: skill.publicIntegration,
-      secretMounts: skill.secretMounts,
-    })),
+      }) => ({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        execution: skill.execution,
+        requiresSecrets: skill.requiresSecrets,
+        publicIntegration: skill.publicIntegration,
+        secretMounts: skill.secretMounts,
+      }),
+    ),
   );
 
   const systemParts = [agent.systemPrompt];
@@ -98,9 +101,10 @@ export const buildSystemPrompt = async (
   const dynamicParts: string[] = [];
 
   const maxTaskDepthValue = Number(agent.maxTaskDepth);
-  const maxTaskDepth = Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue >= 0
-    ? Math.floor(maxTaskDepthValue)
-    : 2;
+  const maxTaskDepth =
+    Number.isFinite(maxTaskDepthValue) && maxTaskDepthValue >= 0
+      ? Math.floor(maxTaskDepthValue)
+      : 2;
 
   return {
     systemPrompt: systemParts.join("\n\n").trim(),
@@ -126,17 +130,23 @@ const agentContextResultValidator = v.object({
   maxTaskDepth: v.number(),
   defaultSkills: v.array(v.string()),
   skillIds: v.array(v.string()),
-  threadHistory: v.optional(v.array(v.object({
-    role: v.string(),
-    content: v.string(),
-    toolCallId: v.optional(v.string()),
-  }))),
+  threadHistory: v.optional(
+    v.array(
+      v.object({
+        role: v.string(),
+        content: v.string(),
+        toolCallId: v.optional(v.string()),
+      }),
+    ),
+  ),
   activeThreadId: v.optional(v.string()),
-  agentEngine: v.optional(v.union(
-    v.literal("default"),
-    v.literal("codex_local"),
-    v.literal("claude_code_local"),
-  )),
+  agentEngine: v.optional(
+    v.union(
+      v.literal("default"),
+      v.literal("codex_local"),
+      v.literal("claude_code_local"),
+    ),
+  ),
   maxAgentConcurrency: v.optional(v.number()),
 });
 type AgentContextResult = Infer<typeof agentContextResultValidator>;
@@ -193,10 +203,14 @@ const fetchAgentContextForOwner = async (
 
   let agentEngine: "default" | "codex_local" | "claude_code_local" | undefined;
   let maxAgentConcurrency: number | undefined;
-  if (args.agentType === "general" || args.agentType === "self_mod") {
-    const engineKey = args.agentType === "self_mod"
-      ? SELF_MOD_AGENT_ENGINE_KEY
-      : GENERAL_AGENT_ENGINE_KEY;
+  if (
+    args.agentType === AGENT_IDS.GENERAL ||
+    args.agentType === AGENT_IDS.SELF_MOD
+  ) {
+    const engineKey =
+      args.agentType === AGENT_IDS.SELF_MOD
+        ? SELF_MOD_AGENT_ENGINE_KEY
+        : GENERAL_AGENT_ENGINE_KEY;
     agentEngine = "default";
     maxAgentConcurrency = 24;
     const enginePreference = await ctx.runQuery(
@@ -212,13 +226,16 @@ const fetchAgentContextForOwner = async (
   }
 
   // 3. Get thread history if we have an active thread
-  let threadHistory: Array<{ role: string; content: string; toolCallId?: string }> | undefined;
+  let threadHistory:
+    | Array<{ role: string; content: string; toolCallId?: string }>
+    | undefined;
   let activeThreadId: string | undefined;
 
-  const resolvedThreadId = args.threadId ?? await ctx.runQuery(
-    internal.conversations.getActiveThreadId,
-    { conversationId: args.conversationId },
-  );
+  const resolvedThreadId =
+    args.threadId ??
+    (await ctx.runQuery(internal.conversations.getActiveThreadId, {
+      conversationId: args.conversationId,
+    }));
 
   if (resolvedThreadId) {
     activeThreadId = resolvedThreadId;
@@ -231,11 +248,13 @@ const fetchAgentContextForOwner = async (
       );
       const recent = messages.slice(-(args.maxHistoryMessages ?? 50));
       if (recent.length > 0) {
-        threadHistory = recent.map((m: { role: string; content: string; toolCallId?: string }) => ({
-          role: m.role,
-          content: m.content,
-          toolCallId: m.toolCallId,
-        }));
+        threadHistory = recent.map(
+          (m: { role: string; content: string; toolCallId?: string }) => ({
+            role: m.role,
+            content: m.content,
+            toolCallId: m.toolCallId,
+          }),
+        );
       }
     } catch {
       // Thread messages unavailable
@@ -268,7 +287,10 @@ export const fetchAgentContextForRuntime = action({
   args: fetchAgentContextRuntimeArgs,
   returns: agentContextResultValidator,
   handler: async (ctx, args): Promise<AgentContextResult> => {
-    const conversation = await requireConversationOwnerAction(ctx, args.conversationId);
+    const conversation = await requireConversationOwnerAction(
+      ctx,
+      args.conversationId,
+    );
     return await fetchAgentContextForOwner(ctx, {
       ownerId: conversation.ownerId,
       conversationId: args.conversationId,
@@ -306,12 +328,20 @@ export const fetchLocalAgentContextForRuntime = action({
       // Ignore model override lookup errors for local bootstrap.
     }
 
-    let agentEngine: "default" | "codex_local" | "claude_code_local" | undefined;
+    let agentEngine:
+      | "default"
+      | "codex_local"
+      | "claude_code_local"
+      | undefined;
     let maxAgentConcurrency: number | undefined;
-    if (args.agentType === "general" || args.agentType === "self_mod") {
-      const engineKey = args.agentType === "self_mod"
-        ? SELF_MOD_AGENT_ENGINE_KEY
-        : GENERAL_AGENT_ENGINE_KEY;
+    if (
+      args.agentType === AGENT_IDS.GENERAL ||
+      args.agentType === AGENT_IDS.SELF_MOD
+    ) {
+      const engineKey =
+        args.agentType === AGENT_IDS.SELF_MOD
+          ? SELF_MOD_AGENT_ENGINE_KEY
+          : GENERAL_AGENT_ENGINE_KEY;
       agentEngine = "default";
       maxAgentConcurrency = 24;
       try {
@@ -328,7 +358,9 @@ export const fetchLocalAgentContextForRuntime = action({
           internal.data.preferences.getPreferenceForOwner,
           { ownerId, key: MAX_AGENT_CONCURRENCY_KEY },
         );
-        maxAgentConcurrency = normalizeMaxAgentConcurrency(concurrencyPreference);
+        maxAgentConcurrency = normalizeMaxAgentConcurrency(
+          concurrencyPreference,
+        );
       } catch {
         // Ignore preference lookup errors; defaults remain valid.
       }

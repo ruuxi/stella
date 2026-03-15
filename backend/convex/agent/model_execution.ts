@@ -1,4 +1,5 @@
 import { generateText, streamText, type LanguageModelUsage } from "ai";
+import { BACKEND_TOOL_IDS } from "../lib/agent_constants";
 import { withModelFailover, withModelFailoverAsync } from "./model_failover";
 import type { ResolvedModelConfig } from "./model_resolver";
 
@@ -10,7 +11,7 @@ type StepLike = {
   toolCalls?: ToolCallLike[];
 };
 
-const NO_RESPONSE_TOOL_NAME = "NoResponse";
+const NO_RESPONSE_TOOL_NAME = BACKEND_TOOL_IDS.NO_RESPONSE;
 
 function toUsageSummary(usage?: LanguageModelUsage | null) {
   if (!usage) {
@@ -39,9 +40,7 @@ export function hasNoResponseToolCall(toolCalls?: ToolCallLike[]): boolean {
 }
 
 export function hasNoResponseInSteps(steps?: StepLike[]): boolean {
-  return Boolean(
-    steps?.some((step) => hasNoResponseToolCall(step.toolCalls)),
-  );
+  return Boolean(steps?.some((step) => hasNoResponseToolCall(step.toolCalls)));
 }
 
 export function usageSummaryFromFinish(
@@ -65,7 +64,12 @@ export function createStreamExecutionLifecycle() {
         };
       }
     },
-    onFinish: ({ totalUsage }: { usage: LanguageModelUsage; totalUsage: LanguageModelUsage }) => {
+    onFinish: ({
+      totalUsage,
+    }: {
+      usage: LanguageModelUsage;
+      totalUsage: LanguageModelUsage;
+    }) => {
       state = {
         ...state,
         usageSummary: usageSummaryFromFinish(totalUsage),
@@ -82,9 +86,15 @@ export function streamTextWithFailover(args: {
 }) {
   const { resolvedConfig, fallbackConfig, sharedArgs } = args;
   return withModelFailover(
-    () => streamText({ ...resolvedConfig, ...sharedArgs } as Parameters<typeof streamText>[0]),
+    () =>
+      streamText({ ...resolvedConfig, ...sharedArgs } as Parameters<
+        typeof streamText
+      >[0]),
     fallbackConfig
-      ? () => streamText({ ...fallbackConfig, ...sharedArgs } as Parameters<typeof streamText>[0])
+      ? () =>
+          streamText({ ...fallbackConfig, ...sharedArgs } as Parameters<
+            typeof streamText
+          >[0])
       : undefined,
   );
 }
@@ -96,9 +106,15 @@ export async function generateTextWithFailover(args: {
 }) {
   const { resolvedConfig, fallbackConfig, sharedArgs } = args;
   return await withModelFailoverAsync(
-    () => generateText({ ...resolvedConfig, ...sharedArgs } as Parameters<typeof generateText>[0]),
+    () =>
+      generateText({ ...resolvedConfig, ...sharedArgs } as Parameters<
+        typeof generateText
+      >[0]),
     fallbackConfig
-      ? () => generateText({ ...fallbackConfig, ...sharedArgs } as Parameters<typeof generateText>[0])
+      ? () =>
+          generateText({ ...fallbackConfig, ...sharedArgs } as Parameters<
+            typeof generateText
+          >[0])
       : undefined,
   );
 }
