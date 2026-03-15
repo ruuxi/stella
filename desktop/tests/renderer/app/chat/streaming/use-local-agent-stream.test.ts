@@ -14,13 +14,23 @@ import { useLocalAgentStream } from "../../../../../src/app/chat/streaming/use-l
 describe("useLocalAgentStream", () => {
   let rafCallbacks: FrameRequestCallback[];
   let resolveStartChat: ((value: { runId: string }) => void) | null;
+  let streamCallback: ((event: {
+    type: "end";
+    runId: string;
+    agentType: "orchestrator";
+    seq: number;
+    finalText: string;
+  }) => void) | null;
 
   const mockHealthCheck = vi.fn(() => Promise.resolve({ ready: true }));
   const mockStartChat = vi.fn(() => new Promise<{ runId: string }>((resolve) => {
     resolveStartChat = resolve;
   }));
   const mockCancelChat = vi.fn();
-  const mockOnStream = vi.fn(() => vi.fn());
+  const mockOnStream = vi.fn((callback) => {
+    streamCallback = callback;
+    return vi.fn();
+  });
 
   const flushMicrotasks = async () => {
     await Promise.resolve();
@@ -39,6 +49,7 @@ describe("useLocalAgentStream", () => {
   beforeEach(() => {
     rafCallbacks = [];
     resolveStartChat = null;
+    streamCallback = null;
     vi.clearAllMocks();
 
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
@@ -102,5 +113,59 @@ describe("useLocalAgentStream", () => {
     expect(mockCancelChat).toHaveBeenCalledWith("run-1");
     expect(result.current.isStreaming).toBe(false);
     expect(result.current.pendingUserMessageId).toBeNull();
+  });
+
+  it("attaches a later completion follow-up to the latest user turn when the run has no direct userMessageId link", async () => {
+    const appendAgentEvent = vi.fn();
+    const { result } = renderHook(() =>
+      useLocalAgentStream({
+        activeConversationId: "conv-1",
+        storageMode: "local",
+        appendAgentEvent,
+      }),
+    );
+
+    await act(async () => {
+      result.current.startStream({
+        userMessageId: "msg-1",
+        userPrompt: "open youtube",
+      });
+      await flushMicrotasks();
+    });
+
+    await act(async () => {
+      resolveStartChat?.({ runId: "run-1" });
+      await flushMicrotasks();
+    });
+
+    await act(async () => {
+      streamCallback?.({
+        type: "end",
+        runId: "run-1",
+        agentType: "orchestrator",
+        seq: 1,
+        finalText: "Opening YouTube for you now.",
+      });
+      await flushMicrotasks();
+    });
+
+    await act(async () => {
+      streamCallback?.({
+        type: "end",
+        runId: "run-2",
+        agentType: "orchestrator",
+        seq: 2,
+        finalText: "YouTube is now open in your browser.",
+      });
+      await flushMicrotasks();
+    });
+
+    expect(appendAgentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "assistant_message",
+        userMessageId: "msg-1",
+        finalText: "YouTube is now open in your browser.",
+      }),
+    );
   });
 });

@@ -10,7 +10,7 @@
  * - tools-search.ts   — Glob, Grep handlers
  * - tools-shell.ts    — Bash, SkillBash handlers
  * - tools-web.ts      — WebFetch, WebSearch handlers
- * - tools-state.ts    — TaskUpdate/Task, TaskOutput handlers
+ * - tools-state.ts    — TaskCreate/TaskCancel, TaskUpdate, TaskOutput handlers
  * - tools-user.ts     — AskUserQuestion, RequestCredential handlers
  */
 
@@ -44,6 +44,7 @@ import {
 import {
   createStateContext,
   handleTask,
+  handleTaskUpdate,
   handleTaskOutput,
   type StateContext,
 } from "./state.js";
@@ -170,8 +171,7 @@ export const createToolHost = ({
     SkillBash: (args, context) => handleSkillBash(shellState, args, context),
 
     // State tools
-    TaskUpdate: (args, context) => handleTask(stateContext, args, context),
-    Task: (args, context) => handleTask(stateContext, args, context),
+    TaskUpdate: (args, context) => handleTaskUpdate(stateContext, args, context),
     TaskCreate: (args, context) =>
       handleTask(
         stateContext,
