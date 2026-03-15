@@ -4,6 +4,7 @@ export type SetupStepId =
 	| "prepare"
 	| "payload"
 	| "deps"
+	| "browser"
 	| "shortcuts"
 	| "finalize";
 

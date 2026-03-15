@@ -21,6 +21,7 @@ const LAUNCH_SCRIPT_WIN = "launch.cmd";
 const LAUNCH_SCRIPT_UNIX = "launch.sh";
 const ESTIMATED_INSTALL_BYTES = 1024 * 1024 * 1024; // 1 GB
 const APP_VERSION = "0.0.1";
+const STELLA_BROWSER_GITHUB_REPO = "vercel-labs/stella-browser";
 
 /* ── Dev-mode source detection ───────────────────────────────────── */
 
@@ -151,6 +152,126 @@ const nodeModulesOf = (d: string) => path.join(d, "node_modules");
 const launchScriptName = () =>
 	process.platform === "win32" ? LAUNCH_SCRIPT_WIN : LAUNCH_SCRIPT_UNIX;
 const launchScriptOf = (d: string) => path.join(d, launchScriptName());
+const stellaBrowserRootOf = (d: string) => path.join(d, "stella-browser");
+const stellaBrowserWrapperOf = (d: string) =>
+	path.join(stellaBrowserRootOf(d), "bin", "stella-browser.js");
+const stellaBrowserCargoTomlOf = (d: string) =>
+	path.join(stellaBrowserRootOf(d), "cli", "Cargo.toml");
+
+const getStellaBrowserBinaryName = (): string | null => {
+	const os =
+		process.platform === "darwin"
+			? "darwin"
+			: process.platform === "linux"
+				? "linux"
+				: process.platform === "win32"
+					? "win32"
+					: null;
+	if (!os) return null;
+
+	const arch =
+		process.arch === "x64"
+			? "x64"
+			: process.arch === "arm64"
+				? "arm64"
+				: null;
+	if (!arch) return null;
+
+	const ext = process.platform === "win32" ? ".exe" : "";
+	return `stella-browser-${os}-${arch}${ext}`;
+};
+
+const stellaBrowserBinaryOf = (d: string): string | null => {
+	const binaryName = getStellaBrowserBinaryName();
+	return binaryName
+		? path.join(stellaBrowserRootOf(d), "bin", binaryName)
+		: null;
+};
+
+const desktopDirOf = (
+	state: InstallerState,
+	ctx: InstallerContext,
+): string | null => (ctx.mode === "development" ? ctx.sourceDesktopDir : state.installPath);
+
+const readStellaBrowserVersion = async (desktopDir: string): Promise<string | null> => {
+	try {
+		const cargoToml = await readFile(stellaBrowserCargoTomlOf(desktopDir), "utf8");
+		const match = cargoToml.match(/^\s*version\s*=\s*"([^"]+)"/m);
+		return match?.[1] ?? null;
+	} catch {
+		return null;
+	}
+};
+
+const ensureExecutable = async (p: string): Promise<void> => {
+	if (process.platform !== "win32") {
+		await chmod(p, 0o755);
+	}
+};
+
+const verifyStellaBrowserBinary = async (
+	desktopDir: string,
+	expectedVersion?: string | null,
+): Promise<boolean> => {
+	const wrapper = stellaBrowserWrapperOf(desktopDir);
+	const binary = stellaBrowserBinaryOf(desktopDir);
+	if (!binary) return false;
+	if (!(await exists(wrapper)) || !(await exists(binary))) return false;
+
+	await ensureExecutable(binary);
+
+	const result = await run(["bun", "stella-browser/bin/stella-browser.js", "--version"], {
+		cwd: desktopDir,
+	});
+	if (!result.ok) return false;
+	if (expectedVersion && !result.stdout.includes(expectedVersion)) return false;
+	return true;
+};
+
+const downloadStellaBrowserBinary = async (
+	desktopDir: string,
+	version: string,
+): Promise<boolean> => {
+	const binaryName = getStellaBrowserBinaryName();
+	const binaryPath = stellaBrowserBinaryOf(desktopDir);
+	if (!binaryName || !binaryPath) return false;
+
+	const url = `https://github.com/${STELLA_BROWSER_GITHUB_REPO}/releases/download/v${version}/${binaryName}`;
+
+	try {
+		const response = await fetch(url);
+		if (!response.ok) return false;
+
+		await mkdir(path.dirname(binaryPath), { recursive: true });
+		const bytes = Buffer.from(await response.arrayBuffer());
+		await writeFile(binaryPath, bytes);
+		await ensureExecutable(binaryPath);
+		return true;
+	} catch {
+		return false;
+	}
+};
+
+const ensureStellaBrowserRuntime = async (
+	state: InstallerState,
+	ctx: InstallerContext,
+): Promise<boolean> => {
+	const desktopDir = desktopDirOf(state, ctx);
+	if (!desktopDir) return false;
+
+	const version = await readStellaBrowserVersion(desktopDir);
+	if (!version) return false;
+
+	if (await verifyStellaBrowserBinary(desktopDir, version)) {
+		return true;
+	}
+
+	if (!(await downloadStellaBrowserBinary(desktopDir, version))) {
+		return false;
+	}
+
+	return verifyStellaBrowserBinary(desktopDir, version);
+};
 
 /* ── Validation ──────────────────────────────────────────────────── */
 
@@ -437,6 +558,25 @@ const buildSteps = (ctx: InstallerContext): StepDef[] => {
 				(await run(["bun", "install"], { cwd: ctx.sourceDesktopDir! }))
 					.ok,
 		});
+		steps.push({
+			id: "browser",
+			label: "Provisioning Stella Browser",
+			check: async (s) => {
+				const desktopDir = desktopDirOf(s, ctx);
+				if (!desktopDir) return false;
+				if (!(await exists(stellaBrowserWrapperOf(desktopDir)))) return true;
+				return verifyStellaBrowserBinary(
+					desktopDir,
+					await readStellaBrowserVersion(desktopDir),
+				);
+			},
+			install: async (s) => {
+				const desktopDir = desktopDirOf(s, ctx);
+				if (!desktopDir) return false;
+				if (!(await exists(stellaBrowserWrapperOf(desktopDir)))) return true;
+				return ensureStellaBrowserRuntime(s, ctx);
+			},
+		});
 	} else {
 		// Production: download/extract the Stella repo.
 		steps.push({
@@ -479,6 +619,19 @@ const buildSteps = (ctx: InstallerContext): StepDef[] => {
 					await run(["bun", "install"], { cwd: s.installPath })
 				).ok;
 			},
+		});
+		steps.push({
+			id: "browser",
+			label: "Provisioning Stella Browser",
+			check: async (s) => {
+				const desktopDir = desktopDirOf(s, ctx);
+				if (!desktopDir) return false;
+				return verifyStellaBrowserBinary(
+					desktopDir,
+					await readStellaBrowserVersion(desktopDir),
+				);
+			},
+			install: async (s) => ensureStellaBrowserRuntime(s, ctx),
 		});
 
 		// Shortcuts only for production installs (Windows for now).
@@ -566,11 +719,24 @@ const refreshDerived = async (
 	state.installPathError = locationError(state.installPath, ctx);
 
 	if (ctx.mode === "development") {
-		state.canLaunch = ctx.sourceDesktopDir != null;
+		const desktopDir = ctx.sourceDesktopDir;
+		state.canLaunch =
+			desktopDir != null &&
+			(await exists(nodeModulesOf(desktopDir))) &&
+			(await verifyStellaBrowserBinary(
+				desktopDir,
+				await readStellaBrowserVersion(desktopDir),
+			));
 	} else {
 		const hasRepo = await exists(packageJsonOf(state.installPath));
 		const hasDeps = await exists(nodeModulesOf(state.installPath));
-		state.canLaunch = hasRepo && hasDeps;
+		state.canLaunch =
+			hasRepo &&
+			hasDeps &&
+			(await verifyStellaBrowserBinary(
+				state.installPath,
+				await readStellaBrowserVersion(state.installPath),
+			));
 	}
 };
 
@@ -740,6 +906,14 @@ export const getLaunchInfo = async (
 	ctx: InstallerContext,
 ): Promise<LaunchInfo | null> => {
 	if (ctx.mode === "development" && ctx.sourceDesktopDir) {
+		if (
+			!(await verifyStellaBrowserBinary(
+				ctx.sourceDesktopDir,
+				await readStellaBrowserVersion(ctx.sourceDesktopDir),
+			))
+		) {
+			return null;
+		}
 		return {
 			mode: "development",
 			command: ["bun", "run", "electron:dev"],
@@ -749,7 +923,15 @@ export const getLaunchInfo = async (
 
 	const hasRepo = await exists(packageJsonOf(state.installPath));
 	const hasDeps = await exists(nodeModulesOf(state.installPath));
-	if (!hasRepo || !hasDeps) return null;
+	if (
+		!hasRepo ||
+		!hasDeps ||
+		!(await verifyStellaBrowserBinary(
+			state.installPath,
+			await readStellaBrowserVersion(state.installPath),
+		))
+	)
+		return null;
 
 	return {
 		mode: "production",

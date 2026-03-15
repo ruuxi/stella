@@ -9,6 +9,7 @@ import {
 } from "electrobun/bun";
 import Electrobun from "electrobun/bun";
 import type { LauncherRPC } from "../shared/types";
+import { ensureLauncherRecoveryArtifacts } from "./recovery";
 import {
 	checkAll,
 	createSetupContext,
@@ -31,6 +32,8 @@ const setupContext = createSetupContext({
 	defaultInstallPath,
 	settingsFilePath: path.join(Utils.paths.userData, "installer-settings.json"),
 });
+const recoveryDir = path.join(Utils.paths.userData, "recovery");
+const RECOVERY_ERROR_PREFIX = "Launcher recovery check failed:";
 
 let setupState = await createSetupState(setupContext);
 let desktopProcess: ReturnType<typeof Bun.spawn> | null = null;
@@ -56,11 +59,46 @@ const sendInstallerState = () => {
 	mainWindow.webview.rpc?.send.installerStateUpdate({ state: setupState });
 };
 
+const clearRecoveryError = () => {
+	if (setupState.errorMessage?.startsWith(RECOVERY_ERROR_PREFIX)) {
+		setupState = {
+			...setupState,
+			errorMessage: undefined,
+		};
+	}
+};
+
+async function syncRecoveryArtifacts() {
+	const info = await getLaunchInfo(setupState, setupContext);
+	if (!info) {
+		clearRecoveryError();
+		return;
+	}
+
+	const recovery = await ensureLauncherRecoveryArtifacts({
+		recoveryDir,
+		desktopDir: info.cwd,
+	});
+
+	if (recovery.ok) {
+		clearRecoveryError();
+		return;
+	}
+
+	setupState = {
+		...setupState,
+		canLaunch: false,
+		errorMessage: `${RECOVERY_ERROR_PREFIX} ${recovery.errorMessage}`,
+	};
+}
+
 async function syncInstallerState() {
 	await checkAll(setupState, setupContext, (nextState) => {
 		setupState = { ...nextState };
 		sendInstallerState();
 	});
+	await syncRecoveryArtifacts();
+	sendInstallerState();
 }
 
 async function browseForInstallLocation() {
@@ -85,6 +123,23 @@ async function startDesktop() {
 
 	const info = await getLaunchInfo(setupState, setupContext);
 	if (!info) return;
+
+	const recovery = await ensureLauncherRecoveryArtifacts({
+		recoveryDir,
+		desktopDir: info.cwd,
+	});
+	if (!recovery.ok) {
+		setupState = {
+			...setupState,
+			canLaunch: false,
+			errorMessage: `${RECOVERY_ERROR_PREFIX} ${recovery.errorMessage}`,
+		};
+		sendInstallerState();
+		throw new Error(recovery.errorMessage);
+	}
+
+	clearRecoveryError();
+	sendInstallerState();
 
 	desktopProcess = Bun.spawn(info.command, {
 		cwd: info.cwd,

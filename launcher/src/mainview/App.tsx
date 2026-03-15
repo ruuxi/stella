@@ -338,32 +338,39 @@ function App() {
 
 				{/* ── Complete ────────────────────────────────────── */}
 				{isComplete && (
-					<div className="complete-body">
-						<svg
-							className="complete-check"
-							width="36"
-							height="36"
-							viewBox="0 0 36 36"
-							fill="none"
-						>
-							<circle
-								cx="18"
-								cy="18"
-								r="17"
-								stroke="#4aba6a"
-								strokeWidth="1.2"
-							/>
-							<path
-								d="M11 18.5L15.5 23L25 13"
-								stroke="#4aba6a"
-								strokeWidth="1.8"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-							/>
-						</svg>
-						<p className="complete-title">Stella is ready</p>
-						<p className="complete-path">{state.installPath}</p>
-					</div>
+					<>
+						<div className="complete-body">
+							<svg
+								className="complete-check"
+								width="36"
+								height="36"
+								viewBox="0 0 36 36"
+								fill="none"
+							>
+								<circle
+									cx="18"
+									cy="18"
+									r="17"
+									stroke="#4aba6a"
+									strokeWidth="1.2"
+								/>
+								<path
+									d="M11 18.5L15.5 23L25 13"
+									stroke="#4aba6a"
+									strokeWidth="1.8"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								/>
+							</svg>
+							<p className="complete-title">Stella is ready</p>
+							<p className="complete-path">{state.installPath}</p>
+						</div>
+						{state.errorMessage && (
+							<div className="banner banner-error">
+								{state.errorMessage}
+							</div>
+						)}
+					</>
 				)}
 			</main>
 
