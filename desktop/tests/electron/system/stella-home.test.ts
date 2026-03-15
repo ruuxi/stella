@@ -75,6 +75,7 @@ describe("stella-home", () => {
     );
     expect(stellaHome.homePath).toBe(path.join(installRoot, ".stella"));
     expect(stellaHome.workspacePath).toBe(path.join(desktopRoot, "workspace"));
+    expect(stellaHome.workspaceAppsPath).toBe(path.join(desktopRoot, "workspace", "apps"));
     expect(fs.existsSync(path.join(stellaHome.homePath, "agents"))).toBe(true);
     expect(
       fs.existsSync(path.join(stellaHome.homePath, "agents", "general", "AGENT.md")),

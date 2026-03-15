@@ -1,151 +1,8 @@
-import { useState, useEffect, useCallback, type ComponentType } from 'react'
 import { WorkspaceErrorBoundary } from '../WorkspaceErrorBoundary'
-import { Spinner } from '@/ui/spinner'
 import type { WorkspacePanel } from '@/context/workspace-state'
 import { DevProjectPanel } from './dev-project-panel'
 import { HostedGamePanel } from './hosted-game-panel'
-import {
-  areLocalWorkspacePanelsEnabled,
-  LOCAL_WORKSPACE_PANELS_DEV_ONLY_MESSAGE,
-} from '@/shared/lib/local-workspace-panels'
 import './workspace-renderers.css'
-
-const PANEL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
-const PANEL_IMPORT_ATTEMPTS = 3
-const PANEL_IMPORT_BASE_DELAY_MS = 200
-const PANEL_IMPORT_MAX_DELAY_MS = 1_000
-
-type PanelComponent = ComponentType<Record<string, unknown>>
-
-class MissingPanelNameError extends Error {
-  readonly _tag = 'MissingPanelNameError'
-
-  constructor(message: string) {
-    super(message)
-    this.name = 'MissingPanelNameError'
-  }
-}
-
-class InvalidPanelNameError extends Error {
-  readonly _tag = 'InvalidPanelNameError'
-
-  constructor(message: string) {
-    super(message)
-    this.name = 'InvalidPanelNameError'
-  }
-}
-
-class PanelImportError extends Error {
-  readonly _tag = 'PanelImportError'
-  readonly panelName: string
-  override readonly cause: unknown
-
-  constructor(panelName: string, cause: unknown) {
-    super(formatUnknownError(cause))
-    this.name = 'PanelImportError'
-    this.panelName = panelName
-    this.cause = cause
-  }
-}
-
-class InvalidPanelModuleError extends Error {
-  readonly _tag = 'InvalidPanelModuleError'
-
-  constructor(message: string) {
-    super(message)
-    this.name = 'InvalidPanelModuleError'
-  }
-}
-
-class UnsupportedPanelRuntimeError extends Error {
-  readonly _tag = 'UnsupportedPanelRuntimeError'
-
-  constructor(message: string) {
-    super(message)
-    this.name = 'UnsupportedPanelRuntimeError'
-  }
-}
-
-const normalizePanelName = (value: string): string | null => {
-  const base = value.trim().replace(/\.tsx$/i, '')
-  if (!PANEL_NAME_PATTERN.test(base)) {
-    return null
-  }
-  return base
-}
-
-const formatUnknownError = (error: unknown): string => {
-  if (error instanceof Error && error.message.trim()) return error.message
-  if (typeof error === 'string' && error.trim()) return error
-  return 'Unknown error'
-}
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-
-const getPanelImportBackoffMs = (attempt: number): number =>
-  Math.min(
-    PANEL_IMPORT_MAX_DELAY_MS,
-    PANEL_IMPORT_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 1),
-  )
-
-const loadPanelComponent = async (
-  panelName: string,
-): Promise<{ normalizedName: string; component: PanelComponent }> => {
-  if (!panelName) {
-    throw new MissingPanelNameError('No panel name specified')
-  }
-
-  const normalizedName = normalizePanelName(panelName)
-  if (!normalizedName) {
-    throw new InvalidPanelNameError('Invalid panel name. Use letters, numbers, "_" or "-".')
-  }
-
-  if (!areLocalWorkspacePanelsEnabled()) {
-    throw new UnsupportedPanelRuntimeError(LOCAL_WORKSPACE_PANELS_DEV_ONLY_MESSAGE)
-  }
-
-  let lastError: unknown = null
-  for (let attempt = 1; attempt <= PANEL_IMPORT_ATTEMPTS; attempt += 1) {
-    try {
-      const file = `${normalizedName}.tsx`
-      const mod = await import(/* @vite-ignore */ `/workspace/panels/${file}?t=${Date.now()}`)
-
-      if (typeof mod?.default !== 'function') {
-        throw new InvalidPanelModuleError('Panel module does not export a default component.')
-      }
-
-      return {
-        normalizedName,
-        component: mod.default as PanelComponent,
-      }
-    } catch (cause) {
-      const error = cause instanceof Error ? cause : new Error(formatUnknownError(cause))
-      const wrappedError = error instanceof InvalidPanelModuleError
-        ? error
-        : new PanelImportError(normalizedName, error)
-      lastError = wrappedError
-
-      if (!(wrappedError instanceof PanelImportError) || attempt >= PANEL_IMPORT_ATTEMPTS) {
-        break
-      }
-
-      await sleep(getPanelImportBackoffMs(attempt))
-    }
-  }
-
-  throw lastError ?? new PanelImportError(normalizedName, new Error('Unknown panel load error'))
-}
-
-const toPanelLoadMessage = (error: unknown): string => {
-  if (error instanceof MissingPanelNameError) return error.message
-  if (error instanceof InvalidPanelNameError) return error.message
-  if (error instanceof InvalidPanelModuleError) return error.message
-  if (error instanceof UnsupportedPanelRuntimeError) return error.message
-  if (error instanceof PanelImportError) {
-    return `Failed to load panel: ${formatUnknownError(error.cause)}`
-  }
-  return `Failed to load panel: ${formatUnknownError(error)}`
-}
 
 const DevProjectPanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
   if (!panel.projectId) {
@@ -168,99 +25,6 @@ const DevProjectPanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
   )
 }
 
-const LocalWorkspacePanelRenderer = ({ name }: { name: string }) => {
-  const [Component, setComponent] = useState<PanelComponent | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [retryKey, setRetryKey] = useState(0)
-
-  useEffect(() => {
-    let cancelled = false
-
-    void (async () => {
-      await Promise.resolve()
-      if (cancelled) return
-
-      setLoading(true)
-      setError(null)
-      setComponent(null)
-
-      try {
-        const loaded = await loadPanelComponent(name)
-        if (cancelled) return
-
-        setComponent(() => loaded.component)
-        setLoading(false)
-        return
-      } catch (caughtError) {
-        if (cancelled) return
-
-        const message = toPanelLoadMessage(caughtError)
-        setError(message)
-        if (caughtError instanceof PanelImportError) {
-          window.dispatchEvent(
-            new CustomEvent('stella:panel-load-failed', {
-              detail: { panelName: caughtError.panelName, error: message },
-            }),
-          )
-        }
-        setLoading(false)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [name, retryKey])
-
-  const handleRetry = useCallback(() => {
-    setRetryKey((current) => current + 1)
-  }, [])
-
-  if (loading) {
-    return (
-      <div className="workspace-panel-loading">
-        <Spinner size="md" />
-        <span>Loading panel...</span>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="workspace-error">
-        <div className="workspace-error-title">Panel Error</div>
-        <div className="workspace-error-message">{error}</div>
-        <button className="workspace-error-retry" onClick={handleRetry}>
-          Retry
-        </button>
-      </div>
-    )
-  }
-
-  if (!Component) {
-    return (
-      <div className="workspace-error">
-        <div className="workspace-error-title">Panel Error</div>
-        <div className="workspace-error-message">Panel component is unavailable.</div>
-        <button className="workspace-error-retry" onClick={handleRetry}>
-          Retry
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <div className="workspace-panel-wrap">
-      <WorkspaceErrorBoundary key={retryKey} onRetry={handleRetry}>
-        <div className="workspace-panel-content">
-          <Component />
-        </div>
-      </WorkspaceErrorBoundary>
-    </div>
-  )
-}
-
 const HostedGamePanelRenderer = ({ panel }: { panel: WorkspacePanel }) => (
   <div className="workspace-panel-wrap">
     <WorkspaceErrorBoundary>
@@ -271,14 +35,26 @@ const HostedGamePanelRenderer = ({ panel }: { panel: WorkspacePanel }) => (
   </div>
 )
 
-const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) =>
-  panel.kind === 'hosted-game' ? (
-    <HostedGamePanelRenderer panel={panel} />
-  ) : panel.kind === 'dev-project' ? (
-    <DevProjectPanelRenderer panel={panel} />
-  ) : (
-    <LocalWorkspacePanelRenderer name={panel.name} />
-  )
+const UnsupportedPanelRenderer = () => (
+  <div className="workspace-error">
+    <div className="workspace-error-title">Workspace Error</div>
+    <div className="workspace-error-message">
+      This workspace surface is no longer supported.
+    </div>
+  </div>
+)
+
+const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
+  if (panel.kind === 'hosted-game') {
+    return <HostedGamePanelRenderer panel={panel} />
+  }
+
+  if (panel.kind === 'dev-project') {
+    return <DevProjectPanelRenderer panel={panel} />
+  }
+
+  return <UnsupportedPanelRenderer />
+}
 
 export default PanelRenderer
 

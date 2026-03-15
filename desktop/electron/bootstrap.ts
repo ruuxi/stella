@@ -34,7 +34,6 @@ import { SecurityPolicyService } from "./services/security-policy-service.js";
 import { DevProjectService } from "./services/dev-project-service.js";
 import { LocalSchedulerService } from "./services/local-scheduler-service.js";
 import { UiStateService } from "./services/ui-state-service.js";
-import { WorkspaceService } from "./services/workspace-service.js";
 import { createDesktopDatabase } from "./storage/database.js";
 import { resetMessageStorage } from "./storage/reset-message-storage.js";
 import { ChatStore } from "./storage/chat-store.js";
@@ -99,11 +98,6 @@ export const bootstrapMainProcess = () => {
   // --- Core services (no deps or lightweight deps) ---
 
   const uiStateService = new UiStateService();
-  const workspaceService = new WorkspaceService(
-    () => stellaHomePath,
-    () => isDev,
-    () => path.resolve(frontendRoot, "workspace"),
-  );
   const devProjectService = new DevProjectService(() => stellaHomePath);
   const externalLinkService = new ExternalLinkService();
   const miniBridgeService = new MiniBridgeService();
@@ -551,7 +545,6 @@ export const bootstrapMainProcess = () => {
       getDevServerUrl,
       isAppReady: () => appReady,
       isQuitting: () => isQuitting,
-      workspaceService,
       externalLinkService,
       miniBridgeService,
       chatContextSyncBridge: {
@@ -645,7 +638,6 @@ export const bootstrapMainProcess = () => {
 
     registerBrowserHandlers({
       getStellaHomePath: () => stellaHomePath,
-      workspaceService,
       assertPrivilegedSender: (event, channel) =>
         externalLinkService.assertPrivilegedSender(event, channel),
     });

@@ -12,16 +12,12 @@ import { useOnboardingOverlay, OnboardingView } from '@/global/onboarding/Onboar
 import { Sidebar } from '@/shell/sidebar/Sidebar'
 import { FloatingOrb, type FloatingOrbHandle } from './FloatingOrb'
 import { FullShellDialogs } from './full-shell-dialogs'
-import { HeaderTabBar } from './HeaderTabBar'
 import './full-shell.layout.css'
-import './full-shell.panels.css'
 import { ShiftingGradient } from './background/ShiftingGradient'
 import { TitleBar } from './TitleBar'
-import type { PersonalPage } from './HeaderTabBar'
 import type { DialogType } from './full-shell-dialogs'
 import { useFullShellChat } from './use-full-shell-chat'
 import { useFullShellVoiceTranscript } from './use-full-shell-voice-transcript'
-import { useLocalWorkspacePanels } from './use-local-workspace-panels'
 import { useDevProjects } from '@/context/dev-projects-state'
 import {
   dispatchStellaSendMessage,
@@ -45,7 +41,6 @@ export const FullShell = () => {
   const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [activeDialog, setActiveDialog] = useState<DialogType>(null)
   const onboarding = useOnboardingOverlay()
-  const { personalPages } = useLocalWorkspacePanels()
   const { projects, pickProjectDirectory } = useDevProjects()
   const { handleDiscoveryConfirm } = useDiscoveryFlow({
     conversationId: activeConversationId,
@@ -186,14 +181,6 @@ export const FullShell = () => {
       })
   }, [])
 
-  const handleTabSelect = useCallback(
-    (page: PersonalPage) => {
-      openPanel({ name: page.panelName, title: page.title })
-      setView('app')
-    },
-    [openPanel, setView],
-  )
-
   useEffect(() => {
     window.electronAPI?.ui.setAppReady?.(onboarding.onboardingDone)
   }, [onboarding.onboardingDone])
@@ -247,14 +234,6 @@ export const FullShell = () => {
             />
 
             <div className="content-area">
-              {state.view !== 'chat' && personalPages.length > 0 && (
-                <HeaderTabBar
-                  activePanelName={activePanel?.name}
-                  pages={personalPages}
-                  onTabSelect={handleTabSelect}
-                />
-              )}
-
               {state.view === 'chat' ? (
                 <ChatColumn
                   conversation={chat.conversation}
