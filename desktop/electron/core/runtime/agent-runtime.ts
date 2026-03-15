@@ -31,10 +31,15 @@ import {
   buildRuntimeThreadKey,
   maybeCompactRuntimeThread,
 } from "./thread-runtime.js";
+import { selectRecentByTokenBudget } from "./local-history.js";
 import { estimateRuntimeTokens } from "./runtime-threads.js";
 
 const DEFAULT_MAX_TURNS = 40;
 const MAX_RESULT_PREVIEW = 200;
+const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
+const CONTEXT_PRUNE_RESERVE_TOKENS = 16_384;
+const MIN_CONTEXT_PRUNE_TOKENS = 8_000;
+const ESTIMATED_IMAGE_TOKENS = 2_000;
 
 const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
@@ -230,6 +235,95 @@ const textFromUnknown = (value: unknown): string => {
   } catch {
     return String(value);
   }
+};
+
+const estimateUnknownTokens = (value: unknown): number => {
+  if (typeof value === "string") {
+    return estimateRuntimeTokens(value);
+  }
+  if (value == null) {
+    return 0;
+  }
+  try {
+    return estimateRuntimeTokens(JSON.stringify(value));
+  } catch {
+    return estimateRuntimeTokens(String(value));
+  }
+};
+
+const estimateContentTokens = (content: unknown): number => {
+  if (typeof content === "string") {
+    return estimateRuntimeTokens(content);
+  }
+  if (!Array.isArray(content)) {
+    return estimateUnknownTokens(content);
+  }
+  return content.reduce((sum, block) => {
+    if (!block || typeof block !== "object") {
+      return sum + estimateUnknownTokens(block);
+    }
+    const candidate = block as Record<string, unknown>;
+    switch (candidate.type) {
+      case "text":
+        return sum + estimateRuntimeTokens(typeof candidate.text === "string" ? candidate.text : "");
+      case "thinking":
+        return sum + estimateRuntimeTokens(typeof candidate.thinking === "string" ? candidate.thinking : "");
+      case "image":
+        return sum + ESTIMATED_IMAGE_TOKENS;
+      case "toolCall":
+        return sum + estimateUnknownTokens({
+          name: candidate.name,
+          arguments: candidate.arguments,
+        });
+      default:
+        return sum + estimateUnknownTokens(candidate);
+    }
+  }, 0);
+};
+
+const estimateAgentMessageTokens = (message: AgentMessage): number => {
+  const baseTokens = 8;
+  if (message.role === "toolResult") {
+    return Math.max(
+      1,
+      baseTokens +
+        estimateRuntimeTokens(message.toolName) +
+        estimateContentTokens(message.content),
+    );
+  }
+  return Math.max(1, baseTokens + estimateContentTokens(message.content));
+};
+
+const getContextPruneBudget = (resolvedLlm: ResolvedLlmRoute): number => {
+  const contextWindow = Number(resolvedLlm.model.contextWindow);
+  const safeContextWindow = Number.isFinite(contextWindow) && contextWindow > 0
+    ? Math.floor(contextWindow)
+    : DEFAULT_CONTEXT_WINDOW_TOKENS;
+  return Math.max(
+    MIN_CONTEXT_PRUNE_TOKENS,
+    safeContextWindow - CONTEXT_PRUNE_RESERVE_TOKENS,
+  );
+};
+
+const buildDefaultTransformContext = (
+  resolvedLlm: ResolvedLlmRoute,
+): ((messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>) => {
+  const maxTokens = getContextPruneBudget(resolvedLlm);
+  return async (messages, signal) => {
+    if (signal?.aborted) {
+      throw new Error("Aborted");
+    }
+    const totalTokens = messages.reduce((sum, message) => sum + estimateAgentMessageTokens(message), 0);
+    if (totalTokens <= maxTokens) {
+      return messages;
+    }
+    const selected = selectRecentByTokenBudget({
+      itemsNewestFirst: [...messages].reverse(),
+      maxTokens,
+      estimateTokens: estimateAgentMessageTokens,
+    });
+    return [...selected].reverse();
+  };
 };
 
 const extractAssistantText = (message: AgentMessage | undefined): string => {
@@ -644,6 +738,7 @@ export async function runOrchestratorTurn(opts: OrchestratorRunOptions): Promise
     },
     convertToLlm: (messages) => messages.filter((msg) =>
       msg.role === "user" || msg.role === "assistant" || msg.role === "toolResult"),
+    transformContext: buildDefaultTransformContext(opts.resolvedLlm),
     getApiKey: () => opts.resolvedLlm.getApiKey(),
     onPayload: opts.hookEmitter ? async (payload, model) => {
       const result = await opts.hookEmitter!.emit("before_provider_request", {
@@ -1212,6 +1307,7 @@ export async function runSubagentTask(opts: SubagentRunOptions): Promise<{
     },
     convertToLlm: (messages) => messages.filter((msg) =>
       msg.role === "user" || msg.role === "assistant" || msg.role === "toolResult"),
+    transformContext: buildDefaultTransformContext(opts.resolvedLlm),
     getApiKey: () => opts.resolvedLlm.getApiKey(),
     onPayload: opts.hookEmitter ? async (payload, model) => {
       const result = await opts.hookEmitter!.emit("before_provider_request", {
