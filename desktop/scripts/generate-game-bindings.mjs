@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -179,6 +180,10 @@ function toRepoRelative(pathValue) {
 
 const { database, outDir, modulePath, force } = parseArgs(process.argv.slice(2))
 const markerPath = join(outDir, markerFileName)
+const tempOutDir = `${outDir}.tmp-${process.pid}-${Date.now()}`
+const cleanupTempOutDir = () => {
+  rmSync(tempOutDir, { recursive: true, force: true })
+}
 
 let moduleFingerprint
 try {
@@ -204,10 +209,10 @@ if (
   process.exit(0)
 }
 
-rmSync(outDir, { recursive: true, force: true })
-mkdirSync(outDir, { recursive: true })
+cleanupTempOutDir()
+mkdirSync(tempOutDir, { recursive: true })
 
-const outDirArg = toRepoRelative(outDir)
+const outDirArg = toRepoRelative(tempOutDir)
 const modulePathArg = relative(repoRoot, modulePath).replaceAll('\\', '/')
 const generateResult = runSpacetime([
   'generate',
@@ -222,6 +227,7 @@ const generateResult = runSpacetime([
 ])
 
 if (generateResult.error) {
+  cleanupTempOutDir()
   console.error(generateResult.error.message)
   process.exit(1)
 }
@@ -233,6 +239,7 @@ if (generateResult.status !== 0) {
   if (generateResult.stderr) {
     process.stderr.write(generateResult.stderr)
   }
+  cleanupTempOutDir()
   process.exit(generateResult.status ?? 1)
 }
 
@@ -241,24 +248,33 @@ const cliVersion = versionResult.status === 0
   ? versionResult.stdout.trim()
   : undefined
 
-writeFileSync(
-  markerPath,
-  `${JSON.stringify(
-    {
-      database,
-      modulePath,
-      moduleFingerprint,
-      generatedAt: new Date().toISOString(),
-      ...(cliVersion ? { cliVersion } : {}),
-    },
-    null,
-    2,
-  )}\n`,
-  'utf8',
-)
+try {
+  writeFileSync(
+    join(tempOutDir, markerFileName),
+    `${JSON.stringify(
+      {
+        database,
+        modulePath,
+        moduleFingerprint,
+        generatedAt: new Date().toISOString(),
+        ...(cliVersion ? { cliVersion } : {}),
+      },
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  )
 
-if (generateResult.stdout) {
-  process.stdout.write(generateResult.stdout)
+  if (generateResult.stdout) {
+    process.stdout.write(generateResult.stdout)
+  }
+
+  rmSync(outDir, { recursive: true, force: true })
+  renameSync(tempOutDir, outDir)
+} finally {
+  if (existsSync(tempOutDir)) {
+    cleanupTempOutDir()
+  }
 }
 
 console.log(`Generated SpacetimeDB bindings in ${toRepoRelative(outDir)}.`)

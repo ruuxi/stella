@@ -12,7 +12,6 @@ import {
   getSavedSessionId,
   saveLaunchAuth,
   saveSessionId,
-  saveDisplayName,
 } from "./connection";
 
 export const GAME_AUTH_MESSAGE_TYPE = "stella:game-auth";
@@ -50,10 +49,6 @@ export const getLaunchDisplayName = (): string | undefined =>
 export type DecodedHostedGameToken = {
   gameId?: string;
   userId?: string;
-};
-
-export const saveLaunchDisplayName = (displayName: string): void => {
-  saveDisplayName(displayName);
 };
 
 export const saveActiveSessionId = (sessionId: bigint): void => {
