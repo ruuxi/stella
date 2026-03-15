@@ -34,7 +34,7 @@ describe("Tools Module - Unit Tests", () => {
 
   beforeEach(() => {
     toolHost = createToolHost({
-      StellaHome: mockStellaHome,
+      stellaHomePath: mockStellaHome,
     });
     vi.clearAllMocks();
   });
@@ -339,7 +339,7 @@ describe("Tools Module - Unit Tests", () => {
         }));
         const cancelTask = vi.fn(async () => ({ canceled: true }));
         const scheduleToolHost = createToolHost({
-          StellaHome: mockStellaHome,
+          stellaHomePath: mockStellaHome,
           taskApi: {
             createTask,
             getTask,

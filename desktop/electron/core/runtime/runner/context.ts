@@ -38,7 +38,7 @@ import {
 
 export const createRunnerContext = ({
   deviceId,
-  StellaHome,
+  stellaHomePath,
   frontendRoot,
   stellaBrowserBinPath,
   stellaUiCliPath,
@@ -64,7 +64,7 @@ export const createRunnerContext = ({
   let context!: RunnerContext;
   const hookEmitter = new HookEmitter();
   const toolHost = createToolHost({
-    StellaHome,
+    stellaHomePath,
     frontendRoot,
     stellaBrowserBinPath,
     stellaUiCliPath,
@@ -121,7 +121,7 @@ export const createRunnerContext = ({
   context = {
     convexApi: anyApi,
     deviceId,
-    StellaHome,
+    stellaHomePath,
     frontendRoot,
     stellaBrowserBinPath,
     stellaUiCliPath,
@@ -136,10 +136,10 @@ export const createRunnerContext = ({
     runtimeStore,
     listLocalChatEvents,
     paths: {
-      skillsPath: path.join(StellaHome, "skills"),
-      coreSkillsPath: path.join(StellaHome, "core-skills"),
-      agentsPath: path.join(StellaHome, "agents"),
-      extensionsPath: path.join(StellaHome, "extensions"),
+      skillsPath: path.join(stellaHomePath, "skills"),
+      coreSkillsPath: path.join(stellaHomePath, "core-skills"),
+      agentsPath: path.join(stellaHomePath, "agents"),
+      extensionsPath: path.join(stellaHomePath, "extensions"),
     },
     state: {
       proxyBaseUrl: envProxyBaseUrl,
@@ -206,8 +206,8 @@ export const getConfiguredModel = (
   agentType: string,
   agent?: ParsedAgentLike,
 ): string | undefined => {
-  const modelFromPrefs = getModelOverride(context.StellaHome, agentType);
-  const defaultModel = getDefaultModel(context.StellaHome, agentType);
+  const modelFromPrefs = getModelOverride(context.stellaHomePath, agentType);
+  const defaultModel = getDefaultModel(context.stellaHomePath, agentType);
   return modelFromPrefs ?? defaultModel ?? agent?.model;
 };
 
@@ -229,7 +229,7 @@ export const buildAgentContext = async (
   const agent = resolveAgent(context, args.agentType);
   const model = getConfiguredModel(context, args.agentType, agent);
   const resolvedLlm = resolveLlmRoute({
-    stellaHomePath: context.StellaHome,
+    stellaHomePath: context.stellaHomePath,
     modelName: model,
     agentType: args.agentType,
     proxy: {
@@ -328,18 +328,18 @@ export const buildAgentContext = async (
       availableSkillIds.includes(skillId),
     ),
     skillIds: availableSkillIds,
-    coreMemory: readCoreMemory(context.StellaHome),
+    coreMemory: readCoreMemory(context.stellaHomePath),
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
     agentEngine:
       args.agentType === "general"
-        ? getGeneralAgentEngine(context.StellaHome)
+        ? getGeneralAgentEngine(context.stellaHomePath)
         : args.agentType === "self_mod"
-          ? getSelfModAgentEngine(context.StellaHome)
+          ? getSelfModAgentEngine(context.stellaHomePath)
           : undefined,
     maxAgentConcurrency:
       args.agentType === "general" || args.agentType === "self_mod"
-        ? getMaxAgentConcurrency(context.StellaHome)
+        ? getMaxAgentConcurrency(context.stellaHomePath)
         : undefined,
   };
 };
