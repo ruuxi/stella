@@ -513,13 +513,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       selectedProfile?: string;
     }) =>
       ipcRenderer.invoke("signals:collectAll", options),
-    listWorkspacePanels: () =>
-      ipcRenderer.invoke("workspace:listPanels") as Promise<
-        Array<{ name: string; title: string }>
-      >,
-    onWorkspacePanelsChanged: onIpc<Array<{ name: string; title: string }>>(
-      "workspace:panelsChanged",
-    ),
   },
 
   projects: {

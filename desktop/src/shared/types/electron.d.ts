@@ -401,10 +401,6 @@ export type ElectronBrowserApi = {
     selectedBrowser?: string;
     selectedProfile?: string;
   }) => Promise<AllUserSignalsResult>;
-  listWorkspacePanels: () => Promise<Array<{ name: string; title: string }>>;
-  onWorkspacePanelsChanged: (
-    callback: (panels: Array<{ name: string; title: string }>) => void,
-  ) => () => void;
 };
 
 export type ElectronProjectsApi = {

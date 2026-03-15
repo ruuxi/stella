@@ -2,7 +2,6 @@ import { app, BrowserWindow, screen } from 'electron'
 import { MINI_SHELL_SIZE } from '../layout-constants.js'
 import { FullWindowController } from './full-window.js'
 import type { UiState } from '../types.js'
-import type { WorkspaceService } from '../services/workspace-service.js'
 import type { ExternalLinkService } from '../services/external-link-service.js'
 import type { MiniBridgeService } from '../services/mini-bridge-service.js'
 import type { OverlayWindowController } from './overlay-window.js'
@@ -22,7 +21,6 @@ type WindowManagerOptions = {
   getDevServerUrl: () => string
   isAppReady: () => boolean
   isQuitting: () => boolean
-  workspaceService: WorkspaceService
   externalLinkService: ExternalLinkService
   miniBridgeService: MiniBridgeService
   chatContextSyncBridge: ChatContextSyncBridge
@@ -63,19 +61,13 @@ export class WindowManager {
         this.fullWindowController.loadRecoveryPage()
       },
       onClosed: () => {
-        options.workspaceService.stopWorkspacePanelWatcher()
         options.miniBridgeService.onFullWindowUnavailable('Full window unavailable')
       },
     })
   }
 
   createFullWindow() {
-    const before = this.fullWindowController.getWindow()
-    const fullWindow = this.fullWindowController.create()
-    if (!before || before.isDestroyed()) {
-      this.options.workspaceService.startWorkspacePanelWatcher(fullWindow)
-    }
-    return fullWindow
+    return this.fullWindowController.create()
   }
 
   createInitialWindows() {

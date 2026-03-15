@@ -11,12 +11,10 @@ import {
 } from "../system/browser-data.js";
 import { collectAllSignals } from "../system/collect-all.js";
 import type { AllUserSignalsResult } from "../system/types.js";
-import type { WorkspaceService } from "../services/workspace-service.js";
 import type { DiscoveryCategory } from "../../src/shared/contracts/discovery.js";
 
 type BrowserHandlersOptions = {
   getStellaHomePath: () => string | null;
-  workspaceService: WorkspaceService;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -96,13 +94,6 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       return listBrowserProfiles(browserType as BrowserType);
     },
   );
-
-  ipcMain.handle("workspace:listPanels", async (event) => {
-    if (!options.assertPrivilegedSender(event, "workspace:listPanels")) {
-      throw new Error("Blocked untrusted request.");
-    }
-    return options.workspaceService.listWorkspacePanels();
-  });
 
   ipcMain.handle(
     "signals:collectAll",

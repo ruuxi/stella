@@ -6,10 +6,8 @@ export type WorkspacePanel = {
   name: string
   /** Optional display title shown in the shell header. */
   title?: string
-  /** Optional source URL for localhost/dev-server backed panels. */
-  url?: string
-  /** Distinguishes built-in workspace routes from local dev projects and hosted games. */
-  kind?: 'local-panel' | 'dev-project' | 'hosted-game'
+  /** Distinguishes local dev projects from hosted games. */
+  kind?: 'dev-project' | 'hosted-game'
   /** Backing local dev project identifier for persisted workspace pages. */
   projectId?: string
   /** Game identifier for hosted-game panels. */
