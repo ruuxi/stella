@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { promises as fs } from "fs";
 import { spawn } from "child_process";
 import { createToolHost, type ToolContext } from "../../../electron/core/runtime/tools/host.js";
+import type { TaskToolRequest } from "../../../electron/core/runtime/tools/types.js";
 
 // Mock fs and spawn
 vi.mock("fs", () => ({
@@ -24,6 +25,12 @@ vi.mock("child_process", () => ({
 describe("Tools Module - Unit Tests", () => {
   let toolHost: ReturnType<typeof createToolHost>;
   const mockStellaHome = "/tmp/test-stella-home";
+  const testContext: ToolContext = {
+    conversationId: "test-conv",
+    deviceId: "test-device",
+    requestId: "test-req",
+    agentType: "general",
+  };
 
   beforeEach(() => {
     toolHost = createToolHost({
@@ -37,13 +44,6 @@ describe("Tools Module - Unit Tests", () => {
   });
 
   describe("Tool Registry", () => {
-    const testContext: ToolContext = {
-      conversationId: "test-conv",
-      deviceId: "test-device",
-      requestId: "test-req",
-      agentType: "general",
-    };
-
     it("returns unknown tool for removed SqliteQuery handler", async () => {
       const result = await toolHost.executeTool(
         "SqliteQuery",
@@ -319,6 +319,52 @@ describe("Tools Module - Unit Tests", () => {
 
         expect(result.result).toBeDefined();
         expect(typeof result.result === "string" && result.result).toContain("pattern");
+      });
+    });
+
+    describe("Schedule Tool", () => {
+      it("should delegate a natural-language scheduling request to the schedule agent", async () => {
+        let capturedTask: TaskToolRequest | undefined;
+        const createTask = vi.fn(async (request: TaskToolRequest) => {
+          capturedTask = request;
+          return { taskId: "schedule-task-1" };
+        });
+        const getTask = vi.fn(async () => ({
+          id: "schedule-task-1",
+          status: "completed" as const,
+          description: "Apply local scheduling changes",
+          startedAt: Date.now(),
+          completedAt: Date.now(),
+          result: "Created a weekday reminder and updated the heartbeat.",
+        }));
+        const cancelTask = vi.fn(async () => ({ canceled: true }));
+        const scheduleToolHost = createToolHost({
+          StellaHome: mockStellaHome,
+          taskApi: {
+            createTask,
+            getTask,
+            cancelTask,
+          },
+        });
+
+        const result = await scheduleToolHost.executeTool(
+          "Schedule",
+          { prompt: "Every weekday at 9am remind me to review priorities." },
+          testContext,
+        );
+
+        expect(createTask).toHaveBeenCalledWith(expect.objectContaining({
+          conversationId: "test-conv",
+          agentType: "schedule",
+          description: "Apply local scheduling changes",
+          storageMode: "local",
+        }));
+        expect(capturedTask?.prompt).toContain(
+          "Every weekday at 9am remind me to review priorities.",
+        );
+        expect(getTask).toHaveBeenCalledWith("schedule-task-1");
+        expect(cancelTask).not.toHaveBeenCalled();
+        expect(result.result).toBe("Created a weekday reminder and updated the heartbeat.");
       });
     });
   });

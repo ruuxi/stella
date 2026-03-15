@@ -22,6 +22,7 @@ export const DEVICE_TOOL_NAMES = [
   "RequestCredential",
   "SkillBash",
   "MediaGenerate",
+  "Schedule",
   "Display",
   "DisplayGuidelines",
   "HeartbeatGet",
@@ -207,6 +208,17 @@ const MediaGenerateJsonSchema = {
     media_type: { type: "string", enum: ["image", "video"], description: "Type of media to produce (default: image)" },
     prompt: { type: "string", description: "Description of what to generate or how to edit" },
     source_url: { type: "string", description: "URL of source media to edit (required for mode=edit)" },
+  },
+  required: ["prompt"],
+};
+
+const ScheduleJsonSchema = {
+  type: "object",
+  properties: {
+    prompt: {
+      type: "string",
+      description: "Plain-language scheduling request for local cron jobs and heartbeats.",
+    },
   },
   required: ["prompt"],
 };
@@ -426,6 +438,12 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- mode=\"edit\": Modify an existing image/video (provide source_url).\n" +
     "- prompt describes what to generate or how to edit.\n" +
     "- media_type: \"image\" or \"video\".",
+  Schedule:
+    "Handle local scheduling requests in plain language.\n\n" +
+    "Usage:\n" +
+    "- Provide a natural-language prompt describing the cron jobs and/or heartbeat behavior you want.\n" +
+    "- This tool uses a one-off scheduling specialist behind the scenes.\n" +
+    "- Use this instead of calling the low-level cron and heartbeat tools directly.",
   WebSearch:
     "Search the web via Exa for current information.\n\n" +
     "Use natural language queries, not keywords (e.g. 'Tesla current stock performance' not 'TSLA stock price').\n" +
@@ -550,6 +568,7 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   RequestCredential: RequestCredentialJsonSchema,
   SkillBash: SkillBashJsonSchema,
   MediaGenerate: MediaGenerateJsonSchema,
+  Schedule: ScheduleJsonSchema,
   WebSearch: WebSearchJsonSchema,
   Display: DisplayJsonSchema,
   DisplayGuidelines: DisplayGuidelinesJsonSchema,
