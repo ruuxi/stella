@@ -31,7 +31,6 @@ use super::state;
 use super::storage;
 use super::stream;
 use super::tracing::{self as native_tracing, TracingState};
-use super::user_browser;
 use super::webdriver::appium::AppiumManager;
 use super::webdriver::backend::{BrowserBackend, WebDriverBackend, WEBDRIVER_UNSUPPORTED_ACTIONS};
 use super::webdriver::ios;
@@ -852,7 +851,7 @@ fn extension_mode_requested() -> bool {
 
 async fn launch_extension_from_env(
     state: &mut DaemonState,
-    bootstrap_url: Option<&str>,
+    _bootstrap_url: Option<&str>,
 ) -> Result<(), String> {
     if state.extension_bridge.is_some() {
         return Ok(());
@@ -880,22 +879,10 @@ async fn launch_extension_from_env(
     );
     bridge.start().await?;
 
-    let user_browser_mode = env::var("STELLA_BROWSER_USER_BROWSER")
-        .ok()
-        .as_deref()
-        == Some("1");
-
-    if user_browser_mode {
-        let extra_args = bootstrap_url
-            .filter(|url| !url.trim().is_empty())
-            .map(|url| vec![url.to_string()])
-            .unwrap_or_default();
-        user_browser::relaunch_for_extension_bridge(&extra_args).await?;
-    }
-
     // Wait for the extension service worker to come up and attach before
     // we claim extension mode is ready.
-    if !bridge.wait_for_connection(Duration::from_secs(15)).await {
+    if !bridge.wait_for_connection(Duration::from_secs(1)).await {
+        let _ = bridge.stop().await;
         return Err(
             "Extension not connected. Install the Stella Browser Bridge extension and connect it."
                 .to_string(),

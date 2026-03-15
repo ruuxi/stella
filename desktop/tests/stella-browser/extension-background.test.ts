@@ -128,12 +128,16 @@ vi.mock('../../stella-browser/extension/commands/site-mods.js', () => ({
 
 describe('extension background reconnect handling', () => {
   let statusListener: ((connected: boolean) => void) | undefined
+  let startupListener: (() => void | Promise<void>) | undefined
+  let installedListener: (() => void | Promise<void>) | undefined
 
   beforeEach(async () => {
     vi.resetModules()
     vi.clearAllMocks()
 
     statusListener = undefined
+    startupListener = undefined
+    installedListener = undefined
     onCommandMock.mockImplementation(() => {})
     onStatusMock.mockImplementation((callback) => {
       statusListener = callback
@@ -145,10 +149,14 @@ describe('extension background reconnect handling', () => {
           addListener: vi.fn(),
         },
         onStartup: {
-          addListener: vi.fn(),
+          addListener: vi.fn((callback) => {
+            startupListener = callback
+          }),
         },
         onInstalled: {
-          addListener: vi.fn(),
+          addListener: vi.fn((callback) => {
+            installedListener = callback
+          }),
         },
         onMessage: {
           addListener: vi.fn(),
@@ -180,5 +188,17 @@ describe('extension background reconnect handling', () => {
   it('registers startup hooks to reconnect after browser relaunch', async () => {
     expect((globalThis as any).chrome.runtime.onStartup.addListener).toHaveBeenCalledTimes(1)
     expect((globalThis as any).chrome.runtime.onInstalled.addListener).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not create duplicate offscreen documents during repeated initialization', async () => {
+    expect((globalThis as any).chrome.offscreen.createDocument).toHaveBeenCalledTimes(1)
+
+    await startupListener?.()
+    await installedListener?.()
+
+    expect((globalThis as any).chrome.offscreen.createDocument).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => {
+      expect(connectMock).toHaveBeenCalledTimes(3)
+    })
   })
 })

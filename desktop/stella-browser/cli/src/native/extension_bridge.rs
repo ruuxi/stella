@@ -128,6 +128,7 @@ impl ExtensionBridge {
 
         if let Some(handle) = self.accept_handle.take() {
             handle.abort();
+            let _ = handle.await;
         }
 
         {
