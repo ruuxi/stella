@@ -5,8 +5,6 @@ import type { LocalDevProjectRecord } from "@/shared/types/electron";
 
 // --- Mocks ---
 
-const mockAreLocalWorkspacePanelsEnabled = vi.fn(() => true);
-
 const mockSendMessage = vi.fn();
 const mockUseConversationEventFeed = vi.fn((conversationId?: string) => {
   void conversationId;
@@ -129,18 +127,8 @@ vi.mock("@/app/chat/hooks/use-conversation-events", () => ({
     mockUseConversationEventFeed(conversationId),
 }));
 
-vi.mock("@/app/workspace/hooks/use-workspace-panel-commands", () => ({
-  useWorkspacePanelCommands: vi.fn(),
-}));
-
 vi.mock("@/platform/electron/electron", () => ({
   getElectronApi: vi.fn(() => undefined),
-}));
-
-vi.mock("@/shared/lib/local-workspace-panels", () => ({
-  LOCAL_WORKSPACE_PANELS_DEV_ONLY_MESSAGE:
-    "Local workspace panels are only available while running the Vite dev server.",
-  areLocalWorkspacePanelsEnabled: () => mockAreLocalWorkspacePanelsEnabled(),
 }));
 
 vi.mock("@/global/auth/services/auth", () => ({
@@ -189,22 +177,6 @@ vi.mock("@/shell/sidebar/Sidebar", () => ({
 vi.mock("@/app/workspace/WorkspaceArea", () => ({
   WorkspaceArea: (props: any) => (
     <div data-testid="workspace-area" data-view={props.view} />
-  ),
-}));
-
-vi.mock("@/shell/HeaderTabBar", () => ({
-  HeaderTabBar: (props: any) => (
-    <div data-testid="header-tab-bar">
-      {(props.pages ?? []).map((page: any) => (
-        <button
-          key={page.pageId}
-          data-testid={`tab-page-${page.pageId}`}
-          onClick={() => props.onTabSelect?.(page)}
-        >
-          {page.title}
-        </button>
-      ))}
-    </div>
   ),
 }));
 
@@ -307,7 +279,6 @@ import { getElectronApi } from "@/platform/electron/electron";
 describe("FullShell (full-shell/FullShell.tsx)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAreLocalWorkspacePanelsEnabled.mockReturnValue(true);
     mockPickProjectDirectory.mockResolvedValue(null);
     vi.mocked(useUiState).mockReturnValue({
       state: { mode: "chat", window: "full", view: "home", conversationId: "conv-123" },
@@ -338,7 +309,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
   it("renders WorkspaceArea in home view", () => {
     render(<FullShell />);
     expect(screen.getByTestId("workspace-area")).toBeInTheDocument();
-    expect(screen.queryByTestId("header-tab-bar")).not.toBeInTheDocument();
     expect(screen.getByTestId("floating-orb")).toBeInTheDocument();
   });
 
@@ -360,7 +330,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     render(<FullShell />);
 
     expect(screen.getByTestId("chat-column")).toBeInTheDocument();
-    expect(screen.queryByTestId("header-tab-bar")).not.toBeInTheDocument();
   });
 
   it("passes conversationId to useStreamingChat without storageMode", () => {
@@ -495,42 +464,6 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     const { container } = render(<FullShell />);
     const shell = container.querySelector(".window-shell.full");
     expect(shell).toBeInTheDocument();
-  });
-
-  it("shows and opens local workspace pages via tab bar when cloud pages are unavailable", async () => {
-    const listWorkspacePanels = vi.fn(() =>
-      Promise.resolve([{ name: "pd_focus", title: "Focus" }]),
-    );
-
-    vi.mocked(getElectronApi).mockReturnValue({
-      browser: { listWorkspacePanels },
-      capture: { getContext: vi.fn().mockResolvedValue(null), onContext: vi.fn(() => vi.fn()) },
-    } as any);
-
-    render(<FullShell />);
-    const pageButton = await screen.findByTestId("tab-page-local_panel:pd_focus");
-    fireEvent.click(pageButton);
-
-    expect(listWorkspacePanels).toHaveBeenCalled();
-    expect(mockOpenPanel).toHaveBeenCalledWith({ name: "pd_focus", title: "Focus" });
-    expect(mockSetView).toHaveBeenCalledWith("app");
-  });
-
-  it("does not list local workspace pages outside dev mode", () => {
-    mockAreLocalWorkspacePanelsEnabled.mockReturnValue(false);
-    const listWorkspacePanels = vi.fn(() =>
-      Promise.resolve([{ name: "pd_focus", title: "Focus" }]),
-    );
-
-    vi.mocked(getElectronApi).mockReturnValue({
-      browser: { listWorkspacePanels },
-      capture: { getContext: vi.fn().mockResolvedValue(null), onContext: vi.fn(() => vi.fn()) },
-    } as any);
-
-    render(<FullShell />);
-
-    expect(screen.queryByTestId("tab-page-local_panel:pd_focus")).not.toBeInTheDocument();
-    expect(listWorkspacePanels).not.toHaveBeenCalled();
   });
 });
 

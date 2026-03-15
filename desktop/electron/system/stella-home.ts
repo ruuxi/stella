@@ -18,7 +18,6 @@ export type StellaHome = {
   logsPath: string;
   canvasPath: string;
   workspacePath: string;
-  workspacePanelsPath: string;
   workspaceAppsPath: string;
 };
 
@@ -163,7 +162,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   const statePath = path.join(homePath, "state");
   const logsPath = path.join(homePath, "logs");
   const canvasPath = path.join(homePath, "canvas");
-  const workspacePanelsPath = path.join(workspacePath, "panels");
   const workspaceAppsPath = path.join(workspacePath, "apps");
 
   process.env.STELLA_ROOT = installRoot;
@@ -178,7 +176,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   await ensureDir(logsPath);
   await ensureDir(canvasPath);
   await ensureDir(workspacePath);
-  await ensureDir(workspacePanelsPath);
   await ensureDir(workspaceAppsPath);
 
   await Promise.all([
@@ -200,7 +197,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
     logsPath,
     canvasPath,
     workspacePath,
-    workspacePanelsPath,
     workspaceAppsPath,
   };
 };
