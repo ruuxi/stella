@@ -49,7 +49,7 @@ const DEFAULT_MODEL: ModelConfig = {
       reasoningEffort: "low",
     },
     gateway: {
-      order: ["baseten, fireworks, amazon-bedrock"],
+      order: ["baseten", "fireworks", "amazon-bedrock"],
     },
   },
 };
@@ -79,7 +79,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks, baseten, amazon-bedrock"],
+        order: ["fireworks", "baseten", "amazon-bedrock"],
       },
     },
   },
@@ -94,7 +94,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks, baseten, amazon-bedrock"],
+        order: ["fireworks", "baseten", "amazon-bedrock"],
       },
     },
   },
@@ -109,7 +109,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks, baseten, amazon-bedrock"],
+        order: ["fireworks", "baseten", "amazon-bedrock"],
       },
     },
   },
@@ -121,7 +121,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     maxOutputTokens: 16192,
     providerOptions: {
       gateway: {
-        order: ["cerebras, baseten, fireworks, amazon-bedrock"],
+        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
       },
     },
   },
@@ -136,7 +136,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "medium",
       },
       gateway: {
-        order: ["amazon-bedrock, fireworks"],
+        order: ["amazon-bedrock", "fireworks"],
       },
     },
   },
@@ -152,7 +152,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "medium",
       },
       gateway: {
-        order: ["amazon-bedrock, fireworks"],
+        order: ["amazon-bedrock", "fireworks"],
       },
     },
   },
@@ -167,7 +167,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks, baseten, amazon-bedrock"],
+        order: ["fireworks", "baseten", "amazon-bedrock"],
       },
     },
   },
