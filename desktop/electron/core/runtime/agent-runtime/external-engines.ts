@@ -18,8 +18,8 @@ import {
 } from "./thread-memory.js";
 import type { SubagentRunOptions, SubagentRunResult } from "./types.js";
 import {
-  AGENT_IDS,
-  LOCAL_CLI_AGENT_IDS,
+  isLocalCliAgentId,
+  shouldIncludeStellaDocumentation,
   RUNTIME_RUN_EVENT_TYPES,
 } from "../../../../src/shared/contracts/agent-runtime.js";
 
@@ -55,10 +55,7 @@ export const runExternalSubagentTurn = async (
   opts: SubagentRunOptions,
 ): Promise<SubagentRunResult | null> => {
   const primaryModelId = opts.agentContext.model;
-  const usesLocalCliRuntime = LOCAL_CLI_AGENT_IDS.includes(
-    opts.agentType as (typeof LOCAL_CLI_AGENT_IDS)[number],
-  );
-  if (!usesLocalCliRuntime) {
+  if (!isLocalCliAgentId(opts.agentType)) {
     return null;
   }
 
@@ -75,7 +72,7 @@ export const runExternalSubagentTurn = async (
   const prompt = opts.userPrompt.trim();
   const effectiveSystemPrompt = [
     buildSystemPrompt(opts.agentContext),
-    opts.agentType === AGENT_IDS.SELF_MOD
+    shouldIncludeStellaDocumentation(opts.agentType)
       ? buildSelfModDocumentationPrompt(opts.frontendRoot)
       : "",
   ]
