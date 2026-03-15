@@ -1,6 +1,7 @@
 import { tool, ToolSet } from "ai";
 import { z } from "zod";
 import type { ActionCtx } from "../_generated/server";
+import { BACKEND_TOOL_IDS } from "../lib/agent_constants";
 import { normalizeSafeExternalUrl } from "../lib/url_security";
 import type { ToolOptions } from "./types";
 
@@ -142,7 +143,7 @@ export const createBackendTools = (
     value.length > max ? `${value.slice(0, max)}\n\n... (truncated)` : value;
 
   return {
-    WebSearch: tool({
+    [BACKEND_TOOL_IDS.WEB_SEARCH]: tool({
       description:
         "Search the web via Exa for current information.\n\n" +
         "Use natural language queries, not keywords (e.g. 'Tesla current stock performance' not 'TSLA stock price').\n" +
@@ -153,10 +154,16 @@ export const createBackendTools = (
         "- 'research paper': only for academic papers.\n" +
         "For news, sports, general facts — do NOT set a category.",
       inputSchema: z.object({
-        query: z.string().min(2).describe("Natural language search query — write descriptively, not as keywords"),
-        category: z.enum(["company", "people", "research paper"]).optional().describe(
-          "Optional filter. Most queries should omit this."
-        ),
+        query: z
+          .string()
+          .min(2)
+          .describe(
+            "Natural language search query — write descriptively, not as keywords",
+          ),
+        category: z
+          .enum(["company", "people", "research paper"])
+          .optional()
+          .describe("Optional filter. Most queries should omit this."),
       }),
       execute: async (args) => {
         const result = await executeWebSearch(ctx, args.query, {
@@ -166,7 +173,7 @@ export const createBackendTools = (
         return result.text;
       },
     }),
-    WebFetch: tool({
+    [BACKEND_TOOL_IDS.WEB_FETCH]: tool({
       description:
         "Fetch and read content from a URL.\n\n" +
         "Usage:\n" +
@@ -182,7 +189,11 @@ export const createBackendTools = (
         try {
           let secureUrl = normalizeSafeExternalUrl(args.url);
           let response: Response | null = null;
-          for (let redirectCount = 0; redirectCount <= MAX_WEB_FETCH_REDIRECTS; redirectCount += 1) {
+          for (
+            let redirectCount = 0;
+            redirectCount <= MAX_WEB_FETCH_REDIRECTS;
+            redirectCount += 1
+          ) {
             response = await fetch(secureUrl, {
               redirect: "manual",
               headers: { "User-Agent": "StellaBackend/1.0" },
@@ -190,7 +201,9 @@ export const createBackendTools = (
 
             const location = response.headers.get("location");
             if (response.status >= 300 && response.status < 400 && location) {
-              secureUrl = normalizeSafeExternalUrl(new URL(location, secureUrl).toString());
+              secureUrl = normalizeSafeExternalUrl(
+                new URL(location, secureUrl).toString(),
+              );
               continue;
             }
             break;
@@ -210,7 +223,9 @@ export const createBackendTools = (
           }
           const text = await response.text();
           const contentType = response.headers.get("content-type") ?? "";
-          const body = contentType.includes("text/html") ? stripHtml(text) : text;
+          const body = contentType.includes("text/html")
+            ? stripHtml(text)
+            : text;
           return wrapExternalContent(
             `Content from ${secureUrl}\nPrompt: ${args.prompt}\n\n${truncateText(body, 15_000)}`,
             secureUrl,
@@ -220,7 +235,7 @@ export const createBackendTools = (
         }
       },
     }),
-    NoResponse: tool({
+    [BACKEND_TOOL_IDS.NO_RESPONSE]: tool({
       description:
         "Signal that you have nothing to say to the user right now. " +
         "Call this instead of generating a message when a system event, task result, or heartbeat check " +

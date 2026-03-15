@@ -3,19 +3,18 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction, requireUserId } from "../auth";
+import {
+  AGENT_IDS,
+  BACKEND_TOOL_IDS,
+  LOCAL_RUNTIME_BACKEND_TOOL_NAMES,
+} from "../lib/agent_constants";
 import { createBackendTools, executeWebSearch } from "../tools/backend";
 import { jsonValueValidator } from "../shared_validators";
 
 const DEFAULT_MAX_TASK_DEPTH = 2;
-const ALLOWED_LOCAL_RUNTIME_BACKEND_TOOLS = new Set([
-  "WebSearch",
-  "WebFetch",
-  "IntegrationRequest",
-  "ActivateSkill",
-  "GenerateApiSkill",
-  "ListResources",
-  "NoResponse",
-]);
+const ALLOWED_LOCAL_RUNTIME_BACKEND_TOOLS = new Set<string>(
+  LOCAL_RUNTIME_BACKEND_TOOL_NAMES,
+);
 
 const toToolResultText = (value: unknown): string =>
   typeof value === "string" ? value : JSON.stringify(value ?? null);
@@ -36,9 +35,12 @@ const executeBackendTool = async (
   const tools = createBackendTools(ctx, {
     ownerId: args.ownerId,
     conversationId: args.conversationId,
-    agentType: args.agentType ?? "general",
+    agentType: args.agentType ?? AGENT_IDS.GENERAL,
     maxTaskDepth: DEFAULT_MAX_TASK_DEPTH,
-  }) as Record<string, { execute?: (input: Record<string, unknown>) => Promise<unknown> }>;
+  }) as Record<
+    string,
+    { execute?: (input: Record<string, unknown>) => Promise<unknown> }
+  >;
 
   const tool = tools[toolName];
   if (!tool?.execute) {
@@ -70,7 +72,11 @@ export const executeTool = action({
 
     return await executeBackendTool(
       ctx,
-      { ownerId, conversationId: args.conversationId, agentType: args.agentType },
+      {
+        ownerId,
+        conversationId: args.conversationId,
+        agentType: args.agentType,
+      },
       args.toolName,
       toolArgs,
     );
@@ -121,8 +127,12 @@ export const webFetch = action({
     }
     return await executeBackendTool(
       ctx,
-      { ownerId, conversationId: args.conversationId, agentType: args.agentType },
-      "WebFetch",
+      {
+        ownerId,
+        conversationId: args.conversationId,
+        agentType: args.agentType,
+      },
+      BACKEND_TOOL_IDS.WEB_FETCH,
       { url: args.url, prompt: args.prompt },
     );
   },
@@ -135,10 +145,13 @@ export const activateSkill = action({
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const ownerId = await requireUserId(ctx);
-    const skill = await ctx.runQuery(internal.data.skills.getSkillByIdInternal, {
-      skillId: args.skillId,
-      ownerId,
-    });
+    const skill = await ctx.runQuery(
+      internal.data.skills.getSkillByIdInternal,
+      {
+        skillId: args.skillId,
+        ownerId,
+      },
+    );
 
     if (!skill || !skill.markdown) {
       return `Skill '${args.skillId}' not found or has no content.`;

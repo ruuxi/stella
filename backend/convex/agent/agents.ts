@@ -11,6 +11,7 @@ import {
   buildFallbackAgentSystemPrompt,
 } from "../prompts/index";
 import { requireUserId } from "../auth";
+import { AGENT_IDS, BACKEND_TOOL_IDS } from "../lib/agent_constants";
 import { BUILTIN_OWNER_ID } from "../lib/owner_ids";
 import { coerceStringArray } from "../lib/coerce";
 
@@ -78,18 +79,20 @@ type AgentRecord = {
   updatedAt: number;
 };
 
-const REMOVED_AGENT_IDS = new Set(["orchestrator"]);
+const REMOVED_AGENT_IDS = new Set<string>([AGENT_IDS.ORCHESTRATOR]);
 
 const BUILTIN_AGENT_DEFS: AgentRecord[] = [
   {
     id: "offline_responder",
     name: "Offline Responder",
-    description: "Minimal backend fallback that replies while the local runtime is offline.",
+    description:
+      "Minimal backend fallback that replies while the local runtime is offline.",
     systemPrompt: OFFLINE_RESPONDER_SYSTEM_PROMPT,
     agentTypes: ["offline_responder"],
     toolsAllowlist: [
-      "WebSearch", "WebFetch",
-      "NoResponse",
+      BACKEND_TOOL_IDS.WEB_SEARCH,
+      BACKEND_TOOL_IDS.WEB_FETCH,
+      BACKEND_TOOL_IDS.NO_RESPONSE,
     ],
     defaultSkills: [],
     maxTaskDepth: 0,
@@ -107,7 +110,9 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
   if (!id || REMOVED_AGENT_IDS.has(id)) return null;
 
   const name =
-    typeof record.name === "string" && record.name.trim() ? record.name.trim() : id;
+    typeof record.name === "string" && record.name.trim()
+      ? record.name.trim()
+      : id;
   const description =
     typeof record.description === "string" && record.description.trim()
       ? record.description.trim()
@@ -122,7 +127,10 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
   const defaultSkills = coerceStringArray(record.defaultSkills);
 
   const versionNumber = Number(record.version);
-  const version = Number.isFinite(versionNumber) && versionNumber > 0 ? Math.floor(versionNumber) : 1;
+  const version =
+    Number.isFinite(versionNumber) && versionNumber > 0
+      ? Math.floor(versionNumber)
+      : 1;
 
   const maxTaskDepthNumber = Number(record.maxTaskDepth);
   const maxTaskDepth =
@@ -176,7 +184,9 @@ const upsertAgent = async (
     )
     .unique();
 
-  const { model: _model, ...safeAgent } = agent as AgentRecord & { model?: string };
+  const { model: _model, ...safeAgent } = agent as AgentRecord & {
+    model?: string;
+  };
   const payload = {
     ...safeAgent,
     ownerId,
@@ -265,7 +275,9 @@ const getAgentConfigHandler = async (
     return toAgentConfig(builtinRecord);
   }
 
-  const builtin = BUILTIN_AGENT_DEFS.find((agent) => agent.id === args.agentType);
+  const builtin = BUILTIN_AGENT_DEFS.find(
+    (agent) => agent.id === args.agentType,
+  );
   if (builtin) {
     return toAgentConfig({
       ...builtin,
@@ -303,7 +315,9 @@ export const listAgents = internalQuery({
     const [builtinRecords, ownerRecords] = await Promise.all([
       ctx.db
         .query("agents")
-        .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", BUILTIN_OWNER_ID))
+        .withIndex("by_ownerId_and_updatedAt", (q) =>
+          q.eq("ownerId", BUILTIN_OWNER_ID),
+        )
         .order("desc")
         .take(200),
       ctx.db
