@@ -8,12 +8,10 @@
  */
 
 export const SPACETIMEDB_HOST =
-  (import.meta as Record<string, Record<string, string>>).env
-    ?.VITE_SPACETIMEDB_HOST ?? "wss://maincloud.spacetimedb.com";
+  import.meta.env.VITE_SPACETIMEDB_HOST ?? "wss://maincloud.spacetimedb.com";
 
 export const SPACETIMEDB_MODULE =
-  (import.meta as Record<string, Record<string, string>>).env
-    ?.VITE_SPACETIMEDB_MODULE ?? "{{spacetimedbModule}}";
+  import.meta.env.VITE_SPACETIMEDB_MODULE ?? "{{spacetimedbModule}}";
 
 const SPACETIMEDB_TOKEN_KEY = "spacetimedb_token";
 const DISPLAY_NAME_KEY = "stella_game_display_name";
