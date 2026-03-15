@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import type { TaskLifecycleEvent } from "../tasks/local-task-manager.js";
 import { normalizeStellaApiBaseUrl } from "../stella-provider.js";
-import { AGENT_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
+import { isOrchestratorAgentType } from "../../../../src/shared/contracts/agent-runtime.js";
 import type { SelfModHmrState } from "../../../../src/shared/contracts/electron-data.js";
 
 export const DEFAULT_MAX_TASK_DEPTH = 8;
@@ -38,7 +38,7 @@ export const escapeHtml = (value: string) =>
     .replace(/"/g, "&quot;");
 
 export const defaultPromptForAgentType = (agentType: string): string => {
-  if (agentType === AGENT_IDS.ORCHESTRATOR) return DEFAULT_ORCHESTRATOR_PROMPT;
+  if (isOrchestratorAgentType(agentType)) return DEFAULT_ORCHESTRATOR_PROMPT;
   return DEFAULT_SUBAGENT_PROMPT;
 };
 

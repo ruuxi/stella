@@ -24,7 +24,11 @@ import type {
   ParsedAgentLike,
   StellaHostRunnerOptions,
 } from "./types.js";
-import { AGENT_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
+import {
+  AGENT_IDS,
+  getAgentEnginePreference,
+  isLocalCliAgentId,
+} from "../../../../src/shared/contracts/agent-runtime.js";
 import {
   buildPanelInventory,
   defaultPromptForAgentType,
@@ -317,6 +321,7 @@ export const buildAgentContext = async (
           shouldInjectDynamicReminder: false,
           reminderTokensSinceLastInjection: 0,
         };
+  const enginePref = getAgentEnginePreference(args.agentType);
 
   return {
     systemPrompt:
@@ -336,15 +341,13 @@ export const buildAgentContext = async (
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
     agentEngine:
-      args.agentType === AGENT_IDS.GENERAL
+      enginePref === "general"
         ? getGeneralAgentEngine(context.stellaHomePath)
-        : args.agentType === AGENT_IDS.SELF_MOD
+        : enginePref === "self_mod"
           ? getSelfModAgentEngine(context.stellaHomePath)
           : undefined,
-    maxAgentConcurrency:
-      args.agentType === AGENT_IDS.GENERAL ||
-      args.agentType === AGENT_IDS.SELF_MOD
-        ? getMaxAgentConcurrency(context.stellaHomePath)
-        : undefined,
+    maxAgentConcurrency: isLocalCliAgentId(args.agentType)
+      ? getMaxAgentConcurrency(context.stellaHomePath)
+      : undefined,
   };
 };
