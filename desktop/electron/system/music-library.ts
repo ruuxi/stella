@@ -96,8 +96,6 @@ const parseItunesXml = async (xmlPath: string): Promise<MusicLibrarySignals> => 
 
   // Match individual track entries: <key>ID</key><dict>...</dict>
   // We iterate through key-value pairs within each track dict
-  const trackDictPattern = /<dict>\s*(?:<key>[^<]+<\/key>\s*(?:<[^/][^>]*>[^<]*<\/[^>]+>|<[^/][^>]*\/>)\s*)+<\/dict>/g;
-
   // Start after the Tracks key
   const tracksSection = content.substring(tracksIdx);
 
