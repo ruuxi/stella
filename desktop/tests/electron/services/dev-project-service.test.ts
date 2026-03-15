@@ -109,7 +109,9 @@ describe('DevProjectService', () => {
 
     spawnMock.mockReturnValue(createMockChild())
 
-    const service = new DevProjectService(() => stellaHome)
+    const service = new DevProjectService({
+      getStellaHomePath: () => stellaHome,
+    })
     vi.spyOn(service as never, 'readRegistry').mockResolvedValue(registry)
     vi.spyOn(service as never, 'ensureDiscoverySeeded').mockImplementation(async (state) => state)
     vi.spyOn(service as never, 'writeRegistry').mockResolvedValue(undefined)

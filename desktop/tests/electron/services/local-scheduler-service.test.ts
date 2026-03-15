@@ -35,7 +35,7 @@ describe('LocalSchedulerService', () => {
 
     const service = new LocalSchedulerService({
       stellaHome,
-      getRunner: () => null,
+      runnerTarget: { getRunner: () => null },
     })
 
     service.start()
@@ -65,7 +65,7 @@ describe('LocalSchedulerService', () => {
 
     const reloaded = new LocalSchedulerService({
       stellaHome,
-      getRunner: () => null,
+      runnerTarget: { getRunner: () => null },
     })
     reloaded.start()
 
@@ -84,10 +84,12 @@ describe('LocalSchedulerService', () => {
 
     const service = new LocalSchedulerService({
       stellaHome,
-      getRunner: () =>
-        ({
-          runAutomationTurn,
-        }) as unknown as StellaHostRunner,
+      runnerTarget: {
+        getRunner: () =>
+          ({
+            runAutomationTurn,
+          }) as unknown as StellaHostRunner,
+      },
     })
 
     service.start()
@@ -139,10 +141,12 @@ describe('LocalSchedulerService', () => {
 
     const service = new LocalSchedulerService({
       stellaHome,
-      getRunner: () =>
-        ({
-          runAutomationTurn,
-        }) as unknown as StellaHostRunner,
+      runnerTarget: {
+        getRunner: () =>
+          ({
+            runAutomationTurn,
+          }) as unknown as StellaHostRunner,
+      },
     })
 
     service.start()

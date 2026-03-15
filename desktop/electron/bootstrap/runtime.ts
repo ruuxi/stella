@@ -34,10 +34,10 @@ const wait = (ms: number) =>
   });
 
 export const initializeStellaHostRunner = async (context: BootstrapContext) => {
-  const { config, services, state } = context;
+  const { config, lifecycle, services, state } = context;
   const stellaHome = await resolveStellaHome(app);
 
-  state.stellaHomePath = stellaHome.homePath;
+  lifecycle.setStellaHomePath(stellaHome.homePath);
   state.desktopDatabase?.close();
   state.desktopDatabase = createDesktopDatabase(stellaHome.homePath);
 
@@ -67,13 +67,13 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   if (!state.schedulerService) {
     state.schedulerService = new LocalSchedulerService({
       stellaHome: stellaHome.homePath,
-      getRunner: () => state.stellaHostRunner,
+      runnerTarget: lifecycle,
     });
   } else {
     state.schedulerService.stop();
   }
 
-  state.stellaHostRunner = createStellaHostRunner({
+  lifecycle.setRunner(createStellaHostRunner({
     deviceId: state.deviceId,
     stellaHomePath: stellaHome.homePath,
     runtimeStore: state.runtimeStore!,
@@ -114,14 +114,14 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
       publicKey: deviceIdentity.publicKey,
       signature: signDeviceHeartbeat(deviceIdentity, signedAtMs),
     }),
-  });
+  }));
 
   const pendingConvexUrl = services.authService.getPendingConvexUrl();
   if (pendingConvexUrl) {
-    state.stellaHostRunner.setConvexUrl(pendingConvexUrl);
+    lifecycle.getRunner()!.setConvexUrl(pendingConvexUrl);
   }
 
-  state.stellaHostRunner.start();
+  lifecycle.getRunner()!.start();
   state.schedulerService.start();
 };
 
@@ -230,7 +230,7 @@ const bindUiStateTargets = (context: BootstrapContext) => {
 };
 
 const initializeWindowControllers = (context: BootstrapContext) => {
-  const { config, services, state } = context;
+  const { config, lifecycle, services, state } = context;
   const preloadPath = path.join(config.electronDir, "preload.js");
 
   state.overlayController = new OverlayWindowController({
@@ -241,7 +241,7 @@ const initializeWindowControllers = (context: BootstrapContext) => {
     getDevServerUrl,
   });
 
-  state.windowManager = new WindowManager({
+  lifecycle.setWindowManager(new WindowManager({
     electronDir: config.electronDir,
     preloadPath,
     sessionPartition: config.sessionPartition,
@@ -265,7 +265,7 @@ const initializeWindowControllers = (context: BootstrapContext) => {
       services.uiStateService.deactivateVoiceModes(),
     onUpdateUiState: (partial) => services.uiStateService.update(partial),
     getOverlayController: () => state.overlayController,
-  });
+  }));
 
   bindUiStateTargets(context);
 };

@@ -1,8 +1,8 @@
 import { promises as fs } from 'fs'
 import { BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, type MessageBoxOptions } from 'electron'
 import path from 'path'
-import type { WindowManager } from '../windows/window-manager.js'
 import { ensurePrivateDir, writePrivateFile } from '../system/private-fs.js'
+import type { WindowManagerTarget } from './lifecycle-targets.js'
 
 const SECURITY_POLICY_VERSION = 1
 const SECURITY_APPROVAL_PREFIX = `v${SECURITY_POLICY_VERSION}:`
@@ -10,11 +10,8 @@ const SECURITY_APPROVAL_PREFIX = `v${SECURITY_POLICY_VERSION}:`
 export class SecurityPolicyService {
   private securityPolicyPath: string | null = null
   private readonly trustedPrivilegedActions = new Set<string>()
-  private getWindowManager: () => WindowManager | null
 
-  constructor(options: { getWindowManager: () => WindowManager | null }) {
-    this.getWindowManager = options.getWindowManager
-  }
+  constructor(private readonly options: { windowManagerTarget: WindowManagerTarget }) {}
 
   setSecurityPolicyPath(policyPath: string) {
     this.securityPolicyPath = policyPath
@@ -72,7 +69,7 @@ export class SecurityPolicyService {
       return true
     }
 
-    const windowManager = this.getWindowManager()
+    const windowManager = this.options.windowManagerTarget.getWindowManager()
     const ownerWindow =
       (event ? BrowserWindow.fromWebContents(event.sender) : null) ??
       BrowserWindow.getFocusedWindow() ??

@@ -5,6 +5,7 @@ import net from 'net'
 import path from 'path'
 import { collectDevProjects } from '../system/dev-projects.js'
 import { writePrivateFile } from '../system/private-fs.js'
+import type { StellaHomePathTarget } from './lifecycle-targets.js'
 import type {
   DiscoveryCategory,
 } from '../../src/shared/contracts/discovery.js'
@@ -479,7 +480,7 @@ export class DevProjectService {
   private readonly runtimeErrors = new Map<string, string>()
   private readonly listeners = new Set<() => void>()
 
-  constructor(private readonly getStellaHomePath: () => string | null) {}
+  constructor(private readonly stellaHomePathTarget: StellaHomePathTarget) {}
 
   subscribe(listener: () => void) {
     this.listeners.add(listener)
@@ -649,7 +650,7 @@ export class DevProjectService {
   }
 
   private getRegistryPath() {
-    const stellaHomePath = this.getStellaHomePath()
+    const stellaHomePath = this.stellaHomePathTarget.getStellaHomePath()
     if (!stellaHomePath) {
       return null
     }
@@ -657,7 +658,7 @@ export class DevProjectService {
   }
 
   private getDiscoveryCategoriesPath() {
-    const stellaHomePath = this.getStellaHomePath()
+    const stellaHomePath = this.stellaHomePathTarget.getStellaHomePath()
     if (!stellaHomePath) {
       return null
     }
