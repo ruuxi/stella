@@ -295,7 +295,7 @@ const TaskCancelJsonSchema = {
 const TaskJsonSchema = {
   type: "object",
   properties: {
-    action: { type: "string", enum: ["create", "cancel", "message", "inbox"], description: "Action to perform: 'create' (new task), 'cancel' (stop task), 'message' (send to task), 'inbox' (read messages from task)" },
+    action: { type: "string", enum: ["create", "cancel", "message", "inbox"], description: "Action to perform: 'create' (new task), 'cancel' (stop task), 'message' (interrupt and update a running task), 'inbox' (read task messages)" },
     task_id: { type: "string", description: "Task ID (required for cancel, message, inbox)" },
     description: { type: "string", description: "Task summary (for create)" },
     prompt: { type: "string", description: "Detailed instructions (for create)" },
@@ -505,7 +505,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, relevant file paths, and expected output.\n" +
     "- subagent_type: 'general' (external code, files, shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), or 'app' (browser and desktop app automation).\n" +
     "- thread_name: optional active thread name to continue. Omit it to start fresh and the runtime will assign a short Greek/Roman name automatically.\n" +
-    "- Returns a task_id for tracking with TaskOutput or canceling with TaskCancel.",
+    "- Returns a task_id for tracking with TaskOutput, updating with TaskUpdate, or canceling with TaskCancel.",
   TaskOutput:
     "Check the status and output of a previously created task.\n\n" +
     "Usage:\n" +
@@ -515,13 +515,16 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Cancel a running task.\n\n" +
     "Usage:\n" +
     "- task_id: the ID of the task to cancel.",
-  Task:
-    "Multi-action task tool for creating tasks, sending messages to running tasks, and reading task inbox.\n\n" +
+  TaskUpdate:
+    "Multi-action task update tool for updating or canceling delegated tasks.\n\n" +
     "Actions:\n" +
     "- action='create': Create a new subagent task (same as TaskCreate).\n" +
     "- action='cancel': Cancel a running task by task_id.\n" +
-    "- action='message': Send a message to a running task's agent.\n" +
+    "- action='message': Interrupt a running task and deliver a new instruction immediately.\n" +
     "- action='inbox': Read messages sent back from a task's agent.",
+  Task:
+    "Deprecated alias for TaskUpdate.\n\n" +
+    "Use TaskUpdate instead.",
   WebFetch:
     "Fetch and read content from a URL.\n\n" +
     "Usage:\n" +
@@ -575,6 +578,7 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   TaskCreate: TaskCreateJsonSchema,
   TaskOutput: TaskOutputJsonSchema,
   TaskCancel: TaskCancelJsonSchema,
+  TaskUpdate: TaskJsonSchema,
   Task: TaskJsonSchema,
   WebFetch: WebFetchJsonSchema,
   SaveMemory: SaveMemoryJsonSchema,

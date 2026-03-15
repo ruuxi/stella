@@ -60,6 +60,8 @@ type RuntimeTaskRecord = {
   toSubagentQueue: string[];
   toOrchestratorQueue: string[];
   messageLog: TaskMessageEntry[];
+  attemptCount: number;
+  restartRequested: boolean;
   terminalEventEmitted: boolean;
 };
 
@@ -206,7 +208,9 @@ const getFsLockKey = (
 };
 
 const isTaskCreateTool = (toolName: string): boolean =>
-  toolName === "Task" || toolName === "TaskCreate";
+  toolName === "Task" || toolName === "TaskCreate" || toolName === "TaskUpdate";
+
+const TASK_UPDATE_INTERRUPT_ERROR = "Interrupted by task update";
 
 export class LocalTaskManager implements TaskToolApi {
   private readonly defaultMaxConcurrent: number;
@@ -222,6 +226,56 @@ export class LocalTaskManager implements TaskToolApi {
   constructor(opts: LocalTaskManagerOpts) {
     this.opts = opts;
     this.defaultMaxConcurrent = Math.max(1, opts.maxConcurrent ?? 3);
+  }
+
+  private consumeTaskMessages(
+    task: RuntimeTaskRecord,
+    recipient: "orchestrator" | "subagent",
+  ): string[] {
+    const queue = recipient === "subagent" ? task.toSubagentQueue : task.toOrchestratorQueue;
+    if (queue.length === 0) return [];
+    const out = [...queue];
+    queue.length = 0;
+    return out;
+  }
+
+  private buildTaskPrompt(task: RuntimeTaskRecord): string {
+    const updates = this.consumeTaskMessages(task, "subagent");
+    if (updates.length === 0) {
+      return task.prompt;
+    }
+
+    const updateBlock = updates.map((text, index) => `${index + 1}. ${text}`).join("\n");
+    if (task.attemptCount === 0) {
+      return [
+        task.prompt,
+        "Task updates from orchestrator:",
+        updateBlock,
+        "Apply these updates while completing the task. Newer updates override conflicting earlier instructions.",
+      ].join("\n\n");
+    }
+
+    return [
+      "Task update from orchestrator:",
+      updateBlock,
+      "Your previous attempt was interrupted so you can apply this update immediately. Continue the same task and treat newer updates as higher priority than conflicting earlier instructions.",
+    ].join("\n\n");
+  }
+
+  private shouldRestartTask(task: RuntimeTaskRecord): boolean {
+    return task.restartRequested && task.status !== "canceled";
+  }
+
+  private requeueTaskForUpdate(task: RuntimeTaskRecord): void {
+    task.restartRequested = false;
+    task.status = "pending";
+    task.completedAt = null;
+    task.result = undefined;
+    task.error = undefined;
+    task.progressBuffer = "";
+    task.recentActivity = ["Applying task update from orchestrator."];
+    task.controller = new AbortController();
+    this.pendingQueue.unshift(task.id);
   }
 
   private tryStartNext(): void {
@@ -307,6 +361,9 @@ export class LocalTaskManager implements TaskToolApi {
         context.systemPrompt = task.systemPromptOverride;
       }
 
+      const taskPrompt = this.buildTaskPrompt(task);
+      task.attemptCount += 1;
+
       const result = await this.opts.runSubagent({
         conversationId: task.conversationId,
         userMessageId: runId,
@@ -314,7 +371,7 @@ export class LocalTaskManager implements TaskToolApi {
         ...(task.cloudTaskId ? { taskId: task.cloudTaskId } : {}),
         rootRunId: task.rootRunId,
         taskDescription: task.description,
-        taskPrompt: task.prompt,
+        taskPrompt,
         agentContext: context,
         persistToConvex: task.storageMode === "cloud",
         enableRemoteTools: true,
@@ -365,7 +422,9 @@ export class LocalTaskManager implements TaskToolApi {
       });
 
       task.completedAt = Date.now();
-      if (task.controller.signal.aborted || task.status === "canceled") {
+      if (this.shouldRestartTask(task)) {
+        // The update path aborts the active subagent run on purpose and immediately requeues.
+      } else if (task.controller.signal.aborted || task.status === "canceled") {
         task.status = "canceled";
         task.error = task.error ?? "Canceled";
       } else if (result.error) {
@@ -377,13 +436,20 @@ export class LocalTaskManager implements TaskToolApi {
       }
     } catch (error) {
       task.completedAt = Date.now();
-      if (task.controller.signal.aborted) {
+      if (this.shouldRestartTask(task)) {
+        // The update path aborts the active subagent run on purpose and immediately requeues.
+      } else if (task.controller.signal.aborted) {
         task.status = "canceled";
         task.error = task.error ?? "Canceled";
       } else {
         task.status = "error";
         task.error = (error as Error).message ?? "Task failed";
       }
+    }
+
+    if (this.shouldRestartTask(task)) {
+      this.requeueTaskForUpdate(task);
+      return;
     }
 
     // Emit task lifecycle event
@@ -484,6 +550,8 @@ export class LocalTaskManager implements TaskToolApi {
       toSubagentQueue: [],
       toOrchestratorQueue: [],
       messageLog: [],
+      attemptCount: 0,
+      restartRequested: false,
       terminalEventEmitted: false,
     };
 
@@ -530,7 +598,10 @@ export class LocalTaskManager implements TaskToolApi {
         completedAt: local.completedAt,
         result: local.result,
         error: local.error,
-        recentActivity: local.status === "running" ? local.recentActivity : undefined,
+        recentActivity:
+          local.status === "running" || local.status === "pending"
+            ? local.recentActivity
+            : undefined,
         messages: local.messageLog.slice(-10),
       };
     }
@@ -550,6 +621,7 @@ export class LocalTaskManager implements TaskToolApi {
       local.error = reason ?? "Canceled";
       local.status = "canceled";
       local.completedAt = Date.now();
+      local.restartRequested = false;
       local.controller.abort(new Error(local.error));
       if (!local.terminalEventEmitted && (previousStatus === "pending" || previousStatus === "running")) {
         this.opts.onTaskEvent?.({
@@ -584,6 +656,9 @@ export class LocalTaskManager implements TaskToolApi {
     if (!task) return { delivered: false };
     const text = message.trim();
     if (!text) return { delivered: false };
+    if (task.status === "completed" || task.status === "error" || task.status === "canceled") {
+      return { delivered: false };
+    }
 
     const targetQueue = from === "orchestrator" ? task.toSubagentQueue : task.toOrchestratorQueue;
     targetQueue.push(text);
@@ -596,6 +671,23 @@ export class LocalTaskManager implements TaskToolApi {
       task.messageLog.splice(0, task.messageLog.length - LocalTaskManager.MAX_LOG_MESSAGES);
     }
 
+    if (from === "orchestrator") {
+      task.recentActivity = [`Task update received: ${truncate(text, 200)}`];
+      this.opts.onTaskEvent?.({
+        type: "task-progress",
+        conversationId: task.conversationId,
+        rootRunId: task.rootRunId,
+        taskId: task.id,
+        agentType: task.agentType,
+        statusText: "Applying task update",
+      });
+
+      if (task.status === "running" && !task.controller.signal.aborted) {
+        task.restartRequested = true;
+        task.controller.abort(new Error(TASK_UPDATE_INTERRUPT_ERROR));
+      }
+    }
+
     return { delivered: true };
   }
 
@@ -605,11 +697,7 @@ export class LocalTaskManager implements TaskToolApi {
   ): Promise<string[]> {
     const task = this.tasks.get(taskId);
     if (!task) return [];
-    const queue = recipient === "subagent" ? task.toSubagentQueue : task.toOrchestratorQueue;
-    if (queue.length === 0) return [];
-    const out = [...queue];
-    queue.length = 0;
-    return out;
+    return this.consumeTaskMessages(task, recipient);
   }
 }
 

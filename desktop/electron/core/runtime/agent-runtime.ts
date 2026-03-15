@@ -38,7 +38,7 @@ const MAX_RESULT_PREVIEW = 200;
 
 const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
-  "Task",
+  "TaskUpdate",
   "TaskCreate",
   "TaskCancel",
   "TaskOutput",
