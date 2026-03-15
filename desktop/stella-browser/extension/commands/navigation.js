@@ -6,6 +6,11 @@ import { ensureDebugger, onCdpEvent, offCdpEvent } from '../lib/debugger.js';
 
 const NETWORK_IDLE_MS = 500;
 
+async function focusTabWindow(tab) {
+  await chrome.tabs.update(tab.id, { active: true });
+  await chrome.windows.update(tab.windowId, { focused: true, state: 'normal' });
+}
+
 function waitForPageEvent(tabId, method, timeout = 30000) {
   return new Promise(async (resolve, reject) => {
     const listener = () => {
@@ -126,6 +131,8 @@ export async function handleNavigate(command) {
 
   if (!url) throw new Error('URL is required for navigate');
 
+  await focusTabWindow(tab);
+
   const waitPromise =
     command.waitUntil === 'none'
       ? null
@@ -152,6 +159,7 @@ export async function handleNavigate(command) {
 
 export async function handleBack(command) {
   const tab = await getActiveTab();
+  await focusTabWindow(tab);
   const waitPromise = waitForNavigationState(tab.id, 'load', command.timeout || 30000);
   await chrome.tabs.goBack(tab.id);
   await waitPromise;
@@ -165,6 +173,7 @@ export async function handleBack(command) {
 
 export async function handleForward(command) {
   const tab = await getActiveTab();
+  await focusTabWindow(tab);
   const waitPromise = waitForNavigationState(tab.id, 'load', command.timeout || 30000);
   await chrome.tabs.goForward(tab.id);
   await waitPromise;
@@ -178,6 +187,7 @@ export async function handleForward(command) {
 
 export async function handleReload(command) {
   const tab = await getActiveTab();
+  await focusTabWindow(tab);
   const waitPromise = waitForNavigationState(tab.id, 'load', command.timeout || 30000);
   await chrome.tabs.reload(tab.id);
   await waitPromise;
