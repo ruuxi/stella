@@ -111,6 +111,11 @@ export const resolveRuntimeHomePath = (app?: App): string =>
 export const resolveRuntimeStatePath = (app?: App): string =>
   path.join(resolveRuntimeHomePath(app), "state");
 
+export const resolveBundledDefaultsPath = (app?: App): string =>
+  app?.isPackaged
+    ? path.join(resolveInstallRoot(app), "stella-defaults")
+    : path.join(resolveDesktopRoot(app), "resources", "stella-defaults");
+
 const seedMissingEntries = async (sourcePath: string, targetPath: string) => {
   let entries: Dirent[];
   try {
@@ -148,7 +153,7 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   const desktopRoot = resolveDesktopRoot(app);
   const installRoot = resolveInstallRoot(app);
   const homePath = resolveRuntimeHomePath(app);
-  const bundledDefaultsPath = path.join(desktopRoot, ".stella");
+  const bundledDefaultsPath = resolveBundledDefaultsPath(app);
   const workspacePath = path.join(desktopRoot, "workspace");
 
   const agentsPath = path.join(homePath, "agents");
@@ -180,10 +185,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
     seedMissingEntries(path.join(bundledDefaultsPath, "core-skills"), coreSkillsPath),
     seedMissingEntries(path.join(bundledDefaultsPath, "skills"), skillsPath),
     seedMissingEntries(path.join(bundledDefaultsPath, "extensions"), extensionsPath),
-    seedMissingEntries(path.join(bundledDefaultsPath, "state"), statePath),
-    seedMissingEntries(path.join(bundledDefaultsPath, "themes"), path.join(homePath, "themes")),
-    seedMissingEntries(path.join(bundledDefaultsPath, "canvas"), canvasPath),
-    seedMissingEntries(path.join(bundledDefaultsPath, "mods"), path.join(homePath, "mods")),
   ]);
   await seedBundledAgentsIfEmpty(agentsPath);
 
