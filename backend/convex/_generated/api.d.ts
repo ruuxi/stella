@@ -91,6 +91,7 @@ import type * as lib_provider_redaction from "../lib/provider_redaction.js";
 import type * as lib_providers from "../lib/providers.js";
 import type * as lib_redaction from "../lib/redaction.js";
 import type * as lib_retry_fetch from "../lib/retry_fetch.js";
+import type * as lib_store_release_reviews from "../lib/store_release_reviews.js";
 import type * as lib_text_utils from "../lib/text_utils.js";
 import type * as lib_thread_compaction from "../lib/thread_compaction.js";
 import type * as lib_tool_call_utils from "../lib/tool_call_utils.js";
@@ -106,6 +107,7 @@ import type * as prompts_personalized_dashboard from "../prompts/personalized_da
 import type * as prompts_registry from "../prompts/registry.js";
 import type * as prompts_skill_metadata from "../prompts/skill_metadata.js";
 import type * as prompts_skill_selection from "../prompts/skill_selection.js";
+import type * as prompts_store_reviews from "../prompts/store_reviews.js";
 import type * as prompts_suggestions from "../prompts/suggestions.js";
 import type * as prompts_synthesis from "../prompts/synthesis.js";
 import type * as prompts_system_assembly from "../prompts/system_assembly.js";
@@ -224,6 +226,7 @@ declare const fullApi: ApiFromModules<{
   "lib/providers": typeof lib_providers;
   "lib/redaction": typeof lib_redaction;
   "lib/retry_fetch": typeof lib_retry_fetch;
+  "lib/store_release_reviews": typeof lib_store_release_reviews;
   "lib/text_utils": typeof lib_text_utils;
   "lib/thread_compaction": typeof lib_thread_compaction;
   "lib/tool_call_utils": typeof lib_tool_call_utils;
@@ -239,6 +242,7 @@ declare const fullApi: ApiFromModules<{
   "prompts/registry": typeof prompts_registry;
   "prompts/skill_metadata": typeof prompts_skill_metadata;
   "prompts/skill_selection": typeof prompts_skill_selection;
+  "prompts/store_reviews": typeof prompts_store_reviews;
   "prompts/suggestions": typeof prompts_suggestions;
   "prompts/synthesis": typeof prompts_synthesis;
   "prompts/system_assembly": typeof prompts_system_assembly;
