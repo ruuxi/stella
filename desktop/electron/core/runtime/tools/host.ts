@@ -67,7 +67,7 @@ import type { ToolDefinition } from "../extensions/types.js";
 export type { ToolContext, ToolResult };
 
 export const createToolHost = ({
-  StellaHome,
+  stellaHomePath,
   frontendRoot,
   stellaBrowserBinPath,
   stellaUiCliPath,
@@ -78,7 +78,7 @@ export const createToolHost = ({
   extensionTools,
   displayHtml,
 }: ToolHostOptions) => {
-  const stateRoot = path.join(StellaHome, "state");
+  const stateRoot = path.join(stellaHomePath, "state");
 
   // Configure file tools.
   setFileToolsConfig({ frontendRoot });

@@ -175,7 +175,7 @@ describe("runtime runner tools allowlist", () => {
     );
     const runner = createStellaHostRunner({
       deviceId: "device-1",
-      StellaHome: home,
+      stellaHomePath: home,
       runtimeStore,
     });
 
@@ -242,7 +242,7 @@ describe("runtime runner tools allowlist", () => {
     );
     const runner = createStellaHostRunner({
       deviceId: "device-1",
-      StellaHome: home,
+      stellaHomePath: home,
       runtimeStore,
     });
 
@@ -335,7 +335,7 @@ describe("runtime runner tools allowlist", () => {
     );
     const runner = createStellaHostRunner({
       deviceId: "device-1",
-      StellaHome: home,
+      stellaHomePath: home,
       runtimeStore,
     });
 
@@ -379,7 +379,7 @@ describe("runtime runner tools allowlist", () => {
     );
     const runner = createStellaHostRunner({
       deviceId: "device-1",
-      StellaHome: home,
+      stellaHomePath: home,
       runtimeStore,
     });
 
@@ -463,7 +463,7 @@ describe("runtime runner tools allowlist", () => {
     );
     const runner = createStellaHostRunner({
       deviceId: "device-1",
-      StellaHome: home,
+      stellaHomePath: home,
       runtimeStore,
     });
 
@@ -531,7 +531,7 @@ describe("runtime runner tools allowlist", () => {
     );
     const runner = createStellaHostRunner({
       deviceId: "device-1",
-      StellaHome: home,
+      stellaHomePath: home,
       runtimeStore,
     });
 
@@ -626,7 +626,7 @@ describe("runtime runner tools allowlist", () => {
     );
     const runner = createStellaHostRunner({
       deviceId: "device-1",
-      StellaHome: home,
+      stellaHomePath: home,
       runtimeStore,
     });
 

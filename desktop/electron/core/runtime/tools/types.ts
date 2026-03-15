@@ -124,7 +124,7 @@ export type TaskToolApi = {
 };
 
 export type ToolHostOptions = {
-  StellaHome: string;
+  stellaHomePath: string;
   frontendRoot?: string;
   stellaBrowserBinPath?: string;
   stellaUiCliPath?: string;

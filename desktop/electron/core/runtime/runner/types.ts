@@ -32,7 +32,7 @@ import type {
 
 export type StellaHostRunnerOptions = {
   deviceId: string;
-  StellaHome: string;
+  stellaHomePath: string;
   frontendRoot?: string;
   stellaBrowserBinPath?: string;
   stellaUiCliPath?: string;
@@ -183,7 +183,7 @@ export type RunnerState = {
 export type RunnerContext = {
   convexApi: unknown;
   deviceId: string;
-  StellaHome: string;
+  stellaHomePath: string;
   frontendRoot?: string;
   stellaBrowserBinPath?: string;
   stellaUiCliPath?: string;
