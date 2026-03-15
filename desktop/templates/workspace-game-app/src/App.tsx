@@ -22,6 +22,7 @@ import {
   saveHostedLaunchAuth,
 } from "./lib/session";
 
+const APP_NAME = "{{name}}";
 const NO_GAME_ID = "__stella:no-game__";
 const NO_USER_ID = "__stella:no-user__";
 const NO_SESSION_USER_ID = "__stella:no-session__";
@@ -271,6 +272,8 @@ function JoinOrCreate({
       await ensureRegistered();
       await joinSession({
         joinCode: joinCode.trim().toUpperCase(),
+        requestedTeamId: undefined,
+        requestedRoleKey: undefined,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to join");
@@ -302,7 +305,7 @@ function JoinOrCreate({
   return (
     <div style={styles.joinContainer}>
       <div style={styles.joinCard}>
-        <h2 style={styles.joinTitle}>{{name}}</h2>
+        <h2 style={styles.joinTitle}>{APP_NAME}</h2>
         <div style={styles.signedInAs}>Signed in as {displayName}</div>
 
         <div style={styles.divider} />
