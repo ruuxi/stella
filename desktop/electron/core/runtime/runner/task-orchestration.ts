@@ -44,7 +44,7 @@ export const createTaskOrchestration = (
 ) => {
   context.state.localTaskManager = new LocalTaskManager({
     maxConcurrent: 24,
-    getMaxConcurrent: () => getMaxAgentConcurrency(context.StellaHome),
+    getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaHomePath),
     resolveTaskThread: ({ conversationId, agentType, threadName }) => {
       if (agentType !== "general" && agentType !== "self_mod") {
         return null;
@@ -115,7 +115,7 @@ export const createTaskOrchestration = (
       }
 
       const resolvedLlm = resolveLlmRoute({
-        stellaHomePath: context.StellaHome,
+        stellaHomePath: context.stellaHomePath,
         modelName: agentContext.model,
         agentType,
         proxy: {
@@ -154,7 +154,7 @@ export const createTaskOrchestration = (
           agentContext,
           toolExecutor,
           deviceId: context.deviceId,
-          stellaHome: context.StellaHome,
+          stellaHome: context.stellaHomePath,
           resolvedLlm,
           store: context.runtimeStore,
           abortSignal,

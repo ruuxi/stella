@@ -213,7 +213,7 @@ export const createOrchestratorController = (
       runId,
     });
     const resolvedLlm = resolveLlmRoute({
-      stellaHomePath: context.StellaHome,
+      stellaHomePath: context.stellaHomePath,
       modelName: agentContext.model,
       agentType,
       proxy: {
@@ -252,7 +252,7 @@ export const createOrchestratorController = (
       toolExecutor: (toolName, args, toolContext) =>
         context.toolHost.executeTool(toolName, args, toolContext),
       deviceId: context.deviceId,
-      stellaHome: context.StellaHome,
+      stellaHome: context.stellaHomePath,
       resolvedLlm,
       store: context.runtimeStore,
       abortSignal: abortController.signal,
@@ -309,7 +309,7 @@ export const createOrchestratorController = (
     );
     if (
       canResolveLlmRoute({
-        stellaHomePath: context.StellaHome,
+        stellaHomePath: context.stellaHomePath,
         modelName: orchestratorModel,
         proxy: {
           baseUrl: context.state.proxyBaseUrl,
@@ -354,7 +354,7 @@ export const createOrchestratorController = (
       runId,
     });
     const resolvedLlm = resolveLlmRoute({
-      stellaHomePath: context.StellaHome,
+      stellaHomePath: context.stellaHomePath,
       modelName: agentContext.model,
       agentType,
       proxy: {
@@ -392,7 +392,7 @@ export const createOrchestratorController = (
       toolExecutor: (toolName, args, toolContext) =>
         context.toolHost.executeTool(toolName, args, toolContext),
       deviceId: context.deviceId,
-      stellaHome: context.StellaHome,
+      stellaHome: context.stellaHomePath,
       resolvedLlm,
       store: context.runtimeStore,
       abortSignal: abortController.signal,
@@ -509,7 +509,7 @@ export const createOrchestratorController = (
       runId,
     });
     const resolvedLlm = resolveLlmRoute({
-      stellaHomePath: context.StellaHome,
+      stellaHomePath: context.stellaHomePath,
       modelName: agentContext.model,
       agentType,
       proxy: {
@@ -599,7 +599,7 @@ export const createOrchestratorController = (
       toolExecutor: (toolName, args, toolContext) =>
         context.toolHost.executeTool(toolName, args, toolContext),
       deviceId: context.deviceId,
-      stellaHome: context.StellaHome,
+      stellaHome: context.stellaHomePath,
       resolvedLlm,
       store: context.runtimeStore,
       abortSignal: abortController.signal,

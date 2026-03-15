@@ -170,7 +170,7 @@ describe("runtime runner WebSearch", () => {
     );
     const runner = createStellaHostRunner({
       deviceId: "device-1",
-      StellaHome: home,
+      stellaHomePath: home,
       runtimeStore,
       displayHtml: displayHtmlMock,
     });
@@ -213,7 +213,7 @@ describe("runtime runner WebSearch", () => {
     );
     const runner = createStellaHostRunner({
       deviceId: "device-1",
-      StellaHome: home,
+      stellaHomePath: home,
       runtimeStore,
       displayHtml: displayHtmlMock,
     });

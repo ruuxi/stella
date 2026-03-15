@@ -273,7 +273,7 @@ describe("runner general task bridge", () => {
 
       const runner = createStellaHostRunner({
         deviceId: "device-1",
-        StellaHome: home,
+        stellaHomePath: home,
         runtimeStore,
         frontendRoot: "C:/Users/redacted/projects/stella/desktop",
       });

@@ -75,7 +75,7 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
 
   state.stellaHostRunner = createStellaHostRunner({
     deviceId: state.deviceId,
-    StellaHome: stellaHome.homePath,
+    stellaHomePath: stellaHome.homePath,
     runtimeStore: state.runtimeStore!,
     storeModService: state.storeModService!,
     frontendRoot: config.frontendRoot,
