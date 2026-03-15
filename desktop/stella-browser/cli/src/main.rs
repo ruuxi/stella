@@ -3,10 +3,7 @@ mod commands;
 mod connection;
 mod flags;
 mod install;
-mod native;
 mod output;
-#[cfg(test)]
-mod test_utils;
 
 use serde_json::json;
 use std::env;
@@ -134,18 +131,6 @@ fn main() {
     #[cfg(unix)]
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-    }
-
-    if env::var("STELLA_BROWSER_DAEMON").is_ok() {
-        #[cfg(unix)]
-        unsafe {
-            libc::signal(libc::SIGPIPE, libc::SIG_IGN);
-        }
-
-        let session = env::var("STELLA_BROWSER_SESSION").unwrap_or_else(|_| "default".to_string());
-        let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
-        rt.block_on(native::daemon::run_daemon(&session));
-        return;
     }
 
     let args: Vec<String> = env::args().skip(1).collect();
