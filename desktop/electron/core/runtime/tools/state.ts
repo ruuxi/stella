@@ -1,5 +1,5 @@
 /**
- * State tools: Task, TaskOutput handlers.
+ * State tools: TaskUpdate/Task and TaskOutput handlers.
  */
 
 import type {
@@ -83,7 +83,7 @@ export const handleTask = async (
       return { error: `Task not found: ${taskId}` };
     }
     return {
-      result: `Message delivered to task ${taskId}.`,
+      result: `Task update delivered to ${taskId}.`,
     };
   }
 
