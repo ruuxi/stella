@@ -347,23 +347,7 @@ async fn shutdown_signal() {
 }
 
 pub fn get_daemon_socket_dir() -> PathBuf {
-    if let Ok(dir) = env::var("STELLA_BROWSER_SOCKET_DIR") {
-        if !dir.is_empty() {
-            return PathBuf::from(dir);
-        }
-    }
-
-    if let Ok(xdg) = env::var("XDG_RUNTIME_DIR") {
-        if !xdg.is_empty() {
-            return PathBuf::from(xdg).join("stella-browser");
-        }
-    }
-
-    if let Some(home) = dirs::home_dir() {
-        return home.join(".stella-browser");
-    }
-
-    std::env::temp_dir().join("stella-browser")
+    crate::connection::get_storage_root_dir()
 }
 
 #[cfg(windows)]

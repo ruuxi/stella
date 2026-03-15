@@ -357,17 +357,11 @@ fn get_clock_domain() -> Option<&'static str> {
 }
 
 fn get_traces_dir() -> PathBuf {
-    if let Some(home) = dirs::home_dir() {
-        home.join(".stella-browser").join("tmp").join("traces")
-    } else {
-        std::env::temp_dir().join("stella-browser").join("traces")
-    }
+    crate::connection::get_storage_root_dir().join("tmp").join("traces")
 }
 
 fn get_profiles_dir() -> PathBuf {
-    if let Some(home) = dirs::home_dir() {
-        home.join(".stella-browser").join("tmp").join("profiles")
-    } else {
-        std::env::temp_dir().join("stella-browser").join("profiles")
-    }
+    crate::connection::get_storage_root_dir()
+        .join("tmp")
+        .join("profiles")
 }

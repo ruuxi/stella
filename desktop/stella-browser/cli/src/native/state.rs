@@ -476,11 +476,7 @@ pub fn find_auto_state_file(session_name: &str) -> Option<String> {
 }
 
 pub fn get_sessions_dir() -> PathBuf {
-    if let Some(home) = dirs::home_dir() {
-        home.join(".stella-browser").join("sessions")
-    } else {
-        std::env::temp_dir().join("stella-browser").join("sessions")
-    }
+    crate::connection::get_storage_root_dir().join("sessions")
 }
 
 #[cfg(test)]

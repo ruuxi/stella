@@ -43,17 +43,7 @@ fn now_ms() -> u64 {
 }
 
 fn get_app_dir() -> PathBuf {
-    if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
-        if !runtime_dir.is_empty() {
-            return PathBuf::from(runtime_dir).join("stella-browser");
-        }
-    }
-
-    if let Some(home) = dirs::home_dir() {
-        return home.join(".stella-browser");
-    }
-
-    std::env::temp_dir().join("stella-browser")
+    crate::connection::get_storage_root_dir()
 }
 
 fn get_store_path() -> PathBuf {

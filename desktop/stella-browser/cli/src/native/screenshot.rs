@@ -519,13 +519,9 @@ fn round(value: f64) -> i64 {
 }
 
 fn get_screenshot_dir() -> PathBuf {
-    if let Some(home) = dirs::home_dir() {
-        home.join(".stella-browser").join("tmp").join("screenshots")
-    } else {
-        std::env::temp_dir()
-            .join("stella-browser")
-            .join("screenshots")
-    }
+    crate::connection::get_storage_root_dir()
+        .join("tmp")
+        .join("screenshots")
 }
 
 #[cfg(test)]

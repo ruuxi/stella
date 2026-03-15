@@ -6,6 +6,7 @@ use std::time::Duration;
 use tokio::sync::{broadcast, RwLock};
 
 use super::auth;
+use crate::connection;
 use super::browser::{BrowserManager, WaitUntil};
 use super::cdp::chrome::LaunchOptions;
 use super::cdp::client::CdpClient;
@@ -580,7 +581,15 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
                 state.browser = None;
                 state.update_stream_client().await;
             }
-            if let Err(e) = auto_launch(state).await {
+            let bootstrap_url = if extension_requested {
+                match action {
+                    "navigate" | "open" => cmd.get("url").and_then(|v| v.as_str()),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            if let Err(e) = auto_launch(state, bootstrap_url).await {
                 return error_response(&id, &format!("Auto-launch failed: {}", e));
             }
         }
@@ -792,9 +801,9 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
 // Auto-launch
 // ---------------------------------------------------------------------------
 
-async fn auto_launch(state: &mut DaemonState) -> Result<(), String> {
+async fn auto_launch(state: &mut DaemonState, bootstrap_url: Option<&str>) -> Result<(), String> {
     if extension_mode_requested() {
-        launch_extension_from_env(state).await?;
+        launch_extension_from_env(state, bootstrap_url).await?;
         return Ok(());
     }
 
@@ -841,7 +850,10 @@ fn extension_mode_requested() -> bool {
             == Some("1")
 }
 
-async fn launch_extension_from_env(state: &mut DaemonState) -> Result<(), String> {
+async fn launch_extension_from_env(
+    state: &mut DaemonState,
+    bootstrap_url: Option<&str>,
+) -> Result<(), String> {
     if state.extension_bridge.is_some() {
         return Ok(());
     }
@@ -853,6 +865,12 @@ async fn launch_extension_from_env(state: &mut DaemonState) -> Result<(), String
         .unwrap_or(9224);
     let token = env::var("STELLA_BROWSER_EXT_TOKEN").ok();
     let socket_dir = super::daemon::get_daemon_socket_dir();
+
+    // Extension mode is effectively singleton because the browser bridge
+    // connects to one well-known local WebSocket port. Clean up any stale
+    // competing sessions before attempting to bind it.
+    connection::cleanup_competing_extension_sessions(&state.session_id, port);
+
     let mut bridge = ExtensionBridge::new(
         state.session_id.clone(),
         socket_dir,
@@ -862,12 +880,26 @@ async fn launch_extension_from_env(state: &mut DaemonState) -> Result<(), String
     );
     bridge.start().await?;
 
-    if env::var("STELLA_BROWSER_USER_BROWSER")
+    let user_browser_mode = env::var("STELLA_BROWSER_USER_BROWSER")
         .ok()
         .as_deref()
-        == Some("1")
-    {
-        user_browser::relaunch_for_extension_bridge(&[]).await?;
+        == Some("1");
+
+    if user_browser_mode {
+        let extra_args = bootstrap_url
+            .filter(|url| !url.trim().is_empty())
+            .map(|url| vec![url.to_string()])
+            .unwrap_or_default();
+        user_browser::relaunch_for_extension_bridge(&extra_args).await?;
+    }
+
+    // Wait for the extension service worker to come up and attach before
+    // we claim extension mode is ready.
+    if !bridge.wait_for_connection(Duration::from_secs(15)).await {
+        return Err(
+            "Extension not connected. Install the Stella Browser Bridge extension and connect it."
+                .to_string(),
+        );
     }
 
     state.extension_bridge = Some(bridge);
@@ -1000,7 +1032,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
         }
         state.extension_bridge = None;
 
-        launch_extension_from_env(state).await?;
+        launch_extension_from_env(state, None).await?;
         return Ok(json!({
             "launched": true,
             "provider": "extension",
@@ -2903,9 +2935,7 @@ async fn handle_pdf(cmd: &Value, state: &DaemonState) -> Result<Value, String> {
     let save_path = match path {
         Some(p) => p.to_string(),
         None => {
-            let dir = dirs::home_dir()
-                .unwrap_or_else(std::env::temp_dir)
-                .join(".stella-browser")
+            let dir = crate::connection::get_storage_root_dir()
                 .join("tmp")
                 .join("pdfs");
             let _ = std::fs::create_dir_all(&dir);

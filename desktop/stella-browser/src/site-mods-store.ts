@@ -4,7 +4,7 @@
  * Used by the daemon in Playwright/CDP mode (Electron apps, headless browsers).
  * Extension mode uses chrome.storage.local instead (see extension/commands/site-mods.js).
  *
- * Storage: ~/.stella-browser/site-mods.json
+ * Storage: ../.stella/stella-browser/site-mods.json in repo/dev mode
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';

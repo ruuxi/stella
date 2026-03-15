@@ -175,9 +175,16 @@ fn relaunch_for_extension_bridge_blocking(extra_args: &[String]) -> Result<Detec
         "--hide-crash-restore-bubble".to_string(),
         "--disable-session-crashed-bubble".to_string(),
         "--restore-last-session".to_string(),
+        format!("--disable-extensions-except={}", extension_path.display()),
         format!("--load-extension={}", extension_path.display()),
     ];
-    args.extend(extra_args.iter().cloned());
+    if extra_args.is_empty() {
+        // Load one normal web page so the extension's content-script keepalive
+        // can wake the MV3 service worker after a cold browser relaunch.
+        args.push("https://example.com/".to_string());
+    } else {
+        args.extend(extra_args.iter().cloned());
+    }
 
     spawn_detached(&detected.executable_path, &args)?;
 
