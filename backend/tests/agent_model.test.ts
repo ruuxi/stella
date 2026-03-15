@@ -57,6 +57,23 @@ describe("AGENT_MODELS", () => {
       expect(config.model.length).toBeGreaterThan(0);
     }
   });
+
+  test("each gateway order entry is an individual provider slug", () => {
+    const configs = [DEFAULT_MODEL, ...Object.values(AGENT_MODELS)];
+
+    for (const config of configs) {
+      const order = config.providerOptions?.gateway?.order;
+      if (!Array.isArray(order)) continue;
+
+      expect(order).toEqual(
+        order.flatMap((entry) =>
+          typeof entry === "string"
+            ? entry.split(",").map((provider) => provider.trim()).filter(Boolean)
+            : [entry],
+        ),
+      );
+    }
+  });
 });
 
 describe("getModelConfig", () => {
