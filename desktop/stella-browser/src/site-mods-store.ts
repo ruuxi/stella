@@ -9,7 +9,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { getAppDir } from './daemon.js';
+import { getAppDir } from './runtime-paths.js';
 
 export interface SiteMod {
   css: string | null;

@@ -2,7 +2,7 @@ import type { Page } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { BrowserManager, ScreencastFrame } from './browser.js';
-import { getAppDir } from './daemon.js';
+import { getAppDir } from './runtime-paths.js';
 import type {
   Command,
   Response,
