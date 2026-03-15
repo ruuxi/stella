@@ -18,7 +18,6 @@ import { registerVoiceHandlers } from "./ipc/voice-handlers.js";
 import { OverlayWindowController } from "./windows/overlay-window.js";
 import type { StellaHostRunner } from "./stella-host-runner.js";
 import { createStellaHostRunner } from "./stella-host-runner.js";
-import { ensureLastResortRecoveryScripts } from "./self-mod/recovery-script.js";
 import {
   cleanupSelectedTextProcess,
   getSelectedText,
@@ -363,17 +362,6 @@ export const bootstrapMainProcess = () => {
     runtimeStore = new RuntimeStore(desktopDatabase, transcriptMirror);
     storeModStore = new StoreModStore(desktopDatabase);
     storeModService = new StoreModService(frontendRoot, storeModStore);
-    try {
-      await ensureLastResortRecoveryScripts({
-        stellaHomePath: stellaHome.homePath,
-        frontendRoot,
-      });
-    } catch (error) {
-      console.warn(
-        "[self-mod] Failed to write recovery scripts:",
-        (error as Error).message,
-      );
-    }
     securityPolicyService.setSecurityPolicyPath(
       path.join(stellaHome.statePath, "security_policy.json"),
     );
