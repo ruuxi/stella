@@ -70,6 +70,7 @@ export function useLocalAgentStream({
   const localRunIdRef = useRef<string | null>(null)
   const localSeqByRunIdRef = useRef(new Map<string, number>())
   const userMessageIdByRunIdRef = useRef(new Map<string, string>())
+  const latestUserMessageIdRef = useRef<string | null>(null)
   const cancelledStreamRunIdsRef = useRef(new Set<number>())
   const queuedRunStartsRef = useRef<Array<{ runId: string; userMessageId: string }>>(
     [],
@@ -225,13 +226,15 @@ export function useLocalAgentStream({
           }
           {
             const linkedUserMessageId = userMessageIdByRunIdRef.current.get(event.runId)
+            const visibleUserMessageId =
+              linkedUserMessageId ?? latestUserMessageIdRef.current ?? undefined
             console.log(
               `[stella:trace] end | finalText=${(event.finalText ?? streamingTextRef.current).slice(0, 200)}`,
             )
             void Promise.resolve(
               appendAgentEvent({
                 type: 'assistant_message',
-                userMessageId: linkedUserMessageId,
+                userMessageId: visibleUserMessageId,
                 finalText: event.finalText ?? streamingTextRef.current,
               }),
             )
@@ -351,6 +354,7 @@ export function useLocalAgentStream({
 
       const runId = streamRunIdRef.current + 1
       streamRunIdRef.current = runId
+      latestUserMessageIdRef.current = args.userMessageId
       localRunIdRef.current = null
       localSeqByRunIdRef.current.clear()
       userMessageIdByRunIdRef.current.clear()
@@ -434,6 +438,8 @@ export function useLocalAgentStream({
         startStream(args)
         return
       }
+
+      latestUserMessageIdRef.current = args.userMessageId
 
       pendingQueuedStartCountRef.current += 1
       ensureAgentStreamSubscription(runIdCounter)

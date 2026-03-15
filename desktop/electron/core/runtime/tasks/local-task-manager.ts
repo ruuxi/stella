@@ -208,7 +208,7 @@ const getFsLockKey = (
 };
 
 const isTaskCreateTool = (toolName: string): boolean =>
-  toolName === "Task" || toolName === "TaskCreate" || toolName === "TaskUpdate";
+  toolName === "TaskCreate";
 
 const TASK_UPDATE_INTERRUPT_ERROR = "Interrupted by task update";
 

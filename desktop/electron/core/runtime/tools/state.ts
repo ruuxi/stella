@@ -1,5 +1,5 @@
 /**
- * State tools: TaskUpdate/Task and TaskOutput handlers.
+ * State tools: TaskCreate/TaskCancel, TaskUpdate, and TaskOutput handlers.
  */
 
 import type {
@@ -39,11 +39,16 @@ const formatTaskSnapshot = (snapshot: TaskToolSnapshot): string => {
     return `${label}\nDuration: ${duration}ms\n\n--- Error ---\n${truncate(snapshot.error ?? "")}${messageSection}`;
   }
   const elapsed = Date.now() - snapshot.startedAt;
+  const runningHeader =
+    "Task is running in the background.\n" +
+    `Task ID: ${snapshot.id}\n` +
+    `Elapsed: ${elapsed}ms\n` +
+    "You will receive a follow-up message when it completes or fails.";
   if (snapshot.recentActivity && snapshot.recentActivity.length > 0) {
     const activity = snapshot.recentActivity.map((line) => `- ${truncate(line, 300)}`).join("\n");
-    return `Task running.\nTask ID: ${snapshot.id}\nElapsed: ${elapsed}ms\n\nRecent activity:\n${activity}${messageSection}`;
+    return `${runningHeader}\n\nRecent activity:\n${activity}${messageSection}`;
   }
-  return `Task running.\nTask ID: ${snapshot.id}\nElapsed: ${elapsed}ms${messageSection}`;
+  return `${runningHeader}${messageSection}`;
 };
 
 export const createStateContext = (
@@ -55,6 +60,38 @@ export const createStateContext = (
   taskApi,
 });
 
+export const handleTaskUpdate = async (
+  ctx: StateContext,
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ToolResult> => {
+  const explicitTaskId = toOptionalString(args.task_id ?? args.taskId ?? args.id);
+  const contextTaskId = toOptionalString(context.taskId);
+  const taskId = explicitTaskId ?? contextTaskId;
+  const sender: "orchestrator" | "subagent" =
+    context.agentType === "orchestrator" ? "orchestrator" : "subagent";
+  if (!ctx.taskApi?.sendTaskMessage) {
+    return { error: "Task updates are not configured on this device." };
+  }
+  if (!taskId) {
+    return { error: "task_id is required" };
+  }
+  const message =
+    toOptionalString(args.message) ??
+    toOptionalString(args.content) ??
+    toOptionalString(args.text);
+  if (!message) {
+    return { error: "message is required" };
+  }
+  const delivered = await ctx.taskApi.sendTaskMessage(taskId, message, sender);
+  if (!delivered.delivered) {
+    return { error: `Task not found: ${taskId}` };
+  }
+  return {
+    result: `Task update delivered to ${taskId}.`,
+  };
+};
+
 export const handleTask = async (
   ctx: StateContext,
   args: Record<string, unknown>,
@@ -62,46 +99,6 @@ export const handleTask = async (
 ): Promise<ToolResult> => {
   const action = toOptionalString(args.action)?.toLowerCase();
   const explicitTaskId = toOptionalString(args.task_id ?? args.taskId ?? args.id);
-  const contextTaskId = toOptionalString(context.taskId);
-  const resolvedTaskId = explicitTaskId ?? contextTaskId;
-  const sender: "orchestrator" | "subagent" =
-    context.agentType === "orchestrator" ? "orchestrator" : "subagent";
-  if ((action === "message" || action === "send") && ctx.taskApi?.sendTaskMessage) {
-    const taskId = resolvedTaskId;
-    if (!taskId) {
-      return { error: "task_id is required for action=message" };
-    }
-    const message =
-      toOptionalString(args.message) ??
-      toOptionalString(args.content) ??
-      toOptionalString(args.text);
-    if (!message) {
-      return { error: "message is required for action=message" };
-    }
-    const delivered = await ctx.taskApi.sendTaskMessage(taskId, message, sender);
-    if (!delivered.delivered) {
-      return { error: `Task not found: ${taskId}` };
-    }
-    return {
-      result: `Task update delivered to ${taskId}.`,
-    };
-  }
-
-  if ((action === "inbox" || action === "messages") && ctx.taskApi?.drainTaskMessages) {
-    const taskId = resolvedTaskId;
-    if (!taskId) {
-      return { error: "task_id is required for action=inbox" };
-    }
-    const recipient: "orchestrator" | "subagent" =
-      sender === "orchestrator" ? "orchestrator" : "subagent";
-    const messages = await ctx.taskApi.drainTaskMessages(taskId, recipient);
-    if (messages.length === 0) {
-      return { result: "No new messages." };
-    }
-    return {
-      result: messages.map((entry, index) => `${index + 1}. ${truncate(entry, 1000)}`).join("\n"),
-    };
-  }
 
   if ((action === "cancel" || action === "stop") && explicitTaskId) {
     if (ctx.taskApi) {
@@ -178,10 +175,12 @@ export const handleTask = async (
     });
     return {
       result: [
-        "Task running.",
+        "Task is now running in the background.",
         `Task ID: ${created.taskId}`,
         ...(created.threadName ? [`Thread: ${created.threadName}`] : []),
         "Elapsed: 0ms",
+        "You will receive a follow-up message when it completes or fails.",
+        "Do not create another task for the same work. You may gently respond to the user or call NoResponse.",
       ].join("\n"),
     };
   }
@@ -197,7 +196,13 @@ export const handleTask = async (
   };
   ctx.tasks.set(id, record);
   return {
-    result: `Task running.\nTask ID: ${id}\nElapsed: 0ms`,
+    result: [
+      "Task is now running in the background.",
+      `Task ID: ${id}`,
+      "Elapsed: 0ms",
+      "You will receive a follow-up message when it completes or fails.",
+      "Do not create another task for the same work. You may gently respond to the user or call NoResponse.",
+    ].join("\n"),
   };
 };
 
@@ -237,6 +242,11 @@ export const handleTaskOutput = async (
   }
   const elapsed = Date.now() - record.startedAt;
   return {
-    result: `Task still running.\nTask ID: ${taskId}\nElapsed: ${elapsed}ms`,
+    result: [
+      "Task is running in the background.",
+      `Task ID: ${taskId}`,
+      `Elapsed: ${elapsed}ms`,
+      "You will receive a follow-up message when it completes or fails.",
+    ].join("\n"),
   };
 };
