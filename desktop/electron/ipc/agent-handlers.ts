@@ -6,6 +6,11 @@ import {
 } from "electron";
 import { promises as fs } from "fs";
 import path from "path";
+import {
+  AGENT_STREAM_EVENT_TYPES,
+  type AgentIdLike,
+  type AgentStreamEventType,
+} from "../../src/shared/contracts/agent-runtime.js";
 import type { SelfModHmrState } from "../../src/shared/contracts/electron-data.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import {
@@ -28,17 +33,7 @@ type AgentHandlersOptions = {
 };
 
 type AgentEventPayload = {
-  type:
-    | "stream"
-    | "tool-start"
-    | "tool-end"
-    | "error"
-    | "end"
-    | "task-started"
-    | "task-completed"
-    | "task-failed"
-    | "task-canceled"
-    | "task-progress";
+  type: AgentStreamEventType;
   runId: string;
   seq: number;
   chunk?: string;
@@ -52,7 +47,7 @@ type AgentEventPayload = {
   persisted?: boolean;
   selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
   taskId?: string;
-  agentType?: string;
+  agentType?: AgentIdLike;
   description?: string;
   parentTaskId?: string;
   result?: string;
@@ -65,7 +60,10 @@ const redactSensitiveLogText = (value: string) =>
   value
     .replace(/\b(sk-[A-Za-z0-9_-]{12,})\b/g, "[redacted-token]")
     .replace(/\b(Bearer\s+[A-Za-z0-9._-]{12,})\b/gi, "[redacted-token]")
-    .replace(/\b([A-Za-z0-9_-]{20,}\.[A-Za-z0-9._-]{10,})\b/g, "[redacted-token]");
+    .replace(
+      /\b([A-Za-z0-9_-]{20,}\.[A-Za-z0-9._-]{10,})\b/g,
+      "[redacted-token]",
+    );
 
 const AGENT_EVENT_BUFFER_LIMIT = 1000;
 const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1000;
@@ -231,34 +229,34 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         onStream: (ev) =>
           emitAgentEvent(
             ev.runId,
-            { type: "stream", ...ev },
+            { type: AGENT_STREAM_EVENT_TYPES.STREAM, ...ev },
             senderWebContentsId,
           ),
         onToolStart: (ev) =>
           emitAgentEvent(
             ev.runId,
-            { type: "tool-start", ...ev },
+            { type: AGENT_STREAM_EVENT_TYPES.TOOL_START, ...ev },
             senderWebContentsId,
           ),
         onToolEnd: (ev) =>
           emitAgentEvent(
             ev.runId,
-            { type: "tool-end", ...ev },
+            { type: AGENT_STREAM_EVENT_TYPES.TOOL_END, ...ev },
             senderWebContentsId,
           ),
         onError: (ev) =>
           emitAgentEvent(
             ev.runId,
-            { type: "error", ...ev },
+            { type: AGENT_STREAM_EVENT_TYPES.ERROR, ...ev },
             senderWebContentsId,
           ),
         onTaskEvent: (ev) => {
           const runId =
-            ev.rootRunId
-            ?? [...agentRunOwners.keys()].find(
+            ev.rootRunId ??
+            [...agentRunOwners.keys()].find(
               (id) => agentRunOwners.get(id) === senderWebContentsId,
-            )
-            ?? "unknown";
+            ) ??
+            "unknown";
           emitAgentEvent(
             runId,
             {
@@ -277,7 +275,11 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
           );
         },
         onEnd: (ev) => {
-          emitAgentEvent(ev.runId, { type: "end", ...ev }, senderWebContentsId);
+          emitAgentEvent(
+            ev.runId,
+            { type: AGENT_STREAM_EVENT_TYPES.END, ...ev },
+            senderWebContentsId,
+          );
           setTimeout(() => {
             agentRunOwners.delete(ev.runId);
             pruneAgentEventBuffers();
@@ -309,7 +311,6 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       agentRunOwners.delete(runId);
     }
   });
-
 
   ipcMain.handle(
     "selfmod:revert",

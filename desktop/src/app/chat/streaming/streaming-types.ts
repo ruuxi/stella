@@ -1,3 +1,8 @@
+import type {
+  AgentIdLike,
+  AgentStreamEventType,
+} from "@/shared/contracts/agent-runtime";
+
 /**
  * Shared types for the streaming engine.
  * Separate file to avoid circular imports between
@@ -11,7 +16,7 @@ export type SelfModAppliedData = {
 };
 
 export type AgentStreamEvent = {
-  type: "stream" | "tool-start" | "tool-end" | "error" | "end" | "task-started" | "task-completed" | "task-failed" | "task-canceled" | "task-progress";
+  type: AgentStreamEventType;
   runId: string;
   seq: number;
   chunk?: string;
@@ -25,7 +30,7 @@ export type AgentStreamEvent = {
   persisted?: boolean;
   selfModApplied?: SelfModAppliedData;
   taskId?: string;
-  agentType?: string;
+  agentType?: AgentIdLike;
   description?: string;
   parentTaskId?: string;
   result?: string;

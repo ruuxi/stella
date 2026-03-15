@@ -17,6 +17,11 @@ import {
   persistAssistantReply,
 } from "./thread-memory.js";
 import type { SubagentRunOptions, SubagentRunResult } from "./types.js";
+import {
+  AGENT_IDS,
+  LOCAL_CLI_AGENT_IDS,
+  RUNTIME_RUN_EVENT_TYPES,
+} from "../../../../src/shared/contracts/agent-runtime.js";
 
 const emitStreamChunk = (
   opts: SubagentRunOptions,
@@ -35,7 +40,7 @@ const emitStreamChunk = (
     conversationId: opts.conversationId,
     agentType: opts.agentType,
     seq,
-    type: "stream",
+    type: RUNTIME_RUN_EVENT_TYPES.STREAM,
     chunk,
   });
   opts.callbacks?.onStream?.({
@@ -50,8 +55,9 @@ export const runExternalSubagentTurn = async (
   opts: SubagentRunOptions,
 ): Promise<SubagentRunResult | null> => {
   const primaryModelId = opts.agentContext.model;
-  const usesLocalCliRuntime =
-    opts.agentType === "general" || opts.agentType === "self_mod";
+  const usesLocalCliRuntime = LOCAL_CLI_AGENT_IDS.includes(
+    opts.agentType as (typeof LOCAL_CLI_AGENT_IDS)[number],
+  );
   if (!usesLocalCliRuntime) {
     return null;
   }
@@ -69,7 +75,7 @@ export const runExternalSubagentTurn = async (
   const prompt = opts.userPrompt.trim();
   const effectiveSystemPrompt = [
     buildSystemPrompt(opts.agentContext),
-    opts.agentType === "self_mod"
+    opts.agentType === AGENT_IDS.SELF_MOD
       ? buildSelfModDocumentationPrompt(opts.frontendRoot)
       : "",
   ]
@@ -89,7 +95,7 @@ export const runExternalSubagentTurn = async (
     runId,
     conversationId: opts.conversationId,
     agentType: opts.agentType,
-    type: "run_start",
+    type: RUNTIME_RUN_EVENT_TYPES.RUN_START,
   });
 
   if (prompt) {
@@ -108,7 +114,7 @@ export const runExternalSubagentTurn = async (
       conversationId: opts.conversationId,
       agentType: opts.agentType,
       seq: errSeq,
-      type: "error",
+      type: RUNTIME_RUN_EVENT_TYPES.ERROR,
       error: "Aborted",
       fatal: true,
     });
@@ -151,7 +157,7 @@ export const runExternalSubagentTurn = async (
         conversationId: opts.conversationId,
         agentType: opts.agentType,
         seq: endSeq,
-        type: "run_end",
+        type: RUNTIME_RUN_EVENT_TYPES.RUN_END,
         finalText: result.text,
       });
       opts.callbacks?.onEnd?.({
@@ -171,7 +177,7 @@ export const runExternalSubagentTurn = async (
         conversationId: opts.conversationId,
         agentType: opts.agentType,
         seq: errSeq,
-        type: "error",
+        type: RUNTIME_RUN_EVENT_TYPES.ERROR,
         error: errorMessage,
         fatal: true,
       });
@@ -217,7 +223,7 @@ export const runExternalSubagentTurn = async (
       conversationId: opts.conversationId,
       agentType: opts.agentType,
       seq: endSeq,
-      type: "run_end",
+      type: RUNTIME_RUN_EVENT_TYPES.RUN_END,
       finalText: result.text,
     });
     opts.callbacks?.onEnd?.({
@@ -237,7 +243,7 @@ export const runExternalSubagentTurn = async (
       conversationId: opts.conversationId,
       agentType: opts.agentType,
       seq: errSeq,
-      type: "error",
+      type: RUNTIME_RUN_EVENT_TYPES.ERROR,
       error: errorMessage,
       fatal: true,
     });
