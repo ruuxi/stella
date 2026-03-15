@@ -19,6 +19,7 @@ import {
   store_publish_result_validator,
   store_release_manifest_validator,
 } from "../schema/store";
+import { enforceStoreReleaseReviewOrThrow } from "../lib/store_release_reviews";
 
 type StorePublishResult = Infer<typeof store_publish_result_validator>;
 
@@ -548,6 +549,14 @@ export const createFirstRelease = action({
     const manifest = normalizeManifest(args.manifest);
     const artifactBody = normalizeArtifactBody(args.artifactBody);
     const artifactContentType = normalizeArtifactContentType(args.artifactContentType);
+    await enforceStoreReleaseReviewOrThrow(ctx, {
+      ownerId,
+      packageId,
+      displayName,
+      description,
+      releaseSummary: releaseNotes,
+      artifactBody,
+    });
 
     const blob = new Blob([artifactBody], {
       type: artifactContentType,
@@ -584,6 +593,24 @@ export const createUpdateRelease = action({
     const manifest = normalizeManifest(args.manifest);
     const artifactBody = normalizeArtifactBody(args.artifactBody);
     const artifactContentType = normalizeArtifactContentType(args.artifactContentType);
+    const pkg = await ctx.runQuery(internal.data.store_packages.getPackageByPackageIdInternal, {
+      ownerId,
+      packageId,
+    });
+    if (!pkg) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Store package not found",
+      });
+    }
+    await enforceStoreReleaseReviewOrThrow(ctx, {
+      ownerId,
+      packageId,
+      displayName: pkg.displayName,
+      description: pkg.description,
+      releaseSummary: releaseNotes,
+      artifactBody,
+    });
 
     const blob = new Blob([artifactBody], {
       type: artifactContentType,

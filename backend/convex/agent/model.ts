@@ -286,6 +286,36 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
       },
     },
   },
+
+  store_security_review: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 2500,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  store_image_safety_review: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 8000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock"],
+      },
+    },
+  },
 };
 
 /**
