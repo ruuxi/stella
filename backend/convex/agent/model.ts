@@ -7,6 +7,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 import type { JSONValue } from "@ai-sdk/provider";
+import { AGENT_IDS } from "../lib/agent_constants";
 
 // ─── Managed Gateway ────────────────────────────────────────────────────────
 
@@ -67,9 +68,9 @@ const COMPACTION_MODEL: ModelConfig = {
 };
 
 const AGENT_MODELS: Record<string, ModelConfig> = {
-  offline_responder: DEFAULT_MODEL,
+  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
-  orchestrator: {
+  [AGENT_IDS.ORCHESTRATOR]: {
     model: "moonshotai/kimi-k2.5",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
@@ -84,7 +85,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  general: {
+  [AGENT_IDS.GENERAL]: {
     model: "moonshotai/kimi-k2.5",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
@@ -99,7 +100,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  self_mod: {
+  [AGENT_IDS.SELF_MOD]: {
     model: "moonshotai/kimi-k2.5",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
@@ -114,7 +115,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  explore: {
+  [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",
     temperature: 1.0,
@@ -126,7 +127,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  browser: {
+  [AGENT_IDS.BROWSER]: {
     model: "openai/gpt-5.4",
     fallback: "anthropic/claude-sonnet-4.6",
     temperature: 1.0,
@@ -142,7 +143,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   // "app" is the frontend agent type name for browser/app automation
-  app: {
+  [AGENT_IDS.APP]: {
     model: "openai/gpt-5.4",
     fallback: "anthropic/claude-sonnet-4.6",
     temperature: 1.0,
@@ -157,7 +158,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  auto: {
+  [AGENT_IDS.AUTO]: {
     model: "moonshotai/kimi-k2.5",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
