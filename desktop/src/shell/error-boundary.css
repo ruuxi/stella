@@ -68,6 +68,14 @@
   width: 100%;
 }
 
+.error-boundary-btn--fix {
+  width: 100%;
+  margin-bottom: 16px;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-weight: 500;
+}
+
 .error-boundary-actions {
   display: flex;
   gap: 12px;
