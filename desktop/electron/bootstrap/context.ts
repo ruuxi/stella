@@ -20,6 +20,7 @@ import type { WakeWordController } from "../wake-word/initialize.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
 import { StoreModService } from "../self-mod/store-mod-service.js";
+import { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
 
 export type BootstrapConfig = {
   authProtocol: string;
@@ -65,6 +66,7 @@ export type BootstrapServices = {
 
 export type BootstrapContext = {
   config: BootstrapConfig;
+  lifecycle: BootstrapLifecycleBindings;
   services: BootstrapServices;
   state: BootstrapState;
 };
@@ -161,19 +163,20 @@ export const createBootstrapContext = (
     windowManager: null,
   };
 
-  const context = { config, state } as BootstrapContext;
+  const lifecycle = new BootstrapLifecycleBindings(state);
+  const context = { config, lifecycle, state } as BootstrapContext;
 
   const uiStateService = new UiStateService();
-  const devProjectService = new DevProjectService(() => state.stellaHomePath);
+  const devProjectService = new DevProjectService(lifecycle);
   const externalLinkService = new ExternalLinkService();
   const miniBridgeService = new MiniBridgeService();
 
   const securityPolicyService = new SecurityPolicyService({
-    getWindowManager: () => state.windowManager,
+    windowManagerTarget: lifecycle,
   });
 
   const credentialService = new CredentialService({
-    getWindowManager: () => state.windowManager,
+    windowManagerTarget: lifecycle,
   });
 
   const captureService = new CaptureService({
@@ -207,7 +210,7 @@ export const createBootstrapContext = (
     isDev: config.isDev,
     projectDir: path.resolve(config.electronDir, ".."),
     sessionPartition: config.sessionPartition,
-    getRunner: () => state.stellaHostRunner,
+    runnerTarget: lifecycle,
     onAuthCallback: (url) => {
       state.windowManager?.showWindow("full");
       broadcastAuthCallback(context, url);

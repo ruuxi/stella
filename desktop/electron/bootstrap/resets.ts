@@ -14,11 +14,11 @@ export const shutdownBootstrapRuntime = (
   context: BootstrapContext,
   options: { stopScheduler?: boolean } = {},
 ) => {
-  const { state } = context;
+  const { lifecycle, state } = context;
 
   if (state.stellaHostRunner) {
     state.stellaHostRunner.stop();
-    state.stellaHostRunner = null;
+    lifecycle.setRunner(null);
   }
 
   state.chatStore = null;
