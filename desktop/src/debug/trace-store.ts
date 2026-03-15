@@ -6,6 +6,8 @@
  * and copy-pasted into a conversation with Claude for debugging.
  */
 
+import { AGENT_IDS, type AgentIdLike } from "@/shared/contracts/agent-runtime";
+
 export type TraceCategory =
   | "orchestrator"
   | "agent"
@@ -55,7 +57,18 @@ export function addTrace(
   cat: TraceCategory,
   event: string,
   summary: string,
-  extra?: Partial<Pick<TraceEntry, "agent" | "runId" | "taskId" | "toolName" | "toolCallId" | "data" | "duration">>,
+  extra?: Partial<
+    Pick<
+      TraceEntry,
+      | "agent"
+      | "runId"
+      | "taskId"
+      | "toolName"
+      | "toolCallId"
+      | "data"
+      | "duration"
+    >
+  >,
 ): TraceEntry {
   const entry: TraceEntry = {
     id: nextId++,
@@ -116,13 +129,18 @@ export function traceToolStart(
   const agent = runId ? runIdToAgent.get(runId) : undefined;
   const argsSummary = summarizeArgs(args);
 
-  addTrace("tool", "tool-start", argsSummary ? `${toolName} ${argsSummary}` : `${toolName}`, {
-    toolName,
-    toolCallId,
-    runId,
-    agent,
-    data: args && Object.keys(args).length > 0 ? { args } : undefined,
-  });
+  addTrace(
+    "tool",
+    "tool-start",
+    argsSummary ? `${toolName} ${argsSummary}` : `${toolName}`,
+    {
+      toolName,
+      toolCallId,
+      runId,
+      agent,
+      data: args && Object.keys(args).length > 0 ? { args } : undefined,
+    },
+  );
 }
 
 export function traceToolEnd(
@@ -139,14 +157,19 @@ export function traceToolEnd(
   const agent = runId ? runIdToAgent.get(runId) : undefined;
   const preview = resultPreview ? resultPreview.slice(0, 200) : "";
 
-  addTrace("tool", "tool-end", `${toolName} ${duration ? `(${duration}ms)` : ""}`, {
-    toolName,
-    toolCallId,
-    runId,
-    agent,
-    duration,
-    data: preview ? { resultPreview: preview } : undefined,
-  });
+  addTrace(
+    "tool",
+    "tool-end",
+    `${toolName} ${duration ? `(${duration}ms)` : ""}`,
+    {
+      toolName,
+      toolCallId,
+      runId,
+      agent,
+      duration,
+      data: preview ? { resultPreview: preview } : undefined,
+    },
+  );
 }
 
 export function traceAgentError(error: string, fatal: boolean, runId?: string) {
@@ -160,15 +183,20 @@ export function traceAgentError(error: string, fatal: boolean, runId?: string) {
 
 export function traceStreamEnd(runId?: string, finalTextPreview?: string) {
   const agent = runId ? runIdToAgent.get(runId) : undefined;
-  addTrace(agent && agent !== "orchestrator" ? "agent" : "orchestrator", "stream-end", finalTextPreview?.slice(0, 150) ?? "(empty)", {
-    runId,
-    agent,
-  });
+  addTrace(
+    agent && agent !== AGENT_IDS.ORCHESTRATOR ? "agent" : "orchestrator",
+    "stream-end",
+    finalTextPreview?.slice(0, 150) ?? "(empty)",
+    {
+      runId,
+      agent,
+    },
+  );
 }
 
 export function traceTaskStarted(
   taskId: string,
-  agentType: string,
+  agentType: AgentIdLike,
   description: string,
   parentTaskId?: string,
 ) {
@@ -215,7 +243,7 @@ export function traceAssistantMessage(text: string, userMessageId?: string) {
   });
 }
 
-export function registerRunAgent(runId: string, agentType: string) {
+export function registerRunAgent(runId: string, agentType: AgentIdLike) {
   runIdToAgent.set(runId, agentType);
 }
 

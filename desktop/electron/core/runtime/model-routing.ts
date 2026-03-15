@@ -1,5 +1,6 @@
 import { getModels } from "../ai/models.js";
 import type { Api, Model } from "../ai/types.js";
+import { AGENT_IDS } from "../../../src/shared/contracts/agent-runtime.js";
 import { getLocalLlmCredential } from "./storage/llm-credentials.js";
 import {
   normalizeStellaApiBaseUrl,
@@ -27,7 +28,10 @@ const createStellaModel = (
   agentType: string,
 ): Model<"openai-completions"> => ({
   id: modelId,
-  name: modelId === STELLA_DEFAULT_MODEL ? "Stella Recommended" : modelId.replace(/^stella\//, ""),
+  name:
+    modelId === STELLA_DEFAULT_MODEL
+      ? "Stella Recommended"
+      : modelId.replace(/^stella\//, ""),
   api: "openai-completions",
   provider: STELLA_PROVIDER,
   baseUrl: normalizeStellaApiBaseUrl(proxyBaseUrl),
@@ -48,7 +52,9 @@ const createStellaModel = (
   },
 });
 
-const normalizeStellaBase = (value: string | null | undefined): string | null => {
+const normalizeStellaBase = (
+  value: string | null | undefined,
+): string | null => {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -59,7 +65,9 @@ const normalizeStellaBase = (value: string | null | undefined): string | null =>
   return `${normalized.replace(".convex.cloud", ".convex.site")}/api/stella/v1`;
 };
 
-const parseModel = (rawModel: string | undefined): { provider: string; modelId: string; fullModelId: string } | null => {
+const parseModel = (
+  rawModel: string | undefined,
+): { provider: string; modelId: string; fullModelId: string } | null => {
   const value = rawModel?.trim();
   if (!value) return null;
   if (!value.includes("/")) {
@@ -80,9 +88,13 @@ const parseModel = (rawModel: string | undefined): { provider: string; modelId: 
   };
 };
 
-const unique = (values: string[]): string[] => Array.from(new Set(values.filter(Boolean)));
+const unique = (values: string[]): string[] =>
+  Array.from(new Set(values.filter(Boolean)));
 
-const getCredential = (stellaHomePath: string, providerId: string): string | null => {
+const getCredential = (
+  stellaHomePath: string,
+  providerId: string,
+): string | null => {
   return getLocalLlmCredential(stellaHomePath, providerId);
 };
 
@@ -100,10 +112,7 @@ const getDirectProviderCandidates = (
       return {
         credentialProvider: "anthropic",
         registryProvider: "anthropic",
-        candidates: unique([
-          modelId,
-          modelId.replace(/\./g, "-"),
-        ]),
+        candidates: unique([modelId, modelId.replace(/\./g, "-")]),
       };
     case "moonshotai":
       return {
@@ -127,10 +136,7 @@ const getDirectProviderCandidates = (
       return {
         credentialProvider: provider,
         registryProvider: provider,
-        candidates: unique([
-          modelId,
-          modelId.replace(/\./g, "-"),
-        ]),
+        candidates: unique([modelId, modelId.replace(/\./g, "-")]),
       };
     default: {
       const extensionModels = getModels(provider as never) as Model<Api>[];
@@ -139,10 +145,7 @@ const getDirectProviderCandidates = (
           credentialProvider: provider,
           registryProvider: provider,
           allowBaseUrlWithoutCredential: true,
-          candidates: unique([
-            modelId,
-            modelId.replace(/\./g, "-"),
-          ]),
+          candidates: unique([modelId, modelId.replace(/\./g, "-")]),
         };
       }
       return null;
@@ -169,8 +172,10 @@ const findRegistryModel = (
   for (const candidate of requestedCandidates) {
     const normalizedCandidate = candidate.replace(/\./g, "-");
     const prefix = `${normalizedCandidate}-`;
-    const prefixed = models.find((model) =>
-      model.id === normalizedCandidate || model.id.startsWith(prefix));
+    const prefixed = models.find(
+      (model) =>
+        model.id === normalizedCandidate || model.id.startsWith(prefix),
+    );
     if (prefixed) {
       return prefixed;
     }
@@ -209,7 +214,7 @@ export const canResolveLlmRoute = (args: {
   try {
     resolveLlmRoute({
       ...args,
-      agentType: args.agentType ?? "orchestrator",
+      agentType: args.agentType ?? AGENT_IDS.ORCHESTRATOR,
     });
     return true;
   } catch {
@@ -241,9 +246,15 @@ export const resolveLlmRoute = (args: {
 
     const directProvider = getDirectProviderCandidates(provider, modelId);
     if (directProvider) {
-      const directKey = getCredential(args.stellaHomePath, directProvider.credentialProvider);
+      const directKey = getCredential(
+        args.stellaHomePath,
+        directProvider.credentialProvider,
+      );
       if (directKey) {
-        const directModel = findRegistryModel(directProvider.registryProvider, directProvider.candidates);
+        const directModel = findRegistryModel(
+          directProvider.registryProvider,
+          directProvider.candidates,
+        );
         if (directModel) {
           return {
             model: directModel,
@@ -254,7 +265,10 @@ export const resolveLlmRoute = (args: {
       }
 
       if (!directKey && directProvider.allowBaseUrlWithoutCredential) {
-        const directModel = findRegistryModel(directProvider.registryProvider, directProvider.candidates);
+        const directModel = findRegistryModel(
+          directProvider.registryProvider,
+          directProvider.candidates,
+        );
         if (directModel?.baseUrl) {
           return {
             model: directModel,
@@ -279,7 +293,9 @@ export const resolveLlmRoute = (args: {
 
     const gatewayKey = getGatewayCredential(args.stellaHomePath);
     if (gatewayKey) {
-      const gatewayModel = findRegistryModel("vercel-ai-gateway", [fullModelId]);
+      const gatewayModel = findRegistryModel("vercel-ai-gateway", [
+        fullModelId,
+      ]);
       if (gatewayModel) {
         return {
           model: gatewayModel,

@@ -5,6 +5,7 @@ import {
   type RuntimeRunCallbacks,
 } from "../agent-runtime.js";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
+import { AGENT_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
 import type {
   RunnerContext,
   AgentCallbacks,
@@ -304,8 +305,8 @@ export const createOrchestratorController = (
       };
     }
     const orchestratorModel = deps.getConfiguredModel(
-      "orchestrator",
-      deps.resolveAgent("orchestrator"),
+      AGENT_IDS.ORCHESTRATOR,
+      deps.resolveAgent(AGENT_IDS.ORCHESTRATOR),
     );
     if (
       canResolveLlmRoute({
@@ -342,7 +343,7 @@ export const createOrchestratorController = (
 
     const conversationId = payload.conversationId;
     const runId = `local:${crypto.randomUUID()}`;
-    const agentType = payload.agentType ?? "orchestrator";
+    const agentType = payload.agentType ?? AGENT_IDS.ORCHESTRATOR;
     const userPrompt = payload.userPrompt.trim();
     if (!userPrompt) {
       throw new Error("Missing user prompt");
@@ -484,7 +485,7 @@ export const createOrchestratorController = (
 
     const conversationId = payload.conversationId.trim();
     const userPrompt = payload.userPrompt.trim();
-    const agentType = payload.agentType ?? "orchestrator";
+    const agentType = payload.agentType ?? AGENT_IDS.ORCHESTRATOR;
     if (!conversationId) {
       resolveResult({
         status: "error",

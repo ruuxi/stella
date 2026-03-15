@@ -1,5 +1,9 @@
 import crypto from "crypto";
 import { Agent } from "../../agent/agent.js";
+import {
+  AGENT_IDS,
+  RUNTIME_RUN_EVENT_TYPES,
+} from "../../../../src/shared/contracts/agent-runtime.js";
 import { createDisplayStreamController } from "./display-stream.js";
 import {
   buildDefaultTransformContext,
@@ -74,7 +78,7 @@ export const runPiOrchestratorTurn = async (
     runId,
     conversationId: opts.conversationId,
     agentType: opts.agentType,
-    type: "run_start",
+    type: RUNTIME_RUN_EVENT_TYPES.RUN_START,
   });
 
   const historySource = buildHistorySource(opts.agentContext);
@@ -155,7 +159,7 @@ export const runPiOrchestratorTurn = async (
         conversationId: opts.conversationId,
         agentType: opts.agentType,
         seq: streamSeq,
-        type: "stream",
+        type: RUNTIME_RUN_EVENT_TYPES.STREAM,
         chunk,
       });
       return;
@@ -184,7 +188,7 @@ export const runPiOrchestratorTurn = async (
         conversationId: opts.conversationId,
         agentType: opts.agentType,
         seq: toolSeq,
-        type: "tool_start",
+        type: RUNTIME_RUN_EVENT_TYPES.TOOL_START,
         toolCallId: event.toolCallId,
         toolName: event.toolName,
       });
@@ -211,7 +215,7 @@ export const runPiOrchestratorTurn = async (
         conversationId: opts.conversationId,
         agentType: opts.agentType,
         seq: toolSeq,
-        type: "tool_end",
+        type: RUNTIME_RUN_EVENT_TYPES.TOOL_END,
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         resultPreview: preview,
@@ -332,7 +336,7 @@ export const runPiOrchestratorTurn = async (
       conversationId: opts.conversationId,
       agentType: opts.agentType,
       seq: endSeq,
-      type: "run_end",
+      type: RUNTIME_RUN_EVENT_TYPES.RUN_END,
       finalText,
       ...(selfModApplied ? { selfModApplied } : {}),
     });
@@ -363,7 +367,7 @@ export const runPiOrchestratorTurn = async (
       conversationId: opts.conversationId,
       agentType: opts.agentType,
       seq: errSeq,
-      type: "error",
+      type: RUNTIME_RUN_EVENT_TYPES.ERROR,
       error: errorMessage,
       fatal: true,
     });
@@ -390,7 +394,7 @@ export const runPiSubagentTask = async (
   const prompt = opts.userPrompt.trim();
   const effectiveSystemPrompt = [
     buildSystemPrompt(opts.agentContext),
-    opts.agentType === "self_mod"
+    opts.agentType === AGENT_IDS.SELF_MOD
       ? buildSelfModDocumentationPrompt(opts.frontendRoot)
       : "",
   ]
@@ -411,7 +415,7 @@ export const runPiSubagentTask = async (
     runId,
     conversationId: opts.conversationId,
     agentType: opts.agentType,
-    type: "run_start",
+    type: RUNTIME_RUN_EVENT_TYPES.RUN_START,
   });
 
   if (prompt) {
@@ -430,7 +434,7 @@ export const runPiSubagentTask = async (
       conversationId: opts.conversationId,
       agentType: opts.agentType,
       seq: errSeq,
-      type: "error",
+      type: RUNTIME_RUN_EVENT_TYPES.ERROR,
       error: "Aborted",
       fatal: true,
     });
@@ -492,7 +496,7 @@ export const runPiSubagentTask = async (
           conversationId: opts.conversationId,
           agentType: opts.agentType,
           seq: streamSeq,
-          type: "stream",
+          type: RUNTIME_RUN_EVENT_TYPES.STREAM,
           chunk,
         });
         opts.callbacks?.onStream?.({
@@ -513,7 +517,7 @@ export const runPiSubagentTask = async (
         conversationId: opts.conversationId,
         agentType: opts.agentType,
         seq: toolSeq,
-        type: "tool_start",
+        type: RUNTIME_RUN_EVENT_TYPES.TOOL_START,
         toolCallId: event.toolCallId,
         toolName: event.toolName,
       });
@@ -537,7 +541,7 @@ export const runPiSubagentTask = async (
         conversationId: opts.conversationId,
         agentType: opts.agentType,
         seq: toolSeq,
-        type: "tool_end",
+        type: RUNTIME_RUN_EVENT_TYPES.TOOL_END,
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         resultPreview: preview,
@@ -579,7 +583,7 @@ export const runPiSubagentTask = async (
       conversationId: opts.conversationId,
       agentType: opts.agentType,
       seq: endSeq,
-      type: "run_end",
+      type: RUNTIME_RUN_EVENT_TYPES.RUN_END,
       finalText: result,
     });
     opts.callbacks?.onEnd?.({
@@ -603,7 +607,7 @@ export const runPiSubagentTask = async (
       conversationId: opts.conversationId,
       agentType: opts.agentType,
       seq: errSeq,
-      type: "error",
+      type: RUNTIME_RUN_EVENT_TYPES.ERROR,
       error: errorMessage,
       fatal: true,
     });

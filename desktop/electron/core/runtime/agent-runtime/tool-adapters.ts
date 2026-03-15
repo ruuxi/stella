@@ -12,6 +12,7 @@ import {
 } from "../tools/schemas.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { RuntimeStore } from "../../../storage/runtime-store.js";
+import { TOOL_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
 import { AnyToolArgsSchema, textFromUnknown } from "./shared.js";
 
 const STELLA_LOCAL_TOOLS = [
@@ -20,11 +21,11 @@ const STELLA_LOCAL_TOOLS = [
   "TaskCreate",
   "TaskCancel",
   "TaskOutput",
-  "WebFetch",
-  "ActivateSkill",
-  "NoResponse",
-  "SaveMemory",
-  "RecallMemories",
+  TOOL_IDS.WEB_FETCH,
+  TOOL_IDS.ACTIVATE_SKILL,
+  TOOL_IDS.NO_RESPONSE,
+  TOOL_IDS.SAVE_MEMORY,
+  TOOL_IDS.RECALL_MEMORIES,
 ] as const;
 
 const getRecallQuery = (args: Record<string, unknown>): string =>
@@ -96,7 +97,7 @@ export const createPiTools = (opts: {
     execute: async (toolCallId, params, signal) => {
       const args = (params as Record<string, unknown>) ?? {};
 
-      if (toolName === "WebSearch") {
+      if (toolName === TOOL_IDS.WEB_SEARCH) {
         const query = typeof args.query === "string" ? args.query : "";
         if (!opts.webSearch) {
           return {
@@ -118,7 +119,7 @@ export const createPiTools = (opts: {
         };
       }
 
-      if (toolName === "WebFetch") {
+      if (toolName === TOOL_IDS.WEB_FETCH) {
         const url = typeof args.url === "string" ? args.url : "";
         const prompt =
           typeof args.prompt === "string" ? args.prompt : undefined;
@@ -126,7 +127,7 @@ export const createPiTools = (opts: {
         return { content: [{ type: "text", text }], details: { text } };
       }
 
-      if (toolName === "ActivateSkill") {
+      if (toolName === TOOL_IDS.ACTIVATE_SKILL) {
         const skillId =
           (typeof args.skillId === "string" ? args.skillId : undefined) ??
           (typeof args.skill_id === "string" ? args.skill_id : "");
@@ -138,12 +139,12 @@ export const createPiTools = (opts: {
         return { content: [{ type: "text", text }], details: { text } };
       }
 
-      if (toolName === "NoResponse") {
+      if (toolName === TOOL_IDS.NO_RESPONSE) {
         const text = await localNoResponse();
         return { content: [{ type: "text", text }], details: { text } };
       }
 
-      if (toolName === "SaveMemory") {
+      if (toolName === TOOL_IDS.SAVE_MEMORY) {
         const content = getSaveMemoryText(args);
         const tags = Array.isArray(args.tags)
           ? args.tags.filter(
@@ -161,7 +162,7 @@ export const createPiTools = (opts: {
         return { content: [{ type: "text", text }], details: { ok: true } };
       }
 
-      if (toolName === "RecallMemories") {
+      if (toolName === TOOL_IDS.RECALL_MEMORIES) {
         const query = getRecallQuery(args);
         const requestedLimit =
           typeof args.limit === "number" ? args.limit : undefined;

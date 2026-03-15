@@ -1,3 +1,5 @@
+import { TOOL_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
+
 const stripScriptTags = (html: string): string =>
   html.replace(/<script\b[\s\S]*?<\/script>/gi, "");
 
@@ -35,7 +37,7 @@ export const createDisplayStreamController = (
         | undefined;
       if (
         block?.type === "toolCall" &&
-        block.name === "Display" &&
+        block.name === TOOL_IDS.DISPLAY &&
         typeof block.arguments?.html === "string"
       ) {
         const html = stripScriptTags(block.arguments.html);

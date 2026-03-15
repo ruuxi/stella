@@ -1,4 +1,5 @@
-﻿import type { MessagePayload } from "@/app/chat/lib/event-transforms";
+import type { MessagePayload } from "@/app/chat/lib/event-transforms";
+import { AGENT_IDS } from "@/shared/contracts/agent-runtime";
 
 const EXCLUDED_SOURCES = new Set(["heartbeat", "cron"]);
 
@@ -14,7 +15,7 @@ export const isOrchestratorChatMessagePayload = (
     typeof payload.agentType === "string"
       ? payload.agentType.trim().toLowerCase()
       : "";
-  if (agentType && agentType !== "orchestrator") {
+  if (agentType && agentType !== AGENT_IDS.ORCHESTRATOR) {
     return false;
   }
 
@@ -34,5 +35,3 @@ export const isOrchestratorChatMessagePayload = (
 
   return true;
 };
-
-
