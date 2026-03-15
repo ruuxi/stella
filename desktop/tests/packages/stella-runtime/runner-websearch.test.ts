@@ -112,15 +112,25 @@ vi.mock("../../../electron/core/runtime/remote-turn-bridge.js", () => ({
   }),
 }));
 
-const { createStellaHostRunner } = await import("../../../electron/core/runtime/runner.js");
-const { createDesktopDatabase } = await import("../../../electron/storage/database.js");
-const { RuntimeStore } = await import("../../../electron/storage/runtime-store.js");
-const { TranscriptMirror } = await import("../../../electron/storage/transcript-mirror.js");
+const { createStellaHostRunner } = await import(
+  "../../../electron/core/runtime/runner.js"
+);
+const { createDesktopDatabase } = await import(
+  "../../../electron/storage/database.js"
+);
+const { RuntimeStore } = await import(
+  "../../../electron/storage/runtime-store.js"
+);
+const { TranscriptMirror } = await import(
+  "../../../electron/storage/transcript-mirror.js"
+);
 
 const tempHomes: string[] = [];
 
 const createTempHome = () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-runner-websearch-"));
+  const dir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "stella-runner-websearch-"),
+  );
   tempHomes.push(dir);
   return dir;
 };
@@ -168,7 +178,9 @@ describe("runtime runner WebSearch", () => {
     runner.setConvexUrl("https://example.convex.cloud");
     runner.setAuthToken("token-1");
 
-    await expect(runner.webSearch("stella release notes", { category: "news" })).resolves.toEqual({
+    await expect(
+      runner.webSearch("stella release notes", { category: "news" }),
+    ).resolves.toEqual({
       text: "Backend summary",
       results: [
         {
@@ -192,23 +204,26 @@ describe("runtime runner WebSearch", () => {
     db.close();
   });
 
-  it("configures the local task manager for up to 16 concurrent subagents", () => {
+  it("configures the local task manager for up to 24 concurrent subagents", () => {
     const home = createTempHome();
     const db = createDesktopDatabase(home);
     const runtimeStore = new RuntimeStore(
       db,
       new TranscriptMirror(path.join(home, "state")),
     );
-    createStellaHostRunner({
+    const runner = createStellaHostRunner({
       deviceId: "device-1",
       StellaHome: home,
       runtimeStore,
       displayHtml: displayHtmlMock,
     });
 
-    expect(localTaskManagerCtorMock).toHaveBeenCalledWith(expect.objectContaining({
-      maxConcurrent: 16,
-    }));
+    expect(localTaskManagerCtorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxConcurrent: 24,
+      }),
+    );
+    runner.stop();
     db.close();
   });
 });
