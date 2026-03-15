@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import type {
   SelfModFeatureRecord,
   StorePackageRecord,
@@ -955,6 +955,16 @@ type StoreTab = "discover" | "creations"
 export function StoreView() {
   const [tab, setTab] = useState<StoreTab>("discover")
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null)
+  const [scrolled, setScrolled] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    const onScroll = () => setScrolled(el.scrollTop > 4)
+    el.addEventListener("scroll", onScroll, { passive: true })
+    return () => el.removeEventListener("scroll", onScroll)
+  }, [])
 
   const {
     packages,
@@ -1012,7 +1022,7 @@ export function StoreView() {
   // Detail view
   if (selectedPackageId) {
     return (
-      <div className="store-root">
+      <div className="store-root" ref={rootRef}>
         <div className="store-scroll">
           <PackageDetailView
             packageId={selectedPackageId}
@@ -1027,9 +1037,9 @@ export function StoreView() {
   }
 
   return (
-    <div className="store-root">
-      <div className="store-scroll">
-        <div className="store-header">
+    <div className="store-root" ref={rootRef}>
+      <div className="store-header" data-scrolled={scrolled || undefined}>
+        <div className="store-header-inner">
           <h1 className="store-title">Store</h1>
           <div className="store-tabs">
             <button
@@ -1048,7 +1058,9 @@ export function StoreView() {
             </button>
           </div>
         </div>
+      </div>
 
+      <div className="store-scroll">
         {tab === "discover" ? (
           <DiscoverTab
             packages={packages}
