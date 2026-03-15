@@ -1,3 +1,5 @@
+import { DESKTOP_SUBAGENT_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
+
 /**
  * Frontend-local tool metadata and schemas for the PI runtime.
  *
@@ -37,13 +39,32 @@ export const DEVICE_TOOL_NAMES = [
 
 export type DeviceToolName = (typeof DEVICE_TOOL_NAMES)[number];
 
+const TASK_SUBAGENT_ENUM = [...DESKTOP_SUBAGENT_IDS];
+
 // ─── Dangerous Command Patterns ─────────────────────────────────────────────
 
-export const DANGEROUS_COMMAND_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
-  { pattern: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+\/(?:\s|$|;|\|)/i, reason: "rm -rf /" },
-  { pattern: /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+\/(?:\s|$|;|\|)/i, reason: "rm -rf /" },
-  { pattern: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+~\s*(?:\/\s*)?(?:\s|$|;|\|)/i, reason: "rm -rf ~" },
-  { pattern: /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+~\s*(?:\/\s*)?(?:\s|$|;|\|)/i, reason: "rm -rf ~" },
+export const DANGEROUS_COMMAND_PATTERNS: Array<{
+  pattern: RegExp;
+  reason: string;
+}> = [
+  {
+    pattern: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+\/(?:\s|$|;|\|)/i,
+    reason: "rm -rf /",
+  },
+  {
+    pattern: /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+\/(?:\s|$|;|\|)/i,
+    reason: "rm -rf /",
+  },
+  {
+    pattern:
+      /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+~\s*(?:\/\s*)?(?:\s|$|;|\|)/i,
+    reason: "rm -rf ~",
+  },
+  {
+    pattern:
+      /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\s+~\s*(?:\/\s*)?(?:\s|$|;|\|)/i,
+    reason: "rm -rf ~",
+  },
   { pattern: /\bformat\s+[a-zA-Z]:\s*/i, reason: "format drive" },
   { pattern: /\bdd\s+if=/i, reason: "dd if= (raw disk write)" },
   { pattern: /\bmkfs\b/i, reason: "mkfs (format filesystem)" },
@@ -68,8 +89,14 @@ export function getDangerousCommandReason(command: string): string | null {
 const ReadJsonSchema = {
   type: "object",
   properties: {
-    file_path: { type: "string", description: "Absolute path to the file to read" },
-    offset: { type: "number", description: "Line number to start reading from (1-based)" },
+    file_path: {
+      type: "string",
+      description: "Absolute path to the file to read",
+    },
+    offset: {
+      type: "number",
+      description: "Line number to start reading from (1-based)",
+    },
     limit: { type: "number", description: "Max number of lines to read" },
   },
   required: ["file_path"],
@@ -78,7 +105,10 @@ const ReadJsonSchema = {
 const WriteJsonSchema = {
   type: "object",
   properties: {
-    file_path: { type: "string", description: "Absolute path to the file to write" },
+    file_path: {
+      type: "string",
+      description: "Absolute path to the file to write",
+    },
     content: { type: "string", description: "Full file contents to write" },
   },
   required: ["file_path", "content"],
@@ -87,10 +117,20 @@ const WriteJsonSchema = {
 const EditJsonSchema = {
   type: "object",
   properties: {
-    file_path: { type: "string", description: "Absolute path to the file to edit" },
-    old_string: { type: "string", description: "Exact text to find and replace (must be unique unless replace_all=true)" },
+    file_path: {
+      type: "string",
+      description: "Absolute path to the file to edit",
+    },
+    old_string: {
+      type: "string",
+      description:
+        "Exact text to find and replace (must be unique unless replace_all=true)",
+    },
     new_string: { type: "string", description: "Replacement text" },
-    replace_all: { type: "boolean", description: "Replace all occurrences instead of requiring uniqueness" },
+    replace_all: {
+      type: "boolean",
+      description: "Replace all occurrences instead of requiring uniqueness",
+    },
   },
   required: ["file_path", "old_string", "new_string"],
 };
@@ -98,8 +138,14 @@ const EditJsonSchema = {
 const GlobJsonSchema = {
   type: "object",
   properties: {
-    pattern: { type: "string", description: "Glob pattern to match (e.g. \"**/*.ts\", \"src/**/*.json\")" },
-    path: { type: "string", description: "Directory to search in (defaults to working directory)" },
+    pattern: {
+      type: "string",
+      description: 'Glob pattern to match (e.g. "**/*.ts", "src/**/*.json")',
+    },
+    path: {
+      type: "string",
+      description: "Directory to search in (defaults to working directory)",
+    },
   },
   required: ["pattern"],
 };
@@ -109,12 +155,32 @@ const GrepJsonSchema = {
   properties: {
     pattern: { type: "string", description: "Regex pattern to search for" },
     path: { type: "string", description: "File or directory to search in" },
-    glob: { type: "string", description: "Filter files by glob pattern (e.g. \"*.tsx\")" },
-    type: { type: "string", description: "Filter by file type (e.g. \"ts\", \"py\", \"json\")" },
-    output_mode: { type: "string", enum: ["content", "files_with_matches", "count"], description: "What to return: matching lines, file paths, or counts" },
-    case_insensitive: { type: "boolean", description: "Case-insensitive search" },
-    context_lines: { type: "number", description: "Lines of context around each match (for output_mode=content)" },
-    max_results: { type: "number", description: "Maximum number of results to return" },
+    glob: {
+      type: "string",
+      description: 'Filter files by glob pattern (e.g. "*.tsx")',
+    },
+    type: {
+      type: "string",
+      description: 'Filter by file type (e.g. "ts", "py", "json")',
+    },
+    output_mode: {
+      type: "string",
+      enum: ["content", "files_with_matches", "count"],
+      description: "What to return: matching lines, file paths, or counts",
+    },
+    case_insensitive: {
+      type: "boolean",
+      description: "Case-insensitive search",
+    },
+    context_lines: {
+      type: "number",
+      description:
+        "Lines of context around each match (for output_mode=content)",
+    },
+    max_results: {
+      type: "number",
+      description: "Maximum number of results to return",
+    },
   },
   required: ["pattern"],
 };
@@ -123,10 +189,22 @@ const BashJsonSchema = {
   type: "object",
   properties: {
     command: { type: "string", description: "The shell command to execute" },
-    description: { type: "string", description: "Human-readable description of what this command does" },
-    timeout: { type: "number", description: "Timeout in milliseconds (default 120000, max 600000)" },
-    working_directory: { type: "string", description: "Working directory for the command" },
-    run_in_background: { type: "boolean", description: "Run in background and return a shell_id immediately" },
+    description: {
+      type: "string",
+      description: "Human-readable description of what this command does",
+    },
+    timeout: {
+      type: "number",
+      description: "Timeout in milliseconds (default 120000, max 600000)",
+    },
+    working_directory: {
+      type: "string",
+      description: "Working directory for the command",
+    },
+    run_in_background: {
+      type: "boolean",
+      description: "Run in background and return a shell_id immediately",
+    },
   },
   required: ["command"],
 };
@@ -134,7 +212,10 @@ const BashJsonSchema = {
 const KillShellJsonSchema = {
   type: "object",
   properties: {
-    shell_id: { type: "string", description: "Shell ID returned by Bash with run_in_background=true" },
+    shell_id: {
+      type: "string",
+      description: "Shell ID returned by Bash with run_in_background=true",
+    },
   },
   required: ["shell_id"],
 };
@@ -142,8 +223,14 @@ const KillShellJsonSchema = {
 const ShellStatusJsonSchema = {
   type: "object",
   properties: {
-    shell_id: { type: "string", description: "Shell ID to check. Omit to list all shells." },
-    tail_lines: { type: "number", description: "Number of output lines to return from the end (default 50)" },
+    shell_id: {
+      type: "string",
+      description: "Shell ID to check. Omit to list all shells.",
+    },
+    tail_lines: {
+      type: "number",
+      description: "Number of output lines to return from the end (default 50)",
+    },
   },
 };
 
@@ -155,20 +242,36 @@ const AskUserQuestionJsonSchema = {
       items: {
         type: "object",
         properties: {
-          question: { type: "string", description: "The question to ask (end with ?)" },
-          header: { type: "string", description: "Short label displayed as a tag (max 12 chars)" },
+          question: {
+            type: "string",
+            description: "The question to ask (end with ?)",
+          },
+          header: {
+            type: "string",
+            description: "Short label displayed as a tag (max 12 chars)",
+          },
           options: {
             type: "array",
             items: {
               type: "object",
               properties: {
-                label: { type: "string", description: "Option text (1-5 words)" },
-                description: { type: "string", description: "What this option means or what happens if chosen" },
+                label: {
+                  type: "string",
+                  description: "Option text (1-5 words)",
+                },
+                description: {
+                  type: "string",
+                  description:
+                    "What this option means or what happens if chosen",
+                },
               },
               required: ["label", "description"],
             },
           },
-          multiSelect: { type: "boolean", description: "Allow selecting multiple options" },
+          multiSelect: {
+            type: "boolean",
+            description: "Allow selecting multiple options",
+          },
         },
         required: ["question", "header", "options", "multiSelect"],
       },
@@ -180,9 +283,18 @@ const AskUserQuestionJsonSchema = {
 const RequestCredentialJsonSchema = {
   type: "object",
   properties: {
-    provider: { type: "string", description: "Unique key for this secret (e.g. \"github_token\")" },
-    label: { type: "string", description: "Display name shown to the user (e.g. \"GitHub Token\")" },
-    description: { type: "string", description: "Why this credential is needed" },
+    provider: {
+      type: "string",
+      description: 'Unique key for this secret (e.g. "github_token")',
+    },
+    label: {
+      type: "string",
+      description: 'Display name shown to the user (e.g. "GitHub Token")',
+    },
+    description: {
+      type: "string",
+      description: "Why this credential is needed",
+    },
     placeholder: { type: "string", description: "Input placeholder text" },
   },
   required: ["provider"],
@@ -191,12 +303,27 @@ const RequestCredentialJsonSchema = {
 const SkillBashJsonSchema = {
   type: "object",
   properties: {
-    skill_id: { type: "string", description: "ID of the skill whose secrets to mount" },
+    skill_id: {
+      type: "string",
+      description: "ID of the skill whose secrets to mount",
+    },
     command: { type: "string", description: "Shell command to execute" },
-    description: { type: "string", description: "Human-readable description of what this command does" },
-    timeout: { type: "number", description: "Timeout in milliseconds (default 120000, max 600000)" },
-    working_directory: { type: "string", description: "Working directory for the command" },
-    run_in_background: { type: "boolean", description: "Run in background and return a shell_id" },
+    description: {
+      type: "string",
+      description: "Human-readable description of what this command does",
+    },
+    timeout: {
+      type: "number",
+      description: "Timeout in milliseconds (default 120000, max 600000)",
+    },
+    working_directory: {
+      type: "string",
+      description: "Working directory for the command",
+    },
+    run_in_background: {
+      type: "boolean",
+      description: "Run in background and return a shell_id",
+    },
   },
   required: ["skill_id", "command"],
 };
@@ -204,10 +331,24 @@ const SkillBashJsonSchema = {
 const MediaGenerateJsonSchema = {
   type: "object",
   properties: {
-    mode: { type: "string", enum: ["generate", "edit"], description: "Create new or edit existing (default: generate)" },
-    media_type: { type: "string", enum: ["image", "video"], description: "Type of media to produce (default: image)" },
-    prompt: { type: "string", description: "Description of what to generate or how to edit" },
-    source_url: { type: "string", description: "URL of source media to edit (required for mode=edit)" },
+    mode: {
+      type: "string",
+      enum: ["generate", "edit"],
+      description: "Create new or edit existing (default: generate)",
+    },
+    media_type: {
+      type: "string",
+      enum: ["image", "video"],
+      description: "Type of media to produce (default: image)",
+    },
+    prompt: {
+      type: "string",
+      description: "Description of what to generate or how to edit",
+    },
+    source_url: {
+      type: "string",
+      description: "URL of source media to edit (required for mode=edit)",
+    },
   },
   required: ["prompt"],
 };
@@ -217,7 +358,8 @@ const ScheduleJsonSchema = {
   properties: {
     prompt: {
       type: "string",
-      description: "Plain-language scheduling request for local cron jobs and heartbeats.",
+      description:
+        "Plain-language scheduling request for local cron jobs and heartbeats.",
     },
   },
   required: ["prompt"],
@@ -226,8 +368,17 @@ const ScheduleJsonSchema = {
 const WebSearchJsonSchema = {
   type: "object",
   properties: {
-    query: { type: "string", description: "Natural language search query — write descriptively, not as keywords" },
-    category: { type: "string", enum: ["company", "people", "research paper"], description: "Optional filter. 'company' for company research, 'people' for non-public figures, 'research paper' for academic papers. Omit for news, sports, general facts." },
+    query: {
+      type: "string",
+      description:
+        "Natural language search query — write descriptively, not as keywords",
+    },
+    category: {
+      type: "string",
+      enum: ["company", "people", "research paper"],
+      description:
+        "Optional filter. 'company' for company research, 'people' for non-public figures, 'research paper' for academic papers. Omit for news, sports, general facts.",
+    },
   },
   required: ["query"],
 };
@@ -237,7 +388,8 @@ const DisplayJsonSchema = {
   properties: {
     i_have_read_guidelines: {
       type: "boolean",
-      description: "Confirm you have already called DisplayGuidelines in this conversation.",
+      description:
+        "Confirm you have already called DisplayGuidelines in this conversation.",
     },
     html: {
       type: "string",
@@ -267,11 +419,31 @@ const DisplayGuidelinesJsonSchema = {
 const TaskCreateJsonSchema = {
   type: "object",
   properties: {
-    description: { type: "string", description: "Short summary of the task (shown in task list)" },
-    prompt: { type: "string", description: "Detailed instructions for the subagent — this is the agent's ONLY context" },
-    subagent_type: { type: "string", enum: ["general", "self_mod", "explore", "app"], description: "Which agent executes the task: 'general' (external code/files/shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), 'app' (browser/desktop app automation). Default: general" },
-    thread_name: { type: "string", description: "Existing thread name to continue. Omit to start fresh and the runtime will assign a short name automatically." },
-    command_id: { type: "string", description: "Command ID from a suggestion chip — system injects full instructions automatically" },
+    description: {
+      type: "string",
+      description: "Short summary of the task (shown in task list)",
+    },
+    prompt: {
+      type: "string",
+      description:
+        "Detailed instructions for the subagent — this is the agent's ONLY context",
+    },
+    subagent_type: {
+      type: "string",
+      enum: TASK_SUBAGENT_ENUM,
+      description:
+        "Which agent executes the task: 'general' (external code/files/shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), 'app' (browser/desktop app automation). Default: general",
+    },
+    thread_name: {
+      type: "string",
+      description:
+        "Existing thread name to continue. Omit to start fresh and the runtime will assign a short name automatically.",
+    },
+    command_id: {
+      type: "string",
+      description:
+        "Command ID from a suggestion chip — system injects full instructions automatically",
+    },
   },
   required: ["description", "prompt"],
 };
@@ -296,7 +468,10 @@ const TaskUpdateJsonSchema = {
   type: "object",
   properties: {
     task_id: { type: "string", description: "Task ID returned by TaskCreate" },
-    message: { type: "string", description: "New instruction to deliver to the running task" },
+    message: {
+      type: "string",
+      description: "New instruction to deliver to the running task",
+    },
   },
   required: ["task_id", "message"],
 };
@@ -304,8 +479,14 @@ const TaskUpdateJsonSchema = {
 const WebFetchJsonSchema = {
   type: "object",
   properties: {
-    url: { type: "string", description: "URL to fetch (HTTP auto-upgrades to HTTPS)" },
-    prompt: { type: "string", description: "What information you want from this page" },
+    url: {
+      type: "string",
+      description: "URL to fetch (HTTP auto-upgrades to HTTPS)",
+    },
+    prompt: {
+      type: "string",
+      description: "What information you want from this page",
+    },
   },
   required: ["url"],
 };
@@ -314,7 +495,11 @@ const SaveMemoryJsonSchema = {
   type: "object",
   properties: {
     content: { type: "string", description: "Text to save as a memory entry" },
-    tags: { type: "array", items: { type: "string" }, description: "Optional tags for categorization" },
+    tags: {
+      type: "array",
+      items: { type: "string" },
+      description: "Optional tags for categorization",
+    },
   },
   required: ["content"],
 };
@@ -322,8 +507,14 @@ const SaveMemoryJsonSchema = {
 const RecallMemoriesJsonSchema = {
   type: "object",
   properties: {
-    query: { type: "string", description: "Search query to find relevant memories" },
-    limit: { type: "number", description: "Maximum number of memories to return" },
+    query: {
+      type: "string",
+      description: "Search query to find relevant memories",
+    },
+    limit: {
+      type: "number",
+      description: "Maximum number of memories to return",
+    },
   },
   required: ["query"],
 };
@@ -370,19 +561,19 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   Glob:
     "Find files by glob pattern.\n\n" +
     "Usage:\n" +
-    "- Supports patterns like \"**/*.ts\", \"src/**/*.tsx\", \"*.json\".\n" +
+    '- Supports patterns like "**/*.ts", "src/**/*.tsx", "*.json".\n' +
     "- Returns matching file paths sorted by modification time (newest first).\n" +
     "- Use path to limit the search to a specific directory.\n" +
     "- Use this instead of Bash with find or ls.",
   Grep:
     "Search file contents using ripgrep regex.\n\n" +
     "Usage:\n" +
-    "- pattern is a regular expression (e.g. \"function\\s+\\w+\", \"TODO|FIXME\").\n" +
+    '- pattern is a regular expression (e.g. "function\\s+\\w+", "TODO|FIXME").\n' +
     "- output_mode controls what's returned:\n" +
-    "  - \"files_with_matches\" (default): just file paths that match.\n" +
-    "  - \"content\": matching lines with context.\n" +
-    "  - \"count\": number of matches per file.\n" +
-    "- Use glob to filter by file pattern (e.g. \"*.ts\") or type for standard file types (e.g. \"js\", \"py\").\n" +
+    '  - "files_with_matches" (default): just file paths that match.\n' +
+    '  - "content": matching lines with context.\n' +
+    '  - "count": number of matches per file.\n' +
+    '- Use glob to filter by file pattern (e.g. "*.ts") or type for standard file types (e.g. "js", "py").\n' +
     "- Use this instead of Bash with grep or rg.",
   Bash:
     "Execute a shell command on the local device.\n\n" +
@@ -410,7 +601,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Ask the user to choose between options via a UI prompt.\n\n" +
     "Usage:\n" +
     "- Present 1-4 questions, each with 2-4 options.\n" +
-    "- The user can always select \"Other\" to provide free-form text input.\n" +
+    '- The user can always select "Other" to provide free-form text input.\n' +
     "- Use multiSelect=true when choices aren't mutually exclusive.\n" +
     "- Use when you need user decisions on implementation choices, preferences, or clarifications.",
   RequestCredential:
@@ -419,7 +610,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- Displays a secure input dialog where the user enters a credential.\n" +
     "- Returns a secretId handle (not the raw value) for use with IntegrationRequest or SkillBash.\n" +
     "- The secret is stored encrypted in the user's vault.\n" +
-    "- Use provider as a unique key (e.g. \"openweather_api_key\"). Same provider reuses existing secret.",
+    '- Use provider as a unique key (e.g. "openweather_api_key"). Same provider reuses existing secret.',
   SkillBash:
     "Execute a shell command with a skill's secrets automatically mounted as environment variables or files.\n\n" +
     "Usage:\n" +
@@ -430,10 +621,10 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   MediaGenerate:
     "Generate or edit images and video.\n\n" +
     "Usage:\n" +
-    "- mode=\"generate\": Create new media from a text prompt.\n" +
-    "- mode=\"edit\": Modify an existing image/video (provide source_url).\n" +
+    '- mode="generate": Create new media from a text prompt.\n' +
+    '- mode="edit": Modify an existing image/video (provide source_url).\n' +
     "- prompt describes what to generate or how to edit.\n" +
-    "- media_type: \"image\" or \"video\".",
+    '- media_type: "image" or "video".',
   Schedule:
     "Handle local scheduling requests in plain language.\n\n" +
     "Usage:\n" +
@@ -483,15 +674,14 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   CronAdd:
     "Create a new local cron job.\n\n" +
     "Usage:\n" +
-    "- Schedule types: { kind: \"at\", atMs }, { kind: \"every\", everyMs, anchorMs? }, or { kind: \"cron\", expr, tz? }.\n" +
-    "- Payload types: { kind: \"systemEvent\", text } or { kind: \"agentTurn\", message }.\n" +
-    "- sessionTarget=\"main\" requires systemEvent payload. sessionTarget=\"isolated\" requires agentTurn payload.\n" +
+    '- Schedule types: { kind: "at", atMs }, { kind: "every", everyMs, anchorMs? }, or { kind: "cron", expr, tz? }.\n' +
+    '- Payload types: { kind: "systemEvent", text } or { kind: "agentTurn", message }.\n' +
+    '- sessionTarget="main" requires systemEvent payload. sessionTarget="isolated" requires agentTurn payload.\n' +
     "- deleteAfterRun=true removes successful one-shot jobs after they run.",
   CronUpdate:
     "Update an existing local cron job.\n\n" +
     "Only include the fields you want to change; omitted fields are preserved.",
-  CronRemove:
-    "Permanently delete a local cron job.",
+  CronRemove: "Permanently delete a local cron job.",
   CronRun:
     "Trigger a local cron job immediately, ignoring its next scheduled time.",
   TaskCreate:

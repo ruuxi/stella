@@ -8,6 +8,10 @@
 import { useEffect, useRef } from "react";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import {
+  AGENT_IDS,
+  AGENT_STREAM_EVENT_TYPES,
+} from "@/shared/contracts/agent-runtime";
+import {
   isTaskStarted,
   isTaskCompleted,
   isTaskCanceled,
@@ -50,7 +54,7 @@ export function useTraceIpcListener(enabled: boolean) {
       }
 
       switch (event.type) {
-        case "tool-start":
+        case AGENT_STREAM_EVENT_TYPES.TOOL_START:
           traceToolStart(
             event.toolName ?? "unknown",
             event.toolCallId,
@@ -58,7 +62,7 @@ export function useTraceIpcListener(enabled: boolean) {
             event.args,
           );
           break;
-        case "tool-end":
+        case AGENT_STREAM_EVENT_TYPES.TOOL_END:
           traceToolEnd(
             event.toolName ?? "unknown",
             event.toolCallId,
@@ -66,20 +70,17 @@ export function useTraceIpcListener(enabled: boolean) {
             event.runId,
           );
           break;
-        case "error":
+        case AGENT_STREAM_EVENT_TYPES.ERROR:
           traceAgentError(
             event.error ?? "unknown error",
             event.fatal ?? false,
             event.runId,
           );
           break;
-        case "end":
-          traceStreamEnd(
-            event.runId,
-            (event.finalText ?? "").slice(0, 200),
-          );
+        case AGENT_STREAM_EVENT_TYPES.END:
+          traceStreamEnd(event.runId, (event.finalText ?? "").slice(0, 200));
           break;
-        case "task-started":
+        case AGENT_STREAM_EVENT_TYPES.TASK_STARTED:
           traceTaskStarted(
             event.taskId ?? "unknown",
             event.agentType ?? "unknown",
@@ -87,16 +88,16 @@ export function useTraceIpcListener(enabled: boolean) {
             event.parentTaskId,
           );
           break;
-        case "task-completed":
+        case AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED:
           traceTaskCompleted(event.taskId ?? "unknown", event.result);
           break;
-        case "task-canceled":
+        case AGENT_STREAM_EVENT_TYPES.TASK_CANCELED:
           traceTaskCanceled(event.taskId ?? "unknown", event.error);
           break;
-        case "task-failed":
+        case AGENT_STREAM_EVENT_TYPES.TASK_FAILED:
           traceTaskFailed(event.taskId ?? "unknown", event.error);
           break;
-        case "task-progress":
+        case AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS:
           traceTaskProgress(event.taskId ?? "unknown", event.statusText ?? "");
           break;
         // "stream" events are high-frequency text deltas â€” skip for trace
@@ -116,10 +117,7 @@ export function useTraceIpcListener(enabled: boolean) {
  * task lifecycle events (sub-agent delegation), tool requests/results
  * from persisted events, and message flow.
  */
-export function useTraceEventMonitor(
-  enabled: boolean,
-  events: EventRecord[],
-) {
+export function useTraceEventMonitor(enabled: boolean, events: EventRecord[]) {
   const seenIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
@@ -133,12 +131,7 @@ export function useTraceEventMonitor(
 
       if (isTaskStarted(event)) {
         const p = event.payload;
-        traceTaskStarted(
-          p.taskId,
-          p.agentType,
-          p.description,
-          p.parentTaskId,
-        );
+        traceTaskStarted(p.taskId, p.agentType, p.description, p.parentTaskId);
         continue;
       }
 
@@ -166,7 +159,7 @@ export function useTraceEventMonitor(
         const p = event.payload;
         // Only trace if it has agentType (sub-agent tool use) to avoid
         // duplicating the IPC tool-start events from the orchestrator
-        if (p.agentType && p.agentType !== "orchestrator") {
+        if (p.agentType && p.agentType !== AGENT_IDS.ORCHESTRATOR) {
           addTrace("tool", "tool-request", `[${p.agentType}] ${p.toolName}`, {
             toolName: p.toolName,
             agent: p.agentType,
@@ -179,11 +172,16 @@ export function useTraceEventMonitor(
       if (isToolResult(event)) {
         const p = event.payload;
         if (p.error) {
-          addTrace("error", "tool-error", `${p.toolName}: ${p.error.slice(0, 200)}`, {
-            toolName: p.toolName,
-            agent: p.agentType,
-            data: { error: p.error },
-          });
+          addTrace(
+            "error",
+            "tool-error",
+            `${p.toolName}: ${p.error.slice(0, 200)}`,
+            {
+              toolName: p.toolName,
+              agent: p.agentType,
+              data: { error: p.error },
+            },
+          );
         }
         continue;
       }
@@ -214,9 +212,7 @@ export function useTraceEventMonitor(
 export function useTraceRunRegistration(runId: string | null) {
   useEffect(() => {
     if (runId) {
-      registerRunAgent(runId, "orchestrator");
+      registerRunAgent(runId, AGENT_IDS.ORCHESTRATOR);
     }
   }, [runId]);
 }
-
-

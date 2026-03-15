@@ -24,6 +24,7 @@ import type {
   ParsedAgentLike,
   StellaHostRunnerOptions,
 } from "./types.js";
+import { AGENT_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
 import {
   buildPanelInventory,
   defaultPromptForAgentType,
@@ -249,7 +250,10 @@ export const buildAgentContext = async (
   let threadHistory:
     | Array<{ role: string; content: string; toolCallId?: string }>
     | undefined;
-  if (args.agentType === "orchestrator" && context.listLocalChatEvents) {
+  if (
+    args.agentType === AGENT_IDS.ORCHESTRATOR &&
+    context.listLocalChatEvents
+  ) {
     const localEvents = context
       .listLocalChatEvents(args.conversationId, 800)
       .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
@@ -295,19 +299,19 @@ export const buildAgentContext = async (
   }
 
   const activeThreadsPrompt =
-    args.agentType === "orchestrator"
+    args.agentType === AGENT_IDS.ORCHESTRATOR
       ? buildActiveThreadsPrompt(
           context.runtimeStore.listActiveThreads(args.conversationId),
         )
       : "";
   const dynamicContextSections = [
-    args.agentType === "orchestrator" && context.frontendRoot
+    args.agentType === AGENT_IDS.ORCHESTRATOR && context.frontendRoot
       ? buildPanelInventory(context.frontendRoot)
       : "",
     activeThreadsPrompt,
   ].filter((section) => section.trim().length > 0);
   const reminderState =
-    args.agentType === "orchestrator" && activeThreadsPrompt
+    args.agentType === AGENT_IDS.ORCHESTRATOR && activeThreadsPrompt
       ? context.runtimeStore.getOrchestratorReminderState(args.conversationId)
       : {
           shouldInjectDynamicReminder: false,
@@ -332,13 +336,14 @@ export const buildAgentContext = async (
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
     agentEngine:
-      args.agentType === "general"
+      args.agentType === AGENT_IDS.GENERAL
         ? getGeneralAgentEngine(context.stellaHomePath)
-        : args.agentType === "self_mod"
+        : args.agentType === AGENT_IDS.SELF_MOD
           ? getSelfModAgentEngine(context.stellaHomePath)
           : undefined,
     maxAgentConcurrency:
-      args.agentType === "general" || args.agentType === "self_mod"
+      args.agentType === AGENT_IDS.GENERAL ||
+      args.agentType === AGENT_IDS.SELF_MOD
         ? getMaxAgentConcurrency(context.stellaHomePath)
         : undefined,
   };

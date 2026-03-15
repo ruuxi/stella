@@ -5,6 +5,10 @@ import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
 import { LocalTaskManager } from "../tasks/local-task-manager.js";
 import type { TaskToolRequest } from "../tools/types.js";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
+import {
+  AGENT_IDS,
+  LOCAL_CLI_AGENT_IDS,
+} from "../../../../src/shared/contracts/agent-runtime.js";
 import type {
   AgentCallbacks,
   RunnerContext,
@@ -46,7 +50,11 @@ export const createTaskOrchestration = (
     maxConcurrent: 24,
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaHomePath),
     resolveTaskThread: ({ conversationId, agentType, threadName }) => {
-      if (agentType !== "general" && agentType !== "self_mod") {
+      if (
+        !LOCAL_CLI_AGENT_IDS.includes(
+          agentType as (typeof LOCAL_CLI_AGENT_IDS)[number],
+        )
+      ) {
         return null;
       }
       return context.runtimeStore.resolveOrCreateActiveThread({
@@ -78,7 +86,7 @@ export const createTaskOrchestration = (
             {
               conversationId: event.conversationId,
               userPrompt,
-              agentType: "orchestrator",
+              agentType: AGENT_IDS.ORCHESTRATOR,
               userMessageId: `system:${crypto.randomUUID()}`,
             },
             callbacks,
@@ -102,7 +110,7 @@ export const createTaskOrchestration = (
       toolExecutor,
     }) => {
       const runId = `local:sub:${crypto.randomUUID()}`;
-      const shouldControlHmr = agentType === "self_mod";
+      const shouldControlHmr = agentType === AGENT_IDS.SELF_MOD;
       const pauseApplied =
         shouldControlHmr && context.selfModHmrController
           ? await context.selfModHmrController.pause(runId)
