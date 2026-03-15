@@ -175,6 +175,12 @@ const buildShellEnv = (
   ...(options?.stellaUiCliPath ? { STELLA_UI_CLI: options.stellaUiCliPath } : {}),
 });
 
+export const normalizeAppAgentShellCommand = (command: string) =>
+  command.replace(
+    /(?:^|&&\s*|\|\|\s*|;\s*)STELLA_BROWSER_SESSION=[^\s]+(?=\s+stella-browser\b)/g,
+    (match) => match.replace(/STELLA_BROWSER_SESSION=[^\s]+\s*/, ""),
+  ).replace(/\s{2,}/g, " ").trim();
+
 export const startShell = (
   state: ShellState,
   command: string,
@@ -192,6 +198,7 @@ export const startShell = (
     cwd,
     env: buildShellEnv(envOverrides, state),
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
   });
 
   const record: ShellRecord = {
@@ -244,6 +251,7 @@ export const runShell = async (
       cwd,
       env: buildShellEnv(envOverrides, state),
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
 
     let output = "";
@@ -290,9 +298,7 @@ export const handleBash = async (
   args: Record<string, unknown>,
   context?: ToolContext,
 ): Promise<ToolResult> => {
-  void context; // Unused but kept for interface consistency
-
-  const command = String(args.command ?? "");
+  let command = String(args.command ?? "");
 
   // Safety check: reject dangerous commands
   const dangerReason = isDangerousCommand(command);
@@ -305,9 +311,22 @@ export const handleBash = async (
   const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
   const cwd = String(args.working_directory ?? process.cwd());
   const runInBackground = Boolean(args.run_in_background ?? false);
+  const envOverrides: Record<string, string> = {};
+
+  if (context?.agentType === "app") {
+    // App-agent browser automation uses one shared Stella browser session.
+    // Strip any inline session overrides so the model cannot fork ad-hoc
+    // browser sessions that fight over the shared extension bridge.
+    command = normalizeAppAgentShellCommand(command);
+    envOverrides.STELLA_BROWSER_USER_BROWSER = "1";
+    envOverrides.STELLA_BROWSER_PROVIDER = "extension";
+    envOverrides.STELLA_BROWSER_SESSION = "default";
+    envOverrides.STELLA_BROWSER_EXT_PORT = "9224";
+    envOverrides.STELLA_BROWSER_EXT_TOKEN = "";
+  }
 
   if (runInBackground) {
-    const record = startShell(state, command, cwd);
+    const record = startShell(state, command, cwd, envOverrides);
     return {
       result: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(
         record.output || "(no output yet)",
@@ -315,7 +334,7 @@ export const handleBash = async (
     };
   }
 
-  const output = await runShell(state, command, cwd, timeout);
+  const output = await runShell(state, command, cwd, timeout, envOverrides);
   return { result: truncate(output) };
 };
 

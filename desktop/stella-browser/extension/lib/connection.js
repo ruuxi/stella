@@ -12,6 +12,7 @@ let reconnectTimer = null;
 let reconnectDelay = RECONNECT_DELAY;
 let commandHandler = null;
 let statusCallback = null;
+let retriedWithoutToken = false;
 
 /**
  * Set the handler for incoming commands from the daemon.
@@ -106,6 +107,7 @@ function doConnect(port, token) {
   socket.onopen = () => {
     console.log('[connection] Connected to daemon on port', port);
     reconnectDelay = RECONNECT_DELAY; // Reset backoff
+    retriedWithoutToken = false;
 
     // Send handshake
     sendOn({
@@ -141,7 +143,11 @@ function doConnect(port, token) {
     if (msg.type === 'auth_error') {
       console.error('[connection] Auth failed:', msg.error);
       setStatus(false);
-      // Don't reconnect on auth failure
+      if (token && !retriedWithoutToken) {
+        retriedWithoutToken = true;
+        await chrome.storage.local.set({ token: '' });
+        scheduleReconnect(port, '');
+      }
       return;
     }
 
