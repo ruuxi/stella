@@ -57,12 +57,6 @@ fn parse_proxy(proxy_str: &str) -> serde_json::Value {
     })
 }
 
-fn should_use_legacy_daemon(cmd: &serde_json::Value, provider: Option<&str>) -> bool {
-    let _ = cmd;
-    let _ = provider;
-    false
-}
-
 fn run_session(args: &[String], session: &str, json_mode: bool) {
     let subcommand = args.get(1).map(|s| s.as_str());
 
@@ -229,8 +223,6 @@ fn main() {
         }
     };
 
-    let use_legacy_daemon = should_use_legacy_daemon(&cmd, flags.provider.as_deref());
-
     let daemon_result = match ensure_daemon(
         &flags.session,
         flags.headed,
@@ -246,7 +238,6 @@ fn main() {
         flags.state.as_deref(),
         flags.provider.as_deref(),
         flags.device.as_deref(),
-        use_legacy_daemon,
     ) {
         Ok(result) => result,
         Err(e) => {
