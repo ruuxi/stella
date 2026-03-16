@@ -2,6 +2,7 @@ import { RUNTIME_RUN_EVENT_TYPES } from "../../../../src/shared/contracts/agent-
 import type { AgentEvent, AgentMessage } from "../../agent/types.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
+import type { HookEventMap } from "../extensions/types.js";
 import type { RuntimeStore } from "../../../storage/runtime-store.js";
 import {
   extractAssistantText,
@@ -177,10 +178,10 @@ export const createRunEventRecorder = ({
   };
 };
 
-const emitHook = (
+const emitHook = <E extends "turn_start" | "turn_end">(
   hookEmitter: HookEmitter | undefined,
-  event: "turn_start" | "turn_end",
-  payload: Record<string, unknown>,
+  event: E,
+  payload: HookEventMap[E]["payload"],
   agentType: string,
 ) => {
   if (!hookEmitter) {

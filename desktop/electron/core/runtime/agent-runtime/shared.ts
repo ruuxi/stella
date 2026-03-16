@@ -236,8 +236,12 @@ const getLatestAssistantMessage = (
 ): AgentMessage | undefined =>
   [...messages].reverse().find((message) => message.role === "assistant");
 
+type AgentCompletionSource = {
+  state: Pick<Agent["state"], "messages" | "error">;
+};
+
 export const getAgentCompletion = (
-  agent: Agent,
+  agent: AgentCompletionSource,
 ): { finalText: string; errorMessage?: string } => {
   const latestAssistant = getLatestAssistantMessage(agent.state.messages);
   const finalText = extractAssistantText(latestAssistant);
