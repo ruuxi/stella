@@ -4,7 +4,7 @@ import {
   mutation,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import type { ActionCtx } from "../_generated/server";
 import { hashSha256Hex } from "../lib/crypto_utils";
 import {
@@ -183,10 +183,10 @@ export const generateLinkCode = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
-      throw new Error(SIGN_IN_REQUIRED_ERROR);
+      throw new ConvexError(SIGN_IN_REQUIRED_ERROR);
     }
     if ((identity as Record<string, unknown>).isAnonymous === true) {
-      throw new Error(SIGN_IN_REQUIRED_ERROR);
+      throw new ConvexError(SIGN_IN_REQUIRED_ERROR);
     }
     const ownerId = identity.subject;
 
