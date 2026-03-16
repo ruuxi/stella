@@ -584,8 +584,12 @@ export class Agent {
 			},
 			transformContext: this.transformContext
 				? async (agentMessages, signal) => {
+						const transformContext = this.transformContext;
 						try {
-							return await this.transformContext?.(agentMessages, signal);
+							if (!transformContext) {
+								return agentMessages;
+							}
+							return await transformContext(agentMessages, signal);
 						} catch {
 							return agentMessages;
 						}

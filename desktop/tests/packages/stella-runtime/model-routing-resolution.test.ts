@@ -74,38 +74,38 @@ describe("stella model routing resolution", () => {
     });
   });
 
-  it("falls back to a custom direct-provider model id when a local provider key exists", () => {
+  it("does not fabricate a direct-provider route for unknown model ids", () => {
     getLocalLlmCredentialMock.mockImplementation(
       (_stellaHomePath: string, providerId: string) =>
         providerId === "openai" ? "sk-openai-test" : null,
     );
 
-    const route = resolveLlmRoute({
-      stellaHomePath: "C:/stella-home",
-      modelName: "openai/custom-enterprise-model",
-      agentType: "general",
-      proxy: {
-        baseUrl: null,
-        getAuthToken: () => null,
-      },
-    });
-
-    expect(route.route).toBe("direct-provider");
-    expect(route.model.provider).toBe("openai");
-    expect(route.model.id).toBe("custom-enterprise-model");
-    expect(route.model.baseUrl).toBe("https://api.openai.com/v1");
-    expect(route.getApiKey()).toBe("sk-openai-test");
+    expect(() =>
+      resolveLlmRoute({
+        stellaHomePath: "C:/stella-home",
+        modelName: "openai/custom-enterprise-model",
+        agentType: "general",
+        proxy: {
+          baseUrl: null,
+          getAuthToken: () => null,
+        },
+      }),
+    ).toThrow("No usable model route is configured");
   });
 
-  it("falls back to a custom openrouter model id when only an openrouter key exists", () => {
+  it("keeps exact openrouter routes reachable even when a direct provider key exists", () => {
     getLocalLlmCredentialMock.mockImplementation(
       (_stellaHomePath: string, providerId: string) =>
-        providerId === "openrouter" ? "sk-openrouter-test" : null,
+        providerId === "openrouter"
+          ? "sk-openrouter-test"
+          : providerId === "openai"
+            ? "sk-openai-test"
+            : null,
     );
 
     const route = resolveLlmRoute({
       stellaHomePath: "C:/stella-home",
-      modelName: "openai/private-preview",
+      modelName: "openai/gpt-5.1-codex",
       agentType: "general",
       proxy: {
         baseUrl: null,
@@ -115,7 +115,7 @@ describe("stella model routing resolution", () => {
 
     expect(route.route).toBe("direct-openrouter");
     expect(route.model.provider).toBe("openrouter");
-    expect(route.model.id).toBe("openai/private-preview");
+    expect(route.model.id).toBe("openai/gpt-5.1-codex");
     expect(route.model.baseUrl).toBe("https://openrouter.ai/api/v1");
     expect(route.getApiKey()).toBe("sk-openrouter-test");
   });
