@@ -12,6 +12,7 @@ import {
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { AuthService } from "../services/auth-service.js";
 import type { ExternalLinkService } from "../services/external-link-service.js";
+import type { SocialSessionService } from "../services/social-session-service.js";
 import {
   deleteLocalLlmCredential,
   listLocalLlmCredentials,
@@ -23,6 +24,7 @@ type SystemHandlersOptions = {
   authService: AuthService;
   getStellaHostRunner: () => StellaHostRunner | null;
   getStellaHomePath: () => string | null;
+  socialSessionService: SocialSessionService;
   externalLinkService: ExternalLinkService;
   ensurePrivilegedActionApproval: (
     action: string,
@@ -70,6 +72,18 @@ const sanitizeOptionalHttpUrl = (value: unknown, fieldName: string) => {
 export const registerSystemHandlers = (options: SystemHandlersOptions) => {
   ipcMain.handle("device:getId", () => options.getDeviceId());
 
+  ipcMain.handle("socialSessions:getStatus", (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "socialSessions:getStatus",
+      )
+    ) {
+      throw new Error("Blocked untrusted socialSessions:getStatus request.");
+    }
+    return options.socialSessionService.getSnapshot();
+  });
+
   ipcMain.handle(
     "host:configurePiRuntime",
     (event, config: { convexUrl?: string; convexSiteUrl?: string }) => {
@@ -91,6 +105,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           convexUrl,
           convexSiteUrl,
         });
+        options.socialSessionService.setConvexUrl(convexUrl);
       }
       return { deviceId: options.getDeviceId() };
     },
@@ -110,6 +125,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       options.authService.setHostAuthState(
         Boolean(payload?.authenticated),
         payload?.token,
+      );
+      options.socialSessionService.setAuthToken(
+        Boolean(payload?.authenticated) ? payload?.token ?? null : null,
       );
       return { ok: true };
     },

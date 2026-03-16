@@ -7,6 +7,7 @@ import { MiniBridgeRelay } from '@/shell/mini/MiniBridgeRelay'
 import { useTheme } from '@/context/theme-context'
 import { WorkspaceArea } from '@/app/workspace/WorkspaceArea'
 import { ChatColumn } from '@/app/chat/ChatColumn'
+import { SocialView } from '@/app/social/SocialView'
 import { useDiscoveryFlow } from '@/global/onboarding/DiscoveryFlow'
 import { useOnboardingOverlay, OnboardingView } from '@/global/onboarding/OnboardingOverlay'
 import { Sidebar } from '@/shell/sidebar/Sidebar'
@@ -88,6 +89,10 @@ export const FullShell = () => {
 
   const showChatView = useCallback(() => {
     setView('chat')
+  }, [setView])
+
+  const showSocialView = useCallback(() => {
+    setView('social')
   }, [setView])
 
   const handleNewAppAskStella = useCallback(() => {
@@ -193,7 +198,7 @@ export const FullShell = () => {
     }
   }, [])
 
-  const isOrbVisible = state.view !== 'chat' && onboarding.onboardingDone
+  const isOrbVisible = state.view !== 'chat' && state.view !== 'social' && onboarding.onboardingDone
   const appReady = onboarding.onboardingDone
   const activeProjectId =
     activePanel?.kind === 'dev-project' && activePanel.projectId ? activePanel.projectId : null
@@ -226,6 +231,7 @@ export const FullShell = () => {
               onStore={showStoreView}
               onHome={showHomeView}
               onChat={showChatView}
+              onSocial={showSocialView}
               onNewAppAskStella={handleNewAppAskStella}
               onNewAppLocalProject={handleNewAppLocalProject}
               projects={projects}
@@ -242,6 +248,8 @@ export const FullShell = () => {
                   composerEntering={onboarding.onboardingExiting}
                   conversationId={activeConversationId}
                 />
+              ) : state.view === 'social' ? (
+                <SocialView onSignIn={showAuthDialog} />
               ) : (
                 <WorkspaceArea
                   view={state.view}

@@ -644,5 +644,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.invoke("localChat:setSyncCheckpoint", payload),
     onUpdated: onIpcSignal("localChat:updated"),
   },
+
+  socialSessions: {
+    getStatus: () => ipcRenderer.invoke("socialSessions:getStatus"),
+  },
 });
 
