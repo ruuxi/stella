@@ -25,6 +25,7 @@ describe("media contract", () => {
         capability: " text_to_image ",
         profile: " BEST ",
         prompt: "  neon city  ",
+        aspectRatio: " 16:9 ",
         sourceUrl: " https://example.com/source.png ",
         source: " data:image/png;base64,aGVsbG8= ",
         sources: {
@@ -42,6 +43,7 @@ describe("media contract", () => {
       capability: "text_to_image",
       profile: "best",
       prompt: "neon city",
+      aspectRatio: "16:9",
       sourceUrl: "https://example.com/source.png",
       source: "data:image/png;base64,aGVsbG8=",
       sources: {
@@ -71,6 +73,7 @@ describe("media contract", () => {
         capability: "image_to_video",
         profile: "motion",
         prompt: "cinematic shot",
+        aspectRatio: "21:9",
         source: "data:image/png;base64,<base64>",
         sources: {
           audio: {
@@ -86,6 +89,7 @@ describe("media contract", () => {
       capability: "image_to_video",
       profile: "motion",
       prompt: "cinematic shot",
+      aspectRatio: "21:9",
       source: "data:image/png;base64,<base64>",
       sources: {
         audio: {
@@ -169,6 +173,7 @@ describe("media contract", () => {
         profile: "best",
         request: {
           prompt: "cinematic skyline",
+          aspectRatio: "9:16",
           source: { kind: "url" },
           input: { image_size: "portrait_16_9" },
         },
@@ -188,6 +193,7 @@ describe("media contract", () => {
       profile: "best",
       request: {
         prompt: "cinematic skyline",
+        aspectRatio: "9:16",
         source: { kind: "url" },
         input: { image_size: "portrait_16_9" },
       },

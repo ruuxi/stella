@@ -5,6 +5,7 @@ import {
   resolveMediaProfile,
 } from "../convex/media_catalog";
 import {
+  applyConvenienceInput,
   describeCapabilityValidation,
   MEDIA_DOCS_PATH,
   MEDIA_CAPABILITIES_PATH,
@@ -36,7 +37,9 @@ describe("media api contract", () => {
         "sound_effects",
         "text_to_dialogue",
         "text_to_image",
+        "icon",
         "image_edit",
+        "realtime",
         "audio_visual_separate",
         "image_to_video",
         "video_depth",
@@ -51,13 +54,16 @@ describe("media api contract", () => {
     expect(resolveMediaProfile("text_to_image", "best")?.profile.endpointId).toBe(
       "fal-ai/bytedance/seedream/v5/lite/text-to-image",
     );
+    expect(resolveMediaProfile("icon", "default")?.profile.endpointId).toBe(
+      "fal-ai/flux-2/turbo",
+    );
     expect(resolveMediaProfile("text_to_image", "fast")?.profile.endpointId).toBe(
       "fal-ai/flux-2/klein/9b",
     );
-    expect(resolveMediaProfile("image_edit", "fast")?.profile.endpointId).toBe(
+    expect(resolveMediaProfile("image_edit", "default")?.profile.endpointId).toBe(
       "fal-ai/flux-2/klein/9b/edit",
     );
-    expect(resolveMediaProfile("image_edit", "realtime")?.profile.endpointId).toBe(
+    expect(resolveMediaProfile("realtime", "default")?.profile.endpointId).toBe(
       "fal-ai/flux-2/klein/realtime",
     );
     expect(resolveMediaProfile("video_to_video", "reference")?.profile.endpointId).toBe(
@@ -79,16 +85,25 @@ describe("media api contract", () => {
       requiresPrompt: true,
       requiresSourceUrl: false,
       acceptsBase64Source: false,
+      supportsAspectRatio: true,
+    });
+    expect(describeCapabilityValidation("icon")).toEqual({
+      requiresPrompt: true,
+      requiresSourceUrl: false,
+      acceptsBase64Source: false,
+      supportsAspectRatio: false,
     });
     expect(describeCapabilityValidation("image_to_video")).toEqual({
       requiresPrompt: true,
       requiresSourceUrl: true,
       acceptsBase64Source: true,
+      supportsAspectRatio: true,
     });
     expect(describeCapabilityValidation("video_depth")).toEqual({
       requiresPrompt: false,
       requiresSourceUrl: true,
       acceptsBase64Source: true,
+      supportsAspectRatio: false,
     });
 
     expect(
@@ -109,6 +124,7 @@ describe("media api contract", () => {
       validateCapabilityRequest({
         capabilityId: "image_to_video",
         prompt: "animate this image",
+        aspectRatio: "16:9",
         source: "data:image/png;base64,aGVsbG8=",
       }),
     ).toBeNull();
@@ -161,15 +177,33 @@ describe("media api contract", () => {
       }),
     ).toBeNull();
   });
+
+  test("locks icon generation to the provider's fixed square image size", () => {
+    const capability = getMediaCapability("icon");
+    expect(capability).not.toBeNull();
+    expect(
+      applyConvenienceInput({
+        capability: capability!,
+        input: {},
+        prompt: "minimal app icon for a budgeting assistant",
+      }),
+    ).toEqual({
+      prompt: "minimal app icon for a budgeting assistant",
+      image_size: {
+        width: 512,
+        height: 512,
+      },
+    });
+  });
 });
 
 describe("stella llm aliases", () => {
   test("resolves stable best, fast, and media aliases", () => {
     expect(resolveStellaModelSelection("general", STELLA_BEST_MODEL)).toBe(
-      "moonshotai/kimi-k2.5",
+      "anthropic/claude-opus-4.6",
     );
     expect(resolveStellaModelSelection("general", STELLA_FAST_MODEL)).toBe(
-      "google/gemini-3-flash",
+      "inception/mercury-2",
     );
     expect(resolveStellaModelSelection("general", STELLA_MEDIA_MODEL)).toBe(
       "google/gemini-3-flash",

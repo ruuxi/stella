@@ -9,7 +9,9 @@ describe("media catalog", () => {
   test("lists the expected core capabilities", () => {
     const capabilities = listMediaCapabilities();
     expect(capabilities.some((entry) => entry.id === "text_to_image")).toBe(true);
+    expect(capabilities.some((entry) => entry.id === "icon")).toBe(true);
     expect(capabilities.some((entry) => entry.id === "image_edit")).toBe(true);
+    expect(capabilities.some((entry) => entry.id === "realtime")).toBe(true);
     expect(capabilities.some((entry) => entry.id === "video_to_video")).toBe(true);
     expect(capabilities.some((entry) => entry.id === "speech_to_text")).toBe(true);
   });
@@ -18,8 +20,14 @@ describe("media catalog", () => {
     const textToImage = resolveMediaProfile("text_to_image");
     expect(textToImage?.profile.id).toBe("best");
 
-    const explicit = resolveMediaProfile("image_edit", "realtime");
-    expect(explicit?.profile.id).toBe("realtime");
+    const icon = resolveMediaProfile("icon");
+    expect(icon?.profile.id).toBe("default");
+
+    const imageEdit = resolveMediaProfile("image_edit");
+    expect(imageEdit?.profile.id).toBe("default");
+
+    const realtime = resolveMediaProfile("realtime");
+    expect(realtime?.profile.id).toBe("default");
   });
 
   test("exposes convenience metadata for source-based capabilities", () => {
