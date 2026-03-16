@@ -26,9 +26,11 @@ const IDLE_HMR_STATE: SelfModHmrState = {
   requiresFullReload: false,
 };
 
-const RAMP_UP_MS = 600;
-const CROSSFADE_MS = 800;
-const CALM_DOWN_MS = 600;
+const COVER_RAMP_UP_MS = 220;
+const HMR_CROSSFADE_MS = 260;
+const HMR_CALM_DOWN_MS = 180;
+const RELOAD_CROSSFADE_MS = 520;
+const RELOAD_CALM_DOWN_MS = 280;
 const STEADY_STRENGTH = 0.65;
 
 const VERT = `
@@ -89,15 +91,13 @@ void main() {
   vec4 col2 = sampleWithChroma(u_tex2, uv, chromDir, chromatic);
   vec4 col = mix(col1, col2, u_mix);
 
-  // Chromatic aberration color — appears at the split edges
-  // Sample slight offsets to detect where the image changes rapidly (edge detection)
+  // Chromatic aberration color appears only on stronger image edges.
   float dx = 0.002 * u_strength;
   float lumCenter = dot(col.rgb, vec3(0.299, 0.587, 0.114));
   float lumRight = dot(texture2D(u_tex, clamp(uv + vec2(dx, 0.0), 0.0, 1.0)).rgb, vec3(0.299, 0.587, 0.114));
   float lumUp = dot(texture2D(u_tex, clamp(uv + vec2(0.0, dx), 0.0, 1.0)).rgb, vec3(0.299, 0.587, 0.114));
   float edge = length(vec2(lumRight - lumCenter, lumUp - lumCenter));
 
-  // 4-color gradient rotating around center
   float angle = atan(d.y, d.x);
   float colorPhase = fract(angle / 6.2832 + u_time * 0.3) * 4.0;
 
@@ -106,9 +106,7 @@ void main() {
   tint = mix(tint, u_color4, smoothstep(2.0, 3.0, colorPhase));
   tint = mix(tint, u_color1, smoothstep(3.0, 4.0, colorPhase));
 
-  // Only at edges where chromatic split would be visible — thin color outlines
   float colorMask = smoothstep(0.02, 0.08, edge) * u_strength * 0.35;
-
   col.rgb = mix(col.rgb, tint, colorMask);
 
   gl_FragColor = col;
@@ -127,8 +125,13 @@ type GLContext = {
   mixLoc: WebGLUniformLocation | null;
 };
 
-function resolveThemeColor(varName: string, fallback: string): [number, number, number] {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+function resolveThemeColor(
+  varName: string,
+  fallback: string,
+): [number, number, number] {
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue(varName)
+    .trim();
   return cssToVec3(raw || fallback);
 }
 
@@ -142,7 +145,10 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 function initGL(canvas: HTMLCanvasElement, img: HTMLImageElement): GLContext | null {
-  const gl = canvas.getContext("webgl", { alpha: true, premultipliedAlpha: false });
+  const gl = canvas.getContext("webgl", {
+    alpha: true,
+    premultipliedAlpha: false,
+  });
   if (!gl) return null;
 
   canvas.width = img.width;
@@ -150,10 +156,10 @@ function initGL(canvas: HTMLCanvasElement, img: HTMLImageElement): GLContext | n
   gl.viewport(0, 0, img.width, img.height);
 
   const createShader = (type: number, src: string) => {
-    const s = gl.createShader(type)!;
-    gl.shaderSource(s, src);
-    gl.compileShader(s);
-    return s;
+    const shader = gl.createShader(type)!;
+    gl.shaderSource(shader, src);
+    gl.compileShader(shader);
+    return shader;
   };
 
   const vs = createShader(gl.VERTEX_SHADER, VERT);
@@ -166,21 +172,25 @@ function initGL(canvas: HTMLCanvasElement, img: HTMLImageElement): GLContext | n
 
   const buf = gl.createBuffer()!;
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+    gl.STATIC_DRAW,
+  );
   const pos = gl.getAttribLocation(prog, "a_pos");
   gl.enableVertexAttribArray(pos);
   gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
 
   const setupTexture = (unit: number) => {
-    const t = gl.createTexture()!;
+    const texture = gl.createTexture()!;
     gl.activeTexture(unit);
-    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    return t;
+    return texture;
   };
 
   const tex = setupTexture(gl.TEXTURE0);
@@ -196,16 +206,42 @@ function initGL(canvas: HTMLCanvasElement, img: HTMLImageElement): GLContext | n
   const color2 = resolveThemeColor("--spinner-color-2", "#bb9af7");
   const color3 = resolveThemeColor("--spinner-color-3", "#7dcfff");
   const color4 = resolveThemeColor("--spinner-color-4", "#9ece6a");
-  gl.uniform3f(gl.getUniformLocation(prog, "u_color1"), color1[0], color1[1], color1[2]);
-  gl.uniform3f(gl.getUniformLocation(prog, "u_color2"), color2[0], color2[1], color2[2]);
-  gl.uniform3f(gl.getUniformLocation(prog, "u_color3"), color3[0], color3[1], color3[2]);
-  gl.uniform3f(gl.getUniformLocation(prog, "u_color4"), color4[0], color4[1], color4[2]);
+  gl.uniform3f(
+    gl.getUniformLocation(prog, "u_color1"),
+    color1[0],
+    color1[1],
+    color1[2],
+  );
+  gl.uniform3f(
+    gl.getUniformLocation(prog, "u_color2"),
+    color2[0],
+    color2[1],
+    color2[2],
+  );
+  gl.uniform3f(
+    gl.getUniformLocation(prog, "u_color3"),
+    color3[0],
+    color3[1],
+    color3[2],
+  );
+  gl.uniform3f(
+    gl.getUniformLocation(prog, "u_color4"),
+    color4[0],
+    color4[1],
+    color4[2],
+  );
 
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
   return {
-    gl, prog, vs, fs, buf, tex, tex2,
+    gl,
+    prog,
+    vs,
+    fs,
+    buf,
+    tex,
+    tex2,
     strengthLoc: gl.getUniformLocation(prog, "u_strength"),
     timeLoc: gl.getUniformLocation(prog, "u_time"),
     mixLoc: gl.getUniformLocation(prog, "u_mix"),
@@ -236,17 +272,15 @@ function cleanupGL(ctx: GLContext) {
   gl.deleteShader(fs);
 }
 
-/**
- * Single continuous render loop.
- * Controls strength and mix externally via refs.
- */
 function startRenderLoop(
   ctx: GLContext,
   strengthRef: { current: number },
   mixRef: { current: number },
   startTime: number,
+  onFirstFrame?: () => void,
 ): () => void {
   let running = true;
+  let firstFramePainted = false;
   const { gl, strengthLoc, timeLoc, mixLoc } = ctx;
 
   const frame = (now: number) => {
@@ -257,14 +291,19 @@ function startRenderLoop(
     gl.uniform1f(timeLoc, (now - startTime) / 1000);
     gl.uniform1f(mixLoc, mixRef.current);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (!firstFramePainted) {
+      firstFramePainted = true;
+      onFirstFrame?.();
+    }
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
 
-  return () => { running = false; };
+  return () => {
+    running = false;
+  };
 }
 
-/** Smoothly animate a ref value from its current value to a target over duration ms. */
 function tweenRef(
   ref: { current: number },
   to: number,
@@ -292,11 +331,11 @@ export function MorphTransition() {
   const [hmrState, setHmrState] = useState<SelfModHmrState>(IDLE_HMR_STATE);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glCtxRef = useRef<GLContext | null>(null);
-  const reverseImgRef = useRef<HTMLImageElement | null>(null);
   const strengthRef = useRef(0);
   const mixRef = useRef(0);
   const stopLoopRef = useRef<(() => void) | null>(null);
   const loopStartTimeRef = useRef(0);
+  const morphReadySentRef = useRef(false);
 
   useEffect(() => {
     const api = window.electronAPI?.overlay;
@@ -311,11 +350,27 @@ export function MorphTransition() {
       return;
     }
 
+    const disposeMorph = () => {
+      stopLoopRef.current?.();
+      stopLoopRef.current = null;
+      if (glCtxRef.current) {
+        cleanupGL(glCtxRef.current);
+        glCtxRef.current = null;
+      }
+    };
+
+    const signalMorphReady = () => {
+      if (morphReadySentRef.current) return;
+      morphReadySentRef.current = true;
+      window.electronAPI?.overlay.morphReady();
+    };
+
     const unsubs: Array<() => void> = [];
 
     unsubs.push(
       api.onMorphForward((data) => {
-        reverseImgRef.current = null;
+        disposeMorph();
+        morphReadySentRef.current = false;
         strengthRef.current = 0;
         mixRef.current = 0;
         setState({
@@ -326,7 +381,6 @@ export function MorphTransition() {
           height: data.height,
         });
 
-        // Load the initial image and start
         void loadImage(data.screenshotDataUrl).then((img) => {
           if (!canvasRef.current) return;
           const ctx = initGL(canvasRef.current, img);
@@ -334,47 +388,58 @@ export function MorphTransition() {
           glCtxRef.current = ctx;
 
           loopStartTimeRef.current = performance.now();
-          stopLoopRef.current = startRenderLoop(ctx, strengthRef, mixRef, loopStartTimeRef.current);
+          stopLoopRef.current = startRenderLoop(
+            ctx,
+            strengthRef,
+            mixRef,
+            loopStartTimeRef.current,
+            signalMorphReady,
+          );
 
-          // Ramp up strength smoothly
-          void tweenRef(strengthRef, STEADY_STRENGTH, RAMP_UP_MS);
+          // Reach a stable covered state quickly, then hold there until reveal.
+          void tweenRef(strengthRef, STEADY_STRENGTH, COVER_RAMP_UP_MS);
         });
       }),
     );
 
     unsubs.push(
       api.onMorphReverse((data) => {
-        void loadImage(data.screenshotDataUrl).then((img) => {
-          reverseImgRef.current = img;
-          const ctx = glCtxRef.current;
-          if (!ctx) {
-            window.electronAPI?.overlay.morphDone();
-            return;
-          }
+        const crossfadeMs = data.requiresFullReload
+          ? RELOAD_CROSSFADE_MS
+          : HMR_CROSSFADE_MS;
+        const calmDownMs = data.requiresFullReload
+          ? RELOAD_CALM_DOWN_MS
+          : HMR_CALM_DOWN_MS;
 
-          // Load new texture, crossfade, then calm down
-          loadSecondTexture(ctx, img);
-          setState((prev) => ({ ...prev, phase: "crossfading" }));
-
-          return tweenRef(mixRef, 1.0, CROSSFADE_MS).then(() => {
-            setState((prev) => ({ ...prev, phase: "calming" }));
-            return tweenRef(strengthRef, 0, CALM_DOWN_MS);
-          }).then(() => {
-            // Done — cleanup
-            stopLoopRef.current?.();
-            stopLoopRef.current = null;
-            window.electronAPI?.overlay.morphDone();
-            if (glCtxRef.current) {
-              cleanupGL(glCtxRef.current);
-              glCtxRef.current = null;
+        void loadImage(data.screenshotDataUrl)
+          .then((img) => {
+            const ctx = glCtxRef.current;
+            if (!ctx) {
+              window.electronAPI?.overlay.morphDone();
+              return;
             }
+
+            loadSecondTexture(ctx, img);
+            setState((prev) => ({ ...prev, phase: "crossfading" }));
+
+            return tweenRef(mixRef, 1.0, crossfadeMs)
+              .then(() => {
+                setState((prev) => ({ ...prev, phase: "calming" }));
+                return tweenRef(strengthRef, 0, calmDownMs);
+              })
+              .then(() => {
+                morphReadySentRef.current = false;
+                window.electronAPI?.overlay.morphDone();
+                disposeMorph();
+                setState(IDLE_STATE);
+              });
+          })
+          .catch(() => {
+            morphReadySentRef.current = false;
+            window.electronAPI?.overlay.morphDone();
+            disposeMorph();
             setState(IDLE_STATE);
           });
-        }).catch(() => {
-          window.electronAPI?.overlay.morphDone();
-          stopLoopRef.current?.();
-          setState(IDLE_STATE);
-        });
       }),
     );
 
@@ -386,19 +451,15 @@ export function MorphTransition() {
 
     unsubs.push(
       api.onMorphEnd(() => {
-        stopLoopRef.current?.();
-        stopLoopRef.current = null;
-        if (glCtxRef.current) {
-          cleanupGL(glCtxRef.current);
-          glCtxRef.current = null;
-        }
+        morphReadySentRef.current = false;
+        disposeMorph();
         setHmrState(IDLE_HMR_STATE);
         setState(IDLE_STATE);
       }),
     );
 
     return () => {
-      unsubs.forEach((u) => u());
+      unsubs.forEach((unsubscribe) => unsubscribe());
     };
   }, []);
 

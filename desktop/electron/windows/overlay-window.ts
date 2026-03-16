@@ -441,8 +441,11 @@ export class OverlayWindowController {
     })
   }
 
-  startMorphReverse(screenshotDataUrl: string) {
-    this.overlayWindow.send('overlay:morphReverse', { screenshotDataUrl })
+  startMorphReverse(screenshotDataUrl: string, requiresFullReload: boolean) {
+    this.overlayWindow.send('overlay:morphReverse', {
+      screenshotDataUrl,
+      requiresFullReload,
+    })
   }
 
   setMorphState(state: SelfModHmrState) {
