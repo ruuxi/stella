@@ -10,6 +10,7 @@ import { createDesktopDatabase } from "../storage/database.js";
 import { ChatStore } from "../storage/chat-store.js";
 import { RuntimeStore } from "../storage/runtime-store.js";
 import { StoreModStore } from "../storage/store-mod-store.js";
+import { SocialSessionStore } from "../storage/social-session-store.js";
 import { TranscriptMirror } from "../storage/transcript-mirror.js";
 import {
   getOrCreateDeviceIdentity,
@@ -38,6 +39,7 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   const stellaHome = await resolveStellaHome(app);
 
   lifecycle.setStellaHomePath(stellaHome.homePath);
+  state.stellaWorkspacePath = stellaHome.workspacePath;
   state.desktopDatabase?.close();
   state.desktopDatabase = createDesktopDatabase(stellaHome.homePath);
 
@@ -51,6 +53,7 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
     transcriptMirror,
   );
   state.storeModStore = new StoreModStore(state.desktopDatabase);
+  state.socialSessionStore = new SocialSessionStore(state.desktopDatabase);
   state.storeModService = new StoreModService(
     config.frontendRoot,
     state.storeModStore,
@@ -119,7 +122,11 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   const pendingConvexUrl = services.authService.getPendingConvexUrl();
   if (pendingConvexUrl) {
     lifecycle.getRunner()!.setConvexUrl(pendingConvexUrl);
+    services.socialSessionService.setConvexUrl(pendingConvexUrl);
   }
+  const pendingAuthToken = await services.authService.getAuthToken();
+  services.socialSessionService.setAuthToken(pendingAuthToken);
+  services.socialSessionService.start();
 
   lifecycle.getRunner()!.start();
   state.schedulerService.start();

@@ -48,6 +48,8 @@ import type {
   LocalHeartbeatConfigRecord as SharedLocalHeartbeatConfigRecord,
   ScheduledConversationEvent as SharedScheduledConversationEvent,
   VoiceRuntimeSnapshot as SharedVoiceRuntimeSnapshot,
+  SocialSessionRuntimeRecord as SharedSocialSessionRuntimeRecord,
+  SocialSessionServiceSnapshot as SharedSocialSessionServiceSnapshot,
 } from "@/shared/contracts/electron-data";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 
@@ -96,6 +98,8 @@ export type LocalCronJobRecord = SharedLocalCronJobRecord;
 export type LocalHeartbeatConfigRecord = SharedLocalHeartbeatConfigRecord;
 export type ScheduledConversationEvent = SharedScheduledConversationEvent;
 export type VoiceRuntimeSnapshot = SharedVoiceRuntimeSnapshot;
+export type SocialSessionRuntimeRecord = SharedSocialSessionRuntimeRecord;
+export type SocialSessionServiceSnapshot = SharedSocialSessionServiceSnapshot;
 export type VoiceShortcutRegistrationResult = {
   ok: boolean;
   requestedShortcut: string;
@@ -465,6 +469,10 @@ export type ElectronStoreApi = {
   }>;
 };
 
+export type ElectronSocialSessionsApi = {
+  getStatus: () => Promise<SocialSessionServiceSnapshot>;
+};
+
 export type ElectronLocalChatApi = {
   getOrCreateDefaultConversationId: () => Promise<string>;
   listEvents: (payload: {
@@ -530,6 +538,7 @@ export type ElectronApi = {
   projects: ElectronProjectsApi;
   schedule: ElectronScheduleApi;
   store: ElectronStoreApi;
+  socialSessions: ElectronSocialSessionsApi;
   localChat: ElectronLocalChatApi;
 };
 

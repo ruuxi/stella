@@ -18,12 +18,18 @@ export const shutdownBootstrapRuntime = (
 
   if (state.stellaHostRunner) {
     state.stellaHostRunner.stop();
-    lifecycle.setRunner(null);
+    if (lifecycle) {
+      lifecycle.setRunner(null);
+    } else {
+      state.stellaHostRunner = null;
+    }
   }
+  state.socialSessionService?.stop();
 
   state.chatStore = null;
   state.runtimeStore = null;
   state.storeModStore = null;
+  state.socialSessionStore = null;
   state.storeModService = null;
   state.desktopDatabase?.close();
   state.desktopDatabase = null;

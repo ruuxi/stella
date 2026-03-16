@@ -50,6 +50,7 @@ export const registerBootstrapIpcHandlers = (
     authService: services.authService,
     getStellaHostRunner: lifecycle.getRunner,
     getStellaHomePath: lifecycle.getStellaHomePath,
+    socialSessionService: services.socialSessionService,
     externalLinkService: services.externalLinkService,
     ensurePrivilegedActionApproval: (action, message, detail, event) =>
       services.securityPolicyService.ensureApproval(
