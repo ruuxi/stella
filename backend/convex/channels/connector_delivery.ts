@@ -88,6 +88,73 @@ export const completeRemoteTurn = mutation({
   },
 });
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Convex ActionCtx.runQuery/runMutation have complex generated types
+type InternalRunCtx = {
+  runQuery: (...args: any[]) => Promise<unknown>;
+  runMutation: (...args: any[]) => Promise<unknown>;
+};
+
+// ─── Shared delivery logic (callable from any action in the same runtime) ───
+
+type DeliveryCtx = Pick<InternalRunCtx, "runQuery" | "runMutation">;
+
+type DeliveryArgs = {
+  requestId: string;
+  conversationId: Id<"conversations">;
+  provider: string;
+  deliveryMeta: Record<string, unknown>;
+  text: string;
+};
+
+async function deliverToConnectorCore(
+  ctx: DeliveryCtx,
+  args: DeliveryArgs,
+): Promise<void> {
+  const meta = args.deliveryMeta;
+
+  try {
+    switch (args.provider) {
+      case "slack":
+        await deliverSlack(ctx, meta, args.text);
+        break;
+      case "telegram":
+        await deliverTelegram(meta, args.text);
+        break;
+      case "discord":
+        await deliverDiscord(meta, args.text);
+        break;
+      case "google_chat":
+        await deliverGoogleChat(meta, args.text);
+        break;
+      case "teams":
+        await deliverTeams(meta, args.text);
+        break;
+      case "linq":
+        await deliverLinq(meta, args.text);
+        break;
+      default:
+        throw new ConvexError({
+          code: "INVALID_ARGUMENT",
+          message: `Unknown delivery provider: ${args.provider}`,
+        });
+    }
+
+    // Mark fulfilled AFTER successful delivery
+    await ctx.runMutation(internal.events.appendInternalEvent, {
+      conversationId: args.conversationId,
+      type: "remote_turn_fulfilled",
+      requestId: `fulfilled:${args.requestId}`,
+      payload: { requestId: args.requestId },
+    });
+  } catch (error) {
+    // NOT marking fulfilled — watchdog will retry delivery
+    console.error(
+      `[connector_delivery] Delivery failed for ${args.provider}:`,
+      error,
+    );
+  }
+}
+
 // ─── Internal Action (delivers message to connector) ────────────────────────
 export const deliverToConnector = internalAction({
   args: {
@@ -98,58 +165,16 @@ export const deliverToConnector = internalAction({
     text: v.string(),
   },
   handler: async (ctx, args) => {
-    const meta = args.deliveryMeta as Record<string, unknown>;
-
-    try {
-      switch (args.provider) {
-        case "slack":
-          await deliverSlack(ctx, meta, args.text);
-          break;
-        case "telegram":
-          await deliverTelegram(meta, args.text);
-          break;
-        case "discord":
-          await deliverDiscord(meta, args.text);
-          break;
-        case "google_chat":
-          await deliverGoogleChat(meta, args.text);
-          break;
-        case "teams":
-          await deliverTeams(meta, args.text);
-          break;
-        case "linq":
-          await deliverLinq(meta, args.text);
-          break;
-        default:
-          throw new ConvexError({
-            code: "INVALID_ARGUMENT",
-            message: `Unknown delivery provider: ${args.provider}`,
-          });
-      }
-
-      // Mark fulfilled AFTER successful delivery
-      await ctx.runMutation(internal.events.appendInternalEvent, {
-        conversationId: args.conversationId,
-        type: "remote_turn_fulfilled",
-        requestId: `fulfilled:${args.requestId}`,
-        payload: { requestId: args.requestId },
-      });
-    } catch (error) {
-      // NOT marking fulfilled — watchdog will retry delivery
-      console.error(
-        `[connector_delivery] Delivery failed for ${args.provider}:`,
-        error,
-      );
-    }
-
+    await deliverToConnectorCore(ctx, {
+      requestId: args.requestId,
+      conversationId: args.conversationId,
+      provider: args.provider,
+      deliveryMeta: args.deliveryMeta as Record<string, unknown>,
+      text: args.text,
+    });
     return null;
   },
 });
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Convex ActionCtx.runQuery/runMutation have complex generated types
-type InternalRunCtx = {
-  runQuery: (...args: any[]) => Promise<unknown>;
-  runMutation: (...args: any[]) => Promise<unknown>;
-};
 
 async function deliverSlack(
   ctx: Pick<InternalRunCtx, "runQuery">,
@@ -618,16 +643,13 @@ export const rescueOrphanedTurns = internalAction({
           console.log(
             `[watchdog] Retrying delivery for claimed turn ${orphan.requestId}`,
           );
-          await ctx.runAction(
-            internal.channels.connector_delivery.deliverToConnector,
-            {
-              requestId: orphan.requestId,
-              conversationId: orphan.conversationId,
-              provider,
-              deliveryMeta: JSON.parse(JSON.stringify(deliveryMeta)),
-              text: await getLatestAssistantText(ctx, orphan.conversationId),
-            },
-          );
+          await deliverToConnectorCore(ctx, {
+            requestId: orphan.requestId,
+            conversationId: orphan.conversationId,
+            provider,
+            deliveryMeta: JSON.parse(JSON.stringify(deliveryMeta)),
+            text: await getLatestAssistantText(ctx, orphan.conversationId),
+          });
         } else {
           // Case 2: Not claimed — device went offline before picking up the
           // request. Run the full turn through backend fallback + deliver.
@@ -666,16 +688,13 @@ export const rescueOrphanedTurns = internalAction({
 
           const responseText =
             result.text.trim() || "(Stella had nothing to say.)";
-          await ctx.runAction(
-            internal.channels.connector_delivery.deliverToConnector,
-            {
-              requestId: orphan.requestId,
-              conversationId,
-              provider,
-              deliveryMeta: JSON.parse(JSON.stringify(deliveryMeta)),
-              text: responseText,
-            },
-          );
+          await deliverToConnectorCore(ctx, {
+            requestId: orphan.requestId,
+            conversationId,
+            provider,
+            deliveryMeta: JSON.parse(JSON.stringify(deliveryMeta)),
+            text: responseText,
+          });
         }
 
         console.log(
