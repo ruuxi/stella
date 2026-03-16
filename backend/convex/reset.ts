@@ -4,6 +4,7 @@ import {
   internalQuery,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { requireUserId } from "./auth";
 
@@ -20,7 +21,7 @@ export const resetAllUserData = action({
     const ownerId = await requireUserId(ctx);
 
     // 1. Collect conversation IDs
-    const conversationIds = await ctx.runQuery(
+    const conversationIds: Id<"conversations">[] = await ctx.runQuery(
       internal.reset._getConversationIds,
       { ownerId },
     );
@@ -29,19 +30,21 @@ export const resetAllUserData = action({
     for (const conversationId of conversationIds) {
       let hasMore = true;
       while (hasMore) {
-        hasMore = await ctx.runMutation(
+        const result: boolean = await ctx.runMutation(
           internal.reset._deleteConversationBatch,
           { conversationId },
         );
+        hasMore = result;
       }
     }
 
     // 3. Delete owner-scoped tables (prefs, devices, etc.)
     let hasMore = true;
     while (hasMore) {
-      hasMore = await ctx.runMutation(internal.reset._deleteOwnerBatch, {
+      const result: boolean = await ctx.runMutation(internal.reset._deleteOwnerBatch, {
         ownerId,
       });
+      hasMore = result;
     }
 
     return null;

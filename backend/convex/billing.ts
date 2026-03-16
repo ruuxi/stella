@@ -861,7 +861,16 @@ export const createEmbeddedCheckoutSession = action({
     const stripe = getStripeClient();
     const publishableKey = getStripePublishableKey();
 
-    const billing = await ctx.runMutation(internal.billing.ensureBillingRecords, {
+    const billing: {
+      ownerId: string;
+      activePlan: string;
+      subscriptionStatus: string;
+      stripeCustomerId: string;
+      stripeSubscriptionId: string;
+      stripePriceId: string;
+      currentPeriodEnd: number;
+      usageUpdatedAt: number;
+    } = await ctx.runMutation(internal.billing.ensureBillingRecords, {
       ownerId,
     });
 
@@ -944,7 +953,16 @@ export const createBillingPortalSession = action({
     }
 
     const ownerId = identity.subject;
-    const billing = await ctx.runMutation(internal.billing.ensureBillingRecords, {
+    const billing: {
+      ownerId: string;
+      activePlan: string;
+      subscriptionStatus: string;
+      stripeCustomerId: string;
+      stripeSubscriptionId: string;
+      stripePriceId: string;
+      currentPeriodEnd: number;
+      usageUpdatedAt: number;
+    } = await ctx.runMutation(internal.billing.ensureBillingRecords, {
       ownerId,
     });
 

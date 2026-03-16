@@ -599,10 +599,10 @@ export const createUpdateRelease = action({
     const manifest = normalizeManifest(args.manifest);
     const artifactBody = normalizeArtifactBody(args.artifactBody);
     const artifactContentType = normalizeArtifactContentType(args.artifactContentType);
-    const pkg = await ctx.runQuery(internal.data.store_packages.getPackageByPackageIdInternal, {
-      ownerId,
-      packageId,
-    });
+    const pkg: Awaited<ReturnType<typeof getOwnedPackageByPackageId>> = await ctx.runQuery(
+      internal.data.store_packages.getPackageByPackageIdInternal,
+      { ownerId, packageId },
+    );
     if (!pkg) {
       throw new ConvexError({
         code: "NOT_FOUND",
