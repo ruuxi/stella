@@ -18,6 +18,7 @@ vi.mock("../../../electron/core/runtime/agent-runtime.js", async () => {
 const {
   launchPreparedOrchestratorRun,
   prepareOrchestratorRun,
+  startPreparedOrchestratorRun,
 } = await import("../../../electron/core/runtime/runner/orchestrator-launch.js");
 
 describe("runner orchestrator launch helpers", () => {
@@ -114,5 +115,79 @@ describe("runner orchestrator launch helpers", () => {
 
     prepared.replayInterruptedTurn();
     expect(queueOrchestratorTurn).toHaveBeenCalledWith(replayTurn);
+  });
+
+  it("starts a prepared run with generated runtime callbacks", async () => {
+    runOrchestratorTurnMock.mockResolvedValue(undefined);
+
+    const context = {
+      deviceId: "device-1",
+      stellaHomePath: "/tmp/stella-home",
+      runtimeStore: {},
+      frontendRoot: "/repo",
+      selfModMonitor: null,
+      hookEmitter: {},
+      displayHtml: undefined,
+      toolHost: { executeTool: vi.fn() },
+      state: {
+        proxyBaseUrl: "https://demo.convex.site/api/stella/v1",
+        authToken: "token-123",
+        activeOrchestratorRunId: null,
+        activeOrchestratorConversationId: null,
+        activeInterruptedReplayTurn: null,
+        activeRunAbortControllers: new Map<string, AbortController>(),
+      },
+    };
+    const buildAgentContext = vi.fn().mockResolvedValue({
+      model: "openai/gpt-4.1-mini",
+      toolsAllowlist: ["shell"],
+      threadHistory: [],
+    });
+    const queueOrchestratorTurn = vi.fn();
+    const createRuntimeCallbacks = vi.fn(() => ({
+      onStream: vi.fn(),
+      onToolStart: vi.fn(),
+      onToolEnd: vi.fn(),
+      onError: vi.fn(),
+      onEnd: vi.fn(),
+    }));
+    const onPrepared = vi.fn();
+
+    const result = await startPreparedOrchestratorRun({
+      context: context as never,
+      buildAgentContext,
+      queueOrchestratorTurn,
+      createRuntimeCallbacks,
+      runId: "run-3",
+      conversationId: "conv-3",
+      agentType: "orchestrator",
+      userPrompt: "hello",
+      userMessageId: "user-3",
+      webSearch: vi.fn(),
+      finishInterruptedRun: vi.fn(() => false),
+      cleanupRun: vi.fn(),
+      onFatalError: vi.fn(),
+      onPrepared,
+    });
+
+    expect(result.runId).toBe("run-3");
+    expect(buildAgentContext).toHaveBeenCalledWith({
+      conversationId: "conv-3",
+      agentType: "orchestrator",
+      runId: "run-3",
+    });
+    expect(onPrepared).toHaveBeenCalledWith(result.prepared);
+    expect(createRuntimeCallbacks).toHaveBeenCalledWith({
+      runId: "run-3",
+      prepared: result.prepared,
+    });
+    expect(runOrchestratorTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "run-3",
+        conversationId: "conv-3",
+        agentType: "orchestrator",
+        userPrompt: "hello",
+      }),
+    );
   });
 });
