@@ -204,7 +204,7 @@ const upsertAgent = async (
 export const ensureBuiltins = internalMutation({
   args: {},
   handler: async (ctx) => {
-    for (const removedId of REMOVED_AGENT_IDS) {
+    const removePromises = Array.from(REMOVED_AGENT_IDS).map(async (removedId) => {
       const staleBuiltin = await ctx.db
         .query("agents")
         .withIndex("by_ownerId_and_id", (q) =>
@@ -214,14 +214,16 @@ export const ensureBuiltins = internalMutation({
       if (staleBuiltin) {
         await ctx.db.delete(staleBuiltin._id);
       }
-    }
+    });
+    await Promise.all(removePromises);
 
-    for (const builtin of BUILTIN_AGENT_DEFS) {
-      await upsertAgent(ctx, BUILTIN_OWNER_ID, {
+    const upsertPromises = BUILTIN_AGENT_DEFS.map((builtin) =>
+      upsertAgent(ctx, BUILTIN_OWNER_ID, {
         ...builtin,
         updatedAt: Date.now(),
-      });
-    }
+      })
+    );
+    await Promise.all(upsertPromises);
     return { ok: true };
   },
 });
@@ -234,14 +236,11 @@ export const upsertMany = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
     const items = Array.isArray(args.agents) ? args.agents : [];
-    let upserted = 0;
-    for (const item of items) {
-      const agent = normalizeAgent(item);
-      if (!agent) continue;
-      await upsertAgent(ctx, ownerId, agent);
-      upserted += 1;
-    }
-    return { upserted };
+    const validAgents = items.map(normalizeAgent).filter((a): a is AgentRecord => a !== null);
+    
+    await Promise.all(validAgents.map(agent => upsertAgent(ctx, ownerId, agent)));
+    
+    return { upserted: validAgents.length };
   },
 });
 

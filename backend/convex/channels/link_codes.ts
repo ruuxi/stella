@@ -70,25 +70,28 @@ export const peekLinkCodeOwner = internalQuery({
       .take(500);
     const now = Date.now();
 
-    for (const pref of prefs) {
+    const promises = prefs.map(async (pref) => {
       const parsed = parseLinkCodeValue(pref.value);
-      if (!parsed) {
-        continue;
-      }
-
+      if (!parsed) return null;
       if (
         !parsed.codeHash ||
         !parsed.codeSalt ||
         typeof parsed.expiresAt !== "number" ||
         parsed.expiresAt <= now
       ) {
-        continue;
+        return null;
       }
-
       const candidateHash = await hashLinkCode(args.code, parsed.codeSalt);
       if (candidateHash === parsed.codeHash) {
-        return pref.ownerId;
+        return pref;
       }
+      return null;
+    });
+
+    const results = await Promise.all(promises);
+    const matched = results.find((r) => r !== null);
+    if (matched) {
+      return matched.ownerId;
     }
 
     return null;
@@ -148,26 +151,29 @@ export const consumeLinkCode = internalMutation({
       .take(500);
     const now = Date.now();
 
-    for (const pref of prefs) {
+    const promises = prefs.map(async (pref) => {
       const parsed = parseLinkCodeValue(pref.value);
-      if (!parsed) {
-        continue;
-      }
-
+      if (!parsed) return null;
       if (
         !parsed.codeHash ||
         !parsed.codeSalt ||
         typeof parsed.expiresAt !== "number" ||
         parsed.expiresAt <= now
       ) {
-        continue;
+        return null;
       }
-
       const candidateHash = await hashLinkCode(args.code, parsed.codeSalt);
       if (candidateHash === parsed.codeHash) {
-        await ctx.db.delete(pref._id);
-        return pref.ownerId;
+        return pref;
       }
+      return null;
+    });
+
+    const results = await Promise.all(promises);
+    const matched = results.find((r) => r !== null);
+    if (matched) {
+      await ctx.db.delete(matched._id);
+      return matched.ownerId;
     }
     return null;
   },
