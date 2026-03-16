@@ -497,9 +497,9 @@ export const findOrphanedTurnRequests = internalQuery({
       payload: Record<string, string | undefined>;
       claimed: boolean;
     };
-    const orphans: OrphanResult[] = [];
 
-    for (const device of offlineDevices) {
+    const devicePromises = offlineDevices.map(async (device) => {
+      const orphansForDevice: OrphanResult[] = [];
       const events = await ctx.db
         .query("events")
         .withIndex("by_targetDeviceId_and_timestamp", (q) =>
@@ -510,38 +510,47 @@ export const findOrphanedTurnRequests = internalQuery({
         )
         .take(20);
 
-      for (const event of events) {
-        if (event.type !== "remote_turn_request") continue;
-        if (!event.requestId) continue;
+      const eventPromises = events.map(async (event) => {
+        if (event.type !== "remote_turn_request") return null;
+        if (!event.requestId) return null;
 
-        // Check for fulfilled marker
-        const fulfilled = await ctx.db
-          .query("events")
-          .withIndex("by_requestId", (q) =>
-            q.eq("requestId", `fulfilled:${event.requestId}`),
-          )
-          .first();
-        if (fulfilled) continue;
+        const [fulfilled, claimed] = await Promise.all([
+          ctx.db
+            .query("events")
+            .withIndex("by_requestId", (q) =>
+              q.eq("requestId", `fulfilled:${event.requestId}`),
+            )
+            .first(),
+          ctx.db
+            .query("events")
+            .withIndex("by_requestId", (q) =>
+              q.eq("requestId", `claimed:${event.requestId}`),
+            )
+            .first()
+        ]);
 
-        // Check for claimed marker (local device started but delivery may have failed)
-        const claimed = await ctx.db
-          .query("events")
-          .withIndex("by_requestId", (q) =>
-            q.eq("requestId", `claimed:${event.requestId}`),
-          )
-          .first();
+        if (fulfilled) return null;
 
         const p = event.payload as Record<string, unknown>;
-        orphans.push({
+        return {
           eventId: event._id,
           requestId: event.requestId,
           conversationId: event.conversationId,
           targetDeviceId: event.targetDeviceId!,
           payload: JSON.parse(JSON.stringify(p)),
           claimed: claimed !== null,
-        });
+        };
+      });
+
+      const processedEvents = await Promise.all(eventPromises);
+      for (const res of processedEvents) {
+        if (res) orphansForDevice.push(res);
       }
-    }
+      return orphansForDevice;
+    });
+
+    const results = await Promise.all(devicePromises);
+    const orphans = results.flat();
 
     return orphans;
   },

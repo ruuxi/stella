@@ -267,10 +267,11 @@ export const cleanupGameAssets = internalMutation({
       )
       .take(100);
 
-    for (const asset of assets) {
+    const promises = assets.map(async (asset) => {
       await ctx.storage.delete(asset.storageKey);
       await ctx.db.delete(asset._id);
-    }
+    });
+    await Promise.all(promises);
 
     if (assets.length === 100) {
       await ctx.scheduler.runAfter(0, internal.data.games.cleanupGameAssets, args);
@@ -451,8 +452,7 @@ export const deployGameBuild = action({
     });
 
     // Upload each file to Convex storage
-    let totalSize = 0;
-    for (const file of args.files) {
+    const uploadPromises = args.files.map(async (file) => {
       const blobPart =
         file.encoding === "base64"
           ? Uint8Array.from(atob(file.content), (char) => char.charCodeAt(0))
@@ -469,8 +469,11 @@ export const deployGameBuild = action({
         size: blob.size,
       });
 
-      totalSize += blob.size;
-    }
+      return blob.size;
+    });
+
+    const sizes = await Promise.all(uploadPromises);
+    const totalSize = sizes.reduce((a, b) => a + b, 0);
 
     const deploymentPath = `/games/${gameId}`;
 

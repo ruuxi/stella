@@ -62,9 +62,8 @@ export const migrateTableBatch = internalMutation({
       .withIndex(args.index, (q) => q.eq("ownerId", args.fromOwnerId))
       .take(BATCH_SIZE);
 
-    for (const row of rows) {
-      await ctx.db.patch(row._id as any, { ownerId: args.toOwnerId });
-    }
+    const promises = rows.map((row) => ctx.db.patch(row._id as any, { ownerId: args.toOwnerId }));
+    await Promise.all(promises);
 
     return rows.length === BATCH_SIZE;
   },
@@ -91,9 +90,11 @@ export const deduplicateDefaultConversation = internalMutation({
 
     // Keep the oldest default, un-default the rest
     defaults.sort((a, b) => a.createdAt - b.createdAt);
+    const promises = [];
     for (let i = 1; i < defaults.length; i++) {
-      await ctx.db.patch(defaults[i]._id, { isDefault: false });
+      promises.push(ctx.db.patch(defaults[i]._id, { isDefault: false }));
     }
+    await Promise.all(promises);
 
     return null;
   },
@@ -165,9 +166,8 @@ export const migratePersistChunksBatch = internalMutation({
       .withIndex("by_ownerId", (q) => q.eq("ownerId", args.fromOwnerId))
       .take(BATCH_SIZE);
 
-    for (const row of rows) {
-      await ctx.db.patch(row._id, { ownerId: args.toOwnerId });
-    }
+    const promises = rows.map((row) => ctx.db.patch(row._id, { ownerId: args.toOwnerId }));
+    await Promise.all(promises);
 
     return rows.length === BATCH_SIZE;
   },

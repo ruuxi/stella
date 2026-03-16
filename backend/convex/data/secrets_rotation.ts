@@ -50,24 +50,28 @@ export const rotateEncryptedMaterialBatch = internalMutation({
         .take(remaining);
       const candidates = [...candidatesBelow, ...candidatesAbove];
 
-      for (const candidate of candidates) {
-        if (remaining <= 0) break;
+      const rotationPromises = candidates.slice(0, remaining).map(async (candidate) => {
         try {
           const result = await rotateSecretToActiveKey(candidate.encryptedValue);
           if (!result.changed) {
-            skipped += 1;
-            continue;
+            return { type: 'skipped' as const };
           }
           await ctx.db.patch(candidate._id, {
             encryptedValue: result.serialized,
             keyVersion: result.keyVersion,
             updatedAt: now,
           });
-          rotated += 1;
-          remaining -= 1;
+          return { type: 'rotated' as const };
         } catch {
-          failed += 1;
+          return { type: 'failed' as const };
         }
+      });
+
+      const results = await Promise.all(rotationPromises);
+      for (const res of results) {
+        if (res.type === 'skipped') skipped += 1;
+        if (res.type === 'rotated') { rotated += 1; remaining -= 1; }
+        if (res.type === 'failed') failed += 1;
       }
     }
 
@@ -83,24 +87,28 @@ export const rotateEncryptedMaterialBatch = internalMutation({
         .take(remaining);
       const candidates = [...candidatesBelow, ...candidatesAbove];
 
-      for (const candidate of candidates) {
-        if (remaining <= 0) break;
+      const rotationPromises = candidates.slice(0, remaining).map(async (candidate) => {
         try {
           const result = await rotateSecretToActiveKey(candidate.botToken);
           if (!result.changed) {
-            skipped += 1;
-            continue;
+            return { type: 'skipped' as const };
           }
           await ctx.db.patch(candidate._id, {
             botToken: result.serialized,
             botTokenKeyVersion: result.keyVersion,
             updatedAt: now,
           });
-          rotated += 1;
-          remaining -= 1;
+          return { type: 'rotated' as const };
         } catch {
-          failed += 1;
+          return { type: 'failed' as const };
         }
+      });
+
+      const results = await Promise.all(rotationPromises);
+      for (const res of results) {
+        if (res.type === 'skipped') skipped += 1;
+        if (res.type === 'rotated') { rotated += 1; remaining -= 1; }
+        if (res.type === 'failed') failed += 1;
       }
     }
 
