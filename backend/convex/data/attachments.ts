@@ -80,7 +80,7 @@ export const insertAttachment = internalMutation({
   args: {
     conversationId: v.id("conversations"),
     deviceId: v.string(),
-    storageKey: v.string(),
+    storageKey: v.id("_storage"),
     url: v.optional(v.string()),
     mimeType: v.string(),
     size: v.number(),
