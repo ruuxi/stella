@@ -1,7 +1,7 @@
 import os from "os";
 import { Type } from "@sinclair/typebox";
-import type { Agent } from "../../agent/agent.js";
-import type { AgentMessage } from "../../agent/types.js";
+import { Agent } from "../../agent/agent.js";
+import type { AgentMessage, AgentTool } from "../../agent/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import { selectRecentByTokenBudget } from "../local-history.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
@@ -291,3 +291,28 @@ export const createBeforeProviderPayloadTransform = (
         return result?.payload;
       }
     : undefined;
+
+export const createRuntimeAgent = (args: {
+  agentType: string;
+  systemPrompt: string;
+  resolvedLlm: ResolvedLlmRoute;
+  hookEmitter?: HookEmitter;
+  tools: AgentTool[];
+  historySource: Array<{ role: "user" | "assistant"; content: string }>;
+}): Agent =>
+  new Agent({
+    initialState: {
+      systemPrompt: args.systemPrompt,
+      model: args.resolvedLlm.model,
+      thinkingLevel: "medium",
+      tools: args.tools,
+      messages: toAgentMessages(args.historySource),
+    },
+    convertToLlm: PI_AGENT_MESSAGE_FILTER,
+    transformContext: buildDefaultTransformContext(args.resolvedLlm),
+    getApiKey: () => args.resolvedLlm.getApiKey(),
+    onPayload: createBeforeProviderPayloadTransform(
+      args.hookEmitter,
+      args.agentType,
+    ),
+  });

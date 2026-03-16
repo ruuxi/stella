@@ -29,37 +29,27 @@ import type {
 import { log, logError, recoverStaleSecretFiles } from "./utils.js";
 
 // Tool handlers
-import { handleRead, handleWrite, handleEdit, setFileToolsConfig } from "./file.js";
-import { handleGlob, handleGrep } from "./search.js";
+import { setFileToolsConfig } from "./file.js";
 import {
   createShellState,
-  handleBash,
-  handleKillShell,
-  handleShellStatus,
-  handleSkillBash,
   type ShellState,
 } from "./shell.js";
-// WebFetch and WebSearch have been promoted to backend tools (Convex actions).
-// import { handleWebFetch, handleWebSearch } from "./tools-web.js";
 import {
   createStateContext,
-  handleTask,
-  handleTaskUpdate,
-  handleTaskOutput,
   type StateContext,
 } from "./state.js";
-import { handleAskUser, handleRequestCredential, type UserToolsConfig } from "./user.js";
+import { type UserToolsConfig } from "./user.js";
 import {
-  handleCronAdd,
-  handleCronList,
-  handleCronRemove,
-  handleCronRun,
-  handleCronUpdate,
-  handleHeartbeatGet,
-  handleHeartbeatRun,
-  handleHeartbeatUpsert,
-  handleSchedule,
-} from "./schedule.js";
+  createDisplayToolHandlers,
+  createFileToolHandlers,
+  createScheduleToolHandlers,
+  createSearchToolHandlers,
+  createShellToolHandlers,
+  createTaskToolHandlers,
+  createUserToolHandlers,
+  mergeToolHandlers,
+  registerExtensionToolHandlers,
+} from "./registry.js";
 
 import type { ToolDefinition } from "../extensions/types.js";
 
@@ -146,97 +136,17 @@ export const createToolHost = ({
     shellState.skillCache = skills;
   };
 
-  const notConfigured = (name: string): ToolResult => ({
-    result: `${name} is not configured on this device yet.`,
-  });
+  const handlers = mergeToolHandlers(
+    createFileToolHandlers(),
+    createSearchToolHandlers(),
+    createShellToolHandlers(shellState),
+    createTaskToolHandlers(stateContext),
+    createUserToolHandlers(userConfig),
+    createDisplayToolHandlers({ displayHtml }),
+    createScheduleToolHandlers({ taskApi, scheduleApi }),
+  );
 
-  // Handler registry
-  const handlers: Record<
-    string,
-    (args: Record<string, unknown>, context: ToolContext) => Promise<ToolResult>
-  > = {
-    // File tools
-    Read: (args, context) => handleRead(args, context),
-    Write: (args, context) => handleWrite(args, context),
-    Edit: (args, context) => handleEdit(args, context),
-
-    // Search tools
-    Glob: (args) => handleGlob(args),
-    Grep: (args) => handleGrep(args),
-
-    // Shell tools
-    Bash: (args, context) => handleBash(shellState, args, context),
-    KillShell: (args) => handleKillShell(shellState, args),
-    ShellStatus: (args) => handleShellStatus(shellState, args),
-    SkillBash: (args, context) => handleSkillBash(shellState, args, context),
-
-    // State tools
-    TaskUpdate: (args, context) => handleTaskUpdate(stateContext, args, context),
-    TaskCreate: (args, context) =>
-      handleTask(
-        stateContext,
-        { ...args, action: "create" },
-        context,
-      ),
-    TaskCancel: (args, context) =>
-      handleTask(
-        stateContext,
-        { ...args, action: "cancel" },
-        context,
-      ),
-    TaskOutput: (args, context) => handleTaskOutput(stateContext, args, context),
-
-    // User tools
-    AskUserQuestion: (args) => handleAskUser(args),
-    RequestCredential: (args) => handleRequestCredential(userConfig, args),
-
-    // Display guidelines tool
-    DisplayGuidelines: async (args) => {
-      const modules = (args.modules as string[]) ?? [];
-      if (!modules.length) return { error: "modules parameter is required." };
-      try {
-        const { getDisplayGuidelines } = await import("./display-guidelines.js");
-        const guidelines = getDisplayGuidelines(modules);
-        return { result: guidelines };
-      } catch (error) {
-        return { error: `Failed to load guidelines: ${(error as Error).message}` };
-      }
-    },
-
-    // Display tool
-    Display: async (args) => {
-      if (!args.i_have_read_guidelines) {
-        return { error: "You must call DisplayGuidelines before Display. Set i_have_read_guidelines: true after doing so." };
-      }
-      const html = String(args.html ?? "");
-      if (!html) return { error: "html parameter is required." };
-      if (displayHtml) {
-        displayHtml(html);
-        return { result: "Display updated." };
-      }
-      return { error: "Display is not available (no renderer connected)." };
-    },
-
-    // Media tools (not yet implemented)
-    MediaGenerate: async () => notConfigured("MediaGenerate"),
-    Schedule: (args, context) => handleSchedule(taskApi, args, context),
-    HeartbeatGet: (args, context) => handleHeartbeatGet(scheduleApi, args, context),
-    HeartbeatUpsert: (args, context) => handleHeartbeatUpsert(scheduleApi, args, context),
-    HeartbeatRun: (args, context) => handleHeartbeatRun(scheduleApi, args, context),
-    CronList: () => handleCronList(scheduleApi),
-    CronAdd: (args, context) => handleCronAdd(scheduleApi, args, context),
-    CronUpdate: (args) => handleCronUpdate(scheduleApi, args),
-    CronRemove: (args) => handleCronRemove(scheduleApi, args),
-    CronRun: (args) => handleCronRun(scheduleApi, args),
-
-  };
-
-  // Register extension tools
-  if (extensionTools) {
-    for (const tool of extensionTools) {
-      handlers[tool.name] = (args, context) => tool.execute(args, context);
-    }
-  }
+  registerExtensionToolHandlers(handlers, extensionTools);
 
   const executeTool = async (
     toolName: string,
@@ -303,9 +213,7 @@ export const createToolHost = ({
     killShellsByPort,
     setSkills,
     registerExtensionTools: (tools: ToolDefinition[]) => {
-      for (const tool of tools) {
-        handlers[tool.name] = (args, context) => tool.execute(args, context);
-      }
+      registerExtensionToolHandlers(handlers, tools);
     },
   };
 };
