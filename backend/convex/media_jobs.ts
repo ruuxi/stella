@@ -24,6 +24,7 @@ type MediaRequestSourceSummary = {
 
 type MediaRequestSummary = {
   prompt?: string;
+  aspectRatio?: string;
   source?: MediaRequestSourceSummary;
   sources?: Record<string, MediaRequestSourceSummary>;
   input?: Record<string, Value>;
@@ -112,6 +113,7 @@ export const summarizeMediaRequestForStorage = (
   const sanitizedInput = sanitizeJsonValue(request.input);
   return {
     ...(request.prompt ? { prompt: request.prompt } : {}),
+    ...(request.aspectRatio ? { aspectRatio: request.aspectRatio } : {}),
     ...(source ? { source } : {}),
     ...(sources && Object.keys(sources).length > 0 ? { sources } : {}),
     ...(isRecord(sanitizedInput) && Object.keys(sanitizedInput).length > 0

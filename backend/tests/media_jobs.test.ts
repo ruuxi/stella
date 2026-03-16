@@ -7,6 +7,7 @@ describe("media job storage summary", () => {
       summarizeMediaRequestForStorage({
         capability: "image_to_video",
         prompt: "animate this image",
+        aspectRatio: "16:9",
         source: "data:image/png;base64,aGVsbG8=",
         sources: {
           audio: {
@@ -25,6 +26,7 @@ describe("media job storage summary", () => {
       }),
     ).toEqual({
       prompt: "animate this image",
+      aspectRatio: "16:9",
       source: {
         kind: "data_uri",
         mimeType: "image/png",
