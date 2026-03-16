@@ -29,6 +29,7 @@ import {
   isLocalCliAgentId,
 } from "../../../../src/shared/contracts/agent-runtime.js";
 import {
+  buildManagedMediaDocsPrompt,
   buildPanelInventory,
   defaultPromptForAgentType,
   DEFAULT_MAX_TASK_DEPTH,
@@ -307,6 +308,9 @@ export const buildAgentContext = async (
   const dynamicContextSections = [
     args.agentType === AGENT_IDS.ORCHESTRATOR && context.frontendRoot
       ? buildPanelInventory(context.frontendRoot)
+      : "",
+    args.agentType === AGENT_IDS.SELF_MOD
+      ? buildManagedMediaDocsPrompt(context.state.convexDeploymentUrl)
       : "",
     activeThreadsPrompt,
   ].filter((section) => section.trim().length > 0);
