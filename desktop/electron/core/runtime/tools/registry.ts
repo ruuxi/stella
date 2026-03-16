@@ -1,7 +1,6 @@
 import type {
   ToolContext,
   ToolHandler,
-  ToolResult,
 } from "./types.js";
 import {
   handleRead,
@@ -118,12 +117,7 @@ export const createScheduleToolHandlers = (options: {
   taskApi?: TaskToolApi;
   scheduleApi?: ScheduleToolApi;
 }): Record<string, ToolHandler> => {
-  const notConfigured = (name: string): ToolResult => ({
-    result: `${name} is not configured on this device yet.`,
-  });
-
   return {
-    MediaGenerate: async () => notConfigured("MediaGenerate"),
     Schedule: (args, context) => handleSchedule(options.taskApi, args, context),
     HeartbeatGet: (args, context) =>
       handleHeartbeatGet(options.scheduleApi, args, context),
@@ -150,4 +144,3 @@ export const registerExtensionToolHandlers = (
     handlers[tool.name] = (args, context) => tool.execute(args, context);
   }
 };
-
