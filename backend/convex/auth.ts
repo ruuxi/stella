@@ -428,6 +428,53 @@ export const requireUserId = async (
   return identity.subject;
 };
 
+export const isAnonymousIdentity = (identity: unknown): boolean =>
+  Boolean(
+    identity
+    && typeof identity === "object"
+    && (identity as Record<string, unknown>).isAnonymous === true,
+  );
+
+export const requireConnectedUserIdentity = async (
+  ctx: QueryCtx | MutationCtx,
+) => {
+  const identity = await requireUserIdentity(ctx);
+  if (isAnonymousIdentity(identity)) {
+    throw new ConvexError({
+      code: "UNAUTHORIZED",
+      message: "Sign in with an account to use this feature.",
+    });
+  }
+  return identity;
+};
+
+export const requireConnectedUserIdentityAction = async (
+  ctx: ActionCtx,
+) => {
+  const identity = await requireUserIdentity(ctx);
+  if (isAnonymousIdentity(identity)) {
+    throw new ConvexError({
+      code: "UNAUTHORIZED",
+      message: "Sign in with an account to use this feature.",
+    });
+  }
+  return identity;
+};
+
+export const requireConnectedUserId = async (
+  ctx: QueryCtx | MutationCtx,
+) => {
+  const identity = await requireConnectedUserIdentity(ctx);
+  return identity.subject;
+};
+
+export const requireConnectedUserIdAction = async (
+  ctx: ActionCtx,
+) => {
+  const identity = await requireConnectedUserIdentityAction(ctx);
+  return identity.subject;
+};
+
 export const requireSensitiveUserIdentity = async (
   ctx: QueryCtx | MutationCtx,
 ) => {
