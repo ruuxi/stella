@@ -5,7 +5,6 @@
 
 import { promises as fs } from "fs";
 import path from "path";
-import { parse as parseYaml } from "yaml";
 import type {
   ToolDefinition,
   HookDefinition,
@@ -13,6 +12,7 @@ import type {
   PromptTemplate,
   LoadedExtensions,
 } from "./types.js";
+import { extractFrontmatter } from "../frontmatter.js";
 
 const log = (...args: unknown[]) => console.log("[stella:extensions]", ...args);
 const logError = (...args: unknown[]) => console.error("[stella:extensions]", ...args);
@@ -82,45 +82,6 @@ async function loadPrompts(dir: string): Promise<PromptTemplate[]> {
   }
 
   return results;
-}
-
-const FRONTMATTER_DELIM = "---";
-
-function extractFrontmatter(content: string): { metadata: Record<string, unknown>; body: string } {
-  if (!content.startsWith(FRONTMATTER_DELIM)) {
-    return { metadata: {}, body: content };
-  }
-
-  const lines = content.split("\n");
-  if (lines.length < 3) {
-    return { metadata: {}, body: content };
-  }
-
-  let endIndex = -1;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === FRONTMATTER_DELIM) {
-      endIndex = i;
-      break;
-    }
-  }
-
-  if (endIndex === -1) {
-    return { metadata: {}, body: content };
-  }
-
-  const frontmatterText = lines.slice(1, endIndex).join("\n");
-  const body = lines.slice(endIndex + 1).join("\n");
-
-  try {
-    const parsed = parseYaml(frontmatterText);
-    if (parsed && typeof parsed === "object") {
-      return { metadata: parsed as Record<string, unknown>, body };
-    }
-  } catch {
-    // Fall through
-  }
-
-  return { metadata: {}, body };
 }
 
 /**
