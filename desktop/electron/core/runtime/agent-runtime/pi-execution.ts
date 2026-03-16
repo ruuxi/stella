@@ -6,20 +6,15 @@ import {
   finalizeSubagentError,
   finalizeSubagentSuccess,
 } from "./run-completion.js";
+import { executeRuntimeAgentPrompt } from "./run-execution.js";
 import {
   buildRuntimeSystemPrompt,
   buildSubagentSystemPrompt,
-  createUserPromptMessage,
 } from "./run-preparation.js";
-import { subscribeRuntimeAgentEvents } from "./run-events.js";
 import {
   createOrchestratorExecutionSession,
   createSubagentExecutionSession,
 } from "./run-session.js";
-import {
-  getAgentCompletion,
-  now,
-} from "./shared.js";
 import {
   appendThreadMessage,
   buildOrchestratorUserPrompt,
@@ -76,20 +71,7 @@ export const runPiOrchestratorTurn = async (
     throw new Error("Aborted");
   }
 
-  const abortHandler = () => agent.abort();
-  opts.abortSignal?.addEventListener("abort", abortHandler);
-
   const displayStream = createDisplayStreamController(opts.displayHtml);
-
-  const unsubscribe = subscribeRuntimeAgentEvents({
-    agent,
-    runId,
-    agentType: opts.agentType,
-    recorder: runEvents,
-    callbacks: opts.callbacks,
-    displayEventHandler: displayStream.handleEvent,
-    hookEmitter: opts.hookEmitter,
-  });
 
   try {
     const promptText = buildOrchestratorUserPrompt(
@@ -102,14 +84,23 @@ export const runPiOrchestratorTurn = async (
       content: opts.userPrompt,
     });
 
-    await agent.prompt({
-      ...createUserPromptMessage(promptText),
-      timestamp: now(),
+    const { finalText, errorMessage } = await executeRuntimeAgentPrompt({
+      agent,
+      promptText,
+      runId,
+      agentType: opts.agentType,
+      recorder: runEvents,
+      abortSignal: opts.abortSignal,
+      callbacks: opts.callbacks,
+      displayEventHandler: displayStream.handleEvent,
+      hookEmitter: opts.hookEmitter,
+      onAfterPrompt: () => {
+        displayStream.flush();
+      },
+      onCleanup: () => {
+        displayStream.dispose();
+      },
     });
-
-    displayStream.flush();
-
-    const { finalText, errorMessage } = getAgentCompletion(agent);
     if (errorMessage) {
       throw new Error(errorMessage);
     }
@@ -131,10 +122,6 @@ export const runPiOrchestratorTurn = async (
       error,
     });
     throw error;
-  } finally {
-    displayStream.dispose();
-    unsubscribe();
-    opts.abortSignal?.removeEventListener("abort", abortHandler);
   }
 };
 
@@ -163,25 +150,17 @@ export const runPiSubagentTask = async (
     return { runId, result: "", error: "Aborted" };
   }
 
-  const abortHandler = () => agent.abort();
-  opts.abortSignal?.addEventListener("abort", abortHandler);
-
-  const unsubscribe = subscribeRuntimeAgentEvents({
-    agent,
-    runId,
-    agentType: opts.agentType,
-    recorder: runEvents,
-    callbacks: opts.callbacks,
-    onProgress: opts.onProgress,
-  });
-
   try {
-    await agent.prompt({
-      ...createUserPromptMessage(prompt),
-      timestamp: now(),
+    const { finalText: result, errorMessage } = await executeRuntimeAgentPrompt({
+      agent,
+      promptText: prompt,
+      runId,
+      agentType: opts.agentType,
+      recorder: runEvents,
+      abortSignal: opts.abortSignal,
+      callbacks: opts.callbacks,
+      onProgress: opts.onProgress,
     });
-
-    const { finalText: result, errorMessage } = getAgentCompletion(agent);
     if (errorMessage) {
       throw new Error(errorMessage);
     }
@@ -199,8 +178,5 @@ export const runPiSubagentTask = async (
       runId,
       error,
     });
-  } finally {
-    unsubscribe();
-    opts.abortSignal?.removeEventListener("abort", abortHandler);
   }
 };
