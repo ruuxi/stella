@@ -20,7 +20,6 @@ export const DEVICE_TOOL_NAMES = [
   "AskUserQuestion",
   "RequestCredential",
   "SkillBash",
-  "MediaGenerate",
 ] as const;
 
 export type DeviceToolName = (typeof DEVICE_TOOL_NAMES)[number];
@@ -132,13 +131,6 @@ export const SkillBashSchema = z.object({
   run_in_background: z.boolean().optional().describe("Run in background and return a shell_id"),
 });
 
-export const MediaGenerateSchema = z.object({
-  mode: z.enum(["generate", "edit"]).default("generate").describe("Create new or edit existing"),
-  media_type: z.enum(["image", "video"]).default("image").describe("Type of media to produce"),
-  prompt: z.string().describe("Description of what to generate or how to edit"),
-  source_url: z.string().optional().describe("URL of source media to edit (required for mode=edit)"),
-});
-
 // ─── Tool Descriptions ──────────────────────────────────────────────────────
 
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
@@ -216,13 +208,6 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- skill_id must match a skill that has secretMounts configured.\n" +
     "- If the required secret doesn't exist, the user will be prompted via RequestCredential automatically.\n" +
     "- Use this instead of Bash when running commands that need API keys or tokens from a skill.",
-  MediaGenerate:
-    "Generate or edit images and video.\n\n" +
-    "Usage:\n" +
-    "- mode=\"generate\": Create new media from a text prompt.\n" +
-    "- mode=\"edit\": Modify an existing image/video (provide source_url).\n" +
-    "- prompt describes what to generate or how to edit.\n" +
-    "- media_type: \"image\" or \"video\".",
 };
 
 // ─── Schema Map ─────────────────────────────────────────────────────────────
@@ -238,6 +223,5 @@ export const TOOL_SCHEMAS = {
   AskUserQuestion: AskUserQuestionSchema,
   RequestCredential: RequestCredentialSchema,
   SkillBash: SkillBashSchema,
-  MediaGenerate: MediaGenerateSchema,
 } as const;
 

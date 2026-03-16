@@ -5,11 +5,12 @@ import {
   resolveMediaProfile,
 } from "../convex/media_catalog";
 import {
+  describeCapabilityValidation,
   MEDIA_DOCS_PATH,
-  MEDIA_SDK_JSON_PATH,
-  MEDIA_SDK_MARKDOWN_PATH,
+  MEDIA_CAPABILITIES_PATH,
   MEDIA_GENERATE_PATH,
   MEDIA_JOBS_PATH,
+  validateCapabilityRequest,
 } from "../convex/http_routes/media";
 import {
   STELLA_BEST_MODEL,
@@ -19,11 +20,10 @@ import {
   resolveStellaModelSelection,
 } from "../convex/stella_models";
 
-describe("media sdk catalog", () => {
-  test("exposes the sdk routes", () => {
+describe("media api contract", () => {
+  test("exposes the canonical async media routes", () => {
     expect(MEDIA_DOCS_PATH).toBe("/api/media/v1/docs");
-    expect(MEDIA_SDK_JSON_PATH).toBe("/api/media/v1/sdk");
-    expect(MEDIA_SDK_MARKDOWN_PATH).toBe("/api/media/v1/sdk.md");
+    expect(MEDIA_CAPABILITIES_PATH).toBe("/api/media/v1/capabilities");
     expect(MEDIA_GENERATE_PATH).toBe("/api/media/v1/generate");
     expect(MEDIA_JOBS_PATH).toBe("/api/media/v1/jobs");
   });
@@ -72,6 +72,102 @@ describe("media sdk catalog", () => {
     expect(getMediaCapability("image_to_video")?.requiresSourceUrl).toBe(true);
     expect(getMediaCapability("video_depth")?.requiresSourceUrl).toBe(true);
     expect(getMediaCapability("text_to_3d")?.requiresSourceUrl).toBeFalsy();
+  });
+
+  test("enforces prompt and source URL validation at the backend boundary", () => {
+    expect(describeCapabilityValidation("text_to_image")).toEqual({
+      requiresPrompt: true,
+      requiresSourceUrl: false,
+      acceptsBase64Source: false,
+    });
+    expect(describeCapabilityValidation("image_to_video")).toEqual({
+      requiresPrompt: true,
+      requiresSourceUrl: true,
+      acceptsBase64Source: true,
+    });
+    expect(describeCapabilityValidation("video_depth")).toEqual({
+      requiresPrompt: false,
+      requiresSourceUrl: true,
+      acceptsBase64Source: true,
+    });
+
+    expect(
+      validateCapabilityRequest({
+        capabilityId: "text_to_image",
+      }),
+    ).toBe("prompt is required for this capability");
+
+    expect(
+      validateCapabilityRequest({
+        capabilityId: "image_to_video",
+        prompt: "animate this image",
+        sourceUrl: "not-a-url",
+      }),
+    ).toBe("A valid http(s) sourceUrl or source.base64 input is required for this capability");
+
+    expect(
+      validateCapabilityRequest({
+        capabilityId: "image_to_video",
+        prompt: "animate this image",
+        source: "data:image/png;base64,aGVsbG8=",
+      }),
+    ).toBeNull();
+
+    expect(
+      validateCapabilityRequest({
+        capabilityId: "image_to_video",
+        prompt: "animate this image",
+        source: {
+          mimeType: "",
+          base64: "aGVsbG8=",
+        },
+      }),
+    ).toBe("source.mimeType must be a valid MIME type");
+
+    expect(
+      validateCapabilityRequest({
+        capabilityId: "image_to_video",
+        prompt: "animate this image",
+        source: {
+          mimeType: "image/png",
+          base64: "%%%bad%%%",
+        },
+      }),
+    ).toBe("source.base64 must be valid base64");
+
+    expect(
+      validateCapabilityRequest({
+        capabilityId: "audio_visual_separate",
+        sources: {
+          video: "data:video/mp4;base64,dm1wNA==",
+          audio: "data:audio/wav;base64,YXVkaW8=",
+        },
+      }),
+    ).toBeNull();
+
+    expect(
+      validateCapabilityRequest({
+        capabilityId: "audio_visual_separate",
+        sources: {
+          video: "bad-source",
+        },
+      }),
+    ).toBe("sources.video must be a valid http(s) URL or data URI");
+
+    expect(
+      validateCapabilityRequest({
+        capabilityId: "video_depth",
+        sourceUrl: "https://example.com/source.mp4",
+        webhookUrl: "ftp://example.com/hook",
+      }),
+    ).toBe("webhookUrl must be a valid http(s) URL");
+
+    expect(
+      validateCapabilityRequest({
+        capabilityId: "video_depth",
+        sourceUrl: "https://example.com/source.mp4",
+      }),
+    ).toBeNull();
   });
 });
 
