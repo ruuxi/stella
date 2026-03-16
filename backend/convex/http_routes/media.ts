@@ -15,32 +15,26 @@ import {
   type MediaCapability,
   type MediaProfile,
 } from "../media_catalog";
+import {
+  MEDIA_JOB_STATUS_VALUES,
+  createMediaGenerateRequestExample,
+  createMediaGenerateAcceptedResponse,
+  createMediaJobError,
+  createMediaJobResponse,
+  parseMediaGenerateRequest,
+  type MediaJobError,
+  type MediaJobStatus,
+} from "../media_contract";
 
 const MEDIA_API_BASE_PATH = "/api/media/v1";
 const MEDIA_DOCS_PATH = `${MEDIA_API_BASE_PATH}/docs`;
-const MEDIA_SDK_JSON_PATH = `${MEDIA_API_BASE_PATH}/sdk`;
-const MEDIA_SDK_MARKDOWN_PATH = `${MEDIA_API_BASE_PATH}/sdk.md`;
 const MEDIA_CAPABILITIES_PATH = `${MEDIA_API_BASE_PATH}/capabilities`;
 const MEDIA_GENERATE_PATH = `${MEDIA_API_BASE_PATH}/generate`;
 const MEDIA_JOBS_PATH = `${MEDIA_API_BASE_PATH}/jobs`;
 
 const MEDIA_RATE_LIMIT = 20;
 const MEDIA_RATE_WINDOW_MS = 5 * 60_000;
-const DEFAULT_WAIT_TIMEOUT_MS = 180_000;
-const MIN_WAIT_TIMEOUT_MS = 1_000;
-const MAX_WAIT_TIMEOUT_MS = 300_000;
 const FAL_QUEUE_BASE_URL = "https://queue.fal.run";
-
-type MediaGenerateRequest = {
-  capability?: unknown;
-  profile?: unknown;
-  prompt?: unknown;
-  sourceUrl?: unknown;
-  input?: unknown;
-  wait?: unknown;
-  timeoutMs?: unknown;
-  webhookUrl?: unknown;
-};
 
 type MediaJobTokenPayload = {
   ownerId: string;
@@ -48,6 +42,8 @@ type MediaJobTokenPayload = {
   profileId: string;
   endpointId: string;
   requestId: string;
+  statusUrl?: string | null;
+  responseUrl?: string | null;
 };
 
 type FalSubmitResponse = {
@@ -67,6 +63,7 @@ type FalStatusResponse = {
   logs?: unknown;
   queue_position?: unknown;
   request_id?: unknown;
+  error?: unknown;
 };
 
 const encoder = new TextEncoder();
@@ -74,19 +71,84 @@ const encoder = new TextEncoder();
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const clampWaitTimeout = (value: unknown): number => {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return DEFAULT_WAIT_TIMEOUT_MS;
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+const isHttpUrl = (value: unknown): value is string => {
+  if (!isNonEmptyString(value)) {
+    return false;
   }
-  const rounded = Math.round(value);
-  if (rounded < MIN_WAIT_TIMEOUT_MS) {
-    return MIN_WAIT_TIMEOUT_MS;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
   }
-  if (rounded > MAX_WAIT_TIMEOUT_MS) {
-    return MAX_WAIT_TIMEOUT_MS;
-  }
-  return rounded;
 };
+
+const isDataUri = (value: unknown): value is string =>
+  isNonEmptyString(value) && /^data:[^;,\s]+;base64,[A-Za-z0-9+/=\s]+$/i.test(value.trim());
+
+const isMediaSourceReference = (value: unknown): value is string =>
+  isHttpUrl(value) || isDataUri(value);
+
+const isMimeType = (value: unknown): value is string =>
+  isNonEmptyString(value) && /^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(value.trim());
+
+const normalizeBase64Payload = (value: string): string =>
+  value
+    .replace(/^data:[^;,\s]+;base64,/i, "")
+    .replace(/\s+/g, "");
+
+const isValidBase64Payload = (value: unknown): value is string => {
+  if (!isNonEmptyString(value)) {
+    return false;
+  }
+  const normalized = normalizeBase64Payload(value);
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) {
+    return false;
+  }
+  try {
+    atob(normalized);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const toMediaSourceDataUri = (args: {
+  mimeType: string;
+  base64: string;
+}): string =>
+  `data:${args.mimeType};base64,${normalizeBase64Payload(args.base64)}`;
+
+const SOURCE_SLOT_ALIASES: Record<string, string> = {
+  image: "image_url",
+  video: "video_url",
+  audio: "audio_url",
+  reference_image: "reference_image_url",
+  reference_video: "reference_video_url",
+  mask_image: "mask_image_url",
+};
+
+const normalizeSourceReference = (
+  value:
+    | string
+    | {
+        base64: string;
+        mimeType: string;
+        fileName?: string;
+      },
+): string =>
+  typeof value === "string"
+    ? value.trim()
+    : toMediaSourceDataUri({
+        mimeType: value.mimeType,
+        base64: value.base64,
+      });
+
+const normalizeSourceSlotKey = (key: string): string =>
+  SOURCE_SLOT_ALIASES[key] ?? key;
 
 const toBase64Url = (bytes: Uint8Array): string =>
   btoa(String.fromCharCode(...bytes))
@@ -192,69 +254,27 @@ const createTextResponse = (
     origin,
   );
 
-const parseGenerateRequest = async (
-  request: Request,
-): Promise<{
-  capability: string;
-  profile?: string;
-  prompt?: string;
-  sourceUrl?: string;
-  input: Record<string, unknown>;
-  wait: boolean;
-  timeoutMs: number;
-  webhookUrl?: string;
-} | null> => {
-  let body: MediaGenerateRequest;
-  try {
-    body = (await request.json()) as MediaGenerateRequest;
-  } catch {
-    return null;
-  }
-
-  if (!isRecord(body)) {
-    return null;
-  }
-
-  const capability =
-    typeof body.capability === "string" ? body.capability.trim() : "";
-  if (!capability) {
-    return null;
-  }
-
-  const profile =
-    typeof body.profile === "string" && body.profile.trim().length > 0
-      ? body.profile.trim().toLowerCase()
-      : undefined;
-  const prompt =
-    typeof body.prompt === "string" && body.prompt.trim().length > 0
-      ? body.prompt.trim()
-      : undefined;
-  const sourceUrl =
-    typeof body.sourceUrl === "string" && body.sourceUrl.trim().length > 0
-      ? body.sourceUrl.trim()
-      : undefined;
-  const webhookUrl =
-    typeof body.webhookUrl === "string" && body.webhookUrl.trim().length > 0
-      ? body.webhookUrl.trim()
-      : undefined;
-
-  return {
-    capability,
-    profile,
-    prompt,
-    sourceUrl,
-    input: isRecord(body.input) ? { ...body.input } : {},
-    wait: body.wait === true,
-    timeoutMs: clampWaitTimeout(body.timeoutMs),
-    webhookUrl,
-  };
-};
-
 const applyConvenienceInput = (args: {
   capability: MediaCapability;
   input: Record<string, unknown>;
   prompt?: string;
   sourceUrl?: string;
+  source?:
+    | string
+    | {
+        base64: string;
+        mimeType: string;
+        fileName?: string;
+      };
+  sources?: Record<
+    string,
+    | string
+    | {
+        base64: string;
+        mimeType: string;
+        fileName?: string;
+      }
+  >;
 }): Record<string, unknown> => {
   const normalized = { ...args.input };
 
@@ -270,6 +290,24 @@ const applyConvenienceInput = (args: {
     normalized[args.capability.sourceUrlKey] = args.sourceUrl;
   }
 
+  if (
+    args.source &&
+    args.capability.sourceUrlKey &&
+    normalized[args.capability.sourceUrlKey] === undefined
+  ) {
+    normalized[args.capability.sourceUrlKey] = normalizeSourceReference(args.source);
+  }
+
+  if (args.sources) {
+    for (const [key, value] of Object.entries(args.sources)) {
+      const normalizedKey = normalizeSourceSlotKey(key);
+      if (normalized[normalizedKey] !== undefined) {
+        continue;
+      }
+      normalized[normalizedKey] = normalizeSourceReference(value);
+    }
+  }
+
   return normalized;
 };
 
@@ -277,20 +315,151 @@ const requireCapabilityInputs = (args: {
   capability: MediaCapability;
   prompt?: string;
   sourceUrl?: string;
+  source?:
+    | string
+    | {
+        base64: string;
+        mimeType: string;
+        fileName?: string;
+      };
+  sources?: Record<
+    string,
+    | string
+    | {
+        base64: string;
+        mimeType: string;
+        fileName?: string;
+      }
+  >;
+  webhookUrl?: string;
   input: Record<string, unknown>;
 }): string | null => {
   const normalized = applyConvenienceInput(args);
 
+  const validateSourceReference = (
+    label: string,
+    value:
+      | string
+      | {
+          base64: string;
+          mimeType: string;
+          fileName?: string;
+        },
+    required = false,
+  ): string | null => {
+    if (typeof value === "string") {
+      if (isMediaSourceReference(value)) {
+        return null;
+      }
+      return required
+        ? `${label} must be a valid http(s) URL or data URI`
+        : `${label} must be a valid http(s) URL or data URI`;
+    }
+    if (!isMimeType(value.mimeType)) {
+      return `${label}.mimeType must be a valid MIME type`;
+    }
+    if (!isValidBase64Payload(value.base64)) {
+      return `${label}.base64 must be valid base64`;
+    }
+    return null;
+  };
+
+  if (args.source) {
+    const error = validateSourceReference("source", args.source, true);
+    if (error) {
+      return error;
+    }
+  }
+
+  if (args.sources) {
+    for (const [key, value] of Object.entries(args.sources)) {
+      const error = validateSourceReference(`sources.${key}`, value);
+      if (error) {
+        return error;
+      }
+    }
+  }
+
+  if (
+    args.capability.promptKey &&
+    !isNonEmptyString(normalized[args.capability.promptKey])
+  ) {
+    return "prompt is required for this capability";
+  }
+
   if (
     args.capability.requiresSourceUrl &&
     (!args.capability.sourceUrlKey ||
-      typeof normalized[args.capability.sourceUrlKey] !== "string" ||
-      String(normalized[args.capability.sourceUrlKey]).trim().length === 0)
+      !isMediaSourceReference(normalized[args.capability.sourceUrlKey]))
   ) {
-    return "sourceUrl is required for this capability";
+    return "A valid http(s) sourceUrl or source.base64 input is required for this capability";
+  }
+
+  if (
+    args.capability.sourceUrlKey &&
+    normalized[args.capability.sourceUrlKey] !== undefined &&
+    !isMediaSourceReference(normalized[args.capability.sourceUrlKey])
+  ) {
+    return "sourceUrl must be a valid http(s) URL or data URI";
+  }
+
+  if (args.webhookUrl && !isHttpUrl(args.webhookUrl)) {
+    return "webhookUrl must be a valid http(s) URL";
   }
 
   return null;
+};
+
+const describeCapabilityValidation = (capabilityId: string): {
+  requiresPrompt: boolean;
+  requiresSourceUrl: boolean;
+  acceptsBase64Source: boolean;
+} | null => {
+  const resolved = resolveMediaProfile(capabilityId);
+  if (!resolved) {
+    return null;
+  }
+  return {
+    requiresPrompt: Boolean(resolved.capability.promptKey),
+    requiresSourceUrl: Boolean(resolved.capability.requiresSourceUrl),
+    acceptsBase64Source: Boolean(resolved.capability.sourceUrlKey),
+  };
+};
+
+const validateCapabilityRequest = (args: {
+  capabilityId: string;
+  prompt?: string;
+  sourceUrl?: string;
+  source?: {
+    base64: string;
+    mimeType: string;
+    fileName?: string;
+  } | string;
+  sources?: Record<
+    string,
+    | string
+    | {
+        base64: string;
+        mimeType: string;
+        fileName?: string;
+      }
+  >;
+  webhookUrl?: string;
+  input?: Record<string, unknown>;
+}): string | null => {
+  const resolved = resolveMediaProfile(args.capabilityId);
+  if (!resolved) {
+    return "Unknown capability or profile. See /api/media/v1/capabilities.";
+  }
+  return requireCapabilityInputs({
+    capability: resolved.capability,
+    prompt: args.prompt,
+    sourceUrl: args.sourceUrl,
+    source: args.source,
+    sources: args.sources,
+    webhookUrl: args.webhookUrl,
+    input: args.input ?? {},
+  });
 };
 
 const falHeaders = (apiKey: string): HeadersInit => ({
@@ -341,8 +510,41 @@ const normalizeFalJobStatus = (value: unknown): string =>
     ? value.trim().toUpperCase()
     : "UNKNOWN";
 
+const toMediaJobStatus = (upstreamStatus: string): MediaJobStatus => {
+  switch (upstreamStatus) {
+    case "IN_QUEUE":
+    case "PENDING":
+    case "QUEUED":
+      return "queued";
+    case "COMPLETED":
+      return "succeeded";
+    case "FAILED":
+    case "ERROR":
+      return "failed";
+    case "CANCELLED":
+    case "CANCELED":
+      return "canceled";
+    default:
+      return "running";
+  }
+};
+
 const getStatusLogs = (value: unknown): unknown[] | undefined =>
   Array.isArray(value) ? value : undefined;
+
+const buildMediaJobError = (
+  upstreamStatus: string,
+  upstreamError: unknown,
+): MediaJobError | undefined =>
+  createMediaJobError({
+    value: upstreamError,
+    fallbackMessage:
+      upstreamStatus === "FAILED" || upstreamStatus === "ERROR"
+        ? "Media generation failed upstream."
+        : upstreamStatus === "CANCELLED" || upstreamStatus === "CANCELED"
+          ? "Media generation was canceled upstream."
+          : undefined,
+  });
 
 const submitFalRequest = async (args: {
   apiKey: string;
@@ -374,17 +576,11 @@ const submitFalRequest = async (args: {
 
   return {
     requestId,
-    gatewayRequestId:
-      typeof data.gateway_request_id === "string"
-        ? data.gateway_request_id.trim()
-        : null,
     responseUrl:
       typeof data.response_url === "string" ? data.response_url.trim() : null,
     statusUrl:
       typeof data.status_url === "string" ? data.status_url.trim() : null,
-    cancelUrl:
-      typeof data.cancel_url === "string" ? data.cancel_url.trim() : null,
-    status: normalizeFalJobStatus(data.status),
+    upstreamStatus: normalizeFalJobStatus(data.status),
   };
 };
 
@@ -392,9 +588,11 @@ const fetchFalJobSnapshot = async (args: {
   apiKey: string;
   profile: MediaProfile;
   requestId: string;
+  statusUrl?: string | null;
+  responseUrl?: string | null;
 }) => {
   const statusResponse = await fetchFalJson(
-    buildFalStatusUrl(args.profile.endpointId, args.requestId),
+    args.statusUrl?.trim() || buildFalStatusUrl(args.profile.endpointId, args.requestId),
     {
       method: "GET",
       headers: falHeaders(args.apiKey),
@@ -409,12 +607,12 @@ const fetchFalJobSnapshot = async (args: {
   const statusData = isRecord(statusResponse.data)
     ? (statusResponse.data as FalStatusResponse)
     : {};
-  const status = normalizeFalJobStatus(statusData.status);
+  const upstreamStatus = normalizeFalJobStatus(statusData.status);
   let result: unknown;
 
-  if (status === "COMPLETED") {
+  if (upstreamStatus === "COMPLETED") {
     const resultResponse = await fetchFalJson(
-      buildFalResultUrl(args.profile.endpointId, args.requestId),
+      args.responseUrl?.trim() || buildFalResultUrl(args.profile.endpointId, args.requestId),
       {
         method: "GET",
         headers: falHeaders(args.apiKey),
@@ -433,51 +631,86 @@ const fetchFalJobSnapshot = async (args: {
       typeof statusData.request_id === "string" && statusData.request_id.trim().length > 0
         ? statusData.request_id.trim()
         : args.requestId,
-    status,
-    responseUrl:
-      typeof statusData.response_url === "string"
-        ? statusData.response_url.trim()
-        : buildFalResultUrl(args.profile.endpointId, args.requestId),
-    statusUrl:
-      typeof statusData.status_url === "string"
-        ? statusData.status_url.trim()
-        : buildFalStatusUrl(args.profile.endpointId, args.requestId),
-    cancelUrl:
-      typeof statusData.cancel_url === "string"
-        ? statusData.cancel_url.trim()
-        : null,
+    upstreamStatus,
+    status: toMediaJobStatus(upstreamStatus),
     queuePosition:
       typeof statusData.queue_position === "number"
         ? statusData.queue_position
         : null,
     logs: getStatusLogs(statusData.logs),
-    result,
+    output: result,
+    error: buildMediaJobError(
+      upstreamStatus,
+      statusData.error,
+    ),
   };
 };
 
-const waitForFalResult = async (args: {
-  apiKey: string;
-  profile: MediaProfile;
-  requestId: string;
-  timeoutMs: number;
-}) => {
-  const deadline = Date.now() + args.timeoutMs;
+const renderGenerateAcceptedExample = (request: Request): string =>
+  JSON.stringify(
+    createMediaGenerateAcceptedResponse({
+      jobId: "<jobId>",
+      capability: "text_to_image",
+      profile: "best",
+      status: "queued",
+      upstreamStatus: "IN_QUEUE",
+      pollUrl: buildPollUrl(request, "<jobId>"),
+    }),
+    null,
+    2,
+  );
 
-  while (Date.now() <= deadline) {
-    const snapshot = await fetchFalJobSnapshot(args);
-    if (
-      snapshot.status === "COMPLETED" ||
-      snapshot.status === "FAILED" ||
-      snapshot.status === "ERROR" ||
-      snapshot.status === "CANCELLED"
-    ) {
-      return snapshot;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1_500));
-  }
+const renderGenerateRequestExample = (): string =>
+  JSON.stringify(
+    createMediaGenerateRequestExample({
+      capability: "image_to_video",
+      profile: "motion",
+      prompt: "animate this product photo with a slow cinematic push-in",
+      source: "data:image/png;base64,<base64>",
+      input: {
+        duration: 5,
+      },
+    }),
+    null,
+    2,
+  );
 
-  return null;
-};
+const renderMultiSourceRequestExample = (): string =>
+  JSON.stringify(
+    createMediaGenerateRequestExample({
+      capability: "audio_visual_separate",
+      sources: {
+        video: "data:video/mp4;base64,<base64>",
+        audio: "data:audio/wav;base64,<base64>",
+      },
+      input: {
+        stem: "vocals",
+      },
+    }),
+    null,
+    2,
+  );
+
+const renderJobSnapshotExample = (): string =>
+  JSON.stringify(
+    createMediaJobResponse({
+      jobId: "<jobId>",
+      capability: "text_to_image",
+      profile: "best",
+      status: "succeeded",
+      upstreamStatus: "COMPLETED",
+      queuePosition: null,
+      output: {
+        images: [
+          {
+            url: "https://example.com/generated-image.png",
+          },
+        ],
+      },
+    }),
+    null,
+    2,
+  );
 
 const formatFalErrorMessage = (message: string): string =>
   message.startsWith("Fal ")
@@ -506,25 +739,44 @@ const renderMediaSdkDocs = (request: Request): string => {
     "",
     "Endpoints:",
     `- GET ${MEDIA_DOCS_PATH} -> this markdown reference`,
-    `- GET ${MEDIA_SDK_JSON_PATH} -> JSON SDK summary`,
-    `- GET ${MEDIA_SDK_MARKDOWN_PATH} -> curl-friendly markdown SDK alias`,
     `- GET ${MEDIA_CAPABILITIES_PATH} -> JSON capability catalog`,
-    `- POST ${MEDIA_GENERATE_PATH} -> submit a media job`,
-    `- GET ${MEDIA_JOBS_PATH}?jobId=<jobId> -> poll a submitted job`,
+    `- POST ${MEDIA_GENERATE_PATH} -> submit an async media job`,
+    `- GET ${MEDIA_JOBS_PATH}?jobId=<jobId> -> poll an async media job`,
+    "",
+    "Auth:",
+    "- Docs and capabilities are public and safe to fetch with curl.",
+    "- Media generation and job polling require Stella auth from the client.",
+    '- Send auth as `Authorization: Bearer <session-token>` on `POST /generate` and `GET /jobs`.',
     "",
     "POST /generate body:",
     "- capability: required stable capability ID",
     "- profile: optional backend-managed variant",
     "- prompt: optional convenience prompt string",
     "- sourceUrl: optional convenience source media URL",
+    "- source: optional convenience source file as either an `http(s)` URL, a `data:` URI string, or an object with `mimeType`, `base64`, and optional `fileName`",
+    "- sources: optional named source files for multi-input capabilities. Each value can be an `http(s)` URL, a `data:` URI string, or an object with `mimeType` and `base64`.",
     "- input: optional provider-specific pass-through object",
-    "- wait: optional boolean. When true, the backend polls until completion or timeout.",
-    "- timeoutMs: optional wait timeout when `wait=true`",
     "- webhookUrl: optional Fal webhook target",
+    "- For source media, the most agent-friendly format is usually a `data:` URI string like `data:image/png;base64,...`.",
+    "- If you use the object form, `source.base64` should be raw base64 without the `data:` prefix. The backend converts it to the provider-specific format.",
+    "- For multi-input capabilities, prefer `sources` with semantic keys like `image`, `video`, `audio`, or `reference_image`. The backend maps common keys to provider field names.",
+    "- Output remains URL-first and provider-normalized in `output`. Do not assume base64 output for every capability.",
+    "",
+    "Example `POST /generate` request body:",
+    "```json",
+    renderGenerateRequestExample(),
+    "```",
+    "",
+    "Example multi-source request body:",
+    "```json",
+    renderMultiSourceRequestExample(),
+    "```",
     "",
     "Response behavior:",
-    "- `wait=false` returns a `jobId` plus status/result URLs.",
-    "- `wait=true` returns the completed job payload when available.",
+    "- `POST /generate` is always async and returns a Stella `jobId` plus a poll URL.",
+    `- \`GET /jobs\` returns normalized Stella statuses: ${MEDIA_JOB_STATUS_VALUES.map((status) => `\`${status}\``).join(", ")}.`,
+    "- Successful jobs expose normalized output in `output`.",
+    "- Failed or canceled jobs expose a normalized `error` object with a stable `message` and optional `code` or `details`.",
     "",
     "Examples:",
     "```bash",
@@ -535,8 +787,7 @@ const renderMediaSdkDocs = (request: Request): string => {
     '    "capability": "text_to_image",',
     '    "profile": "best",',
     '    "prompt": "cinematic rainy Tokyo alley at night",',
-    '    "input": { "image_size": "portrait_16_9" },',
-    '    "wait": true',
+    '    "input": { "image_size": "portrait_16_9" }',
     "  }'",
     "```",
     "",
@@ -548,14 +799,48 @@ const renderMediaSdkDocs = (request: Request): string => {
     '    "capability": "video_to_video",',
     '    "profile": "reference",',
     '    "sourceUrl": "https://example.com/source.mp4",',
-    '    "prompt": "turn this into a glossy sci-fi trailer",',
-    '    "wait": false',
+    '    "prompt": "turn this into a glossy sci-fi trailer"',
+    "  }'",
+    "```",
+    "",
+    "```bash",
+    `curl -X POST "${url.origin}${MEDIA_GENERATE_PATH}" \\`,
+    '  -H "Content-Type: application/json" \\',
+    '  -H "Authorization: Bearer <session-token>" \\',
+    '  -d \'{',
+    '    "capability": "image_to_video",',
+    '    "profile": "motion",',
+    '    "prompt": "animate this product photo with a slow cinematic push-in",',
+    '    "source": "data:image/png;base64,<base64>"',
+    "  }'",
+    "```",
+    "",
+    "```bash",
+    `curl -X POST "${url.origin}${MEDIA_GENERATE_PATH}" \\`,
+    '  -H "Content-Type: application/json" \\',
+    '  -H "Authorization: Bearer <session-token>" \\',
+    '  -d \'{',
+    '    "capability": "audio_visual_separate",',
+    '    "sources": {',
+    '      "video": "data:video/mp4;base64,<base64>",',
+    '      "audio": "data:audio/wav;base64,<base64>"',
+    "    }",
     "  }'",
     "```",
     "",
     "```bash",
     `curl "${url.origin}${MEDIA_JOBS_PATH}?jobId=<jobId>" \\`,
     '  -H "Authorization: Bearer <session-token>"',
+    "```",
+    "",
+    "Example `POST /generate` response:",
+    "```json",
+    renderGenerateAcceptedExample(request),
+    "```",
+    "",
+    "Example `GET /jobs` response:",
+    "```json",
+    renderJobSnapshotExample(),
     "```",
     "",
     "Capabilities:",
@@ -585,35 +870,6 @@ const renderMediaSdkDocs = (request: Request): string => {
   lines.push(`- Music (existing Lyria flow): POST ${musicKeyUrl} to get the managed Google AI key used by the current music client.`);
 
   return lines.join("\n");
-};
-
-const buildMediaSdkJson = (request: Request) => {
-  const url = new URL(request.url);
-  const baseOrigin = url.origin;
-  return {
-    version: "2026-03-15",
-    docsUrl: `${baseOrigin}${MEDIA_DOCS_PATH}`,
-    docsMarkdownUrl: `${baseOrigin}${MEDIA_SDK_MARKDOWN_PATH}`,
-    capabilitiesUrl: `${baseOrigin}${MEDIA_CAPABILITIES_PATH}`,
-    generateUrl: `${baseOrigin}${MEDIA_GENERATE_PATH}`,
-    jobsUrl: `${baseOrigin}${MEDIA_JOBS_PATH}`,
-    capabilities: listMediaCapabilities(),
-    llmServices: [
-      {
-        id: "llm",
-        endpoint: `${baseOrigin}/api/stella/v1/chat/completions`,
-        models: ["stella/best", "stella/fast"],
-      },
-      {
-        id: "media_llm",
-        endpoint: `${baseOrigin}/api/stella/v1/chat/completions`,
-        models: ["stella/media"],
-      },
-    ],
-    music: {
-      apiKeyUrl: `${baseOrigin}/api/music/api-key`,
-    },
-  };
 };
 const buildPollUrl = (request: Request, jobId: string): string => {
   const url = new URL(MEDIA_JOBS_PATH, request.url);
@@ -694,7 +950,14 @@ export const registerMediaRoutes = (http: HttpRouter) => {
           return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
         }
 
-        const body = await parseGenerateRequest(request);
+        let requestBody: unknown;
+        try {
+          requestBody = await request.json();
+        } catch {
+          requestBody = null;
+        }
+
+        const body = parseMediaGenerateRequest(requestBody);
         if (!body) {
           return errorResponse(400, "Invalid media generation JSON body", origin);
         }
@@ -712,6 +975,8 @@ export const registerMediaRoutes = (http: HttpRouter) => {
           capability: resolved.capability,
           prompt: body.prompt,
           sourceUrl: body.sourceUrl,
+          source: body.source,
+          webhookUrl: body.webhookUrl,
           input: body.input,
         });
         if (validationError) {
@@ -733,6 +998,7 @@ export const registerMediaRoutes = (http: HttpRouter) => {
             input: body.input,
             prompt: body.prompt,
             sourceUrl: body.sourceUrl,
+            source: body.source,
           });
 
           const submitted = await submitFalRequest({
@@ -747,67 +1013,20 @@ export const registerMediaRoutes = (http: HttpRouter) => {
             profileId: resolved.profile.id,
             endpointId: resolved.profile.endpointId,
             requestId: submitted.requestId,
+            statusUrl: submitted.statusUrl,
+            responseUrl: submitted.responseUrl,
           });
-
-          if (!body.wait) {
-            return jsonResponse(
-              {
-                jobId,
-                capability: resolved.capability.id,
-                profile: resolved.profile.id,
-                requestId: submitted.requestId,
-                status: submitted.status || "IN_QUEUE",
-                pollUrl: buildPollUrl(request, jobId),
-                responseUrl:
-                  submitted.responseUrl ??
-                  buildFalResultUrl(resolved.profile.endpointId, submitted.requestId),
-                statusUrl:
-                  submitted.statusUrl ??
-                  buildFalStatusUrl(resolved.profile.endpointId, submitted.requestId),
-                cancelUrl: submitted.cancelUrl,
-              },
-              202,
-              origin,
-            );
-          }
-
-          const completed = await waitForFalResult({
-            apiKey,
-            profile: resolved.profile,
-            requestId: submitted.requestId,
-            timeoutMs: body.timeoutMs,
-          });
-
-          if (!completed) {
-            return jsonResponse(
-              {
-                jobId,
-                capability: resolved.capability.id,
-                profile: resolved.profile.id,
-                requestId: submitted.requestId,
-                status: "TIMEOUT",
-                pollUrl: buildPollUrl(request, jobId),
-              },
-              202,
-              origin,
-            );
-          }
 
           return jsonResponse(
-            {
+            createMediaGenerateAcceptedResponse({
               jobId,
               capability: resolved.capability.id,
               profile: resolved.profile.id,
-              requestId: completed.requestId,
-              status: completed.status,
-              responseUrl: completed.responseUrl,
-              statusUrl: completed.statusUrl,
-              cancelUrl: completed.cancelUrl,
-              queuePosition: completed.queuePosition,
-              logs: completed.logs,
-              result: completed.result,
-            },
-            200,
+              status: toMediaJobStatus(submitted.upstreamStatus),
+              upstreamStatus: submitted.upstreamStatus,
+              pollUrl: buildPollUrl(request, jobId),
+            }),
+            202,
             origin,
           );
         } catch (error) {
@@ -871,22 +1090,22 @@ export const registerMediaRoutes = (http: HttpRouter) => {
             apiKey,
             profile: resolved.profile,
             requestId: payload.requestId,
+            statusUrl: payload.statusUrl,
+            responseUrl: payload.responseUrl,
           });
 
           return jsonResponse(
-            {
+            createMediaJobResponse({
               jobId,
               capability: payload.capabilityId,
               profile: payload.profileId,
-              requestId: snapshot.requestId,
               status: snapshot.status,
-              responseUrl: snapshot.responseUrl,
-              statusUrl: snapshot.statusUrl,
-              cancelUrl: snapshot.cancelUrl,
+              upstreamStatus: snapshot.upstreamStatus,
               queuePosition: snapshot.queuePosition,
               logs: snapshot.logs,
-              result: snapshot.result,
-            },
+              output: snapshot.output,
+              error: snapshot.error,
+            }),
             200,
             origin,
           );
@@ -904,11 +1123,11 @@ export const registerMediaRoutes = (http: HttpRouter) => {
 };
 
 export {
+  describeCapabilityValidation,
   MEDIA_API_BASE_PATH,
   MEDIA_CAPABILITIES_PATH,
   MEDIA_DOCS_PATH,
-  MEDIA_SDK_JSON_PATH,
-  MEDIA_SDK_MARKDOWN_PATH,
   MEDIA_GENERATE_PATH,
   MEDIA_JOBS_PATH,
+  validateCapabilityRequest,
 };
