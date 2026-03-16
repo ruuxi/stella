@@ -142,11 +142,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
       width: number;
       height: number;
     }>("overlay:morphForward"),
-    onMorphReverse: onIpc<{ screenshotDataUrl: string }>(
+    onMorphReverse: onIpc<{
+      screenshotDataUrl: string;
+      requiresFullReload: boolean;
+    }>(
       "overlay:morphReverse",
     ),
     onMorphEnd: onIpcSignal("overlay:morphEnd"),
     onMorphState: onIpc<SelfModHmrState>("overlay:morphState"),
+    morphReady: () => ipcRenderer.send("overlay:morphReady"),
     morphDone: () => ipcRenderer.send("overlay:morphDone"),
     onShowAutoPanel: onIpc<{
       x: number;

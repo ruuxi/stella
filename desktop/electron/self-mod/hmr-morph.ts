@@ -2,18 +2,20 @@
  * Orchestrates the liquid morph transition during HMR resume.
  *
  * Flow:
- * 1. Capture old page state → tell overlay to start morph
- * 2. Resume HMR behind the morph canvas (overlay covers main window)
- * 3. Wait for load to settle → capture new state
- * 4. Immediately tell overlay to reverse with new screenshot (no pause)
- * 5. Wait for overlay to signal completion → cleanup
+ * 1. Capture old page state and tell the overlay to start morphing.
+ * 2. Wait until the overlay confirms the first frame is painted.
+ * 3. Resume HMR behind the covered main window.
+ * 4. Wait for load to settle, then capture the new page state.
+ * 5. Immediately tell the overlay to reverse with the new screenshot.
+ * 6. Wait for the overlay to signal completion, then clean up.
  */
 
 import { ipcMain, type BrowserWindow } from "electron";
 import type { SelfModHmrState } from "../../src/shared/contracts/electron-data.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 
-const FORWARD_ANIM_MS = 800;
+const MIN_COVER_MS = 160;
+const OVERLAY_READY_TIMEOUT_MS = 500;
 const CAPTURE_SETTLE_DELAY_MS = 150;
 const MORPH_DONE_TIMEOUT_MS = 5000;
 
@@ -35,7 +37,6 @@ export function createHmrMorphOrchestrator(deps: {
   getFullWindow: () => BrowserWindow | null;
   getOverlayController: () => OverlayWindowController | null;
 }): HmrMorphOrchestrator {
-
   const captureWindow = async (win: BrowserWindow): Promise<string | null> => {
     try {
       const image = await win.webContents.capturePage();
@@ -45,20 +46,26 @@ export function createHmrMorphOrchestrator(deps: {
     }
   };
 
-  const waitForMorphDone = (): Promise<void> => {
+  const waitForOverlaySignal = (
+    channel: "overlay:morphReady" | "overlay:morphDone",
+    timeoutMs: number,
+  ): Promise<boolean> => {
     return new Promise((resolve) => {
       const handler = () => {
         clearTimeout(timer);
-        resolve();
+        resolve(true);
       };
       const timer = setTimeout(() => {
-        ipcMain.removeListener("overlay:morphDone", handler);
-        resolve();
-      }, MORPH_DONE_TIMEOUT_MS);
+        ipcMain.removeListener(channel, handler);
+        resolve(false);
+      }, timeoutMs);
 
-      ipcMain.once("overlay:morphDone", handler);
+      ipcMain.once(channel, handler);
     });
   };
+
+  const waitForMorphDone = () =>
+    waitForOverlaySignal("overlay:morphDone", MORPH_DONE_TIMEOUT_MS);
 
   const waitForWindowLoad = (win: BrowserWindow): Promise<void> => {
     return new Promise((resolve) => {
@@ -107,7 +114,6 @@ export function createHmrMorphOrchestrator(deps: {
       return;
     }
 
-    // 1. Capture old state
     const oldScreenshot = await captureWindow(fullWindow);
     if (!oldScreenshot) {
       emitState({
@@ -120,8 +126,13 @@ export function createHmrMorphOrchestrator(deps: {
       return;
     }
 
-    // 2. Start forward morph on overlay
     const bounds = fullWindow.getBounds();
+    const coverStartedAt = Date.now();
+    const overlayReady = waitForOverlaySignal(
+      "overlay:morphReady",
+      OVERLAY_READY_TIMEOUT_MS,
+    );
+
     emitState({
       phase: "morph-forward",
       paused: false,
@@ -129,9 +140,14 @@ export function createHmrMorphOrchestrator(deps: {
     });
     overlayController.startMorphForward(oldScreenshot, bounds);
 
-    // 3. While the forward animation plays, resume HMR in parallel
     const hmrDone = (async () => {
-      await new Promise((r) => setTimeout(r, Math.floor(FORWARD_ANIM_MS * 0.5)));
+      await overlayReady;
+
+      const remainingCoverMs = MIN_COVER_MS - (Date.now() - coverStartedAt);
+      if (remainingCoverMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remainingCoverMs));
+      }
+
       emitState({
         phase: "applying",
         paused: false,
@@ -162,16 +178,12 @@ export function createHmrMorphOrchestrator(deps: {
       if (wasFullReload) {
         await waitForWindowLoad(fullWindow);
       } else {
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
 
       return requiresFullReload;
     })();
 
-    // 4. Wait for forward animation to finish
-    await new Promise((r) => setTimeout(r, FORWARD_ANIM_MS));
-
-    // 5. Wait for HMR to settle
     const requiresFullReload = await hmrDone;
 
     if (fullWindow.isDestroyed()) {
@@ -179,22 +191,19 @@ export function createHmrMorphOrchestrator(deps: {
       return;
     }
 
-    // 6. Capture new state
     const newScreenshot = await captureWindow(fullWindow);
     if (!newScreenshot) {
       finish();
       return;
     }
 
-    // 7. Start reverse immediately — no pause
     emitState({
       phase: "morph-reverse",
       paused: false,
       requiresFullReload,
     });
-    overlayController.startMorphReverse(newScreenshot);
+    overlayController.startMorphReverse(newScreenshot, requiresFullReload);
 
-    // 8. Wait for completion
     await waitForMorphDone();
     finish();
   };
