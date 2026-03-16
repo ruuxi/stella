@@ -86,7 +86,7 @@ const buildOpts = (overrides?: Partial<Parameters<typeof runSubagentTask>[0]>) =
     route: "direct-provider",
     getApiKey: () => "test-key",
   } as ResolvedLlmRoute,
-  frontendRoot: "C:/Users/redacted/projects/stella/desktop",
+  frontendRoot: "/mock/project/stella/desktop",
   store: createStoreStub() as unknown as RuntimeStore,
   ...overrides,
 });
@@ -174,7 +174,7 @@ describe("runSubagentTask external engine selection", () => {
     expect(runClaudeCodeTurnMock).toHaveBeenCalledWith(expect.objectContaining({
       prompt: "Solve this task",
       systemPrompt: expect.stringContaining("read `src/STELLA.md` first"),
-      cwd: "C:/Users/redacted/projects/stella/desktop",
+      cwd: "/mock/project/stella/desktop",
     }));
   });
 });
