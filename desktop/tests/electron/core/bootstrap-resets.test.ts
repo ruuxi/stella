@@ -9,7 +9,7 @@ const fromPartitionMock = vi.fn(() => ({
   clearCache: clearCacheMock,
 }));
 const resetMessageStorageMock = vi.fn(async () => {});
-const resolveRuntimeHomePathMock = vi.fn(() => "C:/Users/redacted/.stella");
+const resolveRuntimeHomePathMock = vi.fn(() => "/mock/home/.stella");
 const broadcastLocalChatUpdatedMock = vi.fn();
 
 vi.mock("fs", () => ({
@@ -173,11 +173,11 @@ describe("bootstrap reset flows", () => {
     expect(rmMock.mock.calls).toEqual(
       expect.arrayContaining([
         [
-          path.join("C:/Users/redacted/.stella", "state"),
+          path.join("/mock/home/.stella", "state"),
           { force: true, recursive: true },
         ],
         [
-          path.join("C:/Users/redacted/.stella", "logs"),
+          path.join("/mock/home/.stella", "logs"),
           { force: true, recursive: true },
         ],
       ]),
@@ -196,7 +196,7 @@ describe("bootstrap reset flows", () => {
         desktopDatabase: { close: closeDb },
         runtimeStore: { id: "runtime" },
         schedulerService: null,
-        stellaHomePath: "C:/Users/redacted/.stella",
+        stellaHomePath: "/mock/home/.stella",
         stellaHostRunner: { stop: stopRunner },
         storeModService: { id: "mods" },
         storeModStore: { id: "mod-store" },
@@ -214,7 +214,7 @@ describe("bootstrap reset flows", () => {
     expect(stopRunner).toHaveBeenCalledTimes(1);
     expect(closeDb).toHaveBeenCalledTimes(1);
     expect(resetMessageStorageMock).toHaveBeenCalledWith(
-      "C:/Users/redacted/.stella",
+      "/mock/home/.stella",
     );
     expect(initializeStellaHostRunner).toHaveBeenCalledTimes(1);
     expect(broadcastLocalChatUpdatedMock).toHaveBeenCalledWith(context);

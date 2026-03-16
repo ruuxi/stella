@@ -43,7 +43,7 @@ describe("agent runtime preparation helpers", () => {
   it("includes Stella documentation guidance for self_mod subagent prompts", () => {
     const prompt = buildSubagentSystemPrompt({
       agentType: "self_mod",
-      frontendRoot: "C:/Users/redacted/projects/stella/desktop",
+      frontendRoot: "/mock/project/stella/desktop",
       agentContext: {
         systemPrompt: "Base system",
         dynamicContext: "",
