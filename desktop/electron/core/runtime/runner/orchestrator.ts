@@ -5,19 +5,19 @@ import { AGENT_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
 import type {
   RunnerContext,
   AgentCallbacks,
-  AgentHealth,
   ChatPayload,
   QueuedOrchestratorTurn,
 } from "./types.js";
-import { sanitizeStellaBase } from "./shared.js";
 import { createOrchestratorCoordinator } from "./orchestrator-coordinator.js";
 import {
   launchPreparedOrchestratorRun,
   prepareOrchestratorRun,
 } from "./orchestrator-launch.js";
 import {
-  canResolveRunnerLlmRoute,
-} from "./model-selection.js";
+  getOrchestratorHealth,
+  normalizeAutomationRunInput,
+  normalizeChatRunInput,
+} from "./orchestrator-policy.js";
 
 const logger = createRuntimeLogger("runner.orchestrator");
 
@@ -112,38 +112,7 @@ export const createOrchestratorController = (
     return { runId };
   };
 
-  const agentHealthCheck = (): AgentHealth => {
-    if (!context.state.isRunning) {
-      return {
-        ready: false,
-        reason: "Stella runtime is not started",
-        engine: "stella",
-      };
-    }
-    if (!context.state.isInitialized) {
-      return {
-        ready: false,
-        reason: "Stella runtime is still initializing",
-        engine: "stella",
-      };
-    }
-    const orchestratorModel = deps.getConfiguredModel(
-      AGENT_IDS.ORCHESTRATOR,
-      deps.resolveAgent(AGENT_IDS.ORCHESTRATOR),
-    );
-    if (canResolveRunnerLlmRoute(context, orchestratorModel)) {
-      return { ready: true, engine: "pi" };
-    }
-    const hasProxyUrl = Boolean(sanitizeStellaBase(context.state.proxyBaseUrl));
-    const hasAuthToken = Boolean(context.state.authToken?.trim());
-    if (!hasProxyUrl) {
-      return { ready: false, reason: "Missing proxy URL", engine: "pi" };
-    }
-    if (!hasAuthToken) {
-      return { ready: false, reason: "Missing auth token", engine: "pi" };
-    }
-    return { ready: false, reason: "No usable model route", engine: "pi" };
-  };
+  const agentHealthCheck = () => getOrchestratorHealth(context, deps);
 
   const startLocalChatTurn = async (
     payload: ChatPayload,
@@ -155,10 +124,12 @@ export const createOrchestratorController = (
       );
     }
 
-    const conversationId = payload.conversationId;
+    const {
+      conversationId,
+      agentType,
+      userPrompt,
+    } = normalizeChatRunInput(payload);
     const runId = `local:${crypto.randomUUID()}`;
-    const agentType = payload.agentType ?? AGENT_IDS.ORCHESTRATOR;
-    const userPrompt = payload.userPrompt.trim();
     if (!userPrompt) {
       throw new Error("Missing user prompt");
     }
@@ -262,9 +233,11 @@ export const createOrchestratorController = (
       throw new Error("The orchestrator is already running.");
     }
 
-    const conversationId = payload.conversationId.trim();
-    const userPrompt = payload.userPrompt.trim();
-    const agentType = payload.agentType ?? AGENT_IDS.ORCHESTRATOR;
+    const {
+      conversationId,
+      userPrompt,
+      agentType,
+    } = normalizeAutomationRunInput(payload);
     if (!conversationId) {
       resolveResult({
         status: "error",
