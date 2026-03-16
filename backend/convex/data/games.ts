@@ -265,11 +265,15 @@ export const cleanupGameAssets = internalMutation({
       .withIndex("by_ownerId_and_gameId", (q) =>
         q.eq("ownerId", args.ownerId).eq("gameId", args.gameId),
       )
-      .collect();
+      .take(100);
 
     for (const asset of assets) {
       await ctx.storage.delete(asset.storageKey);
       await ctx.db.delete(asset._id);
+    }
+
+    if (assets.length === 100) {
+      await ctx.scheduler.runAfter(0, internal.data.games.cleanupGameAssets, args);
     }
   },
 });
