@@ -67,7 +67,7 @@ export const peekLinkCodeOwner = internalQuery({
     const prefs = await ctx.db
       .query("user_preferences")
       .withIndex("by_key", (q) => q.eq("key", key))
-      .collect();
+      .take(500);
     const now = Date.now();
 
     for (const pref of prefs) {
@@ -145,7 +145,7 @@ export const consumeLinkCode = internalMutation({
     const prefs = await ctx.db
       .query("user_preferences")
       .withIndex("by_key", (q) => q.eq("key", key))
-      .collect();
+      .take(500);
     const now = Date.now();
 
     for (const pref of prefs) {

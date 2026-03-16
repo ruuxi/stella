@@ -174,13 +174,13 @@ export const checkProxyRateLimit = internalMutation({
     const now = Date.now();
     const windowStart = now - PROXY_RATE_WINDOW_MS;
 
-    // Sum recent usage for this owner
+    // Sum recent usage for this owner (bounded to prevent scanning too many rows)
     const recentLogs = await ctx.db
       .query("usage_logs")
       .withIndex("by_ownerId_and_createdAt", (q) =>
         q.eq("ownerId", args.ownerId).gte("createdAt", windowStart),
       )
-      .collect();
+      .take(2000);
 
     let totalTokens = 0;
     for (const log of recentLogs) {

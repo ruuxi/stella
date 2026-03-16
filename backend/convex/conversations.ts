@@ -124,11 +124,11 @@ export const createConversation = mutation({
       });
     }
 
-    const existingCount = await ctx.db
+    const existingConversations = await ctx.db
       .query("conversations")
       .withIndex("by_ownerId_and_isDefault", (q) => q.eq("ownerId", ownerId))
-      .collect();
-    if (existingCount.length >= MAX_CONVERSATIONS_PER_USER) {
+      .take(MAX_CONVERSATIONS_PER_USER);
+    if (existingConversations.length >= MAX_CONVERSATIONS_PER_USER) {
       throw new ConvexError({
         code: "LIMIT_EXCEEDED",
         message: `You have reached the maximum of ${MAX_CONVERSATIONS_PER_USER} conversations. Please delete some before creating new ones.`,

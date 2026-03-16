@@ -76,5 +76,7 @@ export const integrationsSchema = {
     installedBy: v.optional(v.string()),
     installedAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_teamId", ["teamId"]),
+  })
+    .index("by_teamId", ["teamId"])
+    .index("by_botTokenKeyVersion", ["botTokenKeyVersion"]),
 };

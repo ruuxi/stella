@@ -271,7 +271,7 @@ export const getOwnerUsage = internalQuery({
       .withIndex("by_ownerId_and_createdAt", (q) =>
         q.eq("ownerId", args.ownerId).gt("createdAt", since),
       )
-      .collect();
+      .take(5000);
 
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
