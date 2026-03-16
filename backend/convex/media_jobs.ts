@@ -248,15 +248,6 @@ export const getWebhookJob = internalQuery({
   args: {
     jobId: v.string(),
   },
-  returns: v.union(
-    v.null(),
-    v.object({
-      endpointId: v.string(),
-      providerRequestId: v.optional(v.string()),
-      providerResponseUrl: v.optional(v.string()),
-      providerStatusUrl: v.optional(v.string()),
-    }),
-  ),
   handler: async (ctx, args) => {
     const job = await getJobByJobId(ctx, args.jobId);
     if (!job) {
