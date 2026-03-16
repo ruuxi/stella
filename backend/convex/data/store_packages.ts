@@ -265,7 +265,7 @@ export const listPackagesForOwnerInternal = internalQuery({
       .query("store_packages")
       .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", args.ownerId))
       .order("desc")
-      .collect();
+      .take(200);
   },
 });
 
@@ -298,7 +298,7 @@ export const listReleasesForPackageInternal = internalQuery({
         q.eq("packageId", normalizedPackageId),
       )
       .order("desc")
-      .collect();
+      .take(200);
   },
 });
 
@@ -476,7 +476,7 @@ export const listPackages = query({
       .query("store_packages")
       .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
       .order("desc")
-      .collect();
+      .take(200);
   },
 });
 
@@ -511,7 +511,7 @@ export const listReleases = query({
         q.eq("packageId", normalizedPackageId),
       )
       .order("desc")
-      .collect();
+      .take(200);
   },
 });
 

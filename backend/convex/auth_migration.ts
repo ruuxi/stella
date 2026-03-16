@@ -160,10 +160,9 @@ export const migratePersistChunksBatch = internalMutation({
     toOwnerId: v.string(),
   },
   handler: async (ctx, args) => {
-    // persist_chunks doesn't have a by_ownerId index, so we scan
     const rows = await ctx.db
       .query("persist_chunks")
-      .filter((q) => q.eq(q.field("ownerId"), args.fromOwnerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.fromOwnerId))
       .take(BATCH_SIZE);
 
     for (const row of rows) {

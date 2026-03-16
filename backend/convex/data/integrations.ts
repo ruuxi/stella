@@ -154,7 +154,7 @@ export const consumeSlackOAuthState = internalMutation({
     const prefs = await ctx.db
       .query("user_preferences")
       .withIndex("by_key", (q) => q.eq("key", SLACK_OAUTH_STATE_KEY))
-      .collect();
+      .take(500);
 
     const now = Date.now();
     for (const pref of prefs) {

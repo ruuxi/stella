@@ -34,7 +34,8 @@ export const telemetrySchema = {
   })
     .index("by_chunkKey", ["chunkKey"])
     .index("by_runId_and_chunkIndex", ["runId", "chunkIndex"])
-    .index("by_runId_and_isFinal", ["runId", "isFinal"]),
+    .index("by_runId_and_isFinal", ["runId", "isFinal"])
+    .index("by_ownerId", ["ownerId"]),
 
   usage_logs: defineTable({
     ownerId: v.string(),

@@ -303,7 +303,7 @@ export const getModelOverrides = query({
     const records = await ctx.db
       .query("user_preferences")
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId))
-      .collect();
+      .take(500);
 
     const overrides: Record<string, string> = {};
     for (const record of records) {

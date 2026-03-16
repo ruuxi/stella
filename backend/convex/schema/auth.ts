@@ -16,7 +16,8 @@ export const authSchema = {
     lastUsedAt: v.optional(v.number()),
   })
     .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"])
-    .index("by_ownerId_and_provider_and_updatedAt", ["ownerId", "provider", "updatedAt"]),
+    .index("by_ownerId_and_provider_and_updatedAt", ["ownerId", "provider", "updatedAt"])
+    .index("by_keyVersion", ["keyVersion"]),
 
   secret_access_audit: defineTable({
     ownerId: v.string(),
