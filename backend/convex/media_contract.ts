@@ -26,6 +26,7 @@ export type MediaGenerateRequestBody = {
   capability?: unknown;
   profile?: unknown;
   prompt?: unknown;
+  aspectRatio?: unknown;
   sourceUrl?: unknown;
   source?: unknown;
   sources?: unknown;
@@ -36,6 +37,7 @@ export type MediaGenerateRequest = {
   capability: string;
   profile?: string;
   prompt?: string;
+  aspectRatio?: string;
   sourceUrl?: string;
   source?: MediaSourceReference;
   sources?: Record<string, MediaSourceReference>;
@@ -56,6 +58,7 @@ export type MediaGenerateAcceptedResponse = {
 
 export type MediaRequestSummary = {
   prompt?: string;
+  aspectRatio?: string;
   source?: {
     kind: "url" | "data_uri" | "base64_object";
     mimeType?: string;
@@ -146,6 +149,7 @@ export const parseMediaGenerateRequest = (
 
   const profile = asTrimmedString(value.profile)?.toLowerCase();
   const prompt = asTrimmedString(value.prompt) ?? undefined;
+  const aspectRatio = asTrimmedString(value.aspectRatio) ?? undefined;
   const sourceUrl = asTrimmedString(value.sourceUrl) ?? undefined;
   const input = isRecord(value.input) ? { ...value.input } : {};
 
@@ -201,6 +205,7 @@ export const parseMediaGenerateRequest = (
     capability,
     ...(profile ? { profile } : {}),
     ...(prompt ? { prompt } : {}),
+    ...(aspectRatio ? { aspectRatio } : {}),
     ...(sourceUrl ? { sourceUrl } : {}),
     ...(sourceString ?? sourceFromObject ? { source: sourceString ?? sourceFromObject } : {}),
     ...(sources && Object.keys(sources).length > 0 ? { sources } : {}),
@@ -214,6 +219,7 @@ export const createMediaGenerateRequestExample = (
   capability: args.capability,
   ...(args.profile ? { profile: args.profile } : {}),
   ...(args.prompt ? { prompt: args.prompt } : {}),
+  ...(args.aspectRatio ? { aspectRatio: args.aspectRatio } : {}),
   ...(args.sourceUrl ? { sourceUrl: args.sourceUrl } : {}),
   ...(args.source ? { source: args.source } : {}),
   ...(args.sources ? { sources: args.sources } : {}),
@@ -242,6 +248,7 @@ export const createMediaJobResponse = (
   profile: args.profile,
   request: {
     ...(args.request.prompt ? { prompt: args.request.prompt } : {}),
+    ...(args.request.aspectRatio ? { aspectRatio: args.request.aspectRatio } : {}),
     ...(args.request.source ? { source: { ...args.request.source } } : {}),
     ...(args.request.sources
       ? {

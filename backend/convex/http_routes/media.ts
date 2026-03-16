@@ -68,6 +68,20 @@ const isNonEmptyString = (value: unknown): value is string =>
 const asTrimmedString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 
+const hasAspectRatioSupport = (capability: MediaCapability): boolean =>
+  capability.supportsAspectRatio === true;
+
+const applyCapabilityDefaults = (args: {
+  capability: MediaCapability;
+  input: Record<string, unknown>;
+}): Record<string, unknown> => {
+  const normalized = { ...args.input };
+  if (args.capability.id === "icon") {
+    normalized.image_size = { width: 512, height: 512 };
+  }
+  return normalized;
+};
+
 const isHttpUrl = (value: unknown): value is string => {
   if (!isNonEmptyString(value)) {
     return false;
@@ -156,10 +170,11 @@ const toMediaJobStatus = (upstreamStatus: string): MediaJobStatus => {
   }
 };
 
-const applyConvenienceInput = (args: {
+export const applyConvenienceInput = (args: {
   capability: MediaCapability;
   input: Record<string, unknown>;
   prompt?: string;
+  aspectRatio?: string;
   sourceUrl?: string;
   source?:
     | string
@@ -178,9 +193,12 @@ const applyConvenienceInput = (args: {
       }
   >;
 }): Record<string, unknown> => {
-  const normalized = { ...args.input };
+  const normalized = applyCapabilityDefaults(args);
   if (args.prompt && args.capability.promptKey && normalized[args.capability.promptKey] === undefined) {
     normalized[args.capability.promptKey] = args.prompt;
+  }
+  if (args.aspectRatio && hasAspectRatioSupport(args.capability) && normalized.aspect_ratio === undefined) {
+    normalized.aspect_ratio = args.aspectRatio;
   }
   if (args.sourceUrl && args.capability.sourceUrlKey && normalized[args.capability.sourceUrlKey] === undefined) {
     normalized[args.capability.sourceUrlKey] = args.sourceUrl;
@@ -202,6 +220,7 @@ const applyConvenienceInput = (args: {
 const requireCapabilityInputs = (args: {
   capability: MediaCapability;
   prompt?: string;
+  aspectRatio?: string;
   sourceUrl?: string;
   source?: {
     base64: string;
@@ -249,6 +268,9 @@ const requireCapabilityInputs = (args: {
       if (error) return error;
     }
   }
+  if (args.aspectRatio !== undefined && !isNonEmptyString(args.aspectRatio)) {
+    return "aspectRatio must be a non-empty string";
+  }
   if (args.capability.promptKey && !isNonEmptyString(normalized[args.capability.promptKey])) {
     return "prompt is required for this capability";
   }
@@ -274,6 +296,7 @@ const renderMediaDocs = (request: Request): string => {
     "- Use capability IDs instead of raw provider model names.",
     "- Submit with HTTP, then subscribe to the Convex job query.",
     "- Stella stores job metadata/status/output metadata in Convex, not raw media bytes.",
+    "- The `icon` capability is locked to fixed square generation on the backend.",
     "",
     "HTTP endpoints:",
     `- GET ${MEDIA_DOCS_PATH}`,
@@ -294,6 +317,7 @@ const renderMediaDocs = (request: Request): string => {
     "- `capability` required",
     "- `profile` optional",
     "- `prompt` optional convenience field",
+    "- `aspectRatio` optional convenience field for image/video capabilities",
     "- `sourceUrl`, `source`, and `sources` for media inputs",
     "- `input` for provider-specific controls",
     "- Prefer `data:` URIs for local files",
@@ -305,6 +329,7 @@ const renderMediaDocs = (request: Request): string => {
         capability: "image_to_video",
         profile: "motion",
         prompt: "animate this product photo with a slow cinematic push-in",
+        aspectRatio: "16:9",
         source: "data:image/png;base64,<base64>",
         input: { duration: 5 },
       }),
@@ -341,7 +366,8 @@ const renderMediaDocs = (request: Request): string => {
         profile: "best",
         request: {
           prompt: "cinematic rainy Tokyo alley at night",
-          input: { image_size: "portrait_16_9" },
+          aspectRatio: "9:16",
+          input: { negative_prompt: "blurry" },
         },
         status: "succeeded",
         upstreamStatus: "OK",
@@ -420,6 +446,7 @@ export const registerMediaRoutes = (http: HttpRouter) => {
         const validationError = requireCapabilityInputs({
           capability: resolved.capability,
           prompt: body.prompt,
+          aspectRatio: body.aspectRatio,
           sourceUrl: body.sourceUrl,
           source: body.source,
           sources: body.sources,
@@ -448,6 +475,7 @@ export const registerMediaRoutes = (http: HttpRouter) => {
               capability: resolved.capability,
               input: body.input,
               prompt: body.prompt,
+              aspectRatio: body.aspectRatio,
               sourceUrl: body.sourceUrl,
               source: body.source,
               sources: body.sources,
@@ -566,12 +594,14 @@ export const describeCapabilityValidation = (capabilityId: string) => {
     requiresPrompt: Boolean(resolved.capability.promptKey),
     requiresSourceUrl: Boolean(resolved.capability.requiresSourceUrl),
     acceptsBase64Source: Boolean(resolved.capability.sourceUrlKey),
+    supportsAspectRatio: hasAspectRatioSupport(resolved.capability),
   };
 };
 
 export const validateCapabilityRequest = (args: {
   capabilityId: string;
   prompt?: string;
+  aspectRatio?: string;
   sourceUrl?: string;
   source?: { base64: string; mimeType: string; fileName?: string } | string;
   sources?: Record<string, string | { base64: string; mimeType: string; fileName?: string }>;
@@ -582,6 +612,7 @@ export const validateCapabilityRequest = (args: {
   return requireCapabilityInputs({
     capability: resolved.capability,
     prompt: args.prompt,
+    aspectRatio: args.aspectRatio,
     sourceUrl: args.sourceUrl,
     source: args.source,
     sources: args.sources,

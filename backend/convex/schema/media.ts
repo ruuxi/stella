@@ -31,6 +31,7 @@ export const mediaRequestSourceSummaryValidator = v.object({
 
 export const mediaRequestSummaryValidator = v.object({
   prompt: v.optional(v.string()),
+  aspectRatio: v.optional(v.string()),
   source: v.optional(mediaRequestSourceSummaryValidator),
   sources: v.optional(v.record(v.string(), mediaRequestSourceSummaryValidator)),
   input: v.optional(jsonObjectValidator),

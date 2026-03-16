@@ -23,6 +23,7 @@ export type MediaCapability = {
   promptKey?: string;
   sourceUrlKey?: string;
   requiresSourceUrl?: boolean;
+  supportsAspectRatio?: boolean;
   inputHints: string[];
   outputHints: string[];
   profiles: MediaProfile[];
@@ -100,7 +101,8 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
     description: "Generate still images from text prompts.",
     category: "image",
     promptKey: "prompt",
-    inputHints: ["prompt", "size / aspect ratio", "negative prompt"],
+    supportsAspectRatio: true,
+    inputHints: ["prompt", "aspectRatio", "negative prompt"],
     outputHints: ["image URLs"],
     profiles: [
       {
@@ -123,6 +125,26 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
     ],
   },
   {
+    id: "icon",
+    name: "Icon Generator",
+    description: "Generate icons, logos, thumbnails, and other compact visual assets from text prompts.",
+    category: "image",
+    promptKey: "prompt",
+    inputHints: ["prompt", "transparent / background style", "brand / icon constraints", "fixed square output"],
+    outputHints: ["image URLs"],
+    profiles: [
+      {
+        id: "default",
+        name: "Default",
+        description: "Fast Flux Turbo generation for icons, logos, and thumbnails.",
+        provider: "fal",
+        endpointId: "fal-ai/flux-2/turbo",
+        docsUrl: falModelUrl("fal-ai/flux-2/turbo"),
+        isDefault: true,
+      },
+    ],
+  },
+  {
     id: "image_edit",
     name: "Image Edit",
     description: "Edit an existing image with text instructions.",
@@ -130,25 +152,41 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
     promptKey: "prompt",
     sourceUrlKey: "image_url",
     requiresSourceUrl: true,
-    inputHints: ["image_url", "prompt", "mask / strength when supported"],
+    supportsAspectRatio: true,
+    inputHints: ["image_url", "prompt", "aspectRatio", "mask / strength when supported"],
     outputHints: ["edited image URLs"],
     profiles: [
       {
-        id: "fast",
-        name: "Fast",
+        id: "default",
+        name: "Default",
         description: "Flux Klein image editing.",
         provider: "fal",
         endpointId: "fal-ai/flux-2/klein/9b/edit",
         docsUrl: falModelUrl("fal-ai/flux-2/klein/9b/edit"),
         isDefault: true,
       },
+    ],
+  },
+  {
+    id: "realtime",
+    name: "Realtime",
+    description: "Low-latency realtime image generation/editing for live inputs like drawing or webcam frames.",
+    category: "image",
+    promptKey: "prompt",
+    sourceUrlKey: "image_url",
+    requiresSourceUrl: true,
+    supportsAspectRatio: true,
+    inputHints: ["image_url", "prompt", "aspectRatio", "strength / guidance"],
+    outputHints: ["edited image URLs"],
+    profiles: [
       {
-        id: "realtime",
-        name: "Realtime",
-        description: "Low-latency Flux Klein realtime image edits.",
+        id: "default",
+        name: "Default",
+        description: "Low-latency Flux Klein realtime image generation and editing.",
         provider: "fal",
         endpointId: "fal-ai/flux-2/klein/realtime",
         docsUrl: falModelUrl("fal-ai/flux-2/klein/realtime"),
+        isDefault: true,
       },
     ],
   },
@@ -179,7 +217,8 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
     promptKey: "prompt",
     sourceUrlKey: "image_url",
     requiresSourceUrl: true,
-    inputHints: ["image_url", "prompt", "duration", "camera / motion controls"],
+    supportsAspectRatio: true,
+    inputHints: ["image_url", "prompt", "aspectRatio", "duration", "camera / motion controls"],
     outputHints: ["video URL"],
     profiles: [
       {
@@ -221,7 +260,8 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
     category: "video",
     sourceUrlKey: "video_url",
     requiresSourceUrl: true,
-    inputHints: ["video_url", "prompt", "target duration"],
+    supportsAspectRatio: true,
+    inputHints: ["video_url", "prompt", "aspectRatio", "target duration"],
     outputHints: ["extended video URL"],
     profiles: [
       {
@@ -243,7 +283,8 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
     promptKey: "prompt",
     sourceUrlKey: "video_url",
     requiresSourceUrl: true,
-    inputHints: ["video_url", "prompt", "reference strength / style controls"],
+    supportsAspectRatio: true,
+    inputHints: ["video_url", "prompt", "aspectRatio", "reference strength / style controls"],
     outputHints: ["video URL"],
     profiles: [
       {

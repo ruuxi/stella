@@ -240,7 +240,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 
 
   llm_best: {
-    model: "moonshotai/kimi-k2.5",
+    model: "anthropic/claude-opus-4.6",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -255,7 +255,7 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   llm_fast: {
-    model: "google/gemini-3-flash",
+    model: "inception/mercury-2",
     fallback: "moonshotai/kimi-k2.5",
     temperature: 0.8,
     maxOutputTokens: 8192,
