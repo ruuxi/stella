@@ -203,10 +203,14 @@ export type ElectronOverlayApi = {
     }) => void,
   ) => () => void;
   onMorphReverse: (
-    callback: (data: { screenshotDataUrl: string }) => void,
+    callback: (data: {
+      screenshotDataUrl: string;
+      requiresFullReload: boolean;
+    }) => void,
   ) => () => void;
   onMorphEnd: (callback: () => void) => () => void;
   onMorphState: (callback: (state: SelfModHmrState) => void) => () => void;
+  morphReady: () => void;
   morphDone: () => void;
   onShowAutoPanel: (
     callback: (data: {
