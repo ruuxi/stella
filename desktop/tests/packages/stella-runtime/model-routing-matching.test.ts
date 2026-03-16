@@ -40,7 +40,7 @@ describe("model routing matching helpers", () => {
     getModelsMock.mockReset();
   });
 
-  it("prefers alias ids over dated ids for partial matches", () => {
+  it("matches exact and normalized ids without fuzzy fallback", () => {
     getModelsMock.mockImplementation((provider: string) => {
       if (provider !== "anthropic") {
         return [];
@@ -61,9 +61,30 @@ describe("model routing matching helpers", () => {
       ];
     });
 
-    const match = findRegistryModel("anthropic", ["sonnet-4-5"]);
+    expect(findRegistryModel("anthropic", ["claude-sonnet-4.5"])?.id).toBe(
+      "claude-sonnet-4-5",
+    );
+    expect(findRegistryModel("anthropic", ["sonnet-4-5"])).toBeNull();
+  });
 
-    expect(match?.id).toBe("claude-sonnet-4-5");
+  it("matches canonical provider-qualified ids exactly", () => {
+    getModelsMock.mockImplementation((provider: string) => {
+      if (provider !== "openrouter") {
+        return [];
+      }
+      return [
+        createModel({
+          id: "openai/gpt-5.1-codex",
+          provider: "openrouter",
+          api: "openai-completions",
+          baseUrl: "https://openrouter.ai/api/v1",
+        }),
+      ];
+    });
+
+    expect(
+      findRegistryModel("openrouter", ["openrouter/openai/gpt-5.1-codex"])?.id,
+    ).toBe("openai/gpt-5.1-codex");
   });
 
   it("parses provider-qualified model references without losing nested model ids", () => {
