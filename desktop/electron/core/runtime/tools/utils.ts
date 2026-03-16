@@ -9,6 +9,7 @@ import os from "os";
 import { spawn } from "child_process";
 import { createHash } from "crypto";
 import { resolveRuntimeStatePath } from "../../../system/stella-home.js";
+import { createRuntimeLogger } from "../debug.js";
 
 // Constants
 export const MAX_OUTPUT = 30_000;
@@ -72,10 +73,14 @@ const sanitizeSensitiveData = (
   return output;
 };
 
-export const log = (..._args: unknown[]) => {
+const logger = createRuntimeLogger("tools");
+
+export const log = (message: string, fields?: unknown) => {
+  logger.debug(message, fields);
   /* logging removed — use structured telemetry instead */
 };
-export const logError = (..._args: unknown[]) => {
+export const logError = (message: string, fields?: unknown) => {
+  logger.error(message, fields);
   /* error logging removed — use structured telemetry instead */
 };
 

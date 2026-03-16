@@ -10,7 +10,6 @@ import {
   getSelfModAgentEngine,
 } from "../preferences/local-preferences.js";
 import { buildLocalHistoryFromEvents } from "../local-history.js";
-import { resolveLlmRoute } from "../model-routing.js";
 import {
   buildRuntimeThreadKey,
   parseThreadCheckpoint,
@@ -40,6 +39,7 @@ import {
   sanitizeConvexDeploymentUrl,
   sanitizeStellaBase,
 } from "./shared.js";
+import { resolveRunnerLlmRoute } from "./model-selection.js";
 
 export const createRunnerContext = ({
   deviceId,
@@ -233,15 +233,11 @@ export const buildAgentContext = async (
   );
   const agent = resolveAgent(context, args.agentType);
   const model = getConfiguredModel(context, args.agentType, agent);
-  const resolvedLlm = resolveLlmRoute({
-    stellaHomePath: context.stellaHomePath,
-    modelName: model,
-    agentType: args.agentType,
-    proxy: {
-      baseUrl: context.state.proxyBaseUrl,
-      getAuthToken: () => context.state.authToken?.trim(),
-    },
-  });
+  const resolvedLlm = resolveRunnerLlmRoute(
+    context,
+    args.agentType,
+    model,
+  );
   const threadKey = buildRuntimeThreadKey({
     conversationId: args.conversationId,
     agentType: args.agentType,

@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { canResolveLlmRoute, resolveLlmRoute } from "../model-routing.js";
+import { createRuntimeLogger } from "../debug.js";
 import {
   runOrchestratorTurn,
   type RuntimeRunCallbacks,
@@ -14,6 +14,12 @@ import type {
   QueuedOrchestratorTurn,
 } from "./types.js";
 import { QUEUED_TURN_INTERRUPT_ERROR, sanitizeStellaBase } from "./shared.js";
+import {
+  canResolveRunnerLlmRoute,
+  resolveRunnerLlmRoute,
+} from "./model-selection.js";
+
+const logger = createRuntimeLogger("runner.orchestrator");
 
 export const createOrchestratorController = (
   context: RunnerContext,
@@ -213,15 +219,11 @@ export const createOrchestratorController = (
       agentType,
       runId,
     });
-    const resolvedLlm = resolveLlmRoute({
-      stellaHomePath: context.stellaHomePath,
-      modelName: agentContext.model,
+    const resolvedLlm = resolveRunnerLlmRoute(
+      context,
       agentType,
-      proxy: {
-        baseUrl: context.state.proxyBaseUrl,
-        getAuthToken: () => context.state.authToken?.trim(),
-      },
-    });
+      agentContext.model,
+    );
 
     context.state.activeOrchestratorRunId = runId;
     context.state.activeOrchestratorConversationId = conversationId;
@@ -308,16 +310,7 @@ export const createOrchestratorController = (
       AGENT_IDS.ORCHESTRATOR,
       deps.resolveAgent(AGENT_IDS.ORCHESTRATOR),
     );
-    if (
-      canResolveLlmRoute({
-        stellaHomePath: context.stellaHomePath,
-        modelName: orchestratorModel,
-        proxy: {
-          baseUrl: context.state.proxyBaseUrl,
-          getAuthToken: () => context.state.authToken?.trim(),
-        },
-      })
-    ) {
+    if (canResolveRunnerLlmRoute(context, orchestratorModel)) {
       return { ready: true, engine: "pi" };
     }
     const hasProxyUrl = Boolean(sanitizeStellaBase(context.state.proxyBaseUrl));
@@ -354,25 +347,21 @@ export const createOrchestratorController = (
       agentType,
       runId,
     });
-    const resolvedLlm = resolveLlmRoute({
-      stellaHomePath: context.stellaHomePath,
-      modelName: agentContext.model,
+    const resolvedLlm = resolveRunnerLlmRoute(
+      context,
       agentType,
-      proxy: {
-        baseUrl: context.state.proxyBaseUrl,
-        getAuthToken: () => context.state.authToken?.trim(),
-      },
-    });
+      agentContext.model,
+    );
 
-    console.log(
-      `[stella:trace] handleLocalChat | runId=${runId} | agent=${agentType} | model=${agentContext.model} | resolvedModel=${resolvedLlm.model.id} | convId=${conversationId}`,
-    );
-    console.log(
-      `[stella:trace] handleLocalChat | tools=[${(agentContext.toolsAllowlist ?? []).join(", ")}]`,
-    );
-    console.log(
-      `[stella:trace] handleLocalChat | threadHistory=${agentContext.threadHistory?.length ?? 0} messages`,
-    );
+    logger.debug("handleLocalChat", {
+      runId,
+      agentType,
+      model: agentContext.model,
+      resolvedModel: resolvedLlm.model.id,
+      conversationId,
+      tools: agentContext.toolsAllowlist ?? [],
+      threadHistoryCount: agentContext.threadHistory?.length ?? 0,
+    });
 
     context.state.activeOrchestratorRunId = runId;
     context.state.activeOrchestratorConversationId = conversationId;
@@ -509,15 +498,11 @@ export const createOrchestratorController = (
       agentType,
       runId,
     });
-    const resolvedLlm = resolveLlmRoute({
-      stellaHomePath: context.stellaHomePath,
-      modelName: agentContext.model,
+    const resolvedLlm = resolveRunnerLlmRoute(
+      context,
       agentType,
-      proxy: {
-        baseUrl: context.state.proxyBaseUrl,
-        getAuthToken: () => context.state.authToken?.trim(),
-      },
-    });
+      agentContext.model,
+    );
 
     context.state.activeOrchestratorRunId = runId;
     context.state.activeOrchestratorConversationId = conversationId;

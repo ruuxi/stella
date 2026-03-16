@@ -48,6 +48,10 @@ function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
 	return messages.filter(isBaseMessage);
 }
 
+function errorMessageOf(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
 export interface AgentOptions {
 	initialState?: Partial<AgentState>;
 
@@ -553,19 +557,67 @@ export class Agent {
 			thinkingBudgets: this._thinkingBudgets,
 			maxRetryDelayMs: this._maxRetryDelayMs,
 			toolExecution: this._toolExecution,
-			beforeToolCall: this._beforeToolCall,
-			afterToolCall: this._afterToolCall,
-			convertToLlm: this.convertToLlm,
-			transformContext: this.transformContext,
-			getApiKey: this.getApiKey,
+			beforeToolCall: this._beforeToolCall
+				? async (toolContext, signal) => {
+						try {
+							return await this._beforeToolCall?.(toolContext, signal);
+						} catch {
+							return undefined;
+						}
+					}
+				: undefined,
+			afterToolCall: this._afterToolCall
+				? async (toolContext, signal) => {
+						try {
+							return await this._afterToolCall?.(toolContext, signal);
+						} catch {
+							return undefined;
+						}
+					}
+				: undefined,
+			convertToLlm: async (agentMessages) => {
+				try {
+					return await this.convertToLlm(agentMessages);
+				} catch {
+					return defaultConvertToLlm(agentMessages);
+				}
+			},
+			transformContext: this.transformContext
+				? async (agentMessages, signal) => {
+						try {
+							return await this.transformContext?.(agentMessages, signal);
+						} catch {
+							return agentMessages;
+						}
+					}
+				: undefined,
+			getApiKey: this.getApiKey
+				? async (provider) => {
+						try {
+							return await this.getApiKey?.(provider);
+						} catch {
+							return undefined;
+						}
+					}
+				: undefined,
 			getSteeringMessages: async () => {
 				if (skipInitialSteeringPoll) {
 					skipInitialSteeringPoll = false;
 					return [];
 				}
-				return this.dequeueSteeringMessages();
+				try {
+					return this.dequeueSteeringMessages();
+				} catch {
+					return [];
+				}
 			},
-			getFollowUpMessages: async () => this.dequeueFollowUpMessages(),
+			getFollowUpMessages: async () => {
+				try {
+					return this.dequeueFollowUpMessages();
+				} catch {
+					return [];
+				}
+			},
 		};
 
 		try {
@@ -588,7 +640,7 @@ export class Agent {
 				);
 			}
 		} catch (err: unknown) {
-			const errorMessage = err instanceof Error ? err.message : String(err);
+			const errorMessage = errorMessageOf(err);
 			const errorMsg: AssistantMessage = {
 				role: "assistant",
 				content: [{ type: "text", text: "" }],
