@@ -10,6 +10,7 @@ import { billingSchema } from "./schema/billing";
 import { storeSchema } from "./schema/store";
 import { gamesSchema } from "./schema/games";
 import { mediaSchema } from "./schema/media";
+import { socialSchema } from "./schema/social";
 
 export default defineSchema({
   ...conversationsSchema,
@@ -23,5 +24,6 @@ export default defineSchema({
   ...storeSchema,
   ...gamesSchema,
   ...mediaSchema,
+  ...socialSchema,
 });
 
