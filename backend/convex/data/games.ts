@@ -433,7 +433,7 @@ export const deployGameBuild = action({
     const gameId = normalizeGameId(args.gameId);
 
     // Verify the game exists and belongs to this user
-    const existingGame = await ctx.runQuery(
+    const existingGame: Awaited<ReturnType<typeof getOwnedGame>> = await ctx.runQuery(
       internal.data.games.getGameByGameIdInternal,
       { ownerId, gameId },
     );
