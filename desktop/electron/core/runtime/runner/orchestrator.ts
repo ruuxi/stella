@@ -7,6 +7,13 @@ import type {
   ChatPayload,
   QueuedOrchestratorTurn,
 } from "./types.js";
+import {
+  createAutomationAgentCallbacks,
+  createAutomationErrorResult,
+  createAutomationFatalErrorHandler,
+  createOrchestratorFatalErrorHandler,
+  type AutomationTurnResult,
+} from "./orchestrator-callbacks.js";
 import { createOrchestratorCoordinator } from "./orchestrator-coordinator.js";
 import {
   executeOrQueueSystemOrchestratorTurn,
@@ -93,15 +100,11 @@ export const createOrchestratorController = (
       webSearch: deps.webSearch,
       finishInterruptedRun,
       cleanupRun,
-      onFatalError: (error) => {
-        callbacks.onError({
-          runId,
-          agentType,
-          seq: Date.now(),
-          error: (error as Error).message || "Stella runtime failed",
-          fatal: true,
-        });
-      },
+      onFatalError: createOrchestratorFatalErrorHandler({
+        runId,
+        agentType,
+        callbacks,
+      }),
     });
 
     return { runId };
@@ -153,15 +156,11 @@ export const createOrchestratorController = (
           threadHistoryCount: prepared.agentContext.threadHistory?.length ?? 0,
         });
       },
-      onFatalError: (error) => {
-        callbacks.onError({
-          runId,
-          agentType,
-          seq: Date.now(),
-          error: (error as Error).message || "Stella runtime failed",
-          fatal: true,
-        });
-      },
+      onFatalError: createOrchestratorFatalErrorHandler({
+        runId,
+        agentType,
+        callbacks,
+      }),
     });
 
     return { runId };
@@ -192,12 +191,7 @@ export const createOrchestratorController = (
       userPrompt: string;
       agentType?: string;
     },
-    resolveResult: (
-      value:
-        | { status: "ok"; finalText: string }
-        | { status: "busy"; finalText: ""; error: string }
-        | { status: "error"; finalText: ""; error: string },
-    ) => void,
+    resolveResult: (value: AutomationTurnResult) => void,
   ): Promise<{ runId: string }> => {
     if (context.state.activeOrchestratorRunId) {
       throw new Error("The orchestrator is already running.");
@@ -209,19 +203,11 @@ export const createOrchestratorController = (
       agentType,
     } = normalizeAutomationRunInput(payload);
     if (!conversationId) {
-      resolveResult({
-        status: "error",
-        finalText: "",
-        error: "Missing conversationId",
-      });
+      resolveResult(createAutomationErrorResult("Missing conversationId"));
       return { runId: "" };
     }
     if (!userPrompt) {
-      resolveResult({
-        status: "error",
-        finalText: "",
-        error: "Missing user prompt",
-      });
+      resolveResult(createAutomationErrorResult("Missing user prompt"));
       return { runId: "" };
     }
 
@@ -239,24 +225,7 @@ export const createOrchestratorController = (
       createRuntimeCallbacks: ({ runId, prepared }) =>
         createRuntimeCallbacks(
           runId,
-          {
-            onStream: () => {},
-            onToolStart: () => {},
-            onToolEnd: () => {},
-            onError: (event) => {
-              resolveResult({
-                status: "error",
-                finalText: "",
-                error: event.error || "Stella runtime failed",
-              });
-            },
-            onEnd: (event) => {
-              resolveResult({
-                status: "ok",
-                finalText: event.finalText,
-              });
-            },
-          },
+          createAutomationAgentCallbacks(resolveResult),
           {
             onInterrupted: prepared.replayInterruptedTurn,
           },
@@ -264,13 +233,7 @@ export const createOrchestratorController = (
       webSearch: deps.webSearch,
       finishInterruptedRun,
       cleanupRun,
-      onFatalError: (error) => {
-        resolveResult({
-          status: "error",
-          finalText: "",
-          error: (error as Error).message || "Stella runtime failed",
-        });
-      },
+      onFatalError: createAutomationFatalErrorHandler(resolveResult),
     });
 
     return { runId };
@@ -280,25 +243,15 @@ export const createOrchestratorController = (
     conversationId: string;
     userPrompt: string;
     agentType?: string;
-  }): Promise<
-    | { status: "ok"; finalText: string }
-    | { status: "busy"; finalText: ""; error: string }
-    | { status: "error"; finalText: ""; error: string }
-  > => {
+  }): Promise<AutomationTurnResult> => {
     const health = agentHealthCheck();
     if (!health.ready) {
-      return {
-        status: "error",
-        finalText: "",
-        error: health.reason ?? "Stella runtime not ready",
-      };
+      return createAutomationErrorResult(
+        health.reason ?? "Stella runtime not ready",
+      );
     }
 
-    return await new Promise<
-      | { status: "ok"; finalText: string }
-      | { status: "busy"; finalText: ""; error: string }
-      | { status: "error"; finalText: ""; error: string }
-    >((resolve) => {
+    return await new Promise<AutomationTurnResult>((resolve) => {
       void executeOrQueueSystemOrchestratorTurn({
         hasActiveRun: Boolean(context.state.activeOrchestratorRunId),
         queueOrchestratorTurn,
