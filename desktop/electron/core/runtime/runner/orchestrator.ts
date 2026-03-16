@@ -1,9 +1,5 @@
 import crypto from "crypto";
 import { createRuntimeLogger } from "../debug.js";
-import {
-  runOrchestratorTurn,
-  type RuntimeRunCallbacks,
-} from "../agent-runtime.js";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
 import { AGENT_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
 import type {
@@ -16,8 +12,11 @@ import type {
 import { sanitizeStellaBase } from "./shared.js";
 import { createOrchestratorCoordinator } from "./orchestrator-coordinator.js";
 import {
+  launchPreparedOrchestratorRun,
+  prepareOrchestratorRun,
+} from "./orchestrator-launch.js";
+import {
   canResolveRunnerLlmRoute,
-  resolveRunnerLlmRoute,
 } from "./model-selection.js";
 
 const logger = createRuntimeLogger("runner.orchestrator");
@@ -47,6 +46,7 @@ export const createOrchestratorController = (
 ) => {
   const coordinator = createOrchestratorCoordinator(context);
   const {
+    cleanupRun,
     clearActiveOrchestratorRun,
     createRuntimeCallbacks,
     queueOrchestratorTurn,
@@ -76,72 +76,37 @@ export const createOrchestratorController = (
       throw new Error("Missing user prompt");
     }
 
-    const agentContext = await deps.buildAgentContext({
-      conversationId,
-      agentType,
-      runId,
-    });
-    const resolvedLlm = resolveRunnerLlmRoute(
+    const prepared = await prepareOrchestratorRun({
       context,
-      agentType,
-      agentContext.model,
-    );
-
-    context.state.activeOrchestratorRunId = runId;
-    context.state.activeOrchestratorConversationId = conversationId;
-    context.state.activeInterruptedReplayTurn = payload.requeueOnInterrupt
-      ? payload
-      : null;
-
-    const abortController = new AbortController();
-    context.state.activeRunAbortControllers.set(runId, abortController);
-    const replayInterruptedTurn = () => {
-      const replayTurn = context.state.activeInterruptedReplayTurn;
-      if (replayTurn) {
-        queueOrchestratorTurn(replayTurn);
-      }
-    };
-
-    const runtimeCallbacks = createRuntimeCallbacks(runId, callbacks, {
-      onInterrupted: replayInterruptedTurn,
-    });
-
-    void runOrchestratorTurn({
+      buildAgentContext: deps.buildAgentContext,
+      queueOrchestratorTurn,
       runId,
       conversationId,
-      userMessageId: startArgs.userMessageId,
       agentType,
       userPrompt,
-      agentContext,
-      callbacks: runtimeCallbacks,
-      toolExecutor: (toolName, args, toolContext) =>
-        context.toolHost.executeTool(toolName, args, toolContext),
-      deviceId: context.deviceId,
-      stellaHome: context.stellaHomePath,
-      resolvedLlm,
-      store: context.runtimeStore,
-      abortSignal: abortController.signal,
-      frontendRoot: context.frontendRoot,
-      selfModMonitor: context.selfModMonitor,
+      replayTurn: payload.requeueOnInterrupt ? payload : null,
+    });
+    const runtimeCallbacks = createRuntimeCallbacks(runId, callbacks, {
+      onInterrupted: prepared.replayInterruptedTurn,
+    });
+
+    launchPreparedOrchestratorRun({
+      context,
+      prepared,
+      userMessageId: startArgs.userMessageId,
+      runtimeCallbacks,
       webSearch: deps.webSearch,
-      hookEmitter: context.hookEmitter,
-      displayHtml: context.displayHtml,
-    }).catch((error) => {
-      if (
-        finishInterruptedRun({
+      finishInterruptedRun,
+      cleanupRun,
+      onFatalError: (error) => {
+        callbacks.onError({
           runId,
-          onInterrupted: replayInterruptedTurn,
-        })
-      ) {
-        return;
-      }
-      callbacks.onError({
-        runId,
-        agentType,
-        seq: Date.now(),
-        error: (error as Error).message || "Stella runtime failed",
-        fatal: true,
-      });
+          agentType,
+          seq: Date.now(),
+          error: (error as Error).message || "Stella runtime failed",
+          fatal: true,
+        });
+      },
     });
 
     return { runId };
@@ -198,70 +163,45 @@ export const createOrchestratorController = (
       throw new Error("Missing user prompt");
     }
 
-    const agentContext = await deps.buildAgentContext({
+    const prepared = await prepareOrchestratorRun({
+      context,
+      buildAgentContext: deps.buildAgentContext,
+      queueOrchestratorTurn,
+      runId,
       conversationId,
       agentType,
-      runId,
+      userPrompt,
     });
-    const resolvedLlm = resolveRunnerLlmRoute(
-      context,
-      agentType,
-      agentContext.model,
-    );
 
     logger.debug("handleLocalChat", {
       runId,
       agentType,
-      model: agentContext.model,
-      resolvedModel: resolvedLlm.model.id,
+      model: prepared.agentContext.model,
+      resolvedModel: prepared.resolvedLlm.model.id,
       conversationId,
-      tools: agentContext.toolsAllowlist ?? [],
-      threadHistoryCount: agentContext.threadHistory?.length ?? 0,
+      tools: prepared.agentContext.toolsAllowlist ?? [],
+      threadHistoryCount: prepared.agentContext.threadHistory?.length ?? 0,
     });
-
-    context.state.activeOrchestratorRunId = runId;
-    context.state.activeOrchestratorConversationId = conversationId;
-
-    const abortController = new AbortController();
-    context.state.activeRunAbortControllers.set(runId, abortController);
 
     const runtimeCallbacks = createRuntimeCallbacks(runId, callbacks);
 
-    void runOrchestratorTurn({
-      runId,
-      conversationId,
+    launchPreparedOrchestratorRun({
+      context,
+      prepared,
       userMessageId: payload.userMessageId,
-      agentType,
-      userPrompt,
-      agentContext,
-      callbacks: runtimeCallbacks,
-      toolExecutor: (toolName, args, toolContext) =>
-        context.toolHost.executeTool(toolName, args, toolContext),
-      deviceId: context.deviceId,
-      stellaHome: context.stellaHomePath,
-      resolvedLlm,
-      store: context.runtimeStore,
-      abortSignal: abortController.signal,
-      frontendRoot: context.frontendRoot,
-      selfModMonitor: context.selfModMonitor,
+      runtimeCallbacks,
       webSearch: deps.webSearch,
-      hookEmitter: context.hookEmitter,
-      displayHtml: context.displayHtml,
-    }).catch((error) => {
-      if (
-        finishInterruptedRun({
+      finishInterruptedRun,
+      cleanupRun,
+      onFatalError: (error) => {
+        callbacks.onError({
           runId,
-        })
-      ) {
-        return;
-      }
-      callbacks.onError({
-        runId,
-        agentType,
-        seq: Date.now(),
-        error: (error as Error).message || "Stella runtime failed",
-        fatal: true,
-      });
+          agentType,
+          seq: Date.now(),
+          error: (error as Error).message || "Stella runtime failed",
+          fatal: true,
+        });
+      },
     });
 
     return { runId };
@@ -343,31 +283,16 @@ export const createOrchestratorController = (
     }
 
     const runId = `local:auto:${crypto.randomUUID()}`;
-    const agentContext = await deps.buildAgentContext({
+    const prepared = await prepareOrchestratorRun({
+      context,
+      buildAgentContext: deps.buildAgentContext,
+      queueOrchestratorTurn,
+      runId,
       conversationId,
       agentType,
-      runId,
+      userPrompt,
+      replayTurn: queuedTurn.requeueOnInterrupt ? queuedTurn : null,
     });
-    const resolvedLlm = resolveRunnerLlmRoute(
-      context,
-      agentType,
-      agentContext.model,
-    );
-
-    context.state.activeOrchestratorRunId = runId;
-    context.state.activeOrchestratorConversationId = conversationId;
-    context.state.activeInterruptedReplayTurn = queuedTurn.requeueOnInterrupt
-      ? queuedTurn
-      : null;
-
-    const abortController = new AbortController();
-    context.state.activeRunAbortControllers.set(runId, abortController);
-    const replayInterruptedTurn = () => {
-      const replayTurn = context.state.activeInterruptedReplayTurn;
-      if (replayTurn) {
-        queueOrchestratorTurn(replayTurn);
-      }
-    };
 
     const runtimeCallbacks = createRuntimeCallbacks(
       runId,
@@ -390,44 +315,25 @@ export const createOrchestratorController = (
         },
       },
       {
-        onInterrupted: replayInterruptedTurn,
+        onInterrupted: prepared.replayInterruptedTurn,
       },
     );
 
-    void runOrchestratorTurn({
-      runId,
-      conversationId,
+    launchPreparedOrchestratorRun({
+      context,
+      prepared,
       userMessageId: `automation:${crypto.randomUUID()}`,
-      agentType,
-      userPrompt,
-      agentContext,
-      callbacks: runtimeCallbacks,
-      toolExecutor: (toolName, args, toolContext) =>
-        context.toolHost.executeTool(toolName, args, toolContext),
-      deviceId: context.deviceId,
-      stellaHome: context.stellaHomePath,
-      resolvedLlm,
-      store: context.runtimeStore,
-      abortSignal: abortController.signal,
-      frontendRoot: context.frontendRoot,
-      selfModMonitor: context.selfModMonitor,
+      runtimeCallbacks,
       webSearch: deps.webSearch,
-      hookEmitter: context.hookEmitter,
-      displayHtml: context.displayHtml,
-    }).catch((error) => {
-      if (
-        finishInterruptedRun({
-          runId,
-          onInterrupted: replayInterruptedTurn,
-        })
-      ) {
-        return;
-      }
-      resolveResult({
-        status: "error",
-        finalText: "",
-        error: (error as Error).message || "Stella runtime failed",
-      });
+      finishInterruptedRun,
+      cleanupRun,
+      onFatalError: (error) => {
+        resolveResult({
+          status: "error",
+          finalText: "",
+          error: (error as Error).message || "Stella runtime failed",
+        });
+      },
     });
 
     return { runId };

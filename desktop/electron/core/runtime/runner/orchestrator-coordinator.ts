@@ -184,6 +184,7 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
     drainQueuedOrchestratorTurns,
     queueOrchestratorTurn,
     createRuntimeCallbacks,
+    cleanupRun,
     clearActiveOrchestratorRun,
     finishInterruptedRun,
   };
