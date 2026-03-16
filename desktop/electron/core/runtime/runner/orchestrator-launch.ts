@@ -131,3 +131,57 @@ export const launchPreparedOrchestratorRun = (args: {
     args.onFatalError(error);
   });
 };
+
+export const startPreparedOrchestratorRun = async (args: {
+  context: RunnerContext;
+  buildAgentContext: BuildAgentContext;
+  queueOrchestratorTurn: (turn: QueuedOrchestratorTurn) => void;
+  createRuntimeCallbacks: (args: {
+    runId: string;
+    prepared: PreparedOrchestratorRun;
+  }) => RuntimeRunCallbacks;
+  runId: string;
+  conversationId: string;
+  agentType: string;
+  userPrompt: string;
+  userMessageId: string;
+  webSearch: WebSearch;
+  finishInterruptedRun: (args: {
+    runId: string;
+    onInterrupted?: () => void;
+    onCleanup?: () => void;
+  }) => boolean;
+  cleanupRun: (runId: string, onCleanup?: () => void) => void;
+  onFatalError: (error: unknown) => void;
+  onPrepared?: (prepared: PreparedOrchestratorRun) => void;
+  replayTurn?: QueuedOrchestratorTurn | null;
+}): Promise<{ runId: string; prepared: PreparedOrchestratorRun }> => {
+  const prepared = await prepareOrchestratorRun({
+    context: args.context,
+    buildAgentContext: args.buildAgentContext,
+    queueOrchestratorTurn: args.queueOrchestratorTurn,
+    runId: args.runId,
+    conversationId: args.conversationId,
+    agentType: args.agentType,
+    userPrompt: args.userPrompt,
+    replayTurn: args.replayTurn,
+  });
+
+  args.onPrepared?.(prepared);
+
+  launchPreparedOrchestratorRun({
+    context: args.context,
+    prepared,
+    userMessageId: args.userMessageId,
+    runtimeCallbacks: args.createRuntimeCallbacks({
+      runId: args.runId,
+      prepared,
+    }),
+    webSearch: args.webSearch,
+    finishInterruptedRun: args.finishInterruptedRun,
+    cleanupRun: args.cleanupRun,
+    onFatalError: args.onFatalError,
+  });
+
+  return { runId: args.runId, prepared };
+};

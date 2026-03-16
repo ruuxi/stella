@@ -12,10 +12,7 @@ import {
   executeOrQueueSystemOrchestratorTurn,
   executeOrQueueUserOrchestratorTurn,
 } from "./orchestrator-dispatch.js";
-import {
-  launchPreparedOrchestratorRun,
-  prepareOrchestratorRun,
-} from "./orchestrator-launch.js";
+import { startPreparedOrchestratorRun } from "./orchestrator-launch.js";
 import {
   getOrchestratorHealth,
   normalizeAutomationRunInput,
@@ -79,7 +76,7 @@ export const createOrchestratorController = (
       throw new Error("Missing user prompt");
     }
 
-    const prepared = await prepareOrchestratorRun({
+    const { prepared } = await startPreparedOrchestratorRun({
       context,
       buildAgentContext: deps.buildAgentContext,
       queueOrchestratorTurn,
@@ -88,16 +85,11 @@ export const createOrchestratorController = (
       agentType,
       userPrompt,
       replayTurn: payload.requeueOnInterrupt ? payload : null,
-    });
-    const runtimeCallbacks = createRuntimeCallbacks(runId, callbacks, {
-      onInterrupted: prepared.replayInterruptedTurn,
-    });
-
-    launchPreparedOrchestratorRun({
-      context,
-      prepared,
       userMessageId: startArgs.userMessageId,
-      runtimeCallbacks,
+      createRuntimeCallbacks: ({ runId, prepared }) =>
+        createRuntimeCallbacks(runId, callbacks, {
+          onInterrupted: prepared.replayInterruptedTurn,
+        }),
       webSearch: deps.webSearch,
       finishInterruptedRun,
       cleanupRun,
@@ -137,7 +129,7 @@ export const createOrchestratorController = (
       throw new Error("Missing user prompt");
     }
 
-    const prepared = await prepareOrchestratorRun({
+    await startPreparedOrchestratorRun({
       context,
       buildAgentContext: deps.buildAgentContext,
       queueOrchestratorTurn,
@@ -145,28 +137,22 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
-    });
-
-    logger.debug("handleLocalChat", {
-      runId,
-      agentType,
-      model: prepared.agentContext.model,
-      resolvedModel: prepared.resolvedLlm.model.id,
-      conversationId,
-      tools: prepared.agentContext.toolsAllowlist ?? [],
-      threadHistoryCount: prepared.agentContext.threadHistory?.length ?? 0,
-    });
-
-    const runtimeCallbacks = createRuntimeCallbacks(runId, callbacks);
-
-    launchPreparedOrchestratorRun({
-      context,
-      prepared,
       userMessageId: payload.userMessageId,
-      runtimeCallbacks,
       webSearch: deps.webSearch,
+      createRuntimeCallbacks: ({ runId }) => createRuntimeCallbacks(runId, callbacks),
       finishInterruptedRun,
       cleanupRun,
+      onPrepared: (prepared) => {
+        logger.debug("handleLocalChat", {
+          runId,
+          agentType,
+          model: prepared.agentContext.model,
+          resolvedModel: prepared.resolvedLlm.model.id,
+          conversationId,
+          tools: prepared.agentContext.toolsAllowlist ?? [],
+          threadHistoryCount: prepared.agentContext.threadHistory?.length ?? 0,
+        });
+      },
       onFatalError: (error) => {
         callbacks.onError({
           runId,
@@ -240,7 +226,7 @@ export const createOrchestratorController = (
     }
 
     const runId = `local:auto:${crypto.randomUUID()}`;
-    const prepared = await prepareOrchestratorRun({
+    await startPreparedOrchestratorRun({
       context,
       buildAgentContext: deps.buildAgentContext,
       queueOrchestratorTurn,
@@ -248,39 +234,33 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
-      replayTurn: queuedTurn.requeueOnInterrupt ? queuedTurn : null,
-    });
-
-    const runtimeCallbacks = createRuntimeCallbacks(
-      runId,
-      {
-        onStream: () => {},
-        onToolStart: () => {},
-        onToolEnd: () => {},
-        onError: (event) => {
-          resolveResult({
-            status: "error",
-            finalText: "",
-            error: event.error || "Stella runtime failed",
-          });
-        },
-        onEnd: (event) => {
-          resolveResult({
-            status: "ok",
-            finalText: event.finalText,
-          });
-        },
-      },
-      {
-        onInterrupted: prepared.replayInterruptedTurn,
-      },
-    );
-
-    launchPreparedOrchestratorRun({
-      context,
-      prepared,
       userMessageId: `automation:${crypto.randomUUID()}`,
-      runtimeCallbacks,
+      replayTurn: queuedTurn.requeueOnInterrupt ? queuedTurn : null,
+      createRuntimeCallbacks: ({ runId, prepared }) =>
+        createRuntimeCallbacks(
+          runId,
+          {
+            onStream: () => {},
+            onToolStart: () => {},
+            onToolEnd: () => {},
+            onError: (event) => {
+              resolveResult({
+                status: "error",
+                finalText: "",
+                error: event.error || "Stella runtime failed",
+              });
+            },
+            onEnd: (event) => {
+              resolveResult({
+                status: "ok",
+                finalText: event.finalText,
+              });
+            },
+          },
+          {
+            onInterrupted: prepared.replayInterruptedTurn,
+          },
+        ),
       webSearch: deps.webSearch,
       finishInterruptedRun,
       cleanupRun,
