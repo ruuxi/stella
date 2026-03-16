@@ -6,12 +6,14 @@ import { corsPreflightHandler } from "./http_shared/cors";
 // Route modules
 import { registerConnectorWebhookRoutes } from "./http_routes/connectors";
 import { registerGameRoutes } from "./http_routes/games";
-import { registerSynthesisRoutes } from "./http_routes/synthesis";
-import { registerSpeechToTextRoutes } from "./http_routes/speech_to_text";
-import { registerSkillRoutes } from "./http_routes/skills";
+import { registerMediaRoutes } from "./http_routes/media";
+
 import { registerMusicRoutes } from "./http_routes/music";
-import { registerVoiceRoutes } from "./http_routes/voice";
+import { registerSkillRoutes } from "./http_routes/skills";
+import { registerSpeechToTextRoutes } from "./http_routes/speech_to_text";
 import { registerStripeRoutes } from "./http_routes/stripe";
+import { registerSynthesisRoutes } from "./http_routes/synthesis";
+import { registerVoiceRoutes } from "./http_routes/voice";
 
 // Stella provider endpoints
 import {
@@ -39,7 +41,9 @@ registerSpeechToTextRoutes(http);
 registerSkillRoutes(http);
 registerConnectorWebhookRoutes(http);
 registerMusicRoutes(http);
+registerMediaRoutes(http);
 registerVoiceRoutes(http);
+
 registerStripeRoutes(http);
 registerGameRoutes(http);
 
@@ -51,13 +55,31 @@ const stellaModelsOptionsHandler = httpAction(async (_ctx, request) =>
   corsPreflightHandler(request),
 );
 
-http.route({ path: STELLA_MODELS_PATH, method: "OPTIONS", handler: stellaModelsOptionsHandler });
-http.route({ path: STELLA_MODELS_PATH, method: "GET", handler: stellaProviderModels });
+http.route({
+  path: STELLA_MODELS_PATH,
+  method: "OPTIONS",
+  handler: stellaModelsOptionsHandler,
+});
+http.route({
+  path: STELLA_MODELS_PATH,
+  method: "GET",
+  handler: stellaProviderModels,
+});
+
 const stellaChatOptionsHandler = httpAction(async (_ctx, request) =>
   stellaProviderOptions(request),
 );
 
-http.route({ path: STELLA_CHAT_COMPLETIONS_PATH, method: "OPTIONS", handler: stellaChatOptionsHandler });
-http.route({ path: STELLA_CHAT_COMPLETIONS_PATH, method: "POST", handler: stellaProviderChatCompletions });
+http.route({
+  path: STELLA_CHAT_COMPLETIONS_PATH,
+  method: "OPTIONS",
+  handler: stellaChatOptionsHandler,
+});
+http.route({
+  path: STELLA_CHAT_COMPLETIONS_PATH,
+  method: "POST",
+  handler: stellaProviderChatCompletions,
+});
 
 export default http;
+

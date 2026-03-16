@@ -2,13 +2,16 @@ import { AGENT_MODELS, DEFAULT_MODEL, getModelConfig } from "./agent/model";
 
 export const STELLA_PROVIDER = "stella";
 export const STELLA_DEFAULT_MODEL = `${STELLA_PROVIDER}/default`;
+export const STELLA_BEST_MODEL = `${STELLA_PROVIDER}/best`;
+export const STELLA_FAST_MODEL = `${STELLA_PROVIDER}/fast`;
+export const STELLA_MEDIA_MODEL = `${STELLA_PROVIDER}/media`;
 
 export type StellaCatalogModel = {
   id: string;
   name: string;
   provider: typeof STELLA_PROVIDER;
   upstreamModel: string;
-  type: "language";
+  type: "language" | "multimodal";
 };
 
 export type StellaDefaultEntry = {
@@ -42,6 +45,27 @@ const deriveDisplayName = (upstreamModel: string): string => {
   const rawId = slash >= 0 ? upstreamModel.slice(slash + 1) : upstreamModel;
   return titleCase(rawId);
 };
+
+const STATIC_STELLA_ALIASES = [
+  {
+    id: STELLA_BEST_MODEL,
+    name: "Stella Best",
+    upstreamModel: getModelConfig("llm_best").model,
+    type: "language" as const,
+  },
+  {
+    id: STELLA_FAST_MODEL,
+    name: "Stella Fast",
+    upstreamModel: getModelConfig("llm_fast").model,
+    type: "language" as const,
+  },
+  {
+    id: STELLA_MEDIA_MODEL,
+    name: "Stella Media",
+    upstreamModel: getModelConfig("media_llm").model,
+    type: "multimodal" as const,
+  },
+] as const;
 
 const listUpstreamManagedModels = (): string[] => {
   const models = new Set<string>();
@@ -81,6 +105,16 @@ export const resolveStellaModelSelection = (
     return getModelConfig(agentType).model;
   }
 
+  if (trimmed === STELLA_BEST_MODEL) {
+    return getModelConfig("llm_best").model;
+  }
+  if (trimmed === STELLA_FAST_MODEL) {
+    return getModelConfig("llm_fast").model;
+  }
+  if (trimmed === STELLA_MEDIA_MODEL) {
+    return getModelConfig("media_llm").model;
+  }
+
   if (!trimmed.startsWith(`${STELLA_PROVIDER}/`)) {
     return trimmed;
   }
@@ -101,6 +135,13 @@ export const listStellaCatalogModels = (): StellaCatalogModel[] => [
     upstreamModel: "",
     type: "language",
   },
+  ...STATIC_STELLA_ALIASES.map<StellaCatalogModel>((alias) => ({
+    id: alias.id,
+    name: alias.name,
+    provider: STELLA_PROVIDER,
+    upstreamModel: alias.upstreamModel,
+    type: alias.type,
+  })),
   ...listUpstreamManagedModels().map<StellaCatalogModel>((upstreamModel) => ({
     id: toStellaModelId(upstreamModel),
     name: deriveDisplayName(upstreamModel),
@@ -116,3 +157,4 @@ export const listStellaDefaultSelections = (): StellaDefaultEntry[] =>
     model: STELLA_DEFAULT_MODEL,
     resolvedModel: config.model,
   }));
+
