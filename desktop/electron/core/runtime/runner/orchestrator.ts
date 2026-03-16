@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import { createRuntimeLogger } from "../debug.js";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
-import { AGENT_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
 import type {
   RunnerContext,
   AgentCallbacks,
@@ -9,6 +8,10 @@ import type {
   QueuedOrchestratorTurn,
 } from "./types.js";
 import { createOrchestratorCoordinator } from "./orchestrator-coordinator.js";
+import {
+  executeOrQueueSystemOrchestratorTurn,
+  executeOrQueueUserOrchestratorTurn,
+} from "./orchestrator-dispatch.js";
 import {
   launchPreparedOrchestratorRun,
   prepareOrchestratorRun,
@@ -189,30 +192,11 @@ export const createOrchestratorController = (
 
     context.state.conversationCallbacks.set(payload.conversationId, callbacks);
 
-    const queuedTurn: QueuedOrchestratorTurn = {
-      priority: "user",
-      requeueOnInterrupt: false,
-      execute: async () => {
-        await startLocalChatTurn(payload, callbacks);
-      },
-    };
-
-    if (context.state.activeOrchestratorRunId) {
-      return await new Promise<{ runId: string }>((resolve, reject) => {
-        queueOrchestratorTurn({
-          ...queuedTurn,
-          execute: async () => {
-            try {
-              resolve(await startLocalChatTurn(payload, callbacks));
-            } catch (error) {
-              reject(error instanceof Error ? error : new Error(String(error)));
-            }
-          },
-        });
-      });
-    }
-
-    return await startLocalChatTurn(payload, callbacks);
+    return await executeOrQueueUserOrchestratorTurn({
+      hasActiveRun: Boolean(context.state.activeOrchestratorRunId),
+      queueOrchestratorTurn,
+      execute: async () => await startLocalChatTurn(payload, callbacks),
+    });
   };
 
   const startAutomationTurn = async (
@@ -335,20 +319,13 @@ export const createOrchestratorController = (
       | { status: "busy"; finalText: ""; error: string }
       | { status: "error"; finalText: ""; error: string }
     >((resolve) => {
-      const queuedTurn: QueuedOrchestratorTurn = {
-        priority: "system",
-        requeueOnInterrupt: true,
-        execute: async () => {
+      void executeOrQueueSystemOrchestratorTurn({
+        hasActiveRun: Boolean(context.state.activeOrchestratorRunId),
+        queueOrchestratorTurn,
+        execute: async (queuedTurn) => {
           await startAutomationTurn(queuedTurn, payload, resolve);
         },
-      };
-
-      if (context.state.activeOrchestratorRunId) {
-        queueOrchestratorTurn(queuedTurn);
-        return;
-      }
-
-      void queuedTurn.execute();
+      });
     });
   };
 
