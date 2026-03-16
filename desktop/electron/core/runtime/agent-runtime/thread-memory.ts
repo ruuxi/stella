@@ -70,12 +70,12 @@ const resolveMediaSdkDocsUrl = (): string | null => {
 
   const normalized = raw.replace(/\/+$/, "");
   if (normalized.includes("/api/stella/v1")) {
-    return `${normalized.replace(/\/api\/stella\/v1$/i, "")}/api/media/v1/sdk.md`;
+    return `${normalized.replace(/\/api\/stella\/v1$/i, "")}/api/media/v1/docs`;
   }
   if (normalized.includes(".convex.cloud")) {
-    return `${normalized.replace(".convex.cloud", ".convex.site")}/api/media/v1/sdk.md`;
+    return `${normalized.replace(".convex.cloud", ".convex.site")}/api/media/v1/docs`;
   }
-  return `${normalized}/api/media/v1/sdk.md`;
+  return `${normalized}/api/media/v1/docs`;
 };
 
 export const buildSystemPrompt = (
@@ -129,7 +129,7 @@ export const buildSelfModDocumentationPrompt = (
   const mediaSdkDocsUrl = resolveMediaSdkDocsUrl();
   if (mediaSdkDocsUrl) {
     lines.push(
-      `- Media SDK reference is always available at \`${mediaSdkDocsUrl}\`. Fetch the latest version before building or changing media features: \`curl -L \"${mediaSdkDocsUrl}\"\`.`,
+      `- Media API docs are always available at \`${mediaSdkDocsUrl}\`. Fetch the latest version before building or changing media features: \`curl -L \"${mediaSdkDocsUrl}\"\`. Docs are public, but generation and job polling still require Stella auth.`,
     );
   }
 

@@ -81,6 +81,7 @@ export const buildManagedMediaDocsPrompt = (
     "Managed backend media SDK:",
     `- Latest docs: ${docsUrl}`,
     `- Before wiring media generation or media analysis features, fetch the live docs with \`curl -L "${docsUrl}"\` so you use the latest backend contract and examples.`,
+    "- Docs are public, but media generation and job polling still require Stella auth from the client.",
   ].join("\n");
 };
 
