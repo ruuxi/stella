@@ -1,30 +1,26 @@
-import crypto from "crypto";
 import {
   shouldIncludeStellaDocumentation,
 } from "../../../../src/shared/contracts/agent-runtime.js";
 import { createRuntimeLogger } from "../debug.js";
 import { createDisplayStreamController } from "./display-stream.js";
+import { subscribeRuntimeAgentEvents } from "./run-events.js";
 import {
-  createRunEventRecorder,
-  subscribeRuntimeAgentEvents,
-} from "./run-events.js";
+  createOrchestratorExecutionSession,
+  createSubagentExecutionSession,
+} from "./run-session.js";
 import {
-  createRuntimeAgent,
   getAgentCompletion,
   now,
 } from "./shared.js";
 import {
   appendThreadMessage,
-  buildHistorySource,
   buildOrchestratorUserPrompt,
-  buildRunThreadKey,
   buildSelfModDocumentationPrompt,
   buildSystemPrompt,
   compactRuntimeThreadHistory,
   persistAssistantReply,
   updateOrchestratorReminderState,
 } from "./thread-memory.js";
-import { createPiTools } from "./tool-adapters.js";
 import type {
   OrchestratorRunOptions,
   SubagentRunOptions,
@@ -36,33 +32,12 @@ const logger = createRuntimeLogger("agent-runtime");
 export const runPiOrchestratorTurn = async (
   opts: OrchestratorRunOptions,
 ): Promise<string> => {
-  const runId = opts.runId ?? `local:${crypto.randomUUID()}`;
-  const threadKey = buildRunThreadKey({
-    conversationId: opts.conversationId,
-    agentType: opts.agentType,
-    runId,
-    threadId: opts.agentContext.activeThreadId,
-  });
-  const runEvents = createRunEventRecorder({
-    store: opts.store,
-    runId,
-    conversationId: opts.conversationId,
-    agentType: opts.agentType,
-  });
   const baselineHead =
     opts.frontendRoot && opts.selfModMonitor
       ? await opts.selfModMonitor
           .getBaselineHead(opts.frontendRoot)
           .catch(() => null)
       : null;
-
-  logger.debug("orchestrator.start", {
-    runId,
-    agentType: opts.agentType,
-    model: opts.resolvedLlm.model.id,
-    conversationId: opts.conversationId,
-    promptPreview: opts.userPrompt.slice(0, 300),
-  });
 
   let effectiveSystemPrompt = buildSystemPrompt(opts.agentContext);
   if (opts.hookEmitter) {
@@ -80,27 +55,21 @@ export const runPiOrchestratorTurn = async (
     }
   }
 
-  runEvents.recordRunStart();
+  const { runId, threadKey, runEvents, tools, agent } =
+    createOrchestratorExecutionSession({
+      ...opts,
+      systemPrompt: effectiveSystemPrompt,
+    });
 
-  const historySource = buildHistorySource(opts.agentContext);
-  const tools = createPiTools({
+  logger.debug("orchestrator.start", {
     runId,
-    rootRunId: opts.rootRunId ?? runId,
-    conversationId: opts.conversationId,
     agentType: opts.agentType,
-    deviceId: opts.deviceId,
-    stellaHome: opts.stellaHome,
-    taskDepth: opts.agentContext.taskDepth ?? 0,
-    maxTaskDepth: opts.agentContext.maxTaskDepth,
-    delegationAllowlist: opts.agentContext.delegationAllowlist,
-    toolsAllowlist: opts.agentContext.toolsAllowlist,
-    defaultSkills: opts.agentContext.defaultSkills,
-    skillIds: opts.agentContext.skillIds,
-    store: opts.store,
-    toolExecutor: opts.toolExecutor,
-    webSearch: opts.webSearch,
-    hookEmitter: opts.hookEmitter,
+    model: opts.resolvedLlm.model.id,
+    conversationId: opts.conversationId,
+    promptPreview: opts.userPrompt.slice(0, 300),
   });
+
+  runEvents.recordRunStart();
 
   logger.debug("orchestrator.tools", {
     agentType: opts.agentType,
@@ -112,15 +81,6 @@ export const runPiOrchestratorTurn = async (
           {}) as Record<string, unknown>,
       ),
     })),
-  });
-
-  const agent = createRuntimeAgent({
-    agentType: opts.agentType,
-    systemPrompt: effectiveSystemPrompt,
-    resolvedLlm: opts.resolvedLlm,
-    hookEmitter: opts.hookEmitter,
-    tools,
-    historySource,
   });
 
   if (opts.abortSignal?.aborted) {
@@ -252,7 +212,6 @@ export const runPiOrchestratorTurn = async (
 export const runPiSubagentTask = async (
   opts: SubagentRunOptions,
 ): Promise<SubagentRunResult> => {
-  const runId = opts.runId ?? `local:sub:${crypto.randomUUID()}`;
   const prompt = opts.userPrompt.trim();
   const effectiveSystemPrompt = [
     buildSystemPrompt(opts.agentContext),
@@ -262,18 +221,11 @@ export const runPiSubagentTask = async (
   ]
     .filter((section) => section.trim().length > 0)
     .join("\n\n");
-  const threadKey = buildRunThreadKey({
-    conversationId: opts.conversationId,
-    agentType: opts.agentType,
-    runId,
-    threadId: opts.agentContext.activeThreadId,
-  });
-  const runEvents = createRunEventRecorder({
-    store: opts.store,
-    runId,
-    conversationId: opts.conversationId,
-    agentType: opts.agentType,
-  });
+  const { runId, threadKey, runEvents, agent } =
+    createSubagentExecutionSession({
+      ...opts,
+      systemPrompt: effectiveSystemPrompt,
+    });
   let finalText = "";
 
   runEvents.recordRunStart();
@@ -290,35 +242,6 @@ export const runPiSubagentTask = async (
     runEvents.recordError("Aborted");
     return { runId, result: "", error: "Aborted" };
   }
-
-  const tools = createPiTools({
-    runId,
-    rootRunId: opts.rootRunId ?? runId,
-    conversationId: opts.conversationId,
-    agentType: opts.agentType,
-    deviceId: opts.deviceId,
-    stellaHome: opts.stellaHome,
-    taskDepth: opts.agentContext.taskDepth ?? 0,
-    maxTaskDepth: opts.agentContext.maxTaskDepth,
-    delegationAllowlist: opts.agentContext.delegationAllowlist,
-    toolsAllowlist: opts.agentContext.toolsAllowlist,
-    defaultSkills: opts.agentContext.defaultSkills,
-    skillIds: opts.agentContext.skillIds,
-    store: opts.store,
-    toolExecutor: opts.toolExecutor,
-    webSearch: opts.webSearch,
-    hookEmitter: opts.hookEmitter,
-  });
-
-  const contextHistory = buildHistorySource(opts.agentContext);
-  const agent = createRuntimeAgent({
-    agentType: opts.agentType,
-    systemPrompt: effectiveSystemPrompt,
-    resolvedLlm: opts.resolvedLlm,
-    hookEmitter: opts.hookEmitter,
-    tools,
-    historySource: contextHistory,
-  });
 
   const abortHandler = () => agent.abort();
   opts.abortSignal?.addEventListener("abort", abortHandler);
