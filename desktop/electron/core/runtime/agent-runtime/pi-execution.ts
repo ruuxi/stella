@@ -1,6 +1,3 @@
-import {
-  shouldIncludeStellaDocumentation,
-} from "../../../../src/shared/contracts/agent-runtime.js";
 import { createRuntimeLogger } from "../debug.js";
 import { createDisplayStreamController } from "./display-stream.js";
 import {
@@ -9,6 +6,11 @@ import {
   finalizeSubagentError,
   finalizeSubagentSuccess,
 } from "./run-completion.js";
+import {
+  buildRuntimeSystemPrompt,
+  buildSubagentSystemPrompt,
+  createUserPromptMessage,
+} from "./run-preparation.js";
 import { subscribeRuntimeAgentEvents } from "./run-events.js";
 import {
   createOrchestratorExecutionSession,
@@ -21,8 +23,6 @@ import {
 import {
   appendThreadMessage,
   buildOrchestratorUserPrompt,
-  buildSelfModDocumentationPrompt,
-  buildSystemPrompt,
 } from "./thread-memory.js";
 import type {
   OrchestratorRunOptions,
@@ -42,21 +42,7 @@ export const runPiOrchestratorTurn = async (
           .catch(() => null)
       : null;
 
-  let effectiveSystemPrompt = buildSystemPrompt(opts.agentContext);
-  if (opts.hookEmitter) {
-    const hookResult = await opts.hookEmitter.emit(
-      "before_agent_start",
-      { agentType: opts.agentType, systemPrompt: effectiveSystemPrompt },
-      { agentType: opts.agentType },
-    );
-    if (hookResult) {
-      if (hookResult.systemPromptReplace) {
-        effectiveSystemPrompt = hookResult.systemPromptReplace;
-      } else if (hookResult.systemPromptAppend) {
-        effectiveSystemPrompt += `\n${hookResult.systemPromptAppend}`;
-      }
-    }
-  }
+  const effectiveSystemPrompt = await buildRuntimeSystemPrompt(opts);
 
   const { runId, threadKey, runEvents, tools, agent } =
     createOrchestratorExecutionSession({
@@ -117,8 +103,7 @@ export const runPiOrchestratorTurn = async (
     });
 
     await agent.prompt({
-      role: "user",
-      content: [{ type: "text", text: promptText }],
+      ...createUserPromptMessage(promptText),
       timestamp: now(),
     });
 
@@ -157,14 +142,7 @@ export const runPiSubagentTask = async (
   opts: SubagentRunOptions,
 ): Promise<SubagentRunResult> => {
   const prompt = opts.userPrompt.trim();
-  const effectiveSystemPrompt = [
-    buildSystemPrompt(opts.agentContext),
-    shouldIncludeStellaDocumentation(opts.agentType)
-      ? buildSelfModDocumentationPrompt(opts.frontendRoot)
-      : "",
-  ]
-    .filter((section) => section.trim().length > 0)
-    .join("\n\n");
+  const effectiveSystemPrompt = buildSubagentSystemPrompt(opts);
   const { runId, threadKey, runEvents, agent } =
     createSubagentExecutionSession({
       ...opts,
@@ -199,8 +177,7 @@ export const runPiSubagentTask = async (
 
   try {
     await agent.prompt({
-      role: "user",
-      content: [{ type: "text", text: prompt }],
+      ...createUserPromptMessage(prompt),
       timestamp: now(),
     });
 
