@@ -23,7 +23,6 @@ export const DEVICE_TOOL_NAMES = [
   "AskUserQuestion",
   "RequestCredential",
   "SkillBash",
-  "MediaGenerate",
   "Schedule",
   "Display",
   "DisplayGuidelines",
@@ -328,31 +327,6 @@ const SkillBashJsonSchema = {
   required: ["skill_id", "command"],
 };
 
-const MediaGenerateJsonSchema = {
-  type: "object",
-  properties: {
-    mode: {
-      type: "string",
-      enum: ["generate", "edit"],
-      description: "Create new or edit existing (default: generate)",
-    },
-    media_type: {
-      type: "string",
-      enum: ["image", "video"],
-      description: "Type of media to produce (default: image)",
-    },
-    prompt: {
-      type: "string",
-      description: "Description of what to generate or how to edit",
-    },
-    source_url: {
-      type: "string",
-      description: "URL of source media to edit (required for mode=edit)",
-    },
-  },
-  required: ["prompt"],
-};
-
 const ScheduleJsonSchema = {
   type: "object",
   properties: {
@@ -618,13 +592,6 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- skill_id must match a skill that has secretMounts configured.\n" +
     "- If the required secret doesn't exist, the user will be prompted via RequestCredential automatically.\n" +
     "- Use this instead of Bash when running commands that need API keys or tokens from a skill.",
-  MediaGenerate:
-    "Generate or edit images and video.\n\n" +
-    "Usage:\n" +
-    '- mode="generate": Create new media from a text prompt.\n' +
-    '- mode="edit": Modify an existing image/video (provide source_url).\n' +
-    "- prompt describes what to generate or how to edit.\n" +
-    '- media_type: "image" or "video".',
   Schedule:
     "Handle local scheduling requests in plain language.\n\n" +
     "Usage:\n" +
@@ -755,7 +722,6 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   AskUserQuestion: AskUserQuestionJsonSchema,
   RequestCredential: RequestCredentialJsonSchema,
   SkillBash: SkillBashJsonSchema,
-  MediaGenerate: MediaGenerateJsonSchema,
   Schedule: ScheduleJsonSchema,
   WebSearch: WebSearchJsonSchema,
   Display: DisplayJsonSchema,
