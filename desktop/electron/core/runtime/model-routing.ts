@@ -4,7 +4,6 @@ import { getLocalLlmCredential } from "./storage/llm-credentials.js";
 import { STELLA_DEFAULT_MODEL } from "./stella-provider.js";
 import { getDirectProviderCandidates } from "./model-routing-direct.js";
 import {
-  buildFallbackRegistryModel,
   findRegistryModel,
   parseModelReference,
   uniqueModelCandidates,
@@ -62,18 +61,6 @@ const resolveDirectProviderRoute = (args: {
         getApiKey: () => directKey,
       };
     }
-
-    const fallbackModel = buildFallbackRegistryModel(
-      directProvider.registryProvider,
-      args.modelId,
-    );
-    if (fallbackModel) {
-      return {
-        model: fallbackModel,
-        route: "direct-provider",
-        getApiKey: () => directKey,
-      };
-    }
   }
 
   if (!directKey && directProvider.allowBaseUrlWithoutCredential) {
@@ -110,20 +97,7 @@ const resolveOpenRouterRoute = (args: {
       getApiKey: () => openrouterKey,
     };
   }
-
-  const fallbackModel = buildFallbackRegistryModel(
-    "openrouter",
-    args.fullModelId,
-  );
-  if (!fallbackModel) {
-    return null;
-  }
-
-  return {
-    model: fallbackModel,
-    route: "direct-openrouter",
-    getApiKey: () => openrouterKey,
-  };
+  return null;
 };
 
 const resolveGatewayRoute = (args: {
@@ -145,20 +119,7 @@ const resolveGatewayRoute = (args: {
       getApiKey: () => gatewayKey,
     };
   }
-
-  const fallbackModel = buildFallbackRegistryModel(
-    "vercel-ai-gateway",
-    args.fullModelId,
-  );
-  if (!fallbackModel) {
-    return null;
-  }
-
-  return {
-    model: fallbackModel,
-    route: "direct-gateway",
-    getApiKey: () => gatewayKey,
-  };
+  return null;
 };
 
 export const canResolveLlmRoute = (args: {

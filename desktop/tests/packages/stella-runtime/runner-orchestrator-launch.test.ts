@@ -117,6 +117,44 @@ describe("runner orchestrator launch helpers", () => {
     expect(queueOrchestratorTurn).toHaveBeenCalledWith(replayTurn);
   });
 
+  it("replays the originally captured interrupted turn even after coordinator cleanup clears state", async () => {
+    const replayTurn = {
+      priority: "system",
+      requeueOnInterrupt: true,
+      execute: vi.fn(),
+    };
+    const queueOrchestratorTurn = vi.fn();
+    const context = {
+      stellaHomePath: "/tmp/stella-home",
+      state: {
+        proxyBaseUrl: "https://demo.convex.site/api/stella/v1",
+        authToken: "token-123",
+        activeOrchestratorRunId: null,
+        activeOrchestratorConversationId: null,
+        activeInterruptedReplayTurn: null,
+        activeRunAbortControllers: new Map<string, AbortController>(),
+      },
+    };
+
+    const prepared = await prepareOrchestratorRun({
+      context: context as never,
+      buildAgentContext: vi.fn().mockResolvedValue({
+        model: "openai/gpt-4.1-mini",
+      }),
+      queueOrchestratorTurn,
+      runId: "run-2b",
+      conversationId: "conv-2",
+      agentType: "orchestrator",
+      userPrompt: "hello",
+      replayTurn,
+    });
+
+    context.state.activeInterruptedReplayTurn = null;
+    prepared.replayInterruptedTurn();
+
+    expect(queueOrchestratorTurn).toHaveBeenCalledWith(replayTurn);
+  });
+
   it("starts a prepared run with generated runtime callbacks", async () => {
     runOrchestratorTurnMock.mockResolvedValue(undefined);
 

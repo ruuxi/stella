@@ -59,11 +59,11 @@ export const prepareOrchestratorRun = async (args: {
 
   const abortController = new AbortController();
   args.context.state.activeRunAbortControllers.set(args.runId, abortController);
+  const replayTurn = args.replayTurn ?? null;
 
   const replayInterruptedTurn = () => {
-    const replayCandidate = args.context.state.activeInterruptedReplayTurn;
-    if (replayCandidate) {
-      args.queueOrchestratorTurn(replayCandidate);
+    if (replayTurn) {
+      args.queueOrchestratorTurn(replayTurn);
     }
   };
 
