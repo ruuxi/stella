@@ -1,15 +1,16 @@
 import crypto from "crypto";
 import {
   shouldIncludeStellaDocumentation,
-  RUNTIME_RUN_EVENT_TYPES,
 } from "../../../../src/shared/contracts/agent-runtime.js";
 import { createRuntimeLogger } from "../debug.js";
 import { createDisplayStreamController } from "./display-stream.js";
 import {
+  createRunEventRecorder,
+  subscribeRuntimeAgentEvents,
+} from "./run-events.js";
+import {
   createRuntimeAgent,
-  extractAssistantText,
   getAgentCompletion,
-  getToolResultPreview,
   now,
 } from "./shared.js";
 import {
@@ -42,8 +43,12 @@ export const runPiOrchestratorTurn = async (
     runId,
     threadId: opts.agentContext.activeThreadId,
   });
-  let seq = 0;
-  const nextSeq = () => ++seq;
+  const runEvents = createRunEventRecorder({
+    store: opts.store,
+    runId,
+    conversationId: opts.conversationId,
+    agentType: opts.agentType,
+  });
   const baselineHead =
     opts.frontendRoot && opts.selfModMonitor
       ? await opts.selfModMonitor
@@ -75,13 +80,7 @@ export const runPiOrchestratorTurn = async (
     }
   }
 
-  opts.store.recordRunEvent({
-    timestamp: now(),
-    runId,
-    conversationId: opts.conversationId,
-    agentType: opts.agentType,
-    type: RUNTIME_RUN_EVENT_TYPES.RUN_START,
-  });
+  runEvents.recordRunStart();
 
   const historySource = buildHistorySource(opts.agentContext);
   const tools = createPiTools({
@@ -133,122 +132,14 @@ export const runPiOrchestratorTurn = async (
 
   const displayStream = createDisplayStreamController(opts.displayHtml);
 
-  const unsubscribe = agent.subscribe((event) => {
-    if (
-      event.type === "message_update" &&
-      event.assistantMessageEvent.type === "text_delta"
-    ) {
-      const chunk = event.assistantMessageEvent.delta;
-      if (!chunk) return;
-      const streamSeq = nextSeq();
-      opts.callbacks.onStream({
-        runId,
-        agentType: opts.agentType,
-        seq: streamSeq,
-        chunk,
-      });
-      opts.store.recordRunEvent({
-        timestamp: now(),
-        runId,
-        conversationId: opts.conversationId,
-        agentType: opts.agentType,
-        seq: streamSeq,
-        type: RUNTIME_RUN_EVENT_TYPES.STREAM,
-        chunk,
-      });
-      return;
-    }
-
-    if (displayStream.handleEvent(event)) {
-      return;
-    }
-
-    if (event.type === "tool_execution_start") {
-      logger.debug("tool.start", {
-        runId,
-        agentType: opts.agentType,
-        toolName: event.toolName,
-        toolCallId: event.toolCallId,
-        args: event.args,
-      });
-      const toolSeq = nextSeq();
-      opts.callbacks.onToolStart({
-        runId,
-        agentType: opts.agentType,
-        seq: toolSeq,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        args: (event.args as Record<string, unknown>) ?? {},
-      });
-      opts.store.recordRunEvent({
-        timestamp: now(),
-        runId,
-        conversationId: opts.conversationId,
-        agentType: opts.agentType,
-        seq: toolSeq,
-        type: RUNTIME_RUN_EVENT_TYPES.TOOL_START,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-      });
-      return;
-    }
-
-    if (event.type === "tool_execution_end") {
-      const preview = getToolResultPreview(event.toolName, event.result);
-      logger.debug("tool.end", {
-        runId,
-        agentType: opts.agentType,
-        toolName: event.toolName,
-        toolCallId: event.toolCallId,
-        resultPreview: preview.slice(0, 200),
-      });
-      const toolSeq = nextSeq();
-      opts.callbacks.onToolEnd({
-        runId,
-        agentType: opts.agentType,
-        seq: toolSeq,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        resultPreview: preview,
-      });
-      opts.store.recordRunEvent({
-        timestamp: now(),
-        runId,
-        conversationId: opts.conversationId,
-        agentType: opts.agentType,
-        seq: toolSeq,
-        type: RUNTIME_RUN_EVENT_TYPES.TOOL_END,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        resultPreview: preview,
-      });
-    }
-
-    if (event.type === "turn_start" && opts.hookEmitter) {
-      void opts.hookEmitter
-        .emit(
-          "turn_start",
-          {
-            agentType: opts.agentType,
-            messageCount: agent.state.messages.length,
-          },
-          { agentType: opts.agentType },
-        )
-        .catch(() => undefined);
-    }
-    if (event.type === "turn_end" && opts.hookEmitter) {
-      const turnText =
-        event.message?.role === "assistant"
-          ? extractAssistantText(event.message)
-          : "";
-      void opts.hookEmitter
-        .emit(
-          "turn_end",
-          { agentType: opts.agentType, assistantText: turnText },
-          { agentType: opts.agentType },
-        )
-        .catch(() => undefined);
-    }
+  const unsubscribe = subscribeRuntimeAgentEvents({
+    agent,
+    runId,
+    agentType: opts.agentType,
+    recorder: runEvents,
+    callbacks: opts.callbacks,
+    displayEventHandler: displayStream.handleEvent,
+    hookEmitter: opts.hookEmitter,
   });
 
   try {
@@ -333,26 +224,12 @@ export const runPiOrchestratorTurn = async (
       }
     }
 
-    const endSeq = nextSeq();
-    opts.store.recordRunEvent({
-      timestamp: now(),
-      runId,
-      conversationId: opts.conversationId,
-      agentType: opts.agentType,
-      seq: endSeq,
-      type: RUNTIME_RUN_EVENT_TYPES.RUN_END,
-      finalText,
-      ...(selfModApplied ? { selfModApplied } : {}),
-    });
-
-    opts.callbacks.onEnd({
-      runId,
-      agentType: opts.agentType,
-      seq: endSeq,
-      finalText,
-      persisted: true,
-      ...(selfModApplied ? { selfModApplied } : {}),
-    });
+    opts.callbacks.onEnd(
+      runEvents.recordRunEnd({
+        finalText,
+        ...(selfModApplied ? { selfModApplied } : {}),
+      }),
+    );
     updateOrchestratorReminderState(opts.store, {
       conversationId: opts.conversationId,
       shouldInjectDynamicReminder:
@@ -363,26 +240,7 @@ export const runPiOrchestratorTurn = async (
     return runId;
   } catch (error) {
     const errorMessage = (error as Error).message || "Stella runtime failed";
-    const errSeq = nextSeq();
-
-    opts.store.recordRunEvent({
-      timestamp: now(),
-      runId,
-      conversationId: opts.conversationId,
-      agentType: opts.agentType,
-      seq: errSeq,
-      type: RUNTIME_RUN_EVENT_TYPES.ERROR,
-      error: errorMessage,
-      fatal: true,
-    });
-
-    opts.callbacks.onError({
-      runId,
-      agentType: opts.agentType,
-      seq: errSeq,
-      error: errorMessage,
-      fatal: true,
-    });
+    opts.callbacks.onError(runEvents.recordError(errorMessage));
     throw error;
   } finally {
     displayStream.dispose();
@@ -410,17 +268,15 @@ export const runPiSubagentTask = async (
     runId,
     threadId: opts.agentContext.activeThreadId,
   });
-  let seq = 0;
-  const nextSeq = () => ++seq;
-  let finalText = "";
-
-  opts.store.recordRunEvent({
-    timestamp: now(),
+  const runEvents = createRunEventRecorder({
+    store: opts.store,
     runId,
     conversationId: opts.conversationId,
     agentType: opts.agentType,
-    type: RUNTIME_RUN_EVENT_TYPES.RUN_START,
   });
+  let finalText = "";
+
+  runEvents.recordRunStart();
 
   if (prompt) {
     appendThreadMessage(opts.store, {
@@ -431,17 +287,7 @@ export const runPiSubagentTask = async (
   }
 
   if (opts.abortSignal?.aborted) {
-    const errSeq = nextSeq();
-    opts.store.recordRunEvent({
-      timestamp: now(),
-      runId,
-      conversationId: opts.conversationId,
-      agentType: opts.agentType,
-      seq: errSeq,
-      type: RUNTIME_RUN_EVENT_TYPES.ERROR,
-      error: "Aborted",
-      fatal: true,
-    });
+    runEvents.recordError("Aborted");
     return { runId, result: "", error: "Aborted" };
   }
 
@@ -477,80 +323,13 @@ export const runPiSubagentTask = async (
   const abortHandler = () => agent.abort();
   opts.abortSignal?.addEventListener("abort", abortHandler);
 
-  const unsubscribe = agent.subscribe((event) => {
-    if (
-      event.type === "message_update" &&
-      event.assistantMessageEvent.type === "text_delta"
-    ) {
-      const chunk = event.assistantMessageEvent.delta;
-      if (chunk) {
-        opts.onProgress?.(chunk);
-        const streamSeq = nextSeq();
-        opts.store.recordRunEvent({
-          timestamp: now(),
-          runId,
-          conversationId: opts.conversationId,
-          agentType: opts.agentType,
-          seq: streamSeq,
-          type: RUNTIME_RUN_EVENT_TYPES.STREAM,
-          chunk,
-        });
-        opts.callbacks?.onStream?.({
-          runId,
-          agentType: opts.agentType,
-          seq: streamSeq,
-          chunk,
-        });
-      }
-      return;
-    }
-
-    if (event.type === "tool_execution_start") {
-      const toolSeq = nextSeq();
-      opts.store.recordRunEvent({
-        timestamp: now(),
-        runId,
-        conversationId: opts.conversationId,
-        agentType: opts.agentType,
-        seq: toolSeq,
-        type: RUNTIME_RUN_EVENT_TYPES.TOOL_START,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-      });
-      opts.callbacks?.onToolStart?.({
-        runId,
-        agentType: opts.agentType,
-        seq: toolSeq,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        args: (event.args as Record<string, unknown>) ?? {},
-      });
-      return;
-    }
-
-    if (event.type === "tool_execution_end") {
-      const preview = getToolResultPreview(event.toolName, event.result);
-      const toolSeq = nextSeq();
-      opts.store.recordRunEvent({
-        timestamp: now(),
-        runId,
-        conversationId: opts.conversationId,
-        agentType: opts.agentType,
-        seq: toolSeq,
-        type: RUNTIME_RUN_EVENT_TYPES.TOOL_END,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        resultPreview: preview,
-      });
-      opts.callbacks?.onToolEnd?.({
-        runId,
-        agentType: opts.agentType,
-        seq: toolSeq,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        resultPreview: preview,
-      });
-    }
+  const unsubscribe = subscribeRuntimeAgentEvents({
+    agent,
+    runId,
+    agentType: opts.agentType,
+    recorder: runEvents,
+    callbacks: opts.callbacks,
+    onProgress: opts.onProgress,
   });
 
   try {
@@ -572,23 +351,7 @@ export const runPiSubagentTask = async (
       agentType: opts.agentType,
       content: result,
     });
-    const endSeq = nextSeq();
-    opts.store.recordRunEvent({
-      timestamp: now(),
-      runId,
-      conversationId: opts.conversationId,
-      agentType: opts.agentType,
-      seq: endSeq,
-      type: RUNTIME_RUN_EVENT_TYPES.RUN_END,
-      finalText: result,
-    });
-    opts.callbacks?.onEnd?.({
-      runId,
-      agentType: opts.agentType,
-      seq: endSeq,
-      finalText,
-      persisted: true,
-    });
+    opts.callbacks?.onEnd?.(runEvents.recordRunEnd({ finalText: result }));
 
     return {
       runId,
@@ -596,24 +359,7 @@ export const runPiSubagentTask = async (
     };
   } catch (error) {
     const errorMessage = (error as Error).message || "Subagent failed";
-    const errSeq = nextSeq();
-    opts.store.recordRunEvent({
-      timestamp: now(),
-      runId,
-      conversationId: opts.conversationId,
-      agentType: opts.agentType,
-      seq: errSeq,
-      type: RUNTIME_RUN_EVENT_TYPES.ERROR,
-      error: errorMessage,
-      fatal: true,
-    });
-    opts.callbacks?.onError?.({
-      runId,
-      agentType: opts.agentType,
-      seq: errSeq,
-      error: errorMessage,
-      fatal: true,
-    });
+    opts.callbacks?.onError?.(runEvents.recordError(errorMessage));
     return {
       runId,
       result: "",
