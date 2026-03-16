@@ -1,16 +1,19 @@
-import { getModels } from "../ai/models.js";
 import type { Api, Model } from "../ai/types.js";
 import { AGENT_IDS } from "../../../src/shared/contracts/agent-runtime.js";
 import { getLocalLlmCredential } from "./storage/llm-credentials.js";
+import { STELLA_DEFAULT_MODEL } from "./stella-provider.js";
+import { getDirectProviderCandidates } from "./model-routing-direct.js";
 import {
-  normalizeStellaApiBaseUrl,
-  STELLA_DEFAULT_MODEL,
-} from "./stella-provider.js";
-
-type StellaProxyConfig = {
-  baseUrl: string | null;
-  getAuthToken: () => string | null | undefined;
-};
+  buildFallbackRegistryModel,
+  findRegistryModel,
+  parseModelReference,
+  uniqueModelCandidates,
+} from "./model-routing-matching.js";
+import {
+  createStellaRoute,
+  STELLA_PROVIDER,
+  type StellaProxyConfig,
+} from "./model-routing-stella.js";
 
 export type ResolvedLlmRoute = {
   model: Model<Api>;
@@ -18,274 +21,143 @@ export type ResolvedLlmRoute = {
   getApiKey: () => string | undefined;
 };
 
-const STELLA_CONTEXT_WINDOW = 256_000;
-const STELLA_MAX_TOKENS = 16_384;
-const STELLA_PROVIDER = "stella";
-const DATED_MODEL_SUFFIX_RE = /-\d{8}$/;
-
-const DEFAULT_DIRECT_MODEL_IDS: Record<string, string> = {
-  anthropic: "claude-opus-4-6",
-  openai: "gpt-5.4",
-  "openai-codex": "gpt-5.4",
-  google: "gemini-2.5-pro",
-  groq: "openai/gpt-oss-120b",
-  mistral: "mistral-medium-2508",
-  opencode: "claude-opus-4-6",
-  cerebras: "zai-glm-4.6",
-  xai: "grok-4-fast-non-reasoning",
-  zai: "glm-4.6",
-  "kimi-coding": "kimi-k2-thinking",
-  openrouter: "openai/gpt-5.1-codex",
-  "vercel-ai-gateway": "anthropic/claude-opus-4-6",
-};
-
-const createStellaModel = (
-  proxyBaseUrl: string,
-  modelId: string,
-  agentType: string,
-): Model<"openai-completions"> => ({
-  id: modelId,
-  name:
-    modelId === STELLA_DEFAULT_MODEL
-      ? "Stella Recommended"
-      : modelId.replace(/^stella\//, ""),
-  api: "openai-completions",
-  provider: STELLA_PROVIDER,
-  baseUrl: normalizeStellaApiBaseUrl(proxyBaseUrl),
-  reasoning: true,
-  input: ["text", "image"],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: STELLA_CONTEXT_WINDOW,
-  maxTokens: STELLA_MAX_TOKENS,
-  headers: {
-    "X-Stella-Agent-Type": agentType,
-  },
-  compat: {
-    supportsDeveloperRole: true,
-    supportsReasoningEffort: true,
-    supportsUsageInStreaming: true,
-    maxTokensField: "max_completion_tokens",
-    supportsStrictMode: false,
-  },
-});
-
-const normalizeStellaBase = (
-  value: string | null | undefined,
-): string | null => {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const normalized = trimmed.replace(/\/+$/, "");
-  if (normalized.includes("/api/stella/v1")) {
-    return normalized;
-  }
-  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/stella/v1`;
-};
-
-const parseModel = (
-  rawModel: string | undefined,
-): { provider: string; modelId: string; fullModelId: string } | null => {
-  const value = rawModel?.trim();
-  if (!value) return null;
-  if (!value.includes("/")) {
-    return {
-      provider: value,
-      modelId: value,
-      fullModelId: value,
-    };
-  }
-  const parts = value.split("/");
-  const provider = (parts.shift() || "").trim().toLowerCase();
-  const modelId = parts.join("/").trim();
-  if (!provider || !modelId) return null;
-  return {
-    provider,
-    modelId,
-    fullModelId: `${provider}/${modelId}`,
-  };
-};
-
-const unique = (values: string[]): string[] =>
-  Array.from(new Set(values.filter(Boolean)));
-
-const isAliasModelId = (id: string): boolean =>
-  id.endsWith("-latest") || !DATED_MODEL_SUFFIX_RE.test(id);
-
 const getCredential = (
   stellaHomePath: string,
   providerId: string,
-): string | null => {
-  return getLocalLlmCredential(stellaHomePath, providerId);
-};
+): string | null => getLocalLlmCredential(stellaHomePath, providerId);
 
-const getDirectProviderCandidates = (
-  provider: string,
-  modelId: string,
-): {
-  credentialProvider: string;
-  registryProvider: string;
-  candidates: string[];
-  allowBaseUrlWithoutCredential?: boolean;
-} | null => {
-  switch (provider) {
-    case "anthropic":
-      return {
-        credentialProvider: "anthropic",
-        registryProvider: "anthropic",
-        candidates: unique([modelId, modelId.replace(/\./g, "-")]),
-      };
-    case "moonshotai":
-      return {
-        credentialProvider: "kimi-coding",
-        registryProvider: "kimi-coding",
-        candidates: unique([
-          modelId,
-          modelId.replace(/\./g, "-"),
-          modelId === "kimi-k2.5" ? "k2p5" : "",
-          modelId === "kimi-k2" ? "kimi-k2" : "",
-        ]),
-      };
-    case "openai":
-    case "openai-codex":
-    case "google":
-    case "groq":
-    case "mistral":
-    case "opencode":
-    case "cerebras":
-    case "xai":
-    case "zai":
-      return {
-        credentialProvider: provider,
-        registryProvider: provider,
-        candidates: unique([modelId, modelId.replace(/\./g, "-")]),
-      };
-    default: {
-      const extensionModels = getModels(provider as never) as Model<Api>[];
-      if (extensionModels.length > 0) {
-        return {
-          credentialProvider: provider,
-          registryProvider: provider,
-          allowBaseUrlWithoutCredential: true,
-          candidates: unique([modelId, modelId.replace(/\./g, "-")]),
-        };
-      }
-      return null;
-    }
-  }
-};
+const getGatewayCredential = (stellaHomePath: string): string | null =>
+  getCredential(stellaHomePath, "vercel-ai-gateway");
 
-const findRegistryModel = (
-  registryProvider: string,
-  requestedCandidates: string[],
-): Model<Api> | null => {
-  const models = getModels(registryProvider as never) as Model<Api>[];
-  if (!Array.isArray(models) || models.length === 0) {
+const resolveDirectProviderRoute = (args: {
+  stellaHomePath: string;
+  provider: string;
+  modelId: string;
+  fullModelId: string;
+}): ResolvedLlmRoute | null => {
+  const directProvider = getDirectProviderCandidates(args.provider, args.modelId);
+  if (!directProvider) {
     return null;
   }
 
-  for (const candidate of requestedCandidates) {
-    const exact = models.find((model) => model.id === candidate);
-    if (exact) {
-      return exact;
-    }
-  }
+  const directKey = getCredential(
+    args.stellaHomePath,
+    directProvider.credentialProvider,
+  );
 
-  for (const candidate of requestedCandidates) {
-    const canonical = models.find(
-      (model) => `${model.provider}/${model.id}` === candidate,
+  const requestedCandidates = uniqueModelCandidates([
+    args.fullModelId,
+    ...directProvider.candidates,
+  ]);
+
+  if (directKey) {
+    const directModel = findRegistryModel(
+      directProvider.registryProvider,
+      requestedCandidates,
     );
-    if (canonical) {
-      return canonical;
+    if (directModel) {
+      return {
+        model: directModel,
+        route: "direct-provider",
+        getApiKey: () => directKey,
+      };
     }
-  }
 
-  for (const candidate of requestedCandidates) {
-    const normalizedCandidate = candidate.replace(/\./g, "-");
-    const prefix = `${normalizedCandidate}-`;
-    const prefixed = models.find(
-      (model) =>
-        model.id === normalizedCandidate || model.id.startsWith(prefix),
+    const fallbackModel = buildFallbackRegistryModel(
+      directProvider.registryProvider,
+      args.modelId,
     );
-    if (prefixed) {
-      return prefixed;
+    if (fallbackModel) {
+      return {
+        model: fallbackModel,
+        route: "direct-provider",
+        getApiKey: () => directKey,
+      };
     }
   }
 
-  const partialMatches = requestedCandidates.flatMap((candidate) => {
-    const normalizedCandidate = candidate.trim().toLowerCase();
-    if (!normalizedCandidate) {
-      return [];
+  if (!directKey && directProvider.allowBaseUrlWithoutCredential) {
+    const directModel = findRegistryModel(
+      directProvider.registryProvider,
+      requestedCandidates,
+    );
+    if (directModel?.baseUrl) {
+      return {
+        model: directModel,
+        route: "direct-provider",
+        getApiKey: () => "",
+      };
     }
-    return models.filter((model) => {
-      const modelId = model.id.toLowerCase();
-      const modelName = model.name?.toLowerCase() ?? "";
-      const canonicalId = `${model.provider}/${model.id}`.toLowerCase();
-      return (
-        modelId.includes(normalizedCandidate) ||
-        modelName.includes(normalizedCandidate) ||
-        canonicalId.includes(normalizedCandidate)
-      );
-    });
-  });
-
-  if (partialMatches.length > 0) {
-    const uniqueMatches = Array.from(new Set(partialMatches));
-    uniqueMatches.sort((left, right) => {
-      const aliasScore = Number(isAliasModelId(right.id)) - Number(isAliasModelId(left.id));
-      if (aliasScore !== 0) {
-        return aliasScore;
-      }
-      return right.id.localeCompare(left.id);
-    });
-    return uniqueMatches[0] ?? null;
   }
 
   return null;
 };
 
-const buildFallbackModel = (
-  registryProvider: string,
-  requestedModelId: string,
-): Model<Api> | null => {
-  const models = getModels(registryProvider as never) as Model<Api>[];
-  if (!Array.isArray(models) || models.length === 0) {
+const resolveOpenRouterRoute = (args: {
+  stellaHomePath: string;
+  fullModelId: string;
+}): ResolvedLlmRoute | null => {
+  const openrouterKey = getCredential(args.stellaHomePath, "openrouter");
+  if (!openrouterKey) {
     return null;
   }
 
-  const preferredId = DEFAULT_DIRECT_MODEL_IDS[registryProvider];
-  const baseModel = preferredId
-    ? models.find((model) => model.id === preferredId) ?? models[0]
-    : models[0];
+  const openrouterModel = findRegistryModel("openrouter", [args.fullModelId]);
+  if (openrouterModel) {
+    return {
+      model: openrouterModel,
+      route: "direct-openrouter",
+      getApiKey: () => openrouterKey,
+    };
+  }
 
-  if (!baseModel) {
+  const fallbackModel = buildFallbackRegistryModel(
+    "openrouter",
+    args.fullModelId,
+  );
+  if (!fallbackModel) {
     return null;
   }
 
   return {
-    ...baseModel,
-    id: requestedModelId,
-    name: requestedModelId,
+    model: fallbackModel,
+    route: "direct-openrouter",
+    getApiKey: () => openrouterKey,
   };
 };
 
-const getGatewayCredential = (stellaHomePath: string): string | null =>
-  getCredential(stellaHomePath, "vercel-ai-gateway");
-
-const createStellaRoute = (args: {
-  proxy: StellaProxyConfig;
-  agentType: string;
-  modelId: string;
+const resolveGatewayRoute = (args: {
+  stellaHomePath: string;
+  fullModelId: string;
 }): ResolvedLlmRoute | null => {
-  const proxyBaseUrl = normalizeStellaBase(args.proxy.baseUrl);
-  const authToken = args.proxy.getAuthToken()?.trim();
-  if (!proxyBaseUrl || !authToken) {
+  const gatewayKey = getGatewayCredential(args.stellaHomePath);
+  if (!gatewayKey) {
+    return null;
+  }
+
+  const gatewayModel = findRegistryModel("vercel-ai-gateway", [
+    args.fullModelId,
+  ]);
+  if (gatewayModel) {
+    return {
+      model: gatewayModel,
+      route: "direct-gateway",
+      getApiKey: () => gatewayKey,
+    };
+  }
+
+  const fallbackModel = buildFallbackRegistryModel(
+    "vercel-ai-gateway",
+    args.fullModelId,
+  );
+  if (!fallbackModel) {
     return null;
   }
 
   return {
-    route: "stella",
-    model: createStellaModel(proxyBaseUrl, args.modelId, args.agentType),
-    getApiKey: () => args.proxy.getAuthToken()?.trim() || authToken,
+    model: fallbackModel,
+    route: "direct-gateway",
+    getApiKey: () => gatewayKey,
   };
 };
 
@@ -312,7 +184,7 @@ export const resolveLlmRoute = (args: {
   agentType: string;
   proxy: StellaProxyConfig;
 }): ResolvedLlmRoute => {
-  const parsed = parseModel(args.modelName);
+  const parsed = parseModelReference(args.modelName);
 
   if (parsed?.provider === STELLA_PROVIDER) {
     const route = createStellaRoute({
@@ -326,104 +198,36 @@ export const resolveLlmRoute = (args: {
   }
 
   if (parsed) {
-    const { provider, modelId, fullModelId } = parsed;
-
-    const directProvider = getDirectProviderCandidates(provider, modelId);
-    if (directProvider) {
-      const directKey = getCredential(
-        args.stellaHomePath,
-        directProvider.credentialProvider,
-      );
-      if (directKey) {
-        const directModel = findRegistryModel(
-          directProvider.registryProvider,
-          unique([fullModelId, ...directProvider.candidates]),
-        );
-        if (directModel) {
-          return {
-            model: directModel,
-            route: "direct-provider",
-            getApiKey: () => directKey,
-          };
-        }
-
-        const fallbackModel = buildFallbackModel(
-          directProvider.registryProvider,
-          modelId,
-        );
-        if (fallbackModel) {
-          return {
-            model: fallbackModel,
-            route: "direct-provider",
-            getApiKey: () => directKey,
-          };
-        }
-      }
-
-      if (!directKey && directProvider.allowBaseUrlWithoutCredential) {
-        const directModel = findRegistryModel(
-          directProvider.registryProvider,
-          unique([fullModelId, ...directProvider.candidates]),
-        );
-        if (directModel?.baseUrl) {
-          return {
-            model: directModel,
-            route: "direct-provider",
-            getApiKey: () => "",
-          };
-        }
-      }
+    const directProviderRoute = resolveDirectProviderRoute({
+      stellaHomePath: args.stellaHomePath,
+      provider: parsed.provider,
+      modelId: parsed.modelId,
+      fullModelId: parsed.fullModelId,
+    });
+    if (directProviderRoute) {
+      return directProviderRoute;
     }
 
-    const openrouterKey = getCredential(args.stellaHomePath, "openrouter");
-    if (openrouterKey) {
-      const openrouterModel = findRegistryModel("openrouter", [fullModelId]);
-      if (openrouterModel) {
-        return {
-          model: openrouterModel,
-          route: "direct-openrouter",
-          getApiKey: () => openrouterKey,
-        };
-      }
-      const fallbackModel = buildFallbackModel("openrouter", fullModelId);
-      if (fallbackModel) {
-        return {
-          model: fallbackModel,
-          route: "direct-openrouter",
-          getApiKey: () => openrouterKey,
-        };
-      }
+    const openRouterRoute = resolveOpenRouterRoute({
+      stellaHomePath: args.stellaHomePath,
+      fullModelId: parsed.fullModelId,
+    });
+    if (openRouterRoute) {
+      return openRouterRoute;
     }
 
-    const gatewayKey = getGatewayCredential(args.stellaHomePath);
-    if (gatewayKey) {
-      const gatewayModel = findRegistryModel("vercel-ai-gateway", [
-        fullModelId,
-      ]);
-      if (gatewayModel) {
-        return {
-          model: gatewayModel,
-          route: "direct-gateway",
-          getApiKey: () => gatewayKey,
-        };
-      }
-      const fallbackModel = buildFallbackModel(
-        "vercel-ai-gateway",
-        fullModelId,
-      );
-      if (fallbackModel) {
-        return {
-          model: fallbackModel,
-          route: "direct-gateway",
-          getApiKey: () => gatewayKey,
-        };
-      }
+    const gatewayRoute = resolveGatewayRoute({
+      stellaHomePath: args.stellaHomePath,
+      fullModelId: parsed.fullModelId,
+    });
+    if (gatewayRoute) {
+      return gatewayRoute;
     }
 
     const stellaRoute = createStellaRoute({
       proxy: args.proxy,
       agentType: args.agentType,
-      modelId: `${STELLA_PROVIDER}/${fullModelId}`,
+      modelId: `${STELLA_PROVIDER}/${parsed.fullModelId}`,
     });
     if (stellaRoute) {
       return stellaRoute;
