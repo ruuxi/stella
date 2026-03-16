@@ -435,3 +435,25 @@ export type VoiceRuntimeSnapshot = {
   micLevel: number
   outputLevel: number
 }
+
+export type SocialSessionRuntimeRecord = {
+  sessionId: string
+  role: 'host' | 'follower'
+  hostDeviceId: string
+  isActiveHost: boolean
+  localFolderPath: string
+  localFolderName: string
+  lastAppliedFileOpOrdinal: number
+  lastObservedTurnOrdinal: number
+}
+
+export type SocialSessionServiceSnapshot = {
+  enabled: boolean
+  status: 'stopped' | 'connecting' | 'running' | 'error'
+  deviceId?: string
+  sessionCount: number
+  sessions: SocialSessionRuntimeRecord[]
+  lastError?: string
+  lastSyncAt?: number
+  processingTurnId?: string
+}

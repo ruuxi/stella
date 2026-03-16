@@ -13,6 +13,6 @@
     "types": ["node"],
     "composite": true,
   },
-  "include": ["electron/**/*", "src/shared/contracts/**/*", "src/shared/ai/**/*"],
+  "include": ["electron/**/*", "src/shared/contracts/**/*", "src/shared/ai/**/*", "src/convex/api.ts"],
   "exclude": ["electron/preload.ts", "**/*.test.ts"],
 }

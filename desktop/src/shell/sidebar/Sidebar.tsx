@@ -13,6 +13,7 @@ import PlusSquare from "lucide-react/dist/esm/icons/square-plus";
 import Settings from "lucide-react/dist/esm/icons/settings";
 import Sparkles from "lucide-react/dist/esm/icons/sparkles";
 import User from "lucide-react/dist/esm/icons/user";
+import Users from "lucide-react/dist/esm/icons/users";
 import LogIn from "lucide-react/dist/esm/icons/log-in";
 import "./sidebar.css";
 
@@ -28,6 +29,7 @@ interface SidebarProps {
   onStore?: () => void;
   onHome?: () => void;
   onChat?: () => void;
+  onSocial?: () => void;
   onNewApp?: () => void;
   onNewAppAskStella?: () => void;
   onNewAppLocalProject?: () => void;
@@ -79,6 +81,7 @@ export const Sidebar = ({
   onStore,
   onHome,
   onChat,
+  onSocial,
   onNewApp,
   onNewAppAskStella,
   onNewAppLocalProject,
@@ -129,6 +132,16 @@ export const Sidebar = ({
             <MessageSquare size={18} />
           </span>
           <span className="sidebar-nav-label">Chat</span>
+        </button>
+        <button
+          type="button"
+          className={`sidebar-nav-item ${activeView === "social" ? "sidebar-nav-item--active" : ""}`}
+          onClick={onSocial}
+        >
+          <span className="sidebar-nav-icon">
+            <Users size={18} />
+          </span>
+          <span className="sidebar-nav-label">Social</span>
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

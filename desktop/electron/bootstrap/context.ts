@@ -12,9 +12,11 @@ import { SecurityPolicyService } from "../services/security-policy-service.js";
 import { DevProjectService } from "../services/dev-project-service.js";
 import { LocalSchedulerService } from "../services/local-scheduler-service.js";
 import { UiStateService } from "../services/ui-state-service.js";
+import { SocialSessionService } from "../services/social-session-service.js";
 import { ChatStore } from "../storage/chat-store.js";
 import { RuntimeStore } from "../storage/runtime-store.js";
 import { StoreModStore } from "../storage/store-mod-store.js";
+import { SocialSessionStore } from "../storage/social-session-store.js";
 import type { SqliteDatabase } from "../storage/shared.js";
 import type { WakeWordController } from "../wake-word/initialize.js";
 import { WindowManager } from "../windows/window-manager.js";
@@ -44,7 +46,10 @@ export type BootstrapState = {
   overlayController: OverlayWindowController | null;
   runtimeStore: RuntimeStore | null;
   schedulerService: LocalSchedulerService | null;
+  socialSessionStore: SocialSessionStore | null;
+  socialSessionService: SocialSessionService | null;
   stellaHomePath: string | null;
+  stellaWorkspacePath: string | null;
   stellaHostRunner: StellaHostRunner | null;
   storeModService: StoreModService | null;
   storeModStore: StoreModStore | null;
@@ -61,6 +66,7 @@ export type BootstrapServices = {
   miniBridgeService: MiniBridgeService;
   radialGestureService: RadialGestureService;
   securityPolicyService: SecurityPolicyService;
+  socialSessionService: SocialSessionService;
   uiStateService: UiStateService;
 };
 
@@ -155,7 +161,10 @@ export const createBootstrapContext = (
     overlayController: null,
     runtimeStore: null,
     schedulerService: null,
+    socialSessionStore: null,
+    socialSessionService: null,
     stellaHomePath: null,
+    stellaWorkspacePath: null,
     stellaHostRunner: null,
     storeModService: null,
     storeModStore: null,
@@ -170,6 +179,13 @@ export const createBootstrapContext = (
   const devProjectService = new DevProjectService(lifecycle);
   const externalLinkService = new ExternalLinkService();
   const miniBridgeService = new MiniBridgeService();
+  const socialSessionService = new SocialSessionService({
+    getWorkspaceRoot: () => state.stellaWorkspacePath,
+    getDeviceId: () => state.deviceId,
+    getRunner: () => state.stellaHostRunner,
+    getChatStore: () => state.chatStore,
+    getStore: () => state.socialSessionStore,
+  });
 
   const securityPolicyService = new SecurityPolicyService({
     windowManagerTarget: lifecycle,
@@ -274,8 +290,10 @@ export const createBootstrapContext = (
     miniBridgeService,
     radialGestureService,
     securityPolicyService,
+    socialSessionService,
     uiStateService,
   };
+  state.socialSessionService = socialSessionService;
 
   devProjectService.subscribe(() => {
     broadcastDevProjectsChanged(context);
