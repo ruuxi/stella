@@ -295,10 +295,10 @@ export const listActiveThreads = internalQuery({
       .withIndex("by_conversationId_and_status_and_lastUsedAt", (q) =>
         q.eq("conversationId", args.conversationId).eq("status", "active"),
       )
-      .collect();
+      .order("desc")
+      .take(MAX_THREADS_PER_CONVERSATION);
 
-    // Sort by lastUsedAt desc (most recent first)
-    return threads.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+    return threads;
   },
 });
 
@@ -458,16 +458,14 @@ export const deleteMessagesBefore = internalMutation({
     const messages = await ctx.db
       .query("thread_messages")
       .withIndex("by_threadId_and_ordinal", (q) =>
-        q.eq("threadId", args.threadId),
+        q.eq("threadId", args.threadId).lt("ordinal", args.beforeOrdinal),
       )
       .collect();
 
     let deleted = 0;
     for (const msg of messages) {
-      if (msg.ordinal < args.beforeOrdinal) {
-        await ctx.db.delete(msg._id);
-        deleted++;
-      }
+      await ctx.db.delete(msg._id);
+      deleted++;
     }
 
     return deleted;
@@ -595,9 +593,7 @@ export const finalizeThreadCompaction = internalMutation({
       .withIndex("by_threadId_and_ordinal", (q) => q.eq("threadId", args.threadId))
       .collect();
     const dropped = allMessages.filter((msg) => msg.ordinal < args.keepFromOrdinal);
-    const retained = allMessages
-      .filter((msg) => msg.ordinal >= args.keepFromOrdinal)
-      .sort((a, b) => a.ordinal - b.ordinal);
+    const retained = allMessages.filter((msg) => msg.ordinal >= args.keepFromOrdinal);
     for (const msg of dropped) {
       await ctx.db.delete(msg._id);
     }
