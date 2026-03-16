@@ -10,6 +10,7 @@ import { usersSchema } from "../convex/schema/users";
 import { billingSchema } from "../convex/schema/billing";
 import { cronScheduleValidator, cronPayloadValidator } from "../convex/schema/scheduling";
 import { mediaSchema } from "../convex/schema/media";
+import { socialSchema } from "../convex/schema/social";
 
 describe("schema modules export table definitions", () => {
   test("agentsSchema is a non-empty object", () => {
@@ -65,6 +66,11 @@ describe("schema modules export table definitions", () => {
   test("mediaSchema is a non-empty object", () => {
     expect(typeof mediaSchema).toBe("object");
     expect(Object.keys(mediaSchema).length).toBeGreaterThan(0);
+  });
+
+  test("socialSchema is a non-empty object", () => {
+    expect(typeof socialSchema).toBe("object");
+    expect(Object.keys(socialSchema).length).toBeGreaterThan(0);
   });
 });
 
