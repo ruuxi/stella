@@ -238,6 +238,48 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
+
+  llm_best: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  llm_fast: {
+    model: "google/gemini-3-flash",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 0.8,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  media_llm: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock", "cerebras"],
+      },
+    },
+  },
   music_prompt: {
     model: "google/gemini-3-flash",
     fallback: "zai/glm-4.7",
@@ -333,3 +375,6 @@ export function hasModelConfig(agentType: string): boolean {
 }
 
 export { DEFAULT_MODEL, AGENT_MODELS };
+
+
+

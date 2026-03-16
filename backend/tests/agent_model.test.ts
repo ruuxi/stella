@@ -6,7 +6,14 @@ import {
   hasModelConfig,
 } from "../convex/agent/model";
 import type { ModelConfig } from "../convex/agent/model";
-import { listStellaDefaultSelections } from "../convex/stella_models";
+import {
+  listStellaCatalogModels,
+  listStellaDefaultSelections,
+  resolveStellaModelSelection,
+  STELLA_BEST_MODEL,
+  STELLA_FAST_MODEL,
+  STELLA_MEDIA_MODEL,
+} from "../convex/stella_models";
 
 describe("DEFAULT_MODEL", () => {
   test("has a model string", () => {
@@ -49,6 +56,13 @@ describe("AGENT_MODELS", () => {
   test("includes mercury config", () => {
     expect(AGENT_MODELS.mercury).toBeDefined();
     expect(AGENT_MODELS.mercury.model).toBe("inception/mercury-2");
+  });
+
+  test("includes llm and media llm configs", () => {
+    expect(AGENT_MODELS.llm_best).toBeDefined();
+    expect(AGENT_MODELS.llm_fast).toBeDefined();
+    expect(AGENT_MODELS.media_llm).toBeDefined();
+    expect(AGENT_MODELS.llm_fast.model).toBe("google/gemini-3-flash");
   });
 
   test("each config has required model field", () => {
@@ -137,3 +151,41 @@ describe("listStellaDefaultSelections", () => {
     });
   });
 });
+
+describe("Stella SDK aliases", () => {
+  test("resolves stable best/fast/media aliases", () => {
+    expect(resolveStellaModelSelection("general", STELLA_BEST_MODEL)).toBe(
+      AGENT_MODELS.llm_best.model,
+    );
+    expect(resolveStellaModelSelection("general", STELLA_FAST_MODEL)).toBe(
+      AGENT_MODELS.llm_fast.model,
+    );
+    expect(resolveStellaModelSelection("general", STELLA_MEDIA_MODEL)).toBe(
+      AGENT_MODELS.media_llm.model,
+    );
+  });
+
+  test("publishes stable aliases in the Stella catalog", () => {
+    const catalog = listStellaCatalogModels();
+    expect(catalog).toContainEqual(
+      expect.objectContaining({
+        id: STELLA_BEST_MODEL,
+        upstreamModel: AGENT_MODELS.llm_best.model,
+      }),
+    );
+    expect(catalog).toContainEqual(
+      expect.objectContaining({
+        id: STELLA_FAST_MODEL,
+        upstreamModel: AGENT_MODELS.llm_fast.model,
+      }),
+    );
+    expect(catalog).toContainEqual(
+      expect.objectContaining({
+        id: STELLA_MEDIA_MODEL,
+        upstreamModel: AGENT_MODELS.media_llm.model,
+        type: "multimodal",
+      }),
+    );
+  });
+});
+
