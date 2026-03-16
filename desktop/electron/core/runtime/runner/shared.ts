@@ -51,6 +51,39 @@ export const sanitizeConvexDeploymentUrl = (
   return trimmed.replace(/\/+$/, "");
 };
 
+export const buildManagedMediaDocsUrl = (
+  convexDeploymentUrl: string | null | undefined,
+): string | null => {
+  const normalized = sanitizeConvexDeploymentUrl(convexDeploymentUrl ?? null);
+  if (!normalized) return null;
+
+  try {
+    const url = new URL(normalized);
+    if (url.hostname.endsWith(".convex.cloud")) {
+      url.hostname = url.hostname.replace(/\.convex\.cloud$/i, ".convex.site");
+    }
+    url.pathname = "/api/media/v1/docs";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
+
+export const buildManagedMediaDocsPrompt = (
+  convexDeploymentUrl: string | null | undefined,
+): string => {
+  const docsUrl = buildManagedMediaDocsUrl(convexDeploymentUrl);
+  if (!docsUrl) return "";
+
+  return [
+    "Managed backend media SDK:",
+    `- Latest docs: ${docsUrl}`,
+    `- Before wiring media generation or media analysis features, fetch the live docs with \`curl -L "${docsUrl}"\` so you use the latest backend contract and examples.`,
+  ].join("\n");
+};
+
 export const sanitizeStellaBase = (value: string | null): string | null => {
   if (!value) return null;
   const trimmed = value.trim();

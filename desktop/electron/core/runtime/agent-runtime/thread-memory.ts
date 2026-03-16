@@ -59,6 +59,25 @@ const hasShellToolGuidance = (
   );
 };
 
+const resolveMediaSdkDocsUrl = (): string | null => {
+  const raw =
+    process.env.STELLA_CONVEX_URL?.trim() ||
+    process.env.STELLA_LLM_PROXY_URL?.trim() ||
+    null;
+  if (!raw) {
+    return null;
+  }
+
+  const normalized = raw.replace(/\/+$/, "");
+  if (normalized.includes("/api/stella/v1")) {
+    return `${normalized.replace(/\/api\/stella\/v1$/i, "")}/api/media/v1/sdk.md`;
+  }
+  if (normalized.includes(".convex.cloud")) {
+    return `${normalized.replace(".convex.cloud", ".convex.site")}/api/media/v1/sdk.md`;
+  }
+  return `${normalized}/api/media/v1/sdk.md`;
+};
+
 export const buildSystemPrompt = (
   context: LocalTaskManagerAgentContext,
 ): string => {
@@ -101,10 +120,20 @@ export const buildSelfModDocumentationPrompt = (
   frontendRoot?: string,
 ): string => {
   if (!frontendRoot?.trim()) return "";
-  return [
+
+  const lines = [
     "Documentation:",
     "- If you are working on renderer structure, file placement, or ownership boundaries, read `src/STELLA.md` first.",
-  ].join("\n");
+  ];
+
+  const mediaSdkDocsUrl = resolveMediaSdkDocsUrl();
+  if (mediaSdkDocsUrl) {
+    lines.push(
+      `- Media SDK reference is always available at \`${mediaSdkDocsUrl}\`. Fetch the latest version before building or changing media features: \`curl -L \"${mediaSdkDocsUrl}\"\`.`,
+    );
+  }
+
+  return lines.join("\n");
 };
 
 export const buildOrchestratorUserPrompt = (
