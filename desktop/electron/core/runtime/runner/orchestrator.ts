@@ -13,7 +13,8 @@ import type {
   ChatPayload,
   QueuedOrchestratorTurn,
 } from "./types.js";
-import { QUEUED_TURN_INTERRUPT_ERROR, sanitizeStellaBase } from "./shared.js";
+import { sanitizeStellaBase } from "./shared.js";
+import { createOrchestratorCoordinator } from "./orchestrator-coordinator.js";
 import {
   canResolveRunnerLlmRoute,
   resolveRunnerLlmRoute,
@@ -44,153 +45,14 @@ export const createOrchestratorController = (
     }>;
   },
 ) => {
-  const clearActiveOrchestratorRun = (runId: string) => {
-    if (context.state.activeOrchestratorRunId !== runId) {
-      return;
-    }
-    context.state.activeOrchestratorRunId = null;
-    context.state.activeOrchestratorConversationId = null;
-    context.state.activeToolExecutionCount = 0;
-    context.state.interruptAfterTool = false;
-    context.state.activeInterruptedReplayTurn = null;
-  };
-
-  const abortActiveOrchestratorRunForQueuedTurn = () => {
-    if (!context.state.activeOrchestratorRunId) {
-      return false;
-    }
-    const runId = context.state.activeOrchestratorRunId;
-    const abortController =
-      context.state.activeRunAbortControllers.get(runId) ?? null;
-    if (!abortController || context.state.interruptedRunIds.has(runId)) {
-      return false;
-    }
-    context.state.interruptedRunIds.add(runId);
-    abortController.abort(new Error(QUEUED_TURN_INTERRUPT_ERROR));
-    return true;
-  };
-
-  const requestActiveOrchestratorCheckpoint = () => {
-    if (!context.state.activeOrchestratorRunId) {
-      return false;
-    }
-    if (context.state.activeToolExecutionCount > 0) {
-      context.state.interruptAfterTool = true;
-      return true;
-    }
-    context.state.interruptAfterTool = false;
-    return abortActiveOrchestratorRunForQueuedTurn();
-  };
-
-  const maybeInterruptAfterToolCheckpoint = () => {
-    if (
-      !context.state.interruptAfterTool ||
-      context.state.activeToolExecutionCount > 0
-    ) {
-      return;
-    }
-    context.state.interruptAfterTool = false;
-    abortActiveOrchestratorRunForQueuedTurn();
-  };
-
-  const drainQueuedOrchestratorTurns = async (): Promise<void> => {
-    if (context.state.activeOrchestratorRunId) {
-      return;
-    }
-
-    while (
-      !context.state.activeOrchestratorRunId &&
-      context.state.queuedOrchestratorTurns.length > 0
-    ) {
-      const nextTurn = context.state.queuedOrchestratorTurns.shift();
-      if (!nextTurn) {
-        return;
-      }
-      try {
-        await nextTurn.execute();
-      } catch {
-        // Individual queued turn handlers notify callers.
-      }
-    }
-  };
-
-  const queueOrchestratorTurn = (turn: QueuedOrchestratorTurn) => {
-    if (turn.priority === "user") {
-      const firstSystemIndex = context.state.queuedOrchestratorTurns.findIndex(
-        (entry) => entry.priority !== "user",
-      );
-      if (firstSystemIndex === -1) {
-        context.state.queuedOrchestratorTurns.push(turn);
-      } else {
-        context.state.queuedOrchestratorTurns.splice(firstSystemIndex, 0, turn);
-      }
-    } else {
-      context.state.queuedOrchestratorTurns.push(turn);
-    }
-    if (context.state.activeOrchestratorRunId) {
-      requestActiveOrchestratorCheckpoint();
-      return;
-    }
-    queueMicrotask(() => {
-      void drainQueuedOrchestratorTurns();
-    });
-  };
-
-  const createRuntimeCallbacks = (
-    runId: string,
-    callbacks: AgentCallbacks,
-    options?: {
-      onInterrupted?: () => void;
-      onCleanup?: () => void;
-    },
-  ): RuntimeRunCallbacks => {
-    const cleanupRun = () => {
-      context.state.activeRunAbortControllers.delete(runId);
-      clearActiveOrchestratorRun(runId);
-      options?.onCleanup?.();
-      queueMicrotask(() => {
-        void drainQueuedOrchestratorTurns();
-      });
-    };
-
-    return {
-      onStream: callbacks.onStream,
-      onToolStart: (event) => {
-        context.state.activeToolExecutionCount += 1;
-        callbacks.onToolStart(event);
-      },
-      onToolEnd: (event) => {
-        context.state.activeToolExecutionCount = Math.max(
-          0,
-          context.state.activeToolExecutionCount - 1,
-        );
-        callbacks.onToolEnd(event);
-        if (context.state.activeOrchestratorRunId === runId) {
-          maybeInterruptAfterToolCheckpoint();
-        }
-      },
-      onError: (event) => {
-        if (context.state.interruptedRunIds.delete(runId)) {
-          cleanupRun();
-          options?.onInterrupted?.();
-          return;
-        }
-        callbacks.onError(event);
-        if (event.fatal) {
-          cleanupRun();
-        }
-      },
-      onEnd: (event) => {
-        if (context.state.interruptedRunIds.delete(runId)) {
-          cleanupRun();
-          options?.onInterrupted?.();
-          return;
-        }
-        cleanupRun();
-        callbacks.onEnd(event);
-      },
-    };
-  };
+  const coordinator = createOrchestratorCoordinator(context);
+  const {
+    clearActiveOrchestratorRun,
+    createRuntimeCallbacks,
+    queueOrchestratorTurn,
+    requestActiveOrchestratorCheckpoint,
+    finishInterruptedRun,
+  } = coordinator;
 
   const startStreamingOrchestratorTurn = async (
     payload: QueuedOrchestratorTurn,
@@ -265,20 +127,14 @@ export const createOrchestratorController = (
       hookEmitter: context.hookEmitter,
       displayHtml: context.displayHtml,
     }).catch((error) => {
-      if (context.state.interruptedRunIds.delete(runId)) {
-        context.state.activeRunAbortControllers.delete(runId);
-        clearActiveOrchestratorRun(runId);
-        replayInterruptedTurn();
-        queueMicrotask(() => {
-          void drainQueuedOrchestratorTurns();
-        });
+      if (
+        finishInterruptedRun({
+          runId,
+          onInterrupted: replayInterruptedTurn,
+        })
+      ) {
         return;
       }
-      context.state.activeRunAbortControllers.delete(runId);
-      clearActiveOrchestratorRun(runId);
-      queueMicrotask(() => {
-        void drainQueuedOrchestratorTurns();
-      });
       callbacks.onError({
         runId,
         agentType,
@@ -392,19 +248,13 @@ export const createOrchestratorController = (
       hookEmitter: context.hookEmitter,
       displayHtml: context.displayHtml,
     }).catch((error) => {
-      if (context.state.interruptedRunIds.delete(runId)) {
-        context.state.activeRunAbortControllers.delete(runId);
-        clearActiveOrchestratorRun(runId);
-        queueMicrotask(() => {
-          void drainQueuedOrchestratorTurns();
-        });
+      if (
+        finishInterruptedRun({
+          runId,
+        })
+      ) {
         return;
       }
-      context.state.activeRunAbortControllers.delete(runId);
-      clearActiveOrchestratorRun(runId);
-      queueMicrotask(() => {
-        void drainQueuedOrchestratorTurns();
-      });
       callbacks.onError({
         runId,
         agentType,
@@ -519,42 +369,13 @@ export const createOrchestratorController = (
       }
     };
 
-    void runOrchestratorTurn({
+    const runtimeCallbacks = createRuntimeCallbacks(
       runId,
-      conversationId,
-      userMessageId: `automation:${crypto.randomUUID()}`,
-      agentType,
-      userPrompt,
-      agentContext,
-      callbacks: {
+      {
         onStream: () => {},
-        onToolStart: () => {
-          context.state.activeToolExecutionCount += 1;
-        },
-        onToolEnd: () => {
-          context.state.activeToolExecutionCount = Math.max(
-            0,
-            context.state.activeToolExecutionCount - 1,
-          );
-          if (context.state.activeOrchestratorRunId === runId) {
-            maybeInterruptAfterToolCheckpoint();
-          }
-        },
+        onToolStart: () => {},
+        onToolEnd: () => {},
         onError: (event) => {
-          if (context.state.interruptedRunIds.delete(runId)) {
-            context.state.activeRunAbortControllers.delete(runId);
-            clearActiveOrchestratorRun(runId);
-            replayInterruptedTurn();
-            queueMicrotask(() => {
-              void drainQueuedOrchestratorTurns();
-            });
-            return;
-          }
-          context.state.activeRunAbortControllers.delete(runId);
-          clearActiveOrchestratorRun(runId);
-          queueMicrotask(() => {
-            void drainQueuedOrchestratorTurns();
-          });
           resolveResult({
             status: "error",
             finalText: "",
@@ -562,26 +383,25 @@ export const createOrchestratorController = (
           });
         },
         onEnd: (event) => {
-          if (context.state.interruptedRunIds.delete(runId)) {
-            context.state.activeRunAbortControllers.delete(runId);
-            clearActiveOrchestratorRun(runId);
-            replayInterruptedTurn();
-            queueMicrotask(() => {
-              void drainQueuedOrchestratorTurns();
-            });
-            return;
-          }
-          context.state.activeRunAbortControllers.delete(runId);
-          clearActiveOrchestratorRun(runId);
-          queueMicrotask(() => {
-            void drainQueuedOrchestratorTurns();
-          });
           resolveResult({
             status: "ok",
             finalText: event.finalText,
           });
         },
       },
+      {
+        onInterrupted: replayInterruptedTurn,
+      },
+    );
+
+    void runOrchestratorTurn({
+      runId,
+      conversationId,
+      userMessageId: `automation:${crypto.randomUUID()}`,
+      agentType,
+      userPrompt,
+      agentContext,
+      callbacks: runtimeCallbacks,
       toolExecutor: (toolName, args, toolContext) =>
         context.toolHost.executeTool(toolName, args, toolContext),
       deviceId: context.deviceId,
@@ -595,20 +415,14 @@ export const createOrchestratorController = (
       hookEmitter: context.hookEmitter,
       displayHtml: context.displayHtml,
     }).catch((error) => {
-      if (context.state.interruptedRunIds.delete(runId)) {
-        context.state.activeRunAbortControllers.delete(runId);
-        clearActiveOrchestratorRun(runId);
-        replayInterruptedTurn();
-        queueMicrotask(() => {
-          void drainQueuedOrchestratorTurns();
-        });
+      if (
+        finishInterruptedRun({
+          runId,
+          onInterrupted: replayInterruptedTurn,
+        })
+      ) {
         return;
       }
-      context.state.activeRunAbortControllers.delete(runId);
-      clearActiveOrchestratorRun(runId);
-      queueMicrotask(() => {
-        void drainQueuedOrchestratorTurns();
-      });
       resolveResult({
         status: "error",
         finalText: "",
