@@ -14,16 +14,6 @@ export type MediaJobError = {
   details?: Record<string, unknown>;
 };
 
-export type MediaGenerateRequestBody = {
-  capability?: unknown;
-  profile?: unknown;
-  prompt?: unknown;
-  sourceUrl?: unknown;
-  source?: unknown;
-  input?: unknown;
-  webhookUrl?: unknown;
-};
-
 export type MediaBase64Source = {
   base64: string;
   mimeType: string;
@@ -31,6 +21,16 @@ export type MediaBase64Source = {
 };
 
 export type MediaSourceReference = string | MediaBase64Source;
+
+export type MediaGenerateRequestBody = {
+  capability?: unknown;
+  profile?: unknown;
+  prompt?: unknown;
+  sourceUrl?: unknown;
+  source?: unknown;
+  sources?: unknown;
+  input?: unknown;
+};
 
 export type MediaGenerateRequest = {
   capability: string;
@@ -40,7 +40,6 @@ export type MediaGenerateRequest = {
   source?: MediaSourceReference;
   sources?: Record<string, MediaSourceReference>;
   input: Record<string, unknown>;
-  webhookUrl?: string;
 };
 
 export type MediaGenerateAcceptedResponse = {
@@ -49,19 +48,43 @@ export type MediaGenerateAcceptedResponse = {
   profile: string;
   status: MediaJobStatus;
   upstreamStatus: string;
-  pollUrl: string;
+  subscription: {
+    query: string;
+    args: Record<string, unknown>;
+  };
+};
+
+export type MediaRequestSummary = {
+  prompt?: string;
+  source?: {
+    kind: "url" | "data_uri" | "base64_object";
+    mimeType?: string;
+  };
+  sources?: Record<
+    string,
+    {
+      kind: "url" | "data_uri" | "base64_object";
+      mimeType?: string;
+    }
+  >;
+  input?: Record<string, unknown>;
 };
 
 export type MediaJobResponse = {
   jobId: string;
   capability: string;
   profile: string;
+  request: MediaRequestSummary;
   status: MediaJobStatus;
   upstreamStatus: string;
   queuePosition: number | null;
   logs?: unknown[];
   output?: unknown;
   error?: MediaJobError;
+  createdAt: number;
+  updatedAt: number;
+  startedAt?: number;
+  completedAt?: number;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -97,7 +120,7 @@ export const createMediaJobError = (args: {
 
     return {
       message,
-      code,
+      ...(code ? { code } : {}),
       ...(Object.keys(details).length > 0 ? { details } : {}),
     };
   }
@@ -124,16 +147,12 @@ export const parseMediaGenerateRequest = (
   const profile = asTrimmedString(value.profile)?.toLowerCase();
   const prompt = asTrimmedString(value.prompt) ?? undefined;
   const sourceUrl = asTrimmedString(value.sourceUrl) ?? undefined;
-  const webhookUrl = asTrimmedString(value.webhookUrl) ?? undefined;
   const input = isRecord(value.input) ? { ...value.input } : {};
+
   const sourceRecord = isRecord(value.source) ? value.source : null;
   const sourceString = asTrimmedString(value.source);
-  const sourceBase64 = sourceRecord
-    ? asTrimmedString(sourceRecord.base64)
-    : null;
-  const sourceMimeType = sourceRecord
-    ? asTrimmedString(sourceRecord.mimeType)
-    : null;
+  const sourceBase64 = sourceRecord ? asTrimmedString(sourceRecord.base64) : null;
+  const sourceMimeType = sourceRecord ? asTrimmedString(sourceRecord.mimeType) : null;
   const sourceFileName = sourceRecord
     ? asTrimmedString(sourceRecord.fileName) ?? undefined
     : undefined;
@@ -146,7 +165,6 @@ export const parseMediaGenerateRequest = (
           ...(sourceFileName ? { fileName: sourceFileName } : {}),
         }
       : undefined;
-  const source = sourceString ?? sourceFromObject;
 
   const sourcesRecord = isRecord(value.sources) ? value.sources : null;
   const sources = sourcesRecord
@@ -156,20 +174,14 @@ export const parseMediaGenerateRequest = (
             const normalizedKey = asTrimmedString(key);
             const entryString = asTrimmedString(entryValue);
             const entryRecord = isRecord(entryValue) ? entryValue : null;
-            const entryBase64 = entryRecord
-              ? asTrimmedString(entryRecord.base64)
-              : null;
-            const entryMimeType = entryRecord
-              ? asTrimmedString(entryRecord.mimeType)
-              : null;
+            const entryBase64 = entryRecord ? asTrimmedString(entryRecord.base64) : null;
+            const entryMimeType = entryRecord ? asTrimmedString(entryRecord.mimeType) : null;
             const entryFileName = entryRecord
               ? asTrimmedString(entryRecord.fileName) ?? undefined
               : undefined;
             const entryObject =
               entryRecord &&
-              (entryBase64 !== null ||
-                entryMimeType !== null ||
-                entryFileName !== undefined)
+              (entryBase64 !== null || entryMimeType !== null || entryFileName !== undefined)
                 ? {
                     base64: entryBase64 ?? "",
                     mimeType: entryMimeType ?? "",
@@ -187,13 +199,12 @@ export const parseMediaGenerateRequest = (
 
   return {
     capability,
-    profile,
-    prompt,
-    sourceUrl,
-    ...(source ? { source } : {}),
+    ...(profile ? { profile } : {}),
+    ...(prompt ? { prompt } : {}),
+    ...(sourceUrl ? { sourceUrl } : {}),
+    ...(sourceString ?? sourceFromObject ? { source: sourceString ?? sourceFromObject } : {}),
     ...(sources && Object.keys(sources).length > 0 ? { sources } : {}),
     input,
-    webhookUrl,
   };
 };
 
@@ -204,36 +215,9 @@ export const createMediaGenerateRequestExample = (
   ...(args.profile ? { profile: args.profile } : {}),
   ...(args.prompt ? { prompt: args.prompt } : {}),
   ...(args.sourceUrl ? { sourceUrl: args.sourceUrl } : {}),
-  ...(args.source
-    ? {
-        source:
-          typeof args.source === "string"
-            ? args.source
-            : {
-                base64: args.source.base64,
-                mimeType: args.source.mimeType,
-                ...(args.source.fileName ? { fileName: args.source.fileName } : {}),
-              },
-      }
-    : {}),
-  ...(args.sources
-    ? {
-        sources: Object.fromEntries(
-          Object.entries(args.sources).map(([key, value]) => [
-            key,
-            typeof value === "string"
-              ? value
-              : {
-                  base64: value.base64,
-                  mimeType: value.mimeType,
-                  ...(value.fileName ? { fileName: value.fileName } : {}),
-                },
-          ]),
-        ),
-      }
-    : {}),
+  ...(args.source ? { source: args.source } : {}),
+  ...(args.sources ? { sources: args.sources } : {}),
   input: { ...args.input },
-  ...(args.webhookUrl ? { webhookUrl: args.webhookUrl } : {}),
 });
 
 export const createMediaGenerateAcceptedResponse = (
@@ -244,7 +228,10 @@ export const createMediaGenerateAcceptedResponse = (
   profile: args.profile,
   status: args.status,
   upstreamStatus: args.upstreamStatus,
-  pollUrl: args.pollUrl,
+  subscription: {
+    query: args.subscription.query,
+    args: { ...args.subscription.args },
+  },
 });
 
 export const createMediaJobResponse = (
@@ -253,10 +240,26 @@ export const createMediaJobResponse = (
   jobId: args.jobId,
   capability: args.capability,
   profile: args.profile,
+  request: {
+    ...(args.request.prompt ? { prompt: args.request.prompt } : {}),
+    ...(args.request.source ? { source: { ...args.request.source } } : {}),
+    ...(args.request.sources
+      ? {
+          sources: Object.fromEntries(
+            Object.entries(args.request.sources).map(([key, value]) => [key, { ...value }]),
+          ),
+        }
+      : {}),
+    ...(args.request.input ? { input: { ...args.request.input } } : {}),
+  },
   status: args.status,
   upstreamStatus: args.upstreamStatus,
   queuePosition: args.queuePosition,
   ...(args.logs ? { logs: args.logs } : {}),
   ...(args.output !== undefined ? { output: args.output } : {}),
   ...(args.error ? { error: args.error } : {}),
+  createdAt: args.createdAt,
+  updatedAt: args.updatedAt,
+  ...(args.startedAt !== undefined ? { startedAt: args.startedAt } : {}),
+  ...(args.completedAt !== undefined ? { completedAt: args.completedAt } : {}),
 });
