@@ -9,6 +9,7 @@ import { telemetrySchema } from "../convex/schema/telemetry";
 import { usersSchema } from "../convex/schema/users";
 import { billingSchema } from "../convex/schema/billing";
 import { cronScheduleValidator, cronPayloadValidator } from "../convex/schema/scheduling";
+import { mediaSchema } from "../convex/schema/media";
 
 describe("schema modules export table definitions", () => {
   test("agentsSchema is a non-empty object", () => {
@@ -59,6 +60,11 @@ describe("schema modules export table definitions", () => {
   test("billingSchema is a non-empty object", () => {
     expect(typeof billingSchema).toBe("object");
     expect(Object.keys(billingSchema).length).toBeGreaterThan(0);
+  });
+
+  test("mediaSchema is a non-empty object", () => {
+    expect(typeof mediaSchema).toBe("object");
+    expect(Object.keys(mediaSchema).length).toBeGreaterThan(0);
   });
 });
 

@@ -33,6 +33,7 @@ const OWNER_TABLES: Array<{
   { table: "transient_cleanup_failures", index: "by_ownerId_and_createdAt" },
   { table: "skills", index: "by_ownerId_and_updatedAt" },
   { table: "agents", index: "by_ownerId_and_updatedAt" },
+  { table: "media_jobs", index: "by_ownerId_and_createdAt" },
 ];
 
 /**
@@ -172,3 +173,5 @@ export const migratePersistChunksBatch = internalMutation({
     return rows.length === BATCH_SIZE;
   },
 });
+
+

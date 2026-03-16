@@ -9,6 +9,7 @@ import { telemetrySchema } from "./schema/telemetry";
 import { billingSchema } from "./schema/billing";
 import { storeSchema } from "./schema/store";
 import { gamesSchema } from "./schema/games";
+import { mediaSchema } from "./schema/media";
 
 export default defineSchema({
   ...conversationsSchema,
@@ -21,4 +22,6 @@ export default defineSchema({
   ...billingSchema,
   ...storeSchema,
   ...gamesSchema,
+  ...mediaSchema,
 });
+

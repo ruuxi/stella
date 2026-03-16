@@ -8,8 +8,8 @@ import {
   describeCapabilityValidation,
   MEDIA_DOCS_PATH,
   MEDIA_CAPABILITIES_PATH,
+  MEDIA_FAL_WEBHOOK_PATH,
   MEDIA_GENERATE_PATH,
-  MEDIA_JOBS_PATH,
   validateCapabilityRequest,
 } from "../convex/http_routes/media";
 import {
@@ -21,11 +21,11 @@ import {
 } from "../convex/stella_models";
 
 describe("media api contract", () => {
-  test("exposes the canonical async media routes", () => {
+  test("exposes the canonical submission and webhook routes", () => {
     expect(MEDIA_DOCS_PATH).toBe("/api/media/v1/docs");
     expect(MEDIA_CAPABILITIES_PATH).toBe("/api/media/v1/capabilities");
     expect(MEDIA_GENERATE_PATH).toBe("/api/media/v1/generate");
-    expect(MEDIA_JOBS_PATH).toBe("/api/media/v1/jobs");
+    expect(MEDIA_FAL_WEBHOOK_PATH).toBe("/api/media/v1/webhooks/fal");
   });
 
   test("contains the requested media capabilities", () => {
@@ -153,14 +153,6 @@ describe("media api contract", () => {
         },
       }),
     ).toBe("sources.video must be a valid http(s) URL or data URI");
-
-    expect(
-      validateCapabilityRequest({
-        capabilityId: "video_depth",
-        sourceUrl: "https://example.com/source.mp4",
-        webhookUrl: "ftp://example.com/hook",
-      }),
-    ).toBe("webhookUrl must be a valid http(s) URL");
 
     expect(
       validateCapabilityRequest({

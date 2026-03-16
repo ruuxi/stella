@@ -37,7 +37,6 @@ describe("media contract", () => {
         input: {
           image_size: "portrait_16_9",
         },
-        webhookUrl: " https://example.com/webhook ",
       }),
     ).toEqual({
       capability: "text_to_image",
@@ -55,7 +54,6 @@ describe("media contract", () => {
       input: {
         image_size: "portrait_16_9",
       },
-      webhookUrl: "https://example.com/webhook",
     });
   });
 
@@ -127,7 +125,10 @@ describe("media contract", () => {
         profile: "best",
         status: "queued",
         upstreamStatus: "IN_QUEUE",
-        pollUrl: "https://example.com/api/media/v1/jobs?jobId=job_123",
+        subscription: {
+          query: "api.media_jobs.getByJobId",
+          args: { jobId: "job_123" },
+        },
       }),
     ).toEqual({
       jobId: "job_123",
@@ -135,7 +136,10 @@ describe("media contract", () => {
       profile: "best",
       status: "queued",
       upstreamStatus: "IN_QUEUE",
-      pollUrl: "https://example.com/api/media/v1/jobs?jobId=job_123",
+      subscription: {
+        query: "api.media_jobs.getByJobId",
+        args: { jobId: "job_123" },
+      },
     });
   });
 
@@ -163,23 +167,39 @@ describe("media contract", () => {
         jobId: "job_123",
         capability: "text_to_image",
         profile: "best",
+        request: {
+          prompt: "cinematic skyline",
+          source: { kind: "url" },
+          input: { image_size: "portrait_16_9" },
+        },
         status: "succeeded",
-        upstreamStatus: "COMPLETED",
+        upstreamStatus: "OK",
         queuePosition: null,
         output: {
           images: [{ url: "https://example.com/output.png" }],
         },
+        createdAt: 10,
+        updatedAt: 12,
+        completedAt: 12,
       }),
     ).toEqual({
       jobId: "job_123",
       capability: "text_to_image",
       profile: "best",
+      request: {
+        prompt: "cinematic skyline",
+        source: { kind: "url" },
+        input: { image_size: "portrait_16_9" },
+      },
       status: "succeeded",
-      upstreamStatus: "COMPLETED",
+      upstreamStatus: "OK",
       queuePosition: null,
       output: {
         images: [{ url: "https://example.com/output.png" }],
       },
+      createdAt: 10,
+      updatedAt: 12,
+      completedAt: 12,
     });
   });
 });
