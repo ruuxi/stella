@@ -11,7 +11,7 @@ export const listCatalog = internalQuery({
     const rows = await ctx.db
       .query("commands")
       .withIndex("by_enabled_and_updatedAt", (q) => q.eq("enabled", true))
-      .collect();
+      .take(500);
     return rows.map((r) => ({
       commandId: r.commandId,
       name: r.name,

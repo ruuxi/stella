@@ -297,7 +297,7 @@ export const listGames = query({
       .query("games")
       .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
       .order("desc")
-      .collect();
+      .take(200);
 
     return games.map((g) => ({
       gameId: g.gameId,

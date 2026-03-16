@@ -37,10 +37,18 @@ export const rotateEncryptedMaterialBatch = internalMutation({
     let remaining = batchSize;
 
     if (remaining > 0) {
-      const secrets = await ctx.db.query("secrets").collect();
-      const candidates = secrets.filter((record) =>
-        shouldRotateByVersion(record.keyVersion, activeKeyVersion),
-      );
+      // Query secrets NOT on the active key version.
+      // Secrets with no keyVersion (undefined) sort before numeric values in the index,
+      // so we query for keyVersion < activeKeyVersion and keyVersion > activeKeyVersion separately.
+      const candidatesBelow = await ctx.db
+        .query("secrets")
+        .withIndex("by_keyVersion", (q) => q.lt("keyVersion", activeKeyVersion))
+        .take(remaining);
+      const candidatesAbove = await ctx.db
+        .query("secrets")
+        .withIndex("by_keyVersion", (q) => q.gt("keyVersion", activeKeyVersion))
+        .take(remaining);
+      const candidates = [...candidatesBelow, ...candidatesAbove];
 
       for (const candidate of candidates) {
         if (remaining <= 0) break;
@@ -64,10 +72,16 @@ export const rotateEncryptedMaterialBatch = internalMutation({
     }
 
     if (remaining > 0) {
-      const installations = await ctx.db.query("slack_installations").collect();
-      const candidates = installations.filter((record) =>
-        shouldRotateByVersion(record.botTokenKeyVersion, activeKeyVersion),
-      );
+      // Query slack installations NOT on the active key version.
+      const candidatesBelow = await ctx.db
+        .query("slack_installations")
+        .withIndex("by_botTokenKeyVersion", (q) => q.lt("botTokenKeyVersion", activeKeyVersion))
+        .take(remaining);
+      const candidatesAbove = await ctx.db
+        .query("slack_installations")
+        .withIndex("by_botTokenKeyVersion", (q) => q.gt("botTokenKeyVersion", activeKeyVersion))
+        .take(remaining);
+      const candidates = [...candidatesBelow, ...candidatesAbove];
 
       for (const candidate of candidates) {
         if (remaining <= 0) break;

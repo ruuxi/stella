@@ -11,7 +11,8 @@ export const devicesSchema = {
     platform: v.optional(v.string()),
   })
     .index("by_ownerId", ["ownerId"])
-    .index("by_deviceId", ["deviceId"]),
+    .index("by_deviceId", ["deviceId"])
+    .index("by_online_and_lastSignedAtMs", ["online", "lastSignedAtMs"]),
     
   anon_device_usage: defineTable({
     deviceId: v.string(),

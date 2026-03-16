@@ -457,13 +457,10 @@ export const findOrphanedTurnRequests = internalQuery({
     // Find devices that recently went offline (within the orphan window).
     const offlineDevices = await ctx.db
       .query("devices")
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("online"), false),
-          q.gte(q.field("lastSignedAtMs"), now - ORPHAN_MAX_AGE_MS),
-        ),
+      .withIndex("by_online_and_lastSignedAtMs", (q) =>
+        q.eq("online", false).gte("lastSignedAtMs", now - ORPHAN_MAX_AGE_MS),
       )
-      .collect();
+      .take(200);
 
     if (offlineDevices.length === 0) return [];
 
@@ -483,9 +480,9 @@ export const findOrphanedTurnRequests = internalQuery({
         .withIndex("by_targetDeviceId_and_timestamp", (q) =>
           q
             .eq("targetDeviceId", device.deviceId)
-            .gte("timestamp", now - ORPHAN_MAX_AGE_MS),
+            .gte("timestamp", now - ORPHAN_MAX_AGE_MS)
+            .lte("timestamp", now - ORPHAN_MIN_AGE_MS),
         )
-        .filter((q) => q.lte(q.field("timestamp"), now - ORPHAN_MIN_AGE_MS))
         .take(20);
 
       for (const event of events) {
