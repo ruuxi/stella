@@ -3,6 +3,12 @@ import {
 } from "../../../../src/shared/contracts/agent-runtime.js";
 import { createRuntimeLogger } from "../debug.js";
 import { createDisplayStreamController } from "./display-stream.js";
+import {
+  finalizeOrchestratorError,
+  finalizeOrchestratorSuccess,
+  finalizeSubagentError,
+  finalizeSubagentSuccess,
+} from "./run-completion.js";
 import { subscribeRuntimeAgentEvents } from "./run-events.js";
 import {
   createOrchestratorExecutionSession,
@@ -17,9 +23,6 @@ import {
   buildOrchestratorUserPrompt,
   buildSelfModDocumentationPrompt,
   buildSystemPrompt,
-  compactRuntimeThreadHistory,
-  persistAssistantReply,
-  updateOrchestratorReminderState,
 } from "./thread-memory.js";
 import type {
   OrchestratorRunOptions,
@@ -125,82 +128,23 @@ export const runPiOrchestratorTurn = async (
     if (errorMessage) {
       throw new Error(errorMessage);
     }
-    logger.debug("orchestrator.end", {
+    await finalizeOrchestratorSuccess({
+      opts,
       runId,
-      agentType: opts.agentType,
-      finalTextPreview: finalText.slice(0, 300),
-    });
-
-    if (opts.hookEmitter) {
-      await opts.hookEmitter
-        .emit(
-          "agent_end",
-          { agentType: opts.agentType, finalText },
-          { agentType: opts.agentType },
-        )
-        .catch(() => undefined);
-    }
-
-    const selfModApplied =
-      opts.frontendRoot && opts.selfModMonitor
-        ? await opts.selfModMonitor
-            .detectAppliedSince({
-              repoRoot: opts.frontendRoot,
-              sinceHead: baselineHead,
-            })
-            .catch(() => null)
-        : null;
-
-    if (finalText.trim()) {
-      appendThreadMessage(opts.store, {
-        threadKey,
-        role: "assistant",
-        content: finalText,
-      });
-
-      let shouldCompact = true;
-      if (opts.hookEmitter) {
-        const hookResult = await opts.hookEmitter
-          .emit(
-            "before_compact",
-            {
-              agentType: opts.agentType,
-              messageCount: agent.state.messages.length,
-            },
-            { agentType: opts.agentType },
-          )
-          .catch(() => undefined);
-        if (hookResult?.cancel) {
-          shouldCompact = false;
-        }
-      }
-      if (shouldCompact) {
-        await compactRuntimeThreadHistory({
-          store: opts.store,
-          threadKey,
-          resolvedLlm: opts.resolvedLlm,
-          agentType: opts.agentType,
-        });
-      }
-    }
-
-    opts.callbacks.onEnd(
-      runEvents.recordRunEnd({
-        finalText,
-        ...(selfModApplied ? { selfModApplied } : {}),
-      }),
-    );
-    updateOrchestratorReminderState(opts.store, {
-      conversationId: opts.conversationId,
-      shouldInjectDynamicReminder:
-        opts.agentContext.shouldInjectDynamicReminder,
+      threadKey,
+      runEvents,
+      agent,
       finalText,
+      baselineHead,
     });
 
     return runId;
   } catch (error) {
-    const errorMessage = (error as Error).message || "Stella runtime failed";
-    opts.callbacks.onError(runEvents.recordError(errorMessage));
+    finalizeOrchestratorError({
+      opts,
+      runEvents,
+      error,
+    });
     throw error;
   } finally {
     displayStream.dispose();
@@ -226,8 +170,6 @@ export const runPiSubagentTask = async (
       ...opts,
       systemPrompt: effectiveSystemPrompt,
     });
-  let finalText = "";
-
   runEvents.recordRunStart();
 
   if (prompt) {
@@ -266,28 +208,20 @@ export const runPiSubagentTask = async (
     if (errorMessage) {
       throw new Error(errorMessage);
     }
-    finalText = result;
-    await persistAssistantReply({
-      store: opts.store,
+    return await finalizeSubagentSuccess({
+      opts,
+      runEvents,
+      runId,
       threadKey,
-      resolvedLlm: opts.resolvedLlm,
-      agentType: opts.agentType,
-      content: result,
-    });
-    opts.callbacks?.onEnd?.(runEvents.recordRunEnd({ finalText: result }));
-
-    return {
-      runId,
       result,
-    };
+    });
   } catch (error) {
-    const errorMessage = (error as Error).message || "Subagent failed";
-    opts.callbacks?.onError?.(runEvents.recordError(errorMessage));
-    return {
+    return finalizeSubagentError({
+      opts,
+      runEvents,
       runId,
-      result: "",
-      error: errorMessage,
-    };
+      error,
+    });
   } finally {
     unsubscribe();
     opts.abortSignal?.removeEventListener("abort", abortHandler);
