@@ -61,7 +61,7 @@ describe("initializeWakeWord", () => {
 
     const controller = await initializeWakeWord({
       isDev: true,
-      electronDir: "C:\\Users\\redacted\\projects\\stella\\desktop\\electron",
+      electronDir: "/mock/project/stella/desktop/electron",
       uiStateService: uiStateService as never,
       isAppReady: () => appReady,
       onEnabledChange,
@@ -111,7 +111,7 @@ describe("initializeWakeWord", () => {
 
     const controller = await initializeWakeWord({
       isDev: true,
-      electronDir: "C:\\Users\\redacted\\projects\\stella\\desktop\\electron",
+      electronDir: "/mock/project/stella/desktop/electron",
       uiStateService: uiStateService as never,
       isAppReady: () => appReady,
       onEnabledChange,

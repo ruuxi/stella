@@ -242,7 +242,7 @@ describe("runner general task bridge", () => {
         deviceId: "device-1",
         stellaHomePath: home,
         runtimeStore,
-        frontendRoot: "C:/Users/redacted/projects/stella/desktop",
+        frontendRoot: "/mock/project/stella/desktop",
       });
 
       const taskEvents: Array<{ type: string; agentType?: string; result?: string }> = [];

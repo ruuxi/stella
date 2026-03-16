@@ -65,7 +65,7 @@ describe("registerAgentHandlers", () => {
       }) as never,
       getAppSessionStartedAt: () => 0,
       isHostAuthAuthenticated: () => true,
-      frontendRoot: "C:/Users/redacted/projects/stella/desktop",
+      frontendRoot: "/mock/project/stella/desktop",
       assertPrivilegedSender: () => true,
       hmrMorphOrchestrator: null,
     });
@@ -123,7 +123,7 @@ describe("registerAgentHandlers", () => {
       getStellaHostRunner: () => null,
       getAppSessionStartedAt: () => 1234,
       isHostAuthAuthenticated: () => true,
-      frontendRoot: "C:/Users/redacted/projects/stella/desktop",
+      frontendRoot: "/mock/project/stella/desktop",
       assertPrivilegedSender: () => true,
       hmrMorphOrchestrator: null,
     });

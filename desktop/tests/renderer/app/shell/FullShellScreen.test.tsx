@@ -73,7 +73,7 @@ const mockProjects: LocalDevProjectRecord[] = [
   {
     id: "project-1",
     name: "stella-site",
-    path: "C:/Users/redacted/projects/stella-site",
+    path: "/mock/project/stella-site",
     source: "manual",
     framework: "vite",
     packageManager: "pnpm",
