@@ -21,6 +21,23 @@ export type ResolvedLlmRoute = {
 const STELLA_CONTEXT_WINDOW = 256_000;
 const STELLA_MAX_TOKENS = 16_384;
 const STELLA_PROVIDER = "stella";
+const DATED_MODEL_SUFFIX_RE = /-\d{8}$/;
+
+const DEFAULT_DIRECT_MODEL_IDS: Record<string, string> = {
+  anthropic: "claude-opus-4-6",
+  openai: "gpt-5.4",
+  "openai-codex": "gpt-5.4",
+  google: "gemini-2.5-pro",
+  groq: "openai/gpt-oss-120b",
+  mistral: "mistral-medium-2508",
+  opencode: "claude-opus-4-6",
+  cerebras: "zai-glm-4.6",
+  xai: "grok-4-fast-non-reasoning",
+  zai: "glm-4.6",
+  "kimi-coding": "kimi-k2-thinking",
+  openrouter: "openai/gpt-5.1-codex",
+  "vercel-ai-gateway": "anthropic/claude-opus-4-6",
+};
 
 const createStellaModel = (
   proxyBaseUrl: string,
@@ -90,6 +107,9 @@ const parseModel = (
 
 const unique = (values: string[]): string[] =>
   Array.from(new Set(values.filter(Boolean)));
+
+const isAliasModelId = (id: string): boolean =>
+  id.endsWith("-latest") || !DATED_MODEL_SUFFIX_RE.test(id);
 
 const getCredential = (
   stellaHomePath: string,
@@ -171,6 +191,15 @@ const findRegistryModel = (
   }
 
   for (const candidate of requestedCandidates) {
+    const canonical = models.find(
+      (model) => `${model.provider}/${model.id}` === candidate,
+    );
+    if (canonical) {
+      return canonical;
+    }
+  }
+
+  for (const candidate of requestedCandidates) {
     const normalizedCandidate = candidate.replace(/\./g, "-");
     const prefix = `${normalizedCandidate}-`;
     const prefixed = models.find(
@@ -182,7 +211,61 @@ const findRegistryModel = (
     }
   }
 
+  const partialMatches = requestedCandidates.flatMap((candidate) => {
+    const normalizedCandidate = candidate.trim().toLowerCase();
+    if (!normalizedCandidate) {
+      return [];
+    }
+    return models.filter((model) => {
+      const modelId = model.id.toLowerCase();
+      const modelName = model.name?.toLowerCase() ?? "";
+      const canonicalId = `${model.provider}/${model.id}`.toLowerCase();
+      return (
+        modelId.includes(normalizedCandidate) ||
+        modelName.includes(normalizedCandidate) ||
+        canonicalId.includes(normalizedCandidate)
+      );
+    });
+  });
+
+  if (partialMatches.length > 0) {
+    const uniqueMatches = Array.from(new Set(partialMatches));
+    uniqueMatches.sort((left, right) => {
+      const aliasScore = Number(isAliasModelId(right.id)) - Number(isAliasModelId(left.id));
+      if (aliasScore !== 0) {
+        return aliasScore;
+      }
+      return right.id.localeCompare(left.id);
+    });
+    return uniqueMatches[0] ?? null;
+  }
+
   return null;
+};
+
+const buildFallbackModel = (
+  registryProvider: string,
+  requestedModelId: string,
+): Model<Api> | null => {
+  const models = getModels(registryProvider as never) as Model<Api>[];
+  if (!Array.isArray(models) || models.length === 0) {
+    return null;
+  }
+
+  const preferredId = DEFAULT_DIRECT_MODEL_IDS[registryProvider];
+  const baseModel = preferredId
+    ? models.find((model) => model.id === preferredId) ?? models[0]
+    : models[0];
+
+  if (!baseModel) {
+    return null;
+  }
+
+  return {
+    ...baseModel,
+    id: requestedModelId,
+    name: requestedModelId,
+  };
 };
 
 const getGatewayCredential = (stellaHomePath: string): string | null =>
@@ -254,11 +337,23 @@ export const resolveLlmRoute = (args: {
       if (directKey) {
         const directModel = findRegistryModel(
           directProvider.registryProvider,
-          directProvider.candidates,
+          unique([fullModelId, ...directProvider.candidates]),
         );
         if (directModel) {
           return {
             model: directModel,
+            route: "direct-provider",
+            getApiKey: () => directKey,
+          };
+        }
+
+        const fallbackModel = buildFallbackModel(
+          directProvider.registryProvider,
+          modelId,
+        );
+        if (fallbackModel) {
+          return {
+            model: fallbackModel,
             route: "direct-provider",
             getApiKey: () => directKey,
           };
@@ -268,7 +363,7 @@ export const resolveLlmRoute = (args: {
       if (!directKey && directProvider.allowBaseUrlWithoutCredential) {
         const directModel = findRegistryModel(
           directProvider.registryProvider,
-          directProvider.candidates,
+          unique([fullModelId, ...directProvider.candidates]),
         );
         if (directModel?.baseUrl) {
           return {
@@ -290,6 +385,14 @@ export const resolveLlmRoute = (args: {
           getApiKey: () => openrouterKey,
         };
       }
+      const fallbackModel = buildFallbackModel("openrouter", fullModelId);
+      if (fallbackModel) {
+        return {
+          model: fallbackModel,
+          route: "direct-openrouter",
+          getApiKey: () => openrouterKey,
+        };
+      }
     }
 
     const gatewayKey = getGatewayCredential(args.stellaHomePath);
@@ -300,6 +403,17 @@ export const resolveLlmRoute = (args: {
       if (gatewayModel) {
         return {
           model: gatewayModel,
+          route: "direct-gateway",
+          getApiKey: () => gatewayKey,
+        };
+      }
+      const fallbackModel = buildFallbackModel(
+        "vercel-ai-gateway",
+        fullModelId,
+      );
+      if (fallbackModel) {
+        return {
+          model: fallbackModel,
           route: "direct-gateway",
           getApiKey: () => gatewayKey,
         };

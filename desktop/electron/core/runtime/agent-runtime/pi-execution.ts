@@ -1,19 +1,16 @@
 import crypto from "crypto";
-import { Agent } from "../../agent/agent.js";
 import {
   shouldIncludeStellaDocumentation,
   RUNTIME_RUN_EVENT_TYPES,
 } from "../../../../src/shared/contracts/agent-runtime.js";
+import { createRuntimeLogger } from "../debug.js";
 import { createDisplayStreamController } from "./display-stream.js";
 import {
-  buildDefaultTransformContext,
-  createBeforeProviderPayloadTransform,
+  createRuntimeAgent,
   extractAssistantText,
   getAgentCompletion,
   getToolResultPreview,
   now,
-  PI_AGENT_MESSAGE_FILTER,
-  toAgentMessages,
 } from "./shared.js";
 import {
   appendThreadMessage,
@@ -32,6 +29,8 @@ import type {
   SubagentRunOptions,
   SubagentRunResult,
 } from "./types.js";
+
+const logger = createRuntimeLogger("agent-runtime");
 
 export const runPiOrchestratorTurn = async (
   opts: OrchestratorRunOptions,
@@ -52,10 +51,13 @@ export const runPiOrchestratorTurn = async (
           .catch(() => null)
       : null;
 
-  console.log(
-    `[stella:trace] orchestrator start | runId=${runId} | agent=${opts.agentType} | model=${opts.resolvedLlm.model.id} | convId=${opts.conversationId}`,
-  );
-  console.log(`[stella:trace] user prompt: ${opts.userPrompt.slice(0, 300)}`);
+  logger.debug("orchestrator.start", {
+    runId,
+    agentType: opts.agentType,
+    model: opts.resolvedLlm.model.id,
+    conversationId: opts.conversationId,
+    promptPreview: opts.userPrompt.slice(0, 300),
+  });
 
   let effectiveSystemPrompt = buildSystemPrompt(opts.agentContext);
   if (opts.hookEmitter) {
@@ -101,9 +103,9 @@ export const runPiOrchestratorTurn = async (
     hookEmitter: opts.hookEmitter,
   });
 
-  console.log(
-    `[stella:trace] tools for ${opts.agentType}:`,
-    tools.map((tool) => ({
+  logger.debug("orchestrator.tools", {
+    agentType: opts.agentType,
+    tools: tools.map((tool) => ({
       name: tool.name,
       hasDesc: !!tool.description,
       paramKeys: Object.keys(
@@ -111,23 +113,15 @@ export const runPiOrchestratorTurn = async (
           {}) as Record<string, unknown>,
       ),
     })),
-  );
+  });
 
-  const agent = new Agent({
-    initialState: {
-      systemPrompt: effectiveSystemPrompt,
-      model: opts.resolvedLlm.model,
-      thinkingLevel: "medium",
-      tools,
-      messages: toAgentMessages(historySource),
-    },
-    convertToLlm: PI_AGENT_MESSAGE_FILTER,
-    transformContext: buildDefaultTransformContext(opts.resolvedLlm),
-    getApiKey: () => opts.resolvedLlm.getApiKey(),
-    onPayload: createBeforeProviderPayloadTransform(
-      opts.hookEmitter,
-      opts.agentType,
-    ),
+  const agent = createRuntimeAgent({
+    agentType: opts.agentType,
+    systemPrompt: effectiveSystemPrompt,
+    resolvedLlm: opts.resolvedLlm,
+    hookEmitter: opts.hookEmitter,
+    tools,
+    historySource,
   });
 
   if (opts.abortSignal?.aborted) {
@@ -170,9 +164,13 @@ export const runPiOrchestratorTurn = async (
     }
 
     if (event.type === "tool_execution_start") {
-      console.log(
-        `[stella:trace] tool exec start | ${event.toolName} | callId=${event.toolCallId} | args=${JSON.stringify(event.args ?? {}).slice(0, 300)}`,
-      );
+      logger.debug("tool.start", {
+        runId,
+        agentType: opts.agentType,
+        toolName: event.toolName,
+        toolCallId: event.toolCallId,
+        args: event.args,
+      });
       const toolSeq = nextSeq();
       opts.callbacks.onToolStart({
         runId,
@@ -197,9 +195,13 @@ export const runPiOrchestratorTurn = async (
 
     if (event.type === "tool_execution_end") {
       const preview = getToolResultPreview(event.toolName, event.result);
-      console.log(
-        `[stella:trace] tool exec end   | ${event.toolName} | callId=${event.toolCallId} | result=${preview.slice(0, 200)}`,
-      );
+      logger.debug("tool.end", {
+        runId,
+        agentType: opts.agentType,
+        toolName: event.toolName,
+        toolCallId: event.toolCallId,
+        resultPreview: preview.slice(0, 200),
+      });
       const toolSeq = nextSeq();
       opts.callbacks.onToolEnd({
         runId,
@@ -272,9 +274,11 @@ export const runPiOrchestratorTurn = async (
     if (errorMessage) {
       throw new Error(errorMessage);
     }
-    console.log(
-      `[stella:trace] orchestrator end | runId=${runId} | finalText=${finalText.slice(0, 300)}`,
-    );
+    logger.debug("orchestrator.end", {
+      runId,
+      agentType: opts.agentType,
+      finalTextPreview: finalText.slice(0, 300),
+    });
 
     if (opts.hookEmitter) {
       await opts.hookEmitter
@@ -461,21 +465,13 @@ export const runPiSubagentTask = async (
   });
 
   const contextHistory = buildHistorySource(opts.agentContext);
-  const agent = new Agent({
-    initialState: {
-      systemPrompt: effectiveSystemPrompt,
-      model: opts.resolvedLlm.model,
-      thinkingLevel: "medium",
-      tools,
-      messages: toAgentMessages(contextHistory),
-    },
-    convertToLlm: PI_AGENT_MESSAGE_FILTER,
-    transformContext: buildDefaultTransformContext(opts.resolvedLlm),
-    getApiKey: () => opts.resolvedLlm.getApiKey(),
-    onPayload: createBeforeProviderPayloadTransform(
-      opts.hookEmitter,
-      opts.agentType,
-    ),
+  const agent = createRuntimeAgent({
+    agentType: opts.agentType,
+    systemPrompt: effectiveSystemPrompt,
+    resolvedLlm: opts.resolvedLlm,
+    hookEmitter: opts.hookEmitter,
+    tools,
+    historySource: contextHistory,
   });
 
   const abortHandler = () => agent.abort();
