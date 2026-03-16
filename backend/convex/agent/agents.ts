@@ -5,7 +5,7 @@ import {
   MutationCtx,
   QueryCtx,
 } from "../_generated/server";
-import { v, Infer } from "convex/values";
+import { v, Infer, ConvexError } from "convex/values";
 import {
   OFFLINE_RESPONDER_SYSTEM_PROMPT,
   buildFallbackAgentSystemPrompt,
@@ -250,7 +250,7 @@ const getAgentConfigHandler = async (
   args: { agentType: string; ownerId?: string },
 ) => {
   if (REMOVED_AGENT_IDS.has(args.agentType)) {
-    throw new Error(`Unknown agent type: "${args.agentType}"`);
+    throw new ConvexError(`Unknown agent type: "${args.agentType}"`);
   }
 
   if (args.ownerId) {
@@ -285,7 +285,7 @@ const getAgentConfigHandler = async (
     });
   }
 
-  throw new Error(`Unknown agent type: "${args.agentType}"`);
+  throw new ConvexError(`Unknown agent type: "${args.agentType}"`);
 };
 
 export const getAgentConfig = internalQuery({
