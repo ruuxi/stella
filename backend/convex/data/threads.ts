@@ -463,10 +463,12 @@ export const deleteMessagesBefore = internalMutation({
       .collect();
 
     let deleted = 0;
+    const deletePromises = [];
     for (const msg of messages) {
-      await ctx.db.delete(msg._id);
+      deletePromises.push(ctx.db.delete(msg._id));
       deleted++;
     }
+    await Promise.all(deletePromises);
 
     return deleted;
   },
@@ -594,9 +596,7 @@ export const finalizeThreadCompaction = internalMutation({
       .collect();
     const dropped = allMessages.filter((msg) => msg.ordinal < args.keepFromOrdinal);
     const retained = allMessages.filter((msg) => msg.ordinal >= args.keepFromOrdinal);
-    for (const msg of dropped) {
-      await ctx.db.delete(msg._id);
-    }
+    await Promise.all(dropped.map((msg) => ctx.db.delete(msg._id)));
 
     const remainingTokens = retained.reduce(
       (sum, msg) => sum + (msg.tokenEstimate ?? 0),
@@ -637,21 +637,25 @@ export const finalizeThreadCompaction = internalMutation({
     });
 
     let nextOrdinal = 0;
+    const promises = [];
     for (const msg of retained) {
-      await ctx.db.insert("thread_messages", {
-        threadId: rolloverThreadId,
-        ordinal: nextOrdinal,
-        role: msg.role,
-        content: msg.content,
-        ...(msg.toolCallId ? { toolCallId: msg.toolCallId } : {}),
-        ...(typeof msg.tokenEstimate === "number"
-          ? { tokenEstimate: msg.tokenEstimate }
-          : {}),
-        createdAt: msg.createdAt,
-      });
+      promises.push(
+        ctx.db.insert("thread_messages", {
+          threadId: rolloverThreadId,
+          ordinal: nextOrdinal,
+          role: msg.role,
+          content: msg.content,
+          ...(msg.toolCallId ? { toolCallId: msg.toolCallId } : {}),
+          ...(typeof msg.tokenEstimate === "number"
+            ? { tokenEstimate: msg.tokenEstimate }
+            : {}),
+          createdAt: msg.createdAt,
+        })
+      );
+      promises.push(ctx.db.delete(msg._id));
       nextOrdinal += 1;
-      await ctx.db.delete(msg._id);
     }
+    await Promise.all(promises);
 
     await ctx.db.patch(args.threadId, {
       summary: args.summary,
@@ -688,6 +692,7 @@ export const sweepThreadLifecycle = internalMutation({
       .take(THREAD_SWEEP_BATCH_SIZE);
 
     let idled = 0;
+    const activePromises = [];
     for (const thread of activeCandidates) {
       const nextStatus = deriveThreadLifecycleStatus({
         status: thread.status,
@@ -695,15 +700,16 @@ export const sweepThreadLifecycle = internalMutation({
         now,
       });
       if (nextStatus === "idle") {
-        await ctx.db.patch(thread._id, { status: "idle" });
+        activePromises.push(ctx.db.patch(thread._id, { status: "idle" }));
         idled += 1;
       } else if (nextStatus === "archived") {
-        await ctx.db.patch(thread._id, {
+        activePromises.push(ctx.db.patch(thread._id, {
           status: "archived",
           closedAt: now,
-        });
+        }));
       }
     }
+    await Promise.all(activePromises);
 
     const idleCandidates = await ctx.db
       .query("threads")
@@ -713,6 +719,7 @@ export const sweepThreadLifecycle = internalMutation({
       .take(THREAD_SWEEP_BATCH_SIZE);
 
     let archived = 0;
+    const idlePromises = [];
     for (const thread of idleCandidates) {
       const nextStatus = deriveThreadLifecycleStatus({
         status: thread.status,
@@ -720,13 +727,14 @@ export const sweepThreadLifecycle = internalMutation({
         now,
       });
       if (nextStatus === "archived") {
-        await ctx.db.patch(thread._id, {
+        idlePromises.push(ctx.db.patch(thread._id, {
           status: "archived",
           closedAt: now,
-        });
+        }));
         archived += 1;
       }
     }
+    await Promise.all(idlePromises);
 
     return { idled, archived };
   },

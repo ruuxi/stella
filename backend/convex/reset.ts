@@ -78,10 +78,8 @@ export const _deleteConversationBatch = internalMutation({
         q.eq("conversationId", conversationId),
       )
       .take(BATCH);
-    for (const e of events) {
-      await ctx.db.delete(e._id);
-      deleted++;
-    }
+    await Promise.all(events.map((e) => ctx.db.delete(e._id)));
+    deleted += events.length;
 
     // Threads + their messages
     const threads = await ctx.db
@@ -95,10 +93,9 @@ export const _deleteConversationBatch = internalMutation({
         .query("thread_messages")
         .withIndex("by_threadId_and_ordinal", (q) => q.eq("threadId", t._id))
         .take(BATCH);
-      for (const m of msgs) {
-        await ctx.db.delete(m._id);
-        deleted++;
-      }
+      await Promise.all(msgs.map((m) => ctx.db.delete(m._id)));
+      deleted += msgs.length;
+      
       // Only delete the thread once all its messages are gone
       if (msgs.length < BATCH) {
         await ctx.db.delete(t._id);
@@ -127,20 +124,16 @@ export const _deleteOwnerBatch = internalMutation({
       .query("user_preferences")
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId))
       .take(BATCH);
-    for (const p of prefs) {
-      await ctx.db.delete(p._id);
-      totalDeleted++;
-    }
+    await Promise.all(prefs.map((p) => ctx.db.delete(p._id)));
+    totalDeleted += prefs.length;
 
     // Devices
     const devices = await ctx.db
       .query("devices")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
       .take(BATCH);
-    for (const d of devices) {
-      await ctx.db.delete(d._id);
-      totalDeleted++;
-    }
+    await Promise.all(devices.map((d) => ctx.db.delete(d._id)));
+    totalDeleted += devices.length;
 
     return totalDeleted > 0;
   },
