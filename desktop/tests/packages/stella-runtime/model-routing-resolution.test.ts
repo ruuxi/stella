@@ -93,6 +93,25 @@ describe("stella model routing resolution", () => {
     ).toThrow("No usable model route is configured");
   });
 
+  it("does not fuzzy-match an imprecise direct-provider model id", () => {
+    getLocalLlmCredentialMock.mockImplementation(
+      (_stellaHomePath: string, providerId: string) =>
+        providerId === "openai" ? "sk-openai-test" : null,
+    );
+
+    expect(() =>
+      resolveLlmRoute({
+        stellaHomePath: "C:/stella-home",
+        modelName: "openai/gpt-5",
+        agentType: "general",
+        proxy: {
+          baseUrl: null,
+          getAuthToken: () => null,
+        },
+      }),
+    ).toThrow("No usable model route is configured");
+  });
+
   it("keeps exact openrouter routes reachable even when a direct provider key exists", () => {
     getLocalLlmCredentialMock.mockImplementation(
       (_stellaHomePath: string, providerId: string) =>
