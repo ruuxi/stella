@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
@@ -30,7 +31,7 @@ const executeBackendTool = async (
   toolArgs: Record<string, unknown>,
 ): Promise<string> => {
   if (!ALLOWED_LOCAL_RUNTIME_BACKEND_TOOLS.has(toolName)) {
-    throw new Error(`Tool ${toolName} is not allowed from local runtime`);
+    throw new ConvexError(`Tool ${toolName} is not allowed from local runtime`);
   }
   const tools = createBackendTools(ctx, {
     ownerId: args.ownerId,
@@ -44,7 +45,7 @@ const executeBackendTool = async (
 
   const tool = tools[toolName];
   if (!tool?.execute) {
-    throw new Error(`${toolName} is unavailable`);
+    throw new ConvexError(`${toolName} is unavailable`);
   }
 
   const output = await tool.execute(toolArgs);

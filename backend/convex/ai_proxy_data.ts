@@ -2,7 +2,7 @@
  * Data access for AI proxy rate limiting (anon_device_usage table).
  */
 
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internalQuery, internalMutation } from "./_generated/server";
 import { hashSha256Hex } from "./lib/crypto_utils";
 import { clampIntToRange } from "./lib/number_utils";
@@ -31,7 +31,7 @@ async function hashDeviceId(
 ): Promise<string> {
   const salt = process.env.ANON_DEVICE_ID_HASH_SALT?.trim();
   if (!salt) {
-    throw new Error("Missing ANON_DEVICE_ID_HASH_SALT");
+    throw new ConvexError("Missing ANON_DEVICE_ID_HASH_SALT");
   }
   const normalizedAddressKey = normalizeClientAddressKey(clientAddressKey);
   const materialBase = normalizedAddressKey

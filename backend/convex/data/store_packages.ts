@@ -380,7 +380,10 @@ export const createFirstReleaseRecord = internalMutation({
     const pkg = await ctx.db.get(packageRef);
     const release = await ctx.db.get(releaseRef);
     if (!pkg || !release) {
-      throw new Error("Failed to load created store package release records");
+      throw new ConvexError({
+        code: "INTERNAL_ERROR",
+        message: "Failed to load created store package release records",
+      });
     }
 
     return {
@@ -457,7 +460,10 @@ export const createUpdateReleaseRecord = internalMutation({
     const updatedPackage = await ctx.db.get(pkg._id);
     const release = await ctx.db.get(releaseRef);
     if (!updatedPackage || !release) {
-      throw new Error("Failed to load updated store package release records");
+      throw new ConvexError({
+        code: "INTERNAL_ERROR",
+        message: "Failed to load updated store package release records",
+      });
     }
 
     return {
