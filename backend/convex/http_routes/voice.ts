@@ -3,10 +3,8 @@ import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction } from "../auth";
-import { computeServiceCostMicroCents } from "../lib/billing_money";
 import {
   checkManagedUsageLimit,
-  scheduleManagedUsage,
 } from "../lib/managed_billing";
 import { buildVoiceSessionInstructions } from "../prompts/voice_orchestrator";
 import {
@@ -40,6 +38,80 @@ const asConvexConversationId = (
   return normalized as Id<"conversations">;
 };
 
+type VoiceUsageBody = {
+  responseId?: string;
+  model?: string;
+  conversationId?: string;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+    input_token_details?: {
+      text_tokens?: number;
+      audio_tokens?: number;
+      image_tokens?: number;
+      cached_tokens?: number;
+      cached_text_tokens?: number;
+      cached_audio_tokens?: number;
+      cached_image_tokens?: number;
+    };
+    output_token_details?: {
+      text_tokens?: number;
+      audio_tokens?: number;
+    };
+  };
+};
+
+const toNonNegativeInt = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+
+const parseVoiceUsageBody = (body: VoiceUsageBody | null) => {
+  const responseId = body?.responseId?.trim();
+  const model = body?.model?.trim();
+  if (!responseId || !model) {
+    return null;
+  }
+
+  const inputDetails = body?.usage?.input_token_details ?? {};
+  const outputDetails = body?.usage?.output_token_details ?? {};
+  const textInputTokens = toNonNegativeInt(inputDetails.text_tokens);
+  const audioInputTokens = toNonNegativeInt(inputDetails.audio_tokens);
+  const imageInputTokens = toNonNegativeInt(inputDetails.image_tokens);
+  const textCachedInputTokens = toNonNegativeInt(
+    inputDetails.cached_text_tokens ?? inputDetails.cached_tokens,
+  );
+  const audioCachedInputTokens = toNonNegativeInt(
+    inputDetails.cached_audio_tokens,
+  );
+  const imageCachedInputTokens = toNonNegativeInt(
+    inputDetails.cached_image_tokens,
+  );
+  const textOutputTokens = toNonNegativeInt(outputDetails.text_tokens);
+  const audioOutputTokens = toNonNegativeInt(outputDetails.audio_tokens);
+  const inputTokens = toNonNegativeInt(body?.usage?.input_tokens)
+    || (textInputTokens + audioInputTokens + imageInputTokens);
+  const outputTokens = toNonNegativeInt(body?.usage?.output_tokens)
+    || (textOutputTokens + audioOutputTokens);
+  const totalTokens = toNonNegativeInt(body?.usage?.total_tokens) || (inputTokens + outputTokens);
+
+  return {
+    responseId,
+    model,
+    conversationId: asConvexConversationId(body?.conversationId),
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    textInputTokens,
+    textCachedInputTokens,
+    textOutputTokens,
+    audioInputTokens,
+    audioCachedInputTokens,
+    audioOutputTokens,
+    imageInputTokens,
+    imageCachedInputTokens,
+  };
+};
+
 // ---------------------------------------------------------------------------
 // Route Registration
 // ---------------------------------------------------------------------------
@@ -47,13 +119,15 @@ const asConvexConversationId = (
 export const registerVoiceRoutes = (http: HttpRouter) => {
   // --- Voice Session ---
 
-  http.route({
-    path: "/api/voice/session",
-    method: "OPTIONS",
-    handler: httpAction(async (_ctx, request) =>
-      corsPreflightHandler(request),
-    ),
-  });
+  for (const path of ["/api/voice/session", "/api/voice/usage"]) {
+    http.route({
+      path,
+      method: "OPTIONS",
+      handler: httpAction(async (_ctx, request) =>
+        corsPreflightHandler(request),
+      ),
+    });
+  }
 
   http.route({
     path: "/api/voice/session",
@@ -238,7 +312,6 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
         };
 
         try {
-          const sessionStartedAt = Date.now();
           const openaiResponse = await fetch(
             "https://api.openai.com/v1/realtime/sessions",
             {
@@ -266,22 +339,14 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           }
 
           const openaiData = JSON.parse(responseText);
-          const serviceKey = `voice:session:${model}`;
-          await scheduleManagedUsage(ctx, {
-            ownerId,
-            conversationId: convexConversationId,
-            agentType: "service:voice",
-            model: serviceKey,
-            durationMs: Date.now() - sessionStartedAt,
-            success: true,
-            costMicroCents: computeServiceCostMicroCents(serviceKey),
-          });
           return jsonResponse(
             {
               clientSecret:
                 openaiData.client_secret?.value ??
                 openaiData.client_secret,
               expiresAt: openaiData.client_secret?.expires_at,
+              sessionId:
+                typeof openaiData.id === "string" ? openaiData.id : undefined,
               model,
               voice,
             },
@@ -295,6 +360,72 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           );
           return errorResponse(502, "Failed to create voice session", origin);
         }
+      }),
+    ),
+  });
+
+  http.route({
+    path: "/api/voice/usage",
+    method: "POST",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const identity = await ctx.auth.getUserIdentity();
+        if (!identity) {
+          return errorResponse(401, "Unauthorized", origin);
+        }
+
+        let body: VoiceUsageBody | null = null;
+        try {
+          body = (await request.json()) as VoiceUsageBody;
+        } catch {
+          return errorResponse(400, "Invalid JSON body", origin);
+        }
+
+        const parsed = parseVoiceUsageBody(body);
+        if (!parsed) {
+          return errorResponse(400, "responseId, model, and usage are required", origin);
+        }
+
+        let conversationId: Id<"conversations"> | undefined;
+        if (parsed.conversationId) {
+          try {
+            await requireConversationOwnerAction(ctx, parsed.conversationId);
+            conversationId = parsed.conversationId;
+          } catch (err) {
+            console.warn("[voice/usage] Conversation lookup failed:", err);
+          }
+        }
+
+        const result = await ctx.runMutation(
+          internal.billing.recordVoiceRealtimeUsage,
+          {
+            ownerId: identity.subject,
+            responseId: parsed.responseId,
+            model: parsed.model,
+            ...(conversationId ? { conversationId } : {}),
+            inputTokens: parsed.inputTokens,
+            outputTokens: parsed.outputTokens,
+            totalTokens: parsed.totalTokens,
+            textInputTokens: parsed.textInputTokens,
+            textCachedInputTokens: parsed.textCachedInputTokens,
+            textOutputTokens: parsed.textOutputTokens,
+            audioInputTokens: parsed.audioInputTokens,
+            audioCachedInputTokens: parsed.audioCachedInputTokens,
+            audioOutputTokens: parsed.audioOutputTokens,
+            imageInputTokens: parsed.imageInputTokens,
+            imageCachedInputTokens: parsed.imageCachedInputTokens,
+          },
+        );
+
+        return jsonResponse(
+          {
+            recorded: result.recorded,
+            duplicate: result.duplicate,
+            costMicroCents: result.costMicroCents,
+          },
+          200,
+          origin,
+        );
       }),
     ),
   });
