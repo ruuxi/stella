@@ -1,9 +1,117 @@
+use std::sync::OnceLock;
+
 use crate::color;
 use crate::connection::Response;
 
-pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
-    if json_mode {
-        println!("{}", serde_json::to_string(resp).unwrap_or_default());
+static BOUNDARY_NONCE: OnceLock<String> = OnceLock::new();
+
+/// Per-process nonce for content boundary markers. Uses a CSPRNG (getrandom) so
+/// that untrusted page content cannot predict or spoof the boundary delimiter.
+/// Process ID or timestamps would be insufficient since pages can read those.
+fn get_boundary_nonce() -> &'static str {
+    BOUNDARY_NONCE.get_or_init(|| {
+        let mut buf = [0u8; 16];
+        getrandom::getrandom(&mut buf).expect("failed to generate random nonce");
+        buf.iter().map(|b| format!("{:02x}", b)).collect()
+    })
+}
+
+#[derive(Default)]
+pub struct OutputOptions {
+    pub json: bool,
+    pub content_boundaries: bool,
+    pub max_output: Option<usize>,
+}
+
+fn truncate_if_needed(content: &str, max: Option<usize>) -> String {
+    let Some(limit) = max else {
+        return content.to_string();
+    };
+    // Fast path: byte length is a lower bound on char count, so if the
+    // byte length is within the limit the char count must be too.
+    if content.len() <= limit {
+        return content.to_string();
+    }
+    // Find the byte offset of the limit-th character.
+    match content.char_indices().nth(limit).map(|(i, _)| i) {
+        Some(byte_offset) => {
+            let total_chars = content.chars().count();
+            format!(
+                "{}\n[truncated: showing {} of {} chars. Use --max-output to adjust]",
+                &content[..byte_offset],
+                limit,
+                total_chars
+            )
+        }
+        // Content has fewer than `limit` chars despite more bytes
+        None => content.to_string(),
+    }
+}
+
+fn print_with_boundaries(content: &str, origin: Option<&str>, opts: &OutputOptions) {
+    let content = truncate_if_needed(content, opts.max_output);
+    if opts.content_boundaries {
+        let origin_str = origin.unwrap_or("unknown");
+        let nonce = get_boundary_nonce();
+        println!(
+            "--- STELLA_BROWSER_PAGE_CONTENT nonce={} origin={} ---",
+            nonce, origin_str
+        );
+        println!("{}", content);
+        println!("--- END_STELLA_BROWSER_PAGE_CONTENT nonce={} ---", nonce);
+    } else {
+        println!("{}", content);
+    }
+}
+
+fn format_storage_value(value: &serde_json::Value) -> String {
+    value
+        .as_str()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| serde_json::to_string(value).unwrap_or_default())
+}
+
+fn format_storage_text(data: &serde_json::Value) -> Option<String> {
+    if let Some(entries) = data.get("data").and_then(|v| v.as_object()) {
+        if entries.is_empty() {
+            return Some("No storage entries".to_string());
+        }
+
+        let lines = entries
+            .iter()
+            .map(|(key, value)| format!("{}: {}", key, format_storage_value(value)))
+            .collect::<Vec<_>>();
+        return Some(lines.join("\n"));
+    }
+
+    let key = data.get("key").and_then(|v| v.as_str())?;
+    let value = data.get("value")?;
+    Some(format!("{}: {}", key, format_storage_value(value)))
+}
+
+pub fn print_response_with_opts(resp: &Response, action: Option<&str>, opts: &OutputOptions) {
+    if opts.json {
+        if opts.content_boundaries {
+            let mut json_val = serde_json::to_value(resp).unwrap_or_default();
+            if let Some(obj) = json_val.as_object_mut() {
+                let nonce = get_boundary_nonce();
+                let origin = obj
+                    .get("data")
+                    .and_then(|d| d.get("origin"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                obj.insert(
+                    "_boundary".to_string(),
+                    serde_json::json!({
+                        "nonce": nonce,
+                        "origin": origin,
+                    }),
+                );
+            }
+            println!("{}", serde_json::to_string(&json_val).unwrap_or_default());
+        } else {
+            println!("{}", serde_json::to_string(resp).unwrap_or_default());
+        }
         return;
     }
 
@@ -17,6 +125,29 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
     }
 
     if let Some(data) = &resp.data {
+        if action == Some("storage_get") {
+            if let Some(output) = format_storage_text(data) {
+                println!("{}", output);
+                return;
+            }
+        }
+        // Inspect response (check before generic URL handler since it also has a "url" field)
+        if action == Some("inspect") {
+            let opened = data
+                .get("opened")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if opened {
+                if let Some(url) = data.get("url").and_then(|v| v.as_str()) {
+                    println!("{} Opened DevTools: {}", color::success_indicator(), url);
+                } else {
+                    println!("{} Opened DevTools", color::success_indicator());
+                }
+            } else if let Some(err) = data.get("error").and_then(|v| v.as_str()) {
+                eprintln!("Could not open DevTools: {}", err);
+            }
+            return;
+        }
         // Navigation response
         if let Some(url) = data.get("url").and_then(|v| v.as_str()) {
             if let Some(title) = data.get("title").and_then(|v| v.as_str()) {
@@ -27,9 +158,39 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
             println!("{}", url);
             return;
         }
+        if let Some(cdp_url) = data.get("cdpUrl").and_then(|v| v.as_str()) {
+            println!("{}", cdp_url);
+            return;
+        }
+        // Diff responses -- route by action to avoid fragile shape probing
+        if let Some(obj) = data.as_object() {
+            match action {
+                Some("diff_snapshot") => {
+                    print_snapshot_diff(obj);
+                    return;
+                }
+                Some("diff_screenshot") => {
+                    print_screenshot_diff(obj);
+                    return;
+                }
+                Some("diff_url") => {
+                    if let Some(snap_data) = obj.get("snapshot").and_then(|v| v.as_object()) {
+                        println!("{}", color::bold("Snapshot diff:"));
+                        print_snapshot_diff(snap_data);
+                    }
+                    if let Some(ss_data) = obj.get("screenshot").and_then(|v| v.as_object()) {
+                        println!("\n{}", color::bold("Screenshot diff:"));
+                        print_screenshot_diff(ss_data);
+                    }
+                    return;
+                }
+                _ => {}
+            }
+        }
+        let origin = data.get("origin").and_then(|v| v.as_str());
         // Snapshot
         if let Some(snapshot) = data.get("snapshot").and_then(|v| v.as_str()) {
-            println!("{}", snapshot);
+            print_with_boundaries(snapshot, origin, opts);
             return;
         }
         // Title
@@ -39,12 +200,12 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
         }
         // Text
         if let Some(text) = data.get("text").and_then(|v| v.as_str()) {
-            println!("{}", text);
+            print_with_boundaries(text, origin, opts);
             return;
         }
         // HTML
         if let Some(html) = data.get("html").and_then(|v| v.as_str()) {
-            println!("{}", html);
+            print_with_boundaries(html, origin, opts);
             return;
         }
         // Value
@@ -56,20 +217,6 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
         if let Some(count) = data.get("count").and_then(|v| v.as_i64()) {
             println!("{}", count);
             return;
-        }
-        // Site mod toggle
-        if action == Some("site_mod_toggle") {
-            if let Some(enabled) = data.get("enabled").and_then(|v| v.as_bool()) {
-                let pattern = data.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
-                let verb = if enabled { "Enabled" } else { "Disabled" };
-                println!(
-                    "{} {} mod for {}",
-                    color::success_indicator(),
-                    verb,
-                    color::bold(pattern)
-                );
-                return;
-            }
         }
         // Boolean results
         if let Some(visible) = data.get("visible").and_then(|v| v.as_bool()) {
@@ -86,10 +233,8 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
         }
         // Eval result
         if let Some(result) = data.get("result") {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(result).unwrap_or_default()
-            );
+            let formatted = serde_json::to_string_pretty(result).unwrap_or_default();
+            print_with_boundaries(&formatted, origin, opts);
             return;
         }
         // iOS Devices
@@ -102,17 +247,28 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
             // Separate real devices from simulators
             let real_devices: Vec<_> = devices
                 .iter()
-                .filter(|d| d.get("isRealDevice").and_then(|v| v.as_bool()).unwrap_or(false))
+                .filter(|d| {
+                    d.get("isRealDevice")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                })
                 .collect();
             let simulators: Vec<_> = devices
                 .iter()
-                .filter(|d| !d.get("isRealDevice").and_then(|v| v.as_bool()).unwrap_or(false))
+                .filter(|d| {
+                    !d.get("isRealDevice")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                })
                 .collect();
 
             if !real_devices.is_empty() {
                 println!("Connected Devices:\n");
                 for device in real_devices.iter() {
-                    let name = device.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown");
+                    let name = device
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown");
                     let runtime = device.get("runtime").and_then(|v| v.as_str()).unwrap_or("");
                     let udid = device.get("udid").and_then(|v| v.as_str()).unwrap_or("");
                     println!("  {} {} ({})", color::green("●"), name, runtime);
@@ -124,9 +280,15 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
             if !simulators.is_empty() {
                 println!("Simulators:\n");
                 for device in simulators.iter() {
-                    let name = device.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown");
+                    let name = device
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown");
                     let runtime = device.get("runtime").and_then(|v| v.as_str()).unwrap_or("");
-                    let state = device.get("state").and_then(|v| v.as_str()).unwrap_or("Unknown");
+                    let state = device
+                        .get("state")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown");
                     let udid = device.get("udid").and_then(|v| v.as_str()).unwrap_or("");
                     let state_indicator = if state == "Booted" {
                         color::green("●")
@@ -159,10 +321,27 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
         }
         // Console logs
         if let Some(logs) = data.get("messages").and_then(|v| v.as_array()) {
-            for log in logs {
-                let level = log.get("type").and_then(|v| v.as_str()).unwrap_or("log");
-                let text = log.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                println!("{} {}", color::console_level_prefix(level), text);
+            if opts.content_boundaries {
+                let mut console_output = String::new();
+                for log in logs {
+                    let level = log.get("type").and_then(|v| v.as_str()).unwrap_or("log");
+                    let text = log.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                    console_output.push_str(&format!(
+                        "{} {}\n",
+                        color::console_level_prefix(level),
+                        text
+                    ));
+                }
+                if console_output.ends_with('\n') {
+                    console_output.pop();
+                }
+                print_with_boundaries(&console_output, origin, opts);
+            } else {
+                for log in logs {
+                    let level = log.get("type").and_then(|v| v.as_str()).unwrap_or("log");
+                    let text = log.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                    println!("{} {}", color::console_level_prefix(level), text);
+                }
             }
             return;
         }
@@ -200,10 +379,14 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
             }
             return;
         }
-        // Cleared requests
+        // Cleared (cookies or request log)
         if let Some(cleared) = data.get("cleared").and_then(|v| v.as_bool()) {
             if cleared {
-                println!("{} Request log cleared", color::success_indicator());
+                let label = match action {
+                    Some("cookies_clear") => "Cookies cleared",
+                    _ => "Request log cleared",
+                };
+                println!("{} {}", color::success_indicator(), label);
                 return;
             }
         }
@@ -264,18 +447,29 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
             }
             return;
         }
-        // Closed
+        // Closed (browser or tab)
         if data.get("closed").is_some() {
-            println!("{} Browser closed", color::success_indicator());
+            let label = match action {
+                Some("tab_close") => "Tab closed",
+                _ => "Browser closed",
+            };
+            println!("{} {}", color::success_indicator(), label);
             return;
         }
         // Recording start (has "started" field)
         if let Some(started) = data.get("started").and_then(|v| v.as_bool()) {
             if started {
-                if let Some(path) = data.get("path").and_then(|v| v.as_str()) {
-                    println!("{} Recording started: {}", color::success_indicator(), path);
-                } else {
-                    println!("{} Recording started", color::success_indicator());
+                match action {
+                    Some("profiler_start") => {
+                        println!("{} Profiling started", color::success_indicator());
+                    }
+                    _ => {
+                        if let Some(path) = data.get("path").and_then(|v| v.as_str()) {
+                            println!("{} Recording started: {}", color::success_indicator(), path);
+                        } else {
+                            println!("{} Recording started", color::success_indicator());
+                        }
+                    }
                 }
                 return;
             }
@@ -341,14 +535,45 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
                 return;
             }
         }
+        // Trace stop without path
+        if data.get("traceStopped").is_some() {
+            println!("{} Trace stopped", color::success_indicator());
+            return;
+        }
         // Path-based operations (screenshot/pdf/trace/har/download/state/video)
         if let Some(path) = data.get("path").and_then(|v| v.as_str()) {
             match action.unwrap_or("") {
-                "screenshot" => println!(
-                    "{} Screenshot saved to {}",
-                    color::success_indicator(),
-                    color::green(path)
-                ),
+                "screenshot" => {
+                    println!(
+                        "{} Screenshot saved to {}",
+                        color::success_indicator(),
+                        color::green(path)
+                    );
+                    if let Some(annotations) = data.get("annotations").and_then(|v| v.as_array()) {
+                        for ann in annotations {
+                            let num = ann.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+                            let ref_id = ann.get("ref").and_then(|r| r.as_str()).unwrap_or("");
+                            let role = ann.get("role").and_then(|r| r.as_str()).unwrap_or("");
+                            let name = ann.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                            if name.is_empty() {
+                                println!(
+                                    "   {} @{} {}",
+                                    color::dim(&format!("[{}]", num)),
+                                    ref_id,
+                                    role,
+                                );
+                            } else {
+                                println!(
+                                    "   {} @{} {} {:?}",
+                                    color::dim(&format!("[{}]", num)),
+                                    ref_id,
+                                    role,
+                                    name,
+                                );
+                            }
+                        }
+                    }
+                }
                 "pdf" => println!(
                     "{} PDF saved to {}",
                     color::success_indicator(),
@@ -358,6 +583,12 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
                     "{} Trace saved to {}",
                     color::success_indicator(),
                     color::green(path)
+                ),
+                "profiler_stop" => println!(
+                    "{} Profile saved to {} ({} events)",
+                    color::success_indicator(),
+                    color::green(path),
+                    data.get("eventCount").and_then(|c| c.as_u64()).unwrap_or(0)
                 ),
                 "har_stop" => println!(
                     "{} HAR saved to {}",
@@ -405,57 +636,83 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
             return;
         }
 
-        // Site mod responses
-        if let Some(rules) = data.get("rules").and_then(|v| v.as_array()) {
-            if rules.is_empty() {
-                println!("No site mods saved.");
+        // State list
+        if let Some(files) = data.get("files").and_then(|v| v.as_array()) {
+            if let Some(dir) = data.get("directory").and_then(|v| v.as_str()) {
+                println!("{}", color::bold(&format!("Saved states in {}", dir)));
+            }
+            if files.is_empty() {
+                println!("{}", color::dim("  No state files found"));
             } else {
-                for rule in rules {
-                    let pattern = rule.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
-                    let label = rule.get("label").and_then(|v| v.as_str());
-                    let has_css = rule.get("hasCSS").and_then(|v| v.as_bool()).unwrap_or(false);
-                    let has_js = rule.get("hasJS").and_then(|v| v.as_bool()).unwrap_or(false);
-                    let enabled = rule.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
-                    let indicator = if enabled { color::green("●") } else { color::dim("○") };
-                    let mut parts = Vec::new();
-                    if has_css { parts.push("CSS"); }
-                    if has_js { parts.push("JS"); }
-                    let display_label = label.unwrap_or(pattern);
-                    println!("  {} {} [{}] {}", indicator, color::bold(display_label), parts.join("+"), color::dim(pattern));
+                for file in files {
+                    let filename = file.get("filename").and_then(|v| v.as_str()).unwrap_or("");
+                    let size = file.get("size").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let modified = file.get("modified").and_then(|v| v.as_str()).unwrap_or("");
+                    let encrypted = file
+                        .get("encrypted")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    let size_str = if size > 1024 {
+                        format!("{:.1}KB", size as f64 / 1024.0)
+                    } else {
+                        format!("{}B", size)
+                    };
+                    let date_str = modified.split('T').next().unwrap_or(modified);
+                    let enc_str = if encrypted { " [encrypted]" } else { "" };
+                    println!(
+                        "  {} {}",
+                        filename,
+                        color::dim(&format!("({}, {}){}", size_str, date_str, enc_str))
+                    );
                 }
-                let total = data.get("total").and_then(|v| v.as_i64()).unwrap_or(rules.len() as i64);
-                println!("\n{} total", total);
             }
             return;
         }
-        if data.get("mod").is_some() {
-            let pattern = data.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
-            let total = data.get("total").and_then(|v| v.as_i64()).unwrap_or(0);
-            println!("{} Saved mod for {} ({} total)", color::success_indicator(), color::bold(pattern), total);
-            return;
-        }
-        if data.get("removed").is_some() {
-            let pattern = data.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
-            let removed = data.get("removed").and_then(|v| v.as_bool()).unwrap_or(false);
-            if removed {
-                println!("{} Removed mod for {}", color::success_indicator(), pattern);
-            } else {
-                println!("No mod found for {}", pattern);
-            }
-            return;
-        }
-        if let Some(enabled) = data.get("enabled").and_then(|v| v.as_bool()) {
-            let pattern = data.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
-            let state = if enabled {
-                color::green("enabled")
-            } else {
-                color::yellow("disabled")
-            };
+
+        // State rename
+        if let Some(true) = data.get("renamed").and_then(|v| v.as_bool()) {
+            let old_name = data.get("oldName").and_then(|v| v.as_str()).unwrap_or("");
+            let new_name = data.get("newName").and_then(|v| v.as_str()).unwrap_or("");
             println!(
-                "{} Site mod {} is now {}",
+                "{} Renamed {} -> {}",
                 color::success_indicator(),
-                color::bold(pattern),
-                state
+                old_name,
+                new_name
+            );
+            return;
+        }
+
+        // State clear
+        if let Some(cleared) = data.get("cleared").and_then(|v| v.as_i64()) {
+            println!(
+                "{} Cleared {} state file(s)",
+                color::success_indicator(),
+                cleared
+            );
+            return;
+        }
+
+        // State show summary
+        if let Some(summary) = data.get("summary") {
+            let cookies = summary.get("cookies").and_then(|v| v.as_i64()).unwrap_or(0);
+            let origins = summary.get("origins").and_then(|v| v.as_i64()).unwrap_or(0);
+            let encrypted = data
+                .get("encrypted")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let enc_str = if encrypted { " (encrypted)" } else { "" };
+            println!("State file summary{}:", enc_str);
+            println!("  Cookies: {}", cookies);
+            println!("  Origins with localStorage: {}", origins);
+            return;
+        }
+
+        // State clean
+        if let Some(cleaned) = data.get("cleaned").and_then(|v| v.as_i64()) {
+            println!(
+                "{} Cleaned {} old state file(s)",
+                color::success_indicator(),
+                cleaned
             );
             return;
         }
@@ -465,6 +722,145 @@ pub fn print_response(resp: &Response, json_mode: bool, action: Option<&str>) {
             println!("{}", note);
             return;
         }
+        // Auth list
+        if let Some(profiles) = data.get("profiles").and_then(|v| v.as_array()) {
+            if profiles.is_empty() {
+                println!("{}", color::dim("No auth profiles saved"));
+            } else {
+                println!("{}", color::bold("Auth profiles:"));
+                for p in profiles {
+                    let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    let url = p.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                    let user = p.get("username").and_then(|v| v.as_str()).unwrap_or("");
+                    println!(
+                        "  {} {} {}",
+                        color::green(name),
+                        color::dim(user),
+                        color::dim(url)
+                    );
+                }
+            }
+            return;
+        }
+
+        // Auth show
+        if let Some(profile) = data.get("profile").and_then(|v| v.as_object()) {
+            let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let url = profile.get("url").and_then(|v| v.as_str()).unwrap_or("");
+            let user = profile
+                .get("username")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let created = profile
+                .get("createdAt")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let last_login = profile.get("lastLoginAt").and_then(|v| v.as_str());
+            println!("Name: {}", name);
+            println!("URL: {}", url);
+            println!("Username: {}", user);
+            println!("Created: {}", created);
+            if let Some(ll) = last_login {
+                println!("Last login: {}", ll);
+            }
+            return;
+        }
+
+        // Auth save/update/login/delete
+        if data.get("saved").and_then(|v| v.as_bool()).unwrap_or(false) {
+            let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            println!(
+                "{} Auth profile '{}' saved",
+                color::success_indicator(),
+                name
+            );
+            return;
+        }
+        if data
+            .get("updated")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+            && !data.get("saved").and_then(|v| v.as_bool()).unwrap_or(false)
+        {
+            let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            println!(
+                "{} Auth profile '{}' updated",
+                color::success_indicator(),
+                name
+            );
+            return;
+        }
+        if data
+            .get("loggedIn")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            if let Some(title) = data.get("title").and_then(|v| v.as_str()) {
+                println!(
+                    "{} Logged in as '{}' - {}",
+                    color::success_indicator(),
+                    name,
+                    title
+                );
+            } else {
+                println!("{} Logged in as '{}'", color::success_indicator(), name);
+            }
+            return;
+        }
+        if data
+            .get("deleted")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            if let Some(name) = data.get("name").and_then(|v| v.as_str()) {
+                println!(
+                    "{} Auth profile '{}' deleted",
+                    color::success_indicator(),
+                    name
+                );
+                return;
+            }
+        }
+
+        // Confirmation required (for orchestrator use)
+        if data
+            .get("confirmation_required")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            let category = data.get("category").and_then(|v| v.as_str()).unwrap_or("");
+            let description = data
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let cid = data
+                .get("confirmation_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            println!("Confirmation required:");
+            println!("  {}: {}", category, description);
+            println!("  Run: stella-browser confirm {}", cid);
+            println!("  Or:  stella-browser deny {}", cid);
+            return;
+        }
+        if data
+            .get("confirmed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            println!("{} Action confirmed", color::success_indicator());
+            return;
+        }
+        if data
+            .get("denied")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            println!("{} Action denied", color::success_indicator());
+            return;
+        }
+
         // Default success
         println!("{} Done", color::success_indicator());
     }
@@ -556,10 +952,14 @@ Examples:
             r##"
 stella-browser click - Click an element
 
-Usage: stella-browser click <selector>
+Usage: stella-browser click <selector> [--new-tab]
 
 Clicks on the specified element. The selector can be a CSS selector,
 XPath, or an element reference from snapshot (e.g., @e1).
+
+Options:
+  --new-tab            Open link in a new tab instead of navigating current tab
+                       (only works on elements with href attribute)
 
 Global Options:
   --json               Output as JSON
@@ -570,6 +970,7 @@ Examples:
   stella-browser click @e1
   stella-browser click "button.primary"
   stella-browser click "//button[@type='submit']"
+  stella-browser click @e3 --new-tab
 "##
         }
         "dblclick" => {
@@ -625,6 +1026,11 @@ Global Options:
 Examples:
   stella-browser type "#search" "hello"
   stella-browser type @e2 "additional text"
+
+See Also:
+  For typing into contenteditable editors (Lexical, ProseMirror, etc.)
+  without a selector, use 'keyboard type' instead:
+    stella-browser keyboard type "# My Heading"
 "##
         }
         "hover" => {
@@ -838,19 +1244,58 @@ Examples:
   stella-browser keyup Control
 "##
         }
+        "keyboard" => {
+            r##"
+stella-browser keyboard - Raw keyboard input (no selector needed)
+
+Usage: stella-browser keyboard <subcommand> <text>
+
+Sends keyboard input to whatever element currently has focus.
+Unlike 'type' which requires a selector, 'keyboard' operates on
+the current focus — essential for contenteditable editors like
+Lexical, ProseMirror, CodeMirror, and Monaco.
+
+Subcommands:
+  type <text>          Type text character-by-character with real
+                       key events (keydown, keypress, keyup per char)
+  inserttext <text>    Insert text without key events (like paste)
+
+Note: For key combos (Enter, Control+a), use the 'press' command
+directly — it already operates on the current focus.
+
+Global Options:
+  --json               Output as JSON
+  --session <name>     Use specific session
+
+Examples:
+  stella-browser keyboard type "Hello, World!"
+  stella-browser keyboard type "# My Heading"
+  stella-browser keyboard inserttext "pasted content"
+
+Use Cases:
+  # Type into a Lexical/ProseMirror contenteditable editor:
+  stella-browser click "[contenteditable]"
+  stella-browser keyboard type "# My Heading"
+  stella-browser press Enter
+  stella-browser keyboard type "Some paragraph text"
+"##
+        }
 
         // === Scroll ===
         "scroll" => {
             r##"
 stella-browser scroll - Scroll the page
 
-Usage: stella-browser scroll [direction] [amount]
+Usage: stella-browser scroll [direction] [amount] [options]
 
-Scrolls the page in the specified direction.
+Scrolls the page or a specific element in the specified direction.
 
 Arguments:
   direction            up, down, left, right (default: down)
   amount               Pixels to scroll (default: 300)
+
+Options:
+  -s, --selector <sel> CSS selector for a scrollable container
 
 Global Options:
   --json               Output as JSON
@@ -861,6 +1306,7 @@ Examples:
   stella-browser scroll down 500
   stella-browser scroll up 200
   stella-browser scroll left 100
+  stella-browser scroll down 500 --selector "div.scroll-container"
 "##
         }
         "scrollintoview" | "scrollinto" => {
@@ -898,11 +1344,17 @@ Modes:
   --url <pattern>      Wait for URL to match pattern
   --load <state>       Wait for load state (load, domcontentloaded, networkidle)
   --fn <expression>    Wait for JavaScript expression to be truthy
-  --text <text>        Wait for text to appear on page
+  --text <text>        Wait for text to appear on page (substring match)
   --download [path]    Wait for a download to complete (optionally save to path)
 
 Download Options (with --download):
   --timeout <ms>       Timeout in milliseconds for download to start
+
+Wait for text to disappear:
+  Use --fn or --state hidden to wait for text or elements to go away:
+  wait --fn "!document.body.innerText.includes('Loading...')"
+  wait "#spinner" --state hidden
+  wait @e5 --state detached
 
 Global Options:
   --json               Output as JSON
@@ -917,6 +1369,7 @@ Examples:
   stella-browser wait --text "Welcome back"
   stella-browser wait --download ./file.pdf
   stella-browser wait --download ./report.xlsx --timeout 30000
+  stella-browser wait --fn "!document.body.innerText.includes('Loading...')"
 "##
         }
 
@@ -925,13 +1378,24 @@ Examples:
             r##"
 stella-browser screenshot - Take a screenshot
 
-Usage: stella-browser screenshot [path]
+Usage: stella-browser screenshot [selector] [path]
 
 Captures a screenshot of the current page. If no path is provided,
 saves to a temporary directory with a generated filename.
 
 Options:
   --full, -f           Capture full page (not just viewport)
+  --annotate           Overlay numbered labels on interactive elements.
+                       Each label [N] corresponds to ref @eN from snapshot.
+                       Prints a legend mapping labels to element roles/names.
+                       With --json, annotations are included in the response.
+                       Supported on Chromium and Lightpanda.
+  --screenshot-dir <path>  Default output directory for screenshots
+                       (or STELLA_BROWSER_SCREENSHOT_DIR env)
+  --screenshot-quality <0-100>  JPEG quality (0-100, only applies to jpeg format)
+                       (or STELLA_BROWSER_SCREENSHOT_QUALITY env)
+  --screenshot-format <fmt>  Image format: png (default) or jpeg
+                       (or STELLA_BROWSER_SCREENSHOT_FORMAT env)
 
 Global Options:
   --json               Output as JSON
@@ -941,6 +1405,11 @@ Examples:
   stella-browser screenshot
   stella-browser screenshot ./screenshot.png
   stella-browser screenshot --full ./full-page.png
+  stella-browser screenshot --annotate              # Labeled screenshot + legend
+  stella-browser screenshot --annotate ./page.png   # Save annotated screenshot
+  stella-browser screenshot --annotate --json       # JSON output with annotations
+  stella-browser screenshot --screenshot-dir ./shots # Save to custom directory
+  stella-browser screenshot --screenshot-format jpeg --screenshot-quality 80
 "##
         }
         "pdf" => {
@@ -1044,6 +1513,25 @@ Examples:
 "##
         }
 
+        // === Inspect ===
+        "inspect" => {
+            r##"
+stella-browser inspect - Open Chrome DevTools for the active page
+
+Starts a local WebSocket proxy and opens Chrome's DevTools frontend in your
+default browser. The proxy routes DevTools traffic through the daemon's
+existing CDP connection, so both DevTools and stella-browser commands work
+simultaneously.
+
+Usage: stella-browser inspect
+
+Examples:
+  stella-browser open example.com
+  stella-browser inspect          # opens DevTools in your browser
+  stella-browser click "Submit"   # commands still work while DevTools is open
+"##
+        }
+
         // === Get ===
         "get" => {
             r##"
@@ -1063,6 +1551,7 @@ Subcommands:
   count <selector>           Count matching elements
   box <selector>             Get bounding box (x, y, width, height)
   styles <selector>          Get computed styles of elements
+  cdp-url                    Get Chrome DevTools Protocol WebSocket URL
 
 Global Options:
   --json               Output as JSON
@@ -1189,7 +1678,7 @@ Usage: stella-browser set <setting> [args]
 Configures various browser settings and emulation options.
 
 Settings:
-  viewport <w> <h>           Set viewport size
+  viewport <w> <h> [scale]   Set viewport size (scale = deviceScaleFactor, e.g. 2 for retina)
   device <name>              Emulate device (e.g., "iPhone 12")
   geo <lat> <lng>            Set geolocation
   offline [on|off]           Toggle offline mode
@@ -1204,6 +1693,7 @@ Global Options:
 
 Examples:
   stella-browser set viewport 1920 1080
+  stella-browser set viewport 1920 1080 2    # 2x retina
   stella-browser set device "iPhone 12"
   stella-browser set geo 37.7749 -122.4194
   stella-browser set offline on
@@ -1406,6 +1896,64 @@ Examples:
 "##
         }
 
+        // === Auth ===
+        "auth" => {
+            r##"
+stella-browser auth - Manage authentication profiles
+
+Usage: stella-browser auth <subcommand> [args]
+
+Subcommands:
+  save <name>              Save credentials for a login profile
+  login <name>             Login using saved credentials
+  list                     List saved profiles (names and URLs only)
+  show <name>              Show profile metadata (no passwords)
+  delete <name>            Delete a saved profile
+
+Save Options:
+  --url <url>              Login page URL (required)
+  --username <user>        Username (required)
+  --password <pass>        Password (required unless --password-stdin)
+  --password-stdin          Read password from stdin (recommended)
+  --username-selector <s>  Custom CSS selector for username field
+  --password-selector <s>  Custom CSS selector for password field
+  --submit-selector <s>    Custom CSS selector for submit button
+
+Global Options:
+  --json                   Output as JSON
+  --session <name>         Use specific session
+
+Examples:
+  echo "pass" | stella-browser auth save github --url https://github.com/login --username user --password-stdin
+  stella-browser auth save github --url https://github.com/login --username user --password pass
+  stella-browser auth login github
+  stella-browser auth list
+  stella-browser auth show github
+  stella-browser auth delete github
+"##
+        }
+
+        // === Confirm/Deny ===
+        "confirm" | "deny" => {
+            r##"
+stella-browser confirm/deny - Approve or deny pending actions
+
+Usage:
+  stella-browser confirm <confirmation-id>
+  stella-browser deny <confirmation-id>
+
+When --confirm-actions is set, certain action categories return a
+confirmation_required response with a confirmation ID. Use confirm/deny
+to approve or reject the action.
+
+Pending confirmations auto-deny after 60 seconds.
+
+Examples:
+  stella-browser confirm c_8f3a1234
+  stella-browser deny c_8f3a1234
+"##
+        }
+
         // === Dialog ===
         "dialog" => {
             r##"
@@ -1437,7 +1985,7 @@ stella-browser trace - Record execution trace
 
 Usage: stella-browser trace <operation> [path]
 
-Record a trace for debugging with Playwright Trace Viewer.
+Record a Chrome DevTools trace for debugging.
 
 Operations:
   start [path]         Start recording trace
@@ -1455,6 +2003,46 @@ Examples:
 "##
         }
 
+        // === Profile (CDP Tracing) ===
+        "profiler" => {
+            r##"
+stella-browser profiler - Record Chrome DevTools performance profile
+
+Usage: stella-browser profiler <operation> [options]
+
+Record a performance profile using Chrome DevTools Protocol (CDP) Tracing.
+The output JSON file can be loaded into Chrome DevTools Performance panel,
+Perfetto UI (https://ui.perfetto.dev/), or other trace analysis tools.
+
+Operations:
+  start                Start profiling
+  stop [path]          Stop profiling and save to file
+
+Start Options:
+  --categories <list>  Comma-separated trace categories (default includes
+                       devtools.timeline, v8.execute, blink, and others)
+
+Global Options:
+  --json               Output as JSON
+  --session <name>     Use specific session
+
+Examples:
+  # Basic profiling
+  stella-browser profiler start
+  stella-browser navigate https://example.com
+  stella-browser click "#button"
+  stella-browser profiler stop ./trace.json
+
+  # With custom categories
+  stella-browser profiler start --categories "devtools.timeline,v8.execute,blink.user_timing"
+  stella-browser profiler stop ./custom-trace.json
+
+The output file can be viewed in:
+  - Chrome DevTools: Performance panel > Load profile
+  - Perfetto: https://ui.perfetto.dev/
+"##
+        }
+
         // === Record (video) ===
         "record" => {
             r##"
@@ -1464,7 +2052,7 @@ Usage: stella-browser record start <path.webm> [url]
        stella-browser record stop
        stella-browser record restart <path.webm> [url]
 
-Record the browser to a WebM video file using Playwright's native recording.
+Record the browser to a WebM video file.
 Creates a fresh browser context but preserves cookies and localStorage.
 If no URL is provided, automatically navigates to your current page.
 
@@ -1554,24 +2142,59 @@ Examples:
 "##
         }
 
+        // === Clipboard ===
+        "clipboard" => {
+            r##"
+stella-browser clipboard - Read and write clipboard
+
+Usage: stella-browser clipboard <operation> [text]
+
+Read from or write to the browser clipboard.
+
+Operations:
+  read                 Read text from clipboard
+  write <text>         Write text to clipboard
+  copy                 Copy current selection (simulates Ctrl+C)
+  paste                Paste from clipboard (simulates Ctrl+V)
+
+Global Options:
+  --json               Output as JSON
+  --session <name>     Use specific session
+
+Examples:
+  stella-browser clipboard read
+  stella-browser clipboard write "Hello, World!"
+  stella-browser clipboard copy
+  stella-browser clipboard paste
+"##
+        }
+
         // === State ===
         "state" => {
             r##"
-stella-browser state - Save/load browser state
+stella-browser state - Manage browser state
 
-Usage: stella-browser state <operation> <path>
+Usage: stella-browser state <operation> [args]
 
-Save or restore browser state (cookies, localStorage, sessionStorage).
+Save, restore, list, and manage browser state (cookies, localStorage, sessionStorage).
 
 Operations:
-  save <path>          Save current state to file
-  load <path>          Note: State must be loaded at browser launch via --state flag
+  save <path>                        Save current state to file
+  load <path>                        Load state from file
+  list                               List saved state files
+  show <filename>                    Show state summary
+  rename <old-name> <new-name>       Rename state file
+  clear [session-name] [--all]       Clear saved states
+  clean --older-than <days>          Delete expired state files
 
-Applying State:
-  Use --state flag when launching browser to load saved state:
-  stella-browser --state ./auth-state.json open https://example.com
+Automatic State Persistence:
+  Use --session-name to auto-save/restore state across restarts:
+  stella-browser --session-name myapp open https://example.com
+  Or set STELLA_BROWSER_SESSION_NAME environment variable.
 
-  Or set STELLA_BROWSER_STATE environment variable.
+State Encryption:
+  Set STELLA_BROWSER_ENCRYPTION_KEY (64-char hex) for AES-256-GCM encryption.
+  Generate a key: openssl rand -hex 32
 
 Global Options:
   --json               Output as JSON
@@ -1579,7 +2202,12 @@ Global Options:
 
 Examples:
   stella-browser state save ./auth-state.json
-  stella-browser --state ./auth-state.json open https://example.com
+  stella-browser state load ./auth-state.json
+  stella-browser state list
+  stella-browser state show myapp-default.json
+  stella-browser state rename old-name new-name
+  stella-browser state clear --all
+  stella-browser state clean --older-than 7
 "##
         }
 
@@ -1731,61 +2359,62 @@ Examples:
 "##
         }
 
-        "site_mod_set" => {
+        "diff" => {
             r##"
-stella-browser site_mod_set - Save a persistent per-site CSS/JS override
+stella-browser diff - Compare page states
 
-Usage: stella-browser site_mod_set --pattern <glob> [--css <css>] [--js <js>] [--label <name>]
+Subcommands:
 
-Saves CSS and/or JS overrides that automatically apply whenever the user visits
-a matching site. Mods persist across page reloads and browser restarts.
+  diff snapshot                   Compare current snapshot to last snapshot in session
+  diff screenshot --baseline <f>  Visual pixel diff against a baseline image
+  diff url <url1> <url2>          Compare two pages
 
-At least one of --css or --js is required.
+Snapshot Diff:
 
-Arguments:
-  --pattern <glob>     URL pattern using glob matching (e.g. "x.com/*")
-  --css <css>          CSS rules to inject
-  --js <js>            JavaScript to execute on page load
-  --label <name>       Human-readable label for the mod
+  Usage: stella-browser diff snapshot [options]
+
+  Options:
+    -b, --baseline <file>    Compare against a saved snapshot file
+    -s, --selector <sel>     Scope snapshot to a CSS selector or @ref
+    -c, --compact            Use compact snapshot format
+    -d, --depth <n>          Limit snapshot tree depth
+
+  Without --baseline, compares against the last snapshot taken in this session.
+
+Screenshot Diff:
+
+  Usage: stella-browser diff screenshot --baseline <file> [options]
+
+  Options:
+    -b, --baseline <file>    Baseline image to compare against (required)
+    -o, --output <file>      Path for the diff image (default: temp dir)
+    -t, --threshold <0-1>    Color distance threshold (default: 0.1)
+    -s, --selector <sel>     Scope screenshot to element
+        --full               Full page screenshot
+
+URL Diff:
+
+  Usage: stella-browser diff url <url1> <url2> [options]
+
+  Options:
+    --screenshot             Also compare screenshots (default: snapshot only)
+    --full                   Full page screenshots
+    --wait-until <strategy>  Navigation wait strategy: load, domcontentloaded, networkidle (default: load)
+    -s, --selector <sel>     Scope snapshots to a CSS selector or @ref
+    -c, --compact            Use compact snapshot format
+    -d, --depth <n>          Limit snapshot tree depth
+
+Global Options:
+  --json               Output as JSON
+  --session <name>     Use specific session
 
 Examples:
-  stella-browser site_mod_set --pattern "x.com/*" --css "[data-testid='trend'] { display: none !important; }" --label "Hide trending"
-  stella-browser site_mod_set --pattern "reddit.com/*" --js "document.querySelector('.sidebar').remove()" --label "Remove sidebar"
-  stella-browser site_mod_set --pattern "news.ycombinator.com/*" --css "body { font-size: 16px !important; }" --js "document.title = 'HN'" --label "Restyle HN"
-"##
-        }
-        "site_mod_list" => {
-            r##"
-stella-browser site_mod_list - List all saved site mods
-
-Usage: stella-browser site_mod_list
-
-Shows all saved per-site CSS/JS overrides with their patterns, labels, and enabled status.
-"##
-        }
-        "site_mod_remove" => {
-            r##"
-stella-browser site_mod_remove - Remove a site mod
-
-Usage: stella-browser site_mod_remove --pattern <glob>
-
-Permanently deletes the override for the given URL pattern.
-
-Examples:
-  stella-browser site_mod_remove --pattern "x.com/*"
-"##
-        }
-        "site_mod_toggle" => {
-            r##"
-stella-browser site_mod_toggle - Enable or disable a site mod
-
-Usage: stella-browser site_mod_toggle --pattern <glob> [--enabled true|false]
-
-Toggles a mod on or off without deleting it. If --enabled is omitted, toggles the current state.
-
-Examples:
-  stella-browser site_mod_toggle --pattern "x.com/*" --enabled false
-  stella-browser site_mod_toggle --pattern "x.com/*"
+  stella-browser diff snapshot
+  stella-browser diff snapshot --baseline before.txt
+  stella-browser diff screenshot --baseline before.png
+  stella-browser diff screenshot --baseline before.png --output diff.png --threshold 0.2
+  stella-browser diff url https://staging.example.com https://prod.example.com
+  stella-browser diff url https://v1.example.com https://v2.example.com --screenshot
 "##
         }
 
@@ -1809,6 +2438,8 @@ Core Commands:
   type <sel> <text>          Type into element
   fill <sel> <text>          Clear and fill
   press <key>                Press key (Enter, Tab, Control+a)
+  keyboard type <text>       Type text with real keystrokes (no selector)
+  keyboard inserttext <text> Insert text without key events
   hover <sel>                Hover element
   focus <sel>                Focus element
   check <sel>                Check checkbox
@@ -1833,7 +2464,7 @@ Navigation:
   reload                     Reload page
 
 Get Info:  stella-browser get <what> [selector]
-  text, html, value, attr <name>, title, url, count, box, styles
+  text, html, value, attr <name>, title, url, count, box, styles, cdp-url
 
 Check State:  stella-browser is <what> <selector>
   visible, enabled, checked
@@ -1861,19 +2492,32 @@ Storage:
 Tabs:
   tab [new|list|close|<n>]   Manage tabs
 
-Site Mods:
-  site_mod_set               Save per-site CSS/JS override (--pattern, --css, --js, --label)
-  site_mod_list              List all saved overrides
-  site_mod_remove            Remove override (--pattern)
-  site_mod_toggle            Enable/disable override (--pattern, --enabled)
+Diff:
+  diff snapshot              Compare current vs last snapshot
+  diff screenshot --baseline Compare current vs baseline image
+  diff url <u1> <u2>         Compare two pages
 
 Debug:
-  trace start|stop [path]    Record trace
+  trace start|stop [path]    Record Chrome DevTools trace
+  profiler start|stop [path] Record Chrome DevTools profile
   record start <path> [url]  Start video recording (WebM)
   record stop                Stop and save video
   console [--clear]          View console logs
   errors [--clear]           View page errors
   highlight <sel>            Highlight element
+  inspect                    Open Chrome DevTools for the active page
+  clipboard <op> [text]      Read/write clipboard (read, write, copy, paste)
+
+Auth Vault:
+  auth save <name> [opts]    Save auth profile (--url, --username, --password/--password-stdin)
+  auth login <name>          Login using saved credentials
+  auth list                  List saved auth profiles
+  auth show <name>           Show auth profile metadata
+  auth delete <name>         Delete auth profile
+
+Confirmation:
+  confirm <id>               Approve a pending action
+  deny <id>                  Deny a pending action
 
 Sessions:
   session                    Show current session name
@@ -1889,11 +2533,19 @@ Snapshot Options:
   -d, --depth <n>            Limit tree depth
   -s, --selector <sel>       Scope to CSS selector
 
+Authentication:
+  --profile <path>           Persist login sessions across restarts (cookies, IndexedDB, cache)
+                             (or STELLA_BROWSER_PROFILE env)
+  --session-name <name>      Auto-save/restore cookies and localStorage by name
+                             (or STELLA_BROWSER_SESSION_NAME env)
+  --state <path>             Load saved auth state (cookies + storage) from JSON file
+                             (or STELLA_BROWSER_STATE env)
+  --auto-connect             Connect to a running Chrome to reuse its auth state
+                             Tip: stella-browser --auto-connect state save ./auth.json
+  --headers <json>           HTTP headers scoped to URL's origin (e.g., Authorization bearer token)
+
 Options:
   --session <name>           Isolated session (or STELLA_BROWSER_SESSION env)
-  --profile <path>           Persistent browser profile (or STELLA_BROWSER_PROFILE env)
-  --state <path>             Load storage state from JSON file (or STELLA_BROWSER_STATE env)
-  --headers <json>           HTTP headers scoped to URL's origin (for auth)
   --executable-path <path>   Custom browser executable (or STELLA_BROWSER_EXECUTABLE_PATH)
   --extension <path>         Load browser extensions (repeatable)
   --args <args>              Browser launch args, comma or newline separated (or STELLA_BROWSER_ARGS)
@@ -1905,22 +2557,91 @@ Options:
                              e.g., --proxy-bypass "localhost,*.internal.com"
   --ignore-https-errors      Ignore HTTPS certificate errors
   --allow-file-access        Allow file:// URLs to access local files (Chromium only)
-  -p, --provider <name>      Browser provider: ios, browserbase, kernel, browseruse
+  -p, --provider <name>      Browser provider: ios, browserbase, kernel, browseruse, browserless
   --device <name>            iOS device name (e.g., "iPhone 15 Pro")
   --json                     JSON output
   --full, -f                 Full page screenshot
-  --headed                   Show browser window (not headless)
+  --annotate                 Annotated screenshot with numbered labels and legend
+  --screenshot-dir <path>    Default screenshot output directory (or STELLA_BROWSER_SCREENSHOT_DIR)
+  --screenshot-quality <n>   JPEG quality 0-100; ignored for PNG (or STELLA_BROWSER_SCREENSHOT_QUALITY)
+  --screenshot-format <fmt>  Screenshot format: png, jpeg (or STELLA_BROWSER_SCREENSHOT_FORMAT)
+  --headed                   Show browser window (not headless) (or STELLA_BROWSER_HEADED env)
   --cdp <port>               Connect via CDP (Chrome DevTools Protocol)
+  --color-scheme <scheme>    Color scheme: dark, light, no-preference (or STELLA_BROWSER_COLOR_SCHEME)
+  --download-path <path>     Default download directory (or STELLA_BROWSER_DOWNLOAD_PATH)
+  --content-boundaries       Wrap page output in boundary markers (or STELLA_BROWSER_CONTENT_BOUNDARIES)
+  --max-output <chars>       Truncate page output to N chars (or STELLA_BROWSER_MAX_OUTPUT)
+  --allowed-domains <list>   Restrict navigation domains (or STELLA_BROWSER_ALLOWED_DOMAINS)
+  --action-policy <path>     Action policy JSON file (or STELLA_BROWSER_ACTION_POLICY)
+  --confirm-actions <list>   Categories requiring confirmation (or STELLA_BROWSER_CONFIRM_ACTIONS)
+  --confirm-interactive      Interactive confirmation prompts; auto-denies if stdin is not a TTY (or STELLA_BROWSER_CONFIRM_INTERACTIVE)
+  --engine <name>            Browser engine: chrome (default), lightpanda (or STELLA_BROWSER_ENGINE)
+  --config <path>            Use a custom config file (or STELLA_BROWSER_CONFIG env)
   --debug                    Debug output
   --version, -V              Show version
 
+Configuration:
+  stella-browser looks for stella-browser.json in these locations (lowest to highest priority):
+    1. ~/.stella-browser/config.json      User-level defaults
+    2. ./stella-browser.json              Project-level overrides
+    3. Environment variables             Override config file values
+    4. CLI flags                         Override everything
+
+  Use --config <path> to load a specific config file instead of the defaults.
+  If --config points to a missing or invalid file, stella-browser exits with an error.
+
+  Boolean flags accept an optional true/false value to override config:
+    --headed           (same as --headed true)
+    --headed false     (disables "headed": true from config)
+
+  Extensions from user and project configs are merged (not replaced).
+
+  Example stella-browser.json:
+    {{"headed": true, "proxy": "http://localhost:8080", "profile": "./browser-data"}}
+
 Environment:
+  STELLA_BROWSER_CONFIG           Path to config file (or use --config)
   STELLA_BROWSER_SESSION          Session name (default: "default")
+  STELLA_BROWSER_SESSION_NAME     Auto-save/restore state persistence name
+  STELLA_BROWSER_ENCRYPTION_KEY   64-char hex key for AES-256-GCM state encryption
+  STELLA_BROWSER_STATE_EXPIRE_DAYS Auto-delete states older than N days (default: 30)
   STELLA_BROWSER_EXECUTABLE_PATH  Custom browser executable path
-  STELLA_BROWSER_PROVIDER         Browser provider (ios, browserbase, kernel, browseruse)
+  STELLA_BROWSER_EXTENSIONS       Comma-separated browser extension paths
+  STELLA_BROWSER_HEADED           Show browser window (not headless)
+  STELLA_BROWSER_JSON             JSON output
+  STELLA_BROWSER_FULL             Full page screenshot
+  STELLA_BROWSER_ANNOTATE         Annotated screenshot with numbered labels and legend
+  STELLA_BROWSER_DEBUG            Debug output
+  STELLA_BROWSER_IGNORE_HTTPS_ERRORS Ignore HTTPS certificate errors
+  STELLA_BROWSER_PROVIDER         Browser provider (ios, browserbase, kernel, browseruse, browserless)
+  STELLA_BROWSER_AUTO_CONNECT     Auto-discover and connect to running Chrome
+  STELLA_BROWSER_ALLOW_FILE_ACCESS Allow file:// URLs to access local files
+  STELLA_BROWSER_COLOR_SCHEME     Color scheme preference (dark, light, no-preference)
+  STELLA_BROWSER_DOWNLOAD_PATH    Default download directory for browser downloads
+  STELLA_BROWSER_DEFAULT_TIMEOUT  Default action timeout in ms (default: 25000)
+  STELLA_BROWSER_SESSION_NAME     Auto-save/load state persistence name
+  STELLA_BROWSER_STATE_EXPIRE_DAYS Auto-delete saved states older than N days (default: 30)
+  STELLA_BROWSER_ENCRYPTION_KEY   64-char hex key for AES-256-GCM session encryption
   STELLA_BROWSER_STREAM_PORT      Enable WebSocket streaming on port (e.g., 9223)
+  STELLA_BROWSER_IDLE_TIMEOUT_MS  Auto-shutdown daemon after N ms of inactivity (disabled by default)
   STELLA_BROWSER_IOS_DEVICE       Default iOS device name
   STELLA_BROWSER_IOS_UDID         Default iOS device UDID
+  STELLA_BROWSER_CONTENT_BOUNDARIES Wrap page output in boundary markers
+  STELLA_BROWSER_MAX_OUTPUT       Max characters for page output
+  STELLA_BROWSER_ALLOWED_DOMAINS  Comma-separated allowed domain patterns
+  STELLA_BROWSER_ACTION_POLICY    Path to action policy JSON file
+  STELLA_BROWSER_CONFIRM_ACTIONS  Action categories requiring confirmation
+  STELLA_BROWSER_CONFIRM_INTERACTIVE Enable interactive confirmation prompts
+  STELLA_BROWSER_ENGINE           Browser engine: chrome (default), lightpanda
+  STELLA_BROWSER_SCREENSHOT_DIR   Default screenshot output directory
+  STELLA_BROWSER_SCREENSHOT_QUALITY JPEG quality 0-100
+  STELLA_BROWSER_SCREENSHOT_FORMAT Screenshot format: png, jpeg
+
+Install:
+  npm install -g stella-browser           # npm
+  brew install stella-browser             # Homebrew
+  cargo install stella-browser            # Cargo
+  stella-browser install                  # Download Chrome (first time)
 
 Examples:
   stella-browser open example.com
@@ -1930,8 +2651,20 @@ Examples:
   stella-browser find role button click --name Submit
   stella-browser get text @e1
   stella-browser screenshot --full
+  stella-browser screenshot --annotate    # Labeled screenshot for vision models
+  stella-browser wait --load networkidle  # Wait for slow pages to load
   stella-browser --cdp 9222 snapshot      # Connect via CDP port
-  stella-browser --profile ~/.myapp open example.com  # Persistent profile
+  stella-browser --auto-connect snapshot  # Auto-discover running Chrome
+  stella-browser --color-scheme dark open example.com  # Dark mode
+  stella-browser --profile ~/.myapp open example.com    # Persistent profile
+  stella-browser --session-name myapp open example.com  # Auto-save/restore state
+
+Command Chaining:
+  Chain commands with && in a single shell call (browser persists via daemon):
+
+  stella-browser open example.com && stella-browser wait --load networkidle && stella-browser snapshot -i
+  stella-browser fill @e1 "user@example.com" && stella-browser fill @e2 "pass" && stella-browser click @e3
+  stella-browser open example.com && stella-browser wait --load networkidle && stella-browser screenshot page.png
 
 iOS Simulator (requires Xcode and Appium):
   stella-browser -p ios open example.com                    # Use default iPhone
@@ -1943,6 +2676,125 @@ iOS Simulator (requires Xcode and Appium):
     );
 }
 
+fn print_snapshot_diff(data: &serde_json::Map<String, serde_json::Value>) {
+    let changed = data
+        .get("changed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if !changed {
+        println!("{} No changes detected", color::success_indicator());
+        return;
+    }
+    if let Some(diff) = data.get("diff").and_then(|v| v.as_str()) {
+        for line in diff.lines() {
+            if line.starts_with("+ ") {
+                println!("{}", color::green(line));
+            } else if line.starts_with("- ") {
+                println!("{}", color::red(line));
+            } else {
+                println!("{}", color::dim(line));
+            }
+        }
+        let additions = data.get("additions").and_then(|v| v.as_i64()).unwrap_or(0);
+        let removals = data.get("removals").and_then(|v| v.as_i64()).unwrap_or(0);
+        let unchanged = data.get("unchanged").and_then(|v| v.as_i64()).unwrap_or(0);
+        println!(
+            "\n{} additions, {} removals, {} unchanged",
+            color::green(&additions.to_string()),
+            color::red(&removals.to_string()),
+            unchanged
+        );
+    }
+}
+
+fn print_screenshot_diff(data: &serde_json::Map<String, serde_json::Value>) {
+    let mismatch = data
+        .get("mismatchPercentage")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let is_match = data.get("match").and_then(|v| v.as_bool()).unwrap_or(false);
+    let dim_mismatch = data
+        .get("dimensionMismatch")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if dim_mismatch {
+        println!(
+            "{} Images have different dimensions",
+            color::error_indicator()
+        );
+    } else if is_match {
+        println!(
+            "{} Images match (0% difference)",
+            color::success_indicator()
+        );
+    } else {
+        println!(
+            "{} {:.2}% pixels differ",
+            color::error_indicator(),
+            mismatch
+        );
+    }
+    if let Some(diff_path) = data.get("diffPath").and_then(|v| v.as_str()) {
+        println!("  Diff image: {}", color::green(diff_path));
+    }
+    let total = data
+        .get("totalPixels")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let different = data
+        .get("differentPixels")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    println!(
+        "  {} different / {} total pixels",
+        color::red(&different.to_string()),
+        total
+    );
+}
+
 pub fn print_version() {
     println!("stella-browser {}", env!("CARGO_PKG_VERSION"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_storage_text;
+    use serde_json::json;
+
+    #[test]
+    fn test_format_storage_text_for_all_entries() {
+        let data = json!({
+            "data": {
+                "token": "abc123",
+                "user": "alice"
+            }
+        });
+
+        let rendered = format_storage_text(&data).unwrap();
+
+        assert_eq!(rendered, "token: abc123\nuser: alice");
+    }
+
+    #[test]
+    fn test_format_storage_text_for_key_lookup() {
+        let data = json!({
+            "key": "token",
+            "value": "abc123"
+        });
+
+        let rendered = format_storage_text(&data).unwrap();
+
+        assert_eq!(rendered, "token: abc123");
+    }
+
+    #[test]
+    fn test_format_storage_text_for_empty_store() {
+        let data = json!({
+            "data": {}
+        });
+
+        let rendered = format_storage_text(&data).unwrap();
+
+        assert_eq!(rendered, "No storage entries");
+    }
 }
