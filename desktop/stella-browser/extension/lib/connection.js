@@ -192,11 +192,8 @@ function scheduleReconnect(port, token) {
 }
 
 function setStatus(connected) {
-  // Update badge
-  chrome.action.setBadgeText({ text: connected ? 'ON' : '' });
-  chrome.action.setBadgeBackgroundColor({
-    color: connected ? '#22c55e' : '#ef4444',
-  });
+  // Clear any badge — the popup shows connection status
+  chrome.action.setBadgeText({ text: '' });
 
   if (statusCallback) {
     statusCallback(connected);

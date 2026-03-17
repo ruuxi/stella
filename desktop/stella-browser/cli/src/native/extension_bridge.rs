@@ -116,12 +116,27 @@ impl ExtensionBridge {
         fs::write(&port_file, self.port.to_string())
             .map_err(|e| format!("Failed to write port file: {}", e))?;
 
-        // Kill any stale process on the port
-        kill_process_on_port(self.port);
-
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", self.port))
-            .await
-            .map_err(|e| format!("Failed to bind extension bridge on port {}: {}", self.port, e))?;
+        // Bind with SO_REUSEADDR so we can rebind immediately after a daemon kill
+        // (avoids TIME_WAIT blocking the port for 30-120 seconds).
+        let listener = match bind_reuse(self.port) {
+            Ok(l) => l,
+            Err(_) => {
+                // Port is actively held by a stale process — kill it and retry
+                kill_process_on_port(self.port);
+                let mut bound = None;
+                for _ in 0..20 {
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                    match bind_reuse(self.port) {
+                        Ok(l) => { bound = Some(l); break; }
+                        Err(_) => continue,
+                    }
+                }
+                bound.ok_or_else(|| format!(
+                    "Failed to bind extension bridge on port {} — stale process could not be killed",
+                    self.port
+                ))?
+            }
+        };
 
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
         let (disconnect_shutdown_tx, disconnect_shutdown_rx) = mpsc::channel::<()>(1);
@@ -610,39 +625,55 @@ fn get_socket_dir() -> PathBuf {
     std::env::temp_dir().join("stella-browser")
 }
 
+/// Create a TcpListener with SO_REUSEADDR set, so we can rebind immediately
+/// even if the port is in TIME_WAIT from a recently killed daemon.
+fn bind_reuse(port: u16) -> Result<TcpListener, String> {
+    use socket2::{Domain, Protocol, Socket, Type};
+
+    let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port)
+        .parse()
+        .map_err(|e| format!("Invalid address: {}", e))?;
+
+    let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))
+        .map_err(|e| format!("Failed to create socket: {}", e))?;
+
+    socket
+        .set_reuse_address(true)
+        .map_err(|e| format!("Failed to set SO_REUSEADDR: {}", e))?;
+
+    socket
+        .bind(&addr.into())
+        .map_err(|e| format!("Failed to bind: {}", e))?;
+
+    socket
+        .listen(128)
+        .map_err(|e| format!("Failed to listen: {}", e))?;
+
+    socket
+        .set_nonblocking(true)
+        .map_err(|e| format!("Failed to set nonblocking: {}", e))?;
+
+    let std_listener: std::net::TcpListener = socket.into();
+    TcpListener::from_std(std_listener)
+        .map_err(|e| format!("Failed to convert to tokio listener: {}", e))
+}
+
 /// Kill any process currently listening on the given port.
 fn kill_process_on_port(port: u16) {
     #[cfg(windows)]
     {
         use std::process::Command;
-        let out = match Command::new("cmd")
-            .args([
-                "/C",
-                &format!(
-                    "netstat -ano | findstr \"LISTENING\" | findstr \"127.0.0.1:{}\"",
-                    port
-                ),
-            ])
-            .output()
-        {
-            Ok(o) => o,
-            Err(_) => return,
-        };
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        let mut pids = std::collections::HashSet::new();
-        for line in stdout.lines() {
-            let parts: Vec<&str> = line.trim().split_whitespace().collect();
-            if let Some(pid) = parts.last() {
-                if pid.chars().all(|c| c.is_ascii_digit()) && *pid != "0" {
-                    pids.insert(pid.to_string());
-                }
-            }
-        }
-        for pid in pids {
-            let _ = Command::new("taskkill")
-                .args(["/F", "/PID", &pid])
-                .output();
-        }
+        // Use PowerShell with base64-encoded command to avoid escaping issues
+        let script = format!(
+            "Get-NetTCPConnection -LocalPort {} -State Listen -ErrorAction SilentlyContinue | ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }}",
+            port
+        );
+        // Encode as UTF-16LE for -EncodedCommand
+        let utf16: Vec<u8> = script.encode_utf16().flat_map(|c| c.to_le_bytes()).collect();
+        let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &utf16);
+        let _ = Command::new("powershell")
+            .args(["-NoProfile", "-EncodedCommand", &encoded])
+            .output();
     }
 
     #[cfg(unix)]

@@ -12,135 +12,50 @@ body {
 }
 
 .container {
-  width: 280px;
-  padding: 16px;
+  width: 220px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-h1 {
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 12px;
-}
-
-.status {
+.header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
+}
+
+.logo {
+  width: 20px;
+  height: 20px;
+}
+
+h1 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#status-text {
   font-size: 12px;
-  font-weight: 500;
+  color: #999;
+  margin-bottom: 16px;
 }
 
-.status.connected {
-  background: #f0fdf4;
-  color: #166534;
-}
-
-.status.disconnected {
-  background: #fef2f2;
-  color: #991b1b;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.connected .dot {
-  background: #22c55e;
-}
-
-.disconnected .dot {
-  background: #ef4444;
-}
-
-.field {
-  margin-bottom: 10px;
-}
-
-.field label {
+.link {
   display: block;
-  font-size: 11px;
-  font-weight: 500;
-  color: #666;
-  margin-bottom: 4px;
-}
-
-.field input {
   width: 100%;
-  padding: 6px 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 5px;
+  text-align: center;
+  padding: 8px;
   font-size: 13px;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.field input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-button {
-  flex: 1;
-  padding: 7px 0;
-  border: none;
-  border-radius: 5px;
-  font-size: 12px;
   font-weight: 500;
-  cursor: pointer;
-  transition: opacity 0.15s;
+  color: #555;
+  text-decoration: none;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
 }
 
-button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-button.primary {
-  background: #1a1a1a;
-  color: #fff;
-}
-
-button.primary:hover:not(:disabled) {
-  background: #333;
-}
-
-button.secondary {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-button.secondary:hover:not(:disabled) {
-  background: #e5e7eb;
-}
-
-.hint {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
-  font-size: 11px;
-  color: #888;
-}
-
-.hint code {
-  display: block;
-  margin-top: 4px;
-  padding: 4px 8px;
-  background: #f3f4f6;
-  border-radius: 4px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 11px;
-  color: #374151;
-  user-select: all;
+.link:hover {
+  background: #fafafa;
+  border-color: #ccc;
 }

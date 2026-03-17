@@ -7,6 +7,11 @@
  * IDs are persisted to chrome.storage.session so they survive service worker
  * restarts (common in MV3). On every use we also verify the IDs are still
  * valid and fall back to searching for an existing "Stella" group.
+ *
+ * NOTE: chrome.tabGroups.update() has a Chromium rendering bug where the
+ * title/color is set internally but the tab strip UI doesn't repaint.
+ * The style shows correctly after any manual interaction with the group.
+ * See: https://github.com/brave/brave-browser/issues/53373
  */
 
 // --- Agent Window State ---
@@ -14,6 +19,21 @@
 let agentWindowId = null;
 let stellaGroupId = null;
 let stateLoaded = false;
+
+const STELLA_GROUP_TITLE = 'Stella';
+const STELLA_GROUP_COLOR = 'pink';
+
+/**
+ * Apply title and color to a tab group.
+ */
+async function updateGroupStyle(groupId) {
+  try {
+    await chrome.tabGroups.update(groupId, {
+      title: STELLA_GROUP_TITLE,
+      color: STELLA_GROUP_COLOR,
+    });
+  } catch {}
+}
 
 /**
  * Load persisted window/group IDs from session storage.
@@ -24,9 +44,7 @@ async function loadState() {
     const data = await chrome.storage.session.get(['agentWindowId', 'stellaGroupId']);
     if (data.agentWindowId != null) agentWindowId = data.agentWindowId;
     if (data.stellaGroupId != null) stellaGroupId = data.stellaGroupId;
-  } catch {
-    // storage.session may not be available — fall through
-  }
+  } catch {}
   stateLoaded = true;
 }
 
@@ -36,35 +54,40 @@ async function loadState() {
 async function saveState() {
   try {
     await chrome.storage.session.set({ agentWindowId, stellaGroupId });
-  } catch {
-    // best-effort
-  }
+  } catch {}
 }
 
 /**
  * Search all tab groups for an existing "Stella" group and recover window ID.
- * Returns true if a valid group was found.
  */
 async function recoverExistingGroup() {
   try {
-    const groups = await chrome.tabGroups.query({ title: 'Stella' });
+    const groups = await chrome.tabGroups.query({ title: STELLA_GROUP_TITLE });
     if (groups.length > 0) {
-      // Use the first one found
       stellaGroupId = groups[0].id;
       agentWindowId = groups[0].windowId;
+      // Merge any duplicate Stella groups into the first one
+      for (let i = 1; i < groups.length; i++) {
+        try {
+          const dupeGroupTabs = await chrome.tabs.query({ groupId: groups[i].id });
+          if (dupeGroupTabs.length > 0) {
+            await chrome.tabs.group({
+              tabIds: dupeGroupTabs.map(t => t.id),
+              groupId: stellaGroupId,
+            });
+          }
+        } catch {}
+      }
       await saveState();
       return true;
     }
-  } catch {
-    // tabGroups.query not available — fall through
-  }
+  } catch {}
   return false;
 }
 
 /**
  * Ensure the agent has a dedicated window with a Stella tab group.
- * Creates lazily on first use. If the window was closed by the user,
- * creates a new one. Recovers from service worker restarts.
+ * Creates lazily on first use. Recovers from service worker restarts.
  */
 async function ensureAgentWindow() {
   await loadState();
@@ -91,7 +114,6 @@ async function ensureAgentWindow() {
   // If we lost the IDs, try to find an existing Stella group
   if (agentWindowId == null || stellaGroupId == null) {
     if (await recoverExistingGroup()) {
-      // Verify the recovered window is still valid
       try {
         await chrome.windows.get(agentWindowId);
         return agentWindowId;
@@ -118,25 +140,20 @@ async function ensureAgentWindow() {
       tabIds: tabs.map(t => t.id),
       createProperties: { windowId: agentWindowId },
     });
-    await chrome.tabGroups.update(groupId, {
-      title: 'Stella',
-      color: 'purple',
-    });
+    await updateGroupStyle(groupId);
     stellaGroupId = groupId;
   }
 
   await saveState();
-  console.log('[tabs] Created agent window', agentWindowId, 'with Stella group', stellaGroupId);
   return agentWindowId;
 }
 
 /**
- * Add a tab to the Stella group. Reuses the existing group; never creates a second one.
+ * Add a tab to the Stella group.
  */
 async function addToStellaGroup(tabId) {
   await loadState();
 
-  // Verify the group still exists
   if (stellaGroupId != null) {
     try {
       await chrome.tabGroups.get(stellaGroupId);
@@ -145,7 +162,6 @@ async function addToStellaGroup(tabId) {
     }
   }
 
-  // Try to recover if lost
   if (stellaGroupId == null) {
     await recoverExistingGroup();
   }
@@ -153,18 +169,33 @@ async function addToStellaGroup(tabId) {
   if (stellaGroupId != null) {
     await chrome.tabs.group({ tabIds: [tabId], groupId: stellaGroupId });
   } else {
-    // Recreate the group
     const groupId = await chrome.tabs.group({
       tabIds: [tabId],
       createProperties: { windowId: agentWindowId },
     });
-    await chrome.tabGroups.update(groupId, {
-      title: 'Stella',
-      color: 'purple',
-    });
+    await updateGroupStyle(groupId);
     stellaGroupId = groupId;
     await saveState();
   }
+}
+
+/**
+ * Clean up stale unnamed tab groups left over from previous sessions.
+ */
+export async function cleanupStaleGroups() {
+  try {
+    const allGroups = await chrome.tabGroups.query({});
+    for (const group of allGroups) {
+      if (!group.title || group.title === '') {
+        try {
+          const tabs = await chrome.tabs.query({ groupId: group.id });
+          if (tabs.length > 0) {
+            await chrome.tabs.ungroup(tabs.map(t => t.id));
+          }
+        } catch {}
+      }
+    }
+  } catch {}
 }
 
 /**
@@ -174,9 +205,7 @@ export async function closeAgentWindow() {
   if (agentWindowId != null) {
     try {
       await chrome.windows.remove(agentWindowId);
-    } catch {
-      // Already closed
-    }
+    } catch {}
     agentWindowId = null;
     stellaGroupId = null;
     await saveState();
@@ -187,38 +216,20 @@ export async function closeAgentWindow() {
 
 /**
  * Get the currently active tab in the agent window.
- * Creates the agent window if it doesn't exist yet.
- * @returns {Promise<chrome.tabs.Tab>}
  */
 export async function getActiveTab() {
   const windowId = await ensureAgentWindow();
   const [tab] = await chrome.tabs.query({ active: true, windowId });
   if (!tab) throw new Error('No active tab found');
-  return tab;
-}
 
-/**
- * Get tab by index from all tabs in the agent window.
- * @param {number} index
- * @returns {Promise<chrome.tabs.Tab>}
- */
-async function getTabByIndex(index) {
-  const windowId = await ensureAgentWindow();
-  const tabs = await chrome.tabs.query({ windowId });
-  if (index < 0 || index >= tabs.length) {
-    throw new Error(`Tab index ${index} out of range (0-${tabs.length - 1})`);
+  // Ensure this tab is in the Stella group (prevents stray ungrouped tabs)
+  if (stellaGroupId != null && tab.groupId !== stellaGroupId) {
+    try {
+      await chrome.tabs.group({ tabIds: [tab.id], groupId: stellaGroupId });
+    } catch {}
   }
-  return tabs[index];
-}
 
-/**
- * Get the active tab index among all tabs in the agent window.
- * @returns {Promise<number>}
- */
-async function getActiveTabIndex() {
-  const windowId = await ensureAgentWindow();
-  const tabs = await chrome.tabs.query({ windowId });
-  return tabs.findIndex(t => t.active);
+  return tab;
 }
 
 export async function handleTabNew(command) {
@@ -228,8 +239,6 @@ export async function handleTabNew(command) {
     active: true,
     windowId,
   });
-
-  // Add to Stella group
   await addToStellaGroup(tab.id);
 
   const tabs = await chrome.tabs.query({ windowId });
