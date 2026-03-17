@@ -1,4 +1,5 @@
 import type { HttpRouter } from "convex/server";
+import { ConvexError } from "convex/values";
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import {
@@ -38,22 +39,34 @@ import {
   submitFalRequest,
   verifyFalWebhookSignature,
 } from "../media_fal_webhooks";
-import { computeServiceCostMicroCents } from "../lib/billing_money";
 import { hashSha256Hex } from "../lib/crypto_utils";
+import { isRecord } from "../shared_validators";
+import {
+  getMediaBillingAdmissionIssue,
+  meterCompletedMediaJob,
+} from "../media_billing";
 import {
   checkManagedUsageLimit,
-  scheduleManagedUsage,
 } from "../lib/managed_billing";
+import { dollarsToMicroCents } from "../lib/billing_money";
+import {
+  MEDIA_REALTIME_ENDPOINT_ID,
+  MEDIA_REALTIME_HEARTBEAT_TIMEOUT_MS,
+} from "../media_realtime_sessions";
 
 const MEDIA_API_BASE_PATH = "/api/media/v1";
 const MEDIA_DOCS_PATH = `${MEDIA_API_BASE_PATH}/docs`;
 const MEDIA_CAPABILITIES_PATH = `${MEDIA_API_BASE_PATH}/capabilities`;
 const MEDIA_GENERATE_PATH = `${MEDIA_API_BASE_PATH}/generate`;
+const MEDIA_REALTIME_SESSION_PATH = `${MEDIA_API_BASE_PATH}/realtime/session`;
 const MEDIA_FAL_WEBHOOK_PATH = `${MEDIA_API_BASE_PATH}/webhooks/fal`;
 const MEDIA_SUBSCRIPTION_QUERY = "api.media_jobs.getByJobId";
 
 const MEDIA_RATE_LIMIT = 20;
 const MEDIA_RATE_WINDOW_MS = 5 * 60_000;
+const MEDIA_DENY_BUFFER_MICRO_CENTS = dollarsToMicroCents(0.8);
+const MEDIA_REALTIME_EVENT_RATE_LIMIT = 1_200;
+const MEDIA_REALTIME_EVENT_WINDOW_MS = 15 * 60_000;
 
 type FalWebhookPayload = {
   request_id?: unknown;
@@ -64,14 +77,43 @@ type FalWebhookPayload = {
   error?: unknown;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+type MediaRealtimeSessionRequest = {
+  sessionId?: unknown;
+  event?: unknown;
+  endpointId?: unknown;
+};
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
 const asTrimmedString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+
+const parseMediaRealtimeSessionRequest = (
+  value: unknown,
+): {
+  sessionId: string;
+  event: "start" | "heartbeat" | "stop";
+  endpointId?: string;
+} | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const sessionId = asTrimmedString(value.sessionId);
+  const endpointId = asTrimmedString(value.endpointId);
+  const event =
+    value.event === "start" || value.event === "heartbeat" || value.event === "stop"
+      ? value.event
+      : null;
+  if (!sessionId || !event) {
+    return null;
+  }
+  return {
+    sessionId,
+    event,
+    ...(endpointId ? { endpointId } : {}),
+  };
+};
 
 const hasAspectRatioSupport = (capability: MediaCapability): boolean =>
   capability.supportsAspectRatio === true;
@@ -285,6 +327,12 @@ const requireCapabilityInputs = (args: {
   if (args.capability.sourceUrlKey && normalized[args.capability.sourceUrlKey] !== undefined && !isMediaSourceReference(normalized[args.capability.sourceUrlKey])) {
     return "sourceUrl must be a valid http(s) URL or data URI";
   }
+  if (args.capability.id === "sound_effects") {
+    const durationSeconds = normalized.duration_seconds;
+    if (typeof durationSeconds !== "number" || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+      return "duration_seconds is required for this capability";
+    }
+  }
   return null;
 };
 
@@ -298,7 +346,8 @@ const renderMediaDocs = (request: Request): string => {
     "Stable backend-managed media API for Stella app builders.",
     "",
     "Rules:",
-    "- Use capability IDs instead of raw provider model names.",
+    "- Use capability IDs for queued backend-managed media jobs.",
+    `- Flux Klein realtime stays backend-owned: track session activity through \`${MEDIA_REALTIME_SESSION_PATH}\` instead of using a direct provider websocket from the client.`,
     "- Submit with HTTP, then subscribe to the Convex job query.",
     "- Stella stores job metadata/status/output metadata in Convex, not raw media bytes.",
     "- The `icon` capability is locked to fixed square generation on the backend.",
@@ -307,6 +356,7 @@ const renderMediaDocs = (request: Request): string => {
     `- GET ${MEDIA_DOCS_PATH}`,
     `- GET ${MEDIA_CAPABILITIES_PATH}`,
     `- POST ${MEDIA_GENERATE_PATH}`,
+    `- POST ${MEDIA_REALTIME_SESSION_PATH}`,
     "",
     "Convex subscription:",
     `- \`${MEDIA_SUBSCRIPTION_QUERY}\` with \`{ jobId }\``,
@@ -316,6 +366,8 @@ const renderMediaDocs = (request: Request): string => {
     "Auth:",
     "- Docs and capabilities are public.",
     "- Generation requires `Authorization: Bearer <session-token>`.",
+    `- Realtime session tracking also requires auth and currently only supports \`${MEDIA_REALTIME_ENDPOINT_ID}\`.`,
+    `- Heartbeats must keep arriving within ${Math.floor(MEDIA_REALTIME_HEARTBEAT_TIMEOUT_MS / 1000)} seconds or the session expires and a new sessionId is required.`,
     "- Convex subscriptions use the normal authenticated Stella client session.",
     "",
     "Request body fields:",
@@ -362,6 +414,19 @@ const renderMediaDocs = (request: Request): string => {
     ),
     "```",
     "",
+    "Realtime session heartbeat request:",
+    "```json",
+    JSON.stringify(
+      {
+        sessionId: "media_rt_123",
+        event: "heartbeat",
+        endpointId: MEDIA_REALTIME_ENDPOINT_ID,
+      },
+      null,
+      2,
+    ),
+    "```",
+    "",
     "Example subscribed job snapshot:",
     "```json",
     JSON.stringify(
@@ -392,7 +457,7 @@ const renderMediaDocs = (request: Request): string => {
 };
 
 export const registerMediaRoutes = (http: HttpRouter) => {
-  for (const path of [MEDIA_DOCS_PATH, MEDIA_CAPABILITIES_PATH, MEDIA_GENERATE_PATH, MEDIA_FAL_WEBHOOK_PATH]) {
+  for (const path of [MEDIA_DOCS_PATH, MEDIA_CAPABILITIES_PATH, MEDIA_GENERATE_PATH, MEDIA_REALTIME_SESSION_PATH, MEDIA_FAL_WEBHOOK_PATH]) {
     http.route({
       path,
       method: "OPTIONS",
@@ -422,6 +487,88 @@ export const registerMediaRoutes = (http: HttpRouter) => {
   });
 
   http.route({
+    path: MEDIA_REALTIME_SESSION_PATH,
+    method: "POST",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const identity = await ctx.auth.getUserIdentity();
+        const ownerId = identity?.subject ?? (isMediaPublicTestModeEnabled() ? PUBLIC_MEDIA_TEST_OWNER_ID : null);
+        if (!ownerId) return errorResponse(401, "Unauthorized", origin);
+        const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
+          scope: "media_realtime_session",
+          key: ownerId,
+          limit: MEDIA_REALTIME_EVENT_RATE_LIMIT,
+          windowMs: MEDIA_REALTIME_EVENT_WINDOW_MS,
+          blockMs: MEDIA_REALTIME_EVENT_WINDOW_MS,
+        });
+        if (!rateLimit.allowed) return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+
+        let requestBody: MediaRealtimeSessionRequest | null = null;
+        try {
+          requestBody = (await request.json()) as MediaRealtimeSessionRequest;
+        } catch {
+          requestBody = null;
+        }
+        const body = parseMediaRealtimeSessionRequest(requestBody);
+        if (!body) {
+          return errorResponse(400, "Invalid realtime session JSON body", origin);
+        }
+        const endpointId = body.endpointId ?? MEDIA_REALTIME_ENDPOINT_ID;
+        if (endpointId !== MEDIA_REALTIME_ENDPOINT_ID) {
+          return errorResponse(400, `Unsupported realtime endpoint. Only ${MEDIA_REALTIME_ENDPOINT_ID} is allowed.`, origin);
+        }
+        let preStartLimit: { allowed: boolean; message: string } | null = null;
+        if (body.event === "start") {
+          preStartLimit = await checkManagedUsageLimit(ctx, ownerId, {
+            minimumRemainingMicroCents: MEDIA_DENY_BUFFER_MICRO_CENTS,
+          });
+          if (!preStartLimit.allowed) return errorResponse(429, preStartLimit.message, origin);
+        }
+        let activity;
+        try {
+          activity = await ctx.runMutation(internal.media_realtime_sessions.syncSessionActivity, {
+            ownerId,
+            sessionId: body.sessionId,
+            event: body.event,
+            endpointId,
+          });
+        } catch (error) {
+          if (error instanceof ConvexError) {
+            const code = typeof error.data?.code === "string" ? error.data.code : undefined;
+            const message =
+              typeof error.data?.message === "string"
+                ? error.data.message
+                : "Invalid realtime media session request.";
+            const status =
+              code === "NOT_FOUND" ? 404
+                : code === "CONFLICT" ? 409
+                  : 400;
+            return errorResponse(status, message, origin);
+          }
+          throw error;
+        }
+        const postHeartbeatLimit =
+          body.event === "stop"
+            ? { allowed: true, message: "" }
+            : preStartLimit ?? await checkManagedUsageLimit(ctx, ownerId, {
+              minimumRemainingMicroCents: MEDIA_DENY_BUFFER_MICRO_CENTS,
+            });
+        if (activity.expired && body.event !== "stop") {
+          return jsonResponse({
+            ...activity,
+            shouldStop: true,
+            stopReason: `Realtime media session expired after ${Math.floor(MEDIA_REALTIME_HEARTBEAT_TIMEOUT_MS / 1000)} seconds without a heartbeat. Start a new session.`,
+          }, 409, origin);
+        }
+        return jsonResponse({
+          ...activity,
+          shouldStop: !postHeartbeatLimit.allowed,
+          ...(postHeartbeatLimit.allowed ? {} : { stopReason: postHeartbeatLimit.message }),
+        }, 200, origin);
+      })),
+  });
+
+  http.route({
     path: MEDIA_GENERATE_PATH,
     method: "POST",
     handler: httpAction(async (ctx, request) =>
@@ -429,7 +576,9 @@ export const registerMediaRoutes = (http: HttpRouter) => {
         const identity = await ctx.auth.getUserIdentity();
         const ownerId = identity?.subject ?? (isMediaPublicTestModeEnabled() ? PUBLIC_MEDIA_TEST_OWNER_ID : null);
         if (!ownerId) return errorResponse(401, "Unauthorized", origin);
-        const subscriptionCheck = await checkManagedUsageLimit(ctx, ownerId);
+        const subscriptionCheck = await checkManagedUsageLimit(ctx, ownerId, {
+          minimumRemainingMicroCents: MEDIA_DENY_BUFFER_MICRO_CENTS,
+        });
         if (!subscriptionCheck.allowed) return errorResponse(429, subscriptionCheck.message, origin);
         const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
           scope: "media_generate",
@@ -460,6 +609,33 @@ export const registerMediaRoutes = (http: HttpRouter) => {
           input: body.input,
         });
         if (validationError) return errorResponse(400, validationError, origin);
+        if (resolved.profile.endpointId === MEDIA_REALTIME_ENDPOINT_ID) {
+          return errorResponse(
+            409,
+            `Realtime media uses the backend session wrapper. Use ${MEDIA_REALTIME_SESSION_PATH} to start, heartbeat, and stop active realtime usage.`,
+            origin,
+          );
+        }
+        const submissionInput = applyConvenienceInput({
+          capability: resolved.capability,
+          input: body.input,
+          prompt: body.prompt,
+          aspectRatio: body.aspectRatio,
+          sourceUrl: body.sourceUrl,
+          source: body.source,
+          sources: body.sources,
+        });
+        const storedRequest = summarizeMediaRequestForStorage({
+          ...body,
+          input: submissionInput,
+        });
+        const billingAdmissionIssue = getMediaBillingAdmissionIssue({
+          endpointId: resolved.profile.endpointId,
+          request: storedRequest,
+        });
+        if (billingAdmissionIssue) {
+          return errorResponse(503, `Media billing is not configured for ${resolved.profile.endpointId}: ${billingAdmissionIssue}`, origin);
+        }
         const apiKey = getFalApiKey();
         if (!apiKey) return errorResponse(503, "Media generation is not configured yet.", origin);
 
@@ -471,26 +647,16 @@ export const registerMediaRoutes = (http: HttpRouter) => {
           profile: resolved.profile.id,
           provider: "fal",
           endpointId: resolved.profile.endpointId,
-          request: summarizeMediaRequestForStorage(body),
+          request: storedRequest,
         });
 
         try {
-          const submissionStartedAt = Date.now();
           const submitted = await submitFalRequest({
             apiKey,
             endpointId: resolved.profile.endpointId,
-            input: applyConvenienceInput({
-              capability: resolved.capability,
-              input: body.input,
-              prompt: body.prompt,
-              aspectRatio: body.aspectRatio,
-              sourceUrl: body.sourceUrl,
-              source: body.source,
-              sources: body.sources,
-            }),
+            input: submissionInput,
             webhookUrl: `${new URL(MEDIA_FAL_WEBHOOK_PATH, request.url).toString()}?jobId=${encodeURIComponent(jobId)}`,
           });
-          const serviceKey = `media:${resolved.capability.id}:${resolved.profile.id}`;
           await ctx.runMutation(internal.media_jobs.markSubmitted, {
             jobId,
             providerRequestId: submitted.requestId,
@@ -499,14 +665,6 @@ export const registerMediaRoutes = (http: HttpRouter) => {
             ...(submitted.statusUrl ? { providerStatusUrl: submitted.statusUrl } : {}),
             upstreamStatus: submitted.upstreamStatus,
             ...(submitted.queuePosition !== undefined ? { queuePosition: submitted.queuePosition } : {}),
-          });
-          await scheduleManagedUsage(ctx, {
-            ownerId,
-            agentType: "service:media",
-            model: serviceKey,
-            durationMs: Date.now() - submissionStartedAt,
-            success: true,
-            costMicroCents: computeServiceCostMicroCents(serviceKey),
           });
           return jsonResponse(createMediaGenerateAcceptedResponse({
             jobId,
@@ -586,6 +744,23 @@ export const registerMediaRoutes = (http: HttpRouter) => {
           fallbackMessage: upstreamStatus === "ERROR" ? "Media generation failed upstream." : undefined,
         });
         const normalizedUpstreamStatus = finalPayloadError ? "PAYLOAD_ERROR" : upstreamStatus;
+        const billing =
+          normalizedUpstreamStatus === "OK"
+          && output !== undefined
+          && webhookJob
+            ? meterCompletedMediaJob({
+              endpointId: webhookJob.endpointId,
+              request: webhookJob.request,
+              output,
+            })
+            : null;
+        const meteredBilling =
+          billing && !("supported" in billing) ? billing : null;
+        if (billing && "supported" in billing) {
+          console.error(
+            `[media/webhook] Failed to meter ${webhookJob?.endpointId ?? "unknown"}: ${billing.reason}`,
+          );
+        }
 
         await ctx.scheduler.runAfter(0, internal.media_jobs.applyFalWebhook, {
           ...(jobId ? { jobId } : {}),
@@ -596,9 +771,21 @@ export const registerMediaRoutes = (http: HttpRouter) => {
           output !== undefined
             ? { output: output as never }
             : {}),
+          ...(meteredBilling ? { billing: meteredBilling as never } : {}),
           ...(error ? { error: error as never } : {}),
           receivedAt: Date.now(),
         });
+        if (meteredBilling && webhookJob && jobId) {
+          await ctx.scheduler.runAfter(0, internal.billing.recordMediaCompletedUsage, {
+            ownerId: webhookJob.ownerId,
+            jobId,
+            ...(requestId ? { providerRequestId: requestId } : {}),
+            endpointId: meteredBilling.endpointId,
+            costMicroCents: meteredBilling.costMicroCents,
+            billingUnit: meteredBilling.billingUnit,
+            quantity: meteredBilling.quantity,
+          });
+        }
         return jsonResponse({ received: true }, 200, origin);
       })),
   });
@@ -643,6 +830,7 @@ export {
   MEDIA_DOCS_PATH,
   MEDIA_FAL_WEBHOOK_PATH,
   MEDIA_GENERATE_PATH,
+  MEDIA_REALTIME_SESSION_PATH,
 };
 
 

@@ -50,9 +50,15 @@ const toLogPayload = (args: ManagedUsageLogArgs) => ({
 export async function checkManagedUsageLimit(
   ctx: BillingMutationCtx,
   ownerId: string,
+  options?: {
+    minimumRemainingMicroCents?: number;
+  },
 ) {
   return await ctx.runMutation(internal.billing.enforceManagedUsageLimit, {
     ownerId,
+    ...(options?.minimumRemainingMicroCents !== undefined
+      ? { minimumRemainingMicroCents: options.minimumRemainingMicroCents }
+      : {}),
   });
 }
 

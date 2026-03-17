@@ -46,18 +46,7 @@ const DEFAULT_TOKEN_PRICE: TokenPriceConfig = {
 
 const DEFAULT_SERVICE_PRICE_CATALOG: ServicePriceCatalog = {
   defaultUsd: 0,
-  services: {
-    "media:text_to_image:best": 0.035,
-    "media:text_to_image:fast": 0.009,
-    // Icon generation is forced to 512x512 in the backend, so use the
-    // 0.012 USD/MP Flux Turbo rate against 0.262144 MP.
-    "media:icon:default": 0.003146,
-    // Flux edit bills for input + output megapixels. Use the canonical 1 MP
-    // input plus 1 MP output reference from the provider docs.
-    "media:image_edit:default": 0.022,
-    "media:video_to_video:reference": 0.84,
-    "media:text_to_3d:default": 0.4,
-  },
+  services: {},
 };
 
 type TokenPriceCatalog = {

@@ -1,4 +1,5 @@
 import { base64UrlDecode, hashSha256Hex, hexToUint8Array } from "./lib/crypto_utils";
+import { isRecord } from "./shared_validators";
 
 const FAL_QUEUE_BASE_URL = "https://queue.fal.run";
 const FAL_WEBHOOK_JWKS_URL = "https://rest.alpha.fal.ai/.well-known/jwks.json";
@@ -23,9 +24,6 @@ type FalWebhookJwkSet = {
     x?: unknown;
   }>;
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const asTrimmedString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;

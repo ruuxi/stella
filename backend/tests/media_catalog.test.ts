@@ -14,6 +14,7 @@ describe("media catalog", () => {
     expect(capabilities.some((entry) => entry.id === "realtime")).toBe(true);
     expect(capabilities.some((entry) => entry.id === "video_to_video")).toBe(true);
     expect(capabilities.some((entry) => entry.id === "speech_to_text")).toBe(true);
+    expect(capabilities.some((entry) => entry.id === "video_depth")).toBe(false);
   });
 
   test("resolves default and explicit profiles", () => {
