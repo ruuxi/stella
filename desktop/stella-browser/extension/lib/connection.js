@@ -192,7 +192,7 @@ function scheduleReconnect(port, token) {
 }
 
 function setStatus(connected) {
-  // Clear any badge — the popup shows connection status
+  // Clear any badge - the popup shows connection status
   chrome.action.setBadgeText({ text: '' });
 
   if (statusCallback) {

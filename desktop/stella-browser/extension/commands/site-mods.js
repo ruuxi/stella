@@ -17,7 +17,7 @@ async function saveMods(mods) {
 }
 
 /**
- * site_mod_set — Save or update a per-site override.
+ * site_mod_set - Save or update a per-site override.
  *
  * Required: pattern (URL glob, e.g. "x.com/*")
  * Optional: css, js, label
@@ -50,7 +50,7 @@ export async function handleSiteModSet(command) {
 }
 
 /**
- * site_mod_list — List all saved overrides.
+ * site_mod_list - List all saved overrides.
  */
 export async function handleSiteModList(command) {
   const mods = await getMods();
@@ -72,7 +72,7 @@ export async function handleSiteModList(command) {
 }
 
 /**
- * site_mod_remove — Delete an override by pattern.
+ * site_mod_remove - Delete an override by pattern.
  */
 export async function handleSiteModRemove(command) {
   const { pattern } = command;
@@ -91,7 +91,7 @@ export async function handleSiteModRemove(command) {
 }
 
 /**
- * site_mod_toggle — Enable or disable an override without deleting it.
+ * site_mod_toggle - Enable or disable an override without deleting it.
  */
 export async function handleSiteModToggle(command) {
   const { pattern, enabled } = command;

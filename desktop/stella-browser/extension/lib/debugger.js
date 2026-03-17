@@ -1,5 +1,5 @@
 /**
- * Shared debugger management — attach/detach chrome.debugger and dispatch CDP events.
+ * Shared debugger management - attach/detach chrome.debugger and dispatch CDP events.
  * Used by interaction.js, network.js, capture.js (PDF), etc.
  */
 
@@ -90,7 +90,7 @@ export function clearCdpEvents(tabId) {
   }
 }
 
-// Global CDP event listener — dispatches to registered per-tab listeners
+// Global CDP event listener - dispatches to registered per-tab listeners
 chrome.debugger.onEvent.addListener((source, method, params) => {
   if (!source.tabId) return;
   const key = `${source.tabId}:${method}`;
