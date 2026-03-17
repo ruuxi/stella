@@ -1,5 +1,5 @@
 /**
- * Site Mods — Content script that auto-injects saved CSS/JS on page load.
+ * Site Mods - Content script that auto-injects saved CSS/JS on page load.
  *
  * Runs at document_start on all pages. Reads saved modifications from
  * chrome.storage.local and injects matching CSS immediately (before first
@@ -9,13 +9,9 @@
  * Format: { [pattern]: { css?, js?, label?, enabled } }
  */
 
-// ─── URL Pattern Matching ──────────────────────────────────────────────
+// --- URL Pattern Matching ---
 
-/**
- * Convert a glob pattern to a RegExp.
- * e.g. "x.com/*" → /^x\.com\/.*$/i
- *      "*.github.com/*/pull/*" → /^.*\.github\.com\/.*\/pull\/.*$/i
- */
+// Convert a glob pattern to a RegExp.
 function patternToRegex(pattern) {
   const escaped = pattern
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
@@ -34,7 +30,7 @@ function getMatchTarget(url) {
   }
 }
 
-// ─── Injection ─────────────────────────────────────────────────────────
+// --- Injection ---
 
 function injectCSS(css, pattern) {
   const style = document.createElement('style');
@@ -51,7 +47,7 @@ function injectJS(js, pattern) {
   script.remove();
 }
 
-// ─── Apply / Remove ────────────────────────────────────────────────────
+// --- Apply / Remove ---
 
 function removeAllMods() {
   document.querySelectorAll('[data-stella-mod]').forEach(el => el.remove());
@@ -88,7 +84,7 @@ async function applySiteMods() {
   }
 }
 
-// ─── SPA Navigation Detection ──────────────────────────────────────────
+// --- SPA Navigation Detection ---
 
 let lastUrl = location.href;
 
@@ -99,31 +95,21 @@ function onUrlChange() {
   applySiteMods();
 }
 
-// Hook pushState/replaceState by injecting into the page world.
-// The page-world script dispatches a custom event that we listen for here
-// in the content-script world.
+// Hook pushState/replaceState in the page's main world so SPA navigations
+// are detected. Uses chrome.scripting.executeScript to bypass CSP restrictions
+// that block inline <script> tags.
 function hookHistoryNavigation() {
-  const hook = document.createElement('script');
-  hook.textContent = `(function(){
-    var orig_push = history.pushState;
-    var orig_replace = history.replaceState;
-    history.pushState = function(){
-      orig_push.apply(this, arguments);
-      window.dispatchEvent(new Event('stella:urlchange'));
-    };
-    history.replaceState = function(){
-      orig_replace.apply(this, arguments);
-      window.dispatchEvent(new Event('stella:urlchange'));
-    };
-  })();`;
-  (document.head || document.documentElement).appendChild(hook);
-  hook.remove();
+  try {
+    chrome.runtime.sendMessage({ type: 'hookHistory', tabId: null });
+  } catch {
+    // Extension context invalidated
+  }
 }
 
 window.addEventListener('stella:urlchange', onUrlChange);
 window.addEventListener('popstate', () => setTimeout(onUrlChange, 0));
 
-// ─── Live Reload ───────────────────────────────────────────────────────
+// --- Live Reload ---
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.stella_site_mods) {
@@ -132,7 +118,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-// ─── Init ──────────────────────────────────────────────────────────────
+// --- Init ---
 
 applySiteMods();
 

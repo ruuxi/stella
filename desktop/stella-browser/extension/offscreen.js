@@ -6,7 +6,7 @@ function openPort() {
   try {
     const port = chrome.runtime.connect({ name: 'keepalive' });
     port.onDisconnect.addListener(() => {
-      // Service worker restarted — reconnect after a short delay
+      // Service worker restarted - reconnect after a short delay
       setTimeout(openPort, 1000);
     });
   } catch {
