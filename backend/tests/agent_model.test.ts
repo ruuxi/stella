@@ -62,7 +62,8 @@ describe("AGENT_MODELS", () => {
     expect(AGENT_MODELS.llm_best).toBeDefined();
     expect(AGENT_MODELS.llm_fast).toBeDefined();
     expect(AGENT_MODELS.media_llm).toBeDefined();
-    expect(AGENT_MODELS.llm_fast.model).toBe("google/gemini-3-flash");
+    expect(AGENT_MODELS.llm_fast.model).toBe("inception/mercury-2");
+    expect(AGENT_MODELS.media_llm.model).toBe("google/gemini-3-flash");
   });
 
   test("each config has required model field", () => {

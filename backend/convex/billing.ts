@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import { ConvexError, v } from "convex/values";
 import {
   action,
+  internalAction,
   internalMutation,
   internalQuery,
   query,
@@ -21,10 +22,13 @@ import {
   type SubscriptionPlan,
 } from "./lib/billing_plans";
 import {
+  type TokenPriceConfig,
   computeUsageCostMicroCents,
   dollarsToMicroCents,
   microCentsToDollars,
 } from "./lib/billing_money";
+import { buildManagedModelPriceEntries, type ManagedModelPriceEntry, type ModelsDevApi } from "./lib/models_dev";
+import { listManagedModelIds } from "./agent/model";
 
 const planValidator = v.union(
   v.literal("free"),
@@ -47,6 +51,7 @@ const ACTIVE_SUBSCRIPTION_STATUSES = new Set([
 ]);
 
 const emptyString = "";
+const MODELS_DEV_API_URL = "https://models.dev/api.json";
 
 const isAnonymousIdentity = (identity: unknown) =>
   Boolean(identity && typeof identity === "object" && (identity as Record<string, unknown>).isAnonymous === true);
@@ -304,6 +309,141 @@ const buildLimitMessage = (plan: SubscriptionPlan) => {
     return "Free plan usage limit reached. Upgrade to continue.";
   }
   return `${getPlanConfig(plan).label} plan usage limit reached.`;
+};
+
+export type ManagedUsageRecordArgs = {
+  ownerId: string;
+  agentType: string;
+  model: string;
+  durationMs: number;
+  success: boolean;
+  conversationId?: string | null;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  cachedInputTokens?: number;
+  cacheWriteInputTokens?: number;
+  reasoningTokens?: number;
+  costMicroCents?: number;
+  fallbackUsed?: boolean;
+  toolCalls?: number;
+};
+
+const getManagedModelPriceRow = async (
+  ctx: MutationCtx,
+  model: string,
+) => await ctx.db
+  .query("billing_model_prices")
+  .withIndex("by_model", (q) => q.eq("model", model))
+  .unique();
+
+const toTokenPriceConfig = (
+  row: {
+    inputPerMillionUsd: number;
+    outputPerMillionUsd: number;
+    cacheReadPerMillionUsd: number;
+    cacheWritePerMillionUsd: number;
+    reasoningPerMillionUsd: number;
+  } | null,
+): TokenPriceConfig | undefined =>
+  row
+    ? {
+      inputPerMillionUsd: row.inputPerMillionUsd,
+      outputPerMillionUsd: row.outputPerMillionUsd,
+      cacheReadPerMillionUsd: row.cacheReadPerMillionUsd,
+      cacheWritePerMillionUsd: row.cacheWritePerMillionUsd,
+      reasoningPerMillionUsd: row.reasoningPerMillionUsd,
+    }
+    : undefined;
+
+const getDefaultConversationIdForOwner = async (
+  ctx: MutationCtx,
+  ownerId: string,
+) => {
+  const conversation = await ctx.db
+    .query("conversations")
+    .withIndex("by_ownerId_and_isDefault", (q) =>
+      q.eq("ownerId", ownerId).eq("isDefault", true),
+    )
+    .first();
+  return conversation?._id ?? null;
+};
+
+export const persistManagedUsage = async (
+  ctx: MutationCtx,
+  args: ManagedUsageRecordArgs,
+) => {
+  const inputTokens = toNonNegativeInt(args.inputTokens);
+  const outputTokens = toNonNegativeInt(args.outputTokens);
+  const cachedInputTokens = toNonNegativeInt(args.cachedInputTokens);
+  const cacheWriteInputTokens = toNonNegativeInt(args.cacheWriteInputTokens);
+  const reasoningTokens = toNonNegativeInt(args.reasoningTokens);
+  const totalTokens = typeof args.totalTokens === "number" && Number.isFinite(args.totalTokens)
+    ? Math.max(0, Math.floor(args.totalTokens))
+    : inputTokens + outputTokens;
+  const modelPrice = toTokenPriceConfig(await getManagedModelPriceRow(ctx, args.model));
+  const costMicroCents =
+    typeof args.costMicroCents === "number" && Number.isFinite(args.costMicroCents)
+      ? Math.max(0, Math.floor(args.costMicroCents))
+      : computeUsageCostMicroCents({
+        model: args.model,
+        inputTokens,
+        outputTokens,
+        cachedInputTokens,
+        cacheWriteInputTokens,
+        reasoningTokens,
+        price: modelPrice,
+      });
+
+  const { profile, usage } = await ensureBillingRecordsForOwner(ctx, args.ownerId);
+  const plan = profile.activePlan as SubscriptionPlan;
+  const now = Date.now();
+
+  const snapshot = buildUsageSnapshot({
+    profile,
+    usage,
+    plan,
+    now,
+  });
+
+  await ctx.db.patch(usage._id, {
+    rollingUsageMicroCents: snapshot.normalizedUsage.rollingUsageMicroCents + costMicroCents,
+    rollingWindowStartedAt: snapshot.normalizedUsage.rollingWindowStartedAt,
+    weeklyUsageMicroCents: snapshot.normalizedUsage.weeklyUsageMicroCents + costMicroCents,
+    weeklyWindowStartedAt: snapshot.normalizedUsage.weeklyWindowStartedAt,
+    monthlyUsageMicroCents: snapshot.normalizedUsage.monthlyUsageMicroCents + costMicroCents,
+    monthlyWindowStartedAt: snapshot.normalizedUsage.monthlyWindowStartedAt,
+    totalUsageMicroCents: usage.totalUsageMicroCents + costMicroCents,
+    updatedAt: now,
+  });
+
+  const conversationId = args.conversationId ?? await getDefaultConversationIdForOwner(ctx, args.ownerId);
+  if (conversationId) {
+    await ctx.db.insert("usage_logs", {
+      ownerId: args.ownerId,
+      conversationId: conversationId as never,
+      agentType: args.agentType,
+      model: args.model,
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      ...(cachedInputTokens > 0 ? { cachedInputTokens } : {}),
+      ...(cacheWriteInputTokens > 0 ? { cacheWriteInputTokens } : {}),
+      ...(reasoningTokens > 0 ? { reasoningTokens } : {}),
+      costMicroCents,
+      billingPlan: plan,
+      durationMs: Math.max(0, Math.floor(args.durationMs)),
+      success: args.success,
+      ...(args.fallbackUsed !== undefined ? { fallbackUsed: args.fallbackUsed } : {}),
+      ...(args.toolCalls !== undefined ? { toolCalls: args.toolCalls } : {}),
+      createdAt: now,
+    });
+  }
+
+  return {
+    costMicroCents,
+    plan,
+  };
 };
 
 const normalizeReturnUrl = (value: string): string => {
@@ -700,70 +840,113 @@ export const logManagedUsage = internalMutation({
     model: v.string(),
     durationMs: v.number(),
     success: v.boolean(),
+    conversationId: v.optional(v.id("conversations")),
     inputTokens: v.optional(v.number()),
     outputTokens: v.optional(v.number()),
+    totalTokens: v.optional(v.number()),
+    cachedInputTokens: v.optional(v.number()),
+    cacheWriteInputTokens: v.optional(v.number()),
+    reasoningTokens: v.optional(v.number()),
+    costMicroCents: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => await persistManagedUsage(ctx, {
+    ownerId: args.ownerId,
+    conversationId: args.conversationId,
+    agentType: `proxy:${args.agentType}`,
+    model: args.model,
+    durationMs: args.durationMs,
+    success: args.success,
+    inputTokens: args.inputTokens,
+    outputTokens: args.outputTokens,
+    totalTokens: args.totalTokens,
+    cachedInputTokens: args.cachedInputTokens,
+    cacheWriteInputTokens: args.cacheWriteInputTokens,
+    reasoningTokens: args.reasoningTokens,
+    costMicroCents: args.costMicroCents,
+  }),
+});
+
+export const getManagedModelPrice = internalQuery({
+  args: {
+    model: v.string(),
+  },
+  handler: async (ctx, args) => await ctx.db
+    .query("billing_model_prices")
+    .withIndex("by_model", (q) => q.eq("model", args.model))
+    .unique(),
+});
+
+export const upsertManagedModelPrices = internalMutation({
+  args: {
+    prices: v.array(v.object({
+      model: v.string(),
+      source: v.string(),
+      sourceProvider: v.string(),
+      sourceModelId: v.string(),
+      inputPerMillionUsd: v.number(),
+      outputPerMillionUsd: v.number(),
+      cacheReadPerMillionUsd: v.number(),
+      cacheWritePerMillionUsd: v.number(),
+      reasoningPerMillionUsd: v.number(),
+      sourceUpdatedAt: v.string(),
+      syncedAt: v.number(),
+    })),
   },
   handler: async (ctx, args) => {
-    const inputTokens = toNonNegativeInt(args.inputTokens);
-    const outputTokens = toNonNegativeInt(args.outputTokens);
-    const totalTokens = inputTokens + outputTokens;
-    const costMicroCents = computeUsageCostMicroCents({
-      model: args.model,
-      inputTokens,
-      outputTokens,
-    });
+    for (const price of args.prices) {
+      const existing = await ctx.db
+        .query("billing_model_prices")
+        .withIndex("by_model", (q) => q.eq("model", price.model))
+        .unique();
 
-    const { profile, usage } = await ensureBillingRecordsForOwner(ctx, args.ownerId);
-    const plan = profile.activePlan as SubscriptionPlan;
-    const now = Date.now();
+      if (existing) {
+        await ctx.db.patch(existing._id, price);
+        continue;
+      }
 
-    const snapshot = buildUsageSnapshot({
-      profile,
-      usage,
-      plan,
-      now,
-    });
-
-    const nextUsage = {
-      rollingUsageMicroCents: snapshot.normalizedUsage.rollingUsageMicroCents + costMicroCents,
-      rollingWindowStartedAt: snapshot.normalizedUsage.rollingWindowStartedAt,
-      weeklyUsageMicroCents: snapshot.normalizedUsage.weeklyUsageMicroCents + costMicroCents,
-      weeklyWindowStartedAt: snapshot.normalizedUsage.weeklyWindowStartedAt,
-      monthlyUsageMicroCents: snapshot.normalizedUsage.monthlyUsageMicroCents + costMicroCents,
-      monthlyWindowStartedAt: snapshot.normalizedUsage.monthlyWindowStartedAt,
-      totalUsageMicroCents: usage.totalUsageMicroCents + costMicroCents,
-      updatedAt: now,
-    };
-
-    await ctx.db.patch(usage._id, nextUsage);
-
-    const conversation = await ctx.db
-      .query("conversations")
-      .withIndex("by_ownerId_and_isDefault", (q) =>
-        q.eq("ownerId", args.ownerId).eq("isDefault", true),
-      )
-      .first();
-
-    if (conversation) {
-      await ctx.db.insert("usage_logs", {
-        ownerId: args.ownerId,
-        conversationId: conversation._id,
-        agentType: `proxy:${args.agentType}`,
-        model: args.model,
-        inputTokens,
-        outputTokens,
-        totalTokens,
-        costMicroCents,
-        billingPlan: plan,
-        durationMs: args.durationMs,
-        success: args.success,
-        createdAt: now,
-      });
+      await ctx.db.insert("billing_model_prices", price);
     }
 
     return {
-      costMicroCents,
-      plan,
+      upserted: args.prices.length,
+    };
+  },
+});
+
+export const syncManagedModelPricesFromModelsDev = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ syncedAt: number; upserted: number; source: string }> => {
+    const response = await fetch(MODELS_DEV_API_URL, { method: "GET" });
+    if (!response.ok) {
+      throw new ConvexError({
+        code: "MODEL_PRICE_SYNC_FAILED",
+        message: `models.dev sync failed with status ${response.status}`,
+      });
+    }
+
+    const data = await response.json() as ModelsDevApi;
+    const syncedAt = Date.now();
+    const { entries, missingModels } = buildManagedModelPriceEntries({
+      data,
+      modelIds: listManagedModelIds(),
+      syncedAt,
+    });
+
+    if (missingModels.length > 0) {
+      throw new ConvexError({
+        code: "MODEL_PRICE_SYNC_INCOMPLETE",
+        message: `models.dev is missing prices for: ${missingModels.join(", ")}`,
+      });
+    }
+
+    const upserted: { upserted: number } = await ctx.runMutation(internal.billing.upsertManagedModelPrices, {
+      prices: entries as ManagedModelPriceEntry[] as never,
+    });
+
+    return {
+      syncedAt,
+      upserted: upserted.upserted,
+      source: MODELS_DEV_API_URL,
     };
   },
 });

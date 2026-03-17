@@ -1,9 +1,15 @@
 import { generateObject } from "ai";
 import { ConvexError } from "convex/values";
 import { z } from "zod";
+import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
+import { usageSummaryFromResult } from "../agent/model_execution";
 import { resolveFallbackConfig, resolveModelConfig } from "../agent/model_resolver";
 import { withModelFailoverAsync } from "../agent/model_failover";
+import {
+  assertManagedUsageAllowed,
+  scheduleManagedUsage,
+} from "./managed_billing";
 import {
   buildStoreImageSafetyReviewPrompt,
   buildStoreSecurityReviewPrompt,
@@ -258,9 +264,10 @@ export const parseReviewableStoreArtifact = (artifactBody: string): {
 };
 
 const reviewCodeFile = async (
-  ctx: Pick<ActionCtx, "runQuery">,
+  ctx: Pick<ActionCtx, "runQuery" | "scheduler" | "runMutation">,
   args: {
     ownerId: string;
+    conversationId?: Id<"conversations">;
     packageId: string;
     displayName: string;
     description: string;
@@ -268,9 +275,12 @@ const reviewCodeFile = async (
     file: ReviewableCodeFile;
   },
 ) => {
+  await assertManagedUsageAllowed(ctx, args.ownerId);
   const resolvedConfig = await resolveModelConfig(ctx, "store_security_review", args.ownerId);
   const fallbackConfig = await resolveFallbackConfig(ctx, "store_security_review", args.ownerId);
 
+  let usedFallback = false;
+  const startedAt = Date.now();
   const result = await withModelFailoverAsync(
     () =>
       generateObject({
@@ -308,15 +318,31 @@ const reviewCodeFile = async (
           }),
         })
       : undefined,
+    {
+      onFallback: () => {
+        usedFallback = true;
+      },
+    },
   );
+
+  await scheduleManagedUsage(ctx, {
+    ownerId: args.ownerId,
+    ...(args.conversationId ? { conversationId: args.conversationId } : {}),
+    agentType: "service:store_security_review",
+    model: usedFallback && fallbackConfig ? fallbackConfig.model : resolvedConfig.model,
+    durationMs: Date.now() - startedAt,
+    success: true,
+    usage: usageSummaryFromResult(result),
+  });
 
   return result.object;
 };
 
 const reviewImageFile = async (
-  ctx: Pick<ActionCtx, "runQuery">,
+  ctx: Pick<ActionCtx, "runQuery" | "scheduler" | "runMutation">,
   args: {
     ownerId: string;
+    conversationId?: Id<"conversations">;
     packageId: string;
     displayName: string;
     description: string;
@@ -324,6 +350,7 @@ const reviewImageFile = async (
     file: ReviewableImageFile;
   },
 ) => {
+  await assertManagedUsageAllowed(ctx, args.ownerId);
   const resolvedConfig = await resolveModelConfig(ctx, "store_image_safety_review", args.ownerId);
   const fallbackConfig = await resolveFallbackConfig(ctx, "store_image_safety_review", args.ownerId);
 
@@ -348,6 +375,8 @@ const reviewImageFile = async (
     ],
   }];
 
+  let usedFallback = false;
+  const startedAt = Date.now();
   const result = await withModelFailoverAsync(
     () =>
       generateObject({
@@ -367,15 +396,31 @@ const reviewImageFile = async (
           messages,
         })
       : undefined,
+    {
+      onFallback: () => {
+        usedFallback = true;
+      },
+    },
   );
+
+  await scheduleManagedUsage(ctx, {
+    ownerId: args.ownerId,
+    ...(args.conversationId ? { conversationId: args.conversationId } : {}),
+    agentType: "service:store_image_safety_review",
+    model: usedFallback && fallbackConfig ? fallbackConfig.model : resolvedConfig.model,
+    durationMs: Date.now() - startedAt,
+    success: true,
+    usage: usageSummaryFromResult(result),
+  });
 
   return result.object;
 };
 
 export const enforceStoreReleaseReviewOrThrow = async (
-  ctx: Pick<ActionCtx, "runQuery">,
+  ctx: Pick<ActionCtx, "runQuery" | "scheduler" | "runMutation">,
   args: {
     ownerId: string;
+    conversationId?: Id<"conversations">;
     packageId: string;
     displayName: string;
     description: string;
@@ -399,6 +444,7 @@ export const enforceStoreReleaseReviewOrThrow = async (
     for (const file of parsedArtifact.codeFiles) {
       const verdict = await reviewCodeFile(ctx, {
         ownerId: args.ownerId,
+        conversationId: args.conversationId,
         packageId: args.packageId,
         displayName: args.displayName,
         description: args.description,
@@ -418,6 +464,7 @@ export const enforceStoreReleaseReviewOrThrow = async (
     for (const file of parsedArtifact.imageFiles) {
       const verdict = await reviewImageFile(ctx, {
         ownerId: args.ownerId,
+        conversationId: args.conversationId,
         packageId: args.packageId,
         displayName: args.displayName,
         description: args.description,

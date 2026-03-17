@@ -14,6 +14,7 @@ import { components, internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { RateLimiter } from "@convex-dev/rate-limiter";
+import { persistManagedUsage } from "../billing";
 
 // ---------------------------------------------------------------------------
 // Rate Limiter
@@ -157,7 +158,7 @@ export const logUsage = internalMutation({
     toolCalls: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await ctx.db.insert("usage_logs", {
+    await persistManagedUsage(ctx, {
       ownerId: args.ownerId,
       conversationId: args.conversationId,
       agentType: args.agentType,
@@ -169,7 +170,6 @@ export const logUsage = internalMutation({
       success: args.success,
       fallbackUsed: args.fallbackUsed,
       toolCalls: args.toolCalls,
-      createdAt: Date.now(),
     });
     return null;
   },
@@ -217,33 +217,15 @@ export const logProxyUsage = internalMutation({
     estimateFromRequest: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    // Find the user's default conversation for logging purposes
-    const conversations = await ctx.db
-      .query("conversations")
-      .withIndex("by_ownerId_and_isDefault", (q) =>
-        q.eq("ownerId", args.ownerId).eq("isDefault", true),
-      )
-      .first();
-
-    if (!conversations) {
-      // No conversation found — skip logging
-      return null;
-    }
-
-    const totalTokens =
-      (args.inputTokens ?? 0) + (args.outputTokens ?? 0);
-
-    await ctx.db.insert("usage_logs", {
+    await persistManagedUsage(ctx, {
       ownerId: args.ownerId,
-      conversationId: conversations._id,
       agentType: `proxy:${args.agentType}`,
       model: args.model,
       inputTokens: args.inputTokens,
       outputTokens: args.outputTokens,
-      totalTokens,
+      totalTokens: (args.inputTokens ?? 0) + (args.outputTokens ?? 0),
       durationMs: args.durationMs,
       success: args.success,
-      createdAt: Date.now(),
     });
     return null;
   },

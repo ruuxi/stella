@@ -34,4 +34,11 @@ crons.interval(
   },
 );
 
+crons.interval(
+  "managed model price sync",
+  { hours: 24 },
+  internal.billing.syncManagedModelPricesFromModelsDev,
+  {},
+);
+
 export default crons;

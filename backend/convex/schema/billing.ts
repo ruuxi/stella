@@ -43,6 +43,22 @@ export const billingSchema = {
     updatedAt: v.number(),
   }).index("by_ownerId", ["ownerId"]),
 
+  billing_model_prices: defineTable({
+    model: v.string(),
+    source: v.string(),
+    sourceProvider: v.string(),
+    sourceModelId: v.string(),
+    inputPerMillionUsd: v.number(),
+    outputPerMillionUsd: v.number(),
+    cacheReadPerMillionUsd: v.number(),
+    cacheWritePerMillionUsd: v.number(),
+    reasoningPerMillionUsd: v.number(),
+    sourceUpdatedAt: v.string(),
+    syncedAt: v.number(),
+  })
+    .index("by_model", ["model"])
+    .index("by_syncedAt", ["syncedAt"]),
+
   billing_stripe_events: defineTable({
     eventId: v.string(),
     eventType: v.string(),
