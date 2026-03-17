@@ -80,28 +80,2065 @@ const COMPACTION_MODEL: ModelConfig = {
   },
 };
 
-const cloneModelConfig = (config: ModelConfig): ModelConfig => ({
-  ...config,
-  ...(config.providerOptions
-    ? {
-      providerOptions: Object.fromEntries(
-        Object.entries(config.providerOptions).map(([provider, options]) => [
-          provider,
-          { ...options },
-        ]),
-      ),
-    }
-    : {}),
-});
+const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
+  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
-const cloneModelConfigMap = (
-  configMap: Record<string, ModelConfig>,
-): Record<string, ModelConfig> =>
-  Object.fromEntries(
-    Object.entries(configMap).map(([agentType, config]) => [agentType, cloneModelConfig(config)]),
-  );
+  [AGENT_IDS.ORCHESTRATOR]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
 
-const AGENT_MODELS: Record<string, ModelConfig> = {
+  [AGENT_IDS.GENERAL]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.SELF_MOD]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.EXPLORE]: {
+    model: "zai/glm-4.7",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.BROWSER]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  // "app" is the frontend agent type name for browser/app automation
+  [AGENT_IDS.APP]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  [AGENT_IDS.AUTO]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  "panel-generate": {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  synthesis: {
+    model: "inception/mercury-2",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 9500,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  session_compaction_summary: COMPACTION_MODEL,
+
+  thread_compaction_summary: COMPACTION_MODEL,
+
+  welcome: {
+    model: "anthropic/claude-sonnet-4.6",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 2400,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+    },
+  },
+
+  mercury: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+  },
+
+  suggestions: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 10000,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+
+  llm_best: {
+    model: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  llm_fast: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 0.8,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  media_llm: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock", "cerebras"],
+      },
+    },
+  },
+  music_prompt: {
+    model: "google/gemini-3-flash",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
+
+  skill_metadata: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 2000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  skill_selection: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 3000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  search_html: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 16096,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  store_security_review: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 2500,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  store_image_safety_review: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 8000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+};
+
+const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
+  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
+
+  [AGENT_IDS.ORCHESTRATOR]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.GENERAL]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.SELF_MOD]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.EXPLORE]: {
+    model: "zai/glm-4.7",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.BROWSER]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  // "app" is the frontend agent type name for browser/app automation
+  [AGENT_IDS.APP]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  [AGENT_IDS.AUTO]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  "panel-generate": {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  synthesis: {
+    model: "inception/mercury-2",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 9500,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  session_compaction_summary: COMPACTION_MODEL,
+
+  thread_compaction_summary: COMPACTION_MODEL,
+
+  welcome: {
+    model: "anthropic/claude-sonnet-4.6",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 2400,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+    },
+  },
+
+  mercury: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+  },
+
+  suggestions: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 10000,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+
+  llm_best: {
+    model: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  llm_fast: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 0.8,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  media_llm: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock", "cerebras"],
+      },
+    },
+  },
+  music_prompt: {
+    model: "google/gemini-3-flash",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
+
+  skill_metadata: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 2000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  skill_selection: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 3000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  search_html: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 16096,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  store_security_review: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 2500,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  store_image_safety_review: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 8000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+};
+
+const GO_AGENT_MODELS: Record<string, ModelConfig> = {
+  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
+
+  [AGENT_IDS.ORCHESTRATOR]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.GENERAL]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.SELF_MOD]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.EXPLORE]: {
+    model: "zai/glm-4.7",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.BROWSER]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  // "app" is the frontend agent type name for browser/app automation
+  [AGENT_IDS.APP]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  [AGENT_IDS.AUTO]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  "panel-generate": {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  synthesis: {
+    model: "inception/mercury-2",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 9500,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  session_compaction_summary: COMPACTION_MODEL,
+
+  thread_compaction_summary: COMPACTION_MODEL,
+
+  welcome: {
+    model: "anthropic/claude-sonnet-4.6",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 2400,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+    },
+  },
+
+  mercury: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+  },
+
+  suggestions: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 10000,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+
+  llm_best: {
+    model: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  llm_fast: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 0.8,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  media_llm: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock", "cerebras"],
+      },
+    },
+  },
+  music_prompt: {
+    model: "google/gemini-3-flash",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
+
+  skill_metadata: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 2000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  skill_selection: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 3000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  search_html: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 16096,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  store_security_review: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 2500,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  store_image_safety_review: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 8000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+};
+
+const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
+  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
+
+  [AGENT_IDS.ORCHESTRATOR]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.GENERAL]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.SELF_MOD]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.EXPLORE]: {
+    model: "zai/glm-4.7",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.BROWSER]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  // "app" is the frontend agent type name for browser/app automation
+  [AGENT_IDS.APP]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  [AGENT_IDS.AUTO]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  "panel-generate": {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  synthesis: {
+    model: "inception/mercury-2",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 9500,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  session_compaction_summary: COMPACTION_MODEL,
+
+  thread_compaction_summary: COMPACTION_MODEL,
+
+  welcome: {
+    model: "anthropic/claude-sonnet-4.6",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 2400,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+    },
+  },
+
+  mercury: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+  },
+
+  suggestions: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 10000,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+
+  llm_best: {
+    model: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  llm_fast: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 0.8,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  media_llm: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock", "cerebras"],
+      },
+    },
+  },
+  music_prompt: {
+    model: "google/gemini-3-flash",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
+
+  skill_metadata: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 2000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  skill_selection: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 3000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  search_html: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 16096,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  store_security_review: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 2500,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  store_image_safety_review: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 8000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+};
+
+const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
+  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
+
+  [AGENT_IDS.ORCHESTRATOR]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.GENERAL]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.SELF_MOD]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.EXPLORE]: {
+    model: "zai/glm-4.7",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.BROWSER]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  // "app" is the frontend agent type name for browser/app automation
+  [AGENT_IDS.APP]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  [AGENT_IDS.AUTO]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  "panel-generate": {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  synthesis: {
+    model: "inception/mercury-2",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 9500,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  session_compaction_summary: COMPACTION_MODEL,
+
+  thread_compaction_summary: COMPACTION_MODEL,
+
+  welcome: {
+    model: "anthropic/claude-sonnet-4.6",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 2400,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+    },
+  },
+
+  mercury: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+  },
+
+  suggestions: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 10000,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+
+  llm_best: {
+    model: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  llm_fast: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 0.8,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  media_llm: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock", "cerebras"],
+      },
+    },
+  },
+  music_prompt: {
+    model: "google/gemini-3-flash",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
+
+  skill_metadata: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 2000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  skill_selection: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 3000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  search_html: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 16096,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  store_security_review: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 2500,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  store_image_safety_review: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 8000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+};
+
+const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
+  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
+
+  [AGENT_IDS.ORCHESTRATOR]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.GENERAL]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.SELF_MOD]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.EXPLORE]: {
+    model: "zai/glm-4.7",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.BROWSER]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  // "app" is the frontend agent type name for browser/app automation
+  [AGENT_IDS.APP]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  [AGENT_IDS.AUTO]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  "panel-generate": {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  synthesis: {
+    model: "inception/mercury-2",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 9500,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  session_compaction_summary: COMPACTION_MODEL,
+
+  thread_compaction_summary: COMPACTION_MODEL,
+
+  welcome: {
+    model: "anthropic/claude-sonnet-4.6",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 2400,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+    },
+  },
+
+  mercury: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+  },
+
+  suggestions: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 10000,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+
+  llm_best: {
+    model: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  llm_fast: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 0.8,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  media_llm: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock", "cerebras"],
+      },
+    },
+  },
+  music_prompt: {
+    model: "google/gemini-3-flash",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
+
+  skill_metadata: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 2000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  skill_selection: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 3000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  search_html: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 16096,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  store_security_review: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 2500,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  store_image_safety_review: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 8000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+};
+
+const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
+  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
+
+  [AGENT_IDS.ORCHESTRATOR]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.GENERAL]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.SELF_MOD]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.EXPLORE]: {
+    model: "zai/glm-4.7",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  [AGENT_IDS.BROWSER]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  // "app" is the frontend agent type name for browser/app automation
+  [AGENT_IDS.APP]: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  [AGENT_IDS.AUTO]: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  "panel-generate": {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  synthesis: {
+    model: "inception/mercury-2",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 9500,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  session_compaction_summary: COMPACTION_MODEL,
+
+  thread_compaction_summary: COMPACTION_MODEL,
+
+  welcome: {
+    model: "anthropic/claude-sonnet-4.6",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 1.0,
+    maxOutputTokens: 2400,
+    providerOptions: {
+      gateway: {
+        order: ["fireworks", "cerebras"],
+      },
+    },
+  },
+
+  mercury: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+  },
+
+  suggestions: {
+    model: "moonshotai/kimi-k2.5",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 10000,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+
+  llm_best: {
+    model: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "baseten", "amazon-bedrock"],
+      },
+    },
+  },
+
+  llm_fast: {
+    model: "inception/mercury-2",
+    fallback: "moonshotai/kimi-k2.5",
+    temperature: 0.8,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras", "fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+
+  media_llm: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock", "cerebras"],
+      },
+    },
+  },
+  music_prompt: {
+    model: "google/gemini-3-flash",
+    fallback: "zai/glm-4.7",
+    temperature: 1.0,
+    maxOutputTokens: 8192,
+    providerOptions: {
+      gateway: {
+        order: ["cerebras"],
+      },
+    },
+  },
+
+  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
+
+  skill_metadata: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 2000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  skill_selection: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 3000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  search_html: {
+    model: "inception/mercury-2",
+    temperature: 1.0,
+    maxOutputTokens: 16096,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "high",
+        forceReasoning: true,
+      },
+    },
+  },
+
+  store_security_review: {
+    model: "openai/gpt-5.4",
+    fallback: "anthropic/claude-sonnet-4.6",
+    temperature: 1.0,
+    maxOutputTokens: 2500,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  store_image_safety_review: {
+    model: "google/gemini-3-flash",
+    fallback: "openai/gpt-5.4",
+    temperature: 1.0,
+    maxOutputTokens: 8000,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+      },
+      gateway: {
+        order: ["fireworks", "amazon-bedrock"],
+      },
+    },
+  },
+};
+
+const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
@@ -396,15 +2433,17 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
 };
 
 export const AUDIENCE_AGENT_MODELS: Record<ManagedModelAudience, Record<string, ModelConfig>> = {
-  anonymous: cloneModelConfigMap(AGENT_MODELS),
-  free: AGENT_MODELS,
-  go: cloneModelConfigMap(AGENT_MODELS),
-  pro: cloneModelConfigMap(AGENT_MODELS),
-  plus: cloneModelConfigMap(AGENT_MODELS),
-  go_fallback: cloneModelConfigMap(AGENT_MODELS),
-  pro_fallback: cloneModelConfigMap(AGENT_MODELS),
-  plus_fallback: cloneModelConfigMap(AGENT_MODELS),
+  anonymous: ANONYMOUS_AGENT_MODELS,
+  free: FREE_AGENT_MODELS,
+  go: GO_AGENT_MODELS,
+  pro: PRO_AGENT_MODELS,
+  plus: PLUS_AGENT_MODELS,
+  go_fallback: GO_FALLBACK_AGENT_MODELS,
+  pro_fallback: PRO_FALLBACK_AGENT_MODELS,
+  plus_fallback: PLUS_FALLBACK_AGENT_MODELS,
 };
+
+const AGENT_MODELS = FREE_AGENT_MODELS;
 
 export const resolveManagedModelAudience = (args: {
   plan: "free" | "go" | "pro" | "plus";
