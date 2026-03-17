@@ -20,6 +20,11 @@ import {
 } from "../prompts/index";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import {
+  assertManagedUsageAllowed,
+  scheduleManagedUsage,
+} from "../lib/managed_billing";
+import { usageSummaryFromFinish } from "./model_execution";
 
 const MAX_RAW_TEXT = 60_000;
 const MAX_SCHEMA_CHARS = 40_000;
@@ -113,6 +118,10 @@ export const invoke = internalAction({
 
     let rawText = "";
     try {
+      if (ownerId) {
+        await assertManagedUsageAllowed(ctx, ownerId);
+      }
+
       const invokeSharedArgs = {
         system: `${promptBuild.systemPrompt}\n\n${AGENT_INVOKE_SYSTEM_INSTRUCTIONS}`.trim(),
         tools,
@@ -127,6 +136,7 @@ export const invoke = internalAction({
 
       const resolvedConfig = await resolveModelConfig(ctx, args.agentType, ownerId);
       const fallbackConfig = await resolveFallbackConfig(ctx, args.agentType, ownerId);
+      const startedAt = Date.now();
       const result = await streamTextWithFailover({
         resolvedConfig,
         fallbackConfig: fallbackConfig ?? undefined,
@@ -134,6 +144,19 @@ export const invoke = internalAction({
       });
 
       rawText = scrubProviderTerms(truncate(await result.text));
+
+      if (ownerId) {
+        const totalUsage = await result.totalUsage;
+        await scheduleManagedUsage(ctx, {
+          ownerId,
+          conversationId: args.conversationId,
+          agentType: `invoke:${args.agentType}`,
+          model: resolvedConfig.model,
+          durationMs: Date.now() - startedAt,
+          success: true,
+          usage: usageSummaryFromFinish(totalUsage),
+        });
+      }
     } catch (error) {
       return {
         ok: false as const,

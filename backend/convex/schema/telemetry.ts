@@ -45,6 +45,9 @@ export const telemetrySchema = {
     inputTokens: v.optional(v.number()),
     outputTokens: v.optional(v.number()),
     totalTokens: v.optional(v.number()),
+    cachedInputTokens: v.optional(v.number()),
+    cacheWriteInputTokens: v.optional(v.number()),
+    reasoningTokens: v.optional(v.number()),
     costMicroCents: v.optional(v.number()),
     billingPlan: v.optional(v.union(
       v.literal("free"),

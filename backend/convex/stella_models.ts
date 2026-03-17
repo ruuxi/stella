@@ -1,4 +1,4 @@
-import { AGENT_MODELS, DEFAULT_MODEL, getModelConfig } from "./agent/model";
+import { AGENT_MODELS, getModelConfig, listManagedModelIds } from "./agent/model";
 
 export const STELLA_PROVIDER = "stella";
 export const STELLA_DEFAULT_MODEL = `${STELLA_PROVIDER}/default`;
@@ -68,24 +68,7 @@ const STATIC_STELLA_ALIASES = [
 ] as const;
 
 const listUpstreamManagedModels = (): string[] => {
-  const models = new Set<string>();
-
-  const appendModel = (value: string | undefined) => {
-    const trimmed = value?.trim();
-    if (trimmed) {
-      models.add(trimmed);
-    }
-  };
-
-  appendModel(DEFAULT_MODEL.model);
-  appendModel(DEFAULT_MODEL.fallback);
-
-  for (const config of Object.values(AGENT_MODELS)) {
-    appendModel(config.model);
-    appendModel(config.fallback);
-  }
-
-  return Array.from(models).sort((a, b) => deriveDisplayName(a).localeCompare(deriveDisplayName(b)));
+  return listManagedModelIds().sort((a, b) => deriveDisplayName(a).localeCompare(deriveDisplayName(b)));
 };
 
 export const toStellaModelId = (upstreamModel: string): string =>

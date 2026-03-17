@@ -38,7 +38,12 @@ import {
   submitFalRequest,
   verifyFalWebhookSignature,
 } from "../media_fal_webhooks";
+import { computeServiceCostMicroCents } from "../lib/billing_money";
 import { hashSha256Hex } from "../lib/crypto_utils";
+import {
+  checkManagedUsageLimit,
+  scheduleManagedUsage,
+} from "../lib/managed_billing";
 
 const MEDIA_API_BASE_PATH = "/api/media/v1";
 const MEDIA_DOCS_PATH = `${MEDIA_API_BASE_PATH}/docs`;
@@ -424,6 +429,8 @@ export const registerMediaRoutes = (http: HttpRouter) => {
         const identity = await ctx.auth.getUserIdentity();
         const ownerId = identity?.subject ?? (isMediaPublicTestModeEnabled() ? PUBLIC_MEDIA_TEST_OWNER_ID : null);
         if (!ownerId) return errorResponse(401, "Unauthorized", origin);
+        const subscriptionCheck = await checkManagedUsageLimit(ctx, ownerId);
+        if (!subscriptionCheck.allowed) return errorResponse(429, subscriptionCheck.message, origin);
         const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
           scope: "media_generate",
           key: ownerId,
@@ -468,6 +475,7 @@ export const registerMediaRoutes = (http: HttpRouter) => {
         });
 
         try {
+          const submissionStartedAt = Date.now();
           const submitted = await submitFalRequest({
             apiKey,
             endpointId: resolved.profile.endpointId,
@@ -482,6 +490,7 @@ export const registerMediaRoutes = (http: HttpRouter) => {
             }),
             webhookUrl: `${new URL(MEDIA_FAL_WEBHOOK_PATH, request.url).toString()}?jobId=${encodeURIComponent(jobId)}`,
           });
+          const serviceKey = `media:${resolved.capability.id}:${resolved.profile.id}`;
           await ctx.runMutation(internal.media_jobs.markSubmitted, {
             jobId,
             providerRequestId: submitted.requestId,
@@ -490,6 +499,14 @@ export const registerMediaRoutes = (http: HttpRouter) => {
             ...(submitted.statusUrl ? { providerStatusUrl: submitted.statusUrl } : {}),
             upstreamStatus: submitted.upstreamStatus,
             ...(submitted.queuePosition !== undefined ? { queuePosition: submitted.queuePosition } : {}),
+          });
+          await scheduleManagedUsage(ctx, {
+            ownerId,
+            agentType: "service:media",
+            model: serviceKey,
+            durationMs: Date.now() - submissionStartedAt,
+            success: true,
+            costMicroCents: computeServiceCostMicroCents(serviceKey),
           });
           return jsonResponse(createMediaGenerateAcceptedResponse({
             jobId,

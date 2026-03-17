@@ -5,6 +5,7 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  type ActionCtx,
   type MutationCtx,
   type QueryCtx,
 } from "../_generated/server";
@@ -13,6 +14,7 @@ import type { Id } from "../_generated/dataModel";
 import { requireUserId, tryLoadOwnedConversation } from "../auth";
 import { generateText } from "ai";
 import { getModelConfig } from "../agent/model";
+import { usageSummaryFromResult } from "../agent/model_execution";
 import {
   ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS,
   SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS,
@@ -28,6 +30,10 @@ import {
   THREAD_COMPACTION_UPDATE_PROMPT,
   TURN_PREFIX_SUMMARY_PROMPT,
 } from "../prompts/index";
+import {
+  assertManagedUsageAllowed,
+  scheduleManagedUsage,
+} from "../lib/managed_billing";
 
 const MAX_THREADS_PER_CONVERSATION = 16;
 const MAX_CONTENT_LENGTH = 500_000;
@@ -106,13 +112,20 @@ export const deriveThreadLifecycleStatus = (args: {
 };
 
 const generateCompactionTextWithRetry = async (
+  ctx: Pick<ActionCtx, "scheduler">,
+  args: {
+    ownerId: string;
+    conversationId: Id<"conversations">;
+    agentType: string;
+  },
   config: ReturnType<typeof getModelConfig>,
   promptBody: string,
 ): Promise<string> => {
   let lastError: unknown = null;
   for (let attempt = 0; attempt <= THREAD_COMPACTION_MAX_RETRIES; attempt += 1) {
     try {
-      const { text } = await generateText({
+      const startedAt = Date.now();
+      const result = await generateText({
         ...config,
         system: THREAD_COMPACTION_SYSTEM_PROMPT,
         messages: [
@@ -122,7 +135,16 @@ const generateCompactionTextWithRetry = async (
           },
         ],
       });
-      return text.trim();
+      await scheduleManagedUsage(ctx, {
+        ownerId: args.ownerId,
+        conversationId: args.conversationId,
+        agentType: args.agentType,
+        model: config.model,
+        durationMs: Date.now() - startedAt,
+        success: true,
+        usage: usageSummaryFromResult(result),
+      });
+      return result.text.trim();
     } catch (error) {
       lastError = error;
       if (attempt >= THREAD_COMPACTION_MAX_RETRIES) {
@@ -489,6 +511,11 @@ export const compactThread = internalAction({
       threadId: args.threadId,
     });
     if (!thread || thread.status !== "active") return null;
+    const conversation = await ctx.runQuery(internal.conversations.getById, {
+      id: thread.conversationId,
+    });
+    if (!conversation) return null;
+    await assertManagedUsageAllowed(ctx, conversation.ownerId);
     const triggerTokens = thread.name === "Main"
       ? ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS
       : SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS;
@@ -540,7 +567,16 @@ export const compactThread = internalAction({
         .filter((part) => part.length > 0)
         .join("\n\n");
 
-      baseSummary = await generateCompactionTextWithRetry(config, promptBody);
+      baseSummary = await generateCompactionTextWithRetry(
+        ctx,
+        {
+          ownerId: conversation.ownerId,
+          conversationId: conversation._id,
+          agentType: "system:thread_compaction",
+        },
+        config,
+        promptBody,
+      );
     }
 
     let turnPrefixSummary = "";
@@ -553,6 +589,12 @@ export const compactThread = internalAction({
       );
       if (turnPrefixText.trim().length > 0) {
         turnPrefixSummary = await generateCompactionTextWithRetry(
+          ctx,
+          {
+            ownerId: conversation.ownerId,
+            conversationId: conversation._id,
+            agentType: "system:thread_compaction_prefix",
+          },
           config,
           `<conversation>\n${turnPrefixText}\n</conversation>\n\n${TURN_PREFIX_SUMMARY_PROMPT}`,
         );

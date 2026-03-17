@@ -25,8 +25,22 @@ function toUsageSummary(usage?: LanguageModelUsage | null) {
       typeof usage.outputTokens === "number" ? usage.outputTokens : undefined,
     totalTokens:
       typeof usage.totalTokens === "number" ? usage.totalTokens : undefined,
+    cachedInputTokens:
+      typeof usage.cachedInputTokens === "number" ? usage.cachedInputTokens : undefined,
+    cacheWriteInputTokens:
+      typeof usage.inputTokenDetails?.cacheWriteTokens === "number"
+        ? usage.inputTokenDetails.cacheWriteTokens
+        : undefined,
+    reasoningTokens:
+      typeof usage.outputTokenDetails?.reasoningTokens === "number"
+        ? usage.outputTokenDetails.reasoningTokens
+        : typeof usage.reasoningTokens === "number"
+          ? usage.reasoningTokens
+          : undefined,
   };
 }
+
+export type UsageSummary = ReturnType<typeof toUsageSummary>;
 
 export type StreamExecutionLifecycleState = {
   noResponseCalled: boolean;
@@ -47,6 +61,72 @@ export function usageSummaryFromFinish(
   totalUsage: LanguageModelUsage,
 ): ReturnType<typeof toUsageSummary> {
   return toUsageSummary(totalUsage);
+}
+
+export function usageSummaryFromResult(
+  result?: {
+    usage?: LanguageModelUsage | null;
+  } | null,
+): UsageSummary {
+  return toUsageSummary(result?.usage);
+}
+
+export function mergeUsageSummaries(
+  ...summaries: Array<UsageSummary | undefined>
+): UsageSummary {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let totalTokens = 0;
+  let cachedInputTokens = 0;
+  let cacheWriteInputTokens = 0;
+  let reasoningTokens = 0;
+  let hasValue = false;
+
+  for (const summary of summaries) {
+    if (!summary) {
+      continue;
+    }
+    if (summary.inputTokens !== undefined) {
+      inputTokens += summary.inputTokens;
+      hasValue = true;
+    }
+    if (summary.outputTokens !== undefined) {
+      outputTokens += summary.outputTokens;
+      hasValue = true;
+    }
+    if (summary.totalTokens !== undefined) {
+      totalTokens += summary.totalTokens;
+      hasValue = true;
+    }
+    if (summary.cachedInputTokens !== undefined) {
+      cachedInputTokens += summary.cachedInputTokens;
+      hasValue = true;
+    }
+    if (summary.cacheWriteInputTokens !== undefined) {
+      cacheWriteInputTokens += summary.cacheWriteInputTokens;
+      hasValue = true;
+    }
+    if (summary.reasoningTokens !== undefined) {
+      reasoningTokens += summary.reasoningTokens;
+      hasValue = true;
+    }
+  }
+
+  if (!hasValue) {
+    return undefined;
+  }
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens:
+      totalTokens > 0 || (inputTokens === 0 && outputTokens === 0)
+        ? totalTokens
+        : inputTokens + outputTokens,
+    cachedInputTokens,
+    cacheWriteInputTokens,
+    reasoningTokens,
+  };
 }
 
 export function createStreamExecutionLifecycle() {
