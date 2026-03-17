@@ -458,6 +458,17 @@ const getExistingVoiceUsageReceipt = async (
   )
   .unique();
 
+const getExistingMediaUsageReceipt = async (
+  ctx: MutationCtx,
+  ownerId: string,
+  jobId: string,
+) => await ctx.db
+  .query("billing_media_usage_receipts")
+  .withIndex("by_ownerId_and_jobId", (q) =>
+    q.eq("ownerId", ownerId).eq("jobId", jobId),
+  )
+  .unique();
+
 export const recordVoiceRealtimeUsage = internalMutation({
   args: {
     ownerId: v.string(),
@@ -539,6 +550,58 @@ export const recordVoiceRealtimeUsage = internalMutation({
       recorded: true,
       duplicate: false,
       costMicroCents,
+    };
+  },
+});
+
+export const recordMediaCompletedUsage = internalMutation({
+  args: {
+    ownerId: v.string(),
+    jobId: v.string(),
+    providerRequestId: v.optional(v.string()),
+    endpointId: v.string(),
+    billingUnit: v.string(),
+    quantity: v.number(),
+    costMicroCents: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await getExistingMediaUsageReceipt(
+      ctx,
+      args.ownerId,
+      args.jobId,
+    );
+    if (existing) {
+      return {
+        recorded: false,
+        duplicate: true,
+        costMicroCents: existing.costMicroCents,
+      };
+    }
+
+    await persistManagedUsage(ctx, {
+      ownerId: args.ownerId,
+      agentType: "service:media",
+      model: args.endpointId,
+      durationMs: 0,
+      success: true,
+      costMicroCents: args.costMicroCents,
+    });
+
+    await ctx.db.insert("billing_media_usage_receipts", {
+      ownerId: args.ownerId,
+      jobId: args.jobId,
+      ...(args.providerRequestId ? { providerRequestId: args.providerRequestId } : {}),
+      endpointId: args.endpointId,
+      billingUnit: args.billingUnit,
+      quantity: args.quantity,
+      costMicroCents: args.costMicroCents,
+      createdAt: Date.now(),
+    });
+
+    return {
+      recorded: true,
+      duplicate: false,
+      costMicroCents: args.costMicroCents,
     };
   },
 });
@@ -882,6 +945,7 @@ export const recordInvoicePayment = internalMutation({
 export const enforceManagedUsageLimit = internalMutation({
   args: {
     ownerId: v.string(),
+    minimumRemainingMicroCents: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { profile, usage } = await ensureBillingRecordsForOwner(ctx, args.ownerId);
@@ -901,12 +965,20 @@ export const enforceManagedUsageLimit = internalMutation({
       });
     }
 
+    const minimumRemainingMicroCents = Math.max(
+      0,
+      Math.floor(args.minimumRemainingMicroCents ?? 0),
+    );
+    const isBlockedByBuffer = (window: { used: number; limit: number }) =>
+      minimumRemainingMicroCents > 0
+      && Math.max(0, window.limit - window.used) <= minimumRemainingMicroCents;
+
     const firstExceeded =
-      snapshot.rolling.exceeded
+      snapshot.rolling.exceeded || isBlockedByBuffer(snapshot.rolling)
         ? snapshot.rolling
-        : snapshot.weekly.exceeded
+        : snapshot.weekly.exceeded || isBlockedByBuffer(snapshot.weekly)
           ? snapshot.weekly
-          : snapshot.monthly.exceeded
+          : snapshot.monthly.exceeded || isBlockedByBuffer(snapshot.monthly)
             ? snapshot.monthly
             : null;
 

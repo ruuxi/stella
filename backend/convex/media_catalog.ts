@@ -233,27 +233,6 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
     ],
   },
   {
-    id: "video_depth",
-    name: "Video Depth",
-    description: "Estimate depth or depth-aware data from video.",
-    category: "analysis",
-    sourceUrlKey: "video_url",
-    requiresSourceUrl: true,
-    inputHints: ["video_url"],
-    outputHints: ["depth video / frames / metadata"],
-    profiles: [
-      {
-        id: "default",
-        name: "Default",
-        description: "Depth Anything for video.",
-        provider: "fal",
-        endpointId: "fal-ai/depth-anything-video",
-        docsUrl: falModelUrl("fal-ai/depth-anything-video"),
-        isDefault: true,
-      },
-    ],
-  },
-  {
     id: "video_extend",
     name: "Video Extend",
     description: "Continue or extend an existing video clip.",

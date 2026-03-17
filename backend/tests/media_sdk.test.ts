@@ -11,6 +11,7 @@ import {
   MEDIA_CAPABILITIES_PATH,
   MEDIA_FAL_WEBHOOK_PATH,
   MEDIA_GENERATE_PATH,
+  MEDIA_REALTIME_SESSION_PATH,
   validateCapabilityRequest,
 } from "../convex/http_routes/media";
 import {
@@ -26,6 +27,7 @@ describe("media api contract", () => {
     expect(MEDIA_DOCS_PATH).toBe("/api/media/v1/docs");
     expect(MEDIA_CAPABILITIES_PATH).toBe("/api/media/v1/capabilities");
     expect(MEDIA_GENERATE_PATH).toBe("/api/media/v1/generate");
+    expect(MEDIA_REALTIME_SESSION_PATH).toBe("/api/media/v1/realtime/session");
     expect(MEDIA_FAL_WEBHOOK_PATH).toBe("/api/media/v1/webhooks/fal");
   });
 
@@ -42,7 +44,6 @@ describe("media api contract", () => {
         "realtime",
         "audio_visual_separate",
         "image_to_video",
-        "video_depth",
         "video_extend",
         "video_to_video",
         "text_to_3d",
@@ -76,7 +77,6 @@ describe("media api contract", () => {
 
   test("marks source-dependent capabilities correctly", () => {
     expect(getMediaCapability("image_to_video")?.requiresSourceUrl).toBe(true);
-    expect(getMediaCapability("video_depth")?.requiresSourceUrl).toBe(true);
     expect(getMediaCapability("text_to_3d")?.requiresSourceUrl).toBeFalsy();
   });
 
@@ -99,13 +99,6 @@ describe("media api contract", () => {
       acceptsBase64Source: true,
       supportsAspectRatio: true,
     });
-    expect(describeCapabilityValidation("video_depth")).toEqual({
-      requiresPrompt: false,
-      requiresSourceUrl: true,
-      acceptsBase64Source: true,
-      supportsAspectRatio: false,
-    });
-
     expect(
       validateCapabilityRequest({
         capabilityId: "text_to_image",
@@ -172,8 +165,16 @@ describe("media api contract", () => {
 
     expect(
       validateCapabilityRequest({
-        capabilityId: "video_depth",
-        sourceUrl: "https://example.com/source.mp4",
+        capabilityId: "sound_effects",
+        prompt: "thunder clap",
+      }),
+    ).toBe("duration_seconds is required for this capability");
+
+    expect(
+      validateCapabilityRequest({
+        capabilityId: "sound_effects",
+        prompt: "thunder clap",
+        input: { duration_seconds: 4 },
       }),
     ).toBeNull();
   });

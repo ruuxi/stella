@@ -2,15 +2,17 @@ import { ConvexError, type Value, v } from "convex/values";
 import { internalMutation, internalQuery, query, type QueryCtx } from "./_generated/server";
 import type {
   MediaGenerateRequest,
+  MediaRequestSummary,
   MediaJobStatus,
   MediaSourceReference,
 } from "./media_contract";
 import {
   mediaJobErrorValidator,
+  mediaJobBillingValidator,
   mediaJobResponseValidator,
   mediaRequestSummaryValidator,
 } from "./schema/media";
-import { jsonValueValidator, optionalJsonValueValidator } from "./shared_validators";
+import { isRecord, jsonValueValidator, optionalJsonValueValidator } from "./shared_validators";
 
 export const PUBLIC_MEDIA_TEST_OWNER_ID = "__public_media_test__";
 
@@ -20,18 +22,12 @@ export const isMediaPublicTestModeEnabled = (): boolean =>
 type MediaRequestSourceSummary = {
   kind: "url" | "data_uri" | "base64_object";
   mimeType?: string;
+  url?: string;
 };
 
-type MediaRequestSummary = {
-  prompt?: string;
-  aspectRatio?: string;
-  source?: MediaRequestSourceSummary;
-  sources?: Record<string, MediaRequestSourceSummary>;
+type StoredMediaRequestSummary = MediaRequestSummary & {
   input?: Record<string, Value>;
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const redactLargeString = (value: string): string => {
   const trimmed = value.trim();
@@ -85,7 +81,7 @@ const toSourceSummary = (
         ...(mimeType ? { mimeType } : {}),
       };
     }
-    return { kind: "url" };
+    return { kind: "url", url: source.trim() };
   }
   return {
     kind: "base64_object",
@@ -95,10 +91,10 @@ const toSourceSummary = (
 
 export const summarizeMediaRequestForStorage = (
   request: MediaGenerateRequest,
-): MediaRequestSummary => {
+): StoredMediaRequestSummary => {
   const source =
     toSourceSummary(request.source) ??
-    (request.sourceUrl ? { kind: "url" as const } : undefined);
+    (request.sourceUrl ? { kind: "url" as const, url: request.sourceUrl } : undefined);
   const sources = request.sources
     ? Object.fromEntries(
         Object.entries(request.sources)
@@ -126,7 +122,7 @@ const toStoredMediaJobResponse = (job: {
   jobId: string;
   capability: string;
   profile: string;
-  request: MediaRequestSummary;
+  request: StoredMediaRequestSummary;
   status: MediaJobStatus;
   upstreamStatus: string;
   queuePosition: number | null;
@@ -254,6 +250,8 @@ export const getWebhookJob = internalQuery({
       return null;
     }
     return {
+      ownerId: job.ownerId,
+      request: job.request,
       endpointId: job.endpointId,
       providerRequestId: job.providerRequestId,
       providerResponseUrl: job.providerResponseUrl,
@@ -271,6 +269,7 @@ export const createJob = internalMutation({
     provider: v.literal("fal"),
     endpointId: v.string(),
     request: mediaRequestSummaryValidator,
+    billing: v.optional(mediaJobBillingValidator),
   },
   handler: async (ctx, args) => {
     const existing = await getJobByJobId(ctx, args.jobId);
@@ -290,6 +289,7 @@ export const createJob = internalMutation({
       provider: args.provider,
       endpointId: args.endpointId,
       request: args.request,
+      ...(args.billing ? { billing: args.billing } : {}),
       status: "queued",
       upstreamStatus: "IN_QUEUE",
       queuePosition: null,
@@ -396,6 +396,7 @@ export const applyFalWebhook = internalMutation({
     providerGatewayRequestId: v.optional(v.string()),
     upstreamStatus: v.string(),
     output: optionalJsonValueValidator,
+    billing: v.optional(mediaJobBillingValidator),
     error: v.optional(mediaJobErrorValidator),
     logs: v.optional(v.array(jsonValueValidator)),
     receivedAt: v.number(),
@@ -423,6 +424,7 @@ export const applyFalWebhook = internalMutation({
       ...(args.output !== undefined
         ? { output: sanitizeJsonValue(args.output) }
         : {}),
+      ...(args.billing ? { billing: args.billing } : {}),
       ...(args.error
         ? {
             error: {
@@ -444,9 +446,5 @@ export const applyFalWebhook = internalMutation({
     return { updated: true, jobId: job.jobId };
   },
 });
-
-
-
-
 
 

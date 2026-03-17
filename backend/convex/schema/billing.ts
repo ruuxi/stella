@@ -81,6 +81,19 @@ export const billingSchema = {
     .index("by_ownerId_and_responseId", ["ownerId", "responseId"])
     .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"]),
 
+  billing_media_usage_receipts: defineTable({
+    ownerId: v.string(),
+    jobId: v.string(),
+    providerRequestId: v.optional(v.string()),
+    endpointId: v.string(),
+    billingUnit: v.string(),
+    quantity: v.number(),
+    costMicroCents: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_ownerId_and_jobId", ["ownerId", "jobId"])
+    .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"]),
+
   billing_stripe_events: defineTable({
     eventId: v.string(),
     eventType: v.string(),
