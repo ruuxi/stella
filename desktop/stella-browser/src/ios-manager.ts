@@ -712,7 +712,7 @@ export class IOSManager {
     this.refMap = {};
 
     // Get page structure via JavaScript execution
-    const snapshot = await this.browser.execute(function (
+    const snapshot = (await this.browser.execute(function (
       interactiveOnly: boolean
     ): IOSSnapshotNode | null {
       const INTERACTIVE_ROLES = new Set([
@@ -880,7 +880,7 @@ export class IOSManager {
 
       const root = traverse(document.body, 0);
       return root;
-    }, options?.interactive ?? false);
+    }, options?.interactive ?? false)) as unknown as IOSSnapshotNode | null;
 
     // Build tree string and refs
     const lines: string[] = [];

@@ -6,7 +6,7 @@ pub struct Flags {
     pub headed: bool,
     pub debug: bool,
     pub session: String,
-    pub deprecated_flags: Vec<String>,
+    pub headers: Option<String>,
     pub executable_path: Option<String>,
     pub cdp: Option<String>,
     pub extensions: Vec<String>,
@@ -51,7 +51,7 @@ pub fn parse_flags(args: &[String]) -> Flags {
         headed: false,
         debug: false,
         session: env::var("STELLA_BROWSER_SESSION").unwrap_or_else(|_| "default".to_string()),
-        deprecated_flags: Vec::new(),
+        headers: None,
         executable_path: env::var("STELLA_BROWSER_EXECUTABLE_PATH").ok(),
         cdp: None,
         extensions: extensions_env,
@@ -91,8 +91,8 @@ pub fn parse_flags(args: &[String]) -> Flags {
                 }
             }
             "--headers" => {
-                flags.deprecated_flags.push("--headers".to_string());
-                if args.get(i + 1).is_some() {
+                if let Some(h) = args.get(i + 1) {
+                    flags.headers = Some(h.clone());
                     i += 1;
                 }
             }
@@ -240,13 +240,13 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_headers_flag_marks_it_deprecated() {
+    fn test_parse_headers_flag() {
         let flags = parse_flags(&args(r#"open example.com --headers {"Auth":"token"}"#));
-        assert_eq!(flags.deprecated_flags, vec!["--headers"]);
+        assert_eq!(flags.headers, Some(r#"{"Auth":"token"}"#.to_string()));
     }
 
     #[test]
-    fn test_parse_headers_flag_with_spaces_marks_it_deprecated() {
+    fn test_parse_headers_flag_with_spaces() {
         // Headers JSON is passed as a single quoted argument in shell
         let input: Vec<String> = vec![
             "open".to_string(),
@@ -255,13 +255,16 @@ mod tests {
             r#"{"Authorization": "Bearer token"}"#.to_string(),
         ];
         let flags = parse_flags(&input);
-        assert_eq!(flags.deprecated_flags, vec!["--headers"]);
+        assert_eq!(
+            flags.headers,
+            Some(r#"{"Authorization": "Bearer token"}"#.to_string())
+        );
     }
 
     #[test]
     fn test_parse_no_headers_flag() {
         let flags = parse_flags(&args("open example.com"));
-        assert!(flags.deprecated_flags.is_empty());
+        assert!(flags.headers.is_none());
     }
 
     #[test]
@@ -299,7 +302,7 @@ mod tests {
             "--headed".to_string(),
         ];
         let flags = parse_flags(&input);
-        assert_eq!(flags.deprecated_flags, vec!["--headers"]);
+        assert_eq!(flags.headers, Some(r#"{"Auth":"token"}"#.to_string()));
         assert!(flags.json);
         assert!(flags.headed);
 

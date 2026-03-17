@@ -18,7 +18,6 @@ import os from 'node:os';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import type { LaunchCommand } from './types.js';
 import { applySiteModsToPage } from './actions.js';
-import { assertAllowedCdpUrl } from './cdp-security.js';
 import { type RefMap, type EnhancedSnapshot, getEnhancedSnapshot, parseRef } from './snapshot.js';
 
 // Screencast frame data from CDP
@@ -101,6 +100,8 @@ export class BrowserManager {
   private isRecordingHar: boolean = false;
   private refMap: RefMap = {};
   private lastSnapshot: string = '';
+  private scopedHeaderRoutes: Map<string, (route: Route) => Promise<void>> = new Map();
+
   // CDP session for screencast and input injection
   private cdpSession: CDPSession | null = null;
   private screencastActive: boolean = false;
@@ -540,6 +541,86 @@ export class BrowserManager {
     const context = this.contexts[0];
     if (context) {
       await context.setOffline(offline);
+    }
+  }
+
+  /**
+   * Set extra HTTP headers (global - all requests)
+   */
+  async setExtraHeaders(headers: Record<string, string>): Promise<void> {
+    const context = this.contexts[0];
+    if (context) {
+      await context.setExtraHTTPHeaders(headers);
+    }
+  }
+
+  /**
+   * Set scoped HTTP headers (only for requests matching the origin)
+   * Uses route interception to add headers only to matching requests
+   */
+  async setScopedHeaders(origin: string, headers: Record<string, string>): Promise<void> {
+    const page = this.getPage();
+
+    // Build URL pattern from origin (e.g., "api.example.com" -> "**://api.example.com/**")
+    // Handle both full URLs and just hostnames
+    let urlPattern: string;
+    try {
+      const url = new URL(origin.startsWith('http') ? origin : `https://${origin}`);
+      // Match any protocol, the host, and any path
+      urlPattern = `**://${url.host}/**`;
+    } catch {
+      // If parsing fails, treat as hostname pattern
+      urlPattern = `**://${origin}/**`;
+    }
+
+    // Remove existing route for this origin if any
+    const existingHandler = this.scopedHeaderRoutes.get(urlPattern);
+    if (existingHandler) {
+      await page.unroute(urlPattern, existingHandler);
+    }
+
+    // Create handler that adds headers to matching requests
+    const handler = async (route: Route) => {
+      const requestHeaders = route.request().headers();
+      await route.continue({
+        headers: {
+          ...requestHeaders,
+          ...headers,
+        },
+      });
+    };
+
+    // Store and register the route
+    this.scopedHeaderRoutes.set(urlPattern, handler);
+    await page.route(urlPattern, handler);
+  }
+
+  /**
+   * Clear scoped headers for an origin (or all if no origin specified)
+   */
+  async clearScopedHeaders(origin?: string): Promise<void> {
+    const page = this.getPage();
+
+    if (origin) {
+      let urlPattern: string;
+      try {
+        const url = new URL(origin.startsWith('http') ? origin : `https://${origin}`);
+        urlPattern = `**://${url.host}/**`;
+      } catch {
+        urlPattern = `**://${origin}/**`;
+      }
+
+      const handler = this.scopedHeaderRoutes.get(urlPattern);
+      if (handler) {
+        await page.unroute(urlPattern, handler);
+        this.scopedHeaderRoutes.delete(urlPattern);
+      }
+    } else {
+      // Clear all scoped header routes
+      for (const [pattern, handler] of this.scopedHeaderRoutes) {
+        await page.unroute(pattern, handler);
+      }
+      this.scopedHeaderRoutes.clear();
     }
   }
 
@@ -1050,6 +1131,7 @@ export class BrowserManager {
           executablePath: options.executablePath,
           args: allArgs,
           viewport,
+          extraHTTPHeaders: options.headers,
           userAgent: options.userAgent,
           ...(options.proxy && { proxy: options.proxy }),
           ignoreHTTPSErrors: options.ignoreHTTPSErrors ?? false,
@@ -1065,6 +1147,7 @@ export class BrowserManager {
         executablePath: options.executablePath,
         args: baseArgs,
         viewport,
+        extraHTTPHeaders: options.headers,
         userAgent: options.userAgent,
         ...(options.proxy && { proxy: options.proxy }),
         ignoreHTTPSErrors: options.ignoreHTTPSErrors ?? false,
@@ -1080,6 +1163,7 @@ export class BrowserManager {
       this.cdpEndpoint = null;
       context = await this.browser.newContext({
         viewport,
+        extraHTTPHeaders: options.headers,
         userAgent: options.userAgent,
         ...(options.proxy && { proxy: options.proxy }),
         ignoreHTTPSErrors: options.ignoreHTTPSErrors ?? false,
@@ -1128,8 +1212,6 @@ export class BrowserManager {
       // Unknown format - still try as port for backward compatibility
       cdpUrl = `http://localhost:${cdpEndpoint}`;
     }
-
-    assertAllowedCdpUrl(cdpUrl);
 
     const browser = await chromium.connectOverCDP(cdpUrl).catch(() => {
       throw new Error(

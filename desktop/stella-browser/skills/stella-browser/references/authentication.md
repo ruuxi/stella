@@ -11,6 +11,7 @@ Login flows, session persistence, OAuth, 2FA, and authenticated browsing.
 - [Restoring Authentication](#restoring-authentication)
 - [OAuth / SSO Flows](#oauth--sso-flows)
 - [Two-Factor Authentication](#two-factor-authentication)
+- [HTTP Basic Auth](#http-basic-auth)
 - [Cookie-Based Auth](#cookie-based-auth)
 - [Token Refresh Handling](#token-refresh-handling)
 - [Security Best Practices](#security-best-practices)
@@ -26,7 +27,7 @@ stella-browser wait --load networkidle
 stella-browser snapshot -i
 # Output: @e1 [input type="email"], @e2 [input type="password"], @e3 [button] "Sign In"
 
-# Fill sign-in fields
+# Fill credentials
 stella-browser fill @e1 "user@example.com"
 stella-browser fill @e2 "password123"
 
@@ -82,7 +83,7 @@ stella-browser open https://app.example.com/auth/google
 stella-browser wait --url "**/accounts.google.com**"
 stella-browser snapshot -i
 
-# Fill Google sign-in fields
+# Fill Google credentials
 stella-browser fill @e1 "user@gmail.com"
 stella-browser click @e2  # Next button
 stella-browser wait 2000
@@ -100,7 +101,7 @@ stella-browser state save ./oauth-state.json
 Handle 2FA with manual intervention:
 
 ```bash
-# Log in with sign-in details
+# Login with credentials
 stella-browser open https://app.example.com/login --headed  # Show browser
 stella-browser snapshot -i
 stella-browser fill @e1 "user@example.com"
@@ -113,6 +114,18 @@ stella-browser wait --url "**/dashboard" --timeout 120000
 
 # Save state after 2FA
 stella-browser state save ./2fa-state.json
+```
+
+## HTTP Basic Auth
+
+For sites using HTTP Basic Authentication:
+
+```bash
+# Set credentials before navigation
+stella-browser set credentials username password
+
+# Navigate to protected resource
+stella-browser open https://protected.example.com/api
 ```
 
 ## Cookie-Based Auth
@@ -168,7 +181,7 @@ fi
    echo "*.auth-state.json" >> .gitignore
    ```
 
-2. **Use environment variables for sign-in values**
+2. **Use environment variables for credentials**
    ```bash
    stella-browser fill @e1 "$APP_USERNAME"
    stella-browser fill @e2 "$APP_PASSWORD"

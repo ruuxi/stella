@@ -103,6 +103,9 @@ export class ExtensionBridge {
   private commandTimeout: number;
   private lastHealthCheckSuccess: number = 0;
   private static HEALTH_CHECK_TTL = 5000; // Skip health check if one succeeded within 5s
+  private disconnectTimer: NodeJS.Timeout | null = null;
+  private onDisconnectShutdown: (() => void) | null = null;
+  private static DISCONNECT_SHUTDOWN_MS = 30_000; // Auto-shutdown after 30s without extension
 
   constructor(port: number = 9224, token?: string, commandTimeout: number = 60000) {
     this.port = port;
@@ -110,6 +113,15 @@ export class ExtensionBridge {
     // Empty token disables auth (localhost-only, origin-verified connections).
     this.token = token !== undefined ? token.trim() : crypto.randomUUID();
     this.commandTimeout = commandTimeout;
+  }
+
+  /**
+   * Register a callback that fires when the extension has been disconnected
+   * for longer than DISCONNECT_SHUTDOWN_MS. The daemon uses this to exit
+   * cleanly instead of sitting around in a broken state.
+   */
+  onDisconnectTimeout(callback: () => void): void {
+    this.onDisconnectShutdown = callback;
   }
 
   /**
@@ -162,6 +174,12 @@ export class ExtensionBridge {
    * Stop the WebSocket server and clean up.
    */
   async stop(): Promise<void> {
+    // Cancel auto-shutdown timer
+    if (this.disconnectTimer) {
+      clearTimeout(this.disconnectTimer);
+      this.disconnectTimer = null;
+    }
+
     // Reject all pending commands
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
@@ -244,13 +262,31 @@ export class ExtensionBridge {
   }
 
   /**
+   * Wait for the extension to connect (up to timeoutMs).
+   * Returns true if connected, false if timed out.
+   */
+  async waitForConnection(timeoutMs: number = 30000): Promise<boolean> {
+    if (this.connected && this.ws) return true;
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (this.connected && this.ws) return true;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return this.connected && this.ws !== null;
+  }
+
+  /**
    * Send a command to the extension and wait for the response.
    */
   async executeCommand(command: Command): Promise<Response> {
+    // If not connected yet, wait for the extension to come up
     if (!this.connected || !this.ws) {
-      throw new Error(
-        'Extension not connected. Install the Stella Browser Bridge extension and connect it.'
-      );
+      const ok = await this.waitForConnection();
+      if (!ok) {
+        throw new Error(
+          'Extension not connected. Install the Stella Browser Bridge extension and connect it.'
+        );
+      }
     }
 
     // Skip health check if we had a successful one recently (within TTL)
@@ -345,6 +381,12 @@ export class ExtensionBridge {
           this.ws = ws;
           this.connected = true;
 
+          // Extension reconnected — cancel auto-shutdown timer
+          if (this.disconnectTimer) {
+            clearTimeout(this.disconnectTimer);
+            this.disconnectTimer = null;
+          }
+
           ws.send(
             JSON.stringify({
               type: 'welcome',
@@ -396,6 +438,16 @@ export class ExtensionBridge {
           pending.reject(new Error('Extension disconnected'));
         }
         this.pending.clear();
+
+        // Start auto-shutdown timer — if the extension doesn't reconnect
+        // within the window, the daemon exits instead of sitting broken.
+        if (!this.disconnectTimer && this.onDisconnectShutdown) {
+          this.disconnectTimer = setTimeout(() => {
+            if (!this.connected && this.onDisconnectShutdown) {
+              this.onDisconnectShutdown();
+            }
+          }, ExtensionBridge.DISCONNECT_SHUTDOWN_MS);
+        }
       }
     });
 

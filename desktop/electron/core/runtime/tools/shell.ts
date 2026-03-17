@@ -318,7 +318,6 @@ export const handleBash = async (
     // Strip any inline session overrides so the model cannot fork ad-hoc
     // browser sessions that fight over the shared extension bridge.
     command = normalizeAppAgentShellCommand(command);
-    envOverrides.STELLA_BROWSER_USER_BROWSER = "1";
     envOverrides.STELLA_BROWSER_PROVIDER = "extension";
     envOverrides.STELLA_BROWSER_SESSION = "default";
     envOverrides.STELLA_BROWSER_EXT_PORT = "9224";
