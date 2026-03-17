@@ -119,6 +119,94 @@ describe("RealtimeVoiceSession", () => {
     vi.restoreAllMocks();
   });
 
+  it("reports realtime usage after response.done", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          clientSecret: "secret",
+          model: "gpt-realtime-1.5",
+          voice: "alloy",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => "answer-sdp",
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          recorded: true,
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock as typeof fetch);
+    mockCreateServiceRequest
+      .mockResolvedValueOnce({
+        endpoint: "https://service.example/api/voice/session",
+        headers: { Authorization: "Bearer local" },
+      })
+      .mockResolvedValueOnce({
+        endpoint: "https://service.example/api/voice/usage",
+        headers: { Authorization: "Bearer local" },
+      });
+
+    const session = new RealtimeVoiceSession();
+    await session.connect("convone");
+
+    lastPeerConnection?.dataChannel.onmessage?.({
+      data: JSON.stringify({
+        type: "response.done",
+        response: {
+          id: "resp_1",
+          usage: {
+            input_tokens: 123,
+            output_tokens: 45,
+            total_tokens: 168,
+            input_token_details: {
+              text_tokens: 23,
+              audio_tokens: 100,
+            },
+            output_token_details: {
+              text_tokens: 5,
+              audio_tokens: 40,
+            },
+          },
+          output: [],
+        },
+      }),
+    } as MessageEvent<string>);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        3,
+        "https://service.example/api/voice/usage",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            responseId: "resp_1",
+            model: "gpt-realtime-1.5",
+            conversationId: "convone",
+            usage: {
+              input_tokens: 123,
+              output_tokens: 45,
+              total_tokens: 168,
+              input_token_details: {
+                text_tokens: 23,
+                audio_tokens: 100,
+              },
+              output_token_details: {
+                text_tokens: 5,
+                audio_tokens: 40,
+              },
+            },
+          }),
+        }),
+      );
+    });
+
+    await session.disconnect();
+  });
+
   it("connects a warm rtc session without eagerly acquiring the microphone", async () => {
     const session = new RealtimeVoiceSession();
 
