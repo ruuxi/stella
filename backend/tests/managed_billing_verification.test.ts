@@ -3,6 +3,7 @@ import { internal } from "../convex/_generated/api";
 import {
   enforceManagedUsageLimit,
   persistManagedUsage,
+  recordVoiceRealtimeUsage,
 } from "../convex/billing";
 import {
   computeServiceCostMicroCents,
@@ -15,6 +16,7 @@ type TableName =
   | "billing_profiles"
   | "billing_usage_windows"
   | "billing_model_prices"
+  | "billing_voice_usage_receipts"
   | "conversations"
   | "usage_logs";
 
@@ -26,6 +28,7 @@ const makeState = (): MemoryState => ({
   billing_profiles: [],
   billing_usage_windows: [],
   billing_model_prices: [],
+  billing_voice_usage_receipts: [],
   conversations: [],
   usage_logs: [],
 });
@@ -246,7 +249,7 @@ describe("managed billing verification", () => {
     expect(result.retryAfterMs).toBeGreaterThan(0);
   });
 
-  test("media generate currently logs zero fixed service cost in public test mode without a configured service catalog", async () => {
+  test("media generate logs the built-in media default cost in public test mode", async () => {
     const { registerMediaRoutes } = await import("../convex/http_routes/media");
     const routes = await captureRoutes<{
       path: string;
@@ -322,7 +325,9 @@ describe("managed billing verification", () => {
         costMicroCents: computeServiceCostMicroCents("media:text_to_image:best"),
       }),
     );
-    expect(computeServiceCostMicroCents("media:text_to_image:best")).toBe(0);
+    expect(computeServiceCostMicroCents("media:text_to_image:best")).toBe(
+      dollarsToMicroCents(0.035),
+    );
   });
 
   test("media generate returns 429 when the billing limiter rejects usage", async () => {
@@ -442,5 +447,66 @@ describe("managed billing verification", () => {
         success: true,
       }),
     );
+  });
+
+  test("recordVoiceRealtimeUsage deduplicates response IDs and stores the billed cost", async () => {
+    const { db, state } = createMemoryDb({
+      conversations: [{
+        _id: "conv_voice",
+        ownerId: "owner_voice",
+        isDefault: true,
+      }],
+    });
+
+    const first = await recordVoiceRealtimeUsage._handler(
+      { db } as never,
+      {
+        ownerId: "owner_voice",
+        responseId: "resp_123",
+        model: "gpt-realtime-1.5",
+        conversationId: "conv_voice" as never,
+        inputTokens: 300,
+        outputTokens: 150,
+        totalTokens: 450,
+        textInputTokens: 100,
+        textCachedInputTokens: 20,
+        textOutputTokens: 50,
+        audioInputTokens: 150,
+        audioCachedInputTokens: 10,
+        audioOutputTokens: 100,
+        imageInputTokens: 30,
+        imageCachedInputTokens: 0,
+      },
+    );
+
+    const second = await recordVoiceRealtimeUsage._handler(
+      { db } as never,
+      {
+        ownerId: "owner_voice",
+        responseId: "resp_123",
+        model: "gpt-realtime-1.5",
+        conversationId: "conv_voice" as never,
+        inputTokens: 300,
+        outputTokens: 150,
+        totalTokens: 450,
+        textInputTokens: 100,
+        textCachedInputTokens: 20,
+        textOutputTokens: 50,
+        audioInputTokens: 150,
+        audioCachedInputTokens: 10,
+        audioOutputTokens: 100,
+        imageInputTokens: 30,
+        imageCachedInputTokens: 0,
+      },
+    );
+
+    expect(first.recorded).toBe(true);
+    expect(first.costMicroCents).toBeGreaterThan(0);
+    expect(second.recorded).toBe(false);
+    expect(second.duplicate).toBe(true);
+    expect(state.billing_voice_usage_receipts).toHaveLength(1);
+    expect(state.usage_logs).toHaveLength(1);
+    expect(state.usage_logs[0]?.model).toBe("gpt-realtime-1.5");
+    expect(state.usage_logs[0]?.costMicroCents).toBe(first.costMicroCents);
   });
 });

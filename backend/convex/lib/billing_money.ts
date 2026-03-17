@@ -9,15 +9,55 @@ export type TokenPriceConfig = {
   reasoningPerMillionUsd?: number;
 };
 
+export type RealtimePriceConfig = {
+  textInputPerMillionUsd: number;
+  textCachedInputPerMillionUsd: number;
+  textOutputPerMillionUsd: number;
+  audioInputPerMillionUsd: number;
+  audioCachedInputPerMillionUsd: number;
+  audioOutputPerMillionUsd: number;
+  imageInputPerMillionUsd: number;
+  imageCachedInputPerMillionUsd: number;
+};
+
 type ServicePriceCatalog = {
   defaultUsd: number;
   services: Record<string, number>;
+};
+
+const DEFAULT_REALTIME_PRICE_CATALOG: Record<string, RealtimePriceConfig> = {
+  "gpt-realtime-1.5": {
+    textInputPerMillionUsd: 4,
+    textCachedInputPerMillionUsd: 0.4,
+    textOutputPerMillionUsd: 16,
+    audioInputPerMillionUsd: 32,
+    audioCachedInputPerMillionUsd: 0.4,
+    audioOutputPerMillionUsd: 64,
+    imageInputPerMillionUsd: 5,
+    imageCachedInputPerMillionUsd: 0.5,
+  },
 };
 
 const DEFAULT_TOKEN_PRICE: TokenPriceConfig = {
   // Reference baseline from OpenCode Go docs/token table.
   inputPerMillionUsd: 0.6,
   outputPerMillionUsd: 3.0,
+};
+
+const DEFAULT_SERVICE_PRICE_CATALOG: ServicePriceCatalog = {
+  defaultUsd: 0,
+  services: {
+    "media:text_to_image:best": 0.035,
+    "media:text_to_image:fast": 0.009,
+    // Icon generation is forced to 512x512 in the backend, so use the
+    // 0.012 USD/MP Flux Turbo rate against 0.262144 MP.
+    "media:icon:default": 0.003146,
+    // Flux edit bills for input + output megapixels. Use the canonical 1 MP
+    // input plus 1 MP output reference from the provider docs.
+    "media:image_edit:default": 0.022,
+    "media:video_to_video:reference": 0.84,
+    "media:text_to_3d:default": 0.4,
+  },
 };
 
 type TokenPriceCatalog = {
@@ -100,10 +140,7 @@ const normalizeServiceKey = (value: string): string =>
 const loadServicePriceCatalog = (): ServicePriceCatalog => {
   const raw = process.env.STELLA_SERVICE_PRICE_CATALOG_JSON?.trim();
   if (!raw) {
-    return {
-      defaultUsd: 0,
-      services: {},
-    };
+    return DEFAULT_SERVICE_PRICE_CATALOG;
   }
 
   try {
@@ -113,7 +150,9 @@ const loadServicePriceCatalog = (): ServicePriceCatalog => {
         ? parsed.services as Record<string, unknown>
         : {};
 
-    const services: Record<string, number> = {};
+    const services: Record<string, number> = {
+      ...DEFAULT_SERVICE_PRICE_CATALOG.services,
+    };
     for (const [serviceKey, value] of Object.entries(serviceEntries)) {
       const normalizedKey = normalizeServiceKey(serviceKey);
       if (!normalizedKey) {
@@ -123,15 +162,12 @@ const loadServicePriceCatalog = (): ServicePriceCatalog => {
     }
 
     return {
-      defaultUsd: parsePositiveNumber(parsed.defaultUsd, 0),
+      defaultUsd: parsePositiveNumber(parsed.defaultUsd, DEFAULT_SERVICE_PRICE_CATALOG.defaultUsd),
       services,
     };
   } catch (error) {
     console.warn("[billing] Invalid STELLA_SERVICE_PRICE_CATALOG_JSON. Falling back to defaults.", error);
-    return {
-      defaultUsd: 0,
-      services: {},
-    };
+    return DEFAULT_SERVICE_PRICE_CATALOG;
   }
 };
 
@@ -192,3 +228,48 @@ export const resolveServicePriceUsd = (serviceKey: string): number => {
 
 export const computeServiceCostMicroCents = (serviceKey: string): number =>
   dollarsToMicroCents(resolveServicePriceUsd(serviceKey));
+
+export const computeRealtimeUsageCostMicroCents = (args: {
+  model: string;
+  textInputTokens?: number;
+  textCachedInputTokens?: number;
+  textOutputTokens?: number;
+  audioInputTokens?: number;
+  audioCachedInputTokens?: number;
+  audioOutputTokens?: number;
+  imageInputTokens?: number;
+  imageCachedInputTokens?: number;
+}) => {
+  const price = DEFAULT_REALTIME_PRICE_CATALOG[args.model];
+  if (!price) {
+    return 0;
+  }
+
+  const textInputUsd =
+    (Math.max(0, args.textInputTokens ?? 0) / 1_000_000) * price.textInputPerMillionUsd;
+  const textCachedInputUsd =
+    (Math.max(0, args.textCachedInputTokens ?? 0) / 1_000_000) * price.textCachedInputPerMillionUsd;
+  const textOutputUsd =
+    (Math.max(0, args.textOutputTokens ?? 0) / 1_000_000) * price.textOutputPerMillionUsd;
+  const audioInputUsd =
+    (Math.max(0, args.audioInputTokens ?? 0) / 1_000_000) * price.audioInputPerMillionUsd;
+  const audioCachedInputUsd =
+    (Math.max(0, args.audioCachedInputTokens ?? 0) / 1_000_000) * price.audioCachedInputPerMillionUsd;
+  const audioOutputUsd =
+    (Math.max(0, args.audioOutputTokens ?? 0) / 1_000_000) * price.audioOutputPerMillionUsd;
+  const imageInputUsd =
+    (Math.max(0, args.imageInputTokens ?? 0) / 1_000_000) * price.imageInputPerMillionUsd;
+  const imageCachedInputUsd =
+    (Math.max(0, args.imageCachedInputTokens ?? 0) / 1_000_000) * price.imageCachedInputPerMillionUsd;
+
+  return dollarsToMicroCents(
+    textInputUsd
+      + textCachedInputUsd
+      + textOutputUsd
+      + audioInputUsd
+      + audioCachedInputUsd
+      + audioOutputUsd
+      + imageInputUsd
+      + imageCachedInputUsd,
+  );
+};

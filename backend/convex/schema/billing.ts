@@ -59,6 +59,28 @@ export const billingSchema = {
     .index("by_model", ["model"])
     .index("by_syncedAt", ["syncedAt"]),
 
+  billing_voice_usage_receipts: defineTable({
+    ownerId: v.string(),
+    responseId: v.string(),
+    model: v.string(),
+    conversationId: v.optional(v.id("conversations")),
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    totalTokens: v.number(),
+    textInputTokens: v.number(),
+    textCachedInputTokens: v.number(),
+    textOutputTokens: v.number(),
+    audioInputTokens: v.number(),
+    audioCachedInputTokens: v.number(),
+    audioOutputTokens: v.number(),
+    imageInputTokens: v.number(),
+    imageCachedInputTokens: v.number(),
+    costMicroCents: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_ownerId_and_responseId", ["ownerId", "responseId"])
+    .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"]),
+
   billing_stripe_events: defineTable({
     eventId: v.string(),
     eventType: v.string(),
