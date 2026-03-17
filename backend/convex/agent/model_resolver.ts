@@ -8,14 +8,20 @@
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { getModelConfig } from "./model";
+import { getModelConfig, type ManagedModelAudience } from "./model";
 import { resolveStellaModelSelection } from "../stella_models";
+import type { ManagedModelAccess } from "../lib/managed_billing";
 
 export type ResolvedModelConfig = {
   model: string;
   temperature?: number;
   maxOutputTokens?: number;
   providerOptions?: ProviderOptions;
+};
+
+type ResolveModelConfigOptions = {
+  audience?: ManagedModelAudience;
+  access?: ManagedModelAccess;
 };
 
 /**
@@ -28,8 +34,10 @@ export async function resolveModelConfig(
   ctx: { runQuery: ActionCtx["runQuery"] },
   agentType: string,
   ownerId?: string,
+  options?: ResolveModelConfigOptions,
 ): Promise<ResolvedModelConfig> {
-  const defaults = getModelConfig(agentType);
+  const audience = options?.access?.modelAudience ?? options?.audience ?? "free";
+  const defaults = getModelConfig(agentType, audience);
 
   if (!ownerId) {
     return {
@@ -47,7 +55,7 @@ export async function resolveModelConfig(
     key: `model_config:${agentType}`,
   });
   if (override) {
-    modelString = resolveStellaModelSelection(agentType, override);
+    modelString = resolveStellaModelSelection(agentType, override, audience);
   }
 
   return {
@@ -69,8 +77,10 @@ export async function resolveFallbackConfig(
   ctx: { runQuery: ActionCtx["runQuery"] },
   agentType: string,
   ownerId?: string,
+  options?: ResolveModelConfigOptions,
 ): Promise<ResolvedModelConfig | null> {
-  const defaults = getModelConfig(agentType);
+  const audience = options?.access?.modelAudience ?? options?.audience ?? "free";
+  const defaults = getModelConfig(agentType, audience);
   if (!defaults.fallback) return null;
 
   const fallbackModel = defaults.fallback;

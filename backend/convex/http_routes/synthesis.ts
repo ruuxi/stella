@@ -25,7 +25,7 @@ import {
 } from "../http_shared/anon_device";
 import { getClientAddressKey } from "../lib/http_utils";
 import {
-  checkManagedUsageLimit,
+  resolveManagedModelAccess,
   scheduleManagedUsage,
 } from "../lib/managed_billing";
 
@@ -144,14 +144,19 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           }
 
           const ownerId = identity?.subject;
-          if (ownerId) {
-            const subscriptionCheck = await checkManagedUsageLimit(ctx, ownerId);
-            if (!subscriptionCheck.allowed) {
-              return errorResponse(429, subscriptionCheck.message, origin);
-            }
+          const modelAccess = ownerId
+            ? await resolveManagedModelAccess(ctx, ownerId, {
+              isAnonymous: (identity as Record<string, unknown> | null)?.isAnonymous === true,
+            })
+            : undefined;
+          if (modelAccess && !modelAccess.allowed) {
+            return errorResponse(429, modelAccess.message, origin);
           }
 
-          const synthesisConfig = await resolveModelConfig(ctx, "synthesis", ownerId);
+          const synthesisConfig = await resolveModelConfig(ctx, "synthesis", ownerId, {
+            access: modelAccess,
+            audience: ownerId ? undefined : "anonymous",
+          });
           const synthesisModel = createManagedModel(synthesisConfig.model);
 
           let synthesisInput: string;
@@ -272,7 +277,10 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             return errorResponse(500, "Failed to synthesize core memory", origin);
           }
 
-          const welcomeConfig = await resolveModelConfig(ctx, "welcome", ownerId);
+          const welcomeConfig = await resolveModelConfig(ctx, "welcome", ownerId, {
+            access: modelAccess,
+            audience: ownerId ? undefined : "anonymous",
+          });
           const welcomeModel = createManagedModel(welcomeConfig.model);
 
           const welcomeStartedAt = Date.now();

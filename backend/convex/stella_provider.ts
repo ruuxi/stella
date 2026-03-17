@@ -8,7 +8,7 @@
 import type { ActionCtx } from "./_generated/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { getModelConfig, MANAGED_GATEWAY } from "./agent/model";
+import { getModelConfig, MANAGED_GATEWAY, type ManagedModelAudience } from "./agent/model";
 import { getClientAddressKey } from "./lib/http_utils";
 import {
   isAnonDeviceHashSaltMissingError,
@@ -27,6 +27,7 @@ import {
   listStellaCatalogModels,
   resolveStellaModelSelection,
 } from "./stella_models";
+import { resolveManagedModelAccess } from "./lib/managed_billing";
 
 const MAX_ANON_REQUESTS = 50_000;
 const DEFAULT_RETRY_AFTER_MS = 60_000;
@@ -122,6 +123,7 @@ function buildUpstreamBody(
 function resolveRequestedStellaModel(
   agentType: string,
   requestBody: StellaRequestBody,
+  audience: ManagedModelAudience,
 ): string {
   const requestedModel =
     typeof requestBody.model === "string" && requestBody.model.trim().length > 0
@@ -132,7 +134,7 @@ function resolveRequestedStellaModel(
     throw new Error(`Unsupported Stella model selection: ${requestedModel}`);
   }
 
-  return resolveStellaModelSelection(agentType, requestedModel);
+  return resolveStellaModelSelection(agentType, requestedModel, audience);
 }
 
 function estimateRequestTokens(requestBody: StellaRequestBody): TokenEstimate {
@@ -314,11 +316,21 @@ async function forwardRequest(
   }
 }
 
-export const stellaProviderModels = httpAction(async (_ctx, request) =>
-  handleCorsRequest(request, async (origin) =>
-    jsonResponse(
+export const stellaProviderModels = httpAction(async (ctx, request) =>
+  handleCorsRequest(request, async (origin) => {
+    const identity = await ctx.auth.getUserIdentity();
+    let audience: ManagedModelAudience = identity
+      ? ((identity as Record<string, unknown>).isAnonymous === true ? "anonymous" : "free")
+      : "anonymous";
+
+    if (identity && (identity as Record<string, unknown>).isAnonymous !== true) {
+      const access = await resolveManagedModelAccess(ctx, identity.subject);
+      audience = access.modelAudience;
+    }
+
+    return jsonResponse(
       {
-        data: listStellaCatalogModels().map((model) => ({
+        data: listStellaCatalogModels(audience).map((model) => ({
           id: model.id,
           name: model.name,
           provider: model.provider,
@@ -328,7 +340,8 @@ export const stellaProviderModels = httpAction(async (_ctx, request) =>
       },
       200,
       origin,
-    )),
+    );
+  }),
 );
 
 export const stellaProviderChatCompletions = httpAction(async (ctx, request) => {
@@ -339,6 +352,7 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
 
   const ownerId = identity.subject;
   const isAnonymous = (identity as Record<string, unknown>).isAnonymous === true;
+  let modelAudience: ManagedModelAudience = isAnonymous ? "anonymous" : "free";
 
   const url = new URL(request.url);
   if (!url.pathname.endsWith("/chat/completions")) {
@@ -359,12 +373,8 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
       );
     }
   } else {
-    const subscriptionCheck = await ctx.runMutation(
-      internal.billing.enforceManagedUsageLimit,
-      {
-        ownerId,
-      },
-    );
+    const subscriptionCheck = await resolveManagedModelAccess(ctx, ownerId);
+    modelAudience = subscriptionCheck.modelAudience;
 
     if (!subscriptionCheck.allowed) {
       const response = stellaProviderErrorResponse(429, subscriptionCheck.message, request);
@@ -416,7 +426,7 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
 
   let resolvedModel: string;
   try {
-    resolvedModel = resolveRequestedStellaModel(agentType, requestJson);
+    resolvedModel = resolveRequestedStellaModel(agentType, requestJson, modelAudience);
   } catch (error) {
     return stellaProviderErrorResponse(
       400,
@@ -425,7 +435,7 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
     );
   }
 
-  const defaults = getModelConfig(agentType);
+  const defaults = getModelConfig(agentType, modelAudience);
   const gatewayUpstream = `${MANAGED_GATEWAY.baseURL}/chat/completions`;
   const tokenEstimate = estimateRequestTokens(requestJson);
 

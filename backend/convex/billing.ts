@@ -29,7 +29,7 @@ import {
   microCentsToDollars,
 } from "./lib/billing_money";
 import { buildManagedModelPriceEntries, type ManagedModelPriceEntry, type ModelsDevApi } from "./lib/models_dev";
-import { listManagedModelIds } from "./agent/model";
+import { listManagedModelIds, resolveManagedModelAudience } from "./agent/model";
 
 const planValidator = v.union(
   v.literal("free"),
@@ -310,6 +310,73 @@ const buildLimitMessage = (plan: SubscriptionPlan) => {
     return "Free plan usage limit reached. Upgrade to continue.";
   }
   return `${getPlanConfig(plan).label} plan usage limit reached.`;
+};
+
+const buildDowngradeMessage = (plan: Exclude<SubscriptionPlan, "free">) =>
+  `${getPlanConfig(plan).label} plan managed-model limits reached. Falling back until usage resets.`;
+
+type ManagedModelAccessResult = {
+  allowed: boolean;
+  plan: SubscriptionPlan;
+  downgraded: boolean;
+  modelAudience: ReturnType<typeof resolveManagedModelAudience>;
+  retryAfterMs: number;
+  message: string;
+  tokensPerMinute: number;
+};
+
+const buildManagedModelAccessResult = (args: {
+  plan: SubscriptionPlan;
+  isAnonymous?: boolean;
+  exceededWindow: UsageSnapshot["rolling"] | UsageSnapshot["weekly"] | UsageSnapshot["monthly"] | null;
+  now: number;
+}): ManagedModelAccessResult => {
+  const { plan, exceededWindow, now } = args;
+  const tokensPerMinute = getPlanConfig(plan).tokensPerMinute;
+
+  if (!exceededWindow) {
+    return {
+      allowed: true,
+      plan,
+      downgraded: false,
+      modelAudience: resolveManagedModelAudience({
+        plan,
+        isAnonymous: args.isAnonymous,
+      }),
+      retryAfterMs: 0,
+      message: emptyString,
+      tokensPerMinute,
+    };
+  }
+
+  const retryAfterMs = Math.max(1_000, exceededWindow.resetAt - now);
+  if (plan === "free") {
+    return {
+      allowed: false,
+      plan,
+      downgraded: false,
+      modelAudience: resolveManagedModelAudience({
+        plan,
+        isAnonymous: args.isAnonymous,
+      }),
+      retryAfterMs,
+      message: buildLimitMessage(plan),
+      tokensPerMinute,
+    };
+  }
+
+  return {
+    allowed: true,
+    plan,
+    downgraded: true,
+    modelAudience: resolveManagedModelAudience({
+      plan,
+      downgraded: true,
+    }),
+    retryAfterMs,
+    message: buildDowngradeMessage(plan),
+    tokensPerMinute,
+  };
 };
 
 export type ManagedUsageRecordArgs = {
@@ -939,6 +1006,47 @@ export const recordInvoicePayment = internalMutation({
     });
 
     return { recorded: true };
+  },
+});
+
+export const resolveManagedModelAccess = internalMutation({
+  args: {
+    ownerId: v.string(),
+    isAnonymous: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args): Promise<ManagedModelAccessResult> => {
+    const { profile, usage } = await ensureBillingRecordsForOwner(ctx, args.ownerId);
+    const now = Date.now();
+    const plan = profile.activePlan as SubscriptionPlan;
+    const snapshot = buildUsageSnapshot({
+      profile,
+      usage,
+      plan,
+      now,
+    });
+
+    if (snapshot.changed) {
+      await ctx.db.patch(usage._id, {
+        ...snapshot.normalizedUsage,
+        updatedAt: now,
+      });
+    }
+
+    const firstExceeded =
+      snapshot.rolling.exceeded
+        ? snapshot.rolling
+        : snapshot.weekly.exceeded
+          ? snapshot.weekly
+          : snapshot.monthly.exceeded
+            ? snapshot.monthly
+            : null;
+
+    return buildManagedModelAccessResult({
+      plan,
+      isAnonymous: args.isAnonymous,
+      exceededWindow: firstExceeded,
+      now,
+    });
   },
 });
 

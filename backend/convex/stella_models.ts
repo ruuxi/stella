@@ -1,4 +1,9 @@
-import { AGENT_MODELS, getModelConfig, listManagedModelIds } from "./agent/model";
+import {
+  AGENT_MODELS,
+  getModelConfig,
+  listManagedModelIds,
+  type ManagedModelAudience,
+} from "./agent/model";
 
 export const STELLA_PROVIDER = "stella";
 export const STELLA_DEFAULT_MODEL = `${STELLA_PROVIDER}/default`;
@@ -46,23 +51,23 @@ const deriveDisplayName = (upstreamModel: string): string => {
   return titleCase(rawId);
 };
 
-const STATIC_STELLA_ALIASES = [
+const getStaticStellaAliases = (audience: ManagedModelAudience = "free") => [
   {
     id: STELLA_BEST_MODEL,
     name: "Stella Best",
-    upstreamModel: getModelConfig("llm_best").model,
+    upstreamModel: getModelConfig("llm_best", audience).model,
     type: "language" as const,
   },
   {
     id: STELLA_FAST_MODEL,
     name: "Stella Fast",
-    upstreamModel: getModelConfig("llm_fast").model,
+    upstreamModel: getModelConfig("llm_fast", audience).model,
     type: "language" as const,
   },
   {
     id: STELLA_MEDIA_MODEL,
     name: "Stella Media",
-    upstreamModel: getModelConfig("media_llm").model,
+    upstreamModel: getModelConfig("media_llm", audience).model,
     type: "multimodal" as const,
   },
 ] as const;
@@ -82,20 +87,21 @@ export const isStellaModel = (model: string | null | undefined): boolean => {
 export const resolveStellaModelSelection = (
   agentType: string,
   selection?: string | null,
+  audience: ManagedModelAudience = "free",
 ): string => {
   const trimmed = selection?.trim();
   if (!trimmed || trimmed === STELLA_DEFAULT_MODEL) {
-    return getModelConfig(agentType).model;
+    return getModelConfig(agentType, audience).model;
   }
 
   if (trimmed === STELLA_BEST_MODEL) {
-    return getModelConfig("llm_best").model;
+    return getModelConfig("llm_best", audience).model;
   }
   if (trimmed === STELLA_FAST_MODEL) {
-    return getModelConfig("llm_fast").model;
+    return getModelConfig("llm_fast", audience).model;
   }
   if (trimmed === STELLA_MEDIA_MODEL) {
-    return getModelConfig("media_llm").model;
+    return getModelConfig("media_llm", audience).model;
   }
 
   if (!trimmed.startsWith(`${STELLA_PROVIDER}/`)) {
@@ -104,13 +110,15 @@ export const resolveStellaModelSelection = (
 
   const upstreamModel = trimmed.slice(`${STELLA_PROVIDER}/`.length).trim();
   if (!upstreamModel || upstreamModel === "default") {
-    return getModelConfig(agentType).model;
+    return getModelConfig(agentType, audience).model;
   }
 
   return upstreamModel;
 };
 
-export const listStellaCatalogModels = (): StellaCatalogModel[] => [
+export const listStellaCatalogModels = (
+  audience: ManagedModelAudience = "free",
+): StellaCatalogModel[] => [
   {
     id: STELLA_DEFAULT_MODEL,
     name: "Stella Recommended",
@@ -118,7 +126,7 @@ export const listStellaCatalogModels = (): StellaCatalogModel[] => [
     upstreamModel: "",
     type: "language",
   },
-  ...STATIC_STELLA_ALIASES.map<StellaCatalogModel>((alias) => ({
+  ...getStaticStellaAliases(audience).map<StellaCatalogModel>((alias) => ({
     id: alias.id,
     name: alias.name,
     provider: STELLA_PROVIDER,
@@ -134,10 +142,12 @@ export const listStellaCatalogModels = (): StellaCatalogModel[] => [
   })),
 ];
 
-export const listStellaDefaultSelections = (): StellaDefaultEntry[] =>
-  Object.entries(AGENT_MODELS).map(([agentType, config]) => ({
+export const listStellaDefaultSelections = (
+  audience: ManagedModelAudience = "free",
+): StellaDefaultEntry[] =>
+  Object.keys(AGENT_MODELS).map((agentType) => ({
     agentType,
     model: STELLA_DEFAULT_MODEL,
-    resolvedModel: config.model,
+    resolvedModel: getModelConfig(agentType, audience).model,
   }));
 

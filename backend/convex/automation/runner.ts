@@ -80,9 +80,13 @@ export async function runAgentTurn({
   }
 
   const resolvedOwnerId = ownerId ?? conversation.ownerId;
-  await assertManagedUsageAllowed(ctx, resolvedOwnerId);
-  const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId);
-  const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId);
+  const modelAccess = await assertManagedUsageAllowed(ctx, resolvedOwnerId);
+  const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId, {
+    access: modelAccess,
+  });
+  const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId, {
+    access: modelAccess,
+  });
   const promptBuild = await buildSystemPrompt(ctx, agentType, {
     ownerId: resolvedOwnerId,
     conversationId,

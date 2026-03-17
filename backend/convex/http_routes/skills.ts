@@ -3,7 +3,8 @@ import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { generateText } from "ai";
 import { usageSummaryFromResult } from "../agent/model_execution";
-import { getModelConfig, createManagedModel, MANAGED_GATEWAY } from "../agent/model";
+import { createManagedModel, MANAGED_GATEWAY } from "../agent/model";
+import { resolveModelConfig } from "../agent/model_resolver";
 import { buildSkillSelectionUserMessage } from "../prompts/index";
 import {
   errorResponse,
@@ -14,7 +15,7 @@ import {
 } from "../http_shared/cors";
 import { rateLimitResponse } from "../http_shared/webhook_controls";
 import {
-  checkManagedUsageLimit,
+  resolveManagedModelAccess,
   scheduleManagedUsage,
 } from "../lib/managed_billing";
 
@@ -115,12 +116,16 @@ export const registerSkillRoutes = (http: HttpRouter) => {
         }
 
         try {
-          const subscriptionCheck = await checkManagedUsageLimit(ctx, identity.subject);
-          if (!subscriptionCheck.allowed) {
-            return errorResponse(429, subscriptionCheck.message, origin);
+          const modelAccess = await resolveManagedModelAccess(ctx, identity.subject, {
+            isAnonymous: (identity as Record<string, unknown>).isAnonymous === true,
+          });
+          if (!modelAccess.allowed) {
+            return errorResponse(429, modelAccess.message, origin);
           }
 
-          const skillMetadataConfig = getModelConfig("skill_metadata");
+          const skillMetadataConfig = await resolveModelConfig(ctx, "skill_metadata", identity.subject, {
+            access: modelAccess,
+          });
           const startedAt = Date.now();
           const result = await generateText({
             model: createManagedModel(skillMetadataConfig.model),
@@ -232,9 +237,11 @@ export const registerSkillRoutes = (http: HttpRouter) => {
         }
 
         try {
-          const subscriptionCheck = await checkManagedUsageLimit(ctx, identity.subject);
-          if (!subscriptionCheck.allowed) {
-            return errorResponse(429, subscriptionCheck.message, origin);
+          const modelAccess = await resolveManagedModelAccess(ctx, identity.subject, {
+            isAnonymous: (identity as Record<string, unknown>).isAnonymous === true,
+          });
+          if (!modelAccess.allowed) {
+            return errorResponse(429, modelAccess.message, origin);
           }
 
           // 1. Fetch all skills for this user
@@ -248,7 +255,9 @@ export const registerSkillRoutes = (http: HttpRouter) => {
           }
 
           // 2. Call LLM to select relevant skills
-          const skillSelectionConfig = getModelConfig("skill_selection");
+          const skillSelectionConfig = await resolveModelConfig(ctx, "skill_selection", identity.subject, {
+            access: modelAccess,
+          });
           const userMessage = buildSkillSelectionUserMessage(
             body.userProfile,
             catalog,

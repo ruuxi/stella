@@ -1,7 +1,7 @@
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireUserId } from "../auth";
-import { hasModelConfig } from "../agent/model";
+import { hasModelConfig, resolveManagedModelAudience } from "../agent/model";
 import { listStellaDefaultSelections } from "../stella_models";
 
 const accountModeValidator = v.union(v.literal("private_local"), v.literal("connected"));
@@ -328,7 +328,26 @@ export const getModelDefaults = query({
       resolvedModel: v.string(),
     }),
   ),
-  handler: async () => listStellaDefaultSelections(),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return listStellaDefaultSelections("anonymous");
+    }
+
+    const ownerId = identity.subject;
+    const profile = await ctx.db
+      .query("billing_profiles")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+      .unique();
+    const plan = (profile?.activePlan as "free" | "go" | "pro" | "plus" | undefined) ?? "free";
+
+    return listStellaDefaultSelections(
+      resolveManagedModelAudience({
+        plan,
+        isAnonymous: (identity as Record<string, unknown>).isAnonymous === true,
+      }),
+    );
+  },
 });
 
 export const setModelOverride = mutation({
