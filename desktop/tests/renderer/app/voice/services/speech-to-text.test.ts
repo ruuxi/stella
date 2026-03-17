@@ -6,23 +6,45 @@ vi.mock("@/platform/electron/device", () => ({
   getOrCreateDeviceId: vi.fn(),
 }));
 
+vi.mock("@/features/voice/services/audio-encoding", () => ({
+  TARGET_PCM_SAMPLE_RATE: 24_000,
+  decodeAudioBlobToMonoSamples: vi.fn(async () => ({
+    samples: new Float32Array([0.1, -0.1, 0.2, -0.2]),
+    sampleRate: 24_000,
+  })),
+  encodeInt16ToBase64: vi.fn(() => "encoded-audio"),
+  floatToInt16Pcm: vi.fn(() => new Int16Array([1, -1, 2, -2])),
+  resampleLinear: vi.fn((samples: Float32Array) => samples),
+}));
+
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
 
   static reset() {
     MockWebSocket.instances = [];
   }
 
   readonly url: string;
+  readonly protocols: string[];
   readonly sentMessages: string[] = [];
 
   onopen: ((event: Event) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
   onmessage: ((event: MessageEvent) => void) | null = null;
   onclose: ((event: CloseEvent) => void) | null = null;
+  readyState = 1;
 
-  constructor(url: string | URL) {
+  constructor(url: string | URL, protocols?: string | string[]) {
     this.url = String(url);
+    this.protocols = Array.isArray(protocols)
+      ? protocols
+      : protocols
+        ? [protocols]
+        : [];
     MockWebSocket.instances.push(this);
   }
 
@@ -74,12 +96,13 @@ describe("transcribeAudio", () => {
     ).rejects.toThrow("VITE_CONVEX_URL is not set");
   });
 
-  it("calls speech-to-text endpoint with audio and device id", async () => {
+  it("creates a realtime speech session and streams audio chunks", async () => {
     vi.mocked(fetch).mockImplementation(() =>
       Promise.resolve(new Response(
         JSON.stringify({
-          clientKey: "client-key-123",
-          websocketUrl: "wss://platform-api.wisprflow.ai/api/v1/dash/client_ws",
+          clientSecret: "ek_test_123",
+          websocketUrl: "wss://api.openai.com/v1/realtime",
+          sessionId: "sess_123",
         }),
         { status: 200 },
       ))
@@ -88,82 +111,83 @@ describe("transcribeAudio", () => {
     const transcriptionPromise = transcribeAudio({
       audio: new Blob(["hello"], { type: "audio/wav" }),
       language: ["en"],
-      context: { app: { type: "ai" } },
+      properties: { prompt: "Product names are important." },
     });
 
     const socket = await waitForSocket();
-    expect(socket.url).toContain("/api/v1/dash/client_ws?");
-    expect(socket.url).toContain("client_key=Bearer+client-key-123");
+    expect(socket.url).toBe("wss://api.openai.com/v1/realtime");
+    expect(socket.protocols).toEqual([
+      "realtime",
+      "openai-insecure-api-key.ek_test_123",
+    ]);
 
     socket.triggerOpen();
 
     expect(socket.sentMessages).toHaveLength(1);
-    const authMessage = JSON.parse(socket.sentMessages[0]!);
-    expect(authMessage).toEqual({
-      type: "auth",
-      access_token: "client-key-123",
-      language: ["en"],
-      context: { app: { type: "ai" } },
+    const sessionUpdate = JSON.parse(socket.sentMessages[0]!);
+    expect(sessionUpdate).toEqual({
+      type: "session.update",
+      session: {
+        type: "transcription",
+        audio: {
+          input: {
+            format: {
+              type: "audio/pcm",
+              rate: 24_000,
+            },
+            noise_reduction: {
+              type: "near_field",
+            },
+            transcription: {
+              model: "gpt-4o-transcribe",
+              language: "en",
+              prompt: "Product names are important.",
+            },
+            turn_detection: null,
+          },
+        },
+      },
     });
 
-    socket.triggerMessage({ status: "auth" });
+    socket.triggerMessage({ type: "session.updated" });
 
-    expect(socket.sentMessages).toHaveLength(3);
+    await vi.waitFor(() => {
+      expect(socket.sentMessages.length).toBeGreaterThanOrEqual(3);
+    });
+
     const appendMessage = JSON.parse(socket.sentMessages[1]!);
-    const commitMessage = JSON.parse(socket.sentMessages[2]!);
+    const commitMessage = JSON.parse(socket.sentMessages.at(-1)!);
 
-    expect(appendMessage.type).toBe("append");
-    expect(appendMessage.position).toBe(0);
-    expect(Array.isArray(appendMessage.audio_packets?.packets)).toBe(true);
-    expect(Array.isArray(appendMessage.audio_packets?.volumes)).toBe(true);
-    expect(appendMessage.audio_packets?.packets?.length).toBeGreaterThan(0);
-    expect(appendMessage.audio_packets?.packets?.length).toBe(
-      appendMessage.audio_packets?.volumes?.length,
-    );
-    expect(appendMessage.audio_packets?.audio_encoding).toBe("wav");
-    expect(appendMessage.audio_packets?.byte_encoding).toBe("base64");
-    expect(typeof appendMessage.audio_packets?.packet_duration).toBe("number");
+    expect(appendMessage.type).toBe("input_audio_buffer.append");
+    expect(typeof appendMessage.audio).toBe("string");
+    expect(appendMessage.audio.length).toBeGreaterThan(0);
 
     expect(commitMessage).toEqual({
-      type: "commit",
-      total_packets: appendMessage.audio_packets.packets.length,
+      type: "input_audio_buffer.commit",
     });
 
     socket.triggerMessage({
-      status: "text",
-      final: false,
-      body: {
-        text: "hello",
-        detected_language: "en",
-      },
-    });
-
-    socket.triggerMessage({
-      status: "text",
-      final: true,
-      body: {
-        text: "hello world",
-        detected_language: "en",
-      },
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_123",
+      transcript: "hello world",
     });
 
     const result = await transcriptionPromise;
 
     expect(result).toEqual({
-      id: null,
+      id: "item_123",
       text: "hello world",
-      detectedLanguage: "en",
+      detectedLanguage: null,
       totalTime: null,
       generatedTokens: null,
     });
 
-    // Find the ws-token fetch call (auth-token may also call fetch)
-    const wsTokenCall = vi.mocked(fetch).mock.calls.find(
-      ([url]) => String(url).includes("/api/speech-to-text/ws-token"),
+    const sessionCall = vi.mocked(fetch).mock.calls.find(
+      ([url]) => String(url).includes("/api/speech-to-text/session"),
     );
-    expect(wsTokenCall).toBeDefined();
-    const [endpoint, init] = wsTokenCall!;
-    expect(String(endpoint)).toContain("/api/speech-to-text/ws-token");
+    expect(sessionCall).toBeDefined();
+    const [endpoint, init] = sessionCall!;
+    expect(String(endpoint)).toContain("/api/speech-to-text/session");
     expect(init).toMatchObject({
       method: "POST",
       headers: expect.objectContaining({
@@ -173,32 +197,33 @@ describe("transcribeAudio", () => {
     });
   });
 
-  it("throws on non-ok token response with response body", async () => {
+  it("throws on non-ok session response with response body", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response("Unauthorized", { status: 401 }),
     );
 
     await expect(
       transcribeAudio({ audio: new Blob(["hello"], { type: "audio/wav" }) }),
-    ).rejects.toThrow("Speech websocket token failed: 401 - Unauthorized");
+    ).rejects.toThrow("Speech session failed: 401 - Unauthorized");
   });
 
-  it("throws when token response is missing websocket config", async () => {
+  it("throws when session response is missing websocket config", async () => {
     vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify({ clientKey: "token-only" }), { status: 200 }),
+      new Response(JSON.stringify({ clientSecret: "ek_only" }), { status: 200 }),
     );
 
     await expect(
       transcribeAudio({ audio: new Blob(["hello"], { type: "audio/wav" }) }),
-    ).rejects.toThrow("Speech websocket token response missing websocketUrl");
+    ).rejects.toThrow("Speech session response missing websocketUrl");
   });
 
   it("throws when websocket closes before text is received", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(
         JSON.stringify({
-          clientKey: "client-key-123",
-          websocketUrl: "wss://platform-api.wisprflow.ai/api/v1/dash/client_ws",
+          clientSecret: "ek_test_123",
+          websocketUrl: "wss://api.openai.com/v1/realtime",
+          sessionId: "sess_123",
         }),
         { status: 200 },
       ),
@@ -210,7 +235,10 @@ describe("transcribeAudio", () => {
 
     const socket = await waitForSocket();
     socket.triggerOpen();
-    socket.triggerMessage({ status: "auth" });
+    socket.triggerMessage({ type: "session.updated" });
+    await vi.waitFor(() => {
+      expect(socket.sentMessages.length).toBeGreaterThanOrEqual(3);
+    });
     socket.triggerClose();
 
     await expect(transcriptionPromise).rejects.toThrow(
@@ -218,4 +246,3 @@ describe("transcribeAudio", () => {
     );
   });
 });
-
