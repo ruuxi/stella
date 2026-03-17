@@ -12,9 +12,6 @@ let reconnectTimer = null;
 let reconnectDelay = RECONNECT_DELAY;
 let commandHandler = null;
 let statusCallback = null;
-let retriedWithoutToken = false;
-let activePort = null;
-let activeToken = null;
 
 /**
  * Set the handler for incoming commands from the daemon.
@@ -38,19 +35,12 @@ export function onStatus(callback) {
  * @param {string} [token] - Auth token for handshake
  */
 export async function connect(port, token) {
+  // Don't reconnect if already connected
+  if (isConnected()) return;
+
   const config = await chrome.storage.local.get(['port', 'token']);
   const usePort = port ?? config.port ?? DEFAULT_PORT;
   const useToken = token ?? config.token ?? '';
-
-  // Don't stomp an in-flight or healthy connection for the same daemon.
-  if (
-    ws &&
-    (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) &&
-    activePort === usePort &&
-    activeToken === useToken
-  ) {
-    return;
-  }
 
   // Save config for reconnection after service worker restart
   await chrome.storage.local.set({ port: usePort, token: useToken });
@@ -68,8 +58,6 @@ export function disconnect() {
     ws.close(1000, 'user disconnect');
     ws = null;
   }
-  activePort = null;
-  activeToken = null;
   setStatus(false);
 }
 
@@ -92,22 +80,10 @@ export function send(message) {
 }
 
 function doConnect(port, token) {
-  if (
-    ws &&
-    (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) &&
-    activePort === port &&
-    activeToken === token
-  ) {
-    return;
-  }
-
   if (ws) {
     ws.close();
     ws = null;
   }
-
-  activePort = port;
-  activeToken = token;
 
   let socket;
   try {
@@ -130,7 +106,6 @@ function doConnect(port, token) {
   socket.onopen = () => {
     console.log('[connection] Connected to daemon on port', port);
     reconnectDelay = RECONNECT_DELAY; // Reset backoff
-    retriedWithoutToken = false;
 
     // Send handshake
     sendOn({
@@ -166,11 +141,7 @@ function doConnect(port, token) {
     if (msg.type === 'auth_error') {
       console.error('[connection] Auth failed:', msg.error);
       setStatus(false);
-      if (token && !retriedWithoutToken) {
-        retriedWithoutToken = true;
-        await chrome.storage.local.set({ token: '' });
-        scheduleReconnect(port, '');
-      }
+      // Don't reconnect on auth failure
       return;
     }
 
@@ -244,15 +215,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     } else {
       // Try to reconnect
       const config = await chrome.storage.local.get(['port', 'token']);
-      if (
-        config.port &&
-        !(
-          ws &&
-          (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) &&
-          activePort === config.port &&
-          activeToken === (config.token || '')
-        )
-      ) {
+      if (config.port) {
         doConnect(config.port, config.token || '');
       }
     }
