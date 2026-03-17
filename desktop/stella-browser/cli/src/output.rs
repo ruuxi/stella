@@ -488,12 +488,15 @@ Aliases: goto, navigate
 Global Options:
   --json               Output as JSON
   --session <name>     Use specific session
+  --headers <json>     Set HTTP headers (scoped to this origin)
   --headed             Show browser window
 
 Examples:
   stella-browser open example.com
   stella-browser open https://github.com
   stella-browser open localhost:3000
+  stella-browser open api.example.com --headers '{"Authorization": "Bearer token"}'
+    # ^ Headers only sent to api.example.com, not other domains
 "##
         }
         "back" => {
@@ -1190,6 +1193,8 @@ Settings:
   device <name>              Emulate device (e.g., "iPhone 12")
   geo <lat> <lng>            Set geolocation
   offline [on|off]           Toggle offline mode
+  headers <json>             Set extra HTTP headers
+  credentials <user> <pass>  Set HTTP authentication
   media [dark|light]         Set color scheme preference
         [reduced-motion]     Enable reduced motion
 
@@ -1202,6 +1207,8 @@ Examples:
   stella-browser set device "iPhone 12"
   stella-browser set geo 37.7749 -122.4194
   stella-browser set offline on
+  stella-browser set headers '{"X-Custom": "value"}'
+  stella-browser set credentials admin secret123
   stella-browser set media dark
   stella-browser set media light reduced-motion
 "##
@@ -1839,7 +1846,7 @@ Mouse:  stella-browser mouse <action> [args]
 
 Browser Settings:  stella-browser set <setting> [value]
   viewport <w> <h>, device <name>, geo <lat> <lng>
-  offline [on|off]
+  offline [on|off], headers <json>, credentials <user> <pass>
   media [dark|light] [reduced-motion]
 
 Network:  stella-browser network <action>
@@ -1886,6 +1893,7 @@ Options:
   --session <name>           Isolated session (or STELLA_BROWSER_SESSION env)
   --profile <path>           Persistent browser profile (or STELLA_BROWSER_PROFILE env)
   --state <path>             Load storage state from JSON file (or STELLA_BROWSER_STATE env)
+  --headers <json>           HTTP headers scoped to URL's origin (for auth)
   --executable-path <path>   Custom browser executable (or STELLA_BROWSER_EXECUTABLE_PATH)
   --extension <path>         Load browser extensions (repeatable)
   --args <args>              Browser launch args, comma or newline separated (or STELLA_BROWSER_ARGS)
