@@ -6,7 +6,7 @@
  */
 
 import { connect, disconnect, isConnected, onCommand, onStatus } from './lib/connection.js';
-import { handleTabNew, handleTabList, handleTabSwitch, handleTabClose, closeAgentWindow } from './commands/tabs.js';
+import { handleTabNew, handleTabList, handleTabSwitch, handleTabClose, closeAgentWindow, cleanupStaleGroups } from './commands/tabs.js';
 import { handleNavigate, handleBack, handleForward, handleReload, handleUrl, handleTitle } from './commands/navigation.js';
 import {
   handleClick, handleFill, handleType, handleHover, handleSelect,
@@ -243,6 +243,9 @@ async function ensureOffscreen() {
 }
 
 ensureOffscreen();
+
+// Clean up stale unnamed tab groups from previous sessions
+cleanupStaleGroups();
 
 // Auto-connect on service worker load (this runs on every SW start, including
 // browser startup and extension install/update — no need for separate listeners)
