@@ -4,6 +4,14 @@ const CENTS_PER_DOLLAR = 100;
 export type TokenPriceConfig = {
   inputPerMillionUsd: number;
   outputPerMillionUsd: number;
+  cacheReadPerMillionUsd?: number;
+  cacheWritePerMillionUsd?: number;
+  reasoningPerMillionUsd?: number;
+};
+
+type ServicePriceCatalog = {
+  defaultUsd: number;
+  services: Record<string, number>;
 };
 
 const DEFAULT_TOKEN_PRICE: TokenPriceConfig = {
@@ -39,6 +47,9 @@ const normalizePriceConfig = (
   return {
     inputPerMillionUsd: parsePositiveNumber(record.inputPerMillionUsd, fallback.inputPerMillionUsd),
     outputPerMillionUsd: parsePositiveNumber(record.outputPerMillionUsd, fallback.outputPerMillionUsd),
+    cacheReadPerMillionUsd: parsePositiveNumber(record.cacheReadPerMillionUsd, fallback.cacheReadPerMillionUsd ?? 0),
+    cacheWritePerMillionUsd: parsePositiveNumber(record.cacheWritePerMillionUsd, fallback.cacheWritePerMillionUsd ?? 0),
+    reasoningPerMillionUsd: parsePositiveNumber(record.reasoningPerMillionUsd, fallback.reasoningPerMillionUsd ?? fallback.outputPerMillionUsd),
   };
 };
 
@@ -83,6 +94,49 @@ const loadTokenPriceCatalog = (): TokenPriceCatalog => {
 
 const TOKEN_PRICE_CATALOG = loadTokenPriceCatalog();
 
+const normalizeServiceKey = (value: string): string =>
+  value.trim().toLowerCase();
+
+const loadServicePriceCatalog = (): ServicePriceCatalog => {
+  const raw = process.env.STELLA_SERVICE_PRICE_CATALOG_JSON?.trim();
+  if (!raw) {
+    return {
+      defaultUsd: 0,
+      services: {},
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const serviceEntries =
+      parsed.services && typeof parsed.services === "object"
+        ? parsed.services as Record<string, unknown>
+        : {};
+
+    const services: Record<string, number> = {};
+    for (const [serviceKey, value] of Object.entries(serviceEntries)) {
+      const normalizedKey = normalizeServiceKey(serviceKey);
+      if (!normalizedKey) {
+        continue;
+      }
+      services[normalizedKey] = parsePositiveNumber(value, 0);
+    }
+
+    return {
+      defaultUsd: parsePositiveNumber(parsed.defaultUsd, 0),
+      services,
+    };
+  } catch (error) {
+    console.warn("[billing] Invalid STELLA_SERVICE_PRICE_CATALOG_JSON. Falling back to defaults.", error);
+    return {
+      defaultUsd: 0,
+      services: {},
+    };
+  }
+};
+
+const SERVICE_PRICE_CATALOG = loadServicePriceCatalog();
+
 export const centsToMicroCents = (cents: number) => Math.round(cents * MICRO_CENTS_PER_CENT);
 
 export const dollarsToMicroCents = (dollars: number) => centsToMicroCents(dollars * CENTS_PER_DOLLAR);
@@ -94,10 +148,47 @@ export const computeUsageCostMicroCents = (args: {
   model: string;
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens?: number;
+  cacheWriteInputTokens?: number;
+  reasoningTokens?: number;
+  price?: TokenPriceConfig;
 }) => {
-  const price = TOKEN_PRICE_CATALOG.models[args.model] ?? TOKEN_PRICE_CATALOG.default;
-  const inputUsd = (Math.max(0, args.inputTokens) / 1_000_000) * price.inputPerMillionUsd;
-  const outputUsd = (Math.max(0, args.outputTokens) / 1_000_000) * price.outputPerMillionUsd;
+  const price = args.price ?? TOKEN_PRICE_CATALOG.models[args.model] ?? TOKEN_PRICE_CATALOG.default;
+  const cachedInputTokens = Math.max(0, args.cachedInputTokens ?? 0);
+  const cacheWriteInputTokens = Math.max(0, args.cacheWriteInputTokens ?? 0);
+  const billableInputTokens = Math.max(
+    0,
+    args.inputTokens - cachedInputTokens - cacheWriteInputTokens,
+  );
+  const reasoningTokens = Math.max(0, args.reasoningTokens ?? 0);
+  const textOutputTokens = Math.max(0, args.outputTokens - reasoningTokens);
 
-  return dollarsToMicroCents(inputUsd + outputUsd);
+  const inputUsd = (billableInputTokens / 1_000_000) * price.inputPerMillionUsd;
+  const cachedInputUsd = (cachedInputTokens / 1_000_000) * (price.cacheReadPerMillionUsd ?? 0);
+  const cacheWriteUsd = (cacheWriteInputTokens / 1_000_000) * (price.cacheWritePerMillionUsd ?? 0);
+  const outputUsd = (textOutputTokens / 1_000_000) * price.outputPerMillionUsd;
+  const reasoningUsd = (reasoningTokens / 1_000_000) * (price.reasoningPerMillionUsd ?? price.outputPerMillionUsd);
+
+  return dollarsToMicroCents(inputUsd + cachedInputUsd + cacheWriteUsd + outputUsd + reasoningUsd);
 };
+
+export const resolveServicePriceUsd = (serviceKey: string): number => {
+  let currentKey = normalizeServiceKey(serviceKey);
+  while (currentKey) {
+    const configured = SERVICE_PRICE_CATALOG.services[currentKey];
+    if (typeof configured === "number") {
+      return configured;
+    }
+
+    const separatorIndex = currentKey.lastIndexOf(":");
+    if (separatorIndex < 0) {
+      break;
+    }
+    currentKey = currentKey.slice(0, separatorIndex);
+  }
+
+  return SERVICE_PRICE_CATALOG.defaultUsd;
+};
+
+export const computeServiceCostMicroCents = (serviceKey: string): number =>
+  dollarsToMicroCents(resolveServicePriceUsd(serviceKey));

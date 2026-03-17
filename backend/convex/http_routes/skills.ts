@@ -2,6 +2,7 @@ import type { HttpRouter } from "convex/server";
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { generateText } from "ai";
+import { usageSummaryFromResult } from "../agent/model_execution";
 import { getModelConfig, createManagedModel, MANAGED_GATEWAY } from "../agent/model";
 import { buildSkillSelectionUserMessage } from "../prompts/index";
 import {
@@ -12,6 +13,10 @@ import {
   corsPreflightHandler,
 } from "../http_shared/cors";
 import { rateLimitResponse } from "../http_shared/webhook_controls";
+import {
+  checkManagedUsageLimit,
+  scheduleManagedUsage,
+} from "../lib/managed_billing";
 
 const SKILL_RATE_LIMIT = 10;
 const SKILL_RATE_WINDOW_MS = 60_000;
@@ -110,13 +115,27 @@ export const registerSkillRoutes = (http: HttpRouter) => {
         }
 
         try {
+          const subscriptionCheck = await checkManagedUsageLimit(ctx, identity.subject);
+          if (!subscriptionCheck.allowed) {
+            return errorResponse(429, subscriptionCheck.message, origin);
+          }
+
           const skillMetadataConfig = getModelConfig("skill_metadata");
+          const startedAt = Date.now();
           const result = await generateText({
             model: createManagedModel(skillMetadataConfig.model),
             system: systemPrompt,
             messages: [{ role: "user", content: userPrompt }],
             maxOutputTokens: skillMetadataConfig.maxOutputTokens,
             temperature: skillMetadataConfig.temperature,
+          });
+          await scheduleManagedUsage(ctx, {
+            ownerId: identity.subject,
+            agentType: "service:skill_metadata",
+            model: skillMetadataConfig.model,
+            durationMs: Date.now() - startedAt,
+            success: true,
+            usage: usageSummaryFromResult(result),
           });
 
           const text = result.text?.trim() || "";
@@ -213,6 +232,11 @@ export const registerSkillRoutes = (http: HttpRouter) => {
         }
 
         try {
+          const subscriptionCheck = await checkManagedUsageLimit(ctx, identity.subject);
+          if (!subscriptionCheck.allowed) {
+            return errorResponse(429, subscriptionCheck.message, origin);
+          }
+
           // 1. Fetch all skills for this user
           const catalog = await ctx.runQuery(
             internal.data.skills.listAllSkillsForSelection,
@@ -231,12 +255,21 @@ export const registerSkillRoutes = (http: HttpRouter) => {
             userPromptTemplate,
           );
 
+          const startedAt = Date.now();
           const result = await generateText({
             model: createManagedModel(skillSelectionConfig.model),
             system: systemPrompt,
             messages: [{ role: "user", content: userMessage }],
             maxOutputTokens: skillSelectionConfig.maxOutputTokens,
             temperature: skillSelectionConfig.temperature,
+          });
+          await scheduleManagedUsage(ctx, {
+            ownerId: identity.subject,
+            agentType: "service:skill_selection",
+            model: skillSelectionConfig.model,
+            durationMs: Date.now() - startedAt,
+            success: true,
+            usage: usageSummaryFromResult(result),
           });
 
           const text = (result.text ?? "").trim();

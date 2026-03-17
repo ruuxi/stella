@@ -9,8 +9,13 @@ import { v } from "convex/values";
 import { generateText } from "ai";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { usageSummaryFromResult } from "./model_execution";
 import { buildSuggestionUserMessage } from "../prompts/index";
 import { resolveModelConfig } from "./model_resolver";
+import {
+  assertManagedUsageAllowed,
+  scheduleManagedUsage,
+} from "../lib/managed_billing";
 
 type Suggestion = {
   commandId: string;
@@ -70,11 +75,23 @@ export const generateSuggestions = internalAction({
 
     // 5. Call lightweight LLM
     try {
+      await assertManagedUsageAllowed(ctx, args.ownerId);
+
       const resolvedConfig = await resolveModelConfig(ctx, "suggestions", args.ownerId);
+      const startedAt = Date.now();
 
       const result = await generateText({
         ...resolvedConfig,
         messages: [{ role: "user", content: prompt }],
+      });
+      await scheduleManagedUsage(ctx, {
+        ownerId: args.ownerId,
+        conversationId: args.conversationId,
+        agentType: "service:suggestions",
+        model: resolvedConfig.model,
+        durationMs: Date.now() - startedAt,
+        success: true,
+        usage: usageSummaryFromResult(result),
       });
 
       const text = result.text.trim();

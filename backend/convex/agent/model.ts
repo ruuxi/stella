@@ -374,6 +374,27 @@ export function hasModelConfig(agentType: string): boolean {
   return Object.prototype.hasOwnProperty.call(AGENT_MODELS, agentType);
 }
 
+export function listManagedModelIds(): string[] {
+  const modelIds = new Set<string>();
+
+  const append = (value?: string) => {
+    const trimmed = value?.trim();
+    if (trimmed) {
+      modelIds.add(trimmed);
+    }
+  };
+
+  append(DEFAULT_MODEL.model);
+  append(DEFAULT_MODEL.fallback);
+
+  for (const config of Object.values(AGENT_MODELS)) {
+    append(config.model);
+    append(config.fallback);
+  }
+
+  return Array.from(modelIds).sort();
+}
+
 export { DEFAULT_MODEL, AGENT_MODELS };
 
 

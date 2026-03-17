@@ -10,6 +10,10 @@ import {
   streamTextWithFailover,
 } from "../agent/model_execution";
 import { buildBackendJobModeSystemPrompt } from "../prompts/index";
+import {
+  assertManagedUsageAllowed,
+  scheduleManagedUsage,
+} from "../lib/managed_billing";
 
 export type RunAgentTurnResult = {
   text: string;
@@ -76,6 +80,7 @@ export async function runAgentTurn({
   }
 
   const resolvedOwnerId = ownerId ?? conversation.ownerId;
+  await assertManagedUsageAllowed(ctx, resolvedOwnerId);
   const resolvedConfig = await resolveModelConfig(ctx, agentType, resolvedOwnerId);
   const fallbackConfig = await resolveFallbackConfig(ctx, agentType, resolvedOwnerId);
   const promptBuild = await buildSystemPrompt(ctx, agentType, {
@@ -128,16 +133,14 @@ export async function runAgentTurn({
 
   // Fire afterChat hook asynchronously for usage logging + token tracking
   if (!transient) {
-    await ctx.scheduler.runAfter(0, internal.agent.hooks.logUsage, {
+    await scheduleManagedUsage(ctx, {
       ownerId: resolvedOwnerId,
       conversationId,
       agentType,
       model: resolvedConfig.model as string,
-      inputTokens: usageSummary?.inputTokens,
-      outputTokens: usageSummary?.outputTokens,
-      totalTokens: usageSummary?.totalTokens,
       durationMs: Date.now() - runnerStartTime,
       success: true,
+      usage: usageSummary,
     });
   }
 

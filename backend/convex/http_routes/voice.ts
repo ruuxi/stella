@@ -3,6 +3,11 @@ import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction } from "../auth";
+import { computeServiceCostMicroCents } from "../lib/billing_money";
+import {
+  checkManagedUsageLimit,
+  scheduleManagedUsage,
+} from "../lib/managed_billing";
 import { buildVoiceSessionInstructions } from "../prompts/voice_orchestrator";
 import {
   errorResponse,
@@ -12,7 +17,6 @@ import {
   corsPreflightHandler,
 } from "../http_shared/cors";
 import { rateLimitResponse } from "../http_shared/webhook_controls";
-import { getUserProviderKey } from "../lib/provider_keys";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -97,6 +101,10 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
 
         // Resolve owner ID from identity
         const ownerId = identity.subject;
+        const subscriptionCheck = await checkManagedUsageLimit(ctx, ownerId);
+        if (!subscriptionCheck.allowed) {
+          return errorResponse(429, subscriptionCheck.message, origin);
+        }
 
         // Conversation ID is optional -- local-mode conversations use locally-generated
         // ULIDs (uppercase, digit-prefixed) that aren't valid Convex document IDs.
@@ -113,11 +121,8 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           }
         }
 
-        const resolveOpenAiApiKey = async (): Promise<string | null> => {
-          const byok = await getUserProviderKey(ctx, ownerId, "llm:openai");
-          if (byok) return byok;
-          return process.env.OPENAI_API_KEY ?? null;
-        };
+        const resolveOpenAiApiKey = async (): Promise<string | null> =>
+          process.env.OPENAI_API_KEY ?? null;
 
         const resolveDeviceStatus = async (): Promise<string | undefined> => {
           try {
@@ -177,7 +182,7 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
         if (!openaiApiKey) {
           return errorResponse(
             503,
-            "No OpenAI API key configured. Add one in Settings or set OPENAI_API_KEY.",
+            "Voice sessions are not configured yet.",
             origin,
           );
         }
@@ -233,6 +238,7 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
         };
 
         try {
+          const sessionStartedAt = Date.now();
           const openaiResponse = await fetch(
             "https://api.openai.com/v1/realtime/sessions",
             {
@@ -260,6 +266,16 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           }
 
           const openaiData = JSON.parse(responseText);
+          const serviceKey = `voice:session:${model}`;
+          await scheduleManagedUsage(ctx, {
+            ownerId,
+            conversationId: convexConversationId,
+            agentType: "service:voice",
+            model: serviceKey,
+            durationMs: Date.now() - sessionStartedAt,
+            success: true,
+            costMicroCents: computeServiceCostMicroCents(serviceKey),
+          });
           return jsonResponse(
             {
               clientSecret:

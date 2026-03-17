@@ -10,6 +10,11 @@ import {
 } from "../http_shared/cors";
 import { rateLimitResponse } from "../http_shared/webhook_controls";
 import { getAnonDeviceId } from "../http_shared/anon_device";
+import { computeServiceCostMicroCents } from "../lib/billing_money";
+import {
+  checkManagedUsageLimit,
+  scheduleManagedUsage,
+} from "../lib/managed_billing";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -84,6 +89,13 @@ export const registerSpeechToTextRoutes = (http: HttpRouter) => {
         const anonDeviceId = getAnonDeviceId(request);
         if (!identity && !anonDeviceId) {
           return errorResponse(401, "Unauthorized", origin);
+        }
+
+        if (identity) {
+          const subscriptionCheck = await checkManagedUsageLimit(ctx, identity.subject);
+          if (!subscriptionCheck.allowed) {
+            return errorResponse(429, subscriptionCheck.message, origin);
+          }
         }
 
         const rateLimit = await ctx.runMutation(
@@ -195,6 +207,18 @@ export const registerSpeechToTextRoutes = (http: HttpRouter) => {
                 : null,
             websocketUrl: WISPRFLOW_CLIENT_WS_URL,
           };
+
+          if (identity) {
+            const serviceKey = "speech_to_text:ws_token";
+            await scheduleManagedUsage(ctx, {
+              ownerId: identity.subject,
+              agentType: "service:speech_to_text",
+              model: serviceKey,
+              durationMs: 0,
+              success: true,
+              costMicroCents: computeServiceCostMicroCents(serviceKey),
+            });
+          }
 
           return jsonResponse(response, 200, origin);
         } catch (error) {

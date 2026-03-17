@@ -84,6 +84,8 @@ import type * as lib_game_auth from "../lib/game_auth.js";
 import type * as lib_history_messages from "../lib/history_messages.js";
 import type * as lib_http_utils from "../lib/http_utils.js";
 import type * as lib_json from "../lib/json.js";
+import type * as lib_managed_billing from "../lib/managed_billing.js";
+import type * as lib_models_dev from "../lib/models_dev.js";
 import type * as lib_number_utils from "../lib/number_utils.js";
 import type * as lib_object_utils from "../lib/object_utils.js";
 import type * as lib_owner_ids from "../lib/owner_ids.js";
@@ -232,6 +234,8 @@ declare const fullApi: ApiFromModules<{
   "lib/history_messages": typeof lib_history_messages;
   "lib/http_utils": typeof lib_http_utils;
   "lib/json": typeof lib_json;
+  "lib/managed_billing": typeof lib_managed_billing;
+  "lib/models_dev": typeof lib_models_dev;
   "lib/number_utils": typeof lib_number_utils;
   "lib/object_utils": typeof lib_object_utils;
   "lib/owner_ids": typeof lib_owner_ids;

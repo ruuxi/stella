@@ -205,10 +205,12 @@ describe("security regressions", () => {
     expect(cronsSource).toContain("internal.channels.transient_data.purgeExpiredCleanupFailures");
   });
 
-  test("fallback resolver preserves provider options", () => {
+  test("backend model resolver stays managed-only while preserving provider options", () => {
     const source = readBackendFile("convex/agent/model_resolver.ts");
     expect(source).toMatch(/resolveFallbackConfig[\s\S]*providerOptions/);
-    expect(source).toContain("filterGatewayOptions(defaults.providerOptions");
+    expect(source).toContain("Backend execution is Stella-managed");
+    expect(source).not.toContain("resolveByokApiKey");
+    expect(source).not.toContain("getUserProviderKey");
   });
 
   test("anonymous device hashing requires configured salt", () => {

@@ -2,6 +2,7 @@ import type { HttpRouter } from "convex/server";
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { generateText } from "ai";
+import { usageSummaryFromResult } from "../agent/model_execution";
 import { createManagedModel, MANAGED_GATEWAY } from "../agent/model";
 import { resolveModelConfig } from "../agent/model_resolver";
 import {
@@ -23,6 +24,10 @@ import {
   logMissingSaltOnce,
 } from "../http_shared/anon_device";
 import { getClientAddressKey } from "../lib/http_utils";
+import {
+  checkManagedUsageLimit,
+  scheduleManagedUsage,
+} from "../lib/managed_billing";
 
 type SynthesizeRequest = {
   /** @deprecated Use formattedSections instead */
@@ -79,7 +84,6 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           return errorResponse(400, "Invalid JSON body", origin);
         }
 
-        // Support both new (formattedSections) and legacy (formattedSignals) paths
         const hasFormattedSections =
           body?.formattedSections &&
           typeof body.formattedSections === "object" &&
@@ -140,15 +144,16 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           }
 
           const ownerId = identity?.subject;
-          const synthesisConfig = await resolveModelConfig(ctx, "synthesis", ownerId);
-          const synthesisModel =
-            typeof synthesisConfig.model === "string"
-              ? createManagedModel(synthesisConfig.model)
-              : synthesisConfig.model;
+          if (ownerId) {
+            const subscriptionCheck = await checkManagedUsageLimit(ctx, ownerId);
+            if (!subscriptionCheck.allowed) {
+              return errorResponse(429, subscriptionCheck.message, origin);
+            }
+          }
 
-          // -----------------------------------------------------------
-          // Stage 1: Per-category analysis (parallel) or legacy path
-          // -----------------------------------------------------------
+          const synthesisConfig = await resolveModelConfig(ctx, "synthesis", ownerId);
+          const synthesisModel = createManagedModel(synthesisConfig.model);
+
           let synthesisInput: string;
 
           if (
@@ -157,10 +162,9 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             Object.keys(categoryAnalysisSystemPrompts).length > 0 &&
             categoryAnalysisUserPromptTemplate
           ) {
-            // New two-stage path: analyze each category with its own system prompt
             const sections = body.formattedSections!;
             const categoryKeys = Object.keys(sections).filter(
-              (k) => sections[k] && sections[k].trim().length > 0,
+              (key) => sections[key] && sections[key].trim().length > 0,
             );
 
             console.log(
@@ -172,9 +176,16 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
               categoryKeys.map(async (category) => {
                 const systemPrompt = categoryAnalysisSystemPrompts[category];
                 if (!systemPrompt) {
-                  // No specific prompt for this category — pass raw data through
-                  return { category, analysis: sections[category] };
+                  return {
+                    category,
+                    analysis: sections[category],
+                    durationMs: 0,
+                    usage: undefined,
+                    generated: false,
+                  };
                 }
+
+                const startedAt = Date.now();
                 const result = await generateText({
                   model: synthesisModel,
                   system: systemPrompt,
@@ -190,27 +201,46 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
                   temperature: synthesisConfig.temperature,
                   providerOptions: synthesisConfig.providerOptions,
                 });
-                return { category, analysis: result.text?.trim() ?? "" };
+
+                return {
+                  category,
+                  analysis: result.text?.trim() ?? "",
+                  durationMs: Date.now() - startedAt,
+                  usage: usageSummaryFromResult(result),
+                  generated: true,
+                };
               }),
             );
 
-            // Combine category analyses for core memory synthesis
+            if (ownerId) {
+              await Promise.all(
+                analysisResults
+                  .filter((result) => result.generated)
+                  .map((result) =>
+                    scheduleManagedUsage(ctx, {
+                      ownerId,
+                      agentType: "service:synthesis:category_analysis",
+                      model: synthesisConfig.model,
+                      durationMs: result.durationMs,
+                      success: true,
+                      usage: result.usage,
+                    })),
+              );
+            }
+
             synthesisInput = analysisResults
-              .filter((r) => r.analysis.length > 0)
-              .map((r) => r.analysis)
+              .filter((result) => result.analysis.length > 0)
+              .map((result) => result.analysis)
               .join("\n\n");
 
             console.log(
               `[synthesize] Category analyses complete. Combined length: ${synthesisInput.length} chars`,
             );
           } else {
-            // Legacy path: use pre-combined formatted signals
             synthesisInput = body.formattedSignals!;
           }
 
-          // -----------------------------------------------------------
-          // Stage 2: Core memory synthesis
-          // -----------------------------------------------------------
+          const coreSynthesisStartedAt = Date.now();
           const synthesisResult = await generateText({
             model: synthesisModel,
             system: coreMemorySystemPrompt,
@@ -226,20 +256,27 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             providerOptions: synthesisConfig.providerOptions,
           });
 
+          if (ownerId) {
+            await scheduleManagedUsage(ctx, {
+              ownerId,
+              agentType: "service:synthesis:core_memory",
+              model: synthesisConfig.model,
+              durationMs: Date.now() - coreSynthesisStartedAt,
+              success: true,
+              usage: usageSummaryFromResult(synthesisResult),
+            });
+          }
+
           const coreMemory = synthesisResult.text?.trim();
           if (!coreMemory) {
             return errorResponse(500, "Failed to synthesize core memory", origin);
           }
 
-          // -----------------------------------------------------------
-          // Stage 3: Welcome message + suggestions (parallel)
-          // -----------------------------------------------------------
           const welcomeConfig = await resolveModelConfig(ctx, "welcome", ownerId);
-          const welcomeModel =
-            typeof welcomeConfig.model === "string"
-              ? createManagedModel(welcomeConfig.model)
-              : welcomeConfig.model;
+          const welcomeModel = createManagedModel(welcomeConfig.model);
 
+          const welcomeStartedAt = Date.now();
+          const suggestionsStartedAt = Date.now();
           const [welcomeResult, suggestionsResult] = await Promise.all([
             generateText({
               model: welcomeModel,
@@ -253,7 +290,10 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
               maxOutputTokens: welcomeConfig.maxOutputTokens,
               temperature: welcomeConfig.temperature,
               providerOptions: welcomeConfig.providerOptions,
-            }),
+            }).then((result) => ({
+              result,
+              durationMs: Date.now() - welcomeStartedAt,
+            })),
             generateText({
               model: welcomeModel,
               messages: [{
@@ -266,12 +306,39 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
               maxOutputTokens: 1024,
               temperature: 0.7,
               providerOptions: welcomeConfig.providerOptions,
-            }).catch(() => null),
+            })
+              .then((result) => ({
+                result,
+                durationMs: Date.now() - suggestionsStartedAt,
+              }))
+              .catch(() => null),
           ]);
+
+          if (ownerId) {
+            await scheduleManagedUsage(ctx, {
+              ownerId,
+              agentType: "service:synthesis:welcome_message",
+              model: welcomeConfig.model,
+              durationMs: welcomeResult.durationMs,
+              success: true,
+              usage: usageSummaryFromResult(welcomeResult.result),
+            });
+
+            if (suggestionsResult) {
+              await scheduleManagedUsage(ctx, {
+                ownerId,
+                agentType: "service:synthesis:welcome_suggestions",
+                model: welcomeConfig.model,
+                durationMs: suggestionsResult.durationMs,
+                success: true,
+                usage: usageSummaryFromResult(suggestionsResult.result),
+              });
+            }
+          }
 
           let suggestions: WelcomeSuggestion[] = [];
           try {
-            const parsed = JSON.parse(suggestionsResult?.text?.trim() || "[]");
+            const parsed = JSON.parse(suggestionsResult?.result.text?.trim() || "[]");
             if (Array.isArray(parsed)) {
               suggestions = parsed.filter(isWelcomeSuggestion).slice(0, 5);
             }
@@ -281,7 +348,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
 
           const response: SynthesizeResponse = {
             coreMemory,
-            welcomeMessage: welcomeResult.text?.trim() || DEFAULT_WELCOME_MESSAGE,
+            welcomeMessage: welcomeResult.result.text?.trim() || DEFAULT_WELCOME_MESSAGE,
             suggestions,
           };
 
