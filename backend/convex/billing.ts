@@ -23,6 +23,7 @@ import {
 } from "./lib/billing_plans";
 import {
   type TokenPriceConfig,
+  computeRealtimeUsageCostMicroCents,
   computeUsageCostMicroCents,
   dollarsToMicroCents,
   microCentsToDollars,
@@ -445,6 +446,102 @@ export const persistManagedUsage = async (
     plan,
   };
 };
+
+const getExistingVoiceUsageReceipt = async (
+  ctx: MutationCtx,
+  ownerId: string,
+  responseId: string,
+) => await ctx.db
+  .query("billing_voice_usage_receipts")
+  .withIndex("by_ownerId_and_responseId", (q) =>
+    q.eq("ownerId", ownerId).eq("responseId", responseId),
+  )
+  .unique();
+
+export const recordVoiceRealtimeUsage = internalMutation({
+  args: {
+    ownerId: v.string(),
+    responseId: v.string(),
+    model: v.string(),
+    conversationId: v.optional(v.id("conversations")),
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    totalTokens: v.number(),
+    textInputTokens: v.number(),
+    textCachedInputTokens: v.number(),
+    textOutputTokens: v.number(),
+    audioInputTokens: v.number(),
+    audioCachedInputTokens: v.number(),
+    audioOutputTokens: v.number(),
+    imageInputTokens: v.number(),
+    imageCachedInputTokens: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await getExistingVoiceUsageReceipt(
+      ctx,
+      args.ownerId,
+      args.responseId,
+    );
+    if (existing) {
+      return {
+        recorded: false,
+        duplicate: true,
+        costMicroCents: existing.costMicroCents,
+      };
+    }
+
+    const costMicroCents = computeRealtimeUsageCostMicroCents({
+      model: args.model,
+      textInputTokens: args.textInputTokens,
+      textCachedInputTokens: args.textCachedInputTokens,
+      textOutputTokens: args.textOutputTokens,
+      audioInputTokens: args.audioInputTokens,
+      audioCachedInputTokens: args.audioCachedInputTokens,
+      audioOutputTokens: args.audioOutputTokens,
+      imageInputTokens: args.imageInputTokens,
+      imageCachedInputTokens: args.imageCachedInputTokens,
+    });
+
+    await persistManagedUsage(ctx, {
+      ownerId: args.ownerId,
+      conversationId: args.conversationId ?? null,
+      agentType: "service:voice:realtime",
+      model: args.model,
+      durationMs: 0,
+      success: true,
+      inputTokens: args.inputTokens,
+      outputTokens: args.outputTokens,
+      totalTokens: args.totalTokens,
+      costMicroCents,
+    });
+
+    await ctx.db.insert("billing_voice_usage_receipts", {
+      ownerId: args.ownerId,
+      responseId: args.responseId,
+      model: args.model,
+      ...(args.conversationId ? { conversationId: args.conversationId } : {}),
+      inputTokens: args.inputTokens,
+      outputTokens: args.outputTokens,
+      totalTokens: args.totalTokens,
+      textInputTokens: args.textInputTokens,
+      textCachedInputTokens: args.textCachedInputTokens,
+      textOutputTokens: args.textOutputTokens,
+      audioInputTokens: args.audioInputTokens,
+      audioCachedInputTokens: args.audioCachedInputTokens,
+      audioOutputTokens: args.audioOutputTokens,
+      imageInputTokens: args.imageInputTokens,
+      imageCachedInputTokens: args.imageCachedInputTokens,
+      costMicroCents,
+      createdAt: Date.now(),
+    });
+
+    return {
+      recorded: true,
+      duplicate: false,
+      costMicroCents,
+    };
+  },
+});
 
 const normalizeReturnUrl = (value: string): string => {
   let parsed: URL;

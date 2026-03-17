@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
+  computeRealtimeUsageCostMicroCents,
   computeServiceCostMicroCents,
   computeUsageCostMicroCents,
   dollarsToMicroCents,
 } from "../convex/lib/billing_money";
 
 describe("billing money helpers", () => {
-  test("service costs default to zero when no catalog entry exists", () => {
+  test("service costs include built-in media defaults", () => {
+    expect(computeServiceCostMicroCents("media:text_to_image:best")).toBe(
+      dollarsToMicroCents(0.035),
+    );
     expect(computeServiceCostMicroCents("voice:session:test")).toBe(0);
   });
 
@@ -41,6 +45,23 @@ describe("billing money helpers", () => {
       dollarsToMicroCents(
         1.4 + 2.8 + 0.1 + 0.1 + 1.8,
       ),
+    );
+  });
+
+  test("realtime usage cost uses modality-aware pricing", () => {
+    expect(
+      computeRealtimeUsageCostMicroCents({
+        model: "gpt-realtime-1.5",
+        textInputTokens: 1_000_000,
+        textCachedInputTokens: 500_000,
+        textOutputTokens: 250_000,
+        audioInputTokens: 2_000_000,
+        audioCachedInputTokens: 250_000,
+        audioOutputTokens: 500_000,
+        imageInputTokens: 100_000,
+      }),
+    ).toBe(
+      dollarsToMicroCents(4 + 0.2 + 4 + 64 + 0.1 + 32 + 0.5),
     );
   });
 });
