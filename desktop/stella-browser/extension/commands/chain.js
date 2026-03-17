@@ -1,5 +1,5 @@
 /**
- * Chain command handler — executes multiple steps sequentially
+ * Chain command handler - executes multiple steps sequentially
  * within the extension, with implicit waits and human-like delays.
  *
  * This eliminates per-step round trips through daemon/CLI.

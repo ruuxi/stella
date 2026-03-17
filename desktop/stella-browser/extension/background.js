@@ -1,5 +1,5 @@
 /**
- * Stella Browser Bridge — Background Service Worker
+ * Stella Browser Bridge - Background Service Worker
  *
  * Connects to the stella-browser daemon via WebSocket and routes
  * commands to Chrome extension APIs.
@@ -158,13 +158,13 @@ const UNSUPPORTED = new Set([
 async function handleCommand(message) {
   const { action, id } = message;
 
-  // Handle 'close' command — close agent window, then acknowledge
+  // Handle 'close' command - close agent window, then acknowledge
   if (action === 'close') {
     await closeAgentWindow();
     return { type: 'response', id, success: true, data: { closed: true } };
   }
 
-  // Handle 'launch' — in extension mode the browser is already running
+  // Handle 'launch' - in extension mode the browser is already running
   if (action === 'launch') {
     return { type: 'response', id, success: true, data: { launched: true, provider: 'extension' } };
   }
@@ -218,7 +218,7 @@ onStatus((connected) => {
 // Keep service worker alive via offscreen document port
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name === 'keepalive') {
-    // Port keeps the service worker alive — nothing else needed
+    // Port keeps the service worker alive - nothing else needed
   }
 });
 
@@ -248,7 +248,7 @@ ensureOffscreen();
 cleanupStaleGroups();
 
 // Auto-connect on service worker load (this runs on every SW start, including
-// browser startup and extension install/update — no need for separate listeners)
+// browser startup and extension install/update - no need for separate listeners)
 async function autoConnect() {
   const config = await chrome.storage.local.get(['port', 'token']);
   const port = config.port || 9224;
@@ -259,7 +259,7 @@ async function autoConnect() {
 
 autoConnect();
 
-// Listen for messages from popup
+// Listen for messages from popup and content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'connect') {
     connect(message.port, message.token);
@@ -269,5 +269,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true });
   } else if (message.type === 'getStatus') {
     sendResponse({ connected: isConnected() });
+  } else if (message.type === 'hookHistory' && sender.tab) {
+    // Inject history hook into the page's main world (bypasses CSP)
+    chrome.scripting.executeScript({
+      target: { tabId: sender.tab.id },
+      world: 'MAIN',
+      func: () => {
+        if (window.__stellaHistoryHooked) return;
+        window.__stellaHistoryHooked = true;
+        const origPush = history.pushState;
+        const origReplace = history.replaceState;
+        history.pushState = function() {
+          origPush.apply(this, arguments);
+          window.dispatchEvent(new Event('stella:urlchange'));
+        };
+        history.replaceState = function() {
+          origReplace.apply(this, arguments);
+          window.dispatchEvent(new Event('stella:urlchange'));
+        };
+      },
+    }).catch(() => {});
+    sendResponse({ ok: true });
   }
 });
