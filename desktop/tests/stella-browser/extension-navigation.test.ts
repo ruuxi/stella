@@ -32,12 +32,7 @@ describe('extension navigation waits', () => {
     listeners = new Map()
     sendCommandMock = vi.fn().mockResolvedValue({})
 
-    getActiveTabMock.mockResolvedValue({
-      id: 7,
-      windowId: 3,
-      url: 'about:blank',
-      title: 'Blank',
-    })
+    getActiveTabMock.mockResolvedValue({ id: 7, url: 'about:blank', title: 'Blank' })
     ensureDebuggerMock.mockResolvedValue(undefined)
     onCdpEventMock.mockImplementation((tabId, method, callback) => {
       listeners.set(`${tabId}:${method}`, callback)
@@ -51,16 +46,12 @@ describe('extension navigation waits', () => {
         update: vi.fn().mockResolvedValue(undefined),
         get: vi.fn().mockResolvedValue({
           id: 7,
-          windowId: 3,
           url: 'https://example.com',
           title: 'Example',
         }),
         goBack: vi.fn().mockResolvedValue(undefined),
         goForward: vi.fn().mockResolvedValue(undefined),
         reload: vi.fn().mockResolvedValue(undefined),
-      },
-      windows: {
-        update: vi.fn().mockResolvedValue(undefined),
       },
       debugger: {
         sendCommand: sendCommandMock,

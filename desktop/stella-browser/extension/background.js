@@ -220,68 +220,38 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 // Create offscreen document to maintain keepalive port
-let offscreenPromise = null;
-
 async function ensureOffscreen() {
-  if (offscreenPromise) {
-    return offscreenPromise;
-  }
-
-  offscreenPromise = (async () => {
-    try {
-      const contexts = await chrome.runtime.getContexts({
-        contextTypes: ['OFFSCREEN_DOCUMENT'],
-        documentUrls: [chrome.runtime.getURL('offscreen.html')],
+  try {
+    const contexts = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT'],
+      documentUrls: [chrome.runtime.getURL('offscreen.html')],
+    });
+    if (contexts.length === 0) {
+      await chrome.offscreen.createDocument({
+        url: 'offscreen.html',
+        reasons: ['WORKERS'],
+        justification: 'Keep service worker alive for WebSocket connection',
       });
-      if (contexts.length === 0) {
-        try {
-          await chrome.offscreen.createDocument({
-            url: 'offscreen.html',
-            reasons: ['WORKERS'],
-            justification: 'Keep service worker alive for WebSocket connection',
-          });
-          console.log('[background] Offscreen keepalive document created');
-        } catch (err) {
-          const message = err?.message || String(err);
-          if (!message.includes('Only a single offscreen document may be created')) {
-            throw err;
-          }
-        }
-      }
-    } catch (err) {
-      console.error('[background] Failed to create offscreen document:', err);
-      offscreenPromise = null;
+      console.log('[background] Offscreen keepalive document created');
     }
-  })();
-
-  return offscreenPromise;
+  } catch (err) {
+    console.error('[background] Failed to create offscreen document:', err);
+  }
 }
 
+ensureOffscreen();
+
+// Auto-connect on service worker load (this runs on every SW start, including
+// browser startup and extension install/update — no need for separate listeners)
 async function autoConnect() {
   const config = await chrome.storage.local.get(['port', 'token']);
   const port = config.port || 9224;
   const token = config.token || '';
   console.log('[background] Auto-connecting to port', port);
-  await connect(port, token);
+  connect(port, token);
 }
 
-async function initializeConnection() {
-  await ensureOffscreen();
-  await autoConnect();
-}
-
-// Attempt to connect when the service worker is already awake.
-void initializeConnection();
-
-// Also register explicit startup hooks so Chrome can wake the MV3 service
-// worker and reconnect after a browser relaunch/session restore.
-chrome.runtime.onStartup?.addListener(() => {
-  void initializeConnection();
-});
-
-chrome.runtime.onInstalled?.addListener(() => {
-  void initializeConnection();
-});
+autoConnect();
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
