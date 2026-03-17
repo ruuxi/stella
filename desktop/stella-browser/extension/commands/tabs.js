@@ -3,27 +3,102 @@
  *
  * Agent operates in a dedicated Chrome window with a "Stella" tab group.
  * The user's existing windows/tabs are never touched.
+ *
+ * IDs are persisted to chrome.storage.session so they survive service worker
+ * restarts (common in MV3). On every use we also verify the IDs are still
+ * valid and fall back to searching for an existing "Stella" group.
  */
 
 // --- Agent Window State ---
 
 let agentWindowId = null;
 let stellaGroupId = null;
+let stateLoaded = false;
+
+/**
+ * Load persisted window/group IDs from session storage.
+ */
+async function loadState() {
+  if (stateLoaded) return;
+  try {
+    const data = await chrome.storage.session.get(['agentWindowId', 'stellaGroupId']);
+    if (data.agentWindowId != null) agentWindowId = data.agentWindowId;
+    if (data.stellaGroupId != null) stellaGroupId = data.stellaGroupId;
+  } catch {
+    // storage.session may not be available — fall through
+  }
+  stateLoaded = true;
+}
+
+/**
+ * Persist current window/group IDs to session storage.
+ */
+async function saveState() {
+  try {
+    await chrome.storage.session.set({ agentWindowId, stellaGroupId });
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Search all tab groups for an existing "Stella" group and recover window ID.
+ * Returns true if a valid group was found.
+ */
+async function recoverExistingGroup() {
+  try {
+    const groups = await chrome.tabGroups.query({ title: 'Stella' });
+    if (groups.length > 0) {
+      // Use the first one found
+      stellaGroupId = groups[0].id;
+      agentWindowId = groups[0].windowId;
+      await saveState();
+      return true;
+    }
+  } catch {
+    // tabGroups.query not available — fall through
+  }
+  return false;
+}
 
 /**
  * Ensure the agent has a dedicated window with a Stella tab group.
  * Creates lazily on first use. If the window was closed by the user,
- * creates a new one.
+ * creates a new one. Recovers from service worker restarts.
  */
 async function ensureAgentWindow() {
-  // Check if the window still exists
+  await loadState();
+
+  // Validate cached window ID
   if (agentWindowId != null) {
     try {
       await chrome.windows.get(agentWindowId);
     } catch {
-      // Window was closed — reset
       agentWindowId = null;
       stellaGroupId = null;
+    }
+  }
+
+  // Validate cached group ID
+  if (stellaGroupId != null) {
+    try {
+      await chrome.tabGroups.get(stellaGroupId);
+    } catch {
+      stellaGroupId = null;
+    }
+  }
+
+  // If we lost the IDs, try to find an existing Stella group
+  if (agentWindowId == null || stellaGroupId == null) {
+    if (await recoverExistingGroup()) {
+      // Verify the recovered window is still valid
+      try {
+        await chrome.windows.get(agentWindowId);
+        return agentWindowId;
+      } catch {
+        agentWindowId = null;
+        stellaGroupId = null;
+      }
     }
   }
 
@@ -50,14 +125,17 @@ async function ensureAgentWindow() {
     stellaGroupId = groupId;
   }
 
+  await saveState();
   console.log('[tabs] Created agent window', agentWindowId, 'with Stella group', stellaGroupId);
   return agentWindowId;
 }
 
 /**
- * Add a tab to the Stella group. Creates the group if needed.
+ * Add a tab to the Stella group. Reuses the existing group; never creates a second one.
  */
 async function addToStellaGroup(tabId) {
+  await loadState();
+
   // Verify the group still exists
   if (stellaGroupId != null) {
     try {
@@ -65,6 +143,11 @@ async function addToStellaGroup(tabId) {
     } catch {
       stellaGroupId = null;
     }
+  }
+
+  // Try to recover if lost
+  if (stellaGroupId == null) {
+    await recoverExistingGroup();
   }
 
   if (stellaGroupId != null) {
@@ -80,6 +163,7 @@ async function addToStellaGroup(tabId) {
       color: 'purple',
     });
     stellaGroupId = groupId;
+    await saveState();
   }
 }
 
@@ -95,6 +179,7 @@ export async function closeAgentWindow() {
     }
     agentWindowId = null;
     stellaGroupId = null;
+    await saveState();
   }
 }
 
