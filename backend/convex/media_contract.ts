@@ -1,3 +1,5 @@
+import { isRecord } from "./shared_validators";
+
 export const MEDIA_JOB_STATUS_VALUES = [
   "queued",
   "running",
@@ -62,12 +64,14 @@ export type MediaRequestSummary = {
   source?: {
     kind: "url" | "data_uri" | "base64_object";
     mimeType?: string;
+    url?: string;
   };
   sources?: Record<
     string,
     {
       kind: "url" | "data_uri" | "base64_object";
       mimeType?: string;
+      url?: string;
     }
   >;
   input?: Record<string, unknown>;
@@ -89,9 +93,6 @@ export type MediaJobResponse = {
   startedAt?: number;
   completedAt?: number;
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const asTrimmedString = (value: unknown): string | null =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : null;

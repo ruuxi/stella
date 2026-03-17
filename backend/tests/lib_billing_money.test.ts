@@ -7,10 +7,8 @@ import {
 } from "../convex/lib/billing_money";
 
 describe("billing money helpers", () => {
-  test("service costs include built-in media defaults", () => {
-    expect(computeServiceCostMicroCents("media:text_to_image:best")).toBe(
-      dollarsToMicroCents(0.035),
-    );
+  test("service costs default to zero unless explicitly configured", () => {
+    expect(computeServiceCostMicroCents("fal-ai/bytedance/seedream/v5/lite/text-to-image")).toBe(0);
     expect(computeServiceCostMicroCents("voice:session:test")).toBe(0);
   });
 

@@ -1,22 +1,26 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { ConvexError } from "convex/values";
 import { internal } from "../convex/_generated/api";
 import {
   enforceManagedUsageLimit,
   persistManagedUsage,
+  recordMediaCompletedUsage,
   recordVoiceRealtimeUsage,
 } from "../convex/billing";
 import {
-  computeServiceCostMicroCents,
   computeUsageCostMicroCents,
   dollarsToMicroCents,
 } from "../convex/lib/billing_money";
 import { stellaProviderChatCompletions } from "../convex/stella_provider";
+import { syncSessionActivity } from "../convex/media_realtime_sessions";
 
 type TableName =
   | "billing_profiles"
   | "billing_usage_windows"
   | "billing_model_prices"
   | "billing_voice_usage_receipts"
+  | "billing_media_usage_receipts"
+  | "media_realtime_sessions"
   | "conversations"
   | "usage_logs";
 
@@ -29,6 +33,8 @@ const makeState = (): MemoryState => ({
   billing_usage_windows: [],
   billing_model_prices: [],
   billing_voice_usage_receipts: [],
+  billing_media_usage_receipts: [],
+  media_realtime_sessions: [],
   conversations: [],
   usage_logs: [],
 });
@@ -249,7 +255,7 @@ describe("managed billing verification", () => {
     expect(result.retryAfterMs).toBeGreaterThan(0);
   });
 
-  test("media generate logs the built-in media default cost in public test mode", async () => {
+  test("media generate no longer bills at submission time in public test mode", async () => {
     const { registerMediaRoutes } = await import("../convex/http_routes/media");
     const routes = await captureRoutes<{
       path: string;
@@ -314,19 +320,12 @@ describe("managed billing verification", () => {
 
     expect(response.status).toBe(202);
     expect(runMutationCalls.length).toBeGreaterThanOrEqual(3);
-    expect(scheduled).toHaveLength(1);
-    expect(scheduled[0]?.delayMs).toBe(0);
-    expect(scheduled[0]?.args).toEqual(
+    expect(scheduled).toHaveLength(0);
+    expect(runMutationCalls[0]?.args).toEqual(
       expect.objectContaining({
         ownerId: "__public_media_test__",
-        agentType: "service:media",
-        model: "media:text_to_image:best",
-        success: true,
-        costMicroCents: computeServiceCostMicroCents("media:text_to_image:best"),
+        minimumRemainingMicroCents: dollarsToMicroCents(0.8),
       }),
-    );
-    expect(computeServiceCostMicroCents("media:text_to_image:best")).toBe(
-      dollarsToMicroCents(0.035),
     );
   });
 
@@ -370,6 +369,312 @@ describe("managed billing verification", () => {
 
     expect(response.status).toBe(429);
     expect(await response.text()).toContain("usage limit reached");
+  });
+
+  test("media generate redirects realtime requests to the backend realtime session wrapper", async () => {
+    const { registerMediaRoutes } = await import("../convex/http_routes/media");
+    const routes = await captureRoutes<{
+      path: string;
+      method: string;
+      handler: (ctx: unknown, request: Request) => Promise<Response>;
+    }>(registerMediaRoutes);
+    const generateRoute = routes.find(
+      (route) => route.path === "/api/media/v1/generate" && route.method === "POST",
+    );
+
+    const response = await generateRoute!.handler(
+      {
+        auth: {
+          getUserIdentity: async () => null,
+        },
+        runMutation: async () => ({
+          allowed: true,
+          message: "",
+          retryAfterMs: 0,
+        }),
+        scheduler: {
+          runAfter: async () => null,
+        },
+      },
+      new Request("https://example.com/api/media/v1/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          capability: "realtime",
+          profile: "default",
+          prompt: "live sketch to watercolor",
+          sourceUrl: "https://example.com/source.png",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.text()).toContain("/api/media/v1/realtime/session");
+  });
+
+  test("media realtime session route tracks backend active seconds for Flux Klein realtime", async () => {
+    const { registerMediaRoutes } = await import("../convex/http_routes/media");
+    const routes = await captureRoutes<{
+      path: string;
+      method: string;
+      handler: (ctx: unknown, request: Request) => Promise<Response>;
+    }>(registerMediaRoutes);
+    const sessionRoute = routes.find(
+      (route) => route.path === "/api/media/v1/realtime/session" && route.method === "POST",
+    );
+
+    expect(sessionRoute).toBeDefined();
+
+    const runMutationCalls: Array<{ fn: unknown; args: unknown }> = [];
+    let mutationCallCount = 0;
+
+    const response = await sessionRoute!.handler(
+      {
+        auth: {
+          getUserIdentity: async () => null,
+        },
+        runMutation: async (fn: unknown, args: unknown) => {
+          runMutationCalls.push({ fn, args });
+          mutationCallCount += 1;
+          if (mutationCallCount === 1) {
+            return { allowed: true, message: "", retryAfterMs: 0 };
+          }
+          if (mutationCallCount === 2) {
+            return {
+              sessionId: "media_rt_123",
+              endpointId: "fal-ai/flux-2/klein/realtime",
+              status: "active",
+              startedAt: 1_000,
+              lastSeenAt: 3_200,
+              billedSeconds: 2,
+              newlyBilledSeconds: 2,
+              costMicroCents: dollarsToMicroCents(0.00388),
+            };
+          }
+          return { allowed: true, message: "", retryAfterMs: 0 };
+        },
+      },
+      new Request("https://example.com/api/media/v1/realtime/session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId: "media_rt_123",
+          event: "heartbeat",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(runMutationCalls[1]?.args).toEqual(
+      expect.objectContaining({
+        ownerId: "__public_media_test__",
+        sessionId: "media_rt_123",
+        event: "heartbeat",
+        endpointId: "fal-ai/flux-2/klein/realtime",
+      }),
+    );
+    expect(await response.json()).toEqual({
+      sessionId: "media_rt_123",
+      endpointId: "fal-ai/flux-2/klein/realtime",
+      status: "active",
+      startedAt: 1_000,
+      lastSeenAt: 3_200,
+      billedSeconds: 2,
+      newlyBilledSeconds: 2,
+      costMicroCents: dollarsToMicroCents(0.00388),
+      shouldStop: false,
+    });
+  });
+
+  test("media realtime session route rejects heartbeats for missing sessions", async () => {
+    const { registerMediaRoutes } = await import("../convex/http_routes/media");
+    const routes = await captureRoutes<{
+      path: string;
+      method: string;
+      handler: (ctx: unknown, request: Request) => Promise<Response>;
+    }>(registerMediaRoutes);
+    const sessionRoute = routes.find(
+      (route) => route.path === "/api/media/v1/realtime/session" && route.method === "POST",
+    );
+
+    const response = await sessionRoute!.handler(
+      {
+        auth: {
+          getUserIdentity: async () => null,
+        },
+        runMutation: async (_fn: unknown, args: unknown) => {
+          if ((args as { scope?: string }).scope === "media_realtime_session") {
+            return { allowed: true, retryAfterMs: 0 };
+          }
+          throw new ConvexError({
+            code: "NOT_FOUND",
+            message: "Realtime media session not found. Start a session before sending heartbeats.",
+          });
+        },
+      },
+      new Request("https://example.com/api/media/v1/realtime/session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId: "media_rt_missing",
+          event: "heartbeat",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.text()).toContain("Start a session before sending heartbeats");
+  });
+
+  test("media realtime session route expires late heartbeats and requires restart", async () => {
+    const { registerMediaRoutes } = await import("../convex/http_routes/media");
+    const routes = await captureRoutes<{
+      path: string;
+      method: string;
+      handler: (ctx: unknown, request: Request) => Promise<Response>;
+    }>(registerMediaRoutes);
+    const sessionRoute = routes.find(
+      (route) => route.path === "/api/media/v1/realtime/session" && route.method === "POST",
+    );
+
+    let mutationCallCount = 0;
+
+    const response = await sessionRoute!.handler(
+      {
+        auth: {
+          getUserIdentity: async () => null,
+        },
+        runMutation: async (_fn: unknown, args: unknown) => {
+          mutationCallCount += 1;
+          if (mutationCallCount === 1) {
+            return { allowed: true, retryAfterMs: 0 };
+          }
+          if (mutationCallCount === 2) {
+            return {
+              sessionId: "media_rt_123",
+              endpointId: "fal-ai/flux-2/klein/realtime",
+              status: "ended",
+              startedAt: 1_000,
+              lastSeenAt: 16_000,
+              billedSeconds: 15,
+              newlyBilledSeconds: 12,
+              costMicroCents: dollarsToMicroCents(0.02328),
+              expired: true,
+            };
+          }
+          return { allowed: true, message: "", retryAfterMs: 0 };
+        },
+      },
+      new Request("https://example.com/api/media/v1/realtime/session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId: "media_rt_123",
+          event: "heartbeat",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      sessionId: "media_rt_123",
+      endpointId: "fal-ai/flux-2/klein/realtime",
+      status: "ended",
+      startedAt: 1_000,
+      lastSeenAt: 16_000,
+      billedSeconds: 15,
+      newlyBilledSeconds: 12,
+      costMicroCents: dollarsToMicroCents(0.02328),
+      expired: true,
+      shouldStop: true,
+      stopReason: "Realtime media session expired after 15 seconds without a heartbeat. Start a new session.",
+    });
+  });
+
+  test("media webhook schedules actual endpoint billing on completion", async () => {
+    const { registerMediaRoutes } = await import("../convex/http_routes/media");
+    const routes = await captureRoutes<{
+      path: string;
+      method: string;
+      handler: (ctx: unknown, request: Request) => Promise<Response>;
+    }>(registerMediaRoutes);
+    const webhookRoute = routes.find(
+      (route) => route.path === "/api/media/v1/webhooks/fal" && route.method === "POST",
+    );
+
+    expect(webhookRoute).toBeDefined();
+
+    const scheduled: Array<{ delayMs: number; args: unknown }> = [];
+
+    const response = await webhookRoute!.handler(
+      {
+        runMutation: async () => ({
+          allowed: true,
+          retryAfterMs: 0,
+        }),
+        runQuery: async () => ({
+          ownerId: "__public_media_test__",
+          endpointId: "fal-ai/bytedance/seedream/v5/lite/text-to-image",
+          request: {
+            prompt: "cinematic rainy Tokyo alley at night",
+            input: {
+              prompt: "cinematic rainy Tokyo alley at night",
+              num_images: 2,
+            },
+          },
+          providerResponseUrl: "https://queue.fal.run/fal-ai/bytedance/seedream/v5/lite/text-to-image/requests/fal_req_123",
+        }),
+        scheduler: {
+          runAfter: async (delayMs: number, _fn: unknown, args: unknown) => {
+            scheduled.push({ delayMs, args });
+          },
+        },
+      },
+      new Request("https://example.com/api/media/v1/webhooks/fal?jobId=job_123", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-stella-test-webhook": "1",
+        },
+        body: JSON.stringify({
+          request_id: "fal_req_123",
+          status: "OK",
+          payload: {
+            images: [{ url: "https://example.com/generated-image.png" }],
+          },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(scheduled).toHaveLength(2);
+    expect(scheduled[0]?.args).toEqual(
+      expect.objectContaining({
+        jobId: "job_123",
+        billing: expect.objectContaining({
+          endpointId: "fal-ai/bytedance/seedream/v5/lite/text-to-image",
+          costMicroCents: dollarsToMicroCents(0.07),
+        }),
+      }),
+    );
+    expect(scheduled[1]?.args).toEqual(
+      expect.objectContaining({
+        ownerId: "__public_media_test__",
+        jobId: "job_123",
+        endpointId: "fal-ai/bytedance/seedream/v5/lite/text-to-image",
+        costMicroCents: dollarsToMicroCents(0.07),
+        billingUnit: "image",
+        quantity: 2,
+      }),
+    );
   });
 
   test("stella provider schedules token usage for billing on successful responses", async () => {
@@ -508,5 +813,136 @@ describe("managed billing verification", () => {
     expect(state.usage_logs).toHaveLength(1);
     expect(state.usage_logs[0]?.model).toBe("gpt-realtime-1.5");
     expect(state.usage_logs[0]?.costMicroCents).toBe(first.costMicroCents);
+  });
+
+  test("recordMediaCompletedUsage deduplicates media jobs and stores the billed cost", async () => {
+    const { db, state } = createMemoryDb({
+      conversations: [{
+        _id: "conv_media",
+        ownerId: "owner_media",
+        isDefault: true,
+      }],
+    });
+
+    const first = await recordMediaCompletedUsage._handler(
+      { db } as never,
+      {
+        ownerId: "owner_media",
+        jobId: "job_media_1",
+        providerRequestId: "fal_req_123",
+        endpointId: "fal-ai/bytedance/seedream/v5/lite/text-to-image",
+        billingUnit: "image",
+        quantity: 2,
+        costMicroCents: dollarsToMicroCents(0.07),
+      },
+    );
+
+    const second = await recordMediaCompletedUsage._handler(
+      { db } as never,
+      {
+        ownerId: "owner_media",
+        jobId: "job_media_1",
+        providerRequestId: "fal_req_123",
+        endpointId: "fal-ai/bytedance/seedream/v5/lite/text-to-image",
+        billingUnit: "image",
+        quantity: 2,
+        costMicroCents: dollarsToMicroCents(0.07),
+      },
+    );
+
+    expect(first.recorded).toBe(true);
+    expect(second.recorded).toBe(false);
+    expect(second.duplicate).toBe(true);
+    expect(state.billing_media_usage_receipts).toHaveLength(1);
+    expect(state.usage_logs).toHaveLength(1);
+    expect(state.usage_logs[0]?.model).toBe("fal-ai/bytedance/seedream/v5/lite/text-to-image");
+  });
+
+  test("syncSessionActivity bills newly elapsed realtime seconds only once", async () => {
+    const now = Date.now();
+    const { db, state } = createMemoryDb({
+      conversations: [{
+        _id: "conv_rt",
+        ownerId: "owner_rt",
+        isDefault: true,
+      }],
+    });
+
+    const started = await syncSessionActivity._handler(
+      { db } as never,
+      {
+        ownerId: "owner_rt",
+        sessionId: "media_rt_1",
+        event: "start",
+        observedAt: now,
+      },
+    );
+
+    const heartbeated = await syncSessionActivity._handler(
+      { db } as never,
+      {
+        ownerId: "owner_rt",
+        sessionId: "media_rt_1",
+        event: "heartbeat",
+        observedAt: now + 3_400,
+      },
+    );
+
+    const stopped = await syncSessionActivity._handler(
+      { db } as never,
+      {
+        ownerId: "owner_rt",
+        sessionId: "media_rt_1",
+        event: "stop",
+        observedAt: now + 3_900,
+      },
+    );
+
+    expect(started.newlyBilledSeconds).toBe(0);
+    expect(heartbeated.newlyBilledSeconds).toBe(3);
+    expect(stopped.newlyBilledSeconds).toBe(0);
+    expect(state.media_realtime_sessions).toHaveLength(1);
+    expect(state.media_realtime_sessions[0]?.billedSeconds).toBe(3);
+    expect(state.media_realtime_sessions[0]?.status).toBe("ended");
+    expect(state.usage_logs).toHaveLength(1);
+    expect(state.usage_logs[0]?.model).toBe("fal-ai/flux-2/klein/realtime");
+    expect(state.usage_logs[0]?.costMicroCents).toBe(dollarsToMicroCents(0.00582));
+  });
+
+  test("syncSessionActivity clips missed heartbeat billing at the timeout boundary", async () => {
+    const now = Date.now();
+    const { db, state } = createMemoryDb({
+      conversations: [{
+        _id: "conv_rt_timeout",
+        ownerId: "owner_rt_timeout",
+        isDefault: true,
+      }],
+    });
+
+    await syncSessionActivity._handler(
+      { db } as never,
+      {
+        ownerId: "owner_rt_timeout",
+        sessionId: "media_rt_timeout",
+        event: "start",
+        observedAt: now,
+      },
+    );
+
+    const expired = await syncSessionActivity._handler(
+      { db } as never,
+      {
+        ownerId: "owner_rt_timeout",
+        sessionId: "media_rt_timeout",
+        event: "heartbeat",
+        observedAt: now + 30_000,
+      },
+    );
+
+    expect(expired.status).toBe("ended");
+    expect(expired.expired).toBe(true);
+    expect(expired.billedSeconds).toBe(15);
+    expect(state.usage_logs).toHaveLength(1);
+    expect(state.usage_logs[0]?.costMicroCents).toBe(dollarsToMicroCents(0.0291));
   });
 });
