@@ -46,6 +46,7 @@ type VoiceSessionToken = {
   model: string;
   voice: string;
   expiresAt?: number;
+  sessionId?: string;
 };
 
 type VoiceRuntimeState = {
@@ -116,6 +117,7 @@ export class RealtimeVoiceSession {
   private _state: VoiceSessionState = "idle";
   private listeners = new Set<VoiceSessionListener>();
   private conversationId: string | null = null;
+  private model: string | null = null;
 
   // Accumulated transcript fragments
   private assistantTranscriptBuffer = "";
@@ -263,6 +265,7 @@ export class RealtimeVoiceSession {
       }
 
       const { clientSecret, model } = keyResult;
+      this.model = model;
 
       const sdpResponse = await fetch(
         `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`,
@@ -567,6 +570,41 @@ export class RealtimeVoiceSession {
     }
   }
 
+  private async reportUsage(response: Record<string, unknown>) {
+    const usage = response.usage as Record<string, unknown> | undefined;
+    const responseId =
+      typeof response.id === "string" && response.id.trim().length > 0
+        ? response.id.trim()
+        : null;
+    const model = this.model;
+
+    if (!usage || !responseId || !model) {
+      return;
+    }
+
+    try {
+      const { endpoint, headers } = await createServiceRequest("/api/voice/usage");
+      await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...headers,
+        },
+        body: JSON.stringify({
+          responseId,
+          model,
+          ...(this.conversationId ? { conversationId: this.conversationId } : {}),
+          usage,
+        }),
+      });
+    } catch (err) {
+      console.debug(
+        "[realtime-voice] Failed to report voice usage:",
+        (err as Error).message,
+      );
+    }
+  }
+
   private closeRealtimeVoiceInput() {
     // Goodbye ends the live turn immediately, but the warm RTC session stays
     // connected so any already-started assistant audio can finish naturally.
@@ -687,6 +725,9 @@ export class RealtimeVoiceSession {
             role: "assistant",
             text: "[NO TOOL CALL — model responded conversationally]",
           });
+        }
+        if (output) {
+          void this.reportUsage(output);
         }
         break;
       }
@@ -964,5 +1005,6 @@ export class RealtimeVoiceSession {
     this.pendingRemoteStream = null;
 
     this.assistantTranscriptBuffer = "";
+    this.model = null;
   }
 }
