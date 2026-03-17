@@ -1,16 +1,9 @@
-/** Audio encoding utilities for speech-to-text WebSocket protocol. */
+/** Audio encoding utilities for OpenAI Realtime transcription sessions. */
 
-const TARGET_WAV_SAMPLE_RATE = 16_000;
-const PACKET_DURATION_SECONDS = 1;
-const SAMPLES_PER_PACKET = TARGET_WAV_SAMPLE_RATE * PACKET_DURATION_SECONDS;
+const TARGET_PCM_SAMPLE_RATE = 24_000;
 
-export { TARGET_WAV_SAMPLE_RATE, PACKET_DURATION_SECONDS };
-
-export type PreparedWisprAudio = {
-  packetDurationSeconds: number;
-  packets: string[];
-  volumes: number[];
-};
+export { TARGET_PCM_SAMPLE_RATE };
+export const TARGET_WAV_SAMPLE_RATE = TARGET_PCM_SAMPLE_RATE;
 
 export const blobToBase64 = async (blob: Blob): Promise<string> => {
   return await new Promise<string>((resolve, reject) => {
@@ -93,70 +86,30 @@ export const floatToInt16Pcm = (samples: Float32Array): Int16Array => {
   return pcm;
 };
 
-export const calculatePacketVolume = (packetSamples: Float32Array): number => {
-  if (packetSamples.length === 0) return 0;
-  let sum = 0;
-  for (let i = 0; i < packetSamples.length; i += 1) {
-    const sample = packetSamples[i]!;
-    sum += sample * sample;
-  }
-  return Math.sqrt(sum / packetSamples.length);
+export const encodeInt16ToBase64 = (pcm: Int16Array): string => {
+  return arrayBufferToBase64(
+    pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength),
+  );
 };
 
-export const encodeInt16PacketToBase64 = (packet: Int16Array): string => {
-  return arrayBufferToBase64(packet.buffer.slice(
-    packet.byteOffset,
-    packet.byteOffset + packet.byteLength,
-  ));
-};
-
-export const packetizeAudioSamples = (samples: Float32Array): PreparedWisprAudio => {
-  const packetCount = Math.max(1, Math.ceil(samples.length / SAMPLES_PER_PACKET));
-  const packets: string[] = [];
-  const volumes: number[] = [];
-
-  for (let packetIndex = 0; packetIndex < packetCount; packetIndex += 1) {
-    const start = packetIndex * SAMPLES_PER_PACKET;
-    const end = Math.min(start + SAMPLES_PER_PACKET, samples.length);
-
-    const packetFloats = new Float32Array(SAMPLES_PER_PACKET);
-    if (end > start) {
-      packetFloats.set(samples.subarray(start, end));
-    }
-
-    const packetPcm = floatToInt16Pcm(packetFloats);
-    packets.push(encodeInt16PacketToBase64(packetPcm));
-    volumes.push(calculatePacketVolume(packetFloats));
-  }
-
-  return {
-    packetDurationSeconds: PACKET_DURATION_SECONDS,
-    packets,
-    volumes,
-  };
-};
-
-export const prepareAudioForWispr = async (audioBlob: Blob): Promise<PreparedWisprAudio> => {
+export const decodeAudioBlobToMonoSamples = async (
+  audioBlob: Blob,
+): Promise<{ samples: Float32Array; sampleRate: number }> => {
   let audioContext: AudioContext | null = null;
   try {
     const arrayBuffer = await audioBlob.arrayBuffer();
     audioContext = new AudioContext();
     const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-    const mono = mixAudioBufferToMono(decoded);
-    const resampled = resampleLinear(mono, decoded.sampleRate, TARGET_WAV_SAMPLE_RATE);
-    return packetizeAudioSamples(resampled);
-  } catch {
     return {
-      packetDurationSeconds: PACKET_DURATION_SECONDS,
-      packets: [await blobToBase64(audioBlob)],
-      volumes: [0],
+      samples: mixAudioBufferToMono(decoded),
+      sampleRate: decoded.sampleRate,
     };
   } finally {
     if (audioContext) {
       try {
         await audioContext.close();
       } catch {
-        // Ignore close errors; we already have encoded packets or fallback packets.
+        // Ignore close failures; callers already have the decoded result.
       }
     }
   }
