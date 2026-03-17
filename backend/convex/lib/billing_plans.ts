@@ -14,60 +14,71 @@ export type PlanConfig = {
 
 export type PlanCatalog = Record<SubscriptionPlan, PlanConfig>;
 
-const OPENCODE_GO_FALLBACK_LIMITS = {
-  rollingLimitUsd: 12,
+const DEFAULT_FREE_PLAN: PlanConfig = {
+  label: "Free",
+  monthlyPriceCents: 0,
+  rollingLimitUsd: 1,
   rollingWindowHours: 5,
-  weeklyLimitUsd: 30,
-  monthlyLimitUsd: 60,
-  tokensPerMinute: 500_000,
-} as const;
+  weeklyLimitUsd: 2,
+  monthlyLimitUsd: 4,
+  tokensPerMinute: 100_000,
+};
 
-const OPENCODE_BLACK_USAGE_MULTIPLIERS = {
-  pro: 5,
-  plus: 20,
-} as const;
+const DEFAULT_INCLUDED_USAGE_UTILIZATION_RATE = 0.7;
+const DEFAULT_ROLLING_WINDOW_HOURS = 5;
+const DEFAULT_ROLLING_LIMIT_SHARE = 0.2;
+const DEFAULT_WEEKLY_LIMIT_SHARE = 0.5;
+const DEFAULT_TOKENS_PER_MINUTE_PER_INCLUDED_DOLLAR = 500_000 / 60;
 
-const scalePlanValue = (value: number, multiplier: number) =>
-  Math.max(0, Math.floor(value * multiplier));
+const roundUsd = (value: number): number =>
+  Math.max(0, Math.round(value * 100) / 100);
 
-const buildBlackTierFallback = (
+const toMonthlyPriceUsd = (monthlyPriceCents: number): number =>
+  Math.max(0, monthlyPriceCents) / 100;
+
+const parseUtilizationRate = (value: string | undefined, fallback: number): number => {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) {
+    return fallback;
+  }
+  return parsed;
+};
+
+export const getIncludedUsageUtilizationRate = (): number =>
+  parseUtilizationRate(
+    process.env.STELLA_INCLUDED_USAGE_UTILIZATION_RATE?.trim(),
+    DEFAULT_INCLUDED_USAGE_UTILIZATION_RATE,
+  );
+
+export const buildPaidPlanConfig = (
   label: string,
   monthlyPriceCents: number,
-  multiplier: number,
-): PlanConfig => ({
-  label,
-  monthlyPriceCents,
-  // OpenCode Black absolute limits are secret-backed. Use documented Go limits as
-  // the fallback baseline, then scale by published Black multipliers.
-  rollingLimitUsd: scalePlanValue(OPENCODE_GO_FALLBACK_LIMITS.rollingLimitUsd, multiplier),
-  rollingWindowHours: OPENCODE_GO_FALLBACK_LIMITS.rollingWindowHours,
-  weeklyLimitUsd: scalePlanValue(OPENCODE_GO_FALLBACK_LIMITS.weeklyLimitUsd, multiplier),
-  monthlyLimitUsd: scalePlanValue(OPENCODE_GO_FALLBACK_LIMITS.monthlyLimitUsd, multiplier),
-  tokensPerMinute: scalePlanValue(OPENCODE_GO_FALLBACK_LIMITS.tokensPerMinute, multiplier),
-});
+  utilizationRate: number,
+): PlanConfig => {
+  const monthlyLimitUsd = roundUsd(toMonthlyPriceUsd(monthlyPriceCents) / utilizationRate);
+  return {
+    label,
+    monthlyPriceCents,
+    rollingLimitUsd: roundUsd(monthlyLimitUsd * DEFAULT_ROLLING_LIMIT_SHARE),
+    rollingWindowHours: DEFAULT_ROLLING_WINDOW_HOURS,
+    weeklyLimitUsd: roundUsd(monthlyLimitUsd * DEFAULT_WEEKLY_LIMIT_SHARE),
+    monthlyLimitUsd,
+    tokensPerMinute: Math.max(
+      1,
+      Math.round(monthlyLimitUsd * DEFAULT_TOKENS_PER_MINUTE_PER_INCLUDED_DOLLAR),
+    ),
+  };
+};
 
-const DEFAULT_PLAN_CATALOG: PlanCatalog = {
-  free: {
-    label: "Free",
-    monthlyPriceCents: 0,
-    rollingLimitUsd: 3,
-    rollingWindowHours: 5,
-    weeklyLimitUsd: 8,
-    monthlyLimitUsd: 15,
-    tokensPerMinute: 150_000,
-  },
-  go: {
-    label: "Go",
-    // OpenCode Go reference pricing + limits from docs.
-    monthlyPriceCents: 1_000,
-    rollingLimitUsd: OPENCODE_GO_FALLBACK_LIMITS.rollingLimitUsd,
-    rollingWindowHours: OPENCODE_GO_FALLBACK_LIMITS.rollingWindowHours,
-    weeklyLimitUsd: OPENCODE_GO_FALLBACK_LIMITS.weeklyLimitUsd,
-    monthlyLimitUsd: OPENCODE_GO_FALLBACK_LIMITS.monthlyLimitUsd,
-    tokensPerMinute: OPENCODE_GO_FALLBACK_LIMITS.tokensPerMinute,
-  },
-  pro: buildBlackTierFallback("Pro", 10_000, OPENCODE_BLACK_USAGE_MULTIPLIERS.pro),
-  plus: buildBlackTierFallback("Plus", 20_000, OPENCODE_BLACK_USAGE_MULTIPLIERS.plus),
+const buildDefaultPlanCatalog = (): PlanCatalog => {
+  const utilizationRate = getIncludedUsageUtilizationRate();
+  return {
+    free: DEFAULT_FREE_PLAN,
+    go: buildPaidPlanConfig("Go", 1_000, utilizationRate),
+    pro: buildPaidPlanConfig("Pro", 10_000, utilizationRate),
+    plus: buildPaidPlanConfig("Plus", 20_000, utilizationRate),
+  };
 };
 
 const parsePositiveNumber = (value: unknown, fallback: number): number => {
@@ -105,22 +116,23 @@ const mergePlanOverride = (
 };
 
 const loadPlanCatalog = (): PlanCatalog => {
+  const defaultPlanCatalog = buildDefaultPlanCatalog();
   const raw = process.env.STELLA_PLAN_CONFIG_JSON?.trim();
   if (!raw) {
-    return DEFAULT_PLAN_CATALOG;
+    return defaultPlanCatalog;
   }
 
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return {
-      free: mergePlanOverride(DEFAULT_PLAN_CATALOG.free, parsed.free),
-      go: mergePlanOverride(DEFAULT_PLAN_CATALOG.go, parsed.go),
-      pro: mergePlanOverride(DEFAULT_PLAN_CATALOG.pro, parsed.pro),
-      plus: mergePlanOverride(DEFAULT_PLAN_CATALOG.plus, parsed.plus),
+      free: mergePlanOverride(defaultPlanCatalog.free, parsed.free),
+      go: mergePlanOverride(defaultPlanCatalog.go, parsed.go),
+      pro: mergePlanOverride(defaultPlanCatalog.pro, parsed.pro),
+      plus: mergePlanOverride(defaultPlanCatalog.plus, parsed.plus),
     };
   } catch (error) {
     console.warn("[billing] Invalid STELLA_PLAN_CONFIG_JSON. Falling back to defaults.", error);
-    return DEFAULT_PLAN_CATALOG;
+    return defaultPlanCatalog;
   }
 };
 

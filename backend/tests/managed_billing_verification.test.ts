@@ -5,12 +5,14 @@ import {
   enforceManagedUsageLimit,
   persistManagedUsage,
   recordMediaCompletedUsage,
+  resolveManagedModelAccess,
   recordVoiceRealtimeUsage,
 } from "../convex/billing";
 import {
   computeUsageCostMicroCents,
   dollarsToMicroCents,
 } from "../convex/lib/billing_money";
+import { AUDIENCE_AGENT_MODELS } from "../convex/agent/model";
 import { stellaProviderChatCompletions } from "../convex/stella_provider";
 import { syncSessionActivity } from "../convex/media_realtime_sessions";
 
@@ -253,6 +255,54 @@ describe("managed billing verification", () => {
     expect(result.plan).toBe("free");
     expect(result.message).toContain("usage limit reached");
     expect(result.retryAfterMs).toBeGreaterThan(0);
+  });
+
+  test("resolveManagedModelAccess downgrades paid tiers after managed-model limits are reached", async () => {
+    const now = Date.now();
+    const { db } = createMemoryDb({
+      billing_profiles: [{
+        _id: "profile_paid",
+        ownerId: "owner_paid",
+        activePlan: "pro",
+        subscriptionStatus: "active",
+        stripeCustomerId: "cus_123",
+        stripeSubscriptionId: "sub_123",
+        stripePriceId: "price_123",
+        defaultPaymentMethodId: "",
+        paymentMethodBrand: "",
+        paymentMethodLast4: "",
+        currentPeriodStart: now,
+        currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
+        cancelAtPeriodEnd: false,
+        monthlyAnchorAt: now,
+        createdAt: now,
+        updatedAt: now,
+      }],
+      billing_usage_windows: [{
+        _id: "usage_paid",
+        ownerId: "owner_paid",
+        rollingUsageMicroCents: dollarsToMicroCents(61),
+        rollingWindowStartedAt: now,
+        weeklyUsageMicroCents: dollarsToMicroCents(10),
+        weeklyWindowStartedAt: now,
+        monthlyUsageMicroCents: dollarsToMicroCents(10),
+        monthlyWindowStartedAt: now,
+        totalUsageMicroCents: dollarsToMicroCents(61),
+        createdAt: now,
+        updatedAt: now,
+      }],
+    });
+
+    const result = await resolveManagedModelAccess._handler(
+      { db } as never,
+      { ownerId: "owner_paid" },
+    );
+
+    expect(result.allowed).toBe(true);
+    expect(result.plan).toBe("pro");
+    expect(result.downgraded).toBe(true);
+    expect(result.modelAudience).toBe("pro_fallback");
+    expect(result.message).toContain("Falling back");
   });
 
   test("media generate no longer bills at submission time in public test mode", async () => {
@@ -704,12 +754,15 @@ describe("managed billing verification", () => {
         },
         runMutation: async () => {
           mutationCallCount += 1;
-          if (mutationCallCount === 1) {
-            return {
-              allowed: true,
-              retryAfterMs: 0,
-              message: "",
-              tokensPerMinute: 150_000,
+            if (mutationCallCount === 1) {
+              return {
+                allowed: true,
+                downgraded: false,
+                modelAudience: "free",
+                plan: "free",
+                retryAfterMs: 0,
+                message: "",
+                tokensPerMinute: 150_000,
             };
           }
           if (mutationCallCount === 2) {
@@ -742,17 +795,77 @@ describe("managed billing verification", () => {
 
     expect(response.status).toBe(200);
     expect(scheduled).toHaveLength(1);
-    expect(scheduled[0]?.args).toEqual(
-      expect.objectContaining({
-        ownerId: "owner_llm",
+      expect(scheduled[0]?.args).toEqual(
+        expect.objectContaining({
+          ownerId: "owner_llm",
         agentType: "general",
         model: "moonshotai/kimi-k2.5",
         inputTokens: 120,
         outputTokens: 45,
         success: true,
-      }),
-    );
-  });
+        }),
+      );
+    });
+
+    test("stella provider uses fallback tier models after a paid plan exhausts managed-model limits", async () => {
+      const originalFallbackModel = AUDIENCE_AGENT_MODELS.plus_fallback.general.model;
+      AUDIENCE_AGENT_MODELS.plus_fallback.general.model = "anthropic/claude-sonnet-4.6";
+      globalThis.fetch = async (_url, init) => {
+        const parsed = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
+        return new Response(
+          JSON.stringify({
+            requestedModel: parsed.model,
+            usage: {
+              prompt_tokens: 20,
+              completion_tokens: 10,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      };
+
+      const response = await stellaProviderChatCompletions(
+        {
+          auth: {
+            getUserIdentity: async () => ({
+              subject: "owner_paid_fallback",
+              isAnonymous: false,
+            }),
+          },
+          runMutation: async () => ({
+            allowed: true,
+            downgraded: true,
+            modelAudience: "plus_fallback",
+            plan: "plus",
+            retryAfterMs: 60_000,
+            message: "Plus plan managed-model limits reached. Falling back until usage resets.",
+            tokensPerMinute: 500_000,
+          }),
+          scheduler: {
+            runAfter: async () => null,
+          },
+        } as never,
+        new Request("https://example.com/api/stella/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Stella-Agent-Type": "general",
+          },
+          body: JSON.stringify({
+            model: "stella/default",
+            messages: [{ role: "user", content: "Hello there" }],
+          }),
+        }),
+      );
+
+      try {
+        expect(response.status).toBe(200);
+        const payload = await response.json() as { requestedModel?: string };
+        expect(payload.requestedModel).toBe("anthropic/claude-sonnet-4.6");
+      } finally {
+        AUDIENCE_AGENT_MODELS.plus_fallback.general.model = originalFallbackModel;
+      }
+    });
 
   test("recordVoiceRealtimeUsage deduplicates response IDs and stores the billed cost", async () => {
     const { db, state } = createMemoryDb({

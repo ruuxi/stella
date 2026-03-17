@@ -13,7 +13,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireUserId, tryLoadOwnedConversation } from "../auth";
 import { generateText } from "ai";
-import { getModelConfig } from "../agent/model";
+import { resolveModelConfig, type ResolvedModelConfig } from "../agent/model_resolver";
 import { usageSummaryFromResult } from "../agent/model_execution";
 import {
   ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS,
@@ -118,7 +118,7 @@ const generateCompactionTextWithRetry = async (
     conversationId: Id<"conversations">;
     agentType: string;
   },
-  config: ReturnType<typeof getModelConfig>,
+  config: ResolvedModelConfig,
   promptBody: string,
 ): Promise<string> => {
   let lastError: unknown = null;
@@ -515,7 +515,7 @@ export const compactThread = internalAction({
       id: thread.conversationId,
     });
     if (!conversation) return null;
-    await assertManagedUsageAllowed(ctx, conversation.ownerId);
+    const modelAccess = await assertManagedUsageAllowed(ctx, conversation.ownerId);
     const triggerTokens = thread.name === "Main"
       ? ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS
       : SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS;
@@ -554,7 +554,9 @@ export const compactThread = internalAction({
 
     // 6. Call LLM to summarize or incrementally update.
     const hasPreviousSummary = Boolean(thread.summary && thread.summary.trim().length > 0);
-    const config = getModelConfig("thread_compaction_summary");
+      const config = await resolveModelConfig(ctx, "thread_compaction_summary", conversation.ownerId, {
+        access: modelAccess,
+      });
 
     const previousSummary = thread.summary?.trim() ?? "";
     let baseSummary = hasPreviousSummary ? previousSummary : "";

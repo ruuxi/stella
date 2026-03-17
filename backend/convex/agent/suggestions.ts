@@ -75,9 +75,11 @@ export const generateSuggestions = internalAction({
 
     // 5. Call lightweight LLM
     try {
-      await assertManagedUsageAllowed(ctx, args.ownerId);
+      const modelAccess = await assertManagedUsageAllowed(ctx, args.ownerId);
 
-      const resolvedConfig = await resolveModelConfig(ctx, "suggestions", args.ownerId);
+      const resolvedConfig = await resolveModelConfig(ctx, "suggestions", args.ownerId, {
+        access: modelAccess,
+      });
       const startedAt = Date.now();
 
       const result = await generateText({

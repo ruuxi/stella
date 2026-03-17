@@ -118,8 +118,11 @@ export const invoke = internalAction({
 
     let rawText = "";
     try {
+      const modelAccess = ownerId
+        ? await assertManagedUsageAllowed(ctx, ownerId)
+        : undefined;
       if (ownerId) {
-        await assertManagedUsageAllowed(ctx, ownerId);
+        // Access is resolved above so paid tiers can downgrade instead of hard-failing.
       }
 
       const invokeSharedArgs = {
@@ -134,8 +137,12 @@ export const invoke = internalAction({
         ],
       };
 
-      const resolvedConfig = await resolveModelConfig(ctx, args.agentType, ownerId);
-      const fallbackConfig = await resolveFallbackConfig(ctx, args.agentType, ownerId);
+      const resolvedConfig = await resolveModelConfig(ctx, args.agentType, ownerId, {
+        access: modelAccess,
+      });
+      const fallbackConfig = await resolveFallbackConfig(ctx, args.agentType, ownerId, {
+        access: modelAccess,
+      });
       const startedAt = Date.now();
       const result = await streamTextWithFailover({
         resolvedConfig,

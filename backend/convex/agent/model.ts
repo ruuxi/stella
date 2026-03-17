@@ -40,6 +40,19 @@ export type ModelConfig = {
   providerOptions?: Record<string, Record<string, JSONValue>>;
 };
 
+export const MANAGED_MODEL_AUDIENCES = [
+  "anonymous",
+  "free",
+  "go",
+  "pro",
+  "plus",
+  "go_fallback",
+  "pro_fallback",
+  "plus_fallback",
+] as const;
+
+export type ManagedModelAudience = (typeof MANAGED_MODEL_AUDIENCES)[number];
+
 const DEFAULT_MODEL: ModelConfig = {
   model: "moonshotai/kimi-k2.5",
   fallback: "anthropic/claude-opus-4.5",
@@ -66,6 +79,27 @@ const COMPACTION_MODEL: ModelConfig = {
     },
   },
 };
+
+const cloneModelConfig = (config: ModelConfig): ModelConfig => ({
+  ...config,
+  ...(config.providerOptions
+    ? {
+      providerOptions: Object.fromEntries(
+        Object.entries(config.providerOptions).map(([provider, options]) => [
+          provider,
+          { ...options },
+        ]),
+      ),
+    }
+    : {}),
+});
+
+const cloneModelConfigMap = (
+  configMap: Record<string, ModelConfig>,
+): Record<string, ModelConfig> =>
+  Object.fromEntries(
+    Object.entries(configMap).map(([agentType, config]) => [agentType, cloneModelConfig(config)]),
+  );
 
 const AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
@@ -361,11 +395,42 @@ const AGENT_MODELS: Record<string, ModelConfig> = {
   },
 };
 
+export const AUDIENCE_AGENT_MODELS: Record<ManagedModelAudience, Record<string, ModelConfig>> = {
+  anonymous: cloneModelConfigMap(AGENT_MODELS),
+  free: AGENT_MODELS,
+  go: cloneModelConfigMap(AGENT_MODELS),
+  pro: cloneModelConfigMap(AGENT_MODELS),
+  plus: cloneModelConfigMap(AGENT_MODELS),
+  go_fallback: cloneModelConfigMap(AGENT_MODELS),
+  pro_fallback: cloneModelConfigMap(AGENT_MODELS),
+  plus_fallback: cloneModelConfigMap(AGENT_MODELS),
+};
+
+export const resolveManagedModelAudience = (args: {
+  plan: "free" | "go" | "pro" | "plus";
+  isAnonymous?: boolean;
+  downgraded?: boolean;
+}): ManagedModelAudience => {
+  if (args.isAnonymous) {
+    return "anonymous";
+  }
+  if (args.plan === "free") {
+    return "free";
+  }
+  if (args.downgraded) {
+    return `${args.plan}_fallback` as ManagedModelAudience;
+  }
+  return args.plan;
+};
+
 /**
  * Get the model config for a specific agent type.
  */
-export function getModelConfig(agentType: string): ModelConfig {
-  const config = AGENT_MODELS[agentType];
+export function getModelConfig(
+  agentType: string,
+  audience: ManagedModelAudience = "free",
+): ModelConfig {
+  const config = AUDIENCE_AGENT_MODELS[audience]?.[agentType] ?? AGENT_MODELS[agentType];
   if (!config) throw new Error(`No model config for agent type: ${agentType}`);
   return config;
 }
@@ -387,9 +452,11 @@ export function listManagedModelIds(): string[] {
   append(DEFAULT_MODEL.model);
   append(DEFAULT_MODEL.fallback);
 
-  for (const config of Object.values(AGENT_MODELS)) {
-    append(config.model);
-    append(config.fallback);
+  for (const configMap of Object.values(AUDIENCE_AGENT_MODELS)) {
+    for (const config of Object.values(configMap)) {
+      append(config.model);
+      append(config.fallback);
+    }
   }
 
   return Array.from(modelIds).sort();
