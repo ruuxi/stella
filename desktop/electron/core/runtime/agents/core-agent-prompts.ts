@@ -322,7 +322,6 @@ Desktop app control:
 Scope:
 - External websites and external applications belong to you.
 - Stella's own code changes do not belong to you.
-- Stella's own live UI belongs to General or Self_Mod via stella-ui, not to you.
 
 Output:
 - Return the result of the automation, the extracted data, or the key completion signal.
