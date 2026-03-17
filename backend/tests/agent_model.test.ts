@@ -3,7 +3,9 @@ import {
   getModelConfig,
   DEFAULT_MODEL,
   AGENT_MODELS,
+  AUDIENCE_AGENT_MODELS,
   hasModelConfig,
+  resolveManagedModelAudience,
 } from "../convex/agent/model";
 import type { ModelConfig } from "../convex/agent/model";
 import {
@@ -89,6 +91,22 @@ describe("AGENT_MODELS", () => {
       );
     }
   });
+
+  test("defines per-audience model catalogs for anonymous, free, and paid tiers", () => {
+    expect(Object.keys(AUDIENCE_AGENT_MODELS)).toEqual([
+      "anonymous",
+      "free",
+      "go",
+      "pro",
+      "plus",
+      "go_fallback",
+      "pro_fallback",
+      "plus_fallback",
+    ]);
+    expect(AUDIENCE_AGENT_MODELS.anonymous.general.model).toBe(AGENT_MODELS.general.model);
+    expect(AUDIENCE_AGENT_MODELS.plus.browser.model).toBe(AGENT_MODELS.browser.model);
+    expect(AUDIENCE_AGENT_MODELS.pro_fallback.synthesis.model).toBe(AGENT_MODELS.synthesis.model);
+  });
 });
 
 describe("getModelConfig", () => {
@@ -112,6 +130,11 @@ describe("getModelConfig", () => {
     expect(config).toBe(AGENT_MODELS.mercury);
   });
 
+  test("resolves configs from the requested audience catalog", () => {
+    const config = getModelConfig("general", "plus_fallback");
+    expect(config.model).toBe(AUDIENCE_AGENT_MODELS.plus_fallback.general.model);
+  });
+
   test("throws for unknown agent type", () => {
     expect(() => getModelConfig("unknown_agent_type")).toThrow(
       "No model config for agent type: unknown_agent_type",
@@ -121,6 +144,19 @@ describe("getModelConfig", () => {
   test("returned config satisfies ModelConfig type", () => {
     const config: ModelConfig = getModelConfig("general");
     expect(typeof config.model).toBe("string");
+  });
+});
+
+describe("resolveManagedModelAudience", () => {
+  test("maps free identities to anonymous or free audiences", () => {
+    expect(resolveManagedModelAudience({ plan: "free", isAnonymous: true })).toBe("anonymous");
+    expect(resolveManagedModelAudience({ plan: "free" })).toBe("free");
+  });
+
+  test("maps paid plans to primary and fallback audiences", () => {
+    expect(resolveManagedModelAudience({ plan: "go" })).toBe("go");
+    expect(resolveManagedModelAudience({ plan: "pro", downgraded: true })).toBe("pro_fallback");
+    expect(resolveManagedModelAudience({ plan: "plus", downgraded: true })).toBe("plus_fallback");
   });
 });
 
@@ -149,6 +185,15 @@ describe("listStellaDefaultSelections", () => {
       agentType: "explore",
       model: "stella/default",
       resolvedModel: "zai/glm-4.7",
+    });
+  });
+
+  test("returns audience-specific resolved defaults", () => {
+    const defaults = listStellaDefaultSelections("go_fallback");
+    expect(defaults).toContainEqual({
+      agentType: "orchestrator",
+      model: "stella/default",
+      resolvedModel: AUDIENCE_AGENT_MODELS.go_fallback.orchestrator.model,
     });
   });
 });

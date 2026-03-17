@@ -2,6 +2,7 @@ import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import type { ManagedModelAudience } from "../agent/model";
 
 type BillingMutationCtx = {
   runMutation: ActionCtx["runMutation"];
@@ -29,6 +30,16 @@ export type ManagedUsageLogArgs = {
   conversationId?: Id<"conversations">;
   usage?: ManagedUsageSummary | null;
   costMicroCents?: number;
+};
+
+export type ManagedModelAccess = {
+  allowed: boolean;
+  plan: "free" | "go" | "pro" | "plus";
+  downgraded: boolean;
+  modelAudience: ManagedModelAudience;
+  retryAfterMs: number;
+  message: string;
+  tokensPerMinute: number;
 };
 
 const toLogPayload = (args: ManagedUsageLogArgs) => ({
@@ -62,11 +73,27 @@ export async function checkManagedUsageLimit(
   });
 }
 
+export async function resolveManagedModelAccess(
+  ctx: BillingMutationCtx,
+  ownerId: string,
+  options?: {
+    isAnonymous?: boolean;
+  },
+): Promise<ManagedModelAccess> {
+  return await ctx.runMutation(internal.billing.resolveManagedModelAccess, {
+    ownerId,
+    ...(options?.isAnonymous !== undefined ? { isAnonymous: options.isAnonymous } : {}),
+  });
+}
+
 export async function assertManagedUsageAllowed(
   ctx: BillingMutationCtx,
   ownerId: string,
+  options?: {
+    isAnonymous?: boolean;
+  },
 ) {
-  const result = await checkManagedUsageLimit(ctx, ownerId);
+  const result = await resolveManagedModelAccess(ctx, ownerId, options);
   if (!result.allowed) {
     throw new ConvexError({
       code: "USAGE_LIMIT_REACHED",

@@ -275,9 +275,13 @@ const reviewCodeFile = async (
     file: ReviewableCodeFile;
   },
 ) => {
-  await assertManagedUsageAllowed(ctx, args.ownerId);
-  const resolvedConfig = await resolveModelConfig(ctx, "store_security_review", args.ownerId);
-  const fallbackConfig = await resolveFallbackConfig(ctx, "store_security_review", args.ownerId);
+  const modelAccess = await assertManagedUsageAllowed(ctx, args.ownerId);
+  const resolvedConfig = await resolveModelConfig(ctx, "store_security_review", args.ownerId, {
+    access: modelAccess,
+  });
+  const fallbackConfig = await resolveFallbackConfig(ctx, "store_security_review", args.ownerId, {
+    access: modelAccess,
+  });
 
   let usedFallback = false;
   const startedAt = Date.now();
@@ -350,9 +354,13 @@ const reviewImageFile = async (
     file: ReviewableImageFile;
   },
 ) => {
-  await assertManagedUsageAllowed(ctx, args.ownerId);
-  const resolvedConfig = await resolveModelConfig(ctx, "store_image_safety_review", args.ownerId);
-  const fallbackConfig = await resolveFallbackConfig(ctx, "store_image_safety_review", args.ownerId);
+  const modelAccess = await assertManagedUsageAllowed(ctx, args.ownerId);
+  const resolvedConfig = await resolveModelConfig(ctx, "store_image_safety_review", args.ownerId, {
+    access: modelAccess,
+  });
+  const fallbackConfig = await resolveFallbackConfig(ctx, "store_image_safety_review", args.ownerId, {
+    access: modelAccess,
+  });
 
   const messages = [{
     role: "user" as const,
