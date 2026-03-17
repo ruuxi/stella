@@ -3,8 +3,9 @@
 /**
  * Cross-platform CLI wrapper for stella-browser
  * 
- * This wrapper launches the vendored native binary directly.
- * It exists so Stella can invoke stella-browser consistently on every platform.
+ * This wrapper enables npx support on Windows where shell scripts don't work.
+ * For global installs, postinstall.js patches the shims to invoke the native
+ * binary directly (zero overhead).
  */
 
 import { spawn } from 'child_process';
@@ -92,7 +93,7 @@ function main() {
   // Spawn the native binary with inherited stdio
   const child = spawn(binaryPath, process.argv.slice(2), {
     stdio: 'inherit',
-    windowsHide: true,
+    windowsHide: false,
   });
 
   child.on('error', (err) => {
