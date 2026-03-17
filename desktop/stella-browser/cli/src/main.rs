@@ -155,19 +155,6 @@ fn main() {
         return;
     }
 
-    if !flags.deprecated_flags.is_empty() {
-        let msg = format!(
-            "{} has been removed and is no longer supported.",
-            flags.deprecated_flags.join(", ")
-        );
-        if flags.json {
-            println!(r#"{{"success":false,"error":"{}","type":"invalid_value"}}"#, msg);
-        } else {
-            eprintln!("{} {}", color::error_indicator(), msg);
-        }
-        exit(1);
-    }
-
     if clean.is_empty() {
         print_help();
         return;

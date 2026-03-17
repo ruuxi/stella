@@ -2,6 +2,7 @@ import * as net from 'net';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { execSync } from 'child_process';
 import { BrowserManager } from './browser.js';
 import type { IOSManager } from './ios-manager.js';
 import { parseCommand, serializeResponse, errorResponse } from './protocol.js';
@@ -169,6 +170,45 @@ export function getStreamPortFile(session?: string): string {
 }
 
 /**
+ * Kill whatever process is listening on a TCP port.
+ * Silently does nothing if the port is free or the kill fails.
+ */
+function killProcessOnPort(port: number): void {
+  try {
+    if (isWindows) {
+      const out = execSync(
+        `netstat -ano | findstr "LISTENING" | findstr "127.0.0.1:${port}"`,
+        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+      );
+      // Parse PID from the last column of each matching line
+      const pids = new Set<string>();
+      for (const line of out.trim().split('\n')) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (pid && /^\d+$/.test(pid) && pid !== '0') pids.add(pid);
+      }
+      for (const pid of pids) {
+        try {
+          execSync(`taskkill /F /PID ${pid}`, { stdio: ['pipe', 'pipe', 'pipe'] });
+        } catch { /* best effort */ }
+      }
+    } else {
+      const out = execSync(`lsof -ti tcp:${port} -s tcp:listen`, {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      for (const pid of out.trim().split('\n').filter(Boolean)) {
+        try {
+          execSync(`kill -9 ${pid}`, { stdio: ['pipe', 'pipe', 'pipe'] });
+        } catch { /* best effort */ }
+      }
+    }
+  } catch {
+    // Port is free or command failed — either way, proceed
+  }
+}
+
+/**
  * Start the daemon server
  * @param options.streamPort Port for WebSocket stream server (0 to disable)
  * @param options.provider Provider type ('ios' for iOS Simulator, undefined for desktop)
@@ -200,16 +240,28 @@ export async function startDaemon(options?: {
     // Start WebSocket server FIRST so the extension can connect when Chrome launches
     const extPort = parseInt(process.env.STELLA_BROWSER_EXT_PORT ?? '9224', 10);
     const extToken = process.env.STELLA_BROWSER_EXT_TOKEN;
+
+    // (C) Kill any stale process holding the extension bridge port
+    killProcessOnPort(extPort);
+
     extensionBridge = new ExtensionBridge(extPort, extToken);
     await extensionBridge.start();
 
-    // In user-browser mode, relaunch Chrome AFTER the WebSocket is ready
+    // (B) Auto-shutdown if extension disconnects and doesn't come back
+    extensionBridge.onDisconnectTimeout(() => {
+      console.error('Extension disconnected for too long — shutting down daemon.');
+      cleanupSocket();
+      process.exit(1);
+    });
+
+    // In user-browser mode, relaunch Chrome in the background so the TCP
+    // server can start accepting connections immediately. The extension
+    // bridge's waitForConnection() will block commands until the extension
+    // actually connects after the relaunch.
     if (isUserBrowser) {
-      try {
-        await relaunchForExtensionBridge();
-      } catch {
+      void relaunchForExtensionBridge().catch(() => {
         // Failed to relaunch browser; continue in extension mode.
-      }
+      });
     }
   } else {
     if (isIOS) {

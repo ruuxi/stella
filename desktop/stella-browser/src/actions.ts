@@ -76,6 +76,7 @@ import type {
   AddStyleCommand,
   EmulateMediaCommand,
   OfflineCommand,
+  HeadersCommand,
   GetByAltTextCommand,
   GetByTitleCommand,
   GetByTestIdCommand,
@@ -85,6 +86,7 @@ import type {
   SetContentCommand,
   TimezoneCommand,
   LocaleCommand,
+  HttpCredentialsCommand,
   MouseMoveCommand,
   MouseDownCommand,
   MouseUpCommand,
@@ -428,6 +430,8 @@ export async function executeCommand(command: Command, browser: BrowserManager):
         return await handleEmulateMedia(command, browser);
       case 'offline':
         return await handleOffline(command, browser);
+      case 'headers':
+        return await handleHeaders(command, browser);
       case 'pause':
         return await handlePause(command, browser);
       case 'getbyalttext':
@@ -448,6 +452,8 @@ export async function executeCommand(command: Command, browser: BrowserManager):
         return await handleTimezone(command, browser);
       case 'locale':
         return await handleLocale(command, browser);
+      case 'credentials':
+        return await handleCredentials(command, browser);
       case 'mousemove':
         return await handleMouseMove(command, browser);
       case 'mousedown':
@@ -525,6 +531,11 @@ async function handleNavigate(
   browser: BrowserManager
 ): Promise<Response<NavigateData>> {
   const page = browser.getPage();
+
+  // If headers are provided, set up scoped headers for this origin
+  if (command.headers && Object.keys(command.headers).length > 0) {
+    await browser.setScopedHeaders(command.url, command.headers);
+  }
 
   await page.goto(command.url, {
     waitUntil: command.waitUntil ?? 'load',
@@ -1820,6 +1831,11 @@ async function handleOffline(command: OfflineCommand, browser: BrowserManager): 
   return successResponse(command.id, { offline: command.offline });
 }
 
+async function handleHeaders(command: HeadersCommand, browser: BrowserManager): Promise<Response> {
+  await browser.setExtraHeaders(command.headers);
+  return successResponse(command.id, { set: true });
+}
+
 async function handlePause(
   command: Command & { action: 'pause' },
   browser: BrowserManager
@@ -1959,6 +1975,18 @@ async function handleLocale(command: LocaleCommand, _browser: BrowserManager): P
     note: 'Locale must be set at browser launch. Use --locale flag.',
     locale: command.locale,
   });
+}
+
+async function handleCredentials(
+  command: HttpCredentialsCommand,
+  browser: BrowserManager
+): Promise<Response> {
+  const context = browser.getPage().context();
+  await context.setHTTPCredentials({
+    username: command.username,
+    password: command.password,
+  });
+  return successResponse(command.id, { set: true });
 }
 
 async function handleMouseMove(

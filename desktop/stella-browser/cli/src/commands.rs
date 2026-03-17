@@ -134,6 +134,12 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
                 format!("https://{}", url)
             };
             let mut nav_cmd = json!({ "id": id, "action": "navigate", "url": url });
+            // If --headers flag is set, include headers (scoped to this origin)
+            if let Some(ref headers_json) = flags.headers {
+                if let Ok(headers) = serde_json::from_str::<serde_json::Value>(headers_json) {
+                    nav_cmd["headers"] = headers;
+                }
+            }
             // Include iOS device info if specified (needed for auto-launch with existing daemon)
             if flags.provider.as_deref() == Some("ios") {
                 if let Some(ref device) = flags.device {
@@ -1322,6 +1328,9 @@ fn parse_set(rest: &[&str], id: &str) -> Result<Value, ParseError> {
         "geo",
         "geolocation",
         "offline",
+        "headers",
+        "credentials",
+        "auth",
         "media",
     ];
 
@@ -1386,14 +1395,30 @@ fn parse_set(rest: &[&str], id: &str) -> Result<Value, ParseError> {
                 .unwrap_or(true);
             Ok(json!({ "id": id, "action": "offline", "offline": off }))
         }
-        Some("headers") => Err(ParseError::InvalidValue {
-            message: "'set headers' has been removed and is no longer supported".to_string(),
-            usage: "set <viewport|device|geo|offline|media> [args...]",
-        }),
-        Some("credentials") | Some("auth") => Err(ParseError::InvalidValue {
-            message: "'set credentials' has been removed and is no longer supported".to_string(),
-            usage: "set <viewport|device|geo|offline|media> [args...]",
-        }),
+        Some("headers") => {
+            let headers_json = rest.get(1).ok_or_else(|| ParseError::MissingArguments {
+                context: "set headers".to_string(),
+                usage: "set headers <json>",
+            })?;
+            // Parse the JSON string into an object
+            let headers: serde_json::Value =
+                serde_json::from_str(headers_json).map_err(|_| ParseError::MissingArguments {
+                    context: "set headers".to_string(),
+                    usage: "set headers <json> (must be valid JSON object)",
+                })?;
+            Ok(json!({ "id": id, "action": "headers", "headers": headers }))
+        }
+        Some("credentials") | Some("auth") => {
+            let user = rest.get(1).ok_or_else(|| ParseError::MissingArguments {
+                context: "set credentials".to_string(),
+                usage: "set credentials <username> <password>",
+            })?;
+            let pass = rest.get(2).ok_or_else(|| ParseError::MissingArguments {
+                context: "set credentials".to_string(),
+                usage: "set credentials <username> <password>",
+            })?;
+            Ok(json!({ "id": id, "action": "credentials", "username": user, "password": pass }))
+        }
         Some("media") => {
             let color = if rest.iter().any(|&s| s == "dark") {
                 "dark"
@@ -1417,7 +1442,7 @@ fn parse_set(rest: &[&str], id: &str) -> Result<Value, ParseError> {
         }),
         None => Err(ParseError::MissingArguments {
             context: "set".to_string(),
-            usage: "set <viewport|device|geo|offline|media> [args...]",
+            usage: "set <viewport|device|geo|offline|headers|credentials|media> [args...]",
         }),
     }
 }
@@ -1522,7 +1547,7 @@ mod tests {
             full: false,
             headed: false,
             debug: false,
-            deprecated_flags: Vec::new(),
+            headers: None,
             executable_path: None,
             extensions: Vec::new(),
             cdp: None,
@@ -1845,30 +1870,76 @@ mod tests {
     }
 
     #[test]
+    fn test_navigate_with_headers() {
+        let mut flags = default_flags();
+        flags.headers = Some(r#"{"Authorization": "Bearer token"}"#.to_string());
+        let cmd = parse_command(&args("open api.example.com"), &flags).unwrap();
+        assert_eq!(cmd["action"], "navigate");
+        assert_eq!(cmd["url"], "https://api.example.com");
+        assert_eq!(cmd["headers"]["Authorization"], "Bearer token");
+    }
+
+    #[test]
+    fn test_navigate_with_multiple_headers() {
+        let mut flags = default_flags();
+        flags.headers =
+            Some(r#"{"Authorization": "Bearer token", "X-Custom": "value"}"#.to_string());
+        let cmd = parse_command(&args("open api.example.com"), &flags).unwrap();
+        assert_eq!(cmd["headers"]["Authorization"], "Bearer token");
+        assert_eq!(cmd["headers"]["X-Custom"], "value");
+    }
+
+    #[test]
     fn test_navigate_without_headers_flag() {
         let cmd = parse_command(&args("open example.com"), &default_flags()).unwrap();
         assert_eq!(cmd["action"], "navigate");
+        // headers should not be present when flag is not set
         assert!(cmd.get("headers").is_none());
     }
 
     #[test]
-    fn test_set_headers_is_removed() {
+    fn test_navigate_with_invalid_headers_json() {
+        let mut flags = default_flags();
+        flags.headers = Some("not valid json".to_string());
+        let cmd = parse_command(&args("open api.example.com"), &flags).unwrap();
+        // Invalid JSON should result in no headers field (graceful handling)
+        assert!(cmd.get("headers").is_none());
+    }
+
+    // === Set Headers Tests ===
+
+    #[test]
+    fn test_set_headers_parses_json() {
         let input: Vec<String> = vec![
             "set".to_string(),
             "headers".to_string(),
             r#"{"Authorization":"Bearer token"}"#.to_string(),
         ];
-        let result = parse_command(&input, &default_flags());
-        assert!(result.is_err());
+        let cmd = parse_command(&input, &default_flags()).unwrap();
+        assert_eq!(cmd["action"], "headers");
+        // Headers should be an object, not a string
+        assert!(cmd["headers"].is_object());
+        assert_eq!(cmd["headers"]["Authorization"], "Bearer token");
     }
 
     #[test]
-    fn test_set_credentials_is_removed() {
+    fn test_set_headers_with_multiple_values() {
         let input: Vec<String> = vec![
             "set".to_string(),
-            "credentials".to_string(),
-            "user".to_string(),
-            "pass".to_string(),
+            "headers".to_string(),
+            r#"{"Authorization": "Bearer token", "X-Custom": "value"}"#.to_string(),
+        ];
+        let cmd = parse_command(&input, &default_flags()).unwrap();
+        assert_eq!(cmd["headers"]["Authorization"], "Bearer token");
+        assert_eq!(cmd["headers"]["X-Custom"], "value");
+    }
+
+    #[test]
+    fn test_set_headers_invalid_json_error() {
+        let input: Vec<String> = vec![
+            "set".to_string(),
+            "headers".to_string(),
+            "not-valid-json".to_string(),
         ];
         let result = parse_command(&input, &default_flags());
         assert!(result.is_err());

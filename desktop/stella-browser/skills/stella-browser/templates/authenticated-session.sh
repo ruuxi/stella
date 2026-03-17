@@ -75,7 +75,7 @@ exit 0
 # stella-browser wait --load networkidle
 # stella-browser snapshot -i
 #
-# # Fill sign-in fields (update refs to match your form)
+# # Fill credentials (update refs to match your form)
 # stella-browser fill @e1 "$APP_USERNAME"
 # stella-browser fill @e2 "$APP_PASSWORD"
 # stella-browser click @e3
