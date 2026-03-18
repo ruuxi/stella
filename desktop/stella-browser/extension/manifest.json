@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Stella Browser Bridge",
+  "name": "Stella Browser",
   "version": "1.1.0",
-  "description": "Connects stella-browser CLI to your Chrome browser without restarting",
+  "description": "Connects Stella AI Agent to your browser",
   "permissions": [
     "tabs",
     "activeTab",
