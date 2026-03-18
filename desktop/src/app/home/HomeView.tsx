@@ -18,7 +18,7 @@ import { sortActivityItems } from "./activity-order"
 import "./home-view.css"
 import "./home-dashboard.css"
 
-function useScheduleData(): ScheduleItem[] {
+function useScheduleData(): ActivityItem[] {
   const [cronJobs, setCronJobs] = useState<LocalCronJobRecord[]>([])
   const [heartbeats, setHeartbeats] = useState<LocalHeartbeatConfigRecord[]>([])
 
