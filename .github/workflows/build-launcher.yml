@@ -1,0 +1,59 @@
+name: Build Launcher
+
+on:
+  push:
+    paths:
+      - "launcher/**"
+      - ".github/workflows/build-launcher.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win-x64
+            artifact: StellaSetup.exe
+            binary: src-tauri/target/release/StellaSetup.exe
+          - os: macos-latest
+            platform: darwin-arm64
+            artifact: StellaSetup
+            binary: src-tauri/target/release/StellaSetup
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: launcher
+        run: bun install
+
+      - name: Build launcher
+        working-directory: launcher
+        run: cargo tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+
+      - name: Rename artifact
+        shell: bash
+        run: |
+          cp "launcher/${{ matrix.binary }}" "StellaSetup-${{ matrix.platform }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stella-launcher-${{ matrix.platform }}
+          path: StellaSetup-${{ matrix.platform }}*
+          retention-days: 30
