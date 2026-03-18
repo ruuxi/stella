@@ -1,4 +1,4 @@
-export const SUBSCRIPTION_PLANS = ["free", "go", "pro", "plus"] as const;
+export const SUBSCRIPTION_PLANS = ["free", "go", "pro", "plus", "ultra"] as const;
 
 export type SubscriptionPlan = (typeof SUBSCRIPTION_PLANS)[number];
 
@@ -75,9 +75,10 @@ const buildDefaultPlanCatalog = (): PlanCatalog => {
   const utilizationRate = getIncludedUsageUtilizationRate();
   return {
     free: DEFAULT_FREE_PLAN,
-    go: buildPaidPlanConfig("Go", 1_000, utilizationRate),
-    pro: buildPaidPlanConfig("Pro", 10_000, utilizationRate),
-    plus: buildPaidPlanConfig("Plus", 20_000, utilizationRate),
+    go: buildPaidPlanConfig("Go", 2_000, utilizationRate),
+    pro: buildPaidPlanConfig("Pro", 6_000, utilizationRate),
+    plus: buildPaidPlanConfig("Plus", 10_000, utilizationRate),
+    ultra: buildPaidPlanConfig("Ultra", 20_000, utilizationRate),
   };
 };
 
@@ -129,6 +130,7 @@ const loadPlanCatalog = (): PlanCatalog => {
       go: mergePlanOverride(defaultPlanCatalog.go, parsed.go),
       pro: mergePlanOverride(defaultPlanCatalog.pro, parsed.pro),
       plus: mergePlanOverride(defaultPlanCatalog.plus, parsed.plus),
+      ultra: mergePlanOverride(defaultPlanCatalog.ultra, parsed.ultra),
     };
   } catch (error) {
     console.warn("[billing] Invalid STELLA_PLAN_CONFIG_JSON. Falling back to defaults.", error);
@@ -142,6 +144,7 @@ const STRIPE_PRICE_ID_ENV: Record<Exclude<SubscriptionPlan, "free">, string> = {
   go: "STRIPE_PRICE_GO",
   pro: "STRIPE_PRICE_PRO",
   plus: "STRIPE_PRICE_PLUS",
+  ultra: "STRIPE_PRICE_ULTRA",
 };
 
 export const getPlanCatalog = () => PLAN_CATALOG;
@@ -165,7 +168,7 @@ export const findPlanForStripePriceId = (
     return null;
   }
 
-  for (const plan of ["go", "pro", "plus"] as const) {
+  for (const plan of ["go", "pro", "plus", "ultra"] as const) {
     const configured = process.env[STRIPE_PRICE_ID_ENV[plan]]?.trim();
     if (configured && configured === normalized) {
       return plan;
