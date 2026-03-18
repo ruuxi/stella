@@ -1,14 +1,14 @@
 ---
 id: frontend-architecture
 name: Frontend Architecture Reference
-description: Full design system reference covering directory structure, layout, CSS tokens, slot system, and workspace content. Activate before structural changes.
+description: Full design system reference covering directory structure, layout, CSS tokens, and workspace content. Activate before structural changes.
 agentTypes:
   - general
 tags:
   - architecture
   - design-system
   - reference
-version: 1
+version: 2
 ---
 
 # Frontend Architecture Reference
@@ -24,71 +24,129 @@ version: 1
 ## Source Layout
 ```text
 desktop/src/
-|-- main.tsx                    # Entry point, provider nesting, CSS imports
-|-- App.tsx                     # Window router (full/mini/radial/region)
-|-- app/state/
-|   |-- ui-state.tsx            # UiStateProvider (mode, window, view, conversationId)
-|   `-- workspace-state.tsx     # WorkspaceProvider (active panel, chatWidth, isChatOpen)
-|-- views/
-|   `-- home/
-|       |-- HomeView.tsx        # Default home screen (suggestions, tasks, schedule)
-|       `-- home-view.css       # Home view styles
-|-- components/
-|   |-- workspace/
-|   |   `-- WorkspaceArea.tsx   # View router (home/app/onboarding)
-|   |-- canvas/
-|   |   |-- WorkspaceErrorBoundary.tsx # Error boundary for workspace panel renderers
-|   |   `-- renderers/          # panel.tsx (Vite dynamic), appframe.tsx (iframe)
-|   |-- chat/                   # Message rendering (Markdown, TurnItem, etc.)
-|   |-- Sidebar.tsx             # Left navigation (Home, Connect)
-|   |-- ErrorBoundary.tsx       # App-level error boundary with revert
-|   |-- button.tsx / .css       # Button component pattern for primitives
-|   `-- ...                     # Additional component files with paired CSS
-|-- screens/
-|   |-- FullShell.tsx           # Re-export from full-shell/
-|   |-- full-shell/
-|   |   |-- FullShell.tsx       # Layout shell (sidebar + workspace + chat)
-|   |   |-- ChatColumn.tsx      # Chat area (messages + composer)
-|   |   |-- Composer.tsx        # Input bar, attachments, submit
-|   |   |-- OnboardingOverlay.tsx
-|   |   |-- DiscoveryFlow.tsx
-|   |   |-- use-streaming-chat.ts
-|   |   `-- use-full-shell.ts
-|   |-- MiniShell.tsx
-|   |-- RadialDial.tsx
-|   `-- RegionCapture.tsx
-|-- plugins/
-|   |-- registry.ts             # Slot registry
-|   |-- types.ts
-|   `-- slots.ts
-|-- styles/
-|   |-- workspace.css
-|   |-- full-shell.layout.css
-|   |-- full-shell.composer.css
-|   `-- ...
-`-- theme/
-    |-- theme-context.tsx
-    |-- themes.ts
-    `-- color.ts
+|-- main.tsx                       # Entry point, provider nesting, CSS imports
+|-- App.tsx                        # Window router (full/mini based on window type)
+|-- overlay-entry.tsx              # Separate overlay window entry
+|-- index.css                      # Root styles, CSS custom properties
+|
+|-- app/                           # App pages & feature views
+|   |-- chat/                      # Chat interface
+|   |   |-- ChatColumn.tsx         # Main chat display
+|   |   |-- Composer.tsx           # Message input with context
+|   |   |-- MessageTurn.tsx        # Message rendering
+|   |   |-- ConversationEvents.tsx # Event handling
+|   |   |-- hooks/                 # use-streaming-chat, use-command-suggestions, etc.
+|   |   |-- lib/                   # message-display, context-window, event-transforms
+|   |   |-- streaming/             # agent-stream-errors, streaming-types
+|   |   `-- *.css
+|   |-- home/                      # Home dashboard view
+|   |   |-- HomeView.tsx           # Dashboard layout
+|   |   |-- GenerativeCanvas.tsx   # Morphdom-based live canvas
+|   |   |-- ActivityFeed.tsx       # Activity feed display
+|   |   |-- SuggestionsPanel.tsx   # Suggestions widget
+|   |   |-- DashboardCard.tsx      # Card component
+|   |   |-- MusicPlayer.tsx        # Music playback UI
+|   |   |-- hooks/                 # use-welcome-suggestions, etc.
+|   |   `-- *.css
+|   |-- workspace/                 # Workspace panels
+|   |   |-- WorkspaceArea.tsx      # View router (home/app/onboarding)
+|   |   |-- WorkspaceErrorBoundary.tsx
+|   |   `-- renderers/             # panel.tsx, dev-project-panel.tsx, hosted-game-panel.tsx
+|   `-- social/                    # Social/friends view
+|       |-- SocialView.tsx
+|       `-- *.css
+|
+|-- shell/                         # Main shell & layout
+|   |-- FullShell.tsx              # Full window layout (sidebar + workspace + chat)
+|   |-- FloatingOrb.tsx            # Floating AI avatar
+|   |-- TitleBar.tsx               # Window title bar
+|   |-- ErrorBoundary.tsx          # App-level error boundary with revert
+|   |-- full-shell-dialogs.tsx     # Dialog registry
+|   |-- sidebar/
+|   |   `-- Sidebar.tsx            # Left navigation
+|   |-- mini/
+|   |   |-- MiniShell.tsx          # Compact mode layout
+|   |   `-- MiniInput.tsx
+|   |-- overlay/
+|   |   |-- OverlayRoot.tsx        # Overlay container
+|   |   |-- RadialDial.tsx         # Radial menu
+|   |   |-- RegionCapture.tsx      # Screen region capture
+|   |   `-- VoiceOverlay.tsx
+|   |-- ascii-creature/
+|   |   `-- StellaAnimation.tsx    # Stella animation (WebGL shader)
+|   |-- hooks/                     # use-full-shell-chat, use-orb-message, etc.
+|   `-- *.css
+|
+|-- context/                       # React context state
+|   |-- AppProviders.tsx           # Provider composition
+|   |-- ui-state.tsx               # UI mode, view, window state
+|   |-- workspace-state.tsx        # Workspace panel state
+|   |-- chat-store.tsx             # Chat/conversation state
+|   |-- theme-context.tsx          # Theme selection & colors
+|   `-- dev-projects-state.tsx     # Dev project registry
+|
+|-- global/                        # Global features & systems
+|   |-- auth/                      # Authentication (deep link, magic link, credentials)
+|   |-- settings/                  # Settings page, theme picker, model prefs
+|   |-- onboarding/                # Onboarding flow, discovery, synthesis
+|   |-- integrations/              # Third-party service connections
+|   `-- store/                     # Marketplace/store
+|
+|-- ui/                            # UI component library (60+ paired .tsx/.css)
+|   |-- button.tsx / .css          # Button, icon-button, etc.
+|   |-- dialog.tsx / .css          # Dialog, popover, dropdown-menu
+|   |-- card.tsx / .css            # Card surfaces
+|   |-- text-field.tsx / .css      # Text input
+|   |-- tabs.tsx / .css            # Tab navigation
+|   `-- ...                        # select, checkbox, switch, slider, tag, tooltip, etc.
+|
+|-- shared/                        # Shared utilities & contracts
+|   |-- contracts/                 # IPC/API type interfaces
+|   |-- types/                     # electron.d.ts (window.electronAPI)
+|   |-- theme/                     # Color utilities, theme definitions (OKLCH)
+|   |   `-- themes/                # aura, catppuccin, dracula, nord, tokyonight, etc.
+|   |-- styles/                    # app-base.css, app-components.css, fonts.css
+|   |-- components/                # Shared reusable components
+|   |-- hooks/                     # use-ipc-query, use-window-type, etc.
+|   `-- lib/                       # color, layout, safe-html, utils
+|
+|-- systems/                       # Core runtime systems
+|   |-- boot/                      # AppBootstrap, conversation bootstrap, self-mod taint
+|   `-- voice/                     # Voice runtime, wake word capture
+|
+|-- features/                      # Feature modules
+|   |-- games/                     # Multiplayer game bindings & hooks
+|   |-- media/                     # Media handling services
+|   |-- music/                     # Music playback hooks & services
+|   `-- voice/                     # Voice feature hooks & services
+|
+|-- platform/                      # Platform-specific code
+|   |-- electron/                  # Electron integration (device, platform, screenshot)
+|   `-- dev/                       # Vite HMR error recovery (dev only)
+|
+|-- prompts/                       # Agent prompt library (catalog, synthesis, voice, etc.)
+|-- infra/                         # AI/LLM integration, HTTP utilities, Convex client
+|-- debug/                         # Trace logging, debug hooks
+`-- convex/                        # Convex server code
 ```
 
 ## View System
 The app uses `ViewType = 'home' | 'app'` to control what `WorkspaceArea` displays.
 
-- `'home'`: renders `HomeView` from `src/views/home/HomeView.tsx`
+- `'home'`: renders `HomeView` from `src/app/home/HomeView.tsx`
 - `'app'`: renders workspace content selected from the shell
 
-`WorkspaceArea.tsx` handles the routing. Local workspace panels are surfaced through the shell's own workspace selection UI rather than a backend event bridge.
+`WorkspaceArea.tsx` handles the routing. Local workspace panels are surfaced through the shell's own workspace selection UI.
 
 ## Key Layout Structure
 ```text
 .full-body (flex-direction: row)
-|-- Sidebar (left nav, about 240px)
+|-- Sidebar (left nav)
 |-- WorkspaceArea (flex: 1)
 |   |-- HomeView
-|   `-- Workspace content (when view === 'app' and workspace content is active)
-`-- ChatPanel (right side, collapsible)
-    `-- ChatColumn (messages + composer)
+|   `-- Workspace content (when view === 'app')
+`-- ChatColumn (right side, collapsible)
+    `-- Composer (messages + input)
 ```
 
 ## CSS Design Tokens
@@ -110,20 +168,9 @@ The app uses `ViewType = 'home' | 'app'` to control what `WorkspaceArea` display
 --font-family-mono
 ```
 
-## Slot System
-Components are registered in named slots that can be overridden:
-
-```typescript
-import { useSlot, overrideSlot } from '@/plugins';
-
-const SidebarSlot = useSlot('sidebar');
-
-overrideSlot('sidebar', MyCustomSidebar, { priority: 10, source: 'self-mod' });
-```
-
 ## Workspace Content
 Interactive content rendered in `WorkspaceArea` when the view is `'app'`:
-- Panels: single-file TSX in `desktop/workspace/panels/`
-- Apps: full Vite+React projects in `desktop/workspace/apps/`
+- Panels: renderers in `src/app/workspace/renderers/` (dev-project, hosted-game)
+- Generated dashboard pages: `src/app/home/pages/{panelName}.tsx` (written by self-mod agent, picked up by HMR)
 
-Agents create the content, then report the panel name or local app URL so the user can open it through the workspace UI.
+Agents create the content, then report the panel name so the user can open it through the workspace UI.

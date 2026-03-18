@@ -46,9 +46,11 @@ export const MANAGED_MODEL_AUDIENCES = [
   "go",
   "pro",
   "plus",
+  "ultra",
   "go_fallback",
   "pro_fallback",
   "plus_fallback",
+  "ultra_fallback",
 ] as const;
 
 export type ManagedModelAudience = (typeof MANAGED_MODEL_AUDIENCES)[number];
@@ -2438,9 +2440,11 @@ export const AUDIENCE_AGENT_MODELS: Record<ManagedModelAudience, Record<string, 
   go: GO_AGENT_MODELS,
   pro: PRO_AGENT_MODELS,
   plus: PLUS_AGENT_MODELS,
+  ultra: PLUS_AGENT_MODELS,
   go_fallback: GO_FALLBACK_AGENT_MODELS,
   pro_fallback: PRO_FALLBACK_AGENT_MODELS,
   plus_fallback: PLUS_FALLBACK_AGENT_MODELS,
+  ultra_fallback: PLUS_FALLBACK_AGENT_MODELS,
 };
 
 const AGENT_MODELS = FREE_AGENT_MODELS;
