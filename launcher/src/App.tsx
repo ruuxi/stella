@@ -2,21 +2,13 @@ import {
 	startTransition,
 	useCallback,
 	useEffect,
+	useMemo,
 	useState,
 } from "react";
-import { Electroview } from "electrobun/view";
-import type { InstallerState, LauncherRPC, SetupStep } from "../shared/types";
-
-const rpc = Electroview.defineRPC<LauncherRPC>({
-	handlers: {
-		requests: {},
-		messages: {
-			installerStateUpdate: () => {},
-		},
-	},
-});
-
-const electroview = new Electroview({ rpc });
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import type { InstallerState } from "./types";
+import stellaLogo from "./stella-logo.svg";
 
 const formatBytes = (bytes: number | null): string => {
 	if (bytes == null) return "unknown";
@@ -31,57 +23,13 @@ const formatBytes = (bytes: number | null): string => {
 	return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 };
 
-/* ── Step indicator ──────────────────────────────────────────────── */
-
-function StepItem({ step }: { step: SetupStep }) {
-	const isDone = step.status === "done" || step.status === "skipped";
-	const isActive =
-		step.status === "installing" || step.status === "checking";
-	const isFailed = step.status === "error";
-
-	return (
-		<div className="step-row">
-			<span className="step-icon">
-				{isDone ? (
-					<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-						<path
-							d="M2.5 7.5L5.5 10.5L11.5 3.5"
-							stroke="#4aba6a"
-							strokeWidth="1.5"
-							strokeLinecap="round"
-							strokeLinejoin="round"
-						/>
-					</svg>
-				) : isActive ? (
-					<span className="spinner" />
-				) : isFailed ? (
-					<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-						<path
-							d="M3.5 3.5L10.5 10.5M10.5 3.5L3.5 10.5"
-							stroke="#e45858"
-							strokeWidth="1.5"
-							strokeLinecap="round"
-						/>
-					</svg>
-				) : (
-					<span className="step-pending" />
-				)}
-			</span>
-			<span
-				className={`step-label ${isDone ? "done" : ""} ${isActive ? "active" : ""} ${isFailed ? "failed" : ""}`}
-			>
-				{step.label}
-			</span>
-		</div>
-	);
-}
-
 /* ── App ─────────────────────────────────────────────────────────── */
 
 function App() {
 	const [state, setState] = useState<InstallerState | null>(null);
 	const [installPathDraft, setInstallPathDraft] = useState("");
 	const [locationBusy, setLocationBusy] = useState(false);
+	const [autoLaunching, setAutoLaunching] = useState(false);
 
 	const applyState = useCallback((nextState: InstallerState) => {
 		startTransition(() => setState(nextState));
@@ -91,24 +39,37 @@ function App() {
 		if (state) setInstallPathDraft(state.installPath);
 	}, [state?.installPath]);
 
+	// Auto-launch if already installed
 	useEffect(() => {
-		const r = electroview.rpc;
-		if (!r) return;
-		const handle = ({ state: s }: { state: InstallerState }) =>
-			applyState(s);
-		r.addMessageListener("installerStateUpdate", handle);
-		void r.request.getInstallerState({}).then(applyState);
-		return () => r.removeMessageListener("installerStateUpdate", handle);
+		if (!state || autoLaunching) return;
+		if (state.phase === "complete" && state.canLaunch && state.installed) {
+			setAutoLaunching(true);
+			invoke("launch_desktop").then(() => {
+				// Close the launcher window after a brief delay
+				setTimeout(() => window.close(), 1500);
+			});
+		}
+	}, [state, autoLaunching]);
+
+	useEffect(() => {
+		const unlisten = listen<{ state: InstallerState }>(
+			"installer-state-update",
+			(event) => applyState(event.payload.state),
+		);
+		invoke<InstallerState>("get_installer_state").then(applyState);
+		return () => {
+			unlisten.then((fn) => fn());
+		};
 	}, [applyState]);
 
 	const commitInstallPath = useCallback(async () => {
-		if (!electroview.rpc || !state) return;
+		if (!state) return;
 		const nextPath = installPathDraft.trim();
 		if (!nextPath || nextPath === state.installPath) return;
 		setLocationBusy(true);
 		try {
 			applyState(
-				await electroview.rpc.request.setInstallLocation({
+				await invoke<InstallerState>("set_install_location", {
 					path: nextPath,
 				}),
 			);
@@ -118,11 +79,10 @@ function App() {
 	}, [applyState, installPathDraft, state]);
 
 	const handleBrowse = useCallback(async () => {
-		if (!electroview.rpc) return;
 		setLocationBusy(true);
 		try {
 			applyState(
-				await electroview.rpc.request.browseInstallLocation({}),
+				await invoke<InstallerState>("browse_install_location"),
 			);
 		} finally {
 			setLocationBusy(false);
@@ -130,12 +90,12 @@ function App() {
 	}, [applyState]);
 
 	const handleUseDefaultLocation = useCallback(async () => {
-		if (!electroview.rpc || !state) return;
+		if (!state) return;
 		setInstallPathDraft(state.defaultInstallPath);
 		setLocationBusy(true);
 		try {
 			applyState(
-				await electroview.rpc.request.setInstallLocation({
+				await invoke<InstallerState>("set_install_location", {
 					path: state.defaultInstallPath,
 				}),
 			);
@@ -146,9 +106,8 @@ function App() {
 
 	const handleRunAfterInstallChange = useCallback(
 		async (checked: boolean) => {
-			if (!electroview.rpc) return;
 			applyState(
-				await electroview.rpc.request.setRunAfterInstall({
+				await invoke<InstallerState>("set_run_after_install", {
 					value: checked,
 				}),
 			);
@@ -157,48 +116,74 @@ function App() {
 	);
 
 	const handleInstall = useCallback(async () => {
-		if (!electroview.rpc) return;
 		await commitInstallPath();
-		await electroview.rpc.request.startInstall({});
+		await invoke("start_install");
 	}, [commitInstallPath]);
 
 	const handleLaunch = useCallback(async () => {
-		if (!electroview.rpc) return;
-		await electroview.rpc.request.launchDesktop({});
+		await invoke("launch_desktop");
 	}, []);
 
 	const handleOpenFolder = useCallback(async () => {
-		if (!electroview.rpc) return;
-		await electroview.rpc.request.openInstallLocation({});
+		await invoke("open_install_location");
 	}, []);
 
 	const handleUninstall = useCallback(async () => {
-		if (!electroview.rpc) return;
 		if (
 			!window.confirm(
-				"This will remove Stella and its shortcuts. Continue?",
+				"This will remove Stella and its data. Continue?",
 			)
 		)
 			return;
-		await electroview.rpc.request.uninstallStella({});
+		await invoke("uninstall_stella");
 	}, []);
 
-	/* ── Loading ─────────────────────────────────────────────────── */
+	/* ── Derived ─────────────────────────────────────────────────── */
 
-	if (!state) {
+	const progress = useMemo(() => {
+		if (!state) return 0;
+		const total = state.steps.length;
+		if (total === 0) return 0;
+		const done = state.steps.filter(
+			(s) => s.status === "done" || s.status === "skipped",
+		).length;
+		return Math.round((done / total) * 100);
+	}, [state]);
+
+	const activeStepLabel = useMemo(() => {
+		if (!state) return "";
+		const active = state.steps.find(
+			(s) => s.status === "installing" || s.status === "checking",
+		);
+		return active?.label ?? "";
+	}, [state]);
+
+	/* ── Loading / splash ────────────────────────────────────────── */
+
+	if (!state || autoLaunching) {
 		return (
 			<div className="shell">
-				<div className="shell-loading">
-					<span className="spinner" />
+				<div className="drag-region" />
+				<div className="brand">
+					<img src={stellaLogo} alt="Stella" className="brand-logo" />
+					<h1 className="brand-name">Stella</h1>
+				</div>
+				<div className="body" style={{ alignItems: "center", justifyContent: "center" }}>
+					<p className="status-text">
+						{autoLaunching ? "Launching..." : "Loading..."}
+					</p>
+					<div className="progress-wrap">
+						<div className="progress-track">
+							<div className="progress-fill indeterminate" />
+						</div>
+					</div>
 				</div>
 			</div>
 		);
 	}
 
-	const isSetup =
-		state.phase === "ready" || state.phase === "error";
-	const isWorking =
-		state.phase === "installing" || state.phase === "checking";
+	const isSetup = state.phase === "ready" || state.phase === "error";
+	const isWorking = state.phase === "installing" || state.phase === "checking";
 	const isComplete = state.phase === "complete";
 
 	const canInstall =
@@ -211,28 +196,21 @@ function App() {
 
 	return (
 		<div className="shell">
-			{/* Header — always visible */}
-			<header className="header">
-				<svg
-					className="header-mark"
-					width="20"
-					height="20"
-					viewBox="0 0 20 20"
-					fill="none"
-				>
-					<circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="1.2" />
-					<circle cx="10" cy="10" r="3" fill="currentColor" />
-				</svg>
-				<h1 className="header-title">Stella</h1>
-			</header>
+			<div className="drag-region" />
+
+			{/* Brand header — always visible */}
+			<div className="brand">
+				<img src={stellaLogo} alt="Stella" className="brand-logo" />
+				<h1 className="brand-name">Stella</h1>
+			</div>
 
 			{/* Body */}
 			<main className="body">
 				{/* ── Ready / Error ───────────────────────────────── */}
 				{isSetup && (
 					<>
-						<p className="heading">
-							Choose where to install Stella.
+						<p className="status-text">
+							Choose where to install Stella
 						</p>
 
 						<div className="field-group">
@@ -270,22 +248,15 @@ function App() {
 									</span>
 								) : (
 									<span className="field-hint">
-										{formatBytes(
-											state.disk.requiredBytes,
-										)}{" "}
-										needed &middot;{" "}
-										{formatBytes(
-											state.disk.availableBytes,
-										)}{" "}
-										available
+										{formatBytes(state.disk.requiredBytes)} needed
+										{" \u00b7 "}
+										{formatBytes(state.disk.availableBytes)} available
 									</span>
 								)}
 								<button
 									type="button"
 									className="link-btn"
-									onClick={() =>
-										void handleUseDefaultLocation()
-									}
+									onClick={() => void handleUseDefaultLocation()}
 									disabled={locationBusy}
 								>
 									Reset
@@ -310,9 +281,7 @@ function App() {
 								type="checkbox"
 								checked={state.runAfterInstall}
 								onChange={(e) =>
-									void handleRunAfterInstallChange(
-										e.target.checked,
-									)
+									void handleRunAfterInstallChange(e.target.checked)
 								}
 							/>
 							<span>Launch Stella when finished</span>
@@ -322,59 +291,40 @@ function App() {
 
 				{/* ── Installing / Checking ───────────────────────── */}
 				{isWorking && (
-					<>
-						<p className="heading">
-							{state.phase === "checking"
-								? "Checking..."
-								: "Installing Stella"}
+					<div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1 }}>
+						<p className="status-text">
+							{activeStepLabel || (state.phase === "checking" ? "Checking..." : "Setting up...")}
 						</p>
-						<div className="steps">
-							{state.steps.map((step) => (
-								<StepItem key={step.id} step={step} />
-							))}
+						<div className="progress-wrap">
+							<div className="progress-track">
+								<div
+									className={`progress-fill ${state.phase === "checking" ? "indeterminate" : ""}`}
+									style={state.phase !== "checking" ? { width: `${progress}%` } : undefined}
+								/>
+							</div>
 						</div>
-					</>
+					</div>
 				)}
 
 				{/* ── Complete ────────────────────────────────────── */}
 				{isComplete && (
-					<>
-						<div className="complete-body">
-							<svg
-								className="complete-check"
-								width="36"
-								height="36"
-								viewBox="0 0 36 36"
-								fill="none"
-							>
-								<circle
-									cx="18"
-									cy="18"
-									r="17"
-									stroke="#4aba6a"
-									strokeWidth="1.2"
-								/>
-								<path
-									d="M11 18.5L15.5 23L25 13"
-									stroke="#4aba6a"
-									strokeWidth="1.8"
-									strokeLinecap="round"
-									strokeLinejoin="round"
-								/>
-							</svg>
-							<p className="complete-title">Stella is ready</p>
-							<p className="complete-path">{state.installPath}</p>
-						</div>
+					<div className="complete-body">
+						<svg width="36" height="36" viewBox="0 0 36 36" fill="none" style={{ marginBottom: 16, color: "var(--green)" }}>
+							<circle cx="18" cy="18" r="17" stroke="currentColor" strokeWidth="1.2" />
+							<path d="M11 18.5L15.5 23L25 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+						</svg>
+						<p className="complete-title">Stella is ready</p>
+						<p className="complete-path">{state.installPath}</p>
 						{state.errorMessage && (
-							<div className="banner banner-error">
+							<div className="banner banner-error" style={{ marginTop: 16 }}>
 								{state.errorMessage}
 							</div>
 						)}
-					</>
+					</div>
 				)}
 			</main>
 
-			{/* Footer — always visible */}
+			{/* Footer */}
 			<footer className="footer">
 				{isSetup && (
 					<button
@@ -383,19 +333,13 @@ function App() {
 						disabled={!canInstall}
 						onClick={() => void handleInstall()}
 					>
-						{state.phase === "error"
-							? "Retry"
-							: "Install"}
+						{state.phase === "error" ? "Retry" : "Install"}
 					</button>
 				)}
 
 				{isWorking && (
-					<button
-						type="button"
-						className="btn-primary"
-						disabled
-					>
-						Installing...
+					<button type="button" className="btn-primary" disabled>
+						Setting up...
 					</button>
 				)}
 
