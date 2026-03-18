@@ -1,0 +1,21 @@
+# Stella Launcher
+
+Electrobun-based thin launcher for the Stella desktop app.
+
+IMPORTANT: Electrobun is NOT Electron. Do not use Electron APIs or patterns.
+
+## Architecture
+
+- `src/bun/` — Main process (runs in Bun). Handles setup, dependency checks, process management, tray.
+- `src/mainview/` — Webview UI (React). Shows setup wizard and status.
+- `src/shared/` — Shared RPC types between main and webview.
+
+## Documentation
+
+Full Electrobun API reference: https://blackboard.sh/electrobun/llms.txt
+
+## Import patterns
+
+- Main process (Bun): `import { BrowserWindow, Tray, Utils } from "electrobun/bun"`
+- Browser context: `import { Electroview } from "electrobun/view"`
+- Use `views://` URLs to load bundled assets.
