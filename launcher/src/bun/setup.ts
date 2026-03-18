@@ -16,7 +16,6 @@ import type { InstallerState, SetupStepId } from "../shared/types";
 /* ── Constants ───────────────────────────────────────────────────── */
 
 const INSTALL_MANIFEST = "stella-install.json";
-const PLACEHOLDER_MARKER = ".stella-placeholder";
 const LAUNCH_SCRIPT_WIN = "launch.cmd";
 const LAUNCH_SCRIPT_UNIX = "launch.sh";
 const ESTIMATED_INSTALL_BYTES = 1024 * 1024 * 1024; // 1 GB
@@ -30,34 +29,8 @@ VITE_SITE_URL=http://localhost:5714
 VITE_TWITCH_EMOTE_TWITCH_ID=40934651
 `;
 
-/* ── Dev-mode source detection ───────────────────────────────────── */
-
-const hasDesktopRepo = (root: string): boolean =>
-	existsSync(path.join(root, "desktop", "package.json"));
-
-const findStellaRoot = (): string => {
-	const visited = new Set<string>();
-	for (const seed of [process.cwd(), import.meta.dir]) {
-		let cur = path.resolve(seed);
-		while (!visited.has(cur)) {
-			visited.add(cur);
-			if (hasDesktopRepo(cur)) return cur;
-			const parent = path.dirname(cur);
-			if (parent === cur) break;
-			cur = parent;
-		}
-	}
-	return path.resolve(process.cwd(), "..");
-};
-
-const STELLA_ROOT = findStellaRoot();
-const SOURCE_DESKTOP_DIR = hasDesktopRepo(STELLA_ROOT)
-	? path.join(STELLA_ROOT, "desktop")
-	: null;
-
 /* ── Public types ────────────────────────────────────────────────── */
 
-export type InstallerMode = "development" | "production";
 export type InstallerPhase =
 	| "checking"
 	| "ready"
@@ -66,17 +39,12 @@ export type InstallerPhase =
 	| "error";
 
 export type InstallerContext = {
-	channel: string;
-	mode: InstallerMode;
 	defaultInstallPath: string;
 	settingsFilePath: string;
 	requiredBytes: number;
-	sourceDesktopDir: string | null;
-	stellaRoot: string;
 };
 
 export type LaunchInfo = {
-	mode: InstallerMode;
 	command: string[];
 	cwd: string;
 };
@@ -99,8 +67,6 @@ type Settings = {
 
 type Manifest = {
 	version: string;
-	channel: string;
-	mode: InstallerMode;
 	platform: NodeJS.Platform;
 	installedAt: string;
 	installPath: string;
@@ -153,7 +119,6 @@ const expandHome = (p: string): string =>
 const norm = (p: string): string => path.resolve(expandHome(p.trim()));
 
 const manifestOf = (d: string) => path.join(d, INSTALL_MANIFEST);
-const placeholderOf = (d: string) => path.join(d, PLACEHOLDER_MARKER);
 const packageJsonOf = (d: string) => path.join(d, "package.json");
 const nodeModulesOf = (d: string) => path.join(d, "node_modules");
 const envLocalOf = (d: string) => path.join(d, ".env.local");
@@ -195,11 +160,6 @@ const stellaBrowserBinaryOf = (d: string): string | null => {
 		? path.join(stellaBrowserRootOf(d), "bin", binaryName)
 		: null;
 };
-
-const desktopDirOf = (
-	state: InstallerState,
-	ctx: InstallerContext,
-): string | null => (ctx.mode === "development" ? ctx.sourceDesktopDir : state.installPath);
 
 const readStellaBrowserVersion = async (desktopDir: string): Promise<string | null> => {
 	try {
@@ -261,12 +221,8 @@ const downloadStellaBrowserBinary = async (
 };
 
 const ensureStellaBrowserRuntime = async (
-	state: InstallerState,
-	ctx: InstallerContext,
+	desktopDir: string,
 ): Promise<boolean> => {
-	const desktopDir = desktopDirOf(state, ctx);
-	if (!desktopDir) return false;
-
 	const version = await readStellaBrowserVersion(desktopDir);
 	if (!version) return false;
 
@@ -283,21 +239,13 @@ const ensureStellaBrowserRuntime = async (
 
 /* ── Validation ──────────────────────────────────────────────────── */
 
-const locationError = (
-	p: string,
-	c: InstallerContext,
-): string | undefined => {
+const locationError = (p: string): string | undefined => {
 	if (!p.trim()) return "Choose where Stella should be installed.";
 	if (!path.isAbsolute(p))
 		return "Install location must be an absolute path.";
 	const r = path.resolve(p);
 	if (r === path.parse(r).root)
 		return "Choose a folder, not the root of a drive.";
-	if (
-		c.mode === "development" &&
-		r.toLowerCase().startsWith(c.stellaRoot.toLowerCase())
-	)
-		return "Choose a location outside the Stella source checkout.";
 	return undefined;
 };
 
@@ -389,22 +337,18 @@ const writeSettings = async (
 
 /* ── Launch script ───────────────────────────────────────────────── */
 
-const writeLaunchScript = async (
-	installDir: string,
-	workingDir?: string,
-): Promise<string> => {
+const writeLaunchScript = async (installDir: string): Promise<string> => {
 	const scriptPath = launchScriptOf(installDir);
-	const cwd = workingDir ?? installDir;
 
 	if (process.platform === "win32") {
 		await writeFile(
 			scriptPath,
-			`@echo off\r\ncd /d "${cwd}"\r\nbun run electron:dev\r\n`,
+			`@echo off\r\ncd /d "${installDir}"\r\nbun run electron:dev\r\n`,
 		);
 	} else {
 		await writeFile(
 			scriptPath,
-			`#!/bin/sh\ncd "${cwd}"\nexec bun run electron:dev\n`,
+			`#!/bin/sh\ncd "${installDir}"\nexec bun run electron:dev\n`,
 		);
 		await chmod(scriptPath, 0o755);
 	}
@@ -573,9 +517,6 @@ const installBunGlobally = async (): Promise<boolean> => {
 		if (!result.ok) return false;
 	}
 
-	// Verify bun is now reachable. The installer adds to PATH but the
-	// current process may not reflect it yet — check the well-known
-	// install location and prepend it to PATH if needed.
 	if (await bunOnPath()) return true;
 
 	const bunBin =
@@ -592,7 +533,7 @@ const installBunGlobally = async (): Promise<boolean> => {
 	return false;
 };
 
-const buildSteps = (ctx: InstallerContext): StepDef[] => {
+const buildSteps = (): StepDef[] => {
 	const steps: StepDef[] = [
 		{
 			id: "runtime",
@@ -609,58 +550,12 @@ const buildSteps = (ctx: InstallerContext): StepDef[] => {
 				return true;
 			},
 		},
-	];
-
-	if (ctx.mode === "development" && ctx.sourceDesktopDir) {
-		// Dev: ensure desktop repo dependencies are installed.
-		steps.push({
-			id: "deps",
-			label: "Setting up development runtime",
-			check: async () =>
-				exists(path.join(ctx.sourceDesktopDir!, "node_modules")),
-			install: async () =>
-				(await run(["bun", "install"], { cwd: ctx.sourceDesktopDir! }))
-					.ok,
-		});
-		steps.push({
-			id: "env",
-			label: "Configuring environment",
-			check: async () => exists(envLocalOf(ctx.sourceDesktopDir!)),
-			install: async () => {
-				await writeFile(envLocalOf(ctx.sourceDesktopDir!), DESKTOP_ENV_LOCAL);
-				return true;
-			},
-		});
-		steps.push({
-			id: "browser",
-			label: "Provisioning Stella Browser",
-			check: async (s) => {
-				const desktopDir = desktopDirOf(s, ctx);
-				if (!desktopDir) return false;
-				if (!(await exists(stellaBrowserWrapperOf(desktopDir)))) return true;
-				return verifyStellaBrowserBinary(
-					desktopDir,
-					await readStellaBrowserVersion(desktopDir),
-				);
-			},
-			install: async (s) => {
-				const desktopDir = desktopDirOf(s, ctx);
-				if (!desktopDir) return false;
-				if (!(await exists(stellaBrowserWrapperOf(desktopDir)))) return true;
-				return ensureStellaBrowserRuntime(s, ctx);
-			},
-		});
-	} else {
-		// Production: clone the desktop subtree from the public repo.
-		steps.push({
+		{
 			id: "payload",
 			label: "Installing Stella",
 			check: (s) => exists(packageJsonOf(s.installPath)),
 			install: async (s) => {
 				await mkdir(s.installPath, { recursive: true });
-				// Sparse-checkout only the desktop/ directory, then move
-				// its contents to the install root so package.json is at
-				// the top level.
 				const tmpClone = `${s.installPath}/.clone-tmp`;
 				const clone = await run([
 					"git", "clone", "--depth", "1", "--filter=blob:none",
@@ -674,7 +569,6 @@ const buildSteps = (ctx: InstallerContext): StepDef[] => {
 				);
 				if (!sparse.ok) return false;
 
-				// Move desktop/* to installPath and clean up.
 				const desktopTmp = path.join(tmpClone, "desktop");
 				const entries = await readdir(desktopTmp);
 				for (const entry of entries) {
@@ -689,22 +583,19 @@ const buildSteps = (ctx: InstallerContext): StepDef[] => {
 				await rm(tmpClone, { recursive: true, force: true });
 				return exists(packageJsonOf(s.installPath));
 			},
-		});
-
-		// Production: install dependencies in the extracted repo.
-		steps.push({
+		},
+		{
 			id: "deps",
 			label: "Installing dependencies",
 			check: (s) => exists(nodeModulesOf(s.installPath)),
 			install: async (s) => {
-				// Skip gracefully if the repo isn't extracted yet (placeholder payload).
 				if (!(await exists(packageJsonOf(s.installPath)))) return true;
 				return (
 					await run(["bun", "install"], { cwd: s.installPath })
 				).ok;
 			},
-		});
-		steps.push({
+		},
+		{
 			id: "env",
 			label: "Configuring environment",
 			check: (s) => exists(envLocalOf(s.installPath)),
@@ -712,37 +603,38 @@ const buildSteps = (ctx: InstallerContext): StepDef[] => {
 				await writeFile(envLocalOf(s.installPath), DESKTOP_ENV_LOCAL);
 				return true;
 			},
-		});
-		steps.push({
+		},
+		{
 			id: "browser",
 			label: "Provisioning Stella Browser",
 			check: async (s) => {
-				const desktopDir = desktopDirOf(s, ctx);
-				if (!desktopDir) return false;
+				if (!(await exists(stellaBrowserWrapperOf(s.installPath)))) return true;
 				return verifyStellaBrowserBinary(
-					desktopDir,
-					await readStellaBrowserVersion(desktopDir),
+					s.installPath,
+					await readStellaBrowserVersion(s.installPath),
 				);
 			},
-			install: async (s) => ensureStellaBrowserRuntime(s, ctx),
-		});
+			install: async (s) => {
+				if (!(await exists(stellaBrowserWrapperOf(s.installPath)))) return true;
+				return ensureStellaBrowserRuntime(s.installPath);
+			},
+		},
+	];
 
-		// Shortcuts only for production installs (Windows for now).
-		if (process.platform === "win32") {
-			steps.push({
-				id: "shortcuts",
-				label: "Creating shortcuts",
-				check: async () => {
-					const dl = desktopLnk();
-					return dl != null && (await exists(dl));
-				},
-				install: async (s) => {
-					await writeLaunchScript(s.installPath);
-					await createShortcuts(s.installPath);
-					return true;
-				},
-			});
-		}
+	if (process.platform === "win32") {
+		steps.push({
+			id: "shortcuts",
+			label: "Creating shortcuts",
+			check: async () => {
+				const dl = desktopLnk();
+				return dl != null && (await exists(dl));
+			},
+			install: async (s) => {
+				await writeLaunchScript(s.installPath);
+				await createShortcuts(s.installPath);
+				return true;
+			},
+		});
 	}
 
 	steps.push({
@@ -750,21 +642,15 @@ const buildSteps = (ctx: InstallerContext): StepDef[] => {
 		label: "Finishing up",
 		check: (s) => exists(manifestOf(s.installPath)),
 		install: async (s) => {
-			const scriptPath = await writeLaunchScript(
-				s.installPath,
-				ctx.mode === "development" ? ctx.sourceDesktopDir ?? undefined : undefined,
-			);
+			const scriptPath = await writeLaunchScript(s.installPath);
 
 			const manifest: Manifest = {
 				version: APP_VERSION,
-				channel: ctx.channel,
-				mode: ctx.mode,
 				platform: process.platform,
 				installedAt: new Date().toISOString(),
 				installPath: s.installPath,
 				launchScript: scriptPath,
-				shortcuts:
-					ctx.mode === "production" ? expectedShortcutPaths() : {},
+				shortcuts: expectedShortcutPaths(),
 			};
 
 			await writeFile(
@@ -772,10 +658,7 @@ const buildSteps = (ctx: InstallerContext): StepDef[] => {
 				JSON.stringify(manifest, null, 2),
 			);
 
-			// Register with Add/Remove Programs on Windows (production only).
-			if (ctx.mode === "production") {
-				await writeRegistry(manifest);
-			}
+			await writeRegistry(manifest);
 
 			return true;
 		},
@@ -786,11 +669,8 @@ const buildSteps = (ctx: InstallerContext): StepDef[] => {
 
 /* ── State sync helpers ──────────────────────────────────────────── */
 
-const syncStepList = (
-	state: InstallerState,
-	ctx: InstallerContext,
-): StepDef[] => {
-	const defs = buildSteps(ctx);
+const syncStepList = (state: InstallerState): StepDef[] => {
+	const defs = buildSteps();
 	state.steps = defs.map((d) => {
 		const prev = state.steps.find((s) => s.id === d.id);
 		return prev ?? { id: d.id, label: d.label, status: "pending" };
@@ -812,28 +692,17 @@ const refreshDerived = async (
 		usedBytes: used,
 		enoughSpace: avail == null ? true : avail >= remaining,
 	};
-	state.installPathError = locationError(state.installPath, ctx);
+	state.installPathError = locationError(state.installPath);
 
-	if (ctx.mode === "development") {
-		const desktopDir = ctx.sourceDesktopDir;
-		state.canLaunch =
-			desktopDir != null &&
-			(await exists(nodeModulesOf(desktopDir))) &&
-			(await verifyStellaBrowserBinary(
-				desktopDir,
-				await readStellaBrowserVersion(desktopDir),
-			));
-	} else {
-		const hasRepo = await exists(packageJsonOf(state.installPath));
-		const hasDeps = await exists(nodeModulesOf(state.installPath));
-		state.canLaunch =
-			hasRepo &&
-			hasDeps &&
-			(await verifyStellaBrowserBinary(
-				state.installPath,
-				await readStellaBrowserVersion(state.installPath),
-			));
-	}
+	const hasRepo = await exists(packageJsonOf(state.installPath));
+	const hasDeps = await exists(nodeModulesOf(state.installPath));
+	state.canLaunch =
+		hasRepo &&
+		hasDeps &&
+		(await verifyStellaBrowserBinary(
+			state.installPath,
+			await readStellaBrowserVersion(state.installPath),
+		));
 };
 
 const emitState = async (
@@ -848,18 +717,13 @@ const emitState = async (
 /* ── Public API ──────────────────────────────────────────────────── */
 
 export const createSetupContext = (opts: {
-	channel: string;
 	defaultInstallPath: string;
 	settingsFilePath: string;
 	requiredBytes?: number;
 }): InstallerContext => ({
-	channel: opts.channel,
-	mode: opts.channel === "dev" ? "development" : "production",
 	defaultInstallPath: opts.defaultInstallPath,
 	settingsFilePath: opts.settingsFilePath,
 	requiredBytes: opts.requiredBytes ?? ESTIMATED_INSTALL_BYTES,
-	sourceDesktopDir: SOURCE_DESKTOP_DIR,
-	stellaRoot: STELLA_ROOT,
 });
 
 export const createSetupState = async (
@@ -869,7 +733,6 @@ export const createSetupState = async (
 	const state: InstallerState = {
 		steps: [],
 		phase: "checking",
-		mode: ctx.mode,
 		installPath: norm(settings.installPath || ctx.defaultInstallPath),
 		defaultInstallPath: ctx.defaultInstallPath,
 		runAfterInstall: settings.runAfterInstall ?? true,
@@ -883,7 +746,7 @@ export const createSetupState = async (
 		},
 	};
 	await refreshDerived(state, ctx);
-	syncStepList(state, ctx);
+	syncStepList(state);
 	return state;
 };
 
@@ -913,7 +776,7 @@ export const checkAll = async (
 ): Promise<{ allDone: boolean }> => {
 	state.phase = "checking";
 	state.errorMessage = undefined;
-	const defs = syncStepList(state, ctx);
+	const defs = syncStepList(state);
 	await emitState(state, ctx, onUpdate);
 
 	let allDone = true;
@@ -961,7 +824,7 @@ export const installAll = async (
 		return { ok: false, errorMessage: msg };
 	}
 
-	const defs = syncStepList(state, ctx);
+	const defs = syncStepList(state);
 	state.phase = "installing";
 	state.errorMessage = undefined;
 	await emitState(state, ctx, onUpdate);
@@ -999,24 +862,7 @@ export const installAll = async (
 
 export const getLaunchInfo = async (
 	state: InstallerState,
-	ctx: InstallerContext,
 ): Promise<LaunchInfo | null> => {
-	if (ctx.mode === "development" && ctx.sourceDesktopDir) {
-		if (
-			!(await verifyStellaBrowserBinary(
-				ctx.sourceDesktopDir,
-				await readStellaBrowserVersion(ctx.sourceDesktopDir),
-			))
-		) {
-			return null;
-		}
-		return {
-			mode: "development",
-			command: ["bun", "run", "electron:dev"],
-			cwd: ctx.sourceDesktopDir,
-		};
-	}
-
 	const hasRepo = await exists(packageJsonOf(state.installPath));
 	const hasDeps = await exists(nodeModulesOf(state.installPath));
 	if (
@@ -1030,7 +876,6 @@ export const getLaunchInfo = async (
 		return null;
 
 	return {
-		mode: "production",
 		command: ["bun", "run", "electron:dev"],
 		cwd: state.installPath,
 	};
@@ -1038,7 +883,6 @@ export const getLaunchInfo = async (
 
 export const uninstall = async (
 	state: InstallerState,
-	ctx: InstallerContext,
 ): Promise<{ ok: boolean }> => {
 	try {
 		await removeShortcuts();
@@ -1051,7 +895,7 @@ export const uninstall = async (
 		state.installed = false;
 		state.phase = "ready";
 		state.steps = [];
-		syncStepList(state, ctx);
+		syncStepList(state);
 
 		return { ok: true };
 	} catch {

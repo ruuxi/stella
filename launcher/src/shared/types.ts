@@ -25,8 +25,6 @@ export type SetupStep = {
 	detail?: string;
 };
 
-export type InstallerMode = "development" | "production";
-
 export type InstallerPhase =
 	| "checking"
 	| "ready"
@@ -38,7 +36,6 @@ export type InstallerState = {
 	steps: SetupStep[];
 	phase: InstallerPhase;
 	errorMessage?: string;
-	mode: InstallerMode;
 	installPath: string;
 	defaultInstallPath: string;
 	installPathError?: string;

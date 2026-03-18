@@ -4,7 +4,6 @@ import {
 	BrowserView,
 	BrowserWindow,
 	Tray,
-	Updater,
 	Utils,
 } from "electrobun/bun";
 import Electrobun from "electrobun/bun";
@@ -21,14 +20,11 @@ import {
 	uninstall,
 } from "./setup";
 
-const channel = await Updater.localInfo.channel();
-
 const defaultInstallPath = path.join(Utils.paths.home, "Stella");
 
 await mkdir(Utils.paths.userData, { recursive: true });
 
 const setupContext = createSetupContext({
-	channel,
 	defaultInstallPath,
 	settingsFilePath: path.join(Utils.paths.userData, "installer-settings.json"),
 });
@@ -38,20 +34,7 @@ const RECOVERY_ERROR_PREFIX = "Launcher recovery check failed:";
 let setupState = await createSetupState(setupContext);
 let desktopProcess: ReturnType<typeof Bun.spawn> | null = null;
 
-const LAUNCHER_HMR_PORT = 5173;
-const LAUNCHER_HMR_URL = `http://localhost:${LAUNCHER_HMR_PORT}`;
-
-async function getMainViewUrl(): Promise<string> {
-	if (channel === "dev") {
-		try {
-			await fetch(LAUNCHER_HMR_URL, { method: "HEAD" });
-			console.log(`Launcher HMR enabled: ${LAUNCHER_HMR_URL}`);
-			return LAUNCHER_HMR_URL;
-		} catch {
-			// Fall through to bundled view.
-		}
-	}
-
+function getMainViewUrl(): string {
 	return "views://mainview/index.html";
 }
 
@@ -69,7 +52,7 @@ const clearRecoveryError = () => {
 };
 
 async function syncRecoveryArtifacts() {
-	const info = await getLaunchInfo(setupState, setupContext);
+	const info = await getLaunchInfo(setupState);
 	if (!info) {
 		clearRecoveryError();
 		return;
@@ -121,7 +104,7 @@ async function browseForInstallLocation() {
 async function startDesktop() {
 	if (desktopProcess) return;
 
-	const info = await getLaunchInfo(setupState, setupContext);
+	const info = await getLaunchInfo(setupState);
 	if (!info) return;
 
 	const recovery = await ensureLauncherRecoveryArtifacts({
@@ -215,7 +198,7 @@ const rpc = BrowserView.defineRPC<LauncherRPC>({
 			}),
 
 			uninstallStella: async () => {
-				const result = await uninstall(setupState, setupContext);
+				const result = await uninstall(setupState);
 				if (result.ok) {
 					await syncInstallerState();
 				}
@@ -226,7 +209,7 @@ const rpc = BrowserView.defineRPC<LauncherRPC>({
 	},
 });
 
-const url = await getMainViewUrl();
+const url = getMainViewUrl();
 
 const mainWindow = new BrowserWindow({
 	title: "Stella",
