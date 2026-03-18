@@ -1,0 +1,82 @@
+/* ============================================
+   CANVAS RENDERERS
+   Styles for workspace panel renderers.
+   ============================================ */
+
+/* ============================================
+   PANEL (Vite-compiled TSX)
+   ============================================ */
+
+.workspace-panel-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.workspace-panel-content {
+  flex: 1;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.workspace-panel-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--text-weak);
+  font-size: 13px;
+}
+
+/* ============================================
+   ERROR BOUNDARY
+   ============================================ */
+
+.workspace-error {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 12px;
+  height: 100%;
+  overflow: auto;
+}
+
+.workspace-error-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: oklch(0.65 0.18 25);
+}
+
+.workspace-error-message {
+  font-size: 12px;
+  color: var(--text-base);
+  font-family: var(--font-family-mono);
+  font-feature-settings: var(--font-family-mono--font-feature-settings, normal);
+  background: color-mix(in oklch, oklch(0.65 0.18 25) 8%, transparent);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in oklch, oklch(0.65 0.18 25) 20%, transparent);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.workspace-error-retry {
+  align-self: flex-start;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-strong);
+  background: transparent;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.workspace-error-retry:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}

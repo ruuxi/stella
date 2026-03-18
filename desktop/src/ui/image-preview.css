@@ -1,0 +1,13 @@
+[data-component="image-preview"] {
+  display: inline-flex;
+  border-radius: var(--radius-md, 6px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+[data-component="image-preview"] img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+}

@@ -1,0 +1,594 @@
+﻿/* Mini Shell - Chat Window Style */
+.window-mini {
+  background: transparent !important;
+  min-height: 100vh;
+}
+
+.window-region {
+  background: transparent !important;
+  min-height: 100vh;
+}
+
+/* Shell container */
+.raycast-shell {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 8px;
+  background: transparent;
+}
+
+/* Panel - floating chat window */
+.raycast-panel {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(10px) scale(0.985);
+  transition:
+    opacity 140ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: opacity, transform;
+  background: var(--background);
+  border-radius: 14px;
+  border: none;
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.raycast-shell.is-visible .raycast-panel {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.dark .raycast-panel {
+  background: var(--card);
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* ========= Title Bar ========= */
+.mini-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  /* No -webkit-app-region: drag — overlay uses custom drag via OverlayRoot */
+  cursor: grab;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.mini-titlebar-left {
+  position: absolute;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  /* drag handled by OverlayRoot custom handler */
+}
+
+.mini-titlebar-left .stella-animation-container {
+  width: 20px;
+  height: 20px;
+}
+
+/* Render high-res grid, smoothly downscale to fit the 20px container */
+.mini-titlebar-left .ascii-canvas {
+  position: static;
+  transform: none;
+  width: 100% !important;
+  height: 100% !important;
+  image-rendering: auto;
+}
+
+.mini-titlebar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mini-titlebar-right {
+  position: absolute;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  /* drag handled by OverlayRoot custom handler */
+}
+
+.mini-titlebar-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-weaker);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.mini-titlebar-action:hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+}
+
+/* ========= Content Area ========= */
+.mini-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 48px,
+    black calc(100% - 48px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 48px,
+    black calc(100% - 48px),
+    transparent 100%
+  );
+}
+
+.mini-content::-webkit-scrollbar {
+  display: none;
+}
+
+/* Remove top fade when scrolled to top */
+.mini-content.at-top {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black 0px,
+    black calc(100% - 48px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    black 0px,
+    black calc(100% - 48px),
+    transparent 100%
+  );
+}
+
+/* Remove bottom fade when scrolled to bottom */
+.mini-content.at-bottom {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 48px,
+    black 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 48px,
+    black 100%
+  );
+}
+
+/* Remove both fades when at top and bottom (content fits) */
+.mini-content.at-top.at-bottom {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.mini-conversation {
+  padding: 12px 16px;
+}
+
+/* Event styling inside mini conversation */
+.mini-conversation .event-list {
+  gap: 8px;
+}
+
+.mini-conversation .session-turn-header {
+  display: none;
+}
+
+.mini-conversation .event-item {
+  padding: 10px 12px;
+  font-size: 13px;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 0;
+  margin: 0;
+}
+
+.mini-conversation .event-item.user {
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  border-radius: 12px;
+  margin-left: auto;
+  max-width: 85%;
+  width: fit-content;
+}
+
+.mini-conversation .event-item.assistant {
+  background: transparent;
+}
+
+.mini-conversation .event-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mini-conversation .event-type {
+  display: none;
+}
+
+/* ========= Composer ========= */
+.mini-composer {
+  flex-shrink: 0;
+  padding: 16px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Floating window badge above composer */
+.mini-composer-window-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  margin-left: 4px;
+}
+
+.mini-composer-window-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-weak);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-composer-window-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-weaker);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s ease;
+}
+
+.mini-composer-window-dismiss:hover {
+  color: var(--text-strong);
+}
+
+/* Floating screenshot thumbnails above composer */
+.mini-composer-screenshots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: 4px;
+}
+
+.mini-composer-inner {
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  border-radius: 14px;
+  padding: 0;
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+  transition: border-color 0.15s ease;
+}
+
+.mini-composer-inner:focus-within {
+  border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+}
+
+.dark .mini-composer-inner {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+/* Context chips inside composer */
+.mini-composer-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 0;
+}
+
+.mini-context-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.mini-context-chip--screenshot {
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 15%, transparent);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  cursor: pointer;
+}
+
+.mini-context-chip--pending {
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 15%, transparent);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  pointer-events: none;
+}
+
+.mini-context-pending-inner {
+  width: 48px;
+  height: 36px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--foreground) 8%, transparent) 25%,
+    color-mix(in oklch, var(--foreground) 16%, transparent) 50%,
+    color-mix(in oklch, var(--foreground) 8%, transparent) 75%
+  );
+  background-size: 200% 100%;
+  animation: mini-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes mini-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.mini-context-thumb {
+  width: 48px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.mini-context-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: color-mix(in oklch, var(--foreground) 70%, transparent);
+  color: var(--background);
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  padding: 0;
+}
+
+.mini-context-chip:hover .mini-context-remove {
+  opacity: 1;
+}
+
+.mini-context-chip--text {
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+
+.mini-context-text {
+  display: inline-block;
+  max-width: 200px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Input field */
+.mini-composer-input {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-strong);
+  outline: none;
+  font-family: inherit;
+  padding: 12px 14px 8px;
+}
+
+.mini-composer-input::placeholder {
+  color: var(--text-weaker);
+  font-weight: 400;
+}
+
+/* Actions row */
+.mini-composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 8px;
+}
+
+.mini-composer-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mini-composer-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Add button */
+.mini-composer-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1.5px solid var(--text-weaker);
+  color: var(--text-weak);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.mini-composer-add:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+  border-color: var(--text-base);
+}
+
+/* Stop button */
+.mini-composer-stop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  border: none;
+  color: var(--text-weak);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.mini-composer-stop:hover {
+  background: color-mix(in oklch, var(--foreground) 16%, transparent);
+  color: var(--text-strong);
+}
+
+/* Send button */
+.mini-composer-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: none;
+  color: var(--primary-foreground);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.mini-composer-send:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.mini-composer-send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ========= Screenshot Preview ========= */
+.raycast-screenshot-overlay {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  pointer-events: auto;
+}
+
+.raycast-screenshot-preview-container {
+  position: relative;
+  pointer-events: auto;
+}
+
+.raycast-screenshot-preview {
+  max-width: 90vw;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.raycast-screenshot-close {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease;
+}
+
+.raycast-screenshot-close:hover {
+  transform: scale(1.1);
+}
+
+.raycast-shell.has-preview .raycast-panel {
+  pointer-events: none;
+}
+
+/* ========= Dark mode ========= */
+.dark .mini-titlebar {
+  border-bottom-color: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.dark .mini-composer-inner {
+  border-color: color-mix(in oklch, var(--foreground) 15%, transparent);
+}
+
+.dark .mini-composer-inner:focus-within {
+  border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
+}

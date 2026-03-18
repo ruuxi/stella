@@ -1,0 +1,8226 @@
+{
+  "version": 1,
+  "generatedAt": "2026-02-11T11:52:56.930Z",
+  "labelsSource": "public\\emotes\\emoji-labels.json",
+  "minConfidence": 0,
+  "entries": [
+    {
+      "code": "-20",
+      "emoji": "📉",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/-20-cfcbd6abdfe7.webp"
+    },
+    {
+      "code": ":))",
+      "emoji": "🐩",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/emote-115b292aaab5.webp"
+    },
+    {
+      "code": ":3",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/3-4f17c6922fe3.webp"
+    },
+    {
+      "code": ":b",
+      "emoji": "😛",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/b-dfcb5e882b56.webp"
+    },
+    {
+      "code": "!!!",
+      "emoji": "🔥",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/emote-065d40685c16.webp"
+    },
+    {
+      "code": "!burgie",
+      "emoji": "🍔",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/burgie-2e6a2cbfe465.webp"
+    },
+    {
+      "code": "!fund",
+      "emoji": "💼",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/fund-a8b5d16b9ce8.webp"
+    },
+    {
+      "code": "!givenympts",
+      "emoji": "🪙",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/givenympts-32aebf83fe93.webp"
+    },
+    {
+      "code": "!smp",
+      "emoji": "🤥",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/smp-3f69d0fe2510.webp"
+    },
+    {
+      "code": "!vote",
+      "emoji": "🗳",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/vote-7317ea05185a.webp"
+    },
+    {
+      "code": "??",
+      "emoji": "❓",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/emote-a7bb16a06689.webp"
+    },
+    {
+      "code": "???",
+      "emoji": "🤨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/emote-7fcff5103163.webp"
+    },
+    {
+      "code": "????",
+      "emoji": "❓",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/emote-b54f5ae498fb.webp"
+    },
+    {
+      "code": "...",
+      "emoji": "🍌",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/emote-b26f60ec82e2.webp"
+    },
+    {
+      "code": "...butthenameislessgenericsoyoudontaccidentallytypeit",
+      "emoji": "🐜",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/butthenameislessgenericsoyoudontaccidentallytypeit-1e254c4236d7.webp"
+    },
+    {
+      "code": ")))))",
+      "emoji": "😏",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/emote-a4b1110b9085.webp"
+    },
+    {
+      "code": "+20",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/20-e39e23e3b008.webp"
+    },
+    {
+      "code": "$$fish",
+      "emoji": "🎣",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/fish-4e45f3bbfc98.webp"
+    },
+    {
+      "code": "00",
+      "emoji": "🐕",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/00-4de2ecd4a2ad.webp"
+    },
+    {
+      "code": "0ut3",
+      "emoji": "🚀",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/0ut3-970c5df90fc1.webp"
+    },
+    {
+      "code": "10Head",
+      "emoji": "🧠",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/10Head-195999ade0ce.webp"
+    },
+    {
+      "code": "1427butthenameislongerbecauseafewdumbassesinchatliketoruinit",
+      "emoji": "🖥️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/1427butthenameislongerbecauseafewdumbassesinchatliketoruinit-cc4d795175de.webp"
+    },
+    {
+      "code": "1984",
+      "emoji": "👁️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/1984-8972dfe78e3c.webp"
+    },
+    {
+      "code": "1D",
+      "emoji": "🗿",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/1D-3d53685df74b.webp"
+    },
+    {
+      "code": "21",
+      "emoji": "🔪",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/21-997dde897d4d.webp"
+    },
+    {
+      "code": "2bSway",
+      "emoji": "💃",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/2bSway-53dd367c2d29.webp"
+    },
+    {
+      "code": "31",
+      "emoji": "😃",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/31-a8a388b7fd8b.webp"
+    },
+    {
+      "code": "4090",
+      "emoji": "⬛",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/4090-5adfc09198f5.webp"
+    },
+    {
+      "code": "4Shrug",
+      "emoji": "🤷‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/4Shrug-520a57c7a82d.webp"
+    },
+    {
+      "code": "500cigarettes",
+      "emoji": "🚬",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/500cigarettes-fa90095343a5.webp"
+    },
+    {
+      "code": "aaaa",
+      "emoji": "😱",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/aaaa-d45701b9c6bf.webp"
+    },
+    {
+      "code": "ABBOBA",
+      "emoji": "🐶",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ABBOBA-5d4f19f8dd92.webp"
+    },
+    {
+      "code": "ABEL",
+      "emoji": "🎤",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ABEL-43e24173fede.webp"
+    },
+    {
+      "code": "AbsoluteRage",
+      "emoji": "😡",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AbsoluteRage-fc57cd7c5426.webp"
+    },
+    {
+      "code": "achoo",
+      "emoji": "🤧",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/achoo-23eade0c1619.webp"
+    },
+    {
+      "code": "AddressMe",
+      "emoji": "🐘",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AddressMe-8c9231593c9b.webp"
+    },
+    {
+      "code": "AEUGH",
+      "emoji": "🐡",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AEUGH-9ca67150f5b2.webp"
+    },
+    {
+      "code": "agahi",
+      "emoji": "👋",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/agahi-c027d88b44d0.webp"
+    },
+    {
+      "code": "aha",
+      "emoji": "💡",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/aha-a3ee646e7b14.webp"
+    },
+    {
+      "code": "AHEGAO",
+      "emoji": "🤪",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AHEGAO-4434db7b8806.webp"
+    },
+    {
+      "code": "ahmadmuhsin",
+      "emoji": "😠",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ahmadmuhsin-c473801a9f6e.webp"
+    },
+    {
+      "code": "AhShit",
+      "emoji": "🙄",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AhShit-ab0de71aca19.webp"
+    },
+    {
+      "code": "ahware",
+      "emoji": "😳",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ahware-508266bd7aad.webp"
+    },
+    {
+      "code": "aim",
+      "emoji": "🎯",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/aim-49e366d1781c.webp"
+    },
+    {
+      "code": "AINTNOWAY",
+      "emoji": "💀",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AINTNOWAY-b13c2f9e6c74.webp"
+    },
+    {
+      "code": "Alarm",
+      "emoji": "🚨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Alarm-730ad10492d4.webp"
+    },
+    {
+      "code": "Aldentge",
+      "emoji": "🤌",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Aldentge-9e56551f35e7.webp"
+    },
+    {
+      "code": "AlertTheCatStartsItsEngine",
+      "emoji": "🐸",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AlertTheCatStartsItsEngine-e4da4d068ef3.webp"
+    },
+    {
+      "code": "alias",
+      "emoji": "💪",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/alias-69bf7340d7ea.webp"
+    },
+    {
+      "code": "AliasArrive",
+      "emoji": "👋",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AliasArrive-22120ae47eba.webp"
+    },
+    {
+      "code": "AlienApprove",
+      "emoji": "👍",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AlienApprove-0860a6f34032.webp"
+    },
+    {
+      "code": "AlienDanceBlue",
+      "emoji": "👽",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AlienDanceBlue-0983f59fac20.webp"
+    },
+    {
+      "code": "AlienParty",
+      "emoji": "✨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AlienParty-c2291b8329fd.webp"
+    },
+    {
+      "code": "Alivelole",
+      "emoji": "👍",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Alivelole-730fd54500a5.webp"
+    },
+    {
+      "code": "allRoads",
+      "emoji": "🐇",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/allRoads-459da9906e60.webp"
+    },
+    {
+      "code": "ALOO",
+      "emoji": "📞",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ALOO-84b7c6d800f6.webp"
+    },
+    {
+      "code": "alreadytracer",
+      "emoji": "🐱",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/alreadytracer-d59515c90287.webp"
+    },
+    {
+      "code": "ambatuJam",
+      "emoji": "🎧",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ambatuJam-86772e82c699.webp"
+    },
+    {
+      "code": "amongE",
+      "emoji": "🤨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/amongE-49ef85a5a436.webp"
+    },
+    {
+      "code": "aMostPeculiarSpecimen",
+      "emoji": "⬛",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/aMostPeculiarSpecimen-3aa54edb525d.webp"
+    },
+    {
+      "code": "Android",
+      "emoji": "🤖",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Android-4ac6ca53daac.webp"
+    },
+    {
+      "code": "AngelThump",
+      "emoji": "😇",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AngelThump-f9f00ada40ee.webp"
+    },
+    {
+      "code": "Anger",
+      "emoji": "💢",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Anger-2d6f29177de4.webp"
+    },
+    {
+      "code": "angy",
+      "emoji": "😠",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/angy-b84d09692c8a.webp"
+    },
+    {
+      "code": "aNIME",
+      "emoji": "👱",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/aNIME-b14e17e2cd8a.webp"
+    },
+    {
+      "code": "ankhaPls",
+      "emoji": "💃",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ankhaPls-75e209839def.webp"
+    },
+    {
+      "code": "AOTC",
+      "emoji": "🏆",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AOTC-1f9ec9b560da.webp"
+    },
+    {
+      "code": "ApeSlap",
+      "emoji": "🦍",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ApeSlap-ffba0b6bb1f0.webp"
+    },
+    {
+      "code": "apohowoah",
+      "emoji": "😬",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/apohowoah-813ef30359de.webp"
+    },
+    {
+      "code": "apolApol",
+      "emoji": "🐱",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/apolApol-b0c328fb7f2d.webp"
+    },
+    {
+      "code": "ApolEgg",
+      "emoji": "🥚",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ApolEgg-be3ab023cb90.webp"
+    },
+    {
+      "code": "Apollobotomy",
+      "emoji": "🤯",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Apollobotomy-9f4e92337661.webp"
+    },
+    {
+      "code": "ApolloHide",
+      "emoji": "🫣",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ApolloHide-3d77369f6934.webp"
+    },
+    {
+      "code": "apolloKill",
+      "emoji": "🐈",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/apolloKill-1b65b1d9a973.webp"
+    },
+    {
+      "code": "apolloLooking",
+      "emoji": "😂",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/apolloLooking-9e685f15404b.webp"
+    },
+    {
+      "code": "apolloLove",
+      "emoji": "❤️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/apolloLove-682245b0b7e6.webp"
+    },
+    {
+      "code": "ApolloLurk",
+      "emoji": "👀",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ApolloLurk-f309694e655d.webp"
+    },
+    {
+      "code": "apolloPray",
+      "emoji": "🙏",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/apolloPray-ec8f71c952fc.webp"
+    },
+    {
+      "code": "apolloSleep",
+      "emoji": "😴",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/apolloSleep-d8a3006013e3.webp"
+    },
+    {
+      "code": "ApolloStairs",
+      "emoji": "🪜",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ApolloStairs-fda266cfb790.webp"
+    },
+    {
+      "code": "ApolloTrauma",
+      "emoji": "😿",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ApolloTrauma-46a6f962414b.webp"
+    },
+    {
+      "code": "ApolloWake",
+      "emoji": "🥱",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ApolloWake-a5ebd6869726.webp"
+    },
+    {
+      "code": "apoLuL",
+      "emoji": "🤣",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/apoLuL-b40d77c5da1a.webp"
+    },
+    {
+      "code": "APPLE",
+      "emoji": "🍎",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/APPLE-3eecf7f8f9fe.webp"
+    },
+    {
+      "code": "AragornHelmet",
+      "emoji": "😫",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AragornHelmet-168d97714059.webp"
+    },
+    {
+      "code": "areyoudonenymn",
+      "emoji": "😑",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/areyoudonenymn-b21e1e971b90.webp"
+    },
+    {
+      "code": "arr",
+      "emoji": "🏴",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/arr-e05ec8e94e8c.webp"
+    },
+    {
+      "code": "Assept",
+      "emoji": "😬",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Assept-47dc9e447274.webp"
+    },
+    {
+      "code": "AURA",
+      "emoji": "✨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AURA-1b0e2cbac6c1.webp"
+    },
+    {
+      "code": "autism",
+      "emoji": "🧩",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/autism-dfc813359253.webp"
+    },
+    {
+      "code": "AverageOfflineChatter",
+      "emoji": "🤦",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AverageOfflineChatter-d01b8a6e3814.webp"
+    },
+    {
+      "code": "Aware",
+      "emoji": "😳",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Aware-0bed614f734b.webp"
+    },
+    {
+      "code": "AwesomeChoke",
+      "emoji": "😵",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AwesomeChoke-cde3be636f7f.webp"
+    },
+    {
+      "code": "AWOOGA",
+      "emoji": "👀",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AWOOGA-32e84e16c613.webp"
+    },
+    {
+      "code": "AWPge",
+      "emoji": "🔫",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AWPge-8daaee003096.webp"
+    },
+    {
+      "code": "AYAYA",
+      "emoji": "😄",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AYAYA-4c6f609a82b5.webp"
+    },
+    {
+      "code": "AYAYACRY",
+      "emoji": "😭",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/AYAYACRY-f58134e3da8d.webp"
+    },
+    {
+      "code": "ayayaJAM",
+      "emoji": "🎧",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ayayaJAM-7830a94f3978.webp"
+    },
+    {
+      "code": "AYAYAS",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/AYAYAS-cd2cde6b03ca.webp"
+    },
+    {
+      "code": "AYAYAWeird",
+      "emoji": "🤨",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/AYAYAWeird-8747f3bd697a.webp"
+    },
+    {
+      "code": "AYOOO",
+      "emoji": "🦍",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/AYOOO-f52b064a4040.webp"
+    },
+    {
+      "code": "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAT",
+      "emoji": "😎",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAT-49a8b280642e.webp"
+    },
+    {
+      "code": "BABE",
+      "emoji": "❤️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BABE-dcfa99a2dbd5.webp"
+    },
+    {
+      "code": "babyFR",
+      "emoji": "👶",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/babyFR-741fe309afd6.webp"
+    },
+    {
+      "code": "Backseatega",
+      "emoji": "📢",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Backseatega-6aa6deb7e65a.webp"
+    },
+    {
+      "code": "Backseating",
+      "emoji": "⌨️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Backseating-e8ebd73f4652.webp"
+    },
+    {
+      "code": "backstreetUncs",
+      "emoji": "🎤",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/backstreetUncs-07f1aada8acc.webp"
+    },
+    {
+      "code": "badkok",
+      "emoji": "😿",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/badkok-e6f0e8b0da18.webp"
+    },
+    {
+      "code": "baj",
+      "emoji": "🤓",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/baj-e1f229f70753.webp"
+    },
+    {
+      "code": "bajing",
+      "emoji": "😭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/bajing-c21000edc133.webp"
+    },
+    {
+      "code": "Bajing",
+      "emoji": "🦐",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Bajing-245b4c7c3e38.webp"
+    },
+    {
+      "code": "Balcony",
+      "emoji": "😁",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Balcony-4d57796fe409.webp"
+    },
+    {
+      "code": "BALDbutthenameislongersoyoucantspamit",
+      "emoji": "😱",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BALDbutthenameislongersoyoucantspamit-616d8165e402.webp"
+    },
+    {
+      "code": "Baldge",
+      "emoji": "👨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Baldge-f59a7d1f4268.webp"
+    },
+    {
+      "code": "BANANA",
+      "emoji": "😐",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BANANA-ff6dc6032bbe.webp"
+    },
+    {
+      "code": "Bananacatrun",
+      "emoji": "🐸",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Bananacatrun-658a21806063.webp"
+    },
+    {
+      "code": "BAND",
+      "emoji": "🎸",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BAND-6788e711bdbb.webp"
+    },
+    {
+      "code": "Bandage",
+      "emoji": "🩹",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Bandage-a1abfd677da1.webp"
+    },
+    {
+      "code": "BANGG",
+      "emoji": "🏀",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BANGG-850901c38088.webp"
+    },
+    {
+      "code": "BANNED",
+      "emoji": "⬛",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/BANNED-63ed7b436e63.webp"
+    },
+    {
+      "code": "BAPPED",
+      "emoji": "💢",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BAPPED-b12574246fa5.webp"
+    },
+    {
+      "code": "Barons",
+      "emoji": "🚩",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Barons-a39ed779aa9c.webp"
+    },
+    {
+      "code": "Barry63",
+      "emoji": "🍺",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Barry63-782177af94d6.webp"
+    },
+    {
+      "code": "Bars",
+      "emoji": "🔥",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Bars-a3ea4f1d7932.webp"
+    },
+    {
+      "code": "BASADO",
+      "emoji": "🇲🇽",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BASADO-d3ad1642dd6e.webp"
+    },
+    {
+      "code": "Based",
+      "emoji": "😎",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Based-ce8fca8d977e.webp"
+    },
+    {
+      "code": "bbCheer",
+      "emoji": "🙌",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/bbCheer-239eac615ab0.webp"
+    },
+    {
+      "code": "BBExplainingHow",
+      "emoji": "🐶",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BBExplainingHow-04a8b2aaf3bd.webp"
+    },
+    {
+      "code": "bbFaint",
+      "emoji": "😵",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/bbFaint-85631c43e269.webp"
+    },
+    {
+      "code": "bbHuggingYou",
+      "emoji": "🫂",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/bbHuggingYou-d4447922f0e0.webp"
+    },
+    {
+      "code": "bbLaugh",
+      "emoji": "😂",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/bbLaugh-07bc3066381e.webp"
+    },
+    {
+      "code": "bbLookUp",
+      "emoji": "🙄",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/bbLookUp-40b0e1017eff.webp"
+    },
+    {
+      "code": "bbParty",
+      "emoji": "🥳",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/bbParty-15004f063bbb.webp"
+    },
+    {
+      "code": "BBQING",
+      "emoji": "🍖",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BBQING-1abb07398920.webp"
+    },
+    {
+      "code": "BeachMouseWaiting",
+      "emoji": "🐭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BeachMouseWaiting-1a40c532ec96.webp"
+    },
+    {
+      "code": "beAlright",
+      "emoji": "😌",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/beAlright-acf8637682e4.webp"
+    },
+    {
+      "code": "BeanPls",
+      "emoji": "🕺",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BeanPls-4fe2e7966e5c.webp"
+    },
+    {
+      "code": "BEAUTIFULMAN",
+      "emoji": "🤡",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BEAUTIFULMAN-b5b052f2d694.webp"
+    },
+    {
+      "code": "BedgeTogether",
+      "emoji": "🛌",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BedgeTogether-b4fc69392480.webp"
+    },
+    {
+      "code": "beeBobble",
+      "emoji": "🐝",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/beeBobble-fb72d27bfab1.webp"
+    },
+    {
+      "code": "BEHOLD",
+      "emoji": "👐",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BEHOLD-bdf9f67c7818.webp"
+    },
+    {
+      "code": "BELIEVERS",
+      "emoji": "🙏",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BELIEVERS-617a64812241.webp"
+    },
+    {
+      "code": "belka",
+      "emoji": "🐿️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/belka-3936c4a61c2a.webp"
+    },
+    {
+      "code": "bench0",
+      "emoji": "🏋️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/bench0-2469fe07af9b.webp"
+    },
+    {
+      "code": "BigDog",
+      "emoji": "⛳️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BigDog-a85e5a55970e.webp"
+    },
+    {
+      "code": "BigHardo",
+      "emoji": "😃",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BigHardo-d43799f68376.webp"
+    },
+    {
+      "code": "bigPog",
+      "emoji": "😲",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/bigPog-a8e3e9d1b9a5.webp"
+    },
+    {
+      "code": "bigTeaTime",
+      "emoji": "☕",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/bigTeaTime-7a022124edc0.webp"
+    },
+    {
+      "code": "BillyArrive",
+      "emoji": "🏃‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BillyArrive-63fac10d5a48.webp"
+    },
+    {
+      "code": "BillyReady",
+      "emoji": "💪",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BillyReady-ba4ecb4cd418.webp"
+    },
+    {
+      "code": "Binoculars",
+      "emoji": "🔭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Binoculars-13b675c7d8e8.webp"
+    },
+    {
+      "code": "Binoculous",
+      "emoji": "🧐",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Binoculous-38ed535f8568.webp"
+    },
+    {
+      "code": "bioxeN",
+      "emoji": "🚁",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/bioxeN-2a295c1ab20c.webp"
+    },
+    {
+      "code": "Birdge",
+      "emoji": "🐦",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Birdge-fb8a2512ba70.webp"
+    },
+    {
+      "code": "BirdLaughingAtYou",
+      "emoji": "👉",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BirdLaughingAtYou-52356871ec3d.webp"
+    },
+    {
+      "code": "birff",
+      "emoji": "🥳",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/birff-6044d579e652.webp"
+    },
+    {
+      "code": "Bitrate",
+      "emoji": "👾",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Bitrate-584b5a99c3d4.webp"
+    },
+    {
+      "code": "Bits-100",
+      "emoji": "💎",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Bits-100-476609bc38b0.webp"
+    },
+    {
+      "code": "BLANKIES",
+      "emoji": "🛌",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BLANKIES-0e1ede6d81a8.webp"
+    },
+    {
+      "code": "blehE",
+      "emoji": "😛",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/blehE-dfcb5e882b56.webp"
+    },
+    {
+      "code": "Blender",
+      "emoji": "🎨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Blender-e7937829d2e0.webp"
+    },
+    {
+      "code": "Blindfold",
+      "emoji": "🙈",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Blindfold-1f0fa271e5ba.webp"
+    },
+    {
+      "code": "Bloons",
+      "emoji": "🎈",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Bloons-323e67299e85.webp"
+    },
+    {
+      "code": "BlowingLeaves",
+      "emoji": "🍂",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BlowingLeaves-1046445a7648.webp"
+    },
+    {
+      "code": "Blush",
+      "emoji": "😊",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Blush-9193bdc02302.webp"
+    },
+    {
+      "code": "Boating",
+      "emoji": "🚣",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Boating-bf26142ce8ae.webp"
+    },
+    {
+      "code": "boink",
+      "emoji": "🐈",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/boink-5434a44b4d5f.webp"
+    },
+    {
+      "code": "bombaware",
+      "emoji": "😰",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/bombaware-8b83fd037a60.webp"
+    },
+    {
+      "code": "bongoTap",
+      "emoji": "🥁",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/bongoTap-815eff14432b.webp"
+    },
+    {
+      "code": "BONK",
+      "emoji": "🔨",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/BONK-38233758a34f.webp"
+    },
+    {
+      "code": "bonkFR",
+      "emoji": "🔨",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/bonkFR-c72652d1772a.webp"
+    },
+    {
+      "code": "BOOBAPEEK",
+      "emoji": "🫣",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BOOBAPEEK-d2a1a324bb14.webp"
+    },
+    {
+      "code": "BOOBEST",
+      "emoji": "🤵",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BOOBEST-743b151652a7.webp"
+    },
+    {
+      "code": "BOROMIR",
+      "emoji": "🧔‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BOROMIR-379a258654e2.webp"
+    },
+    {
+      "code": "BOTHA",
+      "emoji": "🤵",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BOTHA-64125068f961.webp"
+    },
+    {
+      "code": "BrainDead",
+      "emoji": "😢",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BrainDead-bcc83ef388f3.webp"
+    },
+    {
+      "code": "BrainRot",
+      "emoji": "🤪",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BrainRot-cd753eac457c.webp"
+    },
+    {
+      "code": "BRAVOVINCE",
+      "emoji": "👏",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BRAVOVINCE-de0779959c9f.webp"
+    },
+    {
+      "code": "BREH",
+      "emoji": "😐",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BREH-052aa05b055c.webp"
+    },
+    {
+      "code": "BROKIE",
+      "emoji": "🍑",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BROKIE-44854b240747.webp"
+    },
+    {
+      "code": "Bruh",
+      "emoji": "😑",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Bruh-e16f06d95524.webp"
+    },
+    {
+      "code": "BRUHMM",
+      "emoji": "🤔",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BRUHMM-90c320378ef2.webp"
+    },
+    {
+      "code": "buda",
+      "emoji": "😏",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/buda-eefc651e0f72.webp"
+    },
+    {
+      "code": "BULLSHIT",
+      "emoji": "🐂",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BULLSHIT-3faefa5bb582.webp"
+    },
+    {
+      "code": "BULPES",
+      "emoji": "💀",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BULPES-3fd927398bd9.webp"
+    },
+    {
+      "code": "BUNNY",
+      "emoji": "🐰",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BUNNY-18d76a9466df.webp"
+    },
+    {
+      "code": "BurgerTime",
+      "emoji": "🍳",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BurgerTime-ff1355ca6d00.webp"
+    },
+    {
+      "code": "burgir",
+      "emoji": "🍔",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/burgir-8e850eaaedd4.webp"
+    },
+    {
+      "code": "BUS",
+      "emoji": "😩",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BUS-d016bbf27287.webp"
+    },
+    {
+      "code": "BUYNOW",
+      "emoji": "📈",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/BUYNOW-30fa776580b1.webp"
+    },
+    {
+      "code": "CALLIT",
+      "emoji": "🪙",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CALLIT-ac47acfacfd0.webp"
+    },
+    {
+      "code": "CAMON",
+      "emoji": "🥁",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CAMON-3b1c08af958c.webp"
+    },
+    {
+      "code": "carrotYummy",
+      "emoji": "🥕",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/carrotYummy-e44b7f985b67.webp"
+    },
+    {
+      "code": "CatBanger",
+      "emoji": "🤘",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CatBanger-372b59ba9eec.webp"
+    },
+    {
+      "code": "catBite",
+      "emoji": "😼",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/catBite-afad317f93d3.webp"
+    },
+    {
+      "code": "catCry",
+      "emoji": "😢",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/catCry-2e6edf06ed41.webp"
+    },
+    {
+      "code": "catDisco",
+      "emoji": "🕺",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/catDisco-046cb95edf14.webp"
+    },
+    {
+      "code": "Cateatinbananahehappy",
+      "emoji": "🍌",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Cateatinbananahehappy-636c1deb6a65.webp"
+    },
+    {
+      "code": "catFlip",
+      "emoji": "🤸‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/catFlip-5c9bea974839.webp"
+    },
+    {
+      "code": "Catge",
+      "emoji": "🐱",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/Catge-2da0907e114d.webp"
+    },
+    {
+      "code": "CatGe",
+      "emoji": "🐸",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/CatGe-1cdd722fe2bd.webp"
+    },
+    {
+      "code": "CatGuitar",
+      "emoji": "🎸",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CatGuitar-032786a8aee2.webp"
+    },
+    {
+      "code": "CatHandshake",
+      "emoji": "🤝",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CatHandshake-ed2b049b4d39.webp"
+    },
+    {
+      "code": "catHug",
+      "emoji": "🫂",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/catHug-35aa179f530d.webp"
+    },
+    {
+      "code": "catHyper",
+      "emoji": "🙀",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/catHyper-4235ef8bf74f.webp"
+    },
+    {
+      "code": "catKebab",
+      "emoji": "🌯",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/catKebab-629cabe7ef1e.webp"
+    },
+    {
+      "code": "catNOD",
+      "emoji": "✅",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/catNOD-7eeffb97edbf.webp"
+    },
+    {
+      "code": "CatPiano",
+      "emoji": "🎹",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CatPiano-20aca9433a36.webp"
+    },
+    {
+      "code": "catPunch",
+      "emoji": "👊",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/catPunch-3248dbc91503.webp"
+    },
+    {
+      "code": "catRose",
+      "emoji": "🌹",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/catRose-be5f1165e5ae.webp"
+    },
+    {
+      "code": "catSighButLookingToTheRightSoYouCanPutdashAfterIt",
+      "emoji": "😮",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/catSighButLookingToTheRightSoYouCanPutdashAfterIt-faf6896e2c3b.webp"
+    },
+    {
+      "code": "catSNIFFA",
+      "emoji": "👃",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/catSNIFFA-4af3bfa7cbef.webp"
+    },
+    {
+      "code": "CAUGHT0",
+      "emoji": "🙌",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CAUGHT0-52580a2e5da7.webp"
+    },
+    {
+      "code": "Chatge",
+      "emoji": "💬",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Chatge-e8d8cbab224b.webp"
+    },
+    {
+      "code": "Chatting",
+      "emoji": "💬",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Chatting-33cf046c6216.webp"
+    },
+    {
+      "code": "CHEAT",
+      "emoji": "🟩",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CHEAT-a7a698fed31b.webp"
+    },
+    {
+      "code": "CHEER",
+      "emoji": "📣",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CHEER-4b431f42a494.webp"
+    },
+    {
+      "code": "Chiefs",
+      "emoji": "🚩",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Chiefs-47054f409017.webp"
+    },
+    {
+      "code": "CHILLMAN",
+      "emoji": "🧊",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CHILLMAN-d2c0d84f8699.webp"
+    },
+    {
+      "code": "chokeFR",
+      "emoji": "🥵",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/chokeFR-f665f91e57f0.webp"
+    },
+    {
+      "code": "Cinema",
+      "emoji": "🎬",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Cinema-71766ab8eefb.webp"
+    },
+    {
+      "code": "CinemaFail",
+      "emoji": "🤦",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CinemaFail-ecd05a699c6f.webp"
+    },
+    {
+      "code": "Citto",
+      "emoji": "🩷",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Citto-a18e9e546199.webp"
+    },
+    {
+      "code": "clanka",
+      "emoji": "🤖",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/clanka-6a9095b1de7e.webp"
+    },
+    {
+      "code": "ClankerLivesMatter",
+      "emoji": "✊",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ClankerLivesMatter-d3803509fb8f.webp"
+    },
+    {
+      "code": "Clap",
+      "emoji": "👏",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Clap-bde11008a854.webp"
+    },
+    {
+      "code": "CleanTheNymN",
+      "emoji": "🧼",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CleanTheNymN-0dd464ec96aa.webp"
+    },
+    {
+      "code": "clownFiesta",
+      "emoji": "🤡",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/clownFiesta-97a07ca235cf.webp"
+    },
+    {
+      "code": "Clueless",
+      "emoji": "🤷",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Clueless-377898c3e24e.webp"
+    },
+    {
+      "code": "CluelessMask",
+      "emoji": "🎭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CluelessMask-b26d575e0063.webp"
+    },
+    {
+      "code": "CoffeeTime",
+      "emoji": "☕️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CoffeeTime-9517650d8a14.webp"
+    },
+    {
+      "code": "cogFR",
+      "emoji": "⚙️",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/cogFR-730684e22e22.webp"
+    },
+    {
+      "code": "COGGERS",
+      "emoji": "⚙",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/COGGERS-dc06ce3a8c1c.webp"
+    },
+    {
+      "code": "CokeShakey",
+      "emoji": "🥤",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CokeShakey-a0bc0ee08760.webp"
+    },
+    {
+      "code": "Colat",
+      "emoji": "🐰",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Colat-f60294c871f5.webp"
+    },
+    {
+      "code": "Coldge",
+      "emoji": "🥶",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Coldge-86954be8f971.webp"
+    },
+    {
+      "code": "Comfi",
+      "emoji": "😌",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Comfi-340b1413346e.webp"
+    },
+    {
+      "code": "Concerned",
+      "emoji": "😟",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Concerned-5ffc56a3d93e.webp"
+    },
+    {
+      "code": "ConcernFroge",
+      "emoji": "😟",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ConcernFroge-9a65eda50d52.webp"
+    },
+    {
+      "code": "Confetti",
+      "emoji": "🎊",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Confetti-0c3f5e47a78c.webp"
+    },
+    {
+      "code": "cooperDespair",
+      "emoji": "😩",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/cooperDespair-c3d03bd376cf.webp"
+    },
+    {
+      "code": "cooperSad",
+      "emoji": "😭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/cooperSad-66c504477e85.webp"
+    },
+    {
+      "code": "Copernicus",
+      "emoji": "🔭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Copernicus-ccbc1f4bc353.webp"
+    },
+    {
+      "code": "COPIUM",
+      "emoji": "😷",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/COPIUM-aef6c937d6d5.webp"
+    },
+    {
+      "code": "COPIUMOVERDOSE",
+      "emoji": "😷",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/COPIUMOVERDOSE-493ea69e41ed.webp"
+    },
+    {
+      "code": "COPIUMSHIPMENT",
+      "emoji": "🚢",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/COPIUMSHIPMENT-fd64482c12ec.webp"
+    },
+    {
+      "code": "COPIUMTRUCK",
+      "emoji": "🚛",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/COPIUMTRUCK-d0b35547869d.webp"
+    },
+    {
+      "code": "Corncerned",
+      "emoji": "🌽",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Corncerned-6b2271f9b311.webp"
+    },
+    {
+      "code": "Corpa",
+      "emoji": "💼",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Corpa-a8b5d16b9ce8.webp"
+    },
+    {
+      "code": "CORTISOL",
+      "emoji": "📈",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CORTISOL-8fa228f904a7.webp"
+    },
+    {
+      "code": "CountryBoys",
+      "emoji": "🌽",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CountryBoys-1407544fd875.webp"
+    },
+    {
+      "code": "Countup",
+      "emoji": "🔢",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Countup-cf6104ddc4e6.webp"
+    },
+    {
+      "code": "coupleofaliens",
+      "emoji": "👽",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/coupleofaliens-73f6922496cd.webp"
+    },
+    {
+      "code": "cozyFR",
+      "emoji": "🛋",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/cozyFR-705835d0a561.webp"
+    },
+    {
+      "code": "crabPls",
+      "emoji": "🦀",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/crabPls-b9dd20b53d35.webp"
+    },
+    {
+      "code": "CrazyIWasCrazyOnceTheyPutMeInARoomARubberroomARubberroomFilledWithRatsRatsMakeMeGoCrazy",
+      "emoji": "🐀",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CrazyIWasCrazyOnceTheyPutMeInARoomARubberroomARubberroomFilledWi-13ccbba64bd9.webp"
+    },
+    {
+      "code": "creaturevibE",
+      "emoji": "😁",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/creaturevibE-e39e5034b48e.webp"
+    },
+    {
+      "code": "cruising",
+      "emoji": "🏍️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/cruising-66aad008d814.webp"
+    },
+    {
+      "code": "cryFR",
+      "emoji": "🥺",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/cryFR-5c7ec6ce1efb.webp"
+    },
+    {
+      "code": "cultFR",
+      "emoji": "🕯",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/cultFR-3860c1b2ccc5.webp"
+    },
+    {
+      "code": "CUMMIES",
+      "emoji": "💦",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CUMMIES-c1205d75a3b7.webp"
+    },
+    {
+      "code": "CUMtember",
+      "emoji": "🥛",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CUMtember-38f5962f20ae.webp"
+    },
+    {
+      "code": "CUNGUS",
+      "emoji": "🤓",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/CUNGUS-080671427e2e.webp"
+    },
+    {
+      "code": "cursePls",
+      "emoji": "⛧",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/cursePls-380a2029508d.webp"
+    },
+    {
+      "code": "Cute",
+      "emoji": "🤲",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Cute-87bc6cda0a96.webp"
+    },
+    {
+      "code": "DaBaby",
+      "emoji": "🍼",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DaBaby-d98f481d8ef7.webp"
+    },
+    {
+      "code": "DAMNMAN",
+      "emoji": "😔",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DAMNMAN-59727e225c55.webp"
+    },
+    {
+      "code": "DankChat",
+      "emoji": "🔨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DankChat-6284d5ce15cc.webp"
+    },
+    {
+      "code": "DankFixed",
+      "emoji": "🔧",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DankFixed-323a9be47c71.webp"
+    },
+    {
+      "code": "DankG",
+      "emoji": "📝",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DankG-d603cf4021f1.webp"
+    },
+    {
+      "code": "dankHat",
+      "emoji": "👒",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/dankHat-bc0cfd6e7a4d.webp"
+    },
+    {
+      "code": "DankMap",
+      "emoji": "🗺️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DankMap-8324689708a6.webp"
+    },
+    {
+      "code": "DankStick",
+      "emoji": "🌿",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DankStick-7de1225c688d.webp"
+    },
+    {
+      "code": "DarkerHands",
+      "emoji": "👐",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DarkerHands-6a5cdb672fdd.webp"
+    },
+    {
+      "code": "Deafge",
+      "emoji": "📢",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Deafge-4df5ea0fcedc.webp"
+    },
+    {
+      "code": "DEAL",
+      "emoji": "🤝",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DEAL-63ca68292e35.webp"
+    },
+    {
+      "code": "DeathGripge",
+      "emoji": "🤏",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DeathGripge-e84347a7daa4.webp"
+    },
+    {
+      "code": "DEFIBMAN",
+      "emoji": "⚡",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DEFIBMAN-3f98f85156ab.webp"
+    },
+    {
+      "code": "Degloved",
+      "emoji": "😨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Degloved-3d1e222a2281.webp"
+    },
+    {
+      "code": "DEI",
+      "emoji": "⬅",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DEI-c485aa67f790.webp"
+    },
+    {
+      "code": "DEIshroom",
+      "emoji": "🍄",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DEIshroom-ad7cedadc827.webp"
+    },
+    {
+      "code": "DemonCat",
+      "emoji": "😈",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DemonCat-66f1a279bf42.webp"
+    },
+    {
+      "code": "Dentris",
+      "emoji": "🕹️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Dentris-362db0ae6e12.webp"
+    },
+    {
+      "code": "despairFR",
+      "emoji": "😨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/despairFR-e55af3d26178.webp"
+    },
+    {
+      "code": "Despairge",
+      "emoji": "🌑",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Despairge-317402a87e0d.webp"
+    },
+    {
+      "code": "DEWIT",
+      "emoji": "😈",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DEWIT-a7c17ffdec11.webp"
+    },
+    {
+      "code": "DiedOfHeat",
+      "emoji": "🥵",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DiedOfHeat-197a92433791.webp"
+    },
+    {
+      "code": "DIESOFFRAMES",
+      "emoji": "😒",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DIESOFFRAMES-13026a95dd6c.webp"
+    },
+    {
+      "code": "DinkDonk",
+      "emoji": "🔔",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DinkDonk-9288089e0392.webp"
+    },
+    {
+      "code": "DinnerTime",
+      "emoji": "🍴",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DinnerTime-33a2228e9380.webp"
+    },
+    {
+      "code": "DinoBlush",
+      "emoji": "😊",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DinoBlush-95f04f089298.webp"
+    },
+    {
+      "code": "div44",
+      "emoji": "😲",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/div44-51e2468ca421.webp"
+    },
+    {
+      "code": "DNDing",
+      "emoji": "🎲",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DNDing-fd9a215860e7.webp"
+    },
+    {
+      "code": "dogArrive",
+      "emoji": "🐕",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/dogArrive-85afac78f84a.webp"
+    },
+    {
+      "code": "DonkAndDonker",
+      "emoji": "🗡️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DonkAndDonker-fe2ef519360c.webp"
+    },
+    {
+      "code": "DonkChat",
+      "emoji": "⌨️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DonkChat-d9b6fd362201.webp"
+    },
+    {
+      "code": "donkDriving",
+      "emoji": "🏎️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/donkDriving-5cbe7d0b8337.webp"
+    },
+    {
+      "code": "donkMiner",
+      "emoji": "⛏",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/donkMiner-cb85c80010ab.webp"
+    },
+    {
+      "code": "donkReading",
+      "emoji": "📖",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/donkReading-b9b3c588251e.webp"
+    },
+    {
+      "code": "donkRun",
+      "emoji": "🏃‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/donkRun-0d7ed4857b65.webp"
+    },
+    {
+      "code": "DonkTrio",
+      "emoji": "👪",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DonkTrio-e3ea89069d4f.webp"
+    },
+    {
+      "code": "donkWalk",
+      "emoji": "🚶",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/donkWalk-0ac226d0cf28.webp"
+    },
+    {
+      "code": "DonkWall",
+      "emoji": "🧱",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DonkWall-9645a8c05c10.webp"
+    },
+    {
+      "code": "DonoTime",
+      "emoji": "💸",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DonoTime-7bb139952a0f.webp"
+    },
+    {
+      "code": "Dooma",
+      "emoji": "🍑",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Dooma-a5fb3f5dff2b.webp"
+    },
+    {
+      "code": "DOOMAZZZ",
+      "emoji": "🤢",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DOOMAZZZ-babce1fd8973.webp"
+    },
+    {
+      "code": "DOUBTERS",
+      "emoji": "🤫",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DOUBTERS-0caf6ef0d787.webp"
+    },
+    {
+      "code": "DougDimmadomeOwnerOfTheDimmsdaleDimmadomeLookingOutHisDimmsdaleDimmadomeLookingOutSpongebobsWindowAndKnucklesFtDanteDOIT",
+      "emoji": "🖼️",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/DougDimmadomeOwnerOfTheDimmsdaleDimmadomeLookingOutHisDimmsdaleD-2fdeb0293ef4.webp"
+    },
+    {
+      "code": "DOYOUFEELTHEWEIGHTOFYOURSINSDOESITHURTDOESGODSJUDGEMENTFILLYOUWITHGUILTTORMENTTHEYRECOMINGTHEYRECOMI",
+      "emoji": "👁️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DOYOUFEELTHEWEIGHTOFYOURSINSDOESITHURTDOESGODSJUDGEMENTFILLYOUWI-24d2a4749d62.webp"
+    },
+    {
+      "code": "DragonDeez",
+      "emoji": "🐉",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DragonDeez-07389222e6ca.webp"
+    },
+    {
+      "code": "DRILL",
+      "emoji": "🏗️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DRILL-ea3177def60e.webp"
+    },
+    {
+      "code": "DRUNK",
+      "emoji": "🥴",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DRUNK-dd943c32536f.webp"
+    },
+    {
+      "code": "duckPls",
+      "emoji": "🦆",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/duckPls-c0315a68affb.webp"
+    },
+    {
+      "code": "dumbleShrug",
+      "emoji": "🤷",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/dumbleShrug-32b233551fb7.webp"
+    },
+    {
+      "code": "DumbVissx",
+      "emoji": "😆",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/DumbVissx-135396b242c0.webp"
+    },
+    {
+      "code": "dwerk",
+      "emoji": "🥭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/dwerk-4b223500d200.webp"
+    },
+    {
+      "code": "EATO",
+      "emoji": "😋",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/EATO-32f03a436e72.webp"
+    },
+    {
+      "code": "EatTheMinus",
+      "emoji": "🍽️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/EatTheMinus-8c07a6560a91.webp"
+    },
+    {
+      "code": "eda",
+      "emoji": "🐹",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/eda-0ed3a343a5df.webp"
+    },
+    {
+      "code": "Eddie",
+      "emoji": "🙋‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Eddie-e468fc10b3cf.webp"
+    },
+    {
+      "code": "EDM",
+      "emoji": "📊",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/EDM-2d8e9b722144.webp"
+    },
+    {
+      "code": "eeping",
+      "emoji": "😴",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/eeping-eb89aba6a9d0.webp"
+    },
+    {
+      "code": "EggCat",
+      "emoji": "🥚",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/EggCat-8578870a6902.webp"
+    },
+    {
+      "code": "ELINA_btw",
+      "emoji": "🦈",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ELINA_btw-58e5e0525083.webp"
+    },
+    {
+      "code": "ElNoSabe",
+      "emoji": "🇲🇽",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ElNoSabe-0760d7265888.webp"
+    },
+    {
+      "code": "emm",
+      "emoji": "🤔",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/emm-ca9c3e55b8cf.webp"
+    },
+    {
+      "code": "emoneyFiles",
+      "emoji": "🧍‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/emoneyFiles-c6cd99c7613f.webp"
+    },
+    {
+      "code": "emoneyGassy",
+      "emoji": "💨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/emoneyGassy-63cf309f0df8.webp"
+    },
+    {
+      "code": "emoneyNonverbal",
+      "emoji": "🏀",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/emoneyNonverbal-eba5a5f00191.webp"
+    },
+    {
+      "code": "emoneyTesticularTorsion",
+      "emoji": "🔄",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/emoneyTesticularTorsion-2750d9e83223.webp"
+    },
+    {
+      "code": "ERP",
+      "emoji": "💩",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ERP-e902880559ad.webp"
+    },
+    {
+      "code": "evilNabi",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/evilNabi-1e627bcf66b2.webp"
+    },
+    {
+      "code": "eww",
+      "emoji": "🤢",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/eww-562ce4e63a13.webp"
+    },
+    {
+      "code": "Excel",
+      "emoji": "📊",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Excel-69dc18aa7431.webp"
+    },
+    {
+      "code": "EXPLAINING",
+      "emoji": "🗣️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/EXPLAINING-9597290af98f.webp"
+    },
+    {
+      "code": "Explosion",
+      "emoji": "💥",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Explosion-a28bcd5b5c21.webp"
+    },
+    {
+      "code": "Exquisite",
+      "emoji": "🍷",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Exquisite-b3f47bfc2aad.webp"
+    },
+    {
+      "code": "ezFR",
+      "emoji": "🤵",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/ezFR-254c4a6deb3a.webp"
+    },
+    {
+      "code": "FacePalm",
+      "emoji": "🤦‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FacePalm-f86cc0d55ebb.webp"
+    },
+    {
+      "code": "FAFA",
+      "emoji": "🌿",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FAFA-84a2ae449400.webp"
+    },
+    {
+      "code": "FailFish",
+      "emoji": "🤦‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FailFish-3b01e31ab273.webp"
+    },
+    {
+      "code": "fallDamage",
+      "emoji": "📉",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/fallDamage-b730d7bba267.webp"
+    },
+    {
+      "code": "fallFR",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/fallFR-19c6c3f2482c.webp"
+    },
+    {
+      "code": "FatFuck",
+      "emoji": "🐧",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FatFuck-e494a274f9b0.webp"
+    },
+    {
+      "code": "FedxQc",
+      "emoji": "📦",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FedxQc-db479574befd.webp"
+    },
+    {
+      "code": "FeelsADHDMan",
+      "emoji": "🎩",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FeelsADHDMan-86c9ee18ac32.webp"
+    },
+    {
+      "code": "FeelsBadMan",
+      "emoji": "☹",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/FeelsBadMan-b5b7bd39c249.webp"
+    },
+    {
+      "code": "FeelsBitrateMan",
+      "emoji": "☹",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FeelsBitrateMan-d0f2f0720803.webp"
+    },
+    {
+      "code": "FeelsBlackScreen",
+      "emoji": "📺",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FeelsBlackScreen-853526f02d54.webp"
+    },
+    {
+      "code": "FeelsDabMan",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/FeelsDabMan-1df85a1372c5.webp"
+    },
+    {
+      "code": "FeelsGlitchMan",
+      "emoji": "🥴",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FeelsGlitchMan-c83e14638723.webp"
+    },
+    {
+      "code": "FeelsLagMan",
+      "emoji": "⏳",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FeelsLagMan-e242dafd113e.webp"
+    },
+    {
+      "code": "FeelsLateMan",
+      "emoji": "🐢",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FeelsLateMan-ad8b12690f9b.webp"
+    },
+    {
+      "code": "FeelsOldMan",
+      "emoji": "👴",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FeelsOldMan-9438bc893a97.webp"
+    },
+    {
+      "code": "FeelsRectangleMan",
+      "emoji": "🟦",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FeelsRectangleMan-bf6453c29cfb.webp"
+    },
+    {
+      "code": "FeelsStrongMan",
+      "emoji": "🥹",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FeelsStrongMan-d3438536e7e8.webp"
+    },
+    {
+      "code": "FEMLY",
+      "emoji": "👨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FEMLY-c19734c8486a.webp"
+    },
+    {
+      "code": "feralDance",
+      "emoji": "🦁",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/feralDance-9751348927bf.webp"
+    },
+    {
+      "code": "Fiddy",
+      "emoji": "🖕",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Fiddy-9006dec8ee22.webp"
+    },
+    {
+      "code": "firework3",
+      "emoji": "🎆",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/firework3-9952619d8be8.webp"
+    },
+    {
+      "code": "Fireworks",
+      "emoji": "🎆",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Fireworks-0ef5eef1ec45.webp"
+    },
+    {
+      "code": "FirstTimeChadder",
+      "emoji": "🗿",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FirstTimeChadder-abd2b9ff8954.webp"
+    },
+    {
+      "code": "FirstTimeome44butthenameislongersoyoucantspamit",
+      "emoji": "👅",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FirstTimeome44butthenameislongersoyoucantspamit-41da5125cfd5.webp"
+    },
+    {
+      "code": "FLIPMYBURGER",
+      "emoji": "🍳",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FLIPMYBURGER-08bfb89c1c93.webp"
+    },
+    {
+      "code": "Flower0",
+      "emoji": "🌹",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Flower0-ffe5d6054eaf.webp"
+    },
+    {
+      "code": "FO",
+      "emoji": "🍿",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FO-4335cf985c41.webp"
+    },
+    {
+      "code": "foodSNIFFA",
+      "emoji": "👃",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/foodSNIFFA-64ab3d18e46f.webp"
+    },
+    {
+      "code": "forsenLaughingAtYou",
+      "emoji": "👉️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/forsenLaughingAtYou-df23466e4042.webp"
+    },
+    {
+      "code": "founderr",
+      "emoji": "🥇",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/founderr-ce78656e2876.webp"
+    },
+    {
+      "code": "frfr",
+      "emoji": "📖",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/frfr-56f5bd7d8957.webp"
+    },
+    {
+      "code": "FRICK",
+      "emoji": "🖕",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/FRICK-8b5aa504a2b1.webp"
+    },
+    {
+      "code": "friendSHIP",
+      "emoji": "⛵️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/friendSHIP-c2b1a52d1503.webp"
+    },
+    {
+      "code": "FRpls",
+      "emoji": "🐱",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/FRpls-32393deabe37.webp"
+    },
+    {
+      "code": "GabenGet",
+      "emoji": "🤑",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/GabenGet-a0e3945693dc.webp"
+    },
+    {
+      "code": "GachiPls",
+      "emoji": "♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/GachiPls-233ffcae5378.webp"
+    },
+    {
+      "code": "GAMBAADDICT",
+      "emoji": "🎰",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/GAMBAADDICT-8b715dca7cc7.webp"
+    },
+    {
+      "code": "GAMING",
+      "emoji": "🎮",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/GAMING-206f6cca1f31.webp"
+    },
+    {
+      "code": "Gasp",
+      "emoji": "😮",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Gasp-023a6a725e55.webp"
+    },
+    {
+      "code": "GENIUS",
+      "emoji": "🧠",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/GENIUS-52c7872ee4eb.webp"
+    },
+    {
+      "code": "GEOGUESSR",
+      "emoji": "🗺️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/GEOGUESSR-23463d845eae.webp"
+    },
+    {
+      "code": "Giggle",
+      "emoji": "🤭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Giggle-fd8b9ea1c592.webp"
+    },
+    {
+      "code": "gigl",
+      "emoji": "🤭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/gigl-fff2b1e14ccd.webp"
+    },
+    {
+      "code": "glizzyR",
+      "emoji": "🌭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/glizzyR-c90ae166c74c.webp"
+    },
+    {
+      "code": "GlobalElite",
+      "emoji": "🏆",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/GlobalElite-e3d6e29499cb.webp"
+    },
+    {
+      "code": "GnomeFR",
+      "emoji": "🎅",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/GnomeFR-e5f92e295ddd.webp"
+    },
+    {
+      "code": "GoldfishTime",
+      "emoji": "🐟",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/GoldfishTime-ee3018f5612c.webp"
+    },
+    {
+      "code": "GoodNightHomie",
+      "emoji": "😴",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/GoodNightHomie-2cf1c447e9d7.webp"
+    },
+    {
+      "code": "GOODSHIT",
+      "emoji": "💩",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/GOODSHIT-ce33f03ec770.webp"
+    },
+    {
+      "code": "GoslingDrive",
+      "emoji": "🚗",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/GoslingDrive-cd38e4a53f96.webp"
+    },
+    {
+      "code": "Grab1",
+      "emoji": "🖐",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Grab1-4487de8f7944.webp"
+    },
+    {
+      "code": "granny",
+      "emoji": "👵",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/granny-4c4a4f427168.webp"
+    },
+    {
+      "code": "GREEDY",
+      "emoji": "🤑",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/GREEDY-cf8a33bdd20b.webp"
+    },
+    {
+      "code": "GreenGrandfather",
+      "emoji": "👴",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/GreenGrandfather-db4ad1642a10.webp"
+    },
+    {
+      "code": "gremlin",
+      "emoji": "😼",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/gremlin-564c90906723.webp"
+    },
+    {
+      "code": "grinFR",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/grinFR-b18783696bf8.webp"
+    },
+    {
+      "code": "groupSUM",
+      "emoji": "🕯",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/groupSUM-4132b3492396.webp"
+    },
+    {
+      "code": "grrr",
+      "emoji": "😡",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/grrr-5c432be5a94b.webp"
+    },
+    {
+      "code": "guh",
+      "emoji": "😧",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/guh-23c42d306d98.webp"
+    },
+    {
+      "code": "Haku",
+      "emoji": "🦎",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Haku-4427118716f4.webp"
+    },
+    {
+      "code": "Hakuu",
+      "emoji": "🦎",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Hakuu-0129eafb64c8.webp"
+    },
+    {
+      "code": "hangupFR",
+      "emoji": "📞",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/hangupFR-1f30352fdde1.webp"
+    },
+    {
+      "code": "Hapje",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/Hapje-7fa7be0f96a8.webp"
+    },
+    {
+      "code": "HAPPIES",
+      "emoji": "😸",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/HAPPIES-16a9a7745dbf.webp"
+    },
+    {
+      "code": "HAPPY",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/HAPPY-5c1159a8adb5.webp"
+    },
+    {
+      "code": "happyFR",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/happyFR-7d77e017e9dc.webp"
+    },
+    {
+      "code": "Headbang",
+      "emoji": "🤘",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Headbang-e5fead48a8ba.webp"
+    },
+    {
+      "code": "HelpMe",
+      "emoji": "🆘",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/HelpMe-a965e9f3d781.webp"
+    },
+    {
+      "code": "hes0",
+      "emoji": "☝️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/hes0-8caeeb568a98.webp"
+    },
+    {
+      "code": "hesGay",
+      "emoji": "🏳",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/hesGay-0807c5c4bed7.webp"
+    },
+    {
+      "code": "hesOffline",
+      "emoji": "😔",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/hesOffline-82160748f734.webp"
+    },
+    {
+      "code": "HODOR",
+      "emoji": "🚪",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/HODOR-8d8324c2bf77.webp"
+    },
+    {
+      "code": "HomieKiss",
+      "emoji": "😘",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/HomieKiss-3364f4b49267.webp"
+    },
+    {
+      "code": "HoneyBirb",
+      "emoji": "🦜",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/HoneyBirb-3ed78bbc31f8.webp"
+    },
+    {
+      "code": "hoodieU",
+      "emoji": "👤",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/hoodieU-399a245aafcb.webp"
+    },
+    {
+      "code": "HORSING",
+      "emoji": "🐎",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/HORSING-7bc2e85e7182.webp"
+    },
+    {
+      "code": "HUH",
+      "emoji": "🐢",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/HUH-56a56f8cc1e0.webp"
+    },
+    {
+      "code": "HyperViolinTime",
+      "emoji": "🎻",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/HyperViolinTime-327d504d2bd8.webp"
+    },
+    {
+      "code": "Idiot",
+      "emoji": "💔",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Idiot-fa6e50f7feaa.webp"
+    },
+    {
+      "code": "IFISPEAK",
+      "emoji": "🤐",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/IFISPEAK-22c9710454ea.webp"
+    },
+    {
+      "code": "IHaveAQuestion",
+      "emoji": "🙋",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/IHaveAQuestion-33812e5581a2.webp"
+    },
+    {
+      "code": "IMGONNACUM",
+      "emoji": "😫",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/IMGONNACUM-adebd780e905.webp"
+    },
+    {
+      "code": "imRight",
+      "emoji": "☝️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/imRight-7cb6907f0ab7.webp"
+    },
+    {
+      "code": "imwaiting",
+      "emoji": "⌚",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/imwaiting-cbf4d24e97a1.webp"
+    },
+    {
+      "code": "ITARRIVED",
+      "emoji": "📦",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ITARRIVED-8352aa0b8a81.webp"
+    },
+    {
+      "code": "IVEPLAYEDTHESEGAMESBEFORE",
+      "emoji": "🦑",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/IVEPLAYEDTHESEGAMESBEFORE-e7a76f3b6183.webp"
+    },
+    {
+      "code": "Jammies",
+      "emoji": "🕺",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/Jammies-ba33970181ac.webp"
+    },
+    {
+      "code": "jorkin",
+      "emoji": "🐒",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/jorkin-364f645243fd.webp"
+    },
+    {
+      "code": "jumpFR",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/jumpFR-464de66661da.webp"
+    },
+    {
+      "code": "KABOOM",
+      "emoji": "💥",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/KABOOM-38d1802632f7.webp"
+    },
+    {
+      "code": "keanuLeave",
+      "emoji": "🚶‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/keanuLeave-0795170d28a1.webp"
+    },
+    {
+      "code": "kek",
+      "emoji": "😆",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/kek-1439409b12a6.webp"
+    },
+    {
+      "code": "KEKInsane",
+      "emoji": "🤣",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/KEKInsane-653f1c6b312f.webp"
+    },
+    {
+      "code": "KEKWait",
+      "emoji": "✋",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/KEKWait-d710c3bc959d.webp"
+    },
+    {
+      "code": "KEKWalk",
+      "emoji": "🚶‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/KEKWalk-1bfa955b61ec.webp"
+    },
+    {
+      "code": "KickTime",
+      "emoji": "🟢",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/KickTime-f34ee3529d6e.webp"
+    },
+    {
+      "code": "KirbyPunch",
+      "emoji": "👊",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/KirbyPunch-d93673869b9c.webp"
+    },
+    {
+      "code": "kiryuArrive",
+      "emoji": "🚶",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/kiryuArrive-dd2156f775a1.webp"
+    },
+    {
+      "code": "KKonaW",
+      "emoji": "🤠",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/KKonaW-a45feabb3c26.webp"
+    },
+    {
+      "code": "KoroneWakeUp",
+      "emoji": "☀️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/KoroneWakeUp-bb4170d74465.webp"
+    },
+    {
+      "code": "ladderFR",
+      "emoji": "🪜",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/ladderFR-2a6040561eb3.webp"
+    },
+    {
+      "code": "LastTimeChatter",
+      "emoji": "🚫",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/LastTimeChatter-871b4cdc034b.webp"
+    },
+    {
+      "code": "lateFR",
+      "emoji": "⌚",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/lateFR-a33d675296b1.webp"
+    },
+    {
+      "code": "LBow",
+      "emoji": "🏹",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/LBow-4d5d71e87c9e.webp"
+    },
+    {
+      "code": "LCuddle",
+      "emoji": "🫂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/LCuddle-dc13b725f3e6.webp"
+    },
+    {
+      "code": "Learning",
+      "emoji": "✍",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Learning-f56a9c3ab813.webp"
+    },
+    {
+      "code": "Leddit",
+      "emoji": "🧠",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/Leddit-2f1090d6d51c.webp"
+    },
+    {
+      "code": "LeMickey",
+      "emoji": "🐭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/LeMickey-75d2d39724b2.webp"
+    },
+    {
+      "code": "LGen",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/LGen-bc438bacc9df.webp"
+    },
+    {
+      "code": "LGhost",
+      "emoji": "👻",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/LGhost-e6996c2b0a3b.webp"
+    },
+    {
+      "code": "lickR",
+      "emoji": "👅",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/lickR-cb079835df02.webp"
+    },
+    {
+      "code": "LifE",
+      "emoji": "🌅",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/LifE-6dda6a4198ce.webp"
+    },
+    {
+      "code": "LILBRO",
+      "emoji": "🍦",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/LILBRO-f683e1a68f89.webp"
+    },
+    {
+      "code": "lildans",
+      "emoji": "🐀",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/lildans-89af0513bc13.webp"
+    },
+    {
+      "code": "lirikL",
+      "emoji": "🥬",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/lirikL-c9a13d77d201.webp"
+    },
+    {
+      "code": "lirikNOT",
+      "emoji": "😒",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/lirikNOT-624dc15e44ab.webp"
+    },
+    {
+      "code": "lirikS",
+      "emoji": "😰",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/lirikS-bb4b87b40f2e.webp"
+    },
+    {
+      "code": "LJam",
+      "emoji": "😏",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/LJam-f10a491e4439.webp"
+    },
+    {
+      "code": "LMaul",
+      "emoji": "👹",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/LMaul-d56d7342e400.webp"
+    },
+    {
+      "code": "LO",
+      "emoji": "💨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/LO-94156694dba1.webp"
+    },
+    {
+      "code": "LOL",
+      "emoji": "🍿",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/LOL-e002900226eb.webp"
+    },
+    {
+      "code": "lookDown",
+      "emoji": "👇",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/lookDown-57a9e5e7e9fc.webp"
+    },
+    {
+      "code": "LOTHRIC",
+      "emoji": "🧙",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/LOTHRIC-525ee91d1539.webp"
+    },
+    {
+      "code": "loveFR",
+      "emoji": "❤️",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/loveFR-cf2f1534b97d.webp"
+    },
+    {
+      "code": "LPopo",
+      "emoji": "😎",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/LPopo-69c6d25d8843.webp"
+    },
+    {
+      "code": "LPPM",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/LPPM-b33aee803983.webp"
+    },
+    {
+      "code": "LSCATTER",
+      "emoji": "🏃",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/LSCATTER-36ab05bf1687.webp"
+    },
+    {
+      "code": "LSmile",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/LSmile-7775199a3f12.webp"
+    },
+    {
+      "code": "LSword",
+      "emoji": "🗡",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/LSword-51bca9dcda20.webp"
+    },
+    {
+      "code": "LToilet",
+      "emoji": "🚽",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/LToilet-8fecde52b35e.webp"
+    },
+    {
+      "code": "MadMushroom",
+      "emoji": "🍄",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/MadMushroom-f9f0c7b5c840.webp"
+    },
+    {
+      "code": "mamamia",
+      "emoji": "🤌",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/mamamia-a2fd5a75bb9d.webp"
+    },
+    {
+      "code": "MarioKarted",
+      "emoji": "🥇",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/MarioKarted-6e833d2fec68.webp"
+    },
+    {
+      "code": "MAXWIN",
+      "emoji": "💰",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/MAXWIN-ebfdbcadd851.webp"
+    },
+    {
+      "code": "MedTime",
+      "emoji": "💊",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/MedTime-62cb1b60380a.webp"
+    },
+    {
+      "code": "megaSadge",
+      "emoji": "😞",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/megaSadge-a6ae68c9654b.webp"
+    },
+    {
+      "code": "MEGAWIN",
+      "emoji": "🎰",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/MEGAWIN-61aab0e1baf3.webp"
+    },
+    {
+      "code": "Meowdy",
+      "emoji": "🤠",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Meowdy-730cb928e7a5.webp"
+    },
+    {
+      "code": "MineBlock0",
+      "emoji": "⛏️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/MineBlock0-c190ad1f29a0.webp"
+    },
+    {
+      "code": "MLADY",
+      "emoji": "🎩",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/MLADY-b2a0bc2cb62e.webp"
+    },
+    {
+      "code": "ModAbuse",
+      "emoji": "🐥",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ModAbuse-af11461646c1.webp"
+    },
+    {
+      "code": "modCheck",
+      "emoji": "🧐",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/modCheck-8b0b7c8b08bc.webp"
+    },
+    {
+      "code": "Modge",
+      "emoji": "🧹",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Modge-cbf4aa8b15a2.webp"
+    },
+    {
+      "code": "mon",
+      "emoji": "👹",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/mon-0970642c6ee2.webp"
+    },
+    {
+      "code": "monkaFly",
+      "emoji": "✈",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/monkaFly-2b3ce47cc9f8.webp"
+    },
+    {
+      "code": "monkaGiggle",
+      "emoji": "😅",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/monkaGiggle-cff5a439e41c.webp"
+    },
+    {
+      "code": "monkaSneak",
+      "emoji": "🕵",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/monkaSneak-07b2a5924d2c.webp"
+    },
+    {
+      "code": "monkeyPush",
+      "emoji": "🐒",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/monkeyPush-d2547a72189e.webp"
+    },
+    {
+      "code": "MonsTime",
+      "emoji": "🥤",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/MonsTime-7b72dbe1be64.webp"
+    },
+    {
+      "code": "Motion",
+      "emoji": "💵",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Motion-901197edb048.webp"
+    },
+    {
+      "code": "MustacheGlasses",
+      "emoji": "🥸",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/MustacheGlasses-300f21eda0ad.webp"
+    },
+    {
+      "code": "Mutege",
+      "emoji": "🙊",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Mutege-ac8363aa4197.webp"
+    },
+    {
+      "code": "NAaim",
+      "emoji": "🎯",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/NAaim-ef21e8607132.webp"
+    },
+    {
+      "code": "nabiBuff",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/nabiBuff-66658b6ca0d0.webp"
+    },
+    {
+      "code": "nabiL",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/nabiL-c7d904cc210e.webp"
+    },
+    {
+      "code": "NabiW",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/NabiW-1d85c5a401db.webp"
+    },
+    {
+      "code": "naynaSHAKE",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/naynaSHAKE-7000185097b2.webp"
+    },
+    {
+      "code": "neffSpy",
+      "emoji": "🕵️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/neffSpy-8fb8d171d68e.webp"
+    },
+    {
+      "code": "NewPC",
+      "emoji": "🖥️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/NewPC-c4d5a1e54196.webp"
+    },
+    {
+      "code": "NoBully",
+      "emoji": "☝️",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/NoBully-9873d1e4d448.webp"
+    },
+    {
+      "code": "nomuFU",
+      "emoji": "🖕",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/nomuFU-9d6597cf6483.webp"
+    },
+    {
+      "code": "NomuJam",
+      "emoji": "🐱",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/NomuJam-35370b898267.webp"
+    },
+    {
+      "code": "NomuS",
+      "emoji": "🐱",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/NomuS-aaf9ae98ec34.webp"
+    },
+    {
+      "code": "NootNoot",
+      "emoji": "🐧",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/NootNoot-5fa5a52a0359.webp"
+    },
+    {
+      "code": "NOPERS",
+      "emoji": "🙅‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/NOPERS-b94981c76a61.webp"
+    },
+    {
+      "code": "Noskill",
+      "emoji": "👎︎",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Noskill-aa53e5cb6230.webp"
+    },
+    {
+      "code": "notAddicted",
+      "emoji": "💉",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/notAddicted-45e998f94501.webp"
+    },
+    {
+      "code": "notCinema",
+      "emoji": "👎",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/notCinema-dce0ae129638.webp"
+    },
+    {
+      "code": "NOTED",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/NOTED-f4908b609fed.webp"
+    },
+    {
+      "code": "Notepad",
+      "emoji": "🗒️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Notepad-671f1626b917.webp"
+    },
+    {
+      "code": "notListening",
+      "emoji": "🙉",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/notListening-2fed020b57be.webp"
+    },
+    {
+      "code": "notok",
+      "emoji": "👎",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/notok-34d66b3f0be3.webp"
+    },
+    {
+      "code": "NowISee",
+      "emoji": "💡",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/NowISee-afa631ba8b47.webp"
+    },
+    {
+      "code": "nuhuh",
+      "emoji": "🙅‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/nuhuh-024fe138b920.webp"
+    },
+    {
+      "code": "nyAngy",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/nyAngy-d793345909ea.webp"
+    },
+    {
+      "code": "o7FR",
+      "emoji": "🫡",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/o7FR-8b955267ba2d.webp"
+    },
+    {
+      "code": "OkCat",
+      "emoji": "🐸",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/OkCat-eaa628db0031.webp"
+    },
+    {
+      "code": "OneSec",
+      "emoji": "⏳",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/OneSec-9d33daf2df8f.webp"
+    },
+    {
+      "code": "OneTap",
+      "emoji": "⚔️",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/OneTap-512dbff172fe.webp"
+    },
+    {
+      "code": "OnlyFangs",
+      "emoji": "🧛",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/OnlyFangs-deddfcb0a212.webp"
+    },
+    {
+      "code": "oopsie",
+      "emoji": "😅",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/oopsie-492d068a4fed.webp"
+    },
+    {
+      "code": "operage",
+      "emoji": "🎭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/operage-5e8788c07e46.webp"
+    },
+    {
+      "code": "OTK",
+      "emoji": "👑",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/OTK-92d5ac32ab14.webp"
+    },
+    {
+      "code": "paidchatter",
+      "emoji": "💰",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/paidchatter-4f4cd227b0b9.webp"
+    },
+    {
+      "code": "paperFR",
+      "emoji": "📰",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/paperFR-05e5fa52926c.webp"
+    },
+    {
+      "code": "parasocial",
+      "emoji": "⛵",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/parasocial-4d916377eac5.webp"
+    },
+    {
+      "code": "pauseFR",
+      "emoji": "🤨",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/pauseFR-d4b7458994f8.webp"
+    },
+    {
+      "code": "peaceFR",
+      "emoji": "🌅",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/peaceFR-f7e81ef1530c.webp"
+    },
+    {
+      "code": "peepoBless",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/peepoBless-6704a9f5e5c1.webp"
+    },
+    {
+      "code": "peepoBrick",
+      "emoji": "🧱",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/peepoBrick-8631ba14b703.webp"
+    },
+    {
+      "code": "peepoChef",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/peepoChef-bf7017ec85ca.webp"
+    },
+    {
+      "code": "peepoDumb",
+      "emoji": "🤤",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/peepoDumb-53b38ab4676d.webp"
+    },
+    {
+      "code": "peepoFree",
+      "emoji": "⛓",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/peepoFree-d320fbb961eb.webp"
+    },
+    {
+      "code": "peepoHappy",
+      "emoji": "😃",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/peepoHappy-4a6997f63822.webp"
+    },
+    {
+      "code": "peepoHide",
+      "emoji": "🙈",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/peepoHide-c92a87125069.webp"
+    },
+    {
+      "code": "peepoJail",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/peepoJail-b23c469c1189.webp"
+    },
+    {
+      "code": "peepoKnife",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/peepoKnife-f4aebb35ec86.webp"
+    },
+    {
+      "code": "peepoMetal",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/peepoMetal-55c425184f5e.webp"
+    },
+    {
+      "code": "peepoPog",
+      "emoji": "✨",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/peepoPog-66c2467f918a.webp"
+    },
+    {
+      "code": "peepoSmash",
+      "emoji": "💢",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/peepoSmash-70bd5fe787d7.webp"
+    },
+    {
+      "code": "peepoTalk",
+      "emoji": "🗣️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/peepoTalk-23ee02743955.webp"
+    },
+    {
+      "code": "PeepoWeird",
+      "emoji": "🤨",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/PeepoWeird-61902e79abe8.webp"
+    },
+    {
+      "code": "peepoWizard",
+      "emoji": "🧙",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/peepoWizard-0d46b494d6c1.webp"
+    },
+    {
+      "code": "peepoWoof",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/peepoWoof-23c2491c76be.webp"
+    },
+    {
+      "code": "peepoWtfS",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/peepoWtfS-1713726e9f1c.webp"
+    },
+    {
+      "code": "PepegaAsk",
+      "emoji": "🙋‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/PepegaAsk-7228d9d915fd.webp"
+    },
+    {
+      "code": "PepegaDriving",
+      "emoji": "🚗",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/PepegaDriving-100aa1e8a1d3.webp"
+    },
+    {
+      "code": "PepegaFlash",
+      "emoji": "🔦",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/PepegaFlash-1b395f438977.webp"
+    },
+    {
+      "code": "PepegaShower",
+      "emoji": "🚿",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/PepegaShower-a5742f91cf6a.webp"
+    },
+    {
+      "code": "pepegeThink",
+      "emoji": "🤔",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/pepegeThink-a37fb9ee5c78.webp"
+    },
+    {
+      "code": "PepeHans",
+      "emoji": "🐸",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/PepeHans-9d08385ef998.webp"
+    },
+    {
+      "code": "PepeSpit",
+      "emoji": "💦",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/PepeSpit-2b243539e98b.webp"
+    },
+    {
+      "code": "pepeWeird",
+      "emoji": "🐸",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/pepeWeird-6f7df624662b.webp"
+    },
+    {
+      "code": "PEPSICLE",
+      "emoji": "🍧",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/PEPSICLE-9a6fc10a5a7d.webp"
+    },
+    {
+      "code": "pettheCat",
+      "emoji": "🐸",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/pettheCat-b52a01879528.webp"
+    },
+    {
+      "code": "PianoTime",
+      "emoji": "🎹",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/PianoTime-ccd02f90c215.webp"
+    },
+    {
+      "code": "pirateD",
+      "emoji": "🏴",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/pirateD-d9a838e234d4.webp"
+    },
+    {
+      "code": "PizzaTime2",
+      "emoji": "🍕",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/PizzaTime2-1a24e56abd2a.webp"
+    },
+    {
+      "code": "PogT",
+      "emoji": "😲",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/PogT-2376bbaf89e6.webp"
+    },
+    {
+      "code": "PogYou",
+      "emoji": "✨",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/PogYou-0b07bd254801.webp"
+    },
+    {
+      "code": "PokiShare",
+      "emoji": "📱",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/PokiShare-ef21c2c0ebb6.webp"
+    },
+    {
+      "code": "Pondering",
+      "emoji": "🐺",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Pondering-112fd8a3d800.webp"
+    },
+    {
+      "code": "POOPING",
+      "emoji": "🚽",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/POOPING-1c2875a1fbb6.webp"
+    },
+    {
+      "code": "Poorge",
+      "emoji": "🥺",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Poorge-039f176849f3.webp"
+    },
+    {
+      "code": "popFR",
+      "emoji": "🐱",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/popFR-1870d98d9c25.webp"
+    },
+    {
+      "code": "PoroPissed",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/PoroPissed-090b4c76e96a.webp"
+    },
+    {
+      "code": "ppJedi",
+      "emoji": "⚔️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ppJedi-d2abbf61b8f7.webp"
+    },
+    {
+      "code": "ppOverheat",
+      "emoji": "🥵",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ppOverheat-a2639e8a47a3.webp"
+    },
+    {
+      "code": "pteraFR",
+      "emoji": "🦕",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/pteraFR-16699539bf4c.webp"
+    },
+    {
+      "code": "PUKERS",
+      "emoji": "🤮",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/PUKERS-b49fbf017187.webp"
+    },
+    {
+      "code": "puzzleFR",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/puzzleFR-a5ccc4ffb118.webp"
+    },
+    {
+      "code": "qq",
+      "emoji": "✌",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/qq-0ef0afe490ec.webp"
+    },
+    {
+      "code": "QUIET",
+      "emoji": "🤫",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/QUIET-d4c253f731ad.webp"
+    },
+    {
+      "code": "RAHHH",
+      "emoji": "⚔",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/RAHHH-2199b21f0567.webp"
+    },
+    {
+      "code": "RainTime",
+      "emoji": "🌧️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/RainTime-1d9588193113.webp"
+    },
+    {
+      "code": "RareHug",
+      "emoji": "🫂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/RareHug-d40286eadfb9.webp"
+    },
+    {
+      "code": "RareSub",
+      "emoji": "🐱",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/RareSub-e5eac5fb77be.webp"
+    },
+    {
+      "code": "ratFR",
+      "emoji": "🐀",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/ratFR-7f9d3febab7b.webp"
+    },
+    {
+      "code": "Readpin",
+      "emoji": "📌",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Readpin-1224d49fd3cd.webp"
+    },
+    {
+      "code": "REDACTED",
+      "emoji": "🤐",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/REDACTED-7dfb9cf7192a.webp"
+    },
+    {
+      "code": "RESTARTA",
+      "emoji": "🔄",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/RESTARTA-8fe258931667.webp"
+    },
+    {
+      "code": "retgekm9",
+      "emoji": "🥺",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/retgekm9-22f441d8cda5.webp"
+    },
+    {
+      "code": "ROFLGATOR",
+      "emoji": "🐊",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ROFLGATOR-a23da6ea7d7d.webp"
+    },
+    {
+      "code": "RossPls",
+      "emoji": "🕺",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/RossPls-10ef90e6e1dd.webp"
+    },
+    {
+      "code": "rt",
+      "emoji": "🔁",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/rt-99d32294167c.webp"
+    },
+    {
+      "code": "runFR",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/runFR-4346b0fd41d5.webp"
+    },
+    {
+      "code": "Sadeg",
+      "emoji": "☹️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Sadeg-8834e33ceca4.webp"
+    },
+    {
+      "code": "sadgeCoomer",
+      "emoji": "😢",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sadgeCoomer-6c1df2c0a457.webp"
+    },
+    {
+      "code": "SadWeeb",
+      "emoji": "😭",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/SadWeeb-67006b28db0e.webp"
+    },
+    {
+      "code": "Saje",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/Saje-2217dd30bfa0.webp"
+    },
+    {
+      "code": "SCAMBA",
+      "emoji": "🤥",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SCAMBA-1b3a24b261d5.webp"
+    },
+    {
+      "code": "SCATTER",
+      "emoji": "🏃",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SCATTER-9ed0789f97cf.webp"
+    },
+    {
+      "code": "SEXO",
+      "emoji": "🙈",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SEXO-2c782a993d2c.webp"
+    },
+    {
+      "code": "shankFR",
+      "emoji": "🔪",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/shankFR-90e6a5848e29.webp"
+    },
+    {
+      "code": "SHARKING",
+      "emoji": "🦈",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SHARKING-5225b7e56ddf.webp"
+    },
+    {
+      "code": "SHEESH",
+      "emoji": "🥶",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SHEESH-e8dd28299028.webp"
+    },
+    {
+      "code": "SHITTON",
+      "emoji": "⚖️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SHITTON-3be87ced3f30.webp"
+    },
+    {
+      "code": "ShowerTime",
+      "emoji": "🚿",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ShowerTime-6c2b755d02bf.webp"
+    },
+    {
+      "code": "Shruge",
+      "emoji": "🤷‍♀️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Shruge-70df1d9e9243.webp"
+    },
+    {
+      "code": "SICKMAN",
+      "emoji": "🤒",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SICKMAN-848ee67c88c6.webp"
+    },
+    {
+      "code": "slither",
+      "emoji": "🐍",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/slither-9128aab0c315.webp"
+    },
+    {
+      "code": "SMASH",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/SMASH-955ea5143999.webp"
+    },
+    {
+      "code": "Smile",
+      "emoji": "😺",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Smile-f866dc6f34b0.webp"
+    },
+    {
+      "code": "SNACKING",
+      "emoji": "🥕",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SNACKING-870c8d90ff4b.webp"
+    },
+    {
+      "code": "SnowTime",
+      "emoji": "❄",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SnowTime-4fc33e6dc81d.webp"
+    },
+    {
+      "code": "SocialCreditMinus",
+      "emoji": "📉",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SocialCreditMinus-cfcbd6abdfe7.webp"
+    },
+    {
+      "code": "SOCLOSE",
+      "emoji": "😖",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SOCLOSE-f3f25f460797.webp"
+    },
+    {
+      "code": "sodaArrive",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaArrive-75f3846a63d5.webp"
+    },
+    {
+      "code": "sodaAyaya",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaAyaya-3467659380c5.webp"
+    },
+    {
+      "code": "sodaCOMFY",
+      "emoji": "😌",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaCOMFY-1a3b7fed72db.webp"
+    },
+    {
+      "code": "sodaCOMFY2",
+      "emoji": "😌",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaCOMFY2-ba36f7d78e21.webp"
+    },
+    {
+      "code": "sodaCredit",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaCredit-aa6904b69027.webp"
+    },
+    {
+      "code": "sodaCrying",
+      "emoji": "😭",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaCrying-87aa452c0dae.webp"
+    },
+    {
+      "code": "sodaDND",
+      "emoji": "🎲",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaDND-77b3f547da06.webp"
+    },
+    {
+      "code": "sodaFU",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/sodaFU-ef5bb8db2555.webp"
+    },
+    {
+      "code": "sodaGpls",
+      "emoji": "🦒",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaGpls-bbe5917f8093.webp"
+    },
+    {
+      "code": "SODAING",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/SODAING-29043d812806.webp"
+    },
+    {
+      "code": "sodaJAM",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaJAM-46a8b9259fb9.webp"
+    },
+    {
+      "code": "sodaKnight",
+      "emoji": "🛡️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/sodaKnight-7e546e687a78.webp"
+    },
+    {
+      "code": "sodaLove",
+      "emoji": "💙",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaLove-76b45abaae0e.webp"
+    },
+    {
+      "code": "sodaMONK",
+      "emoji": "😰",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaMONK-140fd6bd4e9f.webp"
+    },
+    {
+      "code": "sodaNOW",
+      "emoji": "⚡",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/sodaNOW-0823fa84c2a4.webp"
+    },
+    {
+      "code": "sodapeacexdd",
+      "emoji": "🍷",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/sodapeacexdd-ecab35d4181c.webp"
+    },
+    {
+      "code": "sodaPeeking",
+      "emoji": "👀",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaPeeking-59221adbb954.webp"
+    },
+    {
+      "code": "sodaPop",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaPop-b72bf1cae790.webp"
+    },
+    {
+      "code": "sodaRich",
+      "emoji": "🤑",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaRich-59c410a26d49.webp"
+    },
+    {
+      "code": "sodaRISK",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaRISK-3e01b1e3c097.webp"
+    },
+    {
+      "code": "sodaSipping",
+      "emoji": "🥤",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaSipping-fda913a36991.webp"
+    },
+    {
+      "code": "sodaSmash",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaSmash-60a15d223922.webp"
+    },
+    {
+      "code": "sodaSteer",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaSteer-da02ce492146.webp"
+    },
+    {
+      "code": "sodaTAKE",
+      "emoji": "👥",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/sodaTAKE-182bb6c43484.webp"
+    },
+    {
+      "code": "sodaTP",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaTP-4c3cd275829c.webp"
+    },
+    {
+      "code": "sodaWave",
+      "emoji": "👋",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaWave-106821d57a5a.webp"
+    },
+    {
+      "code": "sodaWave2",
+      "emoji": "👋",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/sodaWave2-2914349cfb63.webp"
+    },
+    {
+      "code": "sodaWiggle",
+      "emoji": "🦒",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/sodaWiggle-c0feb218b7bc.webp"
+    },
+    {
+      "code": "Sparkles",
+      "emoji": "✨",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/Sparkles-43587e0ea9f4.webp"
+    },
+    {
+      "code": "SPEECH",
+      "emoji": "🐝",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SPEECH-f4502b54c051.webp"
+    },
+    {
+      "code": "Speechless",
+      "emoji": "😶",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Speechless-8c1d86e00108.webp"
+    },
+    {
+      "code": "SPIN2WIN",
+      "emoji": "🌀",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SPIN2WIN-750e6d27da90.webp"
+    },
+    {
+      "code": "Spoogers",
+      "emoji": "🕷",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Spoogers-b37d9c77b75f.webp"
+    },
+    {
+      "code": "StareKiss",
+      "emoji": "😚",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/StareKiss-5720a4298db8.webp"
+    },
+    {
+      "code": "stealthFR",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/stealthFR-df01741e74dc.webp"
+    },
+    {
+      "code": "STOPMAN",
+      "emoji": "🛑",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/STOPMAN-7776ab282a7b.webp"
+    },
+    {
+      "code": "succit1g",
+      "emoji": "🙅",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/succit1g-b46c7dc75172.webp"
+    },
+    {
+      "code": "SuikaCherry",
+      "emoji": "🍒",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/SuikaCherry-1e764cd4ed0c.webp"
+    },
+    {
+      "code": "suitFR",
+      "emoji": "👔",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/suitFR-9690a5b59bbf.webp"
+    },
+    {
+      "code": "surfing",
+      "emoji": "🏄",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/surfing-72fcfb621b87.webp"
+    },
+    {
+      "code": "susFR",
+      "emoji": "🤨",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/susFR-eb50e669697e.webp"
+    },
+    {
+      "code": "SussyFR",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/SussyFR-1ffc10125780.webp"
+    },
+    {
+      "code": "swimFR",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/swimFR-eb033d167f0e.webp"
+    },
+    {
+      "code": "TakingNotes",
+      "emoji": "📝",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/TakingNotes-c317956f4191.webp"
+    },
+    {
+      "code": "talusHF",
+      "emoji": "🥔",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/talusHF-74849a47b960.webp"
+    },
+    {
+      "code": "tantrumFR",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/tantrumFR-3d892ffbc21d.webp"
+    },
+    {
+      "code": "Tasty",
+      "emoji": "😋",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Tasty-2f8263c3a5fe.webp"
+    },
+    {
+      "code": "tastyFR",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/tastyFR-bb1a838fbc19.webp"
+    },
+    {
+      "code": "TERRARIA",
+      "emoji": "💭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/TERRARIA-5a9b51d5e949.webp"
+    },
+    {
+      "code": "ThankYou",
+      "emoji": "🙇‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ThankYou-dcc8f8b730bc.webp"
+    },
+    {
+      "code": "ThatsJustMe",
+      "emoji": "✋",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ThatsJustMe-c58b23862143.webp"
+    },
+    {
+      "code": "Thinking",
+      "emoji": "💭",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/Thinking-9e8d230268a7.webp"
+    },
+    {
+      "code": "TimeToThrow",
+      "emoji": "🏈",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/TimeToThrow-c752ed49432e.webp"
+    },
+    {
+      "code": "TnT",
+      "emoji": "🧨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/TnT-7da298092fd3.webp"
+    },
+    {
+      "code": "ToeCam",
+      "emoji": "🦶",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ToeCam-9d8ed761d6f0.webp"
+    },
+    {
+      "code": "tomatoTime",
+      "emoji": "🍅",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/tomatoTime-ae7db7183016.webp"
+    },
+    {
+      "code": "TrumpetTime",
+      "emoji": "🎺",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/TrumpetTime-a2bd7a37baea.webp"
+    },
+    {
+      "code": "UHMcamp",
+      "emoji": "⛺️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/UHMcamp-2d67b400a9a7.webp"
+    },
+    {
+      "code": "valve",
+      "emoji": "🎮",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/valve-615bd3773dd5.webp"
+    },
+    {
+      "code": "ViolinTime",
+      "emoji": "🎻",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/ViolinTime-22e1c4e42c09.webp"
+    },
+    {
+      "code": "vNODDERS",
+      "emoji": "✅",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/vNODDERS-605ff49054ce.webp"
+    },
+    {
+      "code": "vNOPERS",
+      "emoji": "🙅",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/vNOPERS-7f5435c20aa1.webp"
+    },
+    {
+      "code": "VOICECOMMS",
+      "emoji": "🎙️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/VOICECOMMS-318cea36fd08.webp"
+    },
+    {
+      "code": "vSneeze",
+      "emoji": "🤧",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/vSneeze-c5566dcbadb3.webp"
+    },
+    {
+      "code": "WAA",
+      "emoji": "🙀",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/WAA-3d2313d89b54.webp"
+    },
+    {
+      "code": "wandFR",
+      "emoji": "🪄",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/wandFR-35ced37d3453.webp"
+    },
+    {
+      "code": "WatchingStream",
+      "emoji": "💻",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/WatchingStream-1de0a2e155a4.webp"
+    },
+    {
+      "code": "WAYTOODANK",
+      "emoji": "😵",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/WAYTOODANK-4d8f5a82c325.webp"
+    },
+    {
+      "code": "WeCelebrating",
+      "emoji": "🎉",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/WeCelebrating-5197fba78637.webp"
+    },
+    {
+      "code": "WeebSmash",
+      "emoji": "👧",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/WeebSmash-b74b6f262da4.webp"
+    },
+    {
+      "code": "WeeWoo",
+      "emoji": "🚨",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/WeeWoo-4168d6c215fe.webp"
+    },
+    {
+      "code": "WideConcern",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/WideConcern-5fa079028c0d.webp"
+    },
+    {
+      "code": "WideHard",
+      "emoji": "😁",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/WideHard-ccf8b869eb72.webp"
+    },
+    {
+      "code": "wideNessie",
+      "emoji": "🦕",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/wideNessie-f67b37c8c5d1.webp"
+    },
+    {
+      "code": "widepeepoBlanket",
+      "emoji": "🛌",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/widepeepoBlanket-a401ab52b204.webp"
+    },
+    {
+      "code": "widepepOMEGAKEKHappyChampHands",
+      "emoji": "🤣",
+      "confidence": 0.55,
+      "provider": "ffz",
+      "animated": false,
+      "url": "/emotes/assets/ffz/widepepOMEGAKEKHappyChampHands-9cfc1db0aac1.webp"
+    },
+    {
+      "code": "wideRainTime",
+      "emoji": "🌧️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/wideRainTime-7257c2e6ed21.webp"
+    },
+    {
+      "code": "wideSpeedDesert",
+      "emoji": "🏜️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/wideSpeedDesert-56de267877ca.webp"
+    },
+    {
+      "code": "wiers",
+      "emoji": "🐹",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/wiers-0855582a1bfb.webp"
+    },
+    {
+      "code": "WineTime",
+      "emoji": "🍷",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/WineTime-0d78b67dee98.webp"
+    },
+    {
+      "code": "WIPERS",
+      "emoji": "🙂",
+      "confidence": 0.55,
+      "provider": "bttv",
+      "animated": false,
+      "url": "/emotes/assets/bttv/WIPERS-3bdc9ee7f359.webp"
+    },
+    {
+      "code": "WiseTree",
+      "emoji": "🌳",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/WiseTree-e2c2500e032c.webp"
+    },
+    {
+      "code": "wrapitup",
+      "emoji": "🌯",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/wrapitup-a11d076ce3a9.webp"
+    },
+    {
+      "code": "wrrr",
+      "emoji": "🏎️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/wrrr-5ccec473f8ca.webp"
+    },
+    {
+      "code": "WTFMAN",
+      "emoji": "🤷‍♂️",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/WTFMAN-c52dc92f98e9.webp"
+    },
+    {
+      "code": "WTHMAN",
+      "emoji": "👿",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/WTHMAN-bcfed7785e29.webp"
+    },
+    {
+      "code": "xqcFingerDown",
+      "emoji": "👇",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/xqcFingerDown-4344e1ddb319.webp"
+    },
+    {
+      "code": "xqcNugget",
+      "emoji": "🍗",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/xqcNugget-e789e9b219ee.webp"
+    },
+    {
+      "code": "xqcReacting",
+      "emoji": "📺",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/xqcReacting-54adef9b8dcf.webp"
+    },
+    {
+      "code": "xqcShare",
+      "emoji": "📱",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/xqcShare-d9b82d7405e0.webp"
+    },
+    {
+      "code": "yawner",
+      "emoji": "🥱",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/yawner-a5f4df6e8993.webp"
+    },
+    {
+      "code": "YEPCOCK",
+      "emoji": "🐓",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/YEPCOCK-a954a6c707e4.webp"
+    },
+    {
+      "code": "YIPPIE",
+      "emoji": "🎉",
+      "confidence": 0.55,
+      "provider": "7tv",
+      "animated": false,
+      "url": "/emotes/assets/7tv/YIPPIE-6231fce8002b.webp"
+    }
+  ],
+  "byEmoji": [
+    {
+      "emoji": "⌚",
+      "codes": [
+        "imwaiting",
+        "lateFR"
+      ]
+    },
+    {
+      "emoji": "⌨️",
+      "codes": [
+        "Backseating",
+        "DonkChat"
+      ]
+    },
+    {
+      "emoji": "⏳",
+      "codes": [
+        "FeelsLagMan",
+        "OneSec"
+      ]
+    },
+    {
+      "emoji": "☀️",
+      "codes": [
+        "KoroneWakeUp"
+      ]
+    },
+    {
+      "emoji": "☕",
+      "codes": [
+        "bigTeaTime"
+      ]
+    },
+    {
+      "emoji": "☕️",
+      "codes": [
+        "CoffeeTime"
+      ]
+    },
+    {
+      "emoji": "☝️",
+      "codes": [
+        "hes0",
+        "imRight",
+        "NoBully"
+      ]
+    },
+    {
+      "emoji": "☹",
+      "codes": [
+        "FeelsBadMan",
+        "FeelsBitrateMan"
+      ]
+    },
+    {
+      "emoji": "☹️",
+      "codes": [
+        "Sadeg"
+      ]
+    },
+    {
+      "emoji": "♂️",
+      "codes": [
+        "GachiPls"
+      ]
+    },
+    {
+      "emoji": "⚔️",
+      "codes": [
+        "OneTap",
+        "ppJedi"
+      ]
+    },
+    {
+      "emoji": "⚔",
+      "codes": [
+        "RAHHH"
+      ]
+    },
+    {
+      "emoji": "⚖️",
+      "codes": [
+        "SHITTON"
+      ]
+    },
+    {
+      "emoji": "⚙️",
+      "codes": [
+        "cogFR"
+      ]
+    },
+    {
+      "emoji": "⚙",
+      "codes": [
+        "COGGERS"
+      ]
+    },
+    {
+      "emoji": "⚡",
+      "codes": [
+        "DEFIBMAN",
+        "sodaNOW"
+      ]
+    },
+    {
+      "emoji": "⛏",
+      "codes": [
+        "donkMiner"
+      ]
+    },
+    {
+      "emoji": "⛏️",
+      "codes": [
+        "MineBlock0"
+      ]
+    },
+    {
+      "emoji": "⛓",
+      "codes": [
+        "peepoFree"
+      ]
+    },
+    {
+      "emoji": "⛧",
+      "codes": [
+        "cursePls"
+      ]
+    },
+    {
+      "emoji": "⛳️",
+      "codes": [
+        "BigDog"
+      ]
+    },
+    {
+      "emoji": "⛵️",
+      "codes": [
+        "friendSHIP"
+      ]
+    },
+    {
+      "emoji": "⛵",
+      "codes": [
+        "parasocial"
+      ]
+    },
+    {
+      "emoji": "⛺️",
+      "codes": [
+        "UHMcamp"
+      ]
+    },
+    {
+      "emoji": "🇲🇽",
+      "codes": [
+        "BASADO",
+        "ElNoSabe"
+      ]
+    },
+    {
+      "emoji": "✅",
+      "codes": [
+        "catNOD",
+        "vNODDERS"
+      ]
+    },
+    {
+      "emoji": "✈",
+      "codes": [
+        "monkaFly"
+      ]
+    },
+    {
+      "emoji": "✊",
+      "codes": [
+        "ClankerLivesMatter"
+      ]
+    },
+    {
+      "emoji": "✋",
+      "codes": [
+        "KEKWait",
+        "ThatsJustMe"
+      ]
+    },
+    {
+      "emoji": "✌",
+      "codes": [
+        "qq"
+      ]
+    },
+    {
+      "emoji": "✍",
+      "codes": [
+        "Learning"
+      ]
+    },
+    {
+      "emoji": "✨",
+      "codes": [
+        "AlienParty",
+        "AURA",
+        "peepoPog",
+        "PogYou",
+        "Sparkles"
+      ]
+    },
+    {
+      "emoji": "❄",
+      "codes": [
+        "SnowTime"
+      ]
+    },
+    {
+      "emoji": "❓",
+      "codes": [
+        "??",
+        "????"
+      ]
+    },
+    {
+      "emoji": "❤️",
+      "codes": [
+        "apolloLove",
+        "BABE",
+        "loveFR"
+      ]
+    },
+    {
+      "emoji": "⬅",
+      "codes": [
+        "DEI"
+      ]
+    },
+    {
+      "emoji": "⬛",
+      "codes": [
+        "4090",
+        "aMostPeculiarSpecimen",
+        "BANNED"
+      ]
+    },
+    {
+      "emoji": "🌀",
+      "codes": [
+        "SPIN2WIN"
+      ]
+    },
+    {
+      "emoji": "🌅",
+      "codes": [
+        "LifE",
+        "peaceFR"
+      ]
+    },
+    {
+      "emoji": "🌑",
+      "codes": [
+        "Despairge"
+      ]
+    },
+    {
+      "emoji": "🌧️",
+      "codes": [
+        "RainTime",
+        "wideRainTime"
+      ]
+    },
+    {
+      "emoji": "🌭",
+      "codes": [
+        "glizzyR"
+      ]
+    },
+    {
+      "emoji": "🌯",
+      "codes": [
+        "catKebab",
+        "wrapitup"
+      ]
+    },
+    {
+      "emoji": "🌳",
+      "codes": [
+        "WiseTree"
+      ]
+    },
+    {
+      "emoji": "🌹",
+      "codes": [
+        "catRose",
+        "Flower0"
+      ]
+    },
+    {
+      "emoji": "🌽",
+      "codes": [
+        "Corncerned",
+        "CountryBoys"
+      ]
+    },
+    {
+      "emoji": "🌿",
+      "codes": [
+        "DankStick",
+        "FAFA"
+      ]
+    },
+    {
+      "emoji": "🍂",
+      "codes": [
+        "BlowingLeaves"
+      ]
+    },
+    {
+      "emoji": "🍄",
+      "codes": [
+        "DEIshroom",
+        "MadMushroom"
+      ]
+    },
+    {
+      "emoji": "🍅",
+      "codes": [
+        "tomatoTime"
+      ]
+    },
+    {
+      "emoji": "🍌",
+      "codes": [
+        "...",
+        "Cateatinbananahehappy"
+      ]
+    },
+    {
+      "emoji": "🍎",
+      "codes": [
+        "APPLE"
+      ]
+    },
+    {
+      "emoji": "🍑",
+      "codes": [
+        "BROKIE",
+        "Dooma"
+      ]
+    },
+    {
+      "emoji": "🍒",
+      "codes": [
+        "SuikaCherry"
+      ]
+    },
+    {
+      "emoji": "🍔",
+      "codes": [
+        "!burgie",
+        "burgir"
+      ]
+    },
+    {
+      "emoji": "🍕",
+      "codes": [
+        "PizzaTime2"
+      ]
+    },
+    {
+      "emoji": "🍖",
+      "codes": [
+        "BBQING"
+      ]
+    },
+    {
+      "emoji": "🍗",
+      "codes": [
+        "xqcNugget"
+      ]
+    },
+    {
+      "emoji": "🍦",
+      "codes": [
+        "LILBRO"
+      ]
+    },
+    {
+      "emoji": "🍧",
+      "codes": [
+        "PEPSICLE"
+      ]
+    },
+    {
+      "emoji": "🍳",
+      "codes": [
+        "BurgerTime",
+        "FLIPMYBURGER"
+      ]
+    },
+    {
+      "emoji": "🍴",
+      "codes": [
+        "DinnerTime"
+      ]
+    },
+    {
+      "emoji": "🍷",
+      "codes": [
+        "Exquisite",
+        "sodapeacexdd",
+        "WineTime"
+      ]
+    },
+    {
+      "emoji": "🍺",
+      "codes": [
+        "Barry63"
+      ]
+    },
+    {
+      "emoji": "🍼",
+      "codes": [
+        "DaBaby"
+      ]
+    },
+    {
+      "emoji": "🍽️",
+      "codes": [
+        "EatTheMinus"
+      ]
+    },
+    {
+      "emoji": "🍿",
+      "codes": [
+        "FO",
+        "LOL"
+      ]
+    },
+    {
+      "emoji": "🎅",
+      "codes": [
+        "GnomeFR"
+      ]
+    },
+    {
+      "emoji": "🎆",
+      "codes": [
+        "firework3",
+        "Fireworks"
+      ]
+    },
+    {
+      "emoji": "🎈",
+      "codes": [
+        "Bloons"
+      ]
+    },
+    {
+      "emoji": "🎉",
+      "codes": [
+        "WeCelebrating",
+        "YIPPIE"
+      ]
+    },
+    {
+      "emoji": "🎊",
+      "codes": [
+        "Confetti"
+      ]
+    },
+    {
+      "emoji": "🎙️",
+      "codes": [
+        "VOICECOMMS"
+      ]
+    },
+    {
+      "emoji": "🎣",
+      "codes": [
+        "$$fish"
+      ]
+    },
+    {
+      "emoji": "🎤",
+      "codes": [
+        "ABEL",
+        "backstreetUncs"
+      ]
+    },
+    {
+      "emoji": "🎧",
+      "codes": [
+        "ambatuJam",
+        "ayayaJAM"
+      ]
+    },
+    {
+      "emoji": "🎨",
+      "codes": [
+        "Blender"
+      ]
+    },
+    {
+      "emoji": "🎩",
+      "codes": [
+        "FeelsADHDMan",
+        "MLADY"
+      ]
+    },
+    {
+      "emoji": "🎬",
+      "codes": [
+        "Cinema"
+      ]
+    },
+    {
+      "emoji": "🎭",
+      "codes": [
+        "CluelessMask",
+        "operage"
+      ]
+    },
+    {
+      "emoji": "🎮",
+      "codes": [
+        "GAMING",
+        "valve"
+      ]
+    },
+    {
+      "emoji": "🎯",
+      "codes": [
+        "aim",
+        "NAaim"
+      ]
+    },
+    {
+      "emoji": "🎰",
+      "codes": [
+        "GAMBAADDICT",
+        "MEGAWIN"
+      ]
+    },
+    {
+      "emoji": "🎲",
+      "codes": [
+        "DNDing",
+        "sodaDND"
+      ]
+    },
+    {
+      "emoji": "🎸",
+      "codes": [
+        "BAND",
+        "CatGuitar"
+      ]
+    },
+    {
+      "emoji": "🎹",
+      "codes": [
+        "CatPiano",
+        "PianoTime"
+      ]
+    },
+    {
+      "emoji": "🎺",
+      "codes": [
+        "TrumpetTime"
+      ]
+    },
+    {
+      "emoji": "🎻",
+      "codes": [
+        "HyperViolinTime",
+        "ViolinTime"
+      ]
+    },
+    {
+      "emoji": "🏀",
+      "codes": [
+        "BANGG",
+        "emoneyNonverbal"
+      ]
+    },
+    {
+      "emoji": "🏃",
+      "codes": [
+        "LSCATTER",
+        "SCATTER"
+      ]
+    },
+    {
+      "emoji": "🏃‍♂️",
+      "codes": [
+        "BillyArrive",
+        "donkRun"
+      ]
+    },
+    {
+      "emoji": "🏄",
+      "codes": [
+        "surfing"
+      ]
+    },
+    {
+      "emoji": "🏆",
+      "codes": [
+        "AOTC",
+        "GlobalElite"
+      ]
+    },
+    {
+      "emoji": "🏈",
+      "codes": [
+        "TimeToThrow"
+      ]
+    },
+    {
+      "emoji": "🏋️",
+      "codes": [
+        "bench0"
+      ]
+    },
+    {
+      "emoji": "🏍️",
+      "codes": [
+        "cruising"
+      ]
+    },
+    {
+      "emoji": "🏎️",
+      "codes": [
+        "donkDriving",
+        "wrrr"
+      ]
+    },
+    {
+      "emoji": "🏗️",
+      "codes": [
+        "DRILL"
+      ]
+    },
+    {
+      "emoji": "🏜️",
+      "codes": [
+        "wideSpeedDesert"
+      ]
+    },
+    {
+      "emoji": "🏳",
+      "codes": [
+        "hesGay"
+      ]
+    },
+    {
+      "emoji": "🏴",
+      "codes": [
+        "arr",
+        "pirateD"
+      ]
+    },
+    {
+      "emoji": "🏹",
+      "codes": [
+        "LBow"
+      ]
+    },
+    {
+      "emoji": "🐀",
+      "codes": [
+        "CrazyIWasCrazyOnceTheyPutMeInARoomARubberroomARubberroomFilledWithRatsRatsMakeMeGoCrazy",
+        "lildans",
+        "ratFR"
+      ]
+    },
+    {
+      "emoji": "🐂",
+      "codes": [
+        "BULLSHIT"
+      ]
+    },
+    {
+      "emoji": "🐇",
+      "codes": [
+        "allRoads"
+      ]
+    },
+    {
+      "emoji": "🐈",
+      "codes": [
+        "apolloKill",
+        "boink"
+      ]
+    },
+    {
+      "emoji": "🐉",
+      "codes": [
+        "DragonDeez"
+      ]
+    },
+    {
+      "emoji": "🐊",
+      "codes": [
+        "ROFLGATOR"
+      ]
+    },
+    {
+      "emoji": "🐍",
+      "codes": [
+        "slither"
+      ]
+    },
+    {
+      "emoji": "🐎",
+      "codes": [
+        "HORSING"
+      ]
+    },
+    {
+      "emoji": "🐒",
+      "codes": [
+        "jorkin",
+        "monkeyPush"
+      ]
+    },
+    {
+      "emoji": "🐓",
+      "codes": [
+        "YEPCOCK"
+      ]
+    },
+    {
+      "emoji": "🐕",
+      "codes": [
+        "00",
+        "dogArrive"
+      ]
+    },
+    {
+      "emoji": "🐘",
+      "codes": [
+        "AddressMe"
+      ]
+    },
+    {
+      "emoji": "🐜",
+      "codes": [
+        "...butthenameislessgenericsoyoudontaccidentallytypeit"
+      ]
+    },
+    {
+      "emoji": "🐝",
+      "codes": [
+        "beeBobble",
+        "SPEECH"
+      ]
+    },
+    {
+      "emoji": "🐟",
+      "codes": [
+        "GoldfishTime"
+      ]
+    },
+    {
+      "emoji": "🐡",
+      "codes": [
+        "AEUGH"
+      ]
+    },
+    {
+      "emoji": "🐢",
+      "codes": [
+        "FeelsLateMan",
+        "HUH"
+      ]
+    },
+    {
+      "emoji": "🐥",
+      "codes": [
+        "ModAbuse"
+      ]
+    },
+    {
+      "emoji": "🐦",
+      "codes": [
+        "Birdge"
+      ]
+    },
+    {
+      "emoji": "🐧",
+      "codes": [
+        "FatFuck",
+        "NootNoot"
+      ]
+    },
+    {
+      "emoji": "🐩",
+      "codes": [
+        ":))"
+      ]
+    },
+    {
+      "emoji": "🐭",
+      "codes": [
+        "BeachMouseWaiting",
+        "LeMickey"
+      ]
+    },
+    {
+      "emoji": "🐰",
+      "codes": [
+        "BUNNY",
+        "Colat"
+      ]
+    },
+    {
+      "emoji": "🐱",
+      "codes": [
+        "alreadytracer",
+        "apolApol",
+        "Catge",
+        "FRpls",
+        "NomuJam",
+        "NomuS",
+        "popFR",
+        "RareSub"
+      ]
+    },
+    {
+      "emoji": "🐶",
+      "codes": [
+        "ABBOBA",
+        "BBExplainingHow"
+      ]
+    },
+    {
+      "emoji": "🐸",
+      "codes": [
+        "AlertTheCatStartsItsEngine",
+        "Bananacatrun",
+        "CatGe",
+        "OkCat",
+        "PepeHans",
+        "pepeWeird",
+        "pettheCat"
+      ]
+    },
+    {
+      "emoji": "🐹",
+      "codes": [
+        "eda",
+        "wiers"
+      ]
+    },
+    {
+      "emoji": "🐺",
+      "codes": [
+        "Pondering"
+      ]
+    },
+    {
+      "emoji": "🐿️",
+      "codes": [
+        "belka"
+      ]
+    },
+    {
+      "emoji": "👀",
+      "codes": [
+        "ApolloLurk",
+        "AWOOGA",
+        "sodaPeeking"
+      ]
+    },
+    {
+      "emoji": "👁️",
+      "codes": [
+        "1984",
+        "DOYOUFEELTHEWEIGHTOFYOURSINSDOESITHURTDOESGODSJUDGEMENTFILLYOUWITHGUILTTORMENTTHEYRECOMINGTHEYRECOMI"
+      ]
+    },
+    {
+      "emoji": "👃",
+      "codes": [
+        "catSNIFFA",
+        "foodSNIFFA"
+      ]
+    },
+    {
+      "emoji": "👅",
+      "codes": [
+        "FirstTimeome44butthenameislongersoyoucantspamit",
+        "lickR"
+      ]
+    },
+    {
+      "emoji": "👇",
+      "codes": [
+        "lookDown",
+        "xqcFingerDown"
+      ]
+    },
+    {
+      "emoji": "👉",
+      "codes": [
+        "BirdLaughingAtYou"
+      ]
+    },
+    {
+      "emoji": "👉️",
+      "codes": [
+        "forsenLaughingAtYou"
+      ]
+    },
+    {
+      "emoji": "👊",
+      "codes": [
+        "catPunch",
+        "KirbyPunch"
+      ]
+    },
+    {
+      "emoji": "👋",
+      "codes": [
+        "agahi",
+        "AliasArrive",
+        "sodaWave",
+        "sodaWave2"
+      ]
+    },
+    {
+      "emoji": "👍",
+      "codes": [
+        "AlienApprove",
+        "Alivelole"
+      ]
+    },
+    {
+      "emoji": "👎︎",
+      "codes": [
+        "Noskill"
+      ]
+    },
+    {
+      "emoji": "👎",
+      "codes": [
+        "notCinema",
+        "notok"
+      ]
+    },
+    {
+      "emoji": "👏",
+      "codes": [
+        "BRAVOVINCE",
+        "Clap"
+      ]
+    },
+    {
+      "emoji": "👐",
+      "codes": [
+        "BEHOLD",
+        "DarkerHands"
+      ]
+    },
+    {
+      "emoji": "👑",
+      "codes": [
+        "OTK"
+      ]
+    },
+    {
+      "emoji": "👒",
+      "codes": [
+        "dankHat"
+      ]
+    },
+    {
+      "emoji": "👔",
+      "codes": [
+        "suitFR"
+      ]
+    },
+    {
+      "emoji": "👤",
+      "codes": [
+        "hoodieU"
+      ]
+    },
+    {
+      "emoji": "👥",
+      "codes": [
+        "sodaTAKE"
+      ]
+    },
+    {
+      "emoji": "👧",
+      "codes": [
+        "WeebSmash"
+      ]
+    },
+    {
+      "emoji": "👨",
+      "codes": [
+        "Baldge",
+        "FEMLY"
+      ]
+    },
+    {
+      "emoji": "👪",
+      "codes": [
+        "DonkTrio"
+      ]
+    },
+    {
+      "emoji": "👱",
+      "codes": [
+        "aNIME"
+      ]
+    },
+    {
+      "emoji": "👴",
+      "codes": [
+        "FeelsOldMan",
+        "GreenGrandfather"
+      ]
+    },
+    {
+      "emoji": "👵",
+      "codes": [
+        "granny"
+      ]
+    },
+    {
+      "emoji": "👶",
+      "codes": [
+        "babyFR"
+      ]
+    },
+    {
+      "emoji": "👹",
+      "codes": [
+        "LMaul",
+        "mon"
+      ]
+    },
+    {
+      "emoji": "👻",
+      "codes": [
+        "LGhost"
+      ]
+    },
+    {
+      "emoji": "👽",
+      "codes": [
+        "AlienDanceBlue",
+        "coupleofaliens"
+      ]
+    },
+    {
+      "emoji": "👾",
+      "codes": [
+        "Bitrate"
+      ]
+    },
+    {
+      "emoji": "👿",
+      "codes": [
+        "WTHMAN"
+      ]
+    },
+    {
+      "emoji": "💀",
+      "codes": [
+        "AINTNOWAY",
+        "BULPES"
+      ]
+    },
+    {
+      "emoji": "💃",
+      "codes": [
+        "2bSway",
+        "ankhaPls"
+      ]
+    },
+    {
+      "emoji": "💉",
+      "codes": [
+        "notAddicted"
+      ]
+    },
+    {
+      "emoji": "💊",
+      "codes": [
+        "MedTime"
+      ]
+    },
+    {
+      "emoji": "💎",
+      "codes": [
+        "Bits-100"
+      ]
+    },
+    {
+      "emoji": "💔",
+      "codes": [
+        "Idiot"
+      ]
+    },
+    {
+      "emoji": "💙",
+      "codes": [
+        "sodaLove"
+      ]
+    },
+    {
+      "emoji": "💡",
+      "codes": [
+        "aha",
+        "NowISee"
+      ]
+    },
+    {
+      "emoji": "💢",
+      "codes": [
+        "Anger",
+        "BAPPED",
+        "peepoSmash"
+      ]
+    },
+    {
+      "emoji": "💥",
+      "codes": [
+        "Explosion",
+        "KABOOM"
+      ]
+    },
+    {
+      "emoji": "💦",
+      "codes": [
+        "CUMMIES",
+        "PepeSpit"
+      ]
+    },
+    {
+      "emoji": "💨",
+      "codes": [
+        "emoneyGassy",
+        "LO"
+      ]
+    },
+    {
+      "emoji": "💩",
+      "codes": [
+        "ERP",
+        "GOODSHIT"
+      ]
+    },
+    {
+      "emoji": "💪",
+      "codes": [
+        "alias",
+        "BillyReady"
+      ]
+    },
+    {
+      "emoji": "💬",
+      "codes": [
+        "Chatge",
+        "Chatting"
+      ]
+    },
+    {
+      "emoji": "💭",
+      "codes": [
+        "TERRARIA",
+        "Thinking"
+      ]
+    },
+    {
+      "emoji": "💰",
+      "codes": [
+        "MAXWIN",
+        "paidchatter"
+      ]
+    },
+    {
+      "emoji": "💵",
+      "codes": [
+        "Motion"
+      ]
+    },
+    {
+      "emoji": "💸",
+      "codes": [
+        "DonoTime"
+      ]
+    },
+    {
+      "emoji": "💻",
+      "codes": [
+        "WatchingStream"
+      ]
+    },
+    {
+      "emoji": "💼",
+      "codes": [
+        "!fund",
+        "Corpa"
+      ]
+    },
+    {
+      "emoji": "📈",
+      "codes": [
+        "BUYNOW",
+        "CORTISOL"
+      ]
+    },
+    {
+      "emoji": "📉",
+      "codes": [
+        "-20",
+        "fallDamage",
+        "SocialCreditMinus"
+      ]
+    },
+    {
+      "emoji": "📊",
+      "codes": [
+        "EDM",
+        "Excel"
+      ]
+    },
+    {
+      "emoji": "📌",
+      "codes": [
+        "Readpin"
+      ]
+    },
+    {
+      "emoji": "📖",
+      "codes": [
+        "donkReading",
+        "frfr"
+      ]
+    },
+    {
+      "emoji": "📝",
+      "codes": [
+        "DankG",
+        "TakingNotes"
+      ]
+    },
+    {
+      "emoji": "📞",
+      "codes": [
+        "ALOO",
+        "hangupFR"
+      ]
+    },
+    {
+      "emoji": "📢",
+      "codes": [
+        "Backseatega",
+        "Deafge"
+      ]
+    },
+    {
+      "emoji": "📣",
+      "codes": [
+        "CHEER"
+      ]
+    },
+    {
+      "emoji": "📦",
+      "codes": [
+        "FedxQc",
+        "ITARRIVED"
+      ]
+    },
+    {
+      "emoji": "📰",
+      "codes": [
+        "paperFR"
+      ]
+    },
+    {
+      "emoji": "📱",
+      "codes": [
+        "PokiShare",
+        "xqcShare"
+      ]
+    },
+    {
+      "emoji": "📺",
+      "codes": [
+        "FeelsBlackScreen",
+        "xqcReacting"
+      ]
+    },
+    {
+      "emoji": "🔁",
+      "codes": [
+        "rt"
+      ]
+    },
+    {
+      "emoji": "🔄",
+      "codes": [
+        "emoneyTesticularTorsion",
+        "RESTARTA"
+      ]
+    },
+    {
+      "emoji": "🔔",
+      "codes": [
+        "DinkDonk"
+      ]
+    },
+    {
+      "emoji": "🔢",
+      "codes": [
+        "Countup"
+      ]
+    },
+    {
+      "emoji": "🔥",
+      "codes": [
+        "!!!",
+        "Bars"
+      ]
+    },
+    {
+      "emoji": "🔦",
+      "codes": [
+        "PepegaFlash"
+      ]
+    },
+    {
+      "emoji": "🔧",
+      "codes": [
+        "DankFixed"
+      ]
+    },
+    {
+      "emoji": "🔨",
+      "codes": [
+        "BONK",
+        "bonkFR",
+        "DankChat"
+      ]
+    },
+    {
+      "emoji": "🔪",
+      "codes": [
+        "21",
+        "shankFR"
+      ]
+    },
+    {
+      "emoji": "🔫",
+      "codes": [
+        "AWPge"
+      ]
+    },
+    {
+      "emoji": "🔭",
+      "codes": [
+        "Binoculars",
+        "Copernicus"
+      ]
+    },
+    {
+      "emoji": "🕯",
+      "codes": [
+        "cultFR",
+        "groupSUM"
+      ]
+    },
+    {
+      "emoji": "🕵",
+      "codes": [
+        "monkaSneak"
+      ]
+    },
+    {
+      "emoji": "🕵️",
+      "codes": [
+        "neffSpy"
+      ]
+    },
+    {
+      "emoji": "🕷",
+      "codes": [
+        "Spoogers"
+      ]
+    },
+    {
+      "emoji": "🕹️",
+      "codes": [
+        "Dentris"
+      ]
+    },
+    {
+      "emoji": "🕺",
+      "codes": [
+        "BeanPls",
+        "catDisco",
+        "Jammies",
+        "RossPls"
+      ]
+    },
+    {
+      "emoji": "🖐",
+      "codes": [
+        "Grab1"
+      ]
+    },
+    {
+      "emoji": "🖕",
+      "codes": [
+        "Fiddy",
+        "FRICK",
+        "nomuFU"
+      ]
+    },
+    {
+      "emoji": "🖥️",
+      "codes": [
+        "1427butthenameislongerbecauseafewdumbassesinchatliketoruinit",
+        "NewPC"
+      ]
+    },
+    {
+      "emoji": "🖼️",
+      "codes": [
+        "DougDimmadomeOwnerOfTheDimmsdaleDimmadomeLookingOutHisDimmsdaleDimmadomeLookingOutSpongebobsWindowAndKnucklesFtDanteDOIT"
+      ]
+    },
+    {
+      "emoji": "🗒️",
+      "codes": [
+        "Notepad"
+      ]
+    },
+    {
+      "emoji": "🗡️",
+      "codes": [
+        "DonkAndDonker"
+      ]
+    },
+    {
+      "emoji": "🗡",
+      "codes": [
+        "LSword"
+      ]
+    },
+    {
+      "emoji": "🗣️",
+      "codes": [
+        "EXPLAINING",
+        "peepoTalk"
+      ]
+    },
+    {
+      "emoji": "🗳",
+      "codes": [
+        "!vote"
+      ]
+    },
+    {
+      "emoji": "🗺️",
+      "codes": [
+        "DankMap",
+        "GEOGUESSR"
+      ]
+    },
+    {
+      "emoji": "🗿",
+      "codes": [
+        "1D",
+        "FirstTimeChadder"
+      ]
+    },
+    {
+      "emoji": "🤌",
+      "codes": [
+        "Aldentge",
+        "mamamia"
+      ]
+    },
+    {
+      "emoji": "🤏",
+      "codes": [
+        "DeathGripge"
+      ]
+    },
+    {
+      "emoji": "🤐",
+      "codes": [
+        "IFISPEAK",
+        "REDACTED"
+      ]
+    },
+    {
+      "emoji": "🤑",
+      "codes": [
+        "GabenGet",
+        "GREEDY",
+        "sodaRich"
+      ]
+    },
+    {
+      "emoji": "🤒",
+      "codes": [
+        "SICKMAN"
+      ]
+    },
+    {
+      "emoji": "🤓",
+      "codes": [
+        "baj",
+        "CUNGUS"
+      ]
+    },
+    {
+      "emoji": "🤔",
+      "codes": [
+        "BRUHMM",
+        "emm",
+        "pepegeThink"
+      ]
+    },
+    {
+      "emoji": "🤖",
+      "codes": [
+        "Android",
+        "clanka"
+      ]
+    },
+    {
+      "emoji": "🤘",
+      "codes": [
+        "CatBanger",
+        "Headbang"
+      ]
+    },
+    {
+      "emoji": "🤝",
+      "codes": [
+        "CatHandshake",
+        "DEAL"
+      ]
+    },
+    {
+      "emoji": "🤠",
+      "codes": [
+        "KKonaW",
+        "Meowdy"
+      ]
+    },
+    {
+      "emoji": "🤡",
+      "codes": [
+        "BEAUTIFULMAN",
+        "clownFiesta"
+      ]
+    },
+    {
+      "emoji": "🤢",
+      "codes": [
+        "DOOMAZZZ",
+        "eww"
+      ]
+    },
+    {
+      "emoji": "🤣",
+      "codes": [
+        "apoLuL",
+        "KEKInsane",
+        "widepepOMEGAKEKHappyChampHands"
+      ]
+    },
+    {
+      "emoji": "🤤",
+      "codes": [
+        "peepoDumb"
+      ]
+    },
+    {
+      "emoji": "🤥",
+      "codes": [
+        "!smp",
+        "SCAMBA"
+      ]
+    },
+    {
+      "emoji": "🤦",
+      "codes": [
+        "AverageOfflineChatter",
+        "CinemaFail"
+      ]
+    },
+    {
+      "emoji": "🤦‍♂️",
+      "codes": [
+        "FacePalm",
+        "FailFish"
+      ]
+    },
+    {
+      "emoji": "🤧",
+      "codes": [
+        "achoo",
+        "vSneeze"
+      ]
+    },
+    {
+      "emoji": "🤨",
+      "codes": [
+        "???",
+        "amongE",
+        "AYAYAWeird",
+        "pauseFR",
+        "PeepoWeird",
+        "susFR"
+      ]
+    },
+    {
+      "emoji": "🤪",
+      "codes": [
+        "AHEGAO",
+        "BrainRot"
+      ]
+    },
+    {
+      "emoji": "🤫",
+      "codes": [
+        "DOUBTERS",
+        "QUIET"
+      ]
+    },
+    {
+      "emoji": "🤭",
+      "codes": [
+        "Giggle",
+        "gigl"
+      ]
+    },
+    {
+      "emoji": "🤮",
+      "codes": [
+        "PUKERS"
+      ]
+    },
+    {
+      "emoji": "🤯",
+      "codes": [
+        "Apollobotomy"
+      ]
+    },
+    {
+      "emoji": "🤲",
+      "codes": [
+        "Cute"
+      ]
+    },
+    {
+      "emoji": "🤵",
+      "codes": [
+        "BOOBEST",
+        "BOTHA",
+        "ezFR"
+      ]
+    },
+    {
+      "emoji": "🤷",
+      "codes": [
+        "Clueless",
+        "dumbleShrug"
+      ]
+    },
+    {
+      "emoji": "🤷‍♀️",
+      "codes": [
+        "Shruge"
+      ]
+    },
+    {
+      "emoji": "🤷‍♂️",
+      "codes": [
+        "4Shrug",
+        "WTFMAN"
+      ]
+    },
+    {
+      "emoji": "🤸‍♂️",
+      "codes": [
+        "catFlip"
+      ]
+    },
+    {
+      "emoji": "🥁",
+      "codes": [
+        "bongoTap",
+        "CAMON"
+      ]
+    },
+    {
+      "emoji": "🥇",
+      "codes": [
+        "founderr",
+        "MarioKarted"
+      ]
+    },
+    {
+      "emoji": "🥔",
+      "codes": [
+        "talusHF"
+      ]
+    },
+    {
+      "emoji": "🥕",
+      "codes": [
+        "carrotYummy",
+        "SNACKING"
+      ]
+    },
+    {
+      "emoji": "🥚",
+      "codes": [
+        "ApolEgg",
+        "EggCat"
+      ]
+    },
+    {
+      "emoji": "🥛",
+      "codes": [
+        "CUMtember"
+      ]
+    },
+    {
+      "emoji": "🥤",
+      "codes": [
+        "CokeShakey",
+        "MonsTime",
+        "sodaSipping"
+      ]
+    },
+    {
+      "emoji": "🥬",
+      "codes": [
+        "lirikL"
+      ]
+    },
+    {
+      "emoji": "🥭",
+      "codes": [
+        "dwerk"
+      ]
+    },
+    {
+      "emoji": "🥱",
+      "codes": [
+        "ApolloWake",
+        "yawner"
+      ]
+    },
+    {
+      "emoji": "🥳",
+      "codes": [
+        "bbParty",
+        "birff"
+      ]
+    },
+    {
+      "emoji": "🥴",
+      "codes": [
+        "DRUNK",
+        "FeelsGlitchMan"
+      ]
+    },
+    {
+      "emoji": "🥵",
+      "codes": [
+        "chokeFR",
+        "DiedOfHeat",
+        "ppOverheat"
+      ]
+    },
+    {
+      "emoji": "🥶",
+      "codes": [
+        "Coldge",
+        "SHEESH"
+      ]
+    },
+    {
+      "emoji": "🥸",
+      "codes": [
+        "MustacheGlasses"
+      ]
+    },
+    {
+      "emoji": "🥹",
+      "codes": [
+        "FeelsStrongMan"
+      ]
+    },
+    {
+      "emoji": "🥺",
+      "codes": [
+        "cryFR",
+        "Poorge",
+        "retgekm9"
+      ]
+    },
+    {
+      "emoji": "🦀",
+      "codes": [
+        "crabPls"
+      ]
+    },
+    {
+      "emoji": "🦁",
+      "codes": [
+        "feralDance"
+      ]
+    },
+    {
+      "emoji": "🦆",
+      "codes": [
+        "duckPls"
+      ]
+    },
+    {
+      "emoji": "🦈",
+      "codes": [
+        "ELINA_btw",
+        "SHARKING"
+      ]
+    },
+    {
+      "emoji": "🦍",
+      "codes": [
+        "ApeSlap",
+        "AYOOO"
+      ]
+    },
+    {
+      "emoji": "🦎",
+      "codes": [
+        "Haku",
+        "Hakuu"
+      ]
+    },
+    {
+      "emoji": "🦐",
+      "codes": [
+        "Bajing"
+      ]
+    },
+    {
+      "emoji": "🦑",
+      "codes": [
+        "IVEPLAYEDTHESEGAMESBEFORE"
+      ]
+    },
+    {
+      "emoji": "🦒",
+      "codes": [
+        "sodaGpls",
+        "sodaWiggle"
+      ]
+    },
+    {
+      "emoji": "🦕",
+      "codes": [
+        "pteraFR",
+        "wideNessie"
+      ]
+    },
+    {
+      "emoji": "🦜",
+      "codes": [
+        "HoneyBirb"
+      ]
+    },
+    {
+      "emoji": "🦶",
+      "codes": [
+        "ToeCam"
+      ]
+    },
+    {
+      "emoji": "🧊",
+      "codes": [
+        "CHILLMAN"
+      ]
+    },
+    {
+      "emoji": "🧍‍♂️",
+      "codes": [
+        "emoneyFiles"
+      ]
+    },
+    {
+      "emoji": "🧐",
+      "codes": [
+        "Binoculous",
+        "modCheck"
+      ]
+    },
+    {
+      "emoji": "🧔‍♂️",
+      "codes": [
+        "BOROMIR"
+      ]
+    },
+    {
+      "emoji": "🧙",
+      "codes": [
+        "LOTHRIC",
+        "peepoWizard"
+      ]
+    },
+    {
+      "emoji": "🧛",
+      "codes": [
+        "OnlyFangs"
+      ]
+    },
+    {
+      "emoji": "🧠",
+      "codes": [
+        "10Head",
+        "GENIUS",
+        "Leddit"
+      ]
+    },
+    {
+      "emoji": "🧨",
+      "codes": [
+        "TnT"
+      ]
+    },
+    {
+      "emoji": "🧩",
+      "codes": [
+        "autism"
+      ]
+    },
+    {
+      "emoji": "🧱",
+      "codes": [
+        "DonkWall",
+        "peepoBrick"
+      ]
+    },
+    {
+      "emoji": "🧹",
+      "codes": [
+        "Modge"
+      ]
+    },
+    {
+      "emoji": "🧼",
+      "codes": [
+        "CleanTheNymN"
+      ]
+    },
+    {
+      "emoji": "🩷",
+      "codes": [
+        "Citto"
+      ]
+    },
+    {
+      "emoji": "🩹",
+      "codes": [
+        "Bandage"
+      ]
+    },
+    {
+      "emoji": "🪄",
+      "codes": [
+        "wandFR"
+      ]
+    },
+    {
+      "emoji": "🪙",
+      "codes": [
+        "!givenympts",
+        "CALLIT"
+      ]
+    },
+    {
+      "emoji": "🪜",
+      "codes": [
+        "ApolloStairs",
+        "ladderFR"
+      ]
+    },
+    {
+      "emoji": "🫂",
+      "codes": [
+        "bbHuggingYou",
+        "catHug",
+        "LCuddle",
+        "RareHug"
+      ]
+    },
+    {
+      "emoji": "🫡",
+      "codes": [
+        "o7FR"
+      ]
+    },
+    {
+      "emoji": "🫣",
+      "codes": [
+        "ApolloHide",
+        "BOOBAPEEK"
+      ]
+    },
+    {
+      "emoji": "😁",
+      "codes": [
+        "Balcony",
+        "creaturevibE",
+        "WideHard"
+      ]
+    },
+    {
+      "emoji": "😂",
+      "codes": [
+        "apolloLooking",
+        "bbLaugh"
+      ]
+    },
+    {
+      "emoji": "😃",
+      "codes": [
+        "31",
+        "BigHardo",
+        "peepoHappy"
+      ]
+    },
+    {
+      "emoji": "😄",
+      "codes": [
+        "AYAYA"
+      ]
+    },
+    {
+      "emoji": "😅",
+      "codes": [
+        "monkaGiggle",
+        "oopsie"
+      ]
+    },
+    {
+      "emoji": "😆",
+      "codes": [
+        "DumbVissx",
+        "kek"
+      ]
+    },
+    {
+      "emoji": "😇",
+      "codes": [
+        "AngelThump"
+      ]
+    },
+    {
+      "emoji": "😈",
+      "codes": [
+        "DemonCat",
+        "DEWIT"
+      ]
+    },
+    {
+      "emoji": "😊",
+      "codes": [
+        "Blush",
+        "DinoBlush"
+      ]
+    },
+    {
+      "emoji": "😋",
+      "codes": [
+        "EATO",
+        "Tasty"
+      ]
+    },
+    {
+      "emoji": "😌",
+      "codes": [
+        "beAlright",
+        "Comfi",
+        "sodaCOMFY",
+        "sodaCOMFY2"
+      ]
+    },
+    {
+      "emoji": "😎",
+      "codes": [
+        "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAT",
+        "Based",
+        "LPopo"
+      ]
+    },
+    {
+      "emoji": "😏",
+      "codes": [
+        ")))))",
+        "buda",
+        "LJam"
+      ]
+    },
+    {
+      "emoji": "😐",
+      "codes": [
+        "BANANA",
+        "BREH"
+      ]
+    },
+    {
+      "emoji": "😑",
+      "codes": [
+        "areyoudonenymn",
+        "Bruh"
+      ]
+    },
+    {
+      "emoji": "😒",
+      "codes": [
+        "DIESOFFRAMES",
+        "lirikNOT"
+      ]
+    },
+    {
+      "emoji": "😔",
+      "codes": [
+        "DAMNMAN",
+        "hesOffline"
+      ]
+    },
+    {
+      "emoji": "😖",
+      "codes": [
+        "SOCLOSE"
+      ]
+    },
+    {
+      "emoji": "😘",
+      "codes": [
+        "HomieKiss"
+      ]
+    },
+    {
+      "emoji": "😚",
+      "codes": [
+        "StareKiss"
+      ]
+    },
+    {
+      "emoji": "😛",
+      "codes": [
+        ":b",
+        "blehE"
+      ]
+    },
+    {
+      "emoji": "😞",
+      "codes": [
+        "megaSadge"
+      ]
+    },
+    {
+      "emoji": "😟",
+      "codes": [
+        "Concerned",
+        "ConcernFroge"
+      ]
+    },
+    {
+      "emoji": "😠",
+      "codes": [
+        "ahmadmuhsin",
+        "angy"
+      ]
+    },
+    {
+      "emoji": "😡",
+      "codes": [
+        "AbsoluteRage",
+        "grrr"
+      ]
+    },
+    {
+      "emoji": "😢",
+      "codes": [
+        "BrainDead",
+        "catCry",
+        "sadgeCoomer"
+      ]
+    },
+    {
+      "emoji": "😧",
+      "codes": [
+        "guh"
+      ]
+    },
+    {
+      "emoji": "😨",
+      "codes": [
+        "Degloved",
+        "despairFR"
+      ]
+    },
+    {
+      "emoji": "😩",
+      "codes": [
+        "BUS",
+        "cooperDespair"
+      ]
+    },
+    {
+      "emoji": "😫",
+      "codes": [
+        "AragornHelmet",
+        "IMGONNACUM"
+      ]
+    },
+    {
+      "emoji": "😬",
+      "codes": [
+        "apohowoah",
+        "Assept"
+      ]
+    },
+    {
+      "emoji": "😭",
+      "codes": [
+        "AYAYACRY",
+        "bajing",
+        "cooperSad",
+        "SadWeeb",
+        "sodaCrying"
+      ]
+    },
+    {
+      "emoji": "😮",
+      "codes": [
+        "catSighButLookingToTheRightSoYouCanPutdashAfterIt",
+        "Gasp"
+      ]
+    },
+    {
+      "emoji": "😰",
+      "codes": [
+        "bombaware",
+        "lirikS",
+        "sodaMONK"
+      ]
+    },
+    {
+      "emoji": "😱",
+      "codes": [
+        "aaaa",
+        "BALDbutthenameislongersoyoucantspamit"
+      ]
+    },
+    {
+      "emoji": "😲",
+      "codes": [
+        "bigPog",
+        "div44",
+        "PogT"
+      ]
+    },
+    {
+      "emoji": "😳",
+      "codes": [
+        "ahware",
+        "Aware"
+      ]
+    },
+    {
+      "emoji": "😴",
+      "codes": [
+        "apolloSleep",
+        "eeping",
+        "GoodNightHomie"
+      ]
+    },
+    {
+      "emoji": "😵",
+      "codes": [
+        "AwesomeChoke",
+        "bbFaint",
+        "WAYTOODANK"
+      ]
+    },
+    {
+      "emoji": "😶",
+      "codes": [
+        "Speechless"
+      ]
+    },
+    {
+      "emoji": "😷",
+      "codes": [
+        "COPIUM",
+        "COPIUMOVERDOSE"
+      ]
+    },
+    {
+      "emoji": "😸",
+      "codes": [
+        "HAPPIES"
+      ]
+    },
+    {
+      "emoji": "😺",
+      "codes": [
+        "Smile"
+      ]
+    },
+    {
+      "emoji": "😼",
+      "codes": [
+        "catBite",
+        "gremlin"
+      ]
+    },
+    {
+      "emoji": "😿",
+      "codes": [
+        "ApolloTrauma",
+        "badkok"
+      ]
+    },
+    {
+      "emoji": "🙀",
+      "codes": [
+        "catHyper",
+        "WAA"
+      ]
+    },
+    {
+      "emoji": "🙂",
+      "codes": [
+        ":3",
+        "+20",
+        "AYAYAS",
+        "evilNabi",
+        "fallFR",
+        "FeelsDabMan",
+        "grinFR",
+        "Hapje",
+        "HAPPY",
+        "happyFR",
+        "jumpFR",
+        "LGen",
+        "LPPM",
+        "LSmile",
+        "nabiBuff",
+        "nabiL",
+        "NabiW",
+        "naynaSHAKE",
+        "NOTED",
+        "nyAngy",
+        "peepoBless",
+        "peepoChef",
+        "peepoJail",
+        "peepoKnife",
+        "peepoMetal",
+        "peepoWoof",
+        "peepoWtfS",
+        "PoroPissed",
+        "puzzleFR",
+        "runFR",
+        "Saje",
+        "SMASH",
+        "sodaArrive",
+        "sodaAyaya",
+        "sodaCredit",
+        "sodaFU",
+        "SODAING",
+        "sodaJAM",
+        "sodaPop",
+        "sodaRISK",
+        "sodaSmash",
+        "sodaSteer",
+        "sodaTP",
+        "stealthFR",
+        "SussyFR",
+        "swimFR",
+        "tantrumFR",
+        "tastyFR",
+        "WideConcern",
+        "WIPERS"
+      ]
+    },
+    {
+      "emoji": "🙄",
+      "codes": [
+        "AhShit",
+        "bbLookUp"
+      ]
+    },
+    {
+      "emoji": "🙅",
+      "codes": [
+        "succit1g",
+        "vNOPERS"
+      ]
+    },
+    {
+      "emoji": "🙅‍♂️",
+      "codes": [
+        "NOPERS",
+        "nuhuh"
+      ]
+    },
+    {
+      "emoji": "🙇‍♂️",
+      "codes": [
+        "ThankYou"
+      ]
+    },
+    {
+      "emoji": "🙈",
+      "codes": [
+        "Blindfold",
+        "peepoHide",
+        "SEXO"
+      ]
+    },
+    {
+      "emoji": "🙉",
+      "codes": [
+        "notListening"
+      ]
+    },
+    {
+      "emoji": "🙊",
+      "codes": [
+        "Mutege"
+      ]
+    },
+    {
+      "emoji": "🙋",
+      "codes": [
+        "IHaveAQuestion"
+      ]
+    },
+    {
+      "emoji": "🙋‍♂️",
+      "codes": [
+        "Eddie",
+        "PepegaAsk"
+      ]
+    },
+    {
+      "emoji": "🙌",
+      "codes": [
+        "bbCheer",
+        "CAUGHT0"
+      ]
+    },
+    {
+      "emoji": "🙏",
+      "codes": [
+        "apolloPray",
+        "BELIEVERS"
+      ]
+    },
+    {
+      "emoji": "🚀",
+      "codes": [
+        "0ut3"
+      ]
+    },
+    {
+      "emoji": "🚁",
+      "codes": [
+        "bioxeN"
+      ]
+    },
+    {
+      "emoji": "🚗",
+      "codes": [
+        "GoslingDrive",
+        "PepegaDriving"
+      ]
+    },
+    {
+      "emoji": "🚛",
+      "codes": [
+        "COPIUMTRUCK"
+      ]
+    },
+    {
+      "emoji": "🚢",
+      "codes": [
+        "COPIUMSHIPMENT"
+      ]
+    },
+    {
+      "emoji": "🚣",
+      "codes": [
+        "Boating"
+      ]
+    },
+    {
+      "emoji": "🚨",
+      "codes": [
+        "Alarm",
+        "WeeWoo"
+      ]
+    },
+    {
+      "emoji": "🚩",
+      "codes": [
+        "Barons",
+        "Chiefs"
+      ]
+    },
+    {
+      "emoji": "🚪",
+      "codes": [
+        "HODOR"
+      ]
+    },
+    {
+      "emoji": "🚫",
+      "codes": [
+        "LastTimeChatter"
+      ]
+    },
+    {
+      "emoji": "🚬",
+      "codes": [
+        "500cigarettes"
+      ]
+    },
+    {
+      "emoji": "🚶",
+      "codes": [
+        "donkWalk",
+        "kiryuArrive"
+      ]
+    },
+    {
+      "emoji": "🚶‍♂️",
+      "codes": [
+        "keanuLeave",
+        "KEKWalk"
+      ]
+    },
+    {
+      "emoji": "🚽",
+      "codes": [
+        "LToilet",
+        "POOPING"
+      ]
+    },
+    {
+      "emoji": "🚿",
+      "codes": [
+        "PepegaShower",
+        "ShowerTime"
+      ]
+    },
+    {
+      "emoji": "🛋",
+      "codes": [
+        "cozyFR"
+      ]
+    },
+    {
+      "emoji": "🛌",
+      "codes": [
+        "BedgeTogether",
+        "BLANKIES",
+        "widepeepoBlanket"
+      ]
+    },
+    {
+      "emoji": "🛑",
+      "codes": [
+        "STOPMAN"
+      ]
+    },
+    {
+      "emoji": "🛡️",
+      "codes": [
+        "sodaKnight"
+      ]
+    },
+    {
+      "emoji": "🟢",
+      "codes": [
+        "KickTime"
+      ]
+    },
+    {
+      "emoji": "🟦",
+      "codes": [
+        "FeelsRectangleMan"
+      ]
+    },
+    {
+      "emoji": "🟩",
+      "codes": [
+        "CHEAT"
+      ]
+    },
+    {
+      "emoji": "🆘",
+      "codes": [
+        "HelpMe"
+      ]
+    }
+  ]
+}
