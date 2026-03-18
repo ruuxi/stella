@@ -1,0 +1,251 @@
+/* ============================================
+   ConnectDialog — card grid + detail area
+   ============================================ */
+
+/* Opaque dialog background (matches settings dialog) */
+[data-slot="dialog-content"].connect-dialog {
+  background: var(--background);
+  background-clip: border-box;
+  border-color: var(--border);
+}
+
+/* Body edge padding */
+.connect-dialog [data-slot="dialog-body"] {
+  padding: 0 24px 24px;
+}
+
+/* Section title */
+.connect-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-weak);
+  margin: 0 0 8px 0;
+  padding: 0;
+}
+
+.connect-section-title:not(:first-child) {
+  margin-top: 16px;
+}
+
+/* 2-column card grid */
+.connect-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+/* Grid card */
+.connect-grid-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: var(--foreground);
+  transition: border-color 0.15s, background 0.15s;
+  position: relative;
+}
+
+.connect-grid-card:hover {
+  border-color: color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.connect-grid-card-selected {
+  border-color: color-mix(in oklch, var(--foreground) 14%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+/* Card icon */
+.connect-grid-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 6px;
+}
+
+.connect-grid-card-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Card name */
+.connect-grid-card-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Connected badge dot on card */
+.connect-grid-card-badge {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.connect-grid-card-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+
+/* Detail area */
+.connect-detail-area {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  animation: connect-detail-enter 0.2s ease-out;
+}
+
+@keyframes connect-detail-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.connect-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.connect-detail-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.connect-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ============================================
+   Shared styles (retained from original)
+   ============================================ */
+
+.connect-instructions {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Link code display (bot-based) */
+.connect-code-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.connect-code {
+  font-family: var(--font-family-mono, "JetBrains Mono", monospace);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  color: var(--foreground);
+  padding: 6px 14px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border-radius: var(--radius-md, 6px);
+  border: 1px solid var(--border-weak);
+  user-select: all;
+}
+
+/* Bot link */
+.connect-bot-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-weak);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+}
+
+.connect-bot-link:hover {
+  color: var(--foreground);
+}
+
+/* Status + disconnect row */
+.connect-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.connect-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #22c55e;
+}
+
+.connect-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+
+/* Skeleton loading */
+.connect-skeleton {
+  border-radius: var(--radius-md, 6px);
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--foreground) 5%, transparent) 25%,
+    color-mix(in oklch, var(--foreground) 10%, transparent) 50%,
+    color-mix(in oklch, var(--foreground) 5%, transparent) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.connect-skeleton-code {
+  width: 140px;
+  height: 38px;
+}
+
+/* Error state */
+.connect-error {
+  font-size: 12px;
+  color: #ff8f8f;
+  background: rgba(255, 143, 143, 0.1);
+  padding: 8px 12px;
+  border-radius: var(--radius-md, 6px);
+}

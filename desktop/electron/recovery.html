@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stella — Recovery</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100vw;
+      height: 100vh;
+      background: #111;
+      color: #eee;
+      -webkit-app-region: drag;
+    }
+    .recovery {
+      text-align: center;
+      max-width: 380px;
+      padding: 32px;
+      -webkit-app-region: no-drag;
+    }
+    h2 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+    p { font-size: 14px; color: #999; line-height: 1.5; margin-bottom: 24px; }
+    .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .feature-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+    button {
+      padding: 8px 16px;
+      font-size: 13px;
+      border-radius: 8px;
+      border: 1px solid #444;
+      cursor: pointer;
+      transition: background 150ms;
+    }
+    .btn-primary {
+      background: #6366f1;
+      color: #fff;
+      border-color: #6366f1;
+    }
+    .btn-primary:hover:not(:disabled) { background: #5558e6; }
+    .btn-secondary {
+      background: #222;
+      color: #eee;
+    }
+    .btn-secondary:hover:not(:disabled) { background: #333; }
+    button:disabled { opacity: 0.6; cursor: default; }
+    .status { margin-top: 16px; font-size: 12px; color: #777; }
+  </style>
+</head>
+<body>
+  <div class="recovery">
+    <h2>Stella ran into a problem</h2>
+    <p>The app encountered an unexpected error. You can undo recent updates or restart.</p>
+    <div class="feature-actions" id="feature-actions"></div>
+    <div class="actions">
+      <button class="btn-primary" id="revert-btn">Undo latest update</button>
+      <button class="btn-secondary" id="restart-btn">Restart</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <script>
+    const featureActions = document.getElementById('feature-actions');
+    const revertBtn = document.getElementById('revert-btn');
+    const restartBtn = document.getElementById('restart-btn');
+    const status = document.getElementById('status');
+
+    const allButtons = [revertBtn, restartBtn];
+
+    const setBusy = (busy) => {
+      allButtons.forEach((button) => {
+        button.disabled = busy;
+      });
+    };
+
+    const runRevert = async (featureId) => {
+      setBusy(true);
+      status.textContent = 'Reverting...';
+      try {
+        await window.electronAPI?.agent.selfModRevert(featureId, 1);
+        status.textContent = 'Reverted. Restarting...';
+        setTimeout(() => window.electronAPI?.ui.reload(), 500);
+      } catch (err) {
+        status.textContent = 'Revert failed. Try restarting instead.';
+        setBusy(false);
+      }
+    };
+
+    revertBtn.addEventListener('click', () => {
+      void runRevert(undefined);
+    });
+
+    const renderFeatureButtons = async () => {
+      try {
+        const features = await window.electronAPI?.agent.listSelfModFeatures(4);
+        if (!features || features.length === 0) {
+          return;
+        }
+        featureActions.innerHTML = '';
+        for (const feature of features) {
+          const btn = document.createElement('button');
+          btn.className = 'btn-secondary';
+          btn.textContent = feature.tainted
+            ? `Undo ${feature.name} (external edits)`
+            : `Undo ${feature.name}`;
+          btn.addEventListener('click', () => {
+            void runRevert(feature.featureId);
+          });
+          allButtons.push(btn);
+          featureActions.appendChild(btn);
+        }
+      } catch {
+        // Best effort.
+      }
+    };
+
+    restartBtn.addEventListener('click', () => {
+      window.electronAPI?.ui.reload();
+    });
+
+    void renderFeatureButtons();
+  </script>
+</body>
+</html>

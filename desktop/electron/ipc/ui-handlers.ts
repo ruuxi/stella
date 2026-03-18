@@ -1,0 +1,127 @@
+import { BrowserWindow, ipcMain } from "electron";
+import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
+import type { UiState } from "../types.js";
+import type { WindowManager } from "../windows/window-manager.js";
+
+// IPC authorization policy:
+//   Privileged (assertPrivilegedSender):  ui:setState, window:show, app:reload, app:setReady
+//   Public (read-only, no assertion):     ui:getState, window:isMaximized
+//   Window-scoped (operates on sender):   window:minimize, window:maximize, window:close
+
+type UiHandlersOptions = {
+  uiState: UiState;
+  windowManager: WindowManager;
+  updateUiState: (partial: Partial<UiState>) => void;
+  broadcastUiState: () => void;
+  syncVoiceOverlay: () => void;
+  setAppReady: (ready: boolean) => void;
+  getResumeWakeWordCapture: () => (() => void) | null;
+  scheduleResumeWakeWord: () => void;
+  deactivateVoiceModes: () => boolean;
+  syncWakeWordState: () => boolean;
+  assertPrivilegedSender: (
+    event: IpcMainEvent | IpcMainInvokeEvent,
+    channel: string,
+  ) => boolean;
+};
+
+export const registerUiHandlers = (options: UiHandlersOptions) => {
+  ipcMain.on("app:setReady", (_event, ready: boolean) => {
+    options.setAppReady(!!ready);
+    options.syncWakeWordState();
+  });
+
+  ipcMain.on("window:minimize", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    win?.minimize();
+  });
+
+  ipcMain.on("window:maximize", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win?.isMaximized()) {
+      win.unmaximize();
+    } else {
+      win?.maximize();
+    }
+  });
+
+  ipcMain.on("window:close", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+
+    if (win === options.windowManager.getMiniWindow()) {
+      options.deactivateVoiceModes();
+      options.windowManager.hideMiniWindow(true);
+      return;
+    }
+
+    win.close();
+  });
+
+  ipcMain.handle("window:isMaximized", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return win?.isMaximized() ?? false;
+  });
+
+  ipcMain.handle("ui:getState", () => options.uiState);
+
+  ipcMain.handle("ui:setState", (event, partial: Partial<UiState>) => {
+    if (!options.assertPrivilegedSender(event, "ui:setState"))
+      return options.uiState;
+    const {
+      window: nextWindow,
+      isVoiceActive,
+      isVoiceRtcActive,
+      ...rest
+    } = partial;
+    if (nextWindow === "mini" || nextWindow === "full") {
+      options.windowManager.showWindow(nextWindow);
+    }
+    if (isVoiceActive !== undefined) {
+      options.uiState.isVoiceActive = isVoiceActive;
+    }
+    if (isVoiceRtcActive !== undefined) {
+      options.uiState.isVoiceRtcActive = isVoiceRtcActive;
+    }
+    if (Object.keys(rest).length > 0) {
+      options.updateUiState(rest);
+    }
+    if (isVoiceActive !== undefined || isVoiceRtcActive !== undefined) {
+      options.syncVoiceOverlay();
+      options.broadcastUiState();
+      options.syncWakeWordState();
+      if (
+        (isVoiceActive === false || isVoiceRtcActive === false) &&
+        options.getResumeWakeWordCapture()
+      ) {
+        options.scheduleResumeWakeWord();
+      }
+    }
+    return options.uiState;
+  });
+
+  ipcMain.on("window:show", (event, target: "full" | "mini") => {
+    if (!options.assertPrivilegedSender(event, "window:show")) return;
+    if (target !== "mini" && target !== "full") {
+      return;
+    }
+    options.windowManager.showWindow(target);
+  });
+
+  ipcMain.on(
+    "theme:broadcast",
+    (event, data: { key: string; value: string }) => {
+      const sender = BrowserWindow.fromWebContents(event.sender);
+      for (const window of options.windowManager.getAllWindows()) {
+        if (window !== sender) {
+          window.webContents.send("theme:change", data);
+        }
+      }
+    },
+  );
+
+  ipcMain.on("app:reload", (event) => {
+    if (!options.assertPrivilegedSender(event, "app:reload")) return;
+    options.windowManager.reloadFullWindow();
+  });
+};

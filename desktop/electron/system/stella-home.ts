@@ -1,0 +1,202 @@
+import path from "path";
+import { promises as fs } from "fs";
+import type { Dirent } from "fs";
+import { fileURLToPath } from "url";
+import type { App } from "electron";
+import { ensurePrivateDir } from "./private-fs.js";
+import { buildBundledCoreAgents } from "../core/runtime/agents/core-agent-prompts.js";
+
+export type StellaHome = {
+  desktopRoot: string;
+  installRoot: string;
+  homePath: string;
+  agentsPath: string;
+  coreSkillsPath: string;
+  skillsPath: string;
+  extensionsPath: string;
+  statePath: string;
+  logsPath: string;
+  canvasPath: string;
+  workspacePath: string;
+  workspaceAppsPath: string;
+};
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const ensureDir = async (dirPath: string) => {
+  await ensurePrivateDir(dirPath);
+};
+
+const hasSeededAgentFiles = async (agentsPath: string): Promise<boolean> => {
+  try {
+    const entries = await fs.readdir(agentsPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      try {
+        const stat = await fs.stat(path.join(agentsPath, entry.name, "AGENT.md"));
+        if (stat.isFile()) return true;
+      } catch {
+        // Ignore incomplete agent dirs.
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
+};
+
+const toYamlList = (values: readonly string[]): string[] =>
+  values.map((value) => `  - ${value}`);
+
+const serializeBundledAgentMarkdown = (agent: ReturnType<typeof buildBundledCoreAgents>[number]): string => {
+  const lines = [
+    "---",
+    `id: ${agent.id}`,
+    `name: ${agent.name}`,
+    `description: ${agent.description}`,
+    "agentTypes:",
+    ...toYamlList(agent.agentTypes),
+  ];
+
+  if (agent.toolsAllowlist?.length) {
+    lines.push("toolsAllowlist:", ...toYamlList(agent.toolsAllowlist));
+  }
+  if (agent.delegationAllowlist?.length) {
+    lines.push("delegationAllowlist:", ...toYamlList(agent.delegationAllowlist));
+  }
+  if (agent.defaultSkills?.length) {
+    lines.push("defaultSkills:", ...toYamlList(agent.defaultSkills));
+  }
+  if (agent.model) {
+    lines.push(`model: ${agent.model}`);
+  }
+  if (typeof agent.maxTaskDepth === "number") {
+    lines.push(`maxTaskDepth: ${agent.maxTaskDepth}`);
+  }
+
+  lines.push("---", "", agent.systemPrompt.trimEnd(), "");
+  return lines.join("\n");
+};
+
+const seedBundledAgentsIfEmpty = async (agentsPath: string) => {
+  if (await hasSeededAgentFiles(agentsPath)) {
+    return;
+  }
+
+  const bundledAgents = buildBundledCoreAgents();
+  await Promise.all(
+    bundledAgents.map(async (agent) => {
+      const agentDir = path.join(agentsPath, agent.id);
+      await ensureDir(agentDir);
+      await fs.writeFile(
+        path.join(agentDir, "AGENT.md"),
+        serializeBundledAgentMarkdown(agent),
+        "utf-8",
+      );
+    }),
+  );
+};
+
+export const resolveDesktopRoot = (app?: App): string =>
+  app ? path.resolve(app.getAppPath()) : path.resolve(__dirname, "..", "..", "..");
+
+export const resolveInstallRoot = (app?: App): string =>
+  path.resolve(resolveDesktopRoot(app), "..");
+
+export const resolveRuntimeHomePath = (app?: App): string =>
+  path.join(resolveInstallRoot(app), ".stella");
+
+export const resolveRuntimeStatePath = (app?: App): string =>
+  path.join(resolveRuntimeHomePath(app), "state");
+
+export const resolveBundledDefaultsPath = (app?: App): string =>
+  app?.isPackaged
+    ? path.join(resolveInstallRoot(app), "stella-defaults")
+    : path.join(resolveDesktopRoot(app), "resources", "stella-defaults");
+
+const seedMissingEntries = async (sourcePath: string, targetPath: string) => {
+  let entries: Dirent[];
+  try {
+    entries = await fs.readdir(sourcePath, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  await ensureDir(targetPath);
+
+  for (const entry of entries) {
+    const sourceEntryPath = path.join(sourcePath, entry.name);
+    const targetEntryPath = path.join(targetPath, entry.name);
+
+    if (entry.isDirectory()) {
+      await seedMissingEntries(sourceEntryPath, targetEntryPath);
+      continue;
+    }
+
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    try {
+      await fs.stat(targetEntryPath);
+      continue;
+    } catch {
+      await ensureDir(path.dirname(targetEntryPath));
+      await fs.copyFile(sourceEntryPath, targetEntryPath);
+    }
+  }
+};
+
+export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
+  const desktopRoot = resolveDesktopRoot(app);
+  const installRoot = resolveInstallRoot(app);
+  const homePath = resolveRuntimeHomePath(app);
+  const bundledDefaultsPath = resolveBundledDefaultsPath(app);
+  const workspacePath = path.join(desktopRoot, "workspace");
+
+  const agentsPath = path.join(homePath, "agents");
+  const coreSkillsPath = path.join(homePath, "core-skills");
+  const skillsPath = path.join(homePath, "skills");
+  const extensionsPath = path.join(homePath, "extensions");
+  const statePath = path.join(homePath, "state");
+  const logsPath = path.join(homePath, "logs");
+  const canvasPath = path.join(homePath, "canvas");
+  const workspaceAppsPath = path.join(workspacePath, "apps");
+
+  process.env.STELLA_ROOT = installRoot;
+  process.env.STELLA_HOME = homePath;
+
+  await ensureDir(homePath);
+  await ensureDir(agentsPath);
+  await ensureDir(coreSkillsPath);
+  await ensureDir(skillsPath);
+  await ensureDir(extensionsPath);
+  await ensureDir(statePath);
+  await ensureDir(logsPath);
+  await ensureDir(canvasPath);
+  await ensureDir(workspacePath);
+  await ensureDir(workspaceAppsPath);
+
+  await Promise.all([
+    seedMissingEntries(path.join(bundledDefaultsPath, "core-skills"), coreSkillsPath),
+    seedMissingEntries(path.join(bundledDefaultsPath, "skills"), skillsPath),
+    seedMissingEntries(path.join(bundledDefaultsPath, "extensions"), extensionsPath),
+  ]);
+  await seedBundledAgentsIfEmpty(agentsPath);
+
+  return {
+    desktopRoot,
+    installRoot,
+    homePath,
+    agentsPath,
+    coreSkillsPath,
+    skillsPath,
+    extensionsPath,
+    statePath,
+    logsPath,
+    canvasPath,
+    workspacePath,
+    workspaceAppsPath,
+  };
+};

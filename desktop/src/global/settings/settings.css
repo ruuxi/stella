@@ -1,0 +1,465 @@
+/* ============================================
+   Settings Dialog
+   ============================================ */
+
+[data-component="dialog"] [data-slot="dialog-content"].settings-dialog {
+  background: var(--background);
+  height: 100%;
+}
+
+/* ---- Layout: sidebar + panel ---- */
+
+.settings-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---- Sidebar Tabs ---- */
+
+.settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0 16px 16px;
+  width: 120px;
+  flex-shrink: 0;
+  border-right: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.settings-sidebar-tab {
+  display: flex;
+  align-items: center;
+  padding: 7px 12px;
+  border: none;
+  border-radius: var(--radius-md, 6px) 0 0 var(--radius-md, 6px);
+  background: transparent;
+  color: var(--text-weak);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: default;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+  text-align: left;
+}
+
+.settings-sidebar-tab:hover {
+  color: var(--text-base);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.settings-sidebar-tab--active {
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+/* ---- Panel Content ---- */
+
+.settings-panel-wrap {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.settings-panel-wrap::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(to bottom, transparent, var(--background));
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  border-radius: 0 0 var(--radius-xl, 10px) 0;
+}
+
+.settings-panel-wrap[data-at-bottom]::after {
+  opacity: 0;
+}
+
+.settings-panel {
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 4px 20px 16px;
+}
+
+.settings-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.settings-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ---- Section Card ---- */
+
+.settings-card {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.settings-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.settings-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-strong);
+  margin: 0;
+}
+
+.settings-card-desc {
+  font-size: 11px;
+  color: var(--text-weak);
+  margin: 0 0 12px;
+}
+
+.settings-card-desc--error {
+  color: var(--destructive);
+}
+
+/* ---- Rows (inside cards) ---- */
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.settings-row + .settings-row {
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.settings-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-row-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-base);
+}
+
+.settings-row-sublabel {
+  font-size: 11px;
+  color: var(--text-weak);
+  margin-top: 1px;
+}
+
+.settings-row-control {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- Model Select ---- */
+
+[data-component="native-select"] {
+  width: 220px;
+}
+
+.settings-model-select,
+.settings-runtime-select {
+  width: 220px;
+  border-radius: var(--radius-full);
+}
+
+.settings-model-reset-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-weak);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.settings-model-reset-icon:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.settings-model-reset-icon:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.settings-model-reset-icon:disabled:hover {
+  color: var(--text-weak);
+  background: transparent;
+}
+
+/* ---- Buttons ---- */
+
+.settings-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-weak);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: default;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.settings-btn:hover {
+  color: var(--text-base);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.settings-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.settings-btn:disabled:hover {
+  color: var(--text-weak);
+  background: transparent;
+}
+
+.settings-btn--danger:hover {
+  color: var(--destructive);
+  border-color: var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 6%, transparent);
+}
+
+.settings-btn--primary {
+  background: var(--interactive);
+  color: var(--primary-foreground);
+  border-color: var(--interactive);
+}
+
+.settings-btn--primary:hover {
+  opacity: 0.9;
+}
+
+.settings-btn--reset-all {
+  font-size: 11px;
+  padding: 3px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-weak);
+}
+
+.settings-btn--reset-all:hover {
+  color: var(--destructive);
+  background: transparent;
+}
+
+/* ---- Key Status ---- */
+
+.settings-key-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-weak);
+}
+
+.settings-key-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.settings-key-dot--active {
+  background: #22c55e;
+}
+
+.settings-key-dot--inactive {
+  background: var(--border);
+}
+
+/* ---- Key Input ---- */
+
+.settings-key-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-key-input [data-component="input"] {
+  width: 180px;
+}
+
+.settings-key-input [data-slot="input-wrapper"] {
+  border-radius: var(--radius-full);
+}
+
+.settings-key-input [data-slot="input-input"] {
+  height: 30px;
+}
+
+/* ---- Billing ---- */
+
+.settings-billing-current-plan-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  color: var(--text-base);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.settings-row--billing-usage {
+  align-items: flex-start;
+}
+
+.settings-row-control--billing-meter {
+  width: 180px;
+}
+
+.settings-billing-meter-track {
+  width: 100%;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  overflow: hidden;
+}
+
+.settings-billing-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--interactive) 80%, transparent),
+    var(--interactive)
+  );
+}
+
+.settings-billing-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-billing-plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: var(--radius-lg, 8px);
+  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+}
+
+.settings-billing-plan-card[data-active] {
+  border-color: color-mix(in oklch, var(--interactive) 35%, var(--foreground) 12%);
+  background: color-mix(in oklch, var(--interactive) 10%, transparent);
+}
+
+.settings-billing-plan-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.settings-billing-plan-price {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-base);
+}
+
+.settings-billing-plan-tagline {
+  font-size: 11px;
+  color: var(--text-weak);
+  margin-bottom: 4px;
+}
+
+.settings-billing-plan-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.settings-billing-plan-features li {
+  font-size: 11px;
+  color: var(--text-base);
+  padding-left: 14px;
+  position: relative;
+}
+
+.settings-billing-plan-features li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--interactive) 50%, transparent);
+}
+
+.settings-billing-plan-cta {
+  margin-top: auto;
+  width: 100%;
+  justify-content: center;
+}
+
+.settings-billing-plan-included {
+  margin-top: auto;
+  padding-top: 4px;
+  font-size: 11px;
+  color: var(--text-weak);
+  text-align: center;
+}
+
+.settings-billing-checkout-shell {
+  border-radius: var(--radius-lg, 8px);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.settings-billing-checkout-shell iframe {
+  width: 100%;
+  min-height: 620px;
+}
+
+@media (max-width: 900px) {
+  .settings-billing-plan-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-row-control--billing-meter {
+    width: 150px;
+  }
+}

@@ -1,0 +1,36 @@
+[data-component="inline-input"] {
+  display: inline-flex;
+  align-items: center;
+  cursor: text;
+}
+
+[data-component="inline-input"] [data-slot="inline-input-input"] {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  min-width: 0;
+}
+
+[data-component="inline-input"] [data-slot="inline-input-input"]::placeholder {
+  color: var(--muted-foreground);
+}
+
+[data-component="inline-input"][data-editing] {
+  background-color: var(--background);
+  border-radius: var(--radius-sm, 4px);
+  padding: 2px 4px;
+  margin: -2px -4px;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+[data-component="inline-input"][data-editing] [data-slot="inline-input-input"]:focus {
+  outline: none;
+}
