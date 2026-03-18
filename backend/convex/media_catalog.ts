@@ -1,0 +1,348 @@
+export type MediaProvider = "fal";
+
+export type MediaProfile = {
+  id: string;
+  name: string;
+  description: string;
+  provider: MediaProvider;
+  endpointId: string;
+  docsUrl: string;
+  isDefault?: boolean;
+};
+
+export type MediaCapability = {
+  id: string;
+  name: string;
+  description: string;
+  category:
+    | "audio"
+    | "image"
+    | "video"
+    | "3d"
+    | "analysis";
+  promptKey?: string;
+  sourceUrlKey?: string;
+  requiresSourceUrl?: boolean;
+  supportsAspectRatio?: boolean;
+  inputHints: string[];
+  outputHints: string[];
+  profiles: MediaProfile[];
+};
+
+const FAL_MODEL_BASE = "https://fal.ai/models";
+
+const falModelUrl = (endpointId: string): string =>
+  `${FAL_MODEL_BASE}/${endpointId}/api`;
+
+export const MEDIA_CAPABILITIES: MediaCapability[] = [
+  {
+    id: "speech_to_text",
+    name: "Speech To Text",
+    description: "Transcribe spoken audio into text.",
+    category: "audio",
+    sourceUrlKey: "audio_url",
+    inputHints: ["audio_url"],
+    outputHints: ["text", "segments", "language"],
+    profiles: [
+      {
+        id: "default",
+        name: "Default",
+        description: "Balanced speech transcription via ElevenLabs Scribe v2.",
+        provider: "fal",
+        endpointId: "fal-ai/elevenlabs/speech-to-text/scribe-v2",
+        docsUrl: falModelUrl("fal-ai/elevenlabs/speech-to-text/scribe-v2"),
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    id: "sound_effects",
+    name: "Sound Effects",
+    description: "Generate Foley and sound effects from text.",
+    category: "audio",
+    promptKey: "text",
+    inputHints: ["text", "duration_seconds"],
+    outputHints: ["audio file URL"],
+    profiles: [
+      {
+        id: "default",
+        name: "Default",
+        description: "ElevenLabs sound effects generation.",
+        provider: "fal",
+        endpointId: "fal-ai/elevenlabs/sound-effects/v2",
+        docsUrl: falModelUrl("fal-ai/elevenlabs/sound-effects/v2"),
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    id: "text_to_dialogue",
+    name: "Text To Dialogue",
+    description: "Turn script text into spoken dialogue audio.",
+    category: "audio",
+    promptKey: "text",
+    inputHints: ["text", "voice settings"],
+    outputHints: ["audio file URL"],
+    profiles: [
+      {
+        id: "default",
+        name: "Default",
+        description: "ElevenLabs dialogue generation with Eleven v3.",
+        provider: "fal",
+        endpointId: "fal-ai/elevenlabs/text-to-dialogue/eleven-v3",
+        docsUrl: falModelUrl("fal-ai/elevenlabs/text-to-dialogue/eleven-v3"),
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    id: "text_to_image",
+    name: "Text To Image",
+    description: "Generate still images from text prompts.",
+    category: "image",
+    promptKey: "prompt",
+    supportsAspectRatio: true,
+    inputHints: ["prompt", "aspectRatio", "negative prompt"],
+    outputHints: ["image URLs"],
+    profiles: [
+      {
+        id: "best",
+        name: "Best",
+        description: "Higher quality text-to-image generation.",
+        provider: "fal",
+        endpointId: "fal-ai/bytedance/seedream/v5/lite/text-to-image",
+        docsUrl: falModelUrl("fal-ai/bytedance/seedream/v5/lite/text-to-image"),
+        isDefault: true,
+      },
+      {
+        id: "fast",
+        name: "Fast",
+        description: "Faster text-to-image generation with Flux Klein 9B.",
+        provider: "fal",
+        endpointId: "fal-ai/flux-2/klein/9b",
+        docsUrl: falModelUrl("fal-ai/flux-2/klein/9b"),
+      },
+    ],
+  },
+  {
+    id: "icon",
+    name: "Icon Generator",
+    description: "Generate icons, logos, thumbnails, and other compact visual assets from text prompts.",
+    category: "image",
+    promptKey: "prompt",
+    inputHints: ["prompt", "transparent / background style", "brand / icon constraints", "fixed square output"],
+    outputHints: ["image URLs"],
+    profiles: [
+      {
+        id: "default",
+        name: "Default",
+        description: "Fast Flux Turbo generation for icons, logos, and thumbnails.",
+        provider: "fal",
+        endpointId: "fal-ai/flux-2/turbo",
+        docsUrl: falModelUrl("fal-ai/flux-2/turbo"),
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    id: "image_edit",
+    name: "Image Edit",
+    description: "Edit an existing image with text instructions.",
+    category: "image",
+    promptKey: "prompt",
+    sourceUrlKey: "image_url",
+    requiresSourceUrl: true,
+    supportsAspectRatio: true,
+    inputHints: ["image_url", "prompt", "aspectRatio", "mask / strength when supported"],
+    outputHints: ["edited image URLs"],
+    profiles: [
+      {
+        id: "default",
+        name: "Default",
+        description: "Flux Klein image editing.",
+        provider: "fal",
+        endpointId: "fal-ai/flux-2/klein/9b/edit",
+        docsUrl: falModelUrl("fal-ai/flux-2/klein/9b/edit"),
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    id: "realtime",
+    name: "Realtime",
+    description: "Low-latency realtime image generation/editing for live inputs like drawing or webcam frames.",
+    category: "image",
+    promptKey: "prompt",
+    sourceUrlKey: "image_url",
+    requiresSourceUrl: true,
+    supportsAspectRatio: true,
+    inputHints: ["image_url", "prompt", "aspectRatio", "strength / guidance"],
+    outputHints: ["edited image URLs"],
+    profiles: [
+      {
+        id: "default",
+        name: "Default",
+        description: "Low-latency Flux Klein realtime image generation and editing.",
+        provider: "fal",
+        endpointId: "fal-ai/flux-2/klein/realtime",
+        docsUrl: falModelUrl("fal-ai/flux-2/klein/realtime"),
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    id: "audio_visual_separate",
+    name: "Audio Visual Separate",
+    description: "Separate or isolate audio using the visual track for guidance.",
+    category: "analysis",
+    inputHints: ["video_url", "audio_url", "separation controls"],
+    outputHints: ["separated stems / tracks"],
+    profiles: [
+      {
+        id: "default",
+        name: "Default",
+        description: "SAM Audio visual separation.",
+        provider: "fal",
+        endpointId: "fal-ai/sam-audio/visual-separate",
+        docsUrl: falModelUrl("fal-ai/sam-audio/visual-separate"),
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    id: "image_to_video",
+    name: "Image To Video",
+    description: "Animate a still image into a generated video.",
+    category: "video",
+    promptKey: "prompt",
+    sourceUrlKey: "image_url",
+    requiresSourceUrl: true,
+    supportsAspectRatio: true,
+    inputHints: ["image_url", "prompt", "aspectRatio", "duration", "camera / motion controls"],
+    outputHints: ["video URL"],
+    profiles: [
+      {
+        id: "motion",
+        name: "Motion",
+        description: "Kling motion control for guided image-to-video.",
+        provider: "fal",
+        endpointId: "fal-ai/kling-video/v3/pro/motion-control",
+        docsUrl: falModelUrl("fal-ai/kling-video/v3/pro/motion-control"),
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    id: "video_extend",
+    name: "Video Extend",
+    description: "Continue or extend an existing video clip.",
+    category: "video",
+    sourceUrlKey: "video_url",
+    requiresSourceUrl: true,
+    supportsAspectRatio: true,
+    inputHints: ["video_url", "prompt", "aspectRatio", "target duration"],
+    outputHints: ["extended video URL"],
+    profiles: [
+      {
+        id: "default",
+        name: "Default",
+        description: "LTX 2.3 video extension.",
+        provider: "fal",
+        endpointId: "fal-ai/ltx-2.3/extend-video",
+        docsUrl: falModelUrl("fal-ai/ltx-2.3/extend-video"),
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    id: "video_to_video",
+    name: "Video To Video",
+    description: "Transform an input video into a new output video.",
+    category: "video",
+    promptKey: "prompt",
+    sourceUrlKey: "video_url",
+    requiresSourceUrl: true,
+    supportsAspectRatio: true,
+    inputHints: ["video_url", "prompt", "aspectRatio", "reference strength / style controls"],
+    outputHints: ["video URL"],
+    profiles: [
+      {
+        id: "reference",
+        name: "Reference",
+        description: "Kling reference-based video-to-video transformation.",
+        provider: "fal",
+        endpointId: "fal-ai/kling-video/o3/pro/video-to-video/reference",
+        docsUrl: falModelUrl("fal-ai/kling-video/o3/pro/video-to-video/reference"),
+        isDefault: true,
+      },
+      {
+        id: "edit",
+        name: "Edit",
+        description: "Grok Imagine video editing.",
+        provider: "fal",
+        endpointId: "xai/grok-imagine-video/edit-video",
+        docsUrl: falModelUrl("xai/grok-imagine-video/edit-video"),
+      },
+    ],
+  },
+  {
+    id: "text_to_3d",
+    name: "Text To 3D",
+    description: "Generate a 3D asset from text or reference inputs.",
+    category: "3d",
+    promptKey: "prompt",
+    inputHints: ["prompt", "optional image references"],
+    outputHints: ["3D asset URLs / mesh files"],
+    profiles: [
+      {
+        id: "default",
+        name: "Default",
+        description: "Hyper3D Rodin v2 text-to-3D generation.",
+        provider: "fal",
+        endpointId: "fal-ai/hyper3d/rodin/v2",
+        docsUrl: falModelUrl("fal-ai/hyper3d/rodin/v2"),
+        isDefault: true,
+      },
+    ],
+  },
+];
+
+export type MediaCapabilityId = (typeof MEDIA_CAPABILITIES)[number]["id"];
+
+export const listMediaCapabilities = (): MediaCapability[] =>
+  MEDIA_CAPABILITIES.map((capability) => ({
+    ...capability,
+    profiles: capability.profiles.map((profile) => ({ ...profile })),
+  }));
+
+export const getMediaCapability = (
+  capabilityId: string,
+): MediaCapability | null =>
+  MEDIA_CAPABILITIES.find((capability) => capability.id === capabilityId) ?? null;
+
+export const resolveMediaProfile = (
+  capabilityId: string,
+  profileId?: string | null,
+): { capability: MediaCapability; profile: MediaProfile } | null => {
+  const capability = getMediaCapability(capabilityId);
+  if (!capability) {
+    return null;
+  }
+
+  const normalizedProfile = profileId?.trim().toLowerCase();
+  if (normalizedProfile) {
+    const match = capability.profiles.find((profile) => profile.id === normalizedProfile);
+    if (!match) {
+      return null;
+    }
+    return { capability, profile: match };
+  }
+
+  const defaultProfile =
+    capability.profiles.find((profile) => profile.isDefault) ?? capability.profiles[0];
+  if (!defaultProfile) {
+    return null;
+  }
+
+  return { capability, profile: defaultProfile };
+};

@@ -1,0 +1,29 @@
+{
+  "name": "stella-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.58",
+    "@ai-sdk/google": "^3.0.43",
+    "@ai-sdk/openai": "^3.0.41",
+    "@ai-sdk/provider": "^3.0.8",
+    "@ai-sdk/provider-utils": "^4.0.19",
+    "@convex-dev/better-auth": "^0.10.0",
+    "@convex-dev/rate-limiter": "^0.3.2",
+    "@convex-dev/resend": "^0.1.0",
+    "ai": "^6.0.116",
+    "better-auth": "1.4.9",
+    "convex": "^1.33.1",
+    "stripe": "^20.4.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  }
+}
