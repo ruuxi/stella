@@ -22,7 +22,7 @@ type SuggestionListProps = {
   descriptionClassName?: string;
   getItemProps?: (
     suggestion: WelcomeSuggestion,
-  ) => ButtonHTMLAttributes<HTMLButtonElement>;
+  ) => ButtonHTMLAttributes<HTMLButtonElement> & Record<`data-${string}`, string>;
 };
 
 function SuggestionListView({

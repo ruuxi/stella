@@ -9,7 +9,7 @@ import {
   buildLocalScreenshotAttachments,
 } from '../streaming/message-context'
 import { toEventId } from '../streaming/streaming-event-utils'
-import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
+import { useLocalAgentStream, type LocalAgentEvent } from '../streaming/use-local-agent-stream'
 
 type UseStreamingChatOptions = {
   conversationId: string | null
@@ -30,16 +30,7 @@ export function useStreamingChat({
   } = useChatStore()
 
   const appendLocalAgentEvent = useCallback(
-    (event: {
-      type: 'tool_request' | 'tool_result' | 'assistant_message'
-      userMessageId?: string
-      toolCallId?: string
-      toolName?: string
-      args?: Record<string, unknown>
-      resultPreview?: string
-      html?: string
-      finalText?: string
-    }) => {
+    (event: LocalAgentEvent) => {
       if (!activeConversationId) return
 
       return chatStoreAppendAgentEvent({

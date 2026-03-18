@@ -34,7 +34,7 @@ interface ThemeReadValue {
   gradientMode: GradientMode;
   gradientColor: GradientColor;
   colors: ThemeColors;
-  themes: Theme[];
+  themes: readonly Theme[];
 }
 
 // ─── Control context (mutators + preview, only used by ThemePicker/Onboarding) ─
