@@ -6,6 +6,7 @@ export const subscriptionPlanValidator = v.union(
   v.literal("go"),
   v.literal("pro"),
   v.literal("plus"),
+  v.literal("ultra"),
 );
 
 export const billingSchema = {

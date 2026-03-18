@@ -2446,7 +2446,7 @@ export const AUDIENCE_AGENT_MODELS: Record<ManagedModelAudience, Record<string, 
 const AGENT_MODELS = FREE_AGENT_MODELS;
 
 export const resolveManagedModelAudience = (args: {
-  plan: "free" | "go" | "pro" | "plus";
+  plan: "free" | "go" | "pro" | "plus" | "ultra";
   isAnonymous?: boolean;
   downgraded?: boolean;
 }): ManagedModelAudience => {
