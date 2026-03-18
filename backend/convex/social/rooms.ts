@@ -1,0 +1,359 @@
+import {
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "../_generated/server";
+import type { Doc, Id } from "../_generated/dataModel";
+import { ConvexError, v } from "convex/values";
+import {
+  socialMessageValidator,
+  socialProfileValidator,
+  socialRoomMemberValidator,
+  socialRoomValidator,
+  ensureRelationshipIsAccepted,
+  ensureSocialProfileDoc,
+  getRelationshipKey,
+  getSocialProfileByOwnerId,
+  listAcceptedRelationshipsForOwner,
+  loadRelationship,
+  requireRoomMembership,
+} from "./shared";
+import {
+  requireBoundedString,
+} from "../shared_validators";
+import {
+  requireConnectedUserId,
+} from "../auth";
+
+const roomSummaryValidator = v.object({
+  room: socialRoomValidator,
+  membership: socialRoomMemberValidator,
+  latestMessage: v.union(v.null(), socialMessageValidator),
+  memberProfiles: v.array(socialProfileValidator),
+});
+
+const optionalRoomSummaryValidator = v.union(v.null(), roomSummaryValidator);
+
+const hydrateRoomSummary = async (
+  ctx: QueryCtx,
+  room: Doc<"social_rooms"> | null,
+  membership: Doc<"social_room_members">,
+) => {
+  if (!room) {
+    return null;
+  }
+  const [memberDocs, latestMessage] = await Promise.all([
+    ctx.db
+      .query("social_room_members")
+      .withIndex("by_roomId_and_joinedAt", (q) => q.eq("roomId", room._id))
+      .collect(),
+    ctx.db
+      .query("social_messages")
+      .withIndex("by_roomId_and_createdAt", (q) => q.eq("roomId", room._id))
+      .order("desc")
+      .first(),
+  ]);
+  const memberProfiles = await Promise.all(
+    memberDocs.map(async (member) => await getSocialProfileByOwnerId(ctx, member.ownerId)),
+  );
+  return {
+    room,
+    membership,
+    latestMessage: latestMessage ?? null,
+    memberProfiles: memberProfiles.filter((profile): profile is NonNullable<typeof profile> => Boolean(profile)),
+  };
+};
+
+const assertRoomOwnerRole = (membership: { role: "owner" | "member" }) => {
+  if (membership.role !== "owner") {
+    throw new ConvexError({
+      code: "FORBIDDEN",
+      message: "Only the room owner can perform this action",
+    });
+  }
+};
+
+const createRoomMembership = async (
+  ctx: MutationCtx,
+  roomId: Id<"social_rooms">,
+  ownerId: string,
+  role: "owner" | "member",
+) => {
+  const now = Date.now();
+  return await ctx.db.insert("social_room_members", {
+    roomId,
+    ownerId,
+    role,
+    joinedAt: now,
+    updatedAt: now,
+  });
+};
+
+const attachMemberToActiveSession = async (
+  ctx: MutationCtx,
+  roomId: Id<"social_rooms">,
+  ownerId: string,
+) => {
+  const room = await ctx.db.get(roomId);
+  if (!room?.stellaSessionId) {
+    return;
+  }
+  const session = await ctx.db.get(room.stellaSessionId);
+  if (!session || session.status === "ended") {
+    return;
+  }
+  const existingMembership = await ctx.db
+    .query("stella_session_members")
+    .withIndex("by_sessionId_and_ownerId", (q) =>
+      q.eq("sessionId", session._id).eq("ownerId", ownerId),
+    )
+    .unique();
+  if (existingMembership) {
+    return;
+  }
+  const now = Date.now();
+  await ctx.db.insert("stella_session_members", {
+    sessionId: session._id,
+    ownerId,
+    joinedAt: now,
+    lastAppliedFileOpOrdinal: 0,
+    updatedAt: now,
+  });
+};
+
+export const listRooms = query({
+  args: {},
+  returns: v.array(roomSummaryValidator),
+  handler: async (ctx) => {
+    const ownerId = await requireConnectedUserId(ctx);
+    const memberships = await ctx.db
+      .query("social_room_members")
+      .withIndex("by_ownerId_and_updatedAt", (q) => q.eq("ownerId", ownerId))
+      .order("desc")
+      .take(200);
+    const summaries = await Promise.all(
+      memberships.map(async (membership) => {
+        const room = await ctx.db.get(membership.roomId);
+        return await hydrateRoomSummary(ctx, room, membership);
+      }),
+    );
+    return summaries.filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  },
+});
+
+export const getRoom = query({
+  args: { roomId: v.id("social_rooms") },
+  returns: optionalRoomSummaryValidator,
+  handler: async (ctx, args) => {
+    const ownerId = await requireConnectedUserId(ctx);
+    const membership = await ctx.db
+      .query("social_room_members")
+      .withIndex("by_roomId_and_ownerId", (q) =>
+        q.eq("roomId", args.roomId).eq("ownerId", ownerId),
+      )
+      .unique();
+    if (!membership) {
+      return null;
+    }
+    const room = await ctx.db.get(args.roomId);
+    return await hydrateRoomSummary(ctx, room, membership);
+  },
+});
+
+export const getOrCreateDmRoom = mutation({
+  args: {
+    otherOwnerId: v.string(),
+  },
+  returns: socialRoomValidator,
+  handler: async (ctx, args) => {
+    const ownerId = await requireConnectedUserId(ctx);
+    await ensureSocialProfileDoc(ctx, ownerId);
+    await ensureSocialProfileDoc(ctx, args.otherOwnerId);
+    if (ownerId === args.otherOwnerId) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "Cannot create a DM with yourself",
+      });
+    }
+    const relationship = await loadRelationship(ctx, ownerId, args.otherOwnerId);
+    ensureRelationshipIsAccepted(relationship);
+
+    const roomKey = `dm:${getRelationshipKey(ownerId, args.otherOwnerId)}`;
+    const existing = await ctx.db
+      .query("social_rooms")
+      .withIndex("by_roomKey", (q) => q.eq("roomKey", roomKey))
+      .unique();
+    if (existing) {
+      return existing;
+    }
+
+    const now = Date.now();
+    const roomId = await ctx.db.insert("social_rooms", {
+      kind: "dm",
+      roomKey,
+      createdByOwnerId: ownerId,
+      createdAt: now,
+      updatedAt: now,
+      latestMessageAt: now,
+    });
+    await Promise.all([
+      createRoomMembership(ctx, roomId, ownerId, "owner"),
+      createRoomMembership(ctx, roomId, args.otherOwnerId, "member"),
+    ]);
+    const room = await ctx.db.get(roomId);
+    if (!room) {
+      throw new ConvexError({
+        code: "INTERNAL_ERROR",
+        message: "Failed to create DM room",
+      });
+    }
+    return room;
+  },
+});
+
+export const createGroupRoom = mutation({
+  args: {
+    title: v.string(),
+    memberOwnerIds: v.array(v.string()),
+  },
+  returns: socialRoomValidator,
+  handler: async (ctx, args) => {
+    const ownerId = await requireConnectedUserId(ctx);
+    const title = args.title.trim();
+    if (!title) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "title is required",
+      });
+    }
+    requireBoundedString(title, "title", 120);
+
+    const uniqueMemberOwnerIds = [...new Set(args.memberOwnerIds.filter((value) => value && value !== ownerId))];
+    const acceptedRelationships = await listAcceptedRelationshipsForOwner(ctx, ownerId);
+    const acceptedOwnerIds = new Set(
+      acceptedRelationships.map((relationship) =>
+        relationship.lowOwnerId === ownerId
+          ? relationship.highOwnerId
+          : relationship.lowOwnerId,
+      ),
+    );
+
+    for (const memberOwnerId of uniqueMemberOwnerIds) {
+      if (!acceptedOwnerIds.has(memberOwnerId)) {
+        throw new ConvexError({
+          code: "FORBIDDEN",
+          message: "Only friends can be invited to a group",
+        });
+      }
+      await ensureSocialProfileDoc(ctx, memberOwnerId);
+    }
+
+    const now = Date.now();
+    const roomId = await ctx.db.insert("social_rooms", {
+      kind: "group",
+      title,
+      createdByOwnerId: ownerId,
+      createdAt: now,
+      updatedAt: now,
+      latestMessageAt: now,
+    });
+
+    await createRoomMembership(ctx, roomId, ownerId, "owner");
+    await Promise.all(
+      uniqueMemberOwnerIds.map(async (memberOwnerId) => {
+        await createRoomMembership(ctx, roomId, memberOwnerId, "member");
+      }),
+    );
+
+    const room = await ctx.db.get(roomId);
+    if (!room) {
+      throw new ConvexError({
+        code: "INTERNAL_ERROR",
+        message: "Failed to create group room",
+      });
+    }
+    return room;
+  },
+});
+
+export const addGroupMembers = mutation({
+  args: {
+    roomId: v.id("social_rooms"),
+    memberOwnerIds: v.array(v.string()),
+  },
+  returns: socialRoomValidator,
+  handler: async (ctx, args) => {
+    const ownerId = await requireConnectedUserId(ctx);
+    const membership = await requireRoomMembership(ctx, args.roomId, ownerId);
+    assertRoomOwnerRole(membership);
+    const room = await ctx.db.get(args.roomId);
+    if (!room || room.kind !== "group") {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Group room not found",
+      });
+    }
+
+    const acceptedRelationships = await listAcceptedRelationshipsForOwner(ctx, ownerId);
+    const acceptedOwnerIds = new Set(
+      acceptedRelationships.map((relationship) =>
+        relationship.lowOwnerId === ownerId
+          ? relationship.highOwnerId
+          : relationship.lowOwnerId,
+      ),
+    );
+
+    for (const memberOwnerId of [...new Set(args.memberOwnerIds)]) {
+      if (memberOwnerId === ownerId) {
+        continue;
+      }
+      if (!acceptedOwnerIds.has(memberOwnerId)) {
+        throw new ConvexError({
+          code: "FORBIDDEN",
+          message: "Only friends can be invited to a group",
+        });
+      }
+      const existing = await ctx.db
+        .query("social_room_members")
+        .withIndex("by_roomId_and_ownerId", (q) =>
+          q.eq("roomId", args.roomId).eq("ownerId", memberOwnerId),
+        )
+        .unique();
+      if (!existing) {
+        await createRoomMembership(ctx, args.roomId, memberOwnerId, "member");
+        await attachMemberToActiveSession(ctx, args.roomId, memberOwnerId);
+      }
+    }
+
+    await ctx.db.patch(args.roomId, {
+      updatedAt: Date.now(),
+    });
+    const updated = await ctx.db.get(args.roomId);
+    if (!updated) {
+      throw new ConvexError({
+        code: "INTERNAL_ERROR",
+        message: "Failed to update room",
+      });
+    }
+    return updated;
+  },
+});
+
+export const markRoomRead = mutation({
+  args: {
+    roomId: v.id("social_rooms"),
+    messageId: v.optional(v.id("social_messages")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await requireConnectedUserId(ctx);
+    const membership = await requireRoomMembership(ctx, args.roomId, ownerId);
+    await ctx.db.patch(membership._id, {
+      ...(args.messageId ? { lastReadMessageId: args.messageId } : {}),
+      lastReadAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
