@@ -42,9 +42,7 @@ jobs:
 
       - name: Build launcher
         working-directory: launcher
-        run: cargo tauri build
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ""
+        run: bunx tauri build
 
       - name: Rename artifact
         shell: bash
