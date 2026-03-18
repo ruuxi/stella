@@ -1,0 +1,38 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicegui/tauri-v2-capability-schema/main/schema.json",
+  "productName": "Stella",
+  "version": "0.0.1",
+  "identifier": "com.stella.launcher",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "bun run dev:frontend",
+    "beforeBuildCommand": "bun run build:frontend"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Stella",
+        "width": 420,
+        "height": 520,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" }
+    }
+  }
+}
