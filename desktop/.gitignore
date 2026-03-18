@@ -56,7 +56,7 @@ coverage/
 # Build artifacts
 release/
 workspace/
-native/out/
+# native/out/
 native/*.exe
 native/*.obj
 # src/features/games/generated-bindings/
