@@ -8,7 +8,10 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node"],
+    "emitDeclarationOnly": false
   },
-  "include": ["electron/preload.ts", "src/shared/contracts/**/*"]
+  "include": ["electron/preload.ts"],
+  "files": [],
+  "references": [{ "path": "./tsconfig.electron.json" }]
 }
