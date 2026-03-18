@@ -339,7 +339,7 @@ export const getModelDefaults = query({
       .query("billing_profiles")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
       .unique();
-    const plan = (profile?.activePlan as "free" | "go" | "pro" | "plus" | undefined) ?? "free";
+    const plan = (profile?.activePlan as "free" | "go" | "pro" | "plus" | "ultra" | undefined) ?? "free";
 
     return listStellaDefaultSelections(
       resolveManagedModelAudience({
