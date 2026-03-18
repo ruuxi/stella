@@ -1,0 +1,359 @@
+/* ============================================
+   AURA-STYLE LAYOUT
+   Open design with gradient showing through
+   ============================================ */
+
+.window-shell {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.window-shell.full {
+  padding: 0;
+}
+
+.window-shell.mini {
+  padding: 12px;
+  gap: 8px;
+}
+
+/* Header - minimal, positioned at top */
+.window-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  pointer-events: none;
+}
+
+.window-header > * {
+  pointer-events: auto;
+}
+
+/* Adjust header when custom title bar is present */
+.window-header.has-title-bar {
+  top: 32px;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-badge {
+  font-family: var(--font-family-mono);
+  font-feature-settings: var(--font-family-mono--font-feature-settings, normal);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-weak);
+  padding: 6px 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(12px);
+}
+
+.header-subtitle {
+  font-size: 13px;
+  color: var(--text-weak);
+}
+
+.host-status {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weaker);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Aura-style buttons */
+.primary-button,
+.ghost-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.primary-button {
+  background: var(--text-strong);
+  color: var(--background);
+  border-color: var(--border-weak);
+}
+
+.primary-button:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.ghost-button {
+  background: var(--surface-raised);
+  color: var(--text-strong);
+  border-color: var(--border-base);
+  backdrop-filter: blur(8px);
+}
+
+.ghost-button:hover:not(:disabled) {
+  background: var(--surface-raised-hover);
+}
+
+/* Small button variant */
+.ghost-button.small,
+.primary-button.small {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+/* Full-screen Aura-style layout */
+.full-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+}
+
+.onboarding-layout {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  position: relative;
+}
+
+.onboarding-demo-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.content-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  padding-top: 32px;
+  border-left: 1px solid var(--border-weak);
+  border-top: 1px solid var(--border-weak);
+  border-top-left-radius: 12px;
+}
+
+.content-area .workspace-content.workspace-content--full {
+  padding-top: 0;
+}
+.content-area .workspace-header {
+  margin-top: 0;
+}
+
+/* Chat column — fills the chat panel or content area */
+.full-body-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Viewport region — scroll container + overlay controls (scrollbar, scroll-to-bottom).
+   flex: 1 fills remaining space above the composer; position: relative
+   anchors the absolute overlays. */
+.chat-viewport-region {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Session content — column-reverse scroll viewport.
+   scrollTop=0 is at the bottom (newest content).
+   Native bottom-anchoring: new content stays visible without JS. */
+.session-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column-reverse;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.session-content::-webkit-scrollbar {
+  display: none;
+}
+
+/* Message container — centered, padding reserves space for title bar + composer.
+   min-height: 100% ensures short conversations fill the viewport so content
+   doesn't sit behind the absolutely-positioned composer at the bottom. */
+.session-messages {
+  width: 100%;
+  max-width: min(50rem, 100%);
+  margin: 0 auto;
+  padding: 112px 24px 24px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 24px;
+}
+
+/* New session view - minimal home screen */
+.new-session-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 0;
+  max-width: none;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.new-session-title {
+  position: absolute;
+  top: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-weaker);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  mix-blend-mode: plus-lighter;
+  opacity: 0.11;
+}
+
+.new-session-title[data-expanded="true"] {
+  opacity: 0.5;
+  transition: opacity 12s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.new-session-view[data-split="true"] .new-session-title {
+  opacity: 0;
+  transition: opacity 0.6s ease-out;
+}
+
+/* Onboarding exit crossfade */
+.new-session-view[data-exiting] {
+  opacity: 0;
+  transition: opacity 0.8s ease-out;
+}
+
+.composer-wrap--entering {
+  animation: composerFadeIn 0.6s ease-out forwards;
+  animation-delay: 0.3s;
+  opacity: 0;
+}
+
+@keyframes composerFadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.onboarding-stella-animation {
+  position: absolute;
+  top: 35%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  width: 100%;
+  height: 50%;
+  max-width: 900px;
+  cursor: pointer;
+  transition: top 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              left 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.onboarding-stella-animation[data-expanded="true"] {
+  cursor: default;
+}
+
+/* Split mode: animation moves to left half, centered vertically */
+.onboarding-stella-animation[data-split="true"] {
+  left: 25%;
+  top: 45%;
+  max-width: 400px;
+  height: 30%;
+  transform: translate(-50%, -50%) scale(1);
+  transition: top 0.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              left 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+              height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+/* With selections: shift animation up to make room for mock windows */
+.onboarding-stella-animation[data-split="true"][data-has-selections] {
+  top: 18%;
+}
+
+.onboarding-signin {
+  position: absolute;
+  bottom: 18%;
+  z-index: 10;
+  background: transparent;
+  border: 2px solid var(--border-strong);
+  min-width: 140px;
+}
+
+.dev-controls {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  gap: 6px;
+  z-index: 9999;
+}
+
+.onboarding-reset {
+  padding: 6px 12px;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+}
+
+.new-session-directory {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-weak);
+}
+

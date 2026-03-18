@@ -1,0 +1,385 @@
+﻿/* Composer — normal flow, centered within parent flex column */
+.composer {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 8px 24px 16px;
+}
+
+/* === Shell: visual container with animated height + border-radius === */
+.composer-shell {
+  width: 100%;
+  max-width: min(40rem, calc(100% - 48px));
+  background: var(--background);
+  border-radius: 999px; /* CSS fallback; overridden by motion inline style */
+  box-shadow: var(--shadow-md);
+  overflow: clip;
+  transition: box-shadow 200ms ease;
+}
+
+/* Focus glow — subtle ring when textarea is focused */
+.composer-shell:focus-within {
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
+}
+
+/* === Form: layout only, no visual decoration === */
+.composer-form {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px;
+}
+
+.composer-input {
+  flex: 1;
+  field-sizing: content;
+  min-height: 30px;
+  max-height: 200px;
+  padding: 4px 4px;
+  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-strong);
+  background: transparent;
+  border: none;
+  resize: none;
+  overflow-y: auto;
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.composer-input::placeholder {
+  color: var(--text-weaker);
+}
+
+/* Toolbar hidden in pill mode â€” buttons sit inline */
+.composer-toolbar {
+  display: contents;
+}
+
+.composer-toolbar-left {
+  display: contents;
+}
+
+.composer-toolbar-right {
+  display: contents;
+}
+
+/* === Expanded: stacked rounded rectangle === */
+.composer-form.expanded {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  min-height: auto;
+}
+
+.composer-form.expanded .composer-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 14px 18px 4px;
+  order: -1;
+}
+
+/* In expanded mode, the top-level add button moves into the toolbar visually */
+.composer-form.expanded > .composer-add-button {
+  display: none;
+}
+
+.composer-form.expanded .composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 8px;
+}
+
+.composer-form.expanded .composer-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.composer-form.expanded .composer-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.composer-stop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
+  color: var(--text-strong);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.composer-stop:hover {
+  background: color-mix(in oklch, var(--foreground) 16%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
+}
+
+.composer-context-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 0;
+}
+
+.composer-context-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.composer-context-chip--screenshot,
+.composer-context-chip--pending {
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 15%, transparent);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.composer-context-chip--pending {
+  pointer-events: none;
+}
+
+.composer-context-pending-inner {
+  width: 56px;
+  height: 42px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--foreground) 8%, transparent) 25%,
+    color-mix(in oklch, var(--foreground) 16%, transparent) 50%,
+    color-mix(in oklch, var(--foreground) 8%, transparent) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.composer-context-thumb {
+  width: 56px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.composer-context-chip--text,
+.composer-context-chip--window {
+  max-width: min(320px, 45vw);
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
+}
+
+.composer-context-chip--text {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+
+.composer-context-chip--window {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.composer-context-text,
+.composer-context-window {
+  display: inline-block;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer-context-text {
+  color: var(--text-strong);
+}
+
+.composer-context-window {
+  color: var(--text-weak);
+}
+
+.composer-context-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: none;
+  background: color-mix(in oklch, var(--foreground) 70%, transparent);
+  color: var(--background);
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  padding: 0;
+}
+
+.composer-context-chip:hover .composer-context-remove {
+  opacity: 1;
+}
+
+/* Add button - circular with border */
+.composer-add-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: transparent;
+  border: 1.5px solid var(--text-weaker);
+  color: var(--text-weak);
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.composer-add-button:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+  border-color: var(--text-base);
+}
+
+/* Toolbar add button â€” hidden in pill mode, shown in expanded */
+.composer-add-button--toolbar {
+  display: none;
+}
+
+.composer-form.expanded .composer-add-button--toolbar {
+  display: inline-flex;
+}
+
+/* Submit button - circular, spring animation handled by motion */
+.composer-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--primary);
+  border: none;
+  color: var(--primary-foreground);
+  cursor: default;
+}
+
+.composer-submit:disabled {
+  cursor: not-allowed;
+}
+
+/* Reduced motion — motion library handles spring animations natively;
+   only disable the remaining box-shadow CSS transition here. */
+@media (prefers-reduced-motion: reduce) {
+  .composer-shell {
+    transition: none;
+  }
+}
+
+/* Image attachments area */
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 20px 0;
+}
+
+.composer-attachment {
+  position: relative;
+}
+
+.composer-attachment-image {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  border: 1px solid var(--border-weak);
+}
+
+.composer-attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-raised-stronger-non-alpha, var(--card));
+  border: 1px solid var(--border-weak);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  cursor: default;
+}
+
+.composer-attachment:hover .composer-attachment-remove {
+  opacity: 1;
+}
+
+.composer-attachment-remove:hover {
+  background: var(--surface-raised-hover);
+}
+
+/* Ambient Stella animation â€” left of composer */
+.composer-stella-ambient {
+  position: absolute;
+  bottom: 20px;
+  left: 24px;
+  width: 400px;
+  height: 280px;
+  transform: scale(0.55);
+  transform-origin: bottom left;
+  pointer-events: none;
+  opacity: 0.12;
+  z-index: 1;
+}
+
+.composer-stella-ambient .stella-animation-container {
+  animation: none;
+}
+
+.side-panel .screen-card {
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(27, 23, 18, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.screen-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.screen-placeholder {
+  font-size: 12px;
+  color: #5a5248;
+}

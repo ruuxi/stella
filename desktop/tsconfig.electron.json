@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "outDir": "dist-electron",
+    "rootDir": ".",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "composite": true,
+  },
+  "include": ["electron/**/*", "src/shared/contracts/**/*", "src/shared/ai/**/*", "src/convex/api.ts"],
+  "exclude": ["electron/preload.ts", "**/*.test.ts"],
+}

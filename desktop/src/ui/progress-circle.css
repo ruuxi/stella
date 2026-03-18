@@ -1,0 +1,12 @@
+[data-component="progress-circle"] {
+  flex-shrink: 0;
+}
+
+[data-component="progress-circle"] [data-slot="progress-circle-track"] {
+  stroke: var(--muted);
+}
+
+[data-component="progress-circle"] [data-slot="progress-circle-fill"] {
+  stroke: var(--primary);
+  transition: stroke-dashoffset 200ms ease;
+}

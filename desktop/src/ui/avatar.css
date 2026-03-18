@@ -1,0 +1,41 @@
+[data-component="avatar"] {
+  --avatar-bg: var(--primary);
+  --avatar-fg: var(--primary-foreground);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--border);
+  font-family: var(--font-family-mono, "IBM Plex Mono", monospace);
+  font-weight: 500;
+  text-transform: uppercase;
+  background-color: var(--avatar-bg);
+  color: var(--avatar-fg);
+}
+
+[data-component="avatar"][data-has-image] {
+  background-color: transparent;
+  border: none;
+}
+
+[data-component="avatar"][data-size="small"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+[data-component="avatar"][data-size="normal"] {
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 1.125rem;
+  line-height: 1.5rem;
+}
+
+[data-component="avatar"][data-size="large"] {
+  width: 2rem;
+  height: 2rem;
+  font-size: 1.25rem;
+  line-height: 2rem;
+}

@@ -1,0 +1,5 @@
+name: electron
+description: Automate Electron desktop apps (VS Code, Slack, Discord, Figma, Notion, Spotify, etc.) via Chrome DevTools Protocol. Use when the user needs to interact with, automate, or control a native Electron application.
+agentTypes:
+  - browser
+enabled: true
