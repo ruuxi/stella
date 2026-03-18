@@ -10,7 +10,7 @@ import {
 } from "@/global/settings/lib/billing-checkout";
 import { Button } from "@/ui/button";
 
-type BillingPlan = "free" | "go" | "pro" | "plus";
+type BillingPlan = "free" | "go" | "pro" | "plus" | "ultra";
 type PaidBillingPlan = Exclude<BillingPlan, "free">;
 
 type BillingPlanConfig = {
@@ -53,7 +53,30 @@ type BillingPortalSessionPayload = {
   url: string;
 };
 
-const PLAN_ORDER: BillingPlan[] = ["free", "go", "pro", "plus"];
+const PLAN_ORDER: BillingPlan[] = ["free", "go", "pro", "plus", "ultra"];
+
+const PLAN_DESCRIPTIONS: Record<BillingPlan, { tagline: string; features: string[] }> = {
+  free: {
+    tagline: "Get started with Stella",
+    features: ["Basic chat & assistance", "Limited daily usage"],
+  },
+  go: {
+    tagline: "For everyday personal use",
+    features: ["More conversations per day", "Browser automation", "Voice & dictation"],
+  },
+  pro: {
+    tagline: "For power users",
+    features: ["3x the usage of Go", "Priority response times", "All automation features"],
+  },
+  plus: {
+    tagline: "For professionals",
+    features: ["Heavy daily usage", "Advanced agent workflows", "Priority support"],
+  },
+  ultra: {
+    tagline: "Unlimited productivity",
+    features: ["Maximum usage limits", "Fastest response times", "Everything in Plus"],
+  },
+};
 
 const priceFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -67,8 +90,6 @@ const usdFormatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
-
-const numberFormatter = new Intl.NumberFormat("en-US");
 
 const stripePromiseByKey = new Map<string, Promise<Stripe | null>>();
 
@@ -273,9 +294,6 @@ export function BillingTab() {
             {isOpeningPortal ? "Opening..." : "Manage Billing"}
           </Button>
         </div>
-        <p className="settings-card-desc">
-          Backend billing is authoritative for plan access, limits, and usage enforcement.
-        </p>
         {!hasConnectedAccount ? (
           <p className="settings-card-desc">
             Sign in with an account to subscribe or manage payment methods.
@@ -299,7 +317,7 @@ export function BillingTab() {
             <div className="settings-row-sublabel">
               {isLoadingStatus || !planCatalog
                 ? "Loading billing status..."
-                : `${planCatalog[currentPlan].label} plan (${billingStatus.subscriptionStatus})`}
+                : `${planCatalog[currentPlan].label} plan`}
             </div>
           </div>
           <div className="settings-row-control">
@@ -310,74 +328,37 @@ export function BillingTab() {
         </div>
 
         {usage && planCatalog ? (
-          <>
-            <div className="settings-row settings-row--billing-usage">
-              <div className="settings-row-info">
-                <div className="settings-row-label">Rolling usage (5h)</div>
-                <div className="settings-row-sublabel">
-                  {usdFormatter.format(usage.rollingUsedUsd)} / {usdFormatter.format(usage.rollingLimitUsd)}
-                </div>
-              </div>
-              <div className="settings-row-control settings-row-control--billing-meter">
-                <div className="settings-billing-meter-track">
-                  <div
-                    className="settings-billing-meter-fill"
-                    style={{ width: `${toUsagePercent(usage.rollingUsedUsd, usage.rollingLimitUsd)}%` }}
-                  />
-                </div>
+          <div className="settings-row settings-row--billing-usage">
+            <div className="settings-row-info">
+              <div className="settings-row-label">Usage this month</div>
+              <div className="settings-row-sublabel">
+                {usdFormatter.format(usage.monthlyUsedUsd)} / {usdFormatter.format(usage.monthlyLimitUsd)}
               </div>
             </div>
-
-            <div className="settings-row settings-row--billing-usage">
-              <div className="settings-row-info">
-                <div className="settings-row-label">Weekly usage</div>
-                <div className="settings-row-sublabel">
-                  {usdFormatter.format(usage.weeklyUsedUsd)} / {usdFormatter.format(usage.weeklyLimitUsd)}
-                </div>
-              </div>
-              <div className="settings-row-control settings-row-control--billing-meter">
-                <div className="settings-billing-meter-track">
-                  <div
-                    className="settings-billing-meter-fill"
-                    style={{ width: `${toUsagePercent(usage.weeklyUsedUsd, usage.weeklyLimitUsd)}%` }}
-                  />
-                </div>
+            <div className="settings-row-control settings-row-control--billing-meter">
+              <div className="settings-billing-meter-track">
+                <div
+                  className="settings-billing-meter-fill"
+                  style={{ width: `${toUsagePercent(usage.monthlyUsedUsd, usage.monthlyLimitUsd)}%` }}
+                />
               </div>
             </div>
-
-            <div className="settings-row settings-row--billing-usage">
-              <div className="settings-row-info">
-                <div className="settings-row-label">Monthly usage</div>
-                <div className="settings-row-sublabel">
-                  {usdFormatter.format(usage.monthlyUsedUsd)} / {usdFormatter.format(usage.monthlyLimitUsd)}
-                </div>
-              </div>
-              <div className="settings-row-control settings-row-control--billing-meter">
-                <div className="settings-billing-meter-track">
-                  <div
-                    className="settings-billing-meter-fill"
-                    style={{ width: `${toUsagePercent(usage.monthlyUsedUsd, usage.monthlyLimitUsd)}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          </>
+          </div>
         ) : null}
       </div>
 
       <div className="settings-card">
         <h3 className="settings-card-title">Plans</h3>
-        <p className="settings-card-desc">
-          Choose a plan to increase managed usage limits and throughput.
-        </p>
 
         {planCatalog ? (
           <div className="settings-billing-plan-grid">
             {PLAN_ORDER.map((plan) => {
               const config = planCatalog[plan];
+              if (!config) return null;
               const isCurrentPlan = plan === currentPlan;
               const isPaidPlan = plan !== "free";
               const isStartingThisPlan = isStartingCheckoutPlan === plan;
+              const desc = PLAN_DESCRIPTIONS[plan];
 
               return (
                 <div
@@ -391,18 +372,12 @@ export function BillingTab() {
                       ? "Free"
                       : `${priceFormatter.format(config.monthlyPriceCents / 100)}/mo`}
                   </div>
-                  <div className="settings-billing-plan-limit">
-                    Rolling: {usdFormatter.format(config.rollingLimitUsd)} / {config.rollingWindowHours}h
-                  </div>
-                  <div className="settings-billing-plan-limit">
-                    Weekly: {usdFormatter.format(config.weeklyLimitUsd)}
-                  </div>
-                  <div className="settings-billing-plan-limit">
-                    Monthly: {usdFormatter.format(config.monthlyLimitUsd)}
-                  </div>
-                  <div className="settings-billing-plan-limit">
-                    Throughput: {numberFormatter.format(config.tokensPerMinute)} TPM
-                  </div>
+                  <div className="settings-billing-plan-tagline">{desc.tagline}</div>
+                  <ul className="settings-billing-plan-features">
+                    {desc.features.map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                  </ul>
                   {isPaidPlan ? (
                     <Button
                       type="button"
@@ -447,7 +422,7 @@ export function BillingTab() {
             </Button>
           </div>
           <p className="settings-card-desc">
-            Complete payment below. Stella will update your plan automatically once Stripe confirms the session.
+            Complete payment below. Stella will update your plan automatically once confirmed.
           </p>
           <div className="settings-billing-checkout-shell">
             <EmbeddedCheckoutProvider
