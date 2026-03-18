@@ -36,12 +36,14 @@ const planValidator = v.union(
   v.literal("go"),
   v.literal("pro"),
   v.literal("plus"),
+  v.literal("ultra"),
 );
 
 const paidPlanValidator = v.union(
   v.literal("go"),
   v.literal("pro"),
   v.literal("plus"),
+  v.literal("ultra"),
 );
 
 const STRIPE_API_VERSION = "2026-02-25.clover";

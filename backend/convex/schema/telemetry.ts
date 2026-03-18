@@ -54,6 +54,7 @@ export const telemetrySchema = {
       v.literal("go"),
       v.literal("pro"),
       v.literal("plus"),
+      v.literal("ultra"),
     )),
     durationMs: v.number(),
     success: v.boolean(),

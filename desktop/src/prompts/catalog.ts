@@ -567,8 +567,8 @@ TECHNICAL:
 - Must compile in a Vite + React + TypeScript environment.
 
 FILE CONVENTION:
-- Simple pages: write a single file to src/views/home/pages/{panelName}.tsx
-- Complex pages: create src/views/home/pages/{panelName}/index.tsx with helper files alongside.
+- Simple pages: write a single file to src/app/home/pages/{panelName}.tsx
+- Complex pages: create src/app/home/pages/{panelName}/index.tsx with helper files alongside.
 - Default to single-file unless the page genuinely benefits from separation.
 
 Before writing, explore the existing pages directory to match established patterns and style.
