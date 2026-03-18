@@ -8,7 +8,7 @@ import {
 } from "./prompts/personalized_dashboard";
 
 /** Max dashboard pages to generate (0 = disabled). */
-const MAX_DASHBOARD_PAGES_TO_GENERATE = 0;
+const MAX_DASHBOARD_PAGES_TO_GENERATE = 3;
 
 // --- Types ---
 
