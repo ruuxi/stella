@@ -223,6 +223,15 @@
   }
 }
 
+.sidebar-spinner {
+  animation: sidebar-page-spin 0.9s linear infinite;
+}
+
+.sidebar-nav-item--generating {
+  pointer-events: none;
+  opacity: 0.72;
+}
+
 /* Footer — pinned to bottom for theme + auth */
 .sidebar-footer {
   display: flex;

@@ -567,11 +567,18 @@ TECHNICAL:
 - Must compile in a Vite + React + TypeScript environment.
 
 FILE CONVENTION:
-- Simple pages: write a single file to src/app/home/pages/{panelName}.tsx
-- Complex pages: create src/app/home/pages/{panelName}/index.tsx with helper files alongside.
+- Create a folder at src/app/{{panelName}}/ for the page.
+- Simple pages: write a single file to src/app/{{panelName}}/{{componentName}}.tsx with a default export.
+- Complex pages: create src/app/{{panelName}}/index.tsx with helper files alongside.
 - Default to single-file unless the page genuinely benefits from separation.
 
-Before writing, explore the existing pages directory to match established patterns and style.
+REGISTRATION (required — use the Edit tool, not Write, to append):
+- After writing the page component, use the Edit tool to append your entry to src/app/registry.ts.
+- Read src/app/registry.ts first. Find the comment "--- generated entries below" and add your entry after any existing entries but before the closing bracket.
+- Your entry must be: { id: "{{panelName}}", title: "{{title}}", component: lazy(() => import("./{{panelName}}/{{componentName}}")) }
+- IMPORTANT: Use the Edit tool (not Write) so you append to the array without overwriting other entries.
+
+Before writing, explore the existing app directory to match established patterns and style.
 
 Return a short JSON summary in your final message: { status, panel_file_path, title, data_sources }.`,
     render: renderStatic,
@@ -585,7 +592,8 @@ Return a short JSON summary in your final message: { status, panel_file_path, ti
 PAGE:
 - page_id: {{pageId}}
 - title: {{title}}
-- panel_filename: {{panelName}}.tsx
+- folder: src/app/{{panelName}}/
+- component_file: {{componentName}}.tsx
 - topic: {{topic}}
 - focus: {{focus}}
 
@@ -596,11 +604,12 @@ USER PROFILE (tailor content to this person's interests):
 {{userProfile}}
 
 REQUIREMENTS:
-1. Write the panel file to the path specified in the task prompt.
-2. Before writing, read any existing pages in the pages directory to match their style.
+1. Create the page folder at src/app/{{panelName}}/ and write the component as {{componentName}}.tsx.
+2. Before writing, read existing app folders to match their style.
 3. Fetch live data. Show loading and error states.
 4. Include at least one stella:send-message action relevant to the page content.
-5. End your response with a JSON summary: { "status": "ok", "panel_file_path": "...", "title": "...", "data_sources": [...] }`,
+5. Use the Edit tool to append your entry to src/app/registry.ts (do NOT use Write — other agents may have added entries).
+6. End your response with a JSON summary: { "status": "ok", "panel_file_path": "...", "title": "...", "data_sources": [...] }`,
     render: renderPersonalizedDashboardUser,
   },
   "music.system": {

@@ -3,11 +3,14 @@ import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import type { ViewType } from "@/shared/contracts/ui";
+import { generatedPages } from "@/app/registry";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/ui/dropdown-menu";
 import AlertCircle from "lucide-react/dist/esm/icons/circle-alert";
 import Folder from "lucide-react/dist/esm/icons/folder";
 import House from "lucide-react/dist/esm/icons/house";
+import Layout from "lucide-react/dist/esm/icons/layout-dashboard";
 import Link2 from "lucide-react/dist/esm/icons/link-2";
+import Loader from "lucide-react/dist/esm/icons/loader";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square";
 import PlusSquare from "lucide-react/dist/esm/icons/square-plus";
 import Settings from "lucide-react/dist/esm/icons/settings";
@@ -33,6 +36,8 @@ interface SidebarProps {
   onNewApp?: () => void;
   onNewAppAskStella?: () => void;
   onNewAppLocalProject?: () => void;
+  onPageSelect?: (pageId: string) => void;
+  dashboardGenerating?: boolean;
   projects?: LocalDevProjectRecord[];
   activeProjectId?: string | null;
   onProjectSelect?: (project: LocalDevProjectRecord) => void;
@@ -85,6 +90,8 @@ export const Sidebar = ({
   onNewApp,
   onNewAppAskStella,
   onNewAppLocalProject,
+  onPageSelect,
+  dashboardGenerating,
   projects = [],
   activeProjectId,
   onProjectSelect,
@@ -186,6 +193,33 @@ export const Sidebar = ({
                     <AlertCircle size={12} />
                   </span>
                 )}
+              </button>
+            ))}
+          </>
+        )}
+        {(generatedPages.length > 0 || dashboardGenerating) && (
+          <>
+            <div className="sidebar-nav-section-label">Your Pages</div>
+            {dashboardGenerating && generatedPages.length === 0 && (
+              <div className="sidebar-nav-item sidebar-nav-item--generating">
+                <span className="sidebar-nav-icon">
+                  <Loader size={18} className="sidebar-spinner" />
+                </span>
+                <span className="sidebar-nav-label">Generating pages...</span>
+              </div>
+            )}
+            {generatedPages.map((page) => (
+              <button
+                key={page.id}
+                type="button"
+                className={`sidebar-nav-item ${activeView === page.id ? "sidebar-nav-item--active" : ""}`}
+                onClick={() => onPageSelect?.(page.id)}
+                title={page.title}
+              >
+                <span className="sidebar-nav-icon">
+                  <Layout size={18} />
+                </span>
+                <span className="sidebar-nav-label">{page.title}</span>
               </button>
             ))}
           </>
