@@ -213,7 +213,7 @@ const currentMarker = readMarker(markerPath)
 if (
   !force
   && currentMarker?.database === database
-  && currentMarker?.modulePath === modulePath
+  && currentMarker?.modulePath === toRepoRelative(modulePath)
   && currentMarker?.moduleFingerprint === moduleFingerprint
   && outDirHasBindings
 ) {
@@ -283,7 +283,7 @@ try {
     `${JSON.stringify(
       {
         database,
-        modulePath,
+        modulePath: toRepoRelative(modulePath),
         moduleFingerprint,
         generatedAt: new Date().toISOString(),
         ...(cliVersion ? { cliVersion } : {}),
