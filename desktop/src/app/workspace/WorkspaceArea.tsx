@@ -8,6 +8,7 @@ import { useWorkspace, type WorkspacePanel } from '@/context/workspace-state'
 import { Spinner } from '@/ui/spinner'
 import type { OnboardingDemo } from '@/global/onboarding/OnboardingCanvas'
 import type { ViewType } from '@/shared/contracts/ui'
+import { generatedPages } from '@/app/registry'
 import { HomeView } from '@/app/home/HomeView'
 import './workspace.css'
 
@@ -72,6 +73,20 @@ export function WorkspaceArea({
         <div className="workspace-content workspace-content--full">
           <Suspense fallback={<div className="workspace-placeholder"><Spinner size="md" /></div>}>
             <StoreView />
+          </Suspense>
+        </div>
+      </div>
+    )
+  }
+
+  // Generated page from registry
+  const generatedPage = generatedPages.find((p) => p.id === view)
+  if (generatedPage) {
+    return (
+      <div className="workspace-area">
+        <div className="workspace-content workspace-content--full">
+          <Suspense fallback={<div className="workspace-placeholder"><Spinner size="md" /></div>}>
+            <generatedPage.component />
           </Suspense>
         </div>
       </div>

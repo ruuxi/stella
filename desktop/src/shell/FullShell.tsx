@@ -43,7 +43,7 @@ export const FullShell = () => {
   const [activeDialog, setActiveDialog] = useState<DialogType>(null)
   const onboarding = useOnboardingOverlay()
   const { projects, pickProjectDirectory } = useDevProjects()
-  const { handleDiscoveryConfirm } = useDiscoveryFlow({
+  const { handleDiscoveryConfirm, dashboardGenerating } = useDiscoveryFlow({
     conversationId: activeConversationId,
   })
 
@@ -94,6 +94,13 @@ export const FullShell = () => {
   const showSocialView = useCallback(() => {
     setView('social')
   }, [setView])
+
+  const handlePageSelect = useCallback(
+    (pageId: string) => {
+      setView(pageId)
+    },
+    [setView],
+  )
 
   const handleNewAppAskStella = useCallback(() => {
     dispatchStellaSendMessage({
@@ -234,6 +241,8 @@ export const FullShell = () => {
               onSocial={showSocialView}
               onNewAppAskStella={handleNewAppAskStella}
               onNewAppLocalProject={handleNewAppLocalProject}
+              onPageSelect={handlePageSelect}
+              dashboardGenerating={dashboardGenerating}
               projects={projects}
               activeProjectId={activeProjectId}
               onProjectSelect={handleProjectSelect}
