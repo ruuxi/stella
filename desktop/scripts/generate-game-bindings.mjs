@@ -185,6 +185,21 @@ const cleanupTempOutDir = () => {
   rmSync(tempOutDir, { recursive: true, force: true })
 }
 
+const outDirHasBindings = existsSync(join(outDir, 'index.ts'))
+
+if (!existsSync(modulePath)) {
+  if (outDirHasBindings) {
+    console.log(
+      `SpacetimeDB module not found at ${modulePath} — using committed bindings in ${toRepoRelative(outDir)}.`,
+    )
+    process.exit(0)
+  }
+  console.error(
+    `SpacetimeDB module not found at ${modulePath} and no bindings exist in ${toRepoRelative(outDir)}.`,
+  )
+  process.exit(1)
+}
+
 let moduleFingerprint
 try {
   moduleFingerprint = computeModuleFingerprint(modulePath)
@@ -194,14 +209,13 @@ try {
 }
 
 const currentMarker = readMarker(markerPath)
-const outDirHasIndex = existsSync(join(outDir, 'index.ts'))
 
 if (
   !force
   && currentMarker?.database === database
   && currentMarker?.modulePath === modulePath
   && currentMarker?.moduleFingerprint === moduleFingerprint
-  && outDirHasIndex
+  && outDirHasBindings
 ) {
   console.log(
     `SpacetimeDB bindings are up to date in ${toRepoRelative(outDir)}.`,
