@@ -8,7 +8,7 @@ OUTPUT_DIR="out/darwin"
 mkdir -p "$OUTPUT_DIR"
 
 echo "Building window_info (macOS)..."
-swiftc -O -o "$OUTPUT_DIR/window_info" src/window_info.swift -framework CoreGraphics -framework AppKit
+swiftc -O -o "$OUTPUT_DIR/window_info" src/window_info.swift -framework CoreGraphics -framework AppKit -framework ScreenCaptureKit
 echo "Build successful: $OUTPUT_DIR/window_info"
 
 echo "Building window_text (macOS)..."
