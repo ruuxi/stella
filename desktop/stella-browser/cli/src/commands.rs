@@ -1317,6 +1317,12 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
 
         "diff" => parse_diff(&rest, &id, flags),
 
+        // === Batch ===
+        "batch" => {
+            let bail = rest.contains(&"--bail");
+            Ok(json!({ "id": id, "action": "batch", "bail": bail }))
+        }
+
         _ => Err(ParseError::UnknownCommand {
             command: cmd.to_string(),
         }),
