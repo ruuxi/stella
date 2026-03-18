@@ -1,4 +1,3 @@
-use crate::recovery;
 use crate::setup;
 use crate::state::*;
 use serde::Serialize;
@@ -16,39 +15,6 @@ pub struct OkResult {
     pub ok: bool,
 }
 
-const RECOVERY_ERROR_PREFIX: &str = "Launcher recovery check failed:";
-
-async fn sync_recovery(state: &mut InstallerState, recovery_dir: &str) {
-    let info = setup::get_launch_info(state).await;
-    let Some(info) = info else {
-        // Clear any recovery error if we can't launch anyway
-        if state
-            .error_message
-            .as_deref()
-            .map_or(false, |m| m.starts_with(RECOVERY_ERROR_PREFIX))
-        {
-            state.error_message = None;
-        }
-        return;
-    };
-
-    let result =
-        recovery::ensure_launcher_recovery_artifacts(recovery_dir, &info.cwd).await;
-
-    if result.is_ok() {
-        if state
-            .error_message
-            .as_deref()
-            .map_or(false, |m| m.starts_with(RECOVERY_ERROR_PREFIX))
-        {
-            state.error_message = None;
-        }
-    } else if let Some(msg) = result.error_message() {
-        state.can_launch = false;
-        state.error_message = Some(format!("{RECOVERY_ERROR_PREFIX} {msg}"));
-    }
-}
-
 #[tauri::command]
 pub async fn get_installer_state(
     state: State<'_, AppState>,
@@ -58,7 +24,7 @@ pub async fn get_installer_state(
     let ctx = &state.context;
 
     setup::check_all(&mut installer, ctx, &app).await;
-    sync_recovery(&mut installer, &state.recovery_dir.to_string_lossy()).await;
+
 
     let _ = app.emit(
         "installer-state-update",
@@ -91,7 +57,7 @@ pub async fn browse_install_location(
         let mut installer = state.installer.lock().await;
         setup::set_install_path(&mut installer, &state.context, &path_str).await;
         setup::check_all(&mut installer, &state.context, &app).await;
-        sync_recovery(&mut installer, &state.recovery_dir.to_string_lossy()).await;
+    
         let _ = app.emit(
             "installer-state-update",
             serde_json::json!({ "state": &*installer }),
@@ -112,7 +78,7 @@ pub async fn set_install_location(
     let mut installer = state.installer.lock().await;
     setup::set_install_path(&mut installer, &state.context, &path).await;
     setup::check_all(&mut installer, &state.context, &app).await;
-    sync_recovery(&mut installer, &state.recovery_dir.to_string_lossy()).await;
+
     let _ = app.emit(
         "installer-state-update",
         serde_json::json!({ "state": &*installer }),
@@ -172,22 +138,16 @@ pub async fn start_install(
 pub async fn launch_desktop(state: State<'_, AppState>) -> Result<OkResult, String> {
     let installer = state.installer.lock().await;
 
-    // Check recovery first
-    let recovery_dir = state.recovery_dir.to_string_lossy().to_string();
     if let Some(info) = setup::get_launch_info(&installer).await {
-        let recovery =
-            recovery::ensure_launcher_recovery_artifacts(&recovery_dir, &info.cwd).await;
-        if !recovery.is_ok() {
-            return Ok(OkResult { ok: false });
-        }
-
-        let child = StdCommand::new(&info.command[0])
-            .args(&info.command[1..])
+        let mut cmd = StdCommand::new(&info.command[0]);
+        cmd.args(&info.command[1..])
             .current_dir(&info.cwd)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .stdin(Stdio::null())
-            .spawn();
+            .stdin(Stdio::null());
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        let child = cmd.spawn();
 
         match child {
             Ok(child) => {
