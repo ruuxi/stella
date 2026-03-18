@@ -60,6 +60,7 @@ workspace/
 native/*.exe
 native/*.obj
 # src/features/games/generated-bindings/
+.stella-bindings.json
 
 # Stella local runtime state
 .stella/state/
