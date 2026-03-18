@@ -363,15 +363,15 @@
 
 .settings-billing-plan-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
 .settings-billing-plan-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px;
+  gap: 4px;
+  padding: 12px;
   border-radius: var(--radius-lg, 8px);
   border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
   background: color-mix(in oklch, var(--foreground) 2%, transparent);
@@ -389,26 +389,57 @@
 }
 
 .settings-billing-plan-price {
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text-base);
 }
 
-.settings-billing-plan-limit {
+.settings-billing-plan-tagline {
   font-size: 11px;
   color: var(--text-weak);
+  margin-bottom: 4px;
+}
+
+.settings-billing-plan-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.settings-billing-plan-features li {
+  font-size: 11px;
+  color: var(--text-base);
+  padding-left: 14px;
+  position: relative;
+}
+
+.settings-billing-plan-features li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--interactive) 50%, transparent);
 }
 
 .settings-billing-plan-cta {
-  margin-top: 4px;
+  margin-top: auto;
   width: 100%;
   justify-content: center;
 }
 
 .settings-billing-plan-included {
-  margin-top: 6px;
+  margin-top: auto;
+  padding-top: 4px;
   font-size: 11px;
   color: var(--text-weak);
+  text-align: center;
 }
 
 .settings-billing-checkout-shell {
@@ -425,7 +456,7 @@
 
 @media (max-width: 900px) {
   .settings-billing-plan-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .settings-row-control--billing-meter {
