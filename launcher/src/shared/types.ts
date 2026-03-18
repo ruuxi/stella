@@ -1,9 +1,11 @@
 import type { RPCSchema } from "electrobun/bun";
 
 export type SetupStepId =
+	| "runtime"
 	| "prepare"
 	| "payload"
 	| "deps"
+	| "env"
 	| "browser"
 	| "shortcuts"
 	| "finalize";

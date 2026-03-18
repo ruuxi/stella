@@ -23,6 +23,12 @@ const ESTIMATED_INSTALL_BYTES = 1024 * 1024 * 1024; // 1 GB
 const APP_VERSION = "0.0.1";
 const STELLA_BROWSER_GITHUB_REPO = "vercel-labs/stella-browser";
 
+const DESKTOP_ENV_LOCAL = `VITE_CONVEX_URL=https://impartial-crab-34.convex.cloud
+VITE_CONVEX_SITE_URL=https://impartial-crab-34.convex.site
+VITE_SITE_URL=http://localhost:5714
+VITE_TWITCH_EMOTE_TWITCH_ID=40934651
+`;
+
 /* ── Dev-mode source detection ───────────────────────────────────── */
 
 const hasDesktopRepo = (root: string): boolean =>
@@ -149,6 +155,7 @@ const manifestOf = (d: string) => path.join(d, INSTALL_MANIFEST);
 const placeholderOf = (d: string) => path.join(d, PLACEHOLDER_MARKER);
 const packageJsonOf = (d: string) => path.join(d, "package.json");
 const nodeModulesOf = (d: string) => path.join(d, "node_modules");
+const envLocalOf = (d: string) => path.join(d, ".env.local");
 const launchScriptName = () =>
 	process.platform === "win32" ? LAUNCH_SCRIPT_WIN : LAUNCH_SCRIPT_UNIX;
 const launchScriptOf = (d: string) => path.join(d, launchScriptName());
@@ -381,18 +388,22 @@ const writeSettings = async (
 
 /* ── Launch script ───────────────────────────────────────────────── */
 
-const writeLaunchScript = async (installDir: string): Promise<string> => {
+const writeLaunchScript = async (
+	installDir: string,
+	workingDir?: string,
+): Promise<string> => {
 	const scriptPath = launchScriptOf(installDir);
+	const cwd = workingDir ?? installDir;
 
 	if (process.platform === "win32") {
 		await writeFile(
 			scriptPath,
-			"@echo off\r\ncd /d \"%~dp0\"\r\nbun run electron:dev\r\n",
+			`@echo off\r\ncd /d "${cwd}"\r\nbun run electron:dev\r\n`,
 		);
 	} else {
 		await writeFile(
 			scriptPath,
-			'#!/bin/sh\ncd "$(dirname "$0")"\nexec bun run electron:dev\n',
+			`#!/bin/sh\ncd "${cwd}"\nexec bun run electron:dev\n`,
 		);
 		await chmod(scriptPath, 0o755);
 	}
@@ -534,8 +545,60 @@ const removeRegistry = async (): Promise<void> => {
 
 /* ── Step definitions ────────────────────────────────────────────── */
 
+const BUN_INSTALL_URL_WIN = "https://bun.sh/install.ps1";
+const BUN_INSTALL_URL_UNIX = "https://bun.sh/install";
+
+const bunOnPath = async (): Promise<boolean> => {
+	const result = await run(["bun", "--version"]);
+	return result.ok;
+};
+
+const installBunGlobally = async (): Promise<boolean> => {
+	if (process.platform === "win32") {
+		const result = await run([
+			"powershell",
+			"-NoProfile",
+			"-NonInteractive",
+			"-Command",
+			`irm ${BUN_INSTALL_URL_WIN} | iex`,
+		]);
+		if (!result.ok) return false;
+	} else {
+		const result = await run([
+			"bash",
+			"-lc",
+			`curl -fsSL ${BUN_INSTALL_URL_UNIX} | bash`,
+		]);
+		if (!result.ok) return false;
+	}
+
+	// Verify bun is now reachable. The installer adds to PATH but the
+	// current process may not reflect it yet — check the well-known
+	// install location and prepend it to PATH if needed.
+	if (await bunOnPath()) return true;
+
+	const bunBin =
+		process.platform === "win32"
+			? path.join(homedir(), ".bun", "bin", "bun.exe")
+			: path.join(homedir(), ".bun", "bin", "bun");
+
+	if (await exists(bunBin)) {
+		const binDir = path.dirname(bunBin);
+		process.env.PATH = `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
+		return bunOnPath();
+	}
+
+	return false;
+};
+
 const buildSteps = (ctx: InstallerContext): StepDef[] => {
 	const steps: StepDef[] = [
+		{
+			id: "runtime",
+			label: "Checking system requirements",
+			check: async () => bunOnPath(),
+			install: async () => installBunGlobally(),
+		},
 		{
 			id: "prepare",
 			label: "Preparing install location",
@@ -557,6 +620,15 @@ const buildSteps = (ctx: InstallerContext): StepDef[] => {
 			install: async () =>
 				(await run(["bun", "install"], { cwd: ctx.sourceDesktopDir! }))
 					.ok,
+		});
+		steps.push({
+			id: "env",
+			label: "Configuring environment",
+			check: async () => exists(envLocalOf(ctx.sourceDesktopDir!)),
+			install: async () => {
+				await writeFile(envLocalOf(ctx.sourceDesktopDir!), DESKTOP_ENV_LOCAL);
+				return true;
+			},
 		});
 		steps.push({
 			id: "browser",
@@ -621,6 +693,15 @@ const buildSteps = (ctx: InstallerContext): StepDef[] => {
 			},
 		});
 		steps.push({
+			id: "env",
+			label: "Configuring environment",
+			check: (s) => exists(envLocalOf(s.installPath)),
+			install: async (s) => {
+				await writeFile(envLocalOf(s.installPath), DESKTOP_ENV_LOCAL);
+				return true;
+			},
+		});
+		steps.push({
 			id: "browser",
 			label: "Provisioning Stella Browser",
 			check: async (s) => {
@@ -657,7 +738,10 @@ const buildSteps = (ctx: InstallerContext): StepDef[] => {
 		label: "Finishing up",
 		check: (s) => exists(manifestOf(s.installPath)),
 		install: async (s) => {
-			const scriptPath = await writeLaunchScript(s.installPath);
+			const scriptPath = await writeLaunchScript(
+				s.installPath,
+				ctx.mode === "development" ? ctx.sourceDesktopDir ?? undefined : undefined,
+			);
 
 			const manifest: Manifest = {
 				version: APP_VERSION,
