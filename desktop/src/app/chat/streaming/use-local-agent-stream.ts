@@ -15,14 +15,14 @@ import {
   trySyncHostToken,
 } from "./agent-stream-errors";
 
-type LocalAgentTaskEventType =
+export type LocalAgentTaskEventType =
   | typeof AGENT_STREAM_EVENT_TYPES.TASK_STARTED
   | typeof AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
   | typeof AGENT_STREAM_EVENT_TYPES.TASK_FAILED
   | typeof AGENT_STREAM_EVENT_TYPES.TASK_CANCELED
   | typeof AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS;
 
-type LocalAgentEvent = {
+export type LocalAgentEvent = {
   type:
     | "tool_request"
     | "tool_result"
