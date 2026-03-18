@@ -11,15 +11,71 @@ use tokio::fs;
 const INSTALL_MANIFEST: &str = "stella-install.json";
 const LAUNCH_SCRIPT_WIN: &str = "launch.cmd";
 const LAUNCH_SCRIPT_UNIX: &str = "launch.sh";
-const ESTIMATED_INSTALL_BYTES: u64 = 1024 * 1024 * 1024; // 1 GB
+const ESTIMATED_INSTALL_BYTES: u64 = 512 * 1024 * 1024; // 512 MB
 const APP_VERSION: &str = "0.0.1";
-const STELLA_REPO_URL: &str = "https://github.com/ruuxi/stella.git";
-const STELLA_BROWSER_GITHUB_REPO: &str = "vercel-labs/stella-browser";
 
-const DESKTOP_ENV_LOCAL: &str = "VITE_CONVEX_URL=https://impartial-crab-34.convex.cloud\n\
-VITE_CONVEX_SITE_URL=https://impartial-crab-34.convex.site\n\
-VITE_SITE_URL=http://localhost:5714\n\
-VITE_TWITCH_EMOTE_TWITCH_ID=40934651\n";
+const GITHUB_REPO: &str = "ruuxi/stella";
+
+fn release_tarball_name() -> &'static str {
+    if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        "stella-desktop-win-x64.tar.zst"
+    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "stella-desktop-darwin-arm64.tar.zst"
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        "stella-desktop-darwin-x64.tar.zst"
+    } else {
+        "stella-desktop-linux-x64.tar.zst"
+    }
+}
+
+fn release_download_url(tag: &str) -> String {
+    format!(
+        "https://github.com/{GITHUB_REPO}/releases/download/{tag}/{}",
+        release_tarball_name()
+    )
+}
+
+/// Get the latest desktop release tag from GitHub.
+async fn latest_release_tag() -> Option<String> {
+    let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=10");
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "stella-launcher")
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+
+    let releases: Vec<serde_json::Value> = resp.json().await.ok()?;
+
+    // Find the first release whose tag starts with "desktop-v"
+    for release in &releases {
+        if let Some(tag) = release["tag_name"].as_str() {
+            if tag.starts_with("desktop-v") {
+                return Some(tag.to_string());
+            }
+        }
+    }
+
+    // Fallback: any release with the right asset name
+    let asset_name = release_tarball_name();
+    for release in &releases {
+        if let Some(assets) = release["assets"].as_array() {
+            for asset in assets {
+                if asset["name"].as_str() == Some(asset_name) {
+                    return release["tag_name"].as_str().map(|s| s.to_string());
+                }
+            }
+        }
+    }
+
+    None
+}
 
 // ── Path helpers ────────────────────────────────────────────────────
 
@@ -42,12 +98,13 @@ fn expand_home(p: &str) -> String {
 fn norm(p: &str) -> String {
     let expanded = expand_home(p.trim());
     match std::fs::canonicalize(&expanded) {
-        Ok(canon) => canon.to_string_lossy().to_string(),
+        Ok(canon) => {
+            let s = canon.to_string_lossy().to_string();
+            s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
+        }
         Err(_) => {
-            // Path doesn't exist yet — just resolve as absolute
             let pb = PathBuf::from(&expanded);
             if pb.is_absolute() {
-                // Strip UNC prefix on Windows
                 let s = pb.to_string_lossy().to_string();
                 s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
             } else {
@@ -70,174 +127,11 @@ fn package_json_of(d: &str) -> PathBuf {
 fn node_modules_of(d: &str) -> PathBuf {
     Path::new(d).join("node_modules")
 }
-fn env_local_of(d: &str) -> PathBuf {
-    Path::new(d).join(".env.local")
-}
 fn launch_script_name() -> &'static str {
-    if cfg!(target_os = "windows") {
-        LAUNCH_SCRIPT_WIN
-    } else {
-        LAUNCH_SCRIPT_UNIX
-    }
+    if cfg!(target_os = "windows") { LAUNCH_SCRIPT_WIN } else { LAUNCH_SCRIPT_UNIX }
 }
 fn launch_script_of(d: &str) -> PathBuf {
     Path::new(d).join(launch_script_name())
-}
-fn stella_browser_root_of(d: &str) -> PathBuf {
-    Path::new(d).join("stella-browser")
-}
-fn stella_browser_wrapper_of(d: &str) -> PathBuf {
-    stella_browser_root_of(d).join("bin").join("stella-browser.js")
-}
-fn stella_browser_cargo_toml_of(d: &str) -> PathBuf {
-    stella_browser_root_of(d).join("cli").join("Cargo.toml")
-}
-
-fn stella_browser_binary_name() -> Option<String> {
-    let os = if cfg!(target_os = "macos") {
-        "darwin"
-    } else if cfg!(target_os = "linux") {
-        "linux"
-    } else if cfg!(target_os = "windows") {
-        "win32"
-    } else {
-        return None;
-    };
-
-    let arch = if cfg!(target_arch = "x86_64") {
-        "x64"
-    } else if cfg!(target_arch = "aarch64") {
-        "arm64"
-    } else {
-        return None;
-    };
-
-    let ext = if cfg!(target_os = "windows") {
-        ".exe"
-    } else {
-        ""
-    };
-
-    Some(format!("stella-browser-{os}-{arch}{ext}"))
-}
-
-fn stella_browser_binary_of(d: &str) -> Option<PathBuf> {
-    stella_browser_binary_name()
-        .map(|name| stella_browser_root_of(d).join("bin").join(name))
-}
-
-async fn read_stella_browser_version(desktop_dir: &str) -> Option<String> {
-    let cargo_toml = fs::read_to_string(stella_browser_cargo_toml_of(desktop_dir))
-        .await
-        .ok()?;
-    let re = regex_lite::Regex::new(r#"^\s*version\s*=\s*"([^"]+)""#).ok()?;
-    for line in cargo_toml.lines() {
-        if let Some(cap) = re.captures(line) {
-            return cap.get(1).map(|m| m.as_str().to_string());
-        }
-    }
-    None
-}
-
-async fn ensure_executable(p: &Path) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = fs::metadata(p).await {
-            let mut perms = meta.permissions();
-            perms.set_mode(0o755);
-            let _ = fs::set_permissions(p, perms).await;
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = p;
-    }
-}
-
-async fn verify_stella_browser_binary(desktop_dir: &str, expected_version: Option<&str>) -> bool {
-    let wrapper = stella_browser_wrapper_of(desktop_dir);
-    let binary = match stella_browser_binary_of(desktop_dir) {
-        Some(b) => b,
-        None => return false,
-    };
-
-    if !path_exists(&wrapper).await || !path_exists(&binary).await {
-        return false;
-    }
-
-    ensure_executable(&binary).await;
-
-    let result = run(
-        &["bun", "stella-browser/bin/stella-browser.js", "--version"],
-        Some(Path::new(desktop_dir)),
-    )
-    .await;
-
-    if !result.ok {
-        return false;
-    }
-
-    if let Some(ver) = expected_version {
-        if !result.stdout.contains(ver) {
-            return false;
-        }
-    }
-
-    true
-}
-
-async fn download_stella_browser_binary(desktop_dir: &str, version: &str) -> bool {
-    let binary_name = match stella_browser_binary_name() {
-        Some(n) => n,
-        None => return false,
-    };
-    let binary_path = match stella_browser_binary_of(desktop_dir) {
-        Some(p) => p,
-        None => return false,
-    };
-
-    let url = format!(
-        "https://github.com/{STELLA_BROWSER_GITHUB_REPO}/releases/download/v{version}/{binary_name}"
-    );
-
-    let response = match reqwest::get(&url).await {
-        Ok(r) if r.status().is_success() => r,
-        _ => return false,
-    };
-
-    let bytes = match response.bytes().await {
-        Ok(b) => b,
-        Err(_) => return false,
-    };
-
-    if let Some(parent) = binary_path.parent() {
-        let _ = fs::create_dir_all(parent).await;
-    }
-
-    if fs::write(&binary_path, &bytes).await.is_err() {
-        return false;
-    }
-
-    ensure_executable(&binary_path).await;
-    true
-}
-
-async fn ensure_stella_browser_runtime(desktop_dir: &str) -> bool {
-    let version = match read_stella_browser_version(desktop_dir).await {
-        Some(v) => v,
-        None => return false,
-    };
-
-    if verify_stella_browser_binary(desktop_dir, Some(&version)).await {
-        return true;
-    }
-
-    if !download_stella_browser_binary(desktop_dir, &version).await {
-        return false;
-    }
-
-    verify_stella_browser_binary(desktop_dir, Some(&version)).await
 }
 
 // ── Validation ──────────────────────────────────────────────────────
@@ -247,20 +141,10 @@ fn location_error(p: &str) -> Option<String> {
     if trimmed.is_empty() {
         return Some("Choose where Stella should be installed.".into());
     }
-
     let pb = PathBuf::from(trimmed);
     if !pb.is_absolute() {
         return Some("Install location must be an absolute path.".into());
     }
-
-    // Check if it's a drive root
-    if let Some(parent) = pb.parent() {
-        if parent.as_os_str().is_empty() || pb == PathBuf::from(pb.ancestors().last().unwrap_or(&pb))
-        {
-            return Some("Choose a folder, not the root of a drive.".into());
-        }
-    }
-
     None
 }
 
@@ -310,7 +194,15 @@ async fn write_launch_script(install_dir: &str) -> String {
             "#!/bin/sh\ncd \"{install_dir}\"\nexec bun run electron:dev\n"
         );
         let _ = fs::write(&script_path, &content).await;
-        ensure_executable(&script_path).await;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = fs::metadata(&script_path).await {
+                let mut perms = meta.permissions();
+                perms.set_mode(0o755);
+                let _ = fs::set_permissions(&script_path, perms).await;
+            }
+        }
     }
 
     script_path.to_string_lossy().to_string()
@@ -341,9 +233,7 @@ async fn write_registry(manifest: &Manifest) {
 
     for (name, reg_type, data) in entries {
         run(
-            &[
-                "reg", "add", REG_UNINSTALL, "/v", name, "/t", reg_type, "/d", data, "/f",
-            ],
+            &["reg", "add", REG_UNINSTALL, "/v", name, "/t", reg_type, "/d", data, "/f"],
             None,
         )
         .await;
@@ -353,113 +243,6 @@ async fn write_registry(manifest: &Manifest) {
 async fn remove_registry() {
     if cfg!(target_os = "windows") {
         run(&["reg", "delete", REG_UNINSTALL, "/f"], None).await;
-    }
-}
-
-// ── Git ─────────────────────────────────────────────────────────────
-
-async fn git_on_path() -> bool {
-    run(&["git", "--version"], None).await.ok
-}
-
-async fn install_git() -> bool {
-    if cfg!(target_os = "windows") {
-        // Try winget first
-        let winget_available = run(&["winget", "--version"], None).await.ok;
-
-        if winget_available {
-            let result = run(
-                &[
-                    "winget", "install", "Git.Git",
-                    "--silent",
-                    "--accept-package-agreements",
-                    "--accept-source-agreements",
-                ],
-                None,
-            )
-            .await;
-
-            if result.ok {
-                add_git_to_path();
-                if git_on_path().await {
-                    return true;
-                }
-            }
-        }
-
-        // Fallback: download Git for Windows installer directly
-        let temp_dir = std::env::temp_dir();
-        let installer_path = temp_dir.join("Git-installer.exe");
-        let download_url = "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.2/Git-2.47.1.2-64-bit.exe";
-
-        let download = run(
-            &[
-                "powershell", "-NoProfile", "-NonInteractive", "-Command",
-                &format!(
-                    "Invoke-WebRequest -Uri '{}' -OutFile '{}'",
-                    download_url,
-                    installer_path.to_string_lossy()
-                ),
-            ],
-            None,
-        )
-        .await;
-
-        if !download.ok || !path_exists(&installer_path).await {
-            return false;
-        }
-
-        // Run installer silently
-        let install = run(
-            &[
-                &installer_path.to_string_lossy(),
-                "/VERYSILENT",
-                "/NORESTART",
-                "/NOCANCEL",
-                "/SP-",
-                "/CLOSEAPPLICATIONS",
-                "/RESTARTAPPLICATIONS",
-            ],
-            None,
-        )
-        .await;
-
-        // Clean up installer
-        let _ = tokio::fs::remove_file(&installer_path).await;
-
-        if !install.ok {
-            return false;
-        }
-
-        add_git_to_path();
-        git_on_path().await
-    } else {
-        // On macOS, `git` triggers Xcode CLI tools install automatically.
-        let result = run(&["git", "--version"], None).await;
-        if result.ok {
-            return true;
-        }
-
-        // Try brew on macOS
-        if cfg!(target_os = "macos") {
-            return run(&["brew", "install", "git"], None).await.ok && git_on_path().await;
-        }
-
-        false
-    }
-}
-
-fn add_git_to_path() {
-    let git_paths = [
-        r"C:\Program Files\Git\cmd",
-        r"C:\Program Files (x86)\Git\cmd",
-    ];
-    let current_path = std::env::var("PATH").unwrap_or_default();
-    for gp in &git_paths {
-        if std::path::Path::new(gp).exists() && !current_path.contains(gp) {
-            std::env::set_var("PATH", format!("{gp};{current_path}"));
-            break;
-        }
     }
 }
 
@@ -473,10 +256,7 @@ async fn install_bun_globally() -> bool {
     if cfg!(target_os = "windows") {
         let result = run(
             &[
-                "powershell",
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
+                "powershell", "-NoProfile", "-NonInteractive", "-Command",
                 "irm https://bun.sh/install.ps1 | iex",
             ],
             None,
@@ -522,69 +302,97 @@ async fn install_bun_globally() -> bool {
     false
 }
 
-// ── Runtime (git + bun) ─────────────────────────────────────────────
+// ── Tarball download + extract ──────────────────────────────────────
 
-async fn check_runtime() -> bool {
-    git_on_path().await && bun_on_path().await
-}
+async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
+    let tag = latest_release_tag()
+        .await
+        .ok_or("Could not find a desktop release. Check your internet connection.")?;
 
-async fn install_runtime() -> bool {
-    // Install git if missing
-    if !git_on_path().await && !install_git().await {
-        return false;
+    let url = release_download_url(&tag);
+    log_install(install_dir, &format!("Downloading {url}")).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "stella-launcher")
+        .send()
+        .await
+        .map_err(|e| format!("Download failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Download failed: HTTP {}", resp.status()));
     }
 
-    // Install bun if missing
-    if !bun_on_path().await && !install_bun_globally().await {
-        return false;
-    }
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("Download failed: {e}"))?;
 
-    true
+    log_install(install_dir, &format!("Downloaded {} bytes, extracting...", bytes.len())).await;
+
+    // Decompress zstd then untar — do in blocking task to avoid blocking async runtime
+    let install_path = install_dir.to_string();
+    tokio::task::spawn_blocking(move || {
+        let decoder = zstd::Decoder::new(std::io::Cursor::new(&bytes))
+            .map_err(|e| format!("zstd decompress failed: {e}"))?;
+        let mut archive = tar::Archive::new(decoder);
+
+        std::fs::create_dir_all(&install_path)
+            .map_err(|e| format!("mkdir failed: {e}"))?;
+
+        archive
+            .unpack(&install_path)
+            .map_err(|e| format!("tar extract failed: {e}"))?;
+
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| format!("Extract task failed: {e}"))??;
+
+    log_install(install_dir, "Extraction complete").await;
+    Ok(())
 }
 
-// ── Native prebuilds ────────────────────────────────────────────────
+// ── Git init for self-mod ───────────────────────────────────────────
 
-/// Copy prebuilt native .node binaries from the repo's native-prebuilds/
-/// directory into the correct node_modules locations.
-async fn install_native_prebuilds(install_dir: &str) {
-    let platform = if cfg!(target_os = "windows") {
-        "win32"
-    } else if cfg!(target_os = "macos") {
-        "darwin"
-    } else {
-        "linux"
-    };
-    let arch = if cfg!(target_arch = "x86_64") {
-        "x64"
-    } else if cfg!(target_arch = "aarch64") {
-        "arm64"
-    } else {
+async fn init_git_repo(install_dir: &str) {
+    let git_dir = Path::new(install_dir).join(".git");
+    if path_exists(&git_dir).await {
+        return; // Already has a git repo
+    }
+
+    // Check if git is available (not required for install, just for self-mod)
+    if !run(&["git", "--version"], None).await.ok {
         return;
-    };
-
-    let prebuilds_dir = Path::new(install_dir).join("native-prebuilds");
-    let platform_dir = format!("{platform}-{arch}");
-
-    // better-sqlite3
-    let src = prebuilds_dir
-        .join("better-sqlite3")
-        .join(&platform_dir)
-        .join("better_sqlite3.node");
-    let dest_dir = Path::new(install_dir)
-        .join("node_modules")
-        .join("better-sqlite3")
-        .join("build")
-        .join("Release");
-
-    if path_exists(&src).await {
-        let _ = fs::create_dir_all(&dest_dir).await;
-        let dest = dest_dir.join("better_sqlite3.node");
-        if fs::copy(&src, &dest).await.is_ok() {
-            log_install(install_dir, &format!(
-                "Installed prebuilt better-sqlite3 for {platform_dir}"
-            )).await;
-        }
     }
+
+    let dir = Some(Path::new(install_dir));
+    run(&["git", "init"], dir).await;
+    run(&["git", "add", "-A"], dir).await;
+    run(&["git", "commit", "-m", "initial stella install"], dir).await;
+}
+
+// ── Logging ─────────────────────────────────────────────────────────
+
+async fn log_install(dir: &str, msg: &str) {
+    let log_path = Path::new(dir).join("stella-install.log");
+    let timestamp = chrono_now();
+    let line = format!("[{timestamp}] {msg}\n");
+    if let Ok(mut contents) = fs::read_to_string(&log_path).await {
+        contents.push_str(&line);
+        let _ = fs::write(&log_path, contents).await;
+    } else {
+        let _ = fs::create_dir_all(dir).await;
+        let _ = fs::write(&log_path, &line).await;
+    }
+}
+
+fn chrono_now() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    now.as_secs().to_string()
 }
 
 // ── Step infrastructure ─────────────────────────────────────────────
@@ -595,50 +403,23 @@ struct StepDef {
 }
 
 fn build_step_defs() -> Vec<StepDef> {
-    let mut steps = vec![
-        StepDef { id: SetupStepId::Runtime, label: "Checking system requirements" },
-        StepDef { id: SetupStepId::Prepare, label: "Preparing install location" },
-        StepDef { id: SetupStepId::Payload, label: "Installing Stella" },
-        StepDef { id: SetupStepId::Deps, label: "Installing dependencies" },
-        StepDef { id: SetupStepId::Env, label: "Configuring environment" },
-        StepDef { id: SetupStepId::Browser, label: "Provisioning Stella Browser" },
-    ];
-
-    steps.push(StepDef { id: SetupStepId::Finalize, label: "Finishing up" });
-    steps
+    vec![
+        StepDef { id: SetupStepId::Runtime, label: "Setting up" },
+        StepDef { id: SetupStepId::Payload, label: "Downloading Stella" },
+        StepDef { id: SetupStepId::Finalize, label: "Finishing up" },
+    ]
 }
 
 async fn check_step(id: &SetupStepId, state: &InstallerState) -> bool {
     let dir = &state.install_path;
     match id {
-        SetupStepId::Runtime => check_runtime().await,
-        SetupStepId::Prepare => path_exists_str(dir).await,
-        SetupStepId::Payload => path_exists(&package_json_of(dir)).await,
-        SetupStepId::Deps => path_exists(&node_modules_of(dir)).await,
-        SetupStepId::Env => path_exists(&env_local_of(dir)).await,
-        SetupStepId::Browser => {
-            if !path_exists(&stella_browser_wrapper_of(dir)).await {
-                return true; // Skip if no wrapper present
-            }
-            verify_stella_browser_binary(dir, read_stella_browser_version(dir).await.as_deref())
-                .await
+        SetupStepId::Runtime => bun_on_path().await,
+        SetupStepId::Payload => {
+            path_exists(&package_json_of(dir)).await
+                && path_exists(&node_modules_of(dir)).await
         }
-        SetupStepId::Shortcuts => true, // Handled by NSIS installer
         SetupStepId::Finalize => path_exists(&manifest_of(dir)).await,
-    }
-}
-
-/// Write a line to the install log file.
-async fn log_install(dir: &str, msg: &str) {
-    let log_path = Path::new(dir).join("stella-install.log");
-    let timestamp = chrono_now();
-    let line = format!("[{timestamp}] {msg}\n");
-    // Append to log file
-    if let Ok(mut contents) = fs::read_to_string(&log_path).await {
-        contents.push_str(&line);
-        let _ = fs::write(&log_path, contents).await;
-    } else {
-        let _ = fs::write(&log_path, &line).await;
+        _ => true,
     }
 }
 
@@ -646,139 +427,25 @@ async fn install_step(id: &SetupStepId, state: &InstallerState) -> Result<(), St
     let dir = &state.install_path;
     match id {
         SetupStepId::Runtime => {
-            if install_runtime().await {
+            if bun_on_path().await {
+                return Ok(());
+            }
+            if install_bun_globally().await {
                 Ok(())
             } else {
-                Err("Failed to install git and/or bun. Check internet connection.".into())
+                Err("Failed to install Bun runtime. Check your internet connection.".into())
             }
-        }
-        SetupStepId::Prepare => {
-            fs::create_dir_all(dir).await.map_err(|e| format!("mkdir failed: {e}"))?;
-            Ok(())
         }
         SetupStepId::Payload => {
             let _ = fs::create_dir_all(dir).await;
-            let tmp_clone = format!("{dir}/.clone-tmp");
-
-            let clone = run(
-                &[
-                    "git", "clone", "--depth", "1", "--filter=blob:none",
-                    "--sparse", STELLA_REPO_URL, &tmp_clone,
-                ],
-                None,
-            )
-            .await;
-            if !clone.ok {
-                log_install(dir, &format!("git clone failed: {}", clone.stderr)).await;
-                return Err(format!("git clone failed: {}", clone.stderr));
-            }
-
-            let sparse = run(
-                &["git", "sparse-checkout", "set", "desktop"],
-                Some(Path::new(&tmp_clone)),
-            )
-            .await;
-            if !sparse.ok {
-                log_install(dir, &format!("sparse-checkout failed: {}", sparse.stderr)).await;
-                return Err(format!("sparse-checkout failed: {}", sparse.stderr));
-            }
-
-            let desktop_tmp = PathBuf::from(&tmp_clone).join("desktop");
-            if let Ok(mut entries) = fs::read_dir(&desktop_tmp).await {
-                while let Ok(Some(entry)) = entries.next_entry().await {
-                    let src = entry.path();
-                    let dest = PathBuf::from(dir).join(entry.file_name());
-                    if cfg!(target_os = "windows") {
-                        run(
-                            &[
-                                "cmd", "/c", "move", "/Y",
-                                &src.to_string_lossy(),
-                                &dest.to_string_lossy(),
-                            ],
-                            None,
-                        )
-                        .await;
-                    } else {
-                        run(
-                            &[
-                                "mv", "-f",
-                                &src.to_string_lossy(),
-                                &dest.to_string_lossy(),
-                            ],
-                            None,
-                        )
-                        .await;
-                    }
-                }
-            }
-
-            let _ = fs::remove_dir_all(&tmp_clone).await;
-            if path_exists(&package_json_of(dir)).await {
-                Ok(())
-            } else {
-                Err("package.json not found after clone".into())
-            }
-        }
-        SetupStepId::Deps => {
-            if !path_exists(&package_json_of(dir)).await {
-                return Ok(());
-            }
-
-            // Install deps but skip postinstall scripts (electron-rebuild needs
-            // Python + MSVC build tools that won't exist on a clean machine).
-            let result = run(&["bun", "install", "--ignore-scripts"], Some(Path::new(dir))).await;
-            if !result.ok {
-                log_install(dir, &format!("bun install stdout: {}", result.stdout)).await;
-                log_install(dir, &format!("bun install stderr: {}", result.stderr)).await;
-                return Err(format!("bun install failed: {}", result.stderr));
-            }
-
-            // Electron uses a postinstall to download its binary — run it explicitly.
-            let electron_install = run(
-                &["bun", "node_modules/electron/install.js"],
-                Some(Path::new(dir)),
-            ).await;
-            if !electron_install.ok {
-                log_install(dir, &format!("electron install: {}", electron_install.stderr)).await;
-                return Err(format!("Failed to download Electron binary: {}", electron_install.stderr));
-            }
-
-            // Copy prebuilt native modules into place.
-            // The repo ships prebuilt binaries in native-prebuilds/ so we don't
-            // need Python/MSVC on the target machine.
-            install_native_prebuilds(dir).await;
-
-            // Try running the full postinstall (electron-rebuild) — will succeed
-            // on dev machines with build tools, silently skipped on clean machines.
-            let postinstall = run(
-                &["bun", "run", "postinstall"],
-                Some(Path::new(dir)),
-            ).await;
-            if !postinstall.ok {
-                log_install(dir, "postinstall skipped (no build tools) — using prebuilt native modules").await;
-            }
-
+            download_and_extract_release(dir).await?;
             Ok(())
         }
-        SetupStepId::Env => {
-            fs::write(env_local_of(dir), DESKTOP_ENV_LOCAL)
-                .await
-                .map_err(|e| format!("write .env.local failed: {e}"))?;
-            Ok(())
-        }
-        SetupStepId::Browser => {
-            if !path_exists(&stella_browser_wrapper_of(dir)).await {
-                return Ok(());
-            }
-            if ensure_stella_browser_runtime(dir).await {
-                Ok(())
-            } else {
-                Err("Failed to download stella-browser binary".into())
-            }
-        }
-        SetupStepId::Shortcuts => Ok(()),
         SetupStepId::Finalize => {
             let script_path = write_launch_script(dir).await;
+
+            // Init git repo for self-mod (non-blocking, best-effort)
+            init_git_repo(dir).await;
 
             let manifest = Manifest {
                 version: APP_VERSION.into(),
@@ -790,25 +457,18 @@ async fn install_step(id: &SetupStepId, state: &InstallerState) -> Result<(), St
             };
 
             let json = serde_json::to_string_pretty(&manifest).unwrap_or_default();
-            if fs::write(manifest_of(dir), json).await.is_err() {
-                return Err("Failed to write install manifest".into());
-            }
+            fs::write(manifest_of(dir), json)
+                .await
+                .map_err(|e| format!("Failed to write manifest: {e}"))?;
 
             write_registry(&manifest).await;
             Ok(())
         }
+        _ => Ok(()),
     }
 }
 
-fn chrono_now() -> String {
-    // Simple ISO timestamp without chrono dependency
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
-    // Return as unix timestamp string — good enough
-    format!("{secs}")
-}
+// ── State management ────────────────────────────────────────────────
 
 fn sync_step_list(state: &mut InstallerState) {
     let defs = build_step_defs();
@@ -829,43 +489,29 @@ fn sync_step_list(state: &mut InstallerState) {
 }
 
 async fn refresh_derived(state: &mut InstallerState, ctx: &InstallerContext) {
-    let used = disk::dir_size(&state.install_path).await;
     let avail = disk::available_bytes(&state.install_path).await;
-    let remaining = ctx.required_bytes.saturating_sub(used);
 
     state.disk = DiskInfo {
         required_bytes: ctx.required_bytes,
         available_bytes: avail,
-        used_bytes: used,
-        enough_space: avail.map_or(true, |a| a >= remaining),
+        used_bytes: 0, // Skip expensive dir walk
+        enough_space: avail.map_or(true, |a| a >= ctx.required_bytes),
     };
 
     state.install_path_error = location_error(&state.install_path);
 
-    let has_repo = path_exists(&package_json_of(&state.install_path)).await;
-    let has_deps = path_exists(&node_modules_of(&state.install_path)).await;
-    let browser_ok = verify_stella_browser_binary(
-        &state.install_path,
-        read_stella_browser_version(&state.install_path)
-            .await
-            .as_deref(),
-    )
-    .await;
-
-    state.can_launch = has_repo && has_deps && browser_ok;
+    let has_manifest = path_exists(&manifest_of(&state.install_path)).await;
+    let has_pkg = path_exists(&package_json_of(&state.install_path)).await;
+    state.can_launch = has_manifest && has_pkg;
 }
 
-/// Full state refresh — expensive (walks install dir, checks binaries).
-/// Only call at start/end of check_all and install_all.
+fn emit_state_fast(state: &InstallerState, app: &AppHandle) {
+    let _ = app.emit("installer-state-update", serde_json::json!({ "state": state }));
+}
+
 async fn emit_state_full(state: &mut InstallerState, ctx: &InstallerContext, app: &AppHandle) {
     refresh_derived(state, ctx).await;
     let _ = app.emit("installer-state-update", serde_json::json!({ "state": &*state }));
-}
-
-/// Lightweight emit — just pushes current state to the frontend without
-/// recalculating disk usage or verifying binaries. Used for step progress updates.
-fn emit_state_fast(state: &InstallerState, app: &AppHandle) {
-    let _ = app.emit("installer-state-update", serde_json::json!({ "state": state }));
 }
 
 // ── Public API ──────────────────────────────────────────────────────
@@ -943,12 +589,6 @@ pub async fn check_all(
     let mut all_done = true;
 
     for def in &defs {
-        if let Some(step) = state.steps.iter_mut().find(|s| s.id == def.id) {
-            step.status = SetupStepStatus::Checking;
-            step.detail = Some("Checking...".into());
-        }
-        emit_state_fast(state, app);
-
         let ok = check_step(&def.id, state).await;
 
         if let Some(step) = state.steps.iter_mut().find(|s| s.id == def.id) {
@@ -957,13 +597,7 @@ pub async fn check_all(
             } else {
                 SetupStepStatus::Pending
             };
-            step.detail = if ok {
-                Some("Already done".into())
-            } else {
-                None
-            };
         }
-        emit_state_fast(state, app);
 
         if !ok {
             all_done = false;
@@ -976,7 +610,6 @@ pub async fn check_all(
     } else {
         InstallerPhase::Ready
     };
-    // Full refresh only at the end
     emit_state_full(state, ctx, app).await;
 }
 
@@ -996,7 +629,7 @@ pub async fn install_all(
     }
 
     if !state.disk.enough_space {
-        let msg = "Not enough free disk space for this installation.".to_string();
+        let msg = "Not enough free disk space.".to_string();
         state.phase = InstallerPhase::Error;
         state.error_message = Some(msg.clone());
         emit_state_fast(state, app);
@@ -1023,32 +656,28 @@ pub async fn install_all(
             continue;
         }
 
-        let label = def.label.to_string();
-
         if let Some(step) = state.steps.iter_mut().find(|s| s.id == def.id) {
             step.status = SetupStepStatus::Installing;
-            step.detail = Some(format!("{label}..."));
+            step.detail = Some(def.label.to_string());
         }
         emit_state_fast(state, app);
 
         let result = install_step(&def.id, state).await;
 
         if let Err(err) = result {
-            log_install(&state.install_path, &format!("Step '{}' failed: {}", label, err)).await;
-            let detail = format!("Could not complete: {}. {}", label.to_lowercase(), err);
+            log_install(&state.install_path, &format!("Step '{}' failed: {}", def.label, err)).await;
             if let Some(step) = state.steps.iter_mut().find(|s| s.id == def.id) {
                 step.status = SetupStepStatus::Error;
-                step.detail = Some(detail.clone());
+                step.detail = Some(err.clone());
             }
             state.phase = InstallerPhase::Error;
-            state.error_message = Some(detail.clone());
+            state.error_message = Some(err.clone());
             emit_state_fast(state, app);
-            return Err(detail);
+            return Err(err);
         }
 
         if let Some(step) = state.steps.iter_mut().find(|s| s.id == def.id) {
             step.status = SetupStepStatus::Done;
-            step.detail = Some("Done".into());
         }
         emit_state_fast(state, app);
     }
@@ -1063,20 +692,7 @@ pub async fn install_all(
 
 pub async fn get_launch_info(state: &InstallerState) -> Option<LaunchInfo> {
     let dir = &state.install_path;
-    let has_repo = path_exists(&package_json_of(dir)).await;
-    let has_deps = path_exists(&node_modules_of(dir)).await;
-
-    if !has_repo || !has_deps {
-        return None;
-    }
-
-    let browser_ok = verify_stella_browser_binary(
-        dir,
-        read_stella_browser_version(dir).await.as_deref(),
-    )
-    .await;
-
-    if !browser_ok {
+    if !path_exists(&package_json_of(dir)).await {
         return None;
     }
 

@@ -4,7 +4,6 @@
 mod bootstrap;
 mod commands;
 mod disk;
-mod recovery;
 mod setup;
 mod shell;
 mod state;
@@ -43,7 +42,6 @@ fn main() {
                 home.join(".stella-launcher")
             });
             let settings_file = app_data.join("installer-settings.json");
-            let recovery_dir = app_data.join("recovery");
 
             // Create context and initial state
             let ctx = setup::create_context(default_install_path, settings_file);
@@ -53,7 +51,6 @@ fn main() {
             let app_state = AppState {
                 installer: Mutex::new(initial_state),
                 context: ctx,
-                recovery_dir,
                 desktop_process: Mutex::new(None),
             };
 
