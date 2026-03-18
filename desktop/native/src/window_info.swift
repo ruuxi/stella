@@ -6,6 +6,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import ScreenCaptureKit
 
 func parseExcludedPids(_ args: ArraySlice<String>) -> Set<Int> {
     let prefix = "--exclude-pids="
@@ -96,20 +97,35 @@ for window in windowList {
     """
     print(json.trimmingCharacters(in: .whitespacesAndNewlines))
 
-    // Capture screenshot if requested
+    // Capture screenshot if requested (ScreenCaptureKit replaces deprecated CGWindowListCreateImage)
     if let ssPath = screenshotPath, windowID != 0 {
-        if let cgImage = CGWindowListCreateImage(
-            .null,
-            .optionIncludingWindow,
-            windowID,
-            [.boundsIgnoreFraming]
-        ) {
-            let bitmapRep = NSBitmapImageRep(cgImage: cgImage)
-            if let pngData = bitmapRep.representation(using: .png, properties: [:]) {
-                let url = URL(fileURLWithPath: ssPath)
-                try? pngData.write(to: url)
-            }
+        let captureWidth = Int(ww)
+        let captureHeight = Int(wh)
+        let semaphore = DispatchSemaphore(value: 0)
+        Task.detached {
+            defer { semaphore.signal() }
+            do {
+                let content = try await SCShareableContent.excludingDesktopWindows(
+                    false, onScreenWindowsOnly: true
+                )
+                guard let scWindow = content.windows.first(where: { $0.windowID == windowID })
+                else { return }
+
+                let filter = SCContentFilter(desktopIndependentWindow: scWindow)
+                let config = SCStreamConfiguration()
+                config.width = captureWidth
+                config.height = captureHeight
+
+                let cgImage = try await SCScreenshotManager.captureImage(
+                    contentFilter: filter, configuration: config
+                )
+                let bitmapRep = NSBitmapImageRep(cgImage: cgImage)
+                if let pngData = bitmapRep.representation(using: .png, properties: [:]) {
+                    try? pngData.write(to: URL(fileURLWithPath: ssPath))
+                }
+            } catch {}
         }
+        semaphore.wait()
     }
 
     exit(0)
