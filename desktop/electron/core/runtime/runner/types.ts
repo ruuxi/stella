@@ -299,6 +299,9 @@ export type RunnerPublicApi = {
     | { status: "ok"; finalText: string; taskId: string }
     | { status: "error"; finalText: ""; error: string; taskId?: string }
   >;
+  createBackgroundTask: (
+    request: Omit<TaskToolRequest, "storageMode">,
+  ) => Promise<{ taskId: string }>;
   cancelLocalChat: (runId: string) => void;
   getActiveOrchestratorRun: () => {
     runId: string;

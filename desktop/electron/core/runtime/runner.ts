@@ -165,6 +165,7 @@ export const createStellaHostRunner = (
     handleLocalChat: orchestratorController.handleLocalChat,
     runAutomationTurn: orchestratorController.runAutomationTurn,
     runBlockingLocalTask: taskOrchestration.runBlockingLocalTask,
+    createBackgroundTask: taskOrchestration.createBackgroundTask,
     cancelLocalChat: orchestratorController.cancelLocalChat,
     getActiveOrchestratorRun: orchestratorController.getActiveOrchestratorRun,
     recoverCrashedRuns: runtimeInitialization.recoverCrashedRuns,

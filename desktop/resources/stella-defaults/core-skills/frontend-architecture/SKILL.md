@@ -171,6 +171,7 @@ The app uses `ViewType = 'home' | 'app'` to control what `WorkspaceArea` display
 ## Workspace Content
 Interactive content rendered in `WorkspaceArea` when the view is `'app'`:
 - Panels: renderers in `src/app/workspace/renderers/` (dev-project, hosted-game)
-- Generated dashboard pages: `src/app/home/pages/{panelName}.tsx` (written by self-mod agent, picked up by HMR)
+- Generated dashboard pages: `src/app/{panelName}/{PanelName}.tsx` (written by self-mod agent, picked up by HMR)
+- Page registry: `src/app/registry.ts` — agents append entries using the Edit tool (fs-locked across concurrent tasks)
 
-Agents create the content, then report the panel name so the user can open it through the workspace UI.
+Agents create the page folder, write the component, then Edit `registry.ts` to add their entry.

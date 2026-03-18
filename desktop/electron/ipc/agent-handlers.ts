@@ -19,6 +19,7 @@ import {
   revertGitFeature,
 } from "../self-mod/git.js";
 import type { HmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
+import { startDashboardGeneration } from "../core/dashboard-generation.js";
 
 type AgentHandlersOptions = {
   getStellaHostRunner: () => StellaHostRunner | null;
@@ -311,6 +312,38 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       agentRunOwners.delete(runId);
     }
   });
+
+  ipcMain.handle(
+    "agent:startDashboardGeneration",
+    async (
+      event,
+      payload: {
+        conversationId: string;
+        coreMemory: string;
+        promptConfig: { systemPrompt: string; userPromptTemplate: string };
+      },
+    ) => {
+      if (
+        !options.assertPrivilegedSender(
+          event,
+          "agent:startDashboardGeneration",
+        )
+      ) {
+        throw new Error("Blocked untrusted request.");
+      }
+      const stellaHostRunner = options.getStellaHostRunner();
+      if (!stellaHostRunner) {
+        throw new Error("Stella runtime not available");
+      }
+
+      return await startDashboardGeneration(
+        { createTask: (req) => stellaHostRunner.createBackgroundTask(req) },
+        payload.conversationId,
+        payload.coreMemory,
+        payload.promptConfig,
+      );
+    },
+  );
 
   ipcMain.handle(
     "selfmod:revert",

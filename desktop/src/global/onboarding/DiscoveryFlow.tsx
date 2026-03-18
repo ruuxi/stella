@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getOrCreateDeviceId } from "@/platform/electron/device";
 import { synthesizeCoreMemory } from "@/global/onboarding/services/synthesis";
+import { getPersonalizedDashboardPromptConfig } from "@/prompts/transport";
 import { useChatStore } from "@/context/chat-store";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import {
@@ -35,6 +36,7 @@ export function useDiscoveryFlow({
     DiscoveryCategory[] | null
   >(null);
 
+  const [dashboardGenerating, setDashboardGenerating] = useState(false);
   const synthesizedRef = useRef(false);
   const synthesizingRef = useRef(false);
 
@@ -107,6 +109,16 @@ export function useDiscoveryFlow({
           }
         }
 
+        // Fire-and-forget: spawn self-mod agents to generate personalized pages
+        setDashboardGenerating(true);
+        window.electronAPI?.agent.startDashboardGeneration?.({
+          conversationId: activeConversationId,
+          coreMemory: synthesisResult.coreMemory,
+          promptConfig: getPersonalizedDashboardPromptConfig(),
+        }).catch(() => {
+          // Dashboard generation is non-critical
+        });
+
         completed = true;
         synthesizedRef.current = true;
       } catch {
@@ -129,6 +141,7 @@ export function useDiscoveryFlow({
 
   return {
     handleDiscoveryConfirm,
+    dashboardGenerating,
   };
 }
 
