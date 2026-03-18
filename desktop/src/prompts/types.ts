@@ -11,6 +11,7 @@ export type PersonalizedDashboardPageAssignment = {
   topic: string
   focus: string
   panelName: string
+  componentName: string
   dataSources: string[]
 }
 

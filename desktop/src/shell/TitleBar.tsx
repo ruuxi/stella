@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useWorkspace } from '@/context/workspace-state';
-import { getPlatform } from '@/platform/electron/platform';
+import { useState, useEffect, useCallback } from "react";
+import { useWorkspace } from "@/context/workspace-state";
+import { getPlatform } from "@/platform/electron/platform";
 
 const MAXIMIZE_STATE_SYNC_DELAY_MS = 50;
 
@@ -8,14 +8,14 @@ export const TitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
   const { state: workspaceState } = useWorkspace();
   const platform = getPlatform();
-  const isMac = platform === 'darwin';
+  const isMac = platform === "darwin";
   const activePanel = workspaceState.activePanel;
-  const panelTitle = activePanel && activePanel.name !== 'dashboard'
+  const panelTitle = activePanel
     ? (activePanel.title ?? activePanel.name)
     : null;
-  const panelTitleLabel = panelTitle
-    ? <span className="title-bar-workspace-label">{panelTitle}</span>
-    : null;
+  const panelTitleLabel = panelTitle ? (
+    <span className="title-bar-workspace-label">{panelTitle}</span>
+  ) : null;
 
   const getMaximizedState = useCallback(async () => {
     const maximized = await window.electronAPI?.window.isMaximized?.();
@@ -75,7 +75,7 @@ export const TitleBar = () => {
         <button
           className="title-bar-button"
           onClick={handleMaximize}
-          aria-label={isMaximized ? 'Restore' : 'Maximize'}
+          aria-label={isMaximized ? "Restore" : "Maximize"}
         >
           {isMaximized ? (
             <svg width="10" height="10" viewBox="0 0 10 10">
@@ -117,4 +117,3 @@ export const TitleBar = () => {
     </div>
   );
 };
-

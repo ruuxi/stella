@@ -19,7 +19,10 @@ import {
   revertGitFeature,
 } from "../self-mod/git.js";
 import type { HmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
-import { startDashboardGeneration } from "../core/dashboard-generation.js";
+import {
+  startDashboardGeneration,
+  type DashboardGenerationRequest,
+} from "../core/dashboard-generation.js";
 
 type AgentHandlersOptions = {
   getStellaHostRunner: () => StellaHostRunner | null;
@@ -315,19 +318,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
   ipcMain.handle(
     "agent:startDashboardGeneration",
-    async (
-      event,
-      payload: {
-        conversationId: string;
-        coreMemory: string;
-        promptConfig: { systemPrompt: string; userPromptTemplate: string };
-      },
-    ) => {
+    async (event, payload: DashboardGenerationRequest) => {
       if (
-        !options.assertPrivilegedSender(
-          event,
-          "agent:startDashboardGeneration",
-        )
+        !options.assertPrivilegedSender(event, "agent:startDashboardGeneration")
       ) {
         throw new Error("Blocked untrusted request.");
       }
@@ -337,10 +330,8 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       }
 
       return await startDashboardGeneration(
-        { createTask: (req) => stellaHostRunner.createBackgroundTask(req) },
-        payload.conversationId,
-        payload.coreMemory,
-        payload.promptConfig,
+        (request) => stellaHostRunner.createBackgroundTask(request),
+        payload,
       );
     },
   );

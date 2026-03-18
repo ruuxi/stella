@@ -3,10 +3,10 @@ import { useAction } from 'convex/react'
 import { api } from '@/convex/api'
 import { Button } from '@/ui/button'
 import { Spinner } from '@/ui/spinner'
-import type { WorkspacePanel } from '@/context/workspace-state'
+import type { HostedGameWorkspacePanel } from '@/context/workspace-state'
 import { useWorkspace } from '@/context/workspace-state'
 
-export function HostedGamePanel({ panel }: { panel: WorkspacePanel }) {
+export function HostedGamePanel({ panel }: { panel: HostedGameWorkspacePanel }) {
   const { closePanel } = useWorkspace()
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const issueHostedGameAuthToken = useAction(api.data.games.issueHostedGameAuthToken)

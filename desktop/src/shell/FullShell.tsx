@@ -1,29 +1,30 @@
 ﻿import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import type { OnboardingDemo } from '@/global/onboarding/OnboardingCanvas'
+import type { GeneratedPage } from '@/app/registry'
+import { ChatColumn } from '@/app/chat/ChatColumn'
+import { WorkspaceArea } from '@/app/workspace/WorkspaceArea'
+import { useDevProjects } from '@/context/dev-projects-state'
+import { useTheme } from '@/context/theme-context'
 import { useUiState } from '@/context/ui-state'
 import { useWorkspace } from '@/context/workspace-state'
 import { secureSignOut } from '@/global/auth/services/auth'
-import { MiniBridgeRelay } from '@/shell/mini/MiniBridgeRelay'
-import { useTheme } from '@/context/theme-context'
-import { WorkspaceArea } from '@/app/workspace/WorkspaceArea'
-import { ChatColumn } from '@/app/chat/ChatColumn'
-import { SocialView } from '@/app/social/SocialView'
+import type { OnboardingDemo } from '@/global/onboarding/OnboardingCanvas'
 import { useDiscoveryFlow } from '@/global/onboarding/DiscoveryFlow'
 import { useOnboardingOverlay, OnboardingView } from '@/global/onboarding/OnboardingOverlay'
+import { SocialView } from '@/app/social/SocialView'
+import { MiniBridgeRelay } from '@/shell/mini/MiniBridgeRelay'
 import { Sidebar } from '@/shell/sidebar/Sidebar'
-import { FloatingOrb, type FloatingOrbHandle } from './FloatingOrb'
-import { FullShellDialogs } from './full-shell-dialogs'
-import './full-shell.layout.css'
-import { ShiftingGradient } from './background/ShiftingGradient'
-import { TitleBar } from './TitleBar'
-import type { DialogType } from './full-shell-dialogs'
-import { useFullShellChat } from './use-full-shell-chat'
-import { useFullShellVoiceTranscript } from './use-full-shell-voice-transcript'
-import { useDevProjects } from '@/context/dev-projects-state'
 import {
   dispatchStellaSendMessage,
   WORKSPACE_CREATION_TRIGGER_KIND,
 } from '@/shared/lib/stella-send-message'
+import { ShiftingGradient } from './background/ShiftingGradient'
+import { FloatingOrb, type FloatingOrbHandle } from './FloatingOrb'
+import { FullShellDialogs } from './full-shell-dialogs'
+import type { DialogType } from './full-shell-dialogs'
+import './full-shell.layout.css'
+import { TitleBar } from './TitleBar'
+import { useFullShellChat } from './use-full-shell-chat'
+import { useFullShellVoiceTranscript } from './use-full-shell-voice-transcript'
 
 const OnboardingCanvas = lazy(() =>
   import('@/global/onboarding/OnboardingCanvas').then((m) => ({ default: m.OnboardingCanvas }))
@@ -43,7 +44,7 @@ export const FullShell = () => {
   const [activeDialog, setActiveDialog] = useState<DialogType>(null)
   const onboarding = useOnboardingOverlay()
   const { projects, pickProjectDirectory } = useDevProjects()
-  const { handleDiscoveryConfirm, dashboardGenerating } = useDiscoveryFlow({
+  const { handleDiscoveryConfirm, dashboardState } = useDiscoveryFlow({
     conversationId: activeConversationId,
   })
 
@@ -96,10 +97,16 @@ export const FullShell = () => {
   }, [setView])
 
   const handlePageSelect = useCallback(
-    (pageId: string) => {
-      setView(pageId)
+    (page: GeneratedPage) => {
+      openPanel({
+        kind: 'generated-page',
+        name: page.id,
+        title: page.title,
+        pageId: page.id,
+      })
+      setView('app')
     },
-    [setView],
+    [openPanel, setView],
   )
 
   const handleNewAppAskStella = useCallback(() => {
@@ -207,8 +214,8 @@ export const FullShell = () => {
 
   const isOrbVisible = state.view !== 'chat' && state.view !== 'social' && onboarding.onboardingDone
   const appReady = onboarding.onboardingDone
-  const activeProjectId =
-    activePanel?.kind === 'dev-project' && activePanel.projectId ? activePanel.projectId : null
+  const activeProjectId = activePanel?.kind === 'dev-project' ? activePanel.projectId : null
+  const activePageId = activePanel?.kind === 'generated-page' ? activePanel.pageId : null
 
   const showOnboardingDemos = activeDemo || demoClosing
 
@@ -241,8 +248,9 @@ export const FullShell = () => {
               onSocial={showSocialView}
               onNewAppAskStella={handleNewAppAskStella}
               onNewAppLocalProject={handleNewAppLocalProject}
+              activePageId={activePageId}
               onPageSelect={handlePageSelect}
-              dashboardGenerating={dashboardGenerating}
+              dashboardState={dashboardState}
               projects={projects}
               activeProjectId={activeProjectId}
               onProjectSelect={handleProjectSelect}

@@ -1,31 +1,36 @@
+import { Suspense } from 'react'
+import { generatedPages } from '@/app/registry'
+import { Spinner } from '@/ui/spinner'
 import { WorkspaceErrorBoundary } from '../WorkspaceErrorBoundary'
-import type { WorkspacePanel } from '@/context/workspace-state'
+import {
+  type DevProjectWorkspacePanel,
+  type GeneratedPageWorkspacePanel,
+  type HostedGameWorkspacePanel,
+  type WorkspacePanel,
+} from '@/context/workspace-state'
 import { DevProjectPanel } from './dev-project-panel'
 import { HostedGamePanel } from './hosted-game-panel'
 import './workspace-renderers.css'
 
-const DevProjectPanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
-  if (!panel.projectId) {
-    return (
-      <div className="workspace-error">
-        <div className="workspace-error-title">Project Error</div>
-        <div className="workspace-error-message">Project information is unavailable.</div>
+const DevProjectPanelRenderer = ({
+  panel,
+}: {
+  panel: DevProjectWorkspacePanel
+}) => (
+  <div className="workspace-panel-wrap">
+    <WorkspaceErrorBoundary>
+      <div className="workspace-panel-content">
+        <DevProjectPanel projectId={panel.projectId} />
       </div>
-    )
-  }
+    </WorkspaceErrorBoundary>
+  </div>
+)
 
-  return (
-    <div className="workspace-panel-wrap">
-      <WorkspaceErrorBoundary>
-        <div className="workspace-panel-content">
-          <DevProjectPanel projectId={panel.projectId} />
-        </div>
-      </WorkspaceErrorBoundary>
-    </div>
-  )
-}
-
-const HostedGamePanelRenderer = ({ panel }: { panel: WorkspacePanel }) => (
+const HostedGamePanelRenderer = ({
+  panel,
+}: {
+  panel: HostedGameWorkspacePanel
+}) => (
   <div className="workspace-panel-wrap">
     <WorkspaceErrorBoundary>
       <div className="workspace-panel-content">
@@ -35,27 +40,45 @@ const HostedGamePanelRenderer = ({ panel }: { panel: WorkspacePanel }) => (
   </div>
 )
 
-const UnsupportedPanelRenderer = () => (
-  <div className="workspace-error">
-    <div className="workspace-error-title">Workspace Error</div>
-    <div className="workspace-error-message">
-      This workspace surface is no longer supported.
+const GeneratedPagePanelRenderer = ({
+  panel,
+}: {
+  panel: GeneratedPageWorkspacePanel
+}) => {
+  const page = generatedPages.find((candidate) => candidate.id === panel.pageId)
+
+  if (!page) {
+    throw new Error(`Unknown generated page: ${panel.pageId}`)
+  }
+
+  const Page = page.component
+
+  return (
+    <div className="workspace-panel-wrap">
+      <WorkspaceErrorBoundary>
+        <div className="workspace-panel-content">
+          <Suspense fallback={<div className="workspace-placeholder"><Spinner size="md" /></div>}>
+            <Page />
+          </Suspense>
+        </div>
+      </WorkspaceErrorBoundary>
     </div>
-  </div>
-)
+  )
+}
 
 const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
-  if (panel.kind === 'hosted-game') {
-    return <HostedGamePanelRenderer panel={panel} />
+  switch (panel.kind) {
+    case 'dev-project':
+      return <DevProjectPanelRenderer panel={panel} />
+    case 'hosted-game':
+      return <HostedGamePanelRenderer panel={panel} />
+    case 'generated-page':
+      return <GeneratedPagePanelRenderer panel={panel} />
+    default: {
+      const exhaustiveCheck: never = panel
+      return exhaustiveCheck
+    }
   }
-
-  if (panel.kind === 'dev-project') {
-    return <DevProjectPanelRenderer panel={panel} />
-  }
-
-  return <UnsupportedPanelRenderer />
 }
 
 export default PanelRenderer
-
-

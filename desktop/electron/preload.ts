@@ -145,9 +145,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onMorphReverse: onIpc<{
       screenshotDataUrl: string;
       requiresFullReload: boolean;
-    }>(
-      "overlay:morphReverse",
-    ),
+    }>("overlay:morphReverse"),
     onMorphEnd: onIpcSignal("overlay:morphEnd"),
     onMorphState: onIpc<SelfModHmrState>("overlay:morphState"),
     morphReady: () => ipcRenderer.send("overlay:morphReady"),
@@ -169,9 +167,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
         role: "system" | "user" | "assistant" | "developer";
         content: string | Array<{ type?: string; text?: string }>;
       }>;
-    }) => ipcRenderer.invoke("overlay:autoPanelStart", payload) as Promise<{
-      ok: boolean;
-    }>,
+    }) =>
+      ipcRenderer.invoke("overlay:autoPanelStart", payload) as Promise<{
+        ok: boolean;
+      }>,
     cancelAutoPanelStream: (requestId: string) =>
       ipcRenderer.send("overlay:autoPanelCancel", { requestId }),
     onAutoPanelChunk: onIpc<{ requestId: string; chunk: string }>(
@@ -238,10 +237,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.send("voice:persistTranscript", payload),
     orchestratorChat: (payload: { conversationId: string; message: string }) =>
       ipcRenderer.invoke("voice:orchestratorChat", payload) as Promise<string>,
-    webSearch: (payload: {
-      query: string;
-      category?: string;
-    }) =>
+    webSearch: (payload: { query: string; category?: string }) =>
       ipcRenderer.invoke("voice:webSearch", payload) as Promise<{
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
@@ -423,9 +419,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       coreMemory: string;
       promptConfig: { systemPrompt: string; userPromptTemplate: string };
     }) =>
-      ipcRenderer.invoke("agent:startDashboardGeneration", payload) as Promise<{
-        taskIds: string[];
-      }>,
+      ipcRenderer.invoke(
+        "agent:startDashboardGeneration",
+        payload,
+      ) as Promise<void>,
     triggerViteError: () => ipcRenderer.invoke("devtest:triggerViteError"),
     fixViteError: () => ipcRenderer.invoke("devtest:fixViteError"),
   },
@@ -523,8 +520,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       categories?: string[];
       selectedBrowser?: string;
       selectedProfile?: string;
-    }) =>
-      ipcRenderer.invoke("signals:collectAll", options),
+    }) => ipcRenderer.invoke("signals:collectAll", options),
   },
 
   projects: {
@@ -569,8 +565,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("store:getPackage", { packageId }),
     listPackageReleases: (packageId: string) =>
       ipcRenderer.invoke("store:listReleases", { packageId }),
-    getPackageRelease: (payload: { packageId: string; releaseNumber: number }) =>
-      ipcRenderer.invoke("store:getRelease", payload),
+    getPackageRelease: (payload: {
+      packageId: string;
+      releaseNumber: number;
+    }) => ipcRenderer.invoke("store:getRelease", payload),
     listInstalledMods: () => ipcRenderer.invoke("store:listInstalledMods"),
     installRelease: (payload: { packageId: string; releaseNumber?: number }) =>
       ipcRenderer.invoke("store:installRelease", payload),
@@ -657,4 +655,3 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getStatus: () => ipcRenderer.invoke("socialSessions:getStatus"),
   },
 });
-

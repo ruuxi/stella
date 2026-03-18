@@ -279,10 +279,7 @@ export type ElectronVoiceApi = {
     conversationId: string;
     message: string;
   }) => Promise<string>;
-  webSearch: (payload: {
-    query: string;
-    category?: string;
-  }) => Promise<{
+  webSearch: (payload: { query: string; category?: string }) => Promise<{
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;
   }>;
@@ -326,7 +323,7 @@ export type ElectronAgentApi = {
     conversationId: string;
     coreMemory: string;
     promptConfig: { systemPrompt: string; userPromptTemplate: string };
-  }) => Promise<{ taskIds: string[] }>;
+  }) => Promise<void>;
   triggerViteError: () => Promise<{ ok: boolean }>;
   fixViteError: () => Promise<{ ok: boolean }>;
 };
@@ -425,7 +422,9 @@ export type ElectronProjectsApi = {
   }>;
   start: (projectId: string) => Promise<LocalDevProjectRecord[]>;
   stop: (projectId: string) => Promise<LocalDevProjectRecord[]>;
-  onChanged: (callback: (projects: LocalDevProjectRecord[]) => void) => () => void;
+  onChanged: (
+    callback: (projects: LocalDevProjectRecord[]) => void,
+  ) => () => void;
 };
 
 export type ElectronScheduleApi = {
@@ -458,7 +457,9 @@ export type ElectronStoreApi = {
   }) => Promise<StorePackageReleaseRecord>;
   listPackages: () => Promise<StorePackageRecord[]>;
   getPackage: (packageId: string) => Promise<StorePackageRecord | null>;
-  listPackageReleases: (packageId: string) => Promise<StorePackageReleaseRecord[]>;
+  listPackageReleases: (
+    packageId: string,
+  ) => Promise<StorePackageReleaseRecord[]>;
   getPackageRelease: (payload: {
     packageId: string;
     releaseNumber: number;
@@ -554,6 +555,3 @@ declare global {
 }
 
 export {};
-
-
-
