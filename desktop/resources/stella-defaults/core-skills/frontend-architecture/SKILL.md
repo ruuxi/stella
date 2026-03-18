@@ -14,6 +14,7 @@ version: 2
 # Frontend Architecture Reference
 
 ## Technology Stack
+
 - React 19 and TypeScript in Electron with Vite and HMR
 - Tailwind CSS v4 with classes directly and no config file
 - CSS custom properties on `:root` for theming with OKLCH colors
@@ -22,6 +23,7 @@ version: 2
 - Path alias: `@/*` maps to `src/*`
 
 ## Source Layout
+
 ```text
 desktop/src/
 |-- main.tsx                       # Entry point, provider nesting, CSS imports
@@ -131,14 +133,19 @@ desktop/src/
 ```
 
 ## View System
-The app uses `ViewType = 'home' | 'app'` to control what `WorkspaceArea` displays.
+
+The app uses `ViewType = 'home' | 'app' | 'chat' | 'store' | 'social'`.
 
 - `'home'`: renders `HomeView` from `src/app/home/HomeView.tsx`
-- `'app'`: renders workspace content selected from the shell
+- `'app'`: renders the active workspace panel
+- `'chat'`: renders the full chat column
+- `'store'`: renders the store view
+- `'social'`: renders the social view
 
 `WorkspaceArea.tsx` handles the routing. Local workspace panels are surfaced through the shell's own workspace selection UI.
 
 ## Key Layout Structure
+
 ```text
 .full-body (flex-direction: row)
 |-- Sidebar (left nav)
@@ -150,6 +157,7 @@ The app uses `ViewType = 'home' | 'app'` to control what `WorkspaceArea` display
 ```
 
 ## CSS Design Tokens
+
 ```css
 /* Text hierarchy */
 --text-strong, --text-base, --text-weak, --text-weaker
@@ -169,8 +177,10 @@ The app uses `ViewType = 'home' | 'app'` to control what `WorkspaceArea` display
 ```
 
 ## Workspace Content
+
 Interactive content rendered in `WorkspaceArea` when the view is `'app'`:
-- Panels: renderers in `src/app/workspace/renderers/` (dev-project, hosted-game)
+
+- Panels: renderers in `src/app/workspace/renderers/` (dev-project, hosted-game, generated-page)
 - Generated dashboard pages: `src/app/{panelName}/{PanelName}.tsx` (written by self-mod agent, picked up by HMR)
 - Page registry: `src/app/registry.ts` — agents append entries using the Edit tool (fs-locked across concurrent tasks)
 

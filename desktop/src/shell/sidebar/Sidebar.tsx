@@ -1,23 +1,30 @@
-import type { LocalDevProjectRecord } from "@/shared/types/electron";
+import type { GeneratedPage } from "@/app/registry";
+import { generatedPages } from "@/app/registry";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
+import type { DashboardState } from "@/global/onboarding/DiscoveryFlow";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import type { ViewType } from "@/shared/contracts/ui";
-import { generatedPages } from "@/app/registry";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/ui/dropdown-menu";
+import type { LocalDevProjectRecord } from "@/shared/types/electron";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/ui/dropdown-menu";
 import AlertCircle from "lucide-react/dist/esm/icons/circle-alert";
 import Folder from "lucide-react/dist/esm/icons/folder";
 import House from "lucide-react/dist/esm/icons/house";
 import Layout from "lucide-react/dist/esm/icons/layout-dashboard";
 import Link2 from "lucide-react/dist/esm/icons/link-2";
 import Loader from "lucide-react/dist/esm/icons/loader";
+import LogIn from "lucide-react/dist/esm/icons/log-in";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square";
 import PlusSquare from "lucide-react/dist/esm/icons/square-plus";
 import Settings from "lucide-react/dist/esm/icons/settings";
 import Sparkles from "lucide-react/dist/esm/icons/sparkles";
 import User from "lucide-react/dist/esm/icons/user";
 import Users from "lucide-react/dist/esm/icons/users";
-import LogIn from "lucide-react/dist/esm/icons/log-in";
 import "./sidebar.css";
 
 interface SidebarProps {
@@ -36,8 +43,9 @@ interface SidebarProps {
   onNewApp?: () => void;
   onNewAppAskStella?: () => void;
   onNewAppLocalProject?: () => void;
-  onPageSelect?: (pageId: string) => void;
-  dashboardGenerating?: boolean;
+  activePageId: string | null;
+  onPageSelect: (page: GeneratedPage) => void;
+  dashboardState: DashboardState;
   projects?: LocalDevProjectRecord[];
   activeProjectId?: string | null;
   onProjectSelect?: (project: LocalDevProjectRecord) => void;
@@ -90,8 +98,9 @@ export const Sidebar = ({
   onNewApp,
   onNewAppAskStella,
   onNewAppLocalProject,
+  activePageId,
   onPageSelect,
-  dashboardGenerating,
+  dashboardState,
   projects = [],
   activeProjectId,
   onProjectSelect,
@@ -99,14 +108,18 @@ export const Sidebar = ({
   const handleAskStella = onNewAppAskStella ?? onNewApp;
   const getProjectMeta = (project: LocalDevProjectRecord) => {
     switch (project.runtime.status) {
+      case "stopped":
+        return "Ready to start";
       case "running":
         return "Live preview open";
       case "starting":
         return "Starting now";
       case "error":
         return "Needs attention";
-      default:
-        return "Ready to start";
+      default: {
+        const exhaustiveCheck: never = project.runtime.status;
+        return exhaustiveCheck;
+      }
     }
   };
 
@@ -197,10 +210,10 @@ export const Sidebar = ({
             ))}
           </>
         )}
-        {(generatedPages.length > 0 || dashboardGenerating) && (
+        {(generatedPages.length > 0 || dashboardState === "generating") && (
           <>
             <div className="sidebar-nav-section-label">Your Pages</div>
-            {dashboardGenerating && generatedPages.length === 0 && (
+            {dashboardState === "generating" && generatedPages.length === 0 && (
               <div className="sidebar-nav-item sidebar-nav-item--generating">
                 <span className="sidebar-nav-icon">
                   <Loader size={18} className="sidebar-spinner" />
@@ -212,8 +225,8 @@ export const Sidebar = ({
               <button
                 key={page.id}
                 type="button"
-                className={`sidebar-nav-item ${activeView === page.id ? "sidebar-nav-item--active" : ""}`}
-                onClick={() => onPageSelect?.(page.id)}
+                className={`sidebar-nav-item ${activePageId === page.id ? "sidebar-nav-item--active" : ""}`}
+                onClick={() => onPageSelect(page)}
                 title={page.title}
               >
                 <span className="sidebar-nav-icon">

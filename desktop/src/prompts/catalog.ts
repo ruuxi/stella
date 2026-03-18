@@ -5,34 +5,38 @@ import type {
   PromptId,
   PromptTemplateValues,
   SkillCatalogItem,
-} from "./types"
+} from "./types";
 
-const renderStatic = (template: string): string => template
+const renderStatic = (template: string): string => template;
 
 const interpolateTemplate = (
   template: string,
   replacements: Record<string, string>,
-): string => template.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => replacements[key] ?? "")
+): string =>
+  template.replace(
+    /\{\{(\w+)\}\}/g,
+    (_match, key: string) => replacements[key] ?? "",
+  );
 
 const renderCategoryAnalysisUser = (
   template: string,
   values: PromptTemplateValues["synthesis.category_analysis.user"],
-): string => interpolateTemplate(template, values)
+): string => interpolateTemplate(template, values);
 
 const renderCoreMemoryUser = (
   template: string,
   values: PromptTemplateValues["synthesis.core_memory.user"],
-): string => interpolateTemplate(template, values)
+): string => interpolateTemplate(template, values);
 
 const renderWelcomeMessageUser = (
   template: string,
   values: PromptTemplateValues["synthesis.welcome_message.user"],
-): string => interpolateTemplate(template, values)
+): string => interpolateTemplate(template, values);
 
 const renderWelcomeSuggestionsUser = (
   template: string,
   values: PromptTemplateValues["synthesis.welcome_suggestions.user"],
-): string => interpolateTemplate(template, values)
+): string => interpolateTemplate(template, values);
 
 const renderSkillMetadataUser = (
   template: string,
@@ -41,21 +45,21 @@ const renderSkillMetadataUser = (
   const truncated =
     values.markdown.length > 4000
       ? `${values.markdown.slice(0, 4000)}\n...`
-      : values.markdown
+      : values.markdown;
 
   return interpolateTemplate(template, {
     skillDirName: values.skillDirName,
     markdown: truncated,
-  })
-}
+  });
+};
 
 const formatSkillSelectionCatalog = (catalog: SkillCatalogItem[]): string =>
   catalog
     .map((skill) => {
-      const tagsText = skill.tags?.length ? ` [${skill.tags.join(", ")}]` : ""
-      return `- ${skill.id}: ${skill.name} - ${skill.description}${tagsText}`
+      const tagsText = skill.tags?.length ? ` [${skill.tags.join(", ")}]` : "";
+      return `- ${skill.id}: ${skill.name} - ${skill.description}${tagsText}`;
     })
-    .join("\n")
+    .join("\n");
 
 const renderSkillSelectionUser = (
   template: string,
@@ -64,38 +68,39 @@ const renderSkillSelectionUser = (
   interpolateTemplate(template, {
     userProfile: values.userProfile,
     catalogText: formatSkillSelectionCatalog(values.catalog),
-  })
+  });
 
 const renderSuggestionsUser = (
   template: string,
   values: PromptTemplateValues["suggestions.user"],
-): string => interpolateTemplate(template, values)
+): string => interpolateTemplate(template, values);
 
 const formatPersonalizedDashboardSources = (
   assignment: PersonalizedDashboardPageAssignment,
 ): string => {
   if (assignment.dataSources.length === 0) {
-    return "- Find relevant public/free sources matching the page topic."
+    return "- Find relevant public/free sources matching the page topic.";
   }
 
-  return assignment.dataSources.map((source) => `- ${source}`).join("\n")
-}
+  return assignment.dataSources.map((source) => `- ${source}`).join("\n");
+};
 
 const renderPersonalizedDashboardUser = (
   template: string,
   values: PromptTemplateValues["personalized_dashboard.user"],
 ): string => {
-  const { assignment } = values
+  const { assignment } = values;
   return interpolateTemplate(template, {
     pageId: assignment.pageId,
     title: assignment.title,
     panelName: assignment.panelName,
+    componentName: assignment.componentName,
     topic: assignment.topic,
     focus: assignment.focus,
     suggestedSources: formatPersonalizedDashboardSources(assignment),
     userProfile: values.userProfile,
-  })
-}
+  });
+};
 
 export const PROMPT_CATALOG = {
   "offline_responder.system": {
@@ -702,12 +707,14 @@ Rules:
 - NEVER include real artist names, song titles, or copyrighted material in prompts or lyrics`,
     render: renderStatic,
   },
-} satisfies PromptCatalog
+} satisfies PromptCatalog;
 
-export const PROMPT_IDS = Object.keys(PROMPT_CATALOG) as PromptId[]
+export const PROMPT_IDS = Object.keys(PROMPT_CATALOG) as PromptId[];
 
-export const isPromptId = (value: string): value is PromptId => value in PROMPT_CATALOG
+export const isPromptId = (value: string): value is PromptId =>
+  value in PROMPT_CATALOG;
 
 export const getPromptDefinition = <TId extends PromptId>(
   promptId: TId,
-): PromptDefinition<TId> => PROMPT_CATALOG[promptId] as unknown as PromptDefinition<TId>
+): PromptDefinition<TId> =>
+  PROMPT_CATALOG[promptId] as unknown as PromptDefinition<TId>;
