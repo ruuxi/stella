@@ -223,6 +223,21 @@ if (
   process.exit(0)
 }
 
+// Verify the spacetime CLI is available before attempting to regenerate.
+const spacetimeCheck = spawnSync('spacetime', ['--version'], { encoding: 'utf8', stdio: 'pipe' })
+if (spacetimeCheck.error) {
+  if (outDirHasBindings) {
+    console.log(
+      `spacetime CLI not found — using committed bindings in ${toRepoRelative(outDir)}.`,
+    )
+    process.exit(0)
+  }
+  console.error(
+    'spacetime CLI not found and no bindings exist. Install it from https://spacetimedb.com',
+  )
+  process.exit(1)
+}
+
 cleanupTempOutDir()
 mkdirSync(tempOutDir, { recursive: true })
 
