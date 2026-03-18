@@ -1,8 +1,8 @@
 use std::path::Path;
 use tokio::process::Command;
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt as _;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;

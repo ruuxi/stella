@@ -120,6 +120,5 @@ pub struct LaunchInfo {
 pub struct AppState {
     pub installer: Mutex<InstallerState>,
     pub context: InstallerContext,
-    pub recovery_dir: PathBuf,
     pub desktop_process: Mutex<Option<Child>>,
 }
