@@ -21,6 +21,7 @@ const LAUNCH_SCRIPT_WIN = "launch.cmd";
 const LAUNCH_SCRIPT_UNIX = "launch.sh";
 const ESTIMATED_INSTALL_BYTES = 1024 * 1024 * 1024; // 1 GB
 const APP_VERSION = "0.0.1";
+const STELLA_REPO_URL = "https://github.com/ruuxi/stella.git";
 const STELLA_BROWSER_GITHUB_REPO = "vercel-labs/stella-browser";
 
 const DESKTOP_ENV_LOCAL = `VITE_CONVEX_URL=https://impartial-crab-34.convex.cloud
@@ -650,32 +651,43 @@ const buildSteps = (ctx: InstallerContext): StepDef[] => {
 			},
 		});
 	} else {
-		// Production: download/extract the Stella repo.
+		// Production: clone the desktop subtree from the public repo.
 		steps.push({
 			id: "payload",
 			label: "Installing Stella",
 			check: (s) => exists(packageJsonOf(s.installPath)),
 			install: async (s) => {
-				// ┌──────────────────────────────────────────────────────┐
-				// │  PLACEHOLDER — replace with real zip download and    │
-				// │  extraction once the desktop repo is packaged for    │
-				// │  distribution. After this step, installPath should   │
-				// │  contain the full extracted repo (package.json, etc) │
-				// └──────────────────────────────────────────────────────┘
 				await mkdir(s.installPath, { recursive: true });
-				await writeFile(
-					placeholderOf(s.installPath),
-					JSON.stringify(
-						{
-							placeholder: true,
-							note: "Repo download not yet wired. Replace this step with real zip download + extraction.",
-							createdAt: new Date().toISOString(),
-						},
-						null,
-						2,
-					),
+				// Sparse-checkout only the desktop/ directory, then move
+				// its contents to the install root so package.json is at
+				// the top level.
+				const tmpClone = `${s.installPath}/.clone-tmp`;
+				const clone = await run([
+					"git", "clone", "--depth", "1", "--filter=blob:none",
+					"--sparse", STELLA_REPO_URL, tmpClone,
+				]);
+				if (!clone.ok) return false;
+
+				const sparse = await run(
+					["git", "sparse-checkout", "set", "desktop"],
+					{ cwd: tmpClone },
 				);
-				return true;
+				if (!sparse.ok) return false;
+
+				// Move desktop/* to installPath and clean up.
+				const desktopTmp = path.join(tmpClone, "desktop");
+				const entries = await readdir(desktopTmp);
+				for (const entry of entries) {
+					const src = path.join(desktopTmp, entry);
+					const dest = path.join(s.installPath, entry);
+					await run(
+						process.platform === "win32"
+							? ["cmd", "/c", "move", "/Y", src, dest]
+							: ["mv", "-f", src, dest],
+					);
+				}
+				await rm(tmpClone, { recursive: true, force: true });
+				return exists(packageJsonOf(s.installPath));
 			},
 		});
 
