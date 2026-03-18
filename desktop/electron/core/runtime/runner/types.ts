@@ -301,7 +301,7 @@ export type RunnerPublicApi = {
   >;
   createBackgroundTask: (
     request: Omit<TaskToolRequest, "storageMode">,
-  ) => Promise<{ taskId: string }>;
+  ) => Promise<void>;
   cancelLocalChat: (runId: string) => void;
   getActiveOrchestratorRun: () => {
     runId: string;

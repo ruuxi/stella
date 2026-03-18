@@ -1,82 +1,100 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
+import type { ReactNode } from "react";
 
-export type WorkspacePanel = {
-  /** Stable panel identifier used by the workspace router. */
-  name: string
-  /** Optional display title shown in the shell header. */
-  title?: string
-  /** Distinguishes local dev projects from hosted games. */
-  kind?: 'dev-project' | 'hosted-game'
-  /** Backing local dev project identifier for persisted workspace pages. */
-  projectId?: string
-  /** Game identifier for hosted-game panels. */
-  gameId?: string
-  /** Fully-qualified URL for the hosted game client. */
-  gameUrl?: string
-  /** Join code for sharing the game. */
-  joinCode?: string
-}
+type WorkspacePanelBase = {
+  name: string;
+  title?: string;
+};
+
+export type DevProjectWorkspacePanel = WorkspacePanelBase & {
+  kind: "dev-project";
+  projectId: string;
+};
+
+export type HostedGameWorkspacePanel = WorkspacePanelBase & {
+  kind: "hosted-game";
+  gameId?: string;
+  gameUrl?: string;
+  joinCode?: string;
+};
+
+export type GeneratedPageWorkspacePanel = {
+  kind: "generated-page";
+  name: string;
+  title: string;
+  pageId: string;
+};
+
+export type WorkspacePanel =
+  | DevProjectWorkspacePanel
+  | HostedGameWorkspacePanel
+  | GeneratedPageWorkspacePanel;
 
 export type WorkspaceState = {
   /** Active workspace panel. null = show the home dashboard. */
-  activePanel: WorkspacePanel | null
+  activePanel: WorkspacePanel | null;
   /** Chat panel width in pixels */
-  chatWidth: number
+  chatWidth: number;
   /** Whether the chat panel is open */
-  isChatOpen: boolean
-}
+  isChatOpen: boolean;
+};
 
 type WorkspaceContextValue = {
-  state: WorkspaceState
+  state: WorkspaceState;
   /** Show a workspace panel in the center area. */
-  openPanel: (panel: WorkspacePanel) => void
+  openPanel: (panel: WorkspacePanel) => void;
   /** Clear the active panel and return to the home dashboard. */
-  closePanel: () => void
+  closePanel: () => void;
   /** Update the chat panel width (called by resize handle) */
-  setChatWidth: (width: number) => void
+  setChatWidth: (width: number) => void;
   /** Toggle the chat panel open/closed */
-  setChatOpen: (open: boolean) => void
-}
+  setChatOpen: (open: boolean) => void;
+};
 
-const DEFAULT_CHAT_WIDTH = 480
-const MIN_CHAT_WIDTH = 320
-const MAX_CHAT_WIDTH_RATIO = 0.5 // Never exceed 50% of viewport
+const DEFAULT_CHAT_WIDTH = 480;
+const MIN_CHAT_WIDTH = 320;
+const MAX_CHAT_WIDTH_RATIO = 0.5; // Never exceed 50% of viewport
 
 const defaultState: WorkspaceState = {
   activePanel: null,
   chatWidth: DEFAULT_CHAT_WIDTH,
   isChatOpen: true,
-}
+};
 
-const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
+const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
-  const [state, setState] = useState<WorkspaceState>(defaultState)
+  const [state, setState] = useState<WorkspaceState>(defaultState);
 
   const openPanel = useCallback((panel: WorkspacePanel) => {
     setState((prev) => ({
       ...prev,
       activePanel: panel,
-    }))
-  }, [])
+    }));
+  }, []);
 
   const closePanel = useCallback(() => {
     setState((prev) => ({
       ...prev,
       activePanel: null,
-    }))
-  }, [])
+    }));
+  }, []);
 
   const setChatWidth = useCallback((width: number) => {
-    const maxWidth = window.innerWidth * MAX_CHAT_WIDTH_RATIO
-    const clamped = Math.max(MIN_CHAT_WIDTH, Math.min(width, maxWidth))
-    setState((prev) => ({ ...prev, chatWidth: clamped }))
-  }, [])
+    const maxWidth = window.innerWidth * MAX_CHAT_WIDTH_RATIO;
+    const clamped = Math.max(MIN_CHAT_WIDTH, Math.min(width, maxWidth));
+    setState((prev) => ({ ...prev, chatWidth: clamped }));
+  }, []);
 
   const setChatOpen = useCallback((open: boolean) => {
-    setState((prev) => ({ ...prev, isChatOpen: open }))
-  }, [])
+    setState((prev) => ({ ...prev, isChatOpen: open }));
+  }, []);
 
   const value = useMemo<WorkspaceContextValue>(
     () => ({
@@ -87,18 +105,22 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
       setChatOpen,
     }),
     [state, openPanel, closePanel, setChatWidth, setChatOpen],
-  )
+  );
 
-  return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>
-}
+  return (
+    <WorkspaceContext.Provider value={value}>
+      {children}
+    </WorkspaceContext.Provider>
+  );
+};
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const useWorkspace = () => {
-  const context = useContext(WorkspaceContext)
+  const context = useContext(WorkspaceContext);
   if (!context) {
-    throw new Error('useWorkspace must be used within WorkspaceProvider')
+    throw new Error("useWorkspace must be used within WorkspaceProvider");
   }
-  return context
-}
+  return context;
+};
 
-export { MIN_CHAT_WIDTH, MAX_CHAT_WIDTH_RATIO, DEFAULT_CHAT_WIDTH }
+export { MIN_CHAT_WIDTH, MAX_CHAT_WIDTH_RATIO, DEFAULT_CHAT_WIDTH };

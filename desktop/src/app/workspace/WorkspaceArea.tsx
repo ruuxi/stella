@@ -8,7 +8,6 @@ import { useWorkspace, type WorkspacePanel } from '@/context/workspace-state'
 import { Spinner } from '@/ui/spinner'
 import type { OnboardingDemo } from '@/global/onboarding/OnboardingCanvas'
 import type { ViewType } from '@/shared/contracts/ui'
-import { generatedPages } from '@/app/registry'
 import { HomeView } from '@/app/home/HomeView'
 import './workspace.css'
 
@@ -79,20 +78,6 @@ export function WorkspaceArea({
     )
   }
 
-  // Generated page from registry
-  const generatedPage = generatedPages.find((p) => p.id === view)
-  if (generatedPage) {
-    return (
-      <div className="workspace-area">
-        <div className="workspace-content workspace-content--full">
-          <Suspense fallback={<div className="workspace-placeholder"><Spinner size="md" /></div>}>
-            <generatedPage.component />
-          </Suspense>
-        </div>
-      </div>
-    )
-  }
-
   // Home view (default)
   return (
     <div className="workspace-area">
@@ -106,9 +91,7 @@ export function WorkspaceArea({
 function WorkspaceHeader({ panel, onClose }: { panel: WorkspacePanel; onClose: () => void }) {
   return (
     <div className="workspace-header">
-      <span className="workspace-header-title">
-        {panel.title ?? panel.name}
-      </span>
+      <span className="workspace-header-title">{panel.title ?? panel.name}</span>
       <button
         className="workspace-header-close"
         onClick={onClose}

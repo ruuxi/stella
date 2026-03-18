@@ -26,17 +26,16 @@ type UseDiscoveryFlowOptions = {
   conversationId: string | null;
 };
 
-export function useDiscoveryFlow({
-  conversationId,
-}: UseDiscoveryFlowOptions) {
+export type DashboardState = "idle" | "generating";
+
+export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
   const { isAuthenticated, appendEvent: chatStoreAppendEvent } = useChatStore();
 
   const [discoveryCategories, setDiscoveryCategories] = useState<
     DiscoveryCategory[] | null
   >(null);
-
-  const [dashboardGenerating, setDashboardGenerating] = useState(false);
+  const [dashboardState, setDashboardState] = useState<DashboardState>("idle");
   const synthesizedRef = useRef(false);
   const synthesizingRef = useRef(false);
 
@@ -57,15 +56,18 @@ export function useDiscoveryFlow({
     const run = async () => {
       let completed = false;
       try {
-        const exists = await window.electronAPI?.browser.checkCoreMemoryExists?.();
+        const exists =
+          await window.electronAPI?.browser.checkCoreMemoryExists?.();
         if (exists) {
           completed = true;
           synthesizedRef.current = true;
           return;
         }
 
-        const selectedBrowser = localStorage.getItem(BROWSER_SELECTION_KEY) ?? undefined;
-        const selectedProfile = localStorage.getItem(BROWSER_PROFILE_KEY) ?? undefined;
+        const selectedBrowser =
+          localStorage.getItem(BROWSER_SELECTION_KEY) ?? undefined;
+        const selectedProfile =
+          localStorage.getItem(BROWSER_PROFILE_KEY) ?? undefined;
         const result = await window.electronAPI?.browser.collectAllSignals?.({
           categories: discoveryCategories,
           selectedBrowser,
@@ -76,14 +78,18 @@ export function useDiscoveryFlow({
 
         void window.electronAPI?.projects?.list?.().catch(() => undefined);
 
-        const synthesisResult = await synthesizeCoreMemory(result.formattedSections, {
-          includeAuth: isAuthenticated,
-        });
+        const synthesisResult = await synthesizeCoreMemory(
+          result.formattedSections,
+          {
+            includeAuth: isAuthenticated,
+          },
+        );
         if (!synthesisResult.coreMemory) return;
 
         const writeCoreMemoryPromise =
-          window.electronAPI?.browser.writeCoreMemory?.(synthesisResult.coreMemory) ??
-          Promise.resolve();
+          window.electronAPI?.browser.writeCoreMemory?.(
+            synthesisResult.coreMemory,
+          ) ?? Promise.resolve();
 
         // Resolve independent work in parallel to avoid an async waterfall.
         const [deviceId] = await Promise.all([
@@ -110,13 +116,22 @@ export function useDiscoveryFlow({
         }
 
         // Fire-and-forget: spawn self-mod agents to generate personalized pages
-        setDashboardGenerating(true);
-        window.electronAPI?.agent.startDashboardGeneration?.({
+        const startDashboardGeneration =
+          window.electronAPI?.agent.startDashboardGeneration;
+
+        if (!startDashboardGeneration) {
+          completed = true;
+          synthesizedRef.current = true;
+          return;
+        }
+
+        setDashboardState("generating");
+        startDashboardGeneration({
           conversationId: activeConversationId,
           coreMemory: synthesisResult.coreMemory,
           promptConfig: getPersonalizedDashboardPromptConfig(),
         }).catch(() => {
-          // Dashboard generation is non-critical
+          setDashboardState("idle");
         });
 
         completed = true;
@@ -141,8 +156,6 @@ export function useDiscoveryFlow({
 
   return {
     handleDiscoveryConfirm,
-    dashboardGenerating,
+    dashboardState,
   };
 }
-
-

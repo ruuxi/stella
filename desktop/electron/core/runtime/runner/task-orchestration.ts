@@ -312,15 +312,14 @@ export const createTaskOrchestration = (
 
   const createBackgroundTask = async (
     request: Omit<TaskToolRequest, "storageMode">,
-  ): Promise<{ taskId: string }> => {
+  ): Promise<void> => {
     if (!context.state.localTaskManager) {
       throw new Error("Task manager is unavailable.");
     }
-    const { taskId } = await context.state.localTaskManager.createTask({
+    await context.state.localTaskManager.createTask({
       ...request,
       storageMode: "local",
     });
-    return { taskId };
   };
 
   const shutdown = () => {
