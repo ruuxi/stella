@@ -11,6 +11,9 @@ on:
         required: true
         default: "0.0.1"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -32,12 +35,18 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Setup Python (for node-gyp)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Install dependencies
         working-directory: desktop
         run: bun install
 
       - name: Write .env.local
         working-directory: desktop
+        shell: bash
         run: |
           cat > .env.local << 'ENVEOF'
           VITE_CONVEX_URL=https://impartial-crab-34.convex.cloud
@@ -48,16 +57,17 @@ jobs:
 
       - name: Determine version
         id: version
+        shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           else
             echo "version=${GITHUB_REF_NAME#desktop-v}" >> "$GITHUB_OUTPUT"
           fi
-        shell: bash
 
       - name: Package release tarball
         working-directory: desktop
+        shell: bash
         run: |
           tar --zstd -cf "../stella-desktop-${{ matrix.platform }}.tar.zst" \
             --exclude=".git" \
@@ -65,7 +75,6 @@ jobs:
             --exclude="coverage" \
             --exclude=".stella" \
             .
-        shell: bash
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
