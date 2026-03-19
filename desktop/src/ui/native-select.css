@@ -6,7 +6,8 @@
   color: var(--muted-foreground);
   font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: var(--font-family-sans--emphasis-weight, 400);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
   line-height: 1.5;
 }
 
@@ -26,7 +27,8 @@
   color: var(--foreground);
   font-family: var(--font-family-sans, "Satoshi", sans-serif);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: var(--font-family-sans--emphasis-weight, 400);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
   line-height: 1.67;
   appearance: none;
   cursor: default;
