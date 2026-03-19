@@ -20,23 +20,18 @@
   width: 100%;
   max-width: 1000px;
   padding: 0 24px;
-  transition:
-    top 0.65s cubic-bezier(0.22, 1, 0.36, 1),
-    left 0.65s cubic-bezier(0.22, 1, 0.36, 1),
-    width 0.65s cubic-bezier(0.22, 1, 0.36, 1),
-    padding 0.65s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Split mode: dialogue becomes right-half panel */
 .onboarding-dialogue--split {
   top: 0;
-  left: 50%;
+  left: 0;
+  right: 0;
   transform: none;
   flex-direction: row;
   align-items: stretch;
   max-width: none;
-  width: 50%;
+  width: 100%;
   height: 100%;
   padding: 0;
 }
@@ -258,19 +253,39 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  align-items: center;
-  width: 100%;
+  align-items: flex-start;
+  width: 50%;
+  margin-left: auto;
   height: 100%;
   padding: clamp(92px, 13vh, 144px) 40px 56px;
   overflow-y: auto;
   scrollbar-gutter: stable both-edges;
+  opacity: 1;
+  will-change: opacity;
+  animation: splitPaneFadeIn 0.35s ease-out both;
+  transition: opacity 0.25s ease-out;
+}
+
+@keyframes splitPaneFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.onboarding-dialogue[data-phase="creation"] .onboarding-split-right {
+  width: 40%;
+  padding-right: 40px;
 }
 
 .onboarding-split-stage {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  width: min(100%, 680px);
+  width: 100%;
+  max-width: 680px;
   flex-shrink: 0;
   animation: splitStageIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -1921,5 +1936,10 @@
 
   .onboarding-dialogue {
     transition: none;
+  }
+
+  .onboarding-split-right {
+    transition: none;
+    animation: none;
   }
 }
