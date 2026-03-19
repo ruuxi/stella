@@ -23,16 +23,50 @@ import { WindowManager } from "../windows/window-manager.js";
 import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
 import { StoreModService } from "../self-mod/store-mod-service.js";
 import { createBootstrapResetFlows } from "./resets.js";
+import { MobileBridgeService } from "../services/mobile-bridge/service.js";
 import {
   type BootstrapContext,
   broadcastAuthCallback,
   broadcastWakeWordState,
+  getMobileBroadcast,
 } from "./context.js";
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
   });
+
+const startMobileBridge = (context: BootstrapContext) => {
+  try {
+    const bridge = new MobileBridgeService({
+      electronDir: context.config.electronDir,
+      isDev: context.config.isDev,
+      getDevServerUrl: () => getDevServerUrl() ?? "",
+    });
+    context.state.mobileBridgeService = bridge;
+    bridge.start();
+
+    // Wire auth state into the bridge for Convex registration
+    const authService = context.services.authService;
+    const syncBridgeAuth = () => {
+      bridge.setDeviceId(context.state.deviceId);
+      bridge.setHostAuthToken(authService.getAuthToken());
+      bridge.setConvexSiteUrl(authService.getConvexSiteUrl());
+    };
+
+    // Sync whenever auth state changes (runner initialization sets deviceId/tokens)
+    const interval = setInterval(syncBridgeAuth, 30_000);
+    syncBridgeAuth();
+
+    // Clean up interval on quit (bridge.stop() is called separately in lifecycle)
+    app.on("before-quit", () => clearInterval(interval));
+  } catch (error) {
+    console.error(
+      "[mobile-bridge] Failed to start:",
+      (error as Error).message,
+    );
+  }
+};
 
 export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   const { config, lifecycle, services, state } = context;
@@ -233,6 +267,7 @@ const bindUiStateTargets = (context: BootstrapContext) => {
             hideVoice: () => state.overlayController!.hideVoice(),
           }
         : null,
+    getBroadcastToMobile: () => getMobileBroadcast(context),
   });
 };
 
@@ -336,5 +371,9 @@ export const initializeBootstrapApplication = async (
       initializeStellaHostRunner: () => initializeStellaHostRunner(context),
     }),
   );
+
+  // Start mobile bridge server (non-blocking)
+  void startMobileBridge(context);
+
   finalizeWindowLaunch(context);
 };

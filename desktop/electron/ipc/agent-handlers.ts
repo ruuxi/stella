@@ -34,6 +34,7 @@ type AgentHandlersOptions = {
     channel: string,
   ) => boolean;
   hmrMorphOrchestrator?: HmrMorphOrchestrator | null;
+  getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
 };
 
 type AgentEventPayload = {
@@ -119,6 +120,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
   ) => {
     bufferAgentEvent(runId, event);
     pruneAgentEventBuffers();
+    options.getBroadcastToMobile?.()?.("agent:event", event);
     const receiverId = targetWebContentsId ?? agentRunOwners.get(runId);
     if (receiverId == null) {
       return;
@@ -133,6 +135,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     payload: SelfModHmrStatePayload,
     targetWebContentsId?: number,
   ) => {
+    options.getBroadcastToMobile?.()?.("agent:selfModHmrState", payload);
     const receiverId = targetWebContentsId;
     if (receiverId == null) {
       return;

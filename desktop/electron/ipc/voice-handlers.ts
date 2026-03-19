@@ -18,6 +18,7 @@ type VoiceHandlersOptions = {
   getOverlayController: () => OverlayWindowController | null;
   getConvexSiteUrl: () => string | null;
   getAuthToken: () => Promise<string | null> | string | null;
+  getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
 };
 
 type VoiceRuntimeSnapshot = {
@@ -120,6 +121,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       if (window.isDestroyed()) continue;
       window.webContents.send("voice:runtimeState", runtimeState);
     }
+    options.getBroadcastToMobile?.()?.("voice:runtimeState", runtimeState);
   };
 
   const toggleVoice = () => {
@@ -275,6 +277,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       if (fullWindow && !fullWindow.isDestroyed()) {
         fullWindow.webContents.send("agent:event", eventPayload);
       }
+      options.getBroadcastToMobile?.()?.("agent:event", eventPayload);
     };
 
     return new Promise<string>((resolve, reject) => {

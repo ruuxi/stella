@@ -44,6 +44,7 @@ type SystemHandlersOptions = {
     ok: boolean;
     error?: string;
   };
+  getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
 };
 
 const asTrimmedString = (value: unknown) =>

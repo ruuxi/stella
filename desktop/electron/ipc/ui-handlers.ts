@@ -23,6 +23,7 @@ type UiHandlersOptions = {
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
+  getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
 };
 
 export const registerUiHandlers = (options: UiHandlersOptions) => {
@@ -117,6 +118,7 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
           window.webContents.send("theme:change", data);
         }
       }
+      options.getBroadcastToMobile?.()?.("theme:change", data);
     },
   );
 

@@ -22,7 +22,10 @@ import type { WakeWordController } from "../wake-word/initialize.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
 import { StoreModService } from "../self-mod/store-mod-service.js";
+import type { MobileBridgeService } from "../services/mobile-bridge/service.js";
 import { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
+
+export type MobileBroadcastFn = (channel: string, data: unknown) => void;
 
 export type BootstrapConfig = {
   authProtocol: string;
@@ -54,6 +57,7 @@ export type BootstrapState = {
   storeModService: StoreModService | null;
   storeModStore: StoreModStore | null;
   wakeWordController: WakeWordController | null;
+  mobileBridgeService: MobileBridgeService | null;
   windowManager: WindowManager | null;
 };
 
@@ -75,6 +79,16 @@ export type BootstrapContext = {
   lifecycle: BootstrapLifecycleBindings;
   services: BootstrapServices;
   state: BootstrapState;
+};
+
+/**
+ * Retrieve the mobile bridge broadcast function from context.
+ * Returns null if the bridge service hasn't started yet.
+ */
+export const getMobileBroadcast = (
+  context: BootstrapContext,
+): MobileBroadcastFn | null => {
+  return context.state.mobileBridgeService?.broadcastToMobile ?? null;
 };
 
 const getAllWindows = (context: BootstrapContext) =>
@@ -100,12 +114,14 @@ export const broadcastAuthCallback = (
   forEachWindow(context, (window) => {
     window.webContents.send("auth:callback", { url });
   });
+  getMobileBroadcast(context)?.("auth:callback", { url });
 };
 
 export const broadcastLocalChatUpdated = (context: BootstrapContext) => {
   forEachWindow(context, (window) => {
     window.webContents.send("localChat:updated");
   });
+  getMobileBroadcast(context)?.("localChat:updated", null);
 };
 
 export const broadcastWakeWordState = (context: BootstrapContext) => {
@@ -114,6 +130,7 @@ export const broadcastWakeWordState = (context: BootstrapContext) => {
   forEachWindow(context, (window) => {
     window.webContents.send("voice:wakeWordState", { enabled });
   });
+  getMobileBroadcast(context)?.("voice:wakeWordState", { enabled });
 };
 
 export const broadcastDevProjectsChanged = (context: BootstrapContext) => {
@@ -127,6 +144,7 @@ export const broadcastDevProjectsChanged = (context: BootstrapContext) => {
           window.webContents.send("projects:changed", projects);
         }
       }
+      getMobileBroadcast(context)?.("projects:changed", projects);
     })
     .catch((error) => {
       console.debug(
@@ -169,6 +187,7 @@ export const createBootstrapContext = (
     storeModService: null,
     storeModStore: null,
     wakeWordController: null,
+    mobileBridgeService: null,
     windowManager: null,
   };
 
@@ -193,6 +212,7 @@ export const createBootstrapContext = (
 
   const credentialService = new CredentialService({
     windowManagerTarget: lifecycle,
+    getBroadcastToMobile: () => getMobileBroadcast(context),
   });
 
   const captureService = new CaptureService({
