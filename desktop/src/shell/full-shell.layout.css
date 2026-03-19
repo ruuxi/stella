@@ -173,11 +173,6 @@
   pointer-events: auto;
 }
 
-.onboarding-layout[data-has-demo="true"] .onboarding-dialogue--split {
-  left: 25%;
-  width: 25%;
-}
-
 .content-area {
   flex: 1;
   min-width: 0;
