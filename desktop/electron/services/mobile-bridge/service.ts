@@ -70,6 +70,16 @@ const getBridgeUrls = (port: number) => {
   return [...urls].sort((left, right) => left.localeCompare(right));
 };
 
+const getDesktopPlatformLabel = () => {
+  if (process.platform === "darwin") {
+    return "Mac";
+  }
+  if (process.platform === "win32") {
+    return "Windows";
+  }
+  return os.type();
+};
+
 const readBody = (req: IncomingMessage): Promise<string> => {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -182,6 +192,7 @@ export class MobileBridgeService {
     const previousToken = this.hostAuthToken;
     this.hostAuthToken = value?.trim() || null;
     if (!this.hostAuthToken && previousToken) {
+      this.invalidateBridgeAccess("Desktop signed out");
       void this.clearRegistrationWithToken(previousToken);
       return;
     }
@@ -261,6 +272,28 @@ export class MobileBridgeService {
       }
     }
   };
+
+  private invalidateBridgeAccess(reason: string) {
+    this.registered = false;
+    this.sessions.clear();
+
+    for (const [ws, client] of this.wsClients) {
+      for (const unsub of client.subscriptions.values()) {
+        unsub();
+      }
+      ws.close(4001, reason);
+    }
+    this.wsClients.clear();
+  }
+
+  private isBridgeAccessEnabled() {
+    return Boolean(
+      this.registered
+      && this.hostAuthToken
+      && this.convexSiteUrl
+      && this.deviceId,
+    );
+  }
 
   // ── HTTP request handling ─────────────────────────────────────────────
 
@@ -369,7 +402,7 @@ export class MobileBridgeService {
     const url = new URL(req.url ?? "/", "http://localhost");
     const token = url.searchParams.get("token");
 
-    if (!token) {
+    if (!token || !this.isBridgeAccessEnabled()) {
       ws.close(4001, "Unauthorized");
       return;
     }
@@ -492,6 +525,11 @@ export class MobileBridgeService {
     const now = Date.now();
     for (const [sessionId, session] of this.sessions) {
       if (session.expiresAt <= now) this.sessions.delete(sessionId);
+    }
+
+    if (!this.isBridgeAccessEnabled()) {
+      sendJson(res, 403, { error: "Desktop bridge unavailable" });
+      return false;
     }
 
     // Check existing session cookie
@@ -669,8 +707,8 @@ export class MobileBridgeService {
           },
           body: JSON.stringify({
             deviceId: this.deviceId,
-            port: this.port,
             baseUrls,
+            platform: getDesktopPlatformLabel(),
           }),
         },
       );

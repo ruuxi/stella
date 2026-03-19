@@ -21,4 +21,14 @@ export const devicesSchema = {
     lastRequestAt: v.number(),
   })
     .index("by_deviceId", ["deviceId"]),
+
+  mobile_bridge_registrations: defineTable({
+    ownerId: v.string(),
+    deviceId: v.string(),
+    baseUrls: v.array(v.string()),
+    updatedAt: v.number(),
+    platform: v.optional(v.string()),
+  })
+    .index("by_ownerId_and_deviceId", ["ownerId", "deviceId"])
+    .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
 };
