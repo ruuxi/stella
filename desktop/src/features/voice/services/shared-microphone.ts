@@ -1,6 +1,8 @@
 const SHARED_MIC_STATE_KEY = "__stellaSharedMicrophoneState";
 const SHARED_MIC_RELEASE_GRACE_MS = 45_000;
 
+export const PREFERRED_MIC_KEY = "stella-preferred-mic-id";
+
 export type SharedMicrophoneUseCase =
   | "voice-rtc"
   | "speech-recording"
@@ -69,7 +71,16 @@ const hasLiveTrack = (stream: MediaStream | null) => {
 const getSharedMicrophoneConstraints = (
   _useCase: SharedMicrophoneUseCase,
 ): MediaTrackConstraints => {
-  return { ...SHARED_MIC_SPEECH_CAPTURE_CONSTRAINTS };
+  const constraints = { ...SHARED_MIC_SPEECH_CAPTURE_CONSTRAINTS };
+  try {
+    const preferredId = localStorage.getItem(PREFERRED_MIC_KEY);
+    if (preferredId) {
+      constraints.deviceId = { ideal: preferredId };
+    }
+  } catch {
+    // localStorage unavailable — fall back to default device.
+  }
+  return constraints;
 };
 
 const scheduleRootRelease = (state: SharedMicrophoneState) => {
