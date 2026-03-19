@@ -23,6 +23,13 @@ import { useTheme, useThemeControl } from "@/context/theme-context";
 import { getPlatform } from "@/platform/electron/platform";
 import { OnboardingReveal } from "./OnboardingReveal";
 import { OnboardingSelectionTile } from "./OnboardingSelectionTile";
+import { PREFERRED_MIC_KEY } from "@/features/voice/services/shared-microphone";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/ui/dropdown-menu";
 import "./Onboarding.css";
 import "@/global/onboarding/selfmod-demo.css";
 
@@ -38,18 +45,58 @@ const STEP_TITLES: Partial<Record<Phase, string>> = {
   personality: "How should I talk?",
 };
 
+/* ── Showcase icons (small inline SVGs for card headers) ── */
+const ShowcaseIcons = {
+  modern: (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 2 7 12 12 22 7 12 2" />
+      <polyline points="2 17 12 22 22 17" />
+      <polyline points="2 12 12 17 22 12" />
+    </svg>
+  ),
+  "cozy-cat": (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.08C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z" />
+    </svg>
+  ),
+  "dj-studio": (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="16" r="3" />
+    </svg>
+  ),
+  weather: (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+    </svg>
+  ),
+  pomodoro: (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="13" r="8" />
+      <path d="M12 9v4l2 2" />
+      <path d="M5 3l2 2" />
+      <path d="M19 3l-2 2" />
+      <path d="M12 5V3" />
+    </svg>
+  ),
+};
+
 /* ── Showcase options for creation phase ── */
-type ShowcaseId = "modern" | "cozy-cat" | "dj-studio" | "weather";
+type ShowcaseId = "modern" | "cozy-cat" | "dj-studio" | "weather" | "pomodoro";
 
 const SHOWCASE_OPTIONS: {
   id: ShowcaseId;
   label: string;
   description: string;
+  category: string;
+  accent: string;
 }[] = [
-  { id: "modern", label: "Modernize the chat", description: "Glass effects, blue accents, refined layout" },
-  { id: "cozy-cat", label: "Give everything a cozy cat theme", description: "A complete theme overhaul" },
-  { id: "dj-studio", label: "Build me a beat maker", description: "A full step sequencer with synths" },
-  { id: "weather", label: "Live weather dashboard", description: "Real-time weather with animations" },
+  { id: "modern", label: "Modernize the chat", description: "Glass panels, refined spacing, cool blue accents", category: "UI", accent: "oklch(0.6 0.18 250)" },
+  { id: "cozy-cat", label: "Cozy cat theme", description: "Warm palette, playful cards, paw print decorations", category: "Theme", accent: "oklch(0.72 0.12 350)" },
+  { id: "dj-studio", label: "Build a beat maker", description: "8-track step sequencer with real-time synthesis", category: "App", accent: "oklch(0.6 0.2 300)" },
+  { id: "weather", label: "Weather dashboard", description: "Live forecasts, hourly charts, and smart insights", category: "Dashboard", accent: "oklch(0.65 0.15 200)" },
+  { id: "pomodoro", label: "Focus timer", description: "Pomodoro sessions with ambient soundscapes", category: "Tool", accent: "oklch(0.7 0.15 60)" },
 ];
 
 
@@ -86,6 +133,8 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   const [voicePermissionGranted, setVoicePermissionGranted] = useState<
     boolean | null
   >(null);
+  const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedMicId, setSelectedMicId] = useState<string | null>(null);
 
   // Discovery category toggles
   const [categoryStates, setCategoryStates] = useState<
@@ -132,6 +181,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
       else if (next === "dj-studio") onDemoChange?.("dj-studio");
       else if (next === "weather") onDemoChange?.("weather-station");
       else if (next === "cozy-cat") onDemoChange?.("cozy-cat");
+      else if (next === "pomodoro") onDemoChange?.("pomodoro");
     },
     [activeShowcase, demoMorphing, onDemoChange],
   );
@@ -596,7 +646,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                 </div>
               )}
 
-              {/* ── Creation (showcase grid) ── */}
+              {/* ── Creation (showcase gallery) ── */}
               {phase === "creation" && (
                 <div className="onboarding-step-content">
                   <p className="onboarding-step-desc">
@@ -605,16 +655,24 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
                   <div className="onboarding-showcase-grid" style={demoMorphing ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
                     {SHOWCASE_OPTIONS.map((opt) => (
-                      <OnboardingSelectionTile
+                      <button
                         key={opt.id}
-                        className="onboarding-showcase-tile"
-                        labelClassName="onboarding-showcase-tile-label"
-                        descriptionClassName="onboarding-showcase-tile-desc"
-                        active={activeShowcase === opt.id}
+                        type="button"
+                        className="onboarding-showcase-card"
+                        style={{ "--showcase-accent": opt.accent } as React.CSSProperties}
+                        data-active={activeShowcase === opt.id}
                         onClick={() => handleShowcaseSelect(opt.id)}
-                        label={opt.label}
-                        description={opt.description}
-                      />
+                      >
+                        <div className="onboarding-showcase-card-header">
+                          <div className="onboarding-showcase-card-icon">
+                            {ShowcaseIcons[opt.id]}
+                          </div>
+                          <span className="onboarding-showcase-card-category">{opt.category}</span>
+                          <div className="onboarding-showcase-card-indicator" />
+                        </div>
+                        <div className="onboarding-showcase-card-title">{opt.label}</div>
+                        <div className="onboarding-showcase-card-desc">{opt.description}</div>
+                      </button>
                     ))}
                   </div>
 
@@ -628,7 +686,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                 </div>
               )}
 
-              {/* ── Voice (Permission + Demo) ── */}
+              {/* ── Voice (Permission + Mic selection + Shortcut) ── */}
               {phase === "voice" && (
                 <div className="onboarding-step-content">
                   <div className="onboarding-step-label">Voice Interaction</div>
@@ -649,6 +707,15 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                             });
                           stream.getTracks().forEach((t) => t.stop());
                           setVoicePermissionGranted(true);
+
+                          // Enumerate audio input devices now that permission is granted
+                          const devices = await navigator.mediaDevices.enumerateDevices();
+                          const mics = devices.filter((d) => d.kind === "audioinput" && d.deviceId);
+                          setAudioInputDevices(mics);
+                          // Auto-select the first device (system default)
+                          if (mics.length > 0 && !selectedMicId) {
+                            setSelectedMicId(mics[0].deviceId);
+                          }
                         } catch {
                           setVoicePermissionGranted(false);
                         }
@@ -661,6 +728,51 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                           : "Allow microphone access"}
                     </button>
                   </div>
+
+                  {/* Mic device picker — revealed after permission granted */}
+                  <OnboardingReveal
+                    visible={voicePermissionGranted === true && audioInputDevices.length > 1}
+                    className="onboarding-mic-reveal"
+                    innerClassName="onboarding-mic-reveal-inner"
+                  >
+                    <div className="onboarding-step-label">Microphone</div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className="onboarding-mic-trigger">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                            <line x1="12" y1="19" x2="12" y2="23" />
+                            <line x1="8" y1="23" x2="16" y2="23" />
+                          </svg>
+                          <span className="onboarding-mic-trigger-label">
+                            {audioInputDevices.find((d) => d.deviceId === selectedMicId)?.label || "Select microphone"}
+                          </span>
+                          <svg className="onboarding-mic-trigger-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M6 9l6 6 6-6" />
+                          </svg>
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="bottom" align="start" sideOffset={6}>
+                        {audioInputDevices.map((device, i) => (
+                          <DropdownMenuItem
+                            key={device.deviceId}
+                            onClick={() => {
+                              setSelectedMicId(device.deviceId);
+                              localStorage.setItem(PREFERRED_MIC_KEY, device.deviceId);
+                            }}
+                          >
+                            {selectedMicId === device.deviceId && (
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M5 12l5 5L20 7" />
+                              </svg>
+                            )}
+                            {device.label || `Microphone ${i + 1}`}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </OnboardingReveal>
 
                   <div
                     className="onboarding-step-label"
@@ -686,6 +798,10 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                     className="onboarding-confirm"
                     data-visible={true}
                     onClick={() => {
+                      // Persist preferred microphone
+                      if (selectedMicId) {
+                        localStorage.setItem(PREFERRED_MIC_KEY, selectedMicId);
+                      }
                       const finalShortcut = "CommandOrControl+Shift+V";
                       localStorage.setItem(
                         "stella-voice-shortcut",

@@ -197,7 +197,7 @@ export function OnboardingView({
   handleEnterSplit: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
   onSelectionChange?: (hasSelections: boolean) => void;
-  onDemoChange?: (demo: "default" | "modern" | "dj-studio" | "weather-station" | "cozy-cat" | null) => void;
+  onDemoChange?: (demo: "default" | "modern" | "dj-studio" | "weather-station" | "cozy-cat" | "pomodoro" | null) => void;
   activeDemo?: OnboardingDemo;
   demoMorphing?: boolean;
 }) {

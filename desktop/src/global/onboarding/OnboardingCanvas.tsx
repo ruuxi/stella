@@ -3,8 +3,9 @@ import { DJStudio } from "./panels/DJStudioDemo";
 import { WeatherStation } from "./panels/WeatherStationDemo";
 import { CozyCatDemo } from "./panels/CozyCatDemo";
 import { StellaAppMock } from "./panels/StellaAppMock";
+import { PomodoroDemo } from "./panels/PomodoroDemo";
 
-export type OnboardingDemo = "default" | "modern" | "dj-studio" | "weather-station" | "cozy-cat" | null;
+export type OnboardingDemo = "default" | "modern" | "dj-studio" | "weather-station" | "cozy-cat" | "pomodoro" | null;
 
 /** Delay after React swap to let the new demo paint before capturing */
 const PAINT_SETTLE_MS = 120;
@@ -93,6 +94,7 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({ activeDemo, 
       {displayedDemo === "dj-studio" && <DJStudio />}
       {displayedDemo === "weather-station" && <WeatherStation />}
       {displayedDemo === "cozy-cat" && <CozyCatDemo />}
+      {displayedDemo === "pomodoro" && <PomodoroDemo />}
     </div>
   );
 };

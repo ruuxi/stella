@@ -431,6 +431,10 @@ const css = `
   font-family: inherit;
   outline: none;
 }
+.ws-select option {
+  background: var(--background);
+  color: var(--foreground);
+}
 .ws-unit-btn {
   padding: 4px 10px;
   border-radius: 6px;
