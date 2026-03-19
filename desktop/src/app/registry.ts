@@ -8,7 +8,6 @@ export type GeneratedPage = {
 
 export const generatedPages: GeneratedPage[] = [
   // --- generated entries below (do not remove this line) ---
-  { id: "ai-research", title: "AI Research", component: lazy(() => import("./ai-research/AiResearch")) },
 ];
 
 void lazy;
