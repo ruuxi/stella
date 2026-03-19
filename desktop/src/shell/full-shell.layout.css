@@ -143,15 +143,39 @@
   display: flex;
   min-height: 0;
   position: relative;
+  overflow: hidden;
 }
 
 .onboarding-demo-area {
-  flex: 1;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 50%;
   min-width: 0;
   min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(32px);
+  pointer-events: none;
+  z-index: 4;
+  transition:
+    opacity 0.35s ease,
+    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.onboarding-demo-area[data-visible="true"] {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.onboarding-layout[data-has-demo="true"] .onboarding-dialogue--split {
+  left: 25%;
+  width: 25%;
 }
 
 .content-area {
@@ -276,8 +300,14 @@
 }
 
 @keyframes composerFadeIn {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .onboarding-stella-animation {
@@ -290,11 +320,12 @@
   height: 50%;
   max-width: 900px;
   cursor: pointer;
-  transition: top 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-              left 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-              transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-              max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-              height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition:
+    top 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+    left 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+    transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+    max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+    height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .onboarding-stella-animation[data-expanded="true"] {
@@ -308,11 +339,12 @@
   max-width: 400px;
   height: 30%;
   transform: translate(-50%, -50%) scale(1);
-  transition: top 0.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-              left 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-              transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-              max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
-              height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition:
+    top 0.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+    left 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+    transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+    max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+    height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 /* With selections: shift animation up to make room for mock windows */
@@ -356,4 +388,3 @@
   font-weight: 500;
   color: var(--text-weak);
 }
-
