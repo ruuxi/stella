@@ -13,6 +13,7 @@ export type VoiceOverlayTarget = {
 export type UiStateServiceDeps = {
   broadcastTarget: UiStateBroadcastTarget
   getOverlayTarget: () => VoiceOverlayTarget | null
+  getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null
 }
 
 export class UiStateService {
@@ -46,6 +47,7 @@ export class UiStateService {
     for (const window of targets) {
       window.webContents.send('ui:state', this.state)
     }
+    this.deps.getBroadcastToMobile?.()?.('ui:state', this.state)
   }
 
   syncVoiceOverlay() {

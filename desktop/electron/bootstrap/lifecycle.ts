@@ -40,6 +40,7 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
     context.state.wakeWordController = null;
     cleanupSelectedTextProcess();
     context.state.overlayController?.destroy();
+    context.state.mobileBridgeService?.stop();
   });
 
   app.on("will-quit", () => {

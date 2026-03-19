@@ -12,14 +12,7 @@ type LocalChatHandlersOptions = {
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
-};
-
-const broadcastUpdated = () => {
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) {
-      window.webContents.send("localChat:updated");
-    }
-  }
+  getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
 };
 
 const getChatStore = (options: LocalChatHandlersOptions) => {
@@ -33,6 +26,15 @@ const getChatStore = (options: LocalChatHandlersOptions) => {
 export const registerLocalChatHandlers = (
   options: LocalChatHandlersOptions,
 ) => {
+  const broadcastUpdated = () => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send("localChat:updated");
+      }
+    }
+    options.getBroadcastToMobile?.()?.("localChat:updated", null);
+  };
+
   ipcMain.handle("localChat:getOrCreateDefaultConversationId", (event) => {
     if (
       !options.assertPrivilegedSender(

@@ -11,13 +11,17 @@ import { registerStoreHandlers } from "../ipc/store-handlers.js";
 import { registerSystemHandlers } from "../ipc/system-handlers.js";
 import { registerUiHandlers } from "../ipc/ui-handlers.js";
 import { registerVoiceHandlers } from "../ipc/voice-handlers.js";
-import { type BootstrapContext, syncWakeWordState } from "./context.js";
+import { startCapturingHandlers } from "../services/mobile-bridge/handler-registry.js";
+import { type BootstrapContext, getMobileBroadcast, syncWakeWordState } from "./context.js";
 import type { BootstrapResetFlows } from "./resets.js";
 
 export const registerBootstrapIpcHandlers = (
   context: BootstrapContext,
   resetFlows: BootstrapResetFlows,
 ) => {
+  // Capture all ipcMain.handle registrations for the mobile bridge
+  const stopCapturing = startCapturingHandlers();
+  const lazyMobileBroadcast = () => getMobileBroadcast(context);
   const { config, lifecycle, services, state } = context;
 
   registerUiHandlers({
@@ -37,6 +41,7 @@ export const registerBootstrapIpcHandlers = (
     syncWakeWordState: () => syncWakeWordState(context),
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
+    getBroadcastToMobile: lazyMobileBroadcast,
   });
 
   registerCaptureHandlers({
@@ -66,12 +71,14 @@ export const registerBootstrapIpcHandlers = (
       services.credentialService.submitCredential(payload),
     cancelCredential: (payload) =>
       services.credentialService.cancelCredential(payload),
+    getBroadcastToMobile: lazyMobileBroadcast,
   });
 
   registerScheduleHandlers({
     schedulerService: state.schedulerService!,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
+    getBroadcastToMobile: lazyMobileBroadcast,
   });
 
   registerBrowserHandlers({
@@ -95,12 +102,14 @@ export const registerBootstrapIpcHandlers = (
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
     hmrMorphOrchestrator: state.hmrMorphOrchestrator,
+    getBroadcastToMobile: lazyMobileBroadcast,
   });
 
   registerLocalChatHandlers({
     getChatStore: () => state.chatStore,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
+    getBroadcastToMobile: lazyMobileBroadcast,
   });
 
   registerOverlayStreamHandlers({
@@ -145,5 +154,8 @@ export const registerBootstrapIpcHandlers = (
     getOverlayController: () => state.overlayController,
     getConvexSiteUrl: () => services.authService.getConvexSiteUrl(),
     getAuthToken: () => services.authService.getAuthToken(),
+    getBroadcastToMobile: lazyMobileBroadcast,
   });
+
+  stopCapturing();
 };

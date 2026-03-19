@@ -13,7 +13,7 @@ export class CredentialService {
     }
   >()
 
-  constructor(private readonly options: { windowManagerTarget: WindowManagerTarget }) {}
+  constructor(private readonly options: { windowManagerTarget: WindowManagerTarget; getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null }) {}
 
   async requestCredential(payload: Omit<CredentialRequestPayload, 'requestId'>) {
     const requestId = randomUUID()
@@ -30,6 +30,7 @@ export class CredentialService {
     for (const window of targetWindows) {
       window.webContents.send('credential:request', request)
     }
+    this.options.getBroadcastToMobile?.()?.('credential:request', request)
 
     return new Promise<CredentialResponsePayload>((resolve, reject) => {
       const timeout = setTimeout(() => {
