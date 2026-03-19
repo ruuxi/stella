@@ -610,482 +610,500 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
           {/* Right: title + step content */}
           <div className="onboarding-split-right">
-            {STEP_TITLES[phase] && (
-              <div className="onboarding-split-title">{STEP_TITLES[phase]}</div>
-            )}
-
-            {/* ── Browser + Discovery (combined) ── */}
-            {phase === "browser" && (
-              <div className="onboarding-step-content">
-                <div className="onboarding-step-label">
-                  What can I learn about you?
+            <div
+              className="onboarding-split-stage"
+              data-phase={phase}
+              key={phase}
+            >
+              {STEP_TITLES[phase] && (
+                <div className="onboarding-split-title">
+                  {STEP_TITLES[phase]}
                 </div>
+              )}
 
-                {/* Browser as top choice with Recommended badge */}
-                <OnboardingSelectionTile
-                  className="onboarding-discovery-row"
-                  labelClassName="onboarding-discovery-row-label"
-                  descriptionClassName="onboarding-discovery-row-desc"
-                  active={browserEnabled}
-                  onClick={() => {
-                    const wasEnabled = browserEnabled;
-                    setBrowserEnabled((prev) => !prev);
-                    setShowNoneWarning(false);
-                    if (wasEnabled) {
-                      setSelectedBrowser(null);
-                      setDetectedBrowser(null);
-                      setAvailableProfiles([]);
-                      setSelectedProfile(null);
-                      // Toggled off — show first remaining enabled category, or null
-                      if (activeMockId === "browser") {
-                        const remaining = Object.entries(categoryStates)
-                          .filter(([, v]) => v)
-                          .map(([k]) => k);
-                        setActiveMockId(remaining[0] ?? null);
+              {/* ── Browser + Discovery (combined) ── */}
+              {phase === "browser" && (
+                <div className="onboarding-step-content">
+                  <div className="onboarding-step-label">
+                    What can I learn about you?
+                  </div>
+
+                  {/* Browser as top choice with Recommended badge */}
+                  <OnboardingSelectionTile
+                    className="onboarding-discovery-row"
+                    labelClassName="onboarding-discovery-row-label"
+                    descriptionClassName="onboarding-discovery-row-desc"
+                    active={browserEnabled}
+                    onClick={() => {
+                      const wasEnabled = browserEnabled;
+                      setBrowserEnabled((prev) => !prev);
+                      setShowNoneWarning(false);
+                      if (wasEnabled) {
+                        setSelectedBrowser(null);
+                        setDetectedBrowser(null);
+                        setAvailableProfiles([]);
+                        setSelectedProfile(null);
+                        // Toggled off — show first remaining enabled category, or null
+                        if (activeMockId === "browser") {
+                          const remaining = Object.entries(categoryStates)
+                            .filter(([, v]) => v)
+                            .map(([k]) => k);
+                          setActiveMockId(remaining[0] ?? null);
+                        }
+                      } else {
+                        setActiveMockId("browser");
                       }
-                    } else {
-                      setActiveMockId("browser");
+                    }}
+                    label={
+                      <>
+                        Your browser
+                        <span className="onboarding-discovery-recommended">
+                          Recommended
+                        </span>
+                      </>
                     }
-                  }}
-                  label={
-                    <>
-                      Your browser
-                      <span className="onboarding-discovery-recommended">
-                        Recommended
-                      </span>
-                    </>
-                  }
-                  description="I can browse the web for you, learn your favorite sites, and pick up on how you like things done"
-                />
+                    description="I can browse the web for you, learn your favorite sites, and pick up on how you like things done"
+                  />
 
-                {/* Expanded browser options — always rendered, CSS grid animates reveal */}
-                <OnboardingReveal
-                  visible={browserEnabled}
-                  className="onboarding-browser-reveal"
-                  innerClassName="onboarding-browser-reveal-inner"
-                >
-                  <div className="onboarding-pills">
-                    {BROWSERS.filter((b) =>
-                      platform !== "darwin" ? b.id !== "safari" : true,
-                    ).map((b) => (
-                      <button
-                        key={b.id}
-                        className="onboarding-pill onboarding-pill--sm"
-                        data-active={selectedBrowser === b.id}
-                        onClick={() => {
-                          setAvailableProfiles([]);
-                          setSelectedProfile(null);
-                          setSelectedBrowser(b.id);
-                        }}
+                  {/* Expanded browser options — always rendered, CSS grid animates reveal */}
+                  <OnboardingReveal
+                    visible={browserEnabled}
+                    className="onboarding-browser-reveal"
+                    innerClassName="onboarding-browser-reveal-inner"
+                  >
+                    <div className="onboarding-pills">
+                      {BROWSERS.filter((b) =>
+                        platform !== "darwin" ? b.id !== "safari" : true,
+                      ).map((b) => (
+                        <button
+                          key={b.id}
+                          className="onboarding-pill onboarding-pill--sm"
+                          data-active={selectedBrowser === b.id}
+                          onClick={() => {
+                            setAvailableProfiles([]);
+                            setSelectedProfile(null);
+                            setSelectedBrowser(b.id);
+                          }}
+                        >
+                          {b.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Profile selection — grid reveal */}
+                    <OnboardingReveal
+                      visible={availableProfiles.length > 1}
+                      className="onboarding-profiles-reveal"
+                      innerClassName="onboarding-profiles-reveal-inner"
+                    >
+                      <div className="onboarding-step-label">Profile</div>
+                      <div className="onboarding-pills">
+                        {availableProfiles.map((p) => (
+                          <button
+                            key={p.id}
+                            className="onboarding-pill onboarding-pill--sm"
+                            data-active={selectedProfile === p.id}
+                            onClick={() => setSelectedProfile(p.id)}
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    </OnboardingReveal>
+                  </OnboardingReveal>
+
+                  <OnboardingDiscovery
+                    categoryStates={categoryStates}
+                    onToggleCategory={handleToggleCategory}
+                  />
+
+                  {/* Warning — always rendered, CSS grid animates reveal */}
+                  <OnboardingReveal
+                    visible={showNoneWarning}
+                    className="onboarding-warning-reveal"
+                    innerClassName="onboarding-warning-reveal-inner"
+                  >
+                    <div className="onboarding-discovery-warning">
+                      <span className="onboarding-discovery-warning-badge">
+                        Not recommended
+                      </span>
+                      <p className="onboarding-discovery-warning-text">
+                        Without this, I'll learn about you over time through our
+                        conversations. But I won't be personal to you from the
+                        start.
+                      </p>
+                    </div>
+                  </OnboardingReveal>
+
+                  <button
+                    className="onboarding-confirm"
+                    data-visible={true}
+                    onClick={handleDiscoveryConfirm}
+                  >
+                    Continue
+                  </button>
+                </div>
+              )}
+
+              {/* ── Memory + Reach ── */}
+              {phase === "memory" && (
+                <div className="onboarding-step-content">
+                  <div className="onboarding-section-title">
+                    I'm always here, and I never forget.
+                  </div>
+                  <p className="onboarding-step-desc">
+                    We don't have separate conversations. You can talk to me
+                    about anything, anytime, and I'll remember.
+                  </p>
+                  <p className="onboarding-step-desc">
+                    No starting over. No repeating yourself.
+                  </p>
+
+                  <div className="onboarding-section-title">
+                    You can reach me anywhere.
+                  </div>
+                  <p className="onboarding-step-desc">
+                    You can message me from your phone. If your computer is on,
+                    I can take action on it for you.
+                  </p>
+                  <p className="onboarding-step-desc">
+                    If your computer is off, I'll still respond, but I can't act
+                    unless you give me{" "}
+                    <span
+                      className="onboarding-inline-link"
+                      onMouseEnter={() => setHomeHovered(true)}
+                      onMouseLeave={() => setHomeHovered(false)}
+                    >
+                      another home
+                    </span>
+                    .
+                  </p>
+                  <p
+                    className="onboarding-home-hint"
+                    data-visible={homeHovered}
+                  >
+                    You can get me a server so I have another home and I'm
+                    always on.
+                  </p>
+                  <button
+                    className="onboarding-confirm"
+                    data-visible={true}
+                    onClick={nextSplitStep}
+                  >
+                    Continue
+                  </button>
+                </div>
+              )}
+
+              {/* ── Creation (mock conversation with mimicked sidebar) ── */}
+              {phase === "creation" && (
+                <div className="onboarding-step-content onboarding-creation-chat">
+                  <div className="onboarding-mock-app">
+                    {/* Mock main area */}
+                    <div className="onboarding-mock-main">
+                      <div
+                        className="onboarding-chat-messages"
+                        ref={chatScrollRef}
                       >
-                        {b.label}
+                        {chatMessages.map((msg, i) => (
+                          <div
+                            key={i}
+                            className={`onboarding-chat-msg onboarding-chat-msg--${msg.role}`}
+                          >
+                            <span className="onboarding-chat-bubble">
+                              {msg.text}
+                            </span>
+                          </div>
+                        ))}
+                        {chatTyping && (
+                          <div className="onboarding-chat-msg onboarding-chat-msg--stella">
+                            <span className="onboarding-chat-typing">
+                              <span />
+                              <span />
+                              <span />
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="onboarding-chat-composer">
+                        <span key={chatStep} className="onboarding-chat-input">
+                          {chatStep < CREATION_STEPS.length
+                            ? CREATION_STEPS[chatStep].userText
+                            : "Ask me anything..."}
+                        </span>
+                        <button
+                          className="onboarding-chat-send"
+                          onClick={handleChatSend}
+                          disabled={
+                            chatTyping || chatStep >= CREATION_STEPS.length
+                          }
+                          data-hidden={
+                            chatStep >= CREATION_STEPS.length || undefined
+                          }
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M12 19V5M5 12l7-7 7 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Selfmod controls — always rendered, CSS grid animates reveal */}
+                  <div
+                    className="onboarding-creation-controls"
+                    data-visible={
+                      chatStep >= CREATION_STEPS.length || undefined
+                    }
+                  >
+                    <div className="onboarding-creation-controls-inner">
+                      <div className="onboarding-chat-selfmod">
+                        <div className="onboarding-selfmod-levels">
+                          <OnboardingSelectionTile
+                            className="onboarding-selfmod-level"
+                            labelClassName="onboarding-selfmod-level-label"
+                            active={selfmodLevel === "low"}
+                            onClick={() => handleSelfmodLevel("low")}
+                            label={`"Make my messages blue"`}
+                          />
+                          <OnboardingSelectionTile
+                            className="onboarding-selfmod-level"
+                            labelClassName="onboarding-selfmod-level-label"
+                            active={selfmodLevel === "medium"}
+                            onClick={() => handleSelfmodLevel("medium")}
+                            label={`"Make the chat feel more modern"`}
+                          />
+                          <OnboardingSelectionTile
+                            className="onboarding-selfmod-level"
+                            labelClassName="onboarding-selfmod-level-label"
+                            active={selfmodLevel === "high"}
+                            onClick={() => handleSelfmodLevel("high")}
+                            label={`"Give everything a cozy cat theme"`}
+                          />
+                        </div>
+                      </div>
+                      <button
+                        className="onboarding-confirm"
+                        data-visible={chatStep >= CREATION_STEPS.length}
+                        onClick={nextSplitStep}
+                      >
+                        Continue
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Voice (Permission + Demo) ── */}
+              {phase === "voice" && (
+                <div className="onboarding-step-content">
+                  <div className="onboarding-step-label">Voice Interaction</div>
+                  <p className="onboarding-step-desc">
+                    I can listen to your voice and instantly transcribe it for
+                    you. When you're done speaking, your text will appear right
+                    where you need it.
+                  </p>
+
+                  <div className="onboarding-voice-demo">
+                    <button
+                      className="onboarding-pill"
+                      onClick={async () => {
+                        try {
+                          const stream =
+                            await navigator.mediaDevices.getUserMedia({
+                              audio: true,
+                            });
+                          stream.getTracks().forEach((t) => t.stop());
+                          setVoicePermissionGranted(true);
+                        } catch {
+                          setVoicePermissionGranted(false);
+                        }
+                      }}
+                    >
+                      {voicePermissionGranted === true
+                        ? "Microphone access granted \u2713"
+                        : voicePermissionGranted === false
+                          ? "Microphone access denied"
+                          : "Allow microphone access"}
+                    </button>
+                  </div>
+
+                  <div
+                    className="onboarding-step-label"
+                    style={{ marginTop: 24 }}
+                  >
+                    Voice Shortcut
+                  </div>
+                  <p className="onboarding-step-desc">
+                    Press this shortcut anywhere to start or stop voice
+                    dictation. (You can also use the Voice button in the Radial
+                    Dial).
+                  </p>
+                  <div className="onboarding-shortcut-config">
+                    <div
+                      className="onboarding-pill"
+                      style={{ cursor: "default", opacity: 0.8 }}
+                    >
+                      {platform === "darwin" ? "Cmd+Shift+V" : "Ctrl+Shift+V"}
+                    </div>
+                  </div>
+
+                  <button
+                    className="onboarding-confirm"
+                    data-visible={true}
+                    onClick={() => {
+                      const finalShortcut = "CommandOrControl+Shift+V";
+                      localStorage.setItem(
+                        "stella-voice-shortcut",
+                        finalShortcut,
+                      );
+                      void window.electronAPI?.voice
+                        .setShortcut?.(finalShortcut)
+                        .then((result) => {
+                          if (
+                            !result ||
+                            result.activeShortcut === finalShortcut
+                          ) {
+                            return;
+                          }
+                          if (result.activeShortcut) {
+                            localStorage.setItem(
+                              "stella-voice-shortcut",
+                              result.activeShortcut,
+                            );
+                            return;
+                          }
+                          localStorage.removeItem("stella-voice-shortcut");
+                        })
+                        .catch(() => {
+                          // The default shortcut is already the active fallback.
+                        });
+                      nextSplitStep();
+                    }}
+                  >
+                    Continue
+                  </button>
+                </div>
+              )}
+
+              {/* ── Theme ── */}
+              {phase === "theme" && (
+                <div className="onboarding-step-content">
+                  {renderThemeOptionRow(
+                    "Appearance",
+                    ["light", "dark", "system"] as const,
+                    colorMode,
+                    setColorMode,
+                  )}
+
+                  {renderThemeOptionRow(
+                    "Background",
+                    ["soft", "crisp"] as const,
+                    gradientMode,
+                    setGradientMode,
+                  )}
+
+                  {renderThemeOptionRow(
+                    "Color intensity",
+                    ["relative", "strong"] as const,
+                    gradientColor,
+                    setGradientColor,
+                  )}
+
+                  <div className="onboarding-step-label">Theme</div>
+                  <div
+                    className="onboarding-theme-grid"
+                    onMouseLeave={() => cancelThemePreview()}
+                  >
+                    {sortedThemes.map((t) => (
+                      <button
+                        key={t.id}
+                        className="onboarding-pill"
+                        data-active={t.id === themeId}
+                        onClick={() => handleThemeSelect(t.id)}
+                        onMouseEnter={() => previewTheme(t.id)}
+                      >
+                        {t.name}
                       </button>
                     ))}
                   </div>
 
-                  {/* Profile selection — grid reveal */}
-                  <OnboardingReveal
-                    visible={availableProfiles.length > 1}
-                    className="onboarding-profiles-reveal"
-                    innerClassName="onboarding-profiles-reveal-inner"
-                  >
-                    <div className="onboarding-step-label">Profile</div>
-                    <div className="onboarding-pills">
-                      {availableProfiles.map((p) => (
-                        <button
-                          key={p.id}
-                          className="onboarding-pill onboarding-pill--sm"
-                          data-active={selectedProfile === p.id}
-                          onClick={() => setSelectedProfile(p.id)}
-                        >
-                          {p.name}
-                        </button>
-                      ))}
-                    </div>
-                  </OnboardingReveal>
-                </OnboardingReveal>
-
-                <OnboardingDiscovery
-                  categoryStates={categoryStates}
-                  onToggleCategory={handleToggleCategory}
-                />
-
-                {/* Warning — always rendered, CSS grid animates reveal */}
-                <OnboardingReveal
-                  visible={showNoneWarning}
-                  className="onboarding-warning-reveal"
-                  innerClassName="onboarding-warning-reveal-inner"
-                >
-                  <div className="onboarding-discovery-warning">
-                    <span className="onboarding-discovery-warning-badge">
-                      Not recommended
-                    </span>
-                    <p className="onboarding-discovery-warning-text">
-                      Without this, I'll learn about you over time through our
-                      conversations. But I won't be personal to you from the
-                      start.
-                    </p>
-                  </div>
-                </OnboardingReveal>
-
-                <button
-                  className="onboarding-confirm"
-                  data-visible={true}
-                  onClick={handleDiscoveryConfirm}
-                >
-                  Continue
-                </button>
-              </div>
-            )}
-
-            {/* ── Memory + Reach ── */}
-            {phase === "memory" && (
-              <div className="onboarding-step-content">
-                <div className="onboarding-section-title">
-                  I'm always here, and I never forget.
-                </div>
-                <p className="onboarding-step-desc">
-                  We don't have separate conversations. You can talk to me about
-                  anything, anytime, and I'll remember.
-                </p>
-                <p className="onboarding-step-desc">
-                  No starting over. No repeating yourself.
-                </p>
-
-                <div className="onboarding-section-title">
-                  You can reach me anywhere.
-                </div>
-                <p className="onboarding-step-desc">
-                  You can message me from your phone. If your computer is on, I
-                  can take action on it for you.
-                </p>
-                <p className="onboarding-step-desc">
-                  If your computer is off, I'll still respond, but I can't act
-                  unless you give me{" "}
-                  <span
-                    className="onboarding-inline-link"
-                    onMouseEnter={() => setHomeHovered(true)}
-                    onMouseLeave={() => setHomeHovered(false)}
-                  >
-                    another home
-                  </span>
-                  .
-                </p>
-                <p className="onboarding-home-hint" data-visible={homeHovered}>
-                  You can get me a server so I have another home and I'm always
-                  on.
-                </p>
-                <button
-                  className="onboarding-confirm"
-                  data-visible={true}
-                  onClick={nextSplitStep}
-                >
-                  Continue
-                </button>
-              </div>
-            )}
-
-            {/* ── Creation (mock conversation with mimicked sidebar) ── */}
-            {phase === "creation" && (
-              <div className="onboarding-step-content onboarding-creation-chat">
-                <div className="onboarding-mock-app">
-                  {/* Mock main area */}
-                  <div className="onboarding-mock-main">
-                    <div
-                      className="onboarding-chat-messages"
-                      ref={chatScrollRef}
-                    >
-                      {chatMessages.map((msg, i) => (
-                        <div
-                          key={i}
-                          className={`onboarding-chat-msg onboarding-chat-msg--${msg.role}`}
-                        >
-                          <span className="onboarding-chat-bubble">
-                            {msg.text}
-                          </span>
-                        </div>
-                      ))}
-                      {chatTyping && (
-                        <div className="onboarding-chat-msg onboarding-chat-msg--stella">
-                          <span className="onboarding-chat-typing">
-                            <span />
-                            <span />
-                            <span />
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="onboarding-chat-composer">
-                      <span key={chatStep} className="onboarding-chat-input">
-                        {chatStep < CREATION_STEPS.length
-                          ? CREATION_STEPS[chatStep].userText
-                          : "Ask me anything..."}
-                      </span>
-                      <button
-                        className="onboarding-chat-send"
-                        onClick={handleChatSend}
-                        disabled={
-                          chatTyping || chatStep >= CREATION_STEPS.length
-                        }
-                        data-hidden={
-                          chatStep >= CREATION_STEPS.length || undefined
-                        }
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M12 19V5M5 12l7-7 7 7" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Selfmod controls — always rendered, CSS grid animates reveal */}
-                <div
-                  className="onboarding-creation-controls"
-                  data-visible={chatStep >= CREATION_STEPS.length || undefined}
-                >
-                  <div className="onboarding-creation-controls-inner">
-                    <div className="onboarding-chat-selfmod">
-                      <div className="onboarding-selfmod-levels">
-                        <OnboardingSelectionTile
-                          className="onboarding-selfmod-level"
-                          labelClassName="onboarding-selfmod-level-label"
-                          active={selfmodLevel === "low"}
-                          onClick={() => handleSelfmodLevel("low")}
-                          label={`"Make my messages blue"`}
-                        />
-                        <OnboardingSelectionTile
-                          className="onboarding-selfmod-level"
-                          labelClassName="onboarding-selfmod-level-label"
-                          active={selfmodLevel === "medium"}
-                          onClick={() => handleSelfmodLevel("medium")}
-                          label={`"Make the chat feel more modern"`}
-                        />
-                        <OnboardingSelectionTile
-                          className="onboarding-selfmod-level"
-                          labelClassName="onboarding-selfmod-level-label"
-                          active={selfmodLevel === "high"}
-                          onClick={() => handleSelfmodLevel("high")}
-                          label={`"Give everything a cozy cat theme"`}
-                        />
-                      </div>
-                    </div>
-                    <button
-                      className="onboarding-confirm"
-                      data-visible={chatStep >= CREATION_STEPS.length}
-                      onClick={nextSplitStep}
-                    >
-                      Continue
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── Voice (Permission + Demo) ── */}
-            {phase === "voice" && (
-              <div className="onboarding-step-content">
-                <div className="onboarding-step-label">Voice Interaction</div>
-                <p className="onboarding-step-desc">
-                  I can listen to your voice and instantly transcribe it for
-                  you. When you're done speaking, your text will appear right
-                  where you need it.
-                </p>
-
-                <div className="onboarding-voice-demo">
                   <button
-                    className="onboarding-pill"
-                    onClick={async () => {
-                      try {
-                        const stream =
-                          await navigator.mediaDevices.getUserMedia({
-                            audio: true,
-                          });
-                        stream.getTracks().forEach((t) => t.stop());
-                        setVoicePermissionGranted(true);
-                      } catch {
-                        setVoicePermissionGranted(false);
-                      }
-                    }}
+                    className="onboarding-confirm"
+                    data-visible={true}
+                    onClick={nextSplitStep}
                   >
-                    {voicePermissionGranted === true
-                      ? "Microphone access granted \u2713"
-                      : voicePermissionGranted === false
-                        ? "Microphone access denied"
-                        : "Allow microphone access"}
+                    Continue
                   </button>
                 </div>
+              )}
 
-                <div
-                  className="onboarding-step-label"
-                  style={{ marginTop: 24 }}
-                >
-                  Voice Shortcut
-                </div>
-                <p className="onboarding-step-desc">
-                  Press this shortcut anywhere to start or stop voice dictation.
-                  (You can also use the Voice button in the Radial Dial).
-                </p>
-                <div className="onboarding-shortcut-config">
-                  <div
-                    className="onboarding-pill"
-                    style={{ cursor: "default", opacity: 0.8 }}
-                  >
-                    {platform === "darwin" ? "Cmd+Shift+V" : "Ctrl+Shift+V"}
+              {/* ── Personality ── */}
+              {phase === "personality" && (
+                <div className="onboarding-step-content">
+                  <div className="onboarding-pills">
+                    {(["emotes", "emoji", "none"] as const).map((style) => (
+                      <button
+                        key={style}
+                        className="onboarding-pill"
+                        data-active={expressionStyle === style}
+                        onClick={() => {
+                          setExpressionStyle(style);
+                          const backendStyle =
+                            style === "none"
+                              ? ("none" as const)
+                              : ("emoji" as const);
+                          if (isAuthenticated) {
+                            saveExpressionStyle({ style: backendStyle }).catch(
+                              () => {
+                                // Expression style sync is best-effort only.
+                              },
+                            );
+                          }
+                        }}
+                      >
+                        {style.charAt(0).toUpperCase() + style.slice(1)}
+                      </button>
+                    ))}
                   </div>
+                  {expressionStyle && (
+                    <p className="onboarding-personality-preview">
+                      {expressionStyle === "emotes" && (
+                        <>
+                          Got it! I'll get that done for you{" "}
+                          <img
+                            src="/emotes/assets/7tv/catNOD-7eeffb97edbf.webp"
+                            alt="catNOD"
+                            className="onboarding-emote-preview"
+                          />
+                        </>
+                      )}
+                      {expressionStyle === "emoji" &&
+                        "Got it! I'll get that done for you 😊"}
+                      {expressionStyle === "none" &&
+                        "Got it. I'll get that done for you."}
+                    </p>
+                  )}
+                  <button
+                    className="onboarding-confirm"
+                    data-visible={expressionStyle !== null}
+                    onClick={nextSplitStep}
+                  >
+                    Finish
+                  </button>
                 </div>
-
-                <button
-                  className="onboarding-confirm"
-                  data-visible={true}
-                  onClick={() => {
-                    const finalShortcut = "CommandOrControl+Shift+V";
-                    localStorage.setItem(
-                      "stella-voice-shortcut",
-                      finalShortcut,
-                    );
-                    void window.electronAPI?.voice.setShortcut?.(finalShortcut)
-                      .then((result) => {
-                        if (!result || result.activeShortcut === finalShortcut) {
-                          return;
-                        }
-                        if (result.activeShortcut) {
-                          localStorage.setItem(
-                            "stella-voice-shortcut",
-                            result.activeShortcut,
-                          );
-                          return;
-                        }
-                        localStorage.removeItem("stella-voice-shortcut");
-                      })
-                      .catch(() => {
-                        // The default shortcut is already the active fallback.
-                      });
-                    nextSplitStep();
-                  }}
-                >
-                  Continue
-                </button>
-              </div>
-            )}
-
-            {/* ── Theme ── */}
-            {phase === "theme" && (
-              <div className="onboarding-step-content">
-                {renderThemeOptionRow(
-                  "Appearance",
-                  ["light", "dark", "system"] as const,
-                  colorMode,
-                  setColorMode,
-                )}
-
-                {renderThemeOptionRow(
-                  "Background",
-                  ["soft", "crisp"] as const,
-                  gradientMode,
-                  setGradientMode,
-                )}
-
-                {renderThemeOptionRow(
-                  "Color intensity",
-                  ["relative", "strong"] as const,
-                  gradientColor,
-                  setGradientColor,
-                )}
-
-                <div className="onboarding-step-label">Theme</div>
-                <div
-                  className="onboarding-theme-grid"
-                  onMouseLeave={() => cancelThemePreview()}
-                >
-                  {sortedThemes.map((t) => (
-                    <button
-                      key={t.id}
-                      className="onboarding-pill"
-                      data-active={t.id === themeId}
-                      onClick={() => handleThemeSelect(t.id)}
-                      onMouseEnter={() => previewTheme(t.id)}
-                    >
-                      {t.name}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  className="onboarding-confirm"
-                  data-visible={true}
-                  onClick={nextSplitStep}
-                >
-                  Continue
-                </button>
-              </div>
-            )}
-
-            {/* ── Personality ── */}
-            {phase === "personality" && (
-              <div className="onboarding-step-content">
-                <div className="onboarding-pills">
-                  {(["emotes", "emoji", "none"] as const).map((style) => (
-                    <button
-                      key={style}
-                      className="onboarding-pill"
-                      data-active={expressionStyle === style}
-                      onClick={() => {
-                        setExpressionStyle(style);
-                        const backendStyle =
-                          style === "none"
-                            ? ("none" as const)
-                            : ("emoji" as const);
-                        if (isAuthenticated) {
-                          saveExpressionStyle({ style: backendStyle }).catch(
-                            () => {
-                              // Expression style sync is best-effort only.
-                            },
-                          );
-                        }
-                      }}
-                    >
-                      {style.charAt(0).toUpperCase() + style.slice(1)}
-                    </button>
-                  ))}
-                </div>
-                {expressionStyle && (
-                  <p className="onboarding-personality-preview">
-                    {expressionStyle === "emotes" && (
-                      <>
-                        Got it! I'll get that done for you{" "}
-                        <img
-                          src="/emotes/assets/7tv/catNOD-7eeffb97edbf.webp"
-                          alt="catNOD"
-                          className="onboarding-emote-preview"
-                        />
-                      </>
-                    )}
-                    {expressionStyle === "emoji" &&
-                      "Got it! I'll get that done for you 😊"}
-                    {expressionStyle === "none" &&
-                      "Got it. I'll get that done for you."}
-                  </p>
-                )}
-                <button
-                  className="onboarding-confirm"
-                  data-visible={expressionStyle !== null}
-                  onClick={nextSplitStep}
-                >
-                  Finish
-                </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* Bottom nav bar — full width, outside split-right (high selfmod only) */}
@@ -1163,4 +1181,3 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     </div>
   );
 };
-
