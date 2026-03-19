@@ -12,6 +12,7 @@ type ScheduleHandlersOptions = {
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
+  getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
 };
 
 export const registerScheduleHandlers = (options: ScheduleHandlersOptions) => {
@@ -21,6 +22,7 @@ export const registerScheduleHandlers = (options: ScheduleHandlersOptions) => {
         window.webContents.send("schedule:updated");
       }
     }
+    options.getBroadcastToMobile?.()?.("schedule:updated", null);
   };
 
   options.schedulerService.subscribe(() => {
