@@ -71,6 +71,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     reload: () => ipcRenderer.send("app:reload"),
     hardReset: () =>
       ipcRenderer.invoke("app:hardResetLocalState") as Promise<{ ok: boolean }>,
+    morphStart: () =>
+      ipcRenderer.invoke("morph:start") as Promise<{ ok: boolean }>,
+    morphComplete: () =>
+      ipcRenderer.invoke("morph:complete") as Promise<{ ok: boolean }>,
   },
 
   capture: {

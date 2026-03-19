@@ -126,6 +126,8 @@ export type ElectronUiApi = {
   setAppReady: (ready: boolean) => void;
   reload: () => void;
   hardReset: () => Promise<{ ok: boolean }>;
+  morphStart: () => Promise<{ ok: boolean }>;
+  morphComplete: () => Promise<{ ok: boolean }>;
 };
 
 export type ElectronCaptureApi = {
