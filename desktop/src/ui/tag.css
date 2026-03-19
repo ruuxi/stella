@@ -3,7 +3,8 @@
   align-items: center;
   border-radius: var(--radius-sm, 4px);
   font-family: var(--font-family-sans, "Satoshi", sans-serif);
-  font-weight: 500;
+  font-weight: var(--font-family-sans--emphasis-weight, 400);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
   white-space: nowrap;
 }
 
