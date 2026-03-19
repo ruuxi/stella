@@ -7,6 +7,7 @@ import { corsPreflightHandler } from "./http_shared/cors";
 import { registerConnectorWebhookRoutes } from "./http_routes/connectors";
 import { registerGameRoutes } from "./http_routes/games";
 import { registerMediaRoutes } from "./http_routes/media";
+import { registerMobileRoutes } from "./http_routes/mobile";
 
 import { registerMusicRoutes } from "./http_routes/music";
 import { registerSkillRoutes } from "./http_routes/skills";
@@ -42,6 +43,7 @@ registerSkillRoutes(http);
 registerConnectorWebhookRoutes(http);
 registerMusicRoutes(http);
 registerMediaRoutes(http);
+registerMobileRoutes(http);
 registerVoiceRoutes(http);
 
 registerStripeRoutes(http);

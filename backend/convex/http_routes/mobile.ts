@@ -1,0 +1,474 @@
+import type { HttpRouter } from "convex/server";
+import { ConvexError } from "convex/values";
+import { generateText } from "ai";
+import { httpAction, type ActionCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
+import {
+  assertSensitiveSessionPolicyAction,
+  isAnonymousIdentity,
+} from "../auth";
+import { AGENT_IDS } from "../lib/agent_constants";
+import { createManagedModel, MANAGED_GATEWAY } from "../agent/model";
+import { resolveFallbackConfig, resolveModelConfig } from "../agent/model_resolver";
+import { usageSummaryFromResult } from "../agent/model_execution";
+import { OFFLINE_RESPONDER_SYSTEM_PROMPT } from "../prompts/offline_responder";
+import {
+  errorResponse,
+  jsonResponse,
+  withCors,
+  handleCorsRequest,
+  corsPreflightHandler,
+} from "../http_shared/cors";
+import { rateLimitResponse } from "../http_shared/webhook_controls";
+import {
+  resolveManagedModelAccess,
+  scheduleManagedUsage,
+} from "../lib/managed_billing";
+
+const OFFLINE_CHAT_RATE_LIMIT = 12;
+const OFFLINE_CHAT_RATE_WINDOW_MS = 60_000;
+const MAX_BASE_URLS = 8;
+const MAX_DEVICE_ID_LENGTH = 256;
+
+type AuthenticatedOwnerResult =
+  | { ownerId: string; name?: string; isAnonymous: boolean }
+  | { response: Response };
+
+const readConvexErrorCode = (error: unknown) => {
+  if (!(error instanceof ConvexError)) {
+    return null;
+  }
+  const data = error.data;
+  if (
+    data
+    && typeof data === "object"
+    && typeof (data as { code?: unknown }).code === "string"
+  ) {
+    return (data as { code: string }).code;
+  }
+  return null;
+};
+
+const readConvexErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof ConvexError) {
+    const data = error.data;
+    if (
+      data
+      && typeof data === "object"
+      && typeof (data as { message?: unknown }).message === "string"
+    ) {
+      return (data as { message: string }).message;
+    }
+  }
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+  return fallback;
+};
+
+const requireMobileAccountOwner = async (
+  ctx: ActionCtx,
+  origin: string | null,
+): Promise<AuthenticatedOwnerResult> => {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    return { response: errorResponse(401, "Unauthorized", origin) };
+  }
+  if (isAnonymousIdentity(identity)) {
+    return {
+      response: errorResponse(
+        403,
+        "Sign in with an account to use Stella mobile.",
+        origin,
+      ),
+    };
+  }
+
+  try {
+    await assertSensitiveSessionPolicyAction(ctx, identity);
+  } catch (error) {
+    return {
+      response: errorResponse(
+        401,
+        readConvexErrorMessage(error, "Unauthorized"),
+        origin,
+      ),
+    };
+  }
+
+  return {
+    ownerId: identity.subject,
+    name:
+      typeof identity.name === "string" && identity.name.trim().length > 0
+        ? identity.name.trim()
+        : undefined,
+    isAnonymous: false,
+  };
+};
+
+const normalizeDeviceId = (value: unknown) => {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().slice(0, MAX_DEVICE_ID_LENGTH);
+};
+
+const normalizePlatform = (value: unknown) => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed.slice(0, 64) : undefined;
+};
+
+const normalizeBaseUrls = (value: unknown) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const unique = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string") {
+      continue;
+    }
+    const trimmed = item.trim();
+    if (!trimmed) {
+      continue;
+    }
+    try {
+      const url = new URL(trimmed);
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        continue;
+      }
+      unique.add(url.toString().replace(/\/+$/, ""));
+    } catch {
+      continue;
+    }
+    if (unique.size >= MAX_BASE_URLS) {
+      break;
+    }
+  }
+
+  return Array.from(unique);
+};
+
+const generateOfflineReply = async (args: {
+  ctx: ActionCtx;
+  ownerId: string;
+  userName?: string;
+  message: string;
+  isAnonymous: boolean;
+}) => {
+  const modelAccess = await resolveManagedModelAccess(args.ctx, args.ownerId, {
+    isAnonymous: args.isAnonymous,
+  });
+  if (!modelAccess.allowed) {
+    throw new ConvexError({
+      code: "USAGE_LIMIT_REACHED",
+      message: modelAccess.message,
+    });
+  }
+
+  const primaryConfig = await resolveModelConfig(
+    args.ctx,
+    AGENT_IDS.OFFLINE_RESPONDER,
+    args.ownerId,
+    { access: modelAccess },
+  );
+  const fallbackConfig = await resolveFallbackConfig(
+    args.ctx,
+    AGENT_IDS.OFFLINE_RESPONDER,
+    args.ownerId,
+    { access: modelAccess },
+  );
+
+  const systemPrompt = [
+    OFFLINE_RESPONDER_SYSTEM_PROMPT,
+    "You are replying inside Stella's mobile offline chat.",
+    "Answer in plain text and keep the response practical and concise.",
+    args.userName ? `The user's name is ${args.userName}.` : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join("\n\n");
+
+  const execute = async (config: typeof primaryConfig) =>
+    await generateText({
+      model: createManagedModel(config.model),
+      system: systemPrompt,
+      messages: [{ role: "user", content: args.message }],
+      ...(config.maxOutputTokens !== undefined
+        ? { maxOutputTokens: config.maxOutputTokens }
+        : {}),
+      ...(config.temperature !== undefined
+        ? { temperature: config.temperature }
+        : {}),
+      ...(config.providerOptions ? { providerOptions: config.providerOptions } : {}),
+    });
+
+  const startedAt = Date.now();
+  let activeModel = primaryConfig.model;
+  let result;
+  try {
+    result = await execute(primaryConfig);
+  } catch (error) {
+    if (!fallbackConfig) {
+      throw error;
+    }
+    activeModel = fallbackConfig.model;
+    result = await execute(fallbackConfig);
+  }
+
+  await scheduleManagedUsage(args.ctx, {
+    ownerId: args.ownerId,
+    agentType: "service:offline_chat",
+    model: activeModel,
+    durationMs: Date.now() - startedAt,
+    success: true,
+    usage: usageSummaryFromResult(result),
+  });
+
+  const text = result.text?.trim();
+  return text || "I'm here, but I couldn't generate a reply right now.";
+};
+
+export const registerMobileRoutes = (http: HttpRouter) => {
+  for (const path of [
+    "/api/mobile/offline-chat",
+    "/api/mobile/desktop-bridge/register",
+    "/api/mobile/desktop-bridge/clear",
+    "/api/mobile/desktop-bridge/authorize",
+  ]) {
+    http.route({
+      path,
+      method: "OPTIONS",
+      handler: httpAction(async (_ctx, request) =>
+        corsPreflightHandler(request),
+      ),
+    });
+  }
+
+  http.route({
+    path: "/api/mobile/offline-chat",
+    method: "POST",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const owner = await requireMobileAccountOwner(ctx, origin);
+        if ("response" in owner) {
+          return owner.response;
+        }
+
+        const apiKey = process.env[MANAGED_GATEWAY.apiKeyEnvVar];
+        if (!apiKey) {
+          console.error(
+            `[mobile/offline-chat] Missing ${MANAGED_GATEWAY.apiKeyEnvVar}`,
+          );
+          return errorResponse(500, "Server configuration error", origin);
+        }
+
+        const rateLimit = await ctx.runMutation(
+          internal.rate_limits.consumeWebhookRateLimit,
+          {
+            scope: "mobile_offline_chat",
+            key: owner.ownerId,
+            limit: OFFLINE_CHAT_RATE_LIMIT,
+            windowMs: OFFLINE_CHAT_RATE_WINDOW_MS,
+            blockMs: OFFLINE_CHAT_RATE_WINDOW_MS,
+          },
+        );
+        if (!rateLimit.allowed) {
+          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+        }
+
+        let body: { message?: unknown } | null = null;
+        try {
+          body = (await request.json()) as { message?: unknown };
+        } catch {
+          return errorResponse(400, "Invalid JSON body", origin);
+        }
+
+        const message =
+          typeof body?.message === "string" ? body.message.trim() : "";
+        if (!message) {
+          return errorResponse(400, "message is required", origin);
+        }
+
+        try {
+          const text = await generateOfflineReply({
+            ctx,
+            ownerId: owner.ownerId,
+            userName: owner.name,
+            message,
+            isAnonymous: owner.isAnonymous,
+          });
+          return jsonResponse({ text }, 200, origin);
+        } catch (error) {
+          console.error("[mobile/offline-chat] Error:", error);
+          const status =
+            readConvexErrorCode(error) === "USAGE_LIMIT_REACHED" ? 429 : 500;
+          return errorResponse(
+            status,
+            readConvexErrorMessage(error, "Offline chat failed"),
+            origin,
+          );
+        }
+      }),
+    ),
+  });
+
+  http.route({
+    path: "/api/mobile/desktop-bridge",
+    method: "GET",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const owner = await requireMobileAccountOwner(ctx, origin);
+        if ("response" in owner) {
+          return owner.response;
+        }
+
+        const registration = await ctx.runQuery(
+          internal.mobile_bridge.getLatestRegistrationForOwner,
+          { ownerId: owner.ownerId },
+        );
+        if (!registration) {
+          return jsonResponse(
+            {
+              available: false,
+              baseUrls: [],
+              platform: null,
+              updatedAt: null,
+            },
+            200,
+            origin,
+          );
+        }
+
+        return jsonResponse(
+          {
+            available: registration.available,
+            baseUrls: registration.available ? registration.baseUrls : [],
+            platform: registration.platform ?? null,
+            updatedAt: registration.updatedAt,
+          },
+          200,
+          origin,
+        );
+      }),
+    ),
+  });
+
+  http.route({
+    path: "/api/mobile/desktop-bridge/register",
+    method: "POST",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const owner = await requireMobileAccountOwner(ctx, origin);
+        if ("response" in owner) {
+          return owner.response;
+        }
+
+        let body:
+          | {
+              deviceId?: unknown;
+              baseUrls?: unknown;
+              platform?: unknown;
+            }
+          | null = null;
+        try {
+          body = (await request.json()) as {
+            deviceId?: unknown;
+            baseUrls?: unknown;
+            platform?: unknown;
+          };
+        } catch {
+          return errorResponse(400, "Invalid JSON body", origin);
+        }
+
+        const deviceId = normalizeDeviceId(body?.deviceId);
+        const baseUrls = normalizeBaseUrls(body?.baseUrls);
+        const platform = normalizePlatform(body?.platform);
+        if (!deviceId || baseUrls.length === 0) {
+          return errorResponse(400, "deviceId and baseUrls are required", origin);
+        }
+
+        await ctx.runMutation(internal.mobile_bridge.upsertRegistration, {
+          ownerId: owner.ownerId,
+          deviceId,
+          baseUrls,
+          updatedAt: Date.now(),
+          ...(platform ? { platform } : {}),
+        });
+
+        return jsonResponse({ ok: true }, 200, origin);
+      }),
+    ),
+  });
+
+  http.route({
+    path: "/api/mobile/desktop-bridge/clear",
+    method: "POST",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const owner = await requireMobileAccountOwner(ctx, origin);
+        if ("response" in owner) {
+          return owner.response;
+        }
+
+        let body: { deviceId?: unknown } | null = null;
+        try {
+          body = (await request.json()) as { deviceId?: unknown };
+        } catch {
+          return errorResponse(400, "Invalid JSON body", origin);
+        }
+
+        const deviceId = normalizeDeviceId(body?.deviceId);
+        if (!deviceId) {
+          return errorResponse(400, "deviceId is required", origin);
+        }
+
+        await ctx.runMutation(internal.mobile_bridge.clearRegistration, {
+          ownerId: owner.ownerId,
+          deviceId,
+        });
+        return jsonResponse({ ok: true }, 200, origin);
+      }),
+    ),
+  });
+
+  http.route({
+    path: "/api/mobile/desktop-bridge/authorize",
+    method: "POST",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const owner = await requireMobileAccountOwner(ctx, origin);
+        if ("response" in owner) {
+          return owner.response;
+        }
+
+        let body: { deviceId?: unknown } | null = null;
+        try {
+          body = (await request.json()) as { deviceId?: unknown };
+        } catch {
+          return errorResponse(400, "Invalid JSON body", origin);
+        }
+
+        const deviceId = normalizeDeviceId(body?.deviceId);
+        if (!deviceId) {
+          return errorResponse(400, "deviceId is required", origin);
+        }
+
+        const registration = await ctx.runQuery(
+          internal.mobile_bridge.getRegistrationForOwnerDevice,
+          {
+            ownerId: owner.ownerId,
+            deviceId,
+          },
+        );
+        if (!registration?.available) {
+          return errorResponse(403, "Desktop bridge is unavailable", origin);
+        }
+
+        return jsonResponse({ ok: true }, 200, origin);
+      }),
+    ),
+  });
+};
