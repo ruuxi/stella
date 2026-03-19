@@ -41,6 +41,7 @@ const OnboardingCanvas = lazy(() =>
     default: m.OnboardingCanvas,
   })),
 );
+// Note: OnboardingCanvas itself no longer lazy-loads demo panels — they're direct imports
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
@@ -52,7 +53,9 @@ export const FullShell = () => {
   const orbRef = useRef<FloatingOrbHandle>(null);
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
+  const [demoMorphing, setDemoMorphing] = useState(false);
   const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeDemoRef = useRef<OnboardingDemo>(null);
   const [activeDialog, setActiveDialog] = useState<DialogType>(null);
   const onboarding = useOnboardingOverlay();
   const { projects, pickProjectDirectory } = useDevProjects();
@@ -165,9 +168,14 @@ export const FullShell = () => {
 
       setDemoClosing(false);
       setActiveDemo(demo);
+      activeDemoRef.current = demo;
       return;
     }
 
+    // Skip if already closed
+    if (activeDemoRef.current === null) return;
+
+    activeDemoRef.current = null;
     setActiveDemo(null);
     setDemoClosing(true);
     demoCloseTimerRef.current = setTimeout(() => {
@@ -307,6 +315,7 @@ export const FullShell = () => {
           <div
             className="onboarding-layout"
             data-split={onboarding.splitMode || undefined}
+            data-demo={showOnboardingDemos || undefined}
           >
             <OnboardingView
               hasExpanded={onboarding.hasExpanded}
@@ -324,14 +333,17 @@ export const FullShell = () => {
               onDiscoveryConfirm={handleDiscoveryConfirm}
               onSelectionChange={onboarding.setHasDiscoverySelections}
               onDemoChange={handleDemoChange}
+              activeDemo={activeDemo}
+              demoMorphing={demoMorphing}
             />
             <div
               className="onboarding-demo-area"
               data-visible={showOnboardingDemos ? true : undefined}
+              data-closing={demoClosing || undefined}
               aria-hidden={!showOnboardingDemos}
             >
               <Suspense fallback={null}>
-                <OnboardingCanvas activeDemo={activeDemo} />
+                <OnboardingCanvas activeDemo={activeDemo} onMorphStateChange={setDemoMorphing} />
               </Suspense>
             </div>
           </div>

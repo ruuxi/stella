@@ -1,66 +1,98 @@
-import React, { Suspense, lazy, useState, useEffect } from "react";
-import { Spinner } from "@/ui/spinner";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { DJStudio } from "./panels/DJStudioDemo";
+import { WeatherStation } from "./panels/WeatherStationDemo";
+import { CozyCatDemo } from "./panels/CozyCatDemo";
+import { StellaAppMock } from "./panels/StellaAppMock";
 
-const DJStudioDemo = lazy(() =>
-  import("./panels/DJStudioDemo").then((m) => ({ default: m.DJStudio })),
-);
-const WeatherStationDemo = lazy(() =>
-  import("./panels/WeatherStationDemo").then((m) => ({
-    default: m.WeatherStation,
-  })),
-);
+export type OnboardingDemo = "default" | "modern" | "dj-studio" | "weather-station" | "cozy-cat" | null;
 
-export type OnboardingDemo = "dj-studio" | "weather-station" | null;
-
-const ANIM_DURATION = 350;
+/** Delay after React swap to let the new demo paint before capturing */
+const PAINT_SETTLE_MS = 120;
+const CSS_MORPH_MS = 450;
 
 interface OnboardingCanvasProps {
   activeDemo: OnboardingDemo;
+  onMorphStateChange?: (morphing: boolean) => void;
 }
 
-export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({ activeDemo }) => {
-  const [renderedDemo, setRenderedDemo] = useState<OnboardingDemo>(activeDemo);
-  const [visible, setVisible] = useState(false);
+export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({ activeDemo, onMorphStateChange }) => {
+  const [displayedDemo, setDisplayedDemo] = useState<OnboardingDemo>(activeDemo);
+  const [cssMorphing, setCssMorphing] = useState(false);
+  const morphInFlightRef = useRef(false);
+  const pendingDemoRef = useRef<OnboardingDemo>(null);
 
-  useEffect(() => {
-    if (activeDemo) {
-      // Trigger open animation next frame
-      const frame = requestAnimationFrame(() => {
-        setRenderedDemo(activeDemo);
-        setVisible(true);
-      });
-      return () => cancelAnimationFrame(frame);
-    }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- close state must be applied immediately to start the exit animation.
-    setVisible(false);
-  }, [activeDemo]);
-
-  useEffect(() => {
-    if (activeDemo || !renderedDemo) {
+  const runMorph = useCallback(async (nextDemo: OnboardingDemo) => {
+    if (morphInFlightRef.current) {
+      pendingDemoRef.current = nextDemo;
       return;
     }
-    const timer = setTimeout(() => {
-      setRenderedDemo(null);
-    }, ANIM_DURATION);
-    return () => clearTimeout(timer);
-  }, [activeDemo, renderedDemo]);
+    morphInFlightRef.current = true;
+    // Block tile clicks immediately
+    onMorphStateChange?.(true);
 
-  const demo = activeDemo || renderedDemo;
-  const closing = !activeDemo && renderedDemo !== null;
+    const morphApi = window.electronAPI?.ui;
+    const canMorph = typeof morphApi?.morphStart === "function";
 
-  if (!demo) return null;
+    if (canMorph) {
+      // Electron path — overlay handles visuals, no CSS morph needed
+      const started = await morphApi.morphStart();
+
+      if (started?.ok) {
+        setDisplayedDemo(nextDemo);
+        await new Promise((r) => setTimeout(r, PAINT_SETTLE_MS));
+        await morphApi.morphComplete();
+      } else {
+        // Overlay failed — fall back to CSS morph
+        setCssMorphing(true);
+        await new Promise<void>((resolve) => {
+          setTimeout(() => setDisplayedDemo(nextDemo), 200);
+          setTimeout(resolve, CSS_MORPH_MS);
+        });
+        setCssMorphing(false);
+      }
+    } else {
+      // No Electron API — CSS fallback
+      setCssMorphing(true);
+      await new Promise<void>((resolve) => {
+        setTimeout(() => setDisplayedDemo(nextDemo), 200);
+        setTimeout(resolve, CSS_MORPH_MS);
+      });
+      setCssMorphing(false);
+    }
+
+    morphInFlightRef.current = false;
+    onMorphStateChange?.(false);
+
+    // Process any queued request
+    const pending = pendingDemoRef.current;
+    pendingDemoRef.current = null;
+    if (pending !== null && pending !== nextDemo) {
+      void runMorph(pending);
+    }
+  }, [onMorphStateChange]);
+
+  useEffect(() => {
+    if (activeDemo === displayedDemo) return;
+
+    if (!activeDemo || !displayedDemo) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- immediate swap on phase enter/exit, no cascading render risk
+      setDisplayedDemo(activeDemo);
+      return;
+    }
+
+    void runMorph(activeDemo);
+  }, [activeDemo, displayedDemo, runMorph]);
+
+  if (!displayedDemo) return null;
 
   return (
-    <div className={`onboarding-canvas ${visible ? "onboarding-canvas-open" : ""} ${closing ? "onboarding-canvas-closing" : ""}`}>
-      <Suspense fallback={
-        <div className="onboarding-canvas-loading">
-          <Spinner />
-        </div>
-      }>
-        {demo === "dj-studio" && <DJStudioDemo />}
-        {demo === "weather-station" && <WeatherStationDemo />}
-      </Suspense>
+    <div className={`onboarding-canvas ${cssMorphing ? "onboarding-canvas-morphing" : ""}`}>
+      {(displayedDemo === "default" || displayedDemo === "modern") && (
+        <StellaAppMock variant={displayedDemo} />
+      )}
+      {displayedDemo === "dj-studio" && <DJStudio />}
+      {displayedDemo === "weather-station" && <WeatherStation />}
+      {displayedDemo === "cozy-cat" && <CozyCatDemo />}
     </div>
   );
 };
-

@@ -14,6 +14,7 @@ import {
 import { OnboardingStep1 } from "@/global/onboarding/OnboardingStep1";
 import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 
 const CREATURE_INITIAL_SIZE = 0.22;
 
@@ -179,6 +180,8 @@ export function OnboardingView({
   onDiscoveryConfirm,
   onSelectionChange,
   onDemoChange,
+  activeDemo,
+  demoMorphing,
 }: {
   hasExpanded: boolean;
   onboardingDone: boolean;
@@ -194,7 +197,9 @@ export function OnboardingView({
   handleEnterSplit: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
   onSelectionChange?: (hasSelections: boolean) => void;
-  onDemoChange?: (demo: "dj-studio" | "weather-station" | null) => void;
+  onDemoChange?: (demo: "default" | "modern" | "dj-studio" | "weather-station" | "cozy-cat" | null) => void;
+  activeDemo?: OnboardingDemo;
+  demoMorphing?: boolean;
 }) {
   return (
     <div className="new-session-view" data-split={splitMode} data-exiting={onboardingExiting || undefined}>
@@ -205,22 +210,17 @@ export function OnboardingView({
         Stella
       </div>
       <div
-        onClick={() => {
-          triggerFlash();
-          if (!hasExpanded) {
-            startBirthAnimation();
-          }
-        }}
+        onClick={hasExpanded ? triggerFlash : undefined}
         className="onboarding-stella-animation"
         data-expanded={hasExpanded ? "true" : "false"}
         data-split={splitMode}
         data-has-selections={hasDiscoverySelections || undefined}
-        title={!hasExpanded ? "Click to awaken" : undefined}
+        data-demo-active={activeDemo || undefined}
       >
         <StellaAnimation
           ref={stellaAnimationRef}
-          width={100}
-          height={56}
+          width={70}
+          height={39}
           initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}
         />
       </div>
@@ -234,6 +234,7 @@ export function OnboardingView({
           onEnterSplit={handleEnterSplit}
           onSelectionChange={onSelectionChange}
           onDemoChange={onDemoChange}
+          demoMorphing={demoMorphing}
           isAuthenticated={isAuthenticated}
         />
       )}

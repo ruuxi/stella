@@ -149,14 +149,13 @@
 .onboarding-demo-area {
   position: absolute;
   top: 0;
-  right: 0;
   bottom: 0;
+  right: 0;
   width: 50%;
   min-width: 0;
   min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
   overflow: hidden;
   opacity: 0;
   transform: translateX(32px);
@@ -164,13 +163,30 @@
   z-index: 4;
   transition:
     opacity 0.35s ease,
-    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    left 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    right 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .onboarding-demo-area[data-visible="true"] {
   opacity: 1;
   transform: translateX(0);
   pointer-events: auto;
+}
+
+/* Fade demo in place before removing data-visible */
+.onboarding-demo-area[data-visible][data-closing] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Full-screen demo: expand to fill left side (where Stella was) */
+.onboarding-layout[data-demo] .onboarding-demo-area[data-visible="true"] {
+  left: 0;
+  right: auto;
+  width: calc(100% - 320px);
+  transform: translateX(0);
 }
 
 .content-area {
@@ -312,8 +328,8 @@
   transform: translate(-50%, -50%);
   z-index: 5;
   width: 100%;
-  height: 50%;
-  max-width: 900px;
+  height: 35%;
+  max-width: 630px;
   cursor: pointer;
   transition:
     top 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
@@ -331,8 +347,8 @@
 .onboarding-stella-animation[data-split="true"] {
   left: 25%;
   top: 45%;
-  max-width: 400px;
-  height: 30%;
+  max-width: 280px;
+  height: 21%;
   transform: translate(-50%, -50%) scale(1);
   transition:
     top 0.6s cubic-bezier(0.25, 0.1, 0.25, 1),
@@ -345,6 +361,19 @@
 /* With selections: shift animation up to make room for mock windows */
 .onboarding-stella-animation[data-split="true"][data-has-selections] {
   top: 18%;
+}
+
+/* Fade Stella when a full demo is active */
+.onboarding-stella-animation[data-demo-active] {
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.5s ease,
+    top 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+    left 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+    transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+    max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
+    height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .onboarding-signin {

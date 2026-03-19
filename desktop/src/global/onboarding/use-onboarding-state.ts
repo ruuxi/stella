@@ -21,12 +21,12 @@ export const CENTER_PHASES = new Set<Phase>(["start", "auth", "intro"]);
 
 /** Phases that use split layout */
 export const SPLIT_PHASES = new Set<Phase>([
-  "browser", "memory", "creation", "voice", "theme", "personality",
+  "browser", "creation", "voice", "theme", "personality",
 ]);
 
 /** Ordered split steps for navigation */
 export const SPLIT_STEP_ORDER: Phase[] = [
-  "browser", "memory", "creation", "voice", "theme", "personality",
+  "browser", "creation", "voice", "theme", "personality",
 ];
 
 export const DISCOVERY_CATEGORIES: {
@@ -61,7 +61,8 @@ export interface OnboardingStep1Props {
   onConfirmTheme?: () => void;
   onDiscoveryConfirm?: (categories: DiscoveryCategory[]) => void;
   onEnterSplit?: () => void;
-  onDemoChange?: (demo: "dj-studio" | "weather-station" | null) => void;
+  onDemoChange?: (demo: "default" | "modern" | "dj-studio" | "weather-station" | "cozy-cat" | null) => void;
+  demoMorphing?: boolean;
   onSelectionChange?: (hasSelections: boolean) => void;
   themeConfirmed?: boolean;
   hasSelectedTheme?: boolean;
