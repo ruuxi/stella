@@ -346,6 +346,18 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     }
   };
 
+  const prevSplitStep = () => {
+    const idx = SPLIT_STEP_ORDER.indexOf(phase);
+    if (idx > 0) {
+      onInteract?.();
+      transitionTo(SPLIT_STEP_ORDER[idx - 1]);
+    }
+  };
+
+  const splitStepIndex = SPLIT_STEP_ORDER.indexOf(phase);
+  const canGoPrev = splitStepIndex > 0;
+  const canGoNext = splitStepIndex < SPLIT_STEP_ORDER.length - 1;
+
   // Complete
   useEffect(() => {
     if (phase === "complete") {
@@ -944,6 +956,32 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Bottom-right phase nav chevrons */}
+          <div className="onboarding-phase-nav">
+            <button
+              type="button"
+              className="onboarding-phase-nav-btn"
+              disabled={!canGoPrev}
+              onClick={prevSplitStep}
+              aria-label="Previous step"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="onboarding-phase-nav-btn"
+              disabled={!canGoNext}
+              onClick={nextSplitStep}
+              aria-label="Next step"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </button>
           </div>
 
         </>
