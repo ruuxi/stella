@@ -307,7 +307,6 @@ export const FullShell = () => {
           <div
             className="onboarding-layout"
             data-split={onboarding.splitMode || undefined}
-            data-has-demo={showOnboardingDemos || undefined}
           >
             <OnboardingView
               hasExpanded={onboarding.hasExpanded}
@@ -328,7 +327,7 @@ export const FullShell = () => {
             />
             <div
               className="onboarding-demo-area"
-              data-visible={showOnboardingDemos || undefined}
+              data-visible={showOnboardingDemos ? true : undefined}
               aria-hidden={!showOnboardingDemos}
             >
               <Suspense fallback={null}>
