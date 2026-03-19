@@ -38,27 +38,20 @@ const STEP_TITLES: Partial<Record<Phase, string>> = {
   personality: "How should I talk?",
 };
 
-/* ── Creation conversation steps ── */
-const CREATION_STEPS = [
-  {
-    userText: "Make me a beat maker",
-    stellaReply: "Here — I built you a step sequencer.",
-    action: "djstudio" as const,
-  },
-  {
-    userText: "Show me live weather",
-    stellaReply: "Here — live weather, updating in real time.",
-    action: "weather" as const,
-  },
-  {
-    userText: "Can you modify yourself?",
-    stellaReply:
-      "I can modify myself, self-improve, learn skills, and even change how everything looks on your screen.",
-    action: "selfmod" as const,
-  },
+/* ── Showcase options for creation phase ── */
+type ShowcaseId = "modern" | "cozy-cat" | "dj-studio" | "weather";
+
+const SHOWCASE_OPTIONS: {
+  id: ShowcaseId;
+  label: string;
+  description: string;
+}[] = [
+  { id: "modern", label: "Modernize the chat", description: "Glass effects, blue accents, refined layout" },
+  { id: "cozy-cat", label: "Give everything a cozy cat theme", description: "A complete theme overhaul" },
+  { id: "dj-studio", label: "Build me a beat maker", description: "A full step sequencer with synths" },
+  { id: "weather", label: "Live weather dashboard", description: "Real-time weather with animations" },
 ];
-const preloadDjStudioDemo = () => import("./panels/DJStudioDemo");
-const preloadWeatherStationDemo = () => import("./panels/WeatherStationDemo");
+
 
 export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   onComplete,
@@ -68,20 +61,13 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   onEnterSplit,
   onSelectionChange,
   onDemoChange,
+  demoMorphing,
   isAuthenticated,
 }) => {
   const [phase, setPhase] = useState<Phase>("start");
   const [leaving, setLeaving] = useState(false);
   const [rippleActive, setRippleActive] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const chatReplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const selfmodFadeSwapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const selfmodFadeCleanupTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-  const selfmodExitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Browser selection
   const [browserEnabled, setBrowserEnabled] = useState(false);
@@ -97,7 +83,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
   const [showNoneWarning, setShowNoneWarning] = useState(false);
   const [activeMockId, setActiveMockId] = useState<string | null>(null);
-  const [homeHovered, setHomeHovered] = useState(false);
   const [voicePermissionGranted, setVoicePermissionGranted] = useState<
     boolean | null
   >(null);
@@ -131,92 +116,25 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     api.data.preferences.setPreferredBrowser,
   );
 
-  // Phone — hover reveal
+  // Creation showcase
+  const [activeShowcase, setActiveShowcase] = useState<ShowcaseId | null>(null);
 
-  // Creation conversation — mock chat that opens onboarding demo panels
-  type ChatMsg = { role: "stella" | "user"; text: string };
-  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([
-    {
-      role: "stella",
-      text: "Anything you need, I can make it — apps, live dashboards, creative tools, things that appear right here while we talk. And I\u2019m not static. I can learn new abilities, change how I work, and even completely redesign my own interface. The way I look, the way I behave, what I can do — you shape all of it.",
+  const handleShowcaseSelect = useCallback(
+    (id: ShowcaseId) => {
+      if (demoMorphing) return;
+
+      const next = activeShowcase === id ? null : id;
+      setActiveShowcase(next);
+
+      // Map to demo (morph animation handled by OnboardingCanvas)
+      if (next === null) onDemoChange?.("default");
+      else if (next === "modern") onDemoChange?.("modern");
+      else if (next === "dj-studio") onDemoChange?.("dj-studio");
+      else if (next === "weather") onDemoChange?.("weather-station");
+      else if (next === "cozy-cat") onDemoChange?.("cozy-cat");
     },
-  ]);
-  const [chatStep, setChatStep] = useState(0);
-  const [chatTyping, setChatTyping] = useState(false);
-  const chatScrollRef = useRef<HTMLDivElement>(null);
-  const [selfmodLevel, setSelfmodLevel] = useState<
-    "low" | "medium" | "high" | null
-  >(null);
-  const [lastActiveSelfmodLevel, setLastActiveSelfmodLevel] = useState<
-    "low" | "medium" | "high" | null
-  >(null);
-  const [selfmodIsFading, setSelfmodIsFading] = useState(false);
-
-  const clearChatReplyTimer = useCallback(() => {
-    if (chatReplyTimerRef.current) {
-      clearTimeout(chatReplyTimerRef.current);
-      chatReplyTimerRef.current = null;
-    }
-  }, []);
-
-  const clearSelfmodFadeTimers = useCallback(() => {
-    if (selfmodFadeSwapTimerRef.current) {
-      clearTimeout(selfmodFadeSwapTimerRef.current);
-      selfmodFadeSwapTimerRef.current = null;
-    }
-    if (selfmodFadeCleanupTimerRef.current) {
-      clearTimeout(selfmodFadeCleanupTimerRef.current);
-      selfmodFadeCleanupTimerRef.current = null;
-    }
-  }, []);
-
-  const clearSelfmodExitTimer = useCallback(() => {
-    if (selfmodExitTimer.current) {
-      clearTimeout(selfmodExitTimer.current);
-      selfmodExitTimer.current = null;
-    }
-  }, []);
-
-  const applySelfmodLevel = useCallback(
-    (nextLevel: "low" | "medium" | "high" | null) => {
-      if (nextLevel) {
-        setLastActiveSelfmodLevel(nextLevel);
-      }
-      setSelfmodLevel(nextLevel);
-    },
-    [],
+    [activeShowcase, demoMorphing, onDemoChange],
   );
-
-  const handleChatSend = useCallback(() => {
-    if (chatStep >= CREATION_STEPS.length || chatTyping) return;
-    const step = CREATION_STEPS[chatStep];
-    setChatMessages((prev) => [...prev, { role: "user", text: step.userText }]);
-    setChatTyping(true);
-    clearChatReplyTimer();
-    chatReplyTimerRef.current = setTimeout(() => {
-      setChatMessages((prev) => [
-        ...prev,
-        { role: "stella", text: step.stellaReply },
-      ]);
-      setChatTyping(false);
-      setChatStep((prev) => prev + 1);
-      chatReplyTimerRef.current = null;
-      if (step.action === "djstudio") {
-        onDemoChange?.("dj-studio");
-      } else if (step.action === "weather") {
-        onDemoChange?.("weather-station");
-      } else {
-        onDemoChange?.(null);
-      }
-    }, 700);
-  }, [chatStep, chatTyping, clearChatReplyTimer, onDemoChange]);
-
-  // Auto-scroll chat to bottom
-  useEffect(() => {
-    if (chatScrollRef.current) {
-      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-    }
-  }, [chatMessages, chatTyping]);
 
   // Hide real sidebar during onboarding
   useEffect(() => {
@@ -226,68 +144,17 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
     return () => shell.removeAttribute("data-onboarding");
   }, []);
 
-  // Fade-through when transitioning to/from "high" (layout changes can't CSS-transition)
-  const handleSelfmodLevel = useCallback(
-    (next: "low" | "medium" | "high" | null) => {
-      const prev = selfmodLevel;
-      if (next === prev) next = null; // toggle off
-
-      const needsFade = prev === "high" || next === "high";
-      if (!needsFade) {
-        clearSelfmodFadeTimers();
-        setSelfmodIsFading(false);
-        applySelfmodLevel(next);
-        return;
-      }
-
-      if (selfmodIsFading) {
-        return;
-      }
-
-      setSelfmodIsFading(true);
-      clearSelfmodFadeTimers();
-      selfmodFadeSwapTimerRef.current = setTimeout(() => {
-        applySelfmodLevel(next);
-        selfmodFadeCleanupTimerRef.current = setTimeout(() => {
-          setSelfmodIsFading(false);
-        }, 50);
-      }, 300);
-    },
-    [applySelfmodLevel, clearSelfmodFadeTimers, selfmodIsFading, selfmodLevel],
-  );
-
-  // Apply/remove selfmod demo on the onboarding surface only.
+  // Show default demo when entering creation phase, close when leaving
   useEffect(() => {
-    const selfmodExiting =
-      !(phase === "creation" && selfmodLevel) &&
-      Boolean(lastActiveSelfmodLevel);
-
-    if (!selfmodExiting) {
-      clearSelfmodExitTimer();
-      return;
-    }
-
-    selfmodExitTimer.current = setTimeout(() => {
-      setLastActiveSelfmodLevel(null);
-      selfmodExitTimer.current = null;
-    }, 600);
-
-    return clearSelfmodExitTimer;
-  }, [clearSelfmodExitTimer, lastActiveSelfmodLevel, phase, selfmodLevel]);
-
-  // Close demo panel when leaving creation phase
-  useEffect(() => {
-    if (phase !== "creation") {
+    if (phase === "creation" && !leaving) {
+      onDemoChange?.("default");
+    } else {
       onDemoChange?.(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- phase change must reset showcase state immediately
+      setActiveShowcase(null);
     }
-  }, [phase, onDemoChange]);
+  }, [phase, leaving, onDemoChange]);
 
-  // Preload creation demo chunks before users open them.
-  useEffect(() => {
-    if (phase !== "creation") return;
-    void preloadDjStudioDemo();
-    void preloadWeatherStationDemo();
-  }, [phase]);
 
   // Theme (inline)
   const { themeId, themes, colorMode, gradientMode, gradientColor } =
@@ -444,16 +311,8 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   useEffect(() => {
     return () => {
       clearTimeoutRef();
-      clearChatReplyTimer();
-      clearSelfmodFadeTimers();
-      clearSelfmodExitTimer();
     };
-  }, [
-    clearChatReplyTimer,
-    clearSelfmodExitTimer,
-    clearSelfmodFadeTimers,
-    clearTimeoutRef,
-  ]);
+  }, [clearTimeoutRef]);
 
   /* ── Discovery confirm ── */
   const handleDiscoveryConfirm = () => {
@@ -524,11 +383,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   const isSplit = SPLIT_PHASES.has(phase);
   const isComplete = phase === "complete";
-  const selfmodActive = phase === "creation" && Boolean(selfmodLevel);
-  const renderedSelfmodLevel = selfmodActive
-    ? selfmodLevel
-    : lastActiveSelfmodLevel;
-  const selfmodExiting = !selfmodActive && Boolean(lastActiveSelfmodLevel);
 
   const sortedThemes = [...themes].sort((a, b) => a.name.localeCompare(b.name));
   const platform = getPlatform();
@@ -560,9 +414,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
       className={`onboarding-dialogue ${isSplit ? "onboarding-dialogue--split" : ""}`}
       data-phase={phase}
       data-leaving={leaving}
-      data-selfmod-demo={renderedSelfmodLevel ?? undefined}
-      data-selfmod-fading={selfmodIsFading || undefined}
-      data-selfmod-exiting={selfmodExiting || undefined}
       style={{ display: isComplete ? "none" : undefined }}
     >
       {/* ════ CENTER PHASES ════ */}
@@ -745,46 +596,28 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                 </div>
               )}
 
-              {/* ── Memory + Reach ── */}
-              {phase === "memory" && (
+              {/* ── Creation (showcase grid) ── */}
+              {phase === "creation" && (
                 <div className="onboarding-step-content">
-                  <div className="onboarding-section-title">
-                    I'm always here, and I never forget.
-                  </div>
                   <p className="onboarding-step-desc">
-                    We don't have separate conversations. You can talk to me
-                    about anything, anytime, and I'll remember.
-                  </p>
-                  <p className="onboarding-step-desc">
-                    No starting over. No repeating yourself.
+                    Try selecting any of these — each one happens live.
                   </p>
 
-                  <div className="onboarding-section-title">
-                    You can reach me anywhere.
+                  <div className="onboarding-showcase-grid" style={demoMorphing ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
+                    {SHOWCASE_OPTIONS.map((opt) => (
+                      <OnboardingSelectionTile
+                        key={opt.id}
+                        className="onboarding-showcase-tile"
+                        labelClassName="onboarding-showcase-tile-label"
+                        descriptionClassName="onboarding-showcase-tile-desc"
+                        active={activeShowcase === opt.id}
+                        onClick={() => handleShowcaseSelect(opt.id)}
+                        label={opt.label}
+                        description={opt.description}
+                      />
+                    ))}
                   </div>
-                  <p className="onboarding-step-desc">
-                    You can message me from your phone. If your computer is on,
-                    I can take action on it for you.
-                  </p>
-                  <p className="onboarding-step-desc">
-                    If your computer is off, I'll still respond, but I can't act
-                    unless you give me{" "}
-                    <span
-                      className="onboarding-inline-link"
-                      onMouseEnter={() => setHomeHovered(true)}
-                      onMouseLeave={() => setHomeHovered(false)}
-                    >
-                      another home
-                    </span>
-                    .
-                  </p>
-                  <p
-                    className="onboarding-home-hint"
-                    data-visible={homeHovered}
-                  >
-                    You can get me a server so I have another home and I'm
-                    always on.
-                  </p>
+
                   <button
                     className="onboarding-confirm"
                     data-visible={true}
@@ -792,115 +625,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                   >
                     Continue
                   </button>
-                </div>
-              )}
-
-              {/* ── Creation (mock conversation with mimicked sidebar) ── */}
-              {phase === "creation" && (
-                <div className="onboarding-step-content onboarding-creation-chat">
-                  <div className="onboarding-mock-app">
-                    {/* Mock main area */}
-                    <div className="onboarding-mock-main">
-                      <div
-                        className="onboarding-chat-messages"
-                        ref={chatScrollRef}
-                      >
-                        {chatMessages.map((msg, i) => (
-                          <div
-                            key={i}
-                            className={`onboarding-chat-msg onboarding-chat-msg--${msg.role}`}
-                          >
-                            <span className="onboarding-chat-bubble">
-                              {msg.text}
-                            </span>
-                          </div>
-                        ))}
-                        {chatTyping && (
-                          <div className="onboarding-chat-msg onboarding-chat-msg--stella">
-                            <span className="onboarding-chat-typing">
-                              <span />
-                              <span />
-                              <span />
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="onboarding-chat-composer">
-                        <span key={chatStep} className="onboarding-chat-input">
-                          {chatStep < CREATION_STEPS.length
-                            ? CREATION_STEPS[chatStep].userText
-                            : "Ask me anything..."}
-                        </span>
-                        <button
-                          className="onboarding-chat-send"
-                          onClick={handleChatSend}
-                          disabled={
-                            chatTyping || chatStep >= CREATION_STEPS.length
-                          }
-                          data-hidden={
-                            chatStep >= CREATION_STEPS.length || undefined
-                          }
-                        >
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M12 19V5M5 12l7-7 7 7" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Selfmod controls — always rendered, CSS grid animates reveal */}
-                  <div
-                    className="onboarding-creation-controls"
-                    data-visible={
-                      chatStep >= CREATION_STEPS.length || undefined
-                    }
-                  >
-                    <div className="onboarding-creation-controls-inner">
-                      <div className="onboarding-chat-selfmod">
-                        <div className="onboarding-selfmod-levels">
-                          <OnboardingSelectionTile
-                            className="onboarding-selfmod-level"
-                            labelClassName="onboarding-selfmod-level-label"
-                            active={selfmodLevel === "low"}
-                            onClick={() => handleSelfmodLevel("low")}
-                            label={`"Make my messages blue"`}
-                          />
-                          <OnboardingSelectionTile
-                            className="onboarding-selfmod-level"
-                            labelClassName="onboarding-selfmod-level-label"
-                            active={selfmodLevel === "medium"}
-                            onClick={() => handleSelfmodLevel("medium")}
-                            label={`"Make the chat feel more modern"`}
-                          />
-                          <OnboardingSelectionTile
-                            className="onboarding-selfmod-level"
-                            labelClassName="onboarding-selfmod-level-label"
-                            active={selfmodLevel === "high"}
-                            onClick={() => handleSelfmodLevel("high")}
-                            label={`"Give everything a cozy cat theme"`}
-                          />
-                        </div>
-                      </div>
-                      <button
-                        className="onboarding-confirm"
-                        data-visible={chatStep >= CREATION_STEPS.length}
-                        onClick={nextSplitStep}
-                      >
-                        Continue
-                      </button>
-                    </div>
-                  </div>
                 </div>
               )}
 
@@ -1106,76 +830,6 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
             </div>
           </div>
 
-          {/* Bottom nav bar — full width, outside split-right (high selfmod only) */}
-          {phase === "creation" && selfmodLevel === "high" && (
-            <nav className="onboarding-bottom-bar" aria-hidden="true">
-              <div className="onboarding-bottom-bar-item">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
-                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
-                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                </svg>
-                <span>Apps</span>
-              </div>
-              <div className="onboarding-bottom-bar-item onboarding-bottom-bar-item--active">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
-                <span>Chat</span>
-              </div>
-              <div className="onboarding-bottom-bar-item">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                </svg>
-                <span>Connect</span>
-              </div>
-              <div className="onboarding-bottom-bar-item">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                </svg>
-                <span>Settings</span>
-              </div>
-            </nav>
-          )}
         </>
       )}
     </div>

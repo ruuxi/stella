@@ -1,7 +1,8 @@
 /* Local self-mod demo styles for onboarding.
-   Applied via data-selfmod-* attributes on .onboarding-dialogue. */
+   Applied via data-selfmod-demo attributes on .onboarding-dialogue or .onboarding-showcase-preview. */
 
-.onboarding-dialogue[data-selfmod-demo] {
+.onboarding-dialogue[data-selfmod-demo],
+[data-selfmod-demo] {
   --selfmod-accent: color-mix(in oklch, var(--foreground) 18%, transparent);
 }
 
@@ -11,50 +12,62 @@
 .onboarding-dialogue[data-selfmod-demo] .onboarding-chat-bubble,
 .onboarding-dialogue[data-selfmod-demo] .onboarding-chat-send,
 .onboarding-dialogue[data-selfmod-demo] .onboarding-chat-messages,
-.onboarding-dialogue[data-selfmod-demo] .onboarding-bottom-bar,
-.onboarding-dialogue[data-selfmod-demo] .onboarding-bottom-bar-item {
+[data-selfmod-demo] .onboarding-mock-app,
+[data-selfmod-demo] .onboarding-mock-main,
+[data-selfmod-demo] .onboarding-chat-composer,
+[data-selfmod-demo] .onboarding-chat-bubble,
+[data-selfmod-demo] .onboarding-chat-send,
+[data-selfmod-demo] .onboarding-chat-messages {
   transition: all 0.5s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
-.onboarding-dialogue[data-selfmod-demo="low"] .onboarding-chat-composer {
+.onboarding-dialogue[data-selfmod-demo="low"] .onboarding-chat-composer,
+[data-selfmod-demo="low"] .onboarding-chat-composer {
   border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
 }
 
-.onboarding-dialogue[data-selfmod-demo="low"] .onboarding-chat-msg--user .onboarding-chat-bubble {
+.onboarding-dialogue[data-selfmod-demo="low"] .onboarding-chat-msg--user .onboarding-chat-bubble,
+[data-selfmod-demo="low"] .onboarding-chat-msg--user .onboarding-chat-bubble {
   background: oklch(0.55 0.18 260);
   color: #fff;
   opacity: 1;
 }
 
-.onboarding-dialogue[data-selfmod-demo="low"] .onboarding-chat-send {
+.onboarding-dialogue[data-selfmod-demo="low"] .onboarding-chat-send,
+[data-selfmod-demo="low"] .onboarding-chat-send {
   background: oklch(0.55 0.18 260) !important;
   color: #fff !important;
 }
 
-.onboarding-dialogue[data-selfmod-demo="medium"] .onboarding-mock-app {
+.onboarding-dialogue[data-selfmod-demo="medium"] .onboarding-mock-app,
+[data-selfmod-demo="medium"] .onboarding-mock-app {
   border-radius: 18px;
   border-color: color-mix(in oklch, var(--foreground) 8%, transparent);
   box-shadow: 0 8px 32px color-mix(in oklch, var(--foreground) 10%, transparent);
   background: color-mix(in oklch, var(--background) 97%, var(--foreground));
 }
 
-.onboarding-dialogue[data-selfmod-demo="medium"] .onboarding-chat-messages {
+.onboarding-dialogue[data-selfmod-demo="medium"] .onboarding-chat-messages,
+[data-selfmod-demo="medium"] .onboarding-chat-messages {
   gap: 14px;
 }
 
-.onboarding-dialogue[data-selfmod-demo="medium"] .onboarding-chat-msg--stella .onboarding-chat-bubble {
+.onboarding-dialogue[data-selfmod-demo="medium"] .onboarding-chat-msg--stella .onboarding-chat-bubble,
+[data-selfmod-demo="medium"] .onboarding-chat-msg--stella .onboarding-chat-bubble {
   border-radius: 4px 16px 16px 16px;
   background: color-mix(in oklch, var(--foreground) 7%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
-.onboarding-dialogue[data-selfmod-demo="medium"] .onboarding-chat-msg--user .onboarding-chat-bubble {
+.onboarding-dialogue[data-selfmod-demo="medium"] .onboarding-chat-msg--user .onboarding-chat-bubble,
+[data-selfmod-demo="medium"] .onboarding-chat-msg--user .onboarding-chat-bubble {
   border-radius: 16px 4px 16px 16px;
   background: color-mix(in oklch, var(--foreground) 12%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
 }
 
-.onboarding-dialogue[data-selfmod-demo="medium"] .onboarding-chat-composer {
+.onboarding-dialogue[data-selfmod-demo="medium"] .onboarding-chat-composer,
+[data-selfmod-demo="medium"] .onboarding-chat-composer {
   border-radius: 20px;
   border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
   box-shadow: 0 4px 24px color-mix(in oklch, var(--foreground) 6%, transparent);

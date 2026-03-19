@@ -3,6 +3,7 @@ import { registerBrowserHandlers } from "../ipc/browser-handlers.js";
 import { registerCaptureHandlers } from "../ipc/capture-handlers.js";
 import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
 import { registerMiniBridgeHandlers } from "../ipc/mini-bridge-handlers.js";
+import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerOverlayStreamHandlers } from "../ipc/overlay-stream-handlers.js";
 import { registerProjectHandlers } from "../ipc/project-handlers.js";
 import { registerScheduleHandlers } from "../ipc/schedule-handlers.js";
@@ -113,6 +114,11 @@ export const registerBootstrapIpcHandlers = (
   registerMiniBridgeHandlers({
     miniBridgeService: services.miniBridgeService,
     windowManager: state.windowManager!,
+  });
+
+  registerMorphHandlers({
+    windowManager: state.windowManager!,
+    getOverlayController: () => state.overlayController,
   });
 
   registerStoreHandlers({

@@ -263,7 +263,12 @@
   opacity: 1;
   will-change: opacity;
   animation: splitPaneFadeIn 0.35s ease-out both;
-  transition: opacity 0.25s ease-out;
+  transition:
+    opacity 0.25s ease-out,
+    width 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    padding 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.4s ease,
+    backdrop-filter 0.4s ease;
 }
 
 @keyframes splitPaneFadeIn {
@@ -275,9 +280,17 @@
   }
 }
 
+.onboarding-dialogue[data-phase="creation"] {
+  pointer-events: none;
+}
+
 .onboarding-dialogue[data-phase="creation"] .onboarding-split-right {
-  width: 40%;
-  padding-right: 40px;
+  width: 320px;
+  padding: clamp(92px, 13vh, 144px) 24px 56px;
+  z-index: 5;
+  pointer-events: auto;
+  background: color-mix(in oklch, var(--background) 85%, transparent);
+  backdrop-filter: blur(20px);
 }
 
 .onboarding-split-stage {
@@ -1728,38 +1741,40 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
-  opacity: 0;
-  padding-top: 32px; /* Clear the fixed title bar */
 }
 
-.onboarding-canvas-open {
-  animation: onboardingCanvasIn 0.5s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+/* Morph animation — blurs out, content swaps at midpoint, blurs back in */
+.onboarding-canvas-morphing {
+  animation: demoMorph 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.onboarding-canvas-closing {
-  animation: onboardingCanvasOut 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
-}
-
-@keyframes onboardingCanvasIn {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
+@keyframes demoMorph {
+  0% {
+    filter: blur(0) brightness(1);
+    transform: scale(1);
     opacity: 1;
-    transform: translateY(0);
   }
-}
-
-@keyframes onboardingCanvasOut {
-  from {
+  35% {
+    filter: blur(24px) brightness(1.15);
+    transform: scale(1.008);
+    opacity: 0.6;
+  }
+  50% {
+    filter: blur(28px) brightness(1.2);
+    transform: scale(1.01);
+    opacity: 0.4;
+  }
+  65% {
+    filter: blur(24px) brightness(1.15);
+    transform: scale(1.008);
+    opacity: 0.6;
+  }
+  100% {
+    filter: blur(0) brightness(1);
+    transform: scale(1);
     opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(12px);
   }
 }
 
@@ -1905,6 +1920,67 @@
   opacity: 0.4;
   font-variant-numeric: tabular-nums;
 }
+
+/* ═══ Showcase grid (creation phase) ═══ */
+
+.onboarding-showcase-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.onboarding-showcase-tile {
+  width: 100%;
+  padding: 10px 14px;
+  gap: 3px;
+  opacity: 0;
+  animation: showcaseTileIn 0.4s ease-out forwards;
+}
+
+.onboarding-showcase-tile:nth-child(1) { animation-delay: 0.1s; }
+.onboarding-showcase-tile:nth-child(2) { animation-delay: 0.2s; }
+.onboarding-showcase-tile:nth-child(3) { animation-delay: 0.3s; }
+.onboarding-showcase-tile:nth-child(4) { animation-delay: 0.4s; }
+
+@keyframes showcaseTileIn {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 0.4;
+    transform: translateX(0);
+  }
+}
+
+/* Gentle border pulse on the first tile to draw attention */
+.onboarding-showcase-tile:first-child {
+  animation: showcaseTileIn 0.4s ease-out forwards, showcaseFirstPulse 2s ease-in-out 0.8s 2;
+}
+
+@keyframes showcaseFirstPulse {
+  0%, 100% {
+    border-color: color-mix(in oklch, var(--foreground) 10%, transparent);
+  }
+  50% {
+    border-color: color-mix(in oklch, var(--foreground) 30%, transparent);
+  }
+}
+
+.onboarding-showcase-tile-label {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--foreground);
+}
+
+.onboarding-showcase-tile-desc {
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--foreground);
+  opacity: 0.5;
+}
+
 
 /* ═══ Reduced motion ═══ */
 

@@ -204,14 +204,15 @@ function loadPreset(preset: PatternPreset): Track[] {
   return preset.tracks.map((t, i) => ({ ...t, solo: false, synth: SYNTHS[i] }));
 }
 
-/* ── Styles ── */
+/* ── Sequencer Styles ── */
 
 const css = `
   .seq-root {
     display: flex;
     flex-direction: column;
+    width: 100%;
     height: 100%;
-    padding-top: 32px;
+    min-height: 0;
     font-family: var(--font-family-sans, "Satoshi", sans-serif);
     background: transparent;
     color: var(--foreground);
@@ -548,13 +549,16 @@ const css = `
     font-size: 9px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    padding: 5px 10px;
+    padding: 5px;
     border-radius: 5px;
     border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
     background: transparent;
     color: color-mix(in oklch, var(--foreground) 35%, transparent);
     cursor: pointer;
     transition: all 0.12s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .seq-action:hover {
     border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
@@ -563,6 +567,19 @@ const css = `
   .seq-action.danger:hover {
     border-color: color-mix(in oklch, #f43f5e 50%, transparent);
     color: #f43f5e;
+  }
+
+  .seq-built-by {
+    position: absolute;
+    bottom: 10px;
+    left: 14px;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.2;
+    color: var(--foreground);
+    pointer-events: none;
   }
 `;
 
@@ -701,7 +718,7 @@ export function DJStudio() {
   const activeCount = tracks.reduce((s, t) => s + t.steps.reduce((a, b) => a + b, 0), 0);
 
   return (
-    <>
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <style>{css}</style>
       <div className="seq-root">
         {/* Header */}
@@ -841,17 +858,25 @@ export function DJStudio() {
           <span className="seq-footer-stat">{activeCount} hits</span>
           <div className="seq-footer-actions">
             <button className="seq-action" onClick={randomize} title="Random pattern">
-              Dice
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+              </svg>
             </button>
-            <button className="seq-action" onClick={() => selectPreset(activePreset >= 0 ? activePreset : 0)}>
-              Reset
+            <button className="seq-action" onClick={() => selectPreset(activePreset >= 0 ? activePreset : 0)} title="Reset pattern">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
             </button>
-            <button className="seq-action danger" onClick={clearAll}>
-              Clear
+            <button className="seq-action danger" onClick={clearAll} title="Clear all">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
             </button>
           </div>
         </div>
       </div>
-    </>
+      <span className="seq-built-by">Built by Stella</span>
+    </div>
   );
 }

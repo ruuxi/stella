@@ -94,8 +94,10 @@ void main() {
   // Chromatic aberration color appears only on stronger image edges.
   float dx = 0.002 * u_strength;
   float lumCenter = dot(col.rgb, vec3(0.299, 0.587, 0.114));
-  float lumRight = dot(texture2D(u_tex, clamp(uv + vec2(dx, 0.0), 0.0, 1.0)).rgb, vec3(0.299, 0.587, 0.114));
-  float lumUp = dot(texture2D(u_tex, clamp(uv + vec2(0.0, dx), 0.0, 1.0)).rgb, vec3(0.299, 0.587, 0.114));
+  vec2 uvR = clamp(uv + vec2(dx, 0.0), 0.0, 1.0);
+  float lumRight = dot(mix(texture2D(u_tex, uvR), texture2D(u_tex2, uvR), u_mix).rgb, vec3(0.299, 0.587, 0.114));
+  vec2 uvU = clamp(uv + vec2(0.0, dx), 0.0, 1.0);
+  float lumUp = dot(mix(texture2D(u_tex, uvU), texture2D(u_tex2, uvU), u_mix).rgb, vec3(0.299, 0.587, 0.114));
   float edge = length(vec2(lumRight - lumCenter, lumUp - lumCenter));
 
   float angle = atan(d.y, d.x);
