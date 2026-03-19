@@ -1,20 +1,40 @@
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { authClient } from "../../src/lib/auth-client";
-import { assert } from "../../src/lib/assert";
 import { clearCachedToken } from "../../src/lib/auth-token";
 import { colors } from "../../src/theme/colors";
 
 export default function AccountScreen() {
   const session = authClient.useSession();
-  assert(session.data, "Missing session.");
-  assert(session.data.user.email, "Missing user email.");
-  const email = session.data.user.email;
-  const name = session.data.user.name || email;
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const user = session.data?.user;
+  const email = user?.email ?? "";
+  const name = user?.name || email || "Your account";
 
   const signOut = async () => {
-    await authClient.signOut();
-    clearCachedToken();
+    setIsSigningOut(true);
+    try {
+      await authClient.signOut();
+      clearCachedToken();
+    } finally {
+      setIsSigningOut(false);
+    }
   };
+
+  if (!user) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.screenHeader}>
+          <Text style={styles.screenTitle}>Account</Text>
+          <Text style={styles.screenBody}>
+            {isSigningOut
+              ? "Signing you out of Stella."
+              : "Refreshing your account session."}
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
@@ -41,9 +61,12 @@ export default function AccountScreen() {
           style={({ pressed }) => [
             styles.dangerButton,
             pressed ? styles.dangerButtonPressed : null,
+            isSigningOut ? styles.dangerButtonDisabled : null,
           ]}
         >
-          <Text style={styles.dangerButtonText}>Sign out</Text>
+          <Text style={styles.dangerButtonText}>
+            {isSigningOut ? "Signing out..." : "Sign out"}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -106,6 +129,9 @@ const styles = StyleSheet.create({
   },
   dangerButtonPressed: {
     opacity: 0.9,
+  },
+  dangerButtonDisabled: {
+    opacity: 0.7,
   },
   dangerButtonText: {
     color: colors.danger,
