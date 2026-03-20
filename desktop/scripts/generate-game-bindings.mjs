@@ -171,6 +171,7 @@ function runSpacetime(args) {
     cwd: repoRoot,
     encoding: 'utf8',
     stdio: 'pipe',
+    windowsHide: true,
   })
 }
 
@@ -224,7 +225,11 @@ if (
 }
 
 // Verify the spacetime CLI is available before attempting to regenerate.
-const spacetimeCheck = spawnSync('spacetime', ['--version'], { encoding: 'utf8', stdio: 'pipe' })
+const spacetimeCheck = spawnSync('spacetime', ['--version'], {
+  encoding: 'utf8',
+  stdio: 'pipe',
+  windowsHide: true,
+})
 if (spacetimeCheck.error) {
   if (outDirHasBindings) {
     console.log(

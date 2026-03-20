@@ -1777,7 +1777,7 @@ Usage: stella-browser cookies [operation] [args]
 Manage browser cookies for the current context.
 
 Operations:
-  get                                Get all cookies (default)
+  get [--url <url>]                  Get cookies for the current page or a URL
   set <name> <value> [options]       Set a cookie with optional properties
   clear                              Clear all cookies
 
@@ -1815,6 +1815,9 @@ Examples:
 
   # Get all cookies
   stella-browser cookies
+
+  # Get cookies for a specific URL
+  stella-browser cookies get --url https://app.example.com
 
   # Clear all cookies
   stella-browser cookies clear

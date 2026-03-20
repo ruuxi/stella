@@ -51,8 +51,8 @@ export const createFileToolHandlers = (): Record<string, ToolHandler> => ({
 });
 
 export const createSearchToolHandlers = (): Record<string, ToolHandler> => ({
-  Glob: (args, _context) => handleGlob(args),
-  Grep: (args, _context) => handleGrep(args),
+  Glob: (args, context) => handleGlob(args, context),
+  Grep: (args, context) => handleGrep(args, context),
 });
 
 export const createShellToolHandlers = (

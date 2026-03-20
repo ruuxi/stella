@@ -324,6 +324,14 @@ export type ElectronAgentApi = {
   startDashboardGeneration: (payload: {
     conversationId: string;
     coreMemory: string;
+    plannedPages: Array<{
+      pageId: string;
+      title: string;
+      topic: string;
+      focus: string;
+      dataSources: string[];
+      personalOrEntertainment: boolean;
+    }>;
     promptConfig: { systemPrompt: string; userPromptTemplate: string };
   }) => Promise<void>;
   triggerViteError: () => Promise<{ ok: boolean }>;
@@ -399,6 +407,22 @@ export type ElectronSystemApi = {
 
 export type ElectronBrowserApi = {
   checkCoreMemoryExists: () => Promise<boolean>;
+  fetchJson: (
+    url: string,
+    init?: {
+      method?: "GET" | "POST";
+      headers?: Record<string, string>;
+      body?: string;
+    },
+  ) => Promise<unknown>;
+  fetchText: (
+    url: string,
+    init?: {
+      method?: "GET" | "POST";
+      headers?: Record<string, string>;
+      body?: string;
+    },
+  ) => Promise<string>;
   collectData: (options?: {
     selectedBrowser?: string;
     selectedProfile?: string;

@@ -52,4 +52,18 @@ describe("buildPersonalizedDashboardPageUserMessage", () => {
     });
     expect(result).toContain("Find relevant public");
   });
+
+  test("fills pageFocusGuidance when personal and no data sources", () => {
+    const result = buildPersonalizedDashboardPageUserMessage({
+      userProfile: "profile",
+      assignment: {
+        ...assignment,
+        dataSources: [],
+        personalOrEntertainment: true,
+      },
+      promptTemplate: "X{{pageFocusGuidance}}Y",
+    });
+    expect(result).toContain("personal/entertainment-first");
+    expect(result).toContain("No specific feeds were planned");
+  });
 });

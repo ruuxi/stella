@@ -46,6 +46,7 @@ const startApp = () => {
       NODE_ENV: 'development',
     },
     stdio: 'inherit',
+    windowsHide: true,
   })
 
   currentApp = child

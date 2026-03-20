@@ -54,6 +54,8 @@ type RuntimeTaskRecord = {
   threadName?: string;
   commandId?: string;
   systemPromptOverride?: string;
+  toolsAllowlistOverride?: string[];
+  omitCoreMemory?: boolean;
   selfModMetadata?: TaskToolRequest["selfModMetadata"];
   recentActivity: string[];
   progressBuffer: string;
@@ -185,13 +187,14 @@ const extractBashPath = (command: string): string | undefined => {
 const getFsLockKey = (
   toolName: string,
   args: Record<string, unknown>,
+  context?: ToolContext,
 ): string | null => {
   if (toolName === "Write" || toolName === "Edit") {
     const filePath = normalizeString(args.file_path ?? args.path ?? args.target_path);
     if (!filePath) return "*";
     return normalizeFsPathKey(
       filePath,
-      normalizeString(args.working_directory ?? args.cwd),
+      normalizeString(args.working_directory ?? args.cwd ?? context?.frontendRoot),
     );
   }
   if (toolName === "Bash" || toolName === "SkillBash") {
@@ -201,7 +204,7 @@ const getFsLockKey = (
     if (!pathFromCommand) return "*";
     return normalizeFsPathKey(
       pathFromCommand,
-      normalizeString(args.working_directory ?? args.cwd),
+      normalizeString(args.working_directory ?? args.cwd ?? context?.frontendRoot),
     );
   }
   return null;
@@ -360,6 +363,12 @@ export class LocalTaskManager implements TaskToolApi {
       if (task.systemPromptOverride) {
         context.systemPrompt = task.systemPromptOverride;
       }
+      if (task.toolsAllowlistOverride) {
+        context.toolsAllowlist = task.toolsAllowlistOverride;
+      }
+      if (task.omitCoreMemory) {
+        context.coreMemory = undefined;
+      }
 
       const taskPrompt = this.buildTaskPrompt(task);
       task.attemptCount += 1;
@@ -408,7 +417,7 @@ export class LocalTaskManager implements TaskToolApi {
             maxTaskDepth: context.maxTaskDepth,
             delegationAllowlist: context.delegationAllowlist,
           };
-          const lockKey = getFsLockKey(toolName, toolArgs);
+          const lockKey = getFsLockKey(toolName, toolArgs, scopedContext);
           if (!lockKey) {
             return await this.opts.toolExecutor(toolName, toolArgs, scopedContext, signal);
           }
@@ -544,6 +553,8 @@ export class LocalTaskManager implements TaskToolApi {
       threadName: resolvedThread?.threadName ?? request.threadName,
       commandId: request.commandId,
       systemPromptOverride: request.systemPromptOverride,
+      toolsAllowlistOverride: request.toolsAllowlistOverride,
+      omitCoreMemory: request.omitCoreMemory === true,
       selfModMetadata: request.selfModMetadata,
       recentActivity: [],
       progressBuffer: "",

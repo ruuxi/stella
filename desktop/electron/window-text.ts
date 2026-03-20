@@ -40,7 +40,12 @@ function extractWindowText(pid: number, x: number, y: number): Promise<string | 
     execFile(
       helperPath,
       [String(pid), String(x), String(y)],
-      { timeout: TIMEOUT_MS, encoding: 'utf8', maxBuffer: 2 * 1024 * 1024 },
+      {
+        timeout: TIMEOUT_MS,
+        encoding: 'utf8',
+        maxBuffer: 2 * 1024 * 1024,
+        windowsHide: true,
+      },
       (error, stdout) => {
         if (error) {
           resolve(null)

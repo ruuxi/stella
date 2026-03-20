@@ -28,6 +28,7 @@ import {
   getAgentEnginePreference,
   isLocalCliAgentId,
 } from "../../../../src/shared/contracts/agent-runtime.js";
+import { getBundledCoreAgentFallback } from "../agents/agents.js";
 import {
   buildManagedMediaDocsPrompt,
   buildPanelInventory,
@@ -205,7 +206,9 @@ export const resolveAgent = (
 ): ParsedAgentLike | undefined =>
   context.state.loadedAgents.find((entry) =>
     entry.agentTypes.includes(agentType),
-  ) ?? context.state.loadedAgents.find((entry) => entry.id === agentType);
+  ) ??
+  context.state.loadedAgents.find((entry) => entry.id === agentType) ??
+  getBundledCoreAgentFallback(agentType);
 
 export const getConfiguredModel = (
   context: RunnerContext,
@@ -309,7 +312,8 @@ export const buildAgentContext = async (
     args.agentType === AGENT_IDS.ORCHESTRATOR && context.frontendRoot
       ? buildPanelInventory(context.frontendRoot)
       : "",
-    args.agentType === AGENT_IDS.SELF_MOD
+    args.agentType === AGENT_IDS.SELF_MOD ||
+    args.agentType === AGENT_IDS.DASHBOARD_GENERATION
       ? buildManagedMediaDocsPrompt(context.state.convexDeploymentUrl)
       : "",
     activeThreadsPrompt,
@@ -343,7 +347,8 @@ export const buildAgentContext = async (
     agentEngine:
       enginePref === "general"
         ? getGeneralAgentEngine(context.stellaHomePath)
-        : enginePref === "self_mod"
+        : enginePref === "self_mod" ||
+            args.agentType === AGENT_IDS.DASHBOARD_GENERATION
           ? getSelfModAgentEngine(context.stellaHomePath)
           : undefined,
     maxAgentConcurrency: isLocalCliAgentId(args.agentType)

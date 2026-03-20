@@ -28,6 +28,7 @@ import {
   resolveManagedModelAccess,
   scheduleManagedUsage,
 } from "../lib/managed_billing";
+import { parseWelcomeSuggestionsFromModelText } from "../lib/welcome_suggestions_parse";
 
 type SynthesizeRequest = {
   /** @deprecated Use formattedSections instead */
@@ -51,13 +52,6 @@ type SynthesizeResponse = {
 const DEFAULT_WELCOME_MESSAGE =
   "Hey! I'm Stella, your AI assistant. What can I help you with today?";
 const MAX_ANON_SYNTHESIS_REQUESTS = 10;
-
-const isWelcomeSuggestion = (value: unknown): value is WelcomeSuggestion =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as WelcomeSuggestion).category === "string" &&
-  typeof (value as WelcomeSuggestion).title === "string" &&
-  typeof (value as WelcomeSuggestion).prompt === "string";
 
 export const registerSynthesisRoutes = (http: HttpRouter) => {
   http.route({
@@ -344,14 +338,13 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             }
           }
 
-          let suggestions: WelcomeSuggestion[] = [];
-          try {
-            const parsed = JSON.parse(suggestionsResult?.result.text?.trim() || "[]");
-            if (Array.isArray(parsed)) {
-              suggestions = parsed.filter(isWelcomeSuggestion).slice(0, 5);
-            }
-          } catch (error) {
-            console.warn("[synthesize] Suggestions generation failed:", error);
+          const suggestions = parseWelcomeSuggestionsFromModelText(
+            suggestionsResult?.result.text,
+          );
+          if (!suggestions.length && suggestionsResult?.result.text?.trim()) {
+            console.warn(
+              "[synthesize] Welcome suggestions: model output was not a usable JSON array",
+            );
           }
 
           const response: SynthesizeResponse = {

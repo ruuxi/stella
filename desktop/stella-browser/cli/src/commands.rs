@@ -806,8 +806,36 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
 
         // === Cookies ===
         "cookies" => {
-            let op = rest.first().unwrap_or(&"get");
-            match *op {
+            let op = if rest.first().is_some_and(|arg| arg.starts_with("--")) {
+                "get"
+            } else {
+                rest.first().unwrap_or(&"get")
+            };
+            match op {
+                "get" => {
+                    let mut cmd = json!({ "id": id, "action": "cookies_get" });
+                    let start = if rest.first() == Some(&"get") { 1 } else { 0 };
+                    let mut i = start;
+                    while i < rest.len() {
+                        match rest[i] {
+                            "--url" => {
+                                if let Some(url) = rest.get(i + 1) {
+                                    cmd["url"] = json!(url);
+                                    i += 2;
+                                } else {
+                                    return Err(ParseError::MissingArguments {
+                                        context: "cookies get --url".to_string(),
+                                        usage: "--url <url>",
+                                    });
+                                }
+                            }
+                            _ => {
+                                i += 1;
+                            }
+                        }
+                    }
+                    Ok(cmd)
+                }
                 "set" => {
                     let name = rest.get(1).ok_or_else(|| ParseError::MissingArguments {
                         context: "cookies set".to_string(),
@@ -2207,6 +2235,17 @@ mod tests {
     fn test_cookies_get_explicit() {
         let cmd = parse_command(&args("cookies get"), &default_flags()).unwrap();
         assert_eq!(cmd["action"], "cookies_get");
+    }
+
+    #[test]
+    fn test_cookies_get_with_url() {
+        let cmd = parse_command(
+            &args("cookies get --url https://example.com"),
+            &default_flags(),
+        )
+        .unwrap();
+        assert_eq!(cmd["action"], "cookies_get");
+        assert_eq!(cmd["url"], "https://example.com");
     }
 
     #[test]

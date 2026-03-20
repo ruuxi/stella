@@ -16,6 +16,7 @@ export type ToolContext = {
   requestId: string;
   rootRunId?: string;
   agentType?: string;
+  frontendRoot?: string;
   storageMode?: "cloud" | "local";
   taskId?: string;
   cloudTaskId?: string;
@@ -85,6 +86,8 @@ export type TaskToolRequest = {
   threadName?: string;
   commandId?: string;
   systemPromptOverride?: string;
+  toolsAllowlistOverride?: string[];
+  omitCoreMemory?: boolean;
   storageMode: "cloud" | "local";
   selfModMetadata?: {
     featureId?: string;

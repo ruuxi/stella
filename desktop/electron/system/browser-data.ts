@@ -192,7 +192,7 @@ const BROWSER_CONFIGS: BrowserConfig[] = [
  */
 const execAsync = (command: string): Promise<string> => {
   return new Promise((resolve, reject) => {
-    exec(command, { encoding: "utf-8" }, (error, stdout, stderr) => {
+    exec(command, { encoding: "utf-8", windowsHide: true }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(stderr || error.message));
       } else {

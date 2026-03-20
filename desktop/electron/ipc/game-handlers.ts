@@ -97,6 +97,7 @@ const runCommand = (
       cwd,
       env: { ...process.env, BROWSER: "none" },
       stdio: "pipe",
+      windowsHide: true,
     });
 
     let stdout = "";

@@ -57,6 +57,7 @@ export const createPiTools = (opts: {
   agentType: string;
   deviceId: string;
   stellaHome: string;
+  frontendRoot?: string;
   taskDepth?: number;
   maxTaskDepth?: number;
   delegationAllowlist?: string[];
@@ -185,6 +186,7 @@ export const createPiTools = (opts: {
         requestId: toolCallId,
         ...(opts.rootRunId ? { rootRunId: opts.rootRunId } : {}),
         agentType: opts.agentType,
+        ...(opts.frontendRoot ? { frontendRoot: opts.frontendRoot } : {}),
         storageMode: "local",
         ...(typeof opts.taskDepth === "number"
           ? { taskDepth: opts.taskDepth }

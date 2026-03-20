@@ -13,6 +13,7 @@ export type PersonalizedDashboardPageAssignment = {
   panelName: string
   componentName: string
   dataSources: string[]
+  personalOrEntertainment: boolean
 }
 
 export type WelcomeSuggestion = {

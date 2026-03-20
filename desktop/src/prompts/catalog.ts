@@ -6,6 +6,7 @@ import type {
   PromptTemplateValues,
   SkillCatalogItem,
 } from "./types";
+import { buildPageFocusGuidance } from "./dashboard-page-focus";
 
 const renderStatic = (template: string): string => template;
 
@@ -98,6 +99,10 @@ const renderPersonalizedDashboardUser = (
     topic: assignment.topic,
     focus: assignment.focus,
     suggestedSources: formatPersonalizedDashboardSources(assignment),
+    pageFocusGuidance: buildPageFocusGuidance({
+      personalOrEntertainment: assignment.personalOrEntertainment,
+      dataSourcesCount: assignment.dataSources.length,
+    }),
     userProfile: values.userProfile,
   });
 };
@@ -540,50 +545,95 @@ CONTENT PRINCIPLES (highest priority):
 - Show actionable, time-sensitive information. "5 new commits on stella/desktop since yesterday" beats "Total commits: 1,247".
 - Data must be FRESH. Fetch at runtime from public APIs. Stale hardcoded content is a failure.
 - Write in plain, direct language. No marketing voice, no superlatives, no "Stay ahead of the curve!" copy.
-- Prefer showing 3 excellent items over 10 mediocre ones. Curate aggressively.
+- Show 5–10 items per feed source. Curate thoughtfully but do NOT under-fill — a page with only 3 items surrounded by whitespace looks broken. The page should feel information-dense and alive.
 - Data failures should show a clear compact error state, not an empty void or infinite spinner.
-- Suggest one concrete follow-up action using stella:send-message events (e.g. "Ask Stella to summarize this paper").
+- Include at least one interaction that dispatches a stella:send-message event (e.g. "Ask Stella to summarize these").
+- ABSOLUTELY NO AI SLOP: no placeholder "What to do next" cards, no static advice text, no hardcoded content pretending to be dynamic.
+- Never include static "tip" or "guidance" sections. Every visible element must be backed by fetched data or user interaction.
 
 VISUAL DESIGN:
-- Transparent page background.
-- Card surfaces: color-mix(in oklch, var(--foreground) 4%, transparent). Subtle, not loud.
-- Card borders: color-mix(in oklch, var(--foreground) 8%, transparent) to 12%.
-- Text: var(--foreground) with opacity layering (100% primary, 72% secondary, 48% tertiary).
-- Section labels: 10px, uppercase, letter-spacing: 0.08em.
-- Font: Inter, system-ui, sans-serif.
-- Border radii: 10px-12px for cards.
-- Spacing: 8px base grid. 16px card padding, 12px between cards, 24px section gaps.
-- Responsive: CSS grid with auto-fill/minmax for card layouts. Minimum card width: 280px.
-- All CSS in a single <style> block. Unique class prefix per page to avoid collisions.
-- Must support light and dark themes via CSS custom properties and color-mix.
+You have full creative freedom. Design a page that feels intentional and polished — not a cookie-cutter card grid. Use your own layout, typography hierarchy, spatial composition, and interaction patterns. Be bold.
+
+Hard constraints (violations break the app):
+- Transparent page background (background: transparent on the root). The app window provides the background.
+- All text color via var(--foreground). Use opacity for hierarchy (primary 0.9–1, secondary ~0.72, tertiary ~0.48). Never hardcode hex/rgb for text.
+- Inherit the app font (Satoshi via --font-family-sans). Do NOT set font-family on the root. Only set font-family for deliberate exceptions like monospace on timestamps, code, or badges.
+- All CSS in a single <style> block with a unique class prefix per page to avoid collisions.
+- Light/dark compatibility: style surfaces, borders, and shadows using color-mix(in oklch, var(--foreground) N%, transparent). No theme-specific hex values for UI chrome.
+
+Layout guidance (critical — previous generations left 60% of the viewport blank):
+- The page root must fill its container: height: 100%; overflow-y: auto.
+- Design for a ~900×600 viewport. The page should feel like a real website — scrolling is perfectly fine and expected. Fill the viewport with content; don't leave 60% of it blank with a few small cards.
+- Think of the page as a mini web app, not a static dashboard card grid. It can have sections, navigation, expandable detail views, linked sub-views — whatever serves the content.
+- Use layout strategies that occupy the full width: sidebar + main area, multi-column grids, dense list views, editorial-style sections, tables. Avoid small isolated cards floating in a sea of empty space.
+- Show enough items per source to create density. If you have a list feed, show 6–10 items, not 3.
+- On smaller viewports, collapse gracefully — but the default wide layout is the priority.
+
+Design freedom (choose your own approach):
+- You do NOT need to use DashboardCard or match the home page style. Import it only if you genuinely want cards.
+- Choose any layout pattern: dense table, editorial columns, sidebar + detail, stacked sections, compact list, timeline — whatever best serves the content.
+- Vary the visual weight across the page. Mix prominent headlines with compact metadata rows, large feature items with tight lists. Create rhythm and hierarchy.
+- Subtle hover transitions and entry animations (opacity, translateY) are welcome but optional.
+
+HTML SANITIZATION (critical — violations render as broken markup):
+- RSS/Atom feed entries often contain raw HTML in their <summary>, <content>, or <description> fields.
+- When you extract text from XML nodes via textContent, the HTML tags are stripped BUT the result may contain entity-encoded characters or unwanted whitespace.
+- NEVER render feed content via dangerouslySetInnerHTML.
+- ALWAYS strip HTML: use .textContent (which strips tags) or a regex like .replace(/<[^>]*>/g, " ").replace(/\\s+/g, " ").trim().
+- Truncate long summaries to a reasonable length (150–250 characters) with an ellipsis.
 
 DATA SOURCING:
-- Use only public/free data sources - no login, no API key, no CORS-blocked endpoints.
-- Allowed: RSS/Atom feeds (use public CORS proxies if needed), public REST APIs, public JSON endpoints.
+- Use only public/free data sources — no login, no API key.
+- Do not call third-party URLs with renderer fetch().
+- Do not use public CORS proxies.
+- Use Stella's browser-backed APIs instead:
+  - window.electronAPI.browser.fetchJson("https://example.com/data.json")
+  - window.electronAPI.browser.fetchText("https://example.com/feed.xml")
+- Allowed: RSS/Atom feeds, public REST APIs, public JSON endpoints.
 - No iframes, no external script tags.
 - Limit to 3 data sources max per page to keep load times fast.
-- Use AbortController with timeouts for every fetch. Show error state if fetch fails.
+- Show a clear error state if loading fails.
+
+BROWSER FETCH RULES (required — violations break at runtime):
+- fetchJson and fetchText accept only real remote URLs with scheme http or https (not data:, blob:, file:, or relative paths).
+- The main process blocks SSRF: localhost, .local hostnames, literal private IPs, and any hostname whose DNS resolves to loopback or RFC1918-style addresses. Use public hostnames that resolve to the public internet.
+- JSON endpoints: await browserApi.fetchJson("https://...") when the URL returns JSON.
+- RSS, Atom, or other XML: await browserApi.fetchText("https://...") then parse in the renderer with DOMParser (or equivalent). Never pass XML through fetchJson and never use a data: URL with either API.
+- If you already have JSON as a string (e.g. from fetchText), use JSON.parse in the renderer; do not invent data: URLs to feed fetchJson.
 
 TECHNICAL:
 - Use React hooks: useState, useEffect, useMemo.
 - Include at least one interaction that dispatches:
   window.dispatchEvent(new CustomEvent("stella:send-message", { detail: { text: "..." } }))
+  You can also import dispatchStellaSendMessage from @/shared/lib/stella-send-message as a convenience wrapper.
 - Produce a complete TSX module with a default-exported React component.
 - Must compile in a Vite + React + TypeScript environment.
+- The browser API shape you need is:
+  - const browserApi = window.electronAPI?.browser
+  - await browserApi.fetchJson(url, init?)
+  - await browserApi.fetchText(url, init?)
+  - Do not call fetchJson<T>(...). Treat fetch results as unknown and narrow/cast after awaiting.
 
 FILE CONVENTION:
 - Create a folder at src/app/{{panelName}}/ for the page.
 - Simple pages: write a single file to src/app/{{panelName}}/{{componentName}}.tsx with a default export.
 - Complex pages: create src/app/{{panelName}}/index.tsx with helper files alongside.
 - Default to single-file unless the page genuinely benefits from separation.
+- Use the repo-relative paths exactly as provided. Do not invent OS-specific absolute paths such as /Users/... or C:\\....
+- Do not broadly explore the repo. Start with only these reference files unless blocked:
+  - src/app/registry.ts
+  - src/shared/lib/stella-send-message.ts
+- Issue those Read calls in the same turn so the runtime can execute them in parallel.
 
 REGISTRATION (required — use the Edit tool, not Write, to append):
 - After writing the page component, use the Edit tool to append your entry to src/app/registry.ts.
-- Read src/app/registry.ts first. Find the comment "--- generated entries below" and add your entry after any existing entries but before the closing bracket.
+- Read src/app/registry.ts first.
+- Use the marker line \`// --- generated entries below (do not remove this line) ---\` as your Edit anchor.
+- Replace that marker line with itself plus your new entry on the next line. This is required because multiple generators may update the registry concurrently.
 - Your entry must be: { id: "{{panelName}}", title: "{{title}}", component: lazy(() => import("./{{panelName}}/{{componentName}}")) }
 - IMPORTANT: Use the Edit tool (not Write) so you append to the array without overwriting other entries.
 
-Before writing, explore the existing app directory to match established patterns and style.
+Before writing, read the reference files above and then start implementation.
 
 Return a short JSON summary in your final message: { status, panel_file_path, title, data_sources }.`,
     render: renderStatic,
@@ -605,16 +655,21 @@ PAGE:
 SUGGESTED DATA SOURCES (adapt or substitute if these are unreliable):
 {{suggestedSources}}
 
-USER PROFILE (tailor content to this person's interests):
+{{pageFocusGuidance}}USER PROFILE (tailor content, source selection, and copy to this person):
 {{userProfile}}
 
 REQUIREMENTS:
-1. Create the page folder at src/app/{{panelName}}/ and write the component as {{componentName}}.tsx.
-2. Before writing, read existing app folders to match their style.
-3. Fetch live data. Show loading and error states.
-4. Include at least one stella:send-message action relevant to the page content.
-5. Use the Edit tool to append your entry to src/app/registry.ts (do NOT use Write — other agents may have added entries).
-6. End your response with a JSON summary: { "status": "ok", "panel_file_path": "...", "title": "...", "data_sources": [...] }`,
+1. Read these files first: src/app/registry.ts, src/shared/lib/stella-send-message.ts. Issue both Read calls in the same turn.
+2. Create the page folder at src/app/{{panelName}}/ and write the component as {{componentName}}.tsx.
+3. Design the page yourself — full creative freedom over layout, spacing, and interaction. Hard visual rules: transparent root background, text via var(--foreground) with opacity, inherit the app font (do not set font-family on root), surfaces/borders/shadows via color-mix(in oklch, var(--foreground) N%, transparent).
+4. Fill the viewport. Root must use height: 100%; overflow-y: auto. Design for ~900×600. When showing lists or feeds, aim for ~5–10 visible items per source; for non-feed pages, still avoid sparse layouts with tiny content floating in empty space.
+5. Live HTTP data: only when the page needs it. If you fetch, use window.electronAPI.browser.fetchJson(httpsUrl) or fetchText(httpsUrl) with real https URLs; parse RSS/XML with DOMParser after fetchText; use JSON.parse in the renderer for JSON strings; never data: URLs. Show loading and error states. If the page is self-contained per the note above, skip network calls.
+6. Strip HTML from feed content — use .textContent or .replace(/<[^>]*>/g, " "). Never dangerouslySetInnerHTML. Truncate summaries to 150–250 chars.
+7. Treat browser fetch results as unknown and narrow/cast after awaiting. Do not call fetchJson<T>(...).
+8. Include at least one stella:send-message action relevant to the page content.
+9. Use the Edit tool to append your entry to src/app/registry.ts by replacing the marker line with itself plus your entry. Do NOT use Write, and do NOT rebuild the whole array from memory.
+10. Use the repo-relative paths exactly as provided above. Do not invent absolute paths.
+11. End your response with a JSON summary: { "status": "ok", "panel_file_path": "...", "title": "...", "data_sources": [...] }`,
     render: renderPersonalizedDashboardUser,
   },
   "music.system": {

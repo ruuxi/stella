@@ -55,6 +55,11 @@ describe("AGENT_MODELS", () => {
     expect(typeof AGENT_MODELS.self_mod.model).toBe("string");
   });
 
+  test("includes dashboard_generation config", () => {
+    expect(AGENT_MODELS.dashboard_generation).toBeDefined();
+    expect(typeof AGENT_MODELS.dashboard_generation.model).toBe("string");
+  });
+
   test("includes mercury config", () => {
     expect(AGENT_MODELS.mercury).toBeDefined();
     expect(AGENT_MODELS.mercury.model).toBe("inception/mercury-2");
@@ -83,10 +88,10 @@ describe("AGENT_MODELS", () => {
       if (!Array.isArray(order)) continue;
 
       expect(order).toEqual(
-        order.flatMap((entry) =>
+        order.flatMap((entry): string[] =>
           typeof entry === "string"
             ? entry.split(",").map((provider) => provider.trim()).filter(Boolean)
-            : [entry],
+            : [],
         ),
       );
     }
@@ -99,9 +104,11 @@ describe("AGENT_MODELS", () => {
       "go",
       "pro",
       "plus",
+      "ultra",
       "go_fallback",
       "pro_fallback",
       "plus_fallback",
+      "ultra_fallback",
     ]);
     expect(AUDIENCE_AGENT_MODELS.anonymous.general.model).toBe(AGENT_MODELS.general.model);
     expect(AUDIENCE_AGENT_MODELS.plus.browser.model).toBe(AGENT_MODELS.browser.model);
@@ -123,6 +130,11 @@ describe("getModelConfig", () => {
   test("returns self_mod config for self_mod", () => {
     const config = getModelConfig("self_mod");
     expect(config).toBe(AGENT_MODELS.self_mod);
+  });
+
+  test("returns dashboard_generation config for dashboard_generation", () => {
+    const config = getModelConfig("dashboard_generation");
+    expect(config).toBe(AGENT_MODELS.dashboard_generation);
   });
 
   test("returns mercury config for mercury", () => {
@@ -165,6 +177,7 @@ describe("hasModelConfig", () => {
     expect(hasModelConfig("orchestrator")).toBe(true);
     expect(hasModelConfig("general")).toBe(true);
     expect(hasModelConfig("self_mod")).toBe(true);
+    expect(hasModelConfig("dashboard_generation")).toBe(true);
   });
 
   test("returns false for unknown agent types", () => {

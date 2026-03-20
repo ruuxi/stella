@@ -48,15 +48,17 @@ const startMobileBridge = (context: BootstrapContext) => {
 
     // Wire auth state into the bridge for Convex registration
     const authService = context.services.authService;
-    const syncBridgeAuth = () => {
+    const syncBridgeAuth = async () => {
       bridge.setDeviceId(context.state.deviceId);
-      bridge.setHostAuthToken(authService.getAuthToken());
+      bridge.setHostAuthToken(await authService.getAuthToken());
       bridge.setConvexSiteUrl(authService.getConvexSiteUrl());
     };
 
     // Sync whenever auth state changes (runner initialization sets deviceId/tokens)
-    const interval = setInterval(syncBridgeAuth, 30_000);
-    syncBridgeAuth();
+    const interval = setInterval(() => {
+      void syncBridgeAuth();
+    }, 30_000);
+    void syncBridgeAuth();
 
     // Clean up interval on quit (bridge.stop() is called separately in lifecycle)
     app.on("before-quit", () => clearInterval(interval));

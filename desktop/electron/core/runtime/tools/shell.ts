@@ -309,7 +309,7 @@ export const handleBash = async (
   }
 
   const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
-  const cwd = String(args.working_directory ?? process.cwd());
+  const cwd = String(args.working_directory ?? context?.frontendRoot ?? process.cwd());
   const runInBackground = Boolean(args.run_in_background ?? false);
   const envOverrides: Record<string, string> = {};
 
@@ -366,6 +366,8 @@ export const handleSkillBash = async (
     // Even without secretMounts, default cwd to skill directory for script path resolution
     if (skill?.filePath && !args.working_directory) {
       args = { ...args, working_directory: path.dirname(skill.filePath) };
+    } else if (context?.frontendRoot && !args.working_directory) {
+      args = { ...args, working_directory: context.frontendRoot };
     }
     return handleBash(state, args);
   }
@@ -374,7 +376,9 @@ export const handleSkillBash = async (
   const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
   // Default cwd to skill directory so relative script paths (e.g. scripts/...) resolve correctly
   const skillDir = skill.filePath ? path.dirname(skill.filePath) : undefined;
-  const cwd = String(args.working_directory ?? skillDir ?? process.cwd());
+  const cwd = String(
+    args.working_directory ?? skillDir ?? context?.frontendRoot ?? process.cwd(),
+  );
   const runInBackground = Boolean(args.run_in_background ?? false);
 
   const envOverrides: Record<string, string> = {};

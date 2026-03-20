@@ -18,6 +18,7 @@ type SessionOptions = Pick<
   | "agentContext"
   | "deviceId"
   | "stellaHome"
+  | "frontendRoot"
   | "store"
   | "toolExecutor"
   | "webSearch"
@@ -60,6 +61,7 @@ export const createRuntimeExecutionSession = (
     agentType: opts.agentType,
     deviceId: opts.deviceId,
     stellaHome: opts.stellaHome,
+    frontendRoot: opts.frontendRoot,
     taskDepth: opts.agentContext.taskDepth ?? 0,
     maxTaskDepth: opts.agentContext.maxTaskDepth,
     delegationAllowlist: opts.agentContext.delegationAllowlist,

@@ -90,7 +90,8 @@ const ReadJsonSchema = {
   properties: {
     file_path: {
       type: "string",
-      description: "Absolute path to the file to read",
+      description:
+        "File path to read. Absolute paths are allowed; relative paths resolve from the repo desktop root by default.",
     },
     offset: {
       type: "number",
@@ -106,7 +107,8 @@ const WriteJsonSchema = {
   properties: {
     file_path: {
       type: "string",
-      description: "Absolute path to the file to write",
+      description:
+        "File path to write. Absolute paths are allowed; relative paths resolve from the repo desktop root by default.",
     },
     content: { type: "string", description: "Full file contents to write" },
   },
@@ -118,7 +120,8 @@ const EditJsonSchema = {
   properties: {
     file_path: {
       type: "string",
-      description: "Absolute path to the file to edit",
+      description:
+        "File path to edit. Absolute paths are allowed; relative paths resolve from the repo desktop root by default.",
     },
     old_string: {
       type: "string",
@@ -512,7 +515,8 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   Read:
     "Read a file from the local filesystem.\n\n" +
     "Usage:\n" +
-    "- file_path must be an absolute path.\n" +
+    "- file_path may be absolute or repo-relative.\n" +
+    "- Relative file_path values resolve from the repo desktop root by default.\n" +
     "- By default reads up to 2000 lines from the start. Use offset and limit for large files.\n" +
     "- Returns content with line numbers (cat -n format).\n" +
     "- Always read a file before editing or overwriting it.\n" +
@@ -520,7 +524,8 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   Write:
     "Write a full file to the local filesystem.\n\n" +
     "Usage:\n" +
-    "- file_path must be an absolute path.\n" +
+    "- file_path may be absolute or repo-relative.\n" +
+    "- Relative file_path values resolve from the repo desktop root by default.\n" +
     "- content replaces the full file contents.\n" +
     "- Creates parent directories when needed.\n" +
     "- Use this for new files or intentional full-file replacements.\n" +
@@ -528,6 +533,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   Edit:
     "Make exact string replacements in a file.\n\n" +
     "Usage:\n" +
+    "- file_path may be absolute or repo-relative. Relative paths resolve from the repo desktop root by default.\n" +
     "- Review the file content first (prefer Read; Bash is also fine). This tool will fail if you haven't seen the file.\n" +
     "- old_string must match the file content exactly, including whitespace and indentation.\n" +
     "- The edit will FAIL if old_string appears more than once in the file. Provide more surrounding context to make it unique, or use replace_all=true to change every occurrence.\n" +

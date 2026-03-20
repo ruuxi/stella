@@ -42,6 +42,7 @@ const isBlockedIpv6 = (ip: string) => {
   );
 };
 
+/** True only for literal IP strings that are loopback / RFC1918 / link-local. Domain names are not IPs (net.isIP === 0) and must not be blocked here — DNS handles those. */
 const isBlockedIpAddress = (ip: string) => {
   const ipVersion = net.isIP(ip);
   if (ipVersion === 4) {
@@ -50,10 +51,13 @@ const isBlockedIpAddress = (ip: string) => {
   if (ipVersion === 6) {
     return isBlockedIpv6(ip);
   }
-  return true;
+  return false;
 };
 
-const assertPublicHostname = async (hostname: string) => {
+const assertPublicHostname = async (
+  hostname: string,
+  skipResolvedAddressCheck: boolean,
+) => {
   const normalized = hostname.trim().toLowerCase();
   if (!normalized) {
     throw new Error("URL hostname is required.");
@@ -69,13 +73,34 @@ const assertPublicHostname = async (hostname: string) => {
     throw new Error("Private and local network targets are blocked.");
   }
 
+  if (skipResolvedAddressCheck) {
+    return;
+  }
+
   const results = await dns.lookup(normalized, { all: true });
-  if (results.length === 0 || results.some((result) => isBlockedIpAddress(result.address))) {
-    throw new Error("Private and local network targets are blocked.");
+  if (results.length === 0) {
+    throw new Error(`Could not resolve hostname "${normalized}".`);
+  }
+  if (results.some((result) => isBlockedIpAddress(result.address))) {
+    const addrs = results.map((r) => r.address).join(", ");
+    throw new Error(
+      `Private and local network targets are blocked. "${normalized}" resolved to: ${addrs}. Check hosts file, VPN, or DNS if this should be a public site.`,
+    );
   }
 };
 
-export const normalizeSafeExternalUrl = async (inputUrl: string) => {
+export type NormalizeSafeExternalUrlOptions = {
+  /**
+   * When true, only the hostname string is validated (no localhost/private literals).
+   * DNS is not checked — use in development when VPN/DNS maps public names to private IPs.
+   */
+  skipResolvedAddressCheck?: boolean;
+};
+
+export const normalizeSafeExternalUrl = async (
+  inputUrl: string,
+  options?: NormalizeSafeExternalUrlOptions,
+) => {
   const trimmed = inputUrl.trim();
   if (!trimmed) {
     throw new Error("URL is required.");
@@ -99,6 +124,9 @@ export const normalizeSafeExternalUrl = async (inputUrl: string) => {
     parsed.protocol = "https:";
   }
 
-  await assertPublicHostname(parsed.hostname);
+  await assertPublicHostname(
+    parsed.hostname,
+    options?.skipResolvedAddressCheck ?? false,
+  );
   return parsed.toString();
 };

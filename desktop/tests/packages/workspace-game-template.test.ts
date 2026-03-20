@@ -26,6 +26,7 @@ describe("workspace game template", () => {
       cwd: repoRoot,
       encoding: "utf8",
       stdio: "pipe",
+      windowsHide: true,
     });
 
     if (result.status !== 0) {
