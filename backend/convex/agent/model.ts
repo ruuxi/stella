@@ -82,6 +82,21 @@ const COMPACTION_MODEL: ModelConfig = {
   },
 };
 
+const DASHBOARD_GENERATION_MODEL: ModelConfig = {
+  model: "moonshotai/kimi-k2.5",
+  fallback: "openai/gpt-5.4",
+  temperature: 1.0,
+  maxOutputTokens: 16192,
+  providerOptions: {
+    openai: {
+      reasoningEffort: "low",
+    },
+    gateway: {
+      order: ["fireworks", "baseten", "amazon-bedrock"],
+    },
+  },
+};
+
 const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
@@ -129,6 +144,8 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
       },
     },
   },
+
+  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
@@ -424,6 +441,8 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
+  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
+
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",
@@ -717,6 +736,8 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
       },
     },
   },
+
+  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
@@ -1012,6 +1033,8 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
+  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
+
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",
@@ -1305,6 +1328,8 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
       },
     },
   },
+
+  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
@@ -1600,6 +1625,8 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
+  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
+
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",
@@ -1894,6 +1921,8 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
+  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
+
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
     fallback: "moonshotai/kimi-k2.5",
@@ -2187,6 +2216,8 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
       },
     },
   },
+
+  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",

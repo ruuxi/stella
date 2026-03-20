@@ -2,6 +2,8 @@ export const AGENT_IDS = {
   ORCHESTRATOR: "orchestrator",
   GENERAL: "general",
   SELF_MOD: "self_mod",
+  /** Onboarding personalized home dashboard pages (not general self-mod). */
+  DASHBOARD_GENERATION: "dashboard_generation",
   EXPLORE: "explore",
   BROWSER: "browser",
   APP: "app",

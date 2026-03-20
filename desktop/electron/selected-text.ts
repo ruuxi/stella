@@ -25,7 +25,7 @@ export const getSelectedText = async (): Promise<string | null> => {
     execFile(
       helperPath,
       [],
-      { timeout: TIMEOUT_MS, encoding: 'utf8', maxBuffer: 512 * 1024 },
+      { timeout: TIMEOUT_MS, encoding: 'utf8', maxBuffer: 512 * 1024, windowsHide: true },
       (error, stdout) => {
         if (error) {
           resolve(null)

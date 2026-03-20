@@ -12,7 +12,7 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 
 const execAsync = (command: string): Promise<string> =>
   new Promise((resolve, reject) => {
-    exec(command, { encoding: "utf-8", maxBuffer: 1024 * 1024 }, (error, stdout) => {
+    exec(command, { encoding: "utf-8", maxBuffer: 1024 * 1024, windowsHide: true }, (error, stdout) => {
       if (error) {
         reject(error);
         return;

@@ -42,7 +42,7 @@ const queryWindowInfo = (x: number, y: number, options?: QueryWindowInfoOptions)
       return
     }
 
-    execFile(helperPath, args, { timeout: 3000 }, (error, stdout) => {
+    execFile(helperPath, args, { timeout: 3000, windowsHide: true }, (error, stdout) => {
       if (error) {
         console.warn('window_info failed', error)
         resolve(null)
@@ -94,7 +94,7 @@ export const captureWindowScreenshot = async (
     }
 
     const stdout = await new Promise<string>((resolve, reject) => {
-      execFile(helperPath, args, { timeout: 5000 }, (error, out) => {
+      execFile(helperPath, args, { timeout: 5000, windowsHide: true }, (error, out) => {
         if (error) return reject(error)
         resolve(out)
       })

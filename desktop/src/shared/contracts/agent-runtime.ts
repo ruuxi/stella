@@ -3,6 +3,8 @@ export const AGENT_IDS = {
   SCHEDULE: "schedule",
   GENERAL: "general",
   SELF_MOD: "self_mod",
+  /** Onboarding personalized home dashboard pages (separate model config from self-mod). */
+  DASHBOARD_GENERATION: "dashboard_generation",
   EXPLORE: "explore",
   APP: "app",
   BROWSER: "browser",
@@ -29,6 +31,8 @@ type AgentDefinition = {
   activityLabel: string | null;
   bundledCore: boolean;
   taskSubagent: boolean;
+  /** When false, omitted from the orchestrator-visible agent roster (internal flows only). */
+  includeInAgentRoster?: boolean;
   usesLocalCliRuntime: boolean;
   promptRole: AgentPromptRole;
   includesStellaDocumentation: boolean;
@@ -86,7 +90,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     promptRole: "subagent",
     includesStellaDocumentation: false,
     controlsSelfModHmr: false,
-    localCliWorkingDirectory: "home",
+    localCliWorkingDirectory: "frontend",
     agentEnginePreference: "general",
     modelSettings: {
       description: "Full tool access for general tasks",
@@ -111,6 +115,23 @@ const BUILTIN_AGENT_DEFINITIONS = [
       description: "Stella internal code, prompts, runtime, and UI",
       order: 2,
     },
+  },
+  {
+    id: AGENT_IDS.DASHBOARD_GENERATION,
+    name: "Dashboard generation",
+    description:
+      "Creates personalized home dashboard panels during onboarding (React pages and registry updates).",
+    activityLabel: "Building dashboard",
+    bundledCore: true,
+    taskSubagent: false,
+    includeInAgentRoster: false,
+    usesLocalCliRuntime: true,
+    promptRole: "subagent",
+    includesStellaDocumentation: true,
+    controlsSelfModHmr: false,
+    localCliWorkingDirectory: "frontend",
+    agentEnginePreference: null,
+    modelSettings: null,
   },
   {
     id: AGENT_IDS.EXPLORE,
@@ -250,8 +271,8 @@ const LOCAL_CLI_AGENT_ID_SET = new Set<string>(
 
 export const getAgentDefinition = (
   agentType: string,
-): BuiltInAgentDefinition | undefined =>
-  BUILTIN_AGENT_DEFINITION_BY_ID[agentType as AgentId];
+): AgentDefinition | undefined =>
+  BUILTIN_AGENT_DEFINITION_BY_ID[agentType as AgentId] as AgentDefinition;
 
 export const getAgentActivityLabel = (agentType: string): string | null =>
   getAgentDefinition(agentType)?.activityLabel ?? null;

@@ -7,7 +7,6 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { ToolContext, ToolResult } from "./types.js";
 import {
-  ensureAbsolutePath,
   expandHomePath,
   readFileSafe,
   formatWithLineNumbers,
@@ -23,17 +22,32 @@ export type FileToolsConfig = {
   frontendRoot?: string;
 };
 
-export function setFileToolsConfig(_config: FileToolsConfig) {
-  // Intentionally no-op.
+const fileToolsConfig: FileToolsConfig = {};
+
+export function setFileToolsConfig(config: FileToolsConfig) {
+  fileToolsConfig.frontendRoot = config.frontendRoot;
 }
+
+const resolveFilePath = (
+  rawPath: unknown,
+  context?: ToolContext,
+): string => {
+  const expandedPath = expandHomePath(String(rawPath ?? ""));
+  if (path.isAbsolute(expandedPath)) {
+    return expandedPath;
+  }
+
+  const basePath =
+    context?.frontendRoot ?? fileToolsConfig.frontendRoot ?? process.cwd();
+
+  return path.resolve(basePath, expandedPath);
+};
 
 export const handleRead = async (
   args: Record<string, unknown>,
-  _context?: ToolContext,
+  context?: ToolContext,
 ): Promise<ToolResult> => {
-  const filePath = expandHomePath(String(args.file_path ?? ""));
-  const pathCheck = ensureAbsolutePath(filePath);
-  if (!pathCheck.ok) return { error: pathCheck.error };
+  const filePath = resolveFilePath(args.file_path, context);
 
   const pathBlock = isBlockedPath(filePath);
   if (pathBlock) return { error: pathBlock };
@@ -61,12 +75,10 @@ export const handleRead = async (
 
 export const handleWrite = async (
   args: Record<string, unknown>,
-  _context?: ToolContext,
+  context?: ToolContext,
 ): Promise<ToolResult> => {
-  const filePath = expandHomePath(String(args.file_path ?? ""));
+  const filePath = resolveFilePath(args.file_path, context);
   const content = String(args.content ?? "");
-  const pathCheck = ensureAbsolutePath(filePath);
-  if (!pathCheck.ok) return { error: pathCheck.error };
 
   const pathBlock = isBlockedPath(filePath);
   if (pathBlock) return { error: pathBlock };
@@ -101,14 +113,12 @@ export const handleWrite = async (
 
 export const handleEdit = async (
   args: Record<string, unknown>,
-  _context?: ToolContext,
+  context?: ToolContext,
 ): Promise<ToolResult> => {
-  const filePath = expandHomePath(String(args.file_path ?? ""));
+  const filePath = resolveFilePath(args.file_path, context);
   const oldString = String(args.old_string ?? "");
   const newString = String(args.new_string ?? "");
   const replaceAll = Boolean(args.replace_all ?? false);
-  const pathCheck = ensureAbsolutePath(filePath);
-  if (!pathCheck.ok) return { error: pathCheck.error };
 
   const pathBlock = isBlockedPath(filePath);
   if (pathBlock) return { error: pathBlock };

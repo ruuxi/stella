@@ -2275,11 +2275,17 @@ async fn handle_cookies_get(cmd: &Value, state: &DaemonState) -> Result<Value, S
     let mgr = state.browser.as_ref().ok_or("Browser not launched")?;
     let session_id = mgr.active_session_id()?.to_string();
 
-    let urls = cmd.get("urls").and_then(|v| v.as_array()).map(|arr| {
-        arr.iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect()
-    });
+    let urls = cmd
+        .get("url")
+        .and_then(|v| v.as_str())
+        .map(|url| vec![url.to_string()])
+        .or_else(|| {
+            cmd.get("urls").and_then(|v| v.as_array()).map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+        });
 
     let cookies_list = cookies::get_cookies(&mgr.client, &session_id, urls).await?;
     Ok(json!({ "cookies": cookies_list }))

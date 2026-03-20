@@ -177,7 +177,7 @@ const runPassthrough = async (binary: string, args: string[]) =>
   await new Promise<number>((resolve) => {
     const child = spawn(binary, args, {
       stdio: "inherit",
-      windowsHide: false,
+      windowsHide: true,
     });
 
     child.on("close", (code) => {

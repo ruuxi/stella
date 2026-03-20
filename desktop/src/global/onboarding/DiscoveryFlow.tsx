@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getOrCreateDeviceId } from "@/platform/electron/device";
+import { planDashboardPages } from "@/global/onboarding/services/dashboard-plan";
 import { synthesizeCoreMemory } from "@/global/onboarding/services/synthesis";
 import { getPersonalizedDashboardPromptConfig } from "@/prompts/transport";
 import { useChatStore } from "@/context/chat-store";
@@ -125,14 +126,28 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
           return;
         }
 
-        setDashboardState("generating");
-        startDashboardGeneration({
-          conversationId: activeConversationId,
-          coreMemory: synthesisResult.coreMemory,
-          promptConfig: getPersonalizedDashboardPromptConfig(),
-        }).catch(() => {
-          setDashboardState("idle");
-        });
+        let plannedPages: Awaited<ReturnType<typeof planDashboardPages>> | null =
+          null;
+        try {
+          plannedPages = await planDashboardPages(
+            synthesisResult.coreMemory,
+            isAuthenticated,
+          );
+        } catch {
+          plannedPages = null;
+        }
+
+        if (plannedPages?.length) {
+          setDashboardState("generating");
+          startDashboardGeneration({
+            conversationId: activeConversationId,
+            coreMemory: synthesisResult.coreMemory,
+            plannedPages,
+            promptConfig: getPersonalizedDashboardPromptConfig(),
+          }).catch(() => {
+            setDashboardState("idle");
+          });
+        }
 
         completed = true;
         synthesizedRef.current = true;
