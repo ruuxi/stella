@@ -187,6 +187,34 @@ const resolveMaybeLlmRoute = (args: {
     return directProviderRoute;
   }
 
+  // When the explicit provider didn't resolve, try OpenRouter and Gateway as
+  // fallbacks before giving up. Users with an OpenRouter key expect
+  // "openai/gpt-5.1-codex" to route through OpenRouter when no direct key exists.
+  const fallbackCandidates = uniqueModelCandidates([
+    parsed.fullModelId,
+    parsed.modelId,
+  ]);
+
+  if (parsed.provider !== "openrouter") {
+    const openRouterFallback = resolveOpenRouterRoute({
+      stellaHomePath: args.stellaHomePath,
+      requestedCandidates: fallbackCandidates,
+    });
+    if (openRouterFallback) {
+      return openRouterFallback;
+    }
+  }
+
+  if (parsed.provider !== "vercel-ai-gateway") {
+    const gatewayFallback = resolveGatewayRoute({
+      stellaHomePath: args.stellaHomePath,
+      requestedCandidates: fallbackCandidates,
+    });
+    if (gatewayFallback) {
+      return gatewayFallback;
+    }
+  }
+
   return (
     createStellaRoute({
       proxy: args.proxy,
