@@ -90,10 +90,12 @@ function main() {
     }
   }
 
-  // Spawn the native binary with inherited stdio
+  // Spawn the native binary with inherited stdio. windowsHide avoids a new console
+  // flashing on Windows when Electron (or other parents) invoke this wrapper often
+  // (e.g. cookie lookup per browser fetch).
   const child = spawn(binaryPath, process.argv.slice(2), {
     stdio: 'inherit',
-    windowsHide: false,
+    windowsHide: true,
   });
 
   child.on('error', (err) => {

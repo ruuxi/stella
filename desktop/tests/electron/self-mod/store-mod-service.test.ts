@@ -55,6 +55,7 @@ const runGit = (repoRoot: string, args: string[]) =>
     cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
   }).trim();
 
 const writeFile = (repoRoot: string, relativePath: string, content: string) => {
@@ -220,8 +221,10 @@ describe("StoreModService", () => {
     expect(firstBatch?.commitHash).toBeTruthy();
     expect(secondBatch?.commitHash).toBeTruthy();
 
-    let capturedArtifact: StoreReleaseArtifact | null = null;
-    let capturedManifest: StorePackageReleaseRecord["manifest"] | null = null;
+    const captured = {
+      artifact: null as StoreReleaseArtifact | null,
+      manifest: null as StorePackageReleaseRecord["manifest"] | null,
+    };
 
     await service.publishRelease({
       featureId: firstBatch!.featureId,
@@ -230,8 +233,8 @@ describe("StoreModService", () => {
       displayName: "Weather Widget",
       description: "Blueprint publish test",
       publish: async (args) => {
-        capturedArtifact = args.artifact;
-        capturedManifest = {
+        captured.artifact = args.artifact;
+        captured.manifest = {
           ...args.manifest,
           releaseNumber: 1,
         };
@@ -248,16 +251,16 @@ describe("StoreModService", () => {
       },
     });
 
-    expect(capturedArtifact?.kind).toBe("self_mod_blueprint");
-    expect(capturedArtifact?.schemaVersion).toBe(1);
-    expect(capturedArtifact?.manifest.releaseNumber).toBe(1);
-    expect(capturedArtifact?.batches).toHaveLength(2);
-    expect(capturedArtifact?.batches[0]?.patch).toContain("weather-one.ts");
-    expect(capturedArtifact?.files.map((file) => file.path).sort()).toEqual([
+    expect(captured.artifact?.kind).toBe("self_mod_blueprint");
+    expect(captured.artifact?.schemaVersion).toBe(1);
+    expect(captured.artifact?.manifest.releaseNumber).toBe(1);
+    expect(captured.artifact?.batches).toHaveLength(2);
+    expect(captured.artifact?.batches[0]?.patch).toContain("weather-one.ts");
+    expect(captured.artifact?.files.map((file) => file.path).sort()).toEqual([
       "src/weather-one.ts",
       "src/weather-two.ts",
     ]);
-    expect(capturedManifest?.batchIds).toEqual([firstBatch!.batchId, secondBatch!.batchId]);
+    expect(captured.manifest?.batchIds).toEqual([firstBatch!.batchId, secondBatch!.batchId]);
     expect(
       store.listBatches(firstBatch!.featureId).map((batch) => batch.state),
     ).toEqual(["published", "published"]);

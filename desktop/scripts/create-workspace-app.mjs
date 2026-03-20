@@ -72,6 +72,7 @@ if (resolvedTemplate === 'workspace-game-app') {
       cwd: join(__dirname, '..'),
       encoding: 'utf-8',
       stdio: 'pipe',
+      windowsHide: true,
     },
   )
 

@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import {
   collectBrowserData,
@@ -10,15 +12,159 @@ import {
   type BrowserType,
 } from "../system/browser-data.js";
 import { collectAllSignals } from "../system/collect-all.js";
+import { normalizeSafeExternalUrl } from "../core/runtime/tools/network-guards.js";
 import type { AllUserSignalsResult } from "../system/types.js";
 import type { DiscoveryCategory } from "../../src/shared/contracts/discovery.js";
 
+type BrowserFetchInit = {
+  method?: "GET" | "POST";
+  headers?: Record<string, string>;
+  body?: string;
+};
+
+type StellaBrowserResponse = {
+  success: boolean;
+  data?: unknown;
+  error?: string;
+};
+
+type BrowserCookie = {
+  name: string;
+  value: string;
+};
+
 type BrowserHandlersOptions = {
   getStellaHomePath: () => string | null;
+  getFrontendRoot: () => string | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
+};
+
+const STELLA_BROWSER_TIMEOUT_MS = 30_000;
+
+/** Must match app-agent shell overrides in `core/runtime/tools/shell.ts`. */
+const DEFAULT_STELLA_BROWSER_EXT_PORT = "9224";
+
+const runStellaBrowserJson = (
+  frontendRoot: string,
+  args: string[],
+  extraEnv?: Record<string, string>,
+): Promise<StellaBrowserResponse> =>
+  new Promise((resolve, reject) => {
+    const binPath = path.join(
+      frontendRoot,
+      "stella-browser",
+      "bin",
+      "stella-browser.js",
+    );
+
+    execFile(
+      process.execPath,
+      [binPath, ...args],
+      {
+        cwd: frontendRoot,
+        timeout: STELLA_BROWSER_TIMEOUT_MS,
+        windowsHide: true,
+        env: extraEnv ? { ...process.env, ...extraEnv } : undefined,
+      },
+      (error, stdout, stderr) => {
+        const output = stdout.trim();
+        if (!output) {
+          reject(error ?? new Error(stderr.trim() || "stella-browser failed."));
+          return;
+        }
+
+        try {
+          resolve(JSON.parse(output) as StellaBrowserResponse);
+        } catch {
+          reject(
+            new Error(stderr.trim() || "Failed to parse stella-browser output."),
+          );
+        }
+      },
+    );
+  });
+
+const getBrowserCookieHeader = async (
+  frontendRoot: string,
+  targetUrl: string,
+): Promise<string | null> => {
+  try {
+    // Extension bridge (Chrome MV3), not CDP --auto-connect — see stella-browser `provider: extension`.
+    const extensionEnv: Record<string, string> = {
+      STELLA_BROWSER_PROVIDER: "extension",
+      STELLA_BROWSER_AUTO_CONNECT: "false",
+      STELLA_BROWSER_SESSION: process.env.STELLA_BROWSER_SESSION ?? "default",
+      STELLA_BROWSER_EXT_PORT:
+        process.env.STELLA_BROWSER_EXT_PORT ?? DEFAULT_STELLA_BROWSER_EXT_PORT,
+      STELLA_BROWSER_EXT_TOKEN: process.env.STELLA_BROWSER_EXT_TOKEN ?? "",
+    };
+    const response = await runStellaBrowserJson(
+      frontendRoot,
+      ["--json", "cookies", "get", "--url", targetUrl],
+      extensionEnv,
+    );
+
+    if (!response.success) {
+      return null;
+    }
+
+    const data = response.data as { cookies?: BrowserCookie[] } | undefined;
+    const cookies = data?.cookies ?? [];
+    if (cookies.length === 0) {
+      return null;
+    }
+
+    return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+  } catch {
+    return null;
+  }
+};
+
+const fetchWithBrowserSession = async (
+  frontendRoot: string,
+  payload: { url: string; responseType: "json" | "text"; init?: BrowserFetchInit },
+) => {
+  const url = await normalizeSafeExternalUrl(payload.url, {
+    skipResolvedAddressCheck: process.env.NODE_ENV === "development",
+  });
+  const cookieHeader = await getBrowserCookieHeader(frontendRoot, url);
+  const method = payload.init?.method ?? "GET";
+  const headers = new Headers(payload.init?.headers);
+
+  if (!headers.has("User-Agent")) {
+    headers.set("User-Agent", "StellaDesktop/1.0");
+  }
+  if (cookieHeader) {
+    headers.set("Cookie", cookieHeader);
+  }
+
+  const response = await fetch(url, {
+    method,
+    headers,
+    body: payload.init?.body,
+    redirect: "follow",
+    signal: AbortSignal.timeout(STELLA_BROWSER_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed with status ${response.status}.`);
+  }
+
+  if (payload.responseType === "json") {
+    const text = await response.text();
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      throw new Error(
+        `Response was not valid JSON (status ${response.status}, ${text.length} bytes).`,
+      );
+    }
+  }
+
+  return response.text();
 };
 
 export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
@@ -87,6 +233,42 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
   ipcMain.handle("browserData:detectPreferredBrowser", async () => {
     return detectPreferredBrowserProfile();
   });
+
+  ipcMain.handle(
+    "browser:fetchJson",
+    async (event, payload: { url: string; init?: BrowserFetchInit }) => {
+      if (!options.assertPrivilegedSender(event, "browser:fetchJson")) {
+        throw new Error("Blocked untrusted request.");
+      }
+      const frontendRoot = options.getFrontendRoot();
+      if (!frontendRoot?.trim()) {
+        throw new Error("Frontend root not available; restart the app.");
+      }
+      return fetchWithBrowserSession(frontendRoot, {
+        url: payload.url,
+        responseType: "json",
+        init: payload.init,
+      });
+    },
+  );
+
+  ipcMain.handle(
+    "browser:fetchText",
+    async (event, payload: { url: string; init?: BrowserFetchInit }) => {
+      if (!options.assertPrivilegedSender(event, "browser:fetchText")) {
+        throw new Error("Blocked untrusted request.");
+      }
+      const frontendRoot = options.getFrontendRoot();
+      if (!frontendRoot?.trim()) {
+        throw new Error("Frontend root not available; restart the app.");
+      }
+      return fetchWithBrowserSession(frontendRoot, {
+        url: payload.url,
+        responseType: "text",
+        init: payload.init,
+      });
+    },
+  );
 
   ipcMain.handle(
     "browserData:listProfiles",

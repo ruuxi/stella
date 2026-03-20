@@ -12,6 +12,12 @@ export class ExternalLinkService {
     { windowStartMs: number; count: number; lastOpenedAtMs: number }
   >()
 
+  /** When set (dev: Vite on LAN), renderer at this origin may use privileged IPC. */
+  private trustedDevOrigin: string | null = null
+
+  /** Dev-only: allow privileged IPC when sender URL is missing (Electron edge cases). */
+  private isDevBuild = false
+
   private parseUrl(value: string) {
     try {
       return new URL(value)
@@ -35,11 +41,29 @@ export class ExternalLinkService {
     return false
   }
 
+  /**
+   * Call in dev with the same base URL Vite uses (from .vite-dev-url), including LAN hosts.
+   */
+  trustDevServerBaseUrl(baseUrl: string) {
+    const trimmed = baseUrl.trim()
+    if (!trimmed) return
+    const parsed = this.parseUrl(trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed)
+    if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) return
+    this.trustedDevOrigin = parsed.origin
+  }
+
+  setDevBuild(isDev: boolean) {
+    this.isDevBuild = isDev
+  }
+
   isTrustedRendererUrl(url: string) {
     const parsed = this.parseUrl(url)
     if (!parsed) return false
     if (parsed.protocol === 'file:') return true
     if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && this.isLoopbackHost(parsed.hostname)) {
+      return true
+    }
+    if (this.trustedDevOrigin && parsed.origin === this.trustedDevOrigin) {
       return true
     }
     return false
@@ -105,6 +129,12 @@ export class ExternalLinkService {
   assertPrivilegedSender(event: IpcMainEvent | IpcMainInvokeEvent, channel: string) {
     const senderUrl = this.getSenderUrl(event)
     if (this.isTrustedRendererUrl(senderUrl)) {
+      return true
+    }
+    if (this.isDevBuild && !senderUrl.trim()) {
+      console.warn(
+        `[security] Dev: privileged IPC ${channel} with empty sender URL (allowing)`,
+      )
       return true
     }
     console.warn(`[security] Blocked untrusted IPC call to ${channel} from ${senderUrl}`)

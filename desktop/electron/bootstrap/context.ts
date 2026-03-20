@@ -24,6 +24,7 @@ import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
 import { StoreModService } from "../self-mod/store-mod-service.js";
 import type { MobileBridgeService } from "../services/mobile-bridge/service.js";
 import { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
+import { getDevServerUrl } from "../dev-url.js";
 
 export type MobileBroadcastFn = (channel: string, data: unknown) => void;
 
@@ -197,6 +198,10 @@ export const createBootstrapContext = (
   const uiStateService = new UiStateService();
   const devProjectService = new DevProjectService(lifecycle);
   const externalLinkService = new ExternalLinkService();
+  externalLinkService.setDevBuild(config.isDev);
+  if (config.isDev) {
+    externalLinkService.trustDevServerBaseUrl(getDevServerUrl());
+  }
   const miniBridgeService = new MiniBridgeService();
   const socialSessionService = new SocialSessionService({
     getWorkspaceRoot: () => state.stellaWorkspacePath,

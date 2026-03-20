@@ -45,6 +45,36 @@ const onIpcWithEvent =
     };
   };
 
+/** Electron wraps handler errors as "Error invoking remote method 'ch': Error: …" — unwrap for UI. */
+const unwrapIpcInvokeError = (error: unknown): Error => {
+  if (!(error instanceof Error)) {
+    return new Error(String(error));
+  }
+  const wrapped = error.message.match(
+    /^Error invoking remote method '[^']+':\s*(.+)$/s,
+  );
+  if (!wrapped) {
+    return error;
+  }
+  let inner = wrapped[1].trim();
+  const nested = inner.match(/^Error:\s*(.+)$/s);
+  if (nested) {
+    inner = nested[1].trim();
+  }
+  return new Error(inner);
+};
+
+const invokeBrowserFetch = async <T,>(
+  channel: "browser:fetchJson" | "browser:fetchText",
+  payload: { url: string; init?: unknown },
+): Promise<T> => {
+  try {
+    return (await ipcRenderer.invoke(channel, payload)) as T;
+  } catch (error) {
+    throw unwrapIpcInvokeError(error);
+  }
+};
+
 // ---------------------------------------------------------------------------
 
 contextBridge.exposeInMainWorld("electronAPI", {
@@ -421,6 +451,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
     startDashboardGeneration: (payload: {
       conversationId: string;
       coreMemory: string;
+      plannedPages: Array<{
+        pageId: string;
+        title: string;
+        topic: string;
+        focus: string;
+        dataSources: string[];
+        personalOrEntertainment: boolean;
+      }>;
       promptConfig: { systemPrompt: string; userPromptTemplate: string };
     }) =>
       ipcRenderer.invoke(
@@ -510,6 +548,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   browser: {
     checkCoreMemoryExists: () => ipcRenderer.invoke("browserData:exists"),
+    fetchJson: (
+      url: string,
+      init?: {
+        method?: "GET" | "POST";
+        headers?: Record<string, string>;
+        body?: string;
+      },
+    ) => invokeBrowserFetch("browser:fetchJson", { url, init }),
+    fetchText: (
+      url: string,
+      init?: {
+        method?: "GET" | "POST";
+        headers?: Record<string, string>;
+        body?: string;
+      },
+    ) => invokeBrowserFetch("browser:fetchText", { url, init }),
     collectData: (options?: {
       selectedBrowser?: string;
       selectedProfile?: string;

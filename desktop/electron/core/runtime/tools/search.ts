@@ -5,7 +5,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { spawn } from "child_process";
-import type { ToolResult } from "./types.js";
+import type { ToolContext, ToolResult } from "./types.js";
 import {
   expandHomePath,
   toPosix,
@@ -16,9 +16,14 @@ import {
 } from "./utils.js";
 import { isBlockedPath } from "./command-safety.js";
 
-export const handleGlob = async (args: Record<string, unknown>): Promise<ToolResult> => {
+export const handleGlob = async (
+  args: Record<string, unknown>,
+  context?: ToolContext,
+): Promise<ToolResult> => {
   const pattern = String(args.pattern ?? "");
-  const basePath = expandHomePath(String(args.path ?? process.cwd()));
+  const basePath = expandHomePath(
+    String(args.path ?? context?.frontendRoot ?? process.cwd()),
+  );
 
   // Safety check: block system directories
   const pathBlock = isBlockedPath(basePath);
@@ -66,7 +71,11 @@ export const handleGlob = async (args: Record<string, unknown>): Promise<ToolRes
 
 const runRipgrep = async (args: string[], cwd: string) => {
   return new Promise<{ ok: boolean; output: string; error?: string }>((resolve) => {
-    const child = spawn("rg", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("rg", args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
     let stdout = "";
     let stderr = "";
 
@@ -91,9 +100,14 @@ const runRipgrep = async (args: string[], cwd: string) => {
   });
 };
 
-export const handleGrep = async (args: Record<string, unknown>): Promise<ToolResult> => {
+export const handleGrep = async (
+  args: Record<string, unknown>,
+  context?: ToolContext,
+): Promise<ToolResult> => {
   const pattern = String(args.pattern ?? "");
-  const basePath = expandHomePath(String(args.path ?? process.cwd()));
+  const basePath = expandHomePath(
+    String(args.path ?? context?.frontendRoot ?? process.cwd()),
+  );
   const glob = args.glob ? String(args.glob) : undefined;
   const type = args.type ? String(args.type) : undefined;
   const outputMode = String(args.output_mode ?? "files_with_matches");
