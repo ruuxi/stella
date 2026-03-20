@@ -144,9 +144,9 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
             coreMemory: synthesisResult.coreMemory,
             plannedPages,
             promptConfig: getPersonalizedDashboardPromptConfig(),
-          }).catch(() => {
-            setDashboardState("idle");
-          });
+          })
+            .then(() => setDashboardState("idle"))
+            .catch(() => setDashboardState("idle"));
         }
 
         completed = true;

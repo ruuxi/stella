@@ -19,7 +19,8 @@ import {
 } from "../prompts/dashboard_plan";
 import { planDashboardPagesWithLlm } from "../lib/dashboard_plan_llm";
 
-const MAX_ANON_DASHBOARD_PLAN_REQUESTS = 10;
+/** Local/testing: high anon allowance; re-tighten before production. */
+const MAX_ANON_DASHBOARD_PLAN_REQUESTS = 1_000_000;
 
 type PlanDashboardRequest = {
   coreMemory?: string;

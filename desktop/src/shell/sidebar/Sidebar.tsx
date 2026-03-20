@@ -163,6 +163,32 @@ export const Sidebar = ({
           </span>
           <span className="sidebar-nav-label">Social</span>
         </button>
+        {(generatedPages.length > 0 || dashboardState === "generating") && (
+          <>
+            {dashboardState === "generating" && generatedPages.length === 0 && (
+              <div className="sidebar-nav-item sidebar-nav-item--generating">
+                <span className="sidebar-nav-icon">
+                  <Loader size={18} className="sidebar-spinner" />
+                </span>
+                <span className="sidebar-nav-label">Generating pages...</span>
+              </div>
+            )}
+            {generatedPages.map((page) => (
+              <button
+                key={page.id}
+                type="button"
+                className={`sidebar-nav-item ${activePageId === page.id ? "sidebar-nav-item--active" : ""}`}
+                onClick={() => onPageSelect(page)}
+                title={page.title}
+              >
+                <span className="sidebar-nav-icon">
+                  <Layout size={18} />
+                </span>
+                <span className="sidebar-nav-label">{page.title}</span>
+              </button>
+            ))}
+          </>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className="sidebar-nav-item">
@@ -206,33 +232,6 @@ export const Sidebar = ({
                     <AlertCircle size={12} />
                   </span>
                 )}
-              </button>
-            ))}
-          </>
-        )}
-        {(generatedPages.length > 0 || dashboardState === "generating") && (
-          <>
-            <div className="sidebar-nav-section-label">Your Pages</div>
-            {dashboardState === "generating" && generatedPages.length === 0 && (
-              <div className="sidebar-nav-item sidebar-nav-item--generating">
-                <span className="sidebar-nav-icon">
-                  <Loader size={18} className="sidebar-spinner" />
-                </span>
-                <span className="sidebar-nav-label">Generating pages...</span>
-              </div>
-            )}
-            {generatedPages.map((page) => (
-              <button
-                key={page.id}
-                type="button"
-                className={`sidebar-nav-item ${activePageId === page.id ? "sidebar-nav-item--active" : ""}`}
-                onClick={() => onPageSelect(page)}
-                title={page.title}
-              >
-                <span className="sidebar-nav-icon">
-                  <Layout size={18} />
-                </span>
-                <span className="sidebar-nav-label">{page.title}</span>
               </button>
             ))}
           </>

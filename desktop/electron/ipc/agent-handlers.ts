@@ -334,7 +334,8 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
       return await startDashboardGeneration(
         (request) => stellaHostRunner.createBackgroundTask(request),
-        payload,
+        (taskId) => stellaHostRunner.getLocalTaskSnapshot(taskId),
+        { ...payload, projectRoot: options.frontendRoot },
       );
     },
   );

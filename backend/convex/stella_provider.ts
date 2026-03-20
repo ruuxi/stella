@@ -29,7 +29,8 @@ import {
 } from "./stella_models";
 import { resolveManagedModelAccess } from "./lib/managed_billing";
 
-const MAX_ANON_REQUESTS = 50_000;
+/** Local/testing: high anon allowance; re-tighten before production. */
+const MAX_ANON_REQUESTS = 10_000_000;
 const DEFAULT_RETRY_AFTER_MS = 60_000;
 
 export const STELLA_API_BASE_PATH = "/api/stella/v1";

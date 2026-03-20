@@ -8,6 +8,4 @@ export type GeneratedPage = {
 
 export const generatedPages: GeneratedPage[] = [
   // --- generated entries below (do not remove this line) ---
-];
-
-void lazy;
+  ];

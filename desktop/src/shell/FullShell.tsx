@@ -1,4 +1,4 @@
-﻿import {
+import {
   lazy,
   Suspense,
   useCallback,
@@ -46,7 +46,7 @@ const OnboardingCanvas = lazy(() =>
 export const FullShell = () => {
   const { state, setView } = useUiState();
   const activeConversationId = state.conversationId;
-  const { state: workspaceState, openPanel } = useWorkspace();
+  const { state: workspaceState, openPanel, closePanel } = useWorkspace();
   const activePanel = workspaceState.activePanel;
   const { gradientMode, gradientColor } = useTheme();
   const isDev = import.meta.env.DEV;
@@ -88,8 +88,9 @@ export const FullShell = () => {
   }, [setActiveDialog]);
 
   const showStoreView = useCallback(() => {
+    closePanel();
     setView("store");
-  }, [setView]);
+  }, [closePanel, setView]);
 
   const showTestDialog = useCallback(() => {
     setActiveDialog("test");
@@ -100,16 +101,19 @@ export const FullShell = () => {
   }, [setActiveDialog]);
 
   const showHomeView = useCallback(() => {
+    closePanel();
     setView("home");
-  }, [setView]);
+  }, [closePanel, setView]);
 
   const showChatView = useCallback(() => {
+    closePanel();
     setView("chat");
-  }, [setView]);
+  }, [closePanel, setView]);
 
   const showSocialView = useCallback(() => {
+    closePanel();
     setView("social");
-  }, [setView]);
+  }, [closePanel, setView]);
 
   const handlePageSelect = useCallback(
     (page: GeneratedPage) => {
@@ -133,9 +137,10 @@ export const FullShell = () => {
     });
     orbRef.current?.openChat();
     if (state.view === "chat") {
+      closePanel();
       setView("home");
     }
-  }, [setView, state.view]);
+  }, [closePanel, setView, state.view]);
 
   const handleProjectSelect = useCallback(
     (project: (typeof projects)[number]) => {

@@ -135,7 +135,33 @@ export const runPiSubagentTask = async (
       ...opts,
       systemPrompt: effectiveSystemPrompt,
     });
+  const isDashboardGeneration =
+    opts.agentType === "dashboard_generation";
+  const dashboardLabel = prompt.split("\n")[0]?.trim() || "(unknown)";
   runEvents.recordRunStart();
+  if (isDashboardGeneration) {
+    logger.info("dashboard.run.start", {
+      runId,
+      conversationId: opts.conversationId,
+      threadKey,
+      label: dashboardLabel,
+    });
+    opts.abortSignal?.addEventListener(
+      "abort",
+      () => {
+        logger.warn("dashboard.run.abort-signal", {
+          runId,
+          conversationId: opts.conversationId,
+          label: dashboardLabel,
+          reason:
+            opts.abortSignal?.reason instanceof Error
+              ? opts.abortSignal.reason.message
+              : String(opts.abortSignal?.reason ?? "unknown"),
+        });
+      },
+      { once: true },
+    );
+  }
 
   if (prompt) {
     appendThreadMessage(opts.store, {
@@ -147,6 +173,13 @@ export const runPiSubagentTask = async (
 
   if (opts.abortSignal?.aborted) {
     runEvents.recordError("Aborted");
+    if (isDashboardGeneration) {
+      logger.warn("dashboard.run.aborted-before-execute", {
+        runId,
+        conversationId: opts.conversationId,
+        label: dashboardLabel,
+      });
+    }
     return { runId, result: "", error: "Aborted" };
   }
 
@@ -164,6 +197,14 @@ export const runPiSubagentTask = async (
     if (errorMessage) {
       throw new Error(errorMessage);
     }
+    if (isDashboardGeneration) {
+      logger.info("dashboard.run.execute-finished", {
+        runId,
+        conversationId: opts.conversationId,
+        label: dashboardLabel,
+        resultLength: result.length,
+      });
+    }
     return await finalizeSubagentSuccess({
       opts,
       runEvents,
@@ -172,6 +213,14 @@ export const runPiSubagentTask = async (
       result,
     });
   } catch (error) {
+    if (isDashboardGeneration) {
+      logger.error("dashboard.run.execute-error", {
+        runId,
+        conversationId: opts.conversationId,
+        label: dashboardLabel,
+        error,
+      });
+    }
     return finalizeSubagentError({
       opts,
       runEvents,

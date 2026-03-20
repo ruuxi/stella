@@ -2,7 +2,10 @@ import { loadAgentsFromHome } from "../agents/agents.js";
 import { loadExtensions } from "../extensions/loader.js";
 import { registerModel } from "../../ai/models.js";
 import type { Api, Model } from "../../ai/types.js";
+import { createRuntimeLogger } from "../debug.js";
 import type { RunnerContext } from "./types.js";
+
+const logger = createRuntimeLogger("runtime-init");
 
 export const createRuntimeInitialization = (
   context: RunnerContext,
@@ -85,6 +88,11 @@ export const createRuntimeInitialization = (
   };
 
   const stop = () => {
+    logger.warn("runner.stop", {
+      activeOrchestratorRunId: context.state.activeOrchestratorRunId,
+      activeAbortControllers: context.state.activeRunAbortControllers.size,
+      conversationCallbacks: context.state.conversationCallbacks.size,
+    });
     context.state.isRunning = false;
     context.state.isInitialized = false;
     context.state.initializationPromise = null;

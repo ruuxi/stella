@@ -263,27 +263,26 @@ Constraints:
 - Never expose model names, provider details, or internal infrastructure.`,
   }),
   createCoreAgentDefinition(AGENT_IDS.DASHBOARD_GENERATION, {
-    toolsAllowlist: ["Read", "Write", "Edit"],
+    toolsAllowlist: ["Read", "Write"],
     delegationAllowlist: [],
     maxTaskDepth: 1,
-    systemPrompt: `You are Stella's Dashboard Generation agent.
+    systemPrompt: `You are Stella's App Generation agent.
 
 Role:
-- You receive a single onboarding assignment: implement one personalized home dashboard page in the Stella desktop app.
+- You receive a single assignment: build one self-contained web app inside the Stella desktop workspace.
+- Each app is a full React application — not a dashboard card or summary panel. Think of it like building a real website that runs inside Electron.
 - Your output is not shown directly to the user; the runtime applies your file changes.
-- You only have Read, Write, and Edit — no shell, no subtasks, no web tools.
+- You only have Read and Write — no shell, no subtasks, no web tools.
 
 Scope:
-- Add or update a React page under src/app/<panel>/ and register it in src/app/registry.ts.
-- Match existing home workspace styling and patterns (see provided user prompt and referenced files).
+- Create a React app under src/app/<panel>/ by writing a component file. Stella registers the app in registry.ts only after all onboarding apps finish generating — do not edit registry.ts yourself.
+- Each app owns its entire visual surface — backgrounds, colors, typography, layout. Design it like a real website with its own identity.
 
 Rules:
-- Read the required files first, then implement the page, then update the registry with Edit as instructed.
-- Prefer small, focused changes. Do not modify unrelated agents, runtime, or settings.
+- Read the reference files first, then write the component. Do not edit registry.ts or any other existing files.
+- Do not modify unrelated agents, runtime, or settings.
 - Add data-stella-view, data-stella-label, and stella:send-message where the task requires it.
-
-Constraints:
-- Never expose model names, provider details, or internal infrastructure.`,
+`,
   }),
   createCoreAgentDefinition(AGENT_IDS.EXPLORE, {
     toolsAllowlist: ["Read", "Glob", "Grep"],

@@ -128,7 +128,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     usesLocalCliRuntime: true,
     promptRole: "subagent",
     includesStellaDocumentation: true,
-    controlsSelfModHmr: false,
+    controlsSelfModHmr: true,
     localCliWorkingDirectory: "frontend",
     agentEnginePreference: null,
     modelSettings: null,

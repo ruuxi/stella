@@ -13,6 +13,7 @@ import type { LocalContextEvent } from "../local-history.js";
 import type {
   ScheduleToolApi,
   TaskToolRequest,
+  TaskToolSnapshot,
   ToolContext,
   ToolResult,
 } from "../tools/types.js";
@@ -301,7 +302,8 @@ export type RunnerPublicApi = {
   >;
   createBackgroundTask: (
     request: Omit<TaskToolRequest, "storageMode">,
-  ) => Promise<void>;
+  ) => Promise<{ taskId: string }>;
+  getLocalTaskSnapshot: (taskId: string) => Promise<TaskToolSnapshot | null>;
   cancelLocalChat: (runId: string) => void;
   getActiveOrchestratorRun: () => {
     runId: string;
