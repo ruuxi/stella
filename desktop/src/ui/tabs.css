@@ -29,10 +29,10 @@
   align-items: center;
   gap: 12px;
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 14px;
-  font-weight: var(--font-family-sans--emphasis-weight, 400);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
+  font-weight: var(--font-family-sans--emphasis-weight, 500);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.43;
   white-space: nowrap;
   flex-shrink: 0;
@@ -135,9 +135,9 @@
 [data-component="tabs"][data-variant="settings"] [data-slot="tabs-section-title"] {
   width: 100%;
   padding: 0 0 0 4px;
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 12px;
-  font-weight: var(--font-family-sans--emphasis-weight, 400);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
+  font-weight: var(--font-family-sans--emphasis-weight, 500);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   color: var(--muted-foreground);
 }
