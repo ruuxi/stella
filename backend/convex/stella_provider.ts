@@ -32,6 +32,9 @@ import { resolveManagedModelAccess } from "./lib/managed_billing";
 /** Local/testing: high anon allowance; re-tighten before production. */
 const MAX_ANON_REQUESTS = 10_000_000;
 const DEFAULT_RETRY_AFTER_MS = 60_000;
+const SSE_HEARTBEAT_INTERVAL_MS = 45_000;
+const SSE_STREAM_OPEN_COMMENT = new TextEncoder().encode(": stella-stream-open\n\n");
+const SSE_HEARTBEAT_COMMENT = new TextEncoder().encode(": keepalive\n\n");
 
 export const STELLA_API_BASE_PATH = "/api/stella/v1";
 export const STELLA_CHAT_COMPLETIONS_PATH = `${STELLA_API_BASE_PATH}/chat/completions`;
@@ -181,6 +184,118 @@ function estimateRequestTokens(requestBody: StellaRequestBody): TokenEstimate {
   };
 }
 
+function createStreamingProxyResponse(args: {
+  request: Request;
+  upstreamResponse: Response;
+  responseHeaders: Record<string, string>;
+  upstreamAbortController: AbortController;
+}): Response {
+  const { request, upstreamResponse, responseHeaders, upstreamAbortController } = args;
+  const upstreamBody = upstreamResponse.body;
+
+  if (!upstreamBody) {
+    return new Response(null, {
+      status: upstreamResponse.status,
+      headers: responseHeaders,
+    });
+  }
+
+  responseHeaders["cache-control"] = "no-cache, no-transform";
+
+  const reader = upstreamBody.getReader();
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      let lastDownstreamWriteAt = Date.now();
+      let closed = false;
+
+      const closeStream = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(heartbeatTimer);
+        request.signal.removeEventListener("abort", onClientAbort);
+      };
+
+      const abortUpstream = () => {
+        if (!upstreamAbortController.signal.aborted) {
+          upstreamAbortController.abort("stella client disconnected");
+        }
+      };
+
+      const enqueueComment = (chunk: Uint8Array) => {
+        if (closed) return;
+        controller.enqueue(chunk);
+        lastDownstreamWriteAt = Date.now();
+      };
+
+      const onClientAbort = () => {
+        abortUpstream();
+        try {
+          controller.close();
+        } catch {
+          // Ignore double-close races with the upstream reader loop.
+        } finally {
+          closeStream();
+        }
+      };
+
+      const heartbeatTimer = setInterval(() => {
+        if (closed) {
+          clearInterval(heartbeatTimer);
+          return;
+        }
+        if (Date.now() - lastDownstreamWriteAt >= SSE_HEARTBEAT_INTERVAL_MS) {
+          try {
+            enqueueComment(SSE_HEARTBEAT_COMMENT);
+          } catch {
+            abortUpstream();
+            closeStream();
+          }
+        }
+      }, SSE_HEARTBEAT_INTERVAL_MS);
+
+      request.signal.addEventListener("abort", onClientAbort, { once: true });
+      enqueueComment(SSE_STREAM_OPEN_COMMENT);
+
+      void (async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (!value || value.byteLength === 0) continue;
+            controller.enqueue(value);
+            lastDownstreamWriteAt = Date.now();
+          }
+          if (!closed) {
+            controller.close();
+          }
+        } catch (error) {
+          if (!closed && !request.signal.aborted && !upstreamAbortController.signal.aborted) {
+            controller.error(error);
+          }
+        } finally {
+          closeStream();
+          try {
+            reader.releaseLock();
+          } catch {
+            // Reader may already be released after cancellation.
+          }
+        }
+      })();
+    },
+    cancel() {
+      if (!upstreamAbortController.signal.aborted) {
+        upstreamAbortController.abort("stella downstream canceled");
+      }
+    },
+  });
+
+  return new Response(stream, {
+    status: upstreamResponse.status,
+    headers: responseHeaders,
+  });
+}
+
 async function forwardRequest(
   ctx: ActionCtx,
   request: Request,
@@ -206,12 +321,28 @@ async function forwardRequest(
   forwardHeaders["content-type"] = "application/json";
 
   const startMs = Date.now();
+  const upstreamAbortController = new AbortController();
+
+  if (request.signal.aborted) {
+    upstreamAbortController.abort("stella request aborted before upstream fetch");
+  } else {
+    request.signal.addEventListener(
+      "abort",
+      () => {
+        if (!upstreamAbortController.signal.aborted) {
+          upstreamAbortController.abort("stella request aborted");
+        }
+      },
+      { once: true },
+    );
+  }
 
   try {
     const upstreamResponse = await fetch(upstream.url, {
       method: request.method,
       headers: forwardHeaders,
       body: requestBody as BodyInit,
+      signal: upstreamAbortController.signal,
     });
 
     const durationMs = Date.now() - startMs;
@@ -246,9 +377,11 @@ async function forwardRequest(
         outputTokens: tokenEstimate.outputTokens,
       });
 
-      return new Response(upstreamResponse.body, {
-        status: upstreamResponse.status,
-        headers: responseHeaders,
+      return createStreamingProxyResponse({
+        request,
+        upstreamResponse,
+        responseHeaders,
+        upstreamAbortController,
       });
     }
 
