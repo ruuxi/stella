@@ -8,7 +8,8 @@ export interface InlineInputProps extends React.InputHTMLAttributes<HTMLInputEle
 export const InlineInput = React.forwardRef<HTMLInputElement, InlineInputProps>(
   ({ className, onSave, onBlur, onKeyDown, defaultValue, ...props }, ref) => {
     const [isEditing, setIsEditing] = React.useState(false);
-    const [value, setValue] = React.useState(defaultValue?.toString() ?? "");
+    const initialValue = defaultValue?.toString() ?? "";
+    const [value, setValue] = React.useState(() => initialValue);
     const inputRef = React.useRef<HTMLInputElement>(null);
 
     React.useImperativeHandle(ref, () => inputRef.current!);
@@ -26,9 +27,14 @@ export const InlineInput = React.forwardRef<HTMLInputElement, InlineInputProps>(
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Enter") {
         handleSave();
-      } else if (e.key === "Escape") {
-        setValue(defaultValue?.toString() ?? "");
+        onKeyDown?.(e);
+        return;
+      }
+      if (e.key === "Escape") {
+        setValue(initialValue);
         setIsEditing(false);
+        onKeyDown?.(e);
+        return;
       }
       onKeyDown?.(e);
     };

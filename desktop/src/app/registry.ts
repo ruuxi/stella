@@ -1,4 +1,4 @@
-import { lazy, type ComponentType, type LazyExoticComponent } from "react";
+import type { ComponentType, LazyExoticComponent } from "react";
 
 export type GeneratedPage = {
   id: string;
@@ -8,4 +8,4 @@ export type GeneratedPage = {
 
 export const generatedPages: GeneratedPage[] = [
   // --- generated entries below (do not remove this line) ---
-  ];
+];

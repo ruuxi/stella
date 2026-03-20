@@ -1,15 +1,9 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 type WorkspacePanelBase = {
   name: string;
-  title?: string;
+  title: string;
 };
 
 export type DevProjectWorkspacePanel = WorkspacePanelBase & {
@@ -19,41 +13,29 @@ export type DevProjectWorkspacePanel = WorkspacePanelBase & {
 
 export type HostedGameWorkspacePanel = WorkspacePanelBase & {
   kind: "hosted-game";
-  gameId?: string;
-  gameUrl?: string;
-  joinCode?: string;
+  gameId: string;
+  gameUrl: string;
+  joinCode: string;
 };
 
-export type GeneratedPageWorkspacePanel = {
+export type GeneratedPageWorkspacePanel = WorkspacePanelBase & {
   kind: "generated-page";
-  name: string;
-  title: string;
   pageId: string;
 };
 
-export type WorkspacePanel =
-  | DevProjectWorkspacePanel
-  | HostedGameWorkspacePanel
-  | GeneratedPageWorkspacePanel;
+export type WorkspacePanel = DevProjectWorkspacePanel | HostedGameWorkspacePanel | GeneratedPageWorkspacePanel;
 
 export type WorkspaceState = {
-  /** Active workspace panel. null = show the home dashboard. */
   activePanel: WorkspacePanel | null;
-  /** Chat panel width in pixels */
   chatWidth: number;
-  /** Whether the chat panel is open */
   isChatOpen: boolean;
 };
 
 type WorkspaceContextValue = {
   state: WorkspaceState;
-  /** Show a workspace panel in the center area. */
   openPanel: (panel: WorkspacePanel) => void;
-  /** Clear the active panel and return to the home dashboard. */
   closePanel: () => void;
-  /** Update the chat panel width (called by resize handle) */
   setChatWidth: (width: number) => void;
-  /** Toggle the chat panel open/closed */
   setChatOpen: (open: boolean) => void;
 };
 
@@ -73,23 +55,19 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<WorkspaceState>(defaultState);
 
   const openPanel = useCallback((panel: WorkspacePanel) => {
-    setState((prev) => ({
-      ...prev,
-      activePanel: panel,
-    }));
+    setState((prev) => ({ ...prev, activePanel: panel }));
   }, []);
 
   const closePanel = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      activePanel: null,
-    }));
+    setState((prev) => ({ ...prev, activePanel: null }));
   }, []);
 
   const setChatWidth = useCallback((width: number) => {
     const maxWidth = window.innerWidth * MAX_CHAT_WIDTH_RATIO;
-    const clamped = Math.max(MIN_CHAT_WIDTH, Math.min(width, maxWidth));
-    setState((prev) => ({ ...prev, chatWidth: clamped }));
+    setState((prev) => ({
+      ...prev,
+      chatWidth: Math.max(MIN_CHAT_WIDTH, Math.min(width, maxWidth)),
+    }));
   }, []);
 
   const setChatOpen = useCallback((open: boolean) => {

@@ -1,7 +1,14 @@
-import { useQuery, useMutation } from "convex/react";
+import { useCallback } from "react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
-import { useCallback } from "react";
+
+export type SocialProfile = {
+  ownerId: string;
+  nickname: string;
+  avatarUrl?: string;
+  friendCode: string;
+};
 
 export function useSocialProfile() {
   const { hasConnectedAccount } = useAuthSessionState();
@@ -9,7 +16,7 @@ export function useSocialProfile() {
   const profile = useQuery(
     api.social.profiles.getMyProfile,
     hasConnectedAccount ? {} : "skip",
-  );
+  ) as SocialProfile | undefined;
 
   const ensureProfileMutation = useMutation(api.social.profiles.ensureProfile);
   const updateProfileMutation = useMutation(api.social.profiles.updateMyProfile);

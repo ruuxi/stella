@@ -1,7 +1,31 @@
-import { useQuery, useMutation } from "convex/react";
+import { useCallback } from "react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
-import { useCallback } from "react";
+import type { SocialProfile } from "./use-social-profile";
+
+export type SocialFriend = {
+  profile: SocialProfile;
+};
+
+export type IncomingSocialFriendRequest = {
+  relationship: {
+    requesterOwnerId: string;
+  };
+  profile: SocialProfile;
+};
+
+export type OutgoingSocialFriendRequest = {
+  relationship: {
+    addresseeOwnerId: string;
+  };
+  profile: SocialProfile;
+};
+
+export type SocialPendingRequests = {
+  incoming: IncomingSocialFriendRequest[];
+  outgoing: OutgoingSocialFriendRequest[];
+};
 
 export function useSocialFriends() {
   const { hasConnectedAccount } = useAuthSessionState();
@@ -9,12 +33,12 @@ export function useSocialFriends() {
   const friends = useQuery(
     api.social.relationships.listFriends,
     hasConnectedAccount ? {} : "skip",
-  );
+  ) as SocialFriend[] | undefined;
 
   const pendingRequests = useQuery(
     api.social.relationships.listPendingRequests,
     hasConnectedAccount ? {} : "skip",
-  );
+  ) as SocialPendingRequests | undefined;
 
   const sendRequestMutation = useMutation(api.social.relationships.sendFriendRequest);
   const respondMutation = useMutation(api.social.relationships.respondToFriendRequest);
@@ -50,7 +74,11 @@ export function useSocialFriends() {
 
   return {
     friends: friends ?? [],
-    pendingRequests: pendingRequests ?? { incoming: [], outgoing: [] },
+    pendingRequests:
+      pendingRequests ?? {
+        incoming: [],
+        outgoing: [],
+      },
     sendFriendRequest,
     acceptRequest,
     declineRequest,

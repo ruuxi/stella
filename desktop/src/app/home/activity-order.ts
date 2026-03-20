@@ -13,42 +13,48 @@ function getActivityOrderKey(
   item: ActivityItem,
   now: number,
 ): ActivityOrderKey | null {
-  const candidates: ActivityOrderKey[] = [];
+  switch (item.kind) {
+    case "task":
+      return isFiniteTime(item.lastRunAtMs)
+        ? {
+            distanceMs: Math.abs(item.lastRunAtMs - now),
+            sourcePriority: 1,
+            sourceTimeMs: item.lastRunAtMs,
+          } satisfies ActivityOrderKey
+        : null
+    case "scheduled":
+    case "monitoring": {
+      const nextRunAtKey = isFiniteTime(item.nextRunAtMs)
+        ? {
+            distanceMs: Math.abs(item.nextRunAtMs - now),
+            sourcePriority: 0,
+            sourceTimeMs: item.nextRunAtMs,
+          } satisfies ActivityOrderKey
+        : null
+      const lastRunAtKey = isFiniteTime(item.lastRunAtMs)
+        ? {
+            distanceMs: Math.abs(item.lastRunAtMs - now),
+            sourcePriority: 1,
+            sourceTimeMs: item.lastRunAtMs,
+          } satisfies ActivityOrderKey
+        : null
 
-  if (item.kind !== "task" && isFiniteTime(item.nextRunAtMs)) {
-    candidates.push({
-      distanceMs: Math.abs(item.nextRunAtMs - now),
-      sourcePriority: 0,
-      sourceTimeMs: item.nextRunAtMs,
-    });
-  }
+      if (!nextRunAtKey) {
+        return lastRunAtKey
+      }
+      if (!lastRunAtKey) {
+        return nextRunAtKey
+      }
 
-  if (isFiniteTime(item.lastRunAtMs)) {
-    candidates.push({
-      distanceMs: Math.abs(item.lastRunAtMs - now),
-      sourcePriority: 1,
-      sourceTimeMs: item.lastRunAtMs,
-    });
-  }
-
-  if (candidates.length === 0) {
-    return null;
-  }
-
-  candidates.sort((a, b) => {
-    if (a.distanceMs !== b.distanceMs) {
-      return a.distanceMs - b.distanceMs;
+      return nextRunAtKey.distanceMs <= lastRunAtKey.distanceMs
+        ? nextRunAtKey
+        : lastRunAtKey
     }
-    if (a.sourcePriority !== b.sourcePriority) {
-      return a.sourcePriority - b.sourcePriority;
+    default: {
+      const exhaustiveCheck: never = item
+      return exhaustiveCheck
     }
-    if (a.sourcePriority === 0) {
-      return a.sourceTimeMs - b.sourceTimeMs;
-    }
-    return b.sourceTimeMs - a.sourceTimeMs;
-  });
-
-  return candidates[0] ?? null;
+  }
 }
 
 export function compareActivityItems(

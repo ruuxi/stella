@@ -3,7 +3,6 @@ export type ScheduleItem = {
   kind: "scheduled" | "monitoring"
   name: string
   description?: string
-  enabled: boolean
   nextRunAtMs: number
   lastRunAtMs?: number
   lastStatus?: string
