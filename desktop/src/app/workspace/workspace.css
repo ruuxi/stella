@@ -14,47 +14,6 @@
   overflow: hidden;
 }
 
-/* --- Header bar (shown when a panel is active) --- */
-
-.workspace-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  height: 40px;
-  flex-shrink: 0;
-  margin-top: 32px; /* Clear the fixed title bar */
-  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-}
-
-.workspace-header-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-base);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.workspace-header-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  border: none;
-  color: var(--text-weak);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.workspace-header-close:hover {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  color: var(--text-strong);
-}
-
 /* --- Content area --- */
 
 .workspace-content {
@@ -65,7 +24,7 @@
   scrollbar-width: thin;
 }
 
-/* Content that fills the title bar area (dashboard, panels without header) */
+/* Content that fills the title bar area (dashboard, store, workspace panels) */
 .workspace-content.workspace-content--full {
   padding-top: 32px; /* Clear the fixed title bar */
 }

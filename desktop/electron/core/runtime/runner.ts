@@ -166,6 +166,13 @@ export const createStellaHostRunner = (
     runAutomationTurn: orchestratorController.runAutomationTurn,
     runBlockingLocalTask: taskOrchestration.runBlockingLocalTask,
     createBackgroundTask: taskOrchestration.createBackgroundTask,
+    getLocalTaskSnapshot: async (taskId: string) => {
+      const manager = context.state.localTaskManager;
+      if (!manager) {
+        return null;
+      }
+      return manager.getTask(taskId);
+    },
     cancelLocalChat: orchestratorController.cancelLocalChat,
     getActiveOrchestratorRun: orchestratorController.getActiveOrchestratorRun,
     recoverCrashedRuns: runtimeInitialization.recoverCrashedRuns,
