@@ -14,10 +14,10 @@
   background-color: color-mix(in srgb, var(--destructive) 10%, transparent);
   border: 1px solid var(--destructive);
   color: var(--destructive);
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 12px;
-  font-weight: var(--font-family-sans--default-weight, 300);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
+  font-weight: var(--font-family-sans--default-weight, 400);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.67;
 }
 

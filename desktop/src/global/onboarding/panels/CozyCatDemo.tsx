@@ -12,7 +12,7 @@ const css = `
     display: flex;
     flex-direction: column;
     position: relative;
-    font-family: var(--font-family-sans, "Satoshi", sans-serif);
+    font-family: var(--font-family-sans, "Manrope", sans-serif);
     background: oklch(0.97 0.01 80);
     color: oklch(0.35 0.02 280);
     overflow: hidden;

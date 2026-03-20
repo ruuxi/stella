@@ -557,7 +557,7 @@ You have full creative freedom. Design a page that feels intentional and polishe
 Hard constraints (violations break the app):
 - Transparent page background (background: transparent on the root). The app window provides the background.
 - All text color via var(--foreground). Use opacity for hierarchy (primary 0.9–1, secondary ~0.72, tertiary ~0.48). Never hardcode hex/rgb for text.
-- Inherit the app font (Satoshi via --font-family-sans). Do NOT set font-family on the root. Only set font-family for deliberate exceptions like monospace on timestamps, code, or badges.
+- Inherit the app font (Manrope via --font-family-sans). Do NOT set font-family on the root. Only set font-family for deliberate exceptions like monospace on timestamps, code, or badges.
 - All CSS in a single <style> block with a unique class prefix per page to avoid collisions.
 - Light/dark compatibility: style surfaces, borders, and shadows using color-mix(in oklch, var(--foreground) N%, transparent). No theme-specific hex values for UI chrome.
 

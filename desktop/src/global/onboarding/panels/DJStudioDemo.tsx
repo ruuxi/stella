@@ -213,7 +213,7 @@ const css = `
     width: 100%;
     height: 100%;
     min-height: 0;
-    font-family: var(--font-family-sans, "Satoshi", sans-serif);
+    font-family: var(--font-family-sans, "Manrope", sans-serif);
     background: transparent;
     color: var(--foreground);
     overflow: hidden;

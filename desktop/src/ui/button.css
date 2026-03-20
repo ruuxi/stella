@@ -10,8 +10,8 @@
   cursor: default;
   outline: none;
   white-space: nowrap;
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
 }
 
 [data-component="button"][data-variant="primary"] {
@@ -93,7 +93,7 @@
   height: 22px;
   padding: 0 8px;
   font-size: 12px;
-  font-weight: var(--font-family-sans--emphasis-weight, 400);
+  font-weight: var(--font-family-sans--emphasis-weight, 500);
   line-height: 1.67;
   gap: 4px;
 }
@@ -103,7 +103,7 @@
   line-height: 24px;
   padding: 0 6px;
   font-size: 12px;
-  font-weight: var(--font-family-sans--emphasis-weight, 400);
+  font-weight: var(--font-family-sans--emphasis-weight, 500);
   gap: 6px;
 }
 
@@ -111,7 +111,7 @@
   height: 32px;
   padding: 6px 12px;
   font-size: 14px;
-  font-weight: var(--font-family-sans--emphasis-weight, 400);
+  font-weight: var(--font-family-sans--emphasis-weight, 500);
   line-height: 1.43;
   gap: 8px;
 }

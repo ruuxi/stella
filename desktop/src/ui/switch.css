@@ -35,19 +35,19 @@
 [data-component="switch"] [data-slot="switch-label"] {
   user-select: none;
   color: var(--foreground);
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 12px;
-  font-weight: var(--font-family-sans--default-weight, 300);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
+  font-weight: var(--font-family-sans--default-weight, 400);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.67;
 }
 
 [data-component="switch"] [data-slot="switch-description"] {
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 12px;
-  font-weight: var(--font-family-sans--default-weight, 300);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
+  font-weight: var(--font-family-sans--default-weight, 400);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.5;
 }
 

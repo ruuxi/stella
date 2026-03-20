@@ -55,11 +55,11 @@
   --radius: 0.375rem;
 
   /* Font families with metric-adjusted fallbacks */
-  --font-family-sans: "Satoshi", "Satoshi Fallback", system-ui, sans-serif;
+  --font-family-sans: "Manrope", "Manrope Fallback", system-ui, sans-serif;
   --font-family-sans--font-feature-settings: normal;
-  --font-family-sans--default-weight: 300;
-  --font-family-sans--default-letter-spacing: 0.06em;
-  --font-family-sans--emphasis-weight: 400;
+  --font-family-sans--default-weight: 400;
+  --font-family-sans--default-letter-spacing: -0.02em;
+  --font-family-sans--emphasis-weight: 500;
   --font-family-mono: "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, monospace;
   --font-family-mono--font-feature-settings: "ss01" 1;
 

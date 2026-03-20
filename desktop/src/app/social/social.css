@@ -360,7 +360,7 @@
   min-height: 24px;
   max-height: 120px;
   padding: 4px 0;
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 14px;
   line-height: 1.5;
   color: var(--text-strong);

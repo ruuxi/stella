@@ -8,7 +8,7 @@ const css = `
     width: 100%;
     height: 100%;
     display: flex;
-    font-family: var(--font-family-sans, "Satoshi", sans-serif);
+    font-family: var(--font-family-sans, "Manrope", sans-serif);
     color: var(--foreground);
     background: transparent;
     overflow: hidden;

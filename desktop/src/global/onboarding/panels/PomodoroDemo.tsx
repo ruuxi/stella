@@ -21,7 +21,7 @@ const css = `
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-family: var(--font-family-sans, "Satoshi", sans-serif);
+    font-family: var(--font-family-sans, "Manrope", sans-serif);
     background: var(--background);
     color: var(--foreground);
     overflow: hidden;

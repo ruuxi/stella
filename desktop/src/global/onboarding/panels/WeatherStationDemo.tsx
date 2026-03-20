@@ -322,7 +322,7 @@ const css = `
   height: 100%;
   display: flex;
   flex-direction: column;
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   color: var(--foreground);
   background: var(--background);
   overflow: hidden;
