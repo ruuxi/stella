@@ -1,4 +1,4 @@
-/** Shared hint block for personalized dashboard generation prompts (renderer + Electron). */
+/** Shared hint block for personalized app generation prompts (renderer + Electron). */
 export function buildPageFocusGuidance(args: {
   personalOrEntertainment: boolean;
   dataSourcesCount: number;
@@ -6,12 +6,12 @@ export function buildPageFocusGuidance(args: {
   const parts: string[] = [];
   if (args.personalOrEntertainment) {
     parts.push(
-      "This page is personal/entertainment-first — prioritize warmth, leisure, or self-expression over productivity dashboards.",
+      "This app is personal/entertainment-first — lean into warmth, leisure, personality, or self-expression. Choose an aesthetic that matches the vibe (playful, cozy, bold) rather than defaulting to a productivity look.",
     );
   }
   if (args.dataSourcesCount === 0) {
     parts.push(
-      "No specific feeds were planned — a self-contained layout (local state, light interactions, or profile-tied prompts) is appropriate; use browser fetch only when you pick a concrete HTTPS URL.",
+      "No specific feeds were planned — a self-contained app (local state, rich interactions, or profile-tied experiences) is appropriate; use browser fetch only when you pick a concrete HTTPS URL.",
     );
   }
   return parts.length ? `${parts.join(" ")}\n\n` : "";

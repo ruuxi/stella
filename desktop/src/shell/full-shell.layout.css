@@ -206,9 +206,6 @@
 .content-area .workspace-content.workspace-content--full {
   padding-top: 0;
 }
-.content-area .workspace-header {
-  margin-top: 0;
-}
 
 /* Chat column — fills the chat panel or content area */
 .full-body-main {

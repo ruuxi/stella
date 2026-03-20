@@ -108,6 +108,8 @@ export const createTaskOrchestration = (
     }) => {
       const runId = `local:sub:${crypto.randomUUID()}`;
       const shouldControlHmr = shouldControlSelfModHmr(agentType);
+      const shouldAttachSelfModLifecycle =
+        agentType === AGENT_IDS.SELF_MOD && Boolean(context.selfModLifecycle);
       const pauseApplied =
         shouldControlHmr && context.selfModHmrController
           ? await context.selfModHmrController.pause(runId)
@@ -136,9 +138,9 @@ export const createTaskOrchestration = (
       if (shouldControlHmr && pauseApplied) {
         reportSelfModHmrState(createSelfModHmrState("paused", true));
       }
-      if (shouldControlHmr && context.selfModLifecycle) {
+      if (shouldAttachSelfModLifecycle) {
         await Promise.resolve(
-          context.selfModLifecycle.beginRun({
+          context.selfModLifecycle!.beginRun({
             runId,
             taskDescription,
             taskPrompt,
@@ -181,10 +183,10 @@ export const createTaskOrchestration = (
         subagentSucceeded = !result.error;
         return result;
       } finally {
-        if (shouldControlHmr && context.selfModLifecycle) {
+        if (shouldAttachSelfModLifecycle) {
           if (subagentSucceeded) {
             await Promise.resolve(
-              context.selfModLifecycle.finalizeRun({
+              context.selfModLifecycle!.finalizeRun({
                 runId,
                 taskDescription,
                 taskPrompt,
@@ -193,8 +195,8 @@ export const createTaskOrchestration = (
                 ...(selfModMetadata ?? {}),
               }),
             );
-          } else if (typeof context.selfModLifecycle.cancelRun === "function") {
-            await Promise.resolve(context.selfModLifecycle.cancelRun(runId));
+          } else if (typeof context.selfModLifecycle!.cancelRun === "function") {
+            await Promise.resolve(context.selfModLifecycle!.cancelRun(runId));
           }
         }
         if (shouldControlHmr && context.selfModHmrController) {
@@ -312,14 +314,15 @@ export const createTaskOrchestration = (
 
   const createBackgroundTask = async (
     request: Omit<TaskToolRequest, "storageMode">,
-  ): Promise<void> => {
+  ): Promise<{ taskId: string }> => {
     if (!context.state.localTaskManager) {
       throw new Error("Task manager is unavailable.");
     }
-    await context.state.localTaskManager.createTask({
+    const { taskId } = await context.state.localTaskManager.createTask({
       ...request,
       storageMode: "local",
     });
+    return { taskId };
   };
 
   const shutdown = () => {

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { HttpRouter } from "convex/server";
 import { ConvexError } from "convex/values";
 import { internal } from "../convex/_generated/api";
 import {
@@ -12,7 +13,8 @@ import {
   computeUsageCostMicroCents,
   dollarsToMicroCents,
 } from "../convex/lib/billing_money";
-import { AUDIENCE_AGENT_MODELS } from "../convex/agent/model";
+import { getPlanConfig } from "../convex/lib/billing_plans";
+import { AUDIENCE_AGENT_MODELS, getModelConfig } from "../convex/agent/model";
 import { stellaProviderChatCompletions } from "../convex/stella_provider";
 import { syncSessionActivity } from "../convex/media_realtime_sessions";
 
@@ -119,15 +121,31 @@ const createMemoryDb = (initial?: Partial<MemoryState>) => {
   };
 };
 
-const captureRoutes = async <T>(register: (http: { route: (def: T) => void }) => void) => {
+const captureRoutes = async <T>(register: (http: HttpRouter) => void) => {
   const routes: T[] = [];
-  register({
+  const http = {
     route(def: T) {
       routes.push(def);
     },
-  });
+  } as HttpRouter;
+  register(http);
   return routes;
 };
+
+/** Convex `Registered*` refs hide `_handler`; tests call it with a fake ctx. */
+type InternalMutationHandler = {
+  _handler: (ctx: unknown, args: Record<string, unknown>) => Promise<unknown>;
+};
+
+async function invokeInternal<T>(
+  mutation: unknown,
+  ctx: unknown,
+  args: Record<string, unknown>,
+): Promise<T> {
+  return (await (mutation as InternalMutationHandler)._handler(ctx, args)) as T;
+}
+
+type DirectHttpAction = (ctx: unknown, request: Request) => Promise<Response>;
 
 describe("managed billing verification", () => {
   const originalFetch = globalThis.fetch;
@@ -212,6 +230,8 @@ describe("managed billing verification", () => {
 
   test("enforceManagedUsageLimit blocks after the free monthly cap is reached", async () => {
     const now = Date.now();
+    const overMonthlyUsd = getPlanConfig("free").monthlyLimitUsd + 1;
+    const overMonthlyMicro = dollarsToMicroCents(overMonthlyUsd);
     const { db } = createMemoryDb({
       billing_profiles: [{
         _id: "profile_1",
@@ -238,18 +258,20 @@ describe("managed billing verification", () => {
         rollingWindowStartedAt: now,
         weeklyUsageMicroCents: 0,
         weeklyWindowStartedAt: now,
-        monthlyUsageMicroCents: dollarsToMicroCents(15),
+        monthlyUsageMicroCents: overMonthlyMicro,
         monthlyWindowStartedAt: now,
-        totalUsageMicroCents: dollarsToMicroCents(15),
+        totalUsageMicroCents: overMonthlyMicro,
         createdAt: now,
         updatedAt: now,
       }],
     });
 
-    const result = await enforceManagedUsageLimit._handler(
-      { db } as never,
-      { ownerId: "owner_limit" },
-    );
+    const result = await invokeInternal<{
+      allowed: boolean;
+      plan: string;
+      message: string;
+      retryAfterMs: number;
+    }>(enforceManagedUsageLimit, { db } as never, { ownerId: "owner_limit" });
 
     expect(result.allowed).toBe(false);
     expect(result.plan).toBe("free");
@@ -293,10 +315,13 @@ describe("managed billing verification", () => {
       }],
     });
 
-    const result = await resolveManagedModelAccess._handler(
-      { db } as never,
-      { ownerId: "owner_paid" },
-    );
+    const result = await invokeInternal<{
+      allowed: boolean;
+      plan: string;
+      downgraded: boolean;
+      modelAudience: string;
+      message: string;
+    }>(resolveManagedModelAccess, { db } as never, { ownerId: "owner_paid" });
 
     expect(result.allowed).toBe(true);
     expect(result.plan).toBe("pro");
@@ -744,7 +769,9 @@ describe("managed billing verification", () => {
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
 
-    const response = await stellaProviderChatCompletions(
+    const response = await (
+      stellaProviderChatCompletions as unknown as DirectHttpAction
+    )(
       {
         auth: {
           getUserIdentity: async () => ({
@@ -762,7 +789,7 @@ describe("managed billing verification", () => {
                 plan: "free",
                 retryAfterMs: 0,
                 message: "",
-                tokensPerMinute: 150_000,
+                tokensPerMinute: getPlanConfig("free").tokensPerMinute,
             };
           }
           if (mutationCallCount === 2) {
@@ -798,11 +825,12 @@ describe("managed billing verification", () => {
       expect(scheduled[0]?.args).toEqual(
         expect.objectContaining({
           ownerId: "owner_llm",
-        agentType: "general",
-        model: "moonshotai/kimi-k2.5",
-        inputTokens: 120,
-        outputTokens: 45,
-        success: true,
+          agentType: "general",
+          model: getModelConfig("general", "free").model,
+          inputTokens: 120,
+          outputTokens: 45,
+          success: true,
+          durationMs: expect.any(Number),
         }),
       );
     });
@@ -824,7 +852,9 @@ describe("managed billing verification", () => {
         );
       };
 
-      const response = await stellaProviderChatCompletions(
+      const response = await (
+        stellaProviderChatCompletions as unknown as DirectHttpAction
+      )(
         {
           auth: {
             getUserIdentity: async () => ({
@@ -876,47 +906,49 @@ describe("managed billing verification", () => {
       }],
     });
 
-    const first = await recordVoiceRealtimeUsage._handler(
-      { db } as never,
-      {
-        ownerId: "owner_voice",
-        responseId: "resp_123",
-        model: "gpt-realtime-1.5",
-        conversationId: "conv_voice" as never,
-        inputTokens: 300,
-        outputTokens: 150,
-        totalTokens: 450,
-        textInputTokens: 100,
-        textCachedInputTokens: 20,
-        textOutputTokens: 50,
-        audioInputTokens: 150,
-        audioCachedInputTokens: 10,
-        audioOutputTokens: 100,
-        imageInputTokens: 30,
-        imageCachedInputTokens: 0,
-      },
-    );
+    const first = await invokeInternal<{
+      recorded: boolean;
+      duplicate: boolean;
+      costMicroCents: number;
+    }>(recordVoiceRealtimeUsage, { db } as never, {
+      ownerId: "owner_voice",
+      responseId: "resp_123",
+      model: "gpt-realtime-1.5",
+      conversationId: "conv_voice" as never,
+      inputTokens: 300,
+      outputTokens: 150,
+      totalTokens: 450,
+      textInputTokens: 100,
+      textCachedInputTokens: 20,
+      textOutputTokens: 50,
+      audioInputTokens: 150,
+      audioCachedInputTokens: 10,
+      audioOutputTokens: 100,
+      imageInputTokens: 30,
+      imageCachedInputTokens: 0,
+    });
 
-    const second = await recordVoiceRealtimeUsage._handler(
-      { db } as never,
-      {
-        ownerId: "owner_voice",
-        responseId: "resp_123",
-        model: "gpt-realtime-1.5",
-        conversationId: "conv_voice" as never,
-        inputTokens: 300,
-        outputTokens: 150,
-        totalTokens: 450,
-        textInputTokens: 100,
-        textCachedInputTokens: 20,
-        textOutputTokens: 50,
-        audioInputTokens: 150,
-        audioCachedInputTokens: 10,
-        audioOutputTokens: 100,
-        imageInputTokens: 30,
-        imageCachedInputTokens: 0,
-      },
-    );
+    const second = await invokeInternal<{
+      recorded: boolean;
+      duplicate: boolean;
+      costMicroCents: number;
+    }>(recordVoiceRealtimeUsage, { db } as never, {
+      ownerId: "owner_voice",
+      responseId: "resp_123",
+      model: "gpt-realtime-1.5",
+      conversationId: "conv_voice" as never,
+      inputTokens: 300,
+      outputTokens: 150,
+      totalTokens: 450,
+      textInputTokens: 100,
+      textCachedInputTokens: 20,
+      textOutputTokens: 50,
+      audioInputTokens: 150,
+      audioCachedInputTokens: 10,
+      audioOutputTokens: 100,
+      imageInputTokens: 30,
+      imageCachedInputTokens: 0,
+    });
 
     expect(first.recorded).toBe(true);
     expect(first.costMicroCents).toBeGreaterThan(0);
@@ -937,31 +969,31 @@ describe("managed billing verification", () => {
       }],
     });
 
-    const first = await recordMediaCompletedUsage._handler(
-      { db } as never,
-      {
-        ownerId: "owner_media",
-        jobId: "job_media_1",
-        providerRequestId: "fal_req_123",
-        endpointId: "fal-ai/bytedance/seedream/v5/lite/text-to-image",
-        billingUnit: "image",
-        quantity: 2,
-        costMicroCents: dollarsToMicroCents(0.07),
-      },
-    );
+    const first = await invokeInternal<{
+      recorded: boolean;
+      duplicate: boolean;
+    }>(recordMediaCompletedUsage, { db } as never, {
+      ownerId: "owner_media",
+      jobId: "job_media_1",
+      providerRequestId: "fal_req_123",
+      endpointId: "fal-ai/bytedance/seedream/v5/lite/text-to-image",
+      billingUnit: "image",
+      quantity: 2,
+      costMicroCents: dollarsToMicroCents(0.07),
+    });
 
-    const second = await recordMediaCompletedUsage._handler(
-      { db } as never,
-      {
-        ownerId: "owner_media",
-        jobId: "job_media_1",
-        providerRequestId: "fal_req_123",
-        endpointId: "fal-ai/bytedance/seedream/v5/lite/text-to-image",
-        billingUnit: "image",
-        quantity: 2,
-        costMicroCents: dollarsToMicroCents(0.07),
-      },
-    );
+    const second = await invokeInternal<{
+      recorded: boolean;
+      duplicate: boolean;
+    }>(recordMediaCompletedUsage, { db } as never, {
+      ownerId: "owner_media",
+      jobId: "job_media_1",
+      providerRequestId: "fal_req_123",
+      endpointId: "fal-ai/bytedance/seedream/v5/lite/text-to-image",
+      billingUnit: "image",
+      quantity: 2,
+      costMicroCents: dollarsToMicroCents(0.07),
+    });
 
     expect(first.recorded).toBe(true);
     expect(second.recorded).toBe(false);
@@ -981,7 +1013,8 @@ describe("managed billing verification", () => {
       }],
     });
 
-    const started = await syncSessionActivity._handler(
+    const started = await invokeInternal<{ newlyBilledSeconds: number }>(
+      syncSessionActivity,
       { db } as never,
       {
         ownerId: "owner_rt",
@@ -991,7 +1024,8 @@ describe("managed billing verification", () => {
       },
     );
 
-    const heartbeated = await syncSessionActivity._handler(
+    const heartbeated = await invokeInternal<{ newlyBilledSeconds: number }>(
+      syncSessionActivity,
       { db } as never,
       {
         ownerId: "owner_rt",
@@ -1001,7 +1035,8 @@ describe("managed billing verification", () => {
       },
     );
 
-    const stopped = await syncSessionActivity._handler(
+    const stopped = await invokeInternal<{ newlyBilledSeconds: number }>(
+      syncSessionActivity,
       { db } as never,
       {
         ownerId: "owner_rt",
@@ -1032,25 +1067,23 @@ describe("managed billing verification", () => {
       }],
     });
 
-    await syncSessionActivity._handler(
-      { db } as never,
-      {
-        ownerId: "owner_rt_timeout",
-        sessionId: "media_rt_timeout",
-        event: "start",
-        observedAt: now,
-      },
-    );
+    await invokeInternal<unknown>(syncSessionActivity, { db } as never, {
+      ownerId: "owner_rt_timeout",
+      sessionId: "media_rt_timeout",
+      event: "start",
+      observedAt: now,
+    });
 
-    const expired = await syncSessionActivity._handler(
-      { db } as never,
-      {
-        ownerId: "owner_rt_timeout",
-        sessionId: "media_rt_timeout",
-        event: "heartbeat",
-        observedAt: now + 30_000,
-      },
-    );
+    const expired = await invokeInternal<{
+      status: string;
+      expired: boolean;
+      billedSeconds: number;
+    }>(syncSessionActivity, { db } as never, {
+      ownerId: "owner_rt_timeout",
+      sessionId: "media_rt_timeout",
+      event: "heartbeat",
+      observedAt: now + 30_000,
+    });
 
     expect(expired.status).toBe("ended");
     expect(expired.expired).toBe(true);
