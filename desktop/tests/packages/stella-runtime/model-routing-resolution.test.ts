@@ -152,7 +152,7 @@ describe("stella model routing resolution", () => {
     expect(route.getApiKey()).toBe("sk-openrouter-test");
   });
 
-  it("falls back to stella instead of using an unrelated provider key", () => {
+  it("falls back to openrouter when the direct provider key is missing", () => {
     getLocalLlmCredentialMock.mockImplementation(
       (_stellaHomePath: string, providerId: string) =>
         providerId === "openrouter" ? "sk-openrouter-test" : null,
@@ -168,9 +168,10 @@ describe("stella model routing resolution", () => {
       },
     });
 
-    expect(route.route).toBe("stella");
-    expect(route.model.provider).toBe("stella");
-    expect(route.model.id).toBe("stella/openai/gpt-5.1-codex");
+    expect(route.route).toBe("direct-openrouter");
+    expect(route.model.provider).toBe("openrouter");
+    expect(route.model.id).toBe("openai/gpt-5.1-codex");
+    expect(route.getApiKey()).toBe("sk-openrouter-test");
   });
 
   it("fails fast for stella models when stella is unavailable", () => {
