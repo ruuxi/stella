@@ -56,11 +56,7 @@ const TRAILING_TIME_TAG_RE =
   /\s*\n\n\[(?:1[0-2]|0?[1-9]):[0-5]\d\s?(?:AM|PM)(?:,\s+[A-Za-z]{3}\s+\d{1,2})?\]$/i;
 
 const getLocalTimezone = (): string | undefined => {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
-  } catch {
-    return undefined;
-  }
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
 };
 
 const isMessageEventType = (type: string) =>
@@ -210,5 +206,4 @@ export const setLocalSyncCheckpoint = async (conversationId: string, localMessag
 
 export const subscribeToLocalChatUpdates = (listener: () => void): (() => void) =>
   getLocalChatApi().onUpdated(listener);
-
 

@@ -19,6 +19,7 @@ import {
 } from "./use-onboarding-state";
 import { OnboardingDiscovery } from "./OnboardingDiscovery";
 import { OnboardingMockWindows } from "./OnboardingMockWindows";
+import type { OnboardingDemo } from "./OnboardingCanvas";
 import { useTheme, useThemeControl } from "@/context/theme-context";
 import { getPlatform } from "@/platform/electron/platform";
 import { OnboardingReveal } from "./OnboardingReveal";
@@ -46,7 +47,7 @@ const STEP_TITLES: Partial<Record<Phase, string>> = {
 };
 
 /* ── Showcase icons (small inline SVGs for card headers) ── */
-const ShowcaseIcons = {
+const ShowcaseIcons: Record<ShowcaseId, React.ReactNode> = {
   modern: (
     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <polygon points="12 2 2 7 12 12 22 7 12 2" />
@@ -84,6 +85,38 @@ const ShowcaseIcons = {
 
 /* ── Showcase options for creation phase ── */
 type ShowcaseId = "modern" | "cozy-cat" | "dj-studio" | "weather" | "pomodoro";
+
+const SHOWCASE_DEMO_BY_ID: Record<
+  ShowcaseId,
+  Exclude<OnboardingDemo, null | "default">
+> = {
+  modern: "modern",
+  "cozy-cat": "cozy-cat",
+  "dj-studio": "dj-studio",
+  weather: "weather-station",
+  pomodoro: "pomodoro",
+};
+
+type CategoryStates = Record<DiscoveryCategory, boolean>;
+
+const createDiscoveryCategoryStates = (): CategoryStates => {
+  const initial = {} as CategoryStates;
+  for (const category of DISCOVERY_CATEGORIES) {
+    initial[category.id] = category.defaultEnabled;
+  }
+  return initial;
+};
+
+const getSelectedDiscoveryCategories = (states: CategoryStates) =>
+  DISCOVERY_CATEGORIES.filter((category) => states[category.id]).map(
+    (category) => category.id,
+  );
+
+const getFirstEnabledDiscoveryCategory = (states: CategoryStates) =>
+  DISCOVERY_CATEGORIES.find((category) => states[category.id])?.id ?? null;
+
+const getShowcaseDemo = (id: ShowcaseId | null): OnboardingDemo =>
+  id === null ? "default" : SHOWCASE_DEMO_BY_ID[id];
 
 const SHOWCASE_OPTIONS: {
   id: ShowcaseId;
@@ -137,15 +170,9 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
   const [selectedMicId, setSelectedMicId] = useState<string | null>(null);
 
   // Discovery category toggles
-  const [categoryStates, setCategoryStates] = useState<
-    Record<DiscoveryCategory, boolean>
-  >(() => {
-    const initial: Record<string, boolean> = {};
-    for (const cat of DISCOVERY_CATEGORIES) {
-      initial[cat.id] = cat.defaultEnabled;
-    }
-    return initial as Record<DiscoveryCategory, boolean>;
-  });
+  const [categoryStates, setCategoryStates] = useState<CategoryStates>(
+    createDiscoveryCategoryStates,
+  );
 
   // Notify parent when selections change
   useEffect(() => {
@@ -174,14 +201,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
       const next = activeShowcase === id ? null : id;
       setActiveShowcase(next);
-
-      // Map to demo (morph animation handled by OnboardingCanvas)
-      if (next === null) onDemoChange?.("default");
-      else if (next === "modern") onDemoChange?.("modern");
-      else if (next === "dj-studio") onDemoChange?.("dj-studio");
-      else if (next === "weather") onDemoChange?.("weather-station");
-      else if (next === "cozy-cat") onDemoChange?.("cozy-cat");
-      else if (next === "pomodoro") onDemoChange?.("pomodoro");
+      onDemoChange?.(getShowcaseDemo(next));
     },
     [activeShowcase, demoMorphing, onDemoChange],
   );
@@ -378,11 +398,7 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   /* ── Discovery confirm ── */
   const handleDiscoveryConfirm = () => {
-    const selected = (
-      Object.entries(categoryStates) as [DiscoveryCategory, boolean][]
-    )
-      .filter(([, enabled]) => enabled)
-      .map(([id]) => id);
+    const selected = getSelectedDiscoveryCategories(categoryStates);
 
     // Show warning on first attempt if nothing is selected
     const nothingSelected = selected.length === 0 && !browserEnabled;
@@ -422,16 +438,18 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
 
   const handleToggleCategory = (id: DiscoveryCategory) => {
     const wasEnabled = categoryStates[id];
-    setCategoryStates((prev) => ({ ...prev, [id]: !prev[id] }));
+    const nextCategoryStates = { ...categoryStates, [id]: !wasEnabled };
+    setCategoryStates(nextCategoryStates);
     setShowNoneWarning(false);
     if (!wasEnabled) {
       setActiveMockId(id);
     } else if (activeMockId === id) {
       // Toggled off the active one — show the first remaining enabled, or null
-      const remaining = Object.entries(categoryStates)
-        .filter(([k, v]) => k !== id && v)
-        .map(([k]) => k);
-      setActiveMockId(browserEnabled ? "browser" : (remaining[0] ?? null));
+      setActiveMockId(
+        browserEnabled
+          ? "browser"
+          : getFirstEnabledDiscoveryCategory(nextCategoryStates),
+      );
     }
   };
 
@@ -558,10 +576,9 @@ export const OnboardingStep1: React.FC<OnboardingStep1Props> = ({
                         setSelectedProfile(null);
                         // Toggled off — show first remaining enabled category, or null
                         if (activeMockId === "browser") {
-                          const remaining = Object.entries(categoryStates)
-                            .filter(([, v]) => v)
-                            .map(([k]) => k);
-                          setActiveMockId(remaining[0] ?? null);
+                          setActiveMockId(
+                            getFirstEnabledDiscoveryCategory(categoryStates),
+                          );
                         }
                       } else {
                         setActiveMockId("browser");

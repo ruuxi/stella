@@ -111,7 +111,7 @@ export class WindowManager {
     return { x: targetX, y: targetY }
   }
 
-  hideMiniWindow(animate = true) {
+  hideMiniWindow(animate: boolean) {
     const overlay = this.options.getOverlayController()
     if (!overlay) return
 

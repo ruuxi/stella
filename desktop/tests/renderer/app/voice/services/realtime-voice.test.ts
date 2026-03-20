@@ -327,4 +327,36 @@ describe("RealtimeVoiceSession", () => {
       await session.disconnect();
     },
   );
+
+  it("returns an error for unknown function calls", async () => {
+    const session = new RealtimeVoiceSession();
+    await session.connect("convone");
+
+    lastPeerConnection?.dataChannel.onmessage?.({
+      data: JSON.stringify({
+        type: "response.output_item.done",
+        item: {
+          type: "function_call",
+          name: "mystery_tool",
+          call_id: "call-unknown",
+          arguments: "{}",
+        },
+      }),
+    } as MessageEvent<string>);
+
+    await waitFor(() => {
+      expect(lastPeerConnection?.dataChannel.send).toHaveBeenCalledWith(
+        JSON.stringify({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: "call-unknown",
+            output: "Error: Unknown tool: mystery_tool",
+          },
+        }),
+      );
+    });
+
+    await session.disconnect();
+  });
 });

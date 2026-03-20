@@ -1,37 +1,30 @@
 import { useState, useCallback, useEffect } from "react";
-import { Avatar } from "@/ui/avatar";
-import { useSocialProfile } from "./hooks/use-social-profile";
-import { useSocialRooms } from "./hooks/use-social-rooms";
-import { SocialChatPane } from "./SocialChatPane";
-import { FriendsDialog } from "./FriendsDialog";
-import { NewChatDialog } from "./NewChatDialog";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square";
 import Users from "lucide-react/dist/esm/icons/users";
 import SquarePen from "lucide-react/dist/esm/icons/square-pen";
 import Copy from "lucide-react/dist/esm/icons/copy";
+import { Avatar } from "@/ui/avatar";
+import { showToast } from "@/ui/toast";
+import { useSocialProfile } from "./hooks/use-social-profile";
+import { useSocialRooms, type SocialRoomSummary } from "./hooks/use-social-rooms";
+import { SocialChatPane } from "./SocialChatPane";
+import { FriendsDialog } from "./FriendsDialog";
+import { NewChatDialog } from "./NewChatDialog";
 import "./social.css";
 
 type SocialViewProps = {
   onSignIn: () => void;
 };
 
-type RoomEntry = {
-  room: {
-    _id: string;
-    kind: string;
-    title?: string;
-    latestMessageAt?: number;
-  };
-  members: Array<{
-    ownerId: string;
-    profile?: { nickname: string; avatarUrl?: string };
-  }>;
-  latestMessage?: { body: string; senderOwnerId: string };
-  membership: { lastReadAt?: number };
-};
+function getSocialActionErrorMessage(
+  fallback: string,
+  error: unknown,
+): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
 
 function formatRoomTime(timestamp?: number): string {
-  if (!timestamp) return "";
+  if (timestamp === undefined) return "";
   const now = Date.now();
   const diff = now - timestamp;
   const minutes = Math.floor(diff / 60_000);
@@ -47,40 +40,52 @@ function formatRoomTime(timestamp?: number): string {
   });
 }
 
-function getRoomName(
-  room: RoomEntry,
-  currentOwnerId: string,
-): string {
+function getRoomName(room: SocialRoomSummary, currentOwnerId: string): string {
   if (room.room.title) return room.room.title;
-  if (room.room.kind === "dm") {
-    const other = room.members.find((m) => m.ownerId !== currentOwnerId);
-    return other?.profile?.nickname ?? "Someone";
+
+  switch (room.room.kind) {
+    case "dm": {
+      const other = room.memberProfiles.find((member) => member.ownerId !== currentOwnerId);
+      return other?.nickname ?? "Someone";
+    }
+    case "group":
+      return (
+        room.memberProfiles
+          .filter((member) => member.ownerId !== currentOwnerId)
+          .map((member) => member.nickname)
+          .join(", ") || "Group"
+      );
+    default: {
+      const exhaustiveCheck: never = room.room.kind;
+      return exhaustiveCheck;
+    }
   }
-  return (
-    room.members
-      .filter((m) => m.ownerId !== currentOwnerId)
-      .map((m) => m.profile?.nickname ?? "?")
-      .join(", ") || "Group"
-  );
 }
 
 function getRoomAvatar(
-  room: RoomEntry,
+  room: SocialRoomSummary,
   currentOwnerId: string,
 ): { fallback: string; src?: string } {
-  if (room.room.kind === "dm") {
-    const other = room.members.find((m) => m.ownerId !== currentOwnerId);
-    return {
-      fallback: other?.profile?.nickname ?? "?",
-      src: other?.profile?.avatarUrl,
-    };
+  switch (room.room.kind) {
+    case "dm": {
+      const other = room.memberProfiles.find((member) => member.ownerId !== currentOwnerId);
+      return {
+        fallback: other?.nickname ?? "?",
+        src: other?.avatarUrl,
+      };
+    }
+    case "group":
+      return { fallback: room.room.title ?? "G" };
+    default: {
+      const exhaustiveCheck: never = room.room.kind;
+      return exhaustiveCheck;
+    }
   }
-  return { fallback: room.room.title ?? "G" };
 }
 
-function hasUnread(room: RoomEntry): boolean {
-  if (!room.room.latestMessageAt) return false;
-  if (!room.membership.lastReadAt) return true;
+function hasUnread(room: SocialRoomSummary): boolean {
+  if (room.room.latestMessageAt === undefined) return false;
+  if (room.membership.lastReadAt === undefined) return true;
   return room.room.latestMessageAt > room.membership.lastReadAt;
 }
 
@@ -96,7 +101,6 @@ export function SocialView({ onSignIn }: SocialViewProps) {
   const [nicknameInput, setNicknameInput] = useState("");
   const [tagCopied, setTagCopied] = useState(false);
 
-  // Ensure social profile exists when signed in
   useEffect(() => {
     if (isSignedIn && !profile) {
       void ensureProfile();
@@ -107,11 +111,17 @@ export function SocialView({ onSignIn }: SocialViewProps) {
     async (otherOwnerId: string) => {
       try {
         const result = await openDm(otherOwnerId);
-        if (result?._id) {
-          setActiveRoomId(result._id);
-        }
-      } catch {
-        // silently handled
+        setActiveRoomId(result._id);
+        return true;
+      } catch (error) {
+        showToast({
+          variant: "error",
+          description: getSocialActionErrorMessage(
+            "Couldn't start that conversation. Please try again.",
+            error,
+          ),
+        });
+        return false;
       }
     },
     [openDm],
@@ -121,32 +131,36 @@ export function SocialView({ onSignIn }: SocialViewProps) {
     async (title: string, memberOwnerIds: string[]) => {
       try {
         const result = await createGroup(title, memberOwnerIds);
-        if (result?._id) {
-          setActiveRoomId(result._id);
-        }
-      } catch {
-        // silently handled
+        setActiveRoomId(result._id);
+        return true;
+      } catch (error) {
+        showToast({
+          variant: "error",
+          description: getSocialActionErrorMessage(
+            "Couldn't create the group. Please try again.",
+            error,
+          ),
+        });
+        return false;
       }
     },
     [createGroup],
   );
 
   const handleCopyTag = useCallback(() => {
-    if (!profile?.friendCode) return;
-    void navigator.clipboard.writeText(profile.friendCode);
+    void navigator.clipboard.writeText(profile!.friendCode);
     setTagCopied(true);
     setTimeout(() => setTagCopied(false), 2000);
   }, [profile]);
 
   const handleSaveNickname = useCallback(async () => {
     const trimmed = nicknameInput.trim();
-    if (trimmed && trimmed !== profile?.nickname) {
+    if (trimmed && trimmed !== profile!.nickname) {
       await updateNickname(trimmed);
     }
     setEditingNickname(false);
-  }, [nicknameInput, profile?.nickname, updateNickname]);
+  }, [nicknameInput, profile, updateNickname]);
 
-  // --- Sign-in gate ---
   if (!isSignedIn) {
     return (
       <div className="social-view">
@@ -171,11 +185,9 @@ export function SocialView({ onSignIn }: SocialViewProps) {
   }
 
   const currentOwnerId = profile?.ownerId ?? "";
-  const typedRooms = (rooms as unknown as RoomEntry[]) ?? [];
 
   return (
     <div className="social-view">
-      {/* Sidebar */}
       <div className="social-sidebar">
         <div className="social-sidebar-header">
           <span className="social-sidebar-title">Messages</span>
@@ -199,9 +211,8 @@ export function SocialView({ onSignIn }: SocialViewProps) {
           </div>
         </div>
 
-        {/* Room List */}
         <div className="social-room-list">
-          {typedRooms.length === 0 ? (
+          {rooms.length === 0 ? (
             <div className="social-no-rooms">
               <div className="social-no-rooms-text">
                 No conversations yet. Add friends or start a new message.
@@ -216,18 +227,19 @@ export function SocialView({ onSignIn }: SocialViewProps) {
               </button>
             </div>
           ) : (
-            typedRooms.map((entry) => {
-              const name = getRoomName(entry, currentOwnerId);
-              const avatar = getRoomAvatar(entry, currentOwnerId);
-              const isActive = activeRoomId === entry.room._id;
-              const unread = hasUnread(entry);
+            rooms.map((room) => {
+              const name = getRoomName(room, currentOwnerId);
+              const avatar = getRoomAvatar(room, currentOwnerId);
+              const isActive = activeRoomId === room.room._id;
+              const unread = hasUnread(room);
+
               return (
                 <button
-                  key={entry.room._id}
+                  key={room.room._id}
                   type="button"
                   className="social-room-item"
                   data-active={isActive || undefined}
-                  onClick={() => setActiveRoomId(entry.room._id)}
+                  onClick={() => setActiveRoomId(room.room._id)}
                 >
                   <div className="social-room-item-avatar">
                     <Avatar
@@ -240,12 +252,12 @@ export function SocialView({ onSignIn }: SocialViewProps) {
                     <div className="social-room-item-row">
                       <span className="social-room-item-name">{name}</span>
                       <span className="social-room-item-time">
-                        {formatRoomTime(entry.room.latestMessageAt)}
+                        {formatRoomTime(room.room.latestMessageAt)}
                       </span>
                     </div>
-                    {entry.latestMessage && (
+                    {room.latestMessage && (
                       <span className="social-room-item-preview">
-                        {entry.latestMessage.body}
+                        {room.latestMessage.body}
                       </span>
                     )}
                   </div>
@@ -256,7 +268,6 @@ export function SocialView({ onSignIn }: SocialViewProps) {
           )}
         </div>
 
-        {/* Profile Card */}
         {profile && (
           <div className="social-profile-card">
             <Avatar
@@ -318,7 +329,6 @@ export function SocialView({ onSignIn }: SocialViewProps) {
         )}
       </div>
 
-      {/* Chat Pane */}
       {activeRoomId && currentOwnerId ? (
         <SocialChatPane
           roomId={activeRoomId}
@@ -338,17 +348,16 @@ export function SocialView({ onSignIn }: SocialViewProps) {
         </div>
       )}
 
-      {/* Dialogs */}
       <FriendsDialog
         open={friendsOpen}
         onOpenChange={setFriendsOpen}
-        onStartChat={(otherOwnerId) => void handleStartChat(otherOwnerId)}
+        onStartChat={handleStartChat}
       />
       <NewChatDialog
         open={newChatOpen}
         onOpenChange={setNewChatOpen}
-        onSelectFriend={(otherOwnerId) => void handleStartChat(otherOwnerId)}
-        onCreateGroup={(title, ids) => void handleCreateGroup(title, ids)}
+        onSelectFriend={handleStartChat}
+        onCreateGroup={handleCreateGroup}
       />
     </div>
   );

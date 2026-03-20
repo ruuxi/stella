@@ -14,11 +14,11 @@ import { SuggestionsPanel } from "./SuggestionsPanel"
 import { ActivityFeed } from "./ActivityFeed"
 import { DashboardCard } from "./DashboardCard"
 import type { ActivityItem, ScheduleItem } from "./schedule-item"
-import { sortActivityItems } from "./activity-order"
+import { compareActivityItems, sortActivityItems } from "./activity-order"
 import "./home-view.css"
 import "./home-dashboard.css"
 
-function useScheduleData(): ActivityItem[] {
+function useScheduleData(): ScheduleItem[] {
   const [cronJobs, setCronJobs] = useState<LocalCronJobRecord[]>([])
   const [heartbeats, setHeartbeats] = useState<LocalHeartbeatConfigRecord[]>([])
 
@@ -60,43 +60,37 @@ function useScheduleData(): ActivityItem[] {
   return useMemo(() => {
     const items: ScheduleItem[] = []
 
-    if (cronJobs) {
-      for (const job of cronJobs) {
-        if (!job.enabled) continue
-        items.push({
-          id: job.id,
-          kind: "scheduled",
-          name: job.name,
-          description: job.description,
-          enabled: job.enabled,
-          nextRunAtMs: job.nextRunAtMs,
-          lastRunAtMs: job.lastRunAtMs,
-          lastStatus: job.lastStatus,
-          outputPreview: job.lastOutputPreview,
-        })
-      }
+    for (const job of cronJobs) {
+      if (!job.enabled) continue
+      items.push({
+        id: job.id,
+        kind: "scheduled",
+        name: job.name,
+        description: job.description,
+        nextRunAtMs: job.nextRunAtMs,
+        lastRunAtMs: job.lastRunAtMs,
+        lastStatus: job.lastStatus,
+        outputPreview: job.lastOutputPreview,
+      })
     }
 
-    if (heartbeats) {
-      for (const hb of heartbeats) {
-        if (!hb.enabled) continue
-        const name = hb.prompt
-          ? hb.prompt.slice(0, 40) + (hb.prompt.length > 40 ? "..." : "")
-          : "Heartbeat"
-        items.push({
-          id: hb.id,
-          kind: "monitoring",
-          name,
-          enabled: hb.enabled,
-          nextRunAtMs: hb.nextRunAtMs,
-          lastRunAtMs: hb.lastRunAtMs,
-          lastStatus: hb.lastStatus,
-          outputPreview: hb.lastSentText,
-        })
-      }
+    for (const hb of heartbeats) {
+      if (!hb.enabled) continue
+      const name = hb.prompt
+        ? hb.prompt.slice(0, 40) + (hb.prompt.length > 40 ? "..." : "")
+        : "Heartbeat"
+      items.push({
+        id: hb.id,
+        kind: "monitoring",
+        name,
+        nextRunAtMs: hb.nextRunAtMs,
+        lastRunAtMs: hb.lastRunAtMs,
+        lastStatus: hb.lastStatus,
+        outputPreview: hb.lastSentText,
+      })
     }
 
-    return sortActivityItems(items)
+    return items.toSorted((a, b) => compareActivityItems(a, b))
   }, [cronJobs, heartbeats])
 }
 
@@ -163,5 +157,3 @@ export function HomeView({ conversationId }: HomeViewProps) {
     </div>
   )
 }
-
-

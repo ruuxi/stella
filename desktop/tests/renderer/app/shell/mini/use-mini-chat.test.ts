@@ -34,6 +34,7 @@ function makeSnapshot(overrides?: Partial<MiniBridgeUpdate["snapshot"]>) {
 
 function makeOpts(overrides?: Partial<Parameters<typeof useMiniChat>[0]>) {
   return {
+    isActive: true,
     chatContext: null as ChatContext | null,
     selectedText: null as string | null,
     setChatContext: vi.fn(),

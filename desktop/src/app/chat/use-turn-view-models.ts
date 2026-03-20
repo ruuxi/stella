@@ -28,6 +28,37 @@ const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
   return event.payload as MessagePayload;
 };
 
+const getWebSearchBadgeHtml = (events: EventRecord[]): string | undefined => {
+  for (const event of events) {
+    if (event.type !== "tool_result") {
+      continue;
+    }
+
+    const payload = event.payload as {
+      toolName?: string;
+      html?: unknown;
+      result?: unknown;
+    } | undefined;
+    if (!payload || typeof payload.toolName !== "string") {
+      continue;
+    }
+
+    if (payload.toolName.toLowerCase() !== "websearch") {
+      continue;
+    }
+
+    if (typeof payload.html === "string" && payload.html.trim()) {
+      return payload.html;
+    }
+
+    if (typeof payload.result === "string" && payload.result.trim()) {
+      return payload.result;
+    }
+  }
+
+  return undefined;
+};
+
 export function useTurnViewModels(opts: {
   events: EventRecord[];
   maxItems?: number;
@@ -48,19 +79,21 @@ export function useTurnViewModels(opts: {
   } = opts;
 
   // Check if the pending user message already has an assistant reply
-  const hasAssistantReply = useMemo(() => {
-    if (!pendingUserMessageId) return false;
-    return events.some(
-      (event) =>
-        event.type === "assistant_message" &&
-        (event.payload as { userMessageId?: string } | null)
-          ?.userMessageId === pendingUserMessageId,
-    );
-  }, [events, pendingUserMessageId]);
-
-  const showStreaming = Boolean(
-    (isStreaming || streamingText) && !hasAssistantReply,
+  const hasAssistantReply = useMemo(
+    () =>
+      Boolean(
+        pendingUserMessageId &&
+          events.some(
+            (event) =>
+              event.type === "assistant_message" &&
+              (event.payload as { userMessageId?: string } | null)
+                ?.userMessageId === pendingUserMessageId,
+          ),
+      ),
+    [events, pendingUserMessageId],
   );
+
+  const showStreaming = Boolean(!hasAssistantReply && (isStreaming || streamingText));
 
   const maxTurns =
     typeof maxItems === "number" ? Math.max(0, Math.floor(maxItems)) : null;
@@ -114,6 +147,7 @@ export function useTurnViewModels(opts: {
         assistantText,
         assistantMessageId,
         assistantEmotesEnabled,
+        webSearchBadgeHtml: getWebSearchBadgeHtml(turn.toolEvents),
       };
     });
   }, [slicedTurns, depseudonymize]);
@@ -139,30 +173,36 @@ export function useTurnViewModels(opts: {
   const deferredStreamingText = useDeferredValue(streamingText);
   const deferredReasoningText = useDeferredValue(reasoningText);
 
-  const { processedStreamingText, processedReasoningText } = useMemo(
-    () => ({
-      processedStreamingText: deferredStreamingText
+  const processedStreamingText = useMemo(
+    () =>
+      deferredStreamingText
         ? depseudonymize(deferredStreamingText)
         : deferredStreamingText,
-      processedReasoningText: deferredReasoningText
-        ? depseudonymize(deferredReasoningText)
-        : deferredReasoningText,
-    }),
-    [deferredStreamingText, deferredReasoningText, depseudonymize],
+    [deferredStreamingText, depseudonymize],
   );
 
-  const { runningTool, runningTasks } = useMemo(
-    () => ({
-      runningTool: getCurrentRunningTool(events),
-      runningTasks: getRunningTasks(events, { appSessionStartedAtMs }),
-    }),
+  const processedReasoningText = useMemo(
+    () =>
+      deferredReasoningText
+        ? depseudonymize(deferredReasoningText)
+        : deferredReasoningText,
+    [deferredReasoningText, depseudonymize],
+  );
+
+  const runningTool = useMemo(() => getCurrentRunningTool(events), [events]);
+  const runningTasks = useMemo(
+    () => getRunningTasks(events, { appSessionStartedAtMs }),
     [appSessionStartedAtMs, events],
   );
 
-  const hasPendingTurn = useMemo(() => {
-    if (!pendingUserMessageId) return false;
-    return turns.some((turn) => turn.id === pendingUserMessageId);
-  }, [turns, pendingUserMessageId]);
+  const hasPendingTurn = useMemo(
+    () =>
+      Boolean(
+        pendingUserMessageId &&
+          turns.some((turn) => turn.id === pendingUserMessageId),
+      ),
+    [turns, pendingUserMessageId],
+  );
 
   const showStandaloneStreaming = Boolean(
     showStreaming && pendingUserMessageId && !hasPendingTurn,
@@ -178,7 +218,5 @@ export function useTurnViewModels(opts: {
     runningTasks,
   };
 }
-
-
 
 
