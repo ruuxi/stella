@@ -14,9 +14,12 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
   onToggleCategory,
 }) => {
   const platform = getPlatform();
-  const hasFDACategories = DISCOVERY_CATEGORIES.some(
+  const hasFdaCategories = DISCOVERY_CATEGORIES.some(
     (cat) => cat.requiresFDA && categoryStates[cat.id],
   );
+  const showFdaNote = platform === "darwin" && hasFdaCategories;
+  const openFullDiskAccess = () =>
+    window.electronAPI?.system.openFullDiskAccess?.();
 
   return (
     <div className="onboarding-discovery" data-visible={true}>
@@ -34,13 +37,10 @@ export const OnboardingDiscovery: React.FC<OnboardingDiscoveryProps> = ({
           />
         ))}
       </div>
-      {hasFDACategories && platform === "darwin" && (
+      {showFdaNote && (
         <div className="onboarding-fda-note">
           <span>Some options require Full Disk Access</span>
-          <button
-            className="onboarding-fda-link"
-            onClick={() => window.electronAPI?.system.openFullDiskAccess?.()}
-          >
+          <button className="onboarding-fda-link" onClick={openFullDiskAccess}>
             Open Preferences
           </button>
         </div>

@@ -45,7 +45,6 @@ export function useVoiceRecording({
 
   // Refs to hold session across the effect boundary so cleanup can commit
   const sessionRef = useRef<StreamingTranscribeSession | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const micLeaseRef = useRef<SharedMicrophoneLease | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const maxTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,9 +58,6 @@ export function useVoiceRecording({
       if (maxTimeoutRef.current) {
         clearTimeout(maxTimeoutRef.current);
         maxTimeoutRef.current = null;
-      }
-      if (streamRef.current) {
-        streamRef.current = null;
       }
       if (micLeaseRef.current) {
         micLeaseRef.current.release();
@@ -121,7 +117,6 @@ export function useVoiceRecording({
         }
 
         micLeaseRef.current = micLease;
-        streamRef.current = stream;
         await Promise.all([resumePromise, workletModulePromise]);
         if (stopped) {
           ctx.close();
@@ -173,4 +168,3 @@ export function useVoiceRecording({
 
   return { analyserRef, isRecording, isTranscribing };
 }
-

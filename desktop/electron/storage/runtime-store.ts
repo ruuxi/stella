@@ -216,24 +216,25 @@ export class RuntimeStore {
       finalText: string | null;
       selfModAppliedJson: string | null;
     }>;
-    return rows.map((row) => ({
-      timestamp: row.timestamp,
-      runId: row.runId,
-      conversationId: row.conversationId,
-      agentType: row.agentType,
-      ...(row.seq == null ? {} : { seq: row.seq }),
-      type: row.type,
-      ...(row.chunk ? { chunk: row.chunk } : {}),
-      ...(row.toolCallId ? { toolCallId: row.toolCallId } : {}),
-      ...(row.toolName ? { toolName: row.toolName } : {}),
-      ...(row.resultPreview ? { resultPreview: row.resultPreview } : {}),
-      ...(row.error ? { error: row.error } : {}),
-      ...(row.fatal == null ? {} : { fatal: row.fatal === 1 }),
-      ...(row.finalText ? { finalText: row.finalText } : {}),
-      ...(parseRuntimeSelfModApplied(row.selfModAppliedJson)
-        ? { selfModApplied: parseRuntimeSelfModApplied(row.selfModAppliedJson) }
-        : {}),
-    }));
+    return rows.map((row) => {
+      const selfModApplied = parseRuntimeSelfModApplied(row.selfModAppliedJson);
+      return {
+        timestamp: row.timestamp,
+        runId: row.runId,
+        conversationId: row.conversationId,
+        agentType: row.agentType,
+        ...(row.seq == null ? {} : { seq: row.seq }),
+        type: row.type,
+        ...(row.chunk ? { chunk: row.chunk } : {}),
+        ...(row.toolCallId ? { toolCallId: row.toolCallId } : {}),
+        ...(row.toolName ? { toolName: row.toolName } : {}),
+        ...(row.resultPreview ? { resultPreview: row.resultPreview } : {}),
+        ...(row.error ? { error: row.error } : {}),
+        ...(row.fatal == null ? {} : { fatal: row.fatal === 1 }),
+        ...(row.finalText ? { finalText: row.finalText } : {}),
+        ...(selfModApplied ? { selfModApplied } : {}),
+      };
+    });
   }
 
   private rebuildRuntimeRunTranscript(runId: string): void {
@@ -251,12 +252,15 @@ export class RuntimeStore {
       content: string;
       tagsJson: string | null;
     }>;
-    return rows.map((row) => ({
-      timestamp: row.timestamp,
-      conversationId: row.conversationId,
-      content: row.content,
-      ...(parseJsonTags(row.tagsJson) ? { tags: parseJsonTags(row.tagsJson) } : {}),
-    }));
+    return rows.map((row) => {
+      const tags = parseJsonTags(row.tagsJson);
+      return {
+        timestamp: row.timestamp,
+        conversationId: row.conversationId,
+        content: row.content,
+        ...(tags ? { tags } : {}),
+      };
+    });
   }
 
   private rebuildRuntimeMemoryMirror(): void {
@@ -366,12 +370,15 @@ export class RuntimeStore {
       tagsJson: string | null;
     }>;
     if (rows.length === 0) return [];
-    const normalizedRows: RuntimeMemory[] = rows.map((row) => ({
-      timestamp: row.timestamp,
-      conversationId: row.conversationId,
-      content: row.content,
-      ...(parseJsonTags(row.tagsJson) ? { tags: parseJsonTags(row.tagsJson) } : {}),
-    }));
+    const normalizedRows: RuntimeMemory[] = rows.map((row) => {
+      const tags = parseJsonTags(row.tagsJson);
+      return {
+        timestamp: row.timestamp,
+        conversationId: row.conversationId,
+        content: row.content,
+        ...(tags ? { tags } : {}),
+      };
+    });
     const scored = scoreMemoryMatches(query, normalizedRows);
     return scored.slice(0, limit).map((entry) => entry.row);
   }
@@ -471,7 +478,8 @@ export class RuntimeStore {
     }
 
     const activeThreads = this.listActiveThreads(args.conversationId);
-    if (activeThreads.length >= MAX_ACTIVE_RUNTIME_THREADS) {
+    const didEvict = activeThreads.length >= MAX_ACTIVE_RUNTIME_THREADS;
+    if (didEvict) {
       const oldest = [...activeThreads].sort((a, b) => a.lastUsedAt - b.lastUsedAt)[0];
       if (oldest) {
         this.db.prepare(`
@@ -482,7 +490,9 @@ export class RuntimeStore {
       }
     }
 
-    const activeNames = new Set(this.listActiveThreads(args.conversationId).map((thread) => thread.name));
+    const activeNames = new Set(
+      (didEvict ? this.listActiveThreads(args.conversationId) : activeThreads).map((thread) => thread.name),
+    );
     const selectedName =
       requestedName
         && RUNTIME_THREAD_NAME_POOL.includes(requestedName)

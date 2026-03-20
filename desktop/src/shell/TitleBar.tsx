@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useWorkspace } from "@/context/workspace-state";
 import { getPlatform } from "@/platform/electron/platform";
 
@@ -7,61 +7,54 @@ const MAXIMIZE_STATE_SYNC_DELAY_MS = 50;
 export const TitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
   const { state: workspaceState } = useWorkspace();
-  const platform = getPlatform();
-  const isMac = platform === "darwin";
-  const activePanel = workspaceState.activePanel;
-  const panelTitle = activePanel
-    ? (activePanel.title ?? activePanel.name)
-    : null;
-  const panelTitleLabel = panelTitle ? (
-    <span className="title-bar-workspace-label">{panelTitle}</span>
-  ) : null;
+  const isMac = getPlatform() === "darwin";
+  const panelTitle = workspaceState.activePanel?.title ?? workspaceState.activePanel?.name;
 
-  const getMaximizedState = useCallback(async () => {
-    const maximized = await window.electronAPI?.window.isMaximized?.();
-    return maximized ?? false;
+  const updateMaximizedState = useCallback(() => {
+    const promise = window.electronAPI?.window.isMaximized?.();
+    if (!promise) {
+      return;
+    }
+
+    void promise.then((maximized) => {
+      setIsMaximized(Boolean(maximized));
+    });
   }, []);
 
   useEffect(() => {
-    queueMicrotask(() => {
-      void getMaximizedState().then((maximized) => {
-        setIsMaximized(maximized);
-      });
-    });
-  }, [getMaximizedState]);
+    updateMaximizedState();
+  }, [updateMaximizedState]);
 
   const handleMinimize = () => {
     window.electronAPI?.window.minimize?.();
   };
 
-  const handleMaximize = async () => {
+  const handleMaximize = () => {
     window.electronAPI?.window.maximize?.();
-    setTimeout(() => {
-      void getMaximizedState().then((maximized) => {
-        setIsMaximized(maximized);
-      });
-    }, MAXIMIZE_STATE_SYNC_DELAY_MS);
+    window.setTimeout(updateMaximizedState, MAXIMIZE_STATE_SYNC_DELAY_MS);
   };
 
   const handleClose = () => {
     window.electronAPI?.window.close?.();
   };
 
-  // On macOS, we use native traffic lights, so only show drag region
+  const titleLabel = panelTitle ? (
+    <span className="title-bar-workspace-label">{panelTitle}</span>
+  ) : null;
+
   if (isMac) {
     return (
       <div className="title-bar title-bar-mac">
         <div className="title-bar-drag-region" />
-        {panelTitleLabel}
+        {titleLabel}
       </div>
     );
   }
 
-  // Windows/Linux: Show custom window controls
   return (
     <div className="title-bar">
       <div className="title-bar-drag-region" />
-      {panelTitleLabel}
+      {titleLabel}
       <div className="title-bar-controls">
         <button
           className="title-bar-button"

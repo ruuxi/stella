@@ -15,7 +15,7 @@ import { useSocialProfile } from "./hooks/use-social-profile";
 type FriendsDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onStartChat: (otherOwnerId: string) => void;
+  onStartChat: (otherOwnerId: string) => Promise<boolean>;
 };
 
 type StatusMessage = {
@@ -37,6 +37,7 @@ export function FriendsDialog({ open, onOpenChange, onStartChat }: FriendsDialog
   const [friendCode, setFriendCode] = useState("");
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [sending, setSending] = useState(false);
+  const [pendingChatOwnerId, setPendingChatOwnerId] = useState<string | null>(null);
 
   const handleAddFriend = useCallback(async () => {
     const code = friendCode.trim().toUpperCase();
@@ -47,10 +48,11 @@ export function FriendsDialog({ open, onOpenChange, onStartChat }: FriendsDialog
       await sendFriendRequest(code);
       setStatus({ type: "success", text: "Friend request sent!" });
       setFriendCode("");
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Something went wrong";
-      setStatus({ type: "error", text: message });
+    } catch (err) {
+      setStatus({
+        type: "error",
+        text: err instanceof Error ? err.message : "Something went wrong",
+      });
     } finally {
       setSending(false);
     }
@@ -58,39 +60,39 @@ export function FriendsDialog({ open, onOpenChange, onStartChat }: FriendsDialog
 
   const handleAccept = useCallback(
     async (requesterOwnerId: string) => {
-      try {
-        await acceptRequest(requesterOwnerId);
-      } catch {
-        // silently handled
-      }
+      await acceptRequest(requesterOwnerId);
     },
     [acceptRequest],
   );
 
   const handleDecline = useCallback(
     async (requesterOwnerId: string) => {
-      try {
-        await declineRequest(requesterOwnerId);
-      } catch {
-        // silently handled
-      }
+      await declineRequest(requesterOwnerId);
     },
     [declineRequest],
   );
 
   const handleRemove = useCallback(
     async (otherOwnerId: string) => {
-      try {
-        await removeFriend(otherOwnerId);
-      } catch {
-        // silently handled
-      }
+      await removeFriend(otherOwnerId);
     },
     [removeFriend],
   );
 
-  const incomingRequests = (pendingRequests as { incoming?: unknown[] })?.incoming ?? [];
-  const outgoingRequests = (pendingRequests as { outgoing?: unknown[] })?.outgoing ?? [];
+  const handleStartChat = useCallback(
+    async (otherOwnerId: string) => {
+      setPendingChatOwnerId(otherOwnerId);
+      const didOpenChat = await onStartChat(otherOwnerId);
+      setPendingChatOwnerId(null);
+      if (!didOpenChat) {
+        return;
+      }
+      onOpenChange(false);
+    },
+    [onOpenChange, onStartChat],
+  );
+
+  const { incoming, outgoing } = pendingRequests;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -101,7 +103,6 @@ export function FriendsDialog({ open, onOpenChange, onStartChat }: FriendsDialog
         </DialogHeader>
         <DialogBody>
           <div className="friends-dialog-body">
-            {/* Your tag */}
             {profile && (
               <div style={{ marginBottom: 4 }}>
                 <div className="friends-section-label">Your friend code</div>
@@ -119,7 +120,6 @@ export function FriendsDialog({ open, onOpenChange, onStartChat }: FriendsDialog
               </div>
             )}
 
-            {/* Add friend by code */}
             <div className="friends-add-section">
               <TextField
                 label="Add a friend"
@@ -152,86 +152,71 @@ export function FriendsDialog({ open, onOpenChange, onStartChat }: FriendsDialog
               </div>
             )}
 
-            {/* Pending incoming */}
-            {incomingRequests.length > 0 && (
+            {incoming.length > 0 && (
               <>
                 <div className="friends-section-label">
-                  Requests ({incomingRequests.length})
+                  Requests ({incoming.length})
                 </div>
                 <div className="friends-list">
-                  {incomingRequests.map((req: unknown) => {
-                    const r = req as {
-                      relationship: { requesterOwnerId: string };
-                      profile: { nickname: string; avatarUrl?: string; friendCode: string };
-                    };
-                    return (
-                      <div key={r.relationship.requesterOwnerId} className="friends-item">
-                        <Avatar
-                          fallback={r.profile.nickname}
-                          src={r.profile.avatarUrl}
-                          size="normal"
-                        />
-                        <div className="friends-item-info">
-                          <div className="friends-item-name">{r.profile.nickname}</div>
-                          <div className="friends-item-tag">{r.profile.friendCode}</div>
-                        </div>
-                        <div className="friends-item-actions">
-                          <button
-                            type="button"
-                            className="friends-item-action"
-                            data-variant="primary"
-                            onClick={() =>
-                              void handleAccept(r.relationship.requesterOwnerId)
-                            }
-                          >
-                            Accept
-                          </button>
-                          <button
-                            type="button"
-                            className="friends-item-action"
-                            onClick={() =>
-                              void handleDecline(r.relationship.requesterOwnerId)
-                            }
-                          >
-                            Decline
-                          </button>
-                        </div>
+                  {incoming.map((request) => (
+                    <div key={request.relationship.requesterOwnerId} className="friends-item">
+                      <Avatar
+                        fallback={request.profile.nickname}
+                        src={request.profile.avatarUrl}
+                        size="normal"
+                      />
+                      <div className="friends-item-info">
+                        <div className="friends-item-name">{request.profile.nickname}</div>
+                        <div className="friends-item-tag">{request.profile.friendCode}</div>
                       </div>
-                    );
-                  })}
+                      <div className="friends-item-actions">
+                        <button
+                          type="button"
+                          className="friends-item-action"
+                          data-variant="primary"
+                          onClick={() =>
+                            void handleAccept(request.relationship.requesterOwnerId)
+                          }
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          className="friends-item-action"
+                          onClick={() =>
+                            void handleDecline(request.relationship.requesterOwnerId)
+                          }
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </>
             )}
 
-            {/* Pending outgoing */}
-            {outgoingRequests.length > 0 && (
+            {outgoing.length > 0 && (
               <>
                 <div className="friends-section-label">Sent</div>
                 <div className="friends-list">
-                  {outgoingRequests.map((req: unknown) => {
-                    const r = req as {
-                      relationship: { addresseeOwnerId: string };
-                      profile: { nickname: string; avatarUrl?: string; friendCode: string };
-                    };
-                    return (
-                      <div key={r.relationship.addresseeOwnerId} className="friends-item">
-                        <Avatar
-                          fallback={r.profile.nickname}
-                          src={r.profile.avatarUrl}
-                          size="normal"
-                        />
-                        <div className="friends-item-info">
-                          <div className="friends-item-name">{r.profile.nickname}</div>
-                          <div className="friends-item-tag">Waiting for response</div>
-                        </div>
+                  {outgoing.map((request) => (
+                    <div key={request.relationship.addresseeOwnerId} className="friends-item">
+                      <Avatar
+                        fallback={request.profile.nickname}
+                        src={request.profile.avatarUrl}
+                        size="normal"
+                      />
+                      <div className="friends-item-info">
+                        <div className="friends-item-name">{request.profile.nickname}</div>
+                        <div className="friends-item-tag">Waiting for response</div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
               </>
             )}
 
-            {/* Friends list */}
             <div className="friends-section-label">
               Friends{friends.length > 0 ? ` (${friends.length})` : ""}
             </div>
@@ -241,54 +226,38 @@ export function FriendsDialog({ open, onOpenChange, onStartChat }: FriendsDialog
               </div>
             ) : (
               <div className="friends-list">
-                {friends.map((f: unknown) => {
-                  const friend = f as {
-                    profile: {
-                      nickname: string;
-                      avatarUrl?: string;
-                      friendCode: string;
-                      ownerId: string;
-                    };
-                  };
-                  return (
-                    <div key={friend.profile.ownerId} className="friends-item">
-                      <Avatar
-                        fallback={friend.profile.nickname}
-                        src={friend.profile.avatarUrl}
-                        size="normal"
-                      />
-                      <div className="friends-item-info">
-                        <div className="friends-item-name">
-                          {friend.profile.nickname}
-                        </div>
-                        <div className="friends-item-tag">
-                          {friend.profile.friendCode}
-                        </div>
-                      </div>
-                      <div className="friends-item-actions">
-                        <button
-                          type="button"
-                          className="friends-item-action"
-                          onClick={() => {
-                            onStartChat(friend.profile.ownerId);
-                            onOpenChange(false);
-                          }}
-                        >
-                          Message
-                        </button>
-                        <button
-                          type="button"
-                          className="friends-item-action"
-                          onClick={() =>
-                            void handleRemove(friend.profile.ownerId)
-                          }
-                        >
-                          Remove
-                        </button>
-                      </div>
+                {friends.map((friend) => (
+                  <div key={friend.profile.ownerId} className="friends-item">
+                    <Avatar
+                      fallback={friend.profile.nickname}
+                      src={friend.profile.avatarUrl}
+                      size="normal"
+                    />
+                    <div className="friends-item-info">
+                      <div className="friends-item-name">{friend.profile.nickname}</div>
+                      <div className="friends-item-tag">{friend.profile.friendCode}</div>
                     </div>
-                  );
-                })}
+                    <div className="friends-item-actions">
+                      <button
+                        type="button"
+                        className="friends-item-action"
+                        disabled={pendingChatOwnerId !== null}
+                        onClick={() => void handleStartChat(friend.profile.ownerId)}
+                      >
+                        {pendingChatOwnerId === friend.profile.ownerId
+                          ? "Opening..."
+                          : "Message"}
+                      </button>
+                      <button
+                        type="button"
+                        className="friends-item-action"
+                        onClick={() => void handleRemove(friend.profile.ownerId)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

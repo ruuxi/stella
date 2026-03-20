@@ -12,13 +12,11 @@ type TextFieldBaseProps = {
 type SingleLineTextFieldProps = TextFieldBaseProps &
   React.InputHTMLAttributes<HTMLInputElement> & {
     multiline?: false;
-    textareaProps?: never;
   };
 
 type MultilineTextFieldProps = TextFieldBaseProps &
   React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
     multiline: true;
-  textareaProps?: React.TextareaHTMLAttributes<HTMLTextAreaElement>;
   };
 
 export type TextFieldProps = SingleLineTextFieldProps | MultilineTextFieldProps;
@@ -33,85 +31,71 @@ export const TextField = React.forwardRef<HTMLInputElement | HTMLTextAreaElement
       error,
       variant = "normal",
       multiline,
+      ...fieldProps
     } = props;
-    const textareaValue =
-      multiline ? props.textareaProps?.value ?? props.value : undefined;
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
-    const setTextareaRef = React.useCallback((node: HTMLTextAreaElement | null) => {
-      textareaRef.current = node;
+    const setForwardedRef = React.useCallback(
+      (node: HTMLInputElement | HTMLTextAreaElement | null) => {
+        if (!ref) {
+          return;
+        }
+        if (typeof ref === "function") {
+          ref(node);
+          return;
+        }
+        ref.current = node;
+      },
+      [ref],
+    );
+    const setTextareaRef = React.useCallback(
+      (node: HTMLTextAreaElement | null) => {
+        textareaRef.current = node;
+        setForwardedRef(node);
+      },
+      [setForwardedRef],
+    );
+    const textareaValue = multiline ? props.value ?? props.defaultValue : undefined;
 
-      if (!ref) return;
-      if (typeof ref === "function") {
-        ref(node);
+    React.useEffect(() => {
+      if (!multiline) {
         return;
       }
-      ref.current = node;
-    }, [ref]);
-
-    // Auto-resize textarea
-    React.useEffect(() => {
-      if (multiline && textareaRef.current) {
-        const textarea = textareaRef.current;
-        textarea.style.height = "auto";
-        textarea.style.height = `${textarea.scrollHeight}px`;
+      const textarea = textareaRef.current;
+      if (!textarea) {
+        return;
       }
+      textarea.style.height = "auto";
+      textarea.style.height = `${textarea.scrollHeight}px`;
     }, [multiline, textareaValue]);
 
     return (
       <div data-component="input" data-variant={variant}>
-        {label && (
+        {label ? (
           <label data-slot="input-label" className={hideLabel ? "sr-only" : undefined}>
             {label}
           </label>
-        )}
+        ) : null}
         <div data-slot="input-wrapper">
-          {multiline ? (() => {
-            const {
-              label: _label,
-              hideLabel: _hideLabel,
-              description: _description,
-              error: _error,
-              variant: _variant,
-              multiline: _multiline,
-              textareaProps,
-              ...textareaOnlyProps
-            } = props as MultilineTextFieldProps;
-
-            return (
-              <textarea
-                ref={setTextareaRef}
-                data-slot="input-input"
-                data-invalid={error ? true : undefined}
-                className={cn(className)}
-                {...textareaOnlyProps}
-                {...textareaProps}
-              />
-            );
-          })() : (() => {
-            const {
-              label: _label,
-              hideLabel: _hideLabel,
-              description: _description,
-              error: _error,
-              variant: _variant,
-              multiline: _multiline,
-              textareaProps: _textareaProps,
-              ...inputOnlyProps
-            } = props as SingleLineTextFieldProps;
-
-            return (
-              <input
-                ref={ref as React.Ref<HTMLInputElement>}
-                data-slot="input-input"
-                data-invalid={error ? true : undefined}
-                className={cn(className)}
-                {...inputOnlyProps}
-              />
-            );
-          })()}
+          {multiline ? (
+            <textarea
+              ref={setTextareaRef}
+              data-slot="input-input"
+              data-invalid={error ? true : undefined}
+              className={cn(className)}
+              {...(fieldProps as React.TextareaHTMLAttributes<HTMLTextAreaElement>)}
+            />
+          ) : (
+            <input
+              ref={setForwardedRef}
+              data-slot="input-input"
+              data-invalid={error ? true : undefined}
+              className={cn(className)}
+              {...(fieldProps as React.InputHTMLAttributes<HTMLInputElement>)}
+            />
+          )}
         </div>
-        {description && <p data-slot="input-description">{description}</p>}
-        {error && <p data-slot="input-error">{error}</p>}
+        {description ? <p data-slot="input-description">{description}</p> : null}
+        {error ? <p data-slot="input-error">{error}</p> : null}
       </div>
     );
   }

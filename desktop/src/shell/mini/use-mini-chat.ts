@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { useUiState } from "@/context/ui-state";
 import { useIpcQuery } from "@/shared/hooks/use-ipc-query";
 import type {
@@ -17,38 +18,50 @@ const createEmptySnapshot = (conversationId: string | null): MiniBridgeSnapshot 
   pendingUserMessageId: null,
 });
 
-export function useMiniChat(opts: {
-  isActive?: boolean;
+function selectSnapshot(response: MiniBridgeResponse): MiniBridgeSnapshot {
+  switch (response.type) {
+    case "query:snapshot":
+      return response.snapshot;
+    case "mutation:sendMessage":
+    case "mutation:cancelStream":
+    case "error":
+      throw new Error(`Unexpected mini snapshot response: ${response.type}`);
+    default:
+      throw new Error("Unexpected mini snapshot response");
+  }
+}
+
+type UseMiniChatOptions = {
+  isActive: boolean;
   chatContext: ChatContext | null;
   selectedText: string | null;
-  setChatContext: React.Dispatch<React.SetStateAction<ChatContext | null>>;
-  setSelectedText: React.Dispatch<React.SetStateAction<string | null>>;
-}) {
-  const { isActive = true, chatContext, selectedText, setChatContext, setSelectedText } = opts;
+  setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
+  setSelectedText: Dispatch<SetStateAction<string | null>>;
+};
+
+export function useMiniChat({
+  isActive,
+  chatContext,
+  selectedText,
+  setChatContext,
+  setSelectedText,
+}: UseMiniChatOptions) {
   const { state } = useUiState();
   const activeConversationId = state.conversationId;
-  const currentConversationId = activeConversationId ?? null;
 
   const [message, setMessage] = useState("");
   const [liveSnapshot, setLiveSnapshot] = useState<MiniBridgeSnapshot | null>(null);
   const snapshotRequest = useMemo(
     () => ({
       type: "query:snapshot" as const,
-      conversationId: currentConversationId,
+      conversationId: activeConversationId,
     }),
-    [currentConversationId],
+    [activeConversationId],
   );
-  const selectSnapshot = useCallback((response: MiniBridgeResponse) => {
-    if (response.type !== "query:snapshot") {
-      return null;
-    }
-    return response.snapshot;
-  }, []);
 
   const {
     data: initialSnapshot,
     loading: isLoadingSnapshot,
-    error: snapshotError,
     refetch,
   } = useIpcQuery<MiniBridgeSnapshot>({
     enabled: isActive,
@@ -57,22 +70,28 @@ export function useMiniChat(opts: {
   });
 
   const snapshot = useMemo(() => {
-    if (liveSnapshot?.conversationId === currentConversationId) {
+    if (liveSnapshot?.conversationId === activeConversationId) {
       return liveSnapshot;
     }
 
-    if (initialSnapshot?.conversationId === currentConversationId) {
+    if (initialSnapshot?.conversationId === activeConversationId) {
       return initialSnapshot;
     }
 
-    return createEmptySnapshot(currentConversationId);
-  }, [currentConversationId, initialSnapshot, liveSnapshot]);
+    return createEmptySnapshot(activeConversationId);
+  }, [activeConversationId, initialSnapshot, liveSnapshot]);
 
   useEffect(() => {
     if (!isActive) {
       return;
     }
-    const unsubscribe = window.electronAPI?.mini.onUpdate?.((update) => {
+
+    const api = window.electronAPI;
+    if (!api) {
+      return;
+    }
+
+    return api.mini.onUpdate((update) => {
       if (update.type !== "snapshot") {
         return;
       }
@@ -86,14 +105,11 @@ export function useMiniChat(opts: {
 
       setLiveSnapshot(update.snapshot);
     });
-
-    return () => {
-      unsubscribe?.();
-    };
   }, [activeConversationId, isActive]);
 
   const sendMessage = useCallback(async () => {
-    if (!window.electronAPI?.mini.request || !activeConversationId) {
+    const api = window.electronAPI;
+    if (!api || !activeConversationId) {
       return;
     }
 
@@ -107,7 +123,7 @@ export function useMiniChat(opts: {
       return;
     }
 
-    const response = await window.electronAPI.mini.request({
+    const response = await api.mini.request({
       type: "mutation:sendMessage",
       conversationId: activeConversationId,
       text: message,
@@ -115,16 +131,24 @@ export function useMiniChat(opts: {
       chatContext,
     });
 
-    if (response.type === "error") {
-      console.error("[miniBridge] sendMessage failed:", response.message);
-      return;
-    }
-
-    if (response.type === "mutation:sendMessage" && response.accepted) {
-      setMessage("");
-      setSelectedText(null);
-      setChatContext(null);
-      void refetch();
+    switch (response.type) {
+      case "error":
+        console.error("[miniBridge] sendMessage failed:", response.message);
+        return;
+      case "mutation:sendMessage":
+        if (!response.accepted) {
+          return;
+        }
+        setMessage("");
+        setSelectedText(null);
+        setChatContext(null);
+        void refetch();
+        return;
+      case "query:snapshot":
+      case "mutation:cancelStream":
+        throw new Error(`Unexpected mini bridge response: ${response.type}`);
+      default:
+        throw new Error("Unexpected mini bridge response");
     }
   }, [
     activeConversationId,
@@ -137,30 +161,31 @@ export function useMiniChat(opts: {
   ]);
 
   const cancelStream = useCallback(async () => {
-    if (!window.electronAPI?.mini.request || !activeConversationId) {
+    const api = window.electronAPI;
+    if (!api || !activeConversationId) {
       return;
     }
 
-    const response = await window.electronAPI.mini.request({
+    const response = await api.mini.request({
       type: "mutation:cancelStream",
       conversationId: activeConversationId,
     });
 
-    if (response.type === "error") {
-      console.error("[miniBridge] cancelStream failed:", response.message);
+    switch (response.type) {
+      case "error":
+        console.error("[miniBridge] cancelStream failed:", response.message);
+        return;
+      case "mutation:cancelStream":
+        return;
+      case "query:snapshot":
+      case "mutation:sendMessage":
+        throw new Error(`Unexpected mini bridge response: ${response.type}`);
+      default:
+        throw new Error("Unexpected mini bridge response");
     }
   }, [activeConversationId]);
 
-  const events = useMemo(
-    () => (snapshot.events as unknown as EventRecord[]),
-    [snapshot.events],
-  );
-
-  useEffect(() => {
-    if (!snapshotError) {
-      return;
-    }
-  }, [snapshotError]);
+  const events = snapshot.events as EventRecord[];
 
   return {
     message,
@@ -174,7 +199,3 @@ export function useMiniChat(opts: {
     cancelStream,
   };
 }
-
-
-
-

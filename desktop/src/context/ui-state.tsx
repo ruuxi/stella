@@ -28,32 +28,26 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
   const hasHydratedFromMainRef = useRef(false)
   const pendingLocalStateRef = useRef<Partial<UiState>>({})
 
+  const applyHydratedState = useCallback((nextState: UiState) => {
+    if (hasHydratedFromMainRef.current) {
+      return
+    }
+
+    hasHydratedFromMainRef.current = true
+    const pendingLocalState = pendingLocalStateRef.current
+    pendingLocalStateRef.current = {}
+    setState({ ...nextState, ...pendingLocalState })
+  }, [])
+
   useEffect(() => {
     const api = getElectronApi()
     if (!api) {
       return
     }
 
-    api.ui
-      .getState()
-      .then((nextState) => {
-        if (hasHydratedFromMainRef.current) {
-          return
-        }
-        hasHydratedFromMainRef.current = true
-        const pendingLocalState = pendingLocalStateRef.current
-        pendingLocalStateRef.current = {}
-        setState({ ...nextState, ...pendingLocalState })
-      })
-      .catch(() => {
-        if (hasHydratedFromMainRef.current) {
-          return
-        }
-        hasHydratedFromMainRef.current = true
-        const pendingLocalState = pendingLocalStateRef.current
-        pendingLocalStateRef.current = {}
-        setState({ ...defaultState, ...pendingLocalState })
-      })
+    void api.ui.getState().then(applyHydratedState).catch(() => {
+      applyHydratedState(defaultState)
+    })
 
     const unsubscribe = api.ui.onState((nextState) => {
       hasHydratedFromMainRef.current = true
@@ -64,7 +58,7 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       unsubscribe()
     }
-  }, [])
+  }, [applyHydratedState])
 
   const updateState = useCallback((partial: Partial<UiState>) => {
     setState((prev) => ({ ...prev, ...partial }))
@@ -103,16 +97,12 @@ export const UiStateProvider = ({ children }: { children: ReactNode }) => {
 
   const setWindow = useCallback(
     (windowMode: WindowMode) => {
-      // Full view always uses chat mode
-      if (windowMode === 'full') {
-        updateState({ window: windowMode, mode: 'chat' })
-      } else {
-        updateState({ window: windowMode })
-      }
-      const api = getElectronApi()
-      if (api) {
-        api.window.show(windowMode)
-      }
+      updateState(
+        windowMode === 'full'
+          ? { window: windowMode, mode: 'chat' }
+          : { window: windowMode },
+      )
+      getElectronApi()?.window.show(windowMode)
     },
     [updateState],
   )
@@ -140,5 +130,3 @@ export const useUiState = () => {
   }
   return context
 }
-
-

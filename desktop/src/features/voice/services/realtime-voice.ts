@@ -937,7 +937,7 @@ export class RealtimeVoiceSession {
         result = "Working on it.";
         this.runPerformActionAsync(message);
       } else {
-        result = `Unknown tool: ${name}`;
+        throw new Error(`Unknown tool: ${name}`);
       }
     } catch (err) {
       result = `Error: ${(err as Error).message}`;

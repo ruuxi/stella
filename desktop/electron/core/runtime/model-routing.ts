@@ -82,14 +82,14 @@ const resolveDirectProviderRoute = (args: {
 
 const resolveOpenRouterRoute = (args: {
   stellaHomePath: string;
-  fullModelId: string;
+  requestedCandidates: string[];
 }): ResolvedLlmRoute | null => {
   const openrouterKey = getCredential(args.stellaHomePath, "openrouter");
   if (!openrouterKey) {
     return null;
   }
 
-  const openrouterModel = findRegistryModel("openrouter", [args.fullModelId]);
+  const openrouterModel = findRegistryModel("openrouter", args.requestedCandidates);
   if (openrouterModel) {
     return {
       model: openrouterModel,
@@ -102,16 +102,17 @@ const resolveOpenRouterRoute = (args: {
 
 const resolveGatewayRoute = (args: {
   stellaHomePath: string;
-  fullModelId: string;
+  requestedCandidates: string[];
 }): ResolvedLlmRoute | null => {
   const gatewayKey = getGatewayCredential(args.stellaHomePath);
   if (!gatewayKey) {
     return null;
   }
 
-  const gatewayModel = findRegistryModel("vercel-ai-gateway", [
-    args.fullModelId,
-  ]);
+  const gatewayModel = findRegistryModel(
+    "vercel-ai-gateway",
+    args.requestedCandidates,
+  );
   if (gatewayModel) {
     return {
       model: gatewayModel,
@@ -122,22 +123,91 @@ const resolveGatewayRoute = (args: {
   return null;
 };
 
+const resolveParsedProviderRoute = (args: {
+  stellaHomePath: string;
+  parsed: NonNullable<ReturnType<typeof parseModelReference>>;
+}): ResolvedLlmRoute | null => {
+  const requestedCandidates = uniqueModelCandidates([
+    args.parsed.fullModelId,
+    args.parsed.modelId,
+  ]);
+
+  switch (args.parsed.provider) {
+    case "openrouter":
+      return resolveOpenRouterRoute({
+        stellaHomePath: args.stellaHomePath,
+        requestedCandidates,
+      });
+    case "vercel-ai-gateway":
+      return resolveGatewayRoute({
+        stellaHomePath: args.stellaHomePath,
+        requestedCandidates,
+      });
+    default:
+      return resolveDirectProviderRoute({
+        stellaHomePath: args.stellaHomePath,
+        provider: args.parsed.provider,
+        modelId: args.parsed.modelId,
+        fullModelId: args.parsed.fullModelId,
+      });
+  }
+};
+
+const resolveMaybeLlmRoute = (args: {
+  stellaHomePath: string;
+  modelName: string | undefined;
+  agentType: string;
+  proxy: StellaProxyConfig;
+}): ResolvedLlmRoute | null => {
+  const parsed = parseModelReference(args.modelName);
+
+  if (parsed?.provider === STELLA_PROVIDER) {
+    return createStellaRoute({
+      proxy: args.proxy,
+      agentType: args.agentType,
+      modelId: parsed.fullModelId,
+    });
+  }
+
+  if (!parsed) {
+    return (
+      createStellaRoute({
+        proxy: args.proxy,
+        agentType: args.agentType,
+        modelId: STELLA_DEFAULT_MODEL,
+      }) ?? null
+    );
+  }
+
+  const directProviderRoute = resolveParsedProviderRoute({
+    stellaHomePath: args.stellaHomePath,
+    parsed,
+  });
+  if (directProviderRoute) {
+    return directProviderRoute;
+  }
+
+  return (
+    createStellaRoute({
+      proxy: args.proxy,
+      agentType: args.agentType,
+      modelId: `${STELLA_PROVIDER}/${parsed.fullModelId}`,
+    }) ?? null
+  );
+};
+
 export const canResolveLlmRoute = (args: {
   stellaHomePath: string;
   modelName: string | undefined;
   agentType?: string;
   proxy: StellaProxyConfig;
-}): boolean => {
-  try {
-    resolveLlmRoute({
+}): boolean =>
+  Boolean(
+    resolveMaybeLlmRoute({
       ...args,
       agentType: args.agentType ?? AGENT_IDS.ORCHESTRATOR,
-    });
-    return true;
-  } catch {
-    return false;
-  }
-};
+    }),
+  );
 
 export const resolveLlmRoute = (args: {
   stellaHomePath: string;
@@ -145,64 +215,8 @@ export const resolveLlmRoute = (args: {
   agentType: string;
   proxy: StellaProxyConfig;
 }): ResolvedLlmRoute => {
-  const parsed = parseModelReference(args.modelName);
-
-  if (parsed?.provider === STELLA_PROVIDER) {
-    const route = createStellaRoute({
-      proxy: args.proxy,
-      agentType: args.agentType,
-      modelId: parsed.fullModelId,
-    });
-    if (route) {
-      return route;
-    }
-  }
-
-  if (parsed) {
-    const directProviderRoute = resolveDirectProviderRoute({
-      stellaHomePath: args.stellaHomePath,
-      provider: parsed.provider,
-      modelId: parsed.modelId,
-      fullModelId: parsed.fullModelId,
-    });
-    if (directProviderRoute) {
-      return directProviderRoute;
-    }
-
-    const openRouterRoute = resolveOpenRouterRoute({
-      stellaHomePath: args.stellaHomePath,
-      fullModelId: parsed.fullModelId,
-    });
-    if (openRouterRoute) {
-      return openRouterRoute;
-    }
-
-    const gatewayRoute = resolveGatewayRoute({
-      stellaHomePath: args.stellaHomePath,
-      fullModelId: parsed.fullModelId,
-    });
-    if (gatewayRoute) {
-      return gatewayRoute;
-    }
-
-    const stellaRoute = createStellaRoute({
-      proxy: args.proxy,
-      agentType: args.agentType,
-      modelId: `${STELLA_PROVIDER}/${parsed.fullModelId}`,
-    });
-    if (stellaRoute) {
-      return stellaRoute;
-    }
-  }
-
-  const defaultStellaRoute = createStellaRoute({
-    proxy: args.proxy,
-    agentType: args.agentType,
-    modelId: STELLA_DEFAULT_MODEL,
-  });
-  if (defaultStellaRoute) {
-    return defaultStellaRoute;
-  }
+  const route = resolveMaybeLlmRoute(args);
+  if (route) return route;
 
   throw new Error(
     "No usable model route is configured. Add a matching local API key in Settings or sign in to use Stella.",

@@ -12,6 +12,7 @@ import {
   type EventRecord,
   type MessagePayload,
 } from "@/app/chat/lib/event-transforms";
+import { sanitizeHtmlFragment } from "@/shared/lib/safe-html";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 
 export type TurnViewModel = {
@@ -22,6 +23,7 @@ export type TurnViewModel = {
   assistantText: string;
   assistantMessageId: string | null;
   assistantEmotesEnabled: boolean;
+  webSearchBadgeHtml?: string;
   selfModApplied?: SelfModApplied;
 };
 
@@ -36,10 +38,7 @@ export type StreamingTurnProps = {
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const getAttachments = (event: EventRecord): Attachment[] => {
-  const fromPayload =
-    event.payload && typeof event.payload === "object"
-      ? ((event.payload as MessagePayload).attachments ?? [])
-      : [];
+  const fromPayload = (event.payload as MessagePayload | undefined)?.attachments ?? [];
   const fromEnvelope = event.channelEnvelope?.attachments ?? [];
   if (fromEnvelope.length === 0) {
     return fromPayload;
@@ -62,12 +61,8 @@ export const getAttachments = (event: EventRecord): Attachment[] => {
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
-export const getChannelEnvelope = (event: EventRecord): ChannelEnvelope | undefined => {
-  if (!event.channelEnvelope || typeof event.channelEnvelope !== "object") {
-    return undefined;
-  }
-  return event.channelEnvelope;
-};
+export const getChannelEnvelope = (event: EventRecord): ChannelEnvelope | undefined =>
+  event.channelEnvelope;
 
 const getAttachmentLabel = (attachment: Attachment, index: number) => {
   if (attachment.name) return attachment.name;
@@ -123,8 +118,7 @@ export const getDisplayMessageText = (event: EventRecord): string => {
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
-export const getDisplayUserText = (event: EventRecord): string =>
-  getDisplayMessageText(event);
+export const getDisplayUserText = getDisplayMessageText;
 
 const summarizeReactions = (envelope: ChannelEnvelope): string | null => {
   const reactions = envelope.reactions ?? [];
@@ -136,6 +130,16 @@ const summarizeReactions = (envelope: ChannelEnvelope): string | null => {
   const suffix = reactions.length > 3 ? ` +${reactions.length - 3}` : "";
   return `Reactions ${labels.join(" ")}${suffix}`;
 };
+
+const renderWebSearchBadge = (html: string) => (
+  <div className="event-search-badge">
+    <span className="event-search-badge-label">Search briefing</span>
+    <div
+      className="event-search-badge-html"
+      dangerouslySetInnerHTML={{ __html: sanitizeHtmlFragment(html) }}
+    />
+  </div>
+);
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function attachmentsEqual(a: Attachment[], b: Attachment[]): boolean {
@@ -255,6 +259,7 @@ const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean => (
   a.assistantText === b.assistantText &&
   a.assistantMessageId === b.assistantMessageId &&
   a.assistantEmotesEnabled === b.assistantEmotesEnabled &&
+  (a.webSearchBadgeHtml ?? null) === (b.webSearchBadgeHtml ?? null) &&
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied)
 );
 
@@ -289,7 +294,9 @@ export const TurnItem = memo(function TurnItem({
   const userAttachments = turn.userAttachments;
   const userChannelEnvelope = turn.userChannelEnvelope;
   const assistantText = turn.assistantText;
+  const webSearchBadgeHtml = turn.webSearchBadgeHtml?.trim() ?? "";
   const hasAssistantContent = assistantText.trim().length > 0;
+  const hasWebSearchBadge = webSearchBadgeHtml.length > 0;
   const hasUserContent =
     userText.trim().length > 0 || userAttachments.length > 0;
   const hasChannelMeta = Boolean(userChannelEnvelope?.provider);
@@ -309,7 +316,7 @@ export const TurnItem = memo(function TurnItem({
   );
 
   const shouldShowAssistantArea =
-    hasAssistantContent || shouldShowStreamingAssistant;
+    hasAssistantContent || shouldShowStreamingAssistant || hasWebSearchBadge;
   const assistantDisplayText = hasAssistantContent
     ? assistantText
     : (streaming?.streamingText ?? "");
@@ -429,9 +436,11 @@ export const TurnItem = memo(function TurnItem({
                       toolName={streaming.runningTool}
                     />
                   </GrowIn>
-                )}
+              )}
             </>
           )}
+
+          {hasWebSearchBadge && renderWebSearchBadge(webSearchBadgeHtml)}
 
           {assistantDisplayText.trim().length > 0 && (
             <GrowIn animate={shouldShowStreamingAssistant && Boolean(streaming?.isStreaming)}>
@@ -524,7 +533,3 @@ export const StreamingIndicator = memo(function StreamingIndicator({
     </div>
   );
 });
-
-
-
-

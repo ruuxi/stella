@@ -17,7 +17,7 @@ vi.mock("../../../electron/core/runtime/storage/llm-credentials.js", () => ({
   getLocalLlmCredential: getLocalLlmCredentialMock,
 }));
 
-const { resolveLlmRoute } = await import(
+const { canResolveLlmRoute, resolveLlmRoute } = await import(
   "../../../electron/core/runtime/model-routing.js"
 );
 
@@ -93,6 +93,19 @@ describe("stella model routing resolution", () => {
     ).toThrow("No usable model route is configured");
   });
 
+  it("reports when no route can be resolved", () => {
+    expect(
+      canResolveLlmRoute({
+        stellaHomePath: "C:/stella-home",
+        modelName: "openai/custom-enterprise-model",
+        proxy: {
+          baseUrl: null,
+          getAuthToken: () => null,
+        },
+      }),
+    ).toBe(false);
+  });
+
   it("does not fuzzy-match an imprecise direct-provider model id", () => {
     getLocalLlmCredentialMock.mockImplementation(
       (_stellaHomePath: string, providerId: string) =>
@@ -112,7 +125,7 @@ describe("stella model routing resolution", () => {
     ).toThrow("No usable model route is configured");
   });
 
-  it("keeps exact openrouter routes reachable even when a direct provider key exists", () => {
+  it("keeps exact openrouter routes reachable when explicitly requested", () => {
     getLocalLlmCredentialMock.mockImplementation(
       (_stellaHomePath: string, providerId: string) =>
         providerId === "openrouter"
@@ -124,7 +137,7 @@ describe("stella model routing resolution", () => {
 
     const route = resolveLlmRoute({
       stellaHomePath: "C:/stella-home",
-      modelName: "openai/gpt-5.1-codex",
+      modelName: "openrouter/openai/gpt-5.1-codex",
       agentType: "general",
       proxy: {
         baseUrl: null,
@@ -137,5 +150,40 @@ describe("stella model routing resolution", () => {
     expect(route.model.id).toBe("openai/gpt-5.1-codex");
     expect(route.model.baseUrl).toBe("https://openrouter.ai/api/v1");
     expect(route.getApiKey()).toBe("sk-openrouter-test");
+  });
+
+  it("falls back to stella instead of using an unrelated provider key", () => {
+    getLocalLlmCredentialMock.mockImplementation(
+      (_stellaHomePath: string, providerId: string) =>
+        providerId === "openrouter" ? "sk-openrouter-test" : null,
+    );
+
+    const route = resolveLlmRoute({
+      stellaHomePath: "C:/stella-home",
+      modelName: "openai/gpt-5.1-codex",
+      agentType: "general",
+      proxy: {
+        baseUrl: "https://demo.convex.site/api/stella/v1",
+        getAuthToken: () => "token-123",
+      },
+    });
+
+    expect(route.route).toBe("stella");
+    expect(route.model.provider).toBe("stella");
+    expect(route.model.id).toBe("stella/openai/gpt-5.1-codex");
+  });
+
+  it("fails fast for stella models when stella is unavailable", () => {
+    expect(() =>
+      resolveLlmRoute({
+        stellaHomePath: "C:/stella-home",
+        modelName: "stella/openai/gpt-5.1-codex",
+        agentType: "general",
+        proxy: {
+          baseUrl: null,
+          getAuthToken: () => null,
+        },
+      }),
+    ).toThrow("No usable model route is configured");
   });
 });

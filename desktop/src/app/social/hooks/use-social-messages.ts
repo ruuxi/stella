@@ -1,22 +1,23 @@
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/convex/api";
 import { useCallback, useRef } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/api";
 
-export function useSocialMessages(roomId: string | null) {
-  const messages = useQuery(
-    api.social.messages.listRoomMessages,
-    roomId ? { roomId, limit: 50 } : "skip",
-  );
+export function useSocialMessages(roomId: string) {
+  const messages = useQuery(api.social.messages.listRoomMessages, {
+    roomId,
+    limit: 50,
+  });
 
   const sendMutation = useMutation(api.social.messages.sendRoomMessage);
   const clientIdRef = useRef(0);
 
   const sendMessage = useCallback(
     async (body: string) => {
-      if (!roomId || !body.trim()) return;
+      const trimmed = body.trim();
+      if (!trimmed) return;
       clientIdRef.current += 1;
       const clientMessageId = `local-${Date.now()}-${clientIdRef.current}`;
-      await sendMutation({ roomId, body: body.trim(), clientMessageId });
+      await sendMutation({ roomId, body: trimmed, clientMessageId });
     },
     [roomId, sendMutation],
   );

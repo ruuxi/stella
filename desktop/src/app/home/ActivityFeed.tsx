@@ -26,9 +26,18 @@ function statusValue(status?: string): string {
 }
 
 function kindLabel(kind: ActivityItem["kind"]): string {
-  if (kind === "scheduled") return "Scheduled"
-  if (kind === "monitoring") return "Monitoring"
-  return "Task"
+  switch (kind) {
+    case "scheduled":
+      return "Scheduled"
+    case "monitoring":
+      return "Monitoring"
+    case "task":
+      return "Task"
+    default: {
+      const exhaustiveCheck: never = kind
+      return exhaustiveCheck
+    }
+  }
 }
 
 type ActivityFeedProps = {
@@ -37,7 +46,11 @@ type ActivityFeedProps = {
 
 export function ActivityFeed({ items }: ActivityFeedProps) {
   return (
-    <DashboardCard label="Activity" data-stella-label="Activity Feed" data-stella-state={`${items.length} items`}>
+    <DashboardCard
+      label="Activity"
+      data-stella-label="Activity Feed"
+      data-stella-state={`${items.length} items`}
+    >
       <div className="activity-feed-list">
         {items.map((item) => (
           <div
@@ -48,16 +61,18 @@ export function ActivityFeed({ items }: ActivityFeedProps) {
             <div className="activity-feed-header">
               <span className="activity-feed-name">{item.name}</span>
               <span className="activity-feed-time">
-                {item.lastRunAtMs
+                {item.lastRunAtMs !== undefined
                   ? formatRelativeTime(item.lastRunAtMs)
                   : "Not run yet"}
               </span>
             </div>
             <div className="activity-feed-meta">
               <span className="activity-feed-kind">{kindLabel(item.kind)}</span>
-              {item.nextRunAtMs && (
+              {item.nextRunAtMs !== undefined && (
                 <>
-                  <span className="activity-feed-sep" aria-hidden="true">·</span>
+                  <span className="activity-feed-sep" aria-hidden="true">
+                    &middot;
+                  </span>
                   <span className="activity-feed-time">
                     Next {formatRelativeTime(item.nextRunAtMs)}
                   </span>

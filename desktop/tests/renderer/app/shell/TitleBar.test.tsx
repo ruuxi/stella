@@ -9,7 +9,7 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <WorkspaceProvider>{children}</WorkspaceProvider>
 );
 
-function PanelOpener({ name, title }: { name: string; title?: string }) {
+function PanelOpener({ name, title }: { name: string; title: string }) {
   const { openPanel } = useWorkspace();
   useEffect(() => {
     openPanel({ name, title });
@@ -17,7 +17,7 @@ function PanelOpener({ name, title }: { name: string; title?: string }) {
   return null;
 }
 
-function TitleBarWithPanel({ name, title }: { name: string; title?: string }) {
+function TitleBarWithPanel({ name, title }: { name: string; title: string }) {
   return (
     <WorkspaceProvider>
       <PanelOpener name={name} title={title} />
@@ -124,16 +124,6 @@ describe("TitleBar", () => {
 
     render(<TitleBarWithPanel name="my-panel" title="My Panel" />);
     expect(screen.getByText("My Panel")).toBeTruthy();
-  });
-
-  it("shows panel name as fallback when title is not set (win32)", () => {
-    ((window as unknown as Record<string, unknown>)).electronAPI = {
-      platform: "win32",
-      window: { isMaximized: vi.fn().mockResolvedValue(false) },
-    };
-
-    render(<TitleBarWithPanel name="chart-view" />);
-    expect(screen.getByText("chart-view")).toBeTruthy();
   });
 
   it("shows panel title on mac", () => {

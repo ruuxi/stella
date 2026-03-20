@@ -83,11 +83,8 @@ const MICROCOMPACT_ELIGIBLE_TOOLS = new Set([
 
 /** Browser-safe env var access (works in Node, Convex, and browser). */
 const getEnvVar = (key: string): string | undefined => {
-  try {
-    return typeof process !== "undefined" && process.env ? process.env[key] : undefined;
-  } catch {
-    return undefined;
-  }
+  const processEnv = typeof process !== "undefined" ? process.env : undefined;
+  return processEnv?.[key];
 };
 
 const normalizeRequestId = (event: ContextEvent): string | undefined => {
@@ -126,40 +123,43 @@ const formatTaskEvent = (
   payload: Record<string, unknown>,
 ): HistoryMessage | null => {
   const taskId = typeof payload.taskId === "string" ? payload.taskId : undefined;
-  if (eventType === "task_started") {
-    const description =
-      typeof payload.description === "string" ? payload.description : "Task started";
-    const agentType =
-      typeof payload.agentType === "string" ? payload.agentType : "unknown";
-    const lines = [`[Task started] ${description} (agent: ${agentType})`];
-    if (taskId) lines.push(`task_id: ${taskId}`);
-    return { role: "user", content: lines.join("\n") };
-  }
-  if (eventType === "task_completed") {
-    const lines = ["[Task completed]"];
-    if (taskId) lines.push(`task_id: ${taskId}`);
-    if (payload.result !== undefined) {
-      lines.push(`result: ${stringifyValue(payload.result)}`);
+  switch (eventType) {
+    case "task_started": {
+      const description =
+        typeof payload.description === "string" ? payload.description : "Task started";
+      const agentType =
+        typeof payload.agentType === "string" ? payload.agentType : "unknown";
+      const lines = [`[Task started] ${description} (agent: ${agentType})`];
+      if (taskId) lines.push(`task_id: ${taskId}`);
+      return { role: "user", content: lines.join("\n") };
     }
-    return { role: "user", content: lines.join("\n") };
-  }
-  if (eventType === "task_failed") {
-    const lines = ["[Task failed]"];
-    if (taskId) lines.push(`task_id: ${taskId}`);
-    if (payload.error !== undefined) {
-      lines.push(`error: ${stringifyValue(payload.error)}`);
+    case "task_completed": {
+      const lines = ["[Task completed]"];
+      if (taskId) lines.push(`task_id: ${taskId}`);
+      if (payload.result !== undefined) {
+        lines.push(`result: ${stringifyValue(payload.result)}`);
+      }
+      return { role: "user", content: lines.join("\n") };
     }
-    return { role: "user", content: lines.join("\n") };
-  }
-  if (eventType === "task_canceled") {
-    const lines = ["[Task canceled]"];
-    if (taskId) lines.push(`task_id: ${taskId}`);
-    if (payload.error !== undefined) {
-      lines.push(`error: ${stringifyValue(payload.error)}`);
+    case "task_failed": {
+      const lines = ["[Task failed]"];
+      if (taskId) lines.push(`task_id: ${taskId}`);
+      if (payload.error !== undefined) {
+        lines.push(`error: ${stringifyValue(payload.error)}`);
+      }
+      return { role: "user", content: lines.join("\n") };
     }
-    return { role: "user", content: lines.join("\n") };
+    case "task_canceled": {
+      const lines = ["[Task canceled]"];
+      if (taskId) lines.push(`task_id: ${taskId}`);
+      if (payload.error !== undefined) {
+        lines.push(`error: ${stringifyValue(payload.error)}`);
+      }
+      return { role: "user", content: lines.join("\n") };
+    }
+    default:
+      return null;
   }
-  return null;
 };
 
 const formatToolRequest = (event: ContextEvent): HistoryMessage => {

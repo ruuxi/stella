@@ -4,6 +4,7 @@ import { api } from "@/convex/api";
 import { Avatar } from "@/ui/avatar";
 import { useSocialMessages } from "./hooks/use-social-messages";
 import { SocialComposer } from "./SocialComposer";
+import type { SocialRoomSummary } from "./hooks/use-social-rooms";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square";
 
 type SocialChatPaneProps = {
@@ -19,43 +20,40 @@ type MessageDoc = {
   createdAt: number;
 };
 
-type RoomData = {
-  room: { kind: string; title?: string };
-  members: Array<{ ownerId: string; profile?: { nickname: string; avatarUrl?: string } }>;
-  latestMessage?: { body: string };
-};
-
 function formatMessageTime(timestamp: number) {
   const date = new Date(timestamp);
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-function getRoomDisplayName(roomData: RoomData, currentOwnerId: string): string {
+function getRoomDisplayName(roomData: SocialRoomSummary, currentOwnerId: string): string {
   if (roomData.room.title) return roomData.room.title;
-  if (roomData.room.kind === "dm") {
-    const other = roomData.members.find((m) => m.ownerId !== currentOwnerId);
-    return other?.profile?.nickname ?? "Someone";
-  }
-  return "Group";
-}
 
-function getMemberCount(roomData: RoomData): number {
-  return roomData.members.length;
+  switch (roomData.room.kind) {
+    case "dm": {
+      const other = roomData.memberProfiles.find((member) => member.ownerId !== currentOwnerId);
+      return other?.nickname ?? "Someone";
+    }
+    case "group":
+      return "Group";
+    default: {
+      const exhaustiveCheck: never = roomData.room.kind;
+      return exhaustiveCheck;
+    }
+  }
 }
 
 function getProfileForOwner(
-  roomData: RoomData | undefined,
+  roomData: SocialRoomSummary,
   ownerId: string,
 ): { nickname: string; avatarUrl?: string } {
-  const member = roomData?.members.find((m) => m.ownerId === ownerId);
-  return member?.profile ?? { nickname: "Unknown" };
+  const member = roomData.memberProfiles.find((profile) => profile.ownerId === ownerId);
+  return member ?? { nickname: "Unknown" };
 }
 
 export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) {
-  const roomData = useQuery(api.social.rooms.getRoom, { roomId }) as RoomData | undefined;
+  const roomData = useQuery(api.social.rooms.getRoom, { roomId }) as SocialRoomSummary | null;
   const { messages, sendMessage } = useSocialMessages(roomId);
 
-  // Group consecutive messages by same sender
   const messageGroups = useMemo(() => {
     if (!messages.length) return [];
 
@@ -65,7 +63,6 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
       messages: MessageDoc[];
     }> = [];
 
-    // Messages come newest-first from API, reverse for display
     const ordered = [...messages].reverse();
 
     for (const msg of ordered) {
@@ -74,7 +71,7 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
         last &&
         last.senderOwnerId === msg.senderOwnerId &&
         msg.kind !== "system" &&
-        last.messages[0]?.kind !== "system" &&
+        last.messages[0].kind !== "system" &&
         msg.createdAt - last.messages[last.messages.length - 1].createdAt < 120_000
       ) {
         last.messages.push(msg);
@@ -95,23 +92,20 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
   }
 
   const displayName = getRoomDisplayName(roomData, currentOwnerId);
-  const memberCount = getMemberCount(roomData);
 
   return (
     <div className="social-chat-pane">
-      {/* Header */}
       <div className="social-chat-header">
         <div className="social-chat-header-info">
           <div className="social-chat-header-name">{displayName}</div>
-          {memberCount > 2 && (
+          {roomData.memberProfiles.length > 2 && (
             <div className="social-chat-header-meta">
-              {memberCount} people
+              {roomData.memberProfiles.length} people
             </div>
           )}
         </div>
       </div>
 
-      {/* Messages */}
       <div className="social-messages-viewport">
         <div className="social-messages-container">
           {messageGroups.length === 0 && (
@@ -126,7 +120,7 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
           )}
           {messageGroups.map((group) => {
             const isSelf = group.senderOwnerId === currentOwnerId;
-            const isSystem = group.messages[0]?.kind === "system";
+            const isSystem = group.messages[0].kind === "system";
             const profile = getProfileForOwner(roomData, group.senderOwnerId);
 
             if (isSystem) {
@@ -176,7 +170,6 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
         </div>
       </div>
 
-      {/* Composer */}
       <SocialComposer onSend={sendMessage} />
     </div>
   );

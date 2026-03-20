@@ -14,8 +14,8 @@ import { useSocialFriends } from "./hooks/use-social-friends";
 type NewChatDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelectFriend: (otherOwnerId: string) => void;
-  onCreateGroup: (title: string, memberOwnerIds: string[]) => void;
+  onSelectFriend: (otherOwnerId: string) => Promise<boolean>;
+  onCreateGroup: (title: string, memberOwnerIds: string[]) => Promise<boolean>;
 };
 
 export function NewChatDialog({
@@ -28,6 +28,8 @@ export function NewChatDialog({
   const [mode, setMode] = useState<"pick" | "group">("pick");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [groupName, setGroupName] = useState("");
+  const [pendingFriendId, setPendingFriendId] = useState<string | null>(null);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
 
   const handleReset = useCallback(() => {
     setMode("pick");
@@ -55,12 +57,31 @@ export function NewChatDialog({
     });
   }, []);
 
-  const handleCreateGroup = useCallback(() => {
-    if (selectedIds.size === 0) return;
-    const title = groupName.trim() || "Group";
-    onCreateGroup(title, [...selectedIds]);
+  const handleCreateGroup = useCallback(async () => {
+    setIsCreatingGroup(true);
+    const didCreateGroup = await onCreateGroup(
+      groupName.trim() || "Group",
+      [...selectedIds],
+    );
+    setIsCreatingGroup(false);
+    if (!didCreateGroup) {
+      return;
+    }
     handleOpenChange(false);
   }, [selectedIds, groupName, onCreateGroup, handleOpenChange]);
+
+  const handleSelectFriend = useCallback(
+    async (otherOwnerId: string) => {
+      setPendingFriendId(otherOwnerId);
+      const didOpenChat = await onSelectFriend(otherOwnerId);
+      setPendingFriendId(null);
+      if (!didOpenChat) {
+        return;
+      }
+      handleOpenChange(false);
+    },
+    [handleOpenChange, onSelectFriend],
+  );
 
   if (friends.length === 0) {
     return (
@@ -107,14 +128,7 @@ export function NewChatDialog({
                 />
               </div>
               <div className="friends-list">
-                {friends.map((f: unknown) => {
-                  const friend = f as {
-                    profile: {
-                      nickname: string;
-                      avatarUrl?: string;
-                      ownerId: string;
-                    };
-                  };
+                {friends.map((friend) => {
                   const isSelected = selectedIds.has(friend.profile.ownerId);
                   return (
                     <button
@@ -122,6 +136,7 @@ export function NewChatDialog({
                       type="button"
                       className="new-chat-item"
                       onClick={() => toggleSelection(friend.profile.ownerId)}
+                      disabled={isCreatingGroup}
                       style={{
                         background: isSelected
                           ? "color-mix(in oklch, var(--foreground) 8%, transparent)"
@@ -157,10 +172,10 @@ export function NewChatDialog({
                 type="button"
                 className="friends-add-button"
                 style={{ alignSelf: "flex-end" }}
-                disabled={selectedIds.size === 0}
-                onClick={handleCreateGroup}
+                disabled={selectedIds.size === 0 || isCreatingGroup}
+                onClick={() => void handleCreateGroup()}
               >
-                Create group
+                {isCreatingGroup ? "Creating..." : "Create group"}
               </button>
             </div>
           </DialogBody>
@@ -221,35 +236,26 @@ export function NewChatDialog({
               Friends
             </div>
 
-            {friends.map((f: unknown) => {
-              const friend = f as {
-                profile: {
-                  nickname: string;
-                  avatarUrl?: string;
-                  ownerId: string;
-                };
-              };
-              return (
-                <button
-                  key={friend.profile.ownerId}
-                  type="button"
-                  className="new-chat-item"
-                  onClick={() => {
-                    onSelectFriend(friend.profile.ownerId);
-                    handleOpenChange(false);
-                  }}
-                >
-                  <Avatar
-                    fallback={friend.profile.nickname}
-                    src={friend.profile.avatarUrl}
-                    size="normal"
-                  />
-                  <span className="new-chat-item-name">
-                    {friend.profile.nickname}
-                  </span>
-                </button>
-              );
-            })}
+            {friends.map((friend) => (
+              <button
+                key={friend.profile.ownerId}
+                type="button"
+                className="new-chat-item"
+                disabled={pendingFriendId !== null}
+                onClick={() => void handleSelectFriend(friend.profile.ownerId)}
+              >
+                <Avatar
+                  fallback={friend.profile.nickname}
+                  src={friend.profile.avatarUrl}
+                  size="normal"
+                />
+                <span className="new-chat-item-name">
+                  {pendingFriendId === friend.profile.ownerId
+                    ? "Opening..."
+                    : friend.profile.nickname}
+                </span>
+              </button>
+            ))}
           </div>
         </DialogBody>
       </DialogContent>

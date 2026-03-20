@@ -9,6 +9,28 @@ import {
   type ModelDefaultEntry,
 } from "@/global/settings/lib/model-defaults";
 
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function parseModelOverrides(
+  overridesJson: string | undefined,
+  defaultModels: Record<string, string>,
+) {
+  if (!overridesJson) {
+    return {};
+  }
+
+  const parsed = JSON.parse(overridesJson);
+  assert(
+    parsed !== null && typeof parsed === "object" && !Array.isArray(parsed),
+    "Model overrides must be an object",
+  );
+  return normalizeModelOverrides(parsed as Record<string, string>, defaultModels);
+}
+
 export const ModelPreferencesBridge = () => {
   const { hasConnectedAccount } = useAuthSessionState();
   const shouldQueryPreferences = hasConnectedAccount ? {} : "skip";
@@ -31,18 +53,7 @@ export const ModelPreferencesBridge = () => {
   const maxAgentConcurrency = useQuery(
     api.data.preferences.getMaxAgentConcurrency,
     shouldQueryPreferences,
-  ) as
-    | number
-    | undefined;
-  const preferencesLoaded =
-    !hasConnectedAccount
-    || (
-      modelDefaults !== undefined
-      && overridesJson !== undefined
-      && generalAgentEngine !== undefined
-      && selfModAgentEngine !== undefined
-      && maxAgentConcurrency !== undefined
-    );
+  ) as number | undefined;
 
   const defaultModels = useMemo(
     () => buildModelDefaultsMap(modelDefaults),
@@ -53,30 +64,21 @@ export const ModelPreferencesBridge = () => {
     [modelDefaults],
   );
 
-  const modelOverrides = useMemo<Record<string, string>>(() => {
-    if (!overridesJson) {
-      return {};
-    }
-
-    try {
-      return normalizeModelOverrides(
-        JSON.parse(overridesJson) as Record<string, string>,
-        defaultModels,
-      );
-    } catch {
-      return {};
-    }
-  }, [defaultModels, overridesJson]);
+  const modelOverrides = useMemo(
+    () => parseModelOverrides(overridesJson, defaultModels),
+    [defaultModels, overridesJson],
+  );
 
   useEffect(() => {
     const systemApi = window.electronAPI?.system;
-    if (!systemApi?.syncLocalModelPreferences) {
-      return;
-    }
-    if (!hasConnectedAccount) {
-      return;
-    }
-    if (!preferencesLoaded) {
+    if (!systemApi?.syncLocalModelPreferences || !hasConnectedAccount) return;
+    if (
+      modelDefaults === undefined ||
+      overridesJson === undefined ||
+      generalAgentEngine === undefined ||
+      selfModAgentEngine === undefined ||
+      maxAgentConcurrency === undefined
+    ) {
       return;
     }
 
@@ -84,17 +86,18 @@ export const ModelPreferencesBridge = () => {
       defaultModels,
       resolvedDefaultModels,
       modelOverrides,
-      generalAgentEngine: generalAgentEngine ?? "default",
-      selfModAgentEngine: selfModAgentEngine ?? "default",
-      maxAgentConcurrency: maxAgentConcurrency ?? 24,
+      generalAgentEngine,
+      selfModAgentEngine,
+      maxAgentConcurrency,
     });
   }, [
     defaultModels,
     generalAgentEngine,
     hasConnectedAccount,
     maxAgentConcurrency,
+    modelDefaults,
     modelOverrides,
-    preferencesLoaded,
+    overridesJson,
     resolvedDefaultModels,
     selfModAgentEngine,
   ]);

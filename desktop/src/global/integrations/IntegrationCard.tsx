@@ -16,14 +16,26 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function isConnectedConnection(connection: unknown) {
-  return connection !== null && connection !== undefined;
-}
-
 function useIntegrationConnectionStatus(provider: string) {
   const connection = useQuery(api.channels.utils.getConnection, { provider });
-  return isConnectedConnection(connection);
+  return connection != null;
 }
+
+type BotSetupState =
+  | {
+      status: "loading";
+      botLink: string | null;
+    }
+  | {
+      status: "ready";
+      code: string;
+      botLink: string | null;
+    }
+  | {
+      status: "error";
+      message: string;
+      botLink: string | null;
+    };
 
 function SetupContent({
   instructions,
@@ -86,11 +98,10 @@ function BotSetupView({
 }) {
   const generateCode = useMutation(api.channels.link_codes.generateLinkCode);
   const createSlackInstallUrl = useMutation(api.data.integrations.createSlackInstallUrl);
-  const [code, setCode] = useState<string | null>(null);
-  const [botLink, setBotLink] = useState<string | null>(() =>
-    sanitizeExternalLinkUrl(integration.botLink),
-  );
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<BotSetupState>(() => ({
+    status: "loading",
+    botLink: sanitizeExternalLinkUrl(integration.botLink),
+  }));
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -98,6 +109,10 @@ function BotSetupView({
     let cancelled = false;
 
     const staticBotLink = sanitizeExternalLinkUrl(integration.botLink);
+    setState({
+      status: "loading",
+      botLink: staticBotLink,
+    });
 
     const loadBotSetup = async () => {
       const codePromise = generateCode({ provider: integration.provider });
@@ -118,32 +133,42 @@ function BotSetupView({
       ]);
       if (cancelled) return;
 
-      const nextCode = codeResult.status === "fulfilled" ? codeResult.value.code : null;
       const nextBotLink =
         botLinkResult.status === "fulfilled"
           ? botLinkResult.value
           : integration.provider === "slack"
             ? null
             : staticBotLink;
-      setCode(nextCode);
-      setBotLink(nextBotLink);
 
       if (codeResult.status === "rejected") {
-        setError(getErrorMessage(codeResult.reason, "Failed to generate code"));
+        setState({
+          status: "error",
+          message: getErrorMessage(
+            codeResult.reason,
+            "Failed to generate code",
+          ),
+          botLink: nextBotLink,
+        });
         return;
       }
 
       if (botLinkResult.status === "rejected") {
-        setError(
-          getErrorMessage(
+        setState({
+          status: "error",
+          message: getErrorMessage(
             botLinkResult.reason,
             "Failed to prepare Slack install URL",
           ),
-        );
+          botLink: nextBotLink,
+        });
         return;
       }
 
-      setError(null);
+      setState({
+        status: "ready",
+        code: codeResult.value.code,
+        botLink: nextBotLink,
+      });
     };
 
     void loadBotSetup();
@@ -159,6 +184,9 @@ function BotSetupView({
     isExpanded,
   ]);
 
+  const code = state.status === "ready" ? state.code : null;
+  const botLink = state.botLink;
+  const error = state.status === "error" ? state.message : null;
   const handleCopy = useCallback(() => {
     if (code) {
       navigator.clipboard.writeText(code);
@@ -251,4 +279,3 @@ export function IntegrationDetailArea({
     </div>
   );
 }
-

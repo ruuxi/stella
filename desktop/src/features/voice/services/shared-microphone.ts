@@ -9,7 +9,7 @@ export type SharedMicrophoneUseCase =
   | "wake-word";
 
 export interface SharedMicrophoneAcquireOptions {
-  useCase?: SharedMicrophoneUseCase;
+  useCase: SharedMicrophoneUseCase;
 }
 
 // All renderer voice features intentionally share one speech-capture profile
@@ -68,17 +68,11 @@ const hasLiveTrack = (stream: MediaStream | null) => {
   );
 };
 
-const getSharedMicrophoneConstraints = (
-  _useCase: SharedMicrophoneUseCase,
-): MediaTrackConstraints => {
+const getSharedMicrophoneConstraints = (): MediaTrackConstraints => {
   const constraints = { ...SHARED_MIC_SPEECH_CAPTURE_CONSTRAINTS };
-  try {
-    const preferredId = localStorage.getItem(PREFERRED_MIC_KEY);
-    if (preferredId) {
-      constraints.deviceId = { ideal: preferredId };
-    }
-  } catch {
-    // localStorage unavailable — fall back to default device.
+  const preferredId = localStorage.getItem(PREFERRED_MIC_KEY);
+  if (preferredId) {
+    constraints.deviceId = { ideal: preferredId };
   }
   return constraints;
 };
@@ -97,7 +91,6 @@ const scheduleRootRelease = (state: SharedMicrophoneState) => {
 
 const acquireRootStream = async (
   state: SharedMicrophoneState,
-  useCase: SharedMicrophoneUseCase,
 ): Promise<MediaStream> => {
   if (state.rootStream && hasLiveTrack(state.rootStream)) {
     return state.rootStream;
@@ -110,7 +103,7 @@ const acquireRootStream = async (
 
   if (!state.acquirePromise) {
     state.acquirePromise = navigator.mediaDevices
-      .getUserMedia({ audio: getSharedMicrophoneConstraints(useCase) })
+      .getUserMedia({ audio: getSharedMicrophoneConstraints() })
       .then((stream) => {
         state.rootStream = stream;
         return stream;
@@ -128,13 +121,12 @@ const acquireRootStream = async (
 };
 
 export async function acquireSharedMicrophone(
-  options: SharedMicrophoneAcquireOptions = {},
+  _options: SharedMicrophoneAcquireOptions,
 ): Promise<SharedMicrophoneLease> {
   const state = getSharedMicrophoneState();
-  const useCase = options.useCase ?? "voice-rtc";
   clearReleaseTimer(state);
 
-  const rootStream = await acquireRootStream(state, useCase);
+  const rootStream = await acquireRootStream(state);
   state.activeLeaseCount += 1;
 
   const stream = rootStream.clone();
