@@ -1,21 +1,21 @@
 /* Self-hosted fonts with metric-adjusted fallbacks */
 
-/* Satoshi - Variable font (300-900 weight range) */
+/* Manrope - Variable font (200-800 weight range) */
 @font-face {
-  font-family: "Satoshi";
-  src: url("../../assets/fonts/satoshi.woff2") format("woff2-variations");
+  font-family: "Manrope";
+  src: url("../../assets/fonts/manrope.woff2") format("woff2-variations");
   font-display: swap;
   font-style: normal;
-  font-weight: 300 900;
+  font-weight: 200 800;
 }
 
-/* Satoshi Fallback - Metric-adjusted local font to prevent layout shift */
+/* Manrope Fallback - Metric-adjusted local font to prevent layout shift */
 @font-face {
-  font-family: "Satoshi Fallback";
+  font-family: "Manrope Fallback";
   src: local("Arial");
-  size-adjust: 102%;
-  ascent-override: 96%;
-  descent-override: 25%;
+  size-adjust: 96%;
+  ascent-override: 104%;
+  descent-override: 28%;
   line-gap-override: 0%;
 }
 

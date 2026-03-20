@@ -5,10 +5,10 @@
 [data-component="input"] [data-slot="input-input"] {
   width: 100%;
   color: var(--foreground);
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 14px;
-  font-weight: var(--font-family-sans--default-weight, 300);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
+  font-weight: var(--font-family-sans--default-weight, 400);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.43;
 }
 
@@ -29,10 +29,10 @@
 
 [data-component="input"][data-variant="normal"] [data-slot="input-label"] {
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 12px;
-  font-weight: var(--font-family-sans--emphasis-weight, 400);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
+  font-weight: var(--font-family-sans--emphasis-weight, 500);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.5;
 }
 
@@ -77,19 +77,19 @@
 
 [data-component="input"][data-variant="normal"] [data-slot="input-error"] {
   color: var(--destructive);
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 12px;
-  font-weight: var(--font-family-sans--emphasis-weight, 400);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
+  font-weight: var(--font-family-sans--emphasis-weight, 500);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.5;
 }
 
 [data-component="input"][data-variant="normal"] [data-slot="input-description"] {
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 12px;
-  font-weight: var(--font-family-sans--default-weight, 300);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
+  font-weight: var(--font-family-sans--default-weight, 400);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.5;
 }
 

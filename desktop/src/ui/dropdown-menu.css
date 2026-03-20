@@ -41,10 +41,10 @@
   cursor: default;
   user-select: none;
   outline: none;
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 12px;
-  font-weight: var(--font-family-sans--emphasis-weight, 400);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
+  font-weight: var(--font-family-sans--emphasis-weight, 500);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.67;
   color: var(--popover-foreground);
 }
@@ -84,10 +84,10 @@
 
 [data-slot="dropdown-menu-group-label"] {
   padding: 4px 8px;
-  font-family: var(--font-family-sans, "Satoshi", sans-serif);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 11px;
-  font-weight: var(--font-family-sans--emphasis-weight, 400);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, 0.06em);
+  font-weight: var(--font-family-sans--emphasis-weight, 500);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.67;
   color: var(--muted-foreground);
 }
