@@ -3,15 +3,16 @@ import { watch } from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import waitOn from 'wait-on'
+import { shouldRestartElectronForBuildPath } from './dev-electron-restart-filter.mjs'
 
 const require = createRequire(import.meta.url)
 const projectDir = process.cwd()
 const electronBinary = require('electron')
-const watchedDir = path.join(projectDir, 'dist-electron', 'electron')
+const watchedDir = path.join(projectDir, 'dist-electron')
 const requiredFiles = [
   path.join(projectDir, '.vite-dev-url'),
-  path.join(watchedDir, 'main.js'),
-  path.join(watchedDir, 'preload.js'),
+  path.join(watchedDir, 'electron', 'main.js'),
+  path.join(watchedDir, 'electron', 'preload.js'),
 ]
 const restartDebounceMs = 150
 const forcedShutdownTimeoutMs = 1_500
@@ -25,14 +26,6 @@ let restartQueue = Promise.resolve()
 let watchReady = false
 let watchReadyTimer = null
 const expectedExits = new WeakSet()
-
-const shouldRestartForPath = (filename) => {
-  if (typeof filename !== 'string') {
-    return false
-  }
-
-  return filename.endsWith('.js') && !filename.endsWith('.d.ts')
-}
 
 const startApp = () => {
   if (shuttingDown || currentApp) {
@@ -167,7 +160,7 @@ await waitOn({
 })
 
 watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {
-  if (!shouldRestartForPath(filename)) {
+  if (!shouldRestartElectronForBuildPath(filename)) {
     return
   }
 

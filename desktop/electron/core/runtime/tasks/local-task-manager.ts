@@ -622,6 +622,10 @@ export class LocalTaskManager implements TaskToolApi {
     return null;
   }
 
+  getTaskCount(): number {
+    return this.tasks.size;
+  }
+
   async cancelTask(taskId: string, reason?: string): Promise<{ canceled: boolean }> {
     const local = this.tasks.get(taskId);
     if (local) {

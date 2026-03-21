@@ -5,38 +5,42 @@ import { registerBootstrapIpcHandlers } from "./ipc.js";
 import { OverlayWindowController } from "../windows/overlay-window.js";
 import { createStellaHostRunner } from "../stella-host-runner.js";
 import { getSelectedText, initSelectedTextProcess } from "../selected-text.js";
-import { LocalSchedulerService } from "../services/local-scheduler-service.js";
-import { createDesktopDatabase } from "../storage/database.js";
-import { ChatStore } from "../storage/chat-store.js";
-import { RuntimeStore } from "../storage/runtime-store.js";
-import { StoreModStore } from "../storage/store-mod-store.js";
-import { SocialSessionStore } from "../storage/social-session-store.js";
-import { TranscriptMirror } from "../storage/transcript-mirror.js";
+import { resolveStellaHome } from "../system/stella-home.js";
+import { initializeWakeWord } from "../wake-word/initialize.js";
+import { WindowManager } from "../windows/window-manager.js";
+import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
+import {
+  createBootstrapResetFlows,
+  shutdownBootstrapRuntime,
+  scheduleBootstrapRuntimeShutdown,
+} from "./resets.js";
+import { MobileBridgeService } from "../services/mobile-bridge/service.js";
 import {
   getOrCreateDeviceIdentity,
   signDeviceHeartbeat,
 } from "../system/device.js";
-import { resolveStellaHome } from "../system/stella-home.js";
-import { initializeWakeWord } from "../wake-word/initialize.js";
-import { startStellaUiServer } from "../system/stella-ui-server.js";
-import { WindowManager } from "../windows/window-manager.js";
-import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
-import { StoreModService } from "../self-mod/store-mod-service.js";
-import { createBootstrapResetFlows, shutdownBootstrapRuntime } from "./resets.js";
-import { MobileBridgeService } from "../services/mobile-bridge/service.js";
 import {
   type BootstrapContext,
   broadcastAuthCallback,
+  broadcastLocalChatUpdated,
+  broadcastScheduleUpdated,
   broadcastWakeWordState,
   getMobileBroadcast,
 } from "./context.js";
 import { DevToolServer } from "../devtool/dev-server.js";
+import type { SelfModHmrState } from "../../src/shared/contracts/electron-data.js";
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
   });
+const BACKGROUND_RUNTIME_RETRY_DELAY_MS = 2_000;
 const POST_WINDOW_AUX_START_DELAY_MS = 1_500;
+const IDLE_HMR_STATE: SelfModHmrState = {
+  phase: "idle",
+  paused: false,
+  requiresFullReload: false,
+};
 
 const startMobileBridge = (context: BootstrapContext) => {
   try {
@@ -75,79 +79,144 @@ const startMobileBridge = (context: BootstrapContext) => {
 export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   const { lifecycle, services, state } = context;
   const stellaHomePath = state.stellaHomePath;
-  const statePath = stellaHomePath ? path.join(stellaHomePath, "state") : null;
-  if (!stellaHomePath || !statePath) {
+  if (!stellaHomePath || !state.stellaWorkspacePath) {
     throw new Error("Stella home is not initialized.");
   }
 
   await services.securityPolicyService.loadPolicy();
 
-  const deviceIdentity = await getOrCreateDeviceIdentity(statePath);
-  state.deviceId = deviceIdentity.deviceId;
+  const loadDeviceIdentity = async () =>
+    await getOrCreateDeviceIdentity(path.join(stellaHomePath, "state"));
 
-  if (!state.schedulerService) {
-    state.schedulerService = new LocalSchedulerService({
-      stellaHome: stellaHomePath,
-      runnerTarget: lifecycle,
-    });
-  } else {
-    state.schedulerService.stop();
-  }
-
-  lifecycle.setRunner(createStellaHostRunner({
-    deviceId: state.deviceId,
-    stellaHomePath,
-    runtimeStore: state.runtimeStore!,
-    storeModService: state.storeModService!,
-    frontendRoot: context.config.frontendRoot,
-    listLocalChatEvents: (conversationId, maxItems) =>
-      state.chatStore?.listEvents(conversationId, maxItems) ?? [],
-    getHmrMorphOrchestrator: () => state.hmrMorphOrchestrator,
-    requestCredential: (payload) =>
-      services.credentialService.requestCredential(payload),
-    displayHtml: (html) => {
-      const targets = state.windowManager
-        ? state.windowManager.getAllWindows()
-        : BrowserWindow.getAllWindows();
-
-      for (const window of targets) {
-        if (!window.isDestroyed()) {
-          window.webContents.send("display:update", html);
-        }
-      }
-    },
-    scheduleApi: {
-      listCronJobs: async () => state.schedulerService!.listCronJobs(),
-      addCronJob: async (input) => state.schedulerService!.addCronJob(input),
-      updateCronJob: async (jobId, patch) =>
-        state.schedulerService!.updateCronJob(jobId, patch),
-      removeCronJob: async (jobId) =>
-        state.schedulerService!.removeCronJob(jobId),
-      runCronJob: async (jobId) => state.schedulerService!.runCronJob(jobId),
-      getHeartbeatConfig: async (conversationId) =>
-        state.schedulerService!.getHeartbeatConfig(conversationId),
-      upsertHeartbeat: async (input) =>
-        state.schedulerService!.upsertHeartbeat(input),
-      runHeartbeat: async (conversationId) =>
-        state.schedulerService!.runHeartbeat(conversationId),
-    },
-    signHeartbeatPayload: async (signedAtMs: number) => ({
-      publicKey: deviceIdentity.publicKey,
-      signature: signDeviceHeartbeat(deviceIdentity, signedAtMs),
+  state.localChatUpdateUnsubscribe?.();
+  state.localChatUpdateUnsubscribe = null;
+  state.scheduleUpdateUnsubscribe?.();
+  state.scheduleUpdateUnsubscribe = null;
+  await lifecycle.getRunner()?.stop();
+  lifecycle.setRunner(
+    createStellaHostRunner({
+      initializeParams: {
+        clientName: "stella-electron-host",
+        clientVersion: "0.0.0",
+        isDev: context.config.isDev,
+        platform: process.platform,
+        frontendRoot: context.config.frontendRoot,
+        stellaHomePath,
+        stellaWorkspacePath: state.stellaWorkspacePath,
+      },
+      hostHandlers: {
+        uiSnapshot: async () => {
+          const win = state.windowManager?.getFullWindow() ?? null;
+          if (!win || win.isDestroyed()) {
+            throw new Error("Window not available");
+          }
+          return String(
+            await win.webContents.executeJavaScript(
+              `window.__stellaUI?.snapshot?.() ?? "stella-ui handler not loaded"`,
+            ),
+          );
+        },
+        uiAct: async (params) => {
+          const win = state.windowManager?.getFullWindow() ?? null;
+          if (!win || win.isDestroyed()) {
+            throw new Error("Window not available");
+          }
+          const js =
+            params.action === "click"
+              ? `window.__stellaUI?.handleCommand("click", [${JSON.stringify(params.ref)}])`
+              : params.action === "fill"
+                ? `window.__stellaUI?.handleCommand("fill", [${JSON.stringify(params.ref)}, ${JSON.stringify(params.value)}])`
+                : `window.__stellaUI?.handleCommand("select", [${JSON.stringify(params.ref)}, ${JSON.stringify(params.value)}])`;
+          return String(
+            await win.webContents.executeJavaScript(
+              `${js} ?? "stella-ui handler not loaded"`,
+            ),
+          );
+        },
+        getDeviceIdentity: async () => {
+          const identity = await loadDeviceIdentity();
+          return {
+            deviceId: identity.deviceId,
+            publicKey: identity.publicKey,
+          };
+        },
+        signHeartbeatPayload: async (signedAtMs) => {
+          const identity = await loadDeviceIdentity();
+          return {
+            publicKey: identity.publicKey,
+            signature: signDeviceHeartbeat(identity, signedAtMs),
+          };
+        },
+        requestCredential: (payload) =>
+          services.credentialService.requestCredential(payload),
+        displayUpdate: (html) => {
+          const targets = state.windowManager
+            ? state.windowManager.getAllWindows()
+            : BrowserWindow.getAllWindows();
+          for (const window of targets) {
+            if (!window.isDestroyed()) {
+              window.webContents.send("display:update", html);
+            }
+          }
+        },
+        openExternal: async (url) => {
+          services.externalLinkService.openSafeExternalUrl(url);
+        },
+        showWindow: async (target) => {
+          state.windowManager?.showWindow(target);
+        },
+        focusWindow: async (target) => {
+          const win =
+            target === "mini"
+              ? state.windowManager?.getMiniWindow()
+              : state.windowManager?.getFullWindow();
+          win?.focus();
+        },
+        runHmrTransition: async ({
+          requiresFullReload,
+          resumeHmr,
+          reportState,
+        }) => {
+          if (state.hmrMorphOrchestrator) {
+            await state.hmrMorphOrchestrator.runTransition({
+              resumeHmr,
+              reportState,
+              requiresFullReload,
+            });
+            return;
+          }
+          reportState?.({
+            phase: requiresFullReload ? "reloading" : "applying",
+            paused: false,
+            requiresFullReload,
+          });
+          await resumeHmr();
+          reportState?.(IDLE_HMR_STATE);
+        },
+      },
     }),
-  }));
+  );
 
   const pendingConvexUrl = services.authService.getPendingConvexUrl();
   if (pendingConvexUrl) {
     lifecycle.getRunner()!.setConvexUrl(pendingConvexUrl);
-    services.socialSessionService.setConvexUrl(pendingConvexUrl);
   }
+  lifecycle.getRunner()!.setConvexSiteUrl(services.authService.getConvexSiteUrl());
   const pendingAuthToken = await services.authService.getAuthToken();
-  services.socialSessionService.setAuthToken(pendingAuthToken);
-  services.socialSessionService.start();
-
-  lifecycle.getRunner()!.start();
-  state.schedulerService.start();
+  lifecycle.getRunner()!.setAuthToken(pendingAuthToken);
+  state.localChatUpdateUnsubscribe = lifecycle
+    .getRunner()!
+    .onLocalChatUpdated(() => {
+      broadcastLocalChatUpdated(context);
+    });
+  state.scheduleUpdateUnsubscribe = lifecycle
+    .getRunner()!
+    .onScheduleUpdated(() => {
+      broadcastScheduleUpdated(context);
+    });
+  await lifecycle.getRunner()!.start();
+  const health = await lifecycle.getRunner()!.client.health();
+  state.deviceId = health.deviceId;
 };
 
 export const startDeferredStartup = (context: BootstrapContext) => {
@@ -240,24 +309,6 @@ const initializeBootstrapLocalState = async (context: BootstrapContext) => {
   lifecycle.setStellaHomePath(stellaHome.homePath);
   state.stellaHomePath = stellaHome.homePath;
   state.stellaWorkspacePath = stellaHome.workspacePath;
-  state.desktopDatabase?.close();
-  state.desktopDatabase = createDesktopDatabase(stellaHome.homePath);
-
-  const transcriptMirror = new TranscriptMirror(
-    path.join(stellaHome.homePath, "state"),
-  );
-
-  state.chatStore = new ChatStore(state.desktopDatabase, transcriptMirror);
-  state.runtimeStore = new RuntimeStore(
-    state.desktopDatabase,
-    transcriptMirror,
-  );
-  state.storeModStore = new StoreModStore(state.desktopDatabase);
-  state.socialSessionStore = new SocialSessionStore(state.desktopDatabase);
-  state.storeModService = new StoreModService(
-    config.frontendRoot,
-    state.storeModStore,
-  );
 
   services.securityPolicyService.setSecurityPolicyPath(
     path.join(stellaHome.statePath, "security_policy.json"),
@@ -328,14 +379,7 @@ const initializeWindowControllers = (context: BootstrapContext) => {
 };
 
 const initializeUiServerAndSelfMod = (context: BootstrapContext) => {
-  const { config, state } = context;
-
-  startStellaUiServer({
-    getWindow: () => state.windowManager?.getFullWindow() ?? null,
-    frontendRoot: config.frontendRoot,
-    statePath: path.join(state.stellaHomePath!, "state"),
-    getProxy: () => state.stellaHostRunner?.getProxy() ?? null,
-  });
+  const { state } = context;
 
   state.hmrMorphOrchestrator = createHmrMorphOrchestrator({
     getFullWindow: () => state.windowManager?.getFullWindow() ?? null,
@@ -375,7 +419,8 @@ const startDevToolServer = (context: BootstrapContext) => {
   const server = new DevToolServer({
     stellaHomePath: () => context.state.stellaHomePath,
     sessionPartition: context.config.sessionPartition,
-    shutdownRuntime: () => shutdownBootstrapRuntime(context, { stopScheduler: true }),
+    shutdownRuntime: async () =>
+      await shutdownBootstrapRuntime(context, { stopScheduler: true }),
     onReloadApp: () => {
       const fullWindow = context.state.windowManager?.getFullWindow();
       if (fullWindow && !fullWindow.isDestroyed()) {
@@ -407,20 +452,32 @@ export const initializeBootstrapApplication = async (
   );
 
   finalizeWindowLaunch(context);
+  const startHostRunnerInBackground = async (): Promise<void> => {
+    if (context.state.isQuitting) {
+      return;
+    }
 
-  void (async () => {
-    await initializeStellaHostRunner(context);
-    setTimeout(() => {
-      if (context.state.isQuitting) {
-        return;
+    try {
+      await initializeStellaHostRunner(context);
+      setTimeout(() => {
+        if (context.state.isQuitting) {
+          return;
+        }
+        void startMobileBridge(context);
+        startDevToolServer(context);
+      }, POST_WINDOW_AUX_START_DELAY_MS);
+    } catch (error) {
+      console.error(
+        "[startup] Failed to initialize Stella host runner:",
+        (error as Error).message,
+      );
+      if (!context.state.isQuitting) {
+        setTimeout(() => {
+          void startHostRunnerInBackground();
+        }, BACKGROUND_RUNTIME_RETRY_DELAY_MS);
       }
-      void startMobileBridge(context);
-      startDevToolServer(context);
-    }, POST_WINDOW_AUX_START_DELAY_MS);
-  })().catch((error) => {
-    console.error(
-      "[startup] Host runtime initialization failed:",
-      (error as Error).message,
-    );
-  });
+    }
+  };
+
+  void startHostRunnerInBackground();
 };

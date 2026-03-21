@@ -14,6 +14,7 @@ import {
   OnboardingView,
   useOnboardingOverlay,
 } from "@/global/onboarding/OnboardingOverlay";
+import { useBootstrapState } from "@/systems/boot/bootstrap-state";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import "./full-shell.layout.css";
 import { TitleBar } from "./TitleBar";
@@ -39,6 +40,11 @@ export const FullShell = () => {
   const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeDemoRef = useRef<OnboardingDemo>(null);
   const onboarding = useOnboardingOverlay();
+  const {
+    runtimeStatus,
+    runtimeError,
+    retryRuntimeBootstrap,
+  } = useBootstrapState();
   const { handleDiscoveryConfirm, dashboardState } = useDiscoveryFlow({
     conversationId: activeConversationId,
   });
@@ -70,8 +76,10 @@ export const FullShell = () => {
   }, []);
 
   useEffect(() => {
-    window.electronAPI?.ui.setAppReady?.(onboarding.onboardingDone);
-  }, [onboarding.onboardingDone]);
+    window.electronAPI?.ui.setAppReady?.(
+      onboarding.onboardingDone && runtimeStatus === "ready",
+    );
+  }, [onboarding.onboardingDone, runtimeStatus]);
 
   useEffect(() => {
     return () => {
@@ -81,7 +89,7 @@ export const FullShell = () => {
     };
   }, []);
 
-  const appReady = onboarding.onboardingDone;
+  const appReady = onboarding.onboardingDone && runtimeStatus === "ready";
   const showOnboardingDemos = activeDemo || demoClosing;
 
   return (
@@ -113,15 +121,19 @@ export const FullShell = () => {
               onboardingExiting={onboarding.onboardingExiting}
               isAuthenticated={onboarding.isAuthenticated}
               isAuthLoading={onboarding.isAuthLoading}
+              isPreparingRuntime={runtimeStatus === "preparing"}
+              runtimeError={runtimeStatus === "failed" ? runtimeError : null}
               splitMode={onboarding.splitMode}
               hasDiscoverySelections={onboarding.hasDiscoverySelections}
               hasStarted={onboarding.hasStarted}
               stellaAnimationRef={onboarding.stellaAnimationRef}
               onboardingKey={onboarding.onboardingKey}
               triggerFlash={onboarding.triggerFlash}
+              startBirthAnimation={onboarding.startBirthAnimation}
               startOnboarding={onboarding.startOnboarding}
               completeOnboarding={onboarding.completeOnboarding}
               handleEnterSplit={onboarding.handleEnterSplit}
+              onRetryRuntime={retryRuntimeBootstrap}
               onDiscoveryConfirm={handleDiscoveryConfirm}
               onSelectionChange={onboarding.setHasDiscoverySelections}
               onDemoChange={handleDemoChange}

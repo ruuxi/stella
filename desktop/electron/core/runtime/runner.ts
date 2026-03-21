@@ -166,6 +166,7 @@ export const createStellaHostRunner = (
     runAutomationTurn: orchestratorController.runAutomationTurn,
     runBlockingLocalTask: taskOrchestration.runBlockingLocalTask,
     createBackgroundTask: taskOrchestration.createBackgroundTask,
+    getActiveTaskCount: () => context.state.localTaskManager?.getTaskCount() ?? 0,
     getLocalTaskSnapshot: async (taskId: string) => {
       const manager = context.state.localTaskManager;
       if (!manager) {
@@ -175,6 +176,8 @@ export const createStellaHostRunner = (
     },
     cancelLocalChat: orchestratorController.cancelLocalChat,
     getActiveOrchestratorRun: orchestratorController.getActiveOrchestratorRun,
+    resumeSelfModHmr: async (runId: string) =>
+      Boolean(await context.selfModHmrController?.resume(runId)),
     recoverCrashedRuns: runtimeInitialization.recoverCrashedRuns,
     appendThreadMessage: (args) => {
       context.runtimeStore.appendThreadMessage({

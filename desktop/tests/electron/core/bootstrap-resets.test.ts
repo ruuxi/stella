@@ -37,9 +37,8 @@ vi.mock("../../../electron/bootstrap/context.js", () => ({
   broadcastLocalChatUpdated: broadcastLocalChatUpdatedMock,
 }));
 
-const { createBootstrapResetFlows, shutdownBootstrapRuntime } = await import(
-  "../../../electron/bootstrap/resets.js"
-);
+const { createBootstrapResetFlows, scheduleBootstrapRuntimeShutdown } =
+  await import("../../../electron/bootstrap/resets.js");
 
 describe("bootstrap reset flows", () => {
   beforeEach(() => {
@@ -52,34 +51,46 @@ describe("bootstrap reset flows", () => {
     broadcastLocalChatUpdatedMock.mockClear();
   });
 
-  it("drops host runtime state without discarding the scheduler instance", () => {
-    const stopRunner = vi.fn();
-    const closeDb = vi.fn();
-    const stopScheduler = vi.fn();
+  it("logs scheduled shutdown failures instead of silently swallowing them", async () => {
+    const stopError = new Error("stop failed");
+    const stopRunner = vi.fn(async () => {
+      throw stopError;
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const context = {
       state: {
-        chatStore: { id: "chat" },
-        desktopDatabase: { close: closeDb },
-        runtimeStore: { id: "runtime" },
-        schedulerService: { stop: stopScheduler },
         stellaHostRunner: { stop: stopRunner },
-        storeModService: { id: "mods" },
-        storeModStore: { id: "mod-store" },
       },
     };
 
-    shutdownBootstrapRuntime(context as never, { stopScheduler: true });
+    scheduleBootstrapRuntimeShutdown(context as never, { stopScheduler: true });
+
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(stopRunner).toHaveBeenCalledTimes(1);
-    expect(closeDb).toHaveBeenCalledTimes(1);
-    expect(stopScheduler).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Failed to shut down Stella runtime during scheduled shutdown.",
+      stopError,
+    );
+
+    errorSpy.mockRestore();
+  });
+
+  it("schedules host runtime shutdown without waiting for stop completion", async () => {
+    const stopRunner = vi.fn();
+    const context = {
+      state: {
+        stellaHostRunner: { stop: stopRunner },
+      },
+    };
+
+    scheduleBootstrapRuntimeShutdown(context as never, { stopScheduler: true });
+
+    await Promise.resolve();
+
+    expect(stopRunner).toHaveBeenCalledTimes(1);
     expect(context.state.stellaHostRunner).toBeNull();
-    expect(context.state.chatStore).toBeNull();
-    expect(context.state.runtimeStore).toBeNull();
-    expect(context.state.storeModStore).toBeNull();
-    expect(context.state.storeModService).toBeNull();
-    expect(context.state.desktopDatabase).toBeNull();
-    expect(context.state.schedulerService).not.toBeNull();
   });
 
   it("hard-resets mutable home state and reinitializes the host when one was running", async () => {
@@ -92,9 +103,15 @@ describe("bootstrap reset flows", () => {
     const clearAll = vi.fn();
     const clearSenderRateLimits = vi.fn();
     const hideMiniWindow = vi.fn();
-    const stopRunner = vi.fn();
-    const closeDb = vi.fn();
-    const stopScheduler = vi.fn();
+    const stopRelease = { current: null as (() => void) | null };
+    const stopRunner = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          stopRelease.current = () => {
+            resolve();
+          };
+        }),
+    );
     const initializeStellaHostRunner = vi.fn(async () => {});
 
     const context = {
@@ -130,14 +147,8 @@ describe("bootstrap reset flows", () => {
       },
       state: {
         appReady: true,
-        chatStore: { id: "chat" },
-        desktopDatabase: { close: closeDb },
-        runtimeStore: { id: "runtime" },
-        schedulerService: { stop: stopScheduler },
         stellaHomePath: null,
         stellaHostRunner: { stop: stopRunner },
-        storeModService: { id: "mods" },
-        storeModStore: { id: "mod-store" },
         windowManager: {
           hideMiniWindow,
         },
@@ -148,14 +159,19 @@ describe("bootstrap reset flows", () => {
       initializeStellaHostRunner,
     });
 
-    await expect(resetFlows.hardResetLocalState()).resolves.toEqual({
+    const resetPromise = resetFlows.hardResetLocalState();
+    await Promise.resolve();
+
+    expect(initializeStellaHostRunner).not.toHaveBeenCalled();
+
+    stopRelease.current?.();
+
+    await expect(resetPromise).resolves.toEqual({
       ok: true,
     });
 
     expect(cancelAll).toHaveBeenCalledTimes(1);
     expect(stopRunner).toHaveBeenCalledTimes(1);
-    expect(closeDb).toHaveBeenCalledTimes(1);
-    expect(stopScheduler).toHaveBeenCalledTimes(1);
     expect(setHostAuthState).toHaveBeenCalledWith(false);
     expect(clearPendingAuthCallback).toHaveBeenCalledTimes(1);
     expect(context.state.appReady).toBe(false);
@@ -187,19 +203,20 @@ describe("bootstrap reset flows", () => {
   });
 
   it("resets message storage and broadcasts chat updates when local state exists", async () => {
-    const closeDb = vi.fn();
-    const stopRunner = vi.fn();
+    const stopRelease = { current: null as (() => void) | null };
+    const stopRunner = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          stopRelease.current = () => {
+            resolve();
+          };
+        }),
+    );
     const initializeStellaHostRunner = vi.fn(async () => {});
     const context = {
       state: {
-        chatStore: { id: "chat" },
-        desktopDatabase: { close: closeDb },
-        runtimeStore: { id: "runtime" },
-        schedulerService: null,
         stellaHomePath: "/mock/home/.stella",
         stellaHostRunner: { stop: stopRunner },
-        storeModService: { id: "mods" },
-        storeModStore: { id: "mod-store" },
       },
     };
 
@@ -207,12 +224,19 @@ describe("bootstrap reset flows", () => {
       initializeStellaHostRunner,
     });
 
-    await expect(resetFlows.resetLocalMessages()).resolves.toEqual({
+    const resetPromise = resetFlows.resetLocalMessages();
+    await Promise.resolve();
+
+    expect(resetMessageStorageMock).not.toHaveBeenCalled();
+    expect(initializeStellaHostRunner).not.toHaveBeenCalled();
+
+    stopRelease.current?.();
+
+    await expect(resetPromise).resolves.toEqual({
       ok: true,
     });
 
     expect(stopRunner).toHaveBeenCalledTimes(1);
-    expect(closeDb).toHaveBeenCalledTimes(1);
     expect(resetMessageStorageMock).toHaveBeenCalledWith(
       "/mock/home/.stella",
     );

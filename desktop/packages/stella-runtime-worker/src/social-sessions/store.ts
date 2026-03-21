@@ -1,4 +1,4 @@
-import type { SqliteDatabase } from "./shared.js";
+import type { SqliteDatabase } from "../../../../electron/storage/shared.js";
 
 export type SocialSessionRole = "host" | "follower";
 
@@ -31,7 +31,8 @@ export class SocialSessionStore {
   constructor(private readonly db: SqliteDatabase) {}
 
   listSessions(): SocialSessionSyncRecord[] {
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(`
       SELECT
         session_id AS sessionId,
         local_folder_path AS localFolderPath,
@@ -42,7 +43,8 @@ export class SocialSessionStore {
         updated_at AS updatedAt
       FROM social_session_sync_state
       ORDER BY updated_at DESC
-    `).all() as Array<Record<string, unknown>>;
+    `)
+      .all() as Array<Record<string, unknown>>;
     return rows.map((row) => ({
       sessionId: asString(row.sessionId),
       localFolderPath: asString(row.localFolderPath),
@@ -55,7 +57,8 @@ export class SocialSessionStore {
   }
 
   getSession(sessionId: string): SocialSessionSyncRecord | null {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(`
       SELECT
         session_id AS sessionId,
         local_folder_path AS localFolderPath,
@@ -66,7 +69,8 @@ export class SocialSessionStore {
         updated_at AS updatedAt
       FROM social_session_sync_state
       WHERE session_id = ?
-    `).get(sessionId) as Record<string, unknown> | undefined;
+    `)
+      .get(sessionId) as Record<string, unknown> | undefined;
     if (!row) {
       return null;
     }
@@ -81,9 +85,12 @@ export class SocialSessionStore {
     };
   }
 
-  upsertSession(record: Omit<SocialSessionSyncRecord, "updatedAt"> & { updatedAt?: number }): SocialSessionSyncRecord {
+  upsertSession(
+    record: Omit<SocialSessionSyncRecord, "updatedAt"> & { updatedAt?: number },
+  ): SocialSessionSyncRecord {
     const updatedAt = record.updatedAt ?? Date.now();
-    this.db.prepare(`
+    this.db
+      .prepare(`
       INSERT INTO social_session_sync_state (
         session_id,
         local_folder_path,
@@ -101,15 +108,16 @@ export class SocialSessionStore {
         last_applied_file_op_ordinal = excluded.last_applied_file_op_ordinal,
         last_observed_turn_ordinal = excluded.last_observed_turn_ordinal,
         updated_at = excluded.updated_at
-    `).run(
-      record.sessionId,
-      record.localFolderPath,
-      record.localFolderName,
-      record.role,
-      record.lastAppliedFileOpOrdinal,
-      record.lastObservedTurnOrdinal,
-      updatedAt,
-    );
+    `)
+      .run(
+        record.sessionId,
+        record.localFolderPath,
+        record.localFolderName,
+        record.role,
+        record.lastAppliedFileOpOrdinal,
+        record.lastObservedTurnOrdinal,
+        updatedAt,
+      );
     return {
       ...record,
       updatedAt,
@@ -118,7 +126,16 @@ export class SocialSessionStore {
 
   patchSession(
     sessionId: string,
-    patch: Partial<Pick<SocialSessionSyncRecord, "localFolderPath" | "localFolderName" | "role" | "lastAppliedFileOpOrdinal" | "lastObservedTurnOrdinal">>,
+    patch: Partial<
+      Pick<
+        SocialSessionSyncRecord,
+        | "localFolderPath"
+        | "localFolderName"
+        | "role"
+        | "lastAppliedFileOpOrdinal"
+        | "lastObservedTurnOrdinal"
+      >
+    >,
   ): SocialSessionSyncRecord | null {
     const existing = this.getSession(sessionId);
     if (!existing) {
@@ -129,8 +146,10 @@ export class SocialSessionStore {
       localFolderPath: patch.localFolderPath ?? existing.localFolderPath,
       localFolderName: patch.localFolderName ?? existing.localFolderName,
       role: patch.role ?? existing.role,
-      lastAppliedFileOpOrdinal: patch.lastAppliedFileOpOrdinal ?? existing.lastAppliedFileOpOrdinal,
-      lastObservedTurnOrdinal: patch.lastObservedTurnOrdinal ?? existing.lastObservedTurnOrdinal,
+      lastAppliedFileOpOrdinal:
+        patch.lastAppliedFileOpOrdinal ?? existing.lastAppliedFileOpOrdinal,
+      lastObservedTurnOrdinal:
+        patch.lastObservedTurnOrdinal ?? existing.lastObservedTurnOrdinal,
     });
   }
 
@@ -140,7 +159,8 @@ export class SocialSessionStore {
   }
 
   listFiles(sessionId: string): SocialSessionFileRecord[] {
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(`
       SELECT
         session_id AS sessionId,
         relative_path AS relativePath,
@@ -151,7 +171,8 @@ export class SocialSessionStore {
       FROM social_session_files
       WHERE session_id = ?
       ORDER BY relative_path ASC
-    `).all(sessionId) as Array<Record<string, unknown>>;
+    `)
+      .all(sessionId) as Array<Record<string, unknown>>;
     return rows.map((row) => ({
       sessionId: asString(row.sessionId),
       relativePath: asString(row.relativePath),
@@ -162,9 +183,12 @@ export class SocialSessionStore {
     }));
   }
 
-  upsertFile(record: Omit<SocialSessionFileRecord, "updatedAt"> & { updatedAt?: number }): SocialSessionFileRecord {
+  upsertFile(
+    record: Omit<SocialSessionFileRecord, "updatedAt"> & { updatedAt?: number },
+  ): SocialSessionFileRecord {
     const updatedAt = record.updatedAt ?? Date.now();
-    this.db.prepare(`
+    this.db
+      .prepare(`
       INSERT INTO social_session_files (
         session_id,
         relative_path,
@@ -179,14 +203,15 @@ export class SocialSessionStore {
         size_bytes = excluded.size_bytes,
         mtime_ms = excluded.mtime_ms,
         updated_at = excluded.updated_at
-    `).run(
-      record.sessionId,
-      record.relativePath,
-      record.contentHash,
-      record.sizeBytes,
-      record.mtimeMs,
-      updatedAt,
-    );
+    `)
+      .run(
+        record.sessionId,
+        record.relativePath,
+        record.contentHash,
+        record.sizeBytes,
+        record.mtimeMs,
+        updatedAt,
+      );
     return {
       ...record,
       updatedAt,
@@ -194,10 +219,12 @@ export class SocialSessionStore {
   }
 
   removeFile(sessionId: string, relativePath: string): void {
-    this.db.prepare(`
+    this.db
+      .prepare(`
       DELETE FROM social_session_files
       WHERE session_id = ?
         AND relative_path = ?
-    `).run(sessionId, relativePath);
+    `)
+      .run(sessionId, relativePath);
   }
 }

@@ -179,15 +179,19 @@ export function OnboardingView({
   onboardingExiting,
   isAuthenticated,
   isAuthLoading,
+  isPreparingRuntime = false,
+  runtimeError = null,
   splitMode,
   hasDiscoverySelections,
   hasStarted,
   stellaAnimationRef,
   onboardingKey,
   triggerFlash,
+  startBirthAnimation,
   startOnboarding,
   completeOnboarding,
   handleEnterSplit,
+  onRetryRuntime,
   onDiscoveryConfirm,
   onSelectionChange,
   onDemoChange,
@@ -199,21 +203,27 @@ export function OnboardingView({
   onboardingExiting?: boolean;
   isAuthenticated: boolean;
   isAuthLoading: boolean;
+  isPreparingRuntime?: boolean;
+  runtimeError?: string | null;
   splitMode: boolean;
   hasDiscoverySelections?: boolean;
   hasStarted: boolean;
   stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
   onboardingKey: number;
   triggerFlash: () => void;
+  startBirthAnimation?: () => void;
   startOnboarding: () => void;
   completeOnboarding: () => void;
   handleEnterSplit: () => void;
+  onRetryRuntime?: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
   onSelectionChange?: (hasSelections: boolean) => void;
   onDemoChange?: (demo: "default" | "modern" | "dj-studio" | "weather-station" | "cozy-cat" | "pomodoro" | null) => void;
   activeDemo?: OnboardingDemo;
   demoMorphing?: boolean;
 }) {
+  const showRuntimeGate = isPreparingRuntime || Boolean(runtimeError)
+
   return (
     <div className="new-session-view" data-split={splitMode} data-exiting={onboardingExiting || undefined}>
       <div
@@ -223,12 +233,20 @@ export function OnboardingView({
         Stella
       </div>
       <div
-        onClick={hasExpanded ? triggerFlash : undefined}
+        onClick={() => {
+          if (hasExpanded) {
+            triggerFlash()
+            return
+          }
+          startBirthAnimation?.()
+          triggerFlash()
+        }}
         className="onboarding-stella-animation"
         data-expanded={hasExpanded ? "true" : "false"}
         data-split={splitMode}
         data-has-selections={hasDiscoverySelections || undefined}
         data-demo-active={activeDemo || undefined}
+        title={hasExpanded ? undefined : "Click to awaken"}
       >
         <StellaAnimation
           ref={stellaAnimationRef}
@@ -237,8 +255,23 @@ export function OnboardingView({
           initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}
         />
       </div>
-      {!onboardingDone &&
-        (hasStarted ? (
+      {(showRuntimeGate || !onboardingDone) &&
+        (isPreparingRuntime || isAuthLoading ? (
+          <div className="onboarding-moment onboarding-moment--auth">
+            <div className="onboarding-text">Preparing Stella...</div>
+          </div>
+        ) : runtimeError ? (
+          <div className="onboarding-moment onboarding-moment--start">
+            <button
+              className="onboarding-start-button"
+              onClick={() => {
+                onRetryRuntime?.()
+              }}
+            >
+              Retry Stella Startup
+            </button>
+          </div>
+        ) : hasStarted ? (
           <OnboardingStep1
             key={onboardingKey}
             initialPhase="intro"
@@ -251,10 +284,6 @@ export function OnboardingView({
             demoMorphing={demoMorphing}
             isAuthenticated={isAuthenticated}
           />
-        ) : isAuthLoading ? (
-          <div className="onboarding-moment onboarding-moment--auth">
-            <div className="onboarding-text">Preparing Stella...</div>
-          </div>
         ) : (
           <div className="onboarding-moment onboarding-moment--start">
             <button

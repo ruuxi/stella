@@ -32,7 +32,7 @@ vi.mock("better-sqlite3", async () => {
 });
 
 import { createDesktopDatabase } from "../../../electron/storage/database.js";
-import { SocialSessionStore } from "../../../electron/storage/social-session-store.js";
+import { SocialSessionStore } from "../../../packages/stella-runtime-worker/src/social-sessions/store.js";
 
 const tempHomes: string[] = [];
 const openDatabases = new Set<{ close(): void }>();

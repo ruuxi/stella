@@ -1,5 +1,5 @@
 ﻿import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef, forwardRef, useImperativeHandle } from "react";
 import type { LocalDevProjectRecord } from "@/shared/types/electron";
 
@@ -43,6 +43,7 @@ vi.mock("convex/react", () => ({
 const mockSetView = vi.fn();
 const mockSetWindow = vi.fn();
 const mockOrbOpenChat = vi.fn();
+const mockRetryRuntimeBootstrap = vi.fn();
 vi.mock("@/context/ui-state", () => ({
   useUiState: vi.fn(() => ({
     state: { mode: "chat", window: "full", view: "home", conversationId: "conv-123" },
@@ -226,17 +227,31 @@ vi.mock("@/global/onboarding/OnboardingOverlay", () => ({
     isAuthenticated: true,
     isAuthLoading: false,
     hasExpanded: false,
+    hasStarted: false,
     splitMode: false,
     hasDiscoverySelections: false,
     setHasDiscoverySelections: vi.fn(),
     onboardingKey: "test",
     stellaAnimationRef: createRef(),
     triggerFlash: vi.fn(),
+    startOnboarding: vi.fn(),
     startBirthAnimation: vi.fn(),
     handleEnterSplit: vi.fn(),
     handleResetOnboarding: vi.fn(),
   })),
   OnboardingView: () => <div data-testid="onboarding-view" />,
+}));
+
+vi.mock("@/systems/boot/bootstrap-state", () => ({
+  useBootstrapState: vi.fn(() => ({
+    runtimeStatus: "ready",
+    runtimeError: null,
+    bootstrapAttempt: 0,
+    markPreparing: vi.fn(),
+    markReady: vi.fn(),
+    markFailed: vi.fn(),
+    retryRuntimeBootstrap: mockRetryRuntimeBootstrap,
+  })),
 }));
 
 vi.mock("@/global/onboarding/OnboardingCanvas", () => ({
@@ -273,8 +288,24 @@ vi.mock("@/shell/use-chat-scroll-management", () => ({
 import { FullShell } from "@/shell/FullShell";
 import { useUiState } from "@/context/ui-state";
 import { getElectronApi } from "@/platform/electron/electron";
+import { useBootstrapState } from "@/systems/boot/bootstrap-state";
 
 // --- Tests ---
+
+const renderReadyFullShell = async (view: "home" | "chat" = "home") => {
+  await act(async () => {
+    await import("@/shell/FullShellReadySurface");
+    await import("@/shell/FullShellRuntime");
+  });
+  const rendered = render(<FullShell />);
+  await screen.findByTestId("sidebar");
+  if (view === "chat") {
+    await screen.findByTestId("chat-column");
+  } else {
+    await screen.findByTestId("workspace-area");
+  }
+  return rendered;
+};
 
 describe("FullShell (full-shell/FullShell.tsx)", () => {
   beforeEach(() => {
@@ -289,35 +320,46 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
       updateState: vi.fn(),
     } as any);
     vi.mocked(getElectronApi).mockReturnValue(undefined);
+    vi.mocked(useBootstrapState).mockReturnValue({
+      runtimeStatus: "ready",
+      runtimeError: null,
+      bootstrapAttempt: 0,
+      markPreparing: vi.fn(),
+      markReady: vi.fn(),
+      markFailed: vi.fn(),
+      retryRuntimeBootstrap: mockRetryRuntimeBootstrap,
+    } as any);
   });
 
-  it("renders TitleBar", () => {
-    render(<FullShell />);
+  it("renders TitleBar", async () => {
+    await renderReadyFullShell();
     expect(screen.getByTestId("title-bar")).toBeInTheDocument();
   });
 
-  it("renders ShiftingGradient", () => {
-    render(<FullShell />);
+  it("renders ShiftingGradient", async () => {
+    await renderReadyFullShell();
     expect(screen.getByTestId("shifting-gradient")).toBeInTheDocument();
   });
 
-  it("renders Sidebar", () => {
-    render(<FullShell />);
+  it("renders Sidebar", async () => {
+    await renderReadyFullShell();
     expect(screen.getByTestId("sidebar")).toBeInTheDocument();
   });
 
-  it("renders WorkspaceArea in home view", () => {
-    render(<FullShell />);
+  it("renders WorkspaceArea in home view", async () => {
+    await renderReadyFullShell();
     expect(screen.getByTestId("workspace-area")).toBeInTheDocument();
     expect(screen.getByTestId("floating-orb")).toBeInTheDocument();
   });
 
-  it("passes conversationId to useConversationEventFeed", () => {
-    render(<FullShell />);
-    expect(mockUseConversationEventFeed).toHaveBeenCalledWith("conv-123");
+  it("passes conversationId to useConversationEventFeed", async () => {
+    await renderReadyFullShell();
+    await waitFor(() => {
+      expect(mockUseConversationEventFeed).toHaveBeenCalledWith("conv-123");
+    });
   });
 
-  it("renders chat without the workspace header tabs", () => {
+  it("renders chat without the workspace header tabs", async () => {
     vi.mocked(useUiState).mockReturnValue({
       state: { mode: "chat", window: "full", view: "chat", conversationId: "conv-123" },
       setMode: vi.fn(),
@@ -327,55 +369,56 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
       updateState: vi.fn(),
     } as any);
 
-    render(<FullShell />);
-
+    await renderReadyFullShell("chat");
     expect(screen.getByTestId("chat-column")).toBeInTheDocument();
   });
 
-  it("passes conversationId to useStreamingChat without storageMode", () => {
-    render(<FullShell />);
-    expect(mockUseStreamingChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conversationId: "conv-123",
-      }),
-    );
+  it("passes conversationId to useStreamingChat without storageMode", async () => {
+    await renderReadyFullShell();
+    await waitFor(() => {
+      expect(mockUseStreamingChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-123",
+        }),
+      );
+    });
     // storageMode is no longer passed â€” it comes from ChatStoreProvider
     const args = mockUseStreamingChat.mock.calls[0][0] as Record<string, unknown>;
     expect(args).not.toHaveProperty("storageMode");
   });
 
   it("opens auth dialog when sidebar sign-in is clicked", async () => {
-    render(<FullShell />);
+    await renderReadyFullShell();
     fireEvent.click(screen.getByTestId("sidebar-signin"));
     expect(await screen.findByTestId("auth-dialog")).toBeInTheDocument();
   });
 
   it("opens connect dialog when sidebar connect is clicked", async () => {
-    render(<FullShell />);
+    await renderReadyFullShell();
     fireEvent.click(screen.getByTestId("sidebar-connect"));
     expect(await screen.findByTestId("connect-dialog")).toBeInTheDocument();
   });
 
   it("opens settings dialog when sidebar settings is clicked", async () => {
-    render(<FullShell />);
+    await renderReadyFullShell();
     fireEvent.click(screen.getByTestId("sidebar-settings"));
     expect(await screen.findByTestId("settings-dialog")).toBeInTheDocument();
   });
 
-  it("navigates home via sidebar onHome", () => {
-    render(<FullShell />);
+  it("navigates home via sidebar onHome", async () => {
+    await renderReadyFullShell();
     fireEvent.click(screen.getByTestId("sidebar-home"));
     expect(mockSetView).toHaveBeenCalledWith("home");
   });
 
-  it("navigates chat via sidebar onChat", () => {
-    render(<FullShell />);
+  it("navigates chat via sidebar onChat", async () => {
+    await renderReadyFullShell();
     fireEvent.click(screen.getByTestId("sidebar-chat"));
     expect(mockSetView).toHaveBeenCalledWith("chat");
   });
 
-  it("opens the floating orb chat and sends a hidden workspace-creation prompt via sidebar", () => {
-    render(<FullShell />);
+  it("opens the floating orb chat and sends a hidden workspace-creation prompt via sidebar", async () => {
+    await renderReadyFullShell();
 
     fireEvent.click(screen.getByTestId("sidebar-new-app"));
 
@@ -397,7 +440,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     );
   });
 
-  it("leaves chat view and opens the orb chat when New App is clicked from chat", () => {
+  it("leaves chat view and opens the orb chat when New App is clicked from chat", async () => {
     vi.mocked(useUiState).mockReturnValue({
       state: { mode: "chat", window: "full", view: "chat", conversationId: "conv-123" },
       setMode: vi.fn(),
@@ -407,7 +450,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
       updateState: vi.fn(),
     } as any);
 
-    render(<FullShell />);
+    await renderReadyFullShell("chat");
     fireEvent.click(screen.getByTestId("sidebar-new-app"));
 
     expect(mockOrbOpenChat).toHaveBeenCalledTimes(1);
@@ -417,7 +460,7 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
   it("opens a manually selected local project in app view", async () => {
     mockPickProjectDirectory.mockResolvedValue(mockProjects[0]);
 
-    render(<FullShell />);
+    await renderReadyFullShell();
     fireEvent.click(screen.getByTestId("sidebar-new-local-project"));
 
     expect(mockPickProjectDirectory).toHaveBeenCalledTimes(1);
@@ -432,8 +475,8 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     });
   });
 
-  it("opens sidebar projects in app view", () => {
-    render(<FullShell />);
+  it("opens sidebar projects in app view", async () => {
+    await renderReadyFullShell();
     fireEvent.click(screen.getByTestId("sidebar-project-project-1"));
 
     expect(mockOpenPanel).toHaveBeenCalledWith({
@@ -445,8 +488,8 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     expect(mockSetView).toHaveBeenCalledWith("app");
   });
 
-  it("routes stella:send-message events to sendMessage", () => {
-    render(<FullShell />);
+  it("routes stella:send-message events to sendMessage", async () => {
+    await renderReadyFullShell();
     window.dispatchEvent(
       new CustomEvent("stella:send-message", { detail: { text: "Ping from home" } }),
     );
@@ -460,14 +503,27 @@ describe("FullShell (full-shell/FullShell.tsx)", () => {
     );
   });
 
-  it("renders the shell with correct base class", () => {
-    const { container } = render(<FullShell />);
+  it("renders the shell with correct base class", async () => {
+    const { container } = await renderReadyFullShell();
     const shell = container.querySelector(".window-shell.full");
     expect(shell).toBeInTheDocument();
   });
+
+  it("shows onboarding while runtime startup is still preparing", () => {
+    vi.mocked(useBootstrapState).mockReturnValue({
+      runtimeStatus: "preparing",
+      runtimeError: null,
+      bootstrapAttempt: 0,
+      markPreparing: vi.fn(),
+      markReady: vi.fn(),
+      markFailed: vi.fn(),
+      retryRuntimeBootstrap: mockRetryRuntimeBootstrap,
+    } as any);
+
+    render(<FullShell />);
+
+    expect(screen.getByTestId("onboarding-view")).toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar")).toBeNull();
+  });
 });
-
-
-
-
 
