@@ -1,13 +1,13 @@
 import {
   lazy,
   Suspense,
+  startTransition,
   useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
 import type { GeneratedPage } from "@/app/registry";
-import { ChatColumn } from "@/app/chat/ChatColumn";
 import { WorkspaceArea } from "@/app/workspace/WorkspaceArea";
 import { useDevProjects } from "@/context/dev-projects-state";
 import { useTheme } from "@/context/theme-context";
@@ -17,31 +17,39 @@ import { secureSignOut } from "@/global/auth/services/auth";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import { useDiscoveryFlow } from "@/global/onboarding/DiscoveryFlow";
 import {
-  useOnboardingOverlay,
   OnboardingView,
+  useOnboardingOverlay,
 } from "@/global/onboarding/OnboardingOverlay";
-import { SocialView } from "@/app/social/SocialView";
-import { MiniBridgeRelay } from "@/shell/mini/MiniBridgeRelay";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
-import {
-  dispatchStellaSendMessage,
-  WORKSPACE_CREATION_TRIGGER_KIND,
-} from "@/shared/lib/stella-send-message";
 import { ShiftingGradient } from "./background/ShiftingGradient";
-import { FloatingOrb, type FloatingOrbHandle } from "./FloatingOrb";
 import { FullShellDialogs } from "./full-shell-dialogs";
 import type { DialogType } from "./full-shell-dialogs";
+import {
+  reportInteractiveAfterNextPaint,
+  reportRendererStartupMetricNow,
+} from "@/platform/dev/startup-metrics";
 import "./full-shell.layout.css";
 import { TitleBar } from "./TitleBar";
-import { useFullShellChat } from "./use-full-shell-chat";
-import { useFullShellVoiceTranscript } from "./use-full-shell-voice-transcript";
 
 const OnboardingCanvas = lazy(() =>
-  import("@/global/onboarding/OnboardingCanvas").then((m) => ({
-    default: m.OnboardingCanvas,
+  import("@/global/onboarding/OnboardingCanvas").then((module) => ({
+    default: module.OnboardingCanvas,
   })),
 );
-// Note: OnboardingCanvas itself no longer lazy-loads demo panels — they're direct imports
+const fullShellRuntimeImport = import("./FullShellRuntime");
+const FullShellRuntime = lazy(() =>
+  fullShellRuntimeImport.then((module) => ({
+    default: module.FullShellRuntime,
+  })),
+);
+
+const NEW_APP_ASK_STELLA_PROMPT =
+  'The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.';
+
+type PendingAskStellaRequest = {
+  id: number;
+  text: string;
+};
 
 export const FullShell = () => {
   const { state, setView } = useUiState();
@@ -49,48 +57,37 @@ export const FullShell = () => {
   const { state: workspaceState, openPanel, closePanel } = useWorkspace();
   const activePanel = workspaceState.activePanel;
   const { gradientMode, gradientColor } = useTheme();
-  const orbRef = useRef<FloatingOrbHandle>(null);
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
   const [demoMorphing, setDemoMorphing] = useState(false);
   const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeDemoRef = useRef<OnboardingDemo>(null);
   const [activeDialog, setActiveDialog] = useState<DialogType>(null);
+  const [runtimeReady, setRuntimeReady] = useState(false);
+  const [pendingAskStellaRequest, setPendingAskStellaRequest] =
+    useState<PendingAskStellaRequest | null>(null);
   const onboarding = useOnboardingOverlay();
   const { projects, pickProjectDirectory } = useDevProjects();
   const { handleDiscoveryConfirm, dashboardState } = useDiscoveryFlow({
     conversationId: activeConversationId,
   });
 
-  const chat = useFullShellChat({
-    activeConversationId,
-    activeView: state.view,
-    isDev: import.meta.env.DEV,
-  });
-
-  useFullShellVoiceTranscript({
-    activeView: state.view,
-    orbRef,
-    setMessage: chat.composer.setMessage,
-  });
-
   const showAuthDialog = useCallback(() => {
     setActiveDialog("auth");
-  }, [setActiveDialog]);
+  }, []);
 
   const showConnectDialog = useCallback(() => {
     setActiveDialog("connect");
-  }, [setActiveDialog]);
+  }, []);
 
   const showSettingsDialog = useCallback(() => {
     setActiveDialog("settings");
-  }, [setActiveDialog]);
+  }, []);
 
   const showStoreView = useCallback(() => {
     closePanel();
     setView("store");
   }, [closePanel, setView]);
-
 
   const showHomeView = useCallback(() => {
     closePanel();
@@ -120,14 +117,21 @@ export const FullShell = () => {
     [openPanel, setView],
   );
 
+  const handlePendingAskStellaHandled = useCallback((requestId: number) => {
+    setPendingAskStellaRequest((current) =>
+      current?.id === requestId ? null : current,
+    );
+  }, []);
+
   const handleNewAppAskStella = useCallback(() => {
-    dispatchStellaSendMessage({
-      text: "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.",
-      uiVisibility: "hidden",
-      triggerKind: WORKSPACE_CREATION_TRIGGER_KIND,
-      triggerSource: "sidebar",
+    startTransition(() => {
+      setRuntimeReady(true);
+      setPendingAskStellaRequest({
+        id: Date.now(),
+        text: NEW_APP_ASK_STELLA_PROMPT,
+      });
     });
-    orbRef.current?.openChat();
+
     if (state.view === "chat") {
       closePanel();
       setView("home");
@@ -169,8 +173,9 @@ export const FullShell = () => {
       return;
     }
 
-    // Skip if already closed
-    if (activeDemoRef.current === null) return;
+    if (activeDemoRef.current === null) {
+      return;
+    }
 
     activeDemoRef.current = null;
     setActiveDemo(null);
@@ -181,24 +186,44 @@ export const FullShell = () => {
     }, 400);
   }, []);
 
-  const handleDialogOpenChange = useCallback(
-    (open: boolean) => {
-      if (!open) {
-        setActiveDialog(null);
-      }
-    },
-    [setActiveDialog],
-  );
+  const handleDialogOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      setActiveDialog(null);
+    }
+  }, []);
 
   const handleSettingsSignOut = useCallback(() => {
     setActiveDialog(null);
     void secureSignOut();
-  }, [setActiveDialog]);
-
+  }, []);
 
   useEffect(() => {
     window.electronAPI?.ui.setAppReady?.(onboarding.onboardingDone);
   }, [onboarding.onboardingDone]);
+
+  useEffect(() => {
+    reportRendererStartupMetricNow("renderer-full-shell-mounted", {
+      onboardingDone: onboarding.onboardingDone,
+      window: "full",
+    });
+    reportInteractiveAfterNextPaint();
+  }, [onboarding.onboardingDone]);
+
+  useEffect(() => {
+    if (!onboarding.onboardingDone || runtimeReady) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      startTransition(() => {
+        setRuntimeReady(true);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [onboarding.onboardingDone, runtimeReady]);
 
   useEffect(() => {
     return () => {
@@ -217,23 +242,14 @@ export const FullShell = () => {
     activePanel?.kind === "dev-project" ? activePanel.projectId : null;
   const activePageId =
     activePanel?.kind === "generated-page" ? activePanel.pageId : null;
-
   const showOnboardingDemos = activeDemo || demoClosing;
+  const showRuntimeShell = runtimeReady && onboarding.onboardingDone;
+  const showChatSurface = state.view === "chat" || state.view === "social";
 
   return (
     <div className="window-shell full">
       <TitleBar />
       <ShiftingGradient mode={gradientMode} colorMode={gradientColor} />
-      <MiniBridgeRelay
-        conversationId={activeConversationId}
-        events={chat.conversation.events}
-        streamingText={chat.conversation.streamingText}
-        reasoningText={chat.conversation.reasoningText}
-        isStreaming={chat.conversation.isStreaming}
-        pendingUserMessageId={chat.conversation.pendingUserMessageId}
-        sendMessage={chat.conversation.sendMessage}
-        cancelCurrentStream={chat.conversation.cancelCurrentStream}
-      />
 
       <div className="full-body">
         {appReady ? (
@@ -258,33 +274,59 @@ export const FullShell = () => {
             />
 
             <div className="content-area">
-              {state.view === "chat" ? (
-                <ChatColumn
-                  conversation={chat.conversation}
-                  composer={chat.composer}
-                  scroll={chat.scroll}
-                  composerEntering={onboarding.onboardingExiting}
-                  conversationId={activeConversationId}
-                />
-              ) : state.view === "social" ? (
-                <SocialView onSignIn={showAuthDialog} />
+              {showChatSurface ? (
+                showRuntimeShell ? (
+                  <Suspense
+                    fallback={
+                      <WorkspaceArea
+                        view="home"
+                        activeDemo={null}
+                        demoClosing={false}
+                      />
+                    }
+                  >
+                    <FullShellRuntime
+                      activeConversationId={activeConversationId}
+                      activeView={state.view}
+                      composerEntering={onboarding.onboardingExiting}
+                      conversationId={activeConversationId}
+                      isOrbVisible={false}
+                      onSignIn={showAuthDialog}
+                      pendingAskStellaRequest={pendingAskStellaRequest}
+                      onPendingAskStellaHandled={handlePendingAskStellaHandled}
+                    />
+                  </Suspense>
+                ) : (
+                  <WorkspaceArea
+                    view="home"
+                    activeDemo={null}
+                    demoClosing={false}
+                  />
+                )
               ) : (
-                <WorkspaceArea
-                  view={state.view}
-                  activeDemo={activeDemo}
-                  demoClosing={demoClosing}
-                  conversationId={activeConversationId ?? undefined}
-                />
+                <>
+                  <WorkspaceArea
+                    view={state.view}
+                    activeDemo={activeDemo}
+                    demoClosing={demoClosing}
+                    conversationId={activeConversationId ?? undefined}
+                  />
+                  {showRuntimeShell ? (
+                    <Suspense fallback={null}>
+                      <FullShellRuntime
+                        activeConversationId={activeConversationId}
+                        activeView={state.view}
+                        composerEntering={onboarding.onboardingExiting}
+                        conversationId={activeConversationId}
+                        isOrbVisible={isOrbVisible}
+                        onSignIn={showAuthDialog}
+                        pendingAskStellaRequest={pendingAskStellaRequest}
+                        onPendingAskStellaHandled={handlePendingAskStellaHandled}
+                      />
+                    </Suspense>
+                  ) : null}
+                </>
               )}
-
-              <FloatingOrb
-                ref={orbRef}
-                visible={isOrbVisible}
-                events={chat.conversation.events}
-                streamingText={chat.conversation.streamingText}
-                isStreaming={chat.conversation.isStreaming}
-                onSend={chat.conversation.sendContextlessMessage}
-              />
             </div>
           </>
         ) : (
@@ -298,12 +340,14 @@ export const FullShell = () => {
               onboardingDone={onboarding.onboardingDone}
               onboardingExiting={onboarding.onboardingExiting}
               isAuthenticated={onboarding.isAuthenticated}
+              isAuthLoading={onboarding.isAuthLoading}
               splitMode={onboarding.splitMode}
               hasDiscoverySelections={onboarding.hasDiscoverySelections}
+              hasStarted={onboarding.hasStarted}
               stellaAnimationRef={onboarding.stellaAnimationRef}
               onboardingKey={onboarding.onboardingKey}
               triggerFlash={onboarding.triggerFlash}
-              startBirthAnimation={onboarding.startBirthAnimation}
+              startOnboarding={onboarding.startOnboarding}
               completeOnboarding={onboarding.completeOnboarding}
               handleEnterSplit={onboarding.handleEnterSplit}
               onDiscoveryConfirm={handleDiscoveryConfirm}
@@ -319,7 +363,10 @@ export const FullShell = () => {
               aria-hidden={!showOnboardingDemos}
             >
               <Suspense fallback={null}>
-                <OnboardingCanvas activeDemo={activeDemo} onMorphStateChange={setDemoMorphing} />
+                <OnboardingCanvas
+                  activeDemo={activeDemo}
+                  onMorphStateChange={setDemoMorphing}
+                />
               </Suspense>
             </div>
           </div>

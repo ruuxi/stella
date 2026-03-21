@@ -3,9 +3,11 @@ import { useWorkspace } from "@/context/workspace-state"
 import { Spinner } from "@/ui/spinner"
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas"
 import type { ViewType } from "@/shared/contracts/ui"
-import { HomeView } from "@/app/home/HomeView"
 import "./workspace.css"
 
+const HomeView = lazy(() =>
+  import("@/app/home/HomeView").then((module) => ({ default: module.HomeView })),
+)
 const PanelRenderer = lazy(() => import("@/app/workspace/renderers/panel"))
 const OnboardingCanvas = lazy(() =>
   import("@/global/onboarding/OnboardingCanvas").then((m) => ({ default: m.OnboardingCanvas })),
@@ -17,6 +19,18 @@ type WorkspaceAreaProps = {
   activeDemo: OnboardingDemo
   demoClosing: boolean
   conversationId?: string
+}
+
+function HomeViewFallback() {
+  return (
+    <div className="workspace-area">
+      <div className="workspace-content workspace-content--full">
+        <div className="workspace-placeholder" aria-busy="true">
+          <Spinner size="md" />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function WorkspaceArea({
@@ -68,11 +82,13 @@ export function WorkspaceArea({
   switch (view) {
     case "app":
       return (
-        <div className="workspace-area">
-          <div className="workspace-content workspace-content--full">
-            <HomeView conversationId={conversationId} />
+        <Suspense fallback={<HomeViewFallback />}>
+          <div className="workspace-area">
+            <div className="workspace-content workspace-content--full">
+              <HomeView conversationId={conversationId} />
+            </div>
           </div>
-        </div>
+        </Suspense>
       )
     case "store":
       return (
@@ -94,11 +110,13 @@ export function WorkspaceArea({
     case "chat":
     case "social":
       return (
-        <div className="workspace-area">
-          <div className="workspace-content workspace-content--full">
-            <HomeView conversationId={conversationId} />
+        <Suspense fallback={<HomeViewFallback />}>
+          <div className="workspace-area">
+            <div className="workspace-content workspace-content--full">
+              <HomeView conversationId={conversationId} />
+            </div>
           </div>
-        </div>
+        </Suspense>
       )
     default: {
       const exhaustiveCheck: never = view

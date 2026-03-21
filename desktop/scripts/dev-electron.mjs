@@ -25,6 +25,25 @@ let restartQueue = Promise.resolve()
 let watchReady = false
 let watchReadyTimer = null
 const expectedExits = new WeakSet()
+const startupProfilingEnabled = process.env.STELLA_STARTUP_PROFILING === '1'
+const startupTraceId = process.env.STELLA_STARTUP_TRACE_ID ?? null
+
+const emitStartupMetric = (metric, detail = {}) => {
+  if (!startupProfilingEnabled) {
+    return
+  }
+
+  console.log(
+    `[stella-startup] ${JSON.stringify({
+      atMs: Date.now(),
+      detail,
+      metric,
+      pid: process.pid,
+      source: 'dev-launcher',
+      traceId: startupTraceId,
+    })}`,
+  )
+}
 
 const shouldRestartForPath = (filename) => {
   if (typeof filename !== 'string') {
@@ -38,6 +57,8 @@ const startApp = () => {
   if (shuttingDown || currentApp) {
     return
   }
+
+  emitStartupMetric('electron-spawn-requested')
 
   const child = spawn(electronBinary, ['.'], {
     cwd: projectDir,
@@ -164,6 +185,10 @@ const shutdown = async (exitCode) => {
 
 await waitOn({
   resources: requiredFiles.map((filePath) => `file:${filePath}`),
+})
+
+emitStartupMetric('dev-electron-launcher-ready', {
+  watchedDir,
 })
 
 watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {

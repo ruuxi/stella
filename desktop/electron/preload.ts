@@ -107,6 +107,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("morph:complete") as Promise<{ ok: boolean }>,
   },
 
+  startupMetrics: {
+    report: (payload: {
+      metric:
+        | "renderer-first-contentful-paint"
+        | "renderer-first-paint"
+        | "renderer-full-shell-mounted"
+        | "renderer-ui-interactive";
+      atMs?: number;
+      detail?: Record<string, unknown>;
+    }) => ipcRenderer.send("startupMetrics:report", payload),
+  },
+
   capture: {
     getContext: () => ipcRenderer.invoke("chatContext:get"),
     onContext: onIpc<Record<string, unknown> | null>("chatContext:updated"),
