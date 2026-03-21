@@ -1,7 +1,7 @@
 import { app, globalShortcut } from "electron";
 import { cleanupSelectedTextProcess } from "../selected-text.js";
 import type { BootstrapContext } from "./context.js";
-import { shutdownBootstrapRuntime } from "./resets.js";
+import { scheduleBootstrapRuntimeShutdown } from "./resets.js";
 import { initializeBootstrapApplication } from "./runtime.js";
 
 export const initializeBootstrapSingleInstance = (
@@ -35,7 +35,6 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
     context.services.authService.stopAuthRefreshLoop();
     void context.services.devProjectService.stopAll();
     context.state.stellaHostRunner?.killAllShells();
-    context.state.schedulerService?.stop();
     context.state.wakeWordController?.dispose();
     context.state.wakeWordController = null;
     cleanupSelectedTextProcess();
@@ -47,6 +46,6 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
   app.on("will-quit", () => {
     globalShortcut.unregisterAll();
     context.services.radialGestureService.stop();
-    shutdownBootstrapRuntime(context, { stopScheduler: true });
+    scheduleBootstrapRuntimeShutdown(context, { stopScheduler: true });
   });
 };

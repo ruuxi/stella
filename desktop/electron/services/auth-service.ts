@@ -158,6 +158,7 @@ export class AuthService {
     this.pendingConvexUrl = config.convexUrl
     this.pendingConvexSiteUrl = config.convexSiteUrl ?? null
     this.options.runnerTarget.getRunner()?.setConvexUrl(config.convexUrl)
+    this.options.runnerTarget.getRunner()?.setConvexSiteUrl(this.getConvexSiteUrl())
     if (this.hostAuthToken) {
       this.options.runnerTarget.getRunner()?.setAuthToken(this.hostAuthToken)
     }

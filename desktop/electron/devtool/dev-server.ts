@@ -21,7 +21,7 @@ type DevServerCommand =
 type DevServerDeps = {
   stellaHomePath: () => string | null;
   sessionPartition: string;
-  shutdownRuntime: () => void;
+  shutdownRuntime: () => Promise<void>;
   onReloadApp: () => void;
 };
 
@@ -132,7 +132,7 @@ export class DevToolServer {
         case "hard-reset": {
           const homePath = this.deps.stellaHomePath();
           // Shut down runtime first (close sqlite handles, etc.)
-          this.deps.shutdownRuntime();
+          await this.deps.shutdownRuntime();
           // Clear Electron session storage (localStorage, cookies, cache)
           // This is where onboarding state lives
           const appSession = session.fromPartition(this.deps.sessionPartition);

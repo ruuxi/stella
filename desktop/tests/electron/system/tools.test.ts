@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { promises as fs } from "fs";
 import { spawn } from "child_process";
+import path from "path";
 import { createToolHost, type ToolContext } from "../../../electron/core/runtime/tools/host.js";
 import type { TaskToolRequest } from "../../../electron/core/runtime/tools/types.js";
 
@@ -179,7 +180,16 @@ describe("Tools Module - Unit Tests", () => {
         expect(typeof result.result === "string" && result.result).toContain("line 1");
       });
 
-      it("should require absolute paths", async () => {
+      it("resolves relative paths from the desktop root", async () => {
+        const mockFs = fs as unknown as {
+          access: ReturnType<typeof vi.fn>;
+          stat: ReturnType<typeof vi.fn>;
+          readFile: ReturnType<typeof vi.fn>;
+        };
+        mockFs.access.mockResolvedValue(undefined);
+        mockFs.stat.mockResolvedValue({ size: 32 });
+        mockFs.readFile.mockResolvedValue("relative path content");
+
         const result = await toolHost.executeTool(
           "Read",
           { file_path: "relative/path.txt" },
@@ -190,7 +200,10 @@ describe("Tools Module - Unit Tests", () => {
           }
         );
 
-        expect(result.error).toContain("must be absolute");
+        expect(result.error).toBeUndefined();
+        expect(mockFs.access).toHaveBeenCalledWith(
+          path.resolve(process.cwd(), "relative/path.txt"),
+        );
       });
 
       it("should handle file not found", async () => {

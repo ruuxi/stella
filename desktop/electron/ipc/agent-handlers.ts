@@ -153,7 +153,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     if (!stellaHostRunner) {
       return null;
     }
-    const rawResult = stellaHostRunner.agentHealthCheck();
+    const rawResult = await stellaHostRunner.agentHealthCheck();
     const result =
       rawResult?.ready === false &&
       rawResult.reason === "Missing auth token" &&
@@ -167,9 +167,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
   ipcMain.handle("agent:getActiveRun", async () => {
     const stellaHostRunner = options.getStellaHostRunner();
     if (!stellaHostRunner) return null;
-    const health = stellaHostRunner.agentHealthCheck();
+    const health = await stellaHostRunner.agentHealthCheck();
     if (!health?.ready) return null;
-    return stellaHostRunner.getActiveOrchestratorRun();
+    return await stellaHostRunner.getActiveOrchestratorRun();
   });
 
   ipcMain.handle("agent:getAppSessionStartedAt", async () => {
@@ -221,10 +221,10 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       // The renderer may call startChat right after syncing the auth token via
       // setAuthState IPC. Poll briefly so the token has time to propagate.
       const deadline = Date.now() + 5_000;
-      let health = stellaHostRunner.agentHealthCheck();
+      let health = await stellaHostRunner.agentHealthCheck();
       while (!health?.ready && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 200));
-        health = stellaHostRunner.agentHealthCheck();
+        health = await stellaHostRunner.agentHealthCheck();
       }
       if (!health?.ready) {
         throw new Error(health?.reason ?? "Agent runtime not ready");
@@ -238,25 +238,25 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         onStream: (ev) =>
           emitAgentEvent(
             ev.runId,
-            { type: AGENT_STREAM_EVENT_TYPES.STREAM, ...ev },
+            { ...ev, type: AGENT_STREAM_EVENT_TYPES.STREAM },
             senderWebContentsId,
           ),
         onToolStart: (ev) =>
           emitAgentEvent(
             ev.runId,
-            { type: AGENT_STREAM_EVENT_TYPES.TOOL_START, ...ev },
+            { ...ev, type: AGENT_STREAM_EVENT_TYPES.TOOL_START },
             senderWebContentsId,
           ),
         onToolEnd: (ev) =>
           emitAgentEvent(
             ev.runId,
-            { type: AGENT_STREAM_EVENT_TYPES.TOOL_END, ...ev },
+            { ...ev, type: AGENT_STREAM_EVENT_TYPES.TOOL_END },
             senderWebContentsId,
           ),
         onError: (ev) =>
           emitAgentEvent(
             ev.runId,
-            { type: AGENT_STREAM_EVENT_TYPES.ERROR, ...ev },
+            { ...ev, type: AGENT_STREAM_EVENT_TYPES.ERROR },
             senderWebContentsId,
           ),
         onTaskEvent: (ev) => {
@@ -286,7 +286,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         onEnd: (ev) => {
           emitAgentEvent(
             ev.runId,
-            { type: AGENT_STREAM_EVENT_TYPES.END, ...ev },
+            { ...ev, type: AGENT_STREAM_EVENT_TYPES.END },
             senderWebContentsId,
           );
           setTimeout(() => {

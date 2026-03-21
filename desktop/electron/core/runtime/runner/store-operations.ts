@@ -4,6 +4,7 @@ import type {
   StoreReleaseArtifact,
   StoreReleaseManifest,
 } from "../../../../src/shared/contracts/electron-data.js";
+import type { StorePublishArgs } from "../../../../packages/stella-runtime-protocol/src/index.js";
 import type { RunnerContext, StoreOperations } from "./types.js";
 
 export const createStoreOperations = (
@@ -174,15 +175,9 @@ export const createStoreOperations = (
     return toSharedStoreRelease({ release: record, packageRecord });
   };
 
-  const createFirstStoreRelease = async (args: {
-    packageId: string;
-    featureId: string;
-    displayName: string;
-    description: string;
-    releaseNotes?: string;
-    manifest: StoreReleaseManifest;
-    artifact: StoreReleaseArtifact;
-  }): Promise<StorePackageReleaseRecord> => {
+  const createFirstStoreRelease = async (
+    args: StorePublishArgs,
+  ): Promise<StorePackageReleaseRecord> => {
     const client = deps.ensureStoreClient();
     const result = (await client.action(
       (
@@ -213,15 +208,9 @@ export const createStoreOperations = (
     return releaseRecord;
   };
 
-  const createStoreReleaseUpdate = async (args: {
-    packageId: string;
-    featureId: string;
-    displayName: string;
-    description: string;
-    releaseNotes?: string;
-    manifest: StoreReleaseManifest;
-    artifact: StoreReleaseArtifact;
-  }): Promise<StorePackageReleaseRecord> => {
+  const createStoreReleaseUpdate = async (
+    args: StorePublishArgs,
+  ): Promise<StorePackageReleaseRecord> => {
     const client = deps.ensureStoreClient();
     const result = (await client.action(
       (

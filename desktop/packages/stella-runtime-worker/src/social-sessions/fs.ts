@@ -23,10 +23,7 @@ const IGNORED_DIR_NAMES = new Set([
   "release",
 ]);
 
-const IGNORED_FILE_NAMES = new Set([
-  ".DS_Store",
-  "Thumbs.db",
-]);
+const IGNORED_FILE_NAMES = new Set([".DS_Store", "Thumbs.db"]);
 
 const WINDOWS_RESERVED_NAMES = new Set([
   "CON",
@@ -83,14 +80,16 @@ export const resolveSessionLocalFolder = (
   sessionWorkspaceRoot: string,
   sessionId: string,
   folderLabel: string,
-) => path.join(sessionWorkspaceRoot, `${sanitizeSessionFolderLabel(folderLabel)}-${sessionId.slice(0, 8)}`);
+) =>
+  path.join(
+    sessionWorkspaceRoot,
+    `${sanitizeSessionFolderLabel(folderLabel)}-${sessionId.slice(0, 8)}`,
+  );
 
 const shouldSkipDirectory = (name: string) =>
-  IGNORED_DIR_NAMES.has(name)
-  || name.startsWith(".stella-tmp");
+  IGNORED_DIR_NAMES.has(name) || name.startsWith(".stella-tmp");
 
-const shouldSkipFile = (name: string) =>
-  IGNORED_FILE_NAMES.has(name);
+const shouldSkipFile = (name: string) => IGNORED_FILE_NAMES.has(name);
 
 const hashFile = async (absolutePath: string) => {
   const data = await fs.readFile(absolutePath);
@@ -120,7 +119,9 @@ const walkWorkspace = async (
         return;
       }
       const stat = await fs.stat(absolutePath);
-      const relativePath = normalizeSessionRelativePath(path.relative(rootPath, absolutePath));
+      const relativePath = normalizeSessionRelativePath(
+        path.relative(rootPath, absolutePath),
+      );
       results.push({
         relativePath,
         absolutePath,

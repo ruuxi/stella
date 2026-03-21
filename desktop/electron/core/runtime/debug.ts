@@ -68,7 +68,7 @@ const emitLog = (
       ? console.error
       : level === "warn"
         ? console.warn
-        : console.log;
+        : console.error;
 
   if (fields === undefined) {
     consoleMethod(`${prefix} ${message}`);

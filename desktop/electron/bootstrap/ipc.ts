@@ -56,7 +56,6 @@ export const registerBootstrapIpcHandlers = (
     authService: services.authService,
     getStellaHostRunner: lifecycle.getRunner,
     getStellaHomePath: lifecycle.getStellaHomePath,
-    socialSessionService: services.socialSessionService,
     externalLinkService: services.externalLinkService,
     ensurePrivilegedActionApproval: (action, message, detail, event) =>
       services.securityPolicyService.ensureApproval(
@@ -75,10 +74,9 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerScheduleHandlers({
-    getSchedulerService: () => state.schedulerService,
+    getStellaHostRunner: lifecycle.getRunner,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
-    getBroadcastToMobile: lazyMobileBroadcast,
   });
 
   registerBrowserHandlers({
@@ -107,7 +105,7 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerLocalChatHandlers({
-    getChatStore: () => state.chatStore,
+    getStellaHostRunner: lifecycle.getRunner,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
     getBroadcastToMobile: lazyMobileBroadcast,
@@ -133,9 +131,7 @@ export const registerBootstrapIpcHandlers = (
 
   registerStoreHandlers({
     getStellaHomePath: lifecycle.getStellaHomePath,
-    getFrontendRoot: () => config.frontendRoot,
     getStellaHostRunner: lifecycle.getRunner,
-    getStoreModService: () => state.storeModService,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

@@ -1,71 +1,43 @@
 import {
-  BrowserWindow,
   ipcMain,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
-import type { LocalSchedulerService } from "../services/local-scheduler-service.js";
+import type { StellaHostRunner } from "../stella-host-runner.js";
+import { waitForConnectedRunner } from "./runtime-availability.js";
 
 type ScheduleHandlersOptions = {
-  getSchedulerService: () => LocalSchedulerService | null;
+  getStellaHostRunner: () => StellaHostRunner | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
-  getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
 };
 
 export const registerScheduleHandlers = (options: ScheduleHandlersOptions) => {
-  let subscribedScheduler: LocalSchedulerService | null = null;
-
-  const getSchedulerService = () => {
-    const schedulerService = options.getSchedulerService();
-    if (!schedulerService) {
-      throw new Error("Scheduler service not available.");
-    }
-    return schedulerService;
-  };
-
-  const broadcastUpdate = () => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) {
-        window.webContents.send("schedule:updated");
-      }
-    }
-    options.getBroadcastToMobile?.()?.("schedule:updated", null);
-  };
-
-  const ensureSubscription = () => {
-    const schedulerService = options.getSchedulerService();
-    if (!schedulerService || schedulerService === subscribedScheduler) {
-      return;
-    }
-
-    subscribedScheduler = schedulerService;
-    schedulerService.subscribe(() => {
-      broadcastUpdate();
+  const waitForRunner = (timeoutMs = 10_000) =>
+    waitForConnectedRunner(options.getStellaHostRunner, {
+      timeoutMs,
+      unavailableMessage: "Runtime not available.",
     });
-  };
 
-  ipcMain.handle("schedule:listCronJobs", (event) => {
+  ipcMain.handle("schedule:listCronJobs", async (event) => {
     if (!options.assertPrivilegedSender(event, "schedule:listCronJobs")) {
       throw new Error("Blocked untrusted schedule:listCronJobs request.");
     }
-    ensureSubscription();
-    return getSchedulerService().listCronJobs();
+    return await (await waitForRunner()).listCronJobs();
   });
 
-  ipcMain.handle("schedule:listHeartbeats", (event) => {
+  ipcMain.handle("schedule:listHeartbeats", async (event) => {
     if (!options.assertPrivilegedSender(event, "schedule:listHeartbeats")) {
       throw new Error("Blocked untrusted schedule:listHeartbeats request.");
     }
-    ensureSubscription();
-    return getSchedulerService().listHeartbeats();
+    return await (await waitForRunner()).listHeartbeats();
   });
 
   ipcMain.handle(
     "schedule:listConversationEvents",
-    (event, payload: { conversationId?: string; maxItems?: number }) => {
+    async (event, payload: { conversationId?: string; maxItems?: number }) => {
       if (
         !options.assertPrivilegedSender(
           event,
@@ -84,17 +56,16 @@ export const registerScheduleHandlers = (options: ScheduleHandlersOptions) => {
         return [];
       }
       const maxItems = Number(payload?.maxItems);
-      ensureSubscription();
-      return getSchedulerService().listConversationEvents(
+      return await (await waitForRunner()).listConversationEvents({
         conversationId,
-        Number.isFinite(maxItems) ? maxItems : undefined,
-      );
+        maxItems: Number.isFinite(maxItems) ? maxItems : undefined,
+      });
     },
   );
 
   ipcMain.handle(
     "schedule:getConversationEventCount",
-    (event, payload: { conversationId?: string }) => {
+    async (event, payload: { conversationId?: string }) => {
       if (
         !options.assertPrivilegedSender(
           event,
@@ -112,8 +83,7 @@ export const registerScheduleHandlers = (options: ScheduleHandlersOptions) => {
       if (!conversationId) {
         return 0;
       }
-      ensureSubscription();
-      return getSchedulerService().getConversationEventCount(conversationId);
+      return await (await waitForRunner()).getConversationEventCount({ conversationId });
     },
   );
 };

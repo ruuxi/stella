@@ -10,32 +10,37 @@ export type BootstrapResetFlows = {
   resetLocalMessages: () => Promise<{ ok: true }>;
 };
 
-export const shutdownBootstrapRuntime = (
+export const scheduleBootstrapRuntimeShutdown = (
+  context: BootstrapContext,
+  options: { stopScheduler?: boolean } = {},
+) => {
+  return void shutdownBootstrapRuntime(context, options).catch((error) => {
+    console.error(
+      "Failed to shut down Stella runtime during scheduled shutdown.",
+      error,
+    );
+  });
+};
+
+export const shutdownBootstrapRuntime = async (
   context: BootstrapContext,
   options: { stopScheduler?: boolean } = {},
 ) => {
   const { lifecycle, state } = context;
 
+  state.localChatUpdateUnsubscribe?.();
+  state.localChatUpdateUnsubscribe = null;
+  state.scheduleUpdateUnsubscribe?.();
+  state.scheduleUpdateUnsubscribe = null;
+
   if (state.stellaHostRunner) {
-    state.stellaHostRunner.stop();
+    const runner = state.stellaHostRunner;
     if (lifecycle) {
       lifecycle.setRunner(null);
     } else {
       state.stellaHostRunner = null;
     }
-  }
-  state.socialSessionService?.stop();
-
-  state.chatStore = null;
-  state.runtimeStore = null;
-  state.storeModStore = null;
-  state.socialSessionStore = null;
-  state.storeModService = null;
-  state.desktopDatabase?.close();
-  state.desktopDatabase = null;
-
-  if (options.stopScheduler) {
-    state.schedulerService?.stop();
+    await runner.stop();
   }
 };
 
@@ -50,7 +55,7 @@ export const createBootstrapResetFlows = (
     const hadRunner = Boolean(state.stellaHostRunner);
 
     services.credentialService.cancelAll();
-    shutdownBootstrapRuntime(context, { stopScheduler: true });
+    await shutdownBootstrapRuntime(context, { stopScheduler: true });
 
     services.authService.setHostAuthState(false);
     state.appReady = false;
@@ -94,7 +99,7 @@ export const createBootstrapResetFlows = (
       return { ok: true };
     }
 
-    shutdownBootstrapRuntime(context);
+    await shutdownBootstrapRuntime(context);
     await resetMessageStorage(state.stellaHomePath);
     await options.initializeStellaHostRunner();
 

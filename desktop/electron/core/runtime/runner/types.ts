@@ -26,10 +26,14 @@ import type { RuntimeStore } from "../../../storage/runtime-store.js";
 import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
-  StoreReleaseArtifact,
-  StoreReleaseManifest,
   SelfModHmrState,
 } from "../../../../src/shared/contracts/electron-data.js";
+import type {
+  RuntimeActiveRun,
+  RuntimeAutomationTurnRequest,
+  RuntimeAutomationTurnResult,
+  StorePublishArgs,
+} from "../../../../packages/stella-runtime-protocol/src/index.js";
 
 export type StellaHostRunnerOptions = {
   deviceId: string;
@@ -224,24 +228,8 @@ export type StoreOperations = {
     packageId: string,
     releaseNumber: number,
   ) => Promise<StorePackageReleaseRecord | null>;
-  createFirstStoreRelease: (args: {
-    packageId: string;
-    featureId: string;
-    displayName: string;
-    description: string;
-    releaseNotes?: string;
-    manifest: StoreReleaseManifest;
-    artifact: StoreReleaseArtifact;
-  }) => Promise<StorePackageReleaseRecord>;
-  createStoreReleaseUpdate: (args: {
-    packageId: string;
-    featureId: string;
-    displayName: string;
-    description: string;
-    releaseNotes?: string;
-    manifest: StoreReleaseManifest;
-    artifact: StoreReleaseArtifact;
-  }) => Promise<StorePackageReleaseRecord>;
+  createFirstStoreRelease: (args: StorePublishArgs) => Promise<StorePackageReleaseRecord>;
+  createStoreReleaseUpdate: (args: StorePublishArgs) => Promise<StorePackageReleaseRecord>;
 };
 
 export type RunnerPublicApi = {
@@ -285,15 +273,9 @@ export type RunnerPublicApi = {
     payload: ChatPayload,
     callbacks: AgentCallbacks,
   ) => Promise<{ runId: string }>;
-  runAutomationTurn: (payload: {
-    conversationId: string;
-    userPrompt: string;
-    agentType?: string;
-  }) => Promise<
-    | { status: "ok"; finalText: string }
-    | { status: "busy"; finalText: ""; error: string }
-    | { status: "error"; finalText: ""; error: string }
-  >;
+  runAutomationTurn: (
+    payload: RuntimeAutomationTurnRequest,
+  ) => Promise<RuntimeAutomationTurnResult>;
   runBlockingLocalTask: (
     request: Omit<TaskToolRequest, "storageMode">,
   ) => Promise<
@@ -303,12 +285,11 @@ export type RunnerPublicApi = {
   createBackgroundTask: (
     request: Omit<TaskToolRequest, "storageMode">,
   ) => Promise<{ taskId: string }>;
+  getActiveTaskCount: () => number;
   getLocalTaskSnapshot: (taskId: string) => Promise<TaskToolSnapshot | null>;
   cancelLocalChat: (runId: string) => void;
-  getActiveOrchestratorRun: () => {
-    runId: string;
-    conversationId: string;
-  } | null;
+  getActiveOrchestratorRun: () => RuntimeActiveRun | null;
+  resumeSelfModHmr: (runId: string) => Promise<boolean>;
   recoverCrashedRuns: () => Promise<void>;
   appendThreadMessage: (args: {
     threadKey: string;

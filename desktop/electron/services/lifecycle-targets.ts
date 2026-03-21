@@ -1,10 +1,17 @@
-import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { WindowManager } from "../windows/window-manager.js";
+import type {
+  RuntimeActiveRun,
+  RuntimeAutomationTurnRequest,
+  RuntimeAutomationTurnResult,
+} from "../../packages/stella-runtime-protocol/src/index.js";
 
-export type PiRunnerAuthTarget = Pick<
-  StellaHostRunner,
-  "setAuthToken" | "setConvexUrl"
->;
+type Awaitable<T> = T | Promise<T>;
+
+export type PiRunnerAuthHandle = {
+  setAuthToken: (value: string | null) => void;
+  setConvexUrl: (value: string | null) => void;
+  setConvexSiteUrl: (value: string | null) => void;
+};
 
 export type WindowManagerTarget = {
   getWindowManager: () => WindowManager | null;
@@ -15,9 +22,14 @@ export type StellaHomePathTarget = {
 };
 
 export type StellaHostRunnerTarget = {
-  getRunner: () => StellaHostRunner | null;
+  getRunner: () => {
+    runAutomationTurn: (
+      payload: RuntimeAutomationTurnRequest,
+    ) => Promise<RuntimeAutomationTurnResult>;
+    getActiveOrchestratorRun: () => Awaitable<RuntimeActiveRun | null>;
+  } | null;
 };
 
 export type PiRunnerTarget = {
-  getRunner: () => PiRunnerAuthTarget | null;
+  getRunner: () => PiRunnerAuthHandle | null;
 };

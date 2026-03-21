@@ -1,17 +1,20 @@
-﻿import { render, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { render, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppBootstrap } from "../../../src/systems/boot/AppBootstrap";
 
 const mockSetConversationId = vi.fn();
-vi.mock("../../../src/context/ui-state", () => ({
-  useUiState: () => ({ setConversationId: mockSetConversationId }),
-}));
-
 const mockConfigurePiRuntime = vi.fn();
 const mockGetOrCreateDeviceId = vi.fn();
 const mockGetOrCreateLocalConversationId = vi.fn(() =>
   Promise.resolve("01KHVRH3ZAPQN48JWYNJNYDCVC"),
 );
+const mockMarkPreparing = vi.fn();
+const mockMarkReady = vi.fn();
+const mockMarkFailed = vi.fn();
+
+vi.mock("../../../src/context/ui-state", () => ({
+  useUiState: () => ({ setConversationId: mockSetConversationId }),
+}));
 
 vi.mock("@/platform/electron/device", () => ({
   configurePiRuntime: () => mockConfigurePiRuntime(),
@@ -22,11 +25,26 @@ vi.mock("@/app/chat/services/local-chat-store", () => ({
   getOrCreateLocalConversationId: () => mockGetOrCreateLocalConversationId(),
 }));
 
+vi.mock("@/systems/boot/bootstrap-state", () => ({
+  useBootstrapState: () => ({
+    bootstrapAttempt: 0,
+    runtimeStatus: "preparing",
+    runtimeError: null,
+    markPreparing: mockMarkPreparing,
+    markReady: mockMarkReady,
+    markFailed: mockMarkFailed,
+    retryRuntimeBootstrap: vi.fn(),
+  }),
+}));
+
 describe("AppBootstrap", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfigurePiRuntime.mockResolvedValue(undefined);
     mockGetOrCreateDeviceId.mockResolvedValue("device-id-123");
+    mockGetOrCreateLocalConversationId.mockImplementation(() =>
+      Promise.resolve("01KHVRH3ZAPQN48JWYNJNYDCVC"),
+    );
   });
 
   it("renders nothing (returns null)", () => {
@@ -40,6 +58,8 @@ describe("AppBootstrap", () => {
     await waitFor(() => {
       expect(mockGetOrCreateLocalConversationId).toHaveBeenCalledTimes(1);
       expect(mockSetConversationId).toHaveBeenCalledWith("01KHVRH3ZAPQN48JWYNJNYDCVC");
+      expect(mockMarkPreparing).toHaveBeenCalledTimes(1);
+      expect(mockMarkReady).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -69,6 +89,7 @@ describe("AppBootstrap", () => {
       expect(mockGetOrCreateLocalConversationId).toHaveBeenCalled();
     });
     expect(mockSetConversationId).not.toHaveBeenCalled();
+    expect(mockMarkReady).not.toHaveBeenCalled();
   });
 
   it("still uses the local conversation when runtime setup fails", async () => {
@@ -78,6 +99,7 @@ describe("AppBootstrap", () => {
 
     await waitFor(() => {
       expect(mockSetConversationId).toHaveBeenCalledWith("01KHVRH3ZAPQN48JWYNJNYDCVC");
+      expect(mockMarkFailed).not.toHaveBeenCalled();
     });
   });
 
@@ -88,9 +110,25 @@ describe("AppBootstrap", () => {
 
     await waitFor(() => {
       expect(mockSetConversationId).toHaveBeenCalledWith("01KHVRH3ZAPQN48JWYNJNYDCVC");
+      expect(mockMarkFailed).not.toHaveBeenCalled();
+    });
+  });
+
+  it("retries conversation bootstrap before failing startup", async () => {
+    let callCount = 0;
+    mockGetOrCreateLocalConversationId.mockImplementation(() => {
+      callCount += 1;
+      return callCount === 1
+        ? Promise.reject(new Error("runtime unavailable"))
+        : Promise.resolve("local-conv-456");
+    });
+
+    render(<AppBootstrap />);
+
+    await waitFor(() => {
+      expect(mockGetOrCreateLocalConversationId).toHaveBeenCalledTimes(2);
+      expect(mockSetConversationId).toHaveBeenCalledWith("local-conv-456");
+      expect(mockMarkFailed).not.toHaveBeenCalled();
     });
   });
 });
-
-
-

@@ -1,4 +1,3 @@
-import os from "os";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LocalTaskManagerAgentContext } from "../../../electron/core/runtime/tasks/local-task-manager.js";
 import type { ResolvedLlmRoute } from "../../../electron/core/runtime/model-routing.js";
@@ -91,7 +90,7 @@ const buildOpts = (overrides?: Partial<Parameters<typeof runSubagentTask>[0]>) =
   ...overrides,
 });
 
-const generalAgentHome = os.homedir();
+const generalAgentCwd = "/mock/project/stella/desktop";
 
 describe("runSubagentTask external engine selection", () => {
   beforeEach(() => {
@@ -121,7 +120,7 @@ describe("runSubagentTask external engine selection", () => {
       modelId: "openai/gpt-4.1-mini",
       prompt: "Solve this task",
       systemPrompt: expect.stringContaining("system"),
-      cwd: generalAgentHome,
+      cwd: generalAgentCwd,
     }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_end" }));
@@ -148,7 +147,7 @@ describe("runSubagentTask external engine selection", () => {
     expect(isClaudeCodeModelMock).toHaveBeenCalledWith("claude-code/sonnet");
     expect(runClaudeCodeTurnMock).toHaveBeenCalledTimes(1);
     expect(runClaudeCodeTurnMock).toHaveBeenCalledWith(expect.objectContaining({
-      cwd: generalAgentHome,
+      cwd: generalAgentCwd,
       systemPrompt: expect.stringContaining("system"),
     }));
     expect(store.recordRunEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "run_start" }));
