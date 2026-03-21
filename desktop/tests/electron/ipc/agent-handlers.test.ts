@@ -133,4 +133,35 @@ describe("registerAgentHandlers", () => {
     expect(getAppSessionStartedAt).toBeTypeOf("function");
     await expect(getAppSessionStartedAt?.()).resolves.toBe(1234);
   });
+
+  it("awaits fresh runtime health and active-run reads for resume checks", async () => {
+    const getActiveOrchestratorRun = vi.fn(async () => ({
+      runId: "run-active",
+      conversationId: "conv-1",
+    }));
+
+    registerAgentHandlers({
+      getStellaHostRunner: () => ({
+        agentHealthCheck: vi.fn(async () => ({ ready: true })),
+        handleLocalChat: vi.fn(),
+        cancelLocalChat: vi.fn(),
+        getActiveOrchestratorRun,
+      }) as never,
+      getAppSessionStartedAt: () => 0,
+      isHostAuthAuthenticated: () => true,
+      frontendRoot: "/mock/project/stella/desktop",
+      assertPrivilegedSender: () => true,
+      hmrMorphOrchestrator: null,
+    });
+
+    const healthCheck = ipcHandleHandlers.get("agent:healthCheck");
+    const getActiveRun = ipcHandleHandlers.get("agent:getActiveRun");
+
+    await expect(healthCheck?.()).resolves.toEqual({ ready: true });
+    await expect(getActiveRun?.()).resolves.toEqual({
+      runId: "run-active",
+      conversationId: "conv-1",
+    });
+    expect(getActiveOrchestratorRun).toHaveBeenCalledTimes(1);
+  });
 });

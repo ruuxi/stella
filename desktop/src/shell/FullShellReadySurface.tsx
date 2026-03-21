@@ -44,7 +44,6 @@ export const FullShellReadySurface = ({
   const { state: workspaceState, openPanel, closePanel } = useWorkspace();
   const activePanel = workspaceState.activePanel;
   const [activeDialog, setActiveDialog] = useState<DialogType>(null);
-  const [runtimeReady, setRuntimeReady] = useState(false);
   const [pendingAskStellaRequest, setPendingAskStellaRequest] =
     useState<PendingAskStellaRequest | null>(null);
   const { projects, pickProjectDirectory } = useDevProjects();
@@ -102,7 +101,6 @@ export const FullShellReadySurface = ({
 
   const handleNewAppAskStella = useCallback(() => {
     startTransition(() => {
-      setRuntimeReady(true);
       setPendingAskStellaRequest({
         id: Date.now(),
         text: NEW_APP_ASK_STELLA_PROMPT,
@@ -178,30 +176,26 @@ export const FullShellReadySurface = ({
 
       <div className="content-area">
         {showChatSurface ? (
-          runtimeReady ? (
-            <Suspense
-              fallback={
-                <WorkspaceArea
-                  view="home"
-                  activeDemo={null}
-                  demoClosing={false}
-                />
-              }
-            >
-              <FullShellRuntime
-                activeConversationId={activeConversationId}
-                activeView={state.view}
-                composerEntering={onboardingExiting}
-                conversationId={activeConversationId}
-                isOrbVisible={false}
-                onSignIn={showAuthDialog}
-                pendingAskStellaRequest={pendingAskStellaRequest}
-                onPendingAskStellaHandled={handlePendingAskStellaHandled}
+          <Suspense
+            fallback={
+              <WorkspaceArea
+                view="home"
+                activeDemo={null}
+                demoClosing={false}
               />
-            </Suspense>
-          ) : (
-            <WorkspaceArea view="home" activeDemo={null} demoClosing={false} />
-          )
+            }
+          >
+            <FullShellRuntime
+              activeConversationId={activeConversationId}
+              activeView={state.view}
+              composerEntering={onboardingExiting}
+              conversationId={activeConversationId}
+              isOrbVisible={false}
+              onSignIn={showAuthDialog}
+              pendingAskStellaRequest={pendingAskStellaRequest}
+              onPendingAskStellaHandled={handlePendingAskStellaHandled}
+            />
+          </Suspense>
         ) : (
           <>
             <WorkspaceArea
@@ -210,20 +204,18 @@ export const FullShellReadySurface = ({
               demoClosing={false}
               conversationId={activeConversationId ?? undefined}
             />
-            {runtimeReady ? (
-              <Suspense fallback={null}>
-                <FullShellRuntime
-                  activeConversationId={activeConversationId}
-                  activeView={state.view}
-                  composerEntering={onboardingExiting}
-                  conversationId={activeConversationId}
-                  isOrbVisible={isOrbVisible}
-                  onSignIn={showAuthDialog}
-                  pendingAskStellaRequest={pendingAskStellaRequest}
-                  onPendingAskStellaHandled={handlePendingAskStellaHandled}
-                />
-              </Suspense>
-            ) : null}
+            <Suspense fallback={null}>
+              <FullShellRuntime
+                activeConversationId={activeConversationId}
+                activeView={state.view}
+                composerEntering={onboardingExiting}
+                conversationId={activeConversationId}
+                isOrbVisible={isOrbVisible}
+                onSignIn={showAuthDialog}
+                pendingAskStellaRequest={pendingAskStellaRequest}
+                onPendingAskStellaHandled={handlePendingAskStellaHandled}
+              />
+            </Suspense>
           </>
         )}
       </div>

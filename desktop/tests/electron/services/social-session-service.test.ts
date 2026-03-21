@@ -85,7 +85,7 @@ vi.mock("../../../src/convex/api.js", () => ({
   api: apiTokens,
 }));
 
-import { SocialSessionService } from "../../../electron/services/social-session-service.js";
+import { SocialSessionService } from "../../../packages/stella-runtime-worker/src/social-sessions/service.js";
 
 type SessionRecord = {
   sessionId: string;
@@ -239,6 +239,10 @@ describe("SocialSessionService", () => {
     ]);
     await flushMicrotasks();
 
+    await vi.waitFor(() => {
+      expect(service.getSnapshot().sessionCount).toBe(1);
+    });
+
     const snapshot = service.getSnapshot();
     expect(snapshot.status).toBe("running");
     expect(snapshot.sessionCount).toBe(1);
@@ -263,6 +267,7 @@ describe("SocialSessionService", () => {
     const workspaceRoot = createTempWorkspaceRoot();
     const store = new MemorySocialSessionStore();
     const appendEvent = vi.fn();
+    const onLocalChatUpdated = vi.fn();
     const runAutomationTurn = vi.fn(async () => ({
       status: "ok" as const,
       finalText: "All set",
@@ -280,6 +285,7 @@ describe("SocialSessionService", () => {
           appendEvent,
         }) as never,
       getStore: () => store as never,
+      onLocalChatUpdated,
     });
 
     convexState.queryMock.mockImplementation(async (query: unknown) => {
@@ -358,9 +364,115 @@ describe("SocialSessionService", () => {
       }),
     );
     expect(appendEvent).toHaveBeenCalledTimes(2);
+    expect(onLocalChatUpdated).toHaveBeenCalledTimes(1);
     expect(store.getSession("session-1")?.lastObservedTurnOrdinal).toBe(4);
     expect(service.getSnapshot().processingTurnId).toBeUndefined();
 
     service.stop();
   });
+
+  it.each([
+    {
+      status: "busy" as const,
+      response: { status: "busy" as const, finalText: "", error: "runner busy" },
+      expectedMutation: "releaseTurn",
+    },
+    {
+      status: "error" as const,
+      response: { status: "error" as const, finalText: "", error: "runner failed" },
+      expectedMutation: "failTurn",
+    },
+  ])(
+    "broadcasts local chat updates when a claimed host turn returns $status",
+    async ({ response, expectedMutation }) => {
+      const workspaceRoot = createTempWorkspaceRoot();
+      const store = new MemorySocialSessionStore();
+      const appendEvent = vi.fn();
+      const onLocalChatUpdated = vi.fn();
+      const runAutomationTurn = vi.fn(async () => response);
+      const service = new SocialSessionService({
+        getWorkspaceRoot: () => workspaceRoot,
+        getDeviceId: () => "device-1",
+        getRunner: () =>
+          ({
+            getActiveOrchestratorRun: () => null,
+            runAutomationTurn,
+          }) as never,
+        getChatStore: () =>
+          ({
+            appendEvent,
+          }) as never,
+        getStore: () => store as never,
+        onLocalChatUpdated,
+      });
+
+      convexState.queryMock.mockImplementation(async (query: unknown) => {
+        if (query === apiTokens.social.sessions.listPendingTurnsForHostDevice) {
+          return [
+            {
+              session: {
+                _id: "session-1",
+                conversationId: "conversation-1",
+              },
+              turn: {
+                _id: "turn-1",
+                ordinal: 4,
+                prompt: "Add a helper",
+                requestId: "request-1",
+                agentType: "general",
+              },
+            },
+          ];
+        }
+        if (query === apiTokens.social.sessions.listFileOpsSince) {
+          return [];
+        }
+        return [];
+      });
+      convexState.mutationMock.mockImplementation(async (mutation: unknown) => {
+        if (mutation === apiTokens.social.sessions.claimTurn) {
+          return { claimed: true };
+        }
+        return {};
+      });
+
+      service.setConvexUrl("https://demo.convex.cloud");
+      service.setAuthToken("token-1");
+      service.start();
+
+      convexState.subscription?.onUpdate([
+        {
+          session: {
+            _id: "session-1",
+            hostOwnerId: "owner-1",
+            hostDeviceId: "device-1",
+            workspaceFolderName: "Host Session",
+            conversationId: "conversation-1",
+            status: "active",
+          },
+          membership: {
+            ownerId: "owner-1",
+          },
+        },
+      ]);
+      await flushMicrotasks();
+
+      await (service as any).runTick();
+
+      expect(runAutomationTurn).toHaveBeenCalledTimes(1);
+      expect(appendEvent).toHaveBeenCalledTimes(1);
+      expect(onLocalChatUpdated).toHaveBeenCalledTimes(1);
+      expect(convexState.mutationMock).toHaveBeenCalledWith(
+        apiTokens.social.sessions[expectedMutation],
+        expect.objectContaining({
+          sessionId: "session-1",
+          turnId: "turn-1",
+          deviceId: "device-1",
+        }),
+      );
+      expect(store.getSession("session-1")?.lastObservedTurnOrdinal ?? 0).toBe(0);
+
+      service.stop();
+    },
+  );
 });

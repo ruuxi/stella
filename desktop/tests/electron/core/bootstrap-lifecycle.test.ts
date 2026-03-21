@@ -6,7 +6,7 @@ const appQuitMock = vi.fn();
 const unregisterAllMock = vi.fn();
 const cleanupSelectedTextProcessMock = vi.fn();
 const initializeBootstrapApplicationMock = vi.fn(async () => {});
-const shutdownBootstrapRuntimeMock = vi.fn();
+const scheduleBootstrapRuntimeShutdownMock = vi.fn();
 
 vi.mock("electron", () => ({
   app: {
@@ -30,7 +30,7 @@ vi.mock("../../../electron/bootstrap/runtime.js", () => ({
 }));
 
 vi.mock("../../../electron/bootstrap/resets.js", () => ({
-  shutdownBootstrapRuntime: shutdownBootstrapRuntimeMock,
+  scheduleBootstrapRuntimeShutdown: scheduleBootstrapRuntimeShutdownMock,
 }));
 
 const { initializeBootstrapSingleInstance, registerBootstrapLifecycle } =
@@ -52,7 +52,7 @@ describe("bootstrap lifecycle", () => {
     unregisterAllMock.mockClear();
     cleanupSelectedTextProcessMock.mockClear();
     initializeBootstrapApplicationMock.mockClear();
-    shutdownBootstrapRuntimeMock.mockClear();
+    scheduleBootstrapRuntimeShutdownMock.mockClear();
   });
 
   afterEach(() => {
@@ -94,7 +94,6 @@ describe("bootstrap lifecycle", () => {
     const stopAuthRefreshLoop = vi.fn();
     const radialStop = vi.fn();
     const killAllShells = vi.fn();
-    const schedulerStop = vi.fn();
     const wakeWordDispose = vi.fn();
     const overlayDestroy = vi.fn();
     const onActivate = vi.fn();
@@ -115,9 +114,6 @@ describe("bootstrap lifecycle", () => {
         isQuitting: false,
         overlayController: {
           destroy: overlayDestroy,
-        },
-        schedulerService: {
-          stop: schedulerStop,
         },
         stellaHostRunner: {
           killAllShells,
@@ -152,7 +148,6 @@ describe("bootstrap lifecycle", () => {
     expect(stopAuthRefreshLoop).toHaveBeenCalledTimes(1);
     expect(stopAll).toHaveBeenCalledTimes(1);
     expect(killAllShells).toHaveBeenCalledTimes(1);
-    expect(schedulerStop).toHaveBeenCalledTimes(1);
     expect(wakeWordDispose).toHaveBeenCalledTimes(1);
     expect(context.state.wakeWordController).toBeNull();
     expect(cleanupSelectedTextProcessMock).toHaveBeenCalledTimes(1);
@@ -161,7 +156,7 @@ describe("bootstrap lifecycle", () => {
     appHandlers.get("will-quit")?.();
     expect(unregisterAllMock).toHaveBeenCalledTimes(1);
     expect(radialStop).toHaveBeenCalledTimes(1);
-    expect(shutdownBootstrapRuntimeMock).toHaveBeenCalledWith(context, {
+    expect(scheduleBootstrapRuntimeShutdownMock).toHaveBeenCalledWith(context, {
       stopScheduler: true,
     });
 

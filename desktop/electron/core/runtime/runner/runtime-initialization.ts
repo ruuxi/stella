@@ -52,13 +52,19 @@ export const createRuntimeInitialization = (
             };
             registerModel(providerDef.name, model);
           }
-          console.log(
-            `[stella:extensions] Registered provider "${providerDef.name}" with ${providerDef.models.length} model(s)`,
+          logger.info(
+            `extensions.provider.registered.${providerDef.name}`,
+            {
+              modelCount: providerDef.models.length,
+            },
           );
         }
-        console.log(
-          `[stella:extensions] Ready: ${extensions.tools.length} tools, ${extensions.hooks.length} hooks, ${extensions.providers.length} providers, ${extensions.prompts.length} prompts`,
-        );
+        logger.info("extensions.ready", {
+          tools: extensions.tools.length,
+          hooks: extensions.hooks.length,
+          providers: extensions.providers.length,
+          prompts: extensions.prompts.length,
+        });
       })
       .catch((error) => {
         console.error(

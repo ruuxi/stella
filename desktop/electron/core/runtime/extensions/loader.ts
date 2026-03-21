@@ -14,7 +14,7 @@ import type {
 } from "./types.js";
 import { extractFrontmatter } from "../frontmatter.js";
 
-const log = (...args: unknown[]) => console.log("[stella:extensions]", ...args);
+const log = (...args: unknown[]) => console.error("[stella:extensions]", ...args);
 const logError = (...args: unknown[]) => console.error("[stella:extensions]", ...args);
 
 /**

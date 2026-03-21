@@ -10,18 +10,10 @@ import { MiniBridgeService } from "../services/mini-bridge-service.js";
 import { RadialGestureService } from "../services/radial-gesture-service.js";
 import { SecurityPolicyService } from "../services/security-policy-service.js";
 import { DevProjectService } from "../services/dev-project-service.js";
-import { LocalSchedulerService } from "../services/local-scheduler-service.js";
 import { UiStateService } from "../services/ui-state-service.js";
-import { SocialSessionService } from "../services/social-session-service.js";
-import { ChatStore } from "../storage/chat-store.js";
-import { RuntimeStore } from "../storage/runtime-store.js";
-import { StoreModStore } from "../storage/store-mod-store.js";
-import { SocialSessionStore } from "../storage/social-session-store.js";
-import type { SqliteDatabase } from "../storage/shared.js";
 import type { WakeWordController } from "../wake-word/initialize.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
-import { StoreModService } from "../self-mod/store-mod-service.js";
 import type { MobileBridgeService } from "../services/mobile-bridge/service.js";
 import type { DevToolServer } from "../devtool/dev-server.js";
 import { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
@@ -42,22 +34,16 @@ export type BootstrapConfig = {
 export type BootstrapState = {
   appReady: boolean;
   appSessionStartedAt: number;
-  chatStore: ChatStore | null;
   deferredStartupSequence: Promise<void> | null;
-  desktopDatabase: SqliteDatabase | null;
   deviceId: string | null;
   hmrMorphOrchestrator: ReturnType<typeof createHmrMorphOrchestrator> | null;
   isQuitting: boolean;
+  localChatUpdateUnsubscribe: (() => void) | null;
   overlayController: OverlayWindowController | null;
-  runtimeStore: RuntimeStore | null;
-  schedulerService: LocalSchedulerService | null;
-  socialSessionStore: SocialSessionStore | null;
-  socialSessionService: SocialSessionService | null;
+  scheduleUpdateUnsubscribe: (() => void) | null;
   stellaHomePath: string | null;
   stellaWorkspacePath: string | null;
   stellaHostRunner: StellaHostRunner | null;
-  storeModService: StoreModService | null;
-  storeModStore: StoreModStore | null;
   wakeWordController: WakeWordController | null;
   mobileBridgeService: MobileBridgeService | null;
   devToolServer: DevToolServer | null;
@@ -73,7 +59,6 @@ export type BootstrapServices = {
   miniBridgeService: MiniBridgeService;
   radialGestureService: RadialGestureService;
   securityPolicyService: SecurityPolicyService;
-  socialSessionService: SocialSessionService;
   uiStateService: UiStateService;
 };
 
@@ -127,6 +112,13 @@ export const broadcastLocalChatUpdated = (context: BootstrapContext) => {
   getMobileBroadcast(context)?.("localChat:updated", null);
 };
 
+export const broadcastScheduleUpdated = (context: BootstrapContext) => {
+  forEachWindow(context, (window) => {
+    window.webContents.send("schedule:updated");
+  });
+  getMobileBroadcast(context)?.("schedule:updated", null);
+};
+
 export const broadcastWakeWordState = (context: BootstrapContext) => {
   const enabled = context.state.wakeWordController?.getEnabled() ?? false;
 
@@ -173,22 +165,16 @@ export const createBootstrapContext = (
   const state: BootstrapState = {
     appReady: false,
     appSessionStartedAt: Date.now(),
-    chatStore: null,
     deferredStartupSequence: null,
-    desktopDatabase: null,
     deviceId: null,
     hmrMorphOrchestrator: null,
     isQuitting: false,
+    localChatUpdateUnsubscribe: null,
     overlayController: null,
-    runtimeStore: null,
-    schedulerService: null,
-    socialSessionStore: null,
-    socialSessionService: null,
+    scheduleUpdateUnsubscribe: null,
     stellaHomePath: null,
     stellaWorkspacePath: null,
     stellaHostRunner: null,
-    storeModService: null,
-    storeModStore: null,
     wakeWordController: null,
     mobileBridgeService: null,
     devToolServer: null,
@@ -206,13 +192,6 @@ export const createBootstrapContext = (
     externalLinkService.trustDevServerBaseUrl(getDevServerUrl());
   }
   const miniBridgeService = new MiniBridgeService();
-  const socialSessionService = new SocialSessionService({
-    getWorkspaceRoot: () => state.stellaWorkspacePath,
-    getDeviceId: () => state.deviceId,
-    getRunner: () => state.stellaHostRunner,
-    getChatStore: () => state.chatStore,
-    getStore: () => state.socialSessionStore,
-  });
 
   const securityPolicyService = new SecurityPolicyService({
     windowManagerTarget: lifecycle,
@@ -318,10 +297,8 @@ export const createBootstrapContext = (
     miniBridgeService,
     radialGestureService,
     securityPolicyService,
-    socialSessionService,
     uiStateService,
   };
-  state.socialSessionService = socialSessionService;
 
   devProjectService.subscribe(() => {
     broadcastDevProjectsChanged(context);

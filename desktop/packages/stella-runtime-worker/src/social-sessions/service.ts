@@ -1,10 +1,18 @@
 import path from "path";
 import { promises as fs } from "fs";
 import { ConvexClient } from "convex/browser";
-import { api } from "../../src/convex/api.js";
-import type { ChatStore } from "../storage/chat-store.js";
-import { SocialSessionStore, type SocialSessionRole, type SocialSessionSyncRecord } from "../storage/social-session-store.js";
-import type { StellaHostRunner } from "../stella-host-runner.js";
+import { api } from "../../../../src/convex/api.js";
+import type {
+  RuntimeActiveRun,
+  RuntimeAutomationTurnRequest,
+  RuntimeAutomationTurnResult,
+  SocialSessionServiceSnapshot,
+  SocialSessionRuntimeRecord,
+} from "../../../stella-runtime-protocol/src/index.js";
+import type {
+  SocialSessionRole,
+  SocialSessionSyncRecord,
+} from "./store.js";
 import {
   applySessionFileOp,
   ensurePathWithinRoot,
@@ -12,8 +20,9 @@ import {
   normalizeSessionRelativePath,
   resolveSessionLocalFolder,
   scanSessionWorkspace,
-} from "./social-session-fs.js";
-import type { SocialSessionServiceSnapshot, SocialSessionRuntimeRecord } from "../../src/shared/contracts/electron-data.js";
+} from "./fs.js";
+
+type Awaitable<T> = T | Promise<T>;
 
 type RemoteSessionSummary = {
   room: {
@@ -62,12 +71,71 @@ type SessionRuntime = SocialSessionSyncRecord & {
   isActiveHost: boolean;
 };
 
+export type SocialSessionRunner = {
+  runAutomationTurn: (
+    payload: RuntimeAutomationTurnRequest,
+  ) => Promise<RuntimeAutomationTurnResult>;
+  getActiveOrchestratorRun: () => Awaitable<RuntimeActiveRun | null>;
+};
+
+export type SocialSessionChatEventsApi = {
+  appendEvent: (args: {
+    conversationId: string;
+    eventId?: string;
+    type: string;
+    payload?: unknown;
+    timestamp?: number;
+    deviceId?: string;
+    requestId?: string;
+    targetDeviceId?: string;
+    channelEnvelope?: unknown;
+  }) => unknown;
+};
+
+export type SocialSessionSyncStoreApi = {
+  getSession: (sessionId: string) => SocialSessionSyncRecord | null;
+  upsertSession: (
+    record: Omit<SocialSessionSyncRecord, "updatedAt"> & { updatedAt?: number },
+  ) => SocialSessionSyncRecord;
+  patchSession: (
+    sessionId: string,
+    patch: Partial<
+      Pick<
+        SocialSessionSyncRecord,
+        | "localFolderPath"
+        | "localFolderName"
+        | "role"
+        | "lastAppliedFileOpOrdinal"
+        | "lastObservedTurnOrdinal"
+      >
+    >,
+  ) => SocialSessionSyncRecord | null;
+  listFiles: (sessionId: string) => Array<{
+    sessionId: string;
+    relativePath: string;
+    contentHash: string;
+    sizeBytes: number;
+    mtimeMs: number;
+    updatedAt: number;
+  }>;
+  upsertFile: (record: {
+    sessionId: string;
+    relativePath: string;
+    contentHash: string;
+    sizeBytes: number;
+    mtimeMs: number;
+    updatedAt?: number;
+  }) => unknown;
+  removeFile: (sessionId: string, relativePath: string) => void;
+};
+
 type SocialSessionServiceDeps = {
   getWorkspaceRoot: () => string | null;
   getDeviceId: () => string | null;
-  getRunner: () => StellaHostRunner | null;
-  getChatStore: () => ChatStore | null;
-  getStore: () => SocialSessionStore | null;
+  getRunner: () => SocialSessionRunner | null;
+  getChatStore: () => SocialSessionChatEventsApi | null;
+  getStore: () => SocialSessionSyncStoreApi | null;
+  onLocalChatUpdated?: () => void;
 };
 
 const TICK_INTERVAL_MS = 2_500;
@@ -92,6 +160,7 @@ export class SocialSessionService {
   private tickRunning = false;
   private activeSessions = new Map<string, SessionRuntime>();
   private processingTurnId: string | null = null;
+  private reconcileSessionsPromise: Promise<void> | null = null;
   private lastError: string | null = null;
   private lastSyncAt: number | null = null;
 
@@ -162,11 +231,7 @@ export class SocialSessionService {
     const clientReady = Boolean(this.client && this.clientUrl);
     return {
       enabled: this.started,
-      status: !this.started
-        ? "stopped"
-        : clientReady
-          ? "running"
-          : "connecting",
+      status: !this.started ? "stopped" : clientReady ? "running" : "connecting",
       deviceId: this.deps.getDeviceId() ?? undefined,
       sessionCount: this.activeSessions.size,
       sessions: this.rebuildSessionSnapshot(),
@@ -204,6 +269,7 @@ export class SocialSessionService {
     this.clearTickTimer();
     this.sessionsUnsubscribe?.();
     this.sessionsUnsubscribe = null;
+    this.reconcileSessionsPromise = null;
     this.activeSessions.clear();
     this.processingTurnId = null;
     this.disposeClient();
@@ -228,16 +294,27 @@ export class SocialSessionService {
       this.activeSessions.clear();
       return;
     }
-    this.sessionsUnsubscribe = client.onUpdate(
-      (api as any).social.sessions.listSessions,
-      {},
-      (payload: unknown) => {
-        void this.reconcileRemoteSessions(payload as RemoteSessionSummary[]);
-      },
-      (error) => {
-        this.lastError = error.message;
-      },
-    ).unsubscribe;
+    this.sessionsUnsubscribe = client
+      .onUpdate(
+        (api as any).social.sessions.listSessions,
+        {},
+        (payload: unknown) => {
+          const reconcilePromise = this.reconcileRemoteSessions(
+            payload as RemoteSessionSummary[],
+          ).catch((error) => {
+            this.lastError = (error as Error).message;
+          });
+          this.reconcileSessionsPromise = reconcilePromise.finally(() => {
+            if (this.reconcileSessionsPromise === reconcilePromise) {
+              this.reconcileSessionsPromise = null;
+            }
+          });
+        },
+        (error) => {
+          this.lastError = error.message;
+        },
+      )
+      .unsubscribe;
   }
 
   private async reconcileRemoteSessions(summaries: RemoteSessionSummary[]) {
@@ -255,8 +332,8 @@ export class SocialSessionService {
       }
       const existing = store.getSession(summary.session._id);
       const localFolderPath =
-        existing?.localFolderPath
-        || resolveSessionLocalFolder(
+        existing?.localFolderPath ||
+        resolveSessionLocalFolder(
           this.getWorkspaceRoot(),
           summary.session._id,
           summary.session.workspaceFolderName,
@@ -276,7 +353,10 @@ export class SocialSessionService {
         sessionConversationId: summary.session.conversationId,
         hostOwnerId: summary.session.hostOwnerId,
         hostDeviceId: summary.session.hostDeviceId,
-        isActiveHost: role === "host" && Boolean(deviceId) && summary.session.hostDeviceId === deviceId,
+        isActiveHost:
+          role === "host" &&
+          Boolean(deviceId) &&
+          summary.session.hostDeviceId === deviceId,
       });
     }
 
@@ -293,10 +373,11 @@ export class SocialSessionService {
     }
     this.tickRunning = true;
     try {
-    const client = this.ensureClient();
+      const client = this.ensureClient();
       if (!client) {
         return;
       }
+      await this.reconcileSessionsPromise;
       await this.processPendingHostTurns(client);
       for (const session of this.activeSessions.values()) {
         await this.applyRemoteFileOps(client, session);
@@ -321,14 +402,14 @@ export class SocialSessionService {
     if (!deviceId || !runner || this.processingTurnId) {
       return;
     }
-    if (runner.getActiveOrchestratorRun()) {
+    if (await runner.getActiveOrchestratorRun()) {
       return;
     }
 
-    const pendingTurns = await (client as any).query(
+    const pendingTurns = (await (client as any).query(
       (api as any).social.sessions.listPendingTurnsForHostDevice,
       { deviceId },
-    ) as PendingTurnEnvelope[];
+    )) as PendingTurnEnvelope[];
     const nextTurn = pendingTurns[0];
     if (!nextTurn) {
       return;
@@ -336,14 +417,22 @@ export class SocialSessionService {
 
     this.processingTurnId = nextTurn.turn._id;
     try {
-      const claimResult = await (client as any).mutation(
+      let localChatUpdated = false;
+      const flushLocalChatUpdated = () => {
+        if (!localChatUpdated) {
+          return;
+        }
+        this.deps.onLocalChatUpdated?.();
+        localChatUpdated = false;
+      };
+      const claimResult = (await (client as any).mutation(
         (api as any).social.sessions.claimTurn,
         {
           sessionId: nextTurn.session._id,
           turnId: nextTurn.turn._id,
           deviceId,
         },
-      ) as { claimed: boolean };
+      )) as { claimed: boolean };
       if (!claimResult.claimed) {
         return;
       }
@@ -362,6 +451,7 @@ export class SocialSessionService {
           timestamp: Date.now(),
           deviceId,
         });
+        localChatUpdated = true;
       }
 
       const result = await runner.runAutomationTurn({
@@ -371,6 +461,7 @@ export class SocialSessionService {
       });
 
       if (result.status === "busy") {
+        flushLocalChatUpdated();
         await (client as any).mutation((api as any).social.sessions.releaseTurn, {
           sessionId: nextTurn.session._id,
           turnId: nextTurn.turn._id,
@@ -380,6 +471,7 @@ export class SocialSessionService {
       }
 
       if (result.status === "error") {
+        flushLocalChatUpdated();
         await (client as any).mutation((api as any).social.sessions.failTurn, {
           sessionId: nextTurn.session._id,
           turnId: nextTurn.turn._id,
@@ -398,6 +490,7 @@ export class SocialSessionService {
           payload: { text: result.finalText },
           timestamp: Date.now(),
         });
+        localChatUpdated = true;
       }
 
       await (client as any).mutation((api as any).social.sessions.completeTurn, {
@@ -413,6 +506,7 @@ export class SocialSessionService {
       if (session) {
         session.lastObservedTurnOrdinal = nextTurn.turn.ordinal;
       }
+      flushLocalChatUpdated();
     } finally {
       this.processingTurnId = null;
     }
@@ -423,14 +517,11 @@ export class SocialSessionService {
     if (!store) {
       return;
     }
-    const ops = await (client as any).query(
-      (api as any).social.sessions.listFileOps,
-      {
-        sessionId: session.sessionId,
-        afterOrdinal: session.lastAppliedFileOpOrdinal,
-        limit: MAX_FILE_SYNC_OPS_PER_TICK,
-      },
-    ) as FileOpEnvelope[];
+    const ops = (await (client as any).query((api as any).social.sessions.listFileOps, {
+      sessionId: session.sessionId,
+      afterOrdinal: session.lastAppliedFileOpOrdinal,
+      limit: MAX_FILE_SYNC_OPS_PER_TICK,
+    })) as FileOpEnvelope[];
     if (ops.length === 0) {
       return;
     }
@@ -440,7 +531,9 @@ export class SocialSessionService {
       if (!(session.isActiveHost && op.actorOwnerId === session.hostOwnerId)) {
         if (op.type === "upsert") {
           if (!entry.downloadUrl) {
-            throw new Error(`Missing download URL for file op ${session.sessionId}:${op.ordinal}`);
+            throw new Error(
+              `Missing download URL for file op ${session.sessionId}:${op.ordinal}`,
+            );
           }
           const response = await fetch(entry.downloadUrl);
           if (!response.ok) {
@@ -453,7 +546,10 @@ export class SocialSessionService {
             relativePath: op.relativePath,
             bytes: buffer,
           });
-          const absolutePath = ensurePathWithinRoot(session.localFolderPath, op.relativePath);
+          const absolutePath = ensurePathWithinRoot(
+            session.localFolderPath,
+            op.relativePath,
+          );
           const stat = await fs.stat(absolutePath);
           store.upsertFile({
             sessionId: session.sessionId,
@@ -469,7 +565,10 @@ export class SocialSessionService {
             relativePath: op.relativePath,
           });
           if (op.type === "delete") {
-            store.removeFile(session.sessionId, normalizeSessionRelativePath(op.relativePath));
+            store.removeFile(
+              session.sessionId,
+              normalizeSessionRelativePath(op.relativePath),
+            );
           }
         }
       }
@@ -498,9 +597,9 @@ export class SocialSessionService {
     for (const file of currentFiles) {
       const previous = previousFiles.get(file.relativePath);
       if (
-        previous
-        && previous.contentHash === file.contentHash
-        && previous.sizeBytes === file.sizeBytes
+        previous &&
+        previous.contentHash === file.contentHash &&
+        previous.sizeBytes === file.sizeBytes
       ) {
         previousFiles.delete(file.relativePath);
         continue;

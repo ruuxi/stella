@@ -4,16 +4,19 @@ import { ThemeProvider } from './theme-context'
 import { UiStateProvider } from './ui-state'
 import { WorkspaceProvider } from './workspace-state'
 import { ToastProvider } from '@/ui/toast'
+import { BootstrapStateProvider } from '@/systems/boot/bootstrap-state'
 
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider>
       <ToastProvider>
-        <UiStateProvider>
-          <DevProjectsProvider>
-            <WorkspaceProvider>{children}</WorkspaceProvider>
-          </DevProjectsProvider>
-        </UiStateProvider>
+        <BootstrapStateProvider>
+          <UiStateProvider>
+            <DevProjectsProvider>
+              <WorkspaceProvider>{children}</WorkspaceProvider>
+            </DevProjectsProvider>
+          </UiStateProvider>
+        </BootstrapStateProvider>
       </ToastProvider>
     </ThemeProvider>
   )

@@ -325,7 +325,7 @@ describe("runner general task bridge", () => {
           cwd?: string;
         };
         expect(claudeRequest.prompt).toBe(`${taskDescription}\n\n${taskPrompt}`);
-        expect(claudeRequest.cwd).toBe(os.homedir());
+        expect(claudeRequest.cwd).toBe("/mock/project/stella/desktop");
 
         const taskOutputResult = await runner.executeTool(
           "TaskOutput",

@@ -71,14 +71,20 @@ function makeProps(
     onboardingDone: false,
     onboardingExiting: false,
     isAuthenticated: false,
+    isAuthLoading: false,
+    isPreparingRuntime: false,
+    runtimeError: null,
     splitMode: false,
     hasDiscoverySelections: false,
+    hasStarted: true,
     stellaAnimationRef: React.createRef<any>(),
     onboardingKey: 0,
     triggerFlash: vi.fn(),
+    startOnboarding: vi.fn(),
     startBirthAnimation: vi.fn(),
     completeOnboarding: vi.fn(),
     handleEnterSplit: vi.fn(),
+    onRetryRuntime: vi.fn(),
     onDiscoveryConfirm: vi.fn(),
     ...overrides,
   };
@@ -223,6 +229,19 @@ describe("OnboardingView", () => {
   it("renders StellaAnimation with initialBirthProgress=CREATURE_INITIAL_SIZE when not done", () => {
     render(<OnboardingView {...makeProps({ onboardingDone: false })} />);
     expect(screen.getByTestId("stella-animation")).toBeInTheDocument();
+  });
+
+  it("shows Preparing Stella for returning users while runtime is still booting", () => {
+    render(
+      <OnboardingView
+        {...makeProps({
+          onboardingDone: true,
+          isPreparingRuntime: true,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Preparing Stella...")).toBeInTheDocument();
   });
 
 });
@@ -463,7 +482,6 @@ describe("useOnboardingOverlay", () => {
     expect(result.current.hasDiscoverySelections).toBe(true);
   });
 });
-
 
 
 

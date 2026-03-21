@@ -296,10 +296,10 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
               if (ev.chunk) fullText += ev.chunk;
             },
             onToolStart: (ev) => {
-              emitToFrontend({ type: "tool-start", ...ev });
+              emitToFrontend({ ...ev, type: "tool-start" });
             },
             onToolEnd: (ev) => {
-              emitToFrontend({ type: "tool-end", ...ev });
+              emitToFrontend({ ...ev, type: "tool-end" });
             },
             onTaskEvent: (ev) => {
               emitToFrontend({
@@ -332,7 +332,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
                 `[${ts()}] [Voice] orchestratorChat result:`,
                 result.slice(0, 300),
               );
-              emitToFrontend({ type: "end", ...ev });
+              emitToFrontend({ ...ev, type: "end" });
               resolve(result);
             },
             onError: (ev) => {
@@ -340,7 +340,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
                 `[${ts()}] [Voice] orchestratorChat error:`,
                 ev.error,
               );
-              emitToFrontend({ type: "error", ...ev });
+              emitToFrontend({ ...ev, type: "error" });
               reject(new Error(ev.error ?? "Unknown error"));
             },
           },
