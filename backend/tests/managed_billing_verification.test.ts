@@ -152,12 +152,12 @@ describe("managed billing verification", () => {
   const originalServiceCatalog = process.env.STELLA_SERVICE_PRICE_CATALOG_JSON;
   const originalMediaPublicTestMode = process.env.MEDIA_PUBLIC_TEST_MODE;
   const originalFalKey = process.env.FAL_KEY;
-  const originalGatewayKey = process.env.AI_GATEWAY_API_KEY;
+  const originalGatewayKey = process.env.OPENROUTER_API_KEY;
 
   beforeEach(() => {
     process.env.MEDIA_PUBLIC_TEST_MODE = "1";
     process.env.FAL_KEY = "test-fal-key";
-    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
+    process.env.OPENROUTER_API_KEY = "test-gateway-key";
   });
 
   afterEach(() => {
@@ -165,7 +165,7 @@ describe("managed billing verification", () => {
     process.env.STELLA_SERVICE_PRICE_CATALOG_JSON = originalServiceCatalog;
     process.env.MEDIA_PUBLIC_TEST_MODE = originalMediaPublicTestMode;
     process.env.FAL_KEY = originalFalKey;
-    process.env.AI_GATEWAY_API_KEY = originalGatewayKey;
+    process.env.OPENROUTER_API_KEY = originalGatewayKey;
   });
 
   test("persistManagedUsage computes LLM cost from stored managed model prices", async () => {

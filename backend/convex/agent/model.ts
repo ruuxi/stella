@@ -13,8 +13,8 @@ import { AGENT_IDS } from "../lib/agent_constants";
  * Change `baseURL` and `apiKeyEnvVar` to point to any OpenAI-compatible gateway.
  */
 export const MANAGED_GATEWAY = {
-  baseURL: "https://ai-gateway.vercel.sh/v1",
-  apiKeyEnvVar: "AI_GATEWAY_API_KEY",
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKeyEnvVar: "OPENROUTER_API_KEY",
 } as const;
 
 type JSONValue =
@@ -51,8 +51,8 @@ export const MANAGED_MODEL_AUDIENCES = [
 export type ManagedModelAudience = (typeof MANAGED_MODEL_AUDIENCES)[number];
 
 const DEFAULT_MODEL: ModelConfig = {
-  model: "anthropic/claude-opus-4.6",
-  fallback: "anthropic/claude-opus-4.6",
+  model: "openai/gpt-4.1",
+  fallback: "openai/gpt-4.1",
   temperature: 1.0,
   maxOutputTokens: 16192,
   providerOptions: {
@@ -60,14 +60,14 @@ const DEFAULT_MODEL: ModelConfig = {
       reasoningEffort: "low",
     },
     gateway: {
-      order: ["baseten", "fireworks", "amazon-bedrock"],
+      order: ["baseten", "fireworks", "cerebras"],
     },
   },
 };
 
 const COMPACTION_MODEL: ModelConfig = {
   model: "zai/glm-4.7",
-  fallback: "anthropic/claude-opus-4.6",
+  fallback: "openai/gpt-4.1",
   temperature: 1.0,
   maxOutputTokens: 12096,
   providerOptions: {
@@ -78,7 +78,7 @@ const COMPACTION_MODEL: ModelConfig = {
 };
 
 const DASHBOARD_GENERATION_MODEL: ModelConfig = {
-  model: "anthropic/claude-opus-4.6",
+  model: "openai/gpt-4.1",
   fallback: "openai/gpt-5.4",
   temperature: 1.0,
   maxOutputTokens: 16192,
@@ -87,7 +87,7 @@ const DASHBOARD_GENERATION_MODEL: ModelConfig = {
       reasoningEffort: "low",
     },
     gateway: {
-      order: ["fireworks", "baseten", "amazon-bedrock"],
+      order: ["baseten", "fireworks", "cerebras"],
     },
   },
 };
@@ -96,7 +96,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -105,13 +105,13 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -120,13 +120,13 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -135,7 +135,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
@@ -144,7 +144,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -186,7 +186,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -195,14 +195,14 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -238,7 +238,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -250,24 +250,24 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
   },
 
   suggestions: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
     providerOptions: {
       gateway: {
-        order: ["cerebras"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
 
   llm_best: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -276,14 +276,14 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -392,7 +392,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -401,13 +401,13 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -416,13 +416,13 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -431,7 +431,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
@@ -440,7 +440,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -482,7 +482,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -491,14 +491,14 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -534,7 +534,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -546,24 +546,24 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
   },
 
   suggestions: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
     providerOptions: {
       gateway: {
-        order: ["cerebras"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
 
   llm_best: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -572,14 +572,14 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -688,7 +688,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -697,13 +697,13 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -712,13 +712,13 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -727,7 +727,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
@@ -736,7 +736,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -778,7 +778,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -787,14 +787,14 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -830,7 +830,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -842,24 +842,24 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
   },
 
   suggestions: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
     providerOptions: {
       gateway: {
-        order: ["cerebras"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
 
   llm_best: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -868,14 +868,14 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -984,7 +984,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -993,13 +993,13 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1008,13 +1008,13 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1023,7 +1023,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
@@ -1032,7 +1032,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -1074,7 +1074,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1083,14 +1083,14 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -1126,7 +1126,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -1138,24 +1138,24 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
   },
 
   suggestions: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
     providerOptions: {
       gateway: {
-        order: ["cerebras"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
 
   llm_best: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1164,14 +1164,14 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -1280,7 +1280,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1289,13 +1289,13 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1304,13 +1304,13 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1319,7 +1319,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
@@ -1328,7 +1328,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -1370,7 +1370,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1379,14 +1379,14 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -1422,7 +1422,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -1434,24 +1434,24 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
   },
 
   suggestions: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
     providerOptions: {
       gateway: {
-        order: ["cerebras"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
 
   llm_best: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1460,14 +1460,14 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -1576,7 +1576,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1585,13 +1585,13 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1600,13 +1600,13 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1615,7 +1615,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
@@ -1624,7 +1624,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -1666,7 +1666,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1675,14 +1675,14 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -1718,7 +1718,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -1730,24 +1730,24 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
   },
 
   suggestions: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
     providerOptions: {
       gateway: {
-        order: ["cerebras"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
 
   llm_best: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1756,14 +1756,14 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -1872,7 +1872,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1881,13 +1881,13 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1896,13 +1896,13 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1911,7 +1911,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
@@ -1920,7 +1920,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -1962,7 +1962,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1971,14 +1971,14 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -2014,7 +2014,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -2026,24 +2026,24 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
   },
 
   suggestions: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
     providerOptions: {
       gateway: {
-        order: ["cerebras"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
 
   llm_best: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -2052,14 +2052,14 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -2168,7 +2168,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -2177,13 +2177,13 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -2192,13 +2192,13 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -2207,7 +2207,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
@@ -2216,7 +2216,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -2258,7 +2258,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -2267,14 +2267,14 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -2310,7 +2310,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -2322,24 +2322,24 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
   },
 
   suggestions: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
     providerOptions: {
       gateway: {
-        order: ["cerebras"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
 
   llm_best: {
-    model: "anthropic/claude-opus-4.6",
+    model: "openai/gpt-4.1",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -2348,14 +2348,14 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
         reasoningEffort: "low",
       },
       gateway: {
-        order: ["fireworks", "baseten", "amazon-bedrock"],
+        order: ["baseten", "fireworks", "cerebras"],
       },
     },
   },
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "anthropic/claude-opus-4.6",
+    fallback: "openai/gpt-4.1",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {

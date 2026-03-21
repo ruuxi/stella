@@ -695,15 +695,15 @@ SUGGESTED DATA SOURCES (adapt or substitute if these are unreliable):
 
 REQUIREMENTS:
 1. Create the app folder at src/app/{{panelName}}/ and write the component as {{componentName}}.tsx.
-3. DESIGN FIRST: Before coding, choose a specific aesthetic direction (tone, color palette, typography, what makes it memorable). Then design the app like a real website — own background, own colors, own fonts (use Google Fonts via @import). Full creative freedom. Do NOT default to card grids, transparent backgrounds, or generic sans-serif fonts. The app's theme tokens are available but optional.
-4. Fill the viewport. Root must use height: 100%; overflow-y: auto. Design for ~900×600. When showing lists or feeds, aim for ~5–10 visible items per source; for non-feed apps, still avoid sparse layouts with tiny content floating in empty space.
-5. Live HTTP data: only when the app needs it. If you fetch, use window.electronAPI.browser.fetchJson(httpsUrl) or fetchText(httpsUrl) with real https URLs; parse RSS/XML with DOMParser after fetchText; use JSON.parse in the renderer for JSON strings; never data: URLs. Show loading and error states. If the app is self-contained per the note above, skip network calls.
-6. Strip HTML from feed content — use .textContent or .replace(/<[^>]*>/g, " "). Never dangerouslySetInnerHTML. Truncate summaries to 150–250 chars.
-7. Treat browser fetch results as unknown and narrow/cast after awaiting. Do not call fetchJson<T>(...).
-8. Include at least one stella:send-message action relevant to the app content.
-9. Do NOT edit src/app/registry.ts — Stella registers apps after all onboarding generations complete.
-10. Use the repo-relative paths exactly as provided above. Do not invent absolute paths.
-11. End your response with a JSON summary: { "status": "ok", "panel_file_path": "...", "title": "...", "data_sources": [...] }`,
+2. DESIGN FIRST: Before coding, choose a specific aesthetic direction (tone, color palette, typography, what makes it memorable). Then design the app like a real website — own background, own colors, own fonts (use Google Fonts via @import). Full creative freedom. Do NOT default to card grids, transparent backgrounds, or generic sans-serif fonts. The app's theme tokens are available but optional.
+3. Fill the viewport. Root must use height: 100%; overflow-y: auto. Design for ~900×600. When showing lists or feeds, aim for ~5–10 visible items per source; for non-feed apps, still avoid sparse layouts with tiny content floating in empty space.
+4. Live HTTP data: only when the app needs it. If you fetch, use window.electronAPI.browser.fetchJson(httpsUrl) or fetchText(httpsUrl) with real https URLs; parse RSS/XML with DOMParser after fetchText; use JSON.parse in the renderer for JSON strings; never data: URLs. Show loading and error states. If the app is self-contained per the note above, skip network calls.
+5. Strip HTML from feed content — use .textContent or .replace(/<[^>]*>/g, " "). Never dangerouslySetInnerHTML. Truncate summaries to 150–250 chars.
+6. Treat browser fetch results as unknown and narrow/cast after awaiting. Do not call fetchJson<T>(...).
+7. Include at least one stella:send-message action relevant to the app content.
+8. Do NOT edit src/app/registry.ts — Stella registers apps after all onboarding generations complete.
+9. Use the repo-relative paths exactly as provided above. Do not invent absolute paths.
+10. End your response with a JSON summary: { "status": "ok", "panel_file_path": "...", "title": "...", "data_sources": [...] }`,
     render: renderPersonalizedDashboardUser,
   },
   "music.system": {
