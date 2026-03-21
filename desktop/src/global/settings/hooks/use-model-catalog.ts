@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { createServiceRequest } from "@/infra/http/service-request";
 import { extractProvider as localExtractProvider } from "@/global/settings/lib/model-providers";
-import { STELLA_MODELS_PATH } from "../../../../electron/core/runtime/stella-provider.js";
+import { STELLA_MODELS_PATH } from "@/shared/stella-api";
 
 export type CatalogModel = {
   id: string;
@@ -188,4 +188,3 @@ export function useModelCatalog() {
 
   return { models, groups, loading };
 }
-

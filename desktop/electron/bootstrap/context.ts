@@ -26,7 +26,6 @@ import type { MobileBridgeService } from "../services/mobile-bridge/service.js";
 import type { DevToolServer } from "../devtool/dev-server.js";
 import { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
 import { getDevServerUrl } from "../dev-url.js";
-import { emitStartupMetric } from "../startup/profiler.js";
 
 export type MobileBroadcastFn = (channel: string, data: unknown) => void;
 
@@ -171,11 +170,6 @@ export const syncWakeWordState = (context: BootstrapContext) => {
 export const createBootstrapContext = (
   config: BootstrapConfig,
 ): BootstrapContext => {
-  emitStartupMetric({
-    metric: "bootstrap-context-created",
-    source: "electron-main",
-  });
-
   const state: BootstrapState = {
     appReady: false,
     appSessionStartedAt: Date.now(),

@@ -13,6 +13,7 @@ const graphWatchRoots = [
   "electron",
   "src/shared/contracts",
   "src/shared/ai",
+  "src/shared",
   "src/convex",
   "src/prompts",
 ];
@@ -24,6 +25,7 @@ const mainEntryRoots = [
 const mainExplicitEntries = [
   "src/convex/api.ts",
   "src/prompts/dashboard-page-focus.ts",
+  "src/shared/stella-api.ts",
 ];
 const preloadEntryPoint = "electron/preload.ts";
 

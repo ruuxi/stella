@@ -151,4 +151,3 @@ export function DesktopConvexAuthProvider({ children }: { children: ReactNode })
     </ConvexProviderWithAuth>
   );
 }
-
