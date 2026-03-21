@@ -42,7 +42,7 @@ describe("AGENT_MODELS", () => {
 
   test("includes orchestrator config", () => {
     expect(AGENT_MODELS.orchestrator).toBeDefined();
-    expect(AGENT_MODELS.orchestrator.model).toBe("moonshotai/kimi-k2.5");
+    expect(AGENT_MODELS.orchestrator.model).toBe("anthropic/claude-opus-4.6");
   });
 
   test("includes general config", () => {
@@ -192,7 +192,7 @@ describe("listStellaDefaultSelections", () => {
     expect(defaults).toContainEqual({
       agentType: "orchestrator",
       model: "stella/default",
-      resolvedModel: "moonshotai/kimi-k2.5",
+      resolvedModel: AGENT_MODELS.orchestrator.model,
     });
     expect(defaults).toContainEqual({
       agentType: "explore",
@@ -247,4 +247,3 @@ describe("Stella SDK aliases", () => {
     );
   });
 });
-

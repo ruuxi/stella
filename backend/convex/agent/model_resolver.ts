@@ -5,7 +5,6 @@
  * desktop runtime, not here.
  */
 
-import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { getModelConfig, type ManagedModelAudience } from "./model";
@@ -16,7 +15,7 @@ export type ResolvedModelConfig = {
   model: string;
   temperature?: number;
   maxOutputTokens?: number;
-  providerOptions?: ProviderOptions;
+  providerOptions?: Record<string, Record<string, unknown>>;
 };
 
 type ResolveModelConfigOptions = {
@@ -44,7 +43,7 @@ export async function resolveModelConfig(
       model: defaults.model,
       temperature: defaults.temperature,
       maxOutputTokens: defaults.maxOutputTokens,
-      providerOptions: defaults.providerOptions as ProviderOptions | undefined,
+      providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
     };
   }
 
@@ -62,7 +61,7 @@ export async function resolveModelConfig(
     model: modelString,
     temperature: defaults.temperature,
     maxOutputTokens: defaults.maxOutputTokens,
-    providerOptions: defaults.providerOptions as ProviderOptions | undefined,
+    providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
   };
 }
 
@@ -90,7 +89,7 @@ export async function resolveFallbackConfig(
       model: fallbackModel,
       temperature: defaults.temperature,
       maxOutputTokens: defaults.maxOutputTokens,
-      providerOptions: defaults.providerOptions as ProviderOptions | undefined,
+      providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
     };
   }
 
@@ -98,6 +97,6 @@ export async function resolveFallbackConfig(
     model: fallbackModel,
     temperature: defaults.temperature,
     maxOutputTokens: defaults.maxOutputTokens,
-    providerOptions: defaults.providerOptions as ProviderOptions | undefined,
+    providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
   };
 }

@@ -14,6 +14,7 @@ import {
   isAbortError,
   isContextOverflowError,
   isConvexInternalError,
+  isToolLoopExhaustionError,
 } from "../lib/error_classification";
 
 /**
@@ -24,6 +25,7 @@ function shouldFailover(error: unknown): boolean {
   if (isAbortError(error)) return false;
   if (isContextOverflowError(error)) return false;
   if (isConvexInternalError(error)) return false;
+  if (isToolLoopExhaustionError(error)) return false;
 
   // Everything else (rate limit, auth, network, 500, model not found, etc.) → failover
   return true;

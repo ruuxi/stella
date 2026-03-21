@@ -6,16 +6,19 @@
  */
 
 import { v } from "convex/values";
-import { generateText } from "ai";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { usageSummaryFromResult } from "./model_execution";
 import { buildSuggestionUserMessage } from "../prompts/index";
 import { resolveModelConfig } from "./model_resolver";
 import {
   assertManagedUsageAllowed,
   scheduleManagedUsage,
 } from "../lib/managed_billing";
+import {
+  assistantText,
+  completeManagedChat,
+  usageSummaryFromAssistant,
+} from "../runtime_ai/managed";
 
 type Suggestion = {
   commandId: string;
@@ -82,9 +85,15 @@ export const generateSuggestions = internalAction({
       });
       const startedAt = Date.now();
 
-      const result = await generateText({
-        ...resolvedConfig,
-        messages: [{ role: "user", content: prompt }],
+      const message = await completeManagedChat({
+        config: resolvedConfig,
+        context: {
+          messages: [{
+            role: "user",
+            content: [{ type: "text", text: prompt }],
+            timestamp: Date.now(),
+          }],
+        },
       });
       await scheduleManagedUsage(ctx, {
         ownerId: args.ownerId,
@@ -93,10 +102,10 @@ export const generateSuggestions = internalAction({
         model: resolvedConfig.model,
         durationMs: Date.now() - startedAt,
         success: true,
-        usage: usageSummaryFromResult(result),
+        usage: usageSummaryFromAssistant(message),
       });
 
-      const text = result.text.trim();
+      const text = assistantText(message);
       if (!text || text === "[]") return null;
 
       // Parse JSON response

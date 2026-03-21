@@ -4,9 +4,6 @@
  * ALL model selections and the managed gateway config live here.
  * Update this file to switch models, providers, or the gateway URL.
  */
-import { createOpenAI } from "@ai-sdk/openai";
-import type { LanguageModel } from "ai";
-import type { JSONValue } from "@ai-sdk/provider";
 import { AGENT_IDS } from "../lib/agent_constants";
 
 // ─── Managed Gateway ────────────────────────────────────────────────────────
@@ -20,15 +17,13 @@ export const MANAGED_GATEWAY = {
   apiKeyEnvVar: "AI_GATEWAY_API_KEY",
 } as const;
 
-/**
- * Create an AI SDK LanguageModel routed through the managed gateway.
- * Used by backend HTTP routes that call the AI SDK directly.
- */
-export function createManagedModel(modelId: string): LanguageModel {
-  const apiKey = process.env[MANAGED_GATEWAY.apiKeyEnvVar]?.trim() ?? "";
-  const provider = createOpenAI({ apiKey, baseURL: MANAGED_GATEWAY.baseURL });
-  return provider(modelId);
-}
+type JSONValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JSONValue[]
+  | { [key: string]: JSONValue };
 
 // ─── Model Config ───────────────────────────────────────────────────────────
 

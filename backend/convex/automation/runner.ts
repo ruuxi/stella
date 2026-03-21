@@ -1,4 +1,3 @@
-import type { ModelMessage } from "@ai-sdk/provider-utils";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -7,6 +6,7 @@ import { createTools } from "../tools/index";
 import { resolveModelConfig, resolveFallbackConfig } from "../agent/model_resolver";
 import {
   createStreamExecutionLifecycle,
+  splitDurationAcrossModels,
   streamTextWithFailover,
 } from "../agent/model_execution";
 import { buildBackendJobModeSystemPrompt } from "../prompts/index";
@@ -91,7 +91,7 @@ export async function runAgentTurn({
     ownerId: resolvedOwnerId,
     conversationId,
   });
-  const requestMessages: ModelMessage[] = [
+  const requestMessages = [
     {
       role: "user" as const,
       content: [{ type: "text" as const, text: prompt.trim() || " " }],
@@ -137,15 +137,32 @@ export async function runAgentTurn({
 
   // Fire afterChat hook asynchronously for usage logging + token tracking
   if (!transient) {
-    await scheduleManagedUsage(ctx, {
-      ownerId: resolvedOwnerId,
-      conversationId,
-      agentType,
-      model: resolvedConfig.model as string,
-      durationMs: Date.now() - runnerStartTime,
-      success: true,
-      usage: usageSummary,
-    });
+    const usageByModel = await result.usageByModel;
+    const durationMs = Date.now() - runnerStartTime;
+    const perModelUsage = splitDurationAcrossModels(usageByModel, durationMs);
+    if (perModelUsage.length > 0) {
+      for (const entry of perModelUsage) {
+        await scheduleManagedUsage(ctx, {
+          ownerId: resolvedOwnerId,
+          conversationId,
+          agentType,
+          model: entry.model,
+          durationMs: entry.durationMs,
+          success: true,
+          usage: entry.usage,
+        });
+      }
+    } else {
+      await scheduleManagedUsage(ctx, {
+        ownerId: resolvedOwnerId,
+        conversationId,
+        agentType,
+        model: result.executedModel,
+        durationMs,
+        success: true,
+        usage: usageSummary,
+      });
+    }
   }
 
   return { text, silent: noResponseCalled, usage: usageSummary };

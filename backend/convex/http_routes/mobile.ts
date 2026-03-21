@@ -1,6 +1,5 @@
 import type { HttpRouter } from "convex/server";
 import { ConvexError } from "convex/values";
-import { generateText } from "ai";
 import { httpAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import {
@@ -8,9 +7,8 @@ import {
   isAnonymousIdentity,
 } from "../auth";
 import { AGENT_IDS } from "../lib/agent_constants";
-import { createManagedModel, MANAGED_GATEWAY } from "../agent/model";
+import { MANAGED_GATEWAY } from "../agent/model";
 import { resolveFallbackConfig, resolveModelConfig } from "../agent/model_resolver";
-import { usageSummaryFromResult } from "../agent/model_execution";
 import { OFFLINE_RESPONDER_SYSTEM_PROMPT } from "../prompts/offline_responder";
 import {
   errorResponse,
@@ -24,6 +22,11 @@ import {
   resolveManagedModelAccess,
   scheduleManagedUsage,
 } from "../lib/managed_billing";
+import {
+  assistantText,
+  completeManagedChat,
+  usageSummaryFromAssistant,
+} from "../runtime_ai/managed";
 
 const OFFLINE_CHAT_RATE_LIMIT = 12;
 const OFFLINE_CHAT_RATE_WINDOW_MS = 60_000;
@@ -192,17 +195,16 @@ const generateOfflineReply = async (args: {
     .join("\n\n");
 
   const execute = async (config: typeof primaryConfig) =>
-    await generateText({
-      model: createManagedModel(config.model),
-      system: systemPrompt,
-      messages: [{ role: "user", content: args.message }],
-      ...(config.maxOutputTokens !== undefined
-        ? { maxOutputTokens: config.maxOutputTokens }
-        : {}),
-      ...(config.temperature !== undefined
-        ? { temperature: config.temperature }
-        : {}),
-      ...(config.providerOptions ? { providerOptions: config.providerOptions } : {}),
+    await completeManagedChat({
+      config,
+      context: {
+        systemPrompt,
+        messages: [{
+          role: "user",
+          content: [{ type: "text", text: args.message }],
+          timestamp: Date.now(),
+        }],
+      },
     });
 
   const startedAt = Date.now();
@@ -224,10 +226,10 @@ const generateOfflineReply = async (args: {
     model: activeModel,
     durationMs: Date.now() - startedAt,
     success: true,
-    usage: usageSummaryFromResult(result),
+    usage: usageSummaryFromAssistant(result),
   });
 
-  const text = result.text?.trim();
+  const text = assistantText(result);
   return text || "I'm here, but I couldn't generate a reply right now.";
 };
 

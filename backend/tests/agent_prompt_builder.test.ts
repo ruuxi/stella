@@ -25,9 +25,11 @@ describe("agent_constants", () => {
 
   test("SUBAGENT_TYPES includes expected types", () => {
     expect(SUBAGENT_TYPES).toContain("general");
+    expect(SUBAGENT_TYPES).toContain("self_mod");
     expect(SUBAGENT_TYPES).toContain("explore");
     expect(SUBAGENT_TYPES).toContain("browser");
-    expect(SUBAGENT_TYPES).toHaveLength(3);
+    expect(SUBAGENT_TYPES).toContain("app");
+    expect(SUBAGENT_TYPES).toHaveLength(5);
   });
 
   test("BROWSER_AGENT_SAFARI_DENIED_REASON is a non-empty string", () => {
