@@ -1,6 +1,18 @@
 import type { Id } from "../_generated/dataModel";
 import { AGENT_IDS, BASE_BACKEND_TOOL_NAMES } from "../lib/agent_constants";
 
+export type BackendToolExecuteResult = string;
+
+export type BackendToolDefinition = {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  strict?: boolean;
+  execute: (args: Record<string, unknown>) => Promise<BackendToolExecuteResult>;
+};
+
+export type BackendToolSet = Record<string, BackendToolDefinition>;
+
 export type ToolOptions = {
   agentType: string;
   toolsAllowlist?: string[];

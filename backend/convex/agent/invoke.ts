@@ -1,6 +1,5 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { stepCountIs } from "ai";
 import { internal } from "../_generated/api";
 import { buildSystemPrompt } from "./prompt_builder";
 import { createTools } from "../tools/index";
@@ -24,7 +23,7 @@ import {
   assertManagedUsageAllowed,
   scheduleManagedUsage,
 } from "../lib/managed_billing";
-import { usageSummaryFromFinish } from "./model_execution";
+import { splitDurationAcrossModels, usageSummaryFromFinish } from "./model_execution";
 
 const MAX_RAW_TEXT = 60_000;
 const MAX_SCHEMA_CHARS = 40_000;
@@ -128,7 +127,7 @@ export const invoke = internalAction({
       const invokeSharedArgs = {
         system: `${promptBuild.systemPrompt}\n\n${AGENT_INVOKE_SYSTEM_INSTRUCTIONS}`.trim(),
         tools,
-        stopWhen: stepCountIs(maxSteps),
+        maxSteps,
         messages: [
           {
             role: "user" as const,
@@ -154,15 +153,32 @@ export const invoke = internalAction({
 
       if (ownerId) {
         const totalUsage = await result.totalUsage;
-        await scheduleManagedUsage(ctx, {
-          ownerId,
-          conversationId: args.conversationId,
-          agentType: `invoke:${args.agentType}`,
-          model: resolvedConfig.model,
-          durationMs: Date.now() - startedAt,
-          success: true,
-          usage: usageSummaryFromFinish(totalUsage),
-        });
+        const usageByModel = await result.usageByModel;
+        const durationMs = Date.now() - startedAt;
+        const perModelUsage = splitDurationAcrossModels(usageByModel, durationMs);
+        if (perModelUsage.length > 0) {
+          for (const entry of perModelUsage) {
+            await scheduleManagedUsage(ctx, {
+              ownerId,
+              conversationId: args.conversationId,
+              agentType: `invoke:${args.agentType}`,
+              model: entry.model,
+              durationMs: entry.durationMs,
+              success: true,
+              usage: entry.usage,
+            });
+          }
+        } else {
+          await scheduleManagedUsage(ctx, {
+            ownerId,
+            conversationId: args.conversationId,
+            agentType: `invoke:${args.agentType}`,
+            model: result.executedModel,
+            durationMs,
+            success: true,
+            usage: usageSummaryFromFinish(totalUsage),
+          });
+        }
       }
     } catch (error) {
       return {
@@ -199,7 +215,7 @@ export const invoke = internalAction({
       args.resultSchema as Record<string, unknown> | undefined,
       scrubbed,
     );
-    if (!validation.ok) {
+    if (validation.ok === false) {
       return {
         ok: false as const,
         reason: validation.reason,

@@ -1,9 +1,7 @@
 import type { HttpRouter } from "convex/server";
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { generateText } from "ai";
-import { usageSummaryFromResult } from "../agent/model_execution";
-import { createManagedModel, MANAGED_GATEWAY } from "../agent/model";
+import { MANAGED_GATEWAY } from "../agent/model";
 import { resolveModelConfig } from "../agent/model_resolver";
 import { buildSkillSelectionUserMessage } from "../prompts/index";
 import {
@@ -18,6 +16,11 @@ import {
   resolveManagedModelAccess,
   scheduleManagedUsage,
 } from "../lib/managed_billing";
+import {
+  assistantText,
+  completeManagedChat,
+  usageSummaryFromAssistant,
+} from "../runtime_ai/managed";
 
 const SKILL_RATE_LIMIT = 10;
 const SKILL_RATE_WINDOW_MS = 60_000;
@@ -127,12 +130,16 @@ export const registerSkillRoutes = (http: HttpRouter) => {
             access: modelAccess,
           });
           const startedAt = Date.now();
-          const result = await generateText({
-            model: createManagedModel(skillMetadataConfig.model),
-            system: systemPrompt,
-            messages: [{ role: "user", content: userPrompt }],
-            maxOutputTokens: skillMetadataConfig.maxOutputTokens,
-            temperature: skillMetadataConfig.temperature,
+          const message = await completeManagedChat({
+            config: skillMetadataConfig,
+            context: {
+              systemPrompt,
+              messages: [{
+                role: "user",
+                content: [{ type: "text", text: userPrompt }],
+                timestamp: Date.now(),
+              }],
+            },
           });
           await scheduleManagedUsage(ctx, {
             ownerId: identity.subject,
@@ -140,10 +147,10 @@ export const registerSkillRoutes = (http: HttpRouter) => {
             model: skillMetadataConfig.model,
             durationMs: Date.now() - startedAt,
             success: true,
-            usage: usageSummaryFromResult(result),
+            usage: usageSummaryFromAssistant(message),
           });
 
-          const text = result.text?.trim() || "";
+          const text = assistantText(message);
 
           let parsed: Record<string, unknown> = {};
           try {
@@ -265,12 +272,16 @@ export const registerSkillRoutes = (http: HttpRouter) => {
           );
 
           const startedAt = Date.now();
-          const result = await generateText({
-            model: createManagedModel(skillSelectionConfig.model),
-            system: systemPrompt,
-            messages: [{ role: "user", content: userMessage }],
-            maxOutputTokens: skillSelectionConfig.maxOutputTokens,
-            temperature: skillSelectionConfig.temperature,
+          const message = await completeManagedChat({
+            config: skillSelectionConfig,
+            context: {
+              systemPrompt,
+              messages: [{
+                role: "user",
+                content: [{ type: "text", text: userMessage }],
+                timestamp: Date.now(),
+              }],
+            },
           });
           await scheduleManagedUsage(ctx, {
             ownerId: identity.subject,
@@ -278,10 +289,10 @@ export const registerSkillRoutes = (http: HttpRouter) => {
             model: skillSelectionConfig.model,
             durationMs: Date.now() - startedAt,
             success: true,
-            usage: usageSummaryFromResult(result),
+            usage: usageSummaryFromAssistant(message),
           });
 
-          const text = (result.text ?? "").trim();
+          const text = assistantText(message);
 
           // 3. Parse JSON array of skill IDs
           let selectedSkillIds: string[] = [];

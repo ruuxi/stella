@@ -1,9 +1,7 @@
-import { generateObject } from "ai";
 import { ConvexError } from "convex/values";
 import { z } from "zod";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { usageSummaryFromResult } from "../agent/model_execution";
 import { resolveFallbackConfig, resolveModelConfig } from "../agent/model_resolver";
 import { withModelFailoverAsync } from "../agent/model_failover";
 import {
@@ -16,6 +14,12 @@ import {
   STORE_IMAGE_SAFETY_REVIEW_SYSTEM_PROMPT,
   STORE_SECURITY_REVIEW_SYSTEM_PROMPT,
 } from "../prompts/store_reviews";
+import { extractJsonBlock } from "./json";
+import {
+  assistantText,
+  completeManagedChat,
+  usageSummaryFromAssistant,
+} from "../runtime_ai/managed";
 
 const reviewFindingSchema = z.object({
   severity: z.enum(["low", "medium", "high", "critical"]),
@@ -30,6 +34,46 @@ const storeReviewVerdictSchema = z.object({
   blockingReason: z.string().min(1).max(1500).optional(),
   findings: z.array(reviewFindingSchema).max(12),
 });
+
+const STORE_REVIEW_RESPONSE_FORMAT = {
+  type: "json_schema",
+  json_schema: {
+    name: "store_review_verdict",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        approved: { type: "boolean" },
+        summary: { type: "string", minLength: 1, maxLength: 1500 },
+        blockingReason: { type: "string", minLength: 1, maxLength: 1500 },
+        findings: {
+          type: "array",
+          maxItems: 12,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              severity: {
+                type: "string",
+                enum: ["low", "medium", "high", "critical"],
+              },
+              title: { type: "string", minLength: 1, maxLength: 200 },
+              rationale: { type: "string", minLength: 1, maxLength: 4000 },
+              filePaths: {
+                type: "array",
+                maxItems: 12,
+                items: { type: "string", minLength: 1, maxLength: 500 },
+              },
+            },
+            required: ["severity", "title", "rationale", "filePaths"],
+          },
+        },
+      },
+      required: ["approved", "summary", "findings"],
+    },
+  },
+} as const;
 
 const storeReleaseArtifactSchema = z.object({
   kind: z.literal("self_mod_blueprint"),
@@ -199,6 +243,134 @@ const summarizeFindings = (
     .map((verdict) => `${prefix} ${verdict.path}: ${verdict.blockingReason ?? verdict.summary}`)
     .join(" | ");
 
+const STORE_REVIEW_OUTPUT_INSTRUCTIONS = [
+  "Return JSON only. Do not wrap it in markdown.",
+  "Use this exact shape:",
+  "{",
+  '  "approved": boolean,',
+  '  "summary": string,',
+  '  "blockingReason"?: string,',
+  '  "findings": [',
+  "    {",
+  '      "severity": "low" | "medium" | "high" | "critical",',
+  '      "title": string,',
+  '      "rationale": string,',
+  '      "filePaths": string[]',
+  "    }",
+  "  ]",
+  "}",
+].join("\n");
+
+const parseStoreReviewVerdictFromText = (text: string) => {
+  const jsonBlock = extractJsonBlock(text) ?? text.trim();
+  return storeReviewVerdictSchema.parse(JSON.parse(jsonBlock));
+};
+
+class StoreReviewAttemptError extends Error {
+  readonly model: string;
+  readonly reviewMessage?: Awaited<ReturnType<typeof completeManagedChat>>;
+  readonly cause?: unknown;
+
+  constructor(
+    model: string,
+    cause: unknown,
+    reviewMessage?: Awaited<ReturnType<typeof completeManagedChat>>,
+  ) {
+    super(cause instanceof Error ? cause.message : "Store review failed");
+    this.name = "StoreReviewAttemptError";
+    this.model = model;
+    this.reviewMessage = reviewMessage;
+    this.cause = cause;
+  }
+}
+
+const logStoreReviewUsage = async (
+  ctx: Pick<ActionCtx, "scheduler">,
+  args: {
+    ownerId: string;
+    conversationId?: Id<"conversations">;
+    agentType: "service:store_security_review" | "service:store_image_safety_review";
+    message?: Awaited<ReturnType<typeof completeManagedChat>>;
+    model: string;
+    startedAt: number;
+    success: boolean;
+  },
+) => {
+  await scheduleManagedUsage(ctx, {
+    ownerId: args.ownerId,
+    ...(args.conversationId ? { conversationId: args.conversationId } : {}),
+    agentType: args.agentType,
+    model: args.model,
+    durationMs: Date.now() - args.startedAt,
+    success: args.success,
+    ...(args.message ? { usage: usageSummaryFromAssistant(args.message) } : {}),
+  });
+};
+
+const completeStoreReviewVerdict = async (
+  ctx: Pick<ActionCtx, "scheduler">,
+  args: {
+    ownerId: string;
+    conversationId?: Id<"conversations">;
+    agentType: "service:store_security_review" | "service:store_image_safety_review";
+    context: Parameters<typeof completeManagedChat>[0]["context"];
+    config: Parameters<typeof completeManagedChat>[0]["config"];
+    fallbackConfig?: Parameters<typeof completeManagedChat>[0]["fallbackConfig"];
+  },
+) => {
+  const executeAttempt = async (
+    config: Parameters<typeof completeManagedChat>[0]["config"],
+  ) => {
+    let message: Awaited<ReturnType<typeof completeManagedChat>> | undefined;
+    try {
+      message = await completeManagedChat({
+        config,
+        context: args.context,
+        request: {
+          responseFormat: STORE_REVIEW_RESPONSE_FORMAT,
+        },
+      });
+      return {
+        message,
+        verdict: parseStoreReviewVerdictFromText(assistantText(message)),
+      };
+    } catch (error) {
+      throw new StoreReviewAttemptError(message?.model ?? config.model, error, message);
+    }
+  };
+
+  const startedAt = Date.now();
+  try {
+    const result = await withModelFailoverAsync(
+      () => executeAttempt(args.config),
+      args.fallbackConfig ? () => executeAttempt(args.fallbackConfig!) : undefined,
+    );
+    await logStoreReviewUsage(ctx, {
+      ownerId: args.ownerId,
+      conversationId: args.conversationId,
+      agentType: args.agentType,
+      message: result.message,
+      model: result.message.model,
+      startedAt,
+      success: true,
+    });
+    return result.verdict;
+  } catch (error) {
+    const reviewError = error instanceof StoreReviewAttemptError ? error : undefined;
+    await logStoreReviewUsage(ctx, {
+      ownerId: args.ownerId,
+      conversationId: args.conversationId,
+      agentType: args.agentType,
+      ...(reviewError?.reviewMessage ? { message: reviewError.reviewMessage } : {}),
+      model: reviewError?.model ?? args.config.model,
+      startedAt,
+      success: false,
+    });
+    console.warn("[store-review] Review attempt failed:", error);
+    throw error;
+  }
+};
+
 export const parseReviewableStoreArtifact = (artifactBody: string): {
   artifact: ParsedStoreReleaseArtifact;
   codeFiles: ReviewableCodeFile[];
@@ -283,34 +455,23 @@ const reviewCodeFile = async (
     access: modelAccess,
   });
 
-  let usedFallback = false;
-  const startedAt = Date.now();
-  const result = await withModelFailoverAsync(
-    () =>
-      generateObject({
-        ...resolvedConfig,
-        schema: storeReviewVerdictSchema,
-        schemaName: "store_security_review_verdict",
-        system: STORE_SECURITY_REVIEW_SYSTEM_PROMPT,
-        prompt: buildStoreSecurityReviewPrompt({
-          packageId: args.packageId,
-          displayName: args.displayName,
-          description: args.description,
-          releaseSummary: args.releaseSummary,
-          filePath: args.file.path,
-          changeType: args.file.changeType,
-          contentText: args.file.contentText,
-          patchText: args.file.patchText,
-        }),
-      }),
-    fallbackConfig
-      ? () =>
-        generateObject({
-          ...fallbackConfig,
-          schema: storeReviewVerdictSchema,
-          schemaName: "store_security_review_verdict",
-          system: STORE_SECURITY_REVIEW_SYSTEM_PROMPT,
-          prompt: buildStoreSecurityReviewPrompt({
+  return await completeStoreReviewVerdict(ctx, {
+    ownerId: args.ownerId,
+    conversationId: args.conversationId,
+    agentType: "service:store_security_review",
+    config: resolvedConfig,
+    fallbackConfig,
+    context: {
+      systemPrompt: [
+        STORE_SECURITY_REVIEW_SYSTEM_PROMPT,
+        "",
+        STORE_REVIEW_OUTPUT_INSTRUCTIONS,
+      ].join("\n"),
+      messages: [{
+        role: "user",
+        content: [{
+          type: "text",
+          text: buildStoreSecurityReviewPrompt({
             packageId: args.packageId,
             displayName: args.displayName,
             description: args.description,
@@ -320,26 +481,11 @@ const reviewCodeFile = async (
             contentText: args.file.contentText,
             patchText: args.file.patchText,
           }),
-        })
-      : undefined,
-    {
-      onFallback: () => {
-        usedFallback = true;
-      },
+        }],
+        timestamp: Date.now(),
+      }],
     },
-  );
-
-  await scheduleManagedUsage(ctx, {
-    ownerId: args.ownerId,
-    ...(args.conversationId ? { conversationId: args.conversationId } : {}),
-    agentType: "service:store_security_review",
-    model: usedFallback && fallbackConfig ? fallbackConfig.model : resolvedConfig.model,
-    durationMs: Date.now() - startedAt,
-    success: true,
-    usage: usageSummaryFromResult(result),
   });
-
-  return result.object;
 };
 
 const reviewImageFile = async (
@@ -362,66 +508,47 @@ const reviewImageFile = async (
     access: modelAccess,
   });
 
-  const messages = [{
-    role: "user" as const,
-    content: [
-      {
-        type: "text" as const,
-        text: buildStoreImageSafetyReviewPrompt({
-          packageId: args.packageId,
-          displayName: args.displayName,
-          description: args.description,
-          releaseSummary: args.releaseSummary,
-          filePath: args.file.path,
-          changeType: args.file.changeType,
-        }),
-      },
-      {
-        type: "image" as const,
-        image: args.file.dataUrl,
-      },
-    ],
-  }];
+  const imageMatch = args.file.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!imageMatch) {
+    throw new Error(`Image file "${args.file.path}" is not a valid data URL.`);
+  }
 
-  let usedFallback = false;
-  const startedAt = Date.now();
-  const result = await withModelFailoverAsync(
-    () =>
-      generateObject({
-        ...resolvedConfig,
-        schema: storeReviewVerdictSchema,
-        schemaName: "store_image_safety_review_verdict",
-        system: STORE_IMAGE_SAFETY_REVIEW_SYSTEM_PROMPT,
-        messages,
-      }),
-    fallbackConfig
-      ? () =>
-        generateObject({
-          ...fallbackConfig,
-          schema: storeReviewVerdictSchema,
-          schemaName: "store_image_safety_review_verdict",
-          system: STORE_IMAGE_SAFETY_REVIEW_SYSTEM_PROMPT,
-          messages,
-        })
-      : undefined,
-    {
-      onFallback: () => {
-        usedFallback = true;
-      },
-    },
-  );
-
-  await scheduleManagedUsage(ctx, {
+  return await completeStoreReviewVerdict(ctx, {
     ownerId: args.ownerId,
-    ...(args.conversationId ? { conversationId: args.conversationId } : {}),
+    conversationId: args.conversationId,
     agentType: "service:store_image_safety_review",
-    model: usedFallback && fallbackConfig ? fallbackConfig.model : resolvedConfig.model,
-    durationMs: Date.now() - startedAt,
-    success: true,
-    usage: usageSummaryFromResult(result),
+    config: resolvedConfig,
+    fallbackConfig,
+    context: {
+      systemPrompt: [
+        STORE_IMAGE_SAFETY_REVIEW_SYSTEM_PROMPT,
+        "",
+        STORE_REVIEW_OUTPUT_INSTRUCTIONS,
+      ].join("\n"),
+      messages: [{
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: buildStoreImageSafetyReviewPrompt({
+              packageId: args.packageId,
+              displayName: args.displayName,
+              description: args.description,
+              releaseSummary: args.releaseSummary,
+              filePath: args.file.path,
+              changeType: args.file.changeType,
+            }),
+          },
+          {
+            type: "image",
+            mimeType: imageMatch[1],
+            data: imageMatch[2],
+          },
+        ],
+        timestamp: Date.now(),
+      }],
+    },
   });
-
-  return result.object;
 };
 
 export const enforceStoreReleaseReviewOrThrow = async (

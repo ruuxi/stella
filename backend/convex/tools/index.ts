@@ -1,12 +1,10 @@
-import { ToolSet } from "ai";
 import type { ActionCtx } from "../_generated/server";
-import { TRANSIENT_ALLOWED_BACKEND_TOOL_NAMES } from "../lib/agent_constants";
 import { createBackendTools } from "./backend";
-import { type ToolOptions } from "./types";
+import { type BackendToolSet, type ToolOptions } from "./types";
 
 export { BASE_TOOL_NAMES, type ToolOptions } from "./types";
 
-const filterTools = (tools: ToolSet, allowlist?: string[]): ToolSet => {
+const filterTools = (tools: BackendToolSet, allowlist?: string[]): BackendToolSet => {
   if (!allowlist || allowlist.length === 0) {
     return tools;
   }
@@ -14,24 +12,26 @@ const filterTools = (tools: ToolSet, allowlist?: string[]): ToolSet => {
   const filteredEntries = Object.entries(tools).filter(([name]) =>
     allowed.has(name),
   );
-  return Object.fromEntries(filteredEntries) as ToolSet;
+  return Object.fromEntries(filteredEntries) as BackendToolSet;
 };
 
-const TRANSIENT_ALLOWED_TOOLS = new Set<string>(
-  TRANSIENT_ALLOWED_BACKEND_TOOL_NAMES,
-);
+const TRANSIENT_ALLOWED_TOOLS = new Set<string>([
+  "WebSearch",
+  "WebFetch",
+  "NoResponse",
+]);
 
 const sanitizeToolName = (name: string): string => name.replace(/\./g, "_");
 
-export const createTools = (ctx: ActionCtx, options: ToolOptions): ToolSet => {
-  const allTools: ToolSet = createBackendTools(ctx, options);
+export const createTools = (ctx: ActionCtx, options: ToolOptions): BackendToolSet => {
+  const allTools: BackendToolSet = createBackendTools(ctx, options);
 
   const privacyFilteredTools = options.transient
     ? (Object.fromEntries(
         Object.entries(allTools).filter(([name]) =>
           TRANSIENT_ALLOWED_TOOLS.has(name),
         ),
-      ) as ToolSet)
+      ) as BackendToolSet)
     : allTools;
 
   const allowlist = options.toolsAllowlist
