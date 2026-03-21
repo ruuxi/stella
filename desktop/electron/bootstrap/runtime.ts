@@ -22,7 +22,7 @@ import { startStellaUiServer } from "../system/stella-ui-server.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
 import { StoreModService } from "../self-mod/store-mod-service.js";
-import { createBootstrapResetFlows } from "./resets.js";
+import { createBootstrapResetFlows, shutdownBootstrapRuntime } from "./resets.js";
 import { MobileBridgeService } from "../services/mobile-bridge/service.js";
 import {
   type BootstrapContext,
@@ -360,14 +360,10 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
 const startDevToolServer = (context: BootstrapContext) => {
   if (!context.config.isDev) return;
 
-  const resetFlows = createBootstrapResetFlows(context, {
-    initializeStellaHostRunner: () => initializeStellaHostRunner(context),
-  });
-
   const server = new DevToolServer({
     stellaHomePath: () => context.state.stellaHomePath,
-    onResetMessages: () => resetFlows.resetLocalMessages(),
-    onHardReset: () => resetFlows.hardResetLocalState(),
+    sessionPartition: context.config.sessionPartition,
+    shutdownRuntime: () => shutdownBootstrapRuntime(context, { stopScheduler: true }),
     onReloadApp: () => {
       const fullWindow = context.state.windowManager?.getFullWindow();
       if (fullWindow && !fullWindow.isDestroyed()) {
