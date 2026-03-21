@@ -47,7 +47,7 @@ import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
-} from "../../../src/shared/contracts/electron-data.js";
+} from "../../stella-boundary-contracts/src/index.js";
 import { SocialSessionService } from "./social-sessions/service.js";
 import { SocialSessionStore } from "./social-sessions/store.js";
 
@@ -827,22 +827,22 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     return { ok: true };
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.LOCAL_CHAT_GET_OR_CREATE_DEFAULT, async () => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_OR_CREATE_DEFAULT, async () => {
     return ensureChatStore().getOrCreateDefaultConversationId();
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.LOCAL_CHAT_LIST_EVENTS, async (params) => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_LIST_EVENTS, async (params) => {
     const payload = params as { conversationId?: string; maxItems?: number };
     return ensureChatStore().listEvents(payload.conversationId ?? "", payload.maxItems);
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.LOCAL_CHAT_GET_EVENT_COUNT, async (params) => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_EVENT_COUNT, async (params) => {
     return ensureChatStore().getEventCount(
       (params as { conversationId?: string }).conversationId ?? "",
     );
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.LOCAL_CHAT_APPEND_EVENT, async (params) => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_APPEND_EVENT, async (params) => {
     const payload = params as {
       conversationId?: string;
       type?: string;
@@ -869,7 +869,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     return result;
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.LOCAL_CHAT_LIST_SYNC_MESSAGES, async (params) => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_LIST_SYNC_MESSAGES, async (params) => {
     const payload = params as { conversationId?: string; maxMessages?: number };
     return ensureChatStore().listSyncMessages(
       payload.conversationId ?? "",
@@ -877,13 +877,13 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     );
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.LOCAL_CHAT_GET_SYNC_CHECKPOINT, async (params) => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_SYNC_CHECKPOINT, async (params) => {
     return ensureChatStore().getSyncCheckpoint(
       (params as { conversationId?: string }).conversationId ?? "",
     );
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.LOCAL_CHAT_SET_SYNC_CHECKPOINT, async (params) => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_SET_SYNC_CHECKPOINT, async (params) => {
     const payload = params as { conversationId?: string; localMessageId?: string };
     ensureChatStore().setSyncCheckpoint(
       payload.conversationId ?? "",
@@ -892,37 +892,37 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     return { ok: true };
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.STORE_MODS_LIST_FEATURES, async (params) => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_FEATURES, async (params) => {
     return ensureStoreModService().listLocalFeatures(
       (params as { limit?: number } | undefined)?.limit,
     );
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.STORE_MODS_LIST_BATCHES, async (params) => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_BATCHES, async (params) => {
     return ensureStoreModService().listFeatureBatches(
       (params as { featureId: string }).featureId,
     );
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.STORE_MODS_CREATE_RELEASE_DRAFT, async (params) => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_CREATE_RELEASE_DRAFT, async (params) => {
     return ensureStoreModService().createReleaseDraft(
       params as { featureId: string; batchIds?: string[] },
     );
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.STORE_MODS_LIST_INSTALLED, async () => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED, async () => {
     return ensureStoreModService().listInstalledMods();
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.SCHEDULE_LIST_CRON_JOBS, async () => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SCHEDULE_LIST_CRON_JOBS, async () => {
     return ensureScheduler().listCronJobs();
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.SCHEDULE_LIST_HEARTBEATS, async () => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SCHEDULE_LIST_HEARTBEATS, async () => {
     return ensureScheduler().listHeartbeats();
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.SCHEDULE_LIST_EVENTS, async (params) => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SCHEDULE_LIST_EVENTS, async (params) => {
     const payload = params as { conversationId: string; maxItems?: number };
     return ensureScheduler().listConversationEvents(
       payload.conversationId,
@@ -930,13 +930,13 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     );
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.SCHEDULE_GET_EVENT_COUNT, async (params) => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SCHEDULE_GET_EVENT_COUNT, async (params) => {
     return ensureScheduler().getConversationEventCount(
       (params as { conversationId: string }).conversationId,
     );
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.SOCIAL_SESSIONS_GET_STATUS, async () => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_GET_STATUS, async () => {
     return state.socialSessionService?.getSnapshot() ?? {
       enabled: false,
       status: "stopped",
@@ -945,20 +945,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     };
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.COMMAND_LIST, async () => {
-    return ensureCapabilityRuntime().listCommands();
-  });
-
-  peer.registerRequestHandler(METHOD_NAMES.COMMAND_RUN, async (params) => {
-    return await ensureCapabilityRuntime().runCommand(params as RuntimeCommandRunParams);
-  });
-
-  peer.registerRequestHandler(METHOD_NAMES.SHELL_KILL_ALL, async () => {
-    ensureRunner().killAllShells();
-    return { ok: true };
-  });
-
-  peer.registerRequestHandler(METHOD_NAMES.SHELL_KILL_BY_PORT, async (params) => {
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_KILL_SHELL_BY_PORT, async (params) => {
     ensureRunner().killShellsByPort((params as { port: number }).port);
     return { ok: true };
   });

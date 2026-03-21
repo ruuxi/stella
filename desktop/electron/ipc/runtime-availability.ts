@@ -1,46 +1,84 @@
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { createRuntimeUnavailableError } from "../../packages/stella-runtime-protocol/src/rpc-peer.js";
 
-const wait = (ms: number) =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
 export const waitForConnectedRunner = async (
   getStellaHostRunner: () => StellaHostRunner | null,
   {
     timeoutMs = 10_000,
     unavailableMessage = "Runtime not available.",
-    pollMs = 50,
-    connectAttemptMs = 250,
+    onRunnerChanged,
   }: {
     timeoutMs?: number;
     unavailableMessage?: string;
-    pollMs?: number;
-    connectAttemptMs?: number;
+    onRunnerChanged?: (
+      listener: (runner: StellaHostRunner | null) => void,
+    ) => () => void;
   } = {},
 ) => {
-  const deadline = Date.now() + timeoutMs;
-  let lastError: Error | null = null;
+  return await new Promise<StellaHostRunner>((resolve, reject) => {
+    let timeout: NodeJS.Timeout | null = null;
+    let unsubscribeRunner: (() => void) | null = null;
+    let unsubscribeAvailability: (() => void) | null = null;
+    let lastError: Error | null = null;
 
-  while (Date.now() < deadline) {
-    const runner = getStellaHostRunner();
-    if (runner) {
-      try {
-        const remainingMs = deadline - Date.now();
-        await runner.waitUntilConnected(
-          Math.max(100, Math.min(connectAttemptMs, remainingMs)),
-        );
-        return runner;
-      } catch (error) {
-        lastError =
-          error instanceof Error
-            ? error
-            : new Error(String(error ?? unavailableMessage));
+    const cleanup = () => {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
       }
-    }
-    await wait(pollMs);
-  }
+      unsubscribeAvailability?.();
+      unsubscribeAvailability = null;
+      unsubscribeRunner?.();
+      unsubscribeRunner = null;
+    };
 
-  throw lastError ?? createRuntimeUnavailableError(unavailableMessage);
+    const tryResolve = (runner: StellaHostRunner | null) => {
+      if (!runner) {
+        return false;
+      }
+      const snapshot = runner.getAvailabilitySnapshot();
+      if (!snapshot.connected) {
+        if (snapshot.reason) {
+          lastError = createRuntimeUnavailableError(snapshot.reason);
+        }
+        return false;
+      }
+      cleanup();
+      resolve(runner);
+      return true;
+    };
+
+    const attachRunner = (runner: StellaHostRunner | null) => {
+      unsubscribeAvailability?.();
+      unsubscribeAvailability = null;
+
+      if (tryResolve(runner) || !runner) {
+        return;
+      }
+
+      unsubscribeAvailability = runner.onAvailabilityChange((snapshot) => {
+        if (snapshot.reason) {
+          lastError = createRuntimeUnavailableError(snapshot.reason);
+        }
+        if (runner !== getStellaHostRunner()) {
+          return;
+        }
+        if (!snapshot.connected) {
+          return;
+        }
+        cleanup();
+        resolve(runner);
+      });
+    };
+
+    timeout = setTimeout(() => {
+      cleanup();
+      reject(lastError ?? createRuntimeUnavailableError(unavailableMessage));
+    }, timeoutMs);
+
+    unsubscribeRunner = onRunnerChanged?.((runner) => {
+      attachRunner(runner);
+    }) ?? null;
+    attachRunner(getStellaHostRunner());
+  });
 };

@@ -8,6 +8,9 @@ import { waitForConnectedRunner } from "./runtime-availability.js";
 
 type LocalChatHandlersOptions = {
   getStellaHostRunner: () => StellaHostRunner | null;
+  onStellaHostRunnerChanged?: (
+    listener: (runner: StellaHostRunner | null) => void,
+  ) => () => void;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -22,6 +25,7 @@ const waitForRunner = async (
   waitForConnectedRunner(options.getStellaHostRunner, {
     timeoutMs,
     unavailableMessage: "Runtime not available.",
+    onRunnerChanged: options.onStellaHostRunnerChanged,
   });
 
 export const registerLocalChatHandlers = (

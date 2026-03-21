@@ -1,5 +1,5 @@
 import type { WindowInfo } from './window-capture.js'
-import type { ChatContext } from '../src/shared/contracts/electron-data.js'
+import type { ChatContext } from '../packages/stella-boundary-contracts/src/index.js'
 import type {
   UiMode,
   WindowMode,

@@ -16,7 +16,7 @@ import type {
   QueuedOrchestratorTurn,
 } from "./types.js";
 import { buildTaskEventPrompt, createSelfModHmrState } from "./shared.js";
-import type { SelfModHmrState } from "../../../../src/shared/contracts/electron-data.js";
+import type { SelfModHmrState } from "../../../../packages/stella-boundary-contracts/src/index.js";
 
 export const createTaskOrchestration = (
   context: RunnerContext,
