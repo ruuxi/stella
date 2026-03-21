@@ -2,29 +2,26 @@
  * Dev-mode WebSocket debug server.
  *
  * Starts on a fixed port, broadcasts events from the dev event bus to
- * connected devtool clients, and handles commands (reset, reload, etc.)
- * sent back from the devtool.
+ * connected devtool clients, and handles commands sent back from the devtool.
  */
 
 import http from "http";
-import { WebSocketServer, type WebSocket } from "ws";
+import { app, session } from "electron";
 import { promises as fs } from "fs";
-import path from "path";
+import { WebSocketServer, type WebSocket } from "ws";
 import { devEventBus, type DevEvent } from "./dev-event-bus.js";
 
 export const DEVTOOL_PORT = 17710;
 
 type DevServerCommand =
-  | { command: "reset-messages" }
-  | { command: "reset-onboarding" }
   | { command: "hard-reset" }
   | { command: "reload-app" }
   | { command: "ping" };
 
 type DevServerDeps = {
   stellaHomePath: () => string | null;
-  onResetMessages: () => Promise<unknown>;
-  onHardReset: () => Promise<unknown>;
+  sessionPartition: string;
+  shutdownRuntime: () => void;
   onReloadApp: () => void;
 };
 
@@ -40,7 +37,6 @@ export class DevToolServer {
 
   start() {
     this.httpServer = http.createServer((_req, res) => {
-      // CORS-friendly health endpoint
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Content-Type", "application/json");
       res.writeHead(200);
@@ -52,7 +48,6 @@ export class DevToolServer {
     this.wss.on("connection", (ws) => {
       console.log("[devtool] client connected");
 
-      // Send initial state snapshot
       this.sendJson(ws, {
         type: "connected",
         stellaHomePath: this.deps.stellaHomePath(),
@@ -72,7 +67,6 @@ export class DevToolServer {
       });
     });
 
-    // Subscribe to dev event bus and broadcast to all clients
     this.unsubscribe = devEventBus.subscribe((event) => {
       this.broadcast(event);
     });
@@ -135,30 +129,32 @@ export class DevToolServer {
           this.sendJson(ws, { type: "pong" });
           break;
 
-        case "reset-messages":
-          await this.deps.onResetMessages();
-          this.sendJson(ws, { type: "command-result", command: "reset-messages", ok: true });
-          devEventBus.emit("app-lifecycle", { action: "reset-messages" });
-          break;
-
-        case "hard-reset":
-          await this.deps.onHardReset();
+        case "hard-reset": {
+          const homePath = this.deps.stellaHomePath();
+          // Shut down runtime first (close sqlite handles, etc.)
+          this.deps.shutdownRuntime();
+          // Clear Electron session storage (localStorage, cookies, cache)
+          // This is where onboarding state lives
+          const appSession = session.fromPartition(this.deps.sessionPartition);
+          await Promise.allSettled([
+            appSession.clearStorageData(),
+            appSession.clearCache(),
+          ]);
+          // Nuke .stella/
+          if (homePath) {
+            await fs.rm(homePath, { recursive: true, force: true });
+          }
           this.sendJson(ws, { type: "command-result", command: "hard-reset", ok: true });
-          devEventBus.emit("app-lifecycle", { action: "hard-reset" });
+          // Close the WS server so port is freed before restart
+          this.stop();
+          // Exit — dev-electron.mjs auto-restarts on unexpected exit
+          app.exit(0);
           break;
-
-        case "reset-onboarding":
-          // Onboarding state lives in renderer localStorage — trigger a hard reset
-          // which clears session storage including localStorage
-          await this.deps.onHardReset();
-          this.sendJson(ws, { type: "command-result", command: "reset-onboarding", ok: true });
-          devEventBus.emit("app-lifecycle", { action: "reset-onboarding" });
-          break;
+        }
 
         case "reload-app":
           this.deps.onReloadApp();
           this.sendJson(ws, { type: "command-result", command: "reload-app", ok: true });
-          devEventBus.emit("app-lifecycle", { action: "reload-app" });
           break;
 
         default:

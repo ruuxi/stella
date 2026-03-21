@@ -301,26 +301,16 @@ export function App() {
         </span>
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-          <ActionButton label="Clear" onClick={clearEvents} />
+          <ActionButton label="Clear Log" onClick={clearEvents} />
           <ActionButton
-            label="Reset Onboarding"
-            onClick={() => sendCommand("reset-onboarding")}
-            confirm
-          />
-          <ActionButton
-            label="Reset Messages"
-            onClick={() => sendCommand("reset-messages")}
-            confirm
+            label="Reload App"
+            onClick={() => sendCommand("reload-app")}
           />
           <ActionButton
             label="Hard Reset"
             onClick={() => sendCommand("hard-reset")}
-            confirm
+            confirm="Wipe .stella/ and restart the app?"
             danger
-          />
-          <ActionButton
-            label="Reload App"
-            onClick={() => sendCommand("reload-app")}
           />
         </div>
       </div>
@@ -331,18 +321,18 @@ export function App() {
 function ActionButton({
   label,
   onClick,
-  confirm: needsConfirm,
+  confirm: confirmMsg,
   danger,
 }: {
   label: string;
   onClick: () => void;
-  confirm?: boolean;
+  confirm?: string;
   danger?: boolean;
 }) {
   return (
     <button
       onClick={() => {
-        if (needsConfirm && !window.confirm(`${label}?`)) return;
+        if (confirmMsg && !window.confirm(confirmMsg)) return;
         onClick();
       }}
       style={{
