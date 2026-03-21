@@ -5,17 +5,6 @@ export type SkillCatalogItem = {
   tags?: string[]
 }
 
-export type PersonalizedDashboardPageAssignment = {
-  pageId: string
-  title: string
-  topic: string
-  focus: string
-  panelName: string
-  componentName: string
-  dataSources: string[]
-  personalOrEntertainment: boolean
-}
-
 export type WelcomeSuggestion = {
   category: "cron" | "skill" | "app"
   title: string
@@ -60,8 +49,7 @@ export type PromptTemplateValues = {
   }
   "personalized_dashboard.system": undefined
   "personalized_dashboard.user": {
-    userProfile: string
-    assignment: PersonalizedDashboardPageAssignment
+    coreMemory: string
   }
   "music.system": undefined
 }

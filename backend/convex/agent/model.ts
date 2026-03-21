@@ -51,8 +51,8 @@ export const MANAGED_MODEL_AUDIENCES = [
 export type ManagedModelAudience = (typeof MANAGED_MODEL_AUDIENCES)[number];
 
 const DEFAULT_MODEL: ModelConfig = {
-  model: "openai/gpt-4.1",
-  fallback: "openai/gpt-4.1",
+  model: "openai/gpt-5.4",
+  fallback: "openai/gpt-5.4",
   temperature: 1.0,
   maxOutputTokens: 16192,
   providerOptions: {
@@ -67,7 +67,7 @@ const DEFAULT_MODEL: ModelConfig = {
 
 const COMPACTION_MODEL: ModelConfig = {
   model: "zai/glm-4.7",
-  fallback: "openai/gpt-4.1",
+  fallback: "openai/gpt-5.4",
   temperature: 1.0,
   maxOutputTokens: 12096,
   providerOptions: {
@@ -78,13 +78,13 @@ const COMPACTION_MODEL: ModelConfig = {
 };
 
 const DASHBOARD_GENERATION_MODEL: ModelConfig = {
-  model: "openai/gpt-4.1",
+  model: "openai/gpt-5.4",
   fallback: "openai/gpt-5.4",
   temperature: 1.0,
   maxOutputTokens: 16192,
   providerOptions: {
     openai: {
-      reasoningEffort: "low",
+      reasoningEffort: "minimal",
     },
     gateway: {
       order: ["baseten", "fireworks", "cerebras"],
@@ -96,7 +96,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -111,7 +111,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -126,7 +126,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -144,7 +144,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -186,7 +186,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -202,7 +202,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -238,7 +238,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -250,11 +250,11 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
   },
 
   suggestions: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
@@ -267,7 +267,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
 
   llm_best: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -283,7 +283,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -392,7 +392,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -407,7 +407,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -422,7 +422,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -440,7 +440,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -482,7 +482,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -498,7 +498,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -534,7 +534,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -546,11 +546,11 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
   },
 
   suggestions: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
@@ -563,7 +563,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
 
 
   llm_best: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -579,7 +579,7 @@ const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -688,7 +688,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -703,7 +703,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -718,7 +718,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -736,7 +736,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -778,7 +778,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -794,7 +794,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -830,7 +830,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -842,11 +842,11 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
   },
 
   suggestions: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
@@ -859,7 +859,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
 
 
   llm_best: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -875,7 +875,7 @@ const GO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -984,7 +984,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -999,7 +999,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1014,7 +1014,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1032,7 +1032,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -1074,7 +1074,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1090,7 +1090,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -1126,7 +1126,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -1138,11 +1138,11 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
   },
 
   suggestions: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
@@ -1155,7 +1155,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
 
 
   llm_best: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1171,7 +1171,7 @@ const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -1280,7 +1280,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1295,7 +1295,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1310,7 +1310,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1328,7 +1328,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -1370,7 +1370,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1386,7 +1386,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -1422,7 +1422,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -1434,11 +1434,11 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
   },
 
   suggestions: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
@@ -1451,7 +1451,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
 
   llm_best: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1467,7 +1467,7 @@ const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -1576,7 +1576,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1591,7 +1591,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1606,7 +1606,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1624,7 +1624,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -1666,7 +1666,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1682,7 +1682,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -1718,7 +1718,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -1730,11 +1730,11 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
   },
 
   suggestions: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
@@ -1747,7 +1747,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
 
   llm_best: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1763,7 +1763,7 @@ const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -1872,7 +1872,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1887,7 +1887,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1902,7 +1902,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1920,7 +1920,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -1962,7 +1962,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -1978,7 +1978,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -2014,7 +2014,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -2026,11 +2026,11 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
   },
 
   suggestions: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
@@ -2043,7 +2043,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
 
   llm_best: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -2059,7 +2059,7 @@ const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -2168,7 +2168,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
 
   [AGENT_IDS.ORCHESTRATOR]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -2183,7 +2183,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.GENERAL]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -2198,7 +2198,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.SELF_MOD]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -2216,7 +2216,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   [AGENT_IDS.EXPLORE]: {
     model: "zai/glm-4.7",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -2258,7 +2258,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
   },
 
   [AGENT_IDS.AUTO]: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -2274,7 +2274,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   "panel-generate": {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -2310,7 +2310,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   welcome: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 2400,
     providerOptions: {
@@ -2322,11 +2322,11 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   mercury: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
   },
 
   suggestions: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "zai/glm-4.7",
     temperature: 1.0,
     maxOutputTokens: 10000,
@@ -2339,7 +2339,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
 
   llm_best: {
-    model: "openai/gpt-4.1",
+    model: "openai/gpt-5.4",
     fallback: "openai/gpt-5.4",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -2355,7 +2355,7 @@ const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
 
   llm_fast: {
     model: "inception/mercury-2",
-    fallback: "openai/gpt-4.1",
+    fallback: "openai/gpt-5.4",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {

@@ -321,17 +321,9 @@ export type ElectronAgentApi = {
   selfModRevert: (featureId?: string, steps?: number) => Promise<unknown>;
   getLastSelfModFeature: () => Promise<string | null>;
   listSelfModFeatures: (limit?: number) => Promise<SelfModFeatureSummary[]>;
-  startDashboardGeneration: (payload: {
+  startPersonalWebsiteGeneration: (payload: {
     conversationId: string;
     coreMemory: string;
-    plannedPages: Array<{
-      pageId: string;
-      title: string;
-      topic: string;
-      focus: string;
-      dataSources: string[];
-      personalOrEntertainment: boolean;
-    }>;
     promptConfig: { systemPrompt: string; userPromptTemplate: string };
   }) => Promise<void>;
   triggerViteError: () => Promise<{ ok: boolean }>;

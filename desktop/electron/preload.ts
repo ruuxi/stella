@@ -448,21 +448,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
           taintedFiles?: string[];
         }>
       >,
-    startDashboardGeneration: (payload: {
+    startPersonalWebsiteGeneration: (payload: {
       conversationId: string;
       coreMemory: string;
-      plannedPages: Array<{
-        pageId: string;
-        title: string;
-        topic: string;
-        focus: string;
-        dataSources: string[];
-        personalOrEntertainment: boolean;
-      }>;
       promptConfig: { systemPrompt: string; userPromptTemplate: string };
     }) =>
       ipcRenderer.invoke(
-        "agent:startDashboardGeneration",
+        "agent:startPersonalWebsiteGeneration",
         payload,
       ) as Promise<void>,
     triggerViteError: () => ipcRenderer.invoke("devtest:triggerViteError"),

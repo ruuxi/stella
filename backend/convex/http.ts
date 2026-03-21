@@ -14,7 +14,6 @@ import { registerSkillRoutes } from "./http_routes/skills";
 import { registerSpeechToTextRoutes } from "./http_routes/speech_to_text";
 import { registerStripeRoutes } from "./http_routes/stripe";
 import { registerSynthesisRoutes } from "./http_routes/synthesis";
-import { registerDashboardPlanRoutes } from "./http_routes/dashboard_plan";
 import { registerVoiceRoutes } from "./http_routes/voice";
 
 // Stella provider endpoints
@@ -39,7 +38,6 @@ authComponent.registerRoutes(http, createAuth, { cors: true });
 // ---------------------------------------------------------------------------
 
 registerSynthesisRoutes(http);
-registerDashboardPlanRoutes(http);
 registerSpeechToTextRoutes(http);
 registerSkillRoutes(http);
 registerConnectorWebhookRoutes(http);

@@ -4,7 +4,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getOrCreateDeviceId } from "@/platform/electron/device";
-import { planDashboardPages } from "@/global/onboarding/services/dashboard-plan";
 import { synthesizeCoreMemory } from "@/global/onboarding/services/synthesis";
 import { getPersonalizedDashboardPromptConfig } from "@/prompts/transport";
 import { useChatStore } from "@/context/chat-store";
@@ -116,38 +115,24 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
           }
         }
 
-        // Fire-and-forget: spawn self-mod agents to generate personalized pages
-        const startDashboardGeneration =
-          window.electronAPI?.agent.startDashboardGeneration;
+        // Fire-and-forget: spawn agent to generate personal website
+        const startGeneration =
+          window.electronAPI?.agent.startPersonalWebsiteGeneration;
 
-        if (!startDashboardGeneration) {
+        if (!startGeneration) {
           completed = true;
           synthesizedRef.current = true;
           return;
         }
 
-        let plannedPages: Awaited<ReturnType<typeof planDashboardPages>> | null =
-          null;
-        try {
-          plannedPages = await planDashboardPages(
-            synthesisResult.coreMemory,
-            isAuthenticated,
-          );
-        } catch {
-          plannedPages = null;
-        }
-
-        if (plannedPages?.length) {
-          setDashboardState("generating");
-          startDashboardGeneration({
-            conversationId: activeConversationId,
-            coreMemory: synthesisResult.coreMemory,
-            plannedPages,
-            promptConfig: getPersonalizedDashboardPromptConfig(),
-          })
-            .then(() => setDashboardState("idle"))
-            .catch(() => setDashboardState("idle"));
-        }
+        setDashboardState("generating");
+        startGeneration({
+          conversationId: activeConversationId,
+          coreMemory: synthesisResult.coreMemory,
+          promptConfig: getPersonalizedDashboardPromptConfig(),
+        })
+          .then(() => setDashboardState("idle"))
+          .catch(() => setDashboardState("idle"));
 
         completed = true;
         synthesizedRef.current = true;
