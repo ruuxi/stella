@@ -30,6 +30,7 @@ import {
   broadcastWakeWordState,
   getMobileBroadcast,
 } from "./context.js";
+import { DevToolServer } from "../devtool/dev-server.js";
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -356,6 +357,29 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
   }, config.startupStageDelayMs);
 };
 
+const startDevToolServer = (context: BootstrapContext) => {
+  if (!context.config.isDev) return;
+
+  const resetFlows = createBootstrapResetFlows(context, {
+    initializeStellaHostRunner: () => initializeStellaHostRunner(context),
+  });
+
+  const server = new DevToolServer({
+    stellaHomePath: () => context.state.stellaHomePath,
+    onResetMessages: () => resetFlows.resetLocalMessages(),
+    onHardReset: () => resetFlows.hardResetLocalState(),
+    onReloadApp: () => {
+      const fullWindow = context.state.windowManager?.getFullWindow();
+      if (fullWindow && !fullWindow.isDestroyed()) {
+        fullWindow.webContents.reload();
+      }
+    },
+  });
+
+  context.state.devToolServer = server;
+  server.start();
+};
+
 export const initializeBootstrapApplication = async (
   context: BootstrapContext,
 ) => {
@@ -376,6 +400,9 @@ export const initializeBootstrapApplication = async (
 
   // Start mobile bridge server (non-blocking)
   void startMobileBridge(context);
+
+  // Start devtool debug server (dev-mode only)
+  startDevToolServer(context);
 
   finalizeWindowLaunch(context);
 };

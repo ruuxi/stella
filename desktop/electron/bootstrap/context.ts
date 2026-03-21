@@ -23,6 +23,7 @@ import { WindowManager } from "../windows/window-manager.js";
 import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
 import { StoreModService } from "../self-mod/store-mod-service.js";
 import type { MobileBridgeService } from "../services/mobile-bridge/service.js";
+import type { DevToolServer } from "../devtool/dev-server.js";
 import { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
 import { getDevServerUrl } from "../dev-url.js";
 
@@ -59,6 +60,7 @@ export type BootstrapState = {
   storeModStore: StoreModStore | null;
   wakeWordController: WakeWordController | null;
   mobileBridgeService: MobileBridgeService | null;
+  devToolServer: DevToolServer | null;
   windowManager: WindowManager | null;
 };
 
@@ -189,6 +191,7 @@ export const createBootstrapContext = (
     storeModStore: null,
     wakeWordController: null,
     mobileBridgeService: null,
+    devToolServer: null,
     windowManager: null,
   };
 
