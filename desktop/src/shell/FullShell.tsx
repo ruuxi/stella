@@ -1,33 +1,20 @@
 import {
   lazy,
   Suspense,
-  startTransition,
   useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
-import type { GeneratedPage } from "@/app/registry";
-import { WorkspaceArea } from "@/app/workspace/WorkspaceArea";
-import { useDevProjects } from "@/context/dev-projects-state";
 import { useTheme } from "@/context/theme-context";
 import { useUiState } from "@/context/ui-state";
-import { useWorkspace } from "@/context/workspace-state";
-import { secureSignOut } from "@/global/auth/services/auth";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import { useDiscoveryFlow } from "@/global/onboarding/DiscoveryFlow";
 import {
   OnboardingView,
   useOnboardingOverlay,
 } from "@/global/onboarding/OnboardingOverlay";
-import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { ShiftingGradient } from "./background/ShiftingGradient";
-import { FullShellDialogs } from "./full-shell-dialogs";
-import type { DialogType } from "./full-shell-dialogs";
-import {
-  reportInteractiveAfterNextPaint,
-  reportRendererStartupMetricNow,
-} from "@/platform/dev/startup-metrics";
 import "./full-shell.layout.css";
 import { TitleBar } from "./TitleBar";
 
@@ -36,129 +23,25 @@ const OnboardingCanvas = lazy(() =>
     default: module.OnboardingCanvas,
   })),
 );
-const fullShellRuntimeImport = import("./FullShellRuntime");
-const FullShellRuntime = lazy(() =>
-  fullShellRuntimeImport.then((module) => ({
-    default: module.FullShellRuntime,
+const FullShellReadySurface = lazy(() =>
+  import("./FullShellReadySurface").then((module) => ({
+    default: module.FullShellReadySurface,
   })),
 );
 
-const NEW_APP_ASK_STELLA_PROMPT =
-  'The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.';
-
-type PendingAskStellaRequest = {
-  id: number;
-  text: string;
-};
-
 export const FullShell = () => {
-  const { state, setView } = useUiState();
+  const { state } = useUiState();
   const activeConversationId = state.conversationId;
-  const { state: workspaceState, openPanel, closePanel } = useWorkspace();
-  const activePanel = workspaceState.activePanel;
   const { gradientMode, gradientColor } = useTheme();
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
   const [demoMorphing, setDemoMorphing] = useState(false);
   const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeDemoRef = useRef<OnboardingDemo>(null);
-  const [activeDialog, setActiveDialog] = useState<DialogType>(null);
-  const [runtimeReady, setRuntimeReady] = useState(false);
-  const [pendingAskStellaRequest, setPendingAskStellaRequest] =
-    useState<PendingAskStellaRequest | null>(null);
   const onboarding = useOnboardingOverlay();
-  const { projects, pickProjectDirectory } = useDevProjects();
   const { handleDiscoveryConfirm, dashboardState } = useDiscoveryFlow({
     conversationId: activeConversationId,
   });
-
-  const showAuthDialog = useCallback(() => {
-    setActiveDialog("auth");
-  }, []);
-
-  const showConnectDialog = useCallback(() => {
-    setActiveDialog("connect");
-  }, []);
-
-  const showSettingsDialog = useCallback(() => {
-    setActiveDialog("settings");
-  }, []);
-
-  const showStoreView = useCallback(() => {
-    closePanel();
-    setView("store");
-  }, [closePanel, setView]);
-
-  const showHomeView = useCallback(() => {
-    closePanel();
-    setView("home");
-  }, [closePanel, setView]);
-
-  const showChatView = useCallback(() => {
-    closePanel();
-    setView("chat");
-  }, [closePanel, setView]);
-
-  const showSocialView = useCallback(() => {
-    closePanel();
-    setView("social");
-  }, [closePanel, setView]);
-
-  const handlePageSelect = useCallback(
-    (page: GeneratedPage) => {
-      openPanel({
-        kind: "generated-page",
-        name: page.id,
-        title: page.title,
-        pageId: page.id,
-      });
-      setView("app");
-    },
-    [openPanel, setView],
-  );
-
-  const handlePendingAskStellaHandled = useCallback((requestId: number) => {
-    setPendingAskStellaRequest((current) =>
-      current?.id === requestId ? null : current,
-    );
-  }, []);
-
-  const handleNewAppAskStella = useCallback(() => {
-    startTransition(() => {
-      setRuntimeReady(true);
-      setPendingAskStellaRequest({
-        id: Date.now(),
-        text: NEW_APP_ASK_STELLA_PROMPT,
-      });
-    });
-
-    if (state.view === "chat") {
-      closePanel();
-      setView("home");
-    }
-  }, [closePanel, setView, state.view]);
-
-  const handleProjectSelect = useCallback(
-    (project: (typeof projects)[number]) => {
-      openPanel({
-        name: `dev-project:${project.id}`,
-        title: project.name,
-        kind: "dev-project",
-        projectId: project.id,
-      });
-      setView("app");
-    },
-    [openPanel, setView],
-  );
-
-  const handleNewAppLocalProject = useCallback(async () => {
-    const project = await pickProjectDirectory();
-    if (!project) {
-      return;
-    }
-
-    handleProjectSelect(project);
-  }, [handleProjectSelect, pickProjectDirectory]);
 
   const handleDemoChange = useCallback((demo: OnboardingDemo) => {
     if (demo) {
@@ -186,44 +69,9 @@ export const FullShell = () => {
     }, 400);
   }, []);
 
-  const handleDialogOpenChange = useCallback((open: boolean) => {
-    if (!open) {
-      setActiveDialog(null);
-    }
-  }, []);
-
-  const handleSettingsSignOut = useCallback(() => {
-    setActiveDialog(null);
-    void secureSignOut();
-  }, []);
-
   useEffect(() => {
     window.electronAPI?.ui.setAppReady?.(onboarding.onboardingDone);
   }, [onboarding.onboardingDone]);
-
-  useEffect(() => {
-    reportRendererStartupMetricNow("renderer-full-shell-mounted", {
-      onboardingDone: onboarding.onboardingDone,
-      window: "full",
-    });
-    reportInteractiveAfterNextPaint();
-  }, [onboarding.onboardingDone]);
-
-  useEffect(() => {
-    if (!onboarding.onboardingDone || runtimeReady) {
-      return;
-    }
-
-    const frame = window.requestAnimationFrame(() => {
-      startTransition(() => {
-        setRuntimeReady(true);
-      });
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-    };
-  }, [onboarding.onboardingDone, runtimeReady]);
 
   useEffect(() => {
     return () => {
@@ -233,102 +81,26 @@ export const FullShell = () => {
     };
   }, []);
 
-  const isOrbVisible =
-    state.view !== "chat" &&
-    state.view !== "social" &&
-    onboarding.onboardingDone;
   const appReady = onboarding.onboardingDone;
-  const activeProjectId =
-    activePanel?.kind === "dev-project" ? activePanel.projectId : null;
-  const activePageId =
-    activePanel?.kind === "generated-page" ? activePanel.pageId : null;
   const showOnboardingDemos = activeDemo || demoClosing;
-  const showRuntimeShell = runtimeReady && onboarding.onboardingDone;
-  const showChatSurface = state.view === "chat" || state.view === "social";
 
   return (
     <div className="window-shell full">
       <TitleBar />
-      <ShiftingGradient mode={gradientMode} colorMode={gradientColor} />
+      <ShiftingGradient
+        mode={gradientMode}
+        colorMode={gradientColor}
+        lightweight={!appReady}
+      />
 
       <div className="full-body">
         {appReady ? (
-          <>
-            <Sidebar
-              activeView={state.view}
-              onSignIn={showAuthDialog}
-              onConnect={showConnectDialog}
-              onSettings={showSettingsDialog}
-              onStore={showStoreView}
-              onHome={showHomeView}
-              onChat={showChatView}
-              onSocial={showSocialView}
-              onNewAppAskStella={handleNewAppAskStella}
-              onNewAppLocalProject={handleNewAppLocalProject}
-              activePageId={activePageId}
-              onPageSelect={handlePageSelect}
+          <Suspense fallback={null}>
+            <FullShellReadySurface
               dashboardState={dashboardState}
-              projects={projects}
-              activeProjectId={activeProjectId}
-              onProjectSelect={handleProjectSelect}
+              onboardingExiting={onboarding.onboardingExiting}
             />
-
-            <div className="content-area">
-              {showChatSurface ? (
-                showRuntimeShell ? (
-                  <Suspense
-                    fallback={
-                      <WorkspaceArea
-                        view="home"
-                        activeDemo={null}
-                        demoClosing={false}
-                      />
-                    }
-                  >
-                    <FullShellRuntime
-                      activeConversationId={activeConversationId}
-                      activeView={state.view}
-                      composerEntering={onboarding.onboardingExiting}
-                      conversationId={activeConversationId}
-                      isOrbVisible={false}
-                      onSignIn={showAuthDialog}
-                      pendingAskStellaRequest={pendingAskStellaRequest}
-                      onPendingAskStellaHandled={handlePendingAskStellaHandled}
-                    />
-                  </Suspense>
-                ) : (
-                  <WorkspaceArea
-                    view="home"
-                    activeDemo={null}
-                    demoClosing={false}
-                  />
-                )
-              ) : (
-                <>
-                  <WorkspaceArea
-                    view={state.view}
-                    activeDemo={activeDemo}
-                    demoClosing={demoClosing}
-                    conversationId={activeConversationId ?? undefined}
-                  />
-                  {showRuntimeShell ? (
-                    <Suspense fallback={null}>
-                      <FullShellRuntime
-                        activeConversationId={activeConversationId}
-                        activeView={state.view}
-                        composerEntering={onboarding.onboardingExiting}
-                        conversationId={activeConversationId}
-                        isOrbVisible={isOrbVisible}
-                        onSignIn={showAuthDialog}
-                        pendingAskStellaRequest={pendingAskStellaRequest}
-                        onPendingAskStellaHandled={handlePendingAskStellaHandled}
-                      />
-                    </Suspense>
-                  ) : null}
-                </>
-              )}
-            </div>
-          </>
+          </Suspense>
         ) : (
           <div
             className="onboarding-layout"
@@ -372,12 +144,6 @@ export const FullShell = () => {
           </div>
         )}
       </div>
-
-      <FullShellDialogs
-        activeDialog={activeDialog}
-        onDialogOpenChange={handleDialogOpenChange}
-        onSignOut={handleSettingsSignOut}
-      />
     </div>
   );
 };

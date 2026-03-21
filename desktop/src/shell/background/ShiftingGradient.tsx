@@ -85,6 +85,7 @@ interface ShiftingGradientProps {
   colorMode?: GradientColor;
   blurMultiplier?: number;
   scale?: number;
+  lightweight?: boolean;
 }
 
 export const ShiftingGradient = memo(function ShiftingGradient({
@@ -93,6 +94,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
   colorMode = "relative",
   blurMultiplier = 1,
   scale = 1,
+  lightweight = false,
 }: ShiftingGradientProps) {
   const { resolvedColorMode, themeId, colors } = useTheme();
   const [blobs, setBlobs] = useState<Blob[]>([]);
@@ -153,6 +155,13 @@ export const ShiftingGradient = memo(function ShiftingGradient({
 
   // Initialize and update blobs
   useEffect(() => {
+    if (lightweight) {
+      setBlobs([]);
+      setReady(false);
+      didInitRef.current = false;
+      return;
+    }
+
     let cancelled = false;
     const timer = requestAnimationFrame(() => {
       if (cancelled) return;
@@ -171,7 +180,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       cancelled = true;
       cancelAnimationFrame(timer);
     };
-  }, [themeId, resolvedColorMode, mode, colorMode, getPalette, blurMultiplier, scale]);
+  }, [themeId, resolvedColorMode, mode, colorMode, getPalette, blurMultiplier, scale, lightweight]);
 
   // Periodically shift blob positions
   //useEffect(() => {
@@ -191,11 +200,17 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       {/* Base background layer */}
       <div
         className="gradient-base"
-        style={{ background: `var(--background)` }}
+        style={{
+          background: lightweight
+            ? `radial-gradient(circle at 18% 20%, color-mix(in srgb, ${colors.primary} 12%, transparent) 0%, transparent 30%), radial-gradient(circle at 84% 18%, color-mix(in srgb, ${colors.interactive} 14%, transparent) 0%, transparent 32%), radial-gradient(circle at 50% 84%, color-mix(in srgb, ${colors.success} 10%, transparent) 0%, transparent 40%), var(--background)`
+            : `var(--background)`,
+        }}
       />
 
       {/* Gradient blobs */}
-      {blobs.map((blob, index) => (
+      {lightweight
+        ? null
+        : blobs.map((blob, index) => (
         <div
           key={index}
           className="gradient-blob"
@@ -214,17 +229,19 @@ export const ShiftingGradient = memo(function ShiftingGradient({
             background: `radial-gradient(circle at center, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha}) 0%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.93}) 8%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.82}) 16%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.68}) 25%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.52}) 35%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.35}) 46%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.18}) 58%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.06}) 68%, transparent 78%)`,
           } as CSSProperties}
         />
-      ))}
+          ))}
 
       {/* Backdrop blur to smooth banding */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          zIndex: 9,
-          backdropFilter: 'blur(60px)',
-          WebkitBackdropFilter: 'blur(60px)',
-        }}
-      />
+      {lightweight ? null : (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            zIndex: 9,
+            backdropFilter: 'blur(60px)',
+            WebkitBackdropFilter: 'blur(60px)',
+          }}
+        />
+      )}
 
       {/* Backdrop + Grain overlay (matching Aura) */}
       <div
@@ -232,7 +249,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
         style={{
           zIndex: 10,
           backgroundColor: colors.background
-            ? `color-mix(in srgb, ${colors.background} 35%, transparent)`
+            ? `color-mix(in srgb, ${colors.background} ${lightweight ? 22 : 35}%, transparent)`
             : 'transparent',
         }}
       >
@@ -240,11 +257,10 @@ export const ShiftingGradient = memo(function ShiftingGradient({
           className="gradient-grain"
           style={{
             backgroundImage: `url("${GRAIN_DATA_URI}")`,
-            opacity: mode === "soft" ? 0.28 : 0.55,
+            opacity: lightweight ? 0.14 : mode === "soft" ? 0.28 : 0.55,
           }}
         />
       </div>
     </div>
   );
 });
-

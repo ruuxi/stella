@@ -18,7 +18,6 @@
     "native:build": "cd native && npm install && npm run build",
     "workspace:create-app": "node scripts/create-workspace-app.mjs",
     "devtool": "cd ../devtool && bun install && bun run dev",
-    "electron:dev:measure": "node scripts/measure-electron-startup.mjs",
     "electron:dev": "node scripts/generate-game-bindings.mjs && concurrently -k --kill-others-on-fail \"cross-env NODE_ENV=development vite\" \"node scripts/dev-electron-build.mjs\" \"node scripts/dev-electron.mjs\" \"cd ../devtool && bun install && bun run dev || true\"",
     "electron:typecheck": "bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json --pretty false --noEmit && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json --pretty false --noEmit",
     "electron:typecheck:watch": "concurrently -k --kill-others-on-fail \"bunx --package typescript@5.9.3 tsc -w -p tsconfig.electron.json --preserveWatchOutput --noEmit\" \"bunx --package typescript@5.9.3 tsc -w -p tsconfig.preload.json --preserveWatchOutput --noEmit\"",

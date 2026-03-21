@@ -24,7 +24,6 @@ import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
 import { StoreModService } from "../self-mod/store-mod-service.js";
 import { createBootstrapResetFlows, shutdownBootstrapRuntime } from "./resets.js";
 import { MobileBridgeService } from "../services/mobile-bridge/service.js";
-import { emitStartupMetric } from "../startup/profiler.js";
 import {
   type BootstrapContext,
   broadcastAuthCallback,
@@ -263,11 +262,6 @@ const initializeBootstrapLocalState = async (context: BootstrapContext) => {
   services.securityPolicyService.setSecurityPolicyPath(
     path.join(stellaHome.statePath, "security_policy.json"),
   );
-
-  emitStartupMetric({
-    metric: "bootstrap-local-state-ready",
-    source: "electron-main",
-  });
 };
 
 const bindUiStateTargets = (context: BootstrapContext) => {
@@ -397,11 +391,6 @@ const startDevToolServer = (context: BootstrapContext) => {
 export const initializeBootstrapApplication = async (
   context: BootstrapContext,
 ) => {
-  emitStartupMetric({
-    metric: "bootstrap-application-initialize-started",
-    source: "electron-main",
-  });
-
   const { services } = context;
 
   services.authService.registerAuthProtocol();
@@ -421,10 +410,6 @@ export const initializeBootstrapApplication = async (
 
   void (async () => {
     await initializeStellaHostRunner(context);
-    emitStartupMetric({
-      metric: "host-runtime-ready",
-      source: "electron-main",
-    });
     setTimeout(() => {
       if (context.state.isQuitting) {
         return;

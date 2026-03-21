@@ -7,6 +7,15 @@ import type {
   TextContent,
   ThinkingLevel,
 } from "../ai/types.js";
+import {
+  extractChatText,
+  normalizeStellaApiBaseUrl,
+  STELLA_CHAT_COMPLETIONS_PATH,
+  STELLA_DEFAULT_MODEL,
+  STELLA_MODELS_PATH,
+  type ChatCompletionResponse,
+  type ChatMessage,
+} from "../../../src/shared/stella-api.js";
 
 function readAssistantText(message: AssistantMessage): string {
   return message.content
@@ -16,34 +25,14 @@ function readAssistantText(message: AssistantMessage): string {
     .trim();
 }
 
-export const STELLA_CHAT_COMPLETIONS_PATH = "/api/stella/v1/chat/completions";
-export const STELLA_MODELS_PATH = "/api/stella/v1/models";
-export const STELLA_DEFAULT_MODEL = "stella/default";
-
-export const normalizeStellaApiBaseUrl = (value: string): string =>
-  value.trim().replace(/\/chat\/completions\/?$/i, "").replace(/\/+$/, "");
-
-export type ChatMessage = {
-  role: "system" | "user" | "assistant" | "developer";
-  content: string | Array<{ type?: string; text?: string }>;
+export {
+  extractChatText,
+  normalizeStellaApiBaseUrl,
+  STELLA_CHAT_COMPLETIONS_PATH,
+  STELLA_DEFAULT_MODEL,
+  STELLA_MODELS_PATH,
 };
-
-export type ChatCompletionResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string | Array<{ type?: string; text?: string }>;
-    };
-    delta?: {
-      content?: string;
-    };
-  }>;
-  usage?: {
-    input_tokens?: number;
-    prompt_tokens?: number;
-    output_tokens?: number;
-    completion_tokens?: number;
-  };
-};
+export type { ChatCompletionResponse, ChatMessage };
 
 export type StellaChatRequestOptions = {
   agentType: string;
@@ -201,22 +190,6 @@ const messageToResponse = (message: AssistantMessage): ChatCompletionResponse =>
     completion_tokens: message.usage.output,
   },
 });
-
-export function extractChatText(response: ChatCompletionResponse): string {
-  const content = response.choices?.[0]?.message?.content;
-  if (typeof content === "string") {
-    return content.trim();
-  }
-  if (Array.isArray(content)) {
-    return content
-      .filter((part) => part?.type === "text" && typeof part.text === "string")
-      .map((part) => part.text!.trim())
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-  }
-  return "";
-}
 
 export async function callStellaChatCompletion<TResponse = ChatCompletionResponse>(args: {
   transport: StellaTransport;

@@ -2,11 +2,12 @@
  * Onboarding flow: Start -> Auth -> Intro (center) -> split layout steps.
  */
 
-import { lazy, Suspense, useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/convex/api";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import { OnboardingStep1 } from "@/global/onboarding/OnboardingStep1";
 import {
   StellaAnimation,
   type StellaAnimationHandle,
@@ -16,11 +17,6 @@ import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 
 const CREATURE_INITIAL_SIZE = 0.22;
-const LazyOnboardingStep1 = lazy(() =>
-  import("@/global/onboarding/OnboardingStep1").then((module) => ({
-    default: module.OnboardingStep1,
-  })),
-);
 
 export type OnboardingOverlayProps = {
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
@@ -243,36 +239,18 @@ export function OnboardingView({
       </div>
       {!onboardingDone &&
         (hasStarted ? (
-          <Suspense
-            fallback={
-              <div
-                className="onboarding-moment onboarding-moment--ripple"
-                data-active="true"
-              >
-                <div className="onboarding-ripple-content">
-                  <div className="onboarding-text onboarding-text--fade-in">
-                    Stella is an AI that runs on your computer.
-                  </div>
-                  <div className="onboarding-text onboarding-text--fade-in-delayed">
-                    She's not made for everyone. She's made for you.
-                  </div>
-                </div>
-              </div>
-            }
-          >
-            <LazyOnboardingStep1
-              key={onboardingKey}
-              initialPhase="intro"
-              onComplete={completeOnboarding}
-              onInteract={triggerFlash}
-              onDiscoveryConfirm={onDiscoveryConfirm}
-              onEnterSplit={handleEnterSplit}
-              onSelectionChange={onSelectionChange}
-              onDemoChange={onDemoChange}
-              demoMorphing={demoMorphing}
-              isAuthenticated={isAuthenticated}
-            />
-          </Suspense>
+          <OnboardingStep1
+            key={onboardingKey}
+            initialPhase="intro"
+            onComplete={completeOnboarding}
+            onInteract={triggerFlash}
+            onDiscoveryConfirm={onDiscoveryConfirm}
+            onEnterSplit={handleEnterSplit}
+            onSelectionChange={onSelectionChange}
+            onDemoChange={onDemoChange}
+            demoMorphing={demoMorphing}
+            isAuthenticated={isAuthenticated}
+          />
         ) : isAuthLoading ? (
           <div className="onboarding-moment onboarding-moment--auth">
             <div className="onboarding-text">Preparing Stella...</div>
