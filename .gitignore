@@ -1,1 +1,5 @@
 .stella/
+
+# devtool
+devtool/node_modules/
+devtool/bun.lock
