@@ -41,6 +41,7 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
     cleanupSelectedTextProcess();
     context.state.overlayController?.destroy();
     context.state.mobileBridgeService?.stop();
+    context.state.devToolServer?.stop();
   });
 
   app.on("will-quit", () => {
