@@ -1,7 +1,5 @@
-import { generateText } from "ai";
-import { createManagedModel, MANAGED_GATEWAY } from "../agent/model";
+import { MANAGED_GATEWAY } from "../agent/model";
 import { resolveModelConfig } from "../agent/model_resolver";
-import { usageSummaryFromResult } from "../agent/model_execution";
 import { AGENT_IDS } from "./agent_constants";
 import { extractJsonBlock } from "./json";
 import {
@@ -10,6 +8,11 @@ import {
 } from "./managed_billing";
 import { normalizeText, cleanSources, slugify } from "./text_utils";
 import type { ActionCtx } from "../_generated/server";
+import {
+  assistantText,
+  completeManagedChat,
+  usageSummaryFromAssistant,
+} from "../runtime_ai/managed";
 
 export type DashboardPlanPage = {
   pageId: string;
@@ -147,15 +150,20 @@ export async function planDashboardPagesWithLlm(args: {
     },
   );
 
-  const model = createManagedModel(config.model);
   const startedAt = Date.now();
-  const result = await generateText({
-    model,
-    system: systemPrompt,
-    messages: [{ role: "user", content: args.userMessage }],
-    maxOutputTokens: Math.min(config.maxOutputTokens ?? 4096, 8192),
-    temperature: config.temperature,
-    providerOptions: config.providerOptions,
+  const message = await completeManagedChat({
+    config: {
+      ...config,
+      maxOutputTokens: Math.min(config.maxOutputTokens ?? 4096, 8192),
+    },
+    context: {
+      systemPrompt,
+      messages: [{
+        role: "user",
+        content: [{ type: "text", text: args.userMessage }],
+        timestamp: Date.now(),
+      }],
+    },
   });
 
   if (args.caller.kind === "owner") {
@@ -165,9 +173,9 @@ export async function planDashboardPagesWithLlm(args: {
       model: config.model,
       durationMs: Date.now() - startedAt,
       success: true,
-      usage: usageSummaryFromResult(result),
+      usage: usageSummaryFromAssistant(message),
     });
   }
 
-  return parseDashboardPlanPages(result.text ?? "");
+  return parseDashboardPlanPages(assistantText(message));
 }

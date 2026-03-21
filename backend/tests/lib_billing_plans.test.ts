@@ -18,8 +18,8 @@ describe("billing plan utilization tuning", () => {
 
   test("default catalog uses the utilization-derived paid limits", () => {
     expect(getIncludedUsageUtilizationRate()).toBe(0.7);
-    expect(getPlanConfig("go").monthlyLimitUsd).toBe(14.29);
-    expect(getPlanConfig("pro").monthlyLimitUsd).toBe(142.86);
-    expect(getPlanConfig("plus").monthlyLimitUsd).toBe(285.71);
+    expect(getPlanConfig("go").monthlyLimitUsd).toBe(28.57);
+    expect(getPlanConfig("pro").monthlyLimitUsd).toBe(85.71);
+    expect(getPlanConfig("plus").monthlyLimitUsd).toBe(142.86);
   });
 });

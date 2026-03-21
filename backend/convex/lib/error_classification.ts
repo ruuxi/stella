@@ -67,3 +67,15 @@ export function isConvexInternalError(error: unknown): boolean {
   const msg = getErrorMessage(error);
   return msg.includes("convex") && msg.includes("function");
 }
+
+/**
+ * Check if execution stopped because the tool loop ran out of allowed steps.
+ * This is a caller/runtime limit, not a provider failure, so it should not fail over.
+ */
+export function isToolLoopExhaustionError(error: unknown): boolean {
+  if (error instanceof Error && error.name === "ToolLoopExhaustedError") {
+    return true;
+  }
+  const msg = getErrorMessage(error);
+  return msg.includes("tool loop exhausted") || msg.includes("maxsteps=");
+}

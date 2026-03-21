@@ -12,9 +12,7 @@ import {
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireUserId, tryLoadOwnedConversation } from "../auth";
-import { generateText } from "ai";
 import { resolveModelConfig, type ResolvedModelConfig } from "../agent/model_resolver";
-import { usageSummaryFromResult } from "../agent/model_execution";
 import {
   ORCHESTRATOR_THREAD_COMPACTION_TRIGGER_TOKENS,
   SUBAGENT_THREAD_COMPACTION_TRIGGER_TOKENS,
@@ -34,6 +32,11 @@ import {
   assertManagedUsageAllowed,
   scheduleManagedUsage,
 } from "../lib/managed_billing";
+import {
+  assistantText,
+  completeManagedChat,
+  usageSummaryFromAssistant,
+} from "../runtime_ai/managed";
 
 const MAX_THREADS_PER_CONVERSATION = 16;
 const MAX_CONTENT_LENGTH = 500_000;
@@ -125,15 +128,16 @@ const generateCompactionTextWithRetry = async (
   for (let attempt = 0; attempt <= THREAD_COMPACTION_MAX_RETRIES; attempt += 1) {
     try {
       const startedAt = Date.now();
-      const result = await generateText({
-        ...config,
-        system: THREAD_COMPACTION_SYSTEM_PROMPT,
-        messages: [
-          {
+      const message = await completeManagedChat({
+        config,
+        context: {
+          systemPrompt: THREAD_COMPACTION_SYSTEM_PROMPT,
+          messages: [{
             role: "user",
-            content: promptBody,
-          },
-        ],
+            content: [{ type: "text", text: promptBody }],
+            timestamp: Date.now(),
+          }],
+        },
       });
       await scheduleManagedUsage(ctx, {
         ownerId: args.ownerId,
@@ -142,9 +146,9 @@ const generateCompactionTextWithRetry = async (
         model: config.model,
         durationMs: Date.now() - startedAt,
         success: true,
-        usage: usageSummaryFromResult(result),
+        usage: usageSummaryFromAssistant(message),
       });
-      return result.text.trim();
+      return assistantText(message);
     } catch (error) {
       lastError = error;
       if (attempt >= THREAD_COMPACTION_MAX_RETRIES) {

@@ -1,9 +1,7 @@
 import type { HttpRouter } from "convex/server";
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { generateText } from "ai";
-import { usageSummaryFromResult } from "../agent/model_execution";
-import { createManagedModel, MANAGED_GATEWAY } from "../agent/model";
+import { MANAGED_GATEWAY } from "../agent/model";
 import { resolveModelConfig } from "../agent/model_resolver";
 import {
   buildCategoryAnalysisUserMessage,
@@ -29,6 +27,11 @@ import {
   scheduleManagedUsage,
 } from "../lib/managed_billing";
 import { parseWelcomeSuggestionsFromModelText } from "../lib/welcome_suggestions_parse";
+import {
+  assistantText,
+  completeManagedChat,
+  usageSummaryFromAssistant,
+} from "../runtime_ai/managed";
 
 type SynthesizeRequest = {
   /** @deprecated Use formattedSections instead */
@@ -53,6 +56,10 @@ const DEFAULT_WELCOME_MESSAGE =
   "Hey! I'm Stella, your AI assistant. What can I help you with today?";
 /** Local/testing: high anon allowance; re-tighten before production. */
 const MAX_ANON_SYNTHESIS_REQUESTS = 1_000_000;
+
+export const getWelcomeSuggestionsText = (
+  result: { result: Parameters<typeof assistantText>[0] } | null | undefined,
+): string => (result ? assistantText(result.result) : "");
 
 export const registerSynthesisRoutes = (http: HttpRouter) => {
   http.route({
@@ -152,7 +159,6 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             access: modelAccess,
             audience: ownerId ? undefined : "anonymous",
           });
-          const synthesisModel = createManagedModel(synthesisConfig.model);
 
           let synthesisInput: string;
 
@@ -186,27 +192,33 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
                 }
 
                 const startedAt = Date.now();
-                const result = await generateText({
-                  model: synthesisModel,
-                  system: systemPrompt,
-                  messages: [{
-                    role: "user",
-                    content: buildCategoryAnalysisUserMessage(
-                      category,
-                      sections[category],
-                      categoryAnalysisUserPromptTemplate,
-                    ),
-                  }],
-                  maxOutputTokens: 8000,
-                  temperature: synthesisConfig.temperature,
-                  providerOptions: synthesisConfig.providerOptions,
+                const message = await completeManagedChat({
+                  config: {
+                    ...synthesisConfig,
+                    maxOutputTokens: 8000,
+                  },
+                  context: {
+                    systemPrompt,
+                    messages: [{
+                      role: "user",
+                      content: [{
+                        type: "text",
+                        text: buildCategoryAnalysisUserMessage(
+                          category,
+                          sections[category],
+                          categoryAnalysisUserPromptTemplate,
+                        ),
+                      }],
+                      timestamp: Date.now(),
+                    }],
+                  },
                 });
 
                 return {
                   category,
-                  analysis: result.text?.trim() ?? "",
+                  analysis: assistantText(message),
                   durationMs: Date.now() - startedAt,
-                  usage: usageSummaryFromResult(result),
+                  usage: usageSummaryFromAssistant(message),
                   generated: true,
                 };
               }),
@@ -241,19 +253,22 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           }
 
           const coreSynthesisStartedAt = Date.now();
-          const synthesisResult = await generateText({
-            model: synthesisModel,
-            system: coreMemorySystemPrompt,
-            messages: [{
-              role: "user",
-              content: buildCoreSynthesisUserMessage(
-                synthesisInput,
-                coreMemoryUserPromptTemplate,
-              ),
-            }],
-            maxOutputTokens: synthesisConfig.maxOutputTokens,
-            temperature: synthesisConfig.temperature,
-            providerOptions: synthesisConfig.providerOptions,
+          const synthesisMessage = await completeManagedChat({
+            config: synthesisConfig,
+            context: {
+              systemPrompt: coreMemorySystemPrompt,
+              messages: [{
+                role: "user",
+                content: [{
+                  type: "text",
+                  text: buildCoreSynthesisUserMessage(
+                    synthesisInput,
+                    coreMemoryUserPromptTemplate,
+                  ),
+                }],
+                timestamp: Date.now(),
+              }],
+            },
           });
 
           if (ownerId) {
@@ -263,11 +278,11 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
               model: synthesisConfig.model,
               durationMs: Date.now() - coreSynthesisStartedAt,
               success: true,
-              usage: usageSummaryFromResult(synthesisResult),
+              usage: usageSummaryFromAssistant(synthesisMessage),
             });
           }
 
-          const coreMemory = synthesisResult.text?.trim();
+          const coreMemory = assistantText(synthesisMessage);
           if (!coreMemory) {
             return errorResponse(500, "Failed to synthesize core memory", origin);
           }
@@ -276,39 +291,48 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             access: modelAccess,
             audience: ownerId ? undefined : "anonymous",
           });
-          const welcomeModel = createManagedModel(welcomeConfig.model);
 
           const welcomeStartedAt = Date.now();
           const suggestionsStartedAt = Date.now();
           const [welcomeResult, suggestionsResult] = await Promise.all([
-            generateText({
-              model: welcomeModel,
-              messages: [{
-                role: "user",
-                content: buildWelcomeMessagePrompt(
-                  coreMemory,
-                  welcomeMessagePromptTemplate,
-                ),
-              }],
-              maxOutputTokens: welcomeConfig.maxOutputTokens,
-              temperature: welcomeConfig.temperature,
-              providerOptions: welcomeConfig.providerOptions,
+            completeManagedChat({
+              config: welcomeConfig,
+              context: {
+                messages: [{
+                  role: "user",
+                  content: [{
+                    type: "text",
+                    text: buildWelcomeMessagePrompt(
+                      coreMemory,
+                      welcomeMessagePromptTemplate,
+                    ),
+                  }],
+                  timestamp: Date.now(),
+                }],
+              },
             }).then((result) => ({
               result,
               durationMs: Date.now() - welcomeStartedAt,
             })),
-            generateText({
-              model: welcomeModel,
-              messages: [{
-                role: "user",
-                content: buildWelcomeSuggestionsPrompt(
-                  coreMemory,
-                  welcomeSuggestionsPromptTemplate,
-                ),
-              }],
-              maxOutputTokens: 1024,
-              temperature: 0.7,
-              providerOptions: welcomeConfig.providerOptions,
+            completeManagedChat({
+              config: {
+                ...welcomeConfig,
+                maxOutputTokens: 1024,
+                temperature: 0.7,
+              },
+              context: {
+                messages: [{
+                  role: "user",
+                  content: [{
+                    type: "text",
+                    text: buildWelcomeSuggestionsPrompt(
+                      coreMemory,
+                      welcomeSuggestionsPromptTemplate,
+                    ),
+                  }],
+                  timestamp: Date.now(),
+                }],
+              },
             })
               .then((result) => ({
                 result,
@@ -324,7 +348,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
               model: welcomeConfig.model,
               durationMs: welcomeResult.durationMs,
               success: true,
-              usage: usageSummaryFromResult(welcomeResult.result),
+              usage: usageSummaryFromAssistant(welcomeResult.result),
             });
 
             if (suggestionsResult) {
@@ -334,15 +358,16 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
                 model: welcomeConfig.model,
                 durationMs: suggestionsResult.durationMs,
                 success: true,
-                usage: usageSummaryFromResult(suggestionsResult.result),
+                usage: usageSummaryFromAssistant(suggestionsResult.result),
               });
             }
           }
 
+          const suggestionsText = getWelcomeSuggestionsText(suggestionsResult);
           const suggestions = parseWelcomeSuggestionsFromModelText(
-            suggestionsResult?.result.text,
+            suggestionsText,
           );
-          if (!suggestions.length && suggestionsResult?.result.text?.trim()) {
+          if (!suggestions.length && suggestionsText) {
             console.warn(
               "[synthesize] Welcome suggestions: model output was not a usable JSON array",
             );
@@ -350,7 +375,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
 
           const response: SynthesizeResponse = {
             coreMemory,
-            welcomeMessage: welcomeResult.result.text?.trim() || DEFAULT_WELCOME_MESSAGE,
+            welcomeMessage: assistantText(welcomeResult.result) || DEFAULT_WELCOME_MESSAGE,
             suggestions,
           };
 
