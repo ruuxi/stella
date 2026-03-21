@@ -39,7 +39,7 @@ import type { EditorStateSignals } from "./editor-state.js";
 import type { FirefoxSignals } from "./firefox-data.js";
 import type { SteamLibrarySignals } from "./steam-library.js";
 import type { MusicLibrarySignals } from "./music-library.js";
-import type { BrowserType } from "../../src/shared/contracts/electron-data.js";
+import type { BrowserType } from "../../packages/stella-boundary-contracts/src/index.js";
 
 const log = (...args: unknown[]) => console.log("[collect-all]", ...args);
 

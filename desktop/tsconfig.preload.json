@@ -11,7 +11,8 @@
     "types": ["node"],
     "emitDeclarationOnly": false
   },
-  "include": ["electron/preload.ts"],
-  "files": [],
-  "references": [{ "path": "./tsconfig.electron.json" }]
+  "include": [
+    "electron/preload.ts",
+    "packages/stella-boundary-contracts/src/**/*"
+  ]
 }

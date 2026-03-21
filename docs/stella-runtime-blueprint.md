@@ -942,3 +942,17 @@ That is the production-ready architecture for a desktop assistant that can modif
 - Verified the secure-storage startup fix with `bun run electron:dev`: the previous `Protected storage is unavailable` sidecar crash loop no longer reproduces, and the runtime proceeds through extension load, mobile-bridge startup, and devtool connection.
 - Restored error logging on the explicit fire-and-forget `scheduleBootstrapRuntimeShutdown(...)` path so quit-style shutdown failures are surfaced to logs instead of disappearing silently.
 - Stabilized the `FullShell` renderer smoke coverage by preloading the lazy ready-shell modules and awaiting the mounted ready surface before assertions, so the bootstrap shell test no longer races the Suspense-loaded path.
+- Normalized the daemon-to-worker trust boundary so the daemon remains the only public RPC surface: every forwarded local-chat, store-mod, schedule, social-session, and shell-by-port call now maps from a public method to an `INTERNAL_WORKER_*` worker method, and the worker no longer registers those public names directly.
+- Added the dedicated `desktop/packages/stella-boundary-contracts/` package and moved the cross-boundary DTOs there, then rewired renderer, Electron, runtime client, daemon, worker, protocol, and regression tests to import those types from the shared contracts package instead of app-local `src/shared/contracts/electron-data.ts`.
+- Removed the temporary `desktop/src/shared/contracts/electron-data.ts` compatibility shim entirely, so `desktop/packages/stella-boundary-contracts/src/index.ts` is now the only source of truth for those boundary contracts.
+- Replaced IPC runtime availability polling with event-driven runner availability by teaching `RuntimeClientAdapter` to publish authoritative connection/readiness snapshots, adding runner-replacement subscriptions in bootstrap lifecycle bindings, and updating `desktop/electron/ipc/runtime-availability.ts` plus the local-chat / schedule / store / social-session handlers to wait on connection events instead of a 50ms loop.
+- Updated preload typecheck wiring so the new boundary-contracts package is compiled directly by `tsconfig.preload.json`, which keeps preload on the shared contract source without relying on referenced build artifacts.
+- Added focused regression coverage for the event-driven runner-availability path and updated the existing IPC readiness tests to exercise runner-replacement notifications:
+  - `desktop/tests/electron/ipc/runtime-availability.test.ts`
+  - `desktop/tests/electron/ipc/local-chat-handlers.test.ts`
+  - `desktop/tests/electron/ipc/schedule-handlers.test.ts`
+  - `desktop/tests/electron/ipc/store-handlers.test.ts`
+  - `desktop/tests/electron/ipc/system-handlers.test.ts`
+- Verification:
+  - `npm run electron:typecheck`
+  - `npm run test:electron` -> 76 files passed, 229 tests passed, 1 skipped

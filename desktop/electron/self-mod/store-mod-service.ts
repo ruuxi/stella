@@ -9,7 +9,7 @@ import type {
   StoreReleaseBlueprintFile,
   StoreReleaseDraft,
   StoreReleaseManifest,
-} from "../../src/shared/contracts/electron-data.js";
+} from "../../packages/stella-boundary-contracts/src/index.js";
 import { StoreModStore } from "../storage/store-mod-store.js";
 import {
   commitGitFeatureBatch,

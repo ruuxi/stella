@@ -12,7 +12,7 @@ import {
   type AgentStreamEventType,
 } from "../../src/shared/contracts/agent-runtime.js";
 import { devEventBus } from "../devtool/dev-event-bus.js";
-import type { SelfModHmrState } from "../../src/shared/contracts/electron-data.js";
+import type { SelfModHmrState } from "../../packages/stella-boundary-contracts/src/index.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import {
   getLastGitFeatureId,

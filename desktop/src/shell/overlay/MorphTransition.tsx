@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cssToVec3 } from "@/shared/lib/color";
-import type { SelfModHmrState } from "@/shared/contracts/electron-data";
+import type { SelfModHmrState } from "../../../packages/stella-boundary-contracts/src/index.js";
 
 type MorphPhase = "idle" | "rippling" | "crossfading" | "calming";
 
