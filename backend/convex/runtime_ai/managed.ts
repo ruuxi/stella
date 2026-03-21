@@ -410,9 +410,9 @@ function buildSimpleOptions(args: {
   extraBody?: Record<string, unknown>;
 } {
   const reasoning =
-    args.request?.reasoning
-    || normalizeReasoning(args.config.providerOptions?.openai?.reasoningEffort)
-    || (args.config.providerOptions?.openai?.forceReasoning ? "high" : undefined);
+    normalizeReasoning(args.config.providerOptions?.openai?.reasoningEffort)
+    || (args.config.providerOptions?.openai?.forceReasoning ? "high" : undefined)
+    || args.request?.reasoning;
 
   return {
     temperature: args.request?.temperature ?? args.config.temperature,
@@ -456,8 +456,8 @@ async function completeManagedOpenAICompletions(args: {
         request: args.request,
       }),
       reasoningEffort:
-        args.request?.reasoning
-        || normalizeReasoning(args.config.providerOptions?.openai?.reasoningEffort),
+        normalizeReasoning(args.config.providerOptions?.openai?.reasoningEffort)
+        || args.request?.reasoning,
       toolChoice: args.request?.toolChoice,
       responseFormat: args.request?.responseFormat,
     },

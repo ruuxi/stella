@@ -11,10 +11,6 @@ export type { WelcomeSuggestion } from "./synthesis";
 export { buildSkillMetadataUserMessage } from "./skill_metadata";
 export { buildSkillSelectionUserMessage } from "./skill_selection";
 export {
-  buildPersonalizedDashboardPageUserMessage,
-} from "./personalized_dashboard";
-export type { PersonalizedDashboardPageAssignment } from "./personalized_dashboard";
-export {
   THREAD_COMPACTION_SYSTEM_PROMPT,
   THREAD_COMPACTION_PROMPT,
   THREAD_COMPACTION_UPDATE_PROMPT,

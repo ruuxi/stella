@@ -17,7 +17,6 @@ export {
   getVoiceSessionPromptConfig,
 } from "./transport"
 export type {
-  PersonalizedDashboardPageAssignment,
   PromptDefinition,
   PromptId,
   PromptOverrideMap,

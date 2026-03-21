@@ -21,8 +21,8 @@ import {
 } from "../self-mod/git.js";
 import type { HmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
 import {
-  startDashboardGeneration,
-  type DashboardGenerationRequest,
+  startPersonalWebsiteGeneration,
+  type PersonalWebsiteGenerationRequest,
 } from "../core/dashboard-generation.js";
 
 type AgentHandlersOptions = {
@@ -322,10 +322,10 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
   });
 
   ipcMain.handle(
-    "agent:startDashboardGeneration",
-    async (event, payload: DashboardGenerationRequest) => {
+    "agent:startPersonalWebsiteGeneration",
+    async (event, payload: PersonalWebsiteGenerationRequest) => {
       if (
-        !options.assertPrivilegedSender(event, "agent:startDashboardGeneration")
+        !options.assertPrivilegedSender(event, "agent:startPersonalWebsiteGeneration")
       ) {
         throw new Error("Blocked untrusted request.");
       }
@@ -334,10 +334,10 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         throw new Error("Stella runtime not available");
       }
 
-      return await startDashboardGeneration(
+      return await startPersonalWebsiteGeneration(
         (request) => stellaHostRunner.createBackgroundTask(request),
         (taskId) => stellaHostRunner.getLocalTaskSnapshot(taskId),
-        { ...payload, projectRoot: options.frontendRoot },
+        payload,
       );
     },
   );

@@ -428,7 +428,11 @@ export function buildOpenAICompletionsParams(
   if ((compat.thinkingFormat === "zai" || compat.thinkingFormat === "qwen") && model.reasoning) {
     params.enable_thinking = !!options?.reasoningEffort;
   } else if (options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
-    params.reasoning_effort = options.reasoningEffort;
+    if (model.baseUrl.includes("openrouter.ai")) {
+      params.reasoning = { effort: options.reasoningEffort };
+    } else {
+      params.reasoning_effort = options.reasoningEffort;
+    }
   }
 
   if (model.baseUrl.includes("openrouter.ai") && model.compat?.openRouterRouting) {
