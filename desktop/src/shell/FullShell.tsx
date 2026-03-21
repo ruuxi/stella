@@ -49,7 +49,6 @@ export const FullShell = () => {
   const { state: workspaceState, openPanel, closePanel } = useWorkspace();
   const activePanel = workspaceState.activePanel;
   const { gradientMode, gradientColor } = useTheme();
-  const isDev = import.meta.env.DEV;
   const orbRef = useRef<FloatingOrbHandle>(null);
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
@@ -66,7 +65,7 @@ export const FullShell = () => {
   const chat = useFullShellChat({
     activeConversationId,
     activeView: state.view,
-    isDev,
+    isDev: import.meta.env.DEV,
   });
 
   useFullShellVoiceTranscript({
@@ -92,13 +91,6 @@ export const FullShell = () => {
     setView("store");
   }, [closePanel, setView]);
 
-  const showTestDialog = useCallback(() => {
-    setActiveDialog("test");
-  }, [setActiveDialog]);
-
-  const showTraceDialog = useCallback(() => {
-    setActiveDialog("trace");
-  }, [setActiveDialog]);
 
   const showHomeView = useCallback(() => {
     closePanel();
@@ -203,27 +195,6 @@ export const FullShell = () => {
     void secureSignOut();
   }, [setActiveDialog]);
 
-  const handleResetMessages = useCallback(() => {
-    if (!window.electronAPI?.system.resetMessages) {
-      return;
-    }
-
-    const shouldReset = window.confirm(
-      "Delete all local sqlite/jsonl message storage for this app?",
-    );
-    if (!shouldReset) {
-      return;
-    }
-
-    void window.electronAPI.system
-      .resetMessages()
-      .then(() => {
-        window.location.reload();
-      })
-      .catch((error) => {
-        console.error(error);
-      });
-  }, []);
 
   useEffect(() => {
     window.electronAPI?.ui.setAppReady?.(onboarding.onboardingDone);
@@ -357,13 +328,8 @@ export const FullShell = () => {
 
       <FullShellDialogs
         activeDialog={activeDialog}
-        isDev={isDev}
         onDialogOpenChange={handleDialogOpenChange}
-        onResetMessages={handleResetMessages}
         onSignOut={handleSettingsSignOut}
-        onResetOnboarding={onboarding.handleResetOnboarding}
-        onShowTestDialog={showTestDialog}
-        onShowTraceDialog={showTraceDialog}
       />
     </div>
   );
