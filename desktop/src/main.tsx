@@ -8,11 +8,9 @@ import "./platform/dev/vite-error-recovery";
 import { App } from "./App.tsx";
 import { AppProviders } from "./context/AppProviders";
 import { DesktopConvexAuthProvider } from "./global/auth/DesktopConvexAuthProvider";
-import { initializeStartupPaintMetrics } from "./platform/dev/startup-metrics";
 import { initStellaUiHandler } from "./platform/electron/stella-ui-handler";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
 initStellaUiHandler()
-initializeStartupPaintMetrics()
 
 document.documentElement.dataset.stellaWindow = "full";
 

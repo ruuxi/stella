@@ -8,7 +8,6 @@ import { registerOverlayStreamHandlers } from "../ipc/overlay-stream-handlers.js
 import { registerProjectHandlers } from "../ipc/project-handlers.js";
 import { registerScheduleHandlers } from "../ipc/schedule-handlers.js";
 import { registerStoreHandlers } from "../ipc/store-handlers.js";
-import { registerStartupMetricHandlers } from "../ipc/startup-metric-handlers.js";
 import { registerSystemHandlers } from "../ipc/system-handlers.js";
 import { registerUiHandlers } from "../ipc/ui-handlers.js";
 import { registerVoiceHandlers } from "../ipc/voice-handlers.js";
@@ -137,11 +136,6 @@ export const registerBootstrapIpcHandlers = (
     getFrontendRoot: () => config.frontendRoot,
     getStellaHostRunner: lifecycle.getRunner,
     getStoreModService: () => state.storeModService,
-    assertPrivilegedSender: (event, channel) =>
-      services.externalLinkService.assertPrivilegedSender(event, channel),
-  });
-
-  registerStartupMetricHandlers({
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

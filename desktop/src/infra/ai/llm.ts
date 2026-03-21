@@ -1,12 +1,10 @@
 import { createServiceRequest } from "@/infra/http/service-request";
 import {
-  callStellaChatCompletion,
   STELLA_CHAT_COMPLETIONS_PATH,
   extractChatText,
-  streamStellaChatCompletion,
   type ChatCompletionResponse,
   type ChatMessage,
-} from "../../../electron/core/runtime/stella-provider.js";
+} from "@/shared/stella-api";
 
 export {
   STELLA_CHAT_COMPLETIONS_PATH,
@@ -43,26 +41,113 @@ async function createManagedTransport(
 export async function callChatCompletion<TResponse = ChatCompletionResponse>(
   options: ChatJsonRequest,
 ): Promise<TResponse> {
-  return await callStellaChatCompletion<TResponse>({
-    transport: await createManagedTransport(options),
-    request: {
-      agentType: options.agentType,
-      messages: options.messages,
+  const request = await createManagedTransport({
+    ...options,
+    headers: {
+      ...options.headers,
+      "X-Stella-Agent-Type": options.agentType,
     },
-    body: options.body,
   });
+
+  const response = await fetch(request.endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...request.headers,
+    },
+    body: JSON.stringify({
+      ...options.body,
+      messages: options.messages,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Chat completion failed with HTTP ${response.status}`);
+  }
+
+  return (await response.json()) as TResponse;
 }
 
 export async function streamChatCompletion(
   options: ChatStreamRequest,
 ): Promise<string> {
-  return await streamStellaChatCompletion({
-    transport: await createManagedTransport(options),
-    request: {
-      agentType: options.agentType,
-      messages: options.messages,
+  const request = await createManagedTransport({
+    ...options,
+    headers: {
+      ...options.headers,
+      "X-Stella-Agent-Type": options.agentType,
     },
-    body: options.body,
-    onChunk: options.onChunk,
   });
+
+  const response = await fetch(request.endpoint, {
+    method: "POST",
+    headers: {
+      Accept: "text/event-stream",
+      "Content-Type": "application/json",
+      ...request.headers,
+    },
+    body: JSON.stringify({
+      ...options.body,
+      messages: options.messages,
+      stream: true,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Streaming chat failed with HTTP ${response.status}`);
+  }
+
+  if (!response.body) {
+    throw new Error("Streaming chat response body was empty");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullText = "";
+
+  const flushLine = (line: string) => {
+    if (!line.startsWith("data:")) {
+      return;
+    }
+
+    const payload = line.slice(5).trim();
+    if (!payload || payload === "[DONE]") {
+      return;
+    }
+
+    const chunk = JSON.parse(payload) as ChatCompletionResponse;
+    const delta = chunk.choices?.[0]?.delta?.content;
+    if (!delta) {
+      return;
+    }
+
+    fullText += delta;
+    options.onChunk(delta);
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+
+    let lineBreakIndex = buffer.indexOf("\n");
+    while (lineBreakIndex !== -1) {
+      const line = buffer.slice(0, lineBreakIndex).trim();
+      buffer = buffer.slice(lineBreakIndex + 1);
+      if (line) {
+        flushLine(line);
+      }
+      lineBreakIndex = buffer.indexOf("\n");
+    }
+
+    if (done) {
+      const trailingLine = buffer.trim();
+      if (trailingLine) {
+        flushLine(trailingLine);
+      }
+      break;
+    }
+  }
+
+  return fullText;
 }

@@ -1,7 +1,6 @@
 import { BrowserWindow, type RenderProcessGoneDetails } from 'electron'
 import path from 'path'
 import { loadWindow } from './window-load.js'
-import { emitStartupMetric } from '../startup/profiler.js'
 
 type FullWindowControllerOptions = {
   electronDir: string
@@ -57,12 +56,6 @@ export class FullWindowController {
     this.window = window
     this.lastBounds = window.getBounds()
 
-    emitStartupMetric({
-      detail: { window: 'full' },
-      metric: 'full-window-created',
-      source: 'electron-main',
-    })
-
     window.on('resize', () => {
       this.lastBounds = window.getBounds()
     })
@@ -88,14 +81,6 @@ export class FullWindowController {
 
     window.webContents.on('render-process-gone', (_event, details) => {
       this.options.onRenderProcessGone?.(details, window)
-    })
-
-    window.once('show', () => {
-      emitStartupMetric({
-        detail: { window: 'full' },
-        metric: 'full-window-shown',
-        source: 'electron-main',
-      })
     })
 
     window.on('closed', () => {
