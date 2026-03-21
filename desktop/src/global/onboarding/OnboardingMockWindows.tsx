@@ -140,6 +140,7 @@ const DetailList: React.FC<{ sections: { label: string; items: { name: string; d
 
 interface OnboardingMockWindowsProps {
   activeWindowId: string | null;
+  stageState?: "current" | "outgoing";
 }
 
 const WINDOW_MAP: Record<string, WindowConfig> = {
@@ -151,11 +152,16 @@ const WINDOW_MAP: Record<string, WindowConfig> = {
 
 export const OnboardingMockWindows: React.FC<OnboardingMockWindowsProps> = ({
   activeWindowId,
+  stageState = "current",
 }) => {
   const active = activeWindowId ? WINDOW_MAP[activeWindowId] : null;
 
   return (
-    <div className="onboarding-mock-windows">
+    <div
+      className="onboarding-mock-windows"
+      data-stage-state={stageState}
+      aria-hidden={stageState === "outgoing"}
+    >
       {active && (
         <MockWindow key={active.id} title={active.title} delay={0}>
           {active.content}

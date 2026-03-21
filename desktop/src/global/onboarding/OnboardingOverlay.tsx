@@ -2,7 +2,7 @@
  * Onboarding flow: Start -> Auth -> Intro (center) -> split layout steps.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useRef, useState } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/convex/api";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
@@ -11,12 +11,16 @@ import {
   StellaAnimation,
   type StellaAnimationHandle,
 } from "@/shell/ascii-creature/StellaAnimation";
-import { OnboardingStep1 } from "@/global/onboarding/OnboardingStep1";
 import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 
 const CREATURE_INITIAL_SIZE = 0.22;
+const LazyOnboardingStep1 = lazy(() =>
+  import("@/global/onboarding/OnboardingStep1").then((module) => ({
+    default: module.OnboardingStep1,
+  })),
+);
 
 export type OnboardingOverlayProps = {
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
@@ -80,8 +84,8 @@ export function useOnboardingOverlay() {
     isLoading: isAuthLoading,
   } = useAuthSessionState();
   const resetUserData = useAction(api.reset.resetAllUserData);
-
   const [hasExpanded, setHasExpanded] = useState(() => onboardingDone);
+  const [hasStarted, setHasStarted] = useState(() => onboardingDone);
   const [splitMode, setSplitMode] = useState(false);
   const [hasDiscoverySelections, setHasDiscoverySelections] = useState(false);
   const [onboardingExiting, setOnboardingExiting] = useState(false);
@@ -98,6 +102,12 @@ export function useOnboardingOverlay() {
     setHasExpanded(true);
     stellaAnimationRef.current?.startBirth();
   }, [hasExpanded]);
+
+  const startOnboarding = useCallback(() => {
+    setHasStarted(true);
+    setHasExpanded(true);
+    stellaAnimationRef.current?.startBirth();
+  }, []);
 
   const handleEnterSplit = useCallback(() => {
     setSplitMode(true);
@@ -118,6 +128,7 @@ export function useOnboardingOverlay() {
       exitTimerRef.current = null;
     }
     setHasExpanded(false);
+    setHasStarted(false);
     setSplitMode(false);
     setOnboardingExiting(false);
     setOnboardingKey((k) => k + 1);
@@ -152,12 +163,14 @@ export function useOnboardingOverlay() {
     isAuthenticated: hasConnectedAccount,
     isAuthLoading,
     hasExpanded,
+    hasStarted,
     splitMode,
     hasDiscoverySelections,
     setHasDiscoverySelections,
     onboardingKey,
     stellaAnimationRef,
     triggerFlash,
+    startOnboarding,
     startBirthAnimation,
     handleEnterSplit,
     handleResetOnboarding,
@@ -169,12 +182,14 @@ export function OnboardingView({
   onboardingDone,
   onboardingExiting,
   isAuthenticated,
+  isAuthLoading,
   splitMode,
   hasDiscoverySelections,
+  hasStarted,
   stellaAnimationRef,
   onboardingKey,
   triggerFlash,
-  startBirthAnimation,
+  startOnboarding,
   completeOnboarding,
   handleEnterSplit,
   onDiscoveryConfirm,
@@ -187,12 +202,14 @@ export function OnboardingView({
   onboardingDone: boolean;
   onboardingExiting?: boolean;
   isAuthenticated: boolean;
+  isAuthLoading: boolean;
   splitMode: boolean;
   hasDiscoverySelections?: boolean;
+  hasStarted: boolean;
   stellaAnimationRef: React.RefObject<StellaAnimationHandle | null>;
   onboardingKey: number;
   triggerFlash: () => void;
-  startBirthAnimation: () => void;
+  startOnboarding: () => void;
   completeOnboarding: () => void;
   handleEnterSplit: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
@@ -224,23 +241,55 @@ export function OnboardingView({
           initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}
         />
       </div>
-      {!onboardingDone && (
-        <OnboardingStep1
-          key={onboardingKey}
-          onComplete={completeOnboarding}
-          onAccept={startBirthAnimation}
-          onInteract={triggerFlash}
-          onDiscoveryConfirm={onDiscoveryConfirm}
-          onEnterSplit={handleEnterSplit}
-          onSelectionChange={onSelectionChange}
-          onDemoChange={onDemoChange}
-          demoMorphing={demoMorphing}
-          isAuthenticated={isAuthenticated}
-        />
-      )}
+      {!onboardingDone &&
+        (hasStarted ? (
+          <Suspense
+            fallback={
+              <div
+                className="onboarding-moment onboarding-moment--ripple"
+                data-active="true"
+              >
+                <div className="onboarding-ripple-content">
+                  <div className="onboarding-text onboarding-text--fade-in">
+                    Stella is an AI that runs on your computer.
+                  </div>
+                  <div className="onboarding-text onboarding-text--fade-in-delayed">
+                    She's not made for everyone. She's made for you.
+                  </div>
+                </div>
+              </div>
+            }
+          >
+            <LazyOnboardingStep1
+              key={onboardingKey}
+              initialPhase="intro"
+              onComplete={completeOnboarding}
+              onInteract={triggerFlash}
+              onDiscoveryConfirm={onDiscoveryConfirm}
+              onEnterSplit={handleEnterSplit}
+              onSelectionChange={onSelectionChange}
+              onDemoChange={onDemoChange}
+              demoMorphing={demoMorphing}
+              isAuthenticated={isAuthenticated}
+            />
+          </Suspense>
+        ) : isAuthLoading ? (
+          <div className="onboarding-moment onboarding-moment--auth">
+            <div className="onboarding-text">Preparing Stella...</div>
+          </div>
+        ) : (
+          <div className="onboarding-moment onboarding-moment--start">
+            <button
+              className="onboarding-start-button"
+              onClick={() => {
+                startOnboarding();
+                triggerFlash();
+              }}
+            >
+              Start Stella
+            </button>
+          </div>
+        ))}
     </div>
   );
 }
-
-
-

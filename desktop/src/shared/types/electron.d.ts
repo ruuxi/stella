@@ -130,6 +130,18 @@ export type ElectronUiApi = {
   morphComplete: () => Promise<{ ok: boolean }>;
 };
 
+export type ElectronStartupMetricsApi = {
+  report: (payload: {
+    metric:
+      | "renderer-first-contentful-paint"
+      | "renderer-first-paint"
+      | "renderer-full-shell-mounted"
+      | "renderer-ui-interactive";
+    atMs?: number;
+    detail?: Record<string, unknown>;
+  }) => void;
+};
+
 export type ElectronCaptureApi = {
   getContext: () => Promise<ChatContext | null>;
   onContext: (
@@ -550,6 +562,7 @@ export type ElectronApi = {
   display: ElectronDisplayApi;
   window: ElectronWindowApi;
   ui: ElectronUiApi;
+  startupMetrics: ElectronStartupMetricsApi;
   capture: ElectronCaptureApi;
   radial: ElectronRadialApi;
   overlay: ElectronOverlayApi;

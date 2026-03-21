@@ -23,6 +23,26 @@ const PACKAGE_MANIFEST_BASENAMES = new Set([
   'yarn.lock',
   'npm-shrinkwrap.json',
 ])
+const STARTUP_LOG_PREFIX = '[stella-startup]'
+const startupProfilingEnabled = process.env.STELLA_STARTUP_PROFILING === '1'
+const startupTraceId = process.env.STELLA_STARTUP_TRACE_ID ?? null
+
+const emitStartupMetric = (metric: string, detail: Record<string, unknown> = {}) => {
+  if (!startupProfilingEnabled) {
+    return
+  }
+
+  console.log(
+    `${STARTUP_LOG_PREFIX} ${JSON.stringify({
+      atMs: Date.now(),
+      detail,
+      metric,
+      pid: process.pid,
+      source: 'vite',
+      traceId: startupTraceId,
+    })}`,
+  )
+}
 
 /** Writes the resolved dev server URL to .vite-dev-url so Electron can discover it. */
 function devServerUrl(): Plugin {
@@ -40,6 +60,9 @@ function devServerUrl(): Plugin {
         const addr = server.httpServer?.address()
         if (addr && typeof addr === 'object') {
           fs.writeFileSync(DEV_URL_FILE, `http://localhost:${addr.port}`)
+          emitStartupMetric('vite-dev-server-listening', {
+            port: addr.port,
+          })
         }
       })
     },
