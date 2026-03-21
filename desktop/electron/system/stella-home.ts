@@ -23,6 +23,8 @@ export type StellaHome = {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const BUNDLED_DEFAULTS_SEED_VERSION = 1;
+const DEFAULTS_SEED_MARKER_FILE = ".bundled-defaults-seed.json";
 
 const ensureDir = async (dirPath: string) => {
   await ensurePrivateDir(dirPath);
@@ -148,6 +150,31 @@ const seedMissingEntries = async (sourcePath: string, targetPath: string) => {
   }
 };
 
+const readSeedVersion = async (markerPath: string): Promise<number | null> => {
+  try {
+    const raw = await fs.readFile(markerPath, "utf-8");
+    const parsed = JSON.parse(raw) as { version?: unknown } | null;
+    return typeof parsed?.version === "number" ? parsed.version : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeSeedVersion = async (markerPath: string, version: number) => {
+  await fs.writeFile(
+    markerPath,
+    JSON.stringify(
+      {
+        updatedAtMs: Date.now(),
+        version,
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+};
+
 export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   const desktopRoot = resolveDesktopRoot(app);
   const installRoot = resolveInstallRoot(app);
@@ -163,6 +190,7 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   const logsPath = path.join(homePath, "logs");
   const canvasPath = path.join(homePath, "canvas");
   const workspaceAppsPath = path.join(workspacePath, "apps");
+  const defaultsSeedMarkerPath = path.join(statePath, DEFAULTS_SEED_MARKER_FILE);
 
   process.env.STELLA_ROOT = installRoot;
   process.env.STELLA_HOME = homePath;
@@ -178,12 +206,19 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   await ensureDir(workspacePath);
   await ensureDir(workspaceAppsPath);
 
-  await Promise.all([
-    seedMissingEntries(path.join(bundledDefaultsPath, "core-skills"), coreSkillsPath),
-    seedMissingEntries(path.join(bundledDefaultsPath, "skills"), skillsPath),
-    seedMissingEntries(path.join(bundledDefaultsPath, "extensions"), extensionsPath),
-  ]);
-  await seedBundledAgentsIfEmpty(agentsPath);
+  const currentSeedVersion = await readSeedVersion(defaultsSeedMarkerPath);
+  if (currentSeedVersion !== BUNDLED_DEFAULTS_SEED_VERSION) {
+    await Promise.all([
+      seedMissingEntries(path.join(bundledDefaultsPath, "core-skills"), coreSkillsPath),
+      seedMissingEntries(path.join(bundledDefaultsPath, "skills"), skillsPath),
+      seedMissingEntries(path.join(bundledDefaultsPath, "extensions"), extensionsPath),
+    ]);
+    await seedBundledAgentsIfEmpty(agentsPath);
+    await writeSeedVersion(
+      defaultsSeedMarkerPath,
+      BUNDLED_DEFAULTS_SEED_VERSION,
+    );
+  }
 
   return {
     desktopRoot,

@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 
-const ONBOARDING_KEY = "stella-onboarding-complete";
+export const ONBOARDING_COMPLETE_KEY = "stella-onboarding-complete";
 
 export type Phase =
   | "start"
@@ -57,6 +57,7 @@ export interface OnboardingStep1Props {
   onComplete: () => void;
   onAccept?: () => void;
   onInteract?: () => void;
+  initialPhase?: Phase;
   onOpenThemePicker?: () => void;
   onConfirmTheme?: () => void;
   onDiscoveryConfirm?: (categories: DiscoveryCategory[]) => void;
@@ -69,18 +70,26 @@ export interface OnboardingStep1Props {
   isAuthenticated?: boolean;
 }
 
+const readOnboardingCompleted = () => {
+  try {
+    return localStorage.getItem(ONBOARDING_COMPLETE_KEY) === "true";
+  } catch {
+    return false;
+  }
+};
+
 export function useOnboardingState() {
   const [completed, setCompleted] = useState(() => {
-    return localStorage.getItem(ONBOARDING_KEY) === "true";
+    return readOnboardingCompleted();
   });
 
   const complete = useCallback(() => {
-    localStorage.setItem(ONBOARDING_KEY, "true");
+    localStorage.setItem(ONBOARDING_COMPLETE_KEY, "true");
     setCompleted(true);
   }, []);
 
   const reset = useCallback(() => {
-    localStorage.removeItem(ONBOARDING_KEY);
+    localStorage.removeItem(ONBOARDING_COMPLETE_KEY);
     setCompleted(false);
   }, []);
 

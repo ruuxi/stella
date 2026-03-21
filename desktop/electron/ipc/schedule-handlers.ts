@@ -7,7 +7,7 @@ import {
 import type { LocalSchedulerService } from "../services/local-scheduler-service.js";
 
 type ScheduleHandlersOptions = {
-  schedulerService: LocalSchedulerService;
+  getSchedulerService: () => LocalSchedulerService | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -16,6 +16,16 @@ type ScheduleHandlersOptions = {
 };
 
 export const registerScheduleHandlers = (options: ScheduleHandlersOptions) => {
+  let subscribedScheduler: LocalSchedulerService | null = null;
+
+  const getSchedulerService = () => {
+    const schedulerService = options.getSchedulerService();
+    if (!schedulerService) {
+      throw new Error("Scheduler service not available.");
+    }
+    return schedulerService;
+  };
+
   const broadcastUpdate = () => {
     for (const window of BrowserWindow.getAllWindows()) {
       if (!window.isDestroyed()) {
@@ -25,22 +35,32 @@ export const registerScheduleHandlers = (options: ScheduleHandlersOptions) => {
     options.getBroadcastToMobile?.()?.("schedule:updated", null);
   };
 
-  options.schedulerService.subscribe(() => {
-    broadcastUpdate();
-  });
+  const ensureSubscription = () => {
+    const schedulerService = options.getSchedulerService();
+    if (!schedulerService || schedulerService === subscribedScheduler) {
+      return;
+    }
+
+    subscribedScheduler = schedulerService;
+    schedulerService.subscribe(() => {
+      broadcastUpdate();
+    });
+  };
 
   ipcMain.handle("schedule:listCronJobs", (event) => {
     if (!options.assertPrivilegedSender(event, "schedule:listCronJobs")) {
       throw new Error("Blocked untrusted schedule:listCronJobs request.");
     }
-    return options.schedulerService.listCronJobs();
+    ensureSubscription();
+    return getSchedulerService().listCronJobs();
   });
 
   ipcMain.handle("schedule:listHeartbeats", (event) => {
     if (!options.assertPrivilegedSender(event, "schedule:listHeartbeats")) {
       throw new Error("Blocked untrusted schedule:listHeartbeats request.");
     }
-    return options.schedulerService.listHeartbeats();
+    ensureSubscription();
+    return getSchedulerService().listHeartbeats();
   });
 
   ipcMain.handle(
@@ -64,7 +84,8 @@ export const registerScheduleHandlers = (options: ScheduleHandlersOptions) => {
         return [];
       }
       const maxItems = Number(payload?.maxItems);
-      return options.schedulerService.listConversationEvents(
+      ensureSubscription();
+      return getSchedulerService().listConversationEvents(
         conversationId,
         Number.isFinite(maxItems) ? maxItems : undefined,
       );
@@ -91,7 +112,8 @@ export const registerScheduleHandlers = (options: ScheduleHandlersOptions) => {
       if (!conversationId) {
         return 0;
       }
-      return options.schedulerService.getConversationEventCount(conversationId);
+      ensureSubscription();
+      return getSchedulerService().getConversationEventCount(conversationId);
     },
   );
 };

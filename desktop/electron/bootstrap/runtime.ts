@@ -24,6 +24,7 @@ import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
 import { StoreModService } from "../self-mod/store-mod-service.js";
 import { createBootstrapResetFlows, shutdownBootstrapRuntime } from "./resets.js";
 import { MobileBridgeService } from "../services/mobile-bridge/service.js";
+import { emitStartupMetric } from "../startup/profiler.js";
 import {
   type BootstrapContext,
   broadcastAuthCallback,
@@ -36,6 +37,7 @@ const wait = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
   });
+const POST_WINDOW_AUX_START_DELAY_MS = 1_500;
 
 const startMobileBridge = (context: BootstrapContext) => {
   try {
@@ -72,41 +74,21 @@ const startMobileBridge = (context: BootstrapContext) => {
 };
 
 export const initializeStellaHostRunner = async (context: BootstrapContext) => {
-  const { config, lifecycle, services, state } = context;
-  const stellaHome = await resolveStellaHome(app);
+  const { lifecycle, services, state } = context;
+  const stellaHomePath = state.stellaHomePath;
+  const statePath = stellaHomePath ? path.join(stellaHomePath, "state") : null;
+  if (!stellaHomePath || !statePath) {
+    throw new Error("Stella home is not initialized.");
+  }
 
-  lifecycle.setStellaHomePath(stellaHome.homePath);
-  state.stellaWorkspacePath = stellaHome.workspacePath;
-  state.desktopDatabase?.close();
-  state.desktopDatabase = createDesktopDatabase(stellaHome.homePath);
-
-  const transcriptMirror = new TranscriptMirror(
-    path.join(stellaHome.homePath, "state"),
-  );
-
-  state.chatStore = new ChatStore(state.desktopDatabase, transcriptMirror);
-  state.runtimeStore = new RuntimeStore(
-    state.desktopDatabase,
-    transcriptMirror,
-  );
-  state.storeModStore = new StoreModStore(state.desktopDatabase);
-  state.socialSessionStore = new SocialSessionStore(state.desktopDatabase);
-  state.storeModService = new StoreModService(
-    config.frontendRoot,
-    state.storeModStore,
-  );
-
-  services.securityPolicyService.setSecurityPolicyPath(
-    path.join(stellaHome.statePath, "security_policy.json"),
-  );
   await services.securityPolicyService.loadPolicy();
 
-  const deviceIdentity = await getOrCreateDeviceIdentity(stellaHome.statePath);
+  const deviceIdentity = await getOrCreateDeviceIdentity(statePath);
   state.deviceId = deviceIdentity.deviceId;
 
   if (!state.schedulerService) {
     state.schedulerService = new LocalSchedulerService({
-      stellaHome: stellaHome.homePath,
+      stellaHome: stellaHomePath,
       runnerTarget: lifecycle,
     });
   } else {
@@ -115,10 +97,10 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
 
   lifecycle.setRunner(createStellaHostRunner({
     deviceId: state.deviceId,
-    stellaHomePath: stellaHome.homePath,
+    stellaHomePath,
     runtimeStore: state.runtimeStore!,
     storeModService: state.storeModService!,
-    frontendRoot: config.frontendRoot,
+    frontendRoot: context.config.frontendRoot,
     listLocalChatEvents: (conversationId, maxItems) =>
       state.chatStore?.listEvents(conversationId, maxItems) ?? [],
     getHmrMorphOrchestrator: () => state.hmrMorphOrchestrator,
@@ -252,6 +234,42 @@ export const startDeferredStartup = (context: BootstrapContext) => {
   return state.deferredStartupSequence;
 };
 
+const initializeBootstrapLocalState = async (context: BootstrapContext) => {
+  const { config, lifecycle, services, state } = context;
+  const stellaHome = await resolveStellaHome(app);
+
+  lifecycle.setStellaHomePath(stellaHome.homePath);
+  state.stellaHomePath = stellaHome.homePath;
+  state.stellaWorkspacePath = stellaHome.workspacePath;
+  state.desktopDatabase?.close();
+  state.desktopDatabase = createDesktopDatabase(stellaHome.homePath);
+
+  const transcriptMirror = new TranscriptMirror(
+    path.join(stellaHome.homePath, "state"),
+  );
+
+  state.chatStore = new ChatStore(state.desktopDatabase, transcriptMirror);
+  state.runtimeStore = new RuntimeStore(
+    state.desktopDatabase,
+    transcriptMirror,
+  );
+  state.storeModStore = new StoreModStore(state.desktopDatabase);
+  state.socialSessionStore = new SocialSessionStore(state.desktopDatabase);
+  state.storeModService = new StoreModService(
+    config.frontendRoot,
+    state.storeModStore,
+  );
+
+  services.securityPolicyService.setSecurityPolicyPath(
+    path.join(stellaHome.statePath, "security_policy.json"),
+  );
+
+  emitStartupMetric({
+    metric: "bootstrap-local-state-ready",
+    source: "electron-main",
+  });
+};
+
 const bindUiStateTargets = (context: BootstrapContext) => {
   const { services, state } = context;
 
@@ -379,12 +397,17 @@ const startDevToolServer = (context: BootstrapContext) => {
 export const initializeBootstrapApplication = async (
   context: BootstrapContext,
 ) => {
+  emitStartupMetric({
+    metric: "bootstrap-application-initialize-started",
+    source: "electron-main",
+  });
+
   const { services } = context;
 
   services.authService.registerAuthProtocol();
   services.authService.captureInitialAuthUrl(process.argv);
 
-  await initializeStellaHostRunner(context);
+  await initializeBootstrapLocalState(context);
   initializeWindowControllers(context);
   initializeUiServerAndSelfMod(context);
   registerBootstrapIpcHandlers(
@@ -394,11 +417,25 @@ export const initializeBootstrapApplication = async (
     }),
   );
 
-  // Start mobile bridge server (non-blocking)
-  void startMobileBridge(context);
-
-  // Start devtool debug server (dev-mode only)
-  startDevToolServer(context);
-
   finalizeWindowLaunch(context);
+
+  void (async () => {
+    await initializeStellaHostRunner(context);
+    emitStartupMetric({
+      metric: "host-runtime-ready",
+      source: "electron-main",
+    });
+    setTimeout(() => {
+      if (context.state.isQuitting) {
+        return;
+      }
+      void startMobileBridge(context);
+      startDevToolServer(context);
+    }, POST_WINDOW_AUX_START_DELAY_MS);
+  })().catch((error) => {
+    console.error(
+      "[startup] Host runtime initialization failed:",
+      (error as Error).message,
+    );
+  });
 };

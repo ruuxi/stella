@@ -6,7 +6,8 @@ let _os: typeof NodeOs | null = null;
 
 type DynamicImport = (specifier: string) => Promise<unknown>;
 
-const dynamicImport: DynamicImport = (specifier) => import(specifier);
+const dynamicImport: DynamicImport = (specifier) =>
+	import(/* @vite-ignore */ specifier);
 const NODE_OS_SPECIFIER = "node:" + "os";
 
 if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
