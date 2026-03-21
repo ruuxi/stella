@@ -21,30 +21,43 @@ describe("registerStoreHandlers", () => {
 
   it("waits for a connected sidecar before listing installed local mods", async () => {
     const listInstalledMods = vi.fn(async () => []);
-    let runnerAvailable = false;
-
-    setTimeout(() => {
-      runnerAvailable = true;
-    }, 25);
+    const runnerListeners = new Set<(runner: unknown) => void>();
+    let currentRunner: unknown = null;
 
     registerStoreHandlers({
       getStellaHomePath: () => "/mock/home/.stella",
-      getStellaHostRunner: () =>
-        runnerAvailable
-          ? ({
-              waitUntilConnected: vi.fn(async () => {}),
-              waitUntilReady: vi.fn(async () => {
-                throw new Error("should not require full readiness");
-              }),
-              listInstalledMods,
-            } as never)
-          : null,
+      getStellaHostRunner: () => currentRunner as never,
+      onStellaHostRunnerChanged: (listener) => {
+        runnerListeners.add(listener);
+        return () => {
+          runnerListeners.delete(listener);
+        };
+      },
       assertPrivilegedSender: () => true,
     });
 
     const handler = ipcHandleHandlers.get("store:listInstalledMods");
+    const pending = handler?.({});
 
-    await expect(handler?.({})).resolves.toEqual([]);
+    const runner = {
+      getAvailabilitySnapshot: vi.fn(() => ({
+        connected: false,
+        ready: false,
+      })),
+      onAvailabilityChange: vi.fn((listener: (snapshot: { connected: boolean; ready: boolean }) => void) => {
+        setTimeout(() => {
+          listener({ connected: true, ready: true });
+        }, 0);
+        return () => {};
+      }),
+      listInstalledMods,
+    };
+    currentRunner = runner;
+    for (const listener of runnerListeners) {
+      listener(runner);
+    }
+
+    await expect(pending).resolves.toEqual([]);
     expect(listInstalledMods).toHaveBeenCalledTimes(1);
   });
 });

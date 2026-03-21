@@ -50,7 +50,7 @@ import type {
   VoiceRuntimeSnapshot as SharedVoiceRuntimeSnapshot,
   SocialSessionRuntimeRecord as SharedSocialSessionRuntimeRecord,
   SocialSessionServiceSnapshot as SharedSocialSessionServiceSnapshot,
-} from "@/shared/contracts/electron-data";
+} from "../../../packages/stella-boundary-contracts/src/index.js";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 
 export type RadialWedge = SharedRadialWedge;

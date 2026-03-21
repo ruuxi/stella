@@ -1,4 +1,4 @@
-import type { SelfModHmrState } from "../src/shared/contracts/electron-data.js";
+import type { SelfModHmrState } from "../packages/stella-boundary-contracts/src/index.js";
 import {
   AGENT_STREAM_EVENT_TYPES,
 } from "../src/shared/contracts/agent-runtime.js";
@@ -30,6 +30,12 @@ type AgentCallbacks = {
   }) => Promise<void>;
 };
 
+export type RuntimeAvailabilitySnapshot = {
+  connected: boolean;
+  ready: boolean;
+  reason?: string;
+};
+
 const isTerminalEvent = (type: string) =>
   type === AGENT_STREAM_EVENT_TYPES.END || type === AGENT_STREAM_EVENT_TYPES.ERROR;
 
@@ -42,25 +48,37 @@ export class RuntimeClientAdapter {
   private connected = false;
   private started = false;
   private lastConfigureError: string | null = null;
+  private lastAvailabilitySnapshot: RuntimeAvailabilitySnapshot | null = null;
   private pendingConfig: {
     convexUrl?: string | null;
     convexSiteUrl?: string | null;
     authToken?: string | null;
     cloudSyncEnabled?: boolean;
   } = {};
+  private readonly availabilityListeners = new Set<
+    (snapshot: RuntimeAvailabilitySnapshot) => void
+  >();
 
   constructor(options: StellaRuntimeClientOptions) {
     this.client = new StellaRuntimeClient(options);
     this.client.on("runtime-connected", () => {
       this.connected = true;
+      if (this.lastHealth && !this.lastHealth.ready) {
+        this.lastHealth = { ready: false };
+      }
+      this.emitAvailabilityChange();
     });
     this.client.on("runtime-disconnected", ({ reason }) => {
       this.connected = false;
       this.lastHealth = { ready: false, reason };
       this.activeRun = null;
+      this.emitAvailabilityChange();
     });
     this.client.on("runtime-ready", (snapshot) => {
-      this.lastHealth = { ready: snapshot.ready };
+      this.lastHealth = snapshot.ready
+        ? { ready: true }
+        : { ready: false, reason: "Runtime reported not ready." };
+      this.emitAvailabilityChange();
     });
     this.client.on("run-event", (event) => {
       if (event.type === AGENT_STREAM_EVENT_TYPES.ERROR || event.type === AGENT_STREAM_EVENT_TYPES.END) {
@@ -71,31 +89,42 @@ export class RuntimeClientAdapter {
     });
   }
 
-  private waitForConnectedEvent(timeoutMs: number) {
-    return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        unsubscribe();
-        reject(new Error("Timed out waiting for runtime event."));
-      }, timeoutMs);
-      const unsubscribe = this.client.on(
-        "runtime-connected",
-        () => {
-          clearTimeout(timer);
-          unsubscribe();
-          resolve();
-        },
-      );
-    });
+  private emitAvailabilityChange() {
+    const snapshot = this.getAvailabilitySnapshot();
+    if (
+      this.lastAvailabilitySnapshot &&
+      this.lastAvailabilitySnapshot.connected === snapshot.connected &&
+      this.lastAvailabilitySnapshot.ready === snapshot.ready &&
+      this.lastAvailabilitySnapshot.reason === snapshot.reason
+    ) {
+      return;
+    }
+    this.lastAvailabilitySnapshot = snapshot;
+    for (const listener of this.availabilityListeners) {
+      listener(snapshot);
+    }
   }
 
-  private waitForReadyEvent(timeoutMs: number) {
+  private waitForAvailability(
+    predicate: (snapshot: RuntimeAvailabilitySnapshot) => boolean,
+    timeoutMs: number,
+    fallbackMessage: string,
+  ) {
+    const initial = this.getAvailabilitySnapshot();
+    if (predicate(initial)) {
+      return Promise.resolve();
+    }
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         unsubscribe();
-        reject(new Error("Timed out waiting for runtime event."));
+        reject(
+          createRuntimeUnavailableError(
+            this.getAvailabilitySnapshot().reason ?? fallbackMessage,
+          ),
+        );
       }, timeoutMs);
-      const unsubscribe = this.client.on("runtime-ready", (snapshot) => {
-        if (!snapshot.ready) {
+      const unsubscribe = this.onAvailabilityChange((snapshot) => {
+        if (!predicate(snapshot)) {
           return;
         }
         clearTimeout(timer);
@@ -103,6 +132,27 @@ export class RuntimeClientAdapter {
         resolve();
       });
     });
+  }
+
+  getAvailabilitySnapshot(): RuntimeAvailabilitySnapshot {
+    const ready = Boolean(this.lastHealth?.ready);
+    const reason =
+      this.lastHealth?.reason ??
+      (!this.connected ? "Stella runtime client is not connected." : undefined);
+    return {
+      connected: this.connected,
+      ready,
+      ...(reason ? { reason } : {}),
+    };
+  }
+
+  onAvailabilityChange(
+    listener: (snapshot: RuntimeAvailabilitySnapshot) => void,
+  ): () => void {
+    this.availabilityListeners.add(listener);
+    return () => {
+      this.availabilityListeners.delete(listener);
+    };
   }
 
   async start() {
@@ -120,6 +170,7 @@ export class RuntimeClientAdapter {
     }
     this.lastHealth = await this.client.healthCheck();
     this.activeRun = await this.client.getActiveRun();
+    this.emitAvailabilityChange();
   }
 
   async stop() {
@@ -156,35 +207,29 @@ export class RuntimeClientAdapter {
   }
 
   async waitUntilReady(timeoutMs = 10_000) {
-    if (this.lastHealth?.ready) {
+    if (this.getAvailabilitySnapshot().ready) {
       return;
     }
     const initial = await this.agentHealthCheck();
     if (initial?.ready) {
       return;
     }
-    try {
-      await this.waitForReadyEvent(timeoutMs);
-      return;
-    } catch {
-      const latest = await this.agentHealthCheck();
-      if (latest?.ready) {
-        return;
-      }
-      throw createRuntimeUnavailableError(latest?.reason ?? "Runtime not available.");
-    }
+    await this.waitForAvailability(
+      (snapshot) => snapshot.ready,
+      timeoutMs,
+      "Runtime not available.",
+    );
   }
 
   async waitUntilConnected(timeoutMs = 10_000) {
-    if (this.connected) {
+    if (this.getAvailabilitySnapshot().connected) {
       return;
     }
-    try {
-      await this.waitForConnectedEvent(timeoutMs);
-      return;
-    } catch {
-      throw createRuntimeUnavailableError("Stella runtime client is not connected.");
-    }
+    await this.waitForAvailability(
+      (snapshot) => snapshot.connected,
+      timeoutMs,
+      "Stella runtime client is not connected.",
+    );
   }
 
   setConvexUrl(value: string | null) {
@@ -216,6 +261,7 @@ export class RuntimeClientAdapter {
             : String(error ?? "Stella runtime client is not connected."),
       };
     }
+    this.emitAvailabilityChange();
     return this.lastHealth;
   }
 

@@ -39,7 +39,7 @@ import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
-} from "../../../src/shared/contracts/electron-data.js";
+} from "../../../packages/stella-boundary-contracts/src/index.js";
 
 const tempDirs: string[] = [];
 const openDatabases = new Set<{ close(): void }>();

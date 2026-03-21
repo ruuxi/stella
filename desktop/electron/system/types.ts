@@ -9,7 +9,7 @@ import type {
   DiscoveredApp,
   AllUserSignals,
   AllUserSignalsResult,
-} from '../../src/shared/contracts/electron-data.js'
+} from '../../packages/stella-boundary-contracts/src/index.js'
 
 export type {
   DevProject,

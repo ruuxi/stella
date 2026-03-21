@@ -24,6 +24,9 @@ type SystemHandlersOptions = {
   getDeviceId: () => string | null;
   authService: AuthService;
   getStellaHostRunner: () => StellaHostRunner | null;
+  onStellaHostRunnerChanged?: (
+    listener: (runner: StellaHostRunner | null) => void,
+  ) => () => void;
   getStellaHomePath: () => string | null;
   externalLinkService: ExternalLinkService;
   ensurePrivilegedActionApproval: (
@@ -92,6 +95,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     try {
       const runner = await waitForConnectedRunner(options.getStellaHostRunner, {
         timeoutMs: 2_000,
+        onRunnerChanged: options.onStellaHostRunnerChanged,
       });
       return await runner.getSocialSessionStatus();
     } catch (error) {

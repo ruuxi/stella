@@ -8,6 +8,9 @@ import { waitForConnectedRunner } from "./runtime-availability.js";
 
 type ScheduleHandlersOptions = {
   getStellaHostRunner: () => StellaHostRunner | null;
+  onStellaHostRunnerChanged?: (
+    listener: (runner: StellaHostRunner | null) => void,
+  ) => () => void;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -19,6 +22,7 @@ export const registerScheduleHandlers = (options: ScheduleHandlersOptions) => {
     waitForConnectedRunner(options.getStellaHostRunner, {
       timeoutMs,
       unavailableMessage: "Runtime not available.",
+      onRunnerChanged: options.onStellaHostRunnerChanged,
     });
 
   ipcMain.handle("schedule:listCronJobs", async (event) => {

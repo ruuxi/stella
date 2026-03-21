@@ -2,35 +2,62 @@ import { describe, expect, it, vi } from "vitest";
 import { waitForConnectedRunner } from "../../../electron/ipc/runtime-availability.js";
 
 describe("waitForConnectedRunner", () => {
-  it("retries against a replacement runner instead of waiting on the stale instance for the full timeout", async () => {
+  it("follows runner replacement notifications instead of getting pinned to the stale instance", async () => {
+    const staleListeners = new Set<(snapshot: { connected: boolean; ready: boolean }) => void>();
+    const freshListeners = new Set<(snapshot: { connected: boolean; ready: boolean }) => void>();
     const staleRunner = {
-      waitUntilConnected: vi.fn(
-        async (timeoutMs: number) =>
-          await new Promise<void>((_, reject) => {
-            setTimeout(() => {
-              reject(new Error(`stale runner failed after ${timeoutMs}ms`));
-            }, timeoutMs);
-          }),
-      ),
+      getAvailabilitySnapshot: vi.fn(() => ({
+        connected: false,
+        ready: false,
+        reason: "stale runner failed",
+      })),
+      onAvailabilityChange: vi.fn((listener: (snapshot: { connected: boolean; ready: boolean }) => void) => {
+        staleListeners.add(listener);
+        return () => {
+          staleListeners.delete(listener);
+        };
+      }),
     };
     const freshRunner = {
-      waitUntilConnected: vi.fn(async () => {}),
+      getAvailabilitySnapshot: vi.fn(() => ({
+        connected: false,
+        ready: false,
+      })),
+      onAvailabilityChange: vi.fn((listener: (snapshot: { connected: boolean; ready: boolean }) => void) => {
+        freshListeners.add(listener);
+        return () => {
+          freshListeners.delete(listener);
+        };
+      }),
     };
 
     let currentRunner: typeof staleRunner | typeof freshRunner | null = staleRunner;
+    const runnerListeners = new Set<(runner: typeof currentRunner) => void>();
+    const subscribeToRunnerChange = (listener: (runner: typeof currentRunner) => void) => {
+      runnerListeners.add(listener);
+      return () => {
+        runnerListeners.delete(listener);
+      };
+    };
+
     setTimeout(() => {
       currentRunner = freshRunner;
+      for (const listener of runnerListeners) {
+        listener(currentRunner);
+      }
+      for (const listener of freshListeners) {
+        listener({ connected: true, ready: true });
+      }
     }, 40);
 
     await expect(
       waitForConnectedRunner(() => currentRunner as never, {
         timeoutMs: 300,
-        connectAttemptMs: 25,
-        pollMs: 10,
+        onRunnerChanged: subscribeToRunnerChange as never,
       }),
     ).resolves.toBe(freshRunner);
 
-    expect(staleRunner.waitUntilConnected).toHaveBeenCalled();
-    expect(freshRunner.waitUntilConnected).toHaveBeenCalledTimes(1);
+    expect(staleRunner.onAvailabilityChange).toHaveBeenCalledTimes(1);
+    expect(freshRunner.onAvailabilityChange).toHaveBeenCalledTimes(1);
   });
 });

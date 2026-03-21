@@ -3,7 +3,7 @@ import type {
   MiniBridgeRequest,
   MiniBridgeResponseEnvelope,
   MiniBridgeUpdate,
-} from "../../src/shared/contracts/electron-data.js";
+} from "../../packages/stella-boundary-contracts/src/index.js";
 import type { MiniBridgeService } from "../services/mini-bridge-service.js";
 import type { WindowManager } from "../windows/window-manager.js";
 

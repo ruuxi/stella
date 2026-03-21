@@ -21,29 +21,42 @@ describe("registerScheduleHandlers", () => {
 
   it("waits for the sidecar-backed runner before listing heartbeats", async () => {
     const listHeartbeats = vi.fn(async () => []);
-    let runnerAvailable = false;
-
-    setTimeout(() => {
-      runnerAvailable = true;
-    }, 25);
+    const runnerListeners = new Set<(runner: unknown) => void>();
+    let currentRunner: unknown = null;
 
     registerScheduleHandlers({
-      getStellaHostRunner: () =>
-        runnerAvailable
-          ? ({
-              waitUntilConnected: vi.fn(async () => {}),
-              waitUntilReady: vi.fn(async () => {
-                throw new Error("should not require full readiness");
-              }),
-              listHeartbeats,
-            } as never)
-          : null,
+      getStellaHostRunner: () => currentRunner as never,
+      onStellaHostRunnerChanged: (listener) => {
+        runnerListeners.add(listener);
+        return () => {
+          runnerListeners.delete(listener);
+        };
+      },
       assertPrivilegedSender: () => true,
     });
 
     const handler = ipcHandleHandlers.get("schedule:listHeartbeats");
+    const pending = handler?.({});
 
-    await expect(handler?.({})).resolves.toEqual([]);
+    const runner = {
+      getAvailabilitySnapshot: vi.fn(() => ({
+        connected: false,
+        ready: false,
+      })),
+      onAvailabilityChange: vi.fn((listener: (snapshot: { connected: boolean; ready: boolean }) => void) => {
+        setTimeout(() => {
+          listener({ connected: true, ready: true });
+        }, 0);
+        return () => {};
+      }),
+      listHeartbeats,
+    };
+    currentRunner = runner;
+    for (const listener of runnerListeners) {
+      listener(runner);
+    }
+
+    await expect(pending).resolves.toEqual([]);
     expect(listHeartbeats).toHaveBeenCalledTimes(1);
   });
 });

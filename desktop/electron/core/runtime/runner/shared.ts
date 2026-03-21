@@ -3,7 +3,7 @@ import path from "path";
 import type { TaskLifecycleEvent } from "../tasks/local-task-manager.js";
 import { normalizeStellaApiBaseUrl } from "../stella-provider.js";
 import { isOrchestratorAgentType } from "../../../../src/shared/contracts/agent-runtime.js";
-import type { SelfModHmrState } from "../../../../src/shared/contracts/electron-data.js";
+import type { SelfModHmrState } from "../../../../packages/stella-boundary-contracts/src/index.js";
 
 export const DEFAULT_MAX_TASK_DEPTH = 8;
 export const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;

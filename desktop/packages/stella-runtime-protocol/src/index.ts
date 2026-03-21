@@ -14,7 +14,7 @@ import type {
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
   StoreReleaseDraft,
-} from "../../../src/shared/contracts/electron-data.js";
+} from "../../stella-boundary-contracts/src/index.js";
 
 export type {
   AgentHealth,
@@ -163,6 +163,30 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_RESUME_HMR: "internal.worker.resumeHmr",
   INTERNAL_WORKER_KILL_ALL_SHELLS: "internal.worker.killAllShells",
   INTERNAL_WORKER_KILL_SHELL_BY_PORT: "internal.worker.killShellByPort",
+  INTERNAL_WORKER_LOCAL_CHAT_GET_OR_CREATE_DEFAULT:
+    "internal.worker.localChat.getOrCreateDefaultConversationId",
+  INTERNAL_WORKER_LOCAL_CHAT_LIST_EVENTS: "internal.worker.localChat.listEvents",
+  INTERNAL_WORKER_LOCAL_CHAT_GET_EVENT_COUNT: "internal.worker.localChat.getEventCount",
+  INTERNAL_WORKER_LOCAL_CHAT_APPEND_EVENT: "internal.worker.localChat.appendEvent",
+  INTERNAL_WORKER_LOCAL_CHAT_LIST_SYNC_MESSAGES:
+    "internal.worker.localChat.listSyncMessages",
+  INTERNAL_WORKER_LOCAL_CHAT_GET_SYNC_CHECKPOINT:
+    "internal.worker.localChat.getSyncCheckpoint",
+  INTERNAL_WORKER_LOCAL_CHAT_SET_SYNC_CHECKPOINT:
+    "internal.worker.localChat.setSyncCheckpoint",
+  INTERNAL_WORKER_STORE_MODS_LIST_FEATURES: "internal.worker.storeMods.listLocalFeatures",
+  INTERNAL_WORKER_STORE_MODS_LIST_BATCHES: "internal.worker.storeMods.listFeatureBatches",
+  INTERNAL_WORKER_STORE_MODS_CREATE_RELEASE_DRAFT:
+    "internal.worker.storeMods.createReleaseDraft",
+  INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED: "internal.worker.storeMods.listInstalledMods",
+  INTERNAL_WORKER_SCHEDULE_LIST_CRON_JOBS: "internal.worker.schedule.listCronJobs",
+  INTERNAL_WORKER_SCHEDULE_LIST_HEARTBEATS: "internal.worker.schedule.listHeartbeats",
+  INTERNAL_WORKER_SCHEDULE_LIST_EVENTS:
+    "internal.worker.schedule.listConversationEvents",
+  INTERNAL_WORKER_SCHEDULE_GET_EVENT_COUNT:
+    "internal.worker.schedule.getConversationEventCount",
+  INTERNAL_WORKER_SOCIAL_SESSIONS_GET_STATUS:
+    "internal.worker.socialSessions.getStatus",
   INTERNAL_STORE_LOAD_THREAD_MESSAGES: "internal.store.loadThreadMessages",
   INTERNAL_STORE_LIST_ACTIVE_THREADS: "internal.store.listActiveThreads",
   INTERNAL_STORE_GET_ORCHESTRATOR_REMINDER_STATE: "internal.store.getOrchestratorReminderState",

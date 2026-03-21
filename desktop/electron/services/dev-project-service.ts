@@ -16,7 +16,7 @@ import type {
   LocalDevProjectRecord,
   LocalDevProjectRuntime,
   LocalDevProjectSource,
-} from '../../src/shared/contracts/electron-data.js'
+} from '../../packages/stella-boundary-contracts/src/index.js'
 
 const REGISTRY_FILENAME = 'dev-projects.json'
 const DISCOVERY_CATEGORIES_FILENAME = 'discovery_categories.json'

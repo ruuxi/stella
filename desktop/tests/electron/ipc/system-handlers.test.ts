@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createRuntimeUnavailableError } from "../../../packages/stella-runtime-protocol/src/rpc-peer.js";
 
 const ipcHandleHandlers = new Map<string, (...args: unknown[]) => unknown>();
 
@@ -28,9 +27,12 @@ describe("registerSystemHandlers", () => {
       authService: {} as never,
       getStellaHostRunner: () =>
         ({
-          waitUntilConnected: vi.fn(async () => {
-            throw createRuntimeUnavailableError("Stella runtime client is not connected.");
-          }),
+          getAvailabilitySnapshot: vi.fn(() => ({
+            connected: false,
+            ready: false,
+            reason: "Stella runtime client is not connected.",
+          })),
+          onAvailabilityChange: vi.fn(() => () => {}),
           getSocialSessionStatus: vi.fn(),
         }) as never,
       getStellaHomePath: () => null,

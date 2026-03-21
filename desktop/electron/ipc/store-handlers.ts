@@ -7,13 +7,16 @@ import type {
   InstalledStoreModRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
-} from "../../src/shared/contracts/electron-data.js";
+} from "../../packages/stella-boundary-contracts/src/index.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
 
 type StoreHandlersOptions = {
   getStellaHomePath: () => string | null;
   getStellaHostRunner: () => StellaHostRunner | null;
+  onStellaHostRunnerChanged?: (
+    listener: (runner: StellaHostRunner | null) => void,
+  ) => () => void;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -48,6 +51,7 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     waitForConnectedRunner(options.getStellaHostRunner, {
       timeoutMs,
       unavailableMessage: "Store backend is unavailable.",
+      onRunnerChanged: options.onStellaHostRunnerChanged,
     });
 
   ipcMain.handle("theme:listInstalled", async () => {

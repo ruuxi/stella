@@ -2,7 +2,7 @@ import type {
   InstalledStoreModRecord,
   SelfModBatchRecord,
   SelfModFeatureRecord,
-} from "../../src/shared/contracts/electron-data.js";
+} from "../../packages/stella-boundary-contracts/src/index.js";
 import type { SqliteDatabase } from "./shared.js";
 import { generateLocalId } from "./shared.js";
 
