@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
@@ -12,6 +12,7 @@ import {
   type ModelDefaultEntry,
 } from "@/global/settings/lib/model-defaults";
 import type { LocalLlmCredentialSummary } from "@/shared/types/electron";
+import type { LegalDocument } from "@/global/legal/legal-text";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +28,10 @@ import { BillingTab } from "@/global/settings/BillingTab";
 import { AudioTab } from "@/global/settings/AudioTab";
 import { hasBillingCheckoutCompletionMarker } from "@/global/settings/lib/billing-checkout";
 import "@/global/settings/settings.css";
+
+const LegalDialog = lazy(() =>
+  import("@/global/legal/LegalDialog").then((m) => ({ default: m.LegalDialog })),
+);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -85,7 +90,7 @@ function getSettingsErrorMessage(error: unknown, fallback: string) {
 // Basic Tab
 // ---------------------------------------------------------------------------
 
-function BasicTab({ onSignOut }: { onSignOut?: () => void }) {
+function BasicTab({ onSignOut, onOpenLegal }: { onSignOut?: () => void; onOpenLegal?: (doc: LegalDocument) => void }) {
   return (
     <div className="settings-tab-content">
       <div className="settings-card">
@@ -157,6 +162,39 @@ function BasicTab({ onSignOut }: { onSignOut?: () => void }) {
               disabled
             >
               Delete
+            </Button>
+          </div>
+        </div>
+      </div>
+      <div className="settings-card">
+        <h3 className="settings-card-title">Legal</h3>
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Terms of Service</div>
+          </div>
+          <div className="settings-row-control">
+            <Button
+              type="button"
+              variant="ghost"
+              className="settings-btn"
+              onClick={() => onOpenLegal?.("terms")}
+            >
+              View
+            </Button>
+          </div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Privacy Policy</div>
+          </div>
+          <div className="settings-row-control">
+            <Button
+              type="button"
+              variant="ghost"
+              className="settings-btn"
+              onClick={() => onOpenLegal?.("privacy")}
+            >
+              View
             </Button>
           </div>
         </div>
@@ -1058,44 +1096,53 @@ export const SettingsDialog = ({
   const [selectedTab, setSelectedTab] = useState<SettingsTab>(() =>
     hasBillingCheckoutCompletionMarker() ? "billing" : "basic",
   );
+  const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(null);
   const activeTab = hasBillingCheckoutCompletionMarker() ? "billing" : selectedTab;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg" className="settings-dialog">
-        <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
-          <DialogCloseButton />
-        </DialogHeader>
-        <DialogBody>
-          <div className="settings-layout">
-            <nav className="settings-sidebar">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  className={`settings-sidebar-tab${activeTab === tab.key ? " settings-sidebar-tab--active" : ""}`}
-                  onClick={() => setSelectedTab(tab.key)}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
-            <SettingsPanel>
-              {activeTab === "basic" ? (
-                <BasicTab onSignOut={onSignOut} />
-              ) : activeTab === "models" ? (
-                <ModelsTab />
-              ) : activeTab === "audio" ? (
-                <AudioTab />
-              ) : (
-                <BillingTab />
-              )}
-            </SettingsPanel>
-          </div>
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent size="lg" className="settings-dialog">
+          <DialogHeader>
+            <DialogTitle>Settings</DialogTitle>
+            <DialogCloseButton />
+          </DialogHeader>
+          <DialogBody>
+            <div className="settings-layout">
+              <nav className="settings-sidebar">
+                {TABS.map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    className={`settings-sidebar-tab${activeTab === tab.key ? " settings-sidebar-tab--active" : ""}`}
+                    onClick={() => setSelectedTab(tab.key)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+              <SettingsPanel>
+                {activeTab === "basic" ? (
+                  <BasicTab onSignOut={onSignOut} onOpenLegal={setActiveLegalDoc} />
+                ) : activeTab === "models" ? (
+                  <ModelsTab />
+                ) : activeTab === "audio" ? (
+                  <AudioTab />
+                ) : (
+                  <BillingTab />
+                )}
+              </SettingsPanel>
+            </div>
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+      <Suspense fallback={null}>
+        <LegalDialog
+          document={activeLegalDoc}
+          onOpenChange={(open) => { if (!open) setActiveLegalDoc(null); }}
+        />
+      </Suspense>
+    </>
   );
 };
 
