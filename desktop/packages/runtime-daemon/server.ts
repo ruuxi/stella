@@ -63,7 +63,7 @@ const getCommandTokenPath = (statePath: string): string =>
   path.join(statePath, "stella-ui.token");
 
 const resolveWorkerEntryPath = () =>
-  fileURLToPath(new URL("../../runtime-worker/entry.js", import.meta.url));
+  fileURLToPath(new URL("../runtime-worker/entry.js", import.meta.url));
 
 const pruneAgentEventBuffers = (state: DaemonState) => {
   const now = Date.now();
