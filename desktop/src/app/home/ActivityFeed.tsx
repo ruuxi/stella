@@ -47,6 +47,7 @@ type ActivityFeedProps = {
 export function ActivityFeed({ items }: ActivityFeedProps) {
   return (
     <DashboardCard
+      className="home-activity-panel"
       label="Activity"
       data-stella-label="Activity Feed"
       data-stella-state={`${items.length} items`}

@@ -146,7 +146,7 @@ export function HomeView({ conversationId }: HomeViewProps) {
           )}
           {hasActivity && <ActivityFeed items={activityItems} />}
           {!hasSuggestions && !hasActivity && (
-            <DashboardCard label="Activity">
+            <DashboardCard className="home-activity-panel" label="Activity">
               <span className="home-sidebar-empty">
                 Your activity will appear here as you use Stella
               </span>
