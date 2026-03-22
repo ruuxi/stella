@@ -43,7 +43,7 @@ export function ReasoningSection({
         data-streaming={isStreaming}
         data-expanded={expanded}
       >
-        {/* Streaming: show animated "Thinking" heading with per-char shimmer */}
+        {/* Streaming: animated "Thinking" heading with full-phrase shimmer */}
         {isStreaming && (
           <div className="reasoning-heading-stream">
             <TextShimmer text="Thinking" active={isStreaming} className="reasoning-heading-text" />

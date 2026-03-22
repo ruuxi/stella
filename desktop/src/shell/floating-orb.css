@@ -113,7 +113,7 @@
   color: var(--foreground);
 }
 
-.orb-msg--assistant .text-shimmer-char {
+.orb-msg--assistant .text-shimmer {
   background: linear-gradient(
     90deg,
     var(--foreground) 0%,
@@ -122,6 +122,7 @@
     var(--foreground) 65%,
     var(--foreground) 100%
   );
+  background-size: 200% 100%;
 }
 
 .orb-msg--streaming {
