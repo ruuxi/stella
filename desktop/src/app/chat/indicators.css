@@ -6,7 +6,7 @@
   padding: 6px 12px;
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface-inset) 15%, transparent);
-  border: 1px solid var(--border-strong);
+  border: none;
   font-size: 12px;
   color: var(--text-base);
   animation: stream-fade-blur-in 0.4s ease-out both;
@@ -52,10 +52,10 @@
   animation: stream-fade-blur-in 0.4s cubic-bezier(0.34, 1.08, 0.64, 1) both;
 }
 
-/* Inline StellaAnimation scaled to indicator size */
+/* Inline Stella — larger clip circle, tight scale so creature stays small in the row */
 .indicator-stella {
-  width: 16px;
-  height: 16px;
+  width: clamp(28px, 5.5vmin, 42px);
+  height: clamp(28px, 5.5vmin, 42px);
   flex-shrink: 0;
   position: relative;
   overflow: hidden;
@@ -65,7 +65,7 @@
 .indicator-stella-scale {
   width: 200%;
   height: 200%;
-  transform: scale(0.12);
+  transform: scale(0.2);
   transform-origin: center center;
   display: flex;
   align-items: center;
@@ -214,8 +214,6 @@
 .reasoning-body {
   position: relative;
   margin-top: 8px;
-  padding-left: 12px;
-  border-left: 2px solid var(--border-base);
   /* data-visible transition — smooth show/hide instead of mount/unmount */
   transition: opacity 180ms ease-out, filter 180ms ease-out, transform 180ms ease-out;
   opacity: 1;
@@ -232,23 +230,6 @@
   overflow: hidden;
   margin-top: 0;
   padding: 0;
-}
-
-.reasoning-section[data-streaming="true"] .reasoning-body::before {
-  content: "";
-  position: absolute;
-  left: -2px;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: linear-gradient(
-    to bottom,
-    var(--border-base) 0%,
-    var(--primary) 15%,
-    var(--border-base) 30%
-  );
-  background-size: 100% 300%;
-  animation: reasoning-tron-border 4.5s linear infinite;
 }
 
 .reasoning-heading-stream {
@@ -288,11 +269,6 @@
   color: var(--text-weaker);
 }
 
-@keyframes reasoning-tron-border {
-  0% { background-position: 0 400%; }
-  100% { background-position: 0 0%; }
-}
-
 /* Respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   .event-item.assistant.streaming,
@@ -309,7 +285,8 @@
 
   .working-indicator .working-status,
   .reasoning-heading-text,
-  .reasoning-placeholder {
+  .reasoning-placeholder,
+  .text-shimmer {
     animation: none;
     -webkit-text-fill-color: currentColor;
     background: none;

@@ -94,10 +94,69 @@
 }
 
 .event-body {
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 16px;
+  line-height: 1.45;
   color: var(--text-strong);
   white-space: pre-wrap;
+}
+
+/* Assistant Markdown — match user bubble: stronger color, weight, same rhythm as .event-body */
+.event-item.assistant .markdown {
+  color: var(--text-strong);
+  font-size: 16px;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+.event-item.assistant .markdown p {
+  margin-bottom: 0.5rem;
+}
+
+.event-item.assistant .markdown ul,
+.event-item.assistant .markdown ol {
+  margin-top: 0.15rem;
+  margin-bottom: 0.5rem;
+}
+
+.event-item.assistant .markdown h1,
+.event-item.assistant .markdown h2,
+.event-item.assistant .markdown h3,
+.event-item.assistant .markdown h4,
+.event-item.assistant .markdown h5,
+.event-item.assistant .markdown h6 {
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  margin-top: 0.85rem;
+  margin-bottom: 0.35rem;
+}
+
+.event-item.assistant .markdown h1:first-child,
+.event-item.assistant .markdown h2:first-child,
+.event-item.assistant .markdown h3:first-child,
+.event-item.assistant .markdown h4:first-child,
+.event-item.assistant .markdown h5:first-child,
+.event-item.assistant .markdown h6:first-child {
+  margin-top: 0;
+}
+
+.event-item.assistant .markdown strong,
+.event-item.assistant .markdown b {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.event-item.assistant .markdown :is(pre, code, .shiki, kbd, samp) {
+  font-weight: 400;
+}
+
+.event-item.assistant .markdown li::marker {
+  color: var(--text-strong);
+}
+
+.event-item.assistant .markdown blockquote {
+  color: var(--text-base);
 }
 
 .event-window-badge {

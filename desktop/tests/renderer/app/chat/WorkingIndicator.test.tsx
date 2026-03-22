@@ -1,12 +1,9 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";
 import { WorkingIndicator } from "../../../../src/app/chat/WorkingIndicator";
 
-/** Helper: TextShimmer wraps each char in a <span> and converts spaces to
- *  non-breaking spaces (\u00A0), so getByText won't match.
- *  Query .working-status textContent and normalize NBSP back to regular spaces. */
 const getStatusText = (container: HTMLElement) =>
-  (container.querySelector(".working-status")?.textContent ?? "").replace(/\u00A0/g, " ");
+  container.querySelector(".working-status")?.textContent ?? "";
 
 describe("WorkingIndicator", () => {
   it("shows explicit status when provided", () => {
