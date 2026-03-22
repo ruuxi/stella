@@ -188,6 +188,13 @@ const startRootWatchers = () => {
   }
 };
 
+const cleanOutdir = async () => {
+  await fsPromises.rm(path.join(projectDir, outdir), {
+    force: true,
+    recursive: true,
+  });
+};
+
 const shutdown = async (exitCode) => {
   if (shuttingDown) {
     return;
@@ -209,6 +216,7 @@ const shutdown = async (exitCode) => {
   process.exit(exitCode);
 };
 
+await cleanOutdir();
 buildContexts = await startBuildContexts();
 startRootWatchers();
 

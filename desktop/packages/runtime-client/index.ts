@@ -812,7 +812,6 @@ const resolveDefaultDaemonEntryPath = () =>
   path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
-    "..",
     "runtime-daemon",
     "entry.js",
   );

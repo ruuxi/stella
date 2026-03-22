@@ -977,3 +977,7 @@ That is the production-ready architecture for a desktop assistant that can modif
   `desktop/packages/**` now uses plain package-root source files instead of
   `src/**` trees plus generated facade re-exports, while preserving the real
   runtime/contract/process boundaries.
+- Fixed the dev/runtime launcher after that flattening by resolving daemon and
+  worker entrypoints as sibling compiled package paths under
+  `dist-electron/packages/**`, and now clear stale `dist-electron` artifacts at
+  dev-build startup so renamed package debris does not linger between runs.
