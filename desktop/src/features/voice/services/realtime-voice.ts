@@ -381,6 +381,17 @@ export class RealtimeVoiceSession {
     this.audioElement = new Audio();
     this.audioElement.srcObject = stream;
     this.audioElement.autoplay = true;
+
+    const preferredSpeakerId = localStorage.getItem("stella-preferred-speaker-id");
+    if (preferredSpeakerId && typeof this.audioElement.setSinkId === "function") {
+      this.audioElement.setSinkId(preferredSpeakerId).catch((err) => {
+        console.debug(
+          "[RealtimeVoice] setSinkId failed, using default output:",
+          (err as Error).message,
+        );
+      });
+    }
+
     this.audioElement.play().catch((err) => {
       console.debug(
         "[RealtimeVoice] Audio playback failed:",

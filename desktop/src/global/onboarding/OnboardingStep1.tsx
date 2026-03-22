@@ -27,7 +27,7 @@ import {
 import type { OnboardingDemo } from "./OnboardingCanvas";
 import { useTheme, useThemeControl } from "@/context/theme-context";
 import { getPlatform } from "@/platform/electron/platform";
-import { PREFERRED_MIC_KEY } from "@/features/voice/services/shared-microphone";
+import { PREFERRED_MIC_KEY, MIC_ENABLED_KEY } from "@/features/voice/services/shared-microphone";
 import type {
   ShowcaseId,
   ShowcaseOption,
@@ -681,6 +681,10 @@ export const OnboardingStep1 = ({
   }, [selectedMicId]);
 
   const handleVoiceContinue = useCallback(() => {
+    localStorage.setItem(
+      MIC_ENABLED_KEY,
+      voicePermissionGranted === true ? "true" : "false",
+    );
     if (selectedMicId) {
       localStorage.setItem(PREFERRED_MIC_KEY, selectedMicId);
     }
@@ -709,7 +713,7 @@ export const OnboardingStep1 = ({
       });
 
     nextSplitStep();
-  }, [nextSplitStep, selectedMicId]);
+  }, [nextSplitStep, selectedMicId, voicePermissionGranted]);
 
   const handleThemeSelect = useCallback(
     (id: string) => {
