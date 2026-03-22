@@ -20,6 +20,9 @@ const {
   prepareOrchestratorRun,
   startPreparedOrchestratorRun,
 } = await import("../../../packages/runtime-kernel/runner/orchestrator-launch.js");
+const { markOrchestratorErrorReported } = await import(
+  "../../../packages/runtime-kernel/agent-runtime/run-completion.js"
+);
 
 describe("runner orchestrator launch helpers", () => {
   beforeEach(() => {
@@ -72,6 +75,56 @@ describe("runner orchestrator launch helpers", () => {
 
     expect(cleanupRun).toHaveBeenCalledWith("run-1");
     expect(onFatalError).toHaveBeenCalledWith(expect.any(Error));
+  });
+
+  it("does not report a second fatal error when the run already surfaced an interrupted abort", async () => {
+    runOrchestratorTurnMock.mockRejectedValue(
+      markOrchestratorErrorReported(new Error("Request aborted by user")),
+    );
+
+    const cleanupRun = vi.fn();
+    const onFatalError = vi.fn();
+
+    launchPreparedOrchestratorRun({
+      context: {
+        toolHost: { executeTool: vi.fn() },
+        deviceId: "device-1",
+        stellaHomePath: "/tmp/stella",
+        runtimeStore: {},
+        frontendRoot: "/repo",
+        selfModMonitor: null,
+        hookEmitter: {},
+        displayHtml: undefined,
+      } as never,
+      prepared: {
+        runId: "run-interrupted",
+        conversationId: "conv-1",
+        agentType: "orchestrator",
+        userPrompt: "hello",
+        agentContext: { model: "openai/gpt-4.1-mini" },
+        resolvedLlm: { model: { id: "openai/gpt-4.1-mini" } },
+        abortController: new AbortController(),
+        replayInterruptedTurn: vi.fn(),
+      } as never,
+      userMessageId: "user-1",
+      runtimeCallbacks: {
+        onStream: vi.fn(),
+        onToolStart: vi.fn(),
+        onToolEnd: vi.fn(),
+        onError: vi.fn(),
+        onEnd: vi.fn(),
+      },
+      webSearch: vi.fn(),
+      finishInterruptedRun: vi.fn(() => false),
+      cleanupRun,
+      onFatalError,
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(cleanupRun).not.toHaveBeenCalled();
+    expect(onFatalError).not.toHaveBeenCalled();
   });
 
   it("prepares active runner state and replay handling for queued turns", async () => {

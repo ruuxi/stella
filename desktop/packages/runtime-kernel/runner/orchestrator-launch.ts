@@ -1,6 +1,7 @@
 import { runOrchestratorTurn, type RuntimeRunCallbacks } from "../agent-runtime.js";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
 import { resolveRunnerLlmRoute } from "./model-selection.js";
+import { isReportedOrchestratorError } from "../agent-runtime/run-completion.js";
 import type {
   QueuedOrchestratorTurn,
   RunnerContext,
@@ -124,6 +125,9 @@ export const launchPreparedOrchestratorRun = (args: {
     hookEmitter: context.hookEmitter,
     displayHtml: context.displayHtml,
   }).catch((error) => {
+    if (isReportedOrchestratorError(error)) {
+      return;
+    }
     if (
       args.finishInterruptedRun({
         runId: prepared.runId,
