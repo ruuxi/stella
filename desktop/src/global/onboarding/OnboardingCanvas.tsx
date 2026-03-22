@@ -1,49 +1,82 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { DJStudio } from "./panels/DJStudioDemo";
-import { WeatherStation } from "./panels/WeatherStationDemo";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { CozyCatDemo } from "./panels/CozyCatDemo";
-import { StellaAppMock } from "./panels/StellaAppMock";
+import { DJStudio } from "./panels/DJStudioDemo";
 import { PomodoroDemo } from "./panels/PomodoroDemo";
+import { StellaAppMock } from "./panels/StellaAppMock";
+import { WeatherStation } from "./panels/WeatherStationDemo";
 
-export type OnboardingDemo = "default" | "modern" | "dj-studio" | "weather-station" | "cozy-cat" | "pomodoro" | null;
+export type OnboardingDemo =
+  | "default"
+  | "modern"
+  | "dj-studio"
+  | "weather-station"
+  | "cozy-cat"
+  | "pomodoro"
+  | null;
 
-/** Delay after React swap to let the new demo paint before capturing */
+/** Delay after React swap to let the new demo paint before revealing it */
 const PAINT_SETTLE_MS = 120;
 const CSS_MORPH_MS = 450;
+const NATIVE_MORPH_RETRY_MS = 80;
+const NATIVE_MORPH_MAX_ATTEMPTS = 6;
 
 interface OnboardingCanvasProps {
   activeDemo: OnboardingDemo;
   onMorphStateChange?: (morphing: boolean) => void;
 }
 
-export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({ activeDemo, onMorphStateChange }) => {
+export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
+  activeDemo,
+  onMorphStateChange,
+}) => {
   const [displayedDemo, setDisplayedDemo] = useState<OnboardingDemo>(activeDemo);
   const [cssMorphing, setCssMorphing] = useState(false);
   const morphInFlightRef = useRef(false);
   const pendingDemoRef = useRef<OnboardingDemo>(null);
 
-  const runMorph = useCallback(async (nextDemo: OnboardingDemo) => {
-    if (morphInFlightRef.current) {
-      pendingDemoRef.current = nextDemo;
-      return;
-    }
-    morphInFlightRef.current = true;
-    // Block tile clicks immediately
-    onMorphStateChange?.(true);
+  const wait = useCallback(
+    (ms: number) =>
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, ms);
+      }),
+    [],
+  );
 
+  const startNativeMorph = useCallback(async () => {
     const morphApi = window.electronAPI?.ui;
-    const canMorph = typeof morphApi?.morphStart === "function";
+    if (typeof morphApi?.morphStart !== "function") {
+      return null;
+    }
 
-    if (canMorph) {
-      // Electron path — overlay handles visuals, no CSS morph needed
+    for (let attempt = 0; attempt < NATIVE_MORPH_MAX_ATTEMPTS; attempt += 1) {
       const started = await morphApi.morphStart();
-
       if (started?.ok) {
+        return morphApi;
+      }
+      if (attempt < NATIVE_MORPH_MAX_ATTEMPTS - 1) {
+        await wait(NATIVE_MORPH_RETRY_MS);
+      }
+    }
+
+    return null;
+  }, [wait]);
+
+  const runMorph = useCallback(
+    async (nextDemo: OnboardingDemo) => {
+      if (morphInFlightRef.current) {
+        pendingDemoRef.current = nextDemo;
+        return;
+      }
+      morphInFlightRef.current = true;
+      onMorphStateChange?.(true);
+
+      const morphApi = await startNativeMorph();
+
+      if (morphApi) {
         setDisplayedDemo(nextDemo);
-        await new Promise((r) => setTimeout(r, PAINT_SETTLE_MS));
+        await wait(PAINT_SETTLE_MS);
         await morphApi.morphComplete();
       } else {
-        // Overlay failed — fall back to CSS morph
         setCssMorphing(true);
         await new Promise<void>((resolve) => {
           setTimeout(() => setDisplayedDemo(nextDemo), 200);
@@ -51,32 +84,24 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({ activeDemo, 
         });
         setCssMorphing(false);
       }
-    } else {
-      // No Electron API — CSS fallback
-      setCssMorphing(true);
-      await new Promise<void>((resolve) => {
-        setTimeout(() => setDisplayedDemo(nextDemo), 200);
-        setTimeout(resolve, CSS_MORPH_MS);
-      });
-      setCssMorphing(false);
-    }
 
-    morphInFlightRef.current = false;
-    onMorphStateChange?.(false);
+      morphInFlightRef.current = false;
+      onMorphStateChange?.(false);
 
-    // Process any queued request
-    const pending = pendingDemoRef.current;
-    pendingDemoRef.current = null;
-    if (pending !== null && pending !== nextDemo) {
-      void runMorph(pending);
-    }
-  }, [onMorphStateChange]);
+      const pending = pendingDemoRef.current;
+      pendingDemoRef.current = null;
+      if (pending !== null && pending !== nextDemo) {
+        void runMorph(pending);
+      }
+    },
+    [onMorphStateChange, startNativeMorph, wait],
+  );
 
   useEffect(() => {
     if (activeDemo === displayedDemo) return;
 
     if (!activeDemo || !displayedDemo) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- immediate swap on phase enter/exit, no cascading render risk
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- direct enter/exit swap is intentional
       setDisplayedDemo(activeDemo);
       return;
     }
@@ -87,7 +112,9 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({ activeDemo, 
   if (!displayedDemo) return null;
 
   return (
-    <div className={`onboarding-canvas ${cssMorphing ? "onboarding-canvas-morphing" : ""}`}>
+    <div
+      className={`onboarding-canvas ${cssMorphing ? "onboarding-canvas-morphing" : ""}`}
+    >
       {(displayedDemo === "default" || displayedDemo === "modern") && (
         <StellaAppMock variant={displayedDemo} />
       )}
