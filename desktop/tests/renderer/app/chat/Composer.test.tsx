@@ -144,6 +144,18 @@ describe("Composer", () => {
       <Composer {...defaultProps({ selectedText: "some text" })} />,
     );
     expect(container.querySelector(".composer-context-row")).toBeTruthy();
+    expect(container.querySelector(".composer-floating-context")).toBeTruthy();
+  });
+
+  it("renders full-shell context above the composer shell instead of inside it", () => {
+    const { container } = render(
+      <Composer {...defaultProps({ selectedText: "some text" })} />,
+    );
+
+    expect(
+      container.querySelector(".composer-floating-context .composer-context-row"),
+    ).toBeTruthy();
+    expect(container.querySelector(".composer-shell .composer-context-row")).toBeNull();
   });
 
   // ---- Placeholder text variations ----
@@ -303,14 +315,14 @@ describe("Composer", () => {
 
   // ---- Expanded form class ----
 
-  it("form has expanded class when context is present", () => {
+  it("keeps the shell collapsed when only context is present", () => {
     const { container } = render(
       <Composer
         {...defaultProps({ selectedText: "some selected text" })}
       />,
     );
     const form = container.querySelector(".composer-form");
-    expect(form?.classList.contains("expanded")).toBe(true);
+    expect(form?.classList.contains("expanded")).toBe(false);
   });
 
   it("form does not have expanded class when no context", () => {
@@ -517,6 +529,5 @@ describe("Composer", () => {
     });
   });
 });
-
 
 

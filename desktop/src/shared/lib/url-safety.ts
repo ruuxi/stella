@@ -1,4 +1,5 @@
 const MAX_URL_LENGTH = 4096;
+const MAX_DATA_URL_LENGTH = 16 * 1024 * 1024;
 
 const sanitizeUrl = (
   value: unknown,
@@ -8,7 +9,13 @@ const sanitizeUrl = (
     return null;
   }
   const trimmed = value.trim();
-  if (!trimmed || trimmed.length > MAX_URL_LENGTH) {
+  if (!trimmed) {
+    return null;
+  }
+  const maxLength = trimmed.startsWith("data:")
+    ? MAX_DATA_URL_LENGTH
+    : MAX_URL_LENGTH;
+  if (trimmed.length > maxLength) {
     return null;
   }
   try {

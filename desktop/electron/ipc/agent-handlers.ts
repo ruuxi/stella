@@ -200,6 +200,10 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         conversationId: string;
         userMessageId: string;
         userPrompt: string;
+        attachments?: Array<{
+          url: string;
+          mimeType?: string;
+        }>;
         agentType?: string;
         storageMode?: "cloud" | "local";
       },

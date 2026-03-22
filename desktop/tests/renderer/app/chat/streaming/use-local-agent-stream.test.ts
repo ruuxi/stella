@@ -168,4 +168,44 @@ describe("useLocalAgentStream", () => {
       }),
     );
   });
+
+  it("passes attachments through when starting a local chat run", async () => {
+    const appendAgentEvent = vi.fn();
+    const { result } = renderHook(() =>
+      useLocalAgentStream({
+        activeConversationId: "conv-1",
+        storageMode: "local",
+        appendAgentEvent,
+      }),
+    );
+
+    await act(async () => {
+      result.current.startStream({
+        userMessageId: "msg-1",
+        userPrompt: "describe this screenshot",
+        attachments: [
+          {
+            url: "data:image/png;base64,abc",
+            mimeType: "image/png",
+          },
+        ],
+      });
+      await flushMicrotasks();
+    });
+
+    expect(mockStartChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv-1",
+        userMessageId: "msg-1",
+        userPrompt: "describe this screenshot",
+        attachments: [
+          {
+            url: "data:image/png;base64,abc",
+            mimeType: "image/png",
+          },
+        ],
+        storageMode: "local",
+      }),
+    );
+  });
 });

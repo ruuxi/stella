@@ -57,7 +57,6 @@ export const createOrchestratorController = (
     clearActiveOrchestratorRun,
     createRuntimeCallbacks,
     queueOrchestratorTurn,
-    requestActiveOrchestratorCheckpoint,
     finishInterruptedRun,
   } = coordinator;
 
@@ -83,7 +82,7 @@ export const createOrchestratorController = (
       throw new Error("Missing user prompt");
     }
 
-    const { prepared } = await startPreparedOrchestratorRun({
+    await startPreparedOrchestratorRun({
       context,
       buildAgentContext: deps.buildAgentContext,
       queueOrchestratorTurn,
@@ -126,6 +125,7 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
+      attachments,
     } = normalizeChatRunInput(payload);
     const runId = `local:${crypto.randomUUID()}`;
     if (!userPrompt) {
@@ -140,6 +140,7 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
+      attachments,
       userMessageId: payload.userMessageId,
       webSearch: deps.webSearch,
       createRuntimeCallbacks: ({ runId }) => createRuntimeCallbacks(runId, callbacks),

@@ -432,6 +432,60 @@ describe("useStreamingChat", () => {
       );
     });
 
+    it("persists screenshot attachments and forwards them to the local agent", async () => {
+      mockAppendEvent.mockResolvedValueOnce({ _id: "user-event-1" });
+
+      const { result } = renderHook(() =>
+        useStreamingChat({ conversationId: "conv-1", events: [] }),
+      );
+
+      await act(async () => {
+        await result.current.sendMessage({
+          text: "what is in this screenshot?",
+          selectedText: null,
+          chatContext: {
+            window: null,
+            regionScreenshots: [
+              { dataUrl: "data:image/png;base64,abc", width: 100, height: 100 },
+            ],
+          },
+          onClear: vi.fn(),
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mockAppendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          type: "user_message",
+          payload: expect.objectContaining({
+            text: "what is in this screenshot?",
+            attachments: [
+              {
+                url: "data:image/png;base64,abc",
+                mimeType: "image/png",
+              },
+            ],
+          }),
+        }),
+      );
+
+      expect(mockAgentStartChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-1",
+          userMessageId: "user-event-1",
+          userPrompt: "what is in this screenshot?",
+          attachments: [
+            {
+              url: "data:image/png;base64,abc",
+              mimeType: "image/png",
+            },
+          ],
+        }),
+      );
+    });
+
     it("persists WebSearch tool results from streamed tool-end events", async () => {
       mockAppendEvent.mockResolvedValueOnce({ _id: "user-event-1" });
 
@@ -681,7 +735,6 @@ describe("useStreamingChat", () => {
     });
   });
 });
-
 
 
 

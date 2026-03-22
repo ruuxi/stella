@@ -5,6 +5,7 @@ import type {
   QueuedOrchestratorTurn,
   RunnerContext,
 } from "./types.js";
+import type { RuntimeAttachmentRef } from "../../runtime-protocol/index.js";
 
 type BuildAgentContext = (args: {
   conversationId: string;
@@ -26,6 +27,7 @@ export type PreparedOrchestratorRun = {
   conversationId: string;
   agentType: string;
   userPrompt: string;
+  attachments: RuntimeAttachmentRef[];
   agentContext: LocalTaskManagerAgentContext;
   resolvedLlm: ReturnType<typeof resolveRunnerLlmRoute>;
   abortController: AbortController;
@@ -40,6 +42,7 @@ export const prepareOrchestratorRun = async (args: {
   conversationId: string;
   agentType: string;
   userPrompt: string;
+  attachments: RuntimeAttachmentRef[];
   replayTurn?: QueuedOrchestratorTurn | null;
 }): Promise<PreparedOrchestratorRun> => {
   const agentContext = await args.buildAgentContext({
@@ -72,6 +75,7 @@ export const prepareOrchestratorRun = async (args: {
     conversationId: args.conversationId,
     agentType: args.agentType,
     userPrompt: args.userPrompt,
+    attachments: args.attachments,
     agentContext,
     resolvedLlm,
     abortController,
@@ -104,6 +108,7 @@ export const launchPreparedOrchestratorRun = (args: {
     userMessageId: args.userMessageId,
     agentType: prepared.agentType,
     userPrompt: prepared.userPrompt,
+    attachments: prepared.attachments,
     agentContext: prepared.agentContext,
     callbacks: args.runtimeCallbacks,
     toolExecutor: (toolName, toolArgs, toolContext) =>
@@ -144,6 +149,7 @@ export const startPreparedOrchestratorRun = async (args: {
   conversationId: string;
   agentType: string;
   userPrompt: string;
+  attachments: RuntimeAttachmentRef[];
   userMessageId: string;
   webSearch: WebSearch;
   finishInterruptedRun: (args: {
@@ -164,6 +170,7 @@ export const startPreparedOrchestratorRun = async (args: {
     conversationId: args.conversationId,
     agentType: args.agentType,
     userPrompt: args.userPrompt,
+    attachments: args.attachments,
     replayTurn: args.replayTurn,
   });
 

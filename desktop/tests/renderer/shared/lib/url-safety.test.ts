@@ -27,6 +27,11 @@ describe("url-safety", () => {
     );
   });
 
+  it("allows large data URLs for local image previews", () => {
+    const longDataUrl = `data:image/png;base64,${"a".repeat(10_000)}`;
+    expect(sanitizeAttachmentImageUrl(longDataUrl)).toBe(longDataUrl);
+  });
+
   it("blocks unsafe attachment image protocols", () => {
     expect(sanitizeAttachmentImageUrl("javascript:alert(1)")).toBeNull();
     expect(sanitizeAttachmentImageUrl("ftp://example.com/file.png")).toBeNull();

@@ -303,10 +303,16 @@ export type RuntimeHealthSnapshot = {
   activeTaskCount: number;
 };
 
+export type RuntimeAttachmentRef = {
+  url: string;
+  mimeType?: string;
+};
+
 export type RuntimeChatPayload = {
   conversationId: string;
   userMessageId: string;
   userPrompt: string;
+  attachments?: RuntimeAttachmentRef[];
   agentType?: string;
   storageMode?: "cloud" | "local";
 };

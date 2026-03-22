@@ -87,6 +87,7 @@ export const runPiOrchestratorTurn = async (
     const { finalText, errorMessage } = await executeRuntimeAgentPrompt({
       agent,
       promptText,
+      attachments: opts.attachments,
       runId,
       agentType: opts.agentType,
       recorder: runEvents,

@@ -336,6 +336,9 @@ export function useLocalAgentStream({
           conversationId: activeConversationId,
           userMessageId: args.userMessageId,
           userPrompt: args.userPrompt,
+          ...(args.attachments?.length
+            ? { attachments: args.attachments }
+            : {}),
           storageMode,
         })
         .then(({ runId: agentRunId }) => {
@@ -490,6 +493,9 @@ export function useLocalAgentStream({
           conversationId: activeConversationId,
           userMessageId: args.userMessageId,
           userPrompt: args.userPrompt,
+          ...(args.attachments?.length
+            ? { attachments: args.attachments }
+            : {}),
           storageMode,
         })
         .then(({ runId: agentRunId }) => {

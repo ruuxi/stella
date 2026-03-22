@@ -30,6 +30,7 @@ import type {
 } from "../../boundary-contracts/index.js";
 import type {
   RuntimeActiveRun,
+  RuntimeAttachmentRef,
   RuntimeAutomationTurnRequest,
   RuntimeAutomationTurnResult,
   StorePublishArgs,
@@ -116,6 +117,7 @@ export type ChatPayload = {
   conversationId: string;
   userMessageId: string;
   userPrompt: string;
+  attachments?: RuntimeAttachmentRef[];
   agentType?: string;
   storageMode?: "cloud" | "local";
 };
