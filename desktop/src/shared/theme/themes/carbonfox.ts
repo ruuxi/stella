@@ -24,8 +24,8 @@ const theme: Theme = {
     cardForeground: "#161616",
     muted: "#dde1e6",
     mutedForeground: "#4d5358",
-    accent: "#08bdba",
-    accentForeground: "#161616",
+    accent: "#ee5396",
+    accentForeground: "#ffffff",
   },
   dark: {
     background: "#161616",
@@ -48,7 +48,7 @@ const theme: Theme = {
     cardForeground: "#f2f4f8",
     muted: "#262626",
     mutedForeground: "#b8bfc7",
-    accent: "#3ddbd9",
+    accent: "#ff7eb6",
     accentForeground: "#161616",
   },
 };

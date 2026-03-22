@@ -37,7 +37,7 @@ const theme: Theme = {
     primary: "#b4befe",
     primaryForeground: "#1e1e2e",
     success: "#a6d189",
-    warning: "#f4b8e4",
+    warning: "#f2c97d",
     error: "#f38ba8",
     info: "#89dceb",
     interactive: "#b4befe",

@@ -72,11 +72,11 @@
   --gradient-blur: 120px;
   --gradient-noise: 0.08;
 
-  /* Spinner colors */
-  --spinner-color-1: oklch(0.6 0.15 250);
-  --spinner-color-2: oklch(0.65 0.18 145);
-  --spinner-color-3: oklch(0.7 0.16 85);
-  --spinner-color-4: oklch(0.65 0.15 280);
+  /* Spinner colors — aligned to Carbon theme */
+  --spinner-color-1: #0f62fe;
+  --spinner-color-2: #42be65;
+  --spinner-color-3: #f1c21b;
+  --spinner-color-4: #4589ff;
 
   /* Layered shadows */
   --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -99,9 +99,9 @@
     0 0 0 2px var(--background),
     0 0 0 4px var(--ring);
 
-  /* Aura-style button colors */
-  --button-secondary-base: #fdfcfc;
-  --button-secondary-hover: #f5f4f4;
+  /* Button secondary colors — neutral for Carbon */
+  --button-secondary-base: #f8f9fb;
+  --button-secondary-hover: #eef0f3;
 
   /* Aura-style surface colors - semi-transparent to show gradient */
   --surface-inset: color-mix(in srgb, var(--card) 12%, transparent);
@@ -110,12 +110,12 @@
   --surface-overlay: color-mix(in srgb, var(--card) 85%, transparent);
   --surface-raised-stronger-non-alpha: var(--card);
 
-  /* Text hierarchy - Aura-style with solid colors for light mode */
-  --text-strong: oklch(0.13 0.01 285);
-  --text-base: oklch(0.40 0.01 285);
-  --text-weak: oklch(0.56 0.01 285);
-  --text-weaker: oklch(0.73 0.01 285);
-  --text-interactive-base: oklch(0.45 0.2 260);
+  /* Text hierarchy — tuned for Carbon light mode */
+  --text-strong: #0a0a0a;
+  --text-base: #4d5358;
+  --text-weak: #878d96;
+  --text-weaker: #b8bfc7;
+  --text-interactive-base: #0f62fe;
 
   /* Text blend mode - helps text render correctly over gradients */
   --text-mix-blend-mode: multiply;
@@ -128,38 +128,38 @@
   --border-base: color-mix(in srgb, var(--foreground) 8%, transparent);
   --border-weak: color-mix(in srgb, var(--foreground) 5%, transparent);
 
-  /* Semantic colors */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.21 0.006 285.885);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.21 0.006 285.885);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.705 0.015 286.067);
+  /* Semantic colors — aligned to default theme (Carbon) */
+  --background: #f2f4f8;
+  --foreground: #161616;
+  --card: rgba(255, 255, 255, 0.9);
+  --card-foreground: #161616;
+  --popover: rgba(255, 255, 255, 0.9);
+  --popover-foreground: #161616;
+  --primary: #0f62fe;
+  --primary-foreground: #ffffff;
+  --secondary: #dde1e6;
+  --secondary-foreground: #161616;
+  --muted: #dde1e6;
+  --muted-foreground: #4d5358;
+  --accent: #ee5396;
+  --accent-foreground: #ffffff;
+  --destructive: #da1e28;
+  --border: #c1c7cd;
+  --input: #c1c7cd;
+  --ring: #0f62fe;
+  --chart-1: #0f62fe;
+  --chart-2: #42be65;
+  --chart-3: #ee5396;
+  --chart-4: #f1c21b;
+  --chart-5: #4589ff;
+  --sidebar: #f2f4f8;
+  --sidebar-foreground: #161616;
+  --sidebar-primary: #0f62fe;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #dde1e6;
+  --sidebar-accent-foreground: #161616;
+  --sidebar-border: #c1c7cd;
+  --sidebar-ring: #0f62fe;
 }
 
 .dark {
@@ -167,11 +167,11 @@
   --gradient-blur: 140px;
   --gradient-noise: 0.12;
 
-  /* Dark mode spinner colors */
-  --spinner-color-1: oklch(0.7 0.18 250);
-  --spinner-color-2: oklch(0.72 0.2 145);
-  --spinner-color-3: oklch(0.75 0.18 85);
-  --spinner-color-4: oklch(0.7 0.18 280);
+  /* Dark mode spinner colors — aligned to Carbon theme */
+  --spinner-color-1: #78a9ff;
+  --spinner-color-2: #42be65;
+  --spinner-color-3: #f1c21b;
+  --spinner-color-4: #4589ff;
 
   /* Dark mode shadows */
   --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.2);
@@ -194,9 +194,9 @@
     0 0 0 2px var(--background),
     0 0 0 4px var(--ring);
 
-  /* Dark mode Aura-style button colors */
-  --button-secondary-base: #231f1f;
-  --button-secondary-hover: #2a2727;
+  /* Dark mode button secondary colors — neutral for Carbon */
+  --button-secondary-base: #262626;
+  --button-secondary-hover: #333333;
 
   /* Dark mode surface colors */
   --surface-inset: color-mix(in srgb, var(--card) 15%, transparent);
@@ -205,13 +205,13 @@
   --surface-overlay: color-mix(in srgb, var(--card) 75%, transparent);
   --surface-raised-stronger-non-alpha: var(--card);
 
-  /* Text hierarchy - Aura-style with alpha-based colors for dark mode */
+  /* Text hierarchy — tuned for Carbon dark mode */
   /* Alpha colors blend better with colorful gradient backgrounds */
-  --text-strong: rgba(253, 251, 251, 0.94);
-  --text-base: rgba(252, 249, 249, 0.70);
-  --text-weak: rgba(252, 249, 249, 0.44);
-  --text-weaker: rgba(252, 249, 249, 0.36);
-  --text-interactive-base: oklch(0.65 0.18 260);
+  --text-strong: rgba(242, 244, 248, 0.95);
+  --text-base: rgba(242, 244, 248, 0.72);
+  --text-weak: rgba(242, 244, 248, 0.45);
+  --text-weaker: rgba(242, 244, 248, 0.32);
+  --text-interactive-base: #78a9ff;
 
   /* Text blend mode - plus-lighter for dark mode gradient blending */
   --text-mix-blend-mode: plus-lighter;
@@ -219,37 +219,38 @@
   /* Color scheme */
   color-scheme: dark;
 
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.92 0.004 286.32);
-  --primary-foreground: oklch(0.21 0.006 285.885);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.552 0.016 285.938);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.552 0.016 285.938);
+  /* Semantic colors — aligned to default theme (Carbon) dark */
+  --background: #161616;
+  --foreground: #f2f4f8;
+  --card: rgba(38, 38, 38, 0.9);
+  --card-foreground: #f2f4f8;
+  --popover: rgba(38, 38, 38, 0.9);
+  --popover-foreground: #f2f4f8;
+  --primary: #78a9ff;
+  --primary-foreground: #161616;
+  --secondary: #262626;
+  --secondary-foreground: #f2f4f8;
+  --muted: #262626;
+  --muted-foreground: #b8bfc7;
+  --accent: #ff7eb6;
+  --accent-foreground: #161616;
+  --destructive: #ff8389;
+  --border: #393939;
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #78a9ff;
+  --chart-1: #78a9ff;
+  --chart-2: #42be65;
+  --chart-3: #ff7eb6;
+  --chart-4: #f1c21b;
+  --chart-5: #4589ff;
+  --sidebar: #161616;
+  --sidebar-foreground: #f2f4f8;
+  --sidebar-primary: #78a9ff;
+  --sidebar-primary-foreground: #f2f4f8;
+  --sidebar-accent: #262626;
+  --sidebar-accent-foreground: #f2f4f8;
+  --sidebar-border: #393939;
+  --sidebar-ring: #78a9ff;
 }
 
 @layer base {
