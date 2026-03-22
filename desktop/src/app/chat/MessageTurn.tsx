@@ -12,7 +12,6 @@ import {
   type EventRecord,
   type MessagePayload,
 } from "@/app/chat/lib/event-transforms";
-import { sanitizeHtmlFragment } from "@/shared/lib/safe-html";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 
 export type TurnViewModel = {
@@ -131,13 +130,9 @@ const summarizeReactions = (envelope: ChannelEnvelope): string | null => {
   return `Reactions ${labels.join(" ")}${suffix}`;
 };
 
-const renderWebSearchBadge = (html: string) => (
+const renderWebSearchBadge = (_html: string) => (
   <div className="event-search-badge">
     <span className="event-search-badge-label">Search briefing</span>
-    <div
-      className="event-search-badge-html"
-      dangerouslySetInnerHTML={{ __html: sanitizeHtmlFragment(html) }}
-    />
   </div>
 );
 

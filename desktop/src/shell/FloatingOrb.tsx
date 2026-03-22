@@ -9,6 +9,11 @@ import {
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { CompactConversationSurface } from "@/app/chat/CompactConversationSurface";
+import {
+  ComposerAddButton,
+  ComposerTextarea,
+} from "@/app/chat/ComposerPrimitives";
+import { deriveComposerState } from "@/app/chat/composer-context";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import { StellaAnimation, type StellaAnimationHandle } from "@/shell/ascii-creature/StellaAnimation";
@@ -53,6 +58,7 @@ interface FloatingOrbProps {
   isLoadingOlder: boolean;
   isInitialLoading: boolean;
   onSend: (text: string) => void;
+  onAdd?: () => void;
 }
 
 export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
@@ -69,6 +75,7 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
       isLoadingOlder,
       isInitialLoading,
       onSend,
+      onAdd,
     },
     ref,
   ) {
@@ -197,15 +204,19 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
     const handleSubmit = useCallback(
       (event: React.FormEvent) => {
         event.preventDefault();
-        const text = inputText.trim();
-        if (!text) {
+        const { canSubmit, trimmedMessage } = deriveComposerState({
+          message: inputText,
+        });
+        if (!canSubmit) {
           return;
         }
-        onSend(text);
+        onSend(trimmedMessage);
         setInputText("");
       },
       [inputText, onSend],
     );
+
+    const orbComposerState = deriveComposerState({ message: inputText });
 
     if (!visible) {
       return null;
@@ -270,9 +281,15 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
                 transition={{ type: "spring", duration: 0.3, bounce: 0 }}
                 onSubmit={handleSubmit}
               >
-                <textarea
+                <ComposerAddButton
+                  className="orb-chat-add"
+                  title="Add"
+                  onClick={onAdd}
+                />
+                <ComposerTextarea
                   ref={inputRef}
                   className="orb-chat-input"
+                  tone="orb"
                   value={inputText}
                   rows={1}
                   onChange={(event) => setInputText(event.target.value)}
@@ -282,7 +299,7 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
                       handleSubmit(event);
                     }
                   }}
-                  placeholder="Ask Stella..."
+                  placeholder={orbComposerState.placeholder}
                 />
               </motion.form>
             )}

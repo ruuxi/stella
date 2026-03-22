@@ -155,6 +155,7 @@ export const ChatColumn = memo(function ChatColumn({
           isStreaming={conversation.streaming.isStreaming}
           canSubmit={composer.canSubmit}
           conversationId={conversationId}
+          onAdd={composer.onAdd}
           onSend={composer.onSend}
           onStop={composer.onStop}
         />
@@ -162,5 +163,4 @@ export const ChatColumn = memo(function ChatColumn({
     </div>
   );
 });
-
 

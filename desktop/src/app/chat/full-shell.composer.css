@@ -42,21 +42,6 @@
   min-height: 30px;
   max-height: 200px;
   padding: 4px 4px;
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--text-strong);
-  background: transparent;
-  border: none;
-  resize: none;
-  overflow-y: auto;
-  outline: none;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-}
-
-.composer-input::placeholder {
-  color: var(--text-weaker);
 }
 
 /* Toolbar hidden in pill mode â€” buttons sit inline */
@@ -112,22 +97,13 @@
 }
 
 .composer-stop {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 30px;
   height: 30px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
   color: var(--text-strong);
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .composer-stop:hover {
-  background: color-mix(in oklch, var(--foreground) 16%, transparent);
   border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
 }
 
@@ -139,131 +115,11 @@
   padding: 12px 14px 0;
 }
 
-.composer-context-chip {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.composer-context-chip--screenshot,
-.composer-context-chip--pending {
-  padding: 2px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 15%, transparent);
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-}
-
-.composer-context-chip--pending {
-  pointer-events: none;
-}
-
-.composer-context-pending-inner {
-  width: 56px;
-  height: 42px;
-  border-radius: 6px;
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklch, var(--foreground) 8%, transparent) 25%,
-    color-mix(in oklch, var(--foreground) 16%, transparent) 50%,
-    color-mix(in oklch, var(--foreground) 8%, transparent) 75%
-  );
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.2s ease-in-out infinite;
-}
-
-@keyframes skeleton-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.composer-context-thumb {
-  width: 56px;
-  height: 42px;
-  object-fit: cover;
-  border-radius: 6px;
-}
-
-.composer-context-chip--text,
-.composer-context-chip--window {
-  max-width: min(320px, 45vw);
-  padding: 4px 8px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
-}
-
-.composer-context-chip--text {
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
-}
-
-.composer-context-chip--window {
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
-}
-
-.composer-context-text,
-.composer-context-window {
-  display: inline-block;
-  max-width: 100%;
-  font-size: 12px;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.composer-context-text {
-  color: var(--text-strong);
-}
-
-.composer-context-window {
-  color: var(--text-weak);
-}
-
-.composer-context-remove {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  border: none;
-  background: color-mix(in oklch, var(--foreground) 70%, transparent);
-  color: var(--background);
-  font-size: 12px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-  padding: 0;
-}
-
-.composer-context-chip:hover .composer-context-remove {
-  opacity: 1;
-}
-
 /* Add button - circular with border */
 .composer-add-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 30px;
   height: 30px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: transparent;
-  border: 1.5px solid var(--text-weaker);
-  color: var(--text-weak);
   cursor: default;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.composer-add-button:hover {
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  color: var(--text-strong);
-  border-color: var(--text-base);
 }
 
 /* Toolbar add button â€” hidden in pill mode, shown in expanded */
@@ -277,21 +133,8 @@
 
 /* Submit button - circular, spring animation handled by motion */
 .composer-submit {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 30px;
   height: 30px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--primary);
-  border: none;
-  color: var(--primary-foreground);
-  cursor: default;
-}
-
-.composer-submit:disabled {
-  cursor: not-allowed;
 }
 
 /* Reduced motion — motion library handles spring animations natively;

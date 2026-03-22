@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { deriveComposerState } from "@/app/chat/composer-context";
 import { useUiState } from "@/context/ui-state";
 import { useIpcQuery } from "@/shared/hooks/use-ipc-query";
 import type {
@@ -109,17 +110,15 @@ export function useMiniChat({
 
   const sendMessage = useCallback(async () => {
     const api = window.electronAPI;
-    if (!api || !activeConversationId) {
-      return;
-    }
+    const { canSubmit } = deriveComposerState({
+      message,
+      chatContext,
+      selectedText,
+      conversationId: activeConversationId,
+      requireConversationId: true,
+    });
 
-    const trimmedMessage = message.trim();
-    const hasContext =
-      Boolean(selectedText) ||
-      Boolean(chatContext?.window) ||
-      Boolean(chatContext?.regionScreenshots?.length);
-
-    if (!trimmedMessage && !hasContext) {
+    if (!api || !activeConversationId || !canSubmit) {
       return;
     }
 

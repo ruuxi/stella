@@ -1,0 +1,95 @@
+.chat-composer-field {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-strong);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+.chat-composer-field::placeholder {
+  color: var(--text-weaker);
+}
+
+.chat-composer-field--orb {
+  color: var(--foreground);
+}
+
+.chat-composer-field--orb::placeholder {
+  color: var(--foreground);
+  opacity: 0.35;
+}
+
+.chat-composer-textarea {
+  resize: none;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.chat-composer-text-input {
+  display: block;
+  width: 100%;
+}
+
+.chat-composer-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.chat-composer-icon-button--add {
+  background: transparent;
+  border: 1.5px solid var(--text-weaker);
+  color: var(--text-weak);
+}
+
+.chat-composer-icon-button--add:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+  border-color: var(--text-base);
+}
+
+.chat-composer-icon-button--add:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chat-composer-icon-button--add:hover:disabled {
+  background: transparent;
+  color: var(--text-weak);
+  border-color: var(--text-weaker);
+}
+
+.chat-composer-icon-button--stop {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  border: none;
+  color: var(--text-weak);
+}
+
+.chat-composer-icon-button--stop:hover {
+  background: color-mix(in oklch, var(--foreground) 16%, transparent);
+}
+
+.chat-composer-icon-button--submit {
+  background: var(--primary);
+  border: none;
+  color: var(--primary-foreground);
+}
+
+.chat-composer-icon-button--submit:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.chat-composer-icon-button--submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

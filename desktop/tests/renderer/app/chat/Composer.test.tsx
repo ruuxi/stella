@@ -53,6 +53,14 @@ describe("Composer", () => {
     expect(addBtn).toBeTruthy();
   });
 
+  it("keeps the add button disabled until add actions are wired", () => {
+    const { container } = render(<Composer {...defaultProps()} />);
+    const addBtn = container.querySelector(
+      ".composer-add-button",
+    ) as HTMLButtonElement;
+    expect(addBtn.disabled).toBe(true);
+  });
+
   // ---- Context chips ----
 
   it("renders window context chip with app name and dismiss button", () => {

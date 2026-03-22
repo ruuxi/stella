@@ -5,11 +5,11 @@ import type {
   ChatColumnConversation,
   ChatColumnScroll,
 } from '@/app/chat/chat-column-types'
+import { deriveComposerState } from '@/app/chat/composer-context'
 import { useConversationEventFeed } from '@/app/chat/hooks/use-conversation-events'
 import { useReturnDetection, formatDuration } from '@/app/chat/hooks/use-return-detection'
 import { useStreamingChat } from '@/app/chat/hooks/use-streaming-chat'
 import { useTraceEventMonitor, useTraceIpcListener } from '@/debug/hooks/use-trace-listener'
-import { hasComposerContext } from '@/app/chat/streaming/message-context'
 import type { MessageMetadata } from '@/app/chat/lib/event-transforms'
 import {
   STELLA_SEND_MESSAGE_EVENT,
@@ -173,9 +173,13 @@ export function useFullShellChat({
     }
   }, [sendContextlessMessage])
 
-  const canSubmit = Boolean(
-    activeConversationId && (message.trim() || hasComposerContext(chatContext, selectedText)),
-  )
+  const { canSubmit } = deriveComposerState({
+    message,
+    chatContext,
+    selectedText,
+    conversationId: activeConversationId,
+    requireConversationId: true,
+  })
 
   const chatColumnConversation = useMemo<ChatColumnConversation>(
     () => ({
@@ -282,5 +286,4 @@ export function useFullShellChat({
     },
   }
 }
-
 

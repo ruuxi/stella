@@ -37,6 +37,14 @@ describe("MiniInput", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the add button disabled until add actions are wired", () => {
+    const { container } = render(<MiniInput {...defaultProps()} />);
+    const addBtn = container.querySelector(
+      ".mini-composer-add",
+    ) as HTMLButtonElement;
+    expect(addBtn.disabled).toBe(true);
+  });
+
   it("shows window badge when chatContext.window is set", () => {
     const chatContext: ChatContext = {
       window: {
@@ -65,9 +73,9 @@ describe("MiniInput", () => {
     expect(screen.getByText(/hello world/)).toBeTruthy();
   });
 
-  it("calls onSend on Enter key", () => {
+  it("calls onSend on Enter key when the composer can submit", () => {
     const onSend = vi.fn();
-    render(<MiniInput {...defaultProps({ onSend })} />);
+    render(<MiniInput {...defaultProps({ message: "hello", onSend })} />);
     const input = screen.getByPlaceholderText("Ask anything");
 
     fireEvent.keyDown(input, { key: "Enter", shiftKey: false });

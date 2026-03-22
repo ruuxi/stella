@@ -1,0 +1,163 @@
+.chat-composer-context-chip,
+.composer-context-chip,
+.mini-context-chip,
+.mini-composer-window-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.chat-composer-context-chip--screenshot,
+.composer-context-chip--screenshot,
+.mini-context-chip--screenshot,
+.chat-composer-context-chip--pending,
+.composer-context-chip--pending,
+.mini-context-chip--pending {
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 15%, transparent);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.chat-composer-context-chip--pending,
+.composer-context-chip--pending,
+.mini-context-chip--pending {
+  pointer-events: none;
+}
+
+.chat-composer-context-pending-inner,
+.composer-context-pending-inner,
+.mini-context-pending-inner {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--foreground) 8%, transparent) 25%,
+    color-mix(in oklch, var(--foreground) 16%, transparent) 50%,
+    color-mix(in oklch, var(--foreground) 8%, transparent) 75%
+  );
+  background-size: 200% 100%;
+  animation: chat-composer-context-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes chat-composer-context-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.chat-composer-context-thumb,
+.composer-context-thumb,
+.mini-context-thumb {
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.chat-composer-context-chip--text,
+.composer-context-chip--text,
+.mini-context-chip--text,
+.chat-composer-context-chip--window,
+.composer-context-chip--window,
+.mini-composer-window-badge {
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
+}
+
+.chat-composer-context-chip--text,
+.composer-context-chip--text,
+.mini-context-chip--text {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+
+.chat-composer-context-chip--window,
+.composer-context-chip--window,
+.mini-composer-window-badge {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.chat-composer-context-text,
+.composer-context-text,
+.mini-context-text,
+.chat-composer-context-window,
+.composer-context-window,
+.mini-composer-window-text {
+  display: inline-block;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-composer-context-text,
+.composer-context-text,
+.mini-context-text {
+  color: var(--text-strong);
+}
+
+.chat-composer-context-window,
+.composer-context-window,
+.mini-composer-window-text {
+  color: var(--text-weak);
+}
+
+.chat-composer-context-remove,
+.composer-context-remove,
+.mini-context-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: none;
+  background: color-mix(in oklch, var(--foreground) 70%, transparent);
+  color: var(--background);
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  padding: 0;
+}
+
+.chat-composer-context-chip:hover .chat-composer-context-remove,
+.composer-context-chip:hover .composer-context-remove,
+.mini-context-chip:hover .mini-context-remove {
+  opacity: 1;
+}
+
+.composer-context-pending-inner {
+  width: 56px;
+  height: 42px;
+  border-radius: 6px;
+}
+
+.mini-context-pending-inner {
+  width: 48px;
+  height: 36px;
+  border-radius: 6px;
+}
+
+.composer-context-thumb {
+  width: 56px;
+  height: 42px;
+}
+
+.mini-context-thumb {
+  width: 48px;
+  height: 36px;
+  cursor: pointer;
+}
+
+.composer-context-chip--text,
+.composer-context-chip--window {
+  max-width: min(320px, 45vw);
+}
+
+.mini-context-text {
+  max-width: 200px;
+}

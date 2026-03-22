@@ -34,6 +34,7 @@ export type ChatColumnComposer = {
   selectedText: string | null
   setSelectedText: Dispatch<SetStateAction<string | null>>
   canSubmit: boolean
+  onAdd?: () => void
   onSend: () => void
   onStop: () => void
   onCommandSelect?: (suggestion: CommandSuggestion) => void
@@ -56,5 +57,4 @@ export type ChatColumnProps = {
   composerEntering?: boolean
   conversationId: string | null
 }
-
 
