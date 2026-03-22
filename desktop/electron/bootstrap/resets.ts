@@ -1,8 +1,8 @@
 import { promises as fs } from "fs";
 import { app, session } from "electron";
 import path from "path";
-import { resetMessageStorage } from "../storage/reset-message-storage.js";
-import { resolveRuntimeHomePath } from "../system/stella-home.js";
+import { resetMessageStorage } from "../../packages/runtime-kernel/storage/reset-message-storage.js";
+import { resolveRuntimeHomePath } from "../../packages/runtime-kernel/home/stella-home.js";
 import { type BootstrapContext, broadcastLocalChatUpdated } from "./context.js";
 
 export type BootstrapResetFlows = {
@@ -32,6 +32,8 @@ export const shutdownBootstrapRuntime = async (
   state.localChatUpdateUnsubscribe = null;
   state.scheduleUpdateUnsubscribe?.();
   state.scheduleUpdateUnsubscribe = null;
+  state.devProjectsUpdateUnsubscribe?.();
+  state.devProjectsUpdateUnsubscribe = null;
 
   if (state.stellaHostRunner) {
     const runner = state.stellaHostRunner;

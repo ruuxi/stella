@@ -1,4 +1,4 @@
-import fs from "fs";
+﻿import fs from "fs";
 import os from "os";
 import path from "path";
 import { execFileSync } from "child_process";
@@ -32,9 +32,9 @@ vi.mock("better-sqlite3", async () => {
   return { default: BetterSqlite3Mock };
 });
 
-import { createDesktopDatabase } from "../../../electron/storage/database.js";
-import { StoreModStore } from "../../../electron/storage/store-mod-store.js";
-import { StoreModService } from "../../../electron/self-mod/store-mod-service.js";
+import { createDesktopDatabase } from "../../../packages/runtime-kernel/storage/database.js";
+import { StoreModStore } from "../../../packages/runtime-kernel/storage/store-mod-store.js";
+import { StoreModService } from "../../../packages/runtime-kernel/self-mod/store-mod-service.js";
 import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
@@ -361,3 +361,4 @@ describe("StoreModService", () => {
     close();
   });
 });
+

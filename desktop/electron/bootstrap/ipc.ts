@@ -89,7 +89,8 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerProjectHandlers({
-    devProjectService: services.devProjectService,
+    getStellaHostRunner: lifecycle.getRunner,
+    onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
@@ -115,9 +116,8 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerOverlayStreamHandlers({
-    getStellaHomePath: lifecycle.getStellaHomePath,
-    getConvexSiteUrl: () => services.authService.getConvexSiteUrl(),
-    getAuthToken: () => services.authService.getAuthToken(),
+    getStellaHostRunner: lifecycle.getRunner,
+    onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
@@ -152,9 +152,6 @@ export const registerBootstrapIpcHandlers = (
     getWakeWordEnabled: () => state.wakeWordController?.getEnabled() ?? false,
     pushWakeWordAudio: (pcm) => state.wakeWordController?.pushAudioChunk(pcm),
     getStellaHostRunner: lifecycle.getRunner,
-    getOverlayController: () => state.overlayController,
-    getConvexSiteUrl: () => services.authService.getConvexSiteUrl(),
-    getAuthToken: () => services.authService.getAuthToken(),
     getBroadcastToMobile: lazyMobileBroadcast,
   });
 

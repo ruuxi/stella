@@ -10,10 +10,10 @@ import {
   writeCoreMemory,
   type BrowserData,
   type BrowserType,
-} from "../system/browser-data.js";
-import { collectAllSignals } from "../system/collect-all.js";
-import { normalizeSafeExternalUrl } from "../core/runtime/tools/network-guards.js";
-import type { AllUserSignalsResult } from "../system/types.js";
+} from "../../packages/runtime-discovery/browser-data.js";
+import { collectAllSignals } from "../../packages/runtime-discovery/collect-all.js";
+import { normalizeSafeExternalUrl } from "../../packages/runtime-kernel/tools/network-guards.js";
+import type { AllUserSignalsResult } from "../../packages/runtime-discovery/types.js";
 import type { DiscoveryCategory } from "../../src/shared/contracts/discovery.js";
 
 type BrowserFetchInit = {
@@ -92,7 +92,7 @@ const getBrowserCookieHeader = async (
   targetUrl: string,
 ): Promise<string | null> => {
   try {
-    // Extension bridge (Chrome MV3), not CDP --auto-connect — see stella-browser `provider: extension`.
+    // Extension bridge (Chrome MV3), not CDP --auto-connect â€” see stella-browser `provider: extension`.
     const extensionEnv: Record<string, string> = {
       STELLA_BROWSER_PROVIDER: "extension",
       STELLA_BROWSER_AUTO_CONNECT: "false",
@@ -316,7 +316,9 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     }
     const stellaHomePath = options.getStellaHomePath();
     if (!stellaHomePath) return { version: 1, mappings: [] };
-    const { loadIdentityMap } = await import("../system/identity-map.js");
+    const { loadIdentityMap } = await import(
+      "../../packages/runtime-kernel/home/identity-map.js"
+    );
     return loadIdentityMap(stellaHomePath);
   });
 
@@ -327,7 +329,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     const stellaHomePath = options.getStellaHomePath();
     if (!stellaHomePath || !text) return text;
     const { loadIdentityMap, depseudonymize } = await import(
-      "../system/identity-map.js"
+      "../../packages/runtime-kernel/home/identity-map.js"
     );
     const map = await loadIdentityMap(stellaHomePath);
     if (map.mappings.length === 0) return text;

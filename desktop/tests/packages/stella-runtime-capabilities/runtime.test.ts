@@ -2,10 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CapabilityRuntime } from "../../../packages/stella-runtime-capabilities/src/runtime.js";
+import { CapabilityRuntime } from "../../../packages/runtime-capabilities/runtime.js";
 import type {
   CapabilityStateApi,
-} from "../../../packages/stella-runtime-capabilities/src/types.js";
+} from "../../../packages/runtime-capabilities/types.js";
 
 const tempDirs: string[] = [];
 

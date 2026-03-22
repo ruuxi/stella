@@ -5,12 +5,12 @@ const { completeSimpleMock, streamSimpleMock } = vi.hoisted(() => ({
   streamSimpleMock: vi.fn(),
 }));
 
-vi.mock("../../../electron/core/ai/stream", () => ({
+vi.mock("../../../packages/ai/stream.js", () => ({
   completeSimple: completeSimpleMock,
   streamSimple: streamSimpleMock,
 }));
 
-const { callStellaChatCompletion } = await import("../../../electron/core/runtime/stella-provider.js");
+const { callStellaChatCompletion } = await import("../../../packages/runtime-kernel/stella-provider.js");
 
 describe("stella chat transport", () => {
   it("normalizes a full chat completions endpoint to the API base URL before creating the OpenAI client", async () => {

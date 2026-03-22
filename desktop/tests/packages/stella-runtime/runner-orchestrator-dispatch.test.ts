@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   executeOrQueueSystemOrchestratorTurn,
   executeOrQueueUserOrchestratorTurn,
-} from "../../../electron/core/runtime/runner/orchestrator-dispatch.js";
+} from "../../../packages/runtime-kernel/runner/orchestrator-dispatch.js";
 
 describe("runner orchestrator dispatch helpers", () => {
   it("queues active user turns and resolves with the deferred result", async () => {

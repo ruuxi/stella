@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LocalTaskManagerAgentContext } from "../../../electron/core/runtime/tasks/local-task-manager.js";
-import type { ResolvedLlmRoute } from "../../../electron/core/runtime/model-routing.js";
-import type { RuntimeStore } from "../../../electron/storage/runtime-store.js";
+import type { LocalTaskManagerAgentContext } from "../../../packages/runtime-kernel/tasks/local-task-manager.js";
+import type { ResolvedLlmRoute } from "../../../packages/runtime-kernel/model-routing.js";
+import type { RuntimeStore } from "../../../packages/runtime-kernel/storage/runtime-store.js";
 
 const { displayHtmlMock } = vi.hoisted(() => ({
   displayHtmlMock: vi.fn(),
 }));
 
-vi.mock("../../../electron/core/agent/agent", async () => {
+vi.mock("../../../packages/runtime-kernel/agent-core/agent.js", async () => {
   const actual = await vi.importActual<
-    typeof import("../../../electron/core/agent/agent.js")
-  >("../../../electron/core/agent/agent");
+    typeof import("../../../packages/runtime-kernel/agent-core/agent.js")
+  >("../../../packages/runtime-kernel/agent-core/agent.js");
 
   class MockAgent {
     state: {
@@ -96,7 +96,7 @@ vi.mock("../../../electron/core/agent/agent", async () => {
   };
 });
 
-import { runOrchestratorTurn } from "../../../electron/core/runtime/agent-runtime.js";
+import { runOrchestratorTurn } from "../../../packages/runtime-kernel/agent-runtime.js";
 
 const buildAgentContext = (
   overrides?: Partial<LocalTaskManagerAgentContext>,
@@ -175,3 +175,5 @@ describe("agent runtime display streaming", () => {
     );
   });
 });
+
+

@@ -1,4 +1,4 @@
-import fs from "fs";
+﻿import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -60,19 +60,19 @@ vi.mock("convex/server", () => ({
   anyApi: {},
 }));
 
-vi.mock("../../../electron/core/runtime/agents/agents.js", () => ({
+vi.mock("../../../packages/runtime-kernel/agents/agents.js", () => ({
   loadAgentsFromHome: loadAgentsFromHomeMock,
 }));
 
-vi.mock("../../../electron/core/runtime/agents/skills.js", () => ({
+vi.mock("../../../packages/runtime-kernel/agents/skills.js", () => ({
   loadSkillsFromHome: loadSkillsFromHomeMock,
 }));
 
-vi.mock("../../../electron/core/runtime/extensions/loader.js", () => ({
+vi.mock("../../../packages/runtime-kernel/extensions/loader.js", () => ({
   loadExtensions: loadExtensionsMock,
 }));
 
-vi.mock("../../../electron/core/runtime/extensions/hook-emitter.js", () => ({
+vi.mock("../../../packages/runtime-kernel/extensions/hook-emitter.js", () => ({
   HookEmitter: class HookEmitter {
     registerAll() {}
     emit() {
@@ -81,7 +81,7 @@ vi.mock("../../../electron/core/runtime/extensions/hook-emitter.js", () => ({
   },
 }));
 
-vi.mock("../../../electron/core/runtime/remote-turn-bridge.js", () => ({
+vi.mock("../../../packages/runtime-kernel/remote-turn-bridge.js", () => ({
   createRemoteTurnBridge: () => ({
     start: vi.fn(),
     stop: vi.fn(),
@@ -89,7 +89,7 @@ vi.mock("../../../electron/core/runtime/remote-turn-bridge.js", () => ({
   }),
 }));
 
-vi.mock("../../../electron/core/runtime/model-routing.js", () => ({
+vi.mock("../../../packages/runtime-kernel/model-routing.js", () => ({
   canResolveLlmRoute: vi.fn(() => true),
   resolveLlmRoute: vi.fn(({ modelName }: { modelName?: string }) => ({
     model: {
@@ -114,9 +114,9 @@ vi.mock("../../../electron/core/runtime/model-routing.js", () => ({
   })),
 }));
 
-vi.mock("../../../electron/core/runtime/preferences/local-preferences.js", async () => {
-  const actual = await vi.importActual<typeof import("../../../electron/core/runtime/preferences/local-preferences.js")>(
-    "../../../electron/core/runtime/preferences/local-preferences.js",
+vi.mock("../../../packages/runtime-kernel/preferences/local-preferences.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/runtime-kernel/preferences/local-preferences.js")>(
+    "../../../packages/runtime-kernel/preferences/local-preferences.js",
   );
 
   return {
@@ -129,9 +129,9 @@ vi.mock("../../../electron/core/runtime/preferences/local-preferences.js", async
   };
 });
 
-vi.mock("../../../electron/core/runtime/integrations/claude-code-session-runtime", async () => {
-  const actual = await vi.importActual<typeof import("../../../electron/core/runtime/integrations/claude-code-session-runtime.js")>(
-    "../../../electron/core/runtime/integrations/claude-code-session-runtime",
+vi.mock("../../../packages/runtime-kernel/integrations/claude-code-session-runtime.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/runtime-kernel/integrations/claude-code-session-runtime.js")>(
+    "../../../packages/runtime-kernel/integrations/claude-code-session-runtime.js",
   );
   return {
     ...actual,
@@ -141,9 +141,9 @@ vi.mock("../../../electron/core/runtime/integrations/claude-code-session-runtime
   };
 });
 
-vi.mock("../../../electron/core/runtime/agent-runtime.js", async () => {
-  const actual = await vi.importActual<typeof import("../../../electron/core/runtime/agent-runtime.js")>(
-    "../../../electron/core/runtime/agent-runtime.js",
+vi.mock("../../../packages/runtime-kernel/agent-runtime.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/runtime-kernel/agent-runtime.js")>(
+    "../../../packages/runtime-kernel/agent-runtime.js",
   );
   return {
     ...actual,
@@ -151,10 +151,10 @@ vi.mock("../../../electron/core/runtime/agent-runtime.js", async () => {
   };
 });
 
-const { createStellaHostRunner } = await import("../../../electron/core/runtime/runner.js");
-const { createDesktopDatabase } = await import("../../../electron/storage/database.js");
-const { RuntimeStore } = await import("../../../electron/storage/runtime-store.js");
-const { TranscriptMirror } = await import("../../../electron/storage/transcript-mirror.js");
+const { createStellaHostRunner } = await import("../../../packages/runtime-kernel/runner.js");
+const { createDesktopDatabase } = await import("../../../packages/runtime-kernel/storage/database.js");
+const { RuntimeStore } = await import("../../../packages/runtime-kernel/storage/runtime-store.js");
+const { TranscriptMirror } = await import("../../../packages/runtime-kernel/storage/transcript-mirror.js");
 
 const tempHomes: string[] = [];
 
@@ -347,3 +347,4 @@ describe("runner general task bridge", () => {
     },
   );
 });
+

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentEvent, AgentMessage } from "../../../electron/core/agent/types.js";
+import type { AgentEvent, AgentMessage } from "../../../packages/runtime-kernel/agent-core/types.js";
 import {
   createRunEventRecorder,
   subscribeRuntimeAgentEvents,
-} from "../../../electron/core/runtime/agent-runtime/run-events.js";
+} from "../../../packages/runtime-kernel/agent-runtime/run-events.js";
 
 const createFakeAgent = (messages: AgentMessage[] = []) => {
   let listener: ((event: AgentEvent) => void) | null = null;

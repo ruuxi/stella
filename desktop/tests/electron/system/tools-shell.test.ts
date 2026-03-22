@@ -3,16 +3,16 @@ import {
   createShellState,
   handleSkillBash,
   normalizeAppAgentShellCommand,
-} from "../../../electron/core/runtime/tools/shell.js";
+} from "../../../packages/runtime-kernel/tools/shell.js";
 
 const { writeSecretFileMock, removeSecretFileMock } = vi.hoisted(() => ({
   writeSecretFileMock: vi.fn(),
   removeSecretFileMock: vi.fn(),
 }));
 
-vi.mock("../../../electron/core/runtime/tools/utils", async () => {
-  const actual = await vi.importActual<typeof import("../../../electron/core/runtime/tools/utils.js")>(
-    "../../../electron/core/runtime/tools/utils",
+vi.mock("../../../packages/runtime-kernel/tools/utils.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/runtime-kernel/tools/utils.js")>(
+    "../../../packages/runtime-kernel/tools/utils.js",
   );
   return {
     ...actual,

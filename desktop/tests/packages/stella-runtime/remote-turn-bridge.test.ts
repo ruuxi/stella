@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createRemoteTurnBridge, type RemoteTurnRequestEvent } from "../../../electron/core/runtime/remote-turn-bridge.js";
+import { createRemoteTurnBridge, type RemoteTurnRequestEvent } from "../../../packages/runtime-kernel/remote-turn-bridge.js";
 
 describe("createRemoteTurnBridge", () => {
   afterEach(() => {

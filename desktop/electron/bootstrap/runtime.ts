@@ -5,7 +5,7 @@ import { registerBootstrapIpcHandlers } from "./ipc.js";
 import { OverlayWindowController } from "../windows/overlay-window.js";
 import { createStellaHostRunner } from "../stella-host-runner.js";
 import { getSelectedText, initSelectedTextProcess } from "../selected-text.js";
-import { resolveStellaHome } from "../system/stella-home.js";
+import { resolveStellaHome } from "../../packages/runtime-kernel/home/stella-home.js";
 import { initializeWakeWord } from "../wake-word/initialize.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
@@ -18,10 +18,11 @@ import { MobileBridgeService } from "../services/mobile-bridge/service.js";
 import {
   getOrCreateDeviceIdentity,
   signDeviceHeartbeat,
-} from "../system/device.js";
+} from "../../packages/runtime-kernel/home/device.js";
 import {
   type BootstrapContext,
   broadcastAuthCallback,
+  broadcastDevProjectsChanged,
   broadcastLocalChatUpdated,
   broadcastScheduleUpdated,
   broadcastWakeWordState,
@@ -92,6 +93,8 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   state.localChatUpdateUnsubscribe = null;
   state.scheduleUpdateUnsubscribe?.();
   state.scheduleUpdateUnsubscribe = null;
+  state.devProjectsUpdateUnsubscribe?.();
+  state.devProjectsUpdateUnsubscribe = null;
   await lifecycle.getRunner()?.stop();
   lifecycle.setRunner(
     createStellaHostRunner({
@@ -214,9 +217,22 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
     .onScheduleUpdated(() => {
       broadcastScheduleUpdated(context);
     });
+  state.devProjectsUpdateUnsubscribe = lifecycle
+    .getRunner()!
+    .onProjectsUpdated((projects) => {
+      broadcastDevProjectsChanged(context, projects);
+    });
   await lifecycle.getRunner()!.start();
   const health = await lifecycle.getRunner()!.client.health();
   state.deviceId = health.deviceId;
+  try {
+    broadcastDevProjectsChanged(
+      context,
+      await lifecycle.getRunner()!.listProjects(),
+    );
+  } catch (error) {
+    console.debug("[dev-projects] Failed to load initial runtime projects:", error);
+  }
 };
 
 export const startDeferredStartup = (context: BootstrapContext) => {

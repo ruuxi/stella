@@ -8,6 +8,9 @@ This document now describes the production runtime architecture that was actuall
 cut into `stella-monorepo`, along with the one meaningful deviation from the
 original target plan.
 
+The remaining package-extraction follow-on work is tracked separately in
+`docs/stella-extraction-blueprint.md`.
+
 This document is intentionally opinionated:
 
 - No legacy compatibility is required.
@@ -23,9 +26,9 @@ The goal is to replace the current Electron-owned runtime with a production-read
 
 ### Implementation Summary
 
-- Electron main is now a host kernel backed by `desktop/packages/stella-runtime-client`.
-- Runtime execution now flows through `desktop/packages/stella-runtime-daemon` and `desktop/packages/stella-runtime-worker`.
-- Commands now load through `desktop/packages/stella-runtime-capabilities`, including bundled markdown commands and a built-in `stella-ui` capability command.
+- Electron main is now a host kernel backed by `desktop/packages/runtime-client`.
+- Runtime execution now flows through `desktop/packages/runtime-daemon` and `desktop/packages/runtime-worker`.
+- Commands now load through `desktop/packages/runtime-capabilities`, including bundled markdown commands and a built-in `stella-ui` capability command.
 - Electron bootstrap no longer owns chat, scheduler, social-session, store-mod, or runtime-store lifecycles.
 
 ### Implemented Adjustment
@@ -171,14 +174,14 @@ The worker owns:
 
 Create the following packages under `desktop/packages/`:
 
-- `stella-runtime-protocol`
-- `stella-runtime-client`
-- `stella-runtime-daemon`
-- `stella-runtime-worker`
-- `stella-runtime-capabilities`
-- `stella-runtime-cli`
+- `runtime-protocol`
+- `runtime-client`
+- `runtime-daemon`
+- `runtime-worker`
+- `runtime-capabilities`
+- `runtime-kernel/cli`
 
-### stella-runtime-protocol
+### runtime-protocol
 
 Single source of truth for:
 
@@ -191,7 +194,7 @@ Single source of truth for:
 
 Export generated TypeScript schema artifacts from this package.
 
-### stella-runtime-client
+### runtime-client
 
 Lives in Electron main.
 
@@ -205,7 +208,7 @@ Responsibilities:
 - proxy runtime notifications to renderer and mobile surfaces
 - expose host request handlers back to daemon
 
-### stella-runtime-daemon
+### runtime-daemon
 
 Stable runtime endpoint.
 
@@ -218,7 +221,7 @@ Responsibilities:
 - multiplex events to connected consumers
 - translate worker host requests to Electron host requests
 
-### stella-runtime-worker
+### runtime-worker
 
 Mutable execution engine.
 
@@ -231,7 +234,7 @@ Responsibilities:
 - request host actions
 - stay disposable
 
-### stella-runtime-capabilities
+### runtime-capabilities
 
 Contains the capability runtime API and registries.
 
@@ -247,7 +250,7 @@ Suggested internal folders:
 - `loader/`
 - `api/`
 
-### stella-runtime-cli
+### runtime-kernel/cli
 
 Holds the thin CLI shims.
 
@@ -554,7 +557,7 @@ Keep only a generic host UI automation bridge:
 - `host.ui.act`
 - `host.ui.observe`
 
-Move the higher-level `stella-ui` behavior to runtime command modules inside `stella-runtime-cli` and `stella-runtime-capabilities`.
+Move the higher-level `stella-ui` behavior to runtime command modules inside `runtime-kernel/cli` and `runtime-capabilities`.
 
 This means:
 
@@ -739,21 +742,21 @@ Do not make `ipcMain` registration capture the system of record for remote clien
 
 ### Phase 1 - Completed
 
-- Added `desktop/packages/stella-runtime-protocol/**` and `desktop/packages/stella-runtime-client/**`.
+- Added `desktop/packages/runtime-protocol/**` and `desktop/packages/runtime-client/**`.
 - Added JSON-RPC peer + JSONL transport helpers and a supervised Electron-side runtime client.
 - Evidence:
-  - `desktop/packages/stella-runtime-protocol/src/index.ts`
-  - `desktop/packages/stella-runtime-protocol/src/rpc-peer.ts`
-  - `desktop/packages/stella-runtime-client/src/index.ts`
+  - `desktop/packages/runtime-protocol/index.ts`
+  - `desktop/packages/runtime-protocol/rpc-peer.ts`
+  - `desktop/packages/runtime-client/index.ts`
 
 ### Phase 2 - Completed
 
 - Added the daemon and worker sidecar processes.
 - The daemon now supervises worker generations, forwards RPC, buffers run events, and exposes the CLI socket/token bridge.
 - Evidence:
-  - `desktop/packages/stella-runtime-daemon/src/server.ts`
-  - `desktop/packages/stella-runtime-worker/src/server.ts`
-  - `desktop/packages/stella-runtime-worker/src/entry.ts`
+  - `desktop/packages/runtime-daemon/server.ts`
+  - `desktop/packages/runtime-worker/server.ts`
+  - `desktop/packages/runtime-worker/entry.ts`
 
 ### Phase 3 - Completed With Design Adjustment
 
@@ -764,7 +767,7 @@ Do not make `ipcMain` registration capture the system of record for remote clien
 - Evidence:
   - `desktop/electron/bootstrap/runtime.ts`
   - `desktop/electron/bootstrap/context.ts`
-  - `desktop/packages/stella-runtime-worker/src/server.ts`
+  - `desktop/packages/runtime-worker/server.ts`
 
 ### Phase 4 - Completed
 
@@ -783,17 +786,17 @@ Do not make `ipcMain` registration capture the system of record for remote clien
 - Introduced the capability runtime, capability state tables, bundled markdown command loading, and runtime command execution.
 - Commands can now be added through capability modules and markdown command roots without changing Electron.
 - Evidence:
-  - `desktop/packages/stella-runtime-capabilities/src/runtime.ts`
-  - `desktop/packages/stella-runtime-capabilities/src/markdown-commands.ts`
-  - `desktop/packages/stella-runtime-capabilities/src/types.ts`
+  - `desktop/packages/runtime-capabilities/runtime.ts`
+  - `desktop/packages/runtime-capabilities/markdown-commands.ts`
+  - `desktop/packages/runtime-capabilities/types.ts`
 
 ### Phase 6 - Completed
 
 - Rebuilt `stella-ui` as runtime capability logic on top of `host.ui.snapshot`, `host.ui.observe`, and `host.ui.act`.
 - Deleted the old Electron-owned `stella-ui` server and CLI.
 - Evidence:
-  - `desktop/packages/stella-runtime-capabilities/src/commands/stella-ui.ts`
-  - `desktop/packages/stella-runtime-cli/src/stella-ui.ts`
+  - `desktop/packages/runtime-capabilities/commands/stella-ui.ts`
+  - `desktop/packages/runtime-kernel/cli/stella-ui.ts`
   - deleted `desktop/electron/system/stella-ui-server.ts`
   - deleted `desktop/electron/system/stella-ui-cli.mjs`
 
@@ -822,10 +825,10 @@ Do not make `ipcMain` registration capture the system of record for remote clien
 - Electron now registers the host HMR transition callback for sidecar self-mod runs, so renderer HMR resume is not silently skipped.
 - Reset and hard-reset flows now await sidecar shutdown before starting replacement runtime processes.
 - Evidence:
-  - `desktop/packages/stella-runtime-client/src/index.ts`
-  - `desktop/packages/stella-runtime-daemon/src/server.ts`
-  - `desktop/packages/stella-runtime-worker/src/server.ts`
-  - `desktop/packages/stella-runtime-protocol/src/index.ts`
+  - `desktop/packages/runtime-client/index.ts`
+  - `desktop/packages/runtime-daemon/server.ts`
+  - `desktop/packages/runtime-worker/server.ts`
+  - `desktop/packages/runtime-protocol/index.ts`
   - `desktop/electron/runtime-client-adapter.ts`
 
 ## Verification
@@ -833,8 +836,8 @@ Do not make `ipcMain` registration capture the system of record for remote clien
 - `npm run electron:typecheck` - passed
 - `npm run test:electron` - passed (`70` test files, `206` tests passed, `1` skipped)
 - Added focused regression coverage for the new runtime seam:
-  - `desktop/tests/packages/stella-runtime-protocol/rpc-peer.test.ts`
-  - `desktop/tests/packages/stella-runtime-capabilities/runtime.test.ts`
+  - `desktop/tests/packages/runtime-protocol/rpc-peer.test.ts`
+  - `desktop/tests/packages/runtime-capabilities/runtime.test.ts`
 - Completed an independent regression review after cutover and reconciled the findings in code:
   - fixed daemon-respawn config replay
   - fixed worker-to-host request forwarding
@@ -895,7 +898,7 @@ That is the production-ready architecture for a desktop assistant that can modif
 - Made `socialSessions:getStatus` wait briefly for the sidecar transport and otherwise degrade to the usual stopped snapshot instead of throwing during startup races.
 - Waited for in-flight social session reconciliation before claiming pending host turns so turn processing cannot outrun session-store hydration.
 - Restored `localChat:updated` broadcasts for worker-owned social-session turn writes so shared-session user/assistant messages refresh desktop and mobile listeners without a manual reopen.
-- Updated `electron:dev` to watch the full built desktop output and force an Electron restart when main-owned runtime packages such as `stella-runtime-client` or `stella-runtime-protocol` change.
+- Updated `electron:dev` to watch the full built desktop output and force an Electron restart when main-owned runtime packages such as `runtime-client` or `runtime-protocol` change.
 - Moved runtime-side informational logging off stdout so the stdio JSON-RPC transport is no longer competing with normal worker startup/runtime logs.
 - Hardened markdown command loading so malformed `~/.stella/commands/*.md` files are skipped per-file, logged, and no longer take down capability loading during worker startup or reload.
 - Added CRLF-safe markdown frontmatter parsing so Windows-authored command metadata is preserved instead of being echoed back as command body text.
@@ -907,7 +910,7 @@ That is the production-ready architecture for a desktop assistant that can modif
 - Extracted the duplicated IPC-side runtime readiness poll loop into `desktop/electron/ipc/runtime-availability.ts` so local chat, schedule, store, and social-session startup checks use one shared connection gate.
 - Normalized the local chat handler indentation while touching the shared runtime-availability path so the file is back to formatter-consistent structure.
 - Split bootstrap shutdown semantics into explicit awaited vs fire-and-forget paths by keeping `shutdownBootstrapRuntime(...)` as the awaited implementation and renaming the non-awaiting wrapper to `scheduleBootstrapRuntimeShutdown(...)`.
-- Moved social-session ownership fully into the worker package by relocating the service, filesystem helper, and sync store to `desktop/packages/stella-runtime-worker/src/social-sessions/`, rewiring the worker server to use them directly, and deleting the old Electron-side modules.
+- Moved social-session ownership fully into the worker package by relocating the service, filesystem helper, and sync store to `desktop/packages/runtime-worker/social-sessions/`, rewiring the worker server to use them directly, and deleting the old Electron-side modules.
 - Extracted shared `RuntimeActiveRun` and `RuntimeAutomationTurn*` contracts into the protocol package and adopted them across the worker social-session service, runtime client, runtime client adapter, Electron lifecycle targets, and core runner types.
 - Updated dev-reload classification and regression tests so worker-owned social-session changes stay on sidecar reloads without referencing the deleted Electron-side service path.
 - Changed the shared IPC runtime-availability helper to use short `waitUntilConnected(...)` attempts so cold-start local chat / schedule / store requests can recover onto a replacement runner instead of remaining pinned to a dead adapter for the full timeout.
@@ -923,15 +926,15 @@ That is the production-ready architecture for a desktop assistant that can modif
   - `desktop/tests/electron/core/bootstrap-resets.test.ts`
   - `desktop/tests/electron/runtime-client-adapter.test.ts`
   - `desktop/tests/renderer/app/shell/FullShellReadySurface.test.tsx`
-  - `desktop/tests/packages/stella-runtime-capabilities/runtime.test.ts`
-  - `desktop/tests/packages/stella-runtime-cli/shared.test.ts`
+  - `desktop/tests/packages/runtime-capabilities/runtime.test.ts`
+  - `desktop/tests/packages/runtime-kernel/cli/shared.test.ts`
 - Added exponential daemon-respawn backoff in the runtime client so crash-looping sidecars no longer restart in a tight loop, and emit explicit disconnect/reloading signals while backing off.
 - Replaced the adapter/client store-release type mismatch with the shared protocol `StorePublishArgs` contract so the runtime client adapter, worker bridge, and runner store operations no longer rely on `as never` casts at that seam.
 - Formalized host display updates as `{ html }` payloads across the worker -> daemon -> host boundary so the Electron host extracts real HTML instead of risking accidental object stringification.
 - Removed the `RunnerPublicApi.__context` escape hatch by adding explicit public methods for active-task counting and self-mod HMR resume, then updated the worker health/HMR paths to use those supported APIs.
 - Normalized worker-side event forwarding to use `{ ...ev, type }` ordering so transport-assigned event types cannot be overridden by an incoming payload field.
 - Replaced the adapter's 50ms busy-wait loops with event-backed waits for runtime connection/readiness, and now emit refreshed `runtime.ready` notifications after runtime configuration changes so readiness waiters can resolve without polling.
-- Added focused regression coverage for the new daemon backoff and host display update contract in `desktop/tests/packages/stella-runtime-client/index.test.ts`.
+- Added focused regression coverage for the new daemon backoff and host display update contract in `desktop/tests/packages/runtime-client/index.test.ts`.
 - Replaced the social-session startup fallback's string-matched transport errors with typed runtime-unavailable RPC errors, and propagated that typed availability signal through the client adapter, runtime client request path, daemon worker bridge, and IPC runtime-availability helper.
 - Removed the dead `host.ui.observe` transport/API path from the protocol, Electron host handlers, worker bridge, capability host contract, and `stella-ui` command surface so only the real `snapshot` UI primitive remains.
 - Updated the devtool hard-reset path to await runtime shutdown before clearing session storage and deleting `.stella`, while keeping lifecycle/app-quit shutdown on the explicit fire-and-forget path.
@@ -943,10 +946,14 @@ That is the production-ready architecture for a desktop assistant that can modif
 - Restored error logging on the explicit fire-and-forget `scheduleBootstrapRuntimeShutdown(...)` path so quit-style shutdown failures are surfaced to logs instead of disappearing silently.
 - Stabilized the `FullShell` renderer smoke coverage by preloading the lazy ready-shell modules and awaiting the mounted ready surface before assertions, so the bootstrap shell test no longer races the Suspense-loaded path.
 - Normalized the daemon-to-worker trust boundary so the daemon remains the only public RPC surface: every forwarded local-chat, store-mod, schedule, social-session, and shell-by-port call now maps from a public method to an `INTERNAL_WORKER_*` worker method, and the worker no longer registers those public names directly.
-- Added the dedicated `desktop/packages/stella-boundary-contracts/` package and moved the cross-boundary DTOs there, then rewired renderer, Electron, runtime client, daemon, worker, protocol, and regression tests to import those types from the shared contracts package instead of app-local `src/shared/contracts/electron-data.ts`.
-- Removed the temporary `desktop/src/shared/contracts/electron-data.ts` compatibility shim entirely, so `desktop/packages/stella-boundary-contracts/src/index.ts` is now the only source of truth for those boundary contracts.
-- Added the sanctioned local facade `desktop/src/shared/contracts/boundary.ts` and rewrote the repo to import boundary contracts through that barrel instead of reaching into `desktop/packages/stella-boundary-contracts/src/index.ts` directly from Electron, runtime packages, renderer code, or tests.
+- Added the dedicated `desktop/packages/boundary-contracts/` package and moved the cross-boundary DTOs there, then rewired renderer, Electron, runtime client, daemon, worker, protocol, and regression tests to import those types from the shared contracts package instead of app-local `src/shared/contracts/electron-data.ts`.
+- Removed the temporary `desktop/src/shared/contracts/electron-data.ts` compatibility shim entirely, so `desktop/packages/boundary-contracts/index.ts` is now the only source of truth for those boundary contracts.
+- Added the sanctioned local facade `desktop/src/shared/contracts/boundary.ts` and rewrote the repo to import boundary contracts through that barrel instead of reaching into `desktop/packages/boundary-contracts/index.ts` directly from Electron, runtime packages, renderer code, or tests.
+- Finished the follow-on extraction blueprint by moving the old `desktop/electron/core/**`, runtime-home/discovery/dev-project services, worker voice runtime logic, and runtime self-mod modules into dedicated `desktop/packages/**` ownership, then removed the final empty `desktop/electron/core/**`, `desktop/electron/system/**`, and `desktop/electron/storage/**` directories so the Electron tree now matches the host-kernel-only architecture literally.
 - Replaced IPC runtime availability polling with event-driven runner availability by teaching `RuntimeClientAdapter` to publish authoritative connection/readiness snapshots, adding runner-replacement subscriptions in bootstrap lifecycle bindings, and updating `desktop/electron/ipc/runtime-availability.ts` plus the local-chat / schedule / store / social-session handlers to wait on connection events instead of a 50ms loop.
+- Refined the Electron dev restart classifier so host-imported extracted package trees restart Electron main, while true sidecar-only packages still stay on worker or daemon reloads.
+- Restored voice-initiated self-mod HMR progress propagation by forwarding `onHmrResume.reportState(...)` through the worker voice bridge, so voice listeners now receive `applying/reloading/idle` updates instead of stalling after `paused`.
+- Stopped the voice bridge from rethrowing failed `handleLocalChat()` startup promises after rejecting the RPC, eliminating the unhandled-rejection path when voice requests fail before the normal callback lifecycle begins.
 - Updated preload typecheck wiring so `tsconfig.preload.json` points at the sanctioned boundary facade rather than explicitly including the boundary package internals.
 - Added focused regression coverage for the event-driven runner-availability path and updated the existing IPC readiness tests to exercise runner-replacement notifications:
   - `desktop/tests/electron/ipc/runtime-availability.test.ts`
@@ -956,6 +963,17 @@ That is the production-ready architecture for a desktop assistant that can modif
   - `desktop/tests/electron/ipc/system-handlers.test.ts`
 - Restored the fetch-based renderer streaming fallback to return final assistant text from terminal message payloads when an SSE stream completes without any incremental text deltas, matching the runtime provider behavior and avoiding blank successful replies.
 - Added focused renderer regression coverage for the fetch streaming final-message fallback in `desktop/tests/renderer/infra/ai/llm.test.ts`.
+- Moved `overlay:autoPanelStart` model routing and streaming work behind the sidecar seam by adding worker-owned overlay auto-panel RPC methods plus daemon/client notifications, leaving Electron to track request ownership and forward sidecar stream events back to the invoking renderer only.
+- Moved `DevProjectService` ownership fully behind the sidecar seam, so Electron bootstrap no longer constructs or stops the service directly and `projects:*` IPC now proxies to worker-owned lifecycle state while keeping the native directory picker in the host.
+- Routed dashboard generation and self-mod Git utility IPC calls through new runtime RPC methods instead of importing runtime-kernel modules directly inside `desktop/electron/ipc/agent-handlers.ts`.
+- Added focused Electron boundary regression coverage for the new seams in:
+  - `desktop/tests/electron/ipc/overlay-stream-handlers.test.ts`
+  - `desktop/tests/electron/ipc/project-handlers.test.ts`
+  - `desktop/tests/electron/ipc/agent-handlers.test.ts`
 - Verification:
   - `npm run electron:typecheck`
-  - `npm run test:electron` -> 76 files passed, 229 tests passed, 1 skipped
+  - `npm run test:electron` -> 79 files passed, 236 tests passed, 1 skipped
+- Follow-on cleanup removed the temporary extracted-package facade pattern too:
+  `desktop/packages/**` now uses plain package-root source files instead of
+  `src/**` trees plus generated facade re-exports, while preserving the real
+  runtime/contract/process boundaries.
