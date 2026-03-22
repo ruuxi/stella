@@ -30,7 +30,9 @@ type AgentCallbacks = {
   onSelfModHmrState?: (event: SelfModHmrState) => void;
   onHmrResume?: (args: {
     runId: string;
-    resumeHmr: () => Promise<void>;
+    resumeHmr: (
+      options?: { suppressClientFullReload?: boolean },
+    ) => Promise<void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;
   }) => Promise<void>;

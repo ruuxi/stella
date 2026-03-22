@@ -176,8 +176,10 @@ export const createStellaHostRunner = (
     },
     cancelLocalChat: orchestratorController.cancelLocalChat,
     getActiveOrchestratorRun: orchestratorController.getActiveOrchestratorRun,
-    resumeSelfModHmr: async (runId: string) =>
-      Boolean(await context.selfModHmrController?.resume(runId)),
+    resumeSelfModHmr: async (
+      runId: string,
+      options?: { suppressClientFullReload?: boolean },
+    ) => Boolean(await context.selfModHmrController?.resume(runId, options)),
     recoverCrashedRuns: runtimeInitialization.recoverCrashedRuns,
     appendThreadMessage: (args) => {
       context.runtimeStore.appendThreadMessage({

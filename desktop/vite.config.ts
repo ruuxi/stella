@@ -125,6 +125,10 @@ type PersistedSelfModHmrState = {
   updatedAtMs?: number
 }
 
+type SelfModHmrResumePayload = {
+  suppressClientFullReload?: boolean
+}
+
 const readPersistedSelfModHmrState = (): PersistedSelfModHmrState => {
   try {
     const raw = fs.readFileSync(SELF_MOD_HMR_STATE_FILE, 'utf-8')
@@ -169,10 +173,6 @@ export const getSelfModHmrFlushMode = (args: {
 
   if (args.queuedModuleCount > 0) {
     return 'module-reload'
-  }
-
-  if (args.queuedFileCount > 0) {
-    return 'full-reload'
   }
 
   return 'none'
@@ -224,7 +224,27 @@ function selfModHmrControl(): Plugin {
         }
       };
 
-      const flushQueuedUpdates = async () => {
+      const readJsonBody = async (
+        req: import('node:http').IncomingMessage,
+      ): Promise<Record<string, unknown>> => {
+        const chunks: Buffer[] = []
+        for await (const chunk of req) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+        }
+        if (chunks.length === 0) {
+          return {}
+        }
+        try {
+          const parsed = JSON.parse(Buffer.concat(chunks).toString('utf-8'))
+          return parsed && typeof parsed === 'object'
+            ? (parsed as Record<string, unknown>)
+            : {}
+        } catch {
+          return {}
+        }
+      }
+
+      const flushQueuedUpdates = async (options?: SelfModHmrResumePayload) => {
         const flushMode = getSelfModHmrFlushMode({
           queuedModuleCount: queuedModules.size,
           queuedFileCount: queuedFiles.size,
@@ -237,7 +257,9 @@ function selfModHmrControl(): Plugin {
 
         if (flushMode === 'full-reload') {
           invalidateQueuedModules()
-          server.ws.send({ type: 'full-reload', path: '*' })
+          if (!options?.suppressClientFullReload) {
+            server.ws.send({ type: 'full-reload', path: '*' })
+          }
           clearQueue()
           writePersistedSelfModHmrState({ paused, requiresFullReload })
           return
@@ -294,8 +316,9 @@ function selfModHmrControl(): Plugin {
         }
 
         if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/resume`) {
+          const payload = await readJsonBody(req) as SelfModHmrResumePayload
           paused = false
-          await flushQueuedUpdates()
+          await flushQueuedUpdates(payload)
           writePersistedSelfModHmrState({ paused, requiresFullReload })
           sendJson(200, { ok: true, paused })
           return
@@ -309,7 +332,7 @@ function selfModHmrControl(): Plugin {
         return
       }
 
-      if (isDependencyManifestFile(ctx.file) || ctx.modules.length === 0) {
+      if (isDependencyManifestFile(ctx.file)) {
         requiresFullReload = true
       }
 
