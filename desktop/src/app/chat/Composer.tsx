@@ -64,7 +64,7 @@ export function Composer({
   });
   const { contextState: composerContextState, placeholder } = composerState;
   const { hasComposerContext } = composerContextState;
-  const isExpanded = composerExpanded || hasComposerContext;
+  const isExpanded = composerExpanded;
 
   /* Shell/inner height animation.
      The form renders at full natural size (no constraints on children).
@@ -117,6 +117,17 @@ export function Composer({
 
   return (
     <div className="composer">
+      {hasComposerContext && (
+        <div className="composer-floating-context">
+          <ComposerContextRow
+            chatContext={chatContext}
+            selectedText={selectedText}
+            setChatContext={setChatContext}
+            setSelectedText={setSelectedText}
+          />
+        </div>
+      )}
+
       <div ref={shellRef} className="composer-shell">
         <form
           ref={formRef}
@@ -133,16 +144,7 @@ export function Composer({
             onClick={onAdd}
           />
 
-          {hasComposerContext && (
-            <ComposerContextRow
-              chatContext={chatContext}
-              selectedText={selectedText}
-              setChatContext={setChatContext}
-              setSelectedText={setSelectedText}
-            />
-          )}
-
-            <ComposerTextarea
+          <ComposerTextarea
             ref={textareaRef}
             className="composer-input"
             placeholder={placeholder}

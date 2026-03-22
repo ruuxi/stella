@@ -1,5 +1,6 @@
 import type { AgentEvent, AgentMessage } from "../agent-core/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
+import type { RuntimeAttachmentRef } from "../../runtime-protocol/index.js";
 import {
   subscribeRuntimeAgentEvents,
   type RuntimeRunEventRecorder,
@@ -25,6 +26,7 @@ type RuntimeExecutableAgent = {
 export const executeRuntimeAgentPrompt = async (args: {
   agent: RuntimeExecutableAgent;
   promptText: string;
+  attachments?: RuntimeAttachmentRef[];
   runId: string;
   agentType: string;
   recorder: RuntimeRunEventRecorder;
@@ -52,7 +54,7 @@ export const executeRuntimeAgentPrompt = async (args: {
 
   try {
     await args.agent.prompt({
-      ...createUserPromptMessage(args.promptText),
+      ...createUserPromptMessage(args.promptText, args.attachments),
       timestamp: now(),
     });
     await args.onAfterPrompt?.();

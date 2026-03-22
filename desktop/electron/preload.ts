@@ -362,6 +362,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       conversationId: string;
       userMessageId: string;
       userPrompt: string;
+      attachments?: Array<{
+        url: string;
+        mimeType?: string;
+      }>;
       agentType?: string;
       storageMode?: "cloud" | "local";
     }) =>

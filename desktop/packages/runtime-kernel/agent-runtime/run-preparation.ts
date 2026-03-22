@@ -1,3 +1,5 @@
+import type { ImageContent } from "../../ai/types.js";
+import type { RuntimeAttachmentRef } from "../../runtime-protocol/index.js";
 import { shouldIncludeStellaDocumentation } from "../../../src/shared/contracts/agent-runtime.js";
 import { buildSelfModDocumentationPrompt, buildSystemPrompt } from "./thread-memory.js";
 import type {
@@ -5,15 +7,39 @@ import type {
   SubagentRunOptions,
 } from "./types.js";
 
-export const createUserPromptMessage = (text: string) => ({
+const DATA_URL_IMAGE_RE = /^data:([^;,]+);base64,(.+)$/i;
+
+const toImageContent = (
+  attachment: RuntimeAttachmentRef,
+): ImageContent | null => {
+  const match = DATA_URL_IMAGE_RE.exec(attachment.url.trim());
+  if (!match) {
+    return null;
+  }
+  return {
+    type: "image",
+    mimeType: attachment.mimeType?.trim() || match[1],
+    data: match[2],
+  };
+};
+
+export const createUserPromptMessage = (
+  text: string,
+  attachments?: RuntimeAttachmentRef[],
+) => ({
   role: "user" as const,
-  content: [{ type: "text" as const, text }],
+  content: [
+    { type: "text" as const, text },
+    ...((attachments ?? [])
+      .map((attachment) => toImageContent(attachment))
+      .filter((attachment): attachment is ImageContent => attachment !== null)),
+  ],
 });
 
 export const buildRuntimeSystemPrompt = async (
   opts: OrchestratorRunOptions,
 ): Promise<string> => {
-  let effectiveSystemPrompt = buildSystemPrompt(opts.agentContext);
+  const effectiveSystemPrompt = buildSystemPrompt(opts.agentContext);
   if (!opts.hookEmitter) {
     return effectiveSystemPrompt;
   }
