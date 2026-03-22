@@ -170,6 +170,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       bounds: { x: number; y: number; width: number; height: number };
     }>("overlay:displayChange"),
     onMorphForward: onIpc<{
+      transitionId: string;
       screenshotDataUrl: string;
       x: number;
       y: number;
@@ -177,19 +178,25 @@ contextBridge.exposeInMainWorld("electronAPI", {
       height: number;
     }>("overlay:morphForward"),
     onMorphBounds: onIpc<{
+      transitionId: string;
       x: number;
       y: number;
       width: number;
       height: number;
     }>("overlay:morphBounds"),
     onMorphReverse: onIpc<{
+      transitionId: string;
       screenshotDataUrl: string;
       requiresFullReload: boolean;
     }>("overlay:morphReverse"),
-    onMorphEnd: onIpcSignal("overlay:morphEnd"),
-    onMorphState: onIpc<SelfModHmrState>("overlay:morphState"),
-    morphReady: () => ipcRenderer.send("overlay:morphReady"),
-    morphDone: () => ipcRenderer.send("overlay:morphDone"),
+    onMorphEnd: onIpc<{ transitionId: string }>("overlay:morphEnd"),
+    onMorphState: onIpc<{ transitionId: string; state: SelfModHmrState }>(
+      "overlay:morphState",
+    ),
+    morphReady: (transitionId: string) =>
+      ipcRenderer.send("overlay:morphReady", { transitionId }),
+    morphDone: (transitionId: string) =>
+      ipcRenderer.send("overlay:morphDone", { transitionId }),
     onShowAutoPanel: onIpc<{
       x: number;
       y: number;
