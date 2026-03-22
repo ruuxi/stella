@@ -21,13 +21,13 @@ export type GradientMode = "soft" | "crisp";
 // Gradient color controls saturation/strength
 export type GradientColor = "relative" | "strong";
 
-// Base positions for 5 blobs (percentages)
+// Base positions for 5 blobs (percentages) — asymmetric to avoid visible pattern
 const BASE_POSITIONS = [
-  { x: 16, y: 14 },
-  { x: 86, y: 16 },
-  { x: 18, y: 88 },
-  { x: 88, y: 88 },
-  { x: 52, y: 54 },
+  { x: 14, y: 18 },
+  { x: 82, y: 12 },
+  { x: 22, y: 84 },
+  { x: 85, y: 80 },
+  { x: 48, y: 48 },
 ];
 
 // Grain texture as data URI
@@ -59,24 +59,58 @@ function mixRgb(a: RGB, b: RGB, t: number): RGB {
 function generateBlobs(
   colors: RGB[],
   mode: GradientMode = "soft",
+  colorMode: GradientColor = "relative",
   blurMultiplier = 1,
   sizeScale = 1
 ): Blob[] {
-  // Crisp: sharp defined edges; Soft: dreamy blurred
-  const blurRange = mode === "crisp" ? { min: 20, max: 40 } : { min: 120, max: 200 };
+  // Crisp: defined color zones with moderate softening; Soft: dreamy atmospheric wash
+  const blurRange = mode === "crisp" ? { min: 50, max: 80 } : { min: 120, max: 200 };
+  // Subtle mode uses lower alpha so blobs tint rather than dominate
+  const alphaRange = colorMode === "relative"
+    ? { min: 0.45, max: 0.62 }
+    : { min: 0.60, max: 0.78 };
+  // Large enough that adjacent blobs' gradient tails overlap and merge
+  const sizeRange = { min: 1100, max: 1500 };
 
   return BASE_POSITIONS.map((base, i) => {
     const baseBlur = rand(blurRange.min, blurRange.max);
     return {
-      x: rand(base.x - 6, base.x + 6),
-      y: rand(base.y - 6, base.y + 6),
-      size: Math.round(rand(1020, 1280) * sizeScale),
-      scale: rand(0.9, 1.15),
+      // ±10% jitter breaks the visible grid pattern
+      x: rand(base.x - 10, base.x + 10),
+      y: rand(base.y - 10, base.y + 10),
+      size: Math.round(rand(sizeRange.min, sizeRange.max) * sizeScale),
+      scale: rand(0.85, 1.2),
       blur: Math.round(baseBlur * blurMultiplier),
-      alpha: rand(0.75, 0.9),
+      alpha: rand(alphaRange.min, alphaRange.max),
       color: colors[i % colors.length],
     };
   });
+}
+
+/** Build a radial gradient string with a wide, gaussian-like falloff.
+ *  Color extends all the way to the blob edge so adjacent blobs merge. */
+function blobGradient(r: number, g: number, b: number, a: number): string {
+  // Gentle gaussian-inspired curve: maintains meaningful color across ~70% of
+  // the radius, then tapers smoothly to transparent. The per-blob CSS blur
+  // filter already softens edges, so we don't need an aggressive cutoff.
+  const stops = [
+    [0, 1.0],
+    [14, 0.88],
+    [28, 0.72],
+    [42, 0.54],
+    [55, 0.38],
+    [67, 0.24],
+    [78, 0.13],
+    [88, 0.05],
+    [100, 0],
+  ] as const;
+  return `radial-gradient(circle at center, ${stops
+    .map(([pct, mult]) =>
+      mult === 0
+        ? `transparent ${pct}%`
+        : `rgba(${r}, ${g}, ${b}, ${(a * mult).toFixed(3)}) ${pct}%`
+    )
+    .join(", ")})`;
 }
 
 interface ShiftingGradientProps {
@@ -119,38 +153,31 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       isDark
     );
 
+    // All blobs share the brand hue — differentiation comes from lightness,
+    // not hue. This creates depth (like light across a surface) instead of
+    // a rainbow.
+    const anchor = parseColor(tokens.surfaceBrandBase) ?? parseColor(colors.primary) ?? fallback;
+    const white: RGB = { r: 255, g: 255, b: 255 };
+    const black: RGB = { r: 0, g: 0, b: 0 };
+
+    // Per-blob lightness offsets: positive = lighter, negative = darker
+    const lightnessShifts = [0.0, 0.14, -0.10, 0.08, -0.05];
+
+    const contrastBlobs = lightnessShifts.map((shift) => {
+      if (shift > 0) return mixRgb(anchor, white, shift);
+      if (shift < 0) return mixRgb(anchor, black, -shift);
+      return anchor;
+    });
+
     if (colorMode === "relative") {
-      // Relative: subtle colors blended heavily with background
-      // Uses derived tokens from OKLCH color scales (matching Aura)
-      const tokenColors = [
-        tokens.textInteractive,
-        tokens.surfaceInfoStrong,
-        tokens.surfaceSuccessStrong,
-        tokens.surfaceWarningStrong,
-        tokens.surfaceBrandBase,
-      ];
-      const strength = isDark ? 0.28 : 0.34;
-      return tokenColors.map((token) => {
-        const color = parseColor(token) ?? fallback;
-        return mixRgb(bg, color, strength);
-      });
+      const strength = isDark ? 0.30 : 0.40;
+      return contrastBlobs.map((color) => mixRgb(bg, color, strength));
     }
 
-    // Strong: use brand/accent colors at high saturation
-    const brandColor = parseColor(tokens.surfaceBrandBase) ?? parseColor(colors.primary) ?? fallback;
-    const accentColor =
-      parseColor(tokens.textInteractive) ??
-      parseColor(colors.interactive) ??
-      brandColor;
-    const strength = isDark ? 0.45 : 0.55;
-
-    return [
-      mixRgb(bg, brandColor, strength),
-      mixRgb(bg, accentColor, strength),
-      mixRgb(bg, brandColor, strength * 0.85),
-      mixRgb(bg, accentColor, strength * 0.88),
-      mixRgb(bg, brandColor, strength * 0.9),
-    ];
+    // Vivid: stronger presence, same lightness-based variation
+    const strength = isDark ? 0.50 : 0.58;
+    const strengthVariation = [1.0, 0.92, 0.88, 0.95, 0.85];
+    return contrastBlobs.map((color, i) => mixRgb(bg, color, strength * strengthVariation[i]));
   }, [resolvedColorMode, colorMode, colors]);
 
   // Initialize and update blobs
@@ -166,7 +193,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
     const timer = requestAnimationFrame(() => {
       if (cancelled) return;
       const palette = getPalette();
-      setBlobs(generateBlobs(palette, mode, blurMultiplier, scale));
+      setBlobs(generateBlobs(palette, mode, colorMode, blurMultiplier, scale));
       if (!didInitRef.current) {
         didInitRef.current = true;
         requestAnimationFrame(() => {
@@ -226,30 +253,33 @@ export const ShiftingGradient = memo(function ShiftingGradient({
             willChange: "left, top, transform",
             filter: `blur(${blob.blur}px)`,
             borderRadius: "9999px",
-            background: `radial-gradient(circle at center, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha}) 0%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.93}) 8%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.82}) 16%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.68}) 25%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.52}) 35%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.35}) 46%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.18}) 58%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha * 0.06}) 68%, transparent 78%)`,
+            background: blobGradient(blob.color.r, blob.color.g, blob.color.b, blob.alpha),
           } as CSSProperties}
         />
           ))}
 
-      {/* Backdrop blur to smooth banding */}
+      {/* Backdrop blur — tuned per mode to preserve character */}
       {lightweight ? null : (
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
             zIndex: 9,
-            backdropFilter: 'blur(60px)',
-            WebkitBackdropFilter: 'blur(60px)',
+            // Soft: heavy blur compounds with blob blur for dreamy wash
+            // Crisp: moderate blur merges blob edges while keeping color zones distinct
+            backdropFilter: mode === "crisp" ? 'blur(34px)' : 'blur(60px)',
+            WebkitBackdropFilter: mode === "crisp" ? 'blur(34px)' : 'blur(60px)',
           }}
         />
       )}
 
-      {/* Backdrop + Grain overlay (matching Aura) */}
+      {/* Background veil + grain texture overlay */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           zIndex: 10,
+          // Soft: heavier veil for ethereal feel; Crisp: lighter veil to let colors punch through
           backgroundColor: colors.background
-            ? `color-mix(in srgb, ${colors.background} ${lightweight ? 22 : 35}%, transparent)`
+            ? `color-mix(in srgb, ${colors.background} ${lightweight ? 22 : mode === "crisp" ? 28 : 38}%, transparent)`
             : 'transparent',
         }}
       >
@@ -257,7 +287,8 @@ export const ShiftingGradient = memo(function ShiftingGradient({
           className="gradient-grain"
           style={{
             backgroundImage: `url("${GRAIN_DATA_URI}")`,
-            opacity: lightweight ? 0.14 : mode === "soft" ? 0.28 : 0.55,
+            // Soft: subtle organic texture; Crisp: moderate grain for definition, not noise
+            opacity: lightweight ? 0.14 : mode === "soft" ? 0.22 : 0.35,
           }}
         />
       </div>

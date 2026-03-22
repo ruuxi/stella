@@ -126,7 +126,6 @@
   height: 70px;
   pointer-events: none;
   overflow: hidden;
-  border-radius: 50%;
 }
 
 .radial-center-stella-animation .ascii-canvas {
