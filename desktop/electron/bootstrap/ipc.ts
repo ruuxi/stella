@@ -103,7 +103,7 @@ export const registerBootstrapIpcHandlers = (
     frontendRoot: config.frontendRoot,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
-    hmrMorphOrchestrator: state.hmrMorphOrchestrator,
+    hmrTransitionController: state.hmrTransitionController,
     getBroadcastToMobile: lazyMobileBroadcast,
   });
 

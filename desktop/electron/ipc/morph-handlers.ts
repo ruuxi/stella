@@ -60,7 +60,7 @@ export const registerMorphHandlers = (options: MorphHandlersOptions) => {
 
     const bounds = fullWindow.getBounds();
     const readyPromise = waitForSignal("overlay:morphReady", OVERLAY_READY_TIMEOUT_MS);
-    overlay.startMorphForward(screenshot, bounds);
+    overlay.startMorphForward(screenshot, bounds, fullWindow);
     await readyPromise;
 
     return { ok: true };

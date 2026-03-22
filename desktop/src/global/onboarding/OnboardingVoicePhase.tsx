@@ -36,7 +36,7 @@ export function OnboardingVoicePhase({
         you're done speaking, your text will appear right where you need it.
       </p>
 
-      <div className="onboarding-voice-demo">
+      <div className="onboarding-voice-demo onboarding-pill-stagger">
         <button className="onboarding-pill" onClick={onRequestMicrophone}>
           {voicePermissionGranted === true
             ? "Microphone access granted \u2713"
@@ -126,7 +126,7 @@ export function OnboardingVoicePhase({
         Press this shortcut anywhere to start or stop voice dictation. (You can
         also use the Voice button in the Radial Dial).
       </p>
-      <div className="onboarding-shortcut-config">
+      <div className="onboarding-shortcut-config onboarding-pill-stagger">
         <div
           className="onboarding-pill"
           style={{ cursor: "default", opacity: 0.8 }}

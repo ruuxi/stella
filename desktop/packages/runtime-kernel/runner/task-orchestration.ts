@@ -218,16 +218,18 @@ export const createTaskOrchestration = (
           };
 
           try {
-            const morphOrchestrator =
-              context.getHmrMorphOrchestrator?.() ?? null;
+            const hmrTransitionController =
+              context.getHmrTransitionController?.() ?? null;
             if (shouldMorph && taskCallbacks?.onHmrResume) {
               await taskCallbacks.onHmrResume({
+                runId,
                 resumeHmr,
                 reportState: reportSelfModHmrState,
                 requiresFullReload,
               });
-            } else if (shouldMorph && morphOrchestrator) {
-              await morphOrchestrator.runTransition({
+            } else if (shouldMorph && hmrTransitionController) {
+              await hmrTransitionController.runTransition({
+                runId,
                 resumeHmr,
                 reportState: reportSelfModHmrState,
                 requiresFullReload,

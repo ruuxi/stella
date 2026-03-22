@@ -542,6 +542,14 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         getDevServerUrl,
         enabled: process.env.NODE_ENV === "development",
       }),
+      getHmrTransitionController: () => ({
+        runTransition: async ({ runId, requiresFullReload }) => {
+          await peer.request(METHOD_NAMES.HOST_HMR_RUN_TRANSITION, {
+            runId,
+            requiresFullReload,
+          });
+        },
+      }),
       selfModLifecycle: {
         beginRun: async ({ runId, taskDescription, featureId, packageId, releaseNumber, mode, displayName, description }) => {
           await storeModService.beginSelfModRun({
@@ -699,9 +707,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       onEnd: (ev) => emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.END }),
       onSelfModHmrState: (statePayload) =>
         emitSelfModHmrState({ runId: activeRunId || undefined, state: statePayload }),
-      onHmrResume: async ({ requiresFullReload }) => {
+      onHmrResume: async ({ runId, requiresFullReload }) => {
         await peer.request(METHOD_NAMES.HOST_HMR_RUN_TRANSITION, {
-          runId: activeRunId || undefined,
+          runId,
           requiresFullReload,
         });
       },
@@ -972,7 +980,10 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   });
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR, async (params) => {
-    const runId = (params as { runId?: string } | undefined)?.runId ?? "";
+    const runId = (params as { runId?: string } | undefined)?.runId?.trim();
+    if (!runId) {
+      throw new Error("INTERNAL_WORKER_RESUME_HMR requires a runId.");
+    }
     const resumeApplied = await ensureRunner().resumeSelfModHmr(runId);
     return { ok: Boolean(resumeApplied) };
   });

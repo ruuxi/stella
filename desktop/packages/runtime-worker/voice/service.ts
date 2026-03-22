@@ -38,6 +38,7 @@ type VoiceRunner = {
       onTaskEvent?: (event: TaskLifecycleEvent) => void;
       onSelfModHmrState?: (state: SelfModHmrState) => void;
       onHmrResume?: (args: {
+        runId: string;
         resumeHmr: () => Promise<void>;
         reportState?: (state: SelfModHmrState) => void;
         requiresFullReload: boolean;
@@ -66,7 +67,7 @@ type VoiceRuntimeServiceOptions = {
   emitAgentEvent: (payload: RuntimeVoiceAgentEventPayload) => void;
   emitSelfModHmrState: (payload: RuntimeVoiceHmrStatePayload) => void;
   requestHostHmrTransition: (payload: {
-    runId?: string;
+    runId: string;
     requiresFullReload: boolean;
   }) => Promise<void>;
 };
@@ -248,8 +249,8 @@ export class VoiceRuntimeService {
                 state,
               });
             },
-            onHmrResume: async ({ requiresFullReload, reportState }) => {
-              const runId = await ensureActiveRunId();
+            onHmrResume: async ({ runId, requiresFullReload, reportState }) => {
+              activeRunId = runId;
               reportState?.(
                 createSelfModHmrState(
                   requiresFullReload ? "reloading" : "applying",

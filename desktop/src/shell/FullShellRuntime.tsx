@@ -95,7 +95,13 @@ export const FullShellRuntime = ({
         visible={isOrbVisible}
         events={chat.conversation.events}
         streamingText={chat.conversation.streamingText}
+        reasoningText={chat.conversation.reasoningText}
         isStreaming={chat.conversation.isStreaming}
+        pendingUserMessageId={chat.conversation.pendingUserMessageId}
+        selfModMap={chat.conversation.selfModMap}
+        hasOlderEvents={chat.conversation.hasOlderEvents}
+        isLoadingOlder={chat.conversation.isLoadingOlder}
+        isInitialLoading={chat.conversation.isInitialLoading}
         onSend={chat.conversation.sendContextlessMessage}
       />
     </>
