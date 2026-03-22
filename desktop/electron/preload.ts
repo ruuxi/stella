@@ -176,6 +176,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       width: number;
       height: number;
     }>("overlay:morphForward"),
+    onMorphBounds: onIpc<{
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }>("overlay:morphBounds"),
     onMorphReverse: onIpc<{
       screenshotDataUrl: string;
       requiresFullReload: boolean;

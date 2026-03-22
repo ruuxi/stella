@@ -5,6 +5,15 @@
 
 /* Ripple animation for reveal */
 
+:root {
+  --onboarding-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --onboarding-ease-soft: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --onboarding-duration-fade: 320ms;
+  --onboarding-duration-enter: 560ms;
+  --onboarding-duration-morph: 640ms;
+  --onboarding-stagger-step: 40ms;
+}
+
 /* ═══ Dialogue container ═══ */
 
 .onboarding-dialogue {
@@ -55,7 +64,7 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  animation: momentFadeIn 0.6s ease-out forwards;
+  animation: momentFadeIn var(--onboarding-duration-enter) var(--onboarding-ease-standard) forwards;
 }
 
 /* Stack above .onboarding-stella-animation (z-index 5) so Start / auth hit the real controls (cursor: pointer, clicks) */
@@ -79,7 +88,7 @@
 /* Fade out when leaving */
 .onboarding-dialogue[data-leaving="true"] .onboarding-moment,
 .onboarding-dialogue[data-leaving="true"] .onboarding-split-right {
-  animation: momentFadeOut 0.4s ease-out forwards;
+  animation: momentFadeOut var(--onboarding-duration-fade) ease-out forwards;
 }
 
 @keyframes momentFadeOut {
@@ -123,13 +132,13 @@
 
 .onboarding-text--fade-in {
   opacity: 0;
-  animation: textFadeIn 1s ease-out 0.3s forwards;
+  animation: textFadeIn 0.72s var(--onboarding-ease-standard) 0.16s forwards;
 }
 
 .onboarding-text--fade-in-delayed {
   margin-top: 12px;
   opacity: 0;
-  animation: textFadeIn 1s ease-out 1.2s forwards;
+  animation: textFadeIn 0.72s var(--onboarding-ease-standard) 0.5s forwards;
 }
 
 @keyframes textFadeIn {
@@ -148,15 +157,18 @@
   position: relative;
   top: auto;
   left: auto;
-  transform: none;
   margin-top: 40px;
   opacity: 0;
-  transition: opacity 0.8s ease-out;
+  transform: translateY(8px);
+  transition:
+    opacity 0.42s ease-out,
+    transform 0.42s var(--onboarding-ease-standard);
   pointer-events: none;
 }
 
 .onboarding-moment--ripple .onboarding-choices[data-visible="true"] {
   opacity: 1;
+  transform: translateY(0);
   pointer-events: auto;
 }
 
@@ -220,10 +232,10 @@
   color: var(--foreground);
   cursor: pointer;
   transition:
-    opacity 0.3s ease,
+    opacity 0.32s ease,
     transform 0.2s ease,
-    border-color 0.3s ease,
-    background 0.3s ease;
+    border-color 0.32s ease,
+    background 0.32s ease;
   font-family: inherit;
   opacity: 0;
   pointer-events: none;
@@ -256,7 +268,8 @@
   justify-content: flex-start;
   align-items: flex-start;
   position: relative;
-  width: 50%;
+  width: min(50%, 560px);
+  min-width: min(360px, 100%);
   margin-left: auto;
   height: 100%;
   padding: clamp(92px, 13vh, 144px) 40px 56px;
@@ -264,13 +277,11 @@
   scrollbar-gutter: stable both-edges;
   opacity: 1;
   will-change: opacity;
-  animation: splitPaneFadeIn 0.35s ease-out both;
+  animation: splitPaneFadeIn var(--onboarding-duration-fade) ease-out both;
   transition:
-    opacity 0.25s ease-out,
-    width 0.55s cubic-bezier(0.22, 1, 0.36, 1),
-    padding 0.55s cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 0.4s ease,
-    backdrop-filter 0.4s ease;
+    opacity var(--onboarding-duration-fade) ease-out,
+    background-color var(--onboarding-duration-fade) ease,
+    backdrop-filter var(--onboarding-duration-fade) ease;
 }
 
 @keyframes splitPaneFadeIn {
@@ -338,8 +349,9 @@
   gap: 24px;
   width: 100%;
   max-width: 680px;
+  min-height: min(520px, calc(100vh - 220px));
   flex-shrink: 0;
-  animation: splitStageIn 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: splitStageIn var(--onboarding-duration-enter) var(--onboarding-ease-standard) both;
 }
 
 @keyframes splitStageIn {
@@ -513,6 +525,70 @@
   font-size: 12px;
 }
 
+@keyframes onboardingPillStaggerIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Wrap any group of .onboarding-pill siblings; opacity end state from base / [data-active] */
+.onboarding-pill-stagger .onboarding-pill {
+  animation: onboardingPillStaggerIn 0.44s var(--onboarding-ease-standard) both;
+}
+
+.onboarding-pill-stagger .onboarding-pill:nth-child(1) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 1);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(2) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 2);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(3) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 3);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(4) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 4);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(5) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 5);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(6) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 6);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(7) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 7);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(8) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 8);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(9) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 9);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(10) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 10);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(11) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 11);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(12) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 12);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(13) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 13);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(14) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 14);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(15) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 15);
+}
+.onboarding-pill-stagger .onboarding-pill:nth-child(16) {
+  animation-delay: calc(var(--onboarding-stagger-step) * 16);
+}
+
 /* ═══ Theme step ═══ */
 
 .onboarding-theme-row {
@@ -530,8 +606,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  max-height: 200px;
-  overflow-y: auto;
 }
 
 .onboarding-theme-grid .onboarding-pill {
@@ -1333,7 +1407,7 @@
   font-weight: 300;
   letter-spacing: 0.02em;
   color: var(--foreground);
-  opacity: 0.6;
+  opacity: 0;
   line-height: 1.5;
   margin: 0;
   padding: 12px 16px;
@@ -1341,7 +1415,17 @@
   display: flex;
   align-items: center;
   border-left: 2px solid color-mix(in oklch, var(--foreground) 15%, transparent);
-  animation: momentFadeIn 0.3s ease-out forwards;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition:
+    opacity var(--onboarding-duration-fade) ease,
+    transform var(--onboarding-duration-fade) var(--onboarding-ease-standard);
+}
+
+.onboarding-personality-preview[data-visible="true"] {
+  opacity: 0.6;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 .onboarding-emote-preview {
@@ -1376,7 +1460,7 @@
 .onboarding-browser-reveal {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: grid-template-rows var(--onboarding-duration-enter) var(--onboarding-ease-soft);
 }
 
 .onboarding-browser-reveal[data-visible] {
@@ -1391,7 +1475,7 @@
   gap: 14px;
   padding: 0 4px;
   opacity: 0;
-  transition: opacity 0.3s ease 0.1s;
+  transition: opacity var(--onboarding-duration-fade) ease 80ms;
 }
 
 .onboarding-browser-reveal[data-visible] > .onboarding-browser-reveal-inner {
@@ -1403,7 +1487,7 @@
 .onboarding-profiles-reveal {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: grid-template-rows 420ms var(--onboarding-ease-soft);
 }
 
 .onboarding-profiles-reveal[data-visible] {
@@ -1417,7 +1501,7 @@
   flex-direction: column;
   gap: 8px;
   opacity: 0;
-  transition: opacity 0.25s ease 0.1s;
+  transition: opacity 260ms ease 80ms;
 }
 
 .onboarding-profiles-reveal[data-visible] > .onboarding-profiles-reveal-inner {
@@ -1429,7 +1513,7 @@
 .onboarding-mic-reveal {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: grid-template-rows var(--onboarding-duration-enter) var(--onboarding-ease-soft);
 }
 
 .onboarding-mic-reveal[data-visible] {
@@ -1444,7 +1528,7 @@
   gap: 10px;
   padding: 0 4px;
   opacity: 0;
-  transition: opacity 0.3s ease 0.1s;
+  transition: opacity var(--onboarding-duration-fade) ease 80ms;
 }
 
 .onboarding-mic-reveal[data-visible] > .onboarding-mic-reveal-inner {
@@ -1498,7 +1582,7 @@
 .onboarding-warning-reveal {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: grid-template-rows var(--onboarding-duration-enter) var(--onboarding-ease-soft);
 }
 
 .onboarding-warning-reveal[data-visible] {
@@ -1509,7 +1593,7 @@
   overflow: hidden;
   min-height: 0;
   opacity: 0;
-  transition: opacity 0.3s ease 0.1s;
+  transition: opacity var(--onboarding-duration-fade) ease 80ms;
 }
 
 .onboarding-warning-reveal[data-visible] > .onboarding-warning-reveal-inner {
@@ -1542,6 +1626,53 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+@keyframes onboardingBrowserListIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Browser step: stagger the main heading + browser row + category rows (not reveal-on-click content) */
+.onboarding-dialogue[data-phase="browser"] .onboarding-step-content > .onboarding-step-label {
+  animation: onboardingBrowserListIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.05s;
+}
+
+.onboarding-dialogue[data-phase="browser"]
+  .onboarding-step-content
+  > button.onboarding-discovery-row {
+  animation: onboardingBrowserListIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.14s;
+}
+
+.onboarding-dialogue[data-phase="browser"]
+  .onboarding-discovery-list
+  > .onboarding-discovery-row {
+  animation: onboardingBrowserListIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.onboarding-dialogue[data-phase="browser"]
+  .onboarding-discovery-list
+  > .onboarding-discovery-row:nth-child(1) {
+  animation-delay: 0.24s;
+}
+
+.onboarding-dialogue[data-phase="browser"]
+  .onboarding-discovery-list
+  > .onboarding-discovery-row:nth-child(2) {
+  animation-delay: 0.33s;
+}
+
+.onboarding-dialogue[data-phase="browser"]
+  .onboarding-discovery-list
+  > .onboarding-discovery-row:nth-child(3) {
+  animation-delay: 0.42s;
 }
 
 .onboarding-discovery-row {
@@ -1647,7 +1778,19 @@
   font-weight: 300;
   letter-spacing: 0.04em;
   color: var(--foreground);
+  opacity: 0;
+  min-height: 24px;
+  visibility: hidden;
+  transform: translateY(6px);
+  transition:
+    opacity 240ms ease,
+    transform 240ms var(--onboarding-ease-standard);
+}
+
+.onboarding-fda-note[data-visible="true"] {
   opacity: 0.25;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 .onboarding-fda-link {
@@ -2294,9 +2437,21 @@
   .onboarding-split-stage,
   .onboarding-split-right,
   .onboarding-inline-auth,
-  .onboarding-mock-window {
+  .onboarding-mock-window,
+  .onboarding-pill-stagger .onboarding-pill {
     animation: none;
     opacity: 1;
+    transform: none;
+  }
+
+  .onboarding-dialogue[data-phase="browser"] .onboarding-step-content > .onboarding-step-label,
+  .onboarding-dialogue[data-phase="browser"]
+    .onboarding-step-content
+    > button.onboarding-discovery-row,
+  .onboarding-dialogue[data-phase="browser"]
+    .onboarding-discovery-list
+    > .onboarding-discovery-row {
+    animation: none;
     transform: none;
   }
 

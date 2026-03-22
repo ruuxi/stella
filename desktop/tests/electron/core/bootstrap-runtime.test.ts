@@ -37,7 +37,7 @@ const overlayControllerInstance = {
 const OverlayWindowControllerMock = vi.fn(function MockOverlayWindowController() {
   return overlayControllerInstance;
 });
-const createHmrMorphOrchestratorMock = vi.fn(() => ({
+const createHmrTransitionControllerMock = vi.fn(() => ({
   runTransition: vi.fn(async () => {}),
 }));
 
@@ -77,7 +77,7 @@ vi.mock("../../../electron/windows/overlay-window.js", () => ({
 }));
 
 vi.mock("../../../electron/self-mod/hmr-morph.js", () => ({
-  createHmrMorphOrchestrator: createHmrMorphOrchestratorMock,
+  createHmrTransitionController: createHmrTransitionControllerMock,
 }));
 
 vi.mock("../../../electron/selected-text.js", () => ({
@@ -114,7 +114,7 @@ describe("initializeStellaHostRunner", () => {
     overlayControllerInstance.create.mockClear();
     WindowManagerMock.mockClear();
     OverlayWindowControllerMock.mockClear();
-    createHmrMorphOrchestratorMock.mockClear();
+    createHmrTransitionControllerMock.mockClear();
   });
 
   it("registers the host HMR transition callback for sidecar self-mod runs", async () => {
@@ -175,7 +175,7 @@ describe("initializeStellaHostRunner", () => {
         stellaHomePath: "/mock/home/.stella",
         stellaWorkspacePath: "/mock/home/.stella/workspace",
         windowManager: null,
-        hmrMorphOrchestrator: {
+        hmrTransitionController: {
           runTransition,
         },
       },
@@ -288,7 +288,7 @@ describe("initializeStellaHostRunner", () => {
         deferredStartupSequence: null,
         deviceId: null,
         devProjectsUpdateUnsubscribe: null,
-        hmrMorphOrchestrator: null,
+        hmrTransitionController: null,
         isQuitting: false,
         localChatUpdateUnsubscribe: null,
         overlayController: null,

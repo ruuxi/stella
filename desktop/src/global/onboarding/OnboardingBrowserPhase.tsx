@@ -64,7 +64,7 @@ export function OnboardingBrowserPhase({
         className="onboarding-browser-reveal"
         innerClassName="onboarding-browser-reveal-inner"
       >
-        <div className="onboarding-pills">
+        <div className="onboarding-pills onboarding-pill-stagger">
           {BROWSERS.filter((browser) =>
             platform !== "darwin" ? browser.id !== "safari" : true,
           ).map((browser) => (
@@ -85,7 +85,7 @@ export function OnboardingBrowserPhase({
           innerClassName="onboarding-profiles-reveal-inner"
         >
           <div className="onboarding-step-label">Profile</div>
-          <div className="onboarding-pills">
+          <div className="onboarding-pills onboarding-pill-stagger">
             {availableProfiles.map((profile) => (
               <button
                 key={profile.id}

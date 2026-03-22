@@ -199,6 +199,10 @@ class OverlayWindow {
  */
 export class OverlayWindowController {
   private readonly overlayWindow: OverlayWindow
+  private morphTrackedWindow: BrowserWindow | null = null
+  private readonly handleMorphWindowBoundsChanged = () => {
+    this.syncMorphBounds()
+  }
 
   // Active component tracking — overlay stays visible when any component is active.
   private activeModifierBlock = false
@@ -427,9 +431,47 @@ export class OverlayWindowController {
   // ─── Morph Transition (HMR Resume) ───────────────────────────────────
 
   private activeMorph = false
+  private currentMorphBounds: { x: number; y: number; width: number; height: number } | null = null
 
-  startMorphForward(screenshotDataUrl: string, bounds: { x: number; y: number; width: number; height: number }) {
+  private stopTrackingMorphWindow() {
+    if (!this.morphTrackedWindow) return
+    this.morphTrackedWindow.removeListener('move', this.handleMorphWindowBoundsChanged)
+    this.morphTrackedWindow.removeListener('resize', this.handleMorphWindowBoundsChanged)
+    this.morphTrackedWindow = null
+  }
+
+  private syncMorphBounds() {
+    if (!this.activeMorph) return
+
+    const trackedBounds = this.morphTrackedWindow && !this.morphTrackedWindow.isDestroyed()
+      ? this.morphTrackedWindow.getBounds()
+      : this.currentMorphBounds
+
+    if (!trackedBounds) return
+
+    this.currentMorphBounds = trackedBounds
+    const origin = this.overlayWindow.getOverlayOrigin()
+    this.overlayWindow.send('overlay:morphBounds', {
+      x: trackedBounds.x - origin.x,
+      y: trackedBounds.y - origin.y,
+      width: trackedBounds.width,
+      height: trackedBounds.height,
+    })
+  }
+
+  startMorphForward(
+    screenshotDataUrl: string,
+    bounds: { x: number; y: number; width: number; height: number },
+    trackedWindow?: BrowserWindow | null,
+  ) {
     this.activeMorph = true
+    this.currentMorphBounds = bounds
+    this.stopTrackingMorphWindow()
+    if (trackedWindow && !trackedWindow.isDestroyed()) {
+      this.morphTrackedWindow = trackedWindow
+      trackedWindow.on('move', this.handleMorphWindowBoundsChanged)
+      trackedWindow.on('resize', this.handleMorphWindowBoundsChanged)
+    }
     const origin = this.overlayWindow.getOverlayOrigin()
     this.overlayWindow.show({ inactive: true })
     this.overlayWindow.send('overlay:morphForward', {
@@ -454,6 +496,8 @@ export class OverlayWindowController {
 
   endMorph() {
     this.activeMorph = false
+    this.currentMorphBounds = null
+    this.stopTrackingMorphWindow()
     this.setMorphState({
       phase: 'idle',
       paused: false,
@@ -466,6 +510,7 @@ export class OverlayWindowController {
   // ─── Cleanup ──────────────────────────────────────────────────────────
 
   destroy() {
+    this.stopTrackingMorphWindow()
     ipcMain.removeListener('overlay:setInteractive', this.handleOverlaySetInteractive)
     ipcMain.removeListener('radial:animDone', this.handleRadialAnimDone)
     ipcMain.removeListener('overlay:hideAutoPanel', this.handleHideAutoPanel)

@@ -73,9 +73,9 @@ const OnboardingMockWindows = lazy(() =>
   })),
 );
 
-const FADE_OUT_MS = 400;
-const FADE_GAP_MS = 200;
-const SPLIT_CROSSFADE_MS = 720;
+const FADE_OUT_MS = 260;
+const FADE_GAP_MS = 120;
+const INTRO_CONTINUE_DELAY_MS = 1100;
 
 const STEP_TITLES: Partial<Record<Phase, string>> = {
   browser: "Let me get to know you.",
@@ -283,11 +283,7 @@ export const OnboardingStep1 = ({
   const [phase, setPhase] = useState<Phase>(initialPhase);
   const [leaving, setLeaving] = useState(false);
   const [rippleActive, setRippleActive] = useState(initialPhase === "intro");
-  const [outgoingSplitPhase, setOutgoingSplitPhase] = useState<Phase | null>(
-    null,
-  );
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const crossfadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [browserEnabled, setBrowserEnabled] = useState(false);
   const [selectedBrowser, setSelectedBrowser] = useState<BrowserId | null>(
@@ -401,29 +397,6 @@ export const OnboardingStep1 = ({
   const transitionTo = useCallback(
     (next: Phase) => {
       clearTimeoutRef();
-      const isSplitToSplit =
-        SPLIT_PHASES.has(phase) && SPLIT_PHASES.has(next) && phase !== next;
-
-      if (isSplitToSplit) {
-        setLeaving(false);
-        setOutgoingSplitPhase(prefersReducedMotion ? null : phase);
-        setPhase(next);
-
-        if (prefersReducedMotion) {
-          return;
-        }
-
-        if (crossfadeTimerRef.current) {
-          clearTimeout(crossfadeTimerRef.current);
-        }
-        crossfadeTimerRef.current = setTimeout(() => {
-          setOutgoingSplitPhase(null);
-          crossfadeTimerRef.current = null;
-        }, SPLIT_CROSSFADE_MS);
-        return;
-      }
-
-      setOutgoingSplitPhase(null);
 
       if (prefersReducedMotion) {
         setLeaving(false);
@@ -438,7 +411,7 @@ export const OnboardingStep1 = ({
         timeoutRef.current = null;
       }, FADE_OUT_MS + FADE_GAP_MS);
     },
-    [clearTimeoutRef, phase, prefersReducedMotion],
+    [clearTimeoutRef, prefersReducedMotion],
   );
 
   const handleStart = useCallback(() => {
@@ -459,7 +432,7 @@ export const OnboardingStep1 = ({
 
     const timeoutId = setTimeout(() => {
       setRippleActive(true);
-    }, 400);
+    }, INTRO_CONTINUE_DELAY_MS);
 
     return () => {
       clearTimeout(timeoutId);
@@ -553,14 +526,6 @@ export const OnboardingStep1 = ({
   }, [clearTimeoutRef, onComplete, phase]);
 
   useEffect(() => clearTimeoutRef, [clearTimeoutRef]);
-
-  useEffect(() => {
-    return () => {
-      if (crossfadeTimerRef.current) {
-        clearTimeout(crossfadeTimerRef.current);
-      }
-    };
-  }, []);
 
   const nextSplitStep = useCallback(() => {
     const index = SPLIT_STEP_ORDER.indexOf(phase);
@@ -777,7 +742,6 @@ export const OnboardingStep1 = ({
   const canGoPrev = splitStepIndex > 0;
   const canGoNext = splitStepIndex < SPLIT_STEP_ORDER.length - 1;
   const platform = getPlatform();
-  const splitTransitionActive = outgoingSplitPhase !== null;
   const sortedThemes = [...themes].sort((a, b) => a.name.localeCompare(b.name));
 
   const renderActiveSplitPhase = (activePhase: Phase) => {
@@ -793,7 +757,7 @@ export const OnboardingStep1 = ({
               selectedBrowser={selectedBrowser}
               selectedProfile={selectedProfile}
               showNoneWarning={showNoneWarning}
-              splitTransitionActive={splitTransitionActive}
+              splitTransitionActive={leaving}
               onContinue={handleDiscoveryConfirm}
               onSelectBrowser={handleSelectBrowser}
               onSelectProfile={setSelectedProfile}
@@ -809,7 +773,7 @@ export const OnboardingStep1 = ({
               activeShowcase={activeShowcase}
               demoMorphing={demoMorphing}
               showcaseOptions={SHOWCASE_OPTIONS}
-              splitTransitionActive={splitTransitionActive}
+              splitTransitionActive={leaving}
               onContinue={nextSplitStep}
               onSelectShowcase={handleShowcaseSelect}
             />
@@ -822,7 +786,7 @@ export const OnboardingStep1 = ({
               audioInputDevices={audioInputDevices}
               platform={platform}
               selectedMicId={selectedMicId}
-              splitTransitionActive={splitTransitionActive}
+              splitTransitionActive={leaving}
               voicePermissionGranted={voicePermissionGranted}
               onContinue={handleVoiceContinue}
               onRequestMicrophone={() => {
@@ -840,7 +804,7 @@ export const OnboardingStep1 = ({
               gradientColor={gradientColor}
               gradientMode={gradientMode}
               sortedThemes={sortedThemes}
-              splitTransitionActive={splitTransitionActive}
+              splitTransitionActive={leaving}
               themeId={themeId}
               onContinue={nextSplitStep}
               onSelectColorMode={setColorMode}
@@ -857,7 +821,7 @@ export const OnboardingStep1 = ({
           <Suspense fallback={splitPhaseFallback}>
             <OnboardingPersonalityPhase
               expressionStyle={expressionStyle}
-              splitTransitionActive={splitTransitionActive}
+              splitTransitionActive={leaving}
               onFinish={nextSplitStep}
               onSelectStyle={handleExpressionStyleSelect}
             />
@@ -917,15 +881,6 @@ export const OnboardingStep1 = ({
               />
             </Suspense>
           ) : null}
-          {outgoingSplitPhase === "browser" ? (
-            <Suspense fallback={null}>
-              <OnboardingMockWindows
-                activeWindowId={activeMockId}
-                stageState="outgoing"
-              />
-            </Suspense>
-          ) : null}
-
           <div className="onboarding-split-right">
             <div
               className="onboarding-split-stage"
@@ -945,7 +900,7 @@ export const OnboardingStep1 = ({
             <button
               type="button"
               className="onboarding-phase-nav-btn"
-              disabled={!canGoPrev || outgoingSplitPhase !== null}
+              disabled={!canGoPrev || leaving}
               onClick={prevSplitStep}
               aria-label="Previous step"
             >
@@ -965,7 +920,7 @@ export const OnboardingStep1 = ({
             <button
               type="button"
               className="onboarding-phase-nav-btn"
-              disabled={!canGoNext || outgoingSplitPhase !== null}
+              disabled={!canGoNext || leaving}
               onClick={nextSplitStep}
               aria-label="Next step"
             >

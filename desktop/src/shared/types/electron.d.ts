@@ -208,6 +208,14 @@ export type ElectronOverlayApi = {
       height: number;
     }) => void,
   ) => () => void;
+  onMorphBounds: (
+    callback: (data: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }) => void,
+  ) => () => void;
   onMorphReverse: (
     callback: (data: {
       screenshotDataUrl: string;

@@ -1,11 +1,19 @@
-import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle, useMemo } from "react";
+import {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  forwardRef,
+  useImperativeHandle,
+  useLayoutEffect,
+} from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { StellaAnimation, type StellaAnimationHandle } from "@/shell/ascii-creature/StellaAnimation";
-import { Markdown } from "@/app/chat/Markdown";
-import { getDisplayMessageText } from "@/app/chat/MessageTurn";
+import { ConversationEvents } from "@/app/chat/ConversationEvents";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
-import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
+import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
+import "@/app/chat/full-shell.chat.css";
 import "./floating-orb.css";
 
 const ORB_POSITION_KEY = "stella:orb-position";
@@ -31,40 +39,34 @@ export interface FloatingOrbHandle {
   openWithText(text: string): void;
 }
 
-type MiniChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-};
-
 interface FloatingOrbProps {
   visible: boolean;
   events: EventRecord[];
   streamingText: string;
+  reasoningText: string;
   isStreaming: boolean;
+  pendingUserMessageId: string | null;
+  selfModMap: Record<string, SelfModAppliedData>;
+  hasOlderEvents: boolean;
+  isLoadingOlder: boolean;
+  isInitialLoading: boolean;
   onSend: (text: string) => void;
 }
 
-function extractChatMessages(events: EventRecord[]): MiniChatMessage[] {
-  const messages: MiniChatMessage[] = [];
-  for (const event of filterEventsForUiDisplay(events)) {
-    if (event.type === "user_message" || event.type === "assistant_message") {
-      const text = getDisplayMessageText(event);
-      if (!text.trim()) continue;
-      // Skip system-like messages (e.g. "[System: ...")
-      if (text.startsWith("[System:")) continue;
-      messages.push({
-        id: event._id,
-        role: event.type === "user_message" ? "user" : "assistant",
-        text,
-      });
-    }
-  }
-  return messages;
-}
-
 export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(function FloatingOrb(
-  { visible, events, streamingText, isStreaming, onSend },
+  {
+    visible,
+    events,
+    streamingText,
+    reasoningText,
+    isStreaming,
+    pendingUserMessageId,
+    selfModMap,
+    hasOlderEvents,
+    isLoadingOlder,
+    isInitialLoading,
+    onSend,
+  },
   ref,
 ) {
   const [position, setPosition] = useState(loadPosition);
@@ -77,12 +79,19 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const stellaRef = useRef<StellaAnimationHandle>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const chatWasOpenRef = useRef(false);
   const [inputBarHeight, setInputBarHeight] = useState(56);
   const dragStartRef = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null);
   const hasDraggedRef = useRef(false);
 
-  const chatMessages = useMemo(() => extractChatMessages(events), [events]);
+  const updateScrollEdges = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const isAtBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+    shouldAutoScrollRef.current = isAtBottom;
+  }, []);
 
   useImperativeHandle(ref, () => ({
     openChat() {
@@ -113,28 +122,35 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
     }
   }, [isChatOpen]);
 
-  // Track whether the chat was just opened so we can skip the smooth scroll
-  const justOpenedRef = useRef(false);
-
-  // When chat opens, mark it and instant-scroll on next frame
-  useEffect(() => {
-    if (isChatOpen) {
-      justOpenedRef.current = true;
-      requestAnimationFrame(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
-      });
-    }
-  }, [isChatOpen]);
-
-  // Smooth-scroll only for new messages / streaming updates (not on open)
-  useEffect(() => {
-    if (!isChatOpen) return;
-    if (justOpenedRef.current) {
-      justOpenedRef.current = false;
+  useLayoutEffect(() => {
+    if (!isChatOpen) {
+      chatWasOpenRef.current = false;
       return;
     }
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [isChatOpen, chatMessages.length, streamingText]);
+
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const justOpened = !chatWasOpenRef.current;
+    chatWasOpenRef.current = true;
+
+    if (justOpened) {
+      shouldAutoScrollRef.current = true;
+    }
+
+    if (shouldAutoScrollRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+    updateScrollEdges();
+  }, [
+    isChatOpen,
+    events.length,
+    streamingText,
+    reasoningText,
+    isStreaming,
+    pendingUserMessageId,
+    updateScrollEdges,
+  ]);
 
   // Close on Escape
   useEffect(() => {
@@ -206,8 +222,6 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
 
   if (!visible) return null;
 
-  const hasStreamingContent = isStreaming && streamingText.trim().length > 0;
-
   // Chat messages panel — above the orb, wider (spans from left edge to orb right)
   const miniChatPanel = (
     <AnimatePresence>
@@ -225,27 +239,24 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(funct
           exit={{ opacity: 0, y: 12, scale: 0.97 }}
           transition={{ type: "spring", duration: 0.3, bounce: 0 }}
         >
-          <div className="orb-chat-messages">
-            {chatMessages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`orb-msg orb-msg--${msg.role}`}
-              >
-                {msg.role === "assistant" ? (
-                  <Markdown text={msg.text} enableEmotes />
-                ) : (
-                  msg.text
-                )}
-              </div>
-            ))}
-
-            {hasStreamingContent && (
-              <div className="orb-msg orb-msg--assistant orb-msg--streaming">
-                <Markdown text={streamingText} isAnimating enableEmotes />
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
+          <div
+            ref={scrollRef}
+            className="orb-chat-messages"
+            onScroll={updateScrollEdges}
+          >
+            <div className="orb-conversation">
+              <ConversationEvents
+                events={events}
+                streamingText={streamingText}
+                reasoningText={reasoningText}
+                isStreaming={isStreaming}
+                pendingUserMessageId={pendingUserMessageId}
+                selfModMap={selfModMap}
+                hasOlderEvents={hasOlderEvents}
+                isLoadingOlder={isLoadingOlder}
+                isLoadingHistory={isInitialLoading}
+              />
+            </div>
           </div>
 
         </motion.div>

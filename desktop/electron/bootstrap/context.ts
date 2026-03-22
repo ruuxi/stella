@@ -12,7 +12,7 @@ import { SecurityPolicyService } from "../services/security-policy-service.js";
 import { UiStateService } from "../services/ui-state-service.js";
 import type { WakeWordController } from "../wake-word/initialize.js";
 import { WindowManager } from "../windows/window-manager.js";
-import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
+import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
 import type { MobileBridgeService } from "../services/mobile-bridge/service.js";
 import type { DevToolServer } from "../devtool/dev-server.js";
 import { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
@@ -36,7 +36,7 @@ export type BootstrapState = {
   appSessionStartedAt: number;
   deferredStartupSequence: Promise<void> | null;
   deviceId: string | null;
-  hmrMorphOrchestrator: ReturnType<typeof createHmrMorphOrchestrator> | null;
+  hmrTransitionController: ReturnType<typeof createHmrTransitionController> | null;
   isQuitting: boolean;
   devProjectsUpdateUnsubscribe: (() => void) | null;
   localChatUpdateUnsubscribe: (() => void) | null;
@@ -159,7 +159,7 @@ export const createBootstrapContext = (
     deferredStartupSequence: null,
     deviceId: null,
     devProjectsUpdateUnsubscribe: null,
-    hmrMorphOrchestrator: null,
+    hmrTransitionController: null,
     isQuitting: false,
     localChatUpdateUnsubscribe: null,
     overlayController: null,

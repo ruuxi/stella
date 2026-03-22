@@ -15,7 +15,7 @@ export function OnboardingPersonalityPhase({
 }: PersonalityPhaseProps) {
   return (
     <div className="onboarding-step-content">
-      <div className="onboarding-pills">
+      <div className="onboarding-pills onboarding-pill-stagger">
         {(["emotes", "emoji", "none"] as const).map((style) => (
           <button
             key={style}
@@ -27,24 +27,26 @@ export function OnboardingPersonalityPhase({
           </button>
         ))}
       </div>
-      {expressionStyle && (
-        <p className="onboarding-personality-preview">
-          {expressionStyle === "emotes" && (
-            <>
-              Got it! I'll get that done for you{" "}
-              <img
-                src="/emotes/assets/7tv/catNOD-7eeffb97edbf.webp"
-                alt="catNOD"
-                className="onboarding-emote-preview"
-              />
-            </>
-          )}
-          {expressionStyle === "emoji" &&
-            "Got it! I'll get that done for you ðŸ˜Š"}
-          {expressionStyle === "none" &&
-            "Got it. I'll get that done for you."}
-        </p>
-      )}
+      <p
+        className="onboarding-personality-preview"
+        data-visible={expressionStyle !== null || undefined}
+        aria-hidden={expressionStyle === null}
+      >
+        {expressionStyle === "emotes" && (
+          <>
+            Got it! I'll get that done for you{" "}
+            <img
+              src="/emotes/assets/7tv/catNOD-7eeffb97edbf.webp"
+              alt="catNOD"
+              className="onboarding-emote-preview"
+            />
+          </>
+        )}
+        {expressionStyle === "emoji" &&
+          "Got it! I'll get that done for you \uD83D\uDE0A"}
+        {expressionStyle === "none" &&
+          "Got it. I'll get that done for you."}
+      </p>
       <button
         className="onboarding-confirm"
         data-visible={expressionStyle !== null}

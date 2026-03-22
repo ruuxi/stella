@@ -67,7 +67,7 @@ describe("registerAgentHandlers", () => {
       isHostAuthAuthenticated: () => true,
       frontendRoot: "/mock/project/stella/desktop",
       assertPrivilegedSender: () => true,
-      hmrMorphOrchestrator: null,
+      hmrTransitionController: null,
     });
 
     const startChat = ipcHandleHandlers.get("agent:startChat");
@@ -125,7 +125,7 @@ describe("registerAgentHandlers", () => {
       isHostAuthAuthenticated: () => true,
       frontendRoot: "/mock/project/stella/desktop",
       assertPrivilegedSender: () => true,
-      hmrMorphOrchestrator: null,
+      hmrTransitionController: null,
     });
 
     const getAppSessionStartedAt = ipcHandleHandlers.get("agent:getAppSessionStartedAt");
@@ -151,7 +151,7 @@ describe("registerAgentHandlers", () => {
       isHostAuthAuthenticated: () => true,
       frontendRoot: "/mock/project/stella/desktop",
       assertPrivilegedSender: () => true,
-      hmrMorphOrchestrator: null,
+      hmrTransitionController: null,
     });
 
     const healthCheck = ipcHandleHandlers.get("agent:healthCheck");
@@ -200,7 +200,7 @@ describe("registerAgentHandlers", () => {
       isHostAuthAuthenticated: () => true,
       frontendRoot: "/mock/project/stella/desktop",
       assertPrivilegedSender: () => true,
-      hmrMorphOrchestrator: null,
+      hmrTransitionController: null,
     });
 
     const generateHandler = ipcHandleHandlers.get("agent:startPersonalWebsiteGeneration");

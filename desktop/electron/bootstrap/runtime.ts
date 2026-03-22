@@ -8,7 +8,7 @@ import { getSelectedText, initSelectedTextProcess } from "../selected-text.js";
 import { resolveStellaHome } from "../../packages/runtime-kernel/home/stella-home.js";
 import { initializeWakeWord } from "../wake-word/initialize.js";
 import { WindowManager } from "../windows/window-manager.js";
-import { createHmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
+import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
 import {
   createBootstrapResetFlows,
   shutdownBootstrapRuntime,
@@ -176,12 +176,14 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
           win?.focus();
         },
         runHmrTransition: async ({
+          runId,
           requiresFullReload,
           resumeHmr,
           reportState,
         }) => {
-          if (state.hmrMorphOrchestrator) {
-            await state.hmrMorphOrchestrator.runTransition({
+          if (state.hmrTransitionController) {
+            await state.hmrTransitionController.runTransition({
+              runId,
               resumeHmr,
               reportState,
               requiresFullReload,
@@ -397,7 +399,7 @@ const initializeWindowControllers = (context: BootstrapContext) => {
 const initializeUiServerAndSelfMod = (context: BootstrapContext) => {
   const { state } = context;
 
-  state.hmrMorphOrchestrator = createHmrMorphOrchestrator({
+  state.hmrTransitionController = createHmrTransitionController({
     getFullWindow: () => state.windowManager?.getFullWindow() ?? null,
     getOverlayController: () => state.overlayController,
   });

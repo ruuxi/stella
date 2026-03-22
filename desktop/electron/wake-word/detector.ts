@@ -176,8 +176,8 @@ const STACK_REQUIRED = 3;
 const COOLDOWN_MS = 1000;
 const WARMUP_FRAMES = 0;
 
-// Calibrated from the current Stella fp16 export benchmark (iter_030).
-const DEFAULT_THRESHOLD = 0.70;
+// Default classifier score threshold (higher = fewer false triggers).
+const DEFAULT_THRESHOLD = 0.85;
 const MIN_THRESHOLD = 0.5;
 
 export function createWakeWordVadGateState(

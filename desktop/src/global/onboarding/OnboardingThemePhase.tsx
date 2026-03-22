@@ -27,7 +27,7 @@ const renderThemeOptionRow = <T extends string>(
 ) => (
   <>
     <div className="onboarding-step-label">{label}</div>
-    <div className="onboarding-theme-row">
+    <div className="onboarding-theme-row onboarding-pill-stagger">
       {options.map((option) => (
         <button
           key={option}
@@ -82,7 +82,7 @@ export function OnboardingThemePhase({
 
       <div className="onboarding-step-label">Theme</div>
       <div
-        className="onboarding-theme-grid"
+        className="onboarding-theme-grid onboarding-pill-stagger"
         onMouseLeave={onThemePreviewLeave}
       >
         {sortedThemes.map((theme) => (

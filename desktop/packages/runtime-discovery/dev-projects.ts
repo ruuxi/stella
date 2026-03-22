@@ -1,13 +1,21 @@
 /**
  * Dev Projects Discovery
  *
- * Finds active development projects by scanning for git repos
- * and checking recency via .git folder modification times.
+ * Finds active development projects from real usage signals rather than
+ * scanning hardcoded directories. Sources:
+ *
+ * 1. macOS Spotlight (mdfind) — instant discovery of all git repos on disk
+ * 2. GitHub Desktop repositories.json — repos the user has cloned/opened
+ * 3. JetBrains recent projects — WebStorm, IntelliJ, PyCharm, etc.
+ *
+ * All discovered repos are filtered to only include those where the user
+ * has authored commits (matched against git config user.name/email).
  */
 
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
+import { exec } from "child_process";
 
 import type { DevProject } from "./types.js";
 
@@ -17,83 +25,55 @@ const log = (...args: unknown[]) => console.log("[dev-projects]", ...args);
 // Configuration
 // ---------------------------------------------------------------------------
 
-// How many days back to consider a project "active"
 const RECENCY_DAYS = 30;
 
-// Maximum depth to scan for .git folders
-const MAX_DEPTH = 4;
+// ---------------------------------------------------------------------------
+// Git Identity
+// ---------------------------------------------------------------------------
 
-// Directories to skip
-const SKIP_DIRS = new Set([
-  "node_modules",
-  ".git",
-  "vendor",
-  "target",
-  "build",
-  "dist",
-  ".cache",
-  ".npm",
-  ".pnpm",
-  ".yarn",
-  "__pycache__",
-  ".venv",
-  "venv",
-  "env",
-  ".cargo",
-  ".rustup",
-  "go",
-  ".local",
-  ".config",
-  "Library",
-  "AppData",
-  "Application Data",
-  "Applications",
-  "Program Files",
-  "Program Files (x86)",
-  "Windows",
-]);
+type GitIdentity = {
+  name?: string;
+  email?: string;
+};
 
-// Common project directories to scan
-const getProjectRoots = (): string[] => {
-  const home = os.homedir();
-  const platform = process.platform;
+const readGitIdentity = async (): Promise<GitIdentity> => {
+  const gitConfigPath = path.join(os.homedir(), ".gitconfig");
+  try {
+    const content = await fs.readFile(gitConfigPath, "utf-8");
+    const identity: GitIdentity = {};
+    let inUserSection = false;
 
-  const roots = [
-    path.join(home, "projects"),
-    path.join(home, "repos"),
-    path.join(home, "code"),
-    path.join(home, "dev"),
-    path.join(home, "src"),
-    path.join(home, "work"),
-    path.join(home, "workspace"),
-    path.join(home, "git"),
-    path.join(home, "GitHub"),
-  ];
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (/^\[user\]$/i.test(trimmed)) {
+        inUserSection = true;
+        continue;
+      }
+      if (trimmed.startsWith("[")) {
+        inUserSection = false;
+        continue;
+      }
+      if (!inUserSection) continue;
 
-  if (platform === "darwin") {
-    roots.push(path.join(home, "Developer"));
+      const kv = trimmed.match(/^(\w+)\s*=\s*(.*)$/);
+      if (kv) {
+        if (kv[1] === "name") identity.name = kv[2].trim();
+        if (kv[1] === "email") identity.email = kv[2].trim();
+      }
+    }
+
+    return identity;
+  } catch {
+    return {};
   }
-
-  if (platform === "win32") {
-    // Common Windows dev locations
-    roots.push("C:\\dev");
-    roots.push("C:\\projects");
-    roots.push("C:\\repos");
-  }
-
-  // Also check Documents folder
-  roots.push(path.join(home, "Documents"));
-
-  return roots;
 };
 
 // ---------------------------------------------------------------------------
-// Git Repo Detection
+// Git Repo Validation
 // ---------------------------------------------------------------------------
 
 /**
- * Check if a directory is a git repository and get its last activity time
- * Returns null if not a git repo or can't determine activity time
+ * Check if a directory is a git repo and get its last activity time.
  */
 const getGitRepoActivity = async (dir: string): Promise<number | null> => {
   const gitDir = path.join(dir, ".git");
@@ -102,16 +82,15 @@ const getGitRepoActivity = async (dir: string): Promise<number | null> => {
     const stat = await fs.stat(gitDir);
     if (!stat.isDirectory()) return null;
 
-    // Check multiple files to get the most recent activity
     const filesToCheck = [
-      path.join(gitDir, "index"), // Updated on most git operations
-      path.join(gitDir, "HEAD"), // Updated on checkout
-      path.join(gitDir, "FETCH_HEAD"), // Updated on fetch
-      path.join(gitDir, "logs", "HEAD"), // Reflog
+      path.join(gitDir, "index"),
+      path.join(gitDir, "HEAD"),
+      path.join(gitDir, "FETCH_HEAD"),
+      path.join(gitDir, "logs", "HEAD"),
     ];
 
     const fileStats = await Promise.all(
-      filesToCheck.map((file) => fs.stat(file).catch(() => null))
+      filesToCheck.map((file) => fs.stat(file).catch(() => null)),
     );
     let mostRecent = 0;
     for (const fileStat of fileStats) {
@@ -120,7 +99,6 @@ const getGitRepoActivity = async (dir: string): Promise<number | null> => {
       }
     }
 
-    // Fall back to .git folder mtime if no files found
     return mostRecent > 0 ? mostRecent : stat.mtimeMs;
   } catch {
     return null;
@@ -128,56 +106,217 @@ const getGitRepoActivity = async (dir: string): Promise<number | null> => {
 };
 
 /**
- * Recursively scan a directory for git repos
+ * Check if the user has authored any commits in a git repo.
+ * Matches against git config user.name and user.email.
  */
-const scanForGitRepos = async (
-  dir: string,
-  depth: number,
-  cutoffTime: number,
-  results: DevProject[]
-): Promise<void> => {
-  if (depth > MAX_DEPTH) return;
+const hasUserCommits = async (
+  repoPath: string,
+  identity: GitIdentity,
+): Promise<boolean> => {
+  if (!identity.name && !identity.email) return true; // can't filter, include it
+
+  // Build --author args for each identity part
+  const authorArgs: string[] = [];
+  if (identity.email) authorArgs.push(`--author=${identity.email}`);
+  else if (identity.name) authorArgs.push(`--author=${identity.name}`);
+
+  const cmd = `git -C ${JSON.stringify(repoPath)} log ${authorArgs.map((a) => JSON.stringify(a)).join(" ")} --oneline -1 --since="${RECENCY_DAYS}.days.ago"`;
+
+  return new Promise((resolve) => {
+    exec(cmd, { encoding: "utf-8", timeout: 5000, windowsHide: true }, (error, stdout) => {
+      if (error) {
+        // git log fails on empty repos or non-git dirs — exclude
+        resolve(false);
+        return;
+      }
+      resolve(stdout.trim().length > 0);
+    });
+  });
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const execAsync = (command: string, timeoutMs = 10000): Promise<string> =>
+  new Promise((resolve, reject) => {
+    exec(
+      command,
+      { encoding: "utf-8", maxBuffer: 1024 * 512, timeout: timeoutMs, windowsHide: true },
+      (error, stdout) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(stdout.trim());
+      },
+    );
+  });
+
+const fileExists = async (filePath: string): Promise<boolean> => {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Source 1: macOS Spotlight (mdfind)
+// ---------------------------------------------------------------------------
+
+const collectFromSpotlight = async (): Promise<string[]> => {
+  if (process.platform !== "darwin") return [];
 
   try {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
+    // mdfind returns all .git directories on disk instantly via the Spotlight index
+    const output = await execAsync(
+      'mdfind "kMDItemFSName == .git && kMDItemContentType == public.folder" -onlyin ~',
+      15000,
+    );
+    if (!output) return [];
 
-    // Check if this directory is a git repo
-    const hasGit = entries.some((e) => e.isDirectory() && e.name === ".git");
+    return output
+      .split("\n")
+      .filter((line) => line.endsWith("/.git"))
+      .map((line) => path.dirname(line));
+  } catch {
+    log("Spotlight query failed, skipping");
+    return [];
+  }
+};
 
-    if (hasGit) {
-      const lastActivity = await getGitRepoActivity(dir);
+// ---------------------------------------------------------------------------
+// Source 2: GitHub Desktop repositories.json
+// ---------------------------------------------------------------------------
 
-      if (lastActivity && lastActivity >= cutoffTime) {
-        const name = path.basename(dir);
-        results.push({
-          name,
-          path: dir,
-          lastActivity,
-        });
-      }
+type GHDesktopRepo = {
+  path?: string;
+  missing?: boolean;
+};
 
-      // Don't recurse into git repos (submodules are rare and add complexity)
-      return;
-    }
+const collectFromGitHubDesktop = async (): Promise<string[]> => {
+  const home = os.homedir();
+  const platform = process.platform;
 
-    // Recurse into subdirectories
-    const subdirs = entries.filter(
-      (e) => e.isDirectory() && !e.name.startsWith(".") && !SKIP_DIRS.has(e.name)
+  let reposPath: string;
+  if (platform === "win32") {
+    reposPath = path.join(
+      process.env.APPDATA || path.join(home, "AppData", "Roaming"),
+      "GitHub Desktop",
+      "repositories.json",
+    );
+  } else if (platform === "darwin") {
+    reposPath = path.join(
+      home,
+      "Library",
+      "Application Support",
+      "GitHub Desktop",
+      "repositories.json",
+    );
+  } else {
+    reposPath = path.join(home, ".config", "GitHub Desktop", "repositories.json");
+  }
+
+  try {
+    if (!(await fileExists(reposPath))) return [];
+
+    const content = await fs.readFile(reposPath, "utf-8");
+    const repos: GHDesktopRepo[] = JSON.parse(content);
+
+    return repos
+      .filter((r) => r.path && !r.missing)
+      .map((r) => r.path!);
+  } catch {
+    log("GitHub Desktop repos not found, skipping");
+    return [];
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Source 3: JetBrains Recent Projects
+// ---------------------------------------------------------------------------
+
+const JETBRAINS_IDES = [
+  "IntelliJIdea",
+  "WebStorm",
+  "PyCharm",
+  "Rider",
+  "GoLand",
+  "CLion",
+  "RubyMine",
+  "PhpStorm",
+  "DataGrip",
+  "RustRover",
+];
+
+const collectFromJetBrains = async (): Promise<string[]> => {
+  const home = os.homedir();
+  const platform = process.platform;
+
+  let configBase: string;
+  if (platform === "win32") {
+    configBase = path.join(
+      process.env.APPDATA || path.join(home, "AppData", "Roaming"),
+      "JetBrains",
+    );
+  } else if (platform === "darwin") {
+    configBase = path.join(home, "Library", "Application Support", "JetBrains");
+  } else {
+    configBase = path.join(home, ".config", "JetBrains");
+  }
+
+  if (!(await fileExists(configBase))) return [];
+
+  const results: string[] = [];
+
+  try {
+    const entries = await fs.readdir(configBase, { withFileTypes: true });
+
+    // Find versioned IDE directories (e.g., "WebStorm2024.3", "IntelliJIdea2025.1")
+    const ideDirs = entries.filter(
+      (e) =>
+        e.isDirectory() &&
+        JETBRAINS_IDES.some((ide) => e.name.startsWith(ide)),
     );
 
-    // Limit parallel scans to avoid too many open handles
-    const batchSize = 10;
-    for (let i = 0; i < subdirs.length; i += batchSize) {
-      const batch = subdirs.slice(i, i + batchSize);
-      await Promise.all(
-        batch.map((subdir) =>
-          scanForGitRepos(path.join(dir, subdir.name), depth + 1, cutoffTime, results)
-        )
+    for (const ideDir of ideDirs) {
+      const recentPath = path.join(
+        configBase,
+        ideDir.name,
+        "options",
+        "recentProjects.xml",
       );
+
+      try {
+        if (!(await fileExists(recentPath))) continue;
+
+        const content = await fs.readFile(recentPath, "utf-8");
+
+        // Extract project paths from XML — they appear as key="..." attributes
+        // Format: <entry key="$USER_HOME$/projects/my-app">
+        const pathMatches = content.matchAll(/key="([^"]+)"/g);
+        for (const match of pathMatches) {
+          let projectPath = match[1];
+          // JetBrains uses $USER_HOME$ as placeholder
+          projectPath = projectPath.replace(/\$USER_HOME\$/g, home);
+          // Normalize path separators
+          projectPath = projectPath.replace(/\//g, path.sep);
+
+          if (projectPath && !projectPath.includes("$")) {
+            results.push(projectPath);
+          }
+        }
+      } catch {
+        // Can't read this IDE's recent projects, skip
+      }
     }
   } catch {
-    // Directory not accessible, skip
+    log("JetBrains config not found, skipping");
   }
+
+  return results;
 };
 
 // ---------------------------------------------------------------------------
@@ -187,53 +326,79 @@ const scanForGitRepos = async (
 export const collectDevProjects = async (): Promise<DevProject[]> => {
   log("Starting dev projects discovery...");
 
-  const projectRoots = getProjectRoots();
   const cutoffTime = Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000;
+
+  // Collect candidate paths from all sources in parallel
+  const [identity, spotlightPaths, ghDesktopPaths, jetbrainsPaths] =
+    await Promise.all([
+      readGitIdentity(),
+      collectFromSpotlight(),
+      collectFromGitHubDesktop(),
+      collectFromJetBrains(),
+    ]);
+
+  log(
+    `Candidates: spotlight=${spotlightPaths.length}, github-desktop=${ghDesktopPaths.length}, jetbrains=${jetbrainsPaths.length}`,
+  );
+  if (identity.name || identity.email) {
+    log(`Git identity: ${identity.name || "?"} <${identity.email || "?"}>`);
+  }
+
+  // Deduplicate candidate paths
+  const seen = new Set<string>();
+  const candidatePaths: string[] = [];
+  for (const p of [...spotlightPaths, ...ghDesktopPaths, ...jetbrainsPaths]) {
+    const normalized = p.toLowerCase().replace(/[\\/]+$/, "");
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    candidatePaths.push(p);
+  }
+
+  log(`${candidatePaths.length} unique candidate paths`);
+
+  // Validate candidates in parallel (batched to avoid too many git processes)
+  const batchSize = 15;
   const results: DevProject[] = [];
 
-  // Check which roots exist (parallel stat)
-  const rootStats = await Promise.all(
-    projectRoots.map(async (root) => {
-      try {
-        const stat = await fs.stat(root);
-        return stat.isDirectory() ? root : null;
-      } catch {
-        return null;
-      }
-    })
-  );
-  const existingRoots = rootStats.filter((r): r is string => r !== null);
+  for (let i = 0; i < candidatePaths.length; i += batchSize) {
+    const batch = candidatePaths.slice(i, i + batchSize);
 
-  log(`Scanning ${existingRoots.length} project roots:`, existingRoots);
+    const batchResults = await Promise.all(
+      batch.map(async (projectPath): Promise<DevProject | null> => {
+        const lastActivity = await getGitRepoActivity(projectPath);
+        if (!lastActivity || lastActivity < cutoffTime) return null;
 
-  // Scan all roots for git repos in parallel
-  await Promise.all(
-    existingRoots.map((root) => scanForGitRepos(root, 0, cutoffTime, results))
-  );
+        const userOwned = await hasUserCommits(projectPath, identity);
+        if (!userOwned) return null;
 
-  // Deduplicate by path (in case roots overlap)
-  const seen = new Set<string>();
-  const unique = results.filter((p) => {
-    const key = p.path.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+        return {
+          name: path.basename(projectPath),
+          path: projectPath,
+          lastActivity,
+        };
+      }),
+    );
+
+    for (const result of batchResults) {
+      if (result) results.push(result);
+    }
+  }
 
   // Sort by most recent activity
-  unique.sort((a, b) => b.lastActivity - a.lastActivity);
+  results.sort((a, b) => b.lastActivity - a.lastActivity);
 
-  // Limit to top 30 projects
-  const limited = unique.slice(0, 30);
+  // Limit to top 30
+  const limited = results.slice(0, 30);
 
-  log(`Found ${limited.length} active projects (last ${RECENCY_DAYS} days)`);
+  log(`Found ${limited.length} active projects with user commits (last ${RECENCY_DAYS} days)`);
 
   return limited;
 };
 
-/**
- * Format dev projects for LLM synthesis
- */
+// ---------------------------------------------------------------------------
+// Formatting
+// ---------------------------------------------------------------------------
+
 /**
  * Format dev projects for LLM synthesis.
  *
@@ -241,7 +406,9 @@ export const collectDevProjects = async (): Promise<DevProject[]> => {
  * We cap at 8 for synthesis — enough to show active work, not so many
  * that stale projects from weeks ago dilute the signal.
  */
-export const formatDevProjectsForSynthesis = (projects: DevProject[]): string => {
+export const formatDevProjectsForSynthesis = (
+  projects: DevProject[],
+): string => {
   if (projects.length === 0) return "";
 
   const sections: string[] = ["## Active Projects"];
@@ -251,11 +418,18 @@ export const formatDevProjectsForSynthesis = (projects: DevProject[]): string =>
       projects
         .slice(0, 8)
         .map((p) => {
-          const daysAgo = Math.floor((Date.now() - p.lastActivity) / (24 * 60 * 60 * 1000));
-          const recency = daysAgo === 0 ? "today" : daysAgo === 1 ? "yesterday" : `${daysAgo}d ago`;
+          const daysAgo = Math.floor(
+            (Date.now() - p.lastActivity) / (24 * 60 * 60 * 1000),
+          );
+          const recency =
+            daysAgo === 0
+              ? "today"
+              : daysAgo === 1
+                ? "yesterday"
+                : `${daysAgo}d ago`;
           return `- ${p.name} (${p.path}) (${recency})`;
         })
-        .join("\n")
+        .join("\n"),
   );
 
   return sections.join("\n");

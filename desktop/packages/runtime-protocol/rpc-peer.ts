@@ -83,7 +83,7 @@ export class JsonRpcPeer {
 
   request<TResult = unknown>(method: string, params?: unknown): Promise<TResult> {
     const id = this.nextId++;
-    const timeoutMs = this.options.requestTimeoutMs ?? 60_000;
+    const timeoutMs = this.options.requestTimeoutMs ?? 30 * 60 * 1000;
     const message: JsonRpcRequest = { id, method, ...(params === undefined ? {} : { params }) };
     return new Promise<TResult>((resolve, reject) => {
       const timeout = setTimeout(() => {

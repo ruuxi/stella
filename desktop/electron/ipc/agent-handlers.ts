@@ -17,7 +17,7 @@ import type { StellaHostRunner } from "../stella-host-runner.js";
 import {
   type RuntimePersonalWebsiteGenerationRequest,
 } from "../../packages/runtime-protocol/index.js";
-import type { HmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
+import type { HmrTransitionController } from "../self-mod/hmr-morph.js";
 
 type AgentHandlersOptions = {
   getStellaHostRunner: () => StellaHostRunner | null;
@@ -28,7 +28,7 @@ type AgentHandlersOptions = {
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
-  hmrMorphOrchestrator?: HmrMorphOrchestrator | null;
+  hmrTransitionController?: HmrTransitionController | null;
   getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
 };
 
@@ -289,9 +289,10 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
           }, 60_000);
         },
         onSelfModHmrState: (ev) => emitSelfModHmrState(ev, senderWebContentsId),
-        onHmrResume: options.hmrMorphOrchestrator
-          ? ({ resumeHmr, reportState, requiresFullReload }) =>
-              options.hmrMorphOrchestrator!.runTransition({
+        onHmrResume: options.hmrTransitionController
+          ? ({ runId, resumeHmr, reportState, requiresFullReload }) =>
+              options.hmrTransitionController!.runTransition({
+                runId,
                 resumeHmr,
                 reportState,
                 requiresFullReload,

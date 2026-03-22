@@ -29,6 +29,7 @@ type AgentCallbacks = {
   onTaskEvent?: (event: TaskLifecycleEvent) => void;
   onSelfModHmrState?: (event: SelfModHmrState) => void;
   onHmrResume?: (args: {
+    runId: string;
     resumeHmr: () => Promise<void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;

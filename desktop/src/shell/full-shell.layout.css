@@ -181,11 +181,13 @@
   pointer-events: none;
 }
 
-/* Full-screen demo: expand to fill left side (where Stella was) */
+/* Full-screen demo: fill left side; padding-right keeps a clear gap before the showcase column */
 .onboarding-layout[data-demo] .onboarding-demo-area[data-visible="true"] {
   left: 0;
   right: auto;
   width: calc(100% - 320px);
+  padding-right: 32px;
+  box-sizing: border-box;
   transform: translateX(0);
 }
 

@@ -14,13 +14,13 @@ import { ipcMain, type BrowserWindow } from "electron";
 import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 
-const MIN_COVER_MS = 160;
 const OVERLAY_READY_TIMEOUT_MS = 500;
-const CAPTURE_SETTLE_DELAY_MS = 150;
+const CAPTURE_SETTLE_DELAY_MS = 80;
 const MORPH_DONE_TIMEOUT_MS = 5000;
 
-export type HmrMorphOrchestrator = {
+export type HmrTransitionController = {
   runTransition: (opts: {
+    runId: string;
     resumeHmr: () => Promise<void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;
@@ -33,15 +33,31 @@ const IDLE_HMR_STATE: SelfModHmrState = {
   requiresFullReload: false,
 };
 
-export function createHmrMorphOrchestrator(deps: {
+export function createHmrTransitionController(deps: {
   getFullWindow: () => BrowserWindow | null;
   getOverlayController: () => OverlayWindowController | null;
-}): HmrMorphOrchestrator {
+}): HmrTransitionController {
+  const logMorphTiming = (
+    phase: string,
+    data: Record<string, number | boolean | string | null | undefined>,
+  ) => {
+    console.info("[stella:morph]", phase, data);
+  };
+
   const captureWindow = async (win: BrowserWindow): Promise<string | null> => {
+    const startedAt = performance.now();
     try {
       const image = await win.webContents.capturePage();
+      logMorphTiming("capture", {
+        durationMs: Math.round(performance.now() - startedAt),
+        ok: true,
+      });
       return image.toDataURL();
     } catch {
+      logMorphTiming("capture", {
+        durationMs: Math.round(performance.now() - startedAt),
+        ok: false,
+      });
       return null;
     }
   };
@@ -69,10 +85,14 @@ export function createHmrMorphOrchestrator(deps: {
 
   const waitForWindowLoad = (win: BrowserWindow): Promise<void> => {
     return new Promise((resolve) => {
+      const startedAt = performance.now();
       let resolved = false;
       const done = () => {
         if (resolved) return;
         resolved = true;
+        logMorphTiming("waitForWindowLoad", {
+          durationMs: Math.round(performance.now() - startedAt),
+        });
         resolve();
       };
       const timer = setTimeout(() => {
@@ -88,6 +108,7 @@ export function createHmrMorphOrchestrator(deps: {
   };
 
   const runTransition = async (opts: {
+    runId: string;
     resumeHmr: () => Promise<void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;
@@ -127,7 +148,7 @@ export function createHmrMorphOrchestrator(deps: {
     }
 
     const bounds = fullWindow.getBounds();
-    const coverStartedAt = Date.now();
+    const transitionStartedAt = performance.now();
     const overlayReady = waitForOverlaySignal(
       "overlay:morphReady",
       OVERLAY_READY_TIMEOUT_MS,
@@ -138,74 +159,91 @@ export function createHmrMorphOrchestrator(deps: {
       paused: false,
       requiresFullReload: opts.requiresFullReload,
     });
-    overlayController.startMorphForward(oldScreenshot, bounds);
+    overlayController.startMorphForward(oldScreenshot, bounds, fullWindow);
 
-    const hmrDone = (async () => {
-      await overlayReady;
+    // Once the forward morph starts the overlay is visible — finish() MUST run
+    // to clean it up, even if an error occurs mid-transition.
+    try {
+      const hmrDone = (async () => {
+        const overlayReadyStartedAt = performance.now();
+        await overlayReady;
+        logMorphTiming("overlayReady", {
+          durationMs: Math.round(performance.now() - overlayReadyStartedAt),
+        });
 
-      const remainingCoverMs = MIN_COVER_MS - (Date.now() - coverStartedAt);
-      if (remainingCoverMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, remainingCoverMs));
+        emitState({
+          phase: "applying",
+          paused: false,
+          requiresFullReload: opts.requiresFullReload,
+        });
+
+        const didStartLoading = new Promise<boolean>((resolve) => {
+          const startedAt = performance.now();
+          const timer = setTimeout(() => resolve(false), 2000);
+          fullWindow.webContents.once("did-start-loading", () => {
+            clearTimeout(timer);
+            logMorphTiming("didStartLoading", {
+              durationMs: Math.round(performance.now() - startedAt),
+              started: true,
+            });
+            resolve(true);
+          });
+        });
+
+        await opts.resumeHmr();
+
+        const wasFullReload = await didStartLoading;
+        const requiresFullReload = opts.requiresFullReload || wasFullReload;
+
+        if (requiresFullReload) {
+          emitState({
+            phase: "reloading",
+            paused: false,
+            requiresFullReload: true,
+          });
+        }
+
+        if (wasFullReload) {
+          await waitForWindowLoad(fullWindow);
+        } else {
+          const settleStartedAt = performance.now();
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          logMorphTiming("softSettleWait", {
+            durationMs: Math.round(performance.now() - settleStartedAt),
+          });
+        }
+
+        return requiresFullReload;
+      })();
+
+      const requiresFullReload = await hmrDone;
+
+      if (fullWindow.isDestroyed()) {
+        return;
+      }
+
+      const newScreenshot = await captureWindow(fullWindow);
+      if (!newScreenshot) {
+        return;
       }
 
       emitState({
-        phase: "applying",
+        phase: "morph-reverse",
         paused: false,
-        requiresFullReload: opts.requiresFullReload,
+        requiresFullReload,
       });
+      overlayController.startMorphReverse(newScreenshot, requiresFullReload);
 
-      const didStartLoading = new Promise<boolean>((resolve) => {
-        const timer = setTimeout(() => resolve(false), 2000);
-        fullWindow.webContents.once("did-start-loading", () => {
-          clearTimeout(timer);
-          resolve(true);
-        });
+      const reverseStartedAt = performance.now();
+      await waitForMorphDone();
+      logMorphTiming("reverseMorph", {
+        durationMs: Math.round(performance.now() - reverseStartedAt),
+        totalDurationMs: Math.round(performance.now() - transitionStartedAt),
+        requiresFullReload,
       });
-
-      await opts.resumeHmr();
-
-      const wasFullReload = await didStartLoading;
-      const requiresFullReload = opts.requiresFullReload || wasFullReload;
-
-      if (requiresFullReload) {
-        emitState({
-          phase: "reloading",
-          paused: false,
-          requiresFullReload: true,
-        });
-      }
-
-      if (wasFullReload) {
-        await waitForWindowLoad(fullWindow);
-      } else {
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-
-      return requiresFullReload;
-    })();
-
-    const requiresFullReload = await hmrDone;
-
-    if (fullWindow.isDestroyed()) {
+    } finally {
       finish();
-      return;
     }
-
-    const newScreenshot = await captureWindow(fullWindow);
-    if (!newScreenshot) {
-      finish();
-      return;
-    }
-
-    emitState({
-      phase: "morph-reverse",
-      paused: false,
-      requiresFullReload,
-    });
-    overlayController.startMorphReverse(newScreenshot, requiresFullReload);
-
-    await waitForMorphDone();
-    finish();
   };
 
   return { runTransition };
