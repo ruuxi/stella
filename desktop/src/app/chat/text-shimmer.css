@@ -1,10 +1,6 @@
-/* TextShimmer — per-character sweep animation */
+/* TextShimmer — gradient sweeps across the full phrase (shared background) */
 
 .text-shimmer {
-  display: inline;
-}
-
-.text-shimmer-char {
   display: inline;
   background: linear-gradient(
     90deg,
@@ -18,24 +14,23 @@
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation-name: text-shimmer-char-sweep;
+  animation-name: text-shimmer-sweep;
   animation-duration: var(--text-shimmer-duration, 2s);
   animation-iteration-count: infinite;
   animation-timing-function: linear;
-  animation-fill-mode: both;
-  animation-delay: calc(
-    var(--text-shimmer-step, 45ms) * var(--text-shimmer-index, 0) * -1
-  );
 }
 
-@keyframes text-shimmer-char-sweep {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+@keyframes text-shimmer-sweep {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
 }
 
-/* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  .text-shimmer-char {
+  .text-shimmer {
     animation: none;
     -webkit-text-fill-color: currentColor;
     background: none;

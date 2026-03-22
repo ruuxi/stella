@@ -1,6 +1,5 @@
 /**
- * TextShimmer: Per-character shimmer sweep animation.
- * Each character gets a staggered animation delay for an organic wave effect.
+ * TextShimmer: animated gradient shimmer across the entire string.
  */
 
 import { useMemo } from "react";
@@ -13,22 +12,15 @@ interface TextShimmerProps {
   className?: string;
 }
 
-const STEP_MS = 45; // delay between each character's animation start
-
 export function TextShimmer({
   text,
   active = true,
   className,
 }: TextShimmerProps) {
-  const chars = useMemo(() => text.split(""), [text]);
-
-  // Duration scales with text length to keep velocity constant
   const duration = useMemo(() => {
-    const velocity = 0.01375; // ch/ms — matches OpenCode
-    const len = chars.length;
-    const size = 2; // background-size multiplier
-    return Math.max(800, len * (size - 1) / velocity);
-  }, [chars.length]);
+    const perCharMs = 95;
+    return Math.max(1400, Math.min(4000, text.length * perCharMs));
+  }, [text.length]);
 
   if (!active) {
     return <span className={className}>{text}</span>;
@@ -37,22 +29,13 @@ export function TextShimmer({
   return (
     <span
       className={`text-shimmer ${className ?? ""}`}
-      style={{
-        "--text-shimmer-duration": `${duration}ms`,
-        "--text-shimmer-step": `${STEP_MS}ms`,
-      } as React.CSSProperties}
+      style={
+        {
+          "--text-shimmer-duration": `${duration}ms`,
+        } as React.CSSProperties
+      }
     >
-      {chars.map((char, i) => (
-        <span
-          key={i}
-          className="text-shimmer-char"
-          style={{
-            "--text-shimmer-index": i,
-          } as React.CSSProperties}
-        >
-          {char === " " ? "\u00A0" : char}
-        </span>
-      ))}
+      {text}
     </span>
   );
 }
