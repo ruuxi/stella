@@ -29,7 +29,7 @@ type WindowManagerOptions = {
   getOverlayController: () => OverlayWindowController | null
 }
 
-const MINI_SHELL_ANIM_MS = 140
+const MINI_SHELL_ANIM_MS = 280
 
 const miniSize = MINI_SHELL_SIZE
 
