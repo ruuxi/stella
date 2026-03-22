@@ -287,6 +287,7 @@ export const OnboardingStep1 = ({
     null,
   );
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const crossfadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [browserEnabled, setBrowserEnabled] = useState(false);
   const [selectedBrowser, setSelectedBrowser] = useState<BrowserId | null>(
@@ -412,9 +413,12 @@ export const OnboardingStep1 = ({
           return;
         }
 
-        timeoutRef.current = setTimeout(() => {
+        if (crossfadeTimerRef.current) {
+          clearTimeout(crossfadeTimerRef.current);
+        }
+        crossfadeTimerRef.current = setTimeout(() => {
           setOutgoingSplitPhase(null);
-          timeoutRef.current = null;
+          crossfadeTimerRef.current = null;
         }, SPLIT_CROSSFADE_MS);
         return;
       }
@@ -549,6 +553,14 @@ export const OnboardingStep1 = ({
   }, [clearTimeoutRef, onComplete, phase]);
 
   useEffect(() => clearTimeoutRef, [clearTimeoutRef]);
+
+  useEffect(() => {
+    return () => {
+      if (crossfadeTimerRef.current) {
+        clearTimeout(crossfadeTimerRef.current);
+      }
+    };
+  }, []);
 
   const nextSplitStep = useCallback(() => {
     const index = SPLIT_STEP_ORDER.indexOf(phase);
