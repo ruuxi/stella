@@ -16,6 +16,10 @@ type HmrStatus = {
   requiresFullReload: boolean;
 };
 
+type ResumeHmrOptions = {
+  suppressClientFullReload?: boolean;
+};
+
 const withTimeoutSignal = (timeoutMs: number): AbortSignal => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -31,6 +35,7 @@ const postWithRetry = async (args: {
   getDevServerUrl: () => string;
   path: string;
   maxWaitMs: number;
+  body?: unknown;
 }): Promise<boolean> => {
   const startedAt = Date.now();
   let attempt = 0;
@@ -44,6 +49,7 @@ const postWithRetry = async (args: {
       const response = await fetch(target, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: args.body === undefined ? undefined : JSON.stringify(args.body),
         signal: withTimeoutSignal(REQUEST_TIMEOUT_MS),
       });
 
@@ -121,7 +127,10 @@ export const createSelfModHmrController = (options: HmrControllerOptions) => {
     });
   };
 
-  const resume = async (runId: string): Promise<boolean> => {
+  const resume = async (
+    runId: string,
+    resumeOptions?: ResumeHmrOptions,
+  ): Promise<boolean> => {
     activeRuns.delete(runId);
     if (activeRuns.size > 0) {
       return true;
@@ -134,6 +143,7 @@ export const createSelfModHmrController = (options: HmrControllerOptions) => {
       getDevServerUrl: options.getDevServerUrl,
       path: `${HMR_ENDPOINT_BASE}/resume`,
       maxWaitMs: RESUME_MAX_WAIT_MS,
+      body: resumeOptions,
     });
   };
 

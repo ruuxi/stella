@@ -22,7 +22,9 @@ const MORPH_DONE_TIMEOUT_MS = 5000;
 export type HmrTransitionController = {
   runTransition: (opts: {
     runId: string;
-    resumeHmr: () => Promise<void>;
+    resumeHmr: (
+      options?: { suppressClientFullReload?: boolean },
+    ) => Promise<void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;
   }) => Promise<void>;
@@ -122,7 +124,9 @@ export function createHmrTransitionController(deps: {
 
   const runTransition = async (opts: {
     runId: string;
-    resumeHmr: () => Promise<void>;
+    resumeHmr: (
+      options?: { suppressClientFullReload?: boolean },
+    ) => Promise<void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;
   }): Promise<void> => {
@@ -139,6 +143,18 @@ export function createHmrTransitionController(deps: {
     };
 
     if (!fullWindow || fullWindow.isDestroyed() || !overlayController) {
+      opts.reportState?.({
+        phase: opts.requiresFullReload ? "reloading" : "applying",
+        paused: false,
+        requiresFullReload: opts.requiresFullReload,
+      });
+      await opts.resumeHmr();
+      opts.reportState?.(IDLE_HMR_STATE);
+      return;
+    }
+
+    const overlayReadyForMorph = await overlayController.ensureReadyForMorph();
+    if (!overlayReadyForMorph) {
       opts.reportState?.({
         phase: opts.requiresFullReload ? "reloading" : "applying",
         paused: false,
@@ -210,20 +226,30 @@ export function createHmrTransitionController(deps: {
           });
         });
 
-        await opts.resumeHmr();
+        await opts.resumeHmr({
+          suppressClientFullReload: opts.requiresFullReload,
+        });
 
-        const wasFullReload = await didStartLoading;
-        const requiresFullReload = opts.requiresFullReload || wasFullReload;
-
-        if (requiresFullReload) {
+        if (opts.requiresFullReload) {
           emitState({
             phase: "reloading",
             paused: false,
             requiresFullReload: true,
           });
+          fullWindow.webContents.reloadIgnoringCache();
+          await waitForWindowLoad(fullWindow);
+          return true;
         }
 
+        const wasFullReload = await didStartLoading;
+        const requiresFullReload = wasFullReload;
+
         if (wasFullReload) {
+          emitState({
+            phase: "reloading",
+            paused: false,
+            requiresFullReload: true,
+          });
           await waitForWindowLoad(fullWindow);
         } else {
           const settleStartedAt = performance.now();

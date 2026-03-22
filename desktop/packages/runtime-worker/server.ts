@@ -984,7 +984,11 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     if (!runId) {
       throw new Error("INTERNAL_WORKER_RESUME_HMR requires a runId.");
     }
-    const resumeApplied = await ensureRunner().resumeSelfModHmr(runId);
+    const options =
+      (params as {
+        options?: { suppressClientFullReload?: boolean };
+      } | undefined)?.options;
+    const resumeApplied = await ensureRunner().resumeSelfModHmr(runId, options);
     return { ok: Boolean(resumeApplied) };
   });
 

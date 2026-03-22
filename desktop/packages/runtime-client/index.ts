@@ -94,7 +94,9 @@ export type RuntimeHostHandlers = {
   runHmrTransition?: (payload: {
     runId: string;
     requiresFullReload: boolean;
-    resumeHmr: () => Promise<void>;
+    resumeHmr: (
+      options?: { suppressClientFullReload?: boolean },
+    ) => Promise<void>;
     reportState?: (state: SelfModHmrState) => Promise<void> | void;
   }) => Promise<void> | void;
 };
@@ -690,9 +692,10 @@ export class StellaRuntimeClient {
       await this.options.hostHandlers.runHmrTransition?.({
         runId: payload.runId,
         requiresFullReload: Boolean(payload.requiresFullReload),
-        resumeHmr: async () => {
+        resumeHmr: async (options) => {
           await this.request(METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR, {
             runId: payload.runId,
+            ...(options ? { options } : {}),
           });
         },
         reportState: async (state) => {

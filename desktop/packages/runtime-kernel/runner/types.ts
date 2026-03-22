@@ -72,7 +72,10 @@ export type StellaHostRunnerOptions = {
   } | null;
   selfModHmrController?: {
     pause: (runId: string) => Promise<boolean>;
-    resume: (runId: string) => Promise<boolean>;
+    resume: (
+      runId: string,
+      options?: { suppressClientFullReload?: boolean },
+    ) => Promise<boolean>;
     forceResumeAll: () => Promise<boolean>;
     getStatus: () => Promise<{
       queuedFiles: number;
@@ -82,7 +85,9 @@ export type StellaHostRunnerOptions = {
   getHmrTransitionController?: () => {
     runTransition: (args: {
       runId: string;
-      resumeHmr: () => Promise<void>;
+      resumeHmr: (
+        options?: { suppressClientFullReload?: boolean },
+      ) => Promise<void>;
       reportState?: (state: SelfModHmrState) => void;
       requiresFullReload: boolean;
     }) => Promise<void>;
@@ -131,7 +136,9 @@ export type AgentCallbacks = {
   onSelfModHmrState?: (event: SelfModHmrState) => void;
   onHmrResume?: (args: {
     runId: string;
-    resumeHmr: () => Promise<void>;
+    resumeHmr: (
+      options?: { suppressClientFullReload?: boolean },
+    ) => Promise<void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;
   }) => Promise<void>;
@@ -291,7 +298,10 @@ export type RunnerPublicApi = {
   getLocalTaskSnapshot: (taskId: string) => Promise<TaskToolSnapshot | null>;
   cancelLocalChat: (runId: string) => void;
   getActiveOrchestratorRun: () => RuntimeActiveRun | null;
-  resumeSelfModHmr: (runId: string) => Promise<boolean>;
+  resumeSelfModHmr: (
+    runId: string,
+    options?: { suppressClientFullReload?: boolean },
+  ) => Promise<boolean>;
   recoverCrashedRuns: () => Promise<void>;
   appendThreadMessage: (args: {
     threadKey: string;
