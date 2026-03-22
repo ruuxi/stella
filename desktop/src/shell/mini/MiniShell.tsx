@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useUiState } from "@/context/ui-state";
 import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
 import { useContextCapture } from "./use-context-capture";
@@ -41,6 +41,27 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
     setChatContext,
     setSelectedText,
   });
+
+  // Track closing state for vacuum exit animation
+  const [closing, setClosing] = useState(false);
+  const prevVisibleRef = useRef(false);
+
+  useEffect(() => {
+    if (prevVisibleRef.current && !shellVisible) {
+      setClosing(true);
+    }
+    if (shellVisible) {
+      setClosing(false);
+    }
+    prevVisibleRef.current = shellVisible;
+  }, [shellVisible]);
+
+  // Clear closing state after vacuum animation completes (320ms + margin)
+  useEffect(() => {
+    if (!closing) return;
+    const timer = setTimeout(() => setClosing(false), 280);
+    return () => clearTimeout(timer);
+  }, [closing]);
 
   const hasConversation = filterEventsForUiDisplay(events).length > 0 || Boolean(streamingText);
   const previewScreenshot =
@@ -104,7 +125,7 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
 
   return (
     <div
-      className={`raycast-shell${shellVisible ? " is-visible" : ""}${hasPreview ? " has-preview" : ""}`}
+      className={`raycast-shell${shellVisible ? " is-visible" : closing ? " is-closing" : ""}${hasPreview ? " has-preview" : ""}`}
       onClick={handleShellClick}
     >
       <div className="raycast-panel">
