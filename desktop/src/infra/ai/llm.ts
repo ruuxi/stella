@@ -105,6 +105,7 @@ export async function streamChatCompletion(
   const decoder = new TextDecoder();
   let buffer = "";
   let fullText = "";
+  let finalMessageText = "";
 
   const flushLine = (line: string) => {
     if (!line.startsWith("data:")) {
@@ -117,6 +118,10 @@ export async function streamChatCompletion(
     }
 
     const chunk = JSON.parse(payload) as ChatCompletionResponse;
+    const extractedText = extractChatText(chunk);
+    if (extractedText) {
+      finalMessageText = extractedText;
+    }
     const delta = chunk.choices?.[0]?.delta?.content;
     if (!delta) {
       return;
@@ -149,5 +154,5 @@ export async function streamChatCompletion(
     }
   }
 
-  return fullText;
+  return fullText || finalMessageText;
 }
