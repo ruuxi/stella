@@ -954,6 +954,8 @@ That is the production-ready architecture for a desktop assistant that can modif
   - `desktop/tests/electron/ipc/schedule-handlers.test.ts`
   - `desktop/tests/electron/ipc/store-handlers.test.ts`
   - `desktop/tests/electron/ipc/system-handlers.test.ts`
+- Restored the fetch-based renderer streaming fallback to return final assistant text from terminal message payloads when an SSE stream completes without any incremental text deltas, matching the runtime provider behavior and avoiding blank successful replies.
+- Added focused renderer regression coverage for the fetch streaming final-message fallback in `desktop/tests/renderer/infra/ai/llm.test.ts`.
 - Verification:
   - `npm run electron:typecheck`
   - `npm run test:electron` -> 76 files passed, 229 tests passed, 1 skipped
