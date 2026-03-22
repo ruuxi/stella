@@ -22,7 +22,7 @@ import type {
   PreferredBrowserProfile,
   BrowserProfile,
   ClusterKeyword,
-} from "../../packages/stella-boundary-contracts/src/index.js";
+} from "../../src/shared/contracts/boundary.js";
 
 export type {
   BrowserType,

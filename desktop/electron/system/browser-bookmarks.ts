@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import type { BrowserBookmarks, BookmarkEntry } from "./discovery-types.js";
-import type { BrowserType } from "../../packages/stella-boundary-contracts/src/index.js";
+import type { BrowserType } from "../../src/shared/contracts/boundary.js";
 
 const log = (...args: unknown[]) =>
   console.log("[browser-bookmarks]", ...args);

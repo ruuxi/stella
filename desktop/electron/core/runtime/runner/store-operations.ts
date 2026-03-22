@@ -3,7 +3,7 @@ import type {
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
   StoreReleaseManifest,
-} from "../../../../packages/stella-boundary-contracts/src/index.js";
+} from "../../../../src/shared/contracts/boundary.js";
 import type { StorePublishArgs } from "../../../../packages/stella-runtime-protocol/src/index.js";
 import type { RunnerContext, StoreOperations } from "./types.js";
 
