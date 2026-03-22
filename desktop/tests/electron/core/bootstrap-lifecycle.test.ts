@@ -90,7 +90,6 @@ describe("bootstrap lifecycle", () => {
   });
 
   it("registers lifecycle handlers and tears runtime state down on quit", async () => {
-    const stopAll = vi.fn(async () => {});
     const stopAuthRefreshLoop = vi.fn();
     const radialStop = vi.fn();
     const killAllShells = vi.fn();
@@ -102,9 +101,6 @@ describe("bootstrap lifecycle", () => {
       services: {
         authService: {
           stopAuthRefreshLoop,
-        },
-        devProjectService: {
-          stopAll,
         },
         radialGestureService: {
           stop: radialStop,
@@ -146,7 +142,6 @@ describe("bootstrap lifecycle", () => {
     appHandlers.get("before-quit")?.();
     expect(context.state.isQuitting).toBe(true);
     expect(stopAuthRefreshLoop).toHaveBeenCalledTimes(1);
-    expect(stopAll).toHaveBeenCalledTimes(1);
     expect(killAllShells).toHaveBeenCalledTimes(1);
     expect(wakeWordDispose).toHaveBeenCalledTimes(1);
     expect(context.state.wakeWordController).toBeNull();

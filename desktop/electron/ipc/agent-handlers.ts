@@ -15,15 +15,9 @@ import { devEventBus } from "../devtool/dev-event-bus.js";
 import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import {
-  getLastGitFeatureId,
-  listRecentGitFeatures,
-  revertGitFeature,
-} from "../self-mod/git.js";
+  type RuntimePersonalWebsiteGenerationRequest,
+} from "../../packages/runtime-protocol/index.js";
 import type { HmrMorphOrchestrator } from "../self-mod/hmr-morph.js";
-import {
-  startPersonalWebsiteGeneration,
-  type PersonalWebsiteGenerationRequest,
-} from "../core/dashboard-generation.js";
 
 type AgentHandlersOptions = {
   getStellaHostRunner: () => StellaHostRunner | null;
@@ -323,7 +317,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
   ipcMain.handle(
     "agent:startPersonalWebsiteGeneration",
-    async (event, payload: PersonalWebsiteGenerationRequest) => {
+    async (event, payload: RuntimePersonalWebsiteGenerationRequest) => {
       if (
         !options.assertPrivilegedSender(event, "agent:startPersonalWebsiteGeneration")
       ) {
@@ -334,11 +328,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         throw new Error("Stella runtime not available");
       }
 
-      return await startPersonalWebsiteGeneration(
-        (request) => stellaHostRunner.createBackgroundTask(request),
-        (taskId) => stellaHostRunner.getLocalTaskSnapshot(taskId),
-        payload,
-      );
+      return await stellaHostRunner.startPersonalWebsiteGeneration(payload);
     },
   );
 
@@ -348,8 +338,11 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, "selfmod:revert")) {
         throw new Error("Blocked untrusted request.");
       }
-      return await revertGitFeature({
-        repoRoot: options.frontendRoot,
+      const stellaHostRunner = options.getStellaHostRunner();
+      if (!stellaHostRunner) {
+        throw new Error("Stella runtime not available");
+      }
+      return await stellaHostRunner.revertSelfModFeature({
         featureId: payload.featureId,
         steps: payload.steps,
       });
@@ -360,7 +353,11 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     if (!options.assertPrivilegedSender(event, "selfmod:lastFeature")) {
       throw new Error("Blocked untrusted request.");
     }
-    return await getLastGitFeatureId(options.frontendRoot);
+    const stellaHostRunner = options.getStellaHostRunner();
+    if (!stellaHostRunner) {
+      throw new Error("Stella runtime not available");
+    }
+    return await stellaHostRunner.getLastSelfModFeature();
   });
 
   ipcMain.handle(
@@ -370,7 +367,11 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         throw new Error("Blocked untrusted request.");
       }
       const limit = Number(payload?.limit ?? 8);
-      return await listRecentGitFeatures(options.frontendRoot, limit);
+      const stellaHostRunner = options.getStellaHostRunner();
+      if (!stellaHostRunner) {
+        throw new Error("Stella runtime not available");
+      }
+      return await stellaHostRunner.listRecentSelfModFeatures(limit);
     },
   );
 

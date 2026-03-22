@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { promises as fs } from "fs";
 import { spawn } from "child_process";
 import path from "path";
-import { createToolHost, type ToolContext } from "../../../electron/core/runtime/tools/host.js";
-import type { TaskToolRequest } from "../../../electron/core/runtime/tools/types.js";
+import { createToolHost, type ToolContext } from "../../../packages/runtime-kernel/tools/host.js";
+import type { TaskToolRequest } from "../../../packages/runtime-kernel/tools/types.js";
 
 // Mock fs and spawn
 vi.mock("fs", () => ({

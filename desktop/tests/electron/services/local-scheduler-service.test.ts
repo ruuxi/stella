@@ -1,9 +1,9 @@
-import fs from 'fs'
+﻿import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StellaHostRunner } from '../../../electron/stella-host-runner.js'
-import { LocalSchedulerService } from '../../../electron/services/local-scheduler-service.js'
+import { LocalSchedulerService } from '../../../packages/runtime-kernel/local-scheduler-service.js'
 
 const tempHomes: string[] = []
 
@@ -171,3 +171,4 @@ describe('LocalSchedulerService', () => {
     service.stop()
   })
 })
+

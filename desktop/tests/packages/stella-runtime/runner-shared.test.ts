@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildManagedMediaDocsPrompt,
   buildManagedMediaDocsUrl,
-} from "../../../electron/core/runtime/runner/shared.js";
+} from "../../../packages/runtime-kernel/runner/shared.js";
 
 describe("runner shared helpers", () => {
   it("builds the managed media docs URL from a Convex cloud URL", () => {

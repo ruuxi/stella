@@ -85,7 +85,7 @@ vi.mock("../../../src/convex/api.js", () => ({
   api: apiTokens,
 }));
 
-import { SocialSessionService } from "../../../packages/stella-runtime-worker/src/social-sessions/service.js";
+import { SocialSessionService } from "../../../packages/runtime-worker/social-sessions/service.js";
 
 type SessionRecord = {
   sessionId: string;

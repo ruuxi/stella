@@ -4,10 +4,10 @@ const { runOrchestratorTurnMock } = vi.hoisted(() => ({
   runOrchestratorTurnMock: vi.fn(),
 }));
 
-vi.mock("../../../electron/core/runtime/agent-runtime.js", async () => {
+vi.mock("../../../packages/runtime-kernel/agent-runtime.js", async () => {
   const actual = await vi.importActual<
-    typeof import("../../../electron/core/runtime/agent-runtime.js")
-  >("../../../electron/core/runtime/agent-runtime.js");
+    typeof import("../../../packages/runtime-kernel/agent-runtime.js")
+  >("../../../packages/runtime-kernel/agent-runtime.js");
 
   return {
     ...actual,
@@ -19,7 +19,7 @@ const {
   launchPreparedOrchestratorRun,
   prepareOrchestratorRun,
   startPreparedOrchestratorRun,
-} = await import("../../../electron/core/runtime/runner/orchestrator-launch.js");
+} = await import("../../../packages/runtime-kernel/runner/orchestrator-launch.js");
 
 describe("runner orchestrator launch helpers", () => {
   beforeEach(() => {

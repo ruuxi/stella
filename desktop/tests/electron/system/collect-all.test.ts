@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 
 // Import types
-import type { ShellAnalysis, DevProject, DiscoveredApp, AllUserSignals } from "../../../electron/system/types.js";
+import type { ShellAnalysis, DevProject, DiscoveredApp, AllUserSignals } from "../../../packages/runtime-discovery/types.js";
 
 // Mock fs
 vi.mock("fs", () => ({
@@ -53,7 +53,7 @@ describe("Shell History Analysis", () => {
   describe("analyzeShellHistory", () => {
     it("should extract command frequency from bash history", async () => {
       // Dynamically import after mocks are set up
-      const { analyzeShellHistory } = await import("../../../electron/system/shell-history.js");
+      const { analyzeShellHistory } = await import("../../../packages/runtime-discovery/shell-history.js");
 
       // Mock bash history content
       (mockFs.readFile as any).mockResolvedValue(
@@ -68,7 +68,7 @@ describe("Shell History Analysis", () => {
     });
 
     it("should handle missing history files gracefully", async () => {
-      const { analyzeShellHistory } = await import("../../../electron/system/shell-history.js");
+      const { analyzeShellHistory } = await import("../../../packages/runtime-discovery/shell-history.js");
 
       (mockFs.readFile as any).mockRejectedValue(new Error("ENOENT"));
 
@@ -82,7 +82,7 @@ describe("Shell History Analysis", () => {
 
   describe("formatShellAnalysisForSynthesis", () => {
     it("should format shell analysis correctly", async () => {
-      const { formatShellAnalysisForSynthesis } = await import("../../../electron/system/shell-history.js");
+      const { formatShellAnalysisForSynthesis } = await import("../../../packages/runtime-discovery/shell-history.js");
 
       const data: ShellAnalysis = {
         topCommands: [
@@ -102,7 +102,7 @@ describe("Shell History Analysis", () => {
     });
 
     it("should handle empty data", async () => {
-      const { formatShellAnalysisForSynthesis } = await import("../../../electron/system/shell-history.js");
+      const { formatShellAnalysisForSynthesis } = await import("../../../packages/runtime-discovery/shell-history.js");
 
       const data: ShellAnalysis = {
         topCommands: [],
@@ -134,7 +134,7 @@ describe("Dev Projects Discovery", () => {
 
   describe("formatDevProjectsForSynthesis", () => {
     it("should format dev projects correctly", async () => {
-      const { formatDevProjectsForSynthesis } = await import("../../../electron/system/dev-projects.js");
+      const { formatDevProjectsForSynthesis } = await import("../../../packages/runtime-discovery/dev-projects.js");
 
       const projects: DevProject[] = [
         { name: "my-app", path: "/Users/test/projects/my-app", lastActivity: Date.now() - 1000 },
@@ -151,7 +151,7 @@ describe("Dev Projects Discovery", () => {
     });
 
     it("should return empty string for no projects", async () => {
-      const { formatDevProjectsForSynthesis } = await import("../../../electron/system/dev-projects.js");
+      const { formatDevProjectsForSynthesis } = await import("../../../packages/runtime-discovery/dev-projects.js");
 
       const result = formatDevProjectsForSynthesis([]);
 
@@ -161,7 +161,7 @@ describe("Dev Projects Discovery", () => {
 
   describe("collectDevProjects", () => {
     it("should handle missing project directories", async () => {
-      const { collectDevProjects } = await import("../../../electron/system/dev-projects.js");
+      const { collectDevProjects } = await import("../../../packages/runtime-discovery/dev-projects.js");
 
       // All directories don't exist
       (mockFs.stat as any).mockRejectedValue(new Error("ENOENT"));
@@ -180,7 +180,7 @@ describe("Dev Projects Discovery", () => {
 describe("App Discovery", () => {
   describe("formatAppDiscoveryForSynthesis", () => {
     it("should format app discovery correctly", async () => {
-      const { formatAppDiscoveryForSynthesis } = await import("../../../electron/system/app-discovery.js");
+      const { formatAppDiscoveryForSynthesis } = await import("../../../packages/runtime-discovery/app-discovery.js");
 
       const result = formatAppDiscoveryForSynthesis({
         apps: [
@@ -197,7 +197,7 @@ describe("App Discovery", () => {
     });
 
     it("should return empty string for no apps", async () => {
-      const { formatAppDiscoveryForSynthesis } = await import("../../../electron/system/app-discovery.js");
+      const { formatAppDiscoveryForSynthesis } = await import("../../../packages/runtime-discovery/app-discovery.js");
 
       const result = formatAppDiscoveryForSynthesis({ apps: [] });
 
@@ -213,7 +213,7 @@ describe("App Discovery", () => {
 describe("Collect All Signals", () => {
   describe("formatAllSignalsForSynthesis", () => {
     it("should combine all formatters", async () => {
-      const { formatAllSignalsForSynthesis } = await import("../../../electron/system/collect-all.js");
+      const { formatAllSignalsForSynthesis } = await import("../../../packages/runtime-discovery/collect-all.js");
 
       const data: AllUserSignals = {
         browser: {
@@ -287,3 +287,4 @@ describe("Types", () => {
     expect(app.source).toBe("running");
   });
 });
+

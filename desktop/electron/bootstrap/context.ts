@@ -9,7 +9,6 @@ import { ExternalLinkService } from "../services/external-link-service.js";
 import { MiniBridgeService } from "../services/mini-bridge-service.js";
 import { RadialGestureService } from "../services/radial-gesture-service.js";
 import { SecurityPolicyService } from "../services/security-policy-service.js";
-import { DevProjectService } from "../services/dev-project-service.js";
 import { UiStateService } from "../services/ui-state-service.js";
 import type { WakeWordController } from "../wake-word/initialize.js";
 import { WindowManager } from "../windows/window-manager.js";
@@ -18,6 +17,7 @@ import type { MobileBridgeService } from "../services/mobile-bridge/service.js";
 import type { DevToolServer } from "../devtool/dev-server.js";
 import { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
 import { getDevServerUrl } from "../dev-url.js";
+import type { LocalDevProjectRecord } from "../../packages/boundary-contracts/index.js";
 
 export type MobileBroadcastFn = (channel: string, data: unknown) => void;
 
@@ -38,6 +38,7 @@ export type BootstrapState = {
   deviceId: string | null;
   hmrMorphOrchestrator: ReturnType<typeof createHmrMorphOrchestrator> | null;
   isQuitting: boolean;
+  devProjectsUpdateUnsubscribe: (() => void) | null;
   localChatUpdateUnsubscribe: (() => void) | null;
   overlayController: OverlayWindowController | null;
   scheduleUpdateUnsubscribe: (() => void) | null;
@@ -54,7 +55,6 @@ export type BootstrapServices = {
   authService: AuthService;
   captureService: CaptureService;
   credentialService: CredentialService;
-  devProjectService: DevProjectService;
   externalLinkService: ExternalLinkService;
   miniBridgeService: MiniBridgeService;
   radialGestureService: RadialGestureService;
@@ -128,25 +128,16 @@ export const broadcastWakeWordState = (context: BootstrapContext) => {
   getMobileBroadcast(context)?.("voice:wakeWordState", { enabled });
 };
 
-export const broadcastDevProjectsChanged = (context: BootstrapContext) => {
-  const targets = getAllWindows(context);
-
-  void context.services.devProjectService
-    .listProjects()
-    .then((projects) => {
-      for (const window of targets) {
-        if (!window.isDestroyed()) {
-          window.webContents.send("projects:changed", projects);
-        }
-      }
-      getMobileBroadcast(context)?.("projects:changed", projects);
-    })
-    .catch((error) => {
-      console.debug(
-        "[dev-projects] Failed to broadcast project changes:",
-        error,
-      );
-    });
+export const broadcastDevProjectsChanged = (
+  context: BootstrapContext,
+  projects: LocalDevProjectRecord[],
+) => {
+  for (const window of getAllWindows(context)) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("projects:changed", projects);
+    }
+  }
+  getMobileBroadcast(context)?.("projects:changed", projects);
 };
 
 export const syncWakeWordState = (context: BootstrapContext) => {
@@ -167,6 +158,7 @@ export const createBootstrapContext = (
     appSessionStartedAt: Date.now(),
     deferredStartupSequence: null,
     deviceId: null,
+    devProjectsUpdateUnsubscribe: null,
     hmrMorphOrchestrator: null,
     isQuitting: false,
     localChatUpdateUnsubscribe: null,
@@ -185,7 +177,6 @@ export const createBootstrapContext = (
   const context = { config, lifecycle, state } as BootstrapContext;
 
   const uiStateService = new UiStateService();
-  const devProjectService = new DevProjectService(lifecycle);
   const externalLinkService = new ExternalLinkService();
   externalLinkService.setDevBuild(config.isDev);
   if (config.isDev) {
@@ -292,17 +283,12 @@ export const createBootstrapContext = (
     authService,
     captureService,
     credentialService,
-    devProjectService,
     externalLinkService,
     miniBridgeService,
     radialGestureService,
     securityPolicyService,
     uiStateService,
   };
-
-  devProjectService.subscribe(() => {
-    broadcastDevProjectsChanged(context);
-  });
 
   return context;
 };

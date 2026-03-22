@@ -107,8 +107,8 @@ These were touched peripherally or showed signs of nearby cleanup work, but were
 - `src/prompts/personalized_dashboard.ts`
 
 ### Package Compatibility Debt
-- `packages/stella-ai/src/utils/oauth/index.ts`
-- `packages/stella-ai/src/utils/oauth/types.ts`
+- `packages/ai/utils/oauth/index.ts`
+- `packages/ai/utils/oauth/types.ts`
 
 ## Repo Signals Checked (2026-03-08)
 

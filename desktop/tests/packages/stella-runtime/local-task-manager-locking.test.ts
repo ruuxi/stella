@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { LocalTaskManager, type LocalTaskManagerAgentContext } from "../../../electron/core/runtime/tasks/local-task-manager.js";
+import { LocalTaskManager, type LocalTaskManagerAgentContext } from "../../../packages/runtime-kernel/tasks/local-task-manager.js";
 
 const createDeferred = () => {
   let resolve!: () => void;

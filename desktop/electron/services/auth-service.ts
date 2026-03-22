@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import type { PiRunnerTarget } from './lifecycle-targets.js'
+import type { PiRunnerTarget } from '../../packages/runtime-kernel/lifecycle-targets.js'
 
 const AUTH_CALLBACK_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/
 

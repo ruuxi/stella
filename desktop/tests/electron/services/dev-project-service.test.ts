@@ -1,4 +1,4 @@
-import { EventEmitter } from 'events'
+﻿import { EventEmitter } from 'events'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -14,7 +14,7 @@ vi.mock('child_process', async () => {
   }
 })
 
-const { DevProjectService } = await import('../../../electron/services/dev-project-service.js')
+const { DevProjectService } = await import('../../../packages/runtime-kernel/dev-projects/dev-project-service.js')
 
 const tempDirs: string[] = []
 const originalPlatform = process.platform
@@ -134,3 +134,4 @@ describe('DevProjectService', () => {
     )
   })
 })
+

@@ -2,8 +2,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadSkillsFromHome } from "../../../electron/core/runtime/agents/skills.js";
-import { localActivateSkill } from "../../../electron/core/runtime/tools/local-tool-overrides.js";
+import { loadSkillsFromHome } from "../../../packages/runtime-kernel/agents/skills.js";
+import { localActivateSkill } from "../../../packages/runtime-kernel/tools/local-tool-overrides.js";
 
 const tempHomes: string[] = [];
 

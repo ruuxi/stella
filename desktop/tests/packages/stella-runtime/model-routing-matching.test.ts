@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Model } from "../../../electron/core/ai/types.js";
+import type { Model } from "../../../packages/ai/types.js";
 
 const { getModelsMock } = vi.hoisted(() => ({
   getModelsMock: vi.fn(),
 }));
 
-vi.mock("../../../electron/core/ai/models.js", () => ({
+vi.mock("../../../packages/ai/models.js", () => ({
   getModels: getModelsMock,
 }));
 
 const {
   findRegistryModel,
   parseModelReference,
-} = await import("../../../electron/core/runtime/model-routing-matching.js");
+} = await import("../../../packages/runtime-kernel/model-routing-matching.js");
 
 const createModel = (
   overrides: Partial<Model<any>> &

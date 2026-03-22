@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { transformMessages } from "../../../electron/core/ai/providers/transform-messages.js";
-import type { AssistantMessage, Model } from "../../../electron/core/ai/types.js";
+import { transformMessages } from "../../../packages/ai/providers/transform-messages.js";
+import type { AssistantMessage, Model } from "../../../packages/ai/types.js";
 
 const model: Model<"openai-responses"> = {
 	id: "gpt-test",

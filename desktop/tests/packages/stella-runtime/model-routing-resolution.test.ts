@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Model } from "../../../electron/core/ai/types.js";
+import type { Model } from "../../../packages/ai/types.js";
 
 const {
   getModelsMock,
@@ -9,16 +9,16 @@ const {
   getLocalLlmCredentialMock: vi.fn(),
 }));
 
-vi.mock("../../../electron/core/ai/models.js", () => ({
+vi.mock("../../../packages/ai/models.js", () => ({
   getModels: getModelsMock,
 }));
 
-vi.mock("../../../electron/core/runtime/storage/llm-credentials.js", () => ({
+vi.mock("../../../packages/runtime-kernel/storage/llm-credentials.js", () => ({
   getLocalLlmCredential: getLocalLlmCredentialMock,
 }));
 
 const { canResolveLlmRoute, resolveLlmRoute } = await import(
-  "../../../electron/core/runtime/model-routing.js"
+  "../../../packages/runtime-kernel/model-routing.js"
 );
 
 const createModel = (

@@ -1,8 +1,8 @@
 import { promises as fs } from 'fs'
 import { BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, type MessageBoxOptions } from 'electron'
 import path from 'path'
-import { ensurePrivateDir, writePrivateFile } from '../system/private-fs.js'
-import type { WindowManagerTarget } from './lifecycle-targets.js'
+import { ensurePrivateDir, writePrivateFile } from '../../packages/runtime-kernel/home/private-fs.js'
+import type { WindowManagerTarget } from '../../packages/runtime-kernel/lifecycle-targets.js'
 
 const SECURITY_POLICY_VERSION = 1
 const SECURITY_APPROVAL_PREFIX = `v${SECURITY_POLICY_VERSION}:`
@@ -11,7 +11,7 @@ export class SecurityPolicyService {
   private securityPolicyPath: string | null = null
   private readonly trustedPrivilegedActions = new Set<string>()
 
-  constructor(private readonly options: { windowManagerTarget: WindowManagerTarget }) {}
+  constructor(private readonly options: { windowManagerTarget: WindowManagerTarget<BrowserWindow> }) {}
 
   setSecurityPolicyPath(policyPath: string) {
     this.securityPolicyPath = policyPath
