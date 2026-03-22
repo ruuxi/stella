@@ -99,9 +99,29 @@
 
 .orb-msg--assistant {
   margin-right: auto;
-  background: color-mix(in oklch, var(--foreground) 14%, var(--background));
-  color: var(--text-strong);
+  background: color-mix(in srgb, var(--secondary) 62%, var(--background));
+  color: var(--foreground);
   border-bottom-left-radius: 4px;
+}
+
+/* Mini chat Markdown inherits warm --text-* from markdown.css; keep orb assistant neutral */
+.orb-msg--assistant .markdown {
+  color: var(--foreground);
+}
+
+.orb-msg--assistant .markdown :is(strong, b, h1, h2, h3, h4, h5, h6) {
+  color: var(--foreground);
+}
+
+.orb-msg--assistant .text-shimmer-char {
+  background: linear-gradient(
+    90deg,
+    var(--foreground) 0%,
+    var(--foreground) 35%,
+    var(--muted-foreground) 50%,
+    var(--foreground) 65%,
+    var(--foreground) 100%
+  );
 }
 
 .orb-msg--streaming {
