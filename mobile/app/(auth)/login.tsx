@@ -1,11 +1,24 @@
 import { useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { authClient } from "../../src/lib/auth-client";
 import { env } from "../../src/config/env";
 import { errorMessage } from "../../src/lib/assert";
 import { colors } from "../../src/theme/colors";
+import { TERMS_OF_SERVICE, PRIVACY_POLICY } from "../../src/lib/legal-text";
+
+type LegalDoc = "terms" | "privacy" | null;
+
+const LEGAL_TITLES = { terms: "Terms of Service", privacy: "Privacy Policy" };
 
 type SubmitState =
   | { type: "idle" }
@@ -16,6 +29,7 @@ type SubmitState =
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>({ type: "idle" });
+  const [activeLegal, setActiveLegal] = useState<LegalDoc>(null);
 
   const sendMagicLink = async () => {
     const trimmed = email.trim();
@@ -97,7 +111,58 @@ export default function LoginScreen() {
         {submitState.type === "error" ? (
           <Text style={styles.errorText}>{submitState.message}</Text>
         ) : null}
+
+        <Text style={styles.legalFooter}>
+          By using Stella, you agree to our{" "}
+          <Text
+            style={styles.legalLink}
+            onPress={() => setActiveLegal("terms")}
+          >
+            Terms of Service
+          </Text>{" "}
+          and{" "}
+          <Text
+            style={styles.legalLink}
+            onPress={() => setActiveLegal("privacy")}
+          >
+            Privacy Policy
+          </Text>
+          .
+        </Text>
       </View>
+
+      <Modal
+        visible={activeLegal !== null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setActiveLegal(null)}
+      >
+        <SafeAreaView style={styles.legalModal}>
+          <View style={styles.legalModalHeader}>
+            <Text style={styles.legalModalTitle}>
+              {activeLegal ? LEGAL_TITLES[activeLegal] : ""}
+            </Text>
+            <Pressable
+              onPress={() => setActiveLegal(null)}
+              style={styles.legalModalClose}
+            >
+              <Text style={styles.legalModalCloseText}>Done</Text>
+            </Pressable>
+          </View>
+          <ScrollView
+            style={styles.legalModalScroll}
+            contentContainerStyle={styles.legalModalContent}
+          >
+            <Text style={styles.legalModalBody}>
+              {activeLegal === "terms"
+                ? TERMS_OF_SERVICE
+                : activeLegal === "privacy"
+                  ? PRIVACY_POLICY
+                  : ""}
+            </Text>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -190,5 +255,55 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontSize: 14,
     lineHeight: 20,
+  },
+  legalFooter: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: 4,
+  },
+  legalLink: {
+    textDecorationLine: "underline",
+  },
+  legalModal: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  legalModalHeader: {
+    alignItems: "center",
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  legalModalTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  legalModalClose: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  legalModalCloseText: {
+    color: colors.accent,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  legalModalScroll: {
+    flex: 1,
+  },
+  legalModalContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  legalModalBody: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 20,
+    opacity: 0.8,
   },
 });

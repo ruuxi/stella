@@ -1,0 +1,16 @@
+.legal-dialog .legal-dialog-scroll {
+  overflow-y: auto;
+  max-height: 65vh;
+  padding: 0 4px 16px;
+}
+
+.legal-dialog .legal-dialog-text {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--foreground);
+  opacity: 0.8;
+  margin: 0;
+}

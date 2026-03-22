@@ -2,7 +2,7 @@
  * Onboarding flow: Start -> Auth -> Intro (center) -> split layout steps.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useRef, useState } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/convex/api";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
@@ -15,6 +15,11 @@ import {
 import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
+import type { LegalDocument } from "@/global/legal/legal-text";
+
+const LegalDialog = lazy(() =>
+  import("@/global/legal/LegalDialog").then((m) => ({ default: m.LegalDialog })),
+);
 
 const CREATURE_INITIAL_SIZE = 0.22;
 
@@ -223,9 +228,16 @@ export function OnboardingView({
   demoMorphing?: boolean;
 }) {
   const showRuntimeGate = isPreparingRuntime || Boolean(runtimeError)
+  const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(null);
 
   return (
     <div className="new-session-view" data-split={splitMode} data-exiting={onboardingExiting || undefined}>
+      <Suspense fallback={null}>
+        <LegalDialog
+          document={activeLegalDoc}
+          onOpenChange={(open) => { if (!open) setActiveLegalDoc(null); }}
+        />
+      </Suspense>
       <div
         className="new-session-title"
         data-expanded={hasExpanded ? "true" : "false"}
@@ -295,6 +307,25 @@ export function OnboardingView({
             >
               Start Stella
             </button>
+            <div className="onboarding-legal-footer">
+              By using Stella, you agree to our{" "}
+              <button
+                type="button"
+                className="onboarding-legal-link"
+                onClick={() => setActiveLegalDoc("terms")}
+              >
+                Terms of Service
+              </button>{" "}
+              and{" "}
+              <button
+                type="button"
+                className="onboarding-legal-link"
+                onClick={() => setActiveLegalDoc("privacy")}
+              >
+                Privacy Policy
+              </button>
+              .
+            </div>
           </div>
         ))}
     </div>
