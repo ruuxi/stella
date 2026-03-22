@@ -14,7 +14,7 @@ import type {
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
   StoreReleaseDraft,
-} from "../../stella-boundary-contracts/src/index.js";
+} from "../../../src/shared/contracts/boundary.js";
 
 export type {
   AgentHealth,

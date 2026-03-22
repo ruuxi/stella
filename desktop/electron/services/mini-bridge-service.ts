@@ -5,7 +5,7 @@ import type {
   MiniBridgeResponse,
   MiniBridgeResponseEnvelope,
   MiniBridgeUpdate,
-} from '../../packages/stella-boundary-contracts/src/index.js'
+} from '../../src/shared/contracts/boundary.js'
 
 const MINI_BRIDGE_REQUEST_TIMEOUT_MS = 15_000
 

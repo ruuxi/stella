@@ -39,7 +39,7 @@ import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
-} from "../../../packages/stella-boundary-contracts/src/index.js";
+} from "../../../src/shared/contracts/boundary.js";
 
 const tempDirs: string[] = [];
 const openDatabases = new Set<{ close(): void }>();

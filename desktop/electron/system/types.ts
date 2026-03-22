@@ -9,7 +9,7 @@ import type {
   DiscoveredApp,
   AllUserSignals,
   AllUserSignalsResult,
-} from '../../packages/stella-boundary-contracts/src/index.js'
+} from '../../src/shared/contracts/boundary.js'
 
 export type {
   DevProject,

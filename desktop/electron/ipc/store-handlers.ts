@@ -7,7 +7,7 @@ import type {
   InstalledStoreModRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
-} from "../../packages/stella-boundary-contracts/src/index.js";
+} from "../../src/shared/contracts/boundary.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
 

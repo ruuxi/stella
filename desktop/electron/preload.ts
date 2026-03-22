@@ -7,7 +7,7 @@ import type {
   MiniBridgeResponseEnvelope,
   MiniBridgeUpdate,
   SelfModHmrState,
-} from "../packages/stella-boundary-contracts/src/index.js";
+} from "../src/shared/contracts/boundary.js";
 
 // ---------------------------------------------------------------------------
 // IPC listener helpers — eliminate boilerplate for the 3 common patterns.

@@ -11,7 +11,7 @@
  */
 
 import { ipcMain, type BrowserWindow } from "electron";
-import type { SelfModHmrState } from "../../packages/stella-boundary-contracts/src/index.js";
+import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 
 const MIN_COVER_MS = 160;
