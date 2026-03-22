@@ -8,6 +8,13 @@ export type RadialWedge = "capture" | "chat" | "full" | "voice" | "auto" | "dism
 
 export type WindowBounds = { x: number; y: number; width: number; height: number };
 
+export type ChatContextFile = {
+  name: string;
+  size: number;
+  mimeType: string;
+  dataUrl: string;
+};
+
 export type ChatContext = {
   window: {
     title: string;
@@ -21,6 +28,7 @@ export type ChatContext = {
     width: number;
     height: number;
   }[];
+  files?: ChatContextFile[];
   capturePending?: boolean;
   windowText?: string | null;
 };

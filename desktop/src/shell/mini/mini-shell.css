@@ -241,6 +241,7 @@
 
 /* ========= Composer ========= */
 .mini-composer {
+  position: relative;
   flex-shrink: 0;
   padding: 16px 12px 12px;
   display: flex;

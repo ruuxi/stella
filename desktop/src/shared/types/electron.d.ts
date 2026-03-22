@@ -6,6 +6,7 @@ import type { ChatMessage } from "@/infra/ai/llm";
 import type {
   RadialWedge as SharedRadialWedge,
   ChatContext as SharedChatContext,
+  ChatContextFile as SharedChatContextFile,
   ChatContextUpdate as SharedChatContextUpdate,
   MiniBridgeEventRecord as SharedMiniBridgeEventRecord,
   MiniBridgeSnapshot as SharedMiniBridgeSnapshot,
@@ -55,6 +56,7 @@ import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 
 export type RadialWedge = SharedRadialWedge;
 export type ChatContext = SharedChatContext;
+export type ChatContextFile = SharedChatContextFile;
 export type ChatContextUpdate = SharedChatContextUpdate;
 export type MiniBridgeEventRecord = SharedMiniBridgeEventRecord;
 export type MiniBridgeSnapshot = SharedMiniBridgeSnapshot;

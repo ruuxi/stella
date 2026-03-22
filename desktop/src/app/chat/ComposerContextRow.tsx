@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import {
   ComposerCaptureContextSection,
+  ComposerFileContextSection,
   ComposerSelectedTextContextSection,
   ComposerWindowContextSection,
 } from "./ComposerContextSections";
@@ -22,6 +23,11 @@ export function ComposerContextRow({
   return (
     <div className="composer-context-row">
       <ComposerCaptureContextSection
+        variant="full"
+        chatContext={chatContext}
+        setChatContext={setChatContext}
+      />
+      <ComposerFileContextSection
         variant="full"
         chatContext={chatContext}
         setChatContext={setChatContext}

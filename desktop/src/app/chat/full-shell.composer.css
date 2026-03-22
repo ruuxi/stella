@@ -17,6 +17,7 @@
 
 /* === Shell: visual container with animated height + border-radius === */
 .composer-shell {
+  position: relative;
   width: 100%;
   max-width: min(40rem, calc(100% - 48px));
   background: var(--background);

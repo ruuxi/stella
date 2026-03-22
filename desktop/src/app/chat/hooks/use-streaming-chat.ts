@@ -5,8 +5,8 @@ import { getOrCreateDeviceId } from '@/platform/electron/device'
 import type { SendMessageArgs } from '../streaming/chat-types'
 import type { EventRecord } from '@/app/chat/lib/event-transforms'
 import {
+  buildAllLocalAttachments,
   buildCombinedPrompt,
-  buildLocalScreenshotAttachments,
 } from '../streaming/message-context'
 import { toEventId } from '../streaming/streaming-event-utils'
 import { useLocalAgentStream, type LocalAgentEvent } from '../streaming/use-local-agent-stream'
@@ -81,19 +81,19 @@ export function useStreamingChat({
   const sendMessage = useCallback(
     async (options: SendMessageArgs) => {
       const resolvedConversationId = activeConversationId
-      const { combinedText, hasScreenshotContext } = buildCombinedPrompt({
+      const { combinedText, hasAttachments } = buildCombinedPrompt({
         text: options.text,
         selectedText: options.selectedText,
         chatContext: options.chatContext,
       })
 
-      if (!resolvedConversationId || (!combinedText && !hasScreenshotContext)) {
+      if (!resolvedConversationId || (!combinedText && !hasAttachments)) {
         return
       }
 
       const deviceId = await getOrCreateDeviceId()
-      const attachments = isLocalStorage && hasScreenshotContext
-        ? buildLocalScreenshotAttachments(options.chatContext)
+      const attachments = isLocalStorage && hasAttachments
+        ? buildAllLocalAttachments(options.chatContext)
         : await chatStoreUploadAttachments({
             screenshots: options.chatContext?.regionScreenshots,
             conversationId: resolvedConversationId,

@@ -76,6 +76,18 @@ export function useFullShellChat({
     })
   }, [])
 
+  const sendMessageWithContext = useCallback(
+    (text: string, chatCtx?: import('@/shared/types/electron').ChatContext | null) => {
+      void sendMessageRef.current({
+        text,
+        selectedText: null,
+        chatContext: chatCtx ?? null,
+        onClear: NO_OP,
+      })
+    },
+    [],
+  )
+
   const handleUserReturn = useCallback(
     (awayMs: number) => {
       sendContextlessMessage(
@@ -271,6 +283,7 @@ export function useFullShellChat({
       selfModMap,
       sendMessage,
       sendContextlessMessage,
+      sendMessageWithContext,
       cancelCurrentStream,
     },
     composer: {
