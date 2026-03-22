@@ -92,6 +92,7 @@ export type RuntimeHostHandlers = {
   showWindow?: (target: HostWindowTarget) => Promise<void> | void;
   focusWindow?: (target: HostWindowTarget) => Promise<void> | void;
   runHmrTransition?: (payload: {
+    runId: string;
     requiresFullReload: boolean;
     resumeHmr: () => Promise<void>;
     reportState?: (state: SelfModHmrState) => Promise<void> | void;
@@ -683,7 +684,11 @@ export class StellaRuntimeClient {
     });
     peer.registerRequestHandler(METHOD_NAMES.HOST_HMR_RUN_TRANSITION, async (params) => {
       const payload = params as { runId?: string; requiresFullReload?: boolean };
+      if (!payload.runId) {
+        throw new Error("HOST_HMR_RUN_TRANSITION requires a runId.");
+      }
       await this.options.hostHandlers.runHmrTransition?.({
+        runId: payload.runId,
         requiresFullReload: Boolean(payload.requiresFullReload),
         resumeHmr: async () => {
           await this.request(METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR, {

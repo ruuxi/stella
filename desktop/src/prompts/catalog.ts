@@ -575,8 +575,8 @@ FETCHING DATA:
 - No external script tags. YouTube iframes are allowed (youtube.com/embed/VIDEO_ID), no other iframes.
 
 TECHNICAL:
-- For React code, prefer modern patterns including useEffectEvent, startTransition, and useDeferredValue when appropriate. Do not add useMemo/useCallback by default unless already used; follow the repo's React Compiler guidance.
-- Do NOT use useEffect. Use useEffectEvent for side effects, or handle data fetching with startTransition and setState patterns.
+- For React code, prefer modern patterns including startTransition and useDeferredValue when appropriate. Do not add useMemo/useCallback by default unless already used; follow the repo's React Compiler guidance.
+- Do NOT use useEffect or any useEffect variant (useEffectEvent, useLayoutEffect, etc.). Handle data fetching with startTransition and setState patterns. Handle side effects with event handlers directly.
 - Include at least one interaction that dispatches:
   window.dispatchEvent(new CustomEvent("stella:send-message", { detail: { text: "..." } }))
   You can also import dispatchStellaSendMessage from @/shared/lib/stella-send-message as a convenience wrapper.

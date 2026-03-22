@@ -27,10 +27,9 @@ const IDLE_HMR_STATE: SelfModHmrState = {
 };
 
 const COVER_RAMP_UP_MS = 220;
-const HMR_CROSSFADE_MS = 260;
-const HMR_CALM_DOWN_MS = 180;
-const RELOAD_CROSSFADE_MS = 520;
-const RELOAD_CALM_DOWN_MS = 280;
+const HMR_REVERSE_MS = 250;
+const RELOAD_REVERSE_MS = 500;
+const REVERSE_TAIL_FADE_RATIO = 0.2;
 const STEADY_STRENGTH = 0.65;
 
 const VERT = `
@@ -48,6 +47,7 @@ uniform sampler2D u_tex;
 uniform sampler2D u_tex2;
 uniform float u_mix;
 uniform float u_strength;
+uniform float u_alpha;
 uniform float u_time;
 uniform float u_aspect;
 uniform vec2 u_center;
@@ -111,7 +111,7 @@ void main() {
   float colorMask = smoothstep(0.02, 0.08, edge) * u_strength * 0.35;
   col.rgb = mix(col.rgb, tint, colorMask);
 
-  gl_FragColor = col;
+  gl_FragColor = vec4(col.rgb, col.a * u_alpha);
 }`;
 
 type GLContext = {
@@ -125,6 +125,7 @@ type GLContext = {
   strengthLoc: WebGLUniformLocation | null;
   timeLoc: WebGLUniformLocation | null;
   mixLoc: WebGLUniformLocation | null;
+  alphaLoc: WebGLUniformLocation | null;
 };
 
 function resolveThemeColor(
@@ -201,6 +202,7 @@ function initGL(canvas: HTMLCanvasElement, img: HTMLImageElement): GLContext | n
   gl.uniform1i(gl.getUniformLocation(prog, "u_tex"), 0);
   gl.uniform1i(gl.getUniformLocation(prog, "u_tex2"), 1);
   gl.uniform1f(gl.getUniformLocation(prog, "u_mix"), 0.0);
+  gl.uniform1f(gl.getUniformLocation(prog, "u_alpha"), 1.0);
   gl.uniform2f(gl.getUniformLocation(prog, "u_center"), 0.5, 0.5);
   gl.uniform1f(gl.getUniformLocation(prog, "u_aspect"), img.width / img.height);
 
@@ -247,6 +249,7 @@ function initGL(canvas: HTMLCanvasElement, img: HTMLImageElement): GLContext | n
     strengthLoc: gl.getUniformLocation(prog, "u_strength"),
     timeLoc: gl.getUniformLocation(prog, "u_time"),
     mixLoc: gl.getUniformLocation(prog, "u_mix"),
+    alphaLoc: gl.getUniformLocation(prog, "u_alpha"),
   };
 }
 
@@ -278,12 +281,13 @@ function startRenderLoop(
   ctx: GLContext,
   strengthRef: { current: number },
   mixRef: { current: number },
+  alphaRef: { current: number },
   startTime: number,
   onFirstFrame?: () => void,
 ): () => void {
   let running = true;
   let firstFramePainted = false;
-  const { gl, strengthLoc, timeLoc, mixLoc } = ctx;
+  const { gl, strengthLoc, timeLoc, mixLoc, alphaLoc } = ctx;
 
   const frame = (now: number) => {
     if (!running) return;
@@ -292,6 +296,7 @@ function startRenderLoop(
     gl.uniform1f(strengthLoc, strengthRef.current);
     gl.uniform1f(timeLoc, (now - startTime) / 1000);
     gl.uniform1f(mixLoc, mixRef.current);
+    gl.uniform1f(alphaLoc, alphaRef.current);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     if (!firstFramePainted) {
       firstFramePainted = true;
@@ -328,6 +333,19 @@ function tweenRef(
   });
 }
 
+function delayedTweenRef(
+  ref: { current: number },
+  to: number,
+  duration: number,
+  delay: number,
+): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      void tweenRef(ref, to, duration).then(resolve);
+    }, delay);
+  });
+}
+
 export function MorphTransition() {
   const [state, setState] = useState<MorphState>(IDLE_STATE);
   const [hmrState, setHmrState] = useState<SelfModHmrState>(IDLE_HMR_STATE);
@@ -335,6 +353,7 @@ export function MorphTransition() {
   const glCtxRef = useRef<GLContext | null>(null);
   const strengthRef = useRef(0);
   const mixRef = useRef(0);
+  const alphaRef = useRef(1);
   const stopLoopRef = useRef<(() => void) | null>(null);
   const loopStartTimeRef = useRef(0);
   const morphReadySentRef = useRef(false);
@@ -345,6 +364,7 @@ export function MorphTransition() {
 
     if (
       typeof api.onMorphForward !== "function" ||
+      typeof api.onMorphBounds !== "function" ||
       typeof api.onMorphReverse !== "function" ||
       typeof api.onMorphEnd !== "function" ||
       typeof api.onMorphState !== "function"
@@ -375,6 +395,7 @@ export function MorphTransition() {
         morphReadySentRef.current = false;
         strengthRef.current = 0;
         mixRef.current = 0;
+        alphaRef.current = 1;
         setState({
           phase: "rippling",
           x: data.x,
@@ -394,6 +415,7 @@ export function MorphTransition() {
             ctx,
             strengthRef,
             mixRef,
+            alphaRef,
             loopStartTimeRef.current,
             signalMorphReady,
           );
@@ -405,13 +427,28 @@ export function MorphTransition() {
     );
 
     unsubs.push(
+      api.onMorphBounds((data) => {
+        setState((prev) =>
+          prev.phase === "idle"
+            ? prev
+            : {
+                ...prev,
+                x: data.x,
+                y: data.y,
+                width: data.width,
+                height: data.height,
+              },
+        );
+      }),
+    );
+
+    unsubs.push(
       api.onMorphReverse((data) => {
-        const crossfadeMs = data.requiresFullReload
-          ? RELOAD_CROSSFADE_MS
-          : HMR_CROSSFADE_MS;
-        const calmDownMs = data.requiresFullReload
-          ? RELOAD_CALM_DOWN_MS
-          : HMR_CALM_DOWN_MS;
+        const reverseMs = data.requiresFullReload
+          ? RELOAD_REVERSE_MS
+          : HMR_REVERSE_MS;
+        const fadeMs = Math.max(1, Math.round(reverseMs * REVERSE_TAIL_FADE_RATIO));
+        const fadeDelayMs = Math.max(0, reverseMs - fadeMs);
 
         void loadImage(data.screenshotDataUrl)
           .then((img) => {
@@ -422,13 +459,14 @@ export function MorphTransition() {
             }
 
             loadSecondTexture(ctx, img);
+            alphaRef.current = 1;
             setState((prev) => ({ ...prev, phase: "crossfading" }));
 
-            return tweenRef(mixRef, 1.0, crossfadeMs)
-              .then(() => {
-                setState((prev) => ({ ...prev, phase: "calming" }));
-                return tweenRef(strengthRef, 0, calmDownMs);
-              })
+            return Promise.all([
+              tweenRef(mixRef, 1.0, reverseMs),
+              tweenRef(strengthRef, 0, reverseMs),
+              delayedTweenRef(alphaRef, 0, fadeMs, fadeDelayMs),
+            ])
               .then(() => {
                 morphReadySentRef.current = false;
                 window.electronAPI?.overlay.morphDone();

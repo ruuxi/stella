@@ -79,8 +79,9 @@ export type StellaHostRunnerOptions = {
       requiresFullReload: boolean;
     } | null>;
   } | null;
-  getHmrMorphOrchestrator?: () => {
+  getHmrTransitionController?: () => {
     runTransition: (args: {
+      runId: string;
       resumeHmr: () => Promise<void>;
       reportState?: (state: SelfModHmrState) => void;
       requiresFullReload: boolean;
@@ -129,6 +130,7 @@ export type AgentCallbacks = {
   onTaskEvent?: (event: TaskLifecycleEvent) => void;
   onSelfModHmrState?: (event: SelfModHmrState) => void;
   onHmrResume?: (args: {
+    runId: string;
     resumeHmr: () => Promise<void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;
@@ -195,7 +197,7 @@ export type RunnerContext = {
   selfModMonitor?: SelfModMonitor | null;
   selfModLifecycle?: StellaHostRunnerOptions["selfModLifecycle"];
   selfModHmrController?: StellaHostRunnerOptions["selfModHmrController"];
-  getHmrMorphOrchestrator?: StellaHostRunnerOptions["getHmrMorphOrchestrator"];
+  getHmrTransitionController?: StellaHostRunnerOptions["getHmrTransitionController"];
   signHeartbeatPayload?: StellaHostRunnerOptions["signHeartbeatPayload"];
   requestCredential?: StellaHostRunnerOptions["requestCredential"];
   scheduleApi?: ScheduleToolApi;

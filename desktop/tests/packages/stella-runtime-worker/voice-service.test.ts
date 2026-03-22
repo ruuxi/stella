@@ -59,6 +59,7 @@ describe("voice runtime service", () => {
             requiresFullReload: false,
           });
           await callbacks.onHmrResume?.({
+            runId: "run-1",
             requiresFullReload: false,
             reportState: (state) => callbacks.onSelfModHmrState?.(state),
             resumeHmr: async () => {},

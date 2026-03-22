@@ -175,7 +175,12 @@ describe("OnboardingDiscovery", () => {
       />,
     );
 
-    expect(container.querySelector(".onboarding-fda-note")).toBeNull();
+    const fdaNote = container.querySelector(".onboarding-fda-note");
+    expect(fdaNote).not.toBeNull();
+    expect(fdaNote!.getAttribute("aria-hidden")).toBe("true");
+    expect(
+      container.querySelector(".onboarding-fda-link")?.getAttribute("tabindex"),
+    ).toBe("-1");
   });
 
   // ----------------------------------------------------------------
