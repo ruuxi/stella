@@ -156,7 +156,16 @@ export const ShiftingGradient = memo(function ShiftingGradient({
     // All blobs share the brand hue — differentiation comes from lightness,
     // not hue. This creates depth (like light across a surface) instead of
     // a rainbow.
-    const anchor = parseColor(tokens.surfaceBrandBase) ?? parseColor(colors.primary) ?? fallback;
+    //
+    // Themes can set `gradientAnchor` to override the blob base color.
+    // Monochrome themes use this to keep the gradient neutral while still
+    // having a colorful `primary` for buttons/UI.
+    const anchorOverride = (colors as unknown as Record<string, string>).gradientAnchor;
+    const explicitAnchor = anchorOverride ? parseColor(anchorOverride) : null;
+    const anchor = explicitAnchor
+      ?? parseColor(tokens.surfaceBrandBase)
+      ?? parseColor(colors.primary)
+      ?? fallback;
     const white: RGB = { r: 255, g: 255, b: 255 };
     const black: RGB = { r: 0, g: 0, b: 0 };
 

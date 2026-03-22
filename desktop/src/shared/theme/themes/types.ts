@@ -36,6 +36,11 @@ export interface ThemeColors {
   // Accent
   accent: string;
   accentForeground: string;
+
+  // Optional: override the gradient blob base color.
+  // When omitted, blobs derive from `primary`.
+  // Set to a neutral value for monochrome gradient backgrounds.
+  gradientAnchor?: string;
 }
 
 export interface Theme {
