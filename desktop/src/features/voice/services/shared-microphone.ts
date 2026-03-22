@@ -2,6 +2,8 @@ const SHARED_MIC_STATE_KEY = "__stellaSharedMicrophoneState";
 const SHARED_MIC_RELEASE_GRACE_MS = 45_000;
 
 export const PREFERRED_MIC_KEY = "stella-preferred-mic-id";
+export const PREFERRED_SPEAKER_KEY = "stella-preferred-speaker-id";
+export const MIC_ENABLED_KEY = "stella-mic-enabled";
 
 export type SharedMicrophoneUseCase =
   | "voice-rtc"
@@ -120,9 +122,17 @@ const acquireRootStream = async (
   return state.acquirePromise;
 };
 
+export function isMicrophoneEnabled(): boolean {
+  return localStorage.getItem(MIC_ENABLED_KEY) !== "false";
+}
+
 export async function acquireSharedMicrophone(
   _options: SharedMicrophoneAcquireOptions,
 ): Promise<SharedMicrophoneLease> {
+  if (!isMicrophoneEnabled()) {
+    throw new Error("Microphone access is disabled in settings.");
+  }
+
   const state = getSharedMicrophoneState();
   clearReleaseTimer(state);
 

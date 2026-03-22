@@ -24,6 +24,7 @@ import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import { NativeSelect } from "@/ui/native-select";
 import { BillingTab } from "@/global/settings/BillingTab";
+import { AudioTab } from "@/global/settings/AudioTab";
 import { hasBillingCheckoutCompletionMarker } from "@/global/settings/lib/billing-checkout";
 import "@/global/settings/settings.css";
 
@@ -31,7 +32,7 @@ import "@/global/settings/settings.css";
 // Types
 // ---------------------------------------------------------------------------
 
-type SettingsTab = "basic" | "models" | "billing";
+type SettingsTab = "basic" | "models" | "audio" | "billing";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -72,6 +73,7 @@ const LLM_PROVIDERS = [
 const TABS: { key: SettingsTab; label: string }[] = [
   { key: "basic", label: "Basic" },
   { key: "models", label: "Models" },
+  { key: "audio", label: "Audio" },
   { key: "billing", label: "Billing" },
 ];
 
@@ -1084,6 +1086,8 @@ export const SettingsDialog = ({
                 <BasicTab onSignOut={onSignOut} />
               ) : activeTab === "models" ? (
                 <ModelsTab />
+              ) : activeTab === "audio" ? (
+                <AudioTab />
               ) : (
                 <BillingTab />
               )}
