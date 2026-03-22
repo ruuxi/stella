@@ -156,6 +156,28 @@ const writePersistedSelfModHmrState = (state: PersistedSelfModHmrState) => {
 const isDependencyManifestFile = (filePath: string) =>
   PACKAGE_MANIFEST_BASENAMES.has(path.basename(filePath))
 
+type SelfModHmrFlushMode = 'none' | 'module-reload' | 'full-reload'
+
+export const getSelfModHmrFlushMode = (args: {
+  queuedModuleCount: number
+  queuedFileCount: number
+  requiresFullReload: boolean
+}): SelfModHmrFlushMode => {
+  if (args.requiresFullReload) {
+    return 'full-reload'
+  }
+
+  if (args.queuedModuleCount > 0) {
+    return 'module-reload'
+  }
+
+  if (args.queuedFileCount > 0) {
+    return 'full-reload'
+  }
+
+  return 'none'
+}
+
 /**
  * Pauses visible HMR during agent self-mod turns, then resumes updates in one flush.
  * During pause we suppress client propagation (`handleHotUpdate -> []`) while Vite
@@ -203,11 +225,17 @@ function selfModHmrControl(): Plugin {
       };
 
       const flushQueuedUpdates = async () => {
-        if (queuedModules.size === 0 && !requiresFullReload) {
+        const flushMode = getSelfModHmrFlushMode({
+          queuedModuleCount: queuedModules.size,
+          queuedFileCount: queuedFiles.size,
+          requiresFullReload,
+        })
+
+        if (flushMode === 'none') {
           return
         }
 
-        if (requiresFullReload) {
+        if (flushMode === 'full-reload') {
           invalidateQueuedModules()
           server.ws.send({ type: 'full-reload', path: '*' })
           clearQueue()
@@ -281,7 +309,7 @@ function selfModHmrControl(): Plugin {
         return
       }
 
-      if (isDependencyManifestFile(ctx.file)) {
+      if (isDependencyManifestFile(ctx.file) || ctx.modules.length === 0) {
         requiresFullReload = true
       }
 

@@ -1,0 +1,187 @@
+.chat-conversation-surface {
+  --compact-chat-gap: 8px;
+  --compact-chat-item-padding: 10px 12px;
+  --compact-chat-font-size: 16px;
+  --compact-chat-line-height: 1.45;
+  --compact-chat-letter-spacing: 0.03em;
+  --compact-chat-body-color: var(--text-strong);
+  --compact-chat-markdown-color: var(--text-strong);
+  --compact-chat-markdown-weight: 500;
+  --compact-chat-user-bg: color-mix(in oklch, var(--primary) 12%, transparent);
+  --compact-chat-user-radius: 12px;
+  --compact-chat-user-tail-radius: var(--compact-chat-user-radius);
+  --compact-chat-user-max-width: 85%;
+  --compact-chat-user-color: var(--text-strong);
+  --compact-chat-assistant-bg: transparent;
+  --compact-chat-assistant-border-width: 0px;
+  --compact-chat-assistant-border-color: transparent;
+  --compact-chat-assistant-radius: 0px;
+  --compact-chat-assistant-tail-radius: var(--compact-chat-assistant-radius);
+  --compact-chat-assistant-max-width: 85%;
+  --compact-chat-assistant-streaming-opacity: 1;
+}
+
+.chat-conversation-surface--mini {
+  --compact-chat-gap: 8px;
+  --compact-chat-item-padding: 10px 12px;
+  --compact-chat-font-size: 16px;
+  --compact-chat-line-height: 1.45;
+  --compact-chat-body-color: var(--text-strong);
+  --compact-chat-markdown-color: var(--text-strong);
+  --compact-chat-markdown-weight: 500;
+  --compact-chat-user-bg: color-mix(in oklch, var(--primary) 12%, transparent);
+  --compact-chat-user-radius: 12px;
+  --compact-chat-user-max-width: 85%;
+  --compact-chat-assistant-bg: transparent;
+  --compact-chat-assistant-border-width: 0px;
+  --compact-chat-assistant-border-color: transparent;
+  --compact-chat-assistant-radius: 0px;
+  --compact-chat-assistant-max-width: 85%;
+}
+
+.chat-conversation-surface--orb {
+  --compact-chat-gap: 10px;
+  --compact-chat-item-padding: 8px 12px;
+  --compact-chat-font-size: 13px;
+  --compact-chat-line-height: 1.5;
+  --compact-chat-body-color: var(--foreground);
+  --compact-chat-markdown-color: var(--foreground);
+  --compact-chat-markdown-weight: 400;
+  --compact-chat-user-bg: color-mix(in srgb, var(--primary) 30%, var(--background));
+  --compact-chat-user-radius: 14px;
+  --compact-chat-user-tail-radius: 4px;
+  --compact-chat-user-max-width: 88%;
+  --compact-chat-assistant-bg: var(--orb-assistant-surface);
+  --compact-chat-assistant-border-width: 1px;
+  --compact-chat-assistant-border-color: var(--orb-assistant-border-color);
+  --compact-chat-assistant-radius: 14px;
+  --compact-chat-assistant-tail-radius: 4px;
+  --compact-chat-assistant-max-width: 100%;
+  --compact-chat-assistant-streaming-opacity: 0.92;
+}
+
+.chat-conversation-surface .event-list {
+  gap: var(--compact-chat-gap);
+}
+
+.chat-conversation-surface .session-turn-header,
+.chat-conversation-surface .event-type {
+  display: none;
+}
+
+.chat-conversation-surface .event-item {
+  padding: var(--compact-chat-item-padding);
+  font-size: var(--compact-chat-font-size);
+  line-height: var(--compact-chat-line-height);
+  background: transparent;
+  border-color: transparent;
+  border-radius: 0;
+  margin: 0;
+}
+
+.chat-conversation-surface .event-item.user {
+  background: var(--compact-chat-user-bg);
+  border-radius: var(--compact-chat-user-radius);
+  border-bottom-right-radius: var(--compact-chat-user-tail-radius);
+  margin-left: auto;
+  max-width: var(--compact-chat-user-max-width);
+  width: fit-content;
+  color: var(--compact-chat-user-color);
+}
+
+.chat-conversation-surface .event-item.assistant {
+  background: var(--compact-chat-assistant-bg);
+  border-style: solid;
+  border-width: var(--compact-chat-assistant-border-width);
+  border-color: var(--compact-chat-assistant-border-color);
+  border-radius: var(--compact-chat-assistant-radius);
+  border-bottom-left-radius: var(--compact-chat-assistant-tail-radius);
+  max-width: var(--compact-chat-assistant-max-width);
+  width: fit-content;
+}
+
+.chat-conversation-surface .event-body {
+  font-size: var(--compact-chat-font-size);
+  line-height: var(--compact-chat-line-height);
+  color: var(--compact-chat-body-color);
+  letter-spacing: var(--compact-chat-letter-spacing);
+}
+
+.chat-conversation-surface .event-item.assistant .markdown {
+  color: var(--compact-chat-markdown-color);
+  font-size: var(--compact-chat-font-size);
+  line-height: var(--compact-chat-line-height);
+  font-weight: var(--compact-chat-markdown-weight);
+  letter-spacing: var(--compact-chat-letter-spacing);
+}
+
+.chat-conversation-surface .event-item.assistant .markdown p {
+  margin-bottom: 0.5rem;
+}
+
+.chat-conversation-surface .event-item.assistant .markdown ul,
+.chat-conversation-surface .event-item.assistant .markdown ol {
+  margin-top: 0.15rem;
+  margin-bottom: 0.5rem;
+}
+
+.chat-conversation-surface .event-item.assistant .markdown h1,
+.chat-conversation-surface .event-item.assistant .markdown h2,
+.chat-conversation-surface .event-item.assistant .markdown h3,
+.chat-conversation-surface .event-item.assistant .markdown h4,
+.chat-conversation-surface .event-item.assistant .markdown h5,
+.chat-conversation-surface .event-item.assistant .markdown h6 {
+  color: var(--compact-chat-markdown-color);
+  font-size: var(--compact-chat-font-size);
+  font-weight: 600;
+  line-height: 1.35;
+  margin-top: 0.85rem;
+  margin-bottom: 0.35rem;
+}
+
+.chat-conversation-surface .event-item.assistant .markdown h1:first-child,
+.chat-conversation-surface .event-item.assistant .markdown h2:first-child,
+.chat-conversation-surface .event-item.assistant .markdown h3:first-child,
+.chat-conversation-surface .event-item.assistant .markdown h4:first-child,
+.chat-conversation-surface .event-item.assistant .markdown h5:first-child,
+.chat-conversation-surface .event-item.assistant .markdown h6:first-child {
+  margin-top: 0;
+}
+
+.chat-conversation-surface .event-item.assistant .markdown strong,
+.chat-conversation-surface .event-item.assistant .markdown b {
+  color: var(--compact-chat-markdown-color);
+  font-weight: 600;
+}
+
+.chat-conversation-surface .event-item.assistant .markdown :is(pre, code, .shiki, kbd, samp) {
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+.chat-conversation-surface .event-item.assistant .markdown li::marker {
+  color: var(--compact-chat-markdown-color);
+}
+
+.chat-conversation-surface .event-item.assistant .markdown blockquote {
+  color: var(--text-base);
+}
+
+.chat-conversation-surface .event-item.assistant.streaming {
+  opacity: var(--compact-chat-assistant-streaming-opacity);
+}
+
+.chat-conversation-surface--orb .event-item.assistant .text-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--foreground) 0%,
+    var(--foreground) 35%,
+    var(--muted-foreground) 50%,
+    var(--foreground) 65%,
+    var(--foreground) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

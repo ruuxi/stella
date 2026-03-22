@@ -3,6 +3,7 @@
  * Used during onboarding to morph between demo previews.
  */
 
+import { randomUUID } from "node:crypto";
 import { BrowserWindow, ipcMain } from "electron";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 import type { WindowManager } from "../windows/window-manager.js";
@@ -16,6 +17,8 @@ type MorphHandlersOptions = {
 };
 
 export const registerMorphHandlers = (options: MorphHandlersOptions) => {
+  let activeOnboardingTransitionId: string | null = null;
+
   const captureWindow = async (win: BrowserWindow): Promise<string | null> => {
     try {
       const image = await win.webContents.capturePage();
@@ -27,18 +30,26 @@ export const registerMorphHandlers = (options: MorphHandlersOptions) => {
 
   const waitForSignal = (
     channel: "overlay:morphReady" | "overlay:morphDone",
+    transitionId: string,
     timeoutMs: number,
   ): Promise<boolean> => {
     return new Promise((resolve) => {
-      const handler = () => {
+      const handler = (
+        _event: unknown,
+        payload?: { transitionId?: string },
+      ) => {
+        if (payload?.transitionId !== transitionId) {
+          return;
+        }
         clearTimeout(timer);
+        ipcMain.removeListener(channel, handler);
         resolve(true);
       };
       const timer = setTimeout(() => {
         ipcMain.removeListener(channel, handler);
         resolve(false);
       }, timeoutMs);
-      ipcMain.once(channel, handler);
+      ipcMain.on(channel, handler);
     });
   };
 
@@ -59,9 +70,21 @@ export const registerMorphHandlers = (options: MorphHandlersOptions) => {
     }
 
     const bounds = fullWindow.getBounds();
-    const readyPromise = waitForSignal("overlay:morphReady", OVERLAY_READY_TIMEOUT_MS);
-    overlay.startMorphForward(screenshot, bounds, fullWindow);
-    await readyPromise;
+    const transitionId = randomUUID();
+    activeOnboardingTransitionId = transitionId;
+    const readyPromise = waitForSignal(
+      "overlay:morphReady",
+      transitionId,
+      OVERLAY_READY_TIMEOUT_MS,
+    );
+    overlay.startMorphForward(transitionId, screenshot, bounds, fullWindow);
+    const ready = await readyPromise;
+    if (!ready || overlay.getActiveMorphTransitionId() !== transitionId) {
+      if (activeOnboardingTransitionId === transitionId) {
+        activeOnboardingTransitionId = null;
+      }
+      return { ok: false };
+    }
 
     return { ok: true };
   });
@@ -77,17 +100,37 @@ export const registerMorphHandlers = (options: MorphHandlersOptions) => {
       return { ok: false };
     }
 
-    const screenshot = await captureWindow(fullWindow);
-    if (!screenshot) {
-      overlay.endMorph();
+    const transitionId = activeOnboardingTransitionId;
+    if (!transitionId || overlay.getActiveMorphTransitionId() !== transitionId) {
+      activeOnboardingTransitionId = null;
       return { ok: false };
     }
 
-    const donePromise = waitForSignal("overlay:morphDone", MORPH_DONE_TIMEOUT_MS);
-    overlay.startMorphReverse(screenshot, false);
-    await donePromise;
-    overlay.endMorph();
+    const screenshot = await captureWindow(fullWindow);
+    if (!screenshot) {
+      overlay.endMorph(transitionId);
+      activeOnboardingTransitionId = null;
+      return { ok: false };
+    }
 
-    return { ok: true };
+    const donePromise = waitForSignal(
+      "overlay:morphDone",
+      transitionId,
+      MORPH_DONE_TIMEOUT_MS,
+    );
+    const reverseStarted = overlay.startMorphReverse(
+      transitionId,
+      screenshot,
+      false,
+    );
+    if (!reverseStarted) {
+      activeOnboardingTransitionId = null;
+      return { ok: false };
+    }
+    const done = await donePromise;
+    overlay.endMorph(transitionId);
+    activeOnboardingTransitionId = null;
+
+    return { ok: done };
   });
 };

@@ -191,6 +191,7 @@
 .reasoning-section {
   width: 100%;
   margin-top: 8px;
+  letter-spacing: 0.03em;
 }
 
 .reasoning-trigger {
@@ -262,6 +263,10 @@
 
 .reasoning-content::-webkit-scrollbar {
   display: none;
+}
+
+.reasoning-content .markdown :is(pre, code, .shiki, kbd, samp) {
+  letter-spacing: normal;
 }
 
 /* Thinking placeholder — styled by TextShimmer component */
