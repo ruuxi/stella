@@ -62,10 +62,6 @@
   justify-content: center;
   width: 160px;
   height: 160px;
-  border-radius: 50%;
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
   flex-shrink: 0;
-  animation: orb-glow 6s ease-in-out infinite;
   z-index: 1;
 }

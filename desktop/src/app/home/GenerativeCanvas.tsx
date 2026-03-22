@@ -87,8 +87,6 @@ export function GenerativeCanvas() {
         <div ref={displayRef} className="canvas-display" />
       ) : (
         <div className="canvas-container">
-          <div className="canvas-rings-outer" />
-          <div className="canvas-rings" />
           <div className="home-stella-orb">
             <StellaAnimation width={40} height={30} />
           </div>

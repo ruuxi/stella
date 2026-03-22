@@ -19,6 +19,17 @@ type ThemePhaseProps = {
   onThemePreviewLeave: () => void;
 };
 
+/** User-friendly display labels for option values */
+const DISPLAY_LABELS: Record<string, string> = {
+  relative: "Subtle",
+  strong: "Vivid",
+  soft: "Soft",
+  crisp: "Crisp",
+  light: "Light",
+  dark: "Dark",
+  system: "System",
+};
+
 const renderThemeOptionRow = <T extends string>(
   label: string,
   options: readonly T[],
@@ -35,7 +46,7 @@ const renderThemeOptionRow = <T extends string>(
           data-active={selectedValue === option}
           onClick={() => onSelect(option)}
         >
-          {option.charAt(0).toUpperCase() + option.slice(1)}
+          {DISPLAY_LABELS[option] ?? option.charAt(0).toUpperCase() + option.slice(1)}
         </button>
       ))}
     </div>

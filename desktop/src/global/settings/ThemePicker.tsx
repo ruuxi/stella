@@ -21,8 +21,8 @@ const GRADIENT_MODES: { id: GradientMode; label: string }[] = [
 ];
 
 const GRADIENT_COLORS: { id: GradientColor; label: string }[] = [
-  { id: "relative", label: "Relative" },
-  { id: "strong", label: "Strong" },
+  { id: "relative", label: "Subtle" },
+  { id: "strong", label: "Vivid" },
 ];
 
 interface ThemePickerProps {
@@ -103,7 +103,7 @@ export function ThemePicker({
                 ))}
               </div>
 
-              <div data-slot="theme-picker-label">Gradient</div>
+              <div data-slot="theme-picker-label">Background</div>
               <div
                 data-slot="theme-picker-button-row"
                 onMouseLeave={() => cancelGradientModePreview()}
@@ -123,7 +123,7 @@ export function ThemePicker({
                 ))}
               </div>
 
-              <div data-slot="theme-picker-label">Color</div>
+              <div data-slot="theme-picker-label">Color intensity</div>
               <div
                 data-slot="theme-picker-button-row"
                 onMouseLeave={() => cancelGradientColorPreview()}
