@@ -214,13 +214,8 @@
 
 /* Floating window badge above composer */
 .mini-composer-window-badge {
-  display: inline-flex;
-  align-items: center;
   gap: 6px;
   align-self: flex-start;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
   margin-left: 4px;
 }
 
@@ -289,116 +284,9 @@
   padding: 10px 14px 0;
 }
 
-.mini-context-chip {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.mini-context-chip--screenshot {
-  padding: 2px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 15%, transparent);
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  cursor: pointer;
-}
-
-.mini-context-chip--pending {
-  padding: 2px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 15%, transparent);
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  pointer-events: none;
-}
-
-.mini-context-pending-inner {
-  width: 48px;
-  height: 36px;
-  border-radius: 6px;
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklch, var(--foreground) 8%, transparent) 25%,
-    color-mix(in oklch, var(--foreground) 16%, transparent) 50%,
-    color-mix(in oklch, var(--foreground) 8%, transparent) 75%
-  );
-  background-size: 200% 100%;
-  animation: mini-skeleton-shimmer 1.2s ease-in-out infinite;
-}
-
-@keyframes mini-skeleton-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.mini-context-thumb {
-  width: 48px;
-  height: 36px;
-  object-fit: cover;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.mini-context-remove {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: none;
-  background: color-mix(in oklch, var(--foreground) 70%, transparent);
-  color: var(--background);
-  font-size: 12px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-  padding: 0;
-}
-
-.mini-context-chip:hover .mini-context-remove {
-  opacity: 1;
-}
-
-.mini-context-chip--text {
-  padding: 4px 8px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
-}
-
-.mini-context-text {
-  display: inline-block;
-  max-width: 200px;
-  font-size: 12px;
-  line-height: 1.3;
-  color: var(--text-strong);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* Input field */
 .mini-composer-input {
-  display: block;
-  width: 100%;
-  border: none;
-  background: transparent;
-  font-size: 14px;
-  font-weight: 400;
-  color: var(--text-strong);
-  outline: none;
-  font-family: inherit;
   padding: 12px 14px 8px;
-}
-
-.mini-composer-input::placeholder {
-  color: var(--text-weaker);
-  font-weight: 400;
 }
 
 /* Actions row */
@@ -423,72 +311,21 @@
 
 /* Add button */
 .mini-composer-add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 50%;
-  background: transparent;
-  border: 1.5px solid var(--text-weaker);
-  color: var(--text-weak);
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.mini-composer-add:hover {
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  color: var(--text-strong);
-  border-color: var(--text-base);
 }
 
 /* Stop button */
 .mini-composer-stop {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 50%;
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
-  border: none;
   color: var(--text-weak);
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease;
-}
-
-.mini-composer-stop:hover {
-  background: color-mix(in oklch, var(--foreground) 16%, transparent);
-  color: var(--text-strong);
 }
 
 /* Send button */
 .mini-composer-send {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 50%;
-  background: var(--primary);
-  border: none;
-  color: var(--primary-foreground);
-  cursor: pointer;
-  transition: opacity 0.15s ease;
-}
-
-.mini-composer-send:hover:not(:disabled) {
-  opacity: 0.9;
-}
-
-.mini-composer-send:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 /* ========= Screenshot Preview ========= */

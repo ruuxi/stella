@@ -17,7 +17,7 @@
   --compact-chat-assistant-border-color: transparent;
   --compact-chat-assistant-radius: 0px;
   --compact-chat-assistant-tail-radius: var(--compact-chat-assistant-radius);
-  --compact-chat-assistant-max-width: 85%;
+  --compact-chat-assistant-max-width: 100%;
   --compact-chat-assistant-streaming-opacity: 1;
 }
 
@@ -36,7 +36,7 @@
   --compact-chat-assistant-border-width: 0px;
   --compact-chat-assistant-border-color: transparent;
   --compact-chat-assistant-radius: 0px;
-  --compact-chat-assistant-max-width: 85%;
+  --compact-chat-assistant-max-width: 100%;
 }
 
 .chat-conversation-surface--orb {
@@ -97,7 +97,7 @@
   border-radius: var(--compact-chat-assistant-radius);
   border-bottom-left-radius: var(--compact-chat-assistant-tail-radius);
   max-width: var(--compact-chat-assistant-max-width);
-  width: fit-content;
+  width: 100%;
 }
 
 .chat-conversation-surface .event-body {

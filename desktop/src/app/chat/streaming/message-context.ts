@@ -1,5 +1,6 @@
 import type { ChatContext } from '@/shared/types/electron'
 import type { AttachmentRef } from './chat-types'
+import { resolveComposerContextState } from '../composer-context'
 
 type BuildCombinedPromptArgs = {
   text: string
@@ -19,13 +20,7 @@ export const hasComposerContext = (
   chatContext: ChatContext | null,
   selectedText: string | null,
 ) =>
-  Boolean(
-    chatContext?.regionScreenshots?.length
-      || chatContext?.window
-      || selectedText
-      || chatContext?.capturePending
-      || chatContext?.windowText,
-  )
+  resolveComposerContextState(chatContext, selectedText).hasComposerContext
 
 export const buildCombinedPrompt = ({
   text,

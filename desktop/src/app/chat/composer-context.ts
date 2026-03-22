@@ -4,15 +4,25 @@ import type { ChatContext } from "@/shared/types/electron";
 export type ComposerContextState = {
   hasScreenshotContext: boolean;
   hasWindowContext: boolean;
+  hasWindowTextContext: boolean;
   hasSelectedTextContext: boolean;
+  hasPendingCaptureContext: boolean;
+  hasSubmittableContext: boolean;
   hasComposerContext: boolean;
 };
 
 type SetChatContext = Dispatch<SetStateAction<ChatContext | null>>;
 type SetSelectedText = Dispatch<SetStateAction<string | null>>;
 
+type DeriveComposerStateOptions = {
+  message: string;
+  chatContext?: ChatContext | null;
+  selectedText?: string | null;
+  conversationId?: string | null;
+  requireConversationId?: boolean;
+};
+
 type ComposerPlaceholderOptions = {
-  chatContext: ChatContext | null;
   contextState: ComposerContextState;
 };
 
@@ -22,38 +32,67 @@ export const resolveComposerContextState = (
 ): ComposerContextState => {
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasWindowContext = Boolean(chatContext?.window);
+  const hasWindowTextContext = Boolean(chatContext?.windowText?.trim());
   const hasSelectedTextContext = Boolean(selectedText);
+  const hasPendingCaptureContext = Boolean(chatContext?.capturePending);
+  const hasSubmittableContext = Boolean(
+    hasScreenshotContext
+      || hasWindowContext
+      || hasWindowTextContext
+      || hasSelectedTextContext,
+  );
 
   return {
     hasScreenshotContext,
     hasWindowContext,
+    hasWindowTextContext,
     hasSelectedTextContext,
-    hasComposerContext: Boolean(
-      hasScreenshotContext ||
-        hasWindowContext ||
-        hasSelectedTextContext ||
-        chatContext?.capturePending,
-    ),
+    hasPendingCaptureContext,
+    hasSubmittableContext,
+    hasComposerContext: Boolean(hasSubmittableContext || hasPendingCaptureContext),
   };
 };
 
 export const resolveComposerPlaceholder = ({
-  chatContext,
   contextState,
 }: ComposerPlaceholderOptions): string => {
-  if (chatContext?.capturePending) {
+  if (contextState.hasPendingCaptureContext) {
     return "Capturing screen...";
   }
   if (contextState.hasScreenshotContext) {
     return "Ask about the capture...";
   }
-  if (contextState.hasWindowContext) {
+  if (contextState.hasWindowContext || contextState.hasWindowTextContext) {
     return "Ask about this window...";
   }
   if (contextState.hasSelectedTextContext) {
     return "Ask about the selection...";
   }
   return "Ask anything";
+};
+
+export const deriveComposerState = ({
+  message,
+  chatContext = null,
+  selectedText = null,
+  conversationId = null,
+  requireConversationId = false,
+}: DeriveComposerStateOptions) => {
+  const contextState = resolveComposerContextState(chatContext, selectedText);
+  const trimmedMessage = message.trim();
+  const hasMessage = Boolean(trimmedMessage);
+  const hasConversation = !requireConversationId || Boolean(conversationId);
+  const canSubmit = Boolean(
+    hasConversation && (hasMessage || contextState.hasSubmittableContext),
+  );
+
+  return {
+    contextState,
+    placeholder: resolveComposerPlaceholder({ contextState }),
+    trimmedMessage,
+    hasMessage,
+    canSubmit,
+  };
 };
 
 export const clearComposerWindowContext = (setChatContext: SetChatContext) => {
@@ -80,5 +119,3 @@ export const removeComposerScreenshotContext = (
     return { ...prev, regionScreenshots: next };
   });
 };
-
-

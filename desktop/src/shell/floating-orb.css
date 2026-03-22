@@ -97,9 +97,10 @@
   width: clamp(280px, 55vmin, 520px);
   max-width: calc(100vw - 48px);
   box-sizing: border-box;
-  padding: 12px clamp(44px, calc(7vmin + 4px), 60px) 12px 20px;
+  padding: 12px clamp(44px, calc(7vmin + 4px), 60px) 12px 12px;
   display: flex;
   align-items: center;
+  gap: 10px;
   border-radius: 12px clamp(20px, 3.5vmin, 28px) clamp(20px, 3.5vmin, 28px) 12px;
   background: var(--orb-assistant-surface);
   border: 1px solid var(--orb-assistant-border-color);
@@ -114,19 +115,9 @@
   field-sizing: content;
   min-height: 30px;
   max-height: 120px;
-  background: none;
-  border: none;
-  outline: none;
-  font-size: 14px;
-  font-family: inherit;
-  color: var(--foreground);
-  resize: none;
-  overflow-y: auto;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-wrap: break-word;
 }
-.orb-chat-input::placeholder {
-  color: var(--foreground);
-  opacity: 0.35;
+
+.orb-chat-add {
+  width: 30px;
+  height: 30px;
 }

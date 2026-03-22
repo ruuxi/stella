@@ -102,6 +102,7 @@ export const FullShellRuntime = ({
         hasOlderEvents={chat.conversation.hasOlderEvents}
         isLoadingOlder={chat.conversation.isLoadingOlder}
         isInitialLoading={chat.conversation.isInitialLoading}
+        onAdd={chat.composer.onAdd}
         onSend={chat.conversation.sendContextlessMessage}
       />
     </>

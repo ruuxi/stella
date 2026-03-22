@@ -5,12 +5,16 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useRef, useState, useEffect } from "react";
 import { animate } from "motion";
-import { motion } from "motion/react";
 import type { ChatContext } from "@/shared/types/electron";
 import { ComposerContextRow } from "./ComposerContextRow";
 import {
-  resolveComposerContextState,
-  resolveComposerPlaceholder,
+  ComposerAddButton,
+  ComposerStopButton,
+  ComposerSubmitButton,
+  ComposerTextarea,
+} from "./ComposerPrimitives";
+import {
+  deriveComposerState,
 } from "./composer-context";
 import "./full-shell.composer.css";
 
@@ -26,6 +30,7 @@ type ComposerProps = {
   conversationId: string | null;
   onSend: () => void;
   onStop: () => void;
+  onAdd?: () => void;
 };
 
 export function Composer({
@@ -40,6 +45,7 @@ export function Composer({
   conversationId,
   onSend,
   onStop,
+  onAdd,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -49,10 +55,14 @@ export function Composer({
   const heightAnimRef = useRef<ReturnType<typeof animate> | null>(null);
   const lastHeightRef = useRef(0);
 
-  const composerContextState = resolveComposerContextState(
+  const composerState = deriveComposerState({
+    message,
     chatContext,
     selectedText,
-  );
+    conversationId,
+    requireConversationId: true,
+  });
+  const { contextState: composerContextState, placeholder } = composerState;
   const { hasComposerContext } = composerContextState;
   const isExpanded = composerExpanded || hasComposerContext;
 
@@ -117,19 +127,11 @@ export function Composer({
             onSend();
           }}
         >
-          <button type="button" className="composer-add-button" title="Add">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
+          <ComposerAddButton
+            className="composer-add-button"
+            title="Add"
+            onClick={onAdd}
+          />
 
           {hasComposerContext && (
             <ComposerContextRow
@@ -140,13 +142,10 @@ export function Composer({
             />
           )}
 
-          <textarea
+            <ComposerTextarea
             ref={textareaRef}
             className="composer-input"
-            placeholder={resolveComposerPlaceholder({
-              chatContext,
-              contextState: composerContextState,
-            })}
+            placeholder={placeholder}
             value={message}
             onChange={(event) => {
               setMessage(event.target.value);
@@ -179,67 +178,27 @@ export function Composer({
 
           <div className="composer-toolbar">
             <div className="composer-toolbar-left">
-              <button
-                type="button"
+              <ComposerAddButton
                 className="composer-add-button composer-add-button--toolbar"
                 title="Add"
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-              </button>
+                onClick={onAdd}
+              />
             </div>
 
             <div className="composer-toolbar-right">
               {isStreaming && (
-                <button
-                  type="button"
+                <ComposerStopButton
                   className="composer-stop"
                   onClick={onStop}
                   title="Stop"
                   aria-label="Stop"
-                >
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                  >
-                    <rect x="4" y="4" width="16" height="16" rx="2" />
-                  </svg>
-                </button>
+                />
               )}
-              <motion.button
-                type="submit"
+              <ComposerSubmitButton
                 className="composer-submit"
                 disabled={!canSubmit}
-                animate={{
-                  opacity: canSubmit ? 1 : 0.4,
-                  scale: canSubmit ? 1 : 0.92,
-                  filter: canSubmit ? "blur(0px)" : "blur(0.5px)",
-                }}
-                whileHover={canSubmit ? { opacity: 0.9 } : {}}
-                transition={{ type: "spring", duration: 0.2, bounce: 0 }}
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                >
-                  <path d="M12 19V5M5 12l7-7 7 7" />
-                </svg>
-              </motion.button>
+                animated
+              />
             </div>
           </div>
         </form>
