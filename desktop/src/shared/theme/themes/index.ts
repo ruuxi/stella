@@ -13,11 +13,14 @@ import carbonfox from "./carbonfox";
 import gruvbox from "./gruvbox";
 import ayu from "./ayu";
 import aura from "./aura";
+import pearl from "./pearl";
+import noir from "./noir";
 import type { Theme, ThemeColors } from "./types";
 
 export type { Theme, ThemeColors };
 
 export const themes: Theme[] = [
+  pearl, noir,
   oc1, tokyonight, dracula, catppuccin, nord, monokai, solarized,
   onedarkpro, shadesofpurple, nightowl, vesper, carbonfox, gruvbox, ayu, aura,
 ];
