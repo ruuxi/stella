@@ -161,3 +161,69 @@
 .mini-context-text {
   max-width: 200px;
 }
+
+/* ── File attachment chips ── */
+.chat-composer-file-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  max-width: min(220px, 45vw);
+  cursor: default;
+  transition: background 0.15s ease;
+}
+
+.chat-composer-file-chip:hover {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.chat-composer-file-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
+.chat-composer-file-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.chat-composer-file-name {
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1.3;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-composer-file-size {
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--text-weaker);
+}
+
+.chat-composer-file-chip .chat-composer-context-remove,
+.chat-composer-file-chip .composer-context-remove,
+.chat-composer-file-chip .mini-context-remove {
+  opacity: 0;
+}
+
+.chat-composer-file-chip:hover .chat-composer-context-remove,
+.chat-composer-file-chip:hover .composer-context-remove,
+.chat-composer-file-chip:hover .mini-context-remove {
+  opacity: 1;
+}

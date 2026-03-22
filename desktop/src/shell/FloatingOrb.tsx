@@ -13,7 +13,14 @@ import {
   ComposerAddButton,
   ComposerTextarea,
 } from "@/app/chat/ComposerPrimitives";
+import {
+  FileContextChips,
+  ScreenshotContextChips,
+} from "@/app/chat/ComposerContextChips";
 import { deriveComposerState } from "@/app/chat/composer-context";
+import { useFileDrop } from "@/app/chat/hooks/use-file-drop";
+import { DropOverlay } from "@/app/chat/DropOverlay";
+import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import { StellaAnimation, type StellaAnimationHandle } from "@/shell/ascii-creature/StellaAnimation";
@@ -57,7 +64,7 @@ interface FloatingOrbProps {
   hasOlderEvents: boolean;
   isLoadingOlder: boolean;
   isInitialLoading: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, chatContext?: ChatContext | null) => void;
   onAdd?: () => void;
 }
 
@@ -83,6 +90,12 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
     const [isDragging, setIsDragging] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [inputText, setInputText] = useState("");
+    const [orbChatContext, setOrbChatContext] = useState<ChatContext | null>(null);
+
+    const { isDragOver, isWindowDragActive, dropHandlers } = useFileDrop({
+      setChatContext: setOrbChatContext,
+      disabled: isStreaming,
+    });
 
     const containerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -206,21 +219,30 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
         event.preventDefault();
         const { canSubmit, trimmedMessage } = deriveComposerState({
           message: inputText,
+          chatContext: orbChatContext,
         });
         if (!canSubmit) {
           return;
         }
-        onSend(trimmedMessage);
+        onSend(trimmedMessage, orbChatContext);
         setInputText("");
+        setOrbChatContext(null);
       },
-      [inputText, onSend],
+      [inputText, orbChatContext, onSend],
     );
 
-    const orbComposerState = deriveComposerState({ message: inputText });
+    const orbComposerState = deriveComposerState({
+      message: inputText,
+      chatContext: orbChatContext,
+    });
 
     if (!visible) {
       return null;
     }
+
+    const hasAttachments = Boolean(
+      orbChatContext?.regionScreenshots?.length || orbChatContext?.files?.length,
+    );
 
     const miniChatPanel = (
       <AnimatePresence>
@@ -256,13 +278,29 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
       </AnimatePresence>
     );
 
+    /*
+     * When chat is closed the orb body itself becomes the drop target so
+     * the user can drop files directly onto it. Dropping opens the chat
+     * and attaches the files. `isWindowDragActive` enables pointer-events
+     * on the container so the orb body can receive drag events.
+     */
+    const orbBodyDropHandlers = isChatOpen
+      ? {}
+      : {
+          ...dropHandlers,
+          onDrop: (e: React.DragEvent) => {
+            setIsChatOpen(true);
+            dropHandlers.onDrop(e);
+          },
+        };
+
     return (
       <>
         {createPortal(miniChatPanel, document.body)}
 
         <div
           ref={containerRef}
-          className="orb-container"
+          className={`orb-container${!isChatOpen && isWindowDragActive ? " orb-container--drop-active" : ""}`}
           style={{
             right: `${position.right}px`,
             bottom: `${position.bottom}px`,
@@ -280,7 +318,33 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
                 exit={{ opacity: 0, scaleX: 0.5 }}
                 transition={{ type: "spring", duration: 0.3, bounce: 0 }}
                 onSubmit={handleSubmit}
+                {...dropHandlers}
               >
+                <DropOverlay visible={isDragOver} variant="orb" />
+
+                {/* Attachment chips above input row */}
+                {hasAttachments && (
+                  <div className="orb-chat-attachments">
+                    {(orbChatContext?.regionScreenshots?.length ?? 0) > 0 && (
+                      <ScreenshotContextChips
+                        screenshots={orbChatContext!.regionScreenshots!}
+                        setChatContext={setOrbChatContext}
+                        chipClassName="chat-composer-context-chip chat-composer-context-chip--screenshot mini-context-chip mini-context-chip--screenshot"
+                        imageClassName="chat-composer-context-thumb mini-context-thumb"
+                        removeClassName="chat-composer-context-remove mini-context-remove"
+                      />
+                    )}
+                    {(orbChatContext?.files?.length ?? 0) > 0 && (
+                      <FileContextChips
+                        files={orbChatContext!.files!}
+                        setChatContext={setOrbChatContext}
+                        chipClassName="mini-context-chip"
+                        removeClassName="chat-composer-context-remove mini-context-remove"
+                      />
+                    )}
+                  </div>
+                )}
+
                 <ComposerAddButton
                   className="orb-chat-add"
                   title="Add"
@@ -308,6 +372,7 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
           <div
             className={`orb-body ${isDragging ? "orb-body--dragging" : ""} ${isStreaming ? "orb-body--streaming" : ""}`}
             onMouseDown={handleMouseDown}
+            {...orbBodyDropHandlers}
           >
             <div className="orb-animation-scale">
               <StellaAnimation

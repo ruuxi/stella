@@ -1,0 +1,42 @@
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  border: 2px dashed color-mix(in oklch, var(--primary) 60%, transparent);
+  background: color-mix(in oklch, var(--primary) 6%, transparent);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.drop-overlay--full {
+  border-radius: 20px;
+}
+
+.drop-overlay--mini {
+  border-radius: 14px;
+}
+
+.drop-overlay--orb {
+  border-radius: 12px;
+}
+
+.drop-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary);
+  opacity: 0.85;
+}
+
+.drop-overlay-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  user-select: none;
+  -webkit-user-select: none;
+}

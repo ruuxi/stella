@@ -6,6 +6,7 @@ import {
 } from "@/app/chat/composer-context";
 import {
   ComposerCaptureContextSection,
+  ComposerFileContextSection,
   ComposerSelectedTextContextSection,
   ComposerWindowContextSection,
 } from "@/app/chat/ComposerContextSections";
@@ -15,6 +16,8 @@ import {
   ComposerSubmitButton,
   ComposerTextInput,
 } from "@/app/chat/ComposerPrimitives";
+import { useFileDrop } from "@/app/chat/hooks/use-file-drop";
+import { DropOverlay } from "@/app/chat/DropOverlay";
 
 type Props = {
   message: string;
@@ -48,6 +51,11 @@ export const MiniInput = ({
   onAdd,
 }: Props) => {
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const { isDragOver, dropHandlers } = useFileDrop({
+    setChatContext,
+    disabled: isStreaming,
+  });
 
   useEffect(() => {
     if (shellVisible) {
@@ -105,7 +113,8 @@ export const MiniInput = ({
   );
 
   return (
-    <div className="mini-composer">
+    <div className="mini-composer" {...dropHandlers}>
+      <DropOverlay visible={isDragOver} variant="mini" />
       <ComposerWindowContextSection
         variant="mini"
         chatContext={chatContext}
@@ -117,6 +126,12 @@ export const MiniInput = ({
         chatContext={chatContext}
         setChatContext={setChatContext}
         onPreviewScreenshot={setPreviewIndex}
+      />
+
+      <ComposerFileContextSection
+        variant="mini"
+        chatContext={chatContext}
+        setChatContext={setChatContext}
       />
 
       <div className="mini-composer-inner">

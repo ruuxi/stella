@@ -30,6 +30,7 @@ export const buildCombinedPrompt = ({
   const selectedSnippet = selectedText?.trim() ?? ''
   const windowSnippet = buildWindowSnippet(chatContext)
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length)
+  const hasFileContext = Boolean(chatContext?.files?.length)
   const cleanedText = text.trim()
 
   const contextParts: string[] = []
@@ -56,6 +57,8 @@ export const buildCombinedPrompt = ({
   return {
     combinedText: contextParts.join('\n\n'),
     hasScreenshotContext,
+    hasFileContext,
+    hasAttachments: hasScreenshotContext || hasFileContext,
   }
 }
 
@@ -72,3 +75,19 @@ export const buildLocalScreenshotAttachments = (
       mimeType: match ? match[1] : 'image/png',
     }
   })
+
+export const buildLocalFileAttachments = (
+  chatContext: ChatContext | null,
+): AttachmentRef[] =>
+  (chatContext?.files ?? []).map((file) => ({
+    url: file.dataUrl,
+    mimeType: file.mimeType,
+  }))
+
+/** Builds all local attachments (screenshots + files) from chat context. */
+export const buildAllLocalAttachments = (
+  chatContext: ChatContext | null,
+): AttachmentRef[] => [
+  ...buildLocalScreenshotAttachments(chatContext),
+  ...buildLocalFileAttachments(chatContext),
+]
