@@ -39,6 +39,39 @@ class OverlayWindow {
   getOverlayOrigin() { return this.overlayOrigin }
   isReady() { return this.ready }
 
+  async ensureReady(timeoutMs = 1_500) {
+    const win = this.create()
+    if (!win || win.isDestroyed()) {
+      return false
+    }
+    if (this.ready) {
+      return true
+    }
+
+    return await new Promise<boolean>((resolve) => {
+      let settled = false
+      const finish = (value: boolean) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        win.removeListener('ready-to-show', handleReady)
+        win.removeListener('closed', handleClosed)
+        win.webContents.removeListener('did-finish-load', handleReady)
+        resolve(value)
+      }
+      const handleReady = () => {
+        this.ready = true
+        finish(true)
+      }
+      const handleClosed = () => finish(false)
+      const timer = setTimeout(() => finish(this.ready), timeoutMs)
+
+      win.once('ready-to-show', handleReady)
+      win.once('closed', handleClosed)
+      win.webContents.once('did-finish-load', handleReady)
+    })
+  }
+
   create() {
     if (this.window && !this.window.isDestroyed()) {
       return this.window
@@ -239,6 +272,9 @@ export class OverlayWindowController {
   getOverlayOrigin() { return this.overlayWindow.getOverlayOrigin() }
 
   create() { return this.overlayWindow.create() }
+  ensureReadyForMorph(timeoutMs?: number) {
+    return this.overlayWindow.ensureReady(timeoutMs)
+  }
 
   private get isAnyActive() {
     return this.activeModifierBlock || this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeAutoPanel || this.activeMorph

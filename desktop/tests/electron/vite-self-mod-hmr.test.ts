@@ -12,14 +12,14 @@ describe("getSelfModHmrFlushMode", () => {
     ).toBe("module-reload");
   });
 
-  it("forces full reload when files changed but Vite has no queued modules", () => {
+  it("does not force full reload when files changed but Vite has no queued modules", () => {
     expect(
       getSelfModHmrFlushMode({
         queuedModuleCount: 0,
         queuedFileCount: 1,
         requiresFullReload: false,
       }),
-    ).toBe("full-reload");
+    ).toBe("none");
   });
 
   it("returns none when nothing is queued", () => {

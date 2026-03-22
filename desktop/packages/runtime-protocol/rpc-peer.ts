@@ -110,7 +110,18 @@ export class JsonRpcPeer {
       return;
     }
 
-    this.handleFailure(message);
+    if ("error" in message) {
+      this.handleFailure(message);
+      return;
+    }
+
+    this.options.onError?.(
+      new RpcError(
+        RPC_ERROR_CODES.INVALID_REQUEST,
+        "Malformed RPC response: expected result or error payload.",
+        message,
+      ),
+    );
   }
 
   private async handleRequest(message: JsonRpcRequest) {
@@ -130,7 +141,7 @@ export class JsonRpcPeer {
       const result = await handler(message.params);
       this.sendMessage({
         id: message.id,
-        result,
+        result: result === undefined ? null : result,
       } satisfies JsonRpcSuccess);
     } catch (error) {
       const rpcError =
@@ -181,8 +192,23 @@ export class JsonRpcPeer {
     }
     clearTimeout(pending.timeout);
     this.pending.delete(message.id);
+    const safeError =
+      message.error && typeof message.error === "object"
+        ? message.error
+        : {
+            code: RPC_ERROR_CODES.INTERNAL_ERROR,
+            message: "Malformed RPC error response.",
+          };
     pending.reject(
-      new RpcError(message.error.code, message.error.message, message.error.data),
+      new RpcError(
+        typeof safeError.code === "number"
+          ? safeError.code
+          : RPC_ERROR_CODES.INTERNAL_ERROR,
+        typeof safeError.message === "string"
+          ? safeError.message
+          : "Malformed RPC error response.",
+        "data" in safeError ? safeError.data : undefined,
+      ),
     );
   }
 }

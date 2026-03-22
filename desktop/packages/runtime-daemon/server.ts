@@ -655,6 +655,16 @@ export const createRuntimeDaemonServer = (peer: JsonRpcPeer) => {
     });
   }
 
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR,
+    async (params) => {
+      return await forwardToWorker(
+        METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR,
+        params,
+      );
+    },
+  );
+
   process.once("exit", () => {
     state.suppressWorkerRespawn = true;
     stopCliServer(state);
