@@ -1,7 +1,7 @@
 import { desktopCapturer, screen, type BrowserWindow, type Display } from 'electron'
 import { captureChatContext } from '../chat-context.js'
 import { globalShortcut } from 'electron'
-import type { ChatContext } from '../../packages/stella-boundary-contracts/src/index.js'
+import type { ChatContext } from '../../src/shared/contracts/boundary.js'
 import type {
   RegionCaptureResult,
   RegionSelection,

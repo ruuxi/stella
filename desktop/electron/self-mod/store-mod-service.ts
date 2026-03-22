@@ -9,7 +9,7 @@ import type {
   StoreReleaseBlueprintFile,
   StoreReleaseDraft,
   StoreReleaseManifest,
-} from "../../packages/stella-boundary-contracts/src/index.js";
+} from "../../src/shared/contracts/boundary.js";
 import { StoreModStore } from "../storage/store-mod-store.js";
 import {
   commitGitFeatureBatch,

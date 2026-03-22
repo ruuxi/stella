@@ -47,7 +47,7 @@ import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
-} from "../../stella-boundary-contracts/src/index.js";
+} from "../../../src/shared/contracts/boundary.js";
 import { SocialSessionService } from "./social-sessions/service.js";
 import { SocialSessionStore } from "./social-sessions/store.js";
 

@@ -1,6 +1,6 @@
 import { getSelectedText } from './selected-text.js'
 import { getWindowInfoAtPoint } from './window-capture.js'
-import type { ChatContext } from '../packages/stella-boundary-contracts/src/index.js'
+import type { ChatContext } from '../src/shared/contracts/boundary.js'
 
 type CaptureChatContextOptions = {
   excludeCurrentProcessWindows?: boolean

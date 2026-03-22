@@ -3,7 +3,7 @@ import type { BrowserWindow } from 'electron'
 import { RADIAL_SIZE } from '../layout-constants.js'
 import { MouseHookManager } from '../input/mouse-hook.js'
 import { calculateSelectedWedge, type RadialWedge } from '../radial-wedge.js'
-import type { ChatContext } from '../../packages/stella-boundary-contracts/src/index.js'
+import type { ChatContext } from '../../src/shared/contracts/boundary.js'
 
 export type RadialCaptureBridge = {
   cancelRadialContextCapture: () => void

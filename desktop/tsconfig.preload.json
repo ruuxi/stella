@@ -13,6 +13,6 @@
   },
   "include": [
     "electron/preload.ts",
-    "packages/stella-boundary-contracts/src/**/*"
+    "src/shared/contracts/boundary.ts"
   ]
 }

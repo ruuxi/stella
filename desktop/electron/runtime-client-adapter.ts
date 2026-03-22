@@ -1,4 +1,4 @@
-import type { SelfModHmrState } from "../packages/stella-boundary-contracts/src/index.js";
+import type { SelfModHmrState } from "../src/shared/contracts/boundary.js";
 import {
   AGENT_STREAM_EVENT_TYPES,
 } from "../src/shared/contracts/agent-runtime.js";

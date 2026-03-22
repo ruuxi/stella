@@ -27,7 +27,7 @@ import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
   SelfModHmrState,
-} from "../../../../packages/stella-boundary-contracts/src/index.js";
+} from "../../../../src/shared/contracts/boundary.js";
 import type {
   RuntimeActiveRun,
   RuntimeAutomationTurnRequest,
