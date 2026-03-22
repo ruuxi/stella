@@ -63,8 +63,8 @@
 .event-item.assistant {
   background: transparent;
   border: none;
-  width: fit-content;
-  max-width: 85%;
+  width: 100%;
+  max-width: 100%;
   border-bottom-left-radius: 4px;
 }
 
@@ -101,65 +101,10 @@
   letter-spacing: 0.03em;
 }
 
-/* Assistant Markdown — match user bubble: stronger color, weight, same rhythm as .event-body */
 .event-item.assistant .markdown {
   color: var(--text-strong);
-  font-size: 16px;
-  line-height: 1.45;
+  font-size: 18px;
   font-weight: 500;
-  letter-spacing: 0.03em;
-}
-
-.event-item.assistant .markdown p {
-  margin-bottom: 0.5rem;
-}
-
-.event-item.assistant .markdown ul,
-.event-item.assistant .markdown ol {
-  margin-top: 0.15rem;
-  margin-bottom: 0.5rem;
-}
-
-.event-item.assistant .markdown h1,
-.event-item.assistant .markdown h2,
-.event-item.assistant .markdown h3,
-.event-item.assistant .markdown h4,
-.event-item.assistant .markdown h5,
-.event-item.assistant .markdown h6 {
-  color: var(--text-strong);
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.35;
-  margin-top: 0.85rem;
-  margin-bottom: 0.35rem;
-}
-
-.event-item.assistant .markdown h1:first-child,
-.event-item.assistant .markdown h2:first-child,
-.event-item.assistant .markdown h3:first-child,
-.event-item.assistant .markdown h4:first-child,
-.event-item.assistant .markdown h5:first-child,
-.event-item.assistant .markdown h6:first-child {
-  margin-top: 0;
-}
-
-.event-item.assistant .markdown strong,
-.event-item.assistant .markdown b {
-  color: var(--text-strong);
-  font-weight: 600;
-}
-
-.event-item.assistant .markdown :is(pre, code, .shiki, kbd, samp) {
-  font-weight: 400;
-  letter-spacing: normal;
-}
-
-.event-item.assistant .markdown li::marker {
-  color: var(--text-strong);
-}
-
-.event-item.assistant .markdown blockquote {
-  color: var(--text-base);
 }
 
 .event-window-badge {
@@ -207,21 +152,9 @@
 }
 
 .event-search-badge {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: min(100%, 560px);
-  padding: 10px 12px;
-  border-radius: 16px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklch, var(--foreground) 5%, transparent),
-      color-mix(in oklch, var(--foreground) 2%, transparent)
-    );
-  box-shadow: 0 8px 24px color-mix(in oklch, var(--foreground) 4%, transparent);
-  overflow: hidden;
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 4px;
 }
 
 .event-search-badge-label {
@@ -232,44 +165,6 @@
   line-height: 1;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-weak);
-  padding: 5px 8px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-}
-
-.event-search-badge-body {
-  max-height: 240px;
-  overflow: auto;
-  color: var(--foreground);
-}
-
-.event-search-badge-body > :first-child {
-  margin-top: 0;
-}
-
-.event-search-badge-body > :last-child {
-  margin-bottom: 0;
-}
-
-.event-search-badge-body h1,
-.event-search-badge-body h2,
-.event-search-badge-body h3,
-.event-search-badge-body h4,
-.event-search-badge-body p,
-.event-search-badge-body ul,
-.event-search-badge-body ol,
-.event-search-badge-body table,
-.event-search-badge-body blockquote {
-  margin: 0 0 10px;
-}
-
-.event-search-badge-body a {
-  color: inherit;
-}
-
-.event-search-badge-body small {
   color: var(--text-weak);
 }
 
@@ -493,4 +388,3 @@
   cursor: grabbing;
   background: color-mix(in srgb, var(--foreground) 35%, transparent);
 }
-

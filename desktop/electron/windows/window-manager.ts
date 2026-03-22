@@ -224,9 +224,6 @@ export class WindowManager {
         this.pendingMiniShowTimer = null
         const versionToWait = bridge.getChatContextVersion()
         void (async () => {
-          // Hide full window before revealing mini
-          this.getFullWindow()?.hide()
-
           // Position and show the mini shell in the overlay
           overlay.showMini(pos.x, pos.y)
 
