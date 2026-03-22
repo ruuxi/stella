@@ -161,6 +161,47 @@ describe("StellaRuntimeClient", () => {
     await client.stop();
   });
 
+  it("spawns the daemon from the compiled sibling package path", async () => {
+    const client = new StellaRuntimeClient({
+      initializeParams: {
+        clientName: "test",
+        clientVersion: "0.0.0",
+        isDev: false,
+        platform: "win32",
+        frontendRoot: "/mock/frontend",
+        stellaHomePath: "/mock/home/.stella",
+        stellaWorkspacePath: "/mock/home/.stella/workspace",
+      },
+      hostHandlers: {
+        uiSnapshot: async () => "",
+        uiAct: async () => "",
+        getDeviceIdentity: async () => ({
+          deviceId: "device-1",
+          publicKey: "public-key",
+        }),
+        signHeartbeatPayload: async () => ({
+          publicKey: "public-key",
+          signature: "signature",
+        }),
+        requestCredential: async () => ({
+          secretId: "secret",
+          provider: "provider",
+          label: "label",
+        }),
+        displayUpdate: async () => {},
+      },
+    });
+
+    await client.start();
+
+    const daemonEntryPath = spawnMock.mock.calls[0]?.[1]?.[0];
+    expect(daemonEntryPath).toContain("packages");
+    expect(daemonEntryPath).toContain("runtime-daemon");
+    expect(daemonEntryPath).toContain("entry.js");
+
+    await client.stop();
+  });
+
   it("extracts html from host display update payload objects", async () => {
     const displayUpdate = vi.fn(async () => {});
     const client = new StellaRuntimeClient({
