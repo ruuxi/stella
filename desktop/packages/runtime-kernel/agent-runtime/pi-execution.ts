@@ -5,6 +5,7 @@ import {
   finalizeOrchestratorSuccess,
   finalizeSubagentError,
   finalizeSubagentSuccess,
+  markOrchestratorErrorReported,
 } from "./run-completion.js";
 import { executeRuntimeAgentPrompt } from "./run-execution.js";
 import {
@@ -122,7 +123,7 @@ export const runPiOrchestratorTurn = async (
       runEvents,
       error,
     });
-    throw error;
+    throw markOrchestratorErrorReported(error);
   }
 };
 

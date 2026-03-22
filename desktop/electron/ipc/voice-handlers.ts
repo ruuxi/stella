@@ -2,6 +2,7 @@ import { globalShortcut, ipcMain } from "electron";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { UiState } from "../types.js";
 import type { WindowManager } from "../windows/window-manager.js";
+import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
 
 type VoiceHandlersOptions = {
   uiState: UiState;
@@ -46,6 +47,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   let currentVoiceShortcut = "";
   let currentVoiceRtcShortcut = "";
   let runtimeState: VoiceRuntimeSnapshot = DEFAULT_RUNTIME_STATE;
+  const nextTaskEventSeq = createMonotonicSeqGenerator();
 
   const ts = () => {
     const d = new Date();
@@ -287,7 +289,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
           emitVoiceAgentEvent({
             type: event.type,
             runId: event.rootRunId ?? "voice",
-            seq: Date.now(),
+            seq: nextTaskEventSeq(),
             taskId: event.taskId,
             agentType: event.agentType,
             description: event.description,
