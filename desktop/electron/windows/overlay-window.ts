@@ -200,6 +200,7 @@ class OverlayWindow {
 export class OverlayWindowController {
   private readonly overlayWindow: OverlayWindow
   private morphTrackedWindow: BrowserWindow | null = null
+  private activeMorphTransitionId: string | null = null
   private readonly handleMorphWindowBoundsChanged = () => {
     this.syncMorphBounds()
   }
@@ -441,7 +442,7 @@ export class OverlayWindowController {
   }
 
   private syncMorphBounds() {
-    if (!this.activeMorph) return
+    if (!this.activeMorph || !this.activeMorphTransitionId) return
 
     const trackedBounds = this.morphTrackedWindow && !this.morphTrackedWindow.isDestroyed()
       ? this.morphTrackedWindow.getBounds()
@@ -452,6 +453,7 @@ export class OverlayWindowController {
     this.currentMorphBounds = trackedBounds
     const origin = this.overlayWindow.getOverlayOrigin()
     this.overlayWindow.send('overlay:morphBounds', {
+      transitionId: this.activeMorphTransitionId,
       x: trackedBounds.x - origin.x,
       y: trackedBounds.y - origin.y,
       width: trackedBounds.width,
@@ -459,12 +461,18 @@ export class OverlayWindowController {
     })
   }
 
+  getActiveMorphTransitionId() {
+    return this.activeMorphTransitionId
+  }
+
   startMorphForward(
+    transitionId: string,
     screenshotDataUrl: string,
     bounds: { x: number; y: number; width: number; height: number },
     trackedWindow?: BrowserWindow | null,
   ) {
     this.activeMorph = true
+    this.activeMorphTransitionId = transitionId
     this.currentMorphBounds = bounds
     this.stopTrackingMorphWindow()
     if (trackedWindow && !trackedWindow.isDestroyed()) {
@@ -475,6 +483,7 @@ export class OverlayWindowController {
     const origin = this.overlayWindow.getOverlayOrigin()
     this.overlayWindow.show({ inactive: true })
     this.overlayWindow.send('overlay:morphForward', {
+      transitionId,
       screenshotDataUrl,
       x: bounds.x - origin.x,
       y: bounds.y - origin.y,
@@ -483,28 +492,49 @@ export class OverlayWindowController {
     })
   }
 
-  startMorphReverse(screenshotDataUrl: string, requiresFullReload: boolean) {
+  startMorphReverse(
+    transitionId: string,
+    screenshotDataUrl: string,
+    requiresFullReload: boolean,
+  ) {
+    if (this.activeMorphTransitionId !== transitionId) {
+      return false
+    }
     this.overlayWindow.send('overlay:morphReverse', {
+      transitionId,
       screenshotDataUrl,
       requiresFullReload,
     })
+    return true
   }
 
-  setMorphState(state: SelfModHmrState) {
-    this.overlayWindow.send('overlay:morphState', state)
+  setMorphState(transitionId: string, state: SelfModHmrState) {
+    if (this.activeMorphTransitionId !== transitionId) {
+      return false
+    }
+    this.overlayWindow.send('overlay:morphState', { transitionId, state })
+    return true
   }
 
-  endMorph() {
+  endMorph(transitionId: string) {
+    if (this.activeMorphTransitionId !== transitionId) {
+      return false
+    }
     this.activeMorph = false
+    this.activeMorphTransitionId = null
     this.currentMorphBounds = null
     this.stopTrackingMorphWindow()
-    this.setMorphState({
-      phase: 'idle',
-      paused: false,
-      requiresFullReload: false,
+    this.overlayWindow.send('overlay:morphState', {
+      transitionId,
+      state: {
+        phase: 'idle',
+        paused: false,
+        requiresFullReload: false,
+      },
     })
-    this.overlayWindow.send('overlay:morphEnd')
+    this.overlayWindow.send('overlay:morphEnd', { transitionId })
     this.hideOverlayIfIdle()
+    return true
   }
 
   // ─── Cleanup ──────────────────────────────────────────────────────────

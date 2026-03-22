@@ -201,6 +201,7 @@ export type ElectronOverlayApi = {
   ) => () => void;
   onMorphForward: (
     callback: (data: {
+      transitionId: string;
       screenshotDataUrl: string;
       x: number;
       y: number;
@@ -210,6 +211,7 @@ export type ElectronOverlayApi = {
   ) => () => void;
   onMorphBounds: (
     callback: (data: {
+      transitionId: string;
       x: number;
       y: number;
       width: number;
@@ -218,14 +220,22 @@ export type ElectronOverlayApi = {
   ) => () => void;
   onMorphReverse: (
     callback: (data: {
+      transitionId: string;
       screenshotDataUrl: string;
       requiresFullReload: boolean;
     }) => void,
   ) => () => void;
-  onMorphEnd: (callback: () => void) => () => void;
-  onMorphState: (callback: (state: SelfModHmrState) => void) => () => void;
-  morphReady: () => void;
-  morphDone: () => void;
+  onMorphEnd: (
+    callback: (payload: { transitionId: string }) => void,
+  ) => () => void;
+  onMorphState: (
+    callback: (payload: {
+      transitionId: string;
+      state: SelfModHmrState;
+    }) => void,
+  ) => () => void;
+  morphReady: (transitionId: string) => void;
+  morphDone: (transitionId: string) => void;
   onShowAutoPanel: (
     callback: (data: {
       x: number;

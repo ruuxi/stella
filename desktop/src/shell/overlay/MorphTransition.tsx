@@ -351,6 +351,7 @@ export function MorphTransition() {
   const [hmrState, setHmrState] = useState<SelfModHmrState>(IDLE_HMR_STATE);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glCtxRef = useRef<GLContext | null>(null);
+  const activeTransitionIdRef = useRef<string | null>(null);
   const strengthRef = useRef(0);
   const mixRef = useRef(0);
   const alphaRef = useRef(1);
@@ -381,10 +382,15 @@ export function MorphTransition() {
       }
     };
 
-    const signalMorphReady = () => {
-      if (morphReadySentRef.current) return;
+    const signalMorphReady = (transitionId: string) => {
+      if (
+        morphReadySentRef.current ||
+        activeTransitionIdRef.current !== transitionId
+      ) {
+        return;
+      }
       morphReadySentRef.current = true;
-      window.electronAPI?.overlay.morphReady();
+      window.electronAPI?.overlay.morphReady(transitionId);
     };
 
     const unsubs: Array<() => void> = [];
@@ -392,10 +398,12 @@ export function MorphTransition() {
     unsubs.push(
       api.onMorphForward((data) => {
         disposeMorph();
+        activeTransitionIdRef.current = data.transitionId;
         morphReadySentRef.current = false;
         strengthRef.current = 0;
         mixRef.current = 0;
         alphaRef.current = 1;
+        setHmrState(IDLE_HMR_STATE);
         setState({
           phase: "rippling",
           x: data.x,
@@ -405,7 +413,12 @@ export function MorphTransition() {
         });
 
         void loadImage(data.screenshotDataUrl).then((img) => {
-          if (!canvasRef.current) return;
+          if (
+            !canvasRef.current ||
+            activeTransitionIdRef.current !== data.transitionId
+          ) {
+            return;
+          }
           const ctx = initGL(canvasRef.current, img);
           if (!ctx) return;
           glCtxRef.current = ctx;
@@ -417,7 +430,7 @@ export function MorphTransition() {
             mixRef,
             alphaRef,
             loopStartTimeRef.current,
-            signalMorphReady,
+            () => signalMorphReady(data.transitionId),
           );
 
           // Reach a stable covered state quickly, then hold there until reveal.
@@ -428,6 +441,9 @@ export function MorphTransition() {
 
     unsubs.push(
       api.onMorphBounds((data) => {
+        if (data.transitionId !== activeTransitionIdRef.current) {
+          return;
+        }
         setState((prev) =>
           prev.phase === "idle"
             ? prev
@@ -444,6 +460,9 @@ export function MorphTransition() {
 
     unsubs.push(
       api.onMorphReverse((data) => {
+        if (data.transitionId !== activeTransitionIdRef.current) {
+          return;
+        }
         const reverseMs = data.requiresFullReload
           ? RELOAD_REVERSE_MS
           : HMR_REVERSE_MS;
@@ -452,9 +471,15 @@ export function MorphTransition() {
 
         void loadImage(data.screenshotDataUrl)
           .then((img) => {
+            if (data.transitionId !== activeTransitionIdRef.current) {
+              return;
+            }
             const ctx = glCtxRef.current;
             if (!ctx) {
-              window.electronAPI?.overlay.morphDone();
+              morphReadySentRef.current = false;
+              window.electronAPI?.overlay.morphDone(data.transitionId);
+              activeTransitionIdRef.current = null;
+              setState(IDLE_STATE);
               return;
             }
 
@@ -468,31 +493,46 @@ export function MorphTransition() {
               delayedTweenRef(alphaRef, 0, fadeMs, fadeDelayMs),
             ])
               .then(() => {
+                if (data.transitionId !== activeTransitionIdRef.current) {
+                  return;
+                }
                 morphReadySentRef.current = false;
-                window.electronAPI?.overlay.morphDone();
+                window.electronAPI?.overlay.morphDone(data.transitionId);
                 disposeMorph();
+                activeTransitionIdRef.current = null;
                 setState(IDLE_STATE);
               });
           })
           .catch(() => {
+            if (data.transitionId !== activeTransitionIdRef.current) {
+              return;
+            }
             morphReadySentRef.current = false;
-            window.electronAPI?.overlay.morphDone();
+            window.electronAPI?.overlay.morphDone(data.transitionId);
             disposeMorph();
+            activeTransitionIdRef.current = null;
             setState(IDLE_STATE);
           });
       }),
     );
 
     unsubs.push(
-      api.onMorphState((nextState) => {
-        setHmrState(nextState);
+      api.onMorphState((payload) => {
+        if (payload.transitionId !== activeTransitionIdRef.current) {
+          return;
+        }
+        setHmrState(payload.state);
       }),
     );
 
     unsubs.push(
-      api.onMorphEnd(() => {
+      api.onMorphEnd((payload) => {
+        if (payload.transitionId !== activeTransitionIdRef.current) {
+          return;
+        }
         morphReadySentRef.current = false;
         disposeMorph();
+        activeTransitionIdRef.current = null;
         setHmrState(IDLE_HMR_STATE);
         setState(IDLE_STATE);
       }),

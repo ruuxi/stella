@@ -10,6 +10,7 @@
  * 6. Wait for the overlay to signal completion, then clean up.
  */
 
+import { randomUUID } from "node:crypto";
 import { ipcMain, type BrowserWindow } from "electron";
 import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
@@ -64,11 +65,19 @@ export function createHmrTransitionController(deps: {
 
   const waitForOverlaySignal = (
     channel: "overlay:morphReady" | "overlay:morphDone",
+    transitionId: string,
     timeoutMs: number,
   ): Promise<boolean> => {
     return new Promise((resolve) => {
-      const handler = () => {
+      const handler = (
+        _event: unknown,
+        payload?: { transitionId?: string },
+      ) => {
+        if (payload?.transitionId !== transitionId) {
+          return;
+        }
         clearTimeout(timer);
+        ipcMain.removeListener(channel, handler);
         resolve(true);
       };
       const timer = setTimeout(() => {
@@ -76,12 +85,16 @@ export function createHmrTransitionController(deps: {
         resolve(false);
       }, timeoutMs);
 
-      ipcMain.once(channel, handler);
+      ipcMain.on(channel, handler);
     });
   };
 
-  const waitForMorphDone = () =>
-    waitForOverlaySignal("overlay:morphDone", MORPH_DONE_TIMEOUT_MS);
+  const waitForMorphDone = (transitionId: string) =>
+    waitForOverlaySignal(
+      "overlay:morphDone",
+      transitionId,
+      MORPH_DONE_TIMEOUT_MS,
+    );
 
   const waitForWindowLoad = (win: BrowserWindow): Promise<void> => {
     return new Promise((resolve) => {
@@ -115,12 +128,13 @@ export function createHmrTransitionController(deps: {
   }): Promise<void> => {
     const fullWindow = deps.getFullWindow();
     const overlayController = deps.getOverlayController();
+    const transitionId = randomUUID();
     const emitState = (state: SelfModHmrState) => {
-      overlayController?.setMorphState(state);
+      overlayController?.setMorphState(transitionId, state);
       opts.reportState?.(state);
     };
     const finish = () => {
-      overlayController?.endMorph();
+      overlayController?.endMorph(transitionId);
       opts.reportState?.(IDLE_HMR_STATE);
     };
 
@@ -151,6 +165,7 @@ export function createHmrTransitionController(deps: {
     const transitionStartedAt = performance.now();
     const overlayReady = waitForOverlaySignal(
       "overlay:morphReady",
+      transitionId,
       OVERLAY_READY_TIMEOUT_MS,
     );
 
@@ -159,7 +174,12 @@ export function createHmrTransitionController(deps: {
       paused: false,
       requiresFullReload: opts.requiresFullReload,
     });
-    overlayController.startMorphForward(oldScreenshot, bounds, fullWindow);
+    overlayController.startMorphForward(
+      transitionId,
+      oldScreenshot,
+      bounds,
+      fullWindow,
+    );
 
     // Once the forward morph starts the overlay is visible — finish() MUST run
     // to clean it up, even if an error occurs mid-transition.
@@ -232,10 +252,14 @@ export function createHmrTransitionController(deps: {
         paused: false,
         requiresFullReload,
       });
-      overlayController.startMorphReverse(newScreenshot, requiresFullReload);
+      overlayController.startMorphReverse(
+        transitionId,
+        newScreenshot,
+        requiresFullReload,
+      );
 
       const reverseStartedAt = performance.now();
-      await waitForMorphDone();
+      await waitForMorphDone(transitionId);
       logMorphTiming("reverseMorph", {
         durationMs: Math.round(performance.now() - reverseStartedAt),
         totalDurationMs: Math.round(performance.now() - transitionStartedAt),

@@ -98,6 +98,7 @@
   line-height: 1.45;
   color: var(--text-strong);
   white-space: pre-wrap;
+  letter-spacing: 0.03em;
 }
 
 /* Assistant Markdown — match user bubble: stronger color, weight, same rhythm as .event-body */
@@ -106,6 +107,7 @@
   font-size: 16px;
   line-height: 1.45;
   font-weight: 500;
+  letter-spacing: 0.03em;
 }
 
 .event-item.assistant .markdown p {
@@ -149,6 +151,7 @@
 
 .event-item.assistant .markdown :is(pre, code, .shiki, kbd, samp) {
   font-weight: 400;
+  letter-spacing: normal;
 }
 
 .event-item.assistant .markdown li::marker {
