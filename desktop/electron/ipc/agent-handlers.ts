@@ -18,6 +18,7 @@ import {
   type RuntimePersonalWebsiteGenerationRequest,
 } from "../../packages/runtime-protocol/index.js";
 import type { HmrTransitionController } from "../self-mod/hmr-morph.js";
+import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
 
 type AgentHandlersOptions = {
   getStellaHostRunner: () => StellaHostRunner | null;
@@ -70,6 +71,7 @@ const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1000;
 
 export const registerAgentHandlers = (options: AgentHandlersOptions) => {
   const agentRunOwners = new Map<string, number>();
+  const nextTaskEventSeq = createMonotonicSeqGenerator();
   const agentEventBuffers = new Map<
     string,
     {
@@ -269,7 +271,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
             {
               type: ev.type,
               runId,
-              seq: Date.now(),
+              seq: nextTaskEventSeq(),
               taskId: ev.taskId,
               agentType: ev.agentType,
               description: ev.description,

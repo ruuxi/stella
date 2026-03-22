@@ -15,9 +15,32 @@ import type {
 } from "./types.js";
 
 const logger = createRuntimeLogger("agent-runtime.completion");
+const REPORTED_ORCHESTRATOR_ERROR = Symbol("reportedOrchestratorError");
 
 const safeErrorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error ? error.message || fallback : fallback;
+
+export const markOrchestratorErrorReported = (error: unknown): Error => {
+  const normalized =
+    error instanceof Error
+      ? error
+      : new Error(safeErrorMessage(error, "Stella runtime failed"));
+
+  Object.defineProperty(normalized, REPORTED_ORCHESTRATOR_ERROR, {
+    value: true,
+    configurable: true,
+  });
+
+  return normalized;
+};
+
+export const isReportedOrchestratorError = (error: unknown): boolean =>
+  error instanceof Error &&
+  Boolean(
+    (error as Error & { [REPORTED_ORCHESTRATOR_ERROR]?: boolean })[
+      REPORTED_ORCHESTRATOR_ERROR
+    ],
+  );
 
 const emitAgentEndHook = async (
   opts: OrchestratorRunOptions,

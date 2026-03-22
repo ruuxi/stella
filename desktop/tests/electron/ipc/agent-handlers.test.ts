@@ -118,6 +118,85 @@ describe("registerAgentHandlers", () => {
     expect(oldRunReplay.events).toEqual([]);
   });
 
+  it("assigns unique increasing seq values to task events emitted in the same millisecond", async () => {
+    const senderId = 19;
+    const send = vi.fn();
+    receiverById.set(senderId, {
+      isDestroyed: () => false,
+      send,
+    });
+
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(10_000);
+
+    try {
+      registerAgentHandlers({
+        getStellaHostRunner: () => ({
+          agentHealthCheck: () => ({ ready: true }),
+          handleLocalChat: vi.fn(async (_payload, callbacks) => {
+            callbacks.onTaskEvent?.({
+              type: "task-started",
+              conversationId: "conv-1",
+              rootRunId: "run-seq",
+              taskId: "task-1",
+              agentType: "general",
+              description: "Investigate the file",
+            });
+            callbacks.onTaskEvent?.({
+              type: "task-completed",
+              conversationId: "conv-1",
+              rootRunId: "run-seq",
+              taskId: "task-1",
+              agentType: "general",
+              result: "Done",
+            });
+
+            return { runId: "run-seq" };
+          }),
+          cancelLocalChat: vi.fn(),
+          getActiveOrchestratorRun: () => null,
+        }) as never,
+        getAppSessionStartedAt: () => 0,
+        isHostAuthAuthenticated: () => true,
+        frontendRoot: "/mock/project/stella/desktop",
+        assertPrivilegedSender: () => true,
+        hmrTransitionController: null,
+      });
+
+      const startChat = ipcHandleHandlers.get("agent:startChat");
+      const resume = ipcHandleHandlers.get("agent:resume");
+
+      expect(startChat).toBeTypeOf("function");
+      expect(resume).toBeTypeOf("function");
+
+      await startChat?.(createSenderEvent(senderId), {
+        conversationId: "conv-1",
+        userMessageId: "msg-1",
+        userPrompt: "Check this",
+      });
+
+      const replay = await resume?.({}, { runId: "run-seq", lastSeq: 0 }) as {
+        events: Array<Record<string, unknown>>;
+        exhausted: boolean;
+      };
+
+      expect(replay.events).toHaveLength(2);
+      expect(replay.events[0]).toEqual(
+        expect.objectContaining({
+          type: "task-started",
+          seq: 10_000,
+        }),
+      );
+      expect(replay.events[1]).toEqual(
+        expect.objectContaining({
+          type: "task-completed",
+          seq: 10_001,
+        }),
+      );
+    } finally {
+      dateNowSpy.mockRestore();
+    }
+  });
+
   it("returns the app session start timestamp", async () => {
     registerAgentHandlers({
       getStellaHostRunner: () => null,
