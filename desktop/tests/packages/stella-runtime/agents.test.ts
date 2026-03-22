@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadAgentsFromHome } from "../../../electron/core/runtime/agents/agents.js";
+import { loadAgentsFromHome } from "../../../packages/runtime-kernel/agents/agents.js";
 import { AGENT_IDS } from "../../../src/shared/contracts/agent-runtime.js";
 
 const tempRoots: string[] = [];

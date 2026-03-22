@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   getSocketPath,
   getTokenPath,
-} from "../../../packages/stella-runtime-cli/src/shared.js";
+} from "../../../packages/runtime-kernel/cli/shared.js";
 
 const ENV_KEYS = [
   "STELLA_UI_STATE_DIR",
@@ -22,7 +22,7 @@ afterEach(() => {
   process.chdir(ORIGINAL_CWD);
 });
 
-describe("stella-runtime-cli shared path resolution", () => {
+describe("runtime-kernel cli shared path resolution", () => {
   it("prefers Stella home-derived state paths over the current working directory", () => {
     process.chdir(path.resolve(ORIGINAL_CWD, ".."));
     process.env.STELLA_HOME = path.join(ORIGINAL_CWD, ".test-stella-home");

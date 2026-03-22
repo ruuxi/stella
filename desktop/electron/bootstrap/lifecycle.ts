@@ -33,7 +33,6 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
   app.on("before-quit", () => {
     context.state.isQuitting = true;
     context.services.authService.stopAuthRefreshLoop();
-    void context.services.devProjectService.stopAll();
     context.state.stellaHostRunner?.killAllShells();
     context.state.wakeWordController?.dispose();
     context.state.wakeWordController = null;

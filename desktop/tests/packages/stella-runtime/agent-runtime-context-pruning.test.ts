@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentMessage } from "../../../electron/core/agent/types.js";
-import type { LocalTaskManagerAgentContext } from "../../../electron/core/runtime/tasks/local-task-manager.js";
-import type { ResolvedLlmRoute } from "../../../electron/core/runtime/model-routing.js";
-import type { RuntimeStore } from "../../../electron/storage/runtime-store.js";
+import type { AgentMessage } from "../../../packages/runtime-kernel/agent-core/types.js";
+import type { LocalTaskManagerAgentContext } from "../../../packages/runtime-kernel/tasks/local-task-manager.js";
+import type { ResolvedLlmRoute } from "../../../packages/runtime-kernel/model-routing.js";
+import type { RuntimeStore } from "../../../packages/runtime-kernel/storage/runtime-store.js";
 
 const { capturedTransforms } = vi.hoisted(() => ({
   capturedTransforms: [] as AgentMessage[][],
 }));
 
-vi.mock("../../../electron/core/agent/agent", async () => {
-  const actual = await vi.importActual<typeof import("../../../electron/core/agent/agent.js")>(
-    "../../../electron/core/agent/agent",
+vi.mock("../../../packages/runtime-kernel/agent-core/agent.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/runtime-kernel/agent-core/agent.js")>(
+    "../../../packages/runtime-kernel/agent-core/agent.js",
   );
 
   class MockAgent {
@@ -81,7 +81,7 @@ vi.mock("../../../electron/core/agent/agent", async () => {
 import {
   runOrchestratorTurn,
   runSubagentTask,
-} from "../../../electron/core/runtime/agent-runtime.js";
+} from "../../../packages/runtime-kernel/agent-runtime.js";
 
 const createStoreStub = () => ({
   appendThreadMessage: vi.fn(),
@@ -207,3 +207,5 @@ describe("agent runtime context pruning", () => {
     expect((lastMessage?.content as Array<{ type: string; text?: string }>)[0]?.text).toContain("Solve this task");
   });
 });
+
+

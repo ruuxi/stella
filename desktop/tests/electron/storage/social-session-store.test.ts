@@ -1,4 +1,4 @@
-import fs from "fs";
+﻿import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -31,8 +31,8 @@ vi.mock("better-sqlite3", async () => {
   return { default: BetterSqlite3Mock };
 });
 
-import { createDesktopDatabase } from "../../../electron/storage/database.js";
-import { SocialSessionStore } from "../../../packages/stella-runtime-worker/src/social-sessions/store.js";
+import { createDesktopDatabase } from "../../../packages/runtime-kernel/storage/database.js";
+import { SocialSessionStore } from "../../../packages/runtime-worker/social-sessions/store.js";
 
 const tempHomes: string[] = [];
 const openDatabases = new Set<{ close(): void }>();
@@ -98,3 +98,4 @@ describe("SocialSessionStore", () => {
     ]);
   });
 });
+

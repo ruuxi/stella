@@ -1,4 +1,4 @@
-import fs from "fs";
+﻿import fs from "fs";
 import os from "os";
 import path from "path";
 import type { App } from "electron";
@@ -8,7 +8,7 @@ import {
   resolveDesktopRoot,
   resolveInstallRoot,
   resolveStellaHome,
-} from "../../../electron/system/stella-home.js";
+} from "../../../packages/runtime-kernel/home/stella-home.js";
 
 const tempRoots: string[] = [];
 
@@ -91,3 +91,4 @@ describe("stella-home", () => {
     ).toBe(true);
   });
 });
+

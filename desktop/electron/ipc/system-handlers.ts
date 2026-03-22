@@ -8,7 +8,7 @@ import {
   getSyncMode,
   loadLocalPreferences,
   saveLocalPreferences,
-} from "../core/runtime/preferences/local-preferences.js";
+} from "../../packages/runtime-kernel/preferences/local-preferences.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { AuthService } from "../services/auth-service.js";
 import type { ExternalLinkService } from "../services/external-link-service.js";
@@ -16,8 +16,8 @@ import {
   deleteLocalLlmCredential,
   listLocalLlmCredentials,
   saveLocalLlmCredential,
-} from "../core/runtime/storage/llm-credentials.js";
-import { isRuntimeUnavailableError } from "../../packages/stella-runtime-protocol/src/rpc-peer.js";
+} from "../../packages/runtime-kernel/storage/llm-credentials.js";
+import { isRuntimeUnavailableError } from "../../packages/runtime-protocol/rpc-peer.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
 
 type SystemHandlersOptions = {

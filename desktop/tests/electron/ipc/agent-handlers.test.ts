@@ -164,4 +164,93 @@ describe("registerAgentHandlers", () => {
     });
     expect(getActiveOrchestratorRun).toHaveBeenCalledTimes(1);
   });
+
+  it("routes dashboard generation and self-mod utilities through the sidecar runner", async () => {
+    const startPersonalWebsiteGeneration = vi.fn(async () => undefined);
+    const revertSelfModFeature = vi.fn(async () => ({
+      featureId: "feature-1",
+      revertedCommitHashes: ["abc123"],
+      message: "Reverted 1 commit for feature feature-1.",
+    }));
+    const getLastSelfModFeature = vi.fn(async () => "feature-1");
+    const listRecentSelfModFeatures = vi.fn(async () => [
+      {
+        featureId: "feature-1",
+        name: "Feature 1",
+        description: "",
+        latestCommit: "abc123",
+        latestTimestampMs: 1,
+        commitCount: 1,
+      },
+    ]);
+
+    registerAgentHandlers({
+      getStellaHostRunner: () =>
+        ({
+          agentHealthCheck: vi.fn(async () => ({ ready: true })),
+          handleLocalChat: vi.fn(),
+          cancelLocalChat: vi.fn(),
+          getActiveOrchestratorRun: vi.fn(async () => null),
+          startPersonalWebsiteGeneration,
+          revertSelfModFeature,
+          getLastSelfModFeature,
+          listRecentSelfModFeatures,
+        }) as never,
+      getAppSessionStartedAt: () => 0,
+      isHostAuthAuthenticated: () => true,
+      frontendRoot: "/mock/project/stella/desktop",
+      assertPrivilegedSender: () => true,
+      hmrMorphOrchestrator: null,
+    });
+
+    const generateHandler = ipcHandleHandlers.get("agent:startPersonalWebsiteGeneration");
+    const revertHandler = ipcHandleHandlers.get("selfmod:revert");
+    const lastFeatureHandler = ipcHandleHandlers.get("selfmod:lastFeature");
+    const recentFeaturesHandler = ipcHandleHandlers.get("selfmod:recentFeatures");
+
+    await expect(
+      generateHandler?.(createSenderEvent(1), {
+        conversationId: "conv-1",
+        coreMemory: "core",
+        promptConfig: {
+          systemPrompt: "system",
+          userPromptTemplate: "user",
+        },
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      revertHandler?.(createSenderEvent(1), {
+        featureId: "feature-1",
+        steps: 2,
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        featureId: "feature-1",
+        revertedCommitHashes: ["abc123"],
+      }),
+    );
+    await expect(lastFeatureHandler?.(createSenderEvent(1))).resolves.toBe("feature-1");
+    await expect(
+      recentFeaturesHandler?.(createSenderEvent(1), { limit: 4 }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        featureId: "feature-1",
+      }),
+    ]);
+
+    expect(startPersonalWebsiteGeneration).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+      coreMemory: "core",
+      promptConfig: {
+        systemPrompt: "system",
+        userPromptTemplate: "user",
+      },
+    });
+    expect(revertSelfModFeature).toHaveBeenCalledWith({
+      featureId: "feature-1",
+      steps: 2,
+    });
+    expect(getLastSelfModFeature).toHaveBeenCalledTimes(1);
+    expect(listRecentSelfModFeatures).toHaveBeenCalledWith(4);
+  });
 });

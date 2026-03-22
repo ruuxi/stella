@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { BrowserWindow } from 'electron'
 import type { CredentialRequestPayload, CredentialResponsePayload } from '../types.js'
-import type { WindowManagerTarget } from './lifecycle-targets.js'
+import type { WindowManagerTarget } from '../../packages/runtime-kernel/lifecycle-targets.js'
 
 export class CredentialService {
   private readonly pending = new Map<
@@ -13,7 +13,7 @@ export class CredentialService {
     }
   >()
 
-  constructor(private readonly options: { windowManagerTarget: WindowManagerTarget; getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null }) {}
+  constructor(private readonly options: { windowManagerTarget: WindowManagerTarget<BrowserWindow>; getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null }) {}
 
   async requestCredential(payload: Omit<CredentialRequestPayload, 'requestId'>) {
     const requestId = randomUUID()

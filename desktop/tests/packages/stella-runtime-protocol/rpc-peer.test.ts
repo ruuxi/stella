@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import {
   RPC_ERROR_CODES,
   type JsonRpcMessage,
-} from "../../../packages/stella-runtime-protocol/src/index.js";
+} from "../../../packages/runtime-protocol/index.js";
 import {
   JsonRpcPeer,
   RpcError,
-} from "../../../packages/stella-runtime-protocol/src/rpc-peer.js";
+} from "../../../packages/runtime-protocol/rpc-peer.js";
 
 const connectPeers = () => {
   let left: JsonRpcPeer;

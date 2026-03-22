@@ -1,1 +1,1 @@
-export * from "../../../packages/stella-boundary-contracts/src/index.js";
+export * from "../../../packages/boundary-contracts/index.js";

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+﻿import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const createStellaHostRunnerMock = vi.fn();
 const registerBootstrapIpcHandlersMock = vi.fn();
@@ -64,7 +64,7 @@ vi.mock("../../../electron/bootstrap/resets.js", () => ({
   scheduleBootstrapRuntimeShutdown: vi.fn(),
 }));
 
-vi.mock("../../../electron/system/stella-home.js", () => ({
+vi.mock("../../../packages/runtime-kernel/home/stella-home.js", () => ({
   resolveStellaHome: resolveStellaHomeMock,
 }));
 
@@ -127,6 +127,7 @@ describe("initializeStellaHostRunner", () => {
     const setAuthToken = vi.fn();
     const onLocalChatUpdated = vi.fn(() => () => {});
     const onScheduleUpdated = vi.fn(() => () => {});
+    const onProjectsUpdated = vi.fn(() => () => {});
     const start = vi.fn(async () => {});
     const health = vi.fn(async () => ({ deviceId: "device-1" }));
 
@@ -137,6 +138,8 @@ describe("initializeStellaHostRunner", () => {
       setAuthToken,
       onLocalChatUpdated,
       onScheduleUpdated,
+      onProjectsUpdated,
+      listProjects: vi.fn(async () => []),
       start,
       client: { health },
     });
@@ -167,6 +170,7 @@ describe("initializeStellaHostRunner", () => {
         },
       },
       state: {
+        devProjectsUpdateUnsubscribe: null,
         scheduleUpdateUnsubscribe: null,
         stellaHomePath: "/mock/home/.stella",
         stellaWorkspacePath: "/mock/home/.stella/workspace",
@@ -218,6 +222,8 @@ describe("initializeStellaHostRunner", () => {
       setAuthToken: vi.fn(),
       onLocalChatUpdated: vi.fn(() => () => {}),
       onScheduleUpdated: vi.fn(() => () => {}),
+      onProjectsUpdated: vi.fn(() => () => {}),
+      listProjects: vi.fn(async () => []),
       start,
       client: {
         health: vi.fn(async () => ({ deviceId: "device-1" })),
@@ -275,15 +281,13 @@ describe("initializeStellaHostRunner", () => {
           start: vi.fn(),
           setWindowManager: vi.fn(),
         },
-        devProjectService: {
-          setStellaHome: vi.fn(),
-        },
       },
       state: {
         appReady: false,
         appSessionStartedAt: 0,
         deferredStartupSequence: null,
         deviceId: null,
+        devProjectsUpdateUnsubscribe: null,
         hmrMorphOrchestrator: null,
         isQuitting: false,
         localChatUpdateUnsubscribe: null,
@@ -318,3 +322,4 @@ describe("initializeStellaHostRunner", () => {
     resolveStart?.();
   });
 });
+

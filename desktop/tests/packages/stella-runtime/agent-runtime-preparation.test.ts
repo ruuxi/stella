@@ -3,7 +3,7 @@ import {
   buildRuntimeSystemPrompt,
   buildSubagentSystemPrompt,
   createUserPromptMessage,
-} from "../../../electron/core/runtime/agent-runtime/run-preparation.js";
+} from "../../../packages/runtime-kernel/agent-runtime/run-preparation.js";
 
 describe("agent runtime preparation helpers", () => {
   it("applies before_agent_start replace and append hooks to the orchestrator system prompt", async () => {

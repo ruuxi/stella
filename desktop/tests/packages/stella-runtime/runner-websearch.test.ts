@@ -1,4 +1,4 @@
-import fs from "fs";
+﻿import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -64,7 +64,7 @@ vi.mock("convex/server", () => ({
   },
 }));
 
-vi.mock("../../../electron/core/runtime/tools/host.js", () => ({
+vi.mock("../../../packages/runtime-kernel/tools/host.js", () => ({
   createToolHost: () => ({
     executeTool: vi.fn(),
     setSkills: vi.fn(),
@@ -74,19 +74,19 @@ vi.mock("../../../electron/core/runtime/tools/host.js", () => ({
   }),
 }));
 
-vi.mock("../../../electron/core/runtime/agents/agents.js", () => ({
+vi.mock("../../../packages/runtime-kernel/agents/agents.js", () => ({
   loadAgentsFromHome: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../../../electron/core/runtime/agents/skills.js", () => ({
+vi.mock("../../../packages/runtime-kernel/agents/skills.js", () => ({
   loadSkillsFromHome: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../../../electron/core/runtime/extensions/loader.js", () => ({
+vi.mock("../../../packages/runtime-kernel/extensions/loader.js", () => ({
   loadExtensions: vi.fn().mockResolvedValue({ tools: [], prompts: [] }),
 }));
 
-vi.mock("../../../electron/core/runtime/extensions/hook-emitter.js", () => ({
+vi.mock("../../../packages/runtime-kernel/extensions/hook-emitter.js", () => ({
   HookEmitter: class HookEmitter {
     emit() {
       return Promise.resolve(null);
@@ -94,7 +94,7 @@ vi.mock("../../../electron/core/runtime/extensions/hook-emitter.js", () => ({
   },
 }));
 
-vi.mock("../../../electron/core/runtime/tasks/local-task-manager.js", () => ({
+vi.mock("../../../packages/runtime-kernel/tasks/local-task-manager.js", () => ({
   LocalTaskManager: class LocalTaskManager {
     constructor(opts: unknown) {
       localTaskManagerCtorMock(opts);
@@ -104,7 +104,7 @@ vi.mock("../../../electron/core/runtime/tasks/local-task-manager.js", () => ({
   },
 }));
 
-vi.mock("../../../electron/core/runtime/remote-turn-bridge.js", () => ({
+vi.mock("../../../packages/runtime-kernel/remote-turn-bridge.js", () => ({
   createRemoteTurnBridge: () => ({
     start: vi.fn(),
     stop: vi.fn(),
@@ -113,16 +113,16 @@ vi.mock("../../../electron/core/runtime/remote-turn-bridge.js", () => ({
 }));
 
 const { createStellaHostRunner } = await import(
-  "../../../electron/core/runtime/runner.js"
+  "../../../packages/runtime-kernel/runner.js"
 );
 const { createDesktopDatabase } = await import(
-  "../../../electron/storage/database.js"
+  "../../../packages/runtime-kernel/storage/database.js"
 );
 const { RuntimeStore } = await import(
-  "../../../electron/storage/runtime-store.js"
+  "../../../packages/runtime-kernel/storage/runtime-store.js"
 );
 const { TranscriptMirror } = await import(
-  "../../../electron/storage/transcript-mirror.js"
+  "../../../packages/runtime-kernel/storage/transcript-mirror.js"
 );
 
 const tempHomes: string[] = [];
@@ -227,3 +227,4 @@ describe("runtime runner WebSearch", () => {
     db.close();
   });
 });
+

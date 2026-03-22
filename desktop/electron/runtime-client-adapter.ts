@@ -3,17 +3,22 @@ import {
   AGENT_STREAM_EVENT_TYPES,
 } from "../src/shared/contracts/agent-runtime.js";
 import type {
+  LocalDevProjectRecord,
   RuntimeActiveRun,
   RuntimeAgentEventPayload,
   RuntimeAutomationTurnRequest,
+  RuntimeOverlayAutoPanelEventPayload,
+  RuntimeOverlayAutoPanelStartPayload,
+  RuntimeVoiceChatPayload,
+  SelfModFeatureSummary,
   StorePublishArgs,
-} from "../packages/stella-runtime-protocol/src/index.js";
+} from "../packages/runtime-protocol/index.js";
 import {
   StellaRuntimeClient,
   type StellaRuntimeClientOptions,
-} from "../packages/stella-runtime-client/src/index.js";
-import { createRuntimeUnavailableError } from "../packages/stella-runtime-protocol/src/rpc-peer.js";
-import type { TaskLifecycleEvent } from "./core/runtime/tasks/local-task-manager.js";
+} from "../packages/runtime-client/index.js";
+import { createRuntimeUnavailableError } from "../packages/runtime-protocol/rpc-peer.js";
+import type { TaskLifecycleEvent } from "../packages/runtime-kernel/tasks/local-task-manager.js";
 
 type AgentCallbacks = {
   onStream: (event: RuntimeAgentEventPayload) => void;
@@ -427,8 +432,109 @@ export class RuntimeClientAdapter {
     return void this.client.appendThreadMessage(args);
   }
 
+  persistVoiceTranscript(args: {
+    conversationId: string;
+    role: "user" | "assistant";
+    text: string;
+  }) {
+    return this.client.persistVoiceTranscript(args);
+  }
+
+  async handleVoiceChat(
+    payload: {
+      conversationId: string;
+      message: string;
+    },
+    callbacks: AgentCallbacks,
+  ) {
+    const requestId =
+      globalThis.crypto?.randomUUID?.() ?? `voice-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let lastRunEventSeq = 0;
+    let lastTaskEventSeq = 0;
+
+    const dispatch = (event: RuntimeAgentEventPayload) => {
+      const isTaskLifecycleEvent =
+        event.type !== AGENT_STREAM_EVENT_TYPES.STREAM &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_START &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_END &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.ERROR &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.END;
+
+      if (isTaskLifecycleEvent) {
+        if (event.seq <= lastTaskEventSeq) {
+          return;
+        }
+        lastTaskEventSeq = event.seq;
+      } else {
+        if (event.seq <= lastRunEventSeq) {
+          return;
+        }
+        lastRunEventSeq = event.seq;
+      }
+
+      switch (event.type) {
+        case AGENT_STREAM_EVENT_TYPES.STREAM:
+          callbacks.onStream(event);
+          break;
+        case AGENT_STREAM_EVENT_TYPES.TOOL_START:
+          callbacks.onToolStart(event);
+          break;
+        case AGENT_STREAM_EVENT_TYPES.TOOL_END:
+          callbacks.onToolEnd(event);
+          break;
+        case AGENT_STREAM_EVENT_TYPES.ERROR:
+          callbacks.onError(event);
+          break;
+        case AGENT_STREAM_EVENT_TYPES.END:
+          callbacks.onEnd(event);
+          break;
+        default:
+          callbacks.onTaskEvent?.({
+            type: event.type as TaskLifecycleEvent["type"],
+            conversationId: payload.conversationId,
+            rootRunId: event.runId,
+            taskId: event.taskId ?? "",
+            agentType: event.agentType ?? "",
+            ...(event.description ? { description: event.description } : {}),
+            ...(event.parentTaskId ? { parentTaskId: event.parentTaskId } : {}),
+            ...(event.result ? { result: event.result } : {}),
+            ...(event.error ? { error: event.error } : {}),
+            ...(event.statusText ? { statusText: event.statusText } : {}),
+          });
+          break;
+      }
+    };
+
+    const offEvent = this.client.on("voice-agent-event", (eventPayload) => {
+      if (eventPayload.requestId !== requestId) {
+        return;
+      }
+      dispatch(eventPayload.event);
+    });
+    const offHmr = this.client.on("voice-self-mod-hmr-state", (hmrPayload) => {
+      if (hmrPayload.requestId !== requestId) {
+        return;
+      }
+      callbacks.onSelfModHmrState?.(hmrPayload.state);
+    });
+
+    try {
+      return await this.client.voiceOrchestratorChat({
+        requestId,
+        ...payload,
+      } satisfies RuntimeVoiceChatPayload);
+    } finally {
+      offEvent();
+      offHmr();
+    }
+  }
+
   webSearch(query: string, options?: { category?: string; displayResults?: boolean }) {
     return this.client.webSearch(query, options);
+  }
+
+  voiceWebSearch(payload: { query: string; category?: string }) {
+    return this.client.voiceWebSearch(payload);
   }
 
   listStorePackages() {
@@ -514,8 +620,62 @@ export class RuntimeClientAdapter {
     return this.client.on("local-chat-updated", listener);
   }
 
+  onProjectsUpdated(listener: (projects: LocalDevProjectRecord[]) => void) {
+    return this.client.on("projects-updated", listener);
+  }
+
+  onOverlayAutoPanelEvent(
+    listener: (payload: RuntimeOverlayAutoPanelEventPayload) => void,
+  ) {
+    return this.client.on("overlay-auto-panel-event", listener);
+  }
+
   getSocialSessionStatus() {
     return this.client.getSocialSessionStatus();
+  }
+
+  listProjects() {
+    return this.client.listProjects();
+  }
+
+  registerProjectDirectory(projectPath: string) {
+    return this.client.registerProjectDirectory(projectPath);
+  }
+
+  startProject(projectId: string) {
+    return this.client.startProject(projectId);
+  }
+
+  stopProject(projectId: string) {
+    return this.client.stopProject(projectId);
+  }
+
+  startOverlayAutoPanelStream(payload: RuntimeOverlayAutoPanelStartPayload) {
+    return this.client.startOverlayAutoPanelStream(payload);
+  }
+
+  cancelOverlayAutoPanelStream(requestId: string) {
+    return this.client.cancelOverlayAutoPanelStream(requestId);
+  }
+
+  startPersonalWebsiteGeneration(payload: {
+    conversationId: string;
+    coreMemory: string;
+    promptConfig: { systemPrompt: string; userPromptTemplate: string };
+  }) {
+    return this.client.startPersonalWebsiteGeneration(payload);
+  }
+
+  revertSelfModFeature(payload: { featureId?: string; steps?: number }) {
+    return this.client.revertSelfModFeature(payload);
+  }
+
+  getLastSelfModFeature() {
+    return this.client.getLastSelfModFeature();
+  }
+
+  listRecentSelfModFeatures(limit?: number): Promise<SelfModFeatureSummary[]> {
+    return this.client.listRecentSelfModFeatures(limit);
   }
 
   killAllShells() {

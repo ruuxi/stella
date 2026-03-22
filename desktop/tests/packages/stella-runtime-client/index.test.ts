@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   METHOD_NAMES,
   STELLA_RUNTIME_PROTOCOL_VERSION,
-} from "../../../packages/stella-runtime-protocol/src/index.js";
+} from "../../../packages/runtime-protocol/index.js";
 
 type MockChild = EventEmitter & {
   pid: number;
@@ -89,12 +89,12 @@ vi.mock("node:child_process", () => ({
   spawn: spawnMock,
 }));
 
-vi.mock("../../../packages/stella-runtime-protocol/src/jsonl.js", () => ({
+vi.mock("../../../packages/runtime-protocol/jsonl.js", () => ({
   attachJsonRpcPeerToStreams: attachJsonRpcPeerToStreamsMock,
 }));
 
 const { StellaRuntimeClient } = await import(
-  "../../../packages/stella-runtime-client/src/index.js"
+  "../../../packages/runtime-client/index.js"
 );
 
 describe("StellaRuntimeClient", () => {

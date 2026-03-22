@@ -5,7 +5,7 @@ import {
   createAutomationFatalErrorHandler,
   createAutomationSuccessResult,
   createOrchestratorFatalErrorHandler,
-} from "../../../electron/core/runtime/runner/orchestrator-callbacks.js";
+} from "../../../packages/runtime-kernel/runner/orchestrator-callbacks.js";
 
 describe("runner orchestrator callback helpers", () => {
   it("maps automation runtime callbacks into result resolution", () => {

@@ -2,12 +2,12 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPiTools } from "../../../electron/core/runtime/agent-runtime/tool-adapters.js";
-import { resolveLocalCliCwd } from "../../../electron/core/runtime/agent-runtime/shared.js";
-import { handleEdit, handleRead, handleWrite } from "../../../electron/core/runtime/tools/file.js";
-import { handleGlob, handleGrep } from "../../../electron/core/runtime/tools/search.js";
+import { createPiTools } from "../../../packages/runtime-kernel/agent-runtime/tool-adapters.js";
+import { resolveLocalCliCwd } from "../../../packages/runtime-kernel/agent-runtime/shared.js";
+import { handleEdit, handleRead, handleWrite } from "../../../packages/runtime-kernel/tools/file.js";
+import { handleGlob, handleGrep } from "../../../packages/runtime-kernel/tools/search.js";
 import { AGENT_IDS } from "../../../src/shared/contracts/agent-runtime.js";
-import type { ToolContext, ToolResult } from "../../../electron/core/runtime/tools/types.js";
+import type { ToolContext, ToolResult } from "../../../packages/runtime-kernel/tools/types.js";
 
 const tempRoots: string[] = [];
 

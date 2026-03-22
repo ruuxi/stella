@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getModel } from "../../../electron/core/ai/models.js";
+import { getModel } from "../../../packages/ai/models.js";
 import type {
   AgentLoopConfig,
   AgentMessage,
-} from "../../../electron/core/agent/types.js";
+} from "../../../packages/runtime-kernel/agent-core/types.js";
 
 const { captured } = vi.hoisted(() => ({
   captured: {
@@ -12,10 +12,10 @@ const { captured } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../../electron/core/agent/agent-loop", async () => {
+vi.mock("../../../packages/runtime-kernel/agent-core/agent-loop.js", async () => {
   const actual = await vi.importActual<
-    typeof import("../../../electron/core/agent/agent-loop.js")
-  >("../../../electron/core/agent/agent-loop");
+    typeof import("../../../packages/runtime-kernel/agent-core/agent-loop.js")
+  >("../../../packages/runtime-kernel/agent-core/agent-loop.js");
 
   return {
     ...actual,
@@ -30,7 +30,7 @@ vi.mock("../../../electron/core/agent/agent-loop", async () => {
   };
 });
 
-import { Agent } from "../../../electron/core/agent/agent.js";
+import { Agent } from "../../../packages/runtime-kernel/agent-core/agent.js";
 
 const userMessage: AgentMessage = {
   role: "user",
@@ -172,3 +172,4 @@ describe("agent upstream contract guards", () => {
     ).resolves.toBeUndefined();
   });
 });
+

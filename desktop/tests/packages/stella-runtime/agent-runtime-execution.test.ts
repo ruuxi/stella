@@ -4,10 +4,10 @@ const { subscribeRuntimeAgentEventsMock } = vi.hoisted(() => ({
   subscribeRuntimeAgentEventsMock: vi.fn(),
 }));
 
-vi.mock("../../../electron/core/runtime/agent-runtime/run-events.js", async () => {
+vi.mock("../../../packages/runtime-kernel/agent-runtime/run-events.js", async () => {
   const actual = await vi.importActual<
-    typeof import("../../../electron/core/runtime/agent-runtime/run-events.js")
-  >("../../../electron/core/runtime/agent-runtime/run-events.js");
+    typeof import("../../../packages/runtime-kernel/agent-runtime/run-events.js")
+  >("../../../packages/runtime-kernel/agent-runtime/run-events.js");
 
   return {
     ...actual,
@@ -16,7 +16,7 @@ vi.mock("../../../electron/core/runtime/agent-runtime/run-events.js", async () =
 });
 
 const { executeRuntimeAgentPrompt } = await import(
-  "../../../electron/core/runtime/agent-runtime/run-execution.js"
+  "../../../packages/runtime-kernel/agent-runtime/run-execution.js"
 );
 
 describe("agent runtime execution helper", () => {

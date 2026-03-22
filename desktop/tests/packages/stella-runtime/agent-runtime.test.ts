@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LocalTaskManagerAgentContext } from "../../../electron/core/runtime/tasks/local-task-manager.js";
-import type { ResolvedLlmRoute } from "../../../electron/core/runtime/model-routing.js";
-import type { RuntimeStore } from "../../../electron/storage/runtime-store.js";
+﻿import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { LocalTaskManagerAgentContext } from "../../../packages/runtime-kernel/tasks/local-task-manager.js";
+import type { ResolvedLlmRoute } from "../../../packages/runtime-kernel/model-routing.js";
+import type { RuntimeStore } from "../../../packages/runtime-kernel/storage/runtime-store.js";
 
 const {
   runClaudeCodeTurnMock,
@@ -11,9 +11,9 @@ const {
   isClaudeCodeModelMock: vi.fn(),
 }));
 
-vi.mock("../../../electron/core/runtime/integrations/claude-code-session-runtime", async () => {
-  const actual = await vi.importActual<typeof import("../../../electron/core/runtime/integrations/claude-code-session-runtime.js")>(
-    "../../../electron/core/runtime/integrations/claude-code-session-runtime",
+vi.mock("../../../packages/runtime-kernel/integrations/claude-code-session-runtime.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/runtime-kernel/integrations/claude-code-session-runtime.js")>(
+    "../../../packages/runtime-kernel/integrations/claude-code-session-runtime.js",
   );
   return {
     ...actual,
@@ -23,7 +23,7 @@ vi.mock("../../../electron/core/runtime/integrations/claude-code-session-runtime
   };
 });
 
-import { runSubagentTask } from "../../../electron/core/runtime/agent-runtime.js";
+import { runSubagentTask } from "../../../packages/runtime-kernel/agent-runtime.js";
 
 type StoreStub = {
   appendThreadMessage: ReturnType<typeof vi.fn>;
@@ -177,3 +177,4 @@ describe("runSubagentTask external engine selection", () => {
     }));
   });
 });
+

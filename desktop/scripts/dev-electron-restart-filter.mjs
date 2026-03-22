@@ -10,33 +10,39 @@ export const shouldRestartElectronForBuildPath = (filename) => {
     return false
   }
 
-  if (normalized.startsWith('packages/stella-runtime-client/')) {
+  const sidecarOwnedPackagePrefixes = [
+    'packages/runtime-kernel/agent-core/',
+    'packages/runtime-worker/',
+    'packages/runtime-capabilities/',
+    'packages/runtime-kernel/cli/',
+    'resources/bundled-commands/',
+  ]
+  if (sidecarOwnedPackagePrefixes.some((prefix) => normalized.startsWith(prefix))) {
+    return false
+  }
+
+  const hostOwnedPackagePrefixes = [
+    'packages/runtime-client/',
+    'packages/runtime-protocol/',
+    'packages/boundary-contracts/',
+    // Electron main imports runtime modules from these extracted packages
+    // directly. Keep dev reloads correct by restarting the host for any
+    // change under those package trees instead of risking stale main-process
+    // code.
+    'packages/ai/',
+    'packages/runtime-kernel/',
+    'packages/runtime-kernel/home/',
+    'packages/runtime-discovery/',
+    'packages/runtime-kernel/dev-projects/',
+    'packages/runtime-kernel/self-mod/',
+  ]
+  if (hostOwnedPackagePrefixes.some((prefix) => normalized.startsWith(prefix))) {
     return true
   }
-  if (normalized.startsWith('packages/stella-runtime-protocol/')) {
-    return true
-  }
+
   if (!normalized.startsWith('electron/')) {
     return false
   }
 
-  const electronPath = normalized.slice('electron/'.length)
-  const workerOwnedPrefixes = [
-    'self-mod/',
-    'storage/',
-  ]
-  if (workerOwnedPrefixes.some((prefix) => electronPath.startsWith(prefix))) {
-    return false
-  }
-  if (
-    electronPath === 'services/local-scheduler-service.js' ||
-    electronPath === 'system/device.js'
-  ) {
-    return false
-  }
-
-  // `electron/core/runtime/**` is still shared with Electron main via modules like
-  // overlay streaming, browser handlers, preferences, and credential storage.
-  // Restart Electron for the whole tree so dev behavior matches a clean boot.
   return true
 }

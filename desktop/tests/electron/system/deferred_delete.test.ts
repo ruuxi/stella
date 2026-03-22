@@ -7,7 +7,7 @@ import {
   getDeferredDeletePaths,
   purgeExpiredDeferredDeletes,
   trashPathsForDeferredDelete,
-} from "../../../electron/core/runtime/tools/deferred-delete.js";
+} from "../../../packages/runtime-kernel/tools/deferred-delete.js";
 
 const tmpRoots: string[] = [];
 

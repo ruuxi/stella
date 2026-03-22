@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createOrchestratorCoordinator } from "../../../electron/core/runtime/runner/orchestrator-coordinator.js";
+import { createOrchestratorCoordinator } from "../../../packages/runtime-kernel/runner/orchestrator-coordinator.js";
 
 const createContext = () =>
   ({

@@ -12,10 +12,10 @@ const {
   updateOrchestratorReminderStateMock: vi.fn(),
 }));
 
-vi.mock("../../../electron/core/runtime/agent-runtime/thread-memory.js", async () => {
+vi.mock("../../../packages/runtime-kernel/agent-runtime/thread-memory.js", async () => {
   const actual = await vi.importActual<
-    typeof import("../../../electron/core/runtime/agent-runtime/thread-memory.js")
-  >("../../../electron/core/runtime/agent-runtime/thread-memory.js");
+    typeof import("../../../packages/runtime-kernel/agent-runtime/thread-memory.js")
+  >("../../../packages/runtime-kernel/agent-runtime/thread-memory.js");
 
   return {
     ...actual,
@@ -29,7 +29,7 @@ vi.mock("../../../electron/core/runtime/agent-runtime/thread-memory.js", async (
 const {
   finalizeOrchestratorSuccess,
   finalizeSubagentSuccess,
-} = await import("../../../electron/core/runtime/agent-runtime/run-completion.js");
+} = await import("../../../packages/runtime-kernel/agent-runtime/run-completion.js");
 
 describe("agent runtime completion helpers", () => {
   beforeEach(() => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBundledCoreAgents } from "../../../electron/core/runtime/agents/core-agent-prompts.js";
+import { buildBundledCoreAgents } from "../../../packages/runtime-kernel/agents/core-agent-prompts.js";
 import { BUNDLED_CORE_AGENT_IDS } from "../../../src/shared/contracts/agent-runtime.js";
 
 describe("bundled core agent prompts", () => {

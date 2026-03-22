@@ -8,7 +8,7 @@ const read = (relativePath: string) =>
 
 describe("agent core boundaries", () => {
   test("stella runtime stays isolated from legacy runtime files", () => {
-    const source = read("electron/core/runtime/agent-runtime.ts");
+    const source = read("packages/runtime-kernel/agent-runtime.ts");
     expect(source).toContain('from "./agent-runtime/external-engines.js"');
     expect(source).toContain('from "./agent-runtime/pi-execution.js"');
     expect(source).toContain('from "./agent-runtime/shared.js"');

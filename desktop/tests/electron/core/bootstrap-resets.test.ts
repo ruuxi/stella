@@ -1,4 +1,4 @@
-import path from "path";
+﻿import path from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const rmMock = vi.fn(async () => {});
@@ -25,11 +25,11 @@ vi.mock("electron", () => ({
   },
 }));
 
-vi.mock("../../../electron/storage/reset-message-storage.js", () => ({
+vi.mock("../../../packages/runtime-kernel/storage/reset-message-storage.js", () => ({
   resetMessageStorage: resetMessageStorageMock,
 }));
 
-vi.mock("../../../electron/system/stella-home.js", () => ({
+vi.mock("../../../packages/runtime-kernel/home/stella-home.js", () => ({
   resolveRuntimeHomePath: resolveRuntimeHomePathMock,
 }));
 
@@ -244,3 +244,4 @@ describe("bootstrap reset flows", () => {
     expect(broadcastLocalChatUpdatedMock).toHaveBeenCalledWith(context);
   });
 });
+

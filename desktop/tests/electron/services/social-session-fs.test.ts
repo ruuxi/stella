@@ -9,7 +9,7 @@ import {
   resolveSessionLocalFolder,
   sanitizeSessionFolderLabel,
   scanSessionWorkspace,
-} from "../../../packages/stella-runtime-worker/src/social-sessions/fs.js";
+} from "../../../packages/runtime-worker/social-sessions/fs.js";
 
 const tempRoots: string[] = [];
 

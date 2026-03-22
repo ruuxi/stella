@@ -2,7 +2,6 @@ import { globalShortcut, ipcMain } from "electron";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { UiState } from "../types.js";
 import type { WindowManager } from "../windows/window-manager.js";
-import type { OverlayWindowController } from "../windows/overlay-window.js";
 
 type VoiceHandlersOptions = {
   uiState: UiState;
@@ -15,9 +14,6 @@ type VoiceHandlersOptions = {
   getWakeWordEnabled: () => boolean;
   pushWakeWordAudio: (pcm: Int16Array) => void;
   getStellaHostRunner: () => StellaHostRunner | null;
-  getOverlayController: () => OverlayWindowController | null;
-  getConvexSiteUrl: () => string | null;
-  getAuthToken: () => Promise<string | null> | string | null;
   getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
 };
 
@@ -50,6 +46,31 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   let currentVoiceShortcut = "";
   let currentVoiceRtcShortcut = "";
   let runtimeState: VoiceRuntimeSnapshot = DEFAULT_RUNTIME_STATE;
+
+  const ts = () => {
+    const d = new Date();
+    return `${d.toLocaleTimeString("en-US", { hour12: false })}.${String(d.getMilliseconds()).padStart(3, "0")}`;
+  };
+
+  const emitVoiceAgentEvent = (eventPayload: Record<string, unknown>) => {
+    const fullWindow = options.windowManager.getFullWindow();
+    if (fullWindow && !fullWindow.isDestroyed()) {
+      fullWindow.webContents.send("agent:event", eventPayload);
+    }
+    options.getBroadcastToMobile?.()?.("agent:event", eventPayload);
+  };
+
+  const emitVoiceHmrState = (state: unknown) => {
+    const miniWindow = options.windowManager.getMiniWindow();
+    const fullWindow = options.windowManager.getFullWindow();
+    const targetWindow =
+      options.uiState.window === "mini"
+        ? (miniWindow ?? fullWindow)
+        : (fullWindow ?? miniWindow);
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      targetWindow.webContents.send("agent:selfModHmrState", state);
+    }
+  };
 
   const applyShortcutRegistration = (
     label: string,
@@ -216,11 +237,6 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     }
   });
 
-  const ts = () => {
-    const d = new Date();
-    return `${d.toLocaleTimeString("en-US", { hour12: false })}.${String(d.getMilliseconds()).padStart(3, "0")}`;
-  };
-
   ipcMain.on(
     "voice:persistTranscript",
     (
@@ -235,152 +251,17 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
         `[${ts()}] [Voice RTC] ${payload.role.toUpperCase()}: ${payload.text}`,
       );
       const stellaHostRunner = options.getStellaHostRunner();
-      if (!stellaHostRunner) return;
-      try {
-        stellaHostRunner.appendThreadMessage({
-          threadKey: payload.conversationId,
-          role: payload.role,
-          content: payload.text,
-        });
-      } catch (err) {
+      if (!stellaHostRunner) {
+        return;
+      }
+      stellaHostRunner.persistVoiceTranscript(payload).catch((err) => {
         console.debug(
           "[voice] transcript persistence failed (best-effort):",
           (err as Error).message,
         );
-      }
+      });
     },
   );
-
-  // Queue for voice requests while the orchestrator is busy.
-  // Only the latest pending request is kept — if the user refines their ask
-  // while the orchestrator is running, earlier queued requests are dropped.
-  type PendingVoiceRequest = {
-    payload: { conversationId: string; message: string };
-    resolve: (value: string) => void;
-    reject: (error: Error) => void;
-  };
-  let pendingVoiceRequest: PendingVoiceRequest | null = null;
-  let voiceRequestActive = false;
-
-  const executeVoiceChat = (
-    payload: { conversationId: string; message: string },
-    stellaHostRunner: StellaHostRunner,
-  ): Promise<string> => {
-    console.log(
-      `[${ts()}] [Voice] orchestratorChat executing:`,
-      payload.message,
-    );
-
-    // Emit agent events to the full window so the trace viewer can capture them
-    const emitToFrontend = (eventPayload: Record<string, unknown>) => {
-      const fullWindow = options.windowManager.getFullWindow();
-      if (fullWindow && !fullWindow.isDestroyed()) {
-        fullWindow.webContents.send("agent:event", eventPayload);
-      }
-      options.getBroadcastToMobile?.()?.("agent:event", eventPayload);
-    };
-
-    return new Promise<string>((resolve, reject) => {
-      let fullText = "";
-      stellaHostRunner
-        .handleLocalChat(
-          {
-            conversationId: payload.conversationId,
-            userMessageId: `voice-${Date.now()}`,
-            userPrompt: payload.message,
-            agentType: "orchestrator",
-            storageMode: "local",
-          },
-          {
-            onStream: (ev) => {
-              if (ev.chunk) fullText += ev.chunk;
-            },
-            onToolStart: (ev) => {
-              emitToFrontend({ ...ev, type: "tool-start" });
-            },
-            onToolEnd: (ev) => {
-              emitToFrontend({ ...ev, type: "tool-end" });
-            },
-            onTaskEvent: (ev) => {
-              emitToFrontend({
-                type: ev.type,
-                runId: "voice",
-                seq: Date.now(),
-                taskId: ev.taskId,
-                agentType: ev.agentType,
-                description: ev.description,
-                parentTaskId: ev.parentTaskId,
-                result: ev.result,
-                error: ev.error,
-                statusText: ev.statusText,
-              });
-            },
-            onSelfModHmrState: (state) => {
-              const miniWindow = options.windowManager.getMiniWindow();
-              const fullWindow = options.windowManager.getFullWindow();
-              const targetWindow =
-                options.uiState.window === "mini"
-                  ? (miniWindow ?? fullWindow)
-                  : (fullWindow ?? miniWindow);
-              if (targetWindow && !targetWindow.isDestroyed()) {
-                targetWindow.webContents.send("agent:selfModHmrState", state);
-              }
-            },
-            onEnd: (ev) => {
-              const result = (ev.finalText ?? fullText) || "Done.";
-              console.log(
-                `[${ts()}] [Voice] orchestratorChat result:`,
-                result.slice(0, 300),
-              );
-              emitToFrontend({ ...ev, type: "end" });
-              resolve(result);
-            },
-            onError: (ev) => {
-              console.error(
-                `[${ts()}] [Voice] orchestratorChat error:`,
-                ev.error,
-              );
-              emitToFrontend({ ...ev, type: "error" });
-              reject(new Error(ev.error ?? "Unknown error"));
-            },
-          },
-        )
-        .catch((err) => {
-          reject(err instanceof Error ? err : new Error(String(err)));
-        });
-    });
-  };
-
-  const drainVoiceQueue = () => {
-    const pending = pendingVoiceRequest;
-    pendingVoiceRequest = null;
-    if (!pending) {
-      voiceRequestActive = false;
-      return;
-    }
-
-    const stellaHostRunner = options.getStellaHostRunner();
-    if (!stellaHostRunner) {
-      pending.reject(new Error("Stella runtime not initialized"));
-      voiceRequestActive = false;
-      return;
-    }
-
-    console.log(
-      `[${ts()}] [Voice] dequeuing pending request:`,
-      pending.payload.message,
-    );
-    executeVoiceChat(pending.payload, stellaHostRunner).then(
-      (result) => {
-        pending.resolve(result);
-        drainVoiceQueue();
-      },
-      (err) => {
-        pending.reject(err instanceof Error ? err : new Error(String(err)));
-        drainVoiceQueue();
-      },
-    );
-  };
 
   ipcMain.handle(
     "voice:orchestratorChat",
@@ -394,35 +275,42 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
         throw new Error("Stella runtime not initialized");
       }
 
-      // If the orchestrator is busy, queue this request and return a promise
-      // that resolves when it eventually runs
-      if (voiceRequestActive) {
-        // Drop any previously queued request — only the latest matters
-        if (pendingVoiceRequest) {
-          console.log(
-            `[${ts()}] [Voice] replacing queued request:`,
-            pendingVoiceRequest.payload.message,
+      return await stellaHostRunner.handleVoiceChat(payload, {
+        onStream: () => {},
+        onToolStart: (event) => {
+          emitVoiceAgentEvent({ ...event, type: "tool-start" });
+        },
+        onToolEnd: (event) => {
+          emitVoiceAgentEvent({ ...event, type: "tool-end" });
+        },
+        onTaskEvent: (event) => {
+          emitVoiceAgentEvent({
+            type: event.type,
+            runId: event.rootRunId ?? "voice",
+            seq: Date.now(),
+            taskId: event.taskId,
+            agentType: event.agentType,
+            description: event.description,
+            parentTaskId: event.parentTaskId,
+            result: event.result,
+            error: event.error,
+            statusText: event.statusText,
+          });
+        },
+        onSelfModHmrState: (state) => {
+          emitVoiceHmrState(state);
+        },
+        onEnd: (event) => {
+          emitVoiceAgentEvent({ ...event, type: "end" });
+        },
+        onError: (event) => {
+          console.error(
+            `[${ts()}] [Voice] orchestratorChat error:`,
+            event.error,
           );
-          pendingVoiceRequest.reject(
-            new Error("Superseded by newer voice request"),
-          );
-        }
-        console.log(
-          `[${ts()}] [Voice] orchestrator busy, queuing request:`,
-          payload.message,
-        );
-        return new Promise<string>((resolve, reject) => {
-          pendingVoiceRequest = { payload, resolve, reject };
-        });
-      }
-
-      voiceRequestActive = true;
-      try {
-        const result = await executeVoiceChat(payload, stellaHostRunner);
-        return result;
-      } finally {
-        drainVoiceQueue();
-      }
+          emitVoiceAgentEvent({ ...event, type: "error" });
+        },
+      });
     },
   );
 
@@ -439,10 +327,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       if (!stellaHostRunner) {
         return { text: "Stella runtime not initialized.", results: [] };
       }
-      return stellaHostRunner.webSearch(payload.query, {
-        category: payload.category,
-        displayResults: true,
-      });
+      return await stellaHostRunner.voiceWebSearch(payload);
     },
   );
 

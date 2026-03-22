@@ -45,7 +45,7 @@ const StellaRuntimeClientMock = vi.fn(function MockStellaRuntimeClient() {
   return mockClient;
 });
 
-vi.mock("../../packages/stella-runtime-client/src/index.js", () => ({
+vi.mock("../../packages/runtime-client/index.js", () => ({
   StellaRuntimeClient: StellaRuntimeClientMock,
 }));
 

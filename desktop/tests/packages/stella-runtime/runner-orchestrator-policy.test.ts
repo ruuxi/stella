@@ -4,7 +4,7 @@ const { canResolveRunnerLlmRouteMock } = vi.hoisted(() => ({
   canResolveRunnerLlmRouteMock: vi.fn(),
 }));
 
-vi.mock("../../../electron/core/runtime/runner/model-selection.js", () => ({
+vi.mock("../../../packages/runtime-kernel/runner/model-selection.js", () => ({
   canResolveRunnerLlmRoute: canResolveRunnerLlmRouteMock,
 }));
 
@@ -12,7 +12,7 @@ const {
   getOrchestratorHealth,
   normalizeAutomationRunInput,
   normalizeChatRunInput,
-} = await import("../../../electron/core/runtime/runner/orchestrator-policy.js");
+} = await import("../../../packages/runtime-kernel/runner/orchestrator-policy.js");
 
 describe("runner orchestrator policy", () => {
   beforeEach(() => {

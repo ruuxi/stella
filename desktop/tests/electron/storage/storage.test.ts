@@ -1,4 +1,4 @@
-import fs from "fs";
+﻿import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,15 +31,15 @@ vi.mock("better-sqlite3", async () => {
   return { default: BetterSqlite3Mock };
 });
 
-import { createDesktopDatabase } from "../../../electron/storage/database.js";
-import { resetMessageStorage } from "../../../electron/storage/reset-message-storage.js";
-import { ChatStore } from "../../../electron/storage/chat-store.js";
-import { RuntimeStore } from "../../../electron/storage/runtime-store.js";
-import { TranscriptMirror } from "../../../electron/storage/transcript-mirror.js";
+import { createDesktopDatabase } from "../../../packages/runtime-kernel/storage/database.js";
+import { resetMessageStorage } from "../../../packages/runtime-kernel/storage/reset-message-storage.js";
+import { ChatStore } from "../../../packages/runtime-kernel/storage/chat-store.js";
+import { RuntimeStore } from "../../../packages/runtime-kernel/storage/runtime-store.js";
+import { TranscriptMirror } from "../../../packages/runtime-kernel/storage/transcript-mirror.js";
 import {
   RUNTIME_THREAD_NAME_POOL,
   RUNTIME_THREAD_REMINDER_INTERVAL_TOKENS,
-} from "../../../electron/core/runtime/runtime-threads.js";
+} from "../../../packages/runtime-kernel/runtime-threads.js";
 
 const tempHomes: string[] = [];
 const openDatabases = new Set<{ close(): void }>();
@@ -381,3 +381,4 @@ describe("storage", () => {
     close();
   });
 });
+

@@ -4,7 +4,7 @@ import type {
   StellaHomePathTarget,
   StellaHostRunnerTarget,
   WindowManagerTarget,
-} from "../services/lifecycle-targets.js";
+} from "../../packages/runtime-kernel/lifecycle-targets.js";
 
 export class BootstrapLifecycleBindings
   implements

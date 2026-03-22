@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSafeExternalUrl } from "../../../../electron/core/runtime/tools/network-guards.js";
+import { normalizeSafeExternalUrl } from "../../../../packages/runtime-kernel/tools/network-guards.js";
 
 describe("network-guards", () => {
   it("blocks localhost and private IP targets", async () => {

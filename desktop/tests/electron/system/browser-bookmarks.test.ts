@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+﻿import { beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "fs";
 import os from "os";
-import { collectBrowserBookmarks } from "../../../electron/system/browser-bookmarks.js";
+import { collectBrowserBookmarks } from "../../../packages/runtime-discovery/browser-bookmarks.js";
 
 const normalizePath = (value: string) => value.replaceAll("\\", "/");
 
@@ -114,3 +114,4 @@ describe("collectBrowserBookmarks", () => {
     expect(mockReadFile).toHaveBeenCalledTimes(2);
   });
 });
+

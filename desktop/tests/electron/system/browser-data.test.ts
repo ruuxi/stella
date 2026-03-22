@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import path from "path";
 import os from "os";
 
 // Import types only - we'll dynamically import for tests that need real behavior
-import type { BrowserData } from "../../../electron/system/browser-data.js";
+import type { BrowserData } from "../../../packages/runtime-discovery/browser-data.js";
 
 // Mock database module
 const mockPrepare = vi.fn();
@@ -33,7 +33,7 @@ import {
   coreMemoryExists,
   writeCoreMemory,
   formatBrowserDataForSynthesis,
-} from "../../../electron/system/browser-data.js";
+} from "../../../packages/runtime-discovery/browser-data.js";
 
 describe("Browser Data Collection - Unit Tests", () => {
   const mockFs = fs.promises as unknown as {
@@ -340,7 +340,7 @@ describe("Browser Data Collection - Integration Test", () => {
 
     // Dynamically import the real module
     const { collectBrowserData: realCollect, formatBrowserDataForSynthesis: realFormat } =
-      await import("../../../electron/system/browser-data.js");
+      await import("../../../packages/runtime-discovery/browser-data.js");
 
     const testHome = path.join(os.tmpdir(), "stella-test-" + Date.now());
 
@@ -399,3 +399,4 @@ describe("Browser Data Collection - Integration Test", () => {
  * Or run the integration test:
  * bun test electron/system/browser-data.test.ts --run
  */
+
