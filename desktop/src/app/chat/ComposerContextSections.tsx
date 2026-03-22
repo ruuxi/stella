@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import {
+  FileContextChips,
   PendingCaptureChip,
   ScreenshotContextChips,
   SelectedTextChip,
@@ -56,6 +57,19 @@ const captureVariantClassNames = {
       "chat-composer-context-chip chat-composer-context-chip--pending mini-context-chip mini-context-chip--pending",
     pendingInnerClassName:
       "chat-composer-context-pending-inner mini-context-pending-inner",
+  },
+} as const;
+
+const fileVariantClassNames = {
+  full: {
+    containerClassName: null,
+    chipClassName: "composer-context-chip",
+    removeClassName: "chat-composer-context-remove composer-context-remove",
+  },
+  mini: {
+    containerClassName: "mini-composer-screenshots",
+    chipClassName: "mini-context-chip",
+    removeClassName: "chat-composer-context-remove mini-context-remove",
   },
 } as const;
 
@@ -153,6 +167,28 @@ export function ComposerCaptureContextSection({
     return content;
   }
 
+  return <div className={classes.containerClassName}>{content}</div>;
+}
+
+export function ComposerFileContextSection({
+  variant,
+  chatContext,
+  setChatContext,
+}: SharedContextProps) {
+  const files = chatContext?.files ?? [];
+  if (files.length === 0) return null;
+
+  const classes = fileVariantClassNames[variant];
+  const content = (
+    <FileContextChips
+      files={files}
+      setChatContext={setChatContext}
+      chipClassName={classes.chipClassName}
+      removeClassName={classes.removeClassName}
+    />
+  );
+
+  if (!classes.containerClassName) return content;
   return <div className={classes.containerClassName}>{content}</div>;
 }
 

@@ -3,6 +3,7 @@ import type { ChatContext } from "@/shared/types/electron";
 
 export type ComposerContextState = {
   hasScreenshotContext: boolean;
+  hasFileContext: boolean;
   hasWindowContext: boolean;
   hasWindowTextContext: boolean;
   hasSelectedTextContext: boolean;
@@ -31,12 +32,14 @@ export const resolveComposerContextState = (
   selectedText: string | null,
 ): ComposerContextState => {
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
+  const hasFileContext = Boolean(chatContext?.files?.length);
   const hasWindowContext = Boolean(chatContext?.window);
   const hasWindowTextContext = Boolean(chatContext?.windowText?.trim());
   const hasSelectedTextContext = Boolean(selectedText);
   const hasPendingCaptureContext = Boolean(chatContext?.capturePending);
   const hasSubmittableContext = Boolean(
     hasScreenshotContext
+      || hasFileContext
       || hasWindowContext
       || hasWindowTextContext
       || hasSelectedTextContext,
@@ -44,6 +47,7 @@ export const resolveComposerContextState = (
 
   return {
     hasScreenshotContext,
+    hasFileContext,
     hasWindowContext,
     hasWindowTextContext,
     hasSelectedTextContext,
@@ -61,6 +65,9 @@ export const resolveComposerPlaceholder = ({
   }
   if (contextState.hasScreenshotContext) {
     return "Ask about the capture...";
+  }
+  if (contextState.hasFileContext) {
+    return "Ask about the file...";
   }
   if (contextState.hasWindowContext || contextState.hasWindowTextContext) {
     return "Ask about this window...";
@@ -117,5 +124,17 @@ export const removeComposerScreenshotContext = (
     const next = [...(prev.regionScreenshots ?? [])];
     next.splice(index, 1);
     return { ...prev, regionScreenshots: next };
+  });
+};
+
+export const removeComposerFileContext = (
+  index: number,
+  setChatContext: SetChatContext,
+) => {
+  setChatContext((prev) => {
+    if (!prev) return prev;
+    const next = [...(prev.files ?? [])];
+    next.splice(index, 1);
+    return { ...prev, files: next };
   });
 };

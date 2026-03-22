@@ -16,6 +16,8 @@ import {
 import {
   deriveComposerState,
 } from "./composer-context";
+import { useFileDrop } from "./hooks/use-file-drop";
+import { DropOverlay } from "./DropOverlay";
 import "./full-shell.composer.css";
 
 type ComposerProps = {
@@ -51,6 +53,11 @@ export function Composer({
   const formRef = useRef<HTMLFormElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
+
+  const { isDragOver, dropHandlers } = useFileDrop({
+    setChatContext,
+    disabled: isStreaming,
+  });
 
   const heightAnimRef = useRef<ReturnType<typeof animate> | null>(null);
   const lastHeightRef = useRef(0);
@@ -128,7 +135,8 @@ export function Composer({
         </div>
       )}
 
-      <div ref={shellRef} className="composer-shell">
+      <div ref={shellRef} className="composer-shell" {...dropHandlers}>
+        <DropOverlay visible={isDragOver} variant="full" />
         <form
           ref={formRef}
           className={`composer-form${isExpanded ? " expanded" : ""}`}
