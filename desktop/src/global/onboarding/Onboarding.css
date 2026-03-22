@@ -308,6 +308,10 @@
   backdrop-filter: none;
 }
 
+.onboarding-dialogue[data-phase="creation"] .onboarding-phase-nav {
+  pointer-events: auto;
+}
+
 .onboarding-dialogue[data-phase="creation"] .onboarding-split-right::before {
   content: "";
   position: absolute;
