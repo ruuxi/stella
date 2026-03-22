@@ -6,6 +6,7 @@ import type {
   ChatPayload,
   RunnerContext,
 } from "./types.js";
+import type { RuntimeAttachmentRef } from "../../runtime-protocol/index.js";
 
 export type OrchestratorRuntimeDeps = {
   resolveAgent: (agentType: string) => unknown;
@@ -18,8 +19,23 @@ export type OrchestratorRuntimeDeps = {
 export type NormalizedOrchestratorRunInput = {
   conversationId: string;
   userPrompt: string;
+  attachments: RuntimeAttachmentRef[];
   agentType: string;
 };
+
+const normalizeAttachments = (
+  attachments: ChatPayload["attachments"],
+): RuntimeAttachmentRef[] =>
+  Array.isArray(attachments)
+    ? attachments.filter(
+        (attachment): attachment is RuntimeAttachmentRef =>
+          Boolean(
+            attachment &&
+              typeof attachment.url === "string" &&
+              attachment.url.trim().length > 0,
+          ),
+      )
+    : [];
 
 export const getOrchestratorHealth = (
   context: RunnerContext,
@@ -62,6 +78,7 @@ export const normalizeChatRunInput = (
 ): NormalizedOrchestratorRunInput => ({
   conversationId: payload.conversationId,
   userPrompt: payload.userPrompt.trim(),
+  attachments: normalizeAttachments(payload.attachments),
   agentType: payload.agentType ?? AGENT_IDS.ORCHESTRATOR,
 });
 
@@ -72,5 +89,6 @@ export const normalizeAutomationRunInput = (payload: {
 }): NormalizedOrchestratorRunInput => ({
   conversationId: payload.conversationId.trim(),
   userPrompt: payload.userPrompt.trim(),
+  attachments: [],
   agentType: payload.agentType ?? AGENT_IDS.ORCHESTRATOR,
 });

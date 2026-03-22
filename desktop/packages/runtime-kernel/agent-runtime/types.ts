@@ -3,6 +3,7 @@ import type { ResolvedLlmRoute } from "../model-routing.js";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
+import type { RuntimeAttachmentRef } from "../../runtime-protocol/index.js";
 
 export type SelfModAppliedPayload = {
   featureId: string;
@@ -75,6 +76,7 @@ export type BaseRunOptions = {
   userMessageId: string;
   agentType: string;
   userPrompt: string;
+  attachments?: RuntimeAttachmentRef[];
   agentContext: LocalTaskManagerAgentContext;
   toolExecutor: (
     toolName: string,
