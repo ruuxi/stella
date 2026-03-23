@@ -6,23 +6,11 @@ import { ChevronUp, Check } from "lucide-react";
 import "./ThemePicker.css";
 
 type ColorScheme = "light" | "dark" | "system";
-type GradientMode = "soft" | "crisp";
-type GradientColor = "relative" | "strong";
 
 const COLOR_SCHEMES: { id: ColorScheme; label: string }[] = [
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
   { id: "system", label: "System" },
-];
-
-const GRADIENT_MODES: { id: GradientMode; label: string }[] = [
-  { id: "soft", label: "Soft" },
-  { id: "crisp", label: "Crisp" },
-];
-
-const GRADIENT_COLORS: { id: GradientColor; label: string }[] = [
-  { id: "relative", label: "Subtle" },
-  { id: "strong", label: "Vivid" },
 ];
 
 interface ThemePickerProps {
@@ -38,18 +26,12 @@ export function ThemePicker({
   onOpenChange: controlledOnOpenChange,
   onThemeSelect,
 }: ThemePickerProps) {
-  const { themeId, themes, colorMode, gradientMode, gradientColor } = useTheme();
+  const { themeId, themes, colorMode } = useTheme();
   const {
     setTheme,
     setColorMode,
-    setGradientMode,
-    setGradientColor,
     previewTheme,
     cancelThemePreview,
-    previewGradientMode,
-    cancelGradientModePreview,
-    previewGradientColor,
-    cancelGradientColorPreview,
     cancelPreview,
   } = useThemeControl();
 
@@ -102,46 +84,6 @@ export function ThemePicker({
                   </Button>
                 ))}
               </div>
-
-              <div data-slot="theme-picker-label">Background</div>
-              <div
-                data-slot="theme-picker-button-row"
-                onMouseLeave={() => cancelGradientModePreview()}
-              >
-                {GRADIENT_MODES.map((mode) => (
-                  <Button
-                    key={mode.id}
-                    size="small"
-                    variant={gradientMode === mode.id ? "secondary" : "ghost"}
-                    data-slot="theme-picker-option-button"
-                    onClick={() => setGradientMode(mode.id)}
-                    onMouseEnter={() => previewGradientMode(mode.id)}
-                    onFocus={() => previewGradientMode(mode.id)}
-                  >
-                    {mode.label}
-                  </Button>
-                ))}
-              </div>
-
-              <div data-slot="theme-picker-label">Color intensity</div>
-              <div
-                data-slot="theme-picker-button-row"
-                onMouseLeave={() => cancelGradientColorPreview()}
-              >
-                {GRADIENT_COLORS.map((color) => (
-                  <Button
-                    key={color.id}
-                    size="small"
-                    variant={gradientColor === color.id ? "secondary" : "ghost"}
-                    data-slot="theme-picker-option-button"
-                    onClick={() => setGradientColor(color.id)}
-                    onMouseEnter={() => previewGradientColor(color.id)}
-                    onFocus={() => previewGradientColor(color.id)}
-                  >
-                    {color.label}
-                  </Button>
-                ))}
-              </div>
             </div>
 
             <div
@@ -179,5 +121,3 @@ export function ThemePicker({
     </Popover>
   );
 }
-
-

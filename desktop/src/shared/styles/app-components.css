@@ -144,12 +144,6 @@
   inset: 0;
 }
 
-.gradient-blob {
-  position: absolute;
-  left: 0;
-  top: 0;
-}
-
 .gradient-grain {
   position: absolute;
   inset: 0;
