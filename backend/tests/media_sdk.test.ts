@@ -16,8 +16,10 @@ import {
 } from "../convex/http_routes/media";
 import {
   STELLA_BEST_MODEL,
+  STELLA_CHEAP_MODEL,
   STELLA_FAST_MODEL,
   STELLA_MEDIA_MODEL,
+  STELLA_SMART_MODEL,
   listStellaCatalogModels,
   resolveStellaModelSelection,
 } from "../convex/stella_models";
@@ -199,12 +201,18 @@ describe("media api contract", () => {
 });
 
 describe("stella llm aliases", () => {
-  test("resolves stable best, fast, and media aliases", () => {
-    expect(resolveStellaModelSelection("general", STELLA_BEST_MODEL)).toBe(
-      "anthropic/claude-opus-4.6",
+  test("resolves stable cheap, fast, smart, best, and media aliases", () => {
+    expect(resolveStellaModelSelection("general", STELLA_CHEAP_MODEL)).toBe(
+      "zai/glm-4.7",
     );
     expect(resolveStellaModelSelection("general", STELLA_FAST_MODEL)).toBe(
       "inception/mercury-2",
+    );
+    expect(resolveStellaModelSelection("general", STELLA_SMART_MODEL)).toBe(
+      "anthropic/claude-sonnet-4.6",
+    );
+    expect(resolveStellaModelSelection("general", STELLA_BEST_MODEL)).toBe(
+      "anthropic/claude-sonnet-4.6",
     );
     expect(resolveStellaModelSelection("general", STELLA_MEDIA_MODEL)).toBe(
       "google/gemini-3-flash",
@@ -216,8 +224,10 @@ describe("stella llm aliases", () => {
     expect(ids).toEqual(
       expect.arrayContaining([
         "stella/default",
-        STELLA_BEST_MODEL,
+        STELLA_CHEAP_MODEL,
         STELLA_FAST_MODEL,
+        STELLA_SMART_MODEL,
+        STELLA_BEST_MODEL,
         STELLA_MEDIA_MODEL,
       ]),
     );

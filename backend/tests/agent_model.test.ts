@@ -1,9 +1,11 @@
 import { describe, test, expect } from "bun:test";
 import {
+  getModeConfig,
   getModelConfig,
   DEFAULT_MODEL,
   AGENT_MODELS,
   AUDIENCE_AGENT_MODELS,
+  MODEL_MODES,
   hasModelConfig,
   resolveManagedModelAudience,
 } from "../convex/agent/model";
@@ -13,8 +15,10 @@ import {
   listStellaDefaultSelections,
   resolveStellaModelSelection,
   STELLA_BEST_MODEL,
+  STELLA_CHEAP_MODEL,
   STELLA_FAST_MODEL,
   STELLA_MEDIA_MODEL,
+  STELLA_SMART_MODEL,
 } from "../convex/stella_models";
 
 describe("DEFAULT_MODEL", () => {
@@ -34,6 +38,29 @@ describe("DEFAULT_MODEL", () => {
   });
 });
 
+describe("model modes", () => {
+  test("defines the expected reusable modes", () => {
+    expect(MODEL_MODES).toEqual([
+      "cheap",
+      "compact",
+      "fast",
+      "smart",
+      "best",
+      "reasoning",
+      "synthesis",
+      "media",
+    ]);
+  });
+
+  test("resolves mode configs", () => {
+    expect(getModeConfig("cheap").model).toBe("zai/glm-4.7");
+    expect(getModeConfig("fast").model).toBe("inception/mercury-2");
+    expect(getModeConfig("smart").model).toBe("anthropic/claude-sonnet-4.6");
+    expect(getModeConfig("media").model).toBe("google/gemini-3-flash");
+    expect(getModeConfig("best").fallback).toBe(getModeConfig("smart").model);
+  });
+});
+
 describe("AGENT_MODELS", () => {
   test("is a non-empty record", () => {
     expect(typeof AGENT_MODELS).toBe("object");
@@ -42,7 +69,7 @@ describe("AGENT_MODELS", () => {
 
   test("includes orchestrator config", () => {
     expect(AGENT_MODELS.orchestrator).toBeDefined();
-    expect(AGENT_MODELS.orchestrator.model).toBe("anthropic/claude-opus-4.6");
+    expect(AGENT_MODELS.orchestrator.model).toBe("anthropic/claude-sonnet-4.6");
   });
 
   test("includes general config", () => {
@@ -65,12 +92,11 @@ describe("AGENT_MODELS", () => {
     expect(AGENT_MODELS.mercury.model).toBe("inception/mercury-2");
   });
 
-  test("includes llm and media llm configs", () => {
-    expect(AGENT_MODELS.llm_best).toBeDefined();
-    expect(AGENT_MODELS.llm_fast).toBeDefined();
-    expect(AGENT_MODELS.media_llm).toBeDefined();
-    expect(AGENT_MODELS.llm_fast.model).toBe("inception/mercury-2");
-    expect(AGENT_MODELS.media_llm.model).toBe("google/gemini-3-flash");
+  test("includes synthesis and media configs", () => {
+    expect(AGENT_MODELS.synthesis).toBeDefined();
+    expect(AGENT_MODELS.store_image_safety_review).toBeDefined();
+    expect(AGENT_MODELS.synthesis.model).toBe("openai/gpt-5.4-mini");
+    expect(AGENT_MODELS.store_image_safety_review.model).toBe("google/gemini-3-flash");
   });
 
   test("each config has required model field", () => {
@@ -212,15 +238,21 @@ describe("listStellaDefaultSelections", () => {
 });
 
 describe("Stella SDK aliases", () => {
-  test("resolves stable best/fast/media aliases", () => {
-    expect(resolveStellaModelSelection("general", STELLA_BEST_MODEL)).toBe(
-      AGENT_MODELS.llm_best.model,
+  test("resolves stable cheap/fast/smart/best/media aliases", () => {
+    expect(resolveStellaModelSelection("general", STELLA_CHEAP_MODEL)).toBe(
+      getModeConfig("cheap").model,
     );
     expect(resolveStellaModelSelection("general", STELLA_FAST_MODEL)).toBe(
-      AGENT_MODELS.llm_fast.model,
+      getModeConfig("fast").model,
+    );
+    expect(resolveStellaModelSelection("general", STELLA_SMART_MODEL)).toBe(
+      getModeConfig("smart").model,
+    );
+    expect(resolveStellaModelSelection("general", STELLA_BEST_MODEL)).toBe(
+      getModeConfig("best").model,
     );
     expect(resolveStellaModelSelection("general", STELLA_MEDIA_MODEL)).toBe(
-      AGENT_MODELS.media_llm.model,
+      getModeConfig("media").model,
     );
   });
 
@@ -228,20 +260,32 @@ describe("Stella SDK aliases", () => {
     const catalog = listStellaCatalogModels();
     expect(catalog).toContainEqual(
       expect.objectContaining({
-        id: STELLA_BEST_MODEL,
-        upstreamModel: AGENT_MODELS.llm_best.model,
+        id: STELLA_CHEAP_MODEL,
+        upstreamModel: getModeConfig("cheap").model,
       }),
     );
     expect(catalog).toContainEqual(
       expect.objectContaining({
         id: STELLA_FAST_MODEL,
-        upstreamModel: AGENT_MODELS.llm_fast.model,
+        upstreamModel: getModeConfig("fast").model,
+      }),
+    );
+    expect(catalog).toContainEqual(
+      expect.objectContaining({
+        id: STELLA_SMART_MODEL,
+        upstreamModel: getModeConfig("smart").model,
+      }),
+    );
+    expect(catalog).toContainEqual(
+      expect.objectContaining({
+        id: STELLA_BEST_MODEL,
+        upstreamModel: getModeConfig("best").model,
       }),
     );
     expect(catalog).toContainEqual(
       expect.objectContaining({
         id: STELLA_MEDIA_MODEL,
-        upstreamModel: AGENT_MODELS.media_llm.model,
+        upstreamModel: getModeConfig("media").model,
         type: "multimodal",
       }),
     );

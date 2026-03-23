@@ -1,8 +1,10 @@
 /**
  * Centralized model configuration for all AI requests.
  *
- * ALL model selections and the managed gateway config live here.
- * Update this file to switch models, providers, or the gateway URL.
+ * Model selection is split into:
+ * - modes: reusable full model configs (model, fallback, routing, tokens, etc.)
+ * - task mappings: each agent/task chooses a single mode
+ * - audience overrides: sparse per-plan patches applied to modes
  */
 import { AGENT_IDS } from "../lib/agent_constants";
 
@@ -25,11 +27,9 @@ type JSONValue =
   | JSONValue[]
   | { [key: string]: JSONValue };
 
-// ─── Model Config ───────────────────────────────────────────────────────────
-
 export type ModelConfig = {
   model: string;
-  fallback?: string; // fallback model if primary fails
+  fallback?: string;
   temperature?: number;
   maxOutputTokens?: number;
   providerOptions?: Record<string, Record<string, JSONValue>>;
@@ -50,116 +50,53 @@ export const MANAGED_MODEL_AUDIENCES = [
 
 export type ManagedModelAudience = (typeof MANAGED_MODEL_AUDIENCES)[number];
 
-const DEFAULT_MODEL: ModelConfig = {
-  model: "anthropic/claude-sonnet-4.6",
-  fallback: "anthropic/claude-sonnet-4.6",
-  temperature: 1.0,
-  maxOutputTokens: 16192,
-  providerOptions: {
-    openai: {
-      reasoningEffort: "low",
-    },
-    gateway: {
-      order: ["baseten", "fireworks", "cerebras"],
-    },
-  },
+export const MODEL_MODES = [
+  "cheap",
+  "compact",
+  "fast",
+  "smart",
+  "best",
+  "reasoning",
+  "synthesis",
+  "media",
+] as const;
+
+export type ModelMode = (typeof MODEL_MODES)[number];
+
+type ModeConfig = Omit<ModelConfig, "fallback"> & {
+  fallbackMode?: ModelMode;
 };
 
-const COMPACTION_MODEL: ModelConfig = {
-  model: "zai/glm-4.7",
-  fallback: "anthropic/claude-sonnet-4.6",
-  temperature: 1.0,
-  maxOutputTokens: 12096,
-  providerOptions: {
-    gateway: {
-      order: ["cerebras"],
-    },
-  },
+const isPlainObject = (value: unknown): value is Record<string, unknown> => (
+  typeof value === "object" && value !== null && !Array.isArray(value)
+);
+
+const clone = <T>(value: T): T => structuredClone(value);
+
+const deepMerge = <T>(base: T, patch?: Partial<T>): T => {
+  if (!patch) return clone(base);
+
+  if (!isPlainObject(base) || !isPlainObject(patch)) {
+    return clone((patch as T | undefined) ?? base);
+  }
+
+  const output = clone(base) as Record<string, unknown>;
+  for (const [key, patchValue] of Object.entries(patch)) {
+    if (patchValue === undefined) continue;
+
+    const baseValue = output[key];
+    output[key] = isPlainObject(baseValue) && isPlainObject(patchValue)
+      ? deepMerge(baseValue, patchValue)
+      : clone(patchValue);
+  }
+
+  return output as T;
 };
 
-const DASHBOARD_GENERATION_MODEL: ModelConfig = {
-  model: "anthropic/claude-sonnet-4.6",
-  fallback: "anthropic/claude-sonnet-4.6",
-  temperature: 1.0,
-  maxOutputTokens: 16192,
-  providerOptions: {
-    openai: {
-      reasoningEffort: "minimal",
-    },
-    gateway: {
-      order: ["baseten", "fireworks", "cerebras"],
-    },
-  },
-};
-
-const SCHEDULE_AGENT_MODEL: ModelConfig = {
-  model: "anthropic/claude-sonnet-4.6",
-  fallback: "anthropic/claude-sonnet-4.6",
-  temperature: 1.0,
-  maxOutputTokens: 16192,
-  providerOptions: {
-    openai: {
-      reasoningEffort: "low",
-    },
-    gateway: {
-      order: ["baseten", "fireworks", "cerebras"],
-    },
-  },
-};
-
-const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
-  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
-
-  [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
-
-  [AGENT_IDS.EXPLORE]: {
+const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
+  cheap: {
     model: "zai/glm-4.7",
-    fallback: "anthropic/claude-sonnet-4.6",
+    fallbackMode: "smart",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -169,40 +106,33 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  [AGENT_IDS.BROWSER]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
+  compact: {
+    model: "zai/glm-4.7",
+    fallbackMode: "smart",
     temperature: 1.0,
-    maxOutputTokens: 16192,
+    maxOutputTokens: 12096,
     providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
       gateway: {
-        order: ["amazon-bedrock", "fireworks"],
+        order: ["cerebras"],
       },
     },
   },
 
-  // "app" is the frontend agent type name for browser/app automation
-  [AGENT_IDS.APP]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
+  fast: {
+    model: "inception/mercury-2",
+    fallbackMode: "smart",
+    temperature: 0.8,
+    maxOutputTokens: 8192,
     providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
       gateway: {
-        order: ["amazon-bedrock", "fireworks"],
+        order: ["cerebras", "fireworks", "amazon-bedrock"],
       },
     },
   },
 
-  [AGENT_IDS.AUTO]: {
+  smart: {
     model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
+    fallbackMode: "smart",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -215,13 +145,26 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  schedule: SCHEDULE_AGENT_MODEL,
-
-  "panel-generate": {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
+  best: {
+    model: "anthropic/claude-opus-4.6",
+    fallbackMode: "smart",
     temperature: 1.0,
-    maxOutputTokens: 8192,
+    maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      gateway: {
+        order: ["amazon-bedrock", "fireworks"],
+      },
+    },
+  },
+
+  reasoning: {
+    model: "inception/mercury-2",
+    fallbackMode: "smart",
+    temperature: 1.0,
+    maxOutputTokens: 16096,
     providerOptions: {
       gateway: {
         order: ["fireworks", "cerebras"],
@@ -235,7 +178,7 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
 
   synthesis: {
     model: "openai/gpt-5.4-mini",
-    fallback: "zai/glm-4.7",
+    fallbackMode: "cheap",
     temperature: 1.0,
     maxOutputTokens: 9500,
     providerOptions: {
@@ -249,70 +192,9 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
     },
   },
 
-  session_compaction_summary: COMPACTION_MODEL,
-
-  thread_compaction_summary: COMPACTION_MODEL,
-
-  welcome: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2400,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-    },
-  },
-
-  mercury: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-  },
-
-  suggestions: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 10000,
-    providerOptions: {
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-
-  llm_best: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  llm_fast: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.8,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  media_llm: {
+  media: {
     model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
+    fallbackMode: "smart",
     temperature: 0.7,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -321,2189 +203,126 @@ const ANONYMOUS_AGENT_MODELS: Record<string, ModelConfig> = {
       },
       gateway: {
         order: ["fireworks", "amazon-bedrock", "cerebras"],
-      },
-    },
-  },
-  music_prompt: {
-    model: "google/gemini-3-flash",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
-  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
-
-  skill_metadata: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 2000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  skill_selection: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 3000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  search_html: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 16096,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  store_security_review: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2500,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  store_image_safety_review: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock"],
       },
     },
   },
 };
 
-const FREE_AGENT_MODELS: Record<string, ModelConfig> = {
-  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
-
-  [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
-
-  [AGENT_IDS.EXPLORE]: {
-    model: "zai/glm-4.7",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  [AGENT_IDS.BROWSER]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  // "app" is the frontend agent type name for browser/app automation
-  [AGENT_IDS.APP]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  schedule: SCHEDULE_AGENT_MODEL,
-
-  "panel-generate": {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  synthesis: {
-    model: "openai/gpt-5.4-mini",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 9500,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "low",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  session_compaction_summary: COMPACTION_MODEL,
-
-  thread_compaction_summary: COMPACTION_MODEL,
-
-  welcome: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2400,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-    },
-  },
-
-  mercury: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-  },
-
-  suggestions: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 10000,
-    providerOptions: {
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-
-  llm_best: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  llm_fast: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.8,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  media_llm: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.7,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock", "cerebras"],
-      },
-    },
-  },
-  music_prompt: {
-    model: "google/gemini-3-flash",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
-  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
-
-  skill_metadata: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 2000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  skill_selection: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 3000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  search_html: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 16096,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  store_security_review: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2500,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  store_image_safety_review: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock"],
-      },
-    },
-  },
+const AUDIENCE_MODE_OVERRIDES: Record<ManagedModelAudience, Partial<Record<ModelMode, Partial<ModeConfig>>>> = {
+  anonymous: {},
+  free: {},
+  go: {},
+  pro: {},
+  plus: {},
+  ultra: {},
+  go_fallback: {},
+  pro_fallback: {},
+  plus_fallback: {},
+  ultra_fallback: {},
 };
 
-const GO_AGENT_MODELS: Record<string, ModelConfig> = {
-  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
+export const TASK_MODEL_MODES: Record<string, ModelMode> = {
+  [AGENT_IDS.OFFLINE_RESPONDER]: "smart",
+  [AGENT_IDS.ORCHESTRATOR]: "smart",
+  [AGENT_IDS.GENERAL]: "smart",
+  [AGENT_IDS.SELF_MOD]: "smart",
+  [AGENT_IDS.DASHBOARD_GENERATION]: "smart",
+  [AGENT_IDS.EXPLORE]: "cheap",
+  [AGENT_IDS.BROWSER]: "best",
+  [AGENT_IDS.APP]: "best",
+  [AGENT_IDS.AUTO]: "smart",
 
-  [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
-
-  [AGENT_IDS.EXPLORE]: {
-    model: "zai/glm-4.7",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  [AGENT_IDS.BROWSER]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  // "app" is the frontend agent type name for browser/app automation
-  [AGENT_IDS.APP]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  schedule: SCHEDULE_AGENT_MODEL,
-
-  "panel-generate": {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  synthesis: {
-    model: "openai/gpt-5.4-mini",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 9500,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "low",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  session_compaction_summary: COMPACTION_MODEL,
-
-  thread_compaction_summary: COMPACTION_MODEL,
-
-  welcome: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2400,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-    },
-  },
-
-  mercury: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-  },
-
-  suggestions: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 10000,
-    providerOptions: {
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-
-  llm_best: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  llm_fast: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.8,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  media_llm: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.7,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock", "cerebras"],
-      },
-    },
-  },
-  music_prompt: {
-    model: "google/gemini-3-flash",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
-  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
-
-  skill_metadata: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 2000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  skill_selection: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 3000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  search_html: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 16096,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  store_security_review: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2500,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  store_image_safety_review: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock"],
-      },
-    },
-  },
+  schedule: "smart",
+  "panel-generate": "reasoning",
+  synthesis: "synthesis",
+  session_compaction_summary: "compact",
+  thread_compaction_summary: "compact",
+  welcome: "smart",
+  mercury: "fast",
+  suggestions: "smart",
+  music_prompt: "media",
+  skill_metadata: "reasoning",
+  skill_selection: "reasoning",
+  search_html: "reasoning",
+  store_security_review: "best",
+  store_image_safety_review: "media",
 };
 
-const PRO_AGENT_MODELS: Record<string, ModelConfig> = {
-  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
-
-  [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
-
-  [AGENT_IDS.EXPLORE]: {
-    model: "zai/glm-4.7",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  [AGENT_IDS.BROWSER]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  // "app" is the frontend agent type name for browser/app automation
-  [AGENT_IDS.APP]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  schedule: SCHEDULE_AGENT_MODEL,
-
-  "panel-generate": {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  synthesis: {
-    model: "openai/gpt-5.4-mini",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 9500,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "low",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  session_compaction_summary: COMPACTION_MODEL,
-
-  thread_compaction_summary: COMPACTION_MODEL,
-
-  welcome: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2400,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-    },
-  },
-
-  mercury: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-  },
-
-  suggestions: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 10000,
-    providerOptions: {
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-
-  llm_best: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  llm_fast: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.8,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  media_llm: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.7,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock", "cerebras"],
-      },
-    },
-  },
-  music_prompt: {
-    model: "google/gemini-3-flash",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
-  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
-
-  skill_metadata: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 2000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  skill_selection: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 3000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  search_html: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 16096,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  store_security_review: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2500,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  store_image_safety_review: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock"],
-      },
-    },
-  },
+const buildResolvedModeConfig = (
+  mode: ModelMode,
+  rawModeCatalog: Record<ModelMode, ModeConfig>,
+): ModelConfig => {
+  const config = rawModeCatalog[mode];
+  return {
+    model: config.model,
+    fallback: config.fallbackMode ? rawModeCatalog[config.fallbackMode].model : undefined,
+    temperature: config.temperature,
+    maxOutputTokens: config.maxOutputTokens,
+    providerOptions: config.providerOptions ? clone(config.providerOptions) : undefined,
+  };
 };
 
-const PLUS_AGENT_MODELS: Record<string, ModelConfig> = {
-  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
+const buildAudienceModeCatalog = (
+  audience: ManagedModelAudience,
+): Record<ModelMode, ModelConfig> => {
+  const rawModeCatalog = {} as Record<ModelMode, ModeConfig>;
 
-  [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
+  for (const mode of MODEL_MODES) {
+    rawModeCatalog[mode] = deepMerge(
+      BASE_MODE_CONFIGS[mode],
+      AUDIENCE_MODE_OVERRIDES[audience][mode],
+    );
+  }
 
-  [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
+  const resolvedModeCatalog = {} as Record<ModelMode, ModelConfig>;
+  for (const mode of MODEL_MODES) {
+    resolvedModeCatalog[mode] = buildResolvedModeConfig(mode, rawModeCatalog);
+  }
 
-  [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
-
-  [AGENT_IDS.EXPLORE]: {
-    model: "zai/glm-4.7",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  [AGENT_IDS.BROWSER]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  // "app" is the frontend agent type name for browser/app automation
-  [AGENT_IDS.APP]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  schedule: SCHEDULE_AGENT_MODEL,
-
-  "panel-generate": {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  synthesis: {
-    model: "openai/gpt-5.4-mini",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 9500,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "low",
-        forceReasoning: true,
-      },
-    },
-  },
-  session_compaction_summary: COMPACTION_MODEL,
-
-  thread_compaction_summary: COMPACTION_MODEL,
-
-  welcome: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2400,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-    },
-  },
-
-  mercury: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-  },
-
-  suggestions: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 10000,
-    providerOptions: {
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-
-  llm_best: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  llm_fast: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.8,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  media_llm: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.7,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock", "cerebras"],
-      },
-    },
-  },
-  music_prompt: {
-    model: "google/gemini-3-flash",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
-  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
-
-  skill_metadata: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 2000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  skill_selection: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 3000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  search_html: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 16096,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  store_security_review: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2500,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  store_image_safety_review: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock"],
-      },
-    },
-  },
+  return resolvedModeCatalog;
 };
 
-const GO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
-  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
+const buildAudienceAgentCatalog = (
+  audience: ManagedModelAudience,
+  modeCatalog: Record<ModelMode, ModelConfig>,
+): Record<string, ModelConfig> => {
+  const taskCatalog: Record<string, ModelConfig> = {};
 
-  [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
+  for (const [agentType, mode] of Object.entries(TASK_MODEL_MODES)) {
+    taskCatalog[agentType] = clone(modeCatalog[mode]);
+  }
 
-  [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
-
-  [AGENT_IDS.EXPLORE]: {
-    model: "zai/glm-4.7",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  [AGENT_IDS.BROWSER]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  // "app" is the frontend agent type name for browser/app automation
-  [AGENT_IDS.APP]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  schedule: SCHEDULE_AGENT_MODEL,
-
-  "panel-generate": {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  synthesis: {
-    model: "openai/gpt-5.4-mini",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 9500,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "low",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  session_compaction_summary: COMPACTION_MODEL,
-
-  thread_compaction_summary: COMPACTION_MODEL,
-
-  welcome: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2400,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-    },
-  },
-
-  mercury: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-  },
-
-  suggestions: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 10000,
-    providerOptions: {
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-
-  llm_best: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  llm_fast: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.8,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  media_llm: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.7,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock", "cerebras"],
-      },
-    },
-  },
-  music_prompt: {
-    model: "google/gemini-3-flash",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
-  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
-
-  skill_metadata: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 2000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  skill_selection: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 3000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  search_html: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 16096,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  store_security_review: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2500,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  store_image_safety_review: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock"],
-      },
-    },
-  },
+  return taskCatalog;
 };
 
-const PRO_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
-  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
-
-  [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
-
-  [AGENT_IDS.EXPLORE]: {
-    model: "zai/glm-4.7",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  [AGENT_IDS.BROWSER]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  // "app" is the frontend agent type name for browser/app automation
-  [AGENT_IDS.APP]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  schedule: SCHEDULE_AGENT_MODEL,
-
-  "panel-generate": {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  synthesis: {
-    model: "openai/gpt-5.4-mini",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 9500,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "low",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  session_compaction_summary: COMPACTION_MODEL,
-
-  thread_compaction_summary: COMPACTION_MODEL,
-
-  welcome: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2400,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-    },
-  },
-
-  mercury: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-  },
-
-  suggestions: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 10000,
-    providerOptions: {
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-
-  llm_best: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  llm_fast: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.8,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  media_llm: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.7,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock", "cerebras"],
-      },
-    },
-  },
-  music_prompt: {
-    model: "google/gemini-3-flash",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
-  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
-
-  skill_metadata: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 2000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  skill_selection: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 3000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  search_html: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 16096,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  store_security_review: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2500,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  store_image_safety_review: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-};
-
-const PLUS_FALLBACK_AGENT_MODELS: Record<string, ModelConfig> = {
-  [AGENT_IDS.OFFLINE_RESPONDER]: DEFAULT_MODEL,
-
-  [AGENT_IDS.ORCHESTRATOR]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.GENERAL]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.SELF_MOD]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  [AGENT_IDS.DASHBOARD_GENERATION]: DASHBOARD_GENERATION_MODEL,
-
-  [AGENT_IDS.EXPLORE]: {
-    model: "zai/glm-4.7",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  [AGENT_IDS.BROWSER]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  // "app" is the frontend agent type name for browser/app automation
-  [AGENT_IDS.APP]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  [AGENT_IDS.AUTO]: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  schedule: SCHEDULE_AGENT_MODEL,
-
-  "panel-generate": {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  synthesis: {
-    model: "openai/gpt-5.4-mini",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 9500,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-      openai: {
-        reasoningEffort: "low",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  session_compaction_summary: COMPACTION_MODEL,
-
-  thread_compaction_summary: COMPACTION_MODEL,
-
-  welcome: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2400,
-    providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
-    },
-  },
-
-  mercury: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-  },
-
-  suggestions: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 10000,
-    providerOptions: {
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-
-  llm_best: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 16192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
-    },
-  },
-
-  llm_fast: {
-    model: "inception/mercury-2",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.8,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "fireworks", "amazon-bedrock"],
-      },
-    },
-  },
-
-  media_llm: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 0.7,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock", "cerebras"],
-      },
-    },
-  },
-  music_prompt: {
-    model: "google/gemini-3-flash",
-    fallback: "zai/glm-4.7",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
-  },
-
-  // --- Backend tasks (previously hardcoded in HTTP routes / tools) ---
-
-  skill_metadata: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 2000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  skill_selection: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 3000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  search_html: {
-    model: "inception/mercury-2",
-    temperature: 1.0,
-    maxOutputTokens: 16096,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
-      },
-    },
-  },
-
-  store_security_review: {
-    model: "anthropic/claude-sonnet-4.6",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 2500,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
-    },
-  },
-
-  store_image_safety_review: {
-    model: "google/gemini-3-flash",
-    fallback: "anthropic/claude-sonnet-4.6",
-    temperature: 1.0,
-    maxOutputTokens: 8000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock"],
-      },
-    },
-  },
+const AUDIENCE_MODE_CONFIGS: Record<ManagedModelAudience, Record<ModelMode, ModelConfig>> = {
+  anonymous: buildAudienceModeCatalog("anonymous"),
+  free: buildAudienceModeCatalog("free"),
+  go: buildAudienceModeCatalog("go"),
+  pro: buildAudienceModeCatalog("pro"),
+  plus: buildAudienceModeCatalog("plus"),
+  ultra: buildAudienceModeCatalog("ultra"),
+  go_fallback: buildAudienceModeCatalog("go_fallback"),
+  pro_fallback: buildAudienceModeCatalog("pro_fallback"),
+  plus_fallback: buildAudienceModeCatalog("plus_fallback"),
+  ultra_fallback: buildAudienceModeCatalog("ultra_fallback"),
 };
 
 export const AUDIENCE_AGENT_MODELS: Record<ManagedModelAudience, Record<string, ModelConfig>> = {
-  anonymous: ANONYMOUS_AGENT_MODELS,
-  free: FREE_AGENT_MODELS,
-  go: GO_AGENT_MODELS,
-  pro: PRO_AGENT_MODELS,
-  plus: PLUS_AGENT_MODELS,
-  ultra: PLUS_AGENT_MODELS,
-  go_fallback: GO_FALLBACK_AGENT_MODELS,
-  pro_fallback: PRO_FALLBACK_AGENT_MODELS,
-  plus_fallback: PLUS_FALLBACK_AGENT_MODELS,
-  ultra_fallback: PLUS_FALLBACK_AGENT_MODELS,
+  anonymous: buildAudienceAgentCatalog("anonymous", AUDIENCE_MODE_CONFIGS.anonymous),
+  free: buildAudienceAgentCatalog("free", AUDIENCE_MODE_CONFIGS.free),
+  go: buildAudienceAgentCatalog("go", AUDIENCE_MODE_CONFIGS.go),
+  pro: buildAudienceAgentCatalog("pro", AUDIENCE_MODE_CONFIGS.pro),
+  plus: buildAudienceAgentCatalog("plus", AUDIENCE_MODE_CONFIGS.plus),
+  ultra: buildAudienceAgentCatalog("ultra", AUDIENCE_MODE_CONFIGS.ultra),
+  go_fallback: buildAudienceAgentCatalog("go_fallback", AUDIENCE_MODE_CONFIGS.go_fallback),
+  pro_fallback: buildAudienceAgentCatalog("pro_fallback", AUDIENCE_MODE_CONFIGS.pro_fallback),
+  plus_fallback: buildAudienceAgentCatalog("plus_fallback", AUDIENCE_MODE_CONFIGS.plus_fallback),
+  ultra_fallback: buildAudienceAgentCatalog("ultra_fallback", AUDIENCE_MODE_CONFIGS.ultra_fallback),
 };
 
-const AGENT_MODELS = FREE_AGENT_MODELS;
+export const AGENT_MODELS = AUDIENCE_AGENT_MODELS.free;
+export const DEFAULT_MODEL = AGENT_MODELS[AGENT_IDS.OFFLINE_RESPONDER];
 
 export const resolveManagedModelAudience = (args: {
   plan: "free" | "go" | "pro" | "plus" | "ultra";
@@ -2522,6 +341,15 @@ export const resolveManagedModelAudience = (args: {
   return args.plan;
 };
 
+export function getModeConfig(
+  mode: ModelMode,
+  audience: ManagedModelAudience = "free",
+): ModelConfig {
+  const config = AUDIENCE_MODE_CONFIGS[audience]?.[mode];
+  if (!config) throw new Error(`No model mode config for mode: ${mode}`);
+  return config;
+}
+
 /**
  * Get the model config for a specific agent type.
  */
@@ -2538,6 +366,10 @@ export function hasModelConfig(agentType: string): boolean {
   return Object.prototype.hasOwnProperty.call(AGENT_MODELS, agentType);
 }
 
+export function isModelMode(value: string): value is ModelMode {
+  return Object.prototype.hasOwnProperty.call(BASE_MODE_CONFIGS, value);
+}
+
 export function listManagedModelIds(): string[] {
   const modelIds = new Set<string>();
 
@@ -2551,6 +383,13 @@ export function listManagedModelIds(): string[] {
   append(DEFAULT_MODEL.model);
   append(DEFAULT_MODEL.fallback);
 
+  for (const modeCatalog of Object.values(AUDIENCE_MODE_CONFIGS)) {
+    for (const config of Object.values(modeCatalog)) {
+      append(config.model);
+      append(config.fallback);
+    }
+  }
+
   for (const configMap of Object.values(AUDIENCE_AGENT_MODELS)) {
     for (const config of Object.values(configMap)) {
       append(config.model);
@@ -2560,5 +399,3 @@ export function listManagedModelIds(): string[] {
 
   return Array.from(modelIds).sort();
 }
-
-export { DEFAULT_MODEL, AGENT_MODELS };
