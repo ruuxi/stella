@@ -116,6 +116,22 @@ export function ComposerSubmitButton({
 
   if (animated) {
     const canSubmit = !disabled;
+    // Motion reuses onDrag* for pan gestures; strip DOM drag handlers so types align.
+    const {
+      onDrag: _d0,
+      onDragCapture: _d0c,
+      onDragStart: _ds,
+      onDragStartCapture: _dsc,
+      onDragEnd: _de,
+      onDragEndCapture: _dec,
+      onAnimationStart: _as,
+      onAnimationStartCapture: _asc,
+      onAnimationEnd: _ae,
+      onAnimationEndCapture: _aec,
+      onAnimationIteration: _ai,
+      onAnimationIterationCapture: _aic,
+      ...motionButtonProps
+    } = props;
 
     return (
       <motion.button
@@ -125,11 +141,10 @@ export function ComposerSubmitButton({
         animate={{
           opacity: canSubmit ? 1 : 0.4,
           scale: canSubmit ? 1 : 0.92,
-          filter: canSubmit ? "blur(0px)" : "blur(0.5px)",
         }}
         whileHover={canSubmit ? { opacity: 0.9 } : {}}
         transition={{ type: "spring", duration: 0.2, bounce: 0 }}
-        {...props}
+        {...motionButtonProps}
       >
         {children ?? <SendIcon />}
       </motion.button>

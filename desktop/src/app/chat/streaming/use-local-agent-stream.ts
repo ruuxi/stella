@@ -55,6 +55,23 @@ type StartStreamArgs = {
   attachments?: AttachmentRef[];
 };
 
+function attachmentsForStartChat(
+  attachments: AttachmentRef[] | undefined,
+): { url: string; mimeType?: string }[] | undefined {
+  if (!attachments?.length) return undefined;
+  const mapped = attachments
+    .filter(
+      (a): a is AttachmentRef & { url: string } =>
+        typeof a.url === "string" && a.url.length > 0,
+    )
+    .map((a) => {
+      const item: { url: string; mimeType?: string } = { url: a.url };
+      if (a.mimeType) item.mimeType = a.mimeType;
+      return item;
+    });
+  return mapped.length ? mapped : undefined;
+}
+
 const isTokenSyncIssue = (reason: string | null) =>
   Boolean(reason && reason.toLowerCase().match(/token|auth/));
 
@@ -331,13 +348,15 @@ export function useLocalAgentStream({
 
       ensureAgentStreamSubscription(runIdCounter);
 
+      const startChatAttachments = attachmentsForStartChat(args.attachments);
+
       window.electronAPI.agent
         .startChat({
           conversationId: activeConversationId,
           userMessageId: args.userMessageId,
           userPrompt: args.userPrompt,
-          ...(args.attachments?.length
-            ? { attachments: args.attachments }
+          ...(startChatAttachments?.length
+            ? { attachments: startChatAttachments }
             : {}),
           storageMode,
         })
@@ -488,13 +507,17 @@ export function useLocalAgentStream({
       pendingQueuedStartCountRef.current += 1;
       ensureAgentStreamSubscription(runIdCounter);
 
+      const queuedStartChatAttachments = attachmentsForStartChat(
+        args.attachments,
+      );
+
       window.electronAPI.agent
         .startChat({
           conversationId: activeConversationId,
           userMessageId: args.userMessageId,
           userPrompt: args.userPrompt,
-          ...(args.attachments?.length
-            ? { attachments: args.attachments }
+          ...(queuedStartChatAttachments?.length
+            ? { attachments: queuedStartChatAttachments }
             : {}),
           storageMode,
         })
