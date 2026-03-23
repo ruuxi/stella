@@ -17,6 +17,7 @@ import {
   FileContextChips,
   ScreenshotContextChips,
 } from "@/app/chat/ComposerContextChips";
+import { ComposerWindowContextSection } from "@/app/chat/ComposerContextSections";
 import { deriveComposerState } from "@/app/chat/composer-context";
 import { useFileDrop } from "@/app/chat/hooks/use-file-drop";
 import { DropOverlay } from "@/app/chat/DropOverlay";
@@ -49,7 +50,8 @@ function savePosition(pos: { right: number; bottom: number }) {
 }
 
 export interface FloatingOrbHandle {
-  openChat(): void;
+  openChat(chatContext?: ChatContext | null): void;
+  closeChat(): void;
   openWithText(text: string): void;
 }
 
@@ -66,6 +68,7 @@ interface FloatingOrbProps {
   isInitialLoading: boolean;
   onSend: (text: string, chatContext?: ChatContext | null) => void;
   onAdd?: () => void;
+  onChatOpenChange?: (open: boolean) => void;
 }
 
 export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
@@ -83,6 +86,7 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
       isInitialLoading,
       onSend,
       onAdd,
+      onChatOpenChange,
     },
     ref,
   ) {
@@ -111,14 +115,26 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
     const hasDraggedRef = useRef(false);
 
     useImperativeHandle(ref, () => ({
-      openChat() {
+      openChat(chatContext?: ChatContext | null) {
+        if (chatContext !== undefined) {
+          setOrbChatContext(chatContext);
+        }
         setIsChatOpen(true);
+      },
+      closeChat() {
+        setIsChatOpen(false);
+        setInputText("");
+        setOrbChatContext(null);
       },
       openWithText(text: string) {
         setInputText(text);
         setIsChatOpen(true);
       },
     }));
+
+    useEffect(() => {
+      onChatOpenChange?.(isChatOpen);
+    }, [isChatOpen, onChatOpenChange]);
 
     // Track input bar height so the chat panel adjusts upward.
     useEffect(() => {
@@ -240,8 +256,10 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
       return null;
     }
 
-    const hasAttachments = Boolean(
-      orbChatContext?.regionScreenshots?.length || orbChatContext?.files?.length,
+    const hasContextChips = Boolean(
+      orbChatContext?.window ||
+      orbChatContext?.regionScreenshots?.length ||
+      orbChatContext?.files?.length,
     );
 
     const miniChatPanel = (
@@ -322,9 +340,13 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
               >
                 <DropOverlay visible={isDragOver} variant="orb" />
 
-                {/* Attachment chips above input row */}
-                {hasAttachments && (
+                {hasContextChips && (
                   <div className="orb-chat-attachments">
+                    <ComposerWindowContextSection
+                      variant="mini"
+                      chatContext={orbChatContext}
+                      setChatContext={setOrbChatContext}
+                    />
                     {(orbChatContext?.regionScreenshots?.length ?? 0) > 0 && (
                       <ScreenshotContextChips
                         screenshots={orbChatContext!.regionScreenshots!}
