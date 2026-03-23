@@ -1,4 +1,4 @@
-/* ===== Home Dashboard — Luminous Glass ===== */
+/* ===== Home Dashboard ===== */
 
 /* --- Keyframes --- */
 
@@ -131,8 +131,8 @@
 
 .dashboard-card {
   position: relative;
-  background: color-mix(in oklch, var(--foreground) 3.5%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  background: transparent;
+  border: none;
   border-radius: 0;
   padding: 16px;
   display: flex;
@@ -141,17 +141,12 @@
   min-height: 0;
   overflow: hidden;
   height: 100%;
-  box-shadow:
-    0 1px 2px color-mix(in oklch, var(--foreground) 2%, transparent),
-    0 4px 12px color-mix(in oklch, var(--foreground) 1.5%, transparent);
-  transition: border-color 0.3s, box-shadow 0.3s;
+  box-shadow: none;
 }
 
 .dashboard-card:hover {
-  border-color: color-mix(in oklch, var(--foreground) 10%, transparent);
-  box-shadow:
-    0 1px 2px color-mix(in oklch, var(--foreground) 2%, transparent),
-    0 6px 20px color-mix(in oklch, var(--foreground) 2.5%, transparent);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .dashboard-card-header {
@@ -159,6 +154,7 @@
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
+  background: transparent;
 }
 
 .dashboard-card-label {
@@ -184,6 +180,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  background: transparent;
 }
 .dashboard-card-body::-webkit-scrollbar { display: none; }
 
@@ -222,6 +219,19 @@
 .dashboard-card.home-activity-panel:hover {
   border-color: transparent;
   box-shadow: none;
+}
+
+.dashboard-card.home-activity-panel .dashboard-card-header,
+.dashboard-card.home-activity-panel .dashboard-card-body {
+  background: transparent;
+}
+
+.dashboard-card.home-activity-panel .activity-feed-item {
+  background: transparent;
+}
+.dashboard-card.home-activity-panel .activity-feed-item:hover {
+  background: transparent;
+  border-color: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
 .canvas-container {
