@@ -46,9 +46,7 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  background: color-mix(in oklch, var(--background) 85%, transparent);
-  backdrop-filter: blur(24px) saturate(1.4);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  background: var(--background);
 }
 
 /* Separator fades in only once content scrolls behind the header */

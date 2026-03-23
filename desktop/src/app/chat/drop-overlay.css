@@ -8,8 +8,6 @@
   pointer-events: none;
   border: 2px dashed color-mix(in oklch, var(--primary) 60%, transparent);
   background: color-mix(in oklch, var(--primary) 6%, transparent);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
 }
 
 .drop-overlay--full {

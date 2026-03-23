@@ -366,8 +366,7 @@
   right: 2px;
   width: 6px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--foreground) 20%, transparent);
-  backdrop-filter: blur(4px);
+  background: color-mix(in srgb, var(--foreground) 28%, transparent);
   opacity: 0;
   transition: opacity 0.2s ease, width 0.15s ease, right 0.15s ease;
   pointer-events: auto;
