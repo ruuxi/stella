@@ -10,6 +10,10 @@ const BOUNDARY_TAGS = new Set([
   "form",
 ]);
 
+/** Class-name suffixes that signal a structural container div. */
+const CONTAINER_CLASS_RE =
+  /(?:^|[_-])(card|panel|section|group|block|container|content|wrap)(?:$|[_-]|\s)/;
+
 /** Minimum viewport area fraction for a container to count as "broad". */
 const BROAD_AREA_THRESHOLD = 0.15;
 /** Minimum viewport area fraction for a container to count as "tight". */
@@ -44,6 +48,16 @@ function isMeaningfulContainer(el: Element): boolean {
     return true;
   }
 
+  // Structural divs with container-like class names and multiple children.
+  if (
+    tag === "div" &&
+    el.children.length >= 2 &&
+    typeof el.className === "string" &&
+    CONTAINER_CLASS_RE.test(el.className)
+  ) {
+    return true;
+  }
+
   return false;
 }
 
@@ -64,16 +78,23 @@ export function resolveContextContainers(target: Element): ResolvedContainers {
   let el: Element | null = target;
 
   while (el && el !== document.documentElement) {
-    const areaFraction = getViewportAreaFraction(el);
-    const isBoundary = isMeaningfulContainer(el);
-
-    if (!tight && (isBoundary || areaFraction >= TIGHT_AREA_THRESHOLD)) {
-      if (areaFraction >= TIGHT_AREA_THRESHOLD && el !== document.body) {
-        tight = el;
-      }
+    if (el === document.body) {
+      el = el.parentElement;
+      continue;
     }
 
-    if (tight && el !== tight && areaFraction >= BROAD_AREA_THRESHOLD && el !== document.body) {
+    const isBoundary = isMeaningfulContainer(el);
+    const areaFraction = getViewportAreaFraction(el);
+
+    // Tight: first semantic boundary OR element meeting the area threshold.
+    // Boundaries count regardless of size so small sections near the
+    // bottom of a page aren't skipped.
+    if (!tight && (isBoundary || areaFraction >= TIGHT_AREA_THRESHOLD)) {
+      tight = el;
+    }
+
+    // Broad: next ancestor above tight meeting the broad threshold.
+    if (tight && el !== tight && areaFraction >= BROAD_AREA_THRESHOLD) {
       broad = el;
       break;
     }
@@ -82,7 +103,25 @@ export function resolveContextContainers(target: Element): ResolvedContainers {
   }
 
   if (!tight) tight = target.closest("main, [role='main']") ?? document.body;
-  if (!broad) broad = document.querySelector(DEFAULT_BROAD_SELECTOR) ?? document.body;
+
+  // Better broad fallback: walk up from tight to find the next meaningful
+  // ancestor rather than jumping straight to .content-area.
+  if (!broad) {
+    let parent = tight.parentElement;
+    const tightArea = getViewportAreaFraction(tight);
+
+    while (parent && parent !== document.body && parent !== document.documentElement) {
+      const parentArea = getViewportAreaFraction(parent);
+      // Accept an ancestor that is meaningfully larger than tight.
+      if (parentArea >= BROAD_AREA_THRESHOLD || (isMeaningfulContainer(parent) && parentArea > tightArea * 1.5)) {
+        broad = parent;
+        break;
+      }
+      parent = parent.parentElement;
+    }
+
+    if (!broad) broad = document.querySelector(DEFAULT_BROAD_SELECTOR) ?? document.body;
+  }
 
   if (broad === tight) {
     broad = tight.parentElement ?? document.body;
