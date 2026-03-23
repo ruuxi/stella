@@ -21,10 +21,6 @@ type ThemePhaseProps = {
 
 /** User-friendly display labels for option values */
 const DISPLAY_LABELS: Record<string, string> = {
-  relative: "Subtle",
-  strong: "Vivid",
-  soft: "Soft",
-  crisp: "Crisp",
   light: "Light",
   dark: "Dark",
   system: "System",
@@ -55,15 +51,11 @@ const renderThemeOptionRow = <T extends string>(
 
 export function OnboardingThemePhase({
   colorMode,
-  gradientColor,
-  gradientMode,
   sortedThemes,
   splitTransitionActive,
   themeId,
   onContinue,
   onSelectColorMode,
-  onSelectGradientColor,
-  onSelectGradientMode,
   onSelectTheme,
   onThemePreviewEnter,
   onThemePreviewLeave,
@@ -75,20 +67,6 @@ export function OnboardingThemePhase({
         ["light", "dark", "system"] as const,
         colorMode,
         onSelectColorMode,
-      )}
-
-      {renderThemeOptionRow(
-        "Background",
-        ["soft", "crisp"] as const,
-        gradientMode,
-        onSelectGradientMode,
-      )}
-
-      {renderThemeOptionRow(
-        "Color intensity",
-        ["relative", "strong"] as const,
-        gradientColor,
-        onSelectGradientColor,
       )}
 
       <div className="onboarding-step-label">Theme</div>
