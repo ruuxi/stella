@@ -96,7 +96,7 @@ const deepMerge = <T>(base: T, patch?: Partial<T>): T => {
 const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   cheap: {
     model: "zai/glm-4.7",
-    fallbackMode: "smart",
+    fallbackMode: "fast",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
@@ -108,7 +108,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
 
   compact: {
     model: "zai/glm-4.7",
-    fallbackMode: "smart",
+    fallbackMode: "fast",
     temperature: 1.0,
     maxOutputTokens: 12096,
     providerOptions: {
@@ -120,7 +120,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
 
   fast: {
     model: "inception/mercury-2",
-    fallbackMode: "smart",
+    fallbackMode: "cheap",
     temperature: 0.8,
     maxOutputTokens: 8192,
     providerOptions: {
@@ -161,7 +161,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   reasoning: {
-    model: "inception/mercury-2",
+    model: "anthropic/claude-opus-4.6",
     fallbackMode: "smart",
     temperature: 1.0,
     maxOutputTokens: 16096,
@@ -228,8 +228,8 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   [AGENT_IDS.SELF_MOD]: "smart",
   [AGENT_IDS.DASHBOARD_GENERATION]: "smart",
   [AGENT_IDS.EXPLORE]: "cheap",
-  [AGENT_IDS.BROWSER]: "best",
-  [AGENT_IDS.APP]: "best",
+  [AGENT_IDS.BROWSER]: "smart",
+  [AGENT_IDS.APP]: "smart",
   [AGENT_IDS.AUTO]: "smart",
 
   schedule: "smart",
@@ -241,9 +241,9 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   mercury: "fast",
   suggestions: "smart",
   music_prompt: "media",
-  skill_metadata: "reasoning",
-  skill_selection: "reasoning",
-  search_html: "reasoning",
+  skill_metadata: "fast",
+  skill_selection: "fast",
+  search_html: "fast",
   store_security_review: "best",
   store_image_safety_review: "media",
 };
