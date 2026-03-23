@@ -297,17 +297,19 @@ export function OnboardingView({
             isAuthenticated={isAuthenticated}
           />
         ) : (
-          <div className="onboarding-moment onboarding-moment--start">
-            <button
-              className="onboarding-start-button"
-              onClick={() => {
-                startOnboarding();
-                triggerFlash();
-              }}
-            >
-              Start Stella
-            </button>
-            <div className="onboarding-legal-footer">
+          <>
+            <div className="onboarding-moment onboarding-moment--start">
+              <button
+                className="onboarding-start-button"
+                onClick={() => {
+                  startOnboarding();
+                  triggerFlash();
+                }}
+              >
+                Start Stella
+              </button>
+            </div>
+            <div className="onboarding-legal-footer onboarding-legal-footer--new-session">
               By using Stella, you agree to our{" "}
               <button
                 type="button"
@@ -326,7 +328,7 @@ export function OnboardingView({
               </button>
               .
             </div>
-          </div>
+          </>
         ))}
     </div>
   );
