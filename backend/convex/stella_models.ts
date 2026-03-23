@@ -1,14 +1,19 @@
 import {
   AGENT_MODELS,
+  getModeConfig,
   getModelConfig,
+  isModelMode,
   listManagedModelIds,
   type ManagedModelAudience,
+  type ModelMode,
 } from "./agent/model";
 
 export const STELLA_PROVIDER = "stella";
 export const STELLA_DEFAULT_MODEL = `${STELLA_PROVIDER}/default`;
-export const STELLA_BEST_MODEL = `${STELLA_PROVIDER}/best`;
+export const STELLA_CHEAP_MODEL = `${STELLA_PROVIDER}/cheap`;
 export const STELLA_FAST_MODEL = `${STELLA_PROVIDER}/fast`;
+export const STELLA_SMART_MODEL = `${STELLA_PROVIDER}/smart`;
+export const STELLA_BEST_MODEL = `${STELLA_PROVIDER}/best`;
 export const STELLA_MEDIA_MODEL = `${STELLA_PROVIDER}/media`;
 
 export type StellaCatalogModel = {
@@ -32,6 +37,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   "inception/mercury-2": "Mercury 2",
   "moonshotai/kimi-k2.5": "Kimi K2.5",
   "openai/gpt-5.4": "GPT-5.4",
+  "openai/gpt-5.4-mini": "GPT-5.4 Mini",
   "zai/glm-4.7": "GLM 4.7",
 };
 
@@ -51,26 +57,49 @@ const deriveDisplayName = (upstreamModel: string): string => {
   return titleCase(rawId);
 };
 
-const getStaticStellaAliases = (audience: ManagedModelAudience = "free") => [
+const STELLA_ALIAS_MODES = [
   {
-    id: STELLA_BEST_MODEL,
-    name: "Stella Best",
-    upstreamModel: getModelConfig("llm_best", audience).model,
+    id: STELLA_CHEAP_MODEL,
+    name: "Stella Cheap",
+    mode: "cheap",
     type: "language" as const,
   },
   {
     id: STELLA_FAST_MODEL,
     name: "Stella Fast",
-    upstreamModel: getModelConfig("llm_fast", audience).model,
+    mode: "fast",
+    type: "language" as const,
+  },
+  {
+    id: STELLA_SMART_MODEL,
+    name: "Stella Smart",
+    mode: "smart",
+    type: "language" as const,
+  },
+  {
+    id: STELLA_BEST_MODEL,
+    name: "Stella Best",
+    mode: "best",
     type: "language" as const,
   },
   {
     id: STELLA_MEDIA_MODEL,
     name: "Stella Media",
-    upstreamModel: getModelConfig("media_llm", audience).model,
+    mode: "media",
     type: "multimodal" as const,
   },
-] as const;
+] as const satisfies ReadonlyArray<{
+  id: string;
+  name: string;
+  mode: ModelMode;
+  type: "language" | "multimodal";
+}>;
+
+const getStaticStellaAliases = (audience: ManagedModelAudience = "free") =>
+  STELLA_ALIAS_MODES.map((alias) => ({
+    ...alias,
+    upstreamModel: getModeConfig(alias.mode, audience).model,
+  }));
 
 const listUpstreamManagedModels = (): string[] => {
   return listManagedModelIds().sort((a, b) => deriveDisplayName(a).localeCompare(deriveDisplayName(b)));
@@ -94,26 +123,20 @@ export const resolveStellaModelSelection = (
     return getModelConfig(agentType, audience).model;
   }
 
-  if (trimmed === STELLA_BEST_MODEL) {
-    return getModelConfig("llm_best", audience).model;
-  }
-  if (trimmed === STELLA_FAST_MODEL) {
-    return getModelConfig("llm_fast", audience).model;
-  }
-  if (trimmed === STELLA_MEDIA_MODEL) {
-    return getModelConfig("media_llm", audience).model;
-  }
-
   if (!trimmed.startsWith(`${STELLA_PROVIDER}/`)) {
     return trimmed;
   }
 
-  const upstreamModel = trimmed.slice(`${STELLA_PROVIDER}/`.length).trim();
-  if (!upstreamModel || upstreamModel === "default") {
+  const aliasOrUpstreamModel = trimmed.slice(`${STELLA_PROVIDER}/`.length).trim();
+  if (!aliasOrUpstreamModel || aliasOrUpstreamModel === "default") {
     return getModelConfig(agentType, audience).model;
   }
 
-  return upstreamModel;
+  if (isModelMode(aliasOrUpstreamModel)) {
+    return getModeConfig(aliasOrUpstreamModel, audience).model;
+  }
+
+  return aliasOrUpstreamModel;
 };
 
 export const listStellaCatalogModels = (
@@ -150,4 +173,3 @@ export const listStellaDefaultSelections = (
     model: STELLA_DEFAULT_MODEL,
     resolvedModel: getModelConfig(agentType, audience).model,
   }));
-
