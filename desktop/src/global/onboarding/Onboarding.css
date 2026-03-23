@@ -74,6 +74,11 @@
   z-index: 6;
 }
 
+/* Preparing / auth loading: sit below the creature, smaller caption */
+.onboarding-moment--auth {
+  margin-top: 44px;
+}
+
 @keyframes momentFadeIn {
   from {
     opacity: 0;
@@ -130,6 +135,34 @@
   max-width: 320px;
 }
 
+/* Pinned to bottom of new-session view (Start Stella), not stacked in the vertically centered moment */
+.onboarding-legal-footer--new-session {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  margin-top: 0;
+  margin-left: auto;
+  margin-right: auto;
+  width: min(360px, calc(100% - 48px));
+  max-width: none;
+  z-index: 6;
+  pointer-events: auto;
+  /* Own keyframes: momentFadeIn overwrites transform (breaks centering) and forces opacity: 1 */
+  animation: onboardingLegalFooterFadeIn var(--onboarding-duration-enter) var(--onboarding-ease-standard) forwards;
+}
+
+@keyframes onboardingLegalFooterFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 0.48;
+    transform: translateY(0);
+  }
+}
+
 .onboarding-legal-link {
   background: none;
   border: none;
@@ -150,9 +183,10 @@
 /* ═══ Moment 1: Auth ═══ */
 
 .onboarding-moment--auth .onboarding-text {
-  letter-spacing: 0.08em;
-  opacity: 0.5;
-  margin-bottom: 8px;
+  font-size: clamp(12px, 1.9vw, 15px);
+  letter-spacing: 0.06em;
+  opacity: 0.45;
+  margin-bottom: 0;
 }
 
 /* ═══ Moment 2: Intro (ripple reveal) ═══ */
@@ -2468,6 +2502,12 @@
   .onboarding-pill-stagger .onboarding-pill {
     animation: none;
     opacity: 1;
+    transform: none;
+  }
+
+  .onboarding-legal-footer--new-session {
+    animation: none;
+    opacity: 0.48;
     transform: none;
   }
 
