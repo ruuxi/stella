@@ -103,7 +103,7 @@ export const deriveComposerState = ({
 };
 
 export const clearComposerWindowContext = (setChatContext: SetChatContext) => {
-  setChatContext((prev) => (prev ? { ...prev, window: null } : prev));
+  setChatContext((prev) => (prev ? { ...prev, window: null, windowText: null } : prev));
 };
 
 export const clearComposerSelectedTextContext = (
