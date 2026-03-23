@@ -41,14 +41,14 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       aria-hidden="true"
       className={cn("shifting-gradient", className)}
     >
-      {/* Subtle CSS radial gradients with oklch interpolation to avoid dark-mode banding */}
+      {/* CSS radial gradients with oklch interpolation to avoid dark-mode banding */}
       <div
         className="gradient-base"
         style={{
           background: [
-            `radial-gradient(in oklch, circle at 18% 20%, ${mix(c1, 12)} 0%, ${mix(c1, 6)} 18%, transparent 34%)`,
-            `radial-gradient(in oklch, circle at 84% 18%, ${mix(c2, 14)} 0%, ${mix(c2, 7)} 19%, transparent 36%)`,
-            `radial-gradient(in oklch, circle at 50% 84%, ${mix(c3, 10)} 0%, ${mix(c3, 5)} 22%, transparent 44%)`,
+            `radial-gradient(in oklch, circle at 18% 20%, ${mix(c1, 28)} 0%, ${mix(c1, 14)} 20%, transparent 42%)`,
+            `radial-gradient(in oklch, circle at 84% 18%, ${mix(c2, 30)} 0%, ${mix(c2, 16)} 22%, transparent 44%)`,
+            `radial-gradient(in oklch, circle at 50% 84%, ${mix(c3, 24)} 0%, ${mix(c3, 12)} 24%, transparent 50%)`,
             `var(--background)`,
           ].join(", "),
         }}
@@ -57,12 +57,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       {/* Grain texture overlay — heavier in dark mode to dither residual banding */}
       <div
         className="absolute inset-0 pointer-events-none"
-        style={{
-          zIndex: 10,
-          backgroundColor: colors.background
-            ? `color-mix(in srgb, ${colors.background} 22%, transparent)`
-            : 'transparent',
-        }}
+        style={{ zIndex: 10 }}
       >
         <div
           className="gradient-grain"
