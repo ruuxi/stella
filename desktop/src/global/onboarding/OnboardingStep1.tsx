@@ -343,8 +343,9 @@ export const OnboardingStep1 = ({
   useEffect(() => {
     const hasAny =
       Object.values(categoryStates).some((value) => value) || browserEnabled;
-    onSelectionChange?.(hasAny);
-  }, [browserEnabled, categoryStates, onSelectionChange]);
+    /* Mock windows (and creature shift) only exist on browser step; clear flag when leaving */
+    onSelectionChange?.(phase === "browser" && hasAny);
+  }, [browserEnabled, categoryStates, onSelectionChange, phase]);
 
   useEffect(() => {
     const shell = document.querySelector(".window-shell");
