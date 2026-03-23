@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUiState } from "@/context/ui-state";
 import { getOrCreateDeviceId } from "@/platform/electron/device";
 import { appendLocalEvent } from "@/app/chat/services/local-chat-store";
