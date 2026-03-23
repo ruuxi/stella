@@ -22,7 +22,8 @@ interface ShiftingGradientProps {
 export const ShiftingGradient = memo(function ShiftingGradient({
   className,
 }: ShiftingGradientProps) {
-  const { colors } = useTheme();
+  const { resolvedColorMode, colors } = useTheme();
+  const isDark = resolvedColorMode === "dark";
 
   // Themes can provide an explicit gradient anchor for monochrome backgrounds
   const anchor = (colors as unknown as Record<string, string>).gradientAnchor;
@@ -30,20 +31,30 @@ export const ShiftingGradient = memo(function ShiftingGradient({
   const c2 = anchor ?? colors.interactive;
   const c3 = anchor ?? colors.success;
 
+  // oklch interpolation produces smoother transitions in dark tones
+  // where sRGB banding is most visible
+  const mix = (color: string, pct: number) =>
+    `color-mix(in oklch, ${color} ${pct}%, transparent)`;
+
   return (
     <div
       aria-hidden="true"
       className={cn("shifting-gradient", className)}
     >
-      {/* Subtle CSS radial gradients — no blobs, no JS animation */}
+      {/* Subtle CSS radial gradients with oklch interpolation to avoid dark-mode banding */}
       <div
         className="gradient-base"
         style={{
-          background: `radial-gradient(circle at 18% 20%, color-mix(in srgb, ${c1} 12%, transparent) 0%, transparent 30%), radial-gradient(circle at 84% 18%, color-mix(in srgb, ${c2} 14%, transparent) 0%, transparent 32%), radial-gradient(circle at 50% 84%, color-mix(in srgb, ${c3} 10%, transparent) 0%, transparent 40%), var(--background)`,
+          background: [
+            `radial-gradient(in oklch, circle at 18% 20%, ${mix(c1, 12)} 0%, ${mix(c1, 6)} 18%, transparent 34%)`,
+            `radial-gradient(in oklch, circle at 84% 18%, ${mix(c2, 14)} 0%, ${mix(c2, 7)} 19%, transparent 36%)`,
+            `radial-gradient(in oklch, circle at 50% 84%, ${mix(c3, 10)} 0%, ${mix(c3, 5)} 22%, transparent 44%)`,
+            `var(--background)`,
+          ].join(", "),
         }}
       />
 
-      {/* Grain texture overlay */}
+      {/* Grain texture overlay — heavier in dark mode to dither residual banding */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -57,7 +68,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
           className="gradient-grain"
           style={{
             backgroundImage: `url("${GRAIN_DATA_URI}")`,
-            opacity: 0.14,
+            opacity: isDark ? 0.28 : 0.14,
           }}
         />
       </div>
