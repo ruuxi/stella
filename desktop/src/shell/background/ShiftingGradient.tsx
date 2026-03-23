@@ -25,11 +25,13 @@ export const ShiftingGradient = memo(function ShiftingGradient({
   const { resolvedColorMode, colors } = useTheme();
   const isDark = resolvedColorMode === "dark";
 
-  // Themes can provide an explicit gradient anchor for monochrome backgrounds
+  // Themes can provide an explicit gradient anchor for monochrome backgrounds.
+  // Otherwise use primary + accent + info — these vary the most across themes,
+  // giving each theme a distinct background character.
   const anchor = (colors as unknown as Record<string, string>).gradientAnchor;
   const c1 = anchor ?? colors.primary;
-  const c2 = anchor ?? colors.interactive;
-  const c3 = anchor ?? colors.success;
+  const c2 = anchor ?? colors.accent;
+  const c3 = anchor ?? colors.info;
 
   // oklch interpolation produces smoother transitions in dark tones
   // where sRGB banding is most visible
