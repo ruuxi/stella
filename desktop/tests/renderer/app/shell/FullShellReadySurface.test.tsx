@@ -1,9 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockSetView = vi.fn();
 const mockOpenPanel = vi.fn();
 const mockClosePanel = vi.fn();
+const mockDispatchOpenOrbChat = vi.fn();
+const mockDispatchCloseOrbChat = vi.fn();
 const mockUiState = {
   view: "home",
   conversationId: "conv-123",
@@ -35,8 +37,30 @@ vi.mock("@/global/auth/services/auth", () => ({
   secureSignOut: vi.fn(),
 }));
 
+vi.mock("@/shared/lib/stella-orb-chat", () => ({
+  dispatchOpenOrbChat: mockDispatchOpenOrbChat,
+  dispatchCloseOrbChat: mockDispatchCloseOrbChat,
+}));
+
 vi.mock("@/shell/sidebar/Sidebar", () => ({
   Sidebar: () => <div data-testid="sidebar" />,
+}));
+
+vi.mock("@/shell/context-menu/StellaContextMenu", () => ({
+  StellaContextMenu: ({ children, onOpenOrbChat, onCloseOrbChat }: any) => (
+    <div data-testid="stella-context-menu">
+      <button
+        data-testid="context-open-orb"
+        onClick={() => onOpenOrbChat?.({ window: null, windowText: "Captured section" })}
+      >
+        Open orb
+      </button>
+      <button data-testid="context-close-chat" onClick={() => onCloseOrbChat?.()}>
+        Close chat
+      </button>
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock("@/app/workspace/WorkspaceArea", () => ({
@@ -66,6 +90,8 @@ describe("FullShellReadySurface", () => {
     mockSetView.mockReset();
     mockOpenPanel.mockReset();
     mockClosePanel.mockReset();
+    mockDispatchOpenOrbChat.mockReset();
+    mockDispatchCloseOrbChat.mockReset();
     mockUiState.view = "home";
     mockUiState.conversationId = "conv-123";
   });
@@ -103,5 +129,57 @@ describe("FullShellReadySurface", () => {
       "chat",
     );
     expect(screen.queryByTestId("workspace-area")).toBeNull();
+  });
+
+  it("opens the floating orb from the context menu and seeds captured context", async () => {
+    render(
+      <FullShellReadySurface
+        dashboardState={null}
+        onboardingExiting={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("context-open-orb"));
+
+    expect(mockDispatchOpenOrbChat).toHaveBeenCalledWith({
+      chatContext: { window: null, windowText: "Captured section" },
+    });
+    expect(mockSetView).not.toHaveBeenCalled();
+  });
+
+  it("leaves chat view before opening the floating orb from the context menu", async () => {
+    mockUiState.view = "chat";
+
+    render(
+      <FullShellReadySurface
+        dashboardState={null}
+        onboardingExiting={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("context-open-orb"));
+
+    expect(mockSetView).toHaveBeenCalledWith("home");
+    expect(mockDispatchOpenOrbChat).toHaveBeenCalledWith({
+      chatContext: { window: null, windowText: "Captured section" },
+    });
+  });
+
+  it("context menu close closes the floating orb chat", async () => {
+    mockUiState.view = "chat";
+
+    render(
+      <FullShellReadySurface
+        dashboardState={null}
+        onboardingExiting={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("context-close-chat"));
+
+    expect(mockDispatchCloseOrbChat).toHaveBeenCalledTimes(1);
+    expect(mockClosePanel).not.toHaveBeenCalled();
+    expect(mockSetView).not.toHaveBeenCalled();
+    expect(mockDispatchOpenOrbChat).not.toHaveBeenCalled();
   });
 });

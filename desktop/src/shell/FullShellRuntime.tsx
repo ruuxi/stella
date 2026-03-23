@@ -4,6 +4,11 @@ import { SocialView } from "@/app/social/SocialView";
 import type { ViewType } from "@/shared/contracts/ui";
 import { MiniBridgeRelay } from "@/shell/mini/MiniBridgeRelay";
 import {
+  STELLA_CLOSE_ORB_CHAT_EVENT,
+  STELLA_OPEN_ORB_CHAT_EVENT,
+  type StellaOpenOrbChatDetail,
+} from "@/shared/lib/stella-orb-chat";
+import {
   dispatchStellaSendMessage,
   WORKSPACE_CREATION_TRIGGER_KIND,
 } from "@/shared/lib/stella-send-message";
@@ -25,6 +30,7 @@ type FullShellRuntimeProps = {
   onSignIn: () => void;
   pendingAskStellaRequest: PendingAskStellaRequest | null;
   onPendingAskStellaHandled: (requestId: number) => void;
+  onOrbChatOpenChange?: (open: boolean) => void;
 };
 
 export const FullShellRuntime = ({
@@ -36,6 +42,7 @@ export const FullShellRuntime = ({
   onSignIn,
   pendingAskStellaRequest,
   onPendingAskStellaHandled,
+  onOrbChatOpenChange,
 }: FullShellRuntimeProps) => {
   const orbRef = useRef<FloatingOrbHandle>(null);
   const chat = useFullShellChat({
@@ -64,6 +71,31 @@ export const FullShellRuntime = ({
     orbRef.current?.openChat();
     onPendingAskStellaHandled(pendingAskStellaRequest.id);
   }, [onPendingAskStellaHandled, pendingAskStellaRequest]);
+
+  useEffect(() => {
+    const handleOpenOrbChat = (event: Event) => {
+      const detail = (event as CustomEvent<StellaOpenOrbChatDetail>).detail;
+      const chatContext = detail?.chatContext;
+
+      if (chatContext === undefined) {
+        orbRef.current?.openChat();
+        return;
+      }
+
+      orbRef.current?.openChat(chatContext ?? null);
+    };
+
+    const handleCloseOrbChat = () => {
+      orbRef.current?.closeChat();
+    };
+
+    window.addEventListener(STELLA_OPEN_ORB_CHAT_EVENT, handleOpenOrbChat);
+    window.addEventListener(STELLA_CLOSE_ORB_CHAT_EVENT, handleCloseOrbChat);
+    return () => {
+      window.removeEventListener(STELLA_OPEN_ORB_CHAT_EVENT, handleOpenOrbChat);
+      window.removeEventListener(STELLA_CLOSE_ORB_CHAT_EVENT, handleCloseOrbChat);
+    };
+  }, []);
 
   return (
     <>
@@ -104,6 +136,7 @@ export const FullShellRuntime = ({
         isInitialLoading={chat.conversation.isInitialLoading}
         onAdd={chat.composer.onAdd}
         onSend={chat.conversation.sendMessageWithContext}
+        onChatOpenChange={onOrbChatOpenChange}
       />
     </>
   );

@@ -12,6 +12,9 @@ import { useUiState } from "@/context/ui-state";
 import { useWorkspace } from "@/context/workspace-state";
 import { secureSignOut } from "@/global/auth/services/auth";
 import type { DashboardState } from "@/global/onboarding/DiscoveryFlow";
+import { dispatchCloseOrbChat, dispatchOpenOrbChat } from "@/shared/lib/stella-orb-chat";
+import type { ChatContext } from "@/shared/types/electron";
+import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { FullShellDialogs } from "./full-shell-dialogs";
 import type { DialogType } from "./full-shell-dialogs";
@@ -46,6 +49,7 @@ export const FullShellReadySurface = ({
   const [activeDialog, setActiveDialog] = useState<DialogType>(null);
   const [pendingAskStellaRequest, setPendingAskStellaRequest] =
     useState<PendingAskStellaRequest | null>(null);
+  const [isOrbChatOpen, setIsOrbChatOpen] = useState(false);
   const { projects, pickProjectDirectory } = useDevProjects();
 
   const showAuthDialog = useCallback(() => {
@@ -153,6 +157,19 @@ export const FullShellReadySurface = ({
     activePanel?.kind === "generated-page" ? activePanel.pageId : null;
   const showChatSurface = state.view === "chat" || state.view === "social";
 
+  // ---- Context menu handlers ----
+
+  const handleContextMenuOpenOrbChat = useCallback(
+    (chatContext?: ChatContext | null) => {
+      if (state.view === "chat" || state.view === "social") {
+        setView("home");
+      }
+
+      dispatchOpenOrbChat({ chatContext: chatContext ?? null });
+    },
+    [setView, state.view],
+  );
+
   return (
     <>
       <Sidebar
@@ -174,51 +191,59 @@ export const FullShellReadySurface = ({
         onProjectSelect={handleProjectSelect}
       />
 
-      <div className="content-area">
-        {showChatSurface ? (
-          <Suspense
-            fallback={
-              <WorkspaceArea
-                view="home"
-                activeDemo={null}
-                demoClosing={false}
-              />
-            }
-          >
-            <FullShellRuntime
-              activeConversationId={activeConversationId}
-              activeView={state.view}
-              composerEntering={onboardingExiting}
-              conversationId={activeConversationId}
-              isOrbVisible={false}
-              onSignIn={showAuthDialog}
-              pendingAskStellaRequest={pendingAskStellaRequest}
-              onPendingAskStellaHandled={handlePendingAskStellaHandled}
-            />
-          </Suspense>
-        ) : (
-          <>
-            <WorkspaceArea
-              view={state.view}
-              activeDemo={null}
-              demoClosing={false}
-              conversationId={activeConversationId ?? undefined}
-            />
-            <Suspense fallback={null}>
+      <StellaContextMenu
+        isOrbChatOpen={isOrbChatOpen}
+        onOpenOrbChat={handleContextMenuOpenOrbChat}
+        onCloseOrbChat={dispatchCloseOrbChat}
+      >
+        <div className="content-area">
+          {showChatSurface ? (
+            <Suspense
+              fallback={
+                <WorkspaceArea
+                  view="home"
+                  activeDemo={null}
+                  demoClosing={false}
+                />
+              }
+            >
               <FullShellRuntime
                 activeConversationId={activeConversationId}
                 activeView={state.view}
                 composerEntering={onboardingExiting}
                 conversationId={activeConversationId}
-                isOrbVisible={isOrbVisible}
+                isOrbVisible={false}
                 onSignIn={showAuthDialog}
                 pendingAskStellaRequest={pendingAskStellaRequest}
                 onPendingAskStellaHandled={handlePendingAskStellaHandled}
+                onOrbChatOpenChange={setIsOrbChatOpen}
               />
             </Suspense>
-          </>
-        )}
-      </div>
+          ) : (
+            <>
+              <WorkspaceArea
+                view={state.view}
+                activeDemo={null}
+                demoClosing={false}
+                conversationId={activeConversationId ?? undefined}
+              />
+              <Suspense fallback={null}>
+                <FullShellRuntime
+                  activeConversationId={activeConversationId}
+                  activeView={state.view}
+                  composerEntering={onboardingExiting}
+                  conversationId={activeConversationId}
+                  isOrbVisible={isOrbVisible}
+                  onSignIn={showAuthDialog}
+                  pendingAskStellaRequest={pendingAskStellaRequest}
+                  onPendingAskStellaHandled={handlePendingAskStellaHandled}
+                  onOrbChatOpenChange={setIsOrbChatOpen}
+                />
+              </Suspense>
+            </>
+          )}
+        </div>
+      </StellaContextMenu>
 
       <FullShellDialogs
         activeDialog={activeDialog}
