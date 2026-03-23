@@ -32,7 +32,7 @@ import {
 import "./stella-context-menu.css";
 
 const HIGHLIGHT_CLASS = "stella-context-highlight";
-const HIGHLIGHT_BROAD_CLASS = "stella-context-highlight--broad";
+const HIGHLIGHT_ACTIVE_CLASS = "stella-context-highlight--active";
 
 const MENU_ID = {
   ASK_ANYTHING: "ask-anything",
@@ -115,14 +115,14 @@ export function StellaContextMenu({
 
   const clearHighlight = useCallback(() => {
     if (highlightedRef.current) {
-      highlightedRef.current.classList.remove(HIGHLIGHT_CLASS, HIGHLIGHT_BROAD_CLASS);
+      highlightedRef.current.classList.remove(HIGHLIGHT_CLASS, HIGHLIGHT_ACTIVE_CLASS);
       highlightedRef.current = null;
     }
   }, []);
 
   const applyHighlight = useCallback((el: Element) => {
     clearHighlight();
-    el.classList.add(HIGHLIGHT_CLASS, HIGHLIGHT_BROAD_CLASS);
+    el.classList.add(HIGHLIGHT_CLASS, HIGHLIGHT_ACTIVE_CLASS);
     highlightedRef.current = el;
   }, [clearHighlight]);
 
@@ -132,7 +132,7 @@ export function StellaContextMenu({
       title: captured.contextLabel,
       bounds: { x: 0, y: 0, width: 0, height: 0 },
     },
-    windowText: captured.broadSnapshot,
+    windowText: captured.tightSnapshot,
   }), []);
 
   const handleSelect = useCallback(
@@ -242,7 +242,7 @@ export function StellaContextMenu({
         clearHighlight();
 
         if (foundId === MENU_ID.ASK_ABOUT_THIS && contextRef.current) {
-          applyHighlight(contextRef.current.containers.broad);
+          applyHighlight(contextRef.current.containers.tight);
         }
       }
     },
