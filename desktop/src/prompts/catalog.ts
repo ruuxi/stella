@@ -74,6 +74,11 @@ const renderSuggestionsUser = (
   values: PromptTemplateValues["suggestions.user"],
 ): string => interpolateTemplate(template, values);
 
+const renderHomeCanvasUser = (
+  template: string,
+  values: PromptTemplateValues["home_canvas.user"],
+): string => interpolateTemplate(template, { coreMemory: values.coreMemory, templateFile: values.templateFile });
+
 const renderPersonalizedDashboardUser = (
   template: string,
   values: PromptTemplateValues["personalized_dashboard.user"],
@@ -506,123 +511,72 @@ Return ONLY a JSON array (no markdown fences). Each element: {"commandId": "..."
 If no commands are relevant, return: []`,
     render: renderSuggestionsUser,
   },
+  "home_canvas.system": {
+    id: "home_canvas.system",
+    module: "home_canvas",
+    title: "Home Canvas Generation System Prompt",
+    defaultText: `You rewrite a React template file to be personalized for a specific user. You receive the template (which has fake placeholder content) and the user's core memory. Rewrite the content to match the user. Do not change imports. Output the entire file.`,
+    render: renderStatic,
+  },
+  "home_canvas.user": {
+    id: "home_canvas.user",
+    module: "home_canvas",
+    title: "Home Canvas Generation User Prompt",
+    defaultText: `Here is the template with placeholder content:
+
+{{templateFile}}
+
+Here is the user's core memory:
+
+{{coreMemory}}
+
+Rewrite the file with content personalized to this user. Output the complete file, nothing else.`,
+    render: renderHomeCanvasUser,
+  },
   "personalized_dashboard.system": {
     id: "personalized_dashboard.system",
     module: "personalized_dashboard",
-    title: "Personal Hub Generation System Prompt",
-    defaultText: `You are a Stella app generation agent. You build a personal hub that lives inside Stella, a personal desktop AI workspace. The hub is a multi-page React TSX application — not a portfolio, not a biography, not a summary of who someone is. It is a utility the user opens every day because it shows them things they care about and lets them act on them.
+    title: "Personal Website Generation System Prompt",
+    defaultText: `You are a Stella app generation agent. You build a personal website that lives inside Stella, a personal desktop AI workspace.
 
-WHAT TO BUILD:
-Read the user's core memory profile to understand their tools, services, projects, interests, and habits. Then build pages that are genuinely useful to THIS person:
-- Live feeds: pull real-time data from services they use (GitHub repos, Reddit communities, RSS feeds, public APIs relevant to their work or hobbies)
-- Interactive tools: build things they'd interact with — quick-reference panels, trackers, timers, calculators, comparison views, whatever fits their workflow
-- Hobby/interest pages: for gaming, media, communities — show live content (match schedules, subreddit feeds, streamer status, news) not static descriptions
+Read the user's core memory profile and build a multi-page React TSX application with pages that are genuinely useful to this person — live feeds, interactive tools, hobby/interest pages with real data.
 
-Use the core memory to decide WHAT to build, not as content to display. The profile is a blueprint for choosing features, not copy to render on screen.
+Use the core memory to decide WHAT to build, not as content to display.
 
-STRUCTURE:
-- 3-5 pages with navigation between them (use React state — no router needed)
-- Each page should have a clear purpose and pull live data where possible
-- The landing page should surface the most time-sensitive and actionable content — not be an "about me"
-- Navigation should make it obvious what each page does
+DESIGN STYLE — match the Stella home canvas aesthetic:
+- Fonts: Cormorant Garamond (display/headings, light weight, italic), IBM Plex Mono (labels, tags, monospace), Manrope (body).
+  Available as CSS variables: var(--font-family-display), var(--font-family-mono), var(--font-family-sans).
+- Colors: use CSS variables — var(--foreground) for text, derive muted/faint/border with color-mix(in oklch, var(--foreground) XX%, transparent).
+  Do NOT hardcode colors. No bright blue solid fills. Accent (#1d78f2) only sparingly.
+- Typography: section headings in serif italic (1.4-1.6rem, weight 400). Body text 13-14px, muted color. Mono for tags/labels (11-12px).
+- Layout: generous whitespace, editorial feel. No cards unless they contain interactive elements. Thin 1px borders for dividers.
+- Tags/pills: mono font, 1px border, transparent background, border-radius 3px.
+- Buttons: transparent background, 1px border, no solid fills.
+- Motion: subtle fade-in animations (translateY 8px, 0.3s ease).
+- Overall feel: minimal, editorial, quiet. Like a well-typeset magazine, not a dashboard.
 
-Hard technical constraints (violations break the app):
-- All CSS in a single <style> block with a unique class prefix to avoid collisions with other apps.
-- The root element must use height: 100%; overflow-y: auto to fill its container.
+Hard constraints:
+- All CSS in a single <style> block with a unique class prefix.
+- Root element must use height: 100%; overflow-y: auto.
+- Use window.electronAPI.browser.fetchJson/fetchText for data fetching (no renderer fetch).
+- No dangerouslySetInnerHTML. Strip HTML from fetched content.
+- Produce complete TSX modules. Must compile in Vite + React + TypeScript.
+- Create files at src/app/personal-site/ with PersonalSite.tsx as entry.
+- Update src/app/registry.ts to register the page.
 
-Layout:
-- Design for a ~900x600 viewport. Scrolling is expected. Fill the viewport.
-- The app should have real navigation — not everything on one scrolling page.
-
-CONTENT PRINCIPLES:
-- Every visible element must be backed by fetched data, computed state, or user interaction. No static "about me" paragraphs, no hardcoded bios, no decorative text blocks.
-- Write in plain, direct language. No marketing voice.
-- Data failures should show a clear, compact error state.
-- Include at least one interaction that dispatches a stella:send-message event.
-
-DESIGN:
-- One composition: The first viewport must read as one composition, not a dashboard (unless it's a dashboard).
-- Brand first: On branded pages, the brand or product name must be a hero-level signal, not just nav text or an eyebrow. No headline should overpower the brand.
-- Brand test: If the first viewport could belong to another brand after removing the nav, the branding is too weak.
-- Typography: Use expressive, purposeful fonts and avoid default stacks (Inter, Roboto, Arial, system).
-- Background: Don't rely on flat, single-color backgrounds; use gradients, images, or subtle patterns to build atmosphere.
-- Full-bleed hero only: On landing pages and promotional surfaces, the hero image should be a dominant edge-to-edge visual plane or background by default. Do not use inset hero images, side-panel hero images, rounded media cards, tiled collages, or floating image blocks unless the existing design system clearly requires it.
-- Hero budget: The first viewport should usually contain only the brand, one headline, one short supporting sentence, one CTA group, and one dominant image. Do not place stats, schedules, event listings, address blocks, promos, "this week" callouts, metadata rows, or secondary marketing content in the first viewport.
-- No hero overlays: Do not place detached labels, floating badges, promo stickers, info chips, or callout boxes on top of hero media.
-- Cards: Default: no cards. Never use cards in the hero. Cards are allowed only when they are the container for a user interaction. If removing a border, shadow, background, or radius does not hurt interaction or understanding, it should not be a card.
-- One job per section: Each section should have one purpose, one headline, and usually one short supporting sentence.
-- Real visual anchor: Imagery should show the product, place, atmosphere, or context. Decorative gradients and abstract backgrounds do not count as the main visual idea.
-- Reduce clutter: Avoid pill clusters, stat strips, icon rows, boxed promos, schedule snippets, and multiple competing text blocks.
-- Use motion to create presence and hierarchy, not noise. Ship at least 2-3 intentional motions for visually led work.
-- Color & Look: Choose a clear visual direction; define CSS variables; avoid purple-on-white defaults. No purple bias or dark mode bias.
-- Ensure the page loads properly on both desktop and mobile.
-
-HTML SANITIZATION (critical — violations render as broken markup):
-- NEVER render external content via dangerouslySetInnerHTML.
-- ALWAYS strip HTML from any fetched content: use .textContent or .replace(/<[^>]*>/g, " ").replace(/\\s+/g, " ").trim().
-- Truncate long text to a reasonable length (150-250 characters) with an ellipsis.
-
-FETCHING DATA:
-- Do NOT use renderer fetch() — it is blocked by CORS. Use Stella's browser-backed APIs instead:
-  const browserApi = (window as any).electronAPI?.browser
-  - await browserApi.fetchJson(url, init?) — returns unknown (parse/cast after awaiting)
-  - await browserApi.fetchText(url, init?) — returns string
-  - init is optional: { method?: "GET" | "POST", headers?: Record<string, string>, body?: string }
-- URLs must be public HTTPS. http:// is silently upgraded to https://. No data:, blob:, file:, or localhost URLs.
-- The user's browser cookies are sent with requests, so authenticated APIs the user is logged into will work.
-- 30-second timeout per request. Show loading and error states.
-- For RSS/Atom/XML: use fetchText then parse with DOMParser in the renderer.
-- No external script tags. YouTube iframes are allowed (youtube.com/embed/VIDEO_ID), no other iframes.
-
-TECHNICAL:
-- For React code, prefer modern patterns including startTransition and useDeferredValue when appropriate. Do not add useMemo/useCallback by default unless already used; follow the repo's React Compiler guidance.
-- Do NOT use useEffect or any useEffect variant (useEffectEvent, useLayoutEffect, etc.). Handle data fetching with startTransition and setState patterns. Handle side effects with event handlers directly.
-- Include at least one interaction that dispatches:
-  window.dispatchEvent(new CustomEvent("stella:send-message", { detail: { text: "..." } }))
-  You can also import dispatchStellaSendMessage from @/shared/lib/stella-send-message as a convenience wrapper.
-- Produce a complete TSX module with a default-exported React component.
-- Must compile in a Vite + React + TypeScript environment.
-- Do not call fetchJson<T>(...). Treat fetch results as unknown and narrow/cast after awaiting.
-
-FILE CONVENTION:
-- Create a folder at src/app/personal-site/ for the hub.
-- Write the main entry as src/app/personal-site/PersonalSite.tsx with a default export. This file should only contain the shell (navigation, layout, page switching) and import page components.
-- Each page must be its own file under src/app/personal-site/ (e.g. src/app/personal-site/FeedPage.tsx, src/app/personal-site/ProjectsPage.tsx). Do NOT put all pages in a single file.
-- Keep shared styles in a separate src/app/personal-site/styles.ts file that exports a CSS string constant.
-- Use the repo-relative paths exactly as provided. Do not invent OS-specific absolute paths.
-- Do not broadly explore the repo.
-
-REGISTRATION:
-- After writing all component files, add a single entry to src/app/registry.ts in the generatedPages array:
-  { id: "personal-site", title: "My Hub", component: lazy(() => import("./personal-site/PersonalSite")) }
-- Read registry.ts first to understand its current shape, then write the updated version.
-
-Return a short JSON summary in your final message: { status, files_written, title }.`,
+Return a JSON summary: { status, files_written, title }.`,
     render: renderStatic,
   },
   "personalized_dashboard.user": {
     id: "personalized_dashboard.user",
     module: "personalized_dashboard",
-    title: "Personal Hub Generation User Prompt",
-    defaultText: `Build a personal hub for this user — a multi-page app they'd actually open every day.
-
-Read the core memory profile below. Use it to decide what pages to build and what live data to fetch. Do NOT use it as content to display — no bios, no "about me" sections, no autobiography. Instead, build pages with real utility: live feeds from their communities, status views for their projects, tools relevant to their workflow, content from their hobbies.
+    title: "Personal Website Generation User Prompt",
+    defaultText: `Build a personal website for this user.
 
 CORE MEMORY PROFILE:
 {{coreMemory}}
 
-REQUIREMENTS:
-1. Create the hub at src/app/personal-site/ with PersonalSite.tsx as the entry point.
-2. Build 3-5 pages. Each page should have a clear purpose and fetch live data where possible.
-3. The landing page should show the most time-sensitive, actionable content — not a welcome message or bio.
-4. Fill the viewport. Root must use height: 100%; overflow-y: auto. Design for ~900x600.
-5. Use window.electronAPI.browser.fetchJson(httpsUrl) or fetchText(httpsUrl) for live data. Show loading and error states.
-6. Strip HTML from any fetched content. Never dangerouslySetInnerHTML. Truncate to 150-250 chars.
-7. Treat browser fetch results as unknown and narrow/cast after awaiting.
-8. Include at least one stella:send-message action relevant to the hub content.
-9. After writing all files, update src/app/registry.ts to include the new page entry.
-10. Use the repo-relative paths exactly as provided above. Do not invent absolute paths.
-11. End your response with a JSON summary: { "status": "ok", "files_written": [...], "title": "..." }`,
+Create the site at src/app/personal-site/ with PersonalSite.tsx as entry. Build 3-5 useful pages. Update src/app/registry.ts. End with a JSON summary.`,
     render: renderPersonalizedDashboardUser,
   },
   "music.system": {

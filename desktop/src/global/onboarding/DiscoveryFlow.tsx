@@ -5,7 +5,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getOrCreateDeviceId } from "@/platform/electron/device";
 import { synthesizeCoreMemory } from "@/global/onboarding/services/synthesis";
+import { generateHomeCanvas } from "@/global/onboarding/services/home-canvas-generation";
 import { getPersonalizedDashboardPromptConfig } from "@/prompts/transport";
+import homeCanvasTemplate from "@/app/home/HomeCanvas.tsx?raw";
 import { useChatStore } from "@/context/chat-store";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import {
@@ -115,24 +117,25 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
           }
         }
 
-        // Fire-and-forget: spawn agent to generate personal website
+        // Fire-and-forget: generate personalized home canvas + personal website
+        setDashboardState("generating");
+
+        generateHomeCanvas(synthesisResult.coreMemory, homeCanvasTemplate)
+          .catch(() => {});
+
         const startGeneration =
           window.electronAPI?.agent.startPersonalWebsiteGeneration;
-
-        if (!startGeneration) {
-          completed = true;
-          synthesizedRef.current = true;
-          return;
+        if (startGeneration) {
+          startGeneration({
+            conversationId: activeConversationId,
+            coreMemory: synthesisResult.coreMemory,
+            promptConfig: getPersonalizedDashboardPromptConfig(),
+          })
+            .then(() => setDashboardState("idle"))
+            .catch(() => setDashboardState("idle"));
+        } else {
+          setDashboardState("idle");
         }
-
-        setDashboardState("generating");
-        startGeneration({
-          conversationId: activeConversationId,
-          coreMemory: synthesisResult.coreMemory,
-          promptConfig: getPersonalizedDashboardPromptConfig(),
-        })
-          .then(() => setDashboardState("idle"))
-          .catch(() => setDashboardState("idle"));
 
         completed = true;
         synthesizedRef.current = true;
