@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { generatedPages } from '@/app/registry'
+import { generatedPages, MEDIA_PAGE } from '@/app/registry'
 import { Spinner } from '@/ui/spinner'
 import { WorkspaceErrorBoundary } from '../WorkspaceErrorBoundary'
 import {
@@ -45,7 +45,7 @@ const GeneratedPagePanelRenderer = ({
 }: {
   panel: GeneratedPageWorkspacePanel
 }) => {
-  const page = generatedPages.find((candidate) => candidate.id === panel.pageId)
+  const page = [MEDIA_PAGE, ...generatedPages].find((candidate) => candidate.id === panel.pageId)
 
   if (!page) {
     throw new Error(`Unknown generated page: ${panel.pageId}`)
