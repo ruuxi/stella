@@ -10,7 +10,7 @@ export default function AccountScreen() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const user = session.data?.user;
   const email = user?.email ?? "";
-  const name = user?.name || email || "Your account";
+  const name = user?.name || email || "Account";
 
   const signOut = async () => {
     setIsSigningOut(true);
@@ -25,51 +25,40 @@ export default function AccountScreen() {
   if (!user) {
     return (
       <View style={styles.screen}>
-        <View style={styles.screenHeader}>
-          <Text style={styles.screenTitle}>Account</Text>
-          <Text style={styles.screenBody}>
-            {isSigningOut
-              ? "Signing you out of Stella."
-              : "Refreshing your account session."}
-          </Text>
-        </View>
+        <Text style={styles.title}>Account</Text>
+        <Text style={styles.body}>
+          {isSigningOut ? "Signing out\u2026" : "Loading session\u2026"}
+        </Text>
       </View>
     );
   }
 
   return (
     <View style={styles.screen}>
-      <View style={styles.screenHeader}>
-        <Text style={styles.screenTitle}>Account</Text>
-        <Text style={styles.screenBody}>
-          Stella mobile uses the same account session as your desktop.
-        </Text>
-      </View>
+      <Text style={styles.title}>{name}</Text>
+      {email !== name && <Text style={styles.body}>{email}</Text>}
 
-      <View style={styles.stateCard}>
-        <Text style={styles.accountLabel}>Signed in as</Text>
-        <Text style={styles.accountValue}>{name}</Text>
-        <Text style={styles.accountMeta}>{email}</Text>
-        <Text style={styles.accountMeta}>
-          Desktop bridge requests are verified against this account before your
-          phone can open Stella.
-        </Text>
+      <View style={styles.separator} />
 
-        <Pressable
-          onPress={() => {
-            void signOut();
-          }}
-          style={({ pressed }) => [
-            styles.dangerButton,
-            pressed ? styles.dangerButtonPressed : null,
-            isSigningOut ? styles.dangerButtonDisabled : null,
-          ]}
-        >
-          <Text style={styles.dangerButtonText}>
-            {isSigningOut ? "Signing out..." : "Sign out"}
-          </Text>
-        </Pressable>
-      </View>
+      <Text style={styles.caption}>
+        Uses the same session as your desktop.
+      </Text>
+
+      <View style={styles.spacer} />
+
+      <Pressable
+        onPress={() => void signOut()}
+        disabled={isSigningOut}
+        style={({ pressed }) => [
+          styles.signOut,
+          pressed && styles.signOutPressed,
+          isSigningOut && styles.signOutDisabled,
+        ]}
+      >
+        <Text style={styles.signOutText}>
+          {isSigningOut ? "Signing out\u2026" : "Sign out"}
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -77,76 +66,55 @@ export default function AccountScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    gap: 14,
+    paddingTop: 8,
   },
-  screenHeader: {
-    gap: 6,
-    paddingTop: 4,
-  },
-  screenTitle: {
+  title: {
     color: colors.text,
     fontFamily: fonts.display.regular,
-    fontSize: 30,
-    letterSpacing: -1.5,
+    fontSize: 28,
+    letterSpacing: -1.2,
   },
-  screenBody: {
+  body: {
     color: colors.textMuted,
     fontFamily: fonts.sans.regular,
     fontSize: 15,
     letterSpacing: -0.2,
-    lineHeight: 22,
+    marginTop: 4,
   },
-  stateCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 18,
-    borderWidth: 1,
-    gap: 12,
-    padding: 20,
-    shadowColor: "#2f5082",
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
+  separator: {
+    backgroundColor: colors.border,
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 20,
   },
-  accountLabel: {
-    color: colors.textMuted,
-    fontFamily: fonts.mono.regular,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  accountValue: {
-    color: colors.text,
-    fontFamily: fonts.display.regular,
-    fontSize: 26,
-    letterSpacing: -1,
-  },
-  accountMeta: {
+  caption: {
     color: colors.textMuted,
     fontFamily: fonts.sans.regular,
-    fontSize: 15,
-    letterSpacing: -0.2,
-    lineHeight: 22,
+    fontSize: 14,
+    letterSpacing: -0.1,
+    lineHeight: 20,
   },
-  dangerButton: {
+  spacer: {
+    flex: 1,
+  },
+  signOut: {
     alignItems: "center",
-    backgroundColor: "rgba(220, 38, 38, 0.08)",
-    borderColor: "rgba(220, 38, 38, 0.18)",
-    borderRadius: 12,
+    alignSelf: "flex-start",
+    borderColor: "rgba(220, 38, 38, 0.2)",
+    borderRadius: 22,
     borderWidth: 1,
-    marginTop: 8,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    marginBottom: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
   },
-  dangerButtonPressed: {
-    backgroundColor: "rgba(220, 38, 38, 0.14)",
+  signOutPressed: {
+    backgroundColor: "rgba(220, 38, 38, 0.06)",
   },
-  dangerButtonDisabled: {
-    opacity: 0.7,
+  signOutDisabled: {
+    opacity: 0.5,
   },
-  dangerButtonText: {
+  signOutText: {
     color: colors.danger,
-    fontFamily: fonts.sans.semiBold,
+    fontFamily: fonts.sans.medium,
     fontSize: 15,
     letterSpacing: -0.3,
   },
