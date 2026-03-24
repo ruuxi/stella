@@ -67,3 +67,39 @@
   descent-override: 25%;
   line-gap-override: 1%;
 }
+
+/* Cormorant Garamond - Light (300) */
+@font-face {
+  font-family: "Cormorant Garamond";
+  src: url("../../assets/fonts/cormorant-garamond-light.ttf") format("truetype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 300;
+}
+
+/* Cormorant Garamond - Light Italic (300) */
+@font-face {
+  font-family: "Cormorant Garamond";
+  src: url("../../assets/fonts/cormorant-garamond-light-italic.ttf") format("truetype");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 300;
+}
+
+/* Cormorant Garamond - Regular (400) */
+@font-face {
+  font-family: "Cormorant Garamond";
+  src: url("../../assets/fonts/cormorant-garamond-regular.ttf") format("truetype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+/* Cormorant Garamond - Italic (400) */
+@font-face {
+  font-family: "Cormorant Garamond";
+  src: url("../../assets/fonts/cormorant-garamond-italic.ttf") format("truetype");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 400;
+}
