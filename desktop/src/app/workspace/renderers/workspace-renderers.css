@@ -37,46 +37,74 @@
 .workspace-error {
   display: flex;
   flex-direction: column;
-  padding: 16px;
-  gap: 12px;
+  align-items: center;
+  justify-content: center;
   height: 100%;
-  overflow: auto;
+  gap: 0;
+  text-align: center;
+  padding: 2rem;
+}
+
+.workspace-error-icon {
+  font-size: 1.6rem;
+  opacity: 0.18;
+  margin-bottom: 1.2rem;
+  user-select: none;
 }
 
 .workspace-error-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: oklch(0.65 0.18 25);
+  font-family: var(--font-family-display, 'Cormorant Garamond', Georgia, serif);
+  font-size: 1.5rem;
+  font-weight: 400;
+  font-style: italic;
+  letter-spacing: -0.02em;
+  color: var(--foreground, #0f1728);
+  margin: 0 0 0.4rem;
 }
 
-.workspace-error-message {
-  font-size: 12px;
-  color: var(--text-base);
-  font-family: var(--font-family-mono);
-  font-feature-settings: var(--font-family-mono--font-feature-settings, normal);
-  background: color-mix(in oklch, oklch(0.65 0.18 25) 8%, transparent);
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid color-mix(in oklch, oklch(0.65 0.18 25) 20%, transparent);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 200px;
-  overflow: auto;
+.workspace-error-subtitle {
+  font-size: 13px;
+  color: color-mix(in oklch, var(--foreground, #0f1728) 55%, transparent);
+  line-height: 1.5;
+  max-width: 280px;
+  margin-bottom: 1.6rem;
+}
+
+.workspace-error-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.workspace-error-retry,
+.workspace-error-ask {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  padding: 9px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: opacity 0.15s, border-color 0.15s;
 }
 
 .workspace-error-retry {
-  align-self: flex-start;
-  padding: 5px 14px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-strong);
   background: transparent;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 0.12s ease;
+  border: 1px solid color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent);
+  color: var(--foreground, #0f1728);
 }
 
 .workspace-error-retry:hover {
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  opacity: 0.7;
+  border-color: color-mix(in oklch, var(--foreground, #0f1728) 32%, transparent);
+}
+
+.workspace-error-ask {
+  background: transparent;
+  border: 1px solid color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent);
+  color: color-mix(in oklch, var(--foreground, #0f1728) 78%, transparent);
+}
+
+.workspace-error-ask:hover {
+  opacity: 0.7;
+  border-color: color-mix(in oklch, var(--foreground, #0f1728) 32%, transparent);
+  color: var(--foreground, #0f1728);
 }
