@@ -44,13 +44,16 @@ function readRouteGroup(segment: string | undefined) {
   throw new Error(`Unknown root segment: ${segment}`);
 }
 
+// TODO: remove this bypass once login flow is testable end-to-end
+const SKIP_AUTH = true;
+
 function AuthenticatedLayout() {
   const session = authClient.useSession();
   const router = useRouter();
   const routeGroup = readRouteGroup(useSegments()[0]);
 
   useEffect(() => {
-    if (session.isPending) {
+    if (session.isPending && !SKIP_AUTH) {
       return;
     }
 
@@ -59,9 +62,9 @@ function AuthenticatedLayout() {
       return;
     }
 
-    if (session.data) {
+    if (session.data || SKIP_AUTH) {
       if (routeGroup !== "main") {
-        router.replace("/stella");
+        router.replace("/chat");
       }
       return;
     }
