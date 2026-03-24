@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#edf3fb"
     },
     "ios": {
       "bundleIdentifier": "com.stella.mobile",
@@ -31,7 +31,8 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-router"
+      "expo-router",
+      "expo-web-browser"
     ]
   }
 }
