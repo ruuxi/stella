@@ -13,6 +13,11 @@
   pointer-events: auto;
 }
 
+.orb-body-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .orb-body {
   pointer-events: auto;
   position: relative;

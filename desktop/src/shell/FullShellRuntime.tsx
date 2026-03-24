@@ -134,6 +134,7 @@ export const FullShellRuntime = ({
         hasOlderEvents={chat.conversation.hasOlderEvents}
         isLoadingOlder={chat.conversation.isLoadingOlder}
         isInitialLoading={chat.conversation.isInitialLoading}
+        conversationId={conversationId ?? undefined}
         onAdd={chat.composer.onAdd}
         onSend={chat.conversation.sendMessageWithContext}
         onChatOpenChange={onOrbChatOpenChange}

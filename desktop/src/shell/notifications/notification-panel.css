@@ -1,0 +1,200 @@
+/* ===== Notification Panel ===== */
+
+.notif-panel {
+  position: fixed;
+  z-index: 9998;
+  width: clamp(260px, 44vmin, 360px);
+  max-width: calc(100vw - 48px);
+  max-height: min(480px, calc(100vh - 140px));
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 6px 0;
+  /* No background on the overall container */
+  background: transparent;
+}
+.notif-panel::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Section ── */
+
+.notif-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.notif-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.45;
+  padding: 0 2px;
+}
+
+.notif-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* ── Individual Item ── */
+
+.notif-item {
+  position: relative;
+  padding: 9px 12px 9px 14px;
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: border-color 0.2s, background 0.2s;
+}
+.notif-item:hover {
+  border-color: color-mix(in oklch, var(--foreground) 12%, transparent);
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+/* Status left-edge accent */
+.notif-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  transition: background 0.3s;
+}
+.notif-item[data-status="ok"]::before {
+  background: oklch(0.65 0.18 145);
+}
+.notif-item[data-status="error"]::before {
+  background: oklch(0.60 0.20 25);
+}
+.notif-item[data-status="running"]::before {
+  background: oklch(0.7 0.15 230);
+}
+.notif-item[data-status="canceled"]::before {
+  background: oklch(0.7 0.15 85);
+}
+
+/* ── Failed task — minimal single row ── */
+
+.notif-item--failed {
+  padding: 6px 12px 6px 14px;
+  opacity: 0.65;
+  gap: 0;
+}
+.notif-item-name--failed {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+}
+
+/* ── Schedule items — subtler background ── */
+
+.notif-item--schedule {
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+/* ── Item content ── */
+
+.notif-item-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.notif-item-name {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--foreground);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.notif-item-time {
+  font-size: 10.5px;
+  color: var(--foreground);
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.notif-item-preview {
+  font-size: 11px;
+  color: var(--foreground);
+  opacity: 0.5;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.notif-item-next {
+  font-size: 10.5px;
+  color: var(--foreground);
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Empty state ── */
+
+.notif-empty {
+  font-size: 12px;
+  color: var(--foreground);
+  opacity: 0.4;
+  text-align: center;
+  padding: 16px 0;
+}
+
+/* ── Notification bell button ── */
+
+.notif-bell {
+  position: absolute;
+  top: -16px;
+  right: -10px;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  padding: 0;
+  color: var(--foreground);
+  opacity: 0.7;
+  transition: opacity 0.15s, transform 0.15s, background 0.15s;
+}
+.notif-bell:hover {
+  opacity: 0.9;
+  transform: scale(1.1);
+  background: color-mix(in oklch, var(--foreground) 8%, var(--background));
+}
+.notif-bell--active {
+  opacity: 0.9;
+  background: color-mix(in oklch, var(--foreground) 10%, var(--background));
+}
+.notif-bell svg {
+  width: 12px;
+  height: 12px;
+}
+
+
