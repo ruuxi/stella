@@ -1,5 +1,4 @@
 import { useEffect, type MutableRefObject } from "react";
-import { useChatStore } from "@/context/chat-store";
 import type { AgentStreamEvent } from "../streaming/streaming-types";
 
 /** Mutable refs shared with the streaming chat hook. */
@@ -37,8 +36,6 @@ export function useResumeAgentRun({
   refs,
   actions,
 }: UseResumeAgentRunOptions) {
-  const { isAuthenticated } = useChatStore();
-
   const {
     streamRunIdRef,
     localRunIdRef,
@@ -56,7 +53,7 @@ export function useResumeAgentRun({
   } = actions;
 
   useEffect(() => {
-    if (!isAuthenticated || isStreaming || !activeConversationId || !window.electronAPI) {
+    if (isStreaming || !activeConversationId || !window.electronAPI) {
       return;
     }
     if (
@@ -113,7 +110,6 @@ export function useResumeAgentRun({
       cancelled = true;
     };
   }, [
-    isAuthenticated,
     activeConversationId,
     agentStreamCleanupRef,
     handleAgentEvent,
@@ -128,5 +124,4 @@ export function useResumeAgentRun({
     streamRunIdRef,
   ]);
 }
-
 

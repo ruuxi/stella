@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockSetView = vi.fn();
@@ -10,6 +11,8 @@ const mockUiState = {
   view: "home",
   conversationId: "conv-123",
 };
+let fullShellRuntimeMounts = 0;
+let fullShellRuntimeUnmounts = 0;
 
 vi.mock("@/context/ui-state", () => ({
   useUiState: () => ({
@@ -74,13 +77,22 @@ vi.mock("@/shell/full-shell-dialogs", () => ({
 }));
 
 vi.mock("@/shell/FullShellRuntime", () => ({
-  FullShellRuntime: ({ activeView, isOrbVisible }: { activeView: string; isOrbVisible: boolean }) => (
-    <div
-      data-testid="full-shell-runtime"
-      data-active-view={activeView}
-      data-orb-visible={String(isOrbVisible)}
-    />
-  ),
+  FullShellRuntime: ({ activeView, isOrbVisible }: { activeView: string; isOrbVisible: boolean }) => {
+    useEffect(() => {
+      fullShellRuntimeMounts += 1;
+      return () => {
+        fullShellRuntimeUnmounts += 1;
+      };
+    }, []);
+
+    return (
+      <div
+        data-testid="full-shell-runtime"
+        data-active-view={activeView}
+        data-orb-visible={String(isOrbVisible)}
+      />
+    );
+  },
 }));
 
 const { FullShellReadySurface } = await import("@/shell/FullShellReadySurface");
@@ -94,6 +106,8 @@ describe("FullShellReadySurface", () => {
     mockDispatchCloseOrbChat.mockReset();
     mockUiState.view = "home";
     mockUiState.conversationId = "conv-123";
+    fullShellRuntimeMounts = 0;
+    fullShellRuntimeUnmounts = 0;
   });
 
   it("mounts runtime behavior on normal home entry", async () => {
@@ -181,5 +195,36 @@ describe("FullShellReadySurface", () => {
     expect(mockClosePanel).not.toHaveBeenCalled();
     expect(mockSetView).not.toHaveBeenCalled();
     expect(mockDispatchOpenOrbChat).not.toHaveBeenCalled();
+  });
+
+  it("keeps the runtime mounted while switching between desktop pages", async () => {
+    const { rerender } = render(
+      <FullShellReadySurface
+        dashboardState={null}
+        onboardingExiting={false}
+      />,
+    );
+
+    expect(await screen.findByTestId("full-shell-runtime")).toHaveAttribute(
+      "data-active-view",
+      "home",
+    );
+    expect(fullShellRuntimeMounts).toBe(1);
+    expect(fullShellRuntimeUnmounts).toBe(0);
+
+    mockUiState.view = "chat";
+    rerender(
+      <FullShellReadySurface
+        dashboardState={null}
+        onboardingExiting={false}
+      />,
+    );
+
+    expect(await screen.findByTestId("full-shell-runtime")).toHaveAttribute(
+      "data-active-view",
+      "chat",
+    );
+    expect(fullShellRuntimeMounts).toBe(1);
+    expect(fullShellRuntimeUnmounts).toBe(0);
   });
 });
