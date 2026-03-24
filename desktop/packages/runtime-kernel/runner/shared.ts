@@ -1,6 +1,9 @@
 import fs from "fs";
 import path from "path";
-import type { TaskLifecycleEvent } from "../tasks/local-task-manager.js";
+import {
+  TASK_SHUTDOWN_CANCEL_REASON,
+  type TaskLifecycleEvent,
+} from "../tasks/local-task-manager.js";
 import { normalizeStellaApiBaseUrl } from "../stella-provider.js";
 import { isOrchestratorAgentType } from "../../../src/shared/contracts/agent-runtime.js";
 import type { SelfModHmrState } from "../../boundary-contracts/index.js";
@@ -160,6 +163,12 @@ export const buildTaskEventPrompt = (
   if (event.taskId) lines.push(`task_id: ${event.taskId}`);
   if (event.agentType) lines.push(`agent_type: ${event.agentType}`);
   if (event.description) lines.push(`description: ${event.description}`);
+  if (
+    event.type === "task-canceled"
+    && event.error === TASK_SHUTDOWN_CANCEL_REASON
+  ) {
+    return null;
+  }
   if (event.type === "task-completed" && event.result) {
     lines.push(`result: ${event.result}`);
   }

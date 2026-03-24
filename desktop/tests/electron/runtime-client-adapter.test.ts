@@ -235,6 +235,114 @@ describe("RuntimeClientAdapter", () => {
     );
   });
 
+  it("keeps listening for background task completion after the parent run ends", async () => {
+    mockClient.resumeRunEvents.mockResolvedValue({
+      events: [
+        {
+          type: "task-started",
+          runId: "run-root",
+          seq: 1,
+          taskId: "task-1",
+          agentType: "app",
+          description: "Open Wikipedia in browser",
+        },
+      ],
+      exhausted: false,
+    });
+
+    const adapter = new RuntimeClientAdapter({
+      initializeParams: {
+        clientName: "test",
+        clientVersion: "0.0.0",
+        isDev: true,
+        platform: "win32",
+        frontendRoot: "/mock/frontend",
+        stellaHomePath: "/mock/home/.stella",
+        stellaWorkspacePath: "/mock/home/.stella/workspace",
+      },
+      hostHandlers: {
+        uiSnapshot: async () => "",
+        uiAct: async () => "",
+        getDeviceIdentity: async () => ({
+          deviceId: "device-1",
+          publicKey: "public-key",
+        }),
+        signHeartbeatPayload: async () => ({
+          publicKey: "public-key",
+          signature: "signature",
+        }),
+        requestCredential: async () => ({
+          secretId: "secret",
+          provider: "provider",
+          label: "label",
+        }),
+        displayUpdate: async () => {},
+      },
+    });
+
+    const onEnd = vi.fn();
+    const onTaskEvent = vi.fn();
+    const baselineRunListenerCount = onHandlers.get("run-event")?.size ?? 0;
+
+    await adapter.handleLocalChat(
+      {
+        conversationId: "conv-1",
+        userMessageId: "msg-1",
+        userPrompt: "open wikipedia",
+      },
+      {
+        onStream: vi.fn(),
+        onToolStart: vi.fn(),
+        onToolEnd: vi.fn(),
+        onError: vi.fn(),
+        onEnd,
+        onTaskEvent,
+      },
+    );
+
+    expect(onHandlers.get("run-event")?.size).toBe(baselineRunListenerCount + 1);
+
+    onHandlers.get("run-event")?.forEach((listener) => {
+      listener({
+        type: "end",
+        runId: "run-root",
+        seq: 2,
+      });
+    });
+
+    expect(onEnd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "end",
+        runId: "run-root",
+        seq: 2,
+      }),
+    );
+    expect(onHandlers.get("run-event")?.size).toBe(baselineRunListenerCount + 1);
+
+    onHandlers.get("run-event")?.forEach((listener) => {
+      listener({
+        type: "task-completed",
+        runId: "run-root",
+        seq: 2,
+        taskId: "task-1",
+        agentType: "app",
+        result: "Opened wikipedia.org",
+      });
+    });
+
+    expect(onTaskEvent).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        type: "task-completed",
+        rootRunId: "run-root",
+        taskId: "task-1",
+        agentType: "app",
+        result: "Opened wikipedia.org",
+      }),
+    );
+    expect(onHandlers.get("run-event")?.size).toBe(baselineRunListenerCount);
+  });
+
   it("swallows health-check connection failures and reports not ready", async () => {
     mockClient.healthCheck.mockRejectedValueOnce(
       new Error("Stella runtime client is not connected."),

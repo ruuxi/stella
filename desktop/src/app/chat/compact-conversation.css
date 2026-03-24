@@ -6,7 +6,7 @@
   --compact-chat-letter-spacing: 0.03em;
   --compact-chat-body-color: var(--text-strong);
   --compact-chat-markdown-color: var(--text-strong);
-  --compact-chat-markdown-weight: 500;
+  --compact-chat-markdown-weight: 450;
   --compact-chat-user-bg: color-mix(in oklch, var(--primary) 12%, transparent);
   --compact-chat-user-radius: 12px;
   --compact-chat-user-tail-radius: var(--compact-chat-user-radius);
@@ -28,7 +28,7 @@
   --compact-chat-line-height: 1.45;
   --compact-chat-body-color: var(--text-strong);
   --compact-chat-markdown-color: var(--text-strong);
-  --compact-chat-markdown-weight: 500;
+  --compact-chat-markdown-weight: 450;
   --compact-chat-user-bg: color-mix(in oklch, var(--primary) 12%, transparent);
   --compact-chat-user-radius: 12px;
   --compact-chat-user-max-width: 85%;

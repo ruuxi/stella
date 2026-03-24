@@ -249,6 +249,17 @@ describe("getCurrentRunningTool", () => {
     ];
     expect(getCurrentRunningTool(events)).toBe("write");
   });
+
+  it("ignores stale unfinished tools from earlier completed turns", () => {
+    const events = [
+      createUserMessage("set a reminder"),
+      createToolRequest("Schedule", { prompt: "Tomorrow at 9am" }, "req-1"),
+      createAssistantMessage("Done."),
+      createUserMessage("open wikipedia"),
+    ];
+
+    expect(getCurrentRunningTool(events)).toBeUndefined();
+  });
 });
 
 describe("extractTasksFromEvents", () => {
@@ -389,6 +400,26 @@ describe("extractTasksFromEvents", () => {
         timestamp: 2_000,
         type: "assistant_message",
         payload: { text: "Okay, I set that reminder." },
+      }),
+    ];
+
+    const tasks = extractTasksFromEvents(events);
+    expect(tasks[0].status).toBe("completed");
+    expect(tasks[0].outputPreview).toBe("Scheduling updated.");
+    expect(getRunningTasks(events)).toEqual([]);
+  });
+
+  it("treats stale schedule tasks as completed once a later user message exists", () => {
+    const events = [
+      createEvent({
+        timestamp: 1_000,
+        type: "task_started",
+        payload: { taskId: "t1", description: "Apply schedule", agentType: "schedule" },
+      }),
+      createEvent({
+        timestamp: 2_000,
+        type: "user_message",
+        payload: { text: "open wikipedia" },
       }),
     ];
 
