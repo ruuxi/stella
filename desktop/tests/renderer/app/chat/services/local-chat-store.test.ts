@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   appendLocalEvent,
   buildLocalHistoryMessages,
@@ -9,7 +9,7 @@ import {
   setLocalSyncCheckpoint,
   subscribeToLocalChatUpdates,
 } from "../../../../../src/app/chat/services/local-chat-store";
-import type { EventRecord } from "../../../../../src/app/chat/lib/event-transforms";
+import type { ChannelEnvelope, EventRecord } from "../../../../../src/app/chat/lib/event-transforms";
 import { formatMessageTimestamp } from "../../../../../src/app/chat/lib/history-messages";
 
 type LocalChatApiMock = NonNullable<typeof window.electronAPI>["localChat"];
@@ -65,7 +65,7 @@ const installLocalChatApiMock = (initialDefaultConversationId = "conv-default") 
           ? { payload: args.payload as Record<string, unknown> }
           : {}),
         ...(args.channelEnvelope && typeof args.channelEnvelope === "object"
-          ? { channelEnvelope: args.channelEnvelope as Record<string, unknown> }
+          ? { channelEnvelope: args.channelEnvelope as ChannelEnvelope }
           : {}),
       };
 
@@ -93,7 +93,8 @@ const installLocalChatApiMock = (initialDefaultConversationId = "conv-default") 
               : "";
         if (!text) return [];
 
-        const role = event.type === "user_message" ? "user" : "assistant";
+        const role: "user" | "assistant" =
+          event.type === "user_message" ? "user" : "assistant";
         return [{
           localMessageId: event._id,
           role,
@@ -177,14 +178,14 @@ describe("local-chat-store", () => {
     expect(events.map((event) => event._id)).toEqual(["c", "a", "b"]);
   });
 
-  it("stores local timestamps in contextText while keeping visible text raw", async () => {
+  it("stores local timestamps in contextText for user messages while keeping visible text raw", async () => {
     const timestamp = Date.UTC(2026, 2, 8, 20, 5, 0);
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const { tag } = formatMessageTimestamp(timestamp, undefined, timezone);
 
     const event = await appendLocalEvent({
       conversationId: "conv-stamp",
-      type: "assistant_message",
+      type: "user_message",
       timestamp,
       payload: {
         text: "[8:05 PM] from channel",
@@ -199,6 +200,18 @@ describe("local-chat-store", () => {
 
     expect(event.payload?.text).toBe("[8:05 PM] from channel");
     expect(event.payload?.contextText).toBe(`from channel\n\n${tag}`);
+  });
+
+  it("skips contextText for assistant messages (timestamp added by history builder)", async () => {
+    const event = await appendLocalEvent({
+      conversationId: "conv-stamp-asst",
+      type: "assistant_message",
+      timestamp: Date.UTC(2026, 2, 8, 20, 10, 0),
+      payload: { text: "here is my reply" },
+    });
+
+    expect(event.payload?.text).toBe("here is my reply");
+    expect(event.payload?.contextText).toBeUndefined();
   });
 
   it("trims oldest events once MAX_EVENTS_PER_CONVERSATION is exceeded", async () => {
@@ -260,6 +273,10 @@ describe("local-chat-store", () => {
       payload: { text: "done" },
     });
     const history = await buildLocalHistoryMessages(conversationId);
+    // User messages have contextText set at storage time (local timezone).
+    // Assistant messages get timestamps from the history builder's fallback path.
+    const firstAssistantTag = formatMessageTimestamp(2000, undefined, timezone);
+    const secondAssistantTag = formatMessageTimestamp(5000, firstAssistantTag.dateStr, timezone);
     expect(history).toHaveLength(5);
     expect(history[0]!.role).toBe("user");
     expect(history[0]!.content).toBe(
@@ -267,7 +284,7 @@ describe("local-chat-store", () => {
     );
     expect(history[1]!.role).toBe("assistant");
     expect(history[1]!.content).toBe(
-      `hi there\n\n${formatMessageTimestamp(2000, undefined, timezone).tag}`,
+      `hi there\n\n${firstAssistantTag.tag}`,
     );
     expect(history[2]!.role).toBe("assistant");
     expect(history[2]!.content).toContain("[Tool call] Read");
@@ -275,29 +292,29 @@ describe("local-chat-store", () => {
     expect(history[3]!.content).toContain("[Tool result] Read");
     expect(history[4]!.role).toBe("assistant");
     expect(history[4]!.content).toBe(
-      `done\n\n${formatMessageTimestamp(5000, undefined, timezone).tag}`,
+      `done\n\n${secondAssistantTag.tag}`,
     );
   });
 
-  it("builds history with local-time tags from source timestamps for assistant messages", async () => {
+  it("builds history with event timestamp for assistant messages (no contextText)", async () => {
     const conversationId = "conv-history-source-time";
-    const sourceTimestamp = Date.UTC(2026, 2, 8, 20, 5, 0);
+    const eventTimestamp = Date.UTC(2026, 2, 8, 20, 10, 0);
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     await appendLocalEvent({
       conversationId,
       type: "assistant_message",
       eventId: "a-source",
-      timestamp: Date.UTC(2026, 2, 8, 20, 10, 0),
+      timestamp: eventTimestamp,
       payload: { text: "from channel" },
       channelEnvelope: {
         provider: "discord",
         kind: "message",
-        sourceTimestamp,
+        sourceTimestamp: Date.UTC(2026, 2, 8, 20, 5, 0),
       },
     });
     const history = await buildLocalHistoryMessages(conversationId);
-    const { tag } = formatMessageTimestamp(sourceTimestamp, undefined, timezone);
+    const { tag } = formatMessageTimestamp(eventTimestamp, undefined, timezone);
 
     expect(history).toHaveLength(1);
     expect(history[0]).toEqual({
