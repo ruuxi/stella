@@ -25,10 +25,12 @@ import {
   broadcastDevProjectsChanged,
   broadcastLocalChatUpdated,
   broadcastScheduleUpdated,
+  broadcastStellaBrowserBridgeStatus,
   broadcastWakeWordState,
   getMobileBroadcast,
 } from "./context.js";
 import { DevToolServer } from "../devtool/dev-server.js";
+import { StellaBrowserBridgeService } from "../services/stella-browser-bridge-service.js";
 import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
 
 const wait = (ms: number) =>
@@ -75,6 +77,23 @@ const startMobileBridge = (context: BootstrapContext) => {
       (error as Error).message,
     );
   }
+};
+
+const startStellaBrowserBridge = (context: BootstrapContext) => {
+  if (context.state.stellaBrowserBridgeService) {
+    context.state.stellaBrowserBridgeService.start();
+    return;
+  }
+
+  const service = new StellaBrowserBridgeService({
+    frontendRoot: context.config.frontendRoot,
+    onStatus: (status) => {
+      broadcastStellaBrowserBridgeStatus(context, status);
+    },
+  });
+
+  context.state.stellaBrowserBridgeService = service;
+  service.start();
 };
 
 export const initializeStellaHostRunner = async (context: BootstrapContext) => {
@@ -470,6 +489,7 @@ export const initializeBootstrapApplication = async (
   );
 
   finalizeWindowLaunch(context);
+  startStellaBrowserBridge(context);
   const startHostRunnerInBackground = async (): Promise<void> => {
     if (context.state.isQuitting) {
       return;

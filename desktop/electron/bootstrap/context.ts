@@ -14,6 +14,8 @@ import type { WakeWordController } from "../wake-word/initialize.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
 import type { MobileBridgeService } from "../services/mobile-bridge/service.js";
+import type { StellaBrowserBridgeStatus } from "../services/stella-browser-bridge-service.js";
+import type { StellaBrowserBridgeService } from "../services/stella-browser-bridge-service.js";
 import type { DevToolServer } from "../devtool/dev-server.js";
 import { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
 import { getDevServerUrl } from "../dev-url.js";
@@ -45,6 +47,7 @@ export type BootstrapState = {
   stellaHomePath: string | null;
   stellaWorkspacePath: string | null;
   stellaHostRunner: StellaHostRunner | null;
+  stellaBrowserBridgeService: StellaBrowserBridgeService | null;
   wakeWordController: WakeWordController | null;
   mobileBridgeService: MobileBridgeService | null;
   devToolServer: DevToolServer | null;
@@ -128,6 +131,15 @@ export const broadcastWakeWordState = (context: BootstrapContext) => {
   getMobileBroadcast(context)?.("voice:wakeWordState", { enabled });
 };
 
+export const broadcastStellaBrowserBridgeStatus = (
+  context: BootstrapContext,
+  status: StellaBrowserBridgeStatus,
+) => {
+  forEachWindow(context, (window) => {
+    window.webContents.send("browser:bridgeStatus", status);
+  });
+};
+
 export const broadcastDevProjectsChanged = (
   context: BootstrapContext,
   projects: LocalDevProjectRecord[],
@@ -167,6 +179,7 @@ export const createBootstrapContext = (
     stellaHomePath: null,
     stellaWorkspacePath: null,
     stellaHostRunner: null,
+    stellaBrowserBridgeService: null,
     wakeWordController: null,
     mobileBridgeService: null,
     devToolServer: null,

@@ -14,6 +14,7 @@ import {
 } from "../../packages/runtime-discovery/browser-data.js";
 import { collectAllSignals } from "../../packages/runtime-discovery/collect-all.js";
 import { normalizeSafeExternalUrl } from "../../packages/runtime-kernel/tools/network-guards.js";
+import { getStellaBrowserBridgeEnv } from "../../packages/runtime-kernel/tools/stella-browser-bridge-config.js";
 import type { AllUserSignalsResult } from "../../packages/runtime-discovery/types.js";
 import type { DiscoveryCategory } from "../../src/shared/contracts/discovery.js";
 
@@ -44,9 +45,6 @@ type BrowserHandlersOptions = {
 };
 
 const STELLA_BROWSER_TIMEOUT_MS = 30_000;
-
-/** Must match app-agent shell overrides in `core/runtime/tools/shell.ts`. */
-const DEFAULT_STELLA_BROWSER_EXT_PORT = "9224";
 
 const runStellaBrowserJson = (
   frontendRoot: string,
@@ -95,12 +93,8 @@ const getBrowserCookieHeader = async (
   try {
     // Extension bridge (Chrome MV3), not CDP --auto-connect â€” see stella-browser `provider: extension`.
     const extensionEnv: Record<string, string> = {
-      STELLA_BROWSER_PROVIDER: "extension",
       STELLA_BROWSER_AUTO_CONNECT: "false",
-      STELLA_BROWSER_SESSION: process.env.STELLA_BROWSER_SESSION ?? "default",
-      STELLA_BROWSER_EXT_PORT:
-        process.env.STELLA_BROWSER_EXT_PORT ?? DEFAULT_STELLA_BROWSER_EXT_PORT,
-      STELLA_BROWSER_EXT_TOKEN: process.env.STELLA_BROWSER_EXT_TOKEN ?? "",
+      ...getStellaBrowserBridgeEnv(),
     };
     const response = await runStellaBrowserJson(
       frontendRoot,

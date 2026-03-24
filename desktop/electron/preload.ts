@@ -589,6 +589,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
       selectedBrowser?: string;
       selectedProfile?: string;
     }) => ipcRenderer.invoke("signals:collectAll", options),
+    onBridgeStatus: onIpc<{
+      state: "connecting" | "connected" | "reconnecting";
+      attempt: number;
+      nextRetryMs?: number;
+      error?: string;
+      notifyUser?: boolean;
+    }>("browser:bridgeStatus"),
   },
 
   media: {
