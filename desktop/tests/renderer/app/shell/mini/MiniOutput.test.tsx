@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import { MiniOutput } from "../../../../../src/shell/mini/MiniOutput";
 
@@ -103,7 +103,7 @@ describe("MiniOutput", () => {
       <MiniOutput {...defaultProps({ showConversation: true, streamingText: "Hello" })} />,
     );
     const root = container.firstChild as HTMLElement;
-    const scroll = mockScrollableMetrics(root, { scrollTop: 600 });
+    const scroll = mockScrollableMetrics(root, { scrollTop: 0 });
 
     rerender(
       <MiniOutput
@@ -111,7 +111,7 @@ describe("MiniOutput", () => {
       />,
     );
 
-    expect(scroll.getScrollTop()).toBe(1000);
+    expect(scroll.getScrollTop()).toBe(0);
   });
 
   it("does not force-scroll when the user has scrolled up during streaming", () => {
@@ -119,9 +119,9 @@ describe("MiniOutput", () => {
       <MiniOutput {...defaultProps({ showConversation: true, streamingText: "Hello" })} />,
     );
     const root = container.firstChild as HTMLElement;
-    const scroll = mockScrollableMetrics(root, { scrollTop: 600 });
+    const scroll = mockScrollableMetrics(root, { scrollTop: 0 });
 
-    scroll.setScrollTop(200);
+    scroll.setScrollTop(-200);
     fireEvent.scroll(root);
 
     rerender(
@@ -130,7 +130,7 @@ describe("MiniOutput", () => {
       />,
     );
 
-    expect(scroll.getScrollTop()).toBe(200);
+    expect(scroll.getScrollTop()).toBe(-200);
   });
 });
 

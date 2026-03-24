@@ -54,9 +54,11 @@ export function CompactConversationSurface({
       return;
     }
 
-    const nextAtTop = element.scrollTop <= 1;
-    const nextAtBottom =
-      element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+    const maxScroll = Math.max(0, element.scrollHeight - element.clientHeight);
+    const distanceFromBottom = Math.abs(element.scrollTop);
+    const distanceFromTop = Math.max(0, maxScroll - distanceFromBottom);
+    const nextAtTop = distanceFromTop <= 1;
+    const nextAtBottom = distanceFromBottom <= 1;
 
     shouldAutoScrollRef.current = nextAtBottom;
 
@@ -73,7 +75,7 @@ export function CompactConversationSurface({
     }
 
     if (shouldAutoScrollRef.current) {
-      element.scrollTop = element.scrollHeight;
+      element.scrollTop = 0;
     }
 
     updateEdges();
@@ -96,6 +98,7 @@ export function CompactConversationSurface({
         trackEdges && atTop && "at-top",
         trackEdges && atBottom && "at-bottom",
       )}
+      style={{ overflowAnchor: shouldAutoScrollRef.current ? "none" : "auto" }}
       onScroll={updateEdges}
     >
       {showConversation ? (
