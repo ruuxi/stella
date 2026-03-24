@@ -214,6 +214,7 @@ const isTaskCreateTool = (toolName: string): boolean =>
   toolName === "TaskCreate";
 
 const TASK_UPDATE_INTERRUPT_ERROR = "Interrupted by task update";
+export const TASK_SHUTDOWN_CANCEL_REASON = "Canceled because Stella closed or restarted.";
 
 export class LocalTaskManager implements TaskToolApi {
   private readonly defaultMaxConcurrent: number;
@@ -624,6 +625,15 @@ export class LocalTaskManager implements TaskToolApi {
 
   getTaskCount(): number {
     return this.tasks.size;
+  }
+
+  shutdown(reason = TASK_SHUTDOWN_CANCEL_REASON): void {
+    for (const task of this.tasks.values()) {
+      if (task.status !== "pending" && task.status !== "running") {
+        continue;
+      }
+      void this.cancelTask(task.id, reason);
+    }
   }
 
   async cancelTask(taskId: string, reason?: string): Promise<{ canceled: boolean }> {
