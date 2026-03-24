@@ -403,23 +403,13 @@ const TaskCreateJsonSchema = {
     prompt: {
       type: "string",
       description:
-        "Detailed instructions for the subagent — this is the agent's ONLY context",
+        "Detailed instructions for the subagent - this is the agent's ONLY context",
     },
     subagent_type: {
       type: "string",
       enum: TASK_SUBAGENT_ENUM,
       description:
         "Which agent executes the task: 'general' (external code/files/shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), 'app' (browser/desktop app automation). Default: general",
-    },
-    thread_name: {
-      type: "string",
-      description:
-        "Existing thread name to continue. Omit to start fresh and the runtime will assign a short name automatically.",
-    },
-    command_id: {
-      type: "string",
-      description:
-        "Command ID from a suggestion chip — system injects full instructions automatically",
     },
   },
   required: ["description", "prompt"],
@@ -428,29 +418,29 @@ const TaskCreateJsonSchema = {
 const TaskOutputJsonSchema = {
   type: "object",
   properties: {
-    task_id: { type: "string", description: "Task ID returned by TaskCreate" },
+    thread_id: { type: "string", description: "Durable thread ID returned by TaskCreate" },
   },
-  required: ["task_id"],
+  required: ["thread_id"],
 };
 
 const TaskCancelJsonSchema = {
   type: "object",
   properties: {
-    task_id: { type: "string", description: "Task ID to cancel" },
+    thread_id: { type: "string", description: "Durable thread ID to cancel" },
   },
-  required: ["task_id"],
+  required: ["thread_id"],
 };
 
 const TaskUpdateJsonSchema = {
   type: "object",
   properties: {
-    task_id: { type: "string", description: "Task ID returned by TaskCreate" },
+    thread_id: { type: "string", description: "Durable thread ID returned by TaskCreate" },
     message: {
       type: "string",
-      description: "New instruction to deliver to the running task",
+      description: "New instruction to deliver to the task thread",
     },
   },
-  required: ["task_id", "message"],
+  required: ["thread_id", "message"],
 };
 
 const WebFetchJsonSchema = {
@@ -663,26 +653,26 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- description: short summary shown in the task list.\n" +
     "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, relevant file paths, and expected output.\n" +
     "- subagent_type: 'general' (external code, files, shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), or 'app' (browser and desktop app automation).\n" +
-    "- thread_name: optional active thread name to continue. Omit it to start fresh and the runtime will assign a short Greek/Roman name automatically.\n" +
-    "- Starts background work and immediately returns a task_id.\n" +
+    "- Starts background work and immediately returns a durable thread_id.\n" +
     "- After calling it, do not create another task for the same work.\n" +
     "- Wait for the completion/failure event; in the meantime you may gently reply to the user or call NoResponse.\n" +
-    "- Use the task_id for tracking with TaskOutput, updating with TaskUpdate, or canceling with TaskCancel.",
+    "- Use the returned thread_id for TaskOutput, TaskUpdate, and TaskCancel.",
   TaskOutput:
-    "Check the status and output of a previously created task.\n\n" +
+    "Check the status and output of a task thread.\n\n" +
     "Usage:\n" +
-    "- task_id: the ID returned by TaskCreate.\n" +
+    "- thread_id: the durable thread ID returned by TaskCreate.\n" +
     "- Returns the task's current status (running/completed/error) and result or error text.",
   TaskCancel:
     "Cancel a running task.\n\n" +
     "Usage:\n" +
-    "- task_id: the ID of the task to cancel.",
+    "- thread_id: the durable thread ID to cancel.",
   TaskUpdate:
-    "Update a specific running task.\n\n" +
+    "Continue or update a task thread.\n\n" +
     "Usage:\n" +
-    "- task_id: the task to update.\n" +
+    "- thread_id: the durable thread ID to continue.\n" +
     "- message: the new instruction to deliver.\n" +
-    "- Interrupts the running subagent and redelivers the update immediately on the next attempt.",
+    "- If the task is currently running, interrupts the subagent and redelivers the update immediately on the next attempt.\n" +
+    "- If the task is not running, starts a new attempt on the same persisted thread.",
   WebFetch:
     "Fetch and read content from a URL.\n\n" +
     "Usage:\n" +

@@ -300,8 +300,8 @@ describe("runner general task bridge", () => {
 
         expect(taskCreateResult.error).toBeUndefined();
         const taskResultText = String(taskCreateResult.result ?? "");
-        const taskIdMatch = taskResultText.match(/Task ID:\s*(\S+)/);
-        expect(taskIdMatch?.[1]).toBeTruthy();
+        const threadIdMatch = taskResultText.match(/Thread ID:\s*(\S+)/);
+        expect(threadIdMatch?.[1]).toBeTruthy();
 
         await waitForCondition(() =>
           taskEvents.some((event) =>
@@ -330,7 +330,7 @@ describe("runner general task bridge", () => {
         const taskOutputResult = await runner.executeTool(
           "TaskOutput",
           {
-            task_id: taskIdMatch?.[1],
+            thread_id: threadIdMatch?.[1],
           },
           {
             conversationId: "conv-1",

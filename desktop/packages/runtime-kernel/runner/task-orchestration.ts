@@ -50,14 +50,14 @@ export const createTaskOrchestration = (
   context.state.localTaskManager = new LocalTaskManager({
     maxConcurrent: 24,
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaHomePath),
-    resolveTaskThread: ({ conversationId, agentType, threadName }) => {
+    resolveTaskThread: ({ conversationId, agentType, threadId }) => {
       if (!isLocalCliAgentId(agentType)) {
         return null;
       }
       return context.runtimeStore.resolveOrCreateActiveThread({
         conversationId,
         agentType,
-        threadName,
+        threadId,
       });
     },
     onTaskEvent: (event) => {
@@ -261,18 +261,20 @@ export const createTaskOrchestration = (
     toolExecutor: (toolName, args, toolContext) =>
       context.toolHost.executeTool(toolName, args, toolContext),
     createCloudTaskRecord: async () => ({
-      taskId: `local:task:${crypto.randomUUID()}`,
+      taskId: `cloud-stub-${crypto.randomUUID().slice(0, 8)}`,
     }),
     completeCloudTaskRecord: async () => {},
     getCloudTaskRecord: async () => null,
     cancelCloudTaskRecord: async () => ({ canceled: false }),
+    saveTaskRecord: (record) => context.runtimeStore.saveTaskRecord?.(record),
+    getTaskRecord: (threadId) => context.runtimeStore.getTaskRecord?.(threadId) ?? null,
   });
 
   const runBlockingLocalTask = async (
     request: Omit<TaskToolRequest, "storageMode">,
   ): Promise<
-    | { status: "ok"; finalText: string; taskId: string }
-    | { status: "error"; finalText: ""; error: string; taskId?: string }
+    | { status: "ok"; finalText: string; threadId: string }
+    | { status: "error"; finalText: ""; error: string; threadId?: string }
   > => {
     if (!context.state.localTaskManager) {
       return {
@@ -281,25 +283,25 @@ export const createTaskOrchestration = (
         error: "Task manager is unavailable.",
       };
     }
-    const { taskId } = await context.state.localTaskManager.createTask({
+    const { threadId } = await context.state.localTaskManager.createTask({
       ...request,
       storageMode: "local",
     });
     while (true) {
-      const snapshot = await context.state.localTaskManager.getTask(taskId);
+      const snapshot = await context.state.localTaskManager.getTask(threadId);
       if (!snapshot) {
         return {
           status: "error",
           finalText: "",
           error: "Task record disappeared before completion.",
-          taskId,
+          threadId,
         };
       }
       if (snapshot.status === "completed") {
         return {
           status: "ok",
           finalText: snapshot.result ?? "",
-          taskId,
+          threadId,
         };
       }
       if (snapshot.status === "error" || snapshot.status === "canceled") {
@@ -307,7 +309,7 @@ export const createTaskOrchestration = (
           status: "error",
           finalText: "",
           error: snapshot.error ?? "Task failed",
-          taskId,
+          threadId,
         };
       }
       await new Promise<void>((resolve) => setTimeout(resolve, 250));
@@ -316,15 +318,15 @@ export const createTaskOrchestration = (
 
   const createBackgroundTask = async (
     request: Omit<TaskToolRequest, "storageMode">,
-  ): Promise<{ taskId: string }> => {
+  ): Promise<{ threadId: string }> => {
     if (!context.state.localTaskManager) {
       throw new Error("Task manager is unavailable.");
     }
-    const { taskId } = await context.state.localTaskManager.createTask({
+    const { threadId } = await context.state.localTaskManager.createTask({
       ...request,
       storageMode: "local",
     });
-    return { taskId };
+    return { threadId };
   };
 
   const shutdown = () => {

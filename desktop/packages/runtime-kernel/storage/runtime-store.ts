@@ -1,12 +1,9 @@
 import {
   MAX_ACTIVE_RUNTIME_THREADS,
   RUNTIME_THREAD_REMINDER_INTERVAL_TOKENS,
-  RUNTIME_THREAD_NAME_POOL,
   type RuntimeThreadRecord,
-  normalizeRuntimeThreadName,
-  pickAvailableRuntimeThreadName,
+  normalizeRuntimeThreadId,
 } from "../runtime-threads.js";
-import { buildRuntimeThreadKey } from "../thread-runtime.js";
 import type { SqliteDatabase } from "./shared.js";
 import {
   MAX_RECALL_RESULTS,
@@ -22,6 +19,33 @@ import {
   toJsonTags,
 } from "./shared.js";
 import { TranscriptMirror } from "./transcript-mirror.js";
+
+export type PersistedTaskRecord = {
+  threadId: string;
+  conversationId: string;
+  agentType: string;
+  description: string;
+  taskDepth: number;
+  maxTaskDepth?: number;
+  parentTaskId?: string;
+  systemPromptOverride?: string;
+  toolsAllowlistOverride?: string[];
+  omitCoreMemory: boolean;
+  selfModMetadata?: {
+    featureId?: string;
+    packageId?: string;
+    releaseNumber?: number;
+    mode?: "author" | "install" | "update";
+    displayName?: string;
+    description?: string;
+  };
+  status: "running" | "completed" | "error" | "canceled";
+  startedAt: number;
+  completedAt: number | null;
+  result?: string;
+  error?: string;
+  updatedAt: number;
+};
 
 export class RuntimeStore {
   private readonly dirtyRuntimeThreads = new Set<string>();
@@ -384,20 +408,18 @@ export class RuntimeStore {
   }
 
   private deserializeRuntimeThread(row: {
-    threadKey: string;
+    threadId: string;
     conversationId: string;
     agentType: string;
-    name: string;
     status: "active" | "evicted";
     createdAt: number;
     lastUsedAt: number;
     summary: string | null;
   }): RuntimeThreadRecord {
     return {
-      threadKey: row.threadKey,
+      threadId: row.threadId,
       conversationId: row.conversationId,
       agentType: row.agentType,
-      name: row.name,
       status: row.status,
       createdAt: row.createdAt,
       lastUsedAt: row.lastUsedAt,
@@ -408,10 +430,9 @@ export class RuntimeStore {
   listActiveThreads(conversationId: string): RuntimeThreadRecord[] {
     const rows = this.db.prepare(`
       SELECT
-        thread_key AS threadKey,
+        thread_key AS threadId,
         conversation_id AS conversationId,
         agent_type AS agentType,
-        name,
         status,
         created_at AS createdAt,
         last_used_at AS lastUsedAt,
@@ -422,10 +443,9 @@ export class RuntimeStore {
       ORDER BY last_used_at DESC
       LIMIT ?
     `).all(conversationId, MAX_ACTIVE_RUNTIME_THREADS) as Array<{
-      threadKey: string;
+      threadId: string;
       conversationId: string;
       agentType: string;
-      name: string;
       status: "active" | "evicted";
       createdAt: number;
       lastUsedAt: number;
@@ -437,30 +457,26 @@ export class RuntimeStore {
   resolveOrCreateActiveThread(args: {
     conversationId: string;
     agentType: string;
-    threadName?: string;
-  }): { threadId: string; threadName: string; reused: boolean } {
-    const requestedName = normalizeRuntimeThreadName(args.threadName ?? "");
-    const existing = requestedName
+    threadId?: string;
+  }): { threadId: string; reused: boolean } {
+    const requestedThreadId = normalizeRuntimeThreadId(args.threadId ?? "");
+    const existing = requestedThreadId
       ? this.db.prepare(`
         SELECT
-          thread_key AS threadKey,
+          thread_key AS threadId,
           conversation_id AS conversationId,
           agent_type AS agentType,
-          name,
           status,
           created_at AS createdAt,
           last_used_at AS lastUsedAt,
           summary
         FROM runtime_threads
-        WHERE conversation_id = ?
-          AND status = 'active'
-          AND name = ?
+        WHERE thread_key = ?
         LIMIT 1
-      `).get(args.conversationId, requestedName) as {
-        threadKey: string;
+      `).get(requestedThreadId) as {
+        threadId: string;
         conversationId: string;
         agentType: string;
-        name: string;
         status: "active" | "evicted";
         createdAt: number;
         lastUsedAt: number;
@@ -469,10 +485,36 @@ export class RuntimeStore {
       : undefined;
 
     if (existing) {
-      this.touchThread(existing.threadKey);
+      if (
+        existing.conversationId !== args.conversationId
+        || existing.agentType !== args.agentType
+      ) {
+        throw new Error(`Thread ${existing.threadId} belongs to a different conversation or agent type.`);
+      }
+      const activeThreads = this.listActiveThreads(args.conversationId);
+      if (
+        existing.status !== "active"
+        && activeThreads.length >= MAX_ACTIVE_RUNTIME_THREADS
+      ) {
+        const oldest = [...activeThreads].sort((a, b) => a.lastUsedAt - b.lastUsedAt)[0];
+        if (oldest) {
+          this.db.prepare(`
+            UPDATE runtime_threads
+            SET status = 'evicted'
+            WHERE thread_key = ?
+          `).run(oldest.threadId);
+        }
+      }
+      if (existing.status !== "active") {
+        this.db.prepare(`
+          UPDATE runtime_threads
+          SET status = 'active'
+          WHERE thread_key = ?
+        `).run(existing.threadId);
+      }
+      this.touchThread(existing.threadId);
       return {
-        threadId: existing.threadKey,
-        threadName: existing.name,
+        threadId: existing.threadId,
         reused: true,
       };
     }
@@ -486,25 +528,25 @@ export class RuntimeStore {
           UPDATE runtime_threads
           SET status = 'evicted'
           WHERE thread_key = ?
-        `).run(oldest.threadKey);
+        `).run(oldest.threadId);
       }
     }
 
-    const activeNames = new Set(
-      (didEvict ? this.listActiveThreads(args.conversationId) : activeThreads).map((thread) => thread.name),
-    );
-    const selectedName =
-      requestedName
-        && RUNTIME_THREAD_NAME_POOL.includes(requestedName)
-        && !activeNames.has(requestedName)
-        ? requestedName
-        : pickAvailableRuntimeThreadName(activeNames);
-    const threadKey = buildRuntimeThreadKey({
-      conversationId: args.conversationId,
-      agentType: args.agentType,
-      runId: selectedName,
-      threadId: selectedName,
-    });
+    const prefix = `${args.agentType}-`;
+    const rows = this.db.prepare(`
+      SELECT thread_key AS threadId
+      FROM runtime_threads
+      WHERE agent_type = ?
+    `).all(args.agentType) as Array<{ threadId: string }>;
+    let nextOrdinal = 1;
+    for (const row of rows) {
+      if (!row.threadId.startsWith(prefix)) continue;
+      const suffix = Number.parseInt(row.threadId.slice(prefix.length), 10);
+      if (Number.isFinite(suffix) && suffix >= nextOrdinal) {
+        nextOrdinal = suffix + 1;
+      }
+    }
+    const threadId = requestedThreadId ?? `${prefix}${nextOrdinal}`;
     const now = Date.now();
     this.db.prepare(`
       INSERT INTO runtime_threads (
@@ -519,17 +561,16 @@ export class RuntimeStore {
       )
       VALUES (?, ?, ?, ?, 'active', ?, ?, NULL)
     `).run(
-      threadKey,
+      threadId,
       args.conversationId,
       args.agentType,
-      selectedName,
+      threadId,
       now,
       now,
     );
     this.forceOrchestratorReminderOnNextTurn(args.conversationId);
     return {
-      threadId: threadKey,
-      threadName: selectedName,
+      threadId,
       reused: false,
     };
   }
@@ -563,12 +604,161 @@ export class RuntimeStore {
 
   getThreadName(threadKey: string): string | undefined {
     const row = this.db.prepare(`
-      SELECT name
+      SELECT thread_key AS threadId
       FROM runtime_threads
       WHERE thread_key = ?
       LIMIT 1
-    `).get(threadKey) as { name?: unknown } | undefined;
-    return typeof row?.name === "string" && row.name.length > 0 ? row.name : undefined;
+    `).get(threadKey) as { threadId?: unknown } | undefined;
+    return typeof row?.threadId === "string" && row.threadId.length > 0 ? row.threadId : undefined;
+  }
+
+  saveTaskRecord(record: PersistedTaskRecord): void {
+    this.db.prepare(`
+      INSERT INTO runtime_tasks (
+        thread_id,
+        conversation_id,
+        agent_type,
+        description,
+        task_depth,
+        max_task_depth,
+        parent_task_id,
+        system_prompt_override,
+        tools_allowlist_override_json,
+        omit_core_memory,
+        self_mod_metadata_json,
+        status,
+        started_at,
+        completed_at,
+        result,
+        error,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(thread_id) DO UPDATE SET
+        conversation_id = excluded.conversation_id,
+        agent_type = excluded.agent_type,
+        description = excluded.description,
+        task_depth = excluded.task_depth,
+        max_task_depth = excluded.max_task_depth,
+        parent_task_id = excluded.parent_task_id,
+        system_prompt_override = excluded.system_prompt_override,
+        tools_allowlist_override_json = excluded.tools_allowlist_override_json,
+        omit_core_memory = excluded.omit_core_memory,
+        self_mod_metadata_json = excluded.self_mod_metadata_json,
+        status = excluded.status,
+        started_at = excluded.started_at,
+        completed_at = excluded.completed_at,
+        result = excluded.result,
+        error = excluded.error,
+        updated_at = excluded.updated_at
+    `).run(
+      record.threadId,
+      record.conversationId,
+      record.agentType,
+      record.description,
+      record.taskDepth,
+      record.maxTaskDepth ?? null,
+      record.parentTaskId ?? null,
+      record.systemPromptOverride ?? null,
+      toJsonString(record.toolsAllowlistOverride) ?? null,
+      record.omitCoreMemory ? 1 : 0,
+      toJsonString(record.selfModMetadata) ?? null,
+      record.status,
+      record.startedAt,
+      record.completedAt ?? null,
+      record.result ?? null,
+      record.error ?? null,
+      record.updatedAt,
+    );
+  }
+
+  getTaskRecord(threadId: string): PersistedTaskRecord | null {
+    const row = this.db.prepare(`
+      SELECT
+        thread_id AS threadId,
+        conversation_id AS conversationId,
+        agent_type AS agentType,
+        description,
+        task_depth AS taskDepth,
+        max_task_depth AS maxTaskDepth,
+        parent_task_id AS parentTaskId,
+        system_prompt_override AS systemPromptOverride,
+        tools_allowlist_override_json AS toolsAllowlistOverrideJson,
+        omit_core_memory AS omitCoreMemory,
+        self_mod_metadata_json AS selfModMetadataJson,
+        status,
+        started_at AS startedAt,
+        completed_at AS completedAt,
+        result,
+        error,
+        updated_at AS updatedAt
+      FROM runtime_tasks
+      WHERE thread_id = ?
+      LIMIT 1
+    `).get(threadId) as
+      | {
+          threadId: string;
+          conversationId: string;
+          agentType: string;
+          description: string;
+          taskDepth: number;
+          maxTaskDepth: number | null;
+          parentTaskId: string | null;
+          systemPromptOverride: string | null;
+          toolsAllowlistOverrideJson: string | null;
+          omitCoreMemory: number;
+          selfModMetadataJson: string | null;
+          status: PersistedTaskRecord["status"];
+          startedAt: number;
+          completedAt: number | null;
+          result: string | null;
+          error: string | null;
+          updatedAt: number;
+        }
+      | undefined;
+    if (!row) {
+      return null;
+    }
+    let toolsAllowlistOverride: string[] | undefined;
+    if (row.toolsAllowlistOverrideJson) {
+      try {
+        const parsed = JSON.parse(row.toolsAllowlistOverrideJson);
+        if (Array.isArray(parsed)) {
+          toolsAllowlistOverride = parsed.filter(
+            (value): value is string => typeof value === "string",
+          );
+        }
+      } catch {
+        toolsAllowlistOverride = undefined;
+      }
+    }
+    let selfModMetadata: PersistedTaskRecord["selfModMetadata"] | undefined;
+    if (row.selfModMetadataJson) {
+      try {
+        selfModMetadata = JSON.parse(row.selfModMetadataJson) as PersistedTaskRecord["selfModMetadata"];
+      } catch {
+        selfModMetadata = undefined;
+      }
+    }
+    return {
+      threadId: row.threadId,
+      conversationId: row.conversationId,
+      agentType: row.agentType,
+      description: row.description,
+      taskDepth: row.taskDepth,
+      ...(row.maxTaskDepth == null ? {} : { maxTaskDepth: row.maxTaskDepth }),
+      ...(row.parentTaskId ? { parentTaskId: row.parentTaskId } : {}),
+      ...(row.systemPromptOverride ? { systemPromptOverride: row.systemPromptOverride } : {}),
+      ...(toolsAllowlistOverride ? { toolsAllowlistOverride } : {}),
+      omitCoreMemory: row.omitCoreMemory === 1,
+      ...(selfModMetadata ? { selfModMetadata } : {}),
+      status: row.status,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+      ...(row.result ? { result: row.result } : {}),
+      ...(row.error ? { error: row.error } : {}),
+      updatedAt: row.updatedAt,
+    };
   }
 
   getOrchestratorReminderState(conversationId: string): {

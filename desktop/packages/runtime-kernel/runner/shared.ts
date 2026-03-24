@@ -160,7 +160,7 @@ export const buildTaskEventPrompt = (
         ? ["[Task canceled]"]
         : ["[Task failed]"];
 
-  if (event.taskId) lines.push(`task_id: ${event.taskId}`);
+  if (event.taskId) lines.push(`thread_id: ${event.taskId}`);
   if (event.agentType) lines.push(`agent_type: ${event.agentType}`);
   if (event.description) lines.push(`description: ${event.description}`);
   if (

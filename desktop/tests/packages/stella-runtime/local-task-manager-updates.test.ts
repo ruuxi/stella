@@ -81,21 +81,19 @@ describe("LocalTaskManager task updates", () => {
     await waitForCondition(() => runSubagent.mock.calls.length >= 1);
 
     await expect(
-      manager.sendTaskMessage(created.taskId, "Switch the output to JSON instead.", "orchestrator"),
+      manager.sendTaskMessage(created.threadId, "Switch the output to JSON instead.", "orchestrator"),
     ).resolves.toEqual({ delivered: true });
 
     await waitForCondition(() => runSubagent.mock.calls.length >= 2);
     const restartedCall = runSubagent.mock.calls[1]?.[0] as { taskPrompt: string };
-    expect(restartedCall.taskPrompt).toContain("Task update from orchestrator:");
-    expect(restartedCall.taskPrompt).toContain("Switch the output to JSON instead.");
+    expect(restartedCall.taskPrompt).toBe("Switch the output to JSON instead.");
 
     await waitForCondition(() =>
       taskEvents.some((event) => event.type === "task-completed"));
 
-    const snapshot = await manager.getTask(created.taskId);
+    const snapshot = await manager.getTask(created.threadId);
     expect(snapshot?.status).toBe("completed");
-    expect(snapshot?.result).toContain("Task update from orchestrator:");
-    expect(snapshot?.result).toContain("Switch the output to JSON instead.");
+    expect(snapshot?.result).toBe("Switch the output to JSON instead.");
     expect(taskEvents.some((event) => event.statusText === "Applying task update")).toBe(true);
     expect(taskEvents.some((event) => event.type === "task-canceled")).toBe(false);
   });
@@ -149,7 +147,7 @@ describe("LocalTaskManager task updates", () => {
 
     await waitForCondition(() =>
       taskEvents.some((event) =>
-        event.type === "task-started" && event.taskId === runningTask.taskId));
+        event.type === "task-started" && event.taskId === runningTask.threadId));
 
     manager.shutdown();
 
@@ -160,22 +158,22 @@ describe("LocalTaskManager task updates", () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: "task-canceled",
-          taskId: runningTask.taskId,
+          taskId: runningTask.threadId,
           error: TASK_SHUTDOWN_CANCEL_REASON,
         }),
         expect.objectContaining({
           type: "task-canceled",
-          taskId: pendingTask.taskId,
+          taskId: pendingTask.threadId,
           error: TASK_SHUTDOWN_CANCEL_REASON,
         }),
       ]),
     );
 
-    await expect(manager.getTask(runningTask.taskId)).resolves.toMatchObject({
+    await expect(manager.getTask(runningTask.threadId)).resolves.toMatchObject({
       status: "canceled",
       error: TASK_SHUTDOWN_CANCEL_REASON,
     });
-    await expect(manager.getTask(pendingTask.taskId)).resolves.toMatchObject({
+    await expect(manager.getTask(pendingTask.threadId)).resolves.toMatchObject({
       status: "canceled",
       error: TASK_SHUTDOWN_CANCEL_REASON,
     });
