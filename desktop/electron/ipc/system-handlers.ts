@@ -255,6 +255,20 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     void shell.openExternal(safeUrl);
   });
 
+  ipcMain.on("shell:showItemInFolder", (event, filePath: string) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "shell:showItemInFolder",
+      )
+    ) {
+      return;
+    }
+    if (typeof filePath === "string" && filePath.trim()) {
+      shell.showItemInFolder(filePath.trim());
+    }
+  });
+
   ipcMain.on("system:openFullDiskAccess", async (event) => {
     if (
       !options.externalLinkService.assertPrivilegedSender(

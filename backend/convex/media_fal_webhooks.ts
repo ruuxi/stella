@@ -98,9 +98,22 @@ export const submitFalRequest = async (args: {
   );
 
   if (!upstream.ok) {
-    throw new Error(
-      upstream.text || `Fal submission failed with status ${upstream.status}`,
-    );
+    // Extract a human-readable message from Fal's error response.
+    let message = `Fal submission failed with status ${upstream.status}`;
+    if (isRecord(upstream.data)) {
+      const detail = upstream.data.detail;
+      if (typeof detail === "string") {
+        message = detail;
+      } else if (Array.isArray(detail) && detail.length > 0) {
+        const first = detail[0] as Record<string, unknown> | undefined;
+        if (first && typeof first.msg === "string") {
+          message = first.msg;
+        }
+      } else if (typeof upstream.data.message === "string") {
+        message = upstream.data.message;
+      }
+    }
+    throw new Error(message);
   }
 
   const data = isRecord(upstream.data) ? (upstream.data as FalSubmitResponse) : {};

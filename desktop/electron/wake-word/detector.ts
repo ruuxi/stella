@@ -176,8 +176,8 @@ const STACK_REQUIRED = 3;
 const COOLDOWN_MS = 1000;
 const WARMUP_FRAMES = 0;
 
-// Default classifier score threshold (higher = fewer false triggers).
-const DEFAULT_THRESHOLD = 0.5;
+// Calibrated from the current Stella fp16 export benchmark (iter_030).
+const DEFAULT_THRESHOLD = 0.70;
 const MIN_THRESHOLD = 0.5;
 
 export function createWakeWordVadGateState(
@@ -224,6 +224,8 @@ export async function createWakeWordDetector(
   let wakewordInputName = "x";
   let wakewordOutputName = "";
 
+  const silenceEmbedding = new Float32Array(EMBEDDING_DIM);
+
   async function createAllSessions() {
     [melspecSession, embeddingSession, wakewordSession, vadSession] =
       await Promise.all([
@@ -251,6 +253,12 @@ export async function createWakeWordDetector(
         ? "float16"
         : "float32";
 
+    const silenceMelWindow = new Float32Array(EMBEDDING_WINDOW * MEL_BINS).fill(1.0);
+    const results = await embeddingSession.run({
+      input_1: new ort.Tensor("float32", silenceMelWindow, [1, EMBEDDING_WINDOW, MEL_BINS, 1]),
+    });
+    const output = results[Object.keys(results)[0]] as OrtTensor;
+    silenceEmbedding.set(new Float32Array(output.data as Float32Array).subarray(0, EMBEDDING_DIM));
   }
 
   function releaseAllSessions() {
@@ -436,7 +444,7 @@ export async function createWakeWordDetector(
     featureRows++;
   }
 
-  async function advanceFeatureBuffer(): Promise<void> {
+  async function advanceFeatureBuffer(vadGateOpen: boolean): Promise<void> {
     if (accumulatedSamples < CHUNK_SAMPLES) {
       return;
     }
@@ -444,20 +452,26 @@ export async function createWakeWordDetector(
     const nChunks = Math.floor(accumulatedSamples / CHUNK_SAMPLES);
     const samplesToProcess = nChunks * CHUNK_SAMPLES;
 
-    await streamingMelspec(samplesToProcess);
+    if (vadGateOpen) {
+      await streamingMelspec(samplesToProcess);
 
-    for (let i = nChunks - 1; i >= 0; i--) {
-      const offset = 8 * i;
-      const endMel = melRows - offset;
-      const startMel = endMel - EMBEDDING_WINDOW;
+      for (let i = nChunks - 1; i >= 0; i--) {
+        const offset = 8 * i;
+        const endMel = melRows - offset;
+        const startMel = endMel - EMBEDDING_WINDOW;
 
-      if (startMel < 0 || endMel > melRows) {
-        continue;
+        if (startMel < 0 || endMel > melRows) {
+          continue;
+        }
+
+        const melWindow = melBuffer.slice(startMel * MEL_BINS, endMel * MEL_BINS);
+        const embedding = await computeEmbedding(melWindow);
+        appendFeatureFrame(embedding);
       }
-
-      const melWindow = melBuffer.slice(startMel * MEL_BINS, endMel * MEL_BINS);
-      const embedding = await computeEmbedding(melWindow);
-      appendFeatureFrame(embedding);
+    } else {
+      for (let i = 0; i < nChunks; i += 1) {
+        appendFeatureFrame(silenceEmbedding);
+      }
     }
 
     accumulatedSamples -= samplesToProcess;
@@ -503,11 +517,9 @@ export async function createWakeWordDetector(
 
     const vadScore = await runVad(pcm);
     const vadGate = createWakeWordVadGateState(vadScore);
+    const gatedPcm = vadGate.gateOpen ? pcm : new Int16Array(pcm.length);
 
-    // Always feed real audio — no VAD-gated PCM replacement.
-    // This matches openWakeWord's inference path where all audio
-    // flows through mel → embedding continuously.
-    if (!queueStreamingAudio(pcm)) {
+    if (!queueStreamingAudio(gatedPcm)) {
       return {
         detected: false,
         score: 0,
@@ -517,10 +529,23 @@ export async function createWakeWordDetector(
       };
     }
 
-    await advanceFeatureBuffer();
+    // Hard VAD gate: keep the stream aligned with silence frames, but only
+    // spend wake-word feature/classifier compute when the chunk looks like speech.
+    await advanceFeatureBuffer(vadGate.gateOpen);
 
     if (warmupFrames > 0) {
       warmupFrames--;
+      return {
+        detected: false,
+        score: 0,
+        vadScore,
+        vadGate,
+        inference: { classifierRan: false },
+      };
+    }
+
+    if (!vadGate.gateOpen) {
+      updateDetectionStack(0);
       return {
         detected: false,
         score: 0,
@@ -541,7 +566,6 @@ export async function createWakeWordDetector(
       );
     }
 
-    // Classifier runs every chunk, just like openWakeWord.
     const score = await runClassifier(features);
     const finalScore = featureRows < 5 ? 0.0 : score;
     const detected = updateDetectionStack(finalScore);
@@ -558,8 +582,10 @@ export async function createWakeWordDetector(
   function resetToSilence() {
     melBuffer.fill(1.0);
     melRows = EMBEDDING_WINDOW;
-    featureBuffer.fill(0);
-    featureRows = 0;
+    for (let i = 0; i < MODEL_INPUT_FRAMES; i++) {
+      featureBuffer.set(silenceEmbedding, i * EMBEDDING_DIM);
+    }
+    featureRows = MODEL_INPUT_FRAMES;
 
     accumulatedSamples = 0;
     rawRemainder = new Int16Array(0);
