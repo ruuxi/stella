@@ -1,25 +1,64 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Animated,
   FlatList,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
+  UIManager,
   View,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import Feather from "@expo/vector-icons/Feather";
 import { assert, assertObject, errorMessage } from "../../src/lib/assert";
 import { postJson } from "../../src/lib/http";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
 import type { ChatMessage } from "../../src/types";
 
-const INTRO_MESSAGE: ChatMessage = {
-  id: "intro",
-  role: "assistant",
-  text: "This chat is for when your desktop is offline. Messages stay in memory on this phone and are not stored in Stella's database.",
+// Required for LayoutAnimation on Android
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+// ---------------------------------------------------------------------------
+// Constants — mapped from desktop full-shell.composer.css
+// ---------------------------------------------------------------------------
+
+/**
+ * Content-height threshold for pill → expanded.
+ * Desktop uses scrollHeight > 44 which includes padding.
+ * RN onContentSizeChange reports raw text height (no padding).
+ * fontSize 14 × lineHeight 1.5 ≈ 21 per line → two lines ≈ 42.
+ * Use a value just above two lines so single-line typing stays pill.
+ */
+const EXPAND_THRESHOLD = 50;
+/** LayoutAnimation config matching the same 350ms critically-damped spring */
+const LAYOUT_SPRING = {
+  duration: 350,
+  update: { type: LayoutAnimation.Types.spring, springDamping: 1 },
+  create: {
+    type: LayoutAnimation.Types.spring,
+    springDamping: 1,
+    property: LayoutAnimation.Properties.opacity,
+  },
+  delete: {
+    type: LayoutAnimation.Types.spring,
+    springDamping: 1,
+    property: LayoutAnimation.Properties.opacity,
+  },
 };
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 const createId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -30,240 +69,517 @@ function readOfflineChatText(value: unknown) {
   return value.text;
 }
 
-export default function ChatScreen() {
-  const [messages, setMessages] = useState<ChatMessage[]>([INTRO_MESSAGE]);
-  const [draft, setDraft] = useState("");
-  const [sendState, setSendState] = useState<"idle" | "sending">("idle");
+// ---------------------------------------------------------------------------
+// Animated message wrapper — mirrors desktop stream-fade-blur-in
+// ---------------------------------------------------------------------------
 
-  const sendMessage = async () => {
+function FadeInMessage({ children }: { children: React.ReactNode }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(4)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        damping: 18,
+        stiffness: 200,
+        mass: 1,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [opacity, translateY]);
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Screen
+// ---------------------------------------------------------------------------
+
+export default function ChatScreen() {
+  const listRef = useRef<FlatList<ChatMessage>>(null);
+  const inputRef = useRef<TextInput>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [atTop, setAtTop] = useState(true);
+  const [atBottom, setAtBottom] = useState(true);
+
+  // Composer expansion state — mirrors desktop Composer.tsx threshold logic
+  const [expanded, setExpanded] = useState(false);
+  const hasMountedRef = useRef(false);
+
+  const canSubmit = draft.trim().length > 0 && !sending;
+
+  const scrollToEnd = useCallback(() => {
+    requestAnimationFrame(() =>
+      listRef.current?.scrollToEnd({ animated: true }),
+    );
+  }, []);
+
+  // --------------- Send ---------------
+
+  const send = async () => {
     const text = draft.trim();
-    if (!text || sendState === "sending") {
-      return;
+    if (!text || sending) return;
+
+    const userMsg: ChatMessage = { id: createId(), role: "user", text };
+    setDraft("");
+    setSending(true);
+
+    // Collapse composer back to pill after sending
+    if (expanded) {
+      LayoutAnimation.configureNext(LAYOUT_SPRING);
+      setExpanded(false);
     }
 
-    const userMessage: ChatMessage = {
-      id: createId(),
-      role: "user",
-      text,
-    };
-
-    setDraft("");
-    setSendState("sending");
-    setMessages((current) => [...current, userMessage]);
+    setMessages((m) => [...m, userMsg]);
+    scrollToEnd();
 
     try {
-      const response = await postJson("/api/mobile/offline-chat", { message: text });
-      setMessages((current) => [
-        ...current,
-        {
-          id: createId(),
-          role: "assistant",
-          text: readOfflineChatText(response),
-        },
+      const res = await postJson("/api/mobile/offline-chat", { message: text });
+      setMessages((m) => [
+        ...m,
+        { id: createId(), role: "assistant", text: readOfflineChatText(res) },
       ]);
     } catch (error) {
-      const message = errorMessage(error);
-      setMessages((current) => [
-        ...current,
+      setMessages((m) => [
+        ...m,
         {
           id: createId(),
           role: "assistant",
-          text: `I couldn't answer that right now. ${message}`,
+          text: `Couldn't respond right now. ${errorMessage(error)}`,
         },
       ]);
     } finally {
-      setSendState("idle");
+      setSending(false);
     }
   };
+
+  // --------------- TextInput content-size tracking ---------------
+  // Desktop: rAF → if scrollHeight > 44 expand; if pillScrollHeight <= 44 collapse
+
+  const handleContentSizeChange = useCallback(
+    (e: { nativeEvent: { contentSize: { height: number } } }) => {
+      // Skip the first measurement — RN fires this on mount with an
+      // unreliable initial height that can trigger a false expand.
+      if (!hasMountedRef.current) {
+        hasMountedRef.current = true;
+        return;
+      }
+      const h = e.nativeEvent.contentSize.height;
+      if (!expanded && h > EXPAND_THRESHOLD) {
+        LayoutAnimation.configureNext(LAYOUT_SPRING);
+        setExpanded(true);
+      } else if (expanded && h <= EXPAND_THRESHOLD) {
+        LayoutAnimation.configureNext(LAYOUT_SPRING);
+        setExpanded(false);
+      }
+    },
+    [expanded],
+  );
+
+  // --------------- Scroll edge tracking ---------------
+
+  const handleScroll = useCallback(
+    (e: {
+      nativeEvent: {
+        contentOffset: { y: number };
+        contentSize: { height: number };
+        layoutMeasurement: { height: number };
+      };
+    }) => {
+      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      setAtTop(contentOffset.y <= 2);
+      setAtBottom(
+        contentOffset.y + layoutMeasurement.height >= contentSize.height - 2,
+      );
+    },
+    [],
+  );
+
+  const empty = messages.length === 0;
+
+  // =====================================================================
+  // Render
+  // =====================================================================
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
       style={styles.screen}
     >
-      <View style={styles.screenHeader}>
-        <Text style={styles.screenTitle}>Offline chat</Text>
-        <Text style={styles.screenBody}>
-          Use this when Stella on desktop is unavailable.
-        </Text>
+      {/* ---------- Conversation ---------- */}
+      <View style={styles.viewport}>
+        {empty ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>Ask Stella anything</Text>
+          </View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            contentContainerStyle={styles.list}
+            data={messages}
+            keyExtractor={(m) => m.id}
+            onContentSizeChange={scrollToEnd}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <FadeInMessage>
+                {item.role === "user" ? (
+                  <View style={styles.userRow}>
+                    <View style={styles.userBubble}>
+                      <Text style={styles.userText}>{item.text}</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.assistantRow}>
+                    <Text style={styles.assistantText}>{item.text}</Text>
+                  </View>
+                )}
+              </FadeInMessage>
+            )}
+          />
+        )}
+
+        {/* Gradient edge masks */}
+        {!atTop && !empty && (
+          <LinearGradient
+            colors={[colors.background, "transparent"]}
+            style={styles.edgeTop}
+            pointerEvents="none"
+          />
+        )}
+        {!atBottom && !empty && (
+          <LinearGradient
+            colors={["transparent", colors.background]}
+            style={styles.edgeBottom}
+            pointerEvents="none"
+          />
+        )}
       </View>
 
-      <FlatList
-        contentContainerStyle={styles.chatList}
-        data={messages}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View
-            style={[
-              styles.chatBubble,
-              item.role === "user"
-                ? styles.chatBubbleUser
-                : styles.chatBubbleAssistant,
-            ]}
-          >
-            <Text
-              style={[
-                styles.chatRole,
-                item.role === "user" ? styles.chatRoleUser : null,
-              ]}
-            >
-              {item.role === "user" ? "You" : "Stella"}
-            </Text>
-            <Text style={styles.chatText}>{item.text}</Text>
-          </View>
-        )}
-      />
+      {/* ---------- Composer ---------- */}
+      {/*
+        Desktop structure (full-shell.composer.css):
+          .composer            → centering wrapper, padding 8 24 16
+          .composer-shell      → pill/rect, shadow, overflow clip, animated h + radius
+            .composer-form     → row (pill) or column (expanded)
+              [add] [input] [toolbar: [add-toolbar] [stop] [submit]]
+      */}
+      <View style={styles.composerWrap}>
+        <View style={[styles.shell, expanded ? styles.shellExpanded : styles.shellPill]}>
 
-      <View style={styles.composerCard}>
-        <TextInput
-          multiline
-          onChangeText={setDraft}
-          placeholder="Ask Stella something"
-          placeholderTextColor="rgba(82, 104, 134, 0.46)"
-          style={styles.composerInput}
-          value={draft}
-        />
-        <View style={styles.composerFooter}>
-          <Text style={styles.composerHint}>
-            This thread disappears when you leave the app.
-          </Text>
-          <Pressable
-            onPress={() => {
-              void sendMessage();
-            }}
-            style={({ pressed }) => [
-              styles.sendButton,
-              pressed ? styles.sendButtonPressed : null,
-              sendState === "sending" ? styles.sendButtonDisabled : null,
-            ]}
-          >
-            <Text style={styles.sendButtonText}>
-              {sendState === "sending" ? "Sending..." : "Send"}
-            </Text>
-          </Pressable>
+          {expanded ? (
+            /* ---- Expanded: column, textarea on top, toolbar below ---- */
+            <View style={styles.formExpanded}>
+              <TextInput
+                ref={inputRef}
+                multiline
+                onChangeText={setDraft}
+                onContentSizeChange={handleContentSizeChange}
+                blurOnSubmit={false}
+                placeholder="Message Stella"
+                placeholderTextColor="rgba(82, 104, 134, 0.35)"
+                selectionColor={colors.accent}
+                underlineColorAndroid="transparent"
+                style={styles.inputExpanded}
+                value={draft}
+              />
+              <View style={styles.toolbar}>
+                <View style={styles.toolbarLeft}>
+                  <Pressable style={styles.addButton} hitSlop={4}>
+                    <Feather name="plus" size={18} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+                <View style={styles.toolbarRight}>
+                  <Pressable
+                    onPress={() => void send()}
+                    disabled={!canSubmit}
+                    style={[
+                      styles.submitButton,
+                      !canSubmit && styles.submitDisabled,
+                    ]}
+                    hitSlop={4}
+                  >
+                    <Feather
+                      name="arrow-up"
+                      size={14}
+                      color={colors.accentForeground}
+                      strokeWidth={2.5}
+                    />
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          ) : (
+            /* ---- Pill: single row, input + submit ---- */
+            <View style={styles.formPill}>
+              <Pressable style={styles.addButton} hitSlop={4}>
+                <Feather name="plus" size={18} color={colors.textMuted} />
+              </Pressable>
+              <TextInput
+                ref={inputRef}
+                multiline
+                scrollEnabled={false}
+                onChangeText={setDraft}
+                onContentSizeChange={handleContentSizeChange}
+                blurOnSubmit={false}
+                placeholder="Message Stella"
+                placeholderTextColor="rgba(82, 104, 134, 0.35)"
+                selectionColor={colors.accent}
+                underlineColorAndroid="transparent"
+                style={styles.inputPill}
+                value={draft}
+              />
+              <Pressable
+                onPress={() => void send()}
+                disabled={!canSubmit}
+                style={[
+                  styles.submitButton,
+                  !canSubmit && styles.submitDisabled,
+                ]}
+                hitSlop={4}
+              >
+                <Feather
+                  name="arrow-up"
+                  size={14}
+                  color={colors.accentForeground}
+                  strokeWidth={2.5}
+                />
+              </Pressable>
+            </View>
+          )}
         </View>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Styles
+//
+// Desktop mapping:
+//   .composer-shell      → shell (pill capsule, shadow, overflow hidden)
+//   .composer-form       → formPill (row, 48 min-h, padding 8, gap 8)
+//   .composer-form.expanded → formExpanded (column)
+//   .composer-input      → inputPill (flex 1, padding 4)
+//   .composer-form.expanded .composer-input → inputExpanded (14 18 4, min-h 44)
+//   .composer-add-button → addButton (30x30, dashed border)
+//   .composer-submit     → submitButton (30x30, primary bg)
+//   .composer-toolbar    → toolbar (row, padding 4 8 8)
+// ---------------------------------------------------------------------------
+
+const EDGE_FADE = 48;
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    gap: 14,
   },
-  screenHeader: {
-    gap: 6,
-    paddingTop: 4,
+
+  // Conversation
+  viewport: {
+    flex: 1,
+    position: "relative",
   },
-  screenTitle: {
-    color: colors.text,
-    fontFamily: fonts.display.regular,
-    fontSize: 30,
-    letterSpacing: -1.5,
+  list: {
+    gap: 8,
+    paddingHorizontal: 4,
+    paddingTop: 8,
+    paddingBottom: 12,
   },
-  screenBody: {
+  edgeTop: {
+    height: EDGE_FADE,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  edgeBottom: {
+    bottom: 0,
+    height: EDGE_FADE,
+    left: 0,
+    position: "absolute",
+    right: 0,
+  },
+  emptyState: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+  },
+  emptyText: {
     color: colors.textMuted,
     fontFamily: fonts.sans.regular,
-    fontSize: 15,
+    fontSize: 17,
     letterSpacing: -0.2,
-    lineHeight: 22,
+    opacity: 0.5,
   },
-  chatList: {
-    gap: 12,
-    paddingBottom: 8,
+
+  // User bubble — desktop: color-mix(in oklch, var(--primary) 12%, transparent)
+  userRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
   },
-  chatBubble: {
-    borderRadius: 16,
-    maxWidth: "88%",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+  userBubble: {
+    backgroundColor: "rgba(29, 120, 242, 0.12)",
+    borderRadius: 12,
+    maxWidth: "85%",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  chatBubbleAssistant: {
-    alignSelf: "flex-start",
+  userText: {
+    color: colors.text,
+    fontFamily: fonts.sans.regular,
+    fontSize: 18,
+    letterSpacing: 0.54,
+    lineHeight: 26,
+  },
+
+  // Assistant — desktop: transparent, no border, full width
+  assistantRow: {
+    paddingHorizontal: 2,
+    paddingVertical: 10,
+  },
+  assistantText: {
+    color: colors.text,
+    fontFamily: fonts.sans.regular,
+    fontSize: 18,
+    letterSpacing: 0.54,
+    lineHeight: 26,
+  },
+
+  // ---- Composer ----
+
+  // Outer centering wrapper — desktop: .composer (padding 8 24 16, centered)
+  composerWrap: {
+    alignItems: "center",
+    flexShrink: 0,
+    paddingBottom: Platform.OS === "ios" ? 4 : 10,
+    paddingHorizontal: 4,
+    paddingTop: 8,
+  },
+
+  // Shell — desktop: .composer-shell (pill radius, shadow, overflow clip)
+  shell: {
     backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
-    shadowColor: "#2f5082",
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
+    overflow: "hidden",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 6,
+    width: "100%",
   },
-  chatBubbleUser: {
-    alignSelf: "flex-end",
-    backgroundColor: colors.accentSoft,
-    borderColor: "rgba(29, 120, 242, 0.2)",
-    borderWidth: 1,
+  // Pill capsule — desktop: border-radius: 999px (CSS fallback)
+  shellPill: {
+    borderRadius: 999,
   },
-  chatRole: {
-    color: colors.textMuted,
-    fontFamily: fonts.mono.regular,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    marginBottom: 6,
-    textTransform: "uppercase",
+  // Expanded rect — desktop: motion animates to 20px
+  shellExpanded: {
+    borderRadius: 20,
   },
-  chatRoleUser: {
-    color: colors.accent,
-  },
-  chatText: {
-    color: colors.text,
-    fontFamily: fonts.sans.regular,
-    fontSize: 15,
-    letterSpacing: -0.2,
-    lineHeight: 22,
-  },
-  composerCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 18,
-    borderWidth: 1,
-    gap: 12,
-    padding: 16,
-    shadowColor: "#2f5082",
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-  },
-  composerInput: {
-    color: colors.text,
-    fontFamily: fonts.sans.regular,
-    fontSize: 16,
-    letterSpacing: -0.2,
-    lineHeight: 22,
-    maxHeight: 150,
-    minHeight: 80,
-    textAlignVertical: "top",
-  },
-  composerFooter: {
+
+  // Pill form — desktop: .composer-form (row, min-h 48, padding 8, gap 8)
+  formPill: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 12,
-    justifyContent: "space-between",
+    gap: 8,
+    height: 48,
+    paddingHorizontal: 8,
   },
-  composerHint: {
-    color: colors.textMuted,
+
+  // Expanded form — desktop: .composer-form.expanded (column, no padding)
+  formExpanded: {
+    flexDirection: "column",
+  },
+
+  // Input – pill — desktop: .composer-input (flex 1, padding 4 4)
+  inputPill: {
+    color: colors.text,
     flex: 1,
     fontFamily: fonts.sans.regular,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  sendButton: {
-    backgroundColor: colors.accent,
-    borderRadius: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-  },
-  sendButtonPressed: {
-    backgroundColor: colors.accentHover,
-  },
-  sendButtonDisabled: {
-    opacity: 0.7,
-  },
-  sendButtonText: {
-    color: colors.accentForeground,
-    fontFamily: fonts.sans.bold,
     fontSize: 14,
-    letterSpacing: -0.3,
+    letterSpacing: -0.01,
+    lineHeight: 21,
+    maxHeight: 32,
+    paddingHorizontal: 4,
+    paddingVertical: 0,
+    // Remove default Android underline / iOS focus ring
+    ...(Platform.OS === "android" ? { textAlignVertical: "center" as const } : {}),
+  },
+
+  // Input – expanded — desktop: .composer-form.expanded .composer-input
+  //   (width 100%, padding 14 18 4, min-h 44, order -1)
+  inputExpanded: {
+    color: colors.text,
+    fontFamily: fonts.sans.regular,
+    fontSize: 14,
+    letterSpacing: -0.01,
+    lineHeight: 21,
+    maxHeight: 200,
+    minHeight: 44,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 4,
+  },
+
+  // Toolbar — desktop: .composer-form.expanded .composer-toolbar
+  //   (flex row, space-between, padding 4 8 8)
+  toolbar: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingBottom: 8,
+    paddingHorizontal: 8,
+    paddingTop: 4,
+  },
+  toolbarLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  toolbarRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  // Add button — desktop: .chat-composer-icon-button--add
+  //   (30x30, 1.5px dashed border, transparent bg)
+  addButton: {
+    alignItems: "center",
+    borderColor: colors.textMuted,
+    borderRadius: 15,
+    borderStyle: "dashed",
+    borderWidth: 1.5,
+    height: 30,
+    justifyContent: "center",
+    opacity: 0.55,
+    width: 30,
+  },
+
+  // Submit — desktop: .chat-composer-icon-button--submit
+  //   (30x30, primary bg, primary-foreground color)
+  submitButton: {
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    borderRadius: 15,
+    height: 30,
+    justifyContent: "center",
+    width: 30,
+  },
+  submitDisabled: {
+    opacity: 0.4,
   },
 });
