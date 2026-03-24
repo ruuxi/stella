@@ -1,4 +1,9 @@
 .chat-conversation-surface {
+  width: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
   --compact-chat-font-size: 16px;
