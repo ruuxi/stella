@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import {
@@ -335,4 +336,48 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     if (map.mappings.length === 0) return text;
     return depseudonymize(text, map);
   });
+
+  // ── Media file operations ──
+
+  ipcMain.handle(
+    "media:saveOutput",
+    async (
+      event,
+      payload: { url: string; fileName: string },
+    ): Promise<{ ok: boolean; path?: string; error?: string }> => {
+      if (!options.assertPrivilegedSender(event, "media:saveOutput")) {
+        return { ok: false, error: "Blocked untrusted request." };
+      }
+      const stellaHomePath = options.getStellaHomePath();
+      if (!stellaHomePath) {
+        return { ok: false, error: "Stella home not initialized" };
+      }
+      try {
+        const dir = path.join(stellaHomePath, "media", "outputs");
+        await fs.mkdir(dir, { recursive: true });
+        const destPath = path.join(dir, payload.fileName);
+        const res = await fetch(payload.url);
+        if (!res.ok) {
+          return { ok: false, error: `Download failed (${res.status})` };
+        }
+        const buffer = Buffer.from(await res.arrayBuffer());
+        await fs.writeFile(destPath, buffer);
+        return { ok: true, path: destPath };
+      } catch (error) {
+        return { ok: false, error: (error as Error).message };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "media:getStellaMediaDir",
+    async (event): Promise<string | null> => {
+      if (!options.assertPrivilegedSender(event, "media:getStellaMediaDir")) {
+        return null;
+      }
+      const stellaHomePath = options.getStellaHomePath();
+      if (!stellaHomePath) return null;
+      return path.join(stellaHomePath, "media");
+    },
+  );
 };

@@ -1,10 +1,32 @@
-import { useState, useCallback, useRef, startTransition } from "react"
+import { useState, useCallback, useRef, useEffect, useMemo, startTransition } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/api"
 import { createServiceRequest } from "@/infra/http/service-request"
+import {
+  type FormState,
+  type HistoryEntry,
+  type OutputMedia,
+  addHistoryEntry,
+  extractOutput,
+  generateThumb,
+  loadFormState,
+  loadHistory,
+  openOutputsFolder,
+  saveFormState,
+  saveOutputToStella,
+  updateHistoryEntry,
+} from "./media-store"
 import "./media-studio.css"
 
-/* ── Capability catalog (mirrors backend) ── */
+function FolderIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  )
+}
+
+/* ── Capability catalog ── */
 
 type Category = "image" | "audio" | "video" | "3d"
 
@@ -173,64 +195,20 @@ async function generateMedia(body: Record<string, unknown>): Promise<GenerateRes
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || `Generation failed (${res.status})`)
+    let message = `Generation failed (${res.status})`
+    try {
+      const json = await res.json() as { error?: string }
+      if (json.error) message = json.error
+    } catch {
+      const text = await res.text().catch(() => "")
+      if (text) message = text
+    }
+    throw new Error(message)
   }
   return res.json() as Promise<GenerateResponse>
 }
 
-/* ── Output helpers ── */
-
-type OutputMedia =
-  | { kind: "image"; urls: string[] }
-  | { kind: "video"; url: string }
-  | { kind: "audio"; url: string }
-  | { kind: "text"; text: string }
-  | { kind: "download"; url: string; label: string }
-  | { kind: "unknown" }
-
-function extractOutput(output: unknown): OutputMedia {
-  if (!output || typeof output !== "object") return { kind: "unknown" }
-  const o = output as Record<string, unknown>
-
-  if (Array.isArray(o.images) && o.images.length > 0) {
-    const urls = (o.images as { url?: string }[])
-      .map((img) => img.url)
-      .filter((u): u is string => Boolean(u))
-    if (urls.length > 0) return { kind: "image", urls }
-  }
-
-  if (o.video && typeof o.video === "object") {
-    const url = (o.video as { url?: string }).url
-    if (url) return { kind: "video", url }
-  }
-
-  for (const key of ["audio_file", "audio"]) {
-    const src = o[key]
-    if (src && typeof src === "object") {
-      const url = (src as { url?: string }).url
-      if (url) return { kind: "audio", url }
-    }
-  }
-
-  if (typeof o.text === "string") return { kind: "text", text: o.text }
-
-  if (o.model_mesh && typeof o.model_mesh === "object") {
-    const url = (o.model_mesh as { url?: string }).url
-    if (url) return { kind: "download", url, label: "Download 3D model" }
-  }
-
-  for (const val of Object.values(o)) {
-    if (val && typeof val === "object" && "url" in (val as Record<string, unknown>)) {
-      const url = (val as { url: string }).url
-      if (url) return { kind: "download", url, label: "Download result" }
-    }
-  }
-
-  return { kind: "unknown" }
-}
-
-/* ── File read helper ── */
+/* ── File helpers ── */
 
 function readFileAsDataUri(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -244,22 +222,28 @@ function readFileAsDataUri(file: File): Promise<string> {
 /* ── Component ── */
 
 export default function MediaStudio() {
-  const [category, setCategory] = useState<Category>("image")
-  const [capabilityId, setCapabilityId] = useState<string | null>(null)
-  const [prompt, setPrompt] = useState("")
+  // Restore persisted state
+  const [savedForm] = useState(loadFormState)
+  const [history, setHistory] = useState(loadHistory)
+
+  const [category, setCategory] = useState<Category>(savedForm.category as Category)
+  const [capabilityId, setCapabilityId] = useState<string | null>(savedForm.capabilityId)
+  const [prompt, setPrompt] = useState(savedForm.prompt)
   const [sourceUri, setSourceUri] = useState<string | null>(null)
   const [sourceFileName, setSourceFileName] = useState<string | null>(null)
-  const [aspectRatio, setAspectRatio] = useState<string | null>(null)
-  const [profile, setProfile] = useState<string | null>(null)
-  const [extraValues, setExtraValues] = useState<Record<string, number>>({})
+  const [aspectRatio, setAspectRatio] = useState<string | null>(savedForm.aspectRatio)
+  const [profile, setProfile] = useState<string | null>(savedForm.profile)
+  const [extraValues, setExtraValues] = useState<Record<string, number>>(savedForm.extraValues)
   const [submitting, setSubmitting] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-
   const [dragging, setDragging] = useState(false)
+  const [viewingEntry, setViewingEntry] = useState<HistoryEntry | null>(null)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragCountRef = useRef(0)
+  const savedJobRef = useRef<Set<string>>(new Set())
 
   const capability = capabilityId
     ? CAPABILITIES.find((c) => c.id === capabilityId) ?? null
@@ -267,7 +251,6 @@ export default function MediaStudio() {
 
   const filteredCapabilities = CAPABILITIES.filter((c) => c.category === category)
 
-  // Whether the current source is compatible with the active capability
   const sourceType = sourceUri
     ? /^data:image\//i.test(sourceUri) ? "image" : /^data:video\//i.test(sourceUri) ? "video" : /^data:audio\//i.test(sourceUri) ? "audio" : "other"
     : null
@@ -275,6 +258,7 @@ export default function MediaStudio() {
     ? capability.sourceAccept?.startsWith(sourceType ?? "") ?? false
     : false
 
+  // Convex subscription for active job
   const job = useQuery(
     api.media_jobs.getByJobId,
     activeJobId ? { jobId: activeJobId } : "skip",
@@ -283,41 +267,103 @@ export default function MediaStudio() {
   const jobStatus = (job?.status ?? null) as string | null
   const jobOutput = job?.output
   const jobError = job?.error as { message?: string } | undefined
-  const output = jobOutput ? extractOutput(jobOutput) : null
 
-  const isSourceImage = capability?.sourceAccept?.startsWith("image")
+  // When job completes, save to history + .stella
+  useEffect(() => {
+    if (!activeJobId) return
+    if (savedJobRef.current.has(activeJobId)) return
+
+    if (jobStatus === "succeeded" && jobOutput) {
+      savedJobRef.current.add(activeJobId)
+      const output = extractOutput(jobOutput)
+      const updated = updateHistoryEntry(activeJobId, { status: "succeeded", output })
+      setHistory(updated)
+      const jobIdCopy = activeJobId
+      let cancelled = false
+
+      // Save files to .stella
+      void saveOutputToStella(output, jobIdCopy).then((saved) => {
+        if (!cancelled && saved !== output) {
+          setHistory(updateHistoryEntry(jobIdCopy, { output: saved }))
+        }
+      })
+
+      // Generate thumbnail for the strip
+      if (output.kind === "image" && output.urls[0]) {
+        void generateThumb(output.urls[0]).then((thumb) => {
+          if (!cancelled && thumb) {
+            setHistory(updateHistoryEntry(jobIdCopy, { thumb }))
+          }
+        })
+      }
+
+      return () => { cancelled = true }
+    }
+
+    if (jobStatus === "failed") {
+      savedJobRef.current.add(activeJobId)
+      setHistory(updateHistoryEntry(activeJobId, {
+        status: "failed",
+        error: jobError?.message ?? "Generation failed",
+      }))
+    }
+  }, [activeJobId, jobStatus, jobOutput, jobError])
+
+  // Persist form state on changes
+  const persistForm = useCallback((patch: Partial<FormState>) => {
+    saveFormState({ ...loadFormState(), ...patch })
+  }, [])
+
+  /* ── Handlers ── */
 
   const handleCategoryChange = useCallback((cat: Category) => {
     startTransition(() => {
       setCategory(cat)
       setCapabilityId(null)
-      setPrompt("")
       setAspectRatio(null)
       setProfile(null)
       setExtraValues({})
       setError(null)
       setActiveJobId(null)
-      // source intentionally kept — carries across modes
+      setViewingEntry(null)
+      persistForm({ category: cat, capabilityId: null, aspectRatio: null, profile: null, extraValues: {} })
     })
-  }, [])
+  }, [persistForm])
 
   const handleCapabilitySelect = useCallback((id: string) => {
     const cap = CAPABILITIES.find((c) => c.id === id)
+    const newProfile = cap?.profiles?.[0]?.id ?? null
+    const newExtra = Object.fromEntries(
+      (cap?.extraFields ?? []).map((f) => [f.key, f.default]),
+    )
     startTransition(() => {
       setCapabilityId(id)
       setPrompt("")
       setAspectRatio(null)
       setError(null)
       setActiveJobId(null)
-      setProfile(cap?.profiles?.[0]?.id ?? null)
-      setExtraValues(
-        Object.fromEntries(
-          (cap?.extraFields ?? []).map((f) => [f.key, f.default]),
-        ),
-      )
-      // source intentionally kept — carries across modes
+      setViewingEntry(null)
+      setProfile(newProfile)
+      setExtraValues(newExtra)
+      persistForm({ capabilityId: id, prompt: "", aspectRatio: null, profile: newProfile, extraValues: newExtra })
     })
-  }, [])
+  }, [persistForm])
+
+  const handlePromptChange = useCallback((value: string) => {
+    setPrompt(value)
+    persistForm({ prompt: value })
+  }, [persistForm])
+
+  const handleAspectRatioToggle = useCallback((ar: string) => {
+    const next = aspectRatio === ar ? null : ar
+    setAspectRatio(next)
+    persistForm({ aspectRatio: next })
+  }, [aspectRatio, persistForm])
+
+  const handleProfileChange = useCallback((id: string) => {
+    setProfile(id)
+    persistForm({ profile: id })
+  }, [persistForm])
 
   const ingestFile = useCallback(async (file: File) => {
     try {
@@ -377,6 +423,7 @@ export default function MediaStudio() {
     setSubmitting(true)
     setError(null)
     setActiveJobId(null)
+    setViewingEntry(null)
 
     try {
       const body: Record<string, unknown> = {
@@ -389,8 +436,20 @@ export default function MediaStudio() {
       if (profile) body.profile = profile
 
       const result = await generateMedia(body)
+
+      const entry: HistoryEntry = {
+        id: result.jobId,
+        capability: capability.id,
+        capabilityName: capability.name,
+        prompt: prompt.trim() || undefined,
+        timestamp: Date.now(),
+        output: null,
+        status: "pending",
+      }
+
       startTransition(() => {
         setActiveJobId(result.jobId)
+        setHistory(addHistoryEntry(entry))
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed")
@@ -399,11 +458,87 @@ export default function MediaStudio() {
     }
   }, [capability, prompt, sourceUri, aspectRatio, profile, extraValues])
 
+  const handleHistoryClick = useCallback((entry: HistoryEntry) => {
+    setViewingEntry(entry)
+    setActiveJobId(null)
+  }, [])
+
+  const handleCopyImage = useCallback(async (url: string) => {
+    try {
+      const res = await fetch(url)
+      const blob = await res.blob()
+      const pngBlob = blob.type === "image/png"
+        ? blob
+        : await new Promise<Blob>((resolve) => {
+            const img = new Image()
+            img.crossOrigin = "anonymous"
+            img.onload = () => {
+              const canvas = document.createElement("canvas")
+              canvas.width = img.naturalWidth
+              canvas.height = img.naturalHeight
+              canvas.getContext("2d")!.drawImage(img, 0, 0)
+              canvas.toBlob((b) => resolve(b!), "image/png")
+            }
+            img.src = url
+          })
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })])
+    } catch {
+      // silent fail
+    }
+  }, [])
+
+  /** Load an output URL as the source and switch to a target capability. */
+  const handleSendTo = useCallback((targetCapId: string, url: string) => {
+    const cap = CAPABILITIES.find((c) => c.id === targetCapId)
+    if (!cap) return
+    const targetCat = cap.category as Category
+
+    // Infer a file name from the URL
+    const urlName = url.split("/").pop()?.split("?")[0] ?? "output"
+
+    startTransition(() => {
+      setCategory(targetCat)
+      setCapabilityId(targetCapId)
+      setSourceUri(url)
+      setSourceFileName(urlName)
+      setPrompt("")
+      setAspectRatio(null)
+      setError(null)
+      setActiveJobId(null)
+      setViewingEntry(null)
+      setProfile(cap.profiles?.[0]?.id ?? null)
+      setExtraValues(
+        Object.fromEntries((cap.extraFields ?? []).map((f) => [f.key, f.default])),
+      )
+      persistForm({
+        category: targetCat,
+        capabilityId: targetCapId,
+        prompt: "",
+        aspectRatio: null,
+        profile: cap.profiles?.[0]?.id ?? null,
+        extraValues: Object.fromEntries((cap.extraFields ?? []).map((f) => [f.key, f.default])),
+      })
+    })
+  }, [persistForm])
+
   const canSubmit =
     capability &&
     !submitting &&
     (!capability.needsPrompt || prompt.trim().length > 0) &&
     (!capability.needsSource || (sourceUri !== null && sourceCompatible))
+
+  // Determine what to show in the output panel
+  const liveOutput = useMemo(
+    () => (activeJobId && jobStatus === "succeeded" && jobOutput ? extractOutput(jobOutput) : null),
+    [activeJobId, jobStatus, jobOutput],
+  )
+  const activeOutput: OutputMedia | null = viewingEntry?.output ?? liveOutput
+
+  const showPending = activeJobId && !viewingEntry && (jobStatus === "queued" || jobStatus === "running")
+  const showFailed = (activeJobId && !viewingEntry && jobStatus === "failed") ||
+    (viewingEntry?.status === "failed")
+  const showOutput = activeOutput && activeOutput.kind !== "unknown"
+  const failMessage = viewingEntry?.error ?? jobError?.message ?? "Generation failed"
 
   return (
     <div
@@ -463,7 +598,7 @@ export default function MediaStudio() {
                           key={p.id}
                           type="button"
                           className={`ms-tag ${profile === p.id ? "ms-tag--active" : ""}`}
-                          onClick={() => setProfile(p.id)}
+                          onClick={() => handleProfileChange(p.id)}
                         >
                           {p.name}
                         </button>
@@ -478,8 +613,8 @@ export default function MediaStudio() {
                     <textarea
                       className="ms-textarea"
                       value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      placeholder={`Describe what you'd like…`}
+                      onChange={(e) => handlePromptChange(e.target.value)}
+                      placeholder="Describe what you'd like…"
                       rows={3}
                     />
                   </div>
@@ -524,7 +659,7 @@ export default function MediaStudio() {
                           key={ar}
                           type="button"
                           className={`ms-tag ${aspectRatio === ar ? "ms-tag--active" : ""}`}
-                          onClick={() => setAspectRatio(aspectRatio === ar ? null : ar)}
+                          onClick={() => handleAspectRatioToggle(ar)}
                         >
                           {ar}
                         </button>
@@ -544,7 +679,11 @@ export default function MediaStudio() {
                       max={field.max}
                       onChange={(e) => {
                         const val = Number(e.target.value)
-                        setExtraValues((prev) => ({ ...prev, [field.key]: val }))
+                        setExtraValues((prev) => {
+                          const next = { ...prev, [field.key]: val }
+                          persistForm({ extraValues: next })
+                          return next
+                        })
                       }}
                     />
                   </div>
@@ -566,64 +705,147 @@ export default function MediaStudio() {
         </div>
       </div>
 
-      {/* ── Right: output ── */}
-      <div className="ms-output-panel">
-        {dragging && (
-          <div className="ms-drop-overlay">
-            <div className="ms-drop-label">Drop file</div>
-          </div>
-        )}
+      {/* ── Right: output + history strip ── */}
+      <div className="ms-right">
+        <div className="ms-output-panel">
+          {dragging && (
+            <div className="ms-drop-overlay">
+              <div className="ms-drop-label">Drop file</div>
+            </div>
+          )}
 
-        {!activeJobId && !dragging && (
-          <div className="ms-empty">
-            <div className="ms-empty-title">Your creation</div>
-            <div className="ms-empty-desc">
-              Pick a capability and generate — or drop a file anywhere to get started.
+          {!showPending && !showFailed && !showOutput && !dragging && (
+            <div className="ms-empty">
+              <div className="ms-empty-title">Your creation</div>
+              <div className="ms-empty-desc">
+                Pick a capability and generate — or drop a file anywhere to get started.
+              </div>
+            </div>
+          )}
+
+          {showPending && (
+            <div className="ms-status">
+              <span className="ms-status-dot" />
+              <span className="ms-status-text">
+                {jobStatus === "queued" ? "Waiting in queue…" : "Generating…"}
+              </span>
+            </div>
+          )}
+
+          {showFailed && (
+            <p className="ms-error">{failMessage}</p>
+          )}
+
+          {showOutput && activeOutput && (
+            <div className="ms-output">
+              {activeOutput.kind === "image" && (
+                <>
+                  <div className="ms-output-images">
+                    {activeOutput.urls.map((url, i) => (
+                      <button
+                        key={url}
+                        type="button"
+                        className="ms-output-image-btn"
+                        onClick={() => setLightboxUrl(url)}
+                      >
+                        <img src={url} alt={`Generated ${i + 1}`} className="ms-output-image" />
+                      </button>
+                    ))}
+                  </div>
+                  <div className="ms-actions">
+                    <button type="button" className="ms-action" onClick={() => void handleCopyImage(activeOutput.urls[0])}>
+                      Copy
+                    </button>
+                    <button type="button" className="ms-action" onClick={() => handleSendTo("image_edit", activeOutput.urls[0])}>
+                      Edit
+                    </button>
+                    <button type="button" className="ms-action" onClick={() => handleSendTo("image_to_video", activeOutput.urls[0])}>
+                      Animate
+                    </button>
+                  </div>
+                </>
+              )}
+              {activeOutput.kind === "video" && (
+                <>
+                  <video src={activeOutput.url} controls className="ms-output-video" />
+                  <div className="ms-actions">
+                    <button type="button" className="ms-action" onClick={() => handleSendTo("video_to_video", activeOutput.url)}>
+                      Transform video
+                    </button>
+                    <button type="button" className="ms-action" onClick={() => handleSendTo("video_extend", activeOutput.url)}>
+                      Extend video
+                    </button>
+                  </div>
+                </>
+              )}
+              {activeOutput.kind === "audio" && (
+                <audio src={activeOutput.url} controls className="ms-output-audio" />
+              )}
+              {activeOutput.kind === "text" && (
+                <div className="ms-output-text"><p>{activeOutput.text}</p></div>
+              )}
+              {activeOutput.kind === "download" && (
+                <a href={activeOutput.url} target="_blank" rel="noreferrer" className="ms-output-download">
+                  {activeOutput.label}
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* History strip */}
+        {history.length > 0 && (
+          <div className="ms-strip">
+            <div className="ms-strip-scroll">
+              {history.map((entry) => {
+                const isActive = viewingEntry?.id === entry.id || activeJobId === entry.id
+                const thumbSrc = entry.thumb ?? null
+
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    className={`ms-strip-item ${isActive ? "ms-strip-item--active" : ""}`}
+                    onClick={() => handleHistoryClick(entry)}
+                    title={entry.prompt ?? entry.capabilityName}
+                  >
+                    {thumbSrc ? (
+                      <img src={thumbSrc} alt="" className="ms-strip-thumb" />
+                    ) : (
+                      <div className={`ms-strip-placeholder ms-strip-placeholder--${entry.output?.kind ?? "pending"}`}>
+                        {entry.status === "pending" && <span className="ms-strip-dot" />}
+                        {entry.status === "failed" && "✕"}
+                        {entry.status === "succeeded" && entry.output?.kind === "video" && "▶"}
+                        {entry.status === "succeeded" && entry.output?.kind === "audio" && "♪"}
+                        {entry.status === "succeeded" && entry.output?.kind === "text" && "Aa"}
+                        {entry.status === "succeeded" && entry.output?.kind === "download" && "↓"}
+                        {entry.status === "succeeded" && entry.output?.kind === "unknown" && "?"}
+                      </div>
+                    )}
+                    <span className="ms-strip-label">{entry.capabilityName}</span>
+                  </button>
+                )
+              })}
+              <button
+                type="button"
+                className="ms-strip-folder"
+                onClick={() => void openOutputsFolder()}
+                title="Open outputs folder"
+              >
+                <FolderIcon />
+              </button>
             </div>
           </div>
         )}
-
-        {activeJobId && (jobStatus === "queued" || jobStatus === "running") && (
-          <div className="ms-status">
-            <span className="ms-status-dot" />
-            <span className="ms-status-text">
-              {jobStatus === "queued" ? "Waiting in queue…" : "Generating…"}
-            </span>
-          </div>
-        )}
-
-        {activeJobId && jobStatus === "failed" && (
-          <p className="ms-error">{jobError?.message ?? "Generation failed"}</p>
-        )}
-
-        {activeJobId && jobStatus === "succeeded" && output && (
-          <div className="ms-output">
-            {output.kind === "image" && (
-              <div className="ms-output-images">
-                {output.urls.map((url, i) => (
-                  <a key={url} href={url} target="_blank" rel="noreferrer" className="ms-output-image-link">
-                    <img src={url} alt={`Generated ${i + 1}`} className="ms-output-image" />
-                  </a>
-                ))}
-              </div>
-            )}
-            {output.kind === "video" && (
-              <video src={output.url} controls className="ms-output-video" />
-            )}
-            {output.kind === "audio" && (
-              <audio src={output.url} controls className="ms-output-audio" />
-            )}
-            {output.kind === "text" && (
-              <div className="ms-output-text"><p>{output.text}</p></div>
-            )}
-            {output.kind === "download" && (
-              <a href={output.url} target="_blank" rel="noreferrer" className="ms-output-download">
-                {output.label}
-              </a>
-            )}
-          </div>
-        )}
       </div>
+
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div className="ms-lightbox" onClick={() => setLightboxUrl(null)}>
+          <img src={lightboxUrl} alt="" className="ms-lightbox-img" onClick={(e) => e.stopPropagation()} />
+          <button type="button" className="ms-lightbox-close" onClick={() => setLightboxUrl(null)}>✕</button>
+        </div>
+      )}
     </div>
   )
 }

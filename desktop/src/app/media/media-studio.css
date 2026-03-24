@@ -346,6 +346,146 @@
   line-height: 1.45;
 }
 
+/* ── Right column wrapper ── */
+
+.ms-right {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── History strip ── */
+
+.ms-strip {
+  flex-shrink: 0;
+  border-top: 1px solid var(--ms-border);
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.ms-strip::-webkit-scrollbar {
+  height: 4px;
+}
+
+.ms-strip::-webkit-scrollbar-thumb {
+  background: var(--ms-border);
+  border-radius: 2px;
+}
+
+.ms-strip-scroll {
+  display: flex;
+  gap: 0.6rem;
+  width: max-content;
+  min-width: 100%;
+}
+
+.ms-strip-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 0.15s;
+}
+
+.ms-strip-item:hover { opacity: 0.7; }
+.ms-strip-item--active { opacity: 1 !important; }
+
+.ms-strip-thumb,
+.ms-strip-placeholder {
+  width: 52px;
+  height: 52px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.ms-strip-thumb {
+  object-fit: cover;
+  border: 1.5px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.ms-strip-item--active .ms-strip-thumb {
+  border-color: var(--ms-fg);
+}
+
+.ms-strip-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ms-border);
+  font-size: 14px;
+  color: var(--ms-muted);
+  background: var(--ms-faint);
+  font-family: var(--ms-mono);
+  transition: border-color 0.15s;
+}
+
+.ms-strip-item--active .ms-strip-placeholder {
+  border-color: var(--ms-fg);
+}
+
+.ms-strip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ms-fg);
+  animation: msPulse 1.5s ease infinite;
+}
+
+.ms-strip-label {
+  font-size: 9.5px;
+  font-family: var(--ms-mono);
+  color: var(--ms-muted);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  max-width: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ms-strip-item--active .ms-strip-label {
+  color: var(--ms-fg);
+  font-weight: 500;
+}
+
+.ms-strip-folder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  border: 1px dashed var(--ms-border);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  padding: 0;
+}
+
+.ms-strip-folder:hover {
+  border-color: color-mix(in oklch, var(--ms-fg) 35%, transparent);
+}
+
+.ms-strip-folder svg,
+.ms-strip-folder-icon {
+  color: var(--ms-muted);
+  transition: color 0.15s;
+}
+
+.ms-strip-folder:hover svg,
+.ms-strip-folder:hover .ms-strip-folder-icon {
+  color: var(--ms-fg);
+}
+
 /* ── Drag overlay ── */
 
 .ms--dragging .ms-output-panel { position: relative; }
@@ -377,12 +517,13 @@
 /* ── Right panel (output) ── */
 
 .ms-output-panel {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
   overflow: auto;
   padding: 2rem;
+  position: relative;
 }
 
 /* empty state */
@@ -485,6 +626,14 @@
 
 .ms-output-text p { margin: 0; }
 
+.ms-output-image-btn {
+  display: block;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: zoom-in;
+}
+
 .ms-output-download {
   font-family: var(--ms-mono);
   font-size: 13px;
@@ -496,4 +645,74 @@
 
 .ms-output-download:hover {
   text-decoration-color: var(--ms-fg);
+}
+
+/* ── Actions ── */
+
+.ms-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 0.75rem;
+}
+
+.ms-action {
+  font-family: var(--ms-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: 5px 12px;
+  border: 1px solid var(--ms-border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ms-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.ms-action:hover {
+  border-color: color-mix(in oklch, var(--ms-fg) 35%, transparent);
+  color: var(--ms-fg);
+}
+
+/* ── Lightbox ── */
+
+.ms-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklch, var(--ms-fg) 60%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: zoom-out;
+  animation: msFadeIn 0.15s ease both;
+}
+
+.ms-lightbox-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 6px;
+  cursor: default;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+}
+
+.ms-lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1.5rem;
+  font-size: 18px;
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  padding: 4px 8px;
+}
+
+.ms-lightbox-close:hover {
+  opacity: 1;
 }

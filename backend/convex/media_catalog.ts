@@ -150,10 +150,10 @@ export const MEDIA_CAPABILITIES: MediaCapability[] = [
     description: "Edit an existing image with text instructions.",
     category: "image",
     promptKey: "prompt",
-    sourceUrlKey: "image_url",
+    sourceUrlKey: "image_urls",
     requiresSourceUrl: true,
     supportsAspectRatio: true,
-    inputHints: ["image_url", "prompt", "aspectRatio", "mask / strength when supported"],
+    inputHints: ["image_urls", "prompt", "aspectRatio", "mask / strength when supported"],
     outputHints: ["edited image URLs"],
     profiles: [
       {
