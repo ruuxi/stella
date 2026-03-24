@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useUiState } from "@/context/ui-state";
 import {
-  TARGET_WAV_SAMPLE_RATE,
   floatToInt16Pcm,
   resampleLinear,
 } from "@/features/voice/services/audio-encoding";
@@ -10,6 +9,7 @@ import {
   type SharedMicrophoneLease,
 } from "@/features/voice/services/shared-microphone";
 
+const WAKE_WORD_SAMPLE_RATE = 16_000;
 const WAKE_WORD_CHUNK_SAMPLES = 1280;
 const WAKE_WORD_MIC_USE_CASE = "wake-word" as const;
 
@@ -173,7 +173,7 @@ export function WakeWordCaptureRoot() {
           const resampled = resampleLinear(
             samples,
             audioContext.sampleRate,
-            TARGET_WAV_SAMPLE_RATE,
+            WAKE_WORD_SAMPLE_RATE,
           );
           flushPcm(floatToInt16Pcm(resampled));
         };
