@@ -88,6 +88,14 @@ const withStoredTimestamp = (
     return payload;
   }
 
+  // Skip assistant messages — the history builder appends timestamps from
+  // event metadata when contextText is absent, so we don't need to bake them
+  // in at storage time. This avoids the LLM echoing timestamp tags during
+  // streaming (which causes layout shifts when later stripped).
+  if (type === "assistant_message") {
+    return payload;
+  }
+
   const nextPayload = { ...(payload as Record<string, unknown>) };
   const rawText = nextPayload.text;
   if (typeof rawText !== "string" || rawText.trim().length === 0) {
@@ -173,6 +181,7 @@ export const buildLocalHistoryMessages = async (
   const { messages } = eventsToHistoryMessages(
     chronological as ContextEvent[],
     {
+      timezone: getLocalTimezone(),
       microcompact: {
         trigger: "auto",
         warningThresholdTokens: DEFAULT_WARNING_THRESHOLD_TOKENS,

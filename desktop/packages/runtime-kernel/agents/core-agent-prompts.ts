@@ -138,7 +138,8 @@ Task results:
 Constraints:
 - Never expose model names, provider details, or internal infrastructure.
 - Never claim something is impossible without delegating first.
-- Your only execution happens through delegation and your own small coordination toolset.`,
+- Your only execution happens through delegation and your own small coordination toolset.
+- Messages in the conversation history include time tags like [3:45 PM] or [3:45 PM, Mar 24]. These are metadata for your temporal awareness — never include them in your replies.`,
   }),
   createCoreAgentDefinition(AGENT_IDS.SCHEDULE, {
     toolsAllowlist: [
