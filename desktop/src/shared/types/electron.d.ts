@@ -370,6 +370,7 @@ export type ElectronSystemApi = {
   onAuthCallback: (callback: (data: { url: string }) => void) => () => void;
   openFullDiskAccess: () => void;
   openExternal: (url: string) => void;
+  showItemInFolder: (filePath: string) => void;
   shellKillByPort: (port: number) => Promise<void>;
   getLocalSyncMode: () => Promise<string>;
   setLocalSyncMode: (mode: string) => Promise<void>;
@@ -583,6 +584,10 @@ export type ElectronApi = {
   agent: ElectronAgentApi;
   system: ElectronSystemApi;
   browser: ElectronBrowserApi;
+  media: {
+    saveOutput: (url: string, fileName: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
+    getStellaMediaDir: () => Promise<string | null>;
+  };
   projects: ElectronProjectsApi;
   schedule: ElectronScheduleApi;
   store: ElectronStoreApi;

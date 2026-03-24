@@ -143,7 +143,7 @@ const isHttpUrl = (value: unknown): value is string => {
 
 const isDataUri = (value: unknown): value is string =>
   isNonEmptyString(value) &&
-  /^data:[^;,\s]+;base64,[A-Za-z0-9+/=\s]+$/i.test(value.trim());
+  /^data:[^;,\s]+;base64,/i.test(value);
 
 const isMediaSourceReference = (value: unknown): value is string =>
   isHttpUrl(value) || isDataUri(value);
@@ -160,11 +160,13 @@ const isValidBase64Payload = (value: unknown): value is string => {
     return false;
   }
   const normalized = normalizeBase64Payload(value);
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) {
+  // Only validate a small prefix — decoding multi-MB payloads crashes the runtime.
+  const sample = normalized.slice(0, 256);
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(sample)) {
     return false;
   }
   try {
-    atob(normalized);
+    atob(sample);
     return true;
   } catch {
     return false;
@@ -247,11 +249,9 @@ export const applyConvenienceInput = (args: {
   if (args.aspectRatio && hasAspectRatioSupport(args.capability) && normalized.aspect_ratio === undefined) {
     normalized.aspect_ratio = args.aspectRatio;
   }
-  if (args.sourceUrl && args.capability.sourceUrlKey && normalized[args.capability.sourceUrlKey] === undefined) {
-    normalized[args.capability.sourceUrlKey] = args.sourceUrl;
-  }
-  if (args.source && args.capability.sourceUrlKey && normalized[args.capability.sourceUrlKey] === undefined) {
-    normalized[args.capability.sourceUrlKey] = normalizeSourceReference(args.source);
+  const rawSourceValue = args.sourceUrl ?? (args.source ? normalizeSourceReference(args.source) : undefined);
+  if (rawSourceValue && args.capability.sourceUrlKey && normalized[args.capability.sourceUrlKey] === undefined) {
+    normalized[args.capability.sourceUrlKey] = args.capability.sourceUrlKey.endsWith("_urls") ? [rawSourceValue] : rawSourceValue;
   }
   if (args.sources) {
     for (const [key, value] of Object.entries(args.sources)) {
@@ -321,10 +321,12 @@ const requireCapabilityInputs = (args: {
   if (args.capability.promptKey && !isNonEmptyString(normalized[args.capability.promptKey])) {
     return "prompt is required for this capability";
   }
-  if (args.capability.requiresSourceUrl && (!args.capability.sourceUrlKey || !isMediaSourceReference(normalized[args.capability.sourceUrlKey]))) {
+  const sourceSlotValue = args.capability.sourceUrlKey ? normalized[args.capability.sourceUrlKey] : undefined;
+  const sourceSlotRef = Array.isArray(sourceSlotValue) ? sourceSlotValue[0] : sourceSlotValue;
+  if (args.capability.requiresSourceUrl && (!args.capability.sourceUrlKey || !isMediaSourceReference(sourceSlotRef))) {
     return "A valid http(s) sourceUrl or source.base64 input is required for this capability";
   }
-  if (args.capability.sourceUrlKey && normalized[args.capability.sourceUrlKey] !== undefined && !isMediaSourceReference(normalized[args.capability.sourceUrlKey])) {
+  if (args.capability.sourceUrlKey && sourceSlotRef !== undefined && !isMediaSourceReference(sourceSlotRef)) {
     return "sourceUrl must be a valid http(s) URL or data URI";
   }
   if (args.capability.id === "sound_effects") {
@@ -373,11 +375,22 @@ const renderMediaDocs = (request: Request): string => {
     "Request body fields:",
     "- `capability` required",
     "- `profile` optional",
-    "- `prompt` optional convenience field",
-    "- `aspectRatio` optional convenience field for image/video capabilities",
-    "- `sourceUrl`, `source`, and `sources` for media inputs",
-    "- `input` for provider-specific controls",
-    "- Prefer `data:` URIs for local files",
+    "- `prompt` optional convenience field — mapped to the capability's prompt key (e.g. `prompt`, `text`)",
+    "- `aspectRatio` optional convenience field for image/video capabilities — mapped to `aspect_ratio`",
+    "- `sourceUrl`, `source`, and `sources` for media inputs — mapped to the capability's source key",
+    "- `input` for provider-specific controls — merged with convenience fields above",
+    "- Prefer `data:` URIs for local files (base64-encoded)",
+    "",
+    "Source handling:",
+    "- `source` accepts a `data:` URI string or an `{ base64, mimeType }` object.",
+    "- The backend maps `source` to the capability's source field automatically.",
+    "- For capabilities whose source key ends in `_urls` (e.g. `image_urls` for image_edit), the value is wrapped in an array automatically.",
+    "- `sources` is a `Record<string, source>` for capabilities that need multiple named inputs (e.g. `{ video: \"data:...\", audio: \"data:...\" }`).",
+    "",
+    "Error responses:",
+    "- All errors return `{ \"error\": \"human-readable message\" }`.",
+    "- Upstream provider errors (content policy violations, validation failures, etc.) are parsed and forwarded as readable messages.",
+    "- Parse the `error` field from the JSON body for display to users.",
     "",
     "Example request:",
     "```json",
@@ -595,96 +608,101 @@ export const registerMediaRoutes = (http: HttpRouter) => {
         } catch {
           requestBody = null;
         }
-        const body = parseMediaGenerateRequest(requestBody);
-        if (!body) return errorResponse(400, "Invalid media generation JSON body", origin);
-        const resolved = resolveMediaProfile(body.capability, body.profile);
-        if (!resolved) return errorResponse(400, "Unknown capability or profile. See /api/media/v1/capabilities.", origin);
-        const validationError = requireCapabilityInputs({
-          capability: resolved.capability,
-          prompt: body.prompt,
-          aspectRatio: body.aspectRatio,
-          sourceUrl: body.sourceUrl,
-          source: body.source,
-          sources: body.sources,
-          input: body.input,
-        });
-        if (validationError) return errorResponse(400, validationError, origin);
-        if (resolved.profile.endpointId === MEDIA_REALTIME_ENDPOINT_ID) {
-          return errorResponse(
-            409,
-            `Realtime media uses the backend session wrapper. Use ${MEDIA_REALTIME_SESSION_PATH} to start, heartbeat, and stop active realtime usage.`,
-            origin,
-          );
-        }
-        const submissionInput = applyConvenienceInput({
-          capability: resolved.capability,
-          input: body.input,
-          prompt: body.prompt,
-          aspectRatio: body.aspectRatio,
-          sourceUrl: body.sourceUrl,
-          source: body.source,
-          sources: body.sources,
-        });
-        const storedRequest = summarizeMediaRequestForStorage({
-          ...body,
-          input: submissionInput,
-        });
-        const billingAdmissionIssue = getMediaBillingAdmissionIssue({
-          endpointId: resolved.profile.endpointId,
-          request: storedRequest,
-        });
-        if (billingAdmissionIssue) {
-          return errorResponse(503, `Media billing is not configured for ${resolved.profile.endpointId}: ${billingAdmissionIssue}`, origin);
-        }
-        const apiKey = getFalApiKey();
-        if (!apiKey) return errorResponse(503, "Media generation is not configured yet.", origin);
-
-        const jobId = crypto.randomUUID();
-        await ctx.runMutation(internal.media_jobs.createJob, {
-          ownerId,
-          jobId,
-          capability: resolved.capability.id,
-          profile: resolved.profile.id,
-          provider: "fal",
-          endpointId: resolved.profile.endpointId,
-          request: storedRequest,
-        });
-
         try {
-          const submitted = await submitFalRequest({
-            apiKey,
-            endpointId: resolved.profile.endpointId,
+          const body = parseMediaGenerateRequest(requestBody);
+          if (!body) return errorResponse(400, "Invalid media generation JSON body", origin);
+          const resolved = resolveMediaProfile(body.capability, body.profile);
+          if (!resolved) return errorResponse(400, "Unknown capability or profile. See /api/media/v1/capabilities.", origin);
+          const validationError = requireCapabilityInputs({
+            capability: resolved.capability,
+            prompt: body.prompt,
+            aspectRatio: body.aspectRatio,
+            sourceUrl: body.sourceUrl,
+            source: body.source,
+            sources: body.sources,
+            input: body.input,
+          });
+          if (validationError) return errorResponse(400, validationError, origin);
+          if (resolved.profile.endpointId === MEDIA_REALTIME_ENDPOINT_ID) {
+            return errorResponse(
+              409,
+              `Realtime media uses the backend session wrapper. Use ${MEDIA_REALTIME_SESSION_PATH} to start, heartbeat, and stop active realtime usage.`,
+              origin,
+            );
+          }
+          const submissionInput = applyConvenienceInput({
+            capability: resolved.capability,
+            input: body.input,
+            prompt: body.prompt,
+            aspectRatio: body.aspectRatio,
+            sourceUrl: body.sourceUrl,
+            source: body.source,
+            sources: body.sources,
+          });
+          const storedRequest = summarizeMediaRequestForStorage({
+            ...body,
             input: submissionInput,
-            webhookUrl: `${new URL(MEDIA_FAL_WEBHOOK_PATH, request.url).toString()}?jobId=${encodeURIComponent(jobId)}`,
           });
-          await ctx.runMutation(internal.media_jobs.markSubmitted, {
-            jobId,
-            providerRequestId: submitted.requestId,
-            ...(submitted.gatewayRequestId ? { providerGatewayRequestId: submitted.gatewayRequestId } : {}),
-            ...(submitted.responseUrl ? { providerResponseUrl: submitted.responseUrl } : {}),
-            ...(submitted.statusUrl ? { providerStatusUrl: submitted.statusUrl } : {}),
-            upstreamStatus: submitted.upstreamStatus,
-            ...(submitted.queuePosition !== undefined ? { queuePosition: submitted.queuePosition } : {}),
+          const billingAdmissionIssue = getMediaBillingAdmissionIssue({
+            endpointId: resolved.profile.endpointId,
+            request: storedRequest,
           });
-          return jsonResponse(createMediaGenerateAcceptedResponse({
+          if (billingAdmissionIssue) {
+            return errorResponse(503, `Media billing is not configured for ${resolved.profile.endpointId}: ${billingAdmissionIssue}`, origin);
+          }
+          const apiKey = getFalApiKey();
+          if (!apiKey) return errorResponse(503, "Media generation is not configured yet.", origin);
+
+          const jobId = crypto.randomUUID();
+          await ctx.runMutation(internal.media_jobs.createJob, {
+            ownerId,
             jobId,
             capability: resolved.capability.id,
             profile: resolved.profile.id,
-            status: toMediaJobStatus(submitted.upstreamStatus),
-            upstreamStatus: submitted.upstreamStatus,
-            subscription: { query: MEDIA_SUBSCRIPTION_QUERY, args: { jobId } },
-          }), 202, origin);
-        } catch (error) {
-          await ctx.runMutation(internal.media_jobs.markSubmissionFailed, {
-            jobId,
-            upstreamStatus: "ERROR",
-            error:
-              (createMediaJobError({
-                value: (error as Error).message,
-                fallbackMessage: "Media generation failed upstream.",
-              }) ?? { message: "Media generation failed upstream." }) as never,
+            provider: "fal",
+            endpointId: resolved.profile.endpointId,
+            request: storedRequest,
           });
-          return errorResponse(502, `Fal request failed: ${(error as Error).message || "Unknown error"}`, origin);
+
+          try {
+            const submitted = await submitFalRequest({
+              apiKey,
+              endpointId: resolved.profile.endpointId,
+              input: submissionInput,
+              webhookUrl: `${new URL(MEDIA_FAL_WEBHOOK_PATH, request.url).toString()}?jobId=${encodeURIComponent(jobId)}`,
+            });
+            await ctx.runMutation(internal.media_jobs.markSubmitted, {
+              jobId,
+              providerRequestId: submitted.requestId,
+              ...(submitted.gatewayRequestId ? { providerGatewayRequestId: submitted.gatewayRequestId } : {}),
+              ...(submitted.responseUrl ? { providerResponseUrl: submitted.responseUrl } : {}),
+              ...(submitted.statusUrl ? { providerStatusUrl: submitted.statusUrl } : {}),
+              upstreamStatus: submitted.upstreamStatus,
+              ...(submitted.queuePosition !== undefined ? { queuePosition: submitted.queuePosition } : {}),
+            });
+            return jsonResponse(createMediaGenerateAcceptedResponse({
+              jobId,
+              capability: resolved.capability.id,
+              profile: resolved.profile.id,
+              status: toMediaJobStatus(submitted.upstreamStatus),
+              upstreamStatus: submitted.upstreamStatus,
+              subscription: { query: MEDIA_SUBSCRIPTION_QUERY, args: { jobId } },
+            }), 202, origin);
+          } catch (error) {
+            await ctx.runMutation(internal.media_jobs.markSubmissionFailed, {
+              jobId,
+              upstreamStatus: "ERROR",
+              error:
+                (createMediaJobError({
+                  value: (error as Error).message,
+                  fallbackMessage: "Media generation failed upstream.",
+                }) ?? { message: "Media generation failed upstream." }) as never,
+            });
+            return errorResponse(502, `Fal request failed: ${(error as Error).message || "Unknown error"}`, origin);
+          }
+        } catch (error) {
+          console.error("[media/generate] Unhandled error:", error);
+          return errorResponse(500, `Media generation error: ${(error as Error).message || "Unknown error"}`, origin);
         }
       })),
   });

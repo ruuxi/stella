@@ -491,6 +491,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onAuthCallback: onIpc<{ url: string }>("auth:callback"),
     openFullDiskAccess: () => ipcRenderer.send("system:openFullDiskAccess"),
     openExternal: (url: string) => ipcRenderer.send("shell:openExternal", url),
+    showItemInFolder: (filePath: string) => ipcRenderer.send("shell:showItemInFolder", filePath),
     shellKillByPort: (port: number) =>
       ipcRenderer.invoke("shell:killByPort", { port }),
     getLocalSyncMode: () =>
@@ -588,6 +589,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
       selectedBrowser?: string;
       selectedProfile?: string;
     }) => ipcRenderer.invoke("signals:collectAll", options),
+  },
+
+  media: {
+    saveOutput: (url: string, fileName: string) =>
+      ipcRenderer.invoke("media:saveOutput", { url, fileName }) as Promise<{
+        ok: boolean;
+        path?: string;
+        error?: string;
+      }>,
+    getStellaMediaDir: () =>
+      ipcRenderer.invoke("media:getStellaMediaDir") as Promise<string | null>,
   },
 
   projects: {
