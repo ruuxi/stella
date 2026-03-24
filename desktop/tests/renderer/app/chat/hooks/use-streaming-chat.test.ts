@@ -40,6 +40,7 @@ const mockUploadAttachments = vi.fn(() => Promise.resolve([]));
 const mockBuildHistory = vi.fn(() => undefined);
 const mockAgentHealthCheck = vi.fn(() => Promise.resolve({ ready: true }));
 const mockAgentStartChat = vi.fn(() => Promise.resolve({ runId: "run-1" }));
+let mockIsAuthenticated = true;
 type AgentOnStreamHandler = (callback: (event: AgentStreamEvent) => void) => () => void;
 const mockAgentOnStream = vi.fn<AgentOnStreamHandler>(() => vi.fn());
 
@@ -48,7 +49,7 @@ vi.mock("@/context/chat-store", () => ({
     storageMode: "local",
     isLocalStorage: true,
     cloudFeaturesEnabled: false,
-    isAuthenticated: true,
+    isAuthenticated: mockIsAuthenticated,
     appendEvent: mockAppendEvent,
     appendAgentEvent: mockAppendAgentEvent,
     uploadAttachments: mockUploadAttachments,
@@ -105,6 +106,7 @@ describe("useStreamingChat", () => {
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
     vi.clearAllMocks();
+    mockIsAuthenticated = true;
     localStorage.clear();
     window.electronAPI = {
       agent: {
@@ -670,9 +672,10 @@ describe("useStreamingChat", () => {
       expect(result.current.pendingUserMessageId).toBeNull();
     });
 
-    it("clears streaming state when a resumed background run ends without a linked user message", async () => {
+    it("resumes local background runs even when the user is not authenticated", async () => {
       let streamCallback: ((event: AgentStreamEvent) => void) | undefined
       const unsubscribe = vi.fn()
+      mockIsAuthenticated = false
 
       mockAgentOnStream.mockImplementation((callback) => {
         streamCallback = callback
@@ -735,6 +738,5 @@ describe("useStreamingChat", () => {
     });
   });
 });
-
 
 
