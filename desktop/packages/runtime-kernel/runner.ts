@@ -187,5 +187,12 @@ export const createStellaHostRunner = (
         timestamp: Date.now(),
       });
     },
+    convexAction: async (ref: unknown, args: unknown): Promise<unknown> => {
+      const client = convexSession.ensureConvexClient();
+      if (!client) {
+        throw new Error("Convex client not available — check connection and auth.");
+      }
+      return (client as { action: (ref: unknown, args: unknown) => Promise<unknown> }).action(ref, args);
+    },
   };
 };
