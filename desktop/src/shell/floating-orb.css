@@ -136,6 +136,7 @@
   field-sizing: content;
   min-height: 30px;
   max-height: 120px;
+  font-size: 16px;
 }
 
 .orb-chat-add {
