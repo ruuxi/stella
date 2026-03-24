@@ -144,6 +144,32 @@ export const createDesktopDatabase = (stellaHome: string): SqliteDatabase => {
   `);
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS runtime_tasks (
+      thread_id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      agent_type TEXT NOT NULL,
+      description TEXT NOT NULL,
+      task_depth INTEGER NOT NULL,
+      max_task_depth INTEGER,
+      parent_task_id TEXT,
+      system_prompt_override TEXT,
+      tools_allowlist_override_json TEXT,
+      omit_core_memory INTEGER NOT NULL DEFAULT 0,
+      self_mod_metadata_json TEXT,
+      status TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      result TEXT,
+      error TEXT,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_runtime_tasks_conversation_updated
+    ON runtime_tasks(conversation_id, updated_at, thread_id);
+  `);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS runtime_conversation_state (
       conversation_id TEXT PRIMARY KEY,
       reminder_tokens_since_last_injection INTEGER NOT NULL DEFAULT 0,

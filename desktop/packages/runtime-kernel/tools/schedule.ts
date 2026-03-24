@@ -87,9 +87,9 @@ export const handleSchedule = async (
 
   const startedAt = Date.now();
   while (Date.now() - startedAt < SCHEDULE_TASK_TIMEOUT_MS) {
-    const snapshot = await api.getTask(created.taskId);
+    const snapshot = await api.getTask(created.threadId);
     if (!snapshot) {
-      throw new Error(`Schedule task not found: ${created.taskId}`);
+      throw new Error(`Schedule task not found: ${created.threadId}`);
     }
     if (snapshot.status === "completed") {
       return { result: typeof snapshot.result === "string" ? snapshot.result : "Scheduling updated." };
@@ -100,7 +100,7 @@ export const handleSchedule = async (
     await sleep(SCHEDULE_TASK_POLL_MS);
   }
 
-  await api.cancelTask(created.taskId, "Schedule tool timed out waiting for completion.");
+  await api.cancelTask(created.threadId, "Schedule tool timed out waiting for completion.");
   throw new Error("Scheduling request timed out.");
 };
 

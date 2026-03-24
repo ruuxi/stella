@@ -16,10 +16,10 @@ export type PersonalWebsiteGenerationRequest = {
 
 type CreateBackgroundTask = (
   request: Omit<TaskToolRequest, "storageMode">,
-) => Promise<{ taskId: string }>;
+) => Promise<{ threadId: string }>;
 
 type GetLocalTaskSnapshot = (
-  taskId: string,
+  threadId: string,
 ) => Promise<TaskToolSnapshot | null>;
 
 const GENERATION_TOOLS = ["Read", "Write"] as const;
@@ -29,13 +29,13 @@ const TASK_POLL_MS = 250;
 
 const waitForTaskTerminal = async (
   getTask: GetLocalTaskSnapshot,
-  taskId: string,
+  threadId: string,
 ): Promise<TaskToolSnapshot> => {
   while (true) {
-    const snapshot = await getTask(taskId);
+    const snapshot = await getTask(threadId);
     if (!snapshot) {
-      logger.error("task.disappeared", { taskId });
-      throw new Error(`Generation task disappeared: ${taskId}`);
+      logger.error("task.disappeared", { threadId });
+      throw new Error(`Generation task disappeared: ${threadId}`);
     }
     if (
       snapshot.status === "completed" ||
@@ -43,7 +43,7 @@ const waitForTaskTerminal = async (
       snapshot.status === "canceled"
     ) {
       logger.info("task.terminal", {
-        taskId,
+        threadId,
         description: snapshot.description,
         status: snapshot.status,
         error: snapshot.error,
@@ -68,7 +68,7 @@ export const startPersonalWebsiteGeneration = async (
     conversationId: request.conversationId,
   });
 
-  const { taskId } = await createTask({
+  const { threadId } = await createTask({
     conversationId: request.conversationId,
     description: "Generate personal website",
     prompt: userPrompt,
@@ -79,9 +79,9 @@ export const startPersonalWebsiteGeneration = async (
     maxTaskDepth: 1,
   });
 
-  logger.info("task.created", { taskId });
+  logger.info("task.created", { threadId });
 
-  const snapshot = await waitForTaskTerminal(getTask, taskId);
+  const snapshot = await waitForTaskTerminal(getTask, threadId);
 
   if (snapshot.status !== "completed") {
     const detail = snapshot.error?.trim() || snapshot.status;

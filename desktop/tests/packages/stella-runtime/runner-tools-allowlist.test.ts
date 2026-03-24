@@ -90,6 +90,7 @@ vi.mock("../../../packages/runtime-kernel/extensions/hook-emitter.js", () => ({
 }));
 
 vi.mock("../../../packages/runtime-kernel/tasks/local-task-manager.js", () => ({
+  TASK_SHUTDOWN_CANCEL_REASON: "Canceled because Stella closed or restarted.",
   LocalTaskManager: class LocalTaskManager {
     constructor(opts: unknown) {
       localTaskManagerCtorMock(opts);
@@ -418,7 +419,7 @@ describe("runtime runner tools allowlist", () => {
     taskManagerOptions.onTaskEvent({
       type: "task-completed",
       conversationId: "conv-1",
-      taskId: "local:task:1",
+      taskId: "1",
       agentType: "general",
       description: "Redesign dashboard",
       result: "The redesign is complete.",
@@ -502,7 +503,7 @@ describe("runtime runner tools allowlist", () => {
     taskManagerOptions.onTaskEvent({
       type: "task-completed",
       conversationId: "conv-1",
-      taskId: "local:task:2",
+      taskId: "2",
       agentType: "general",
       result: "Queued result",
     });
@@ -570,7 +571,7 @@ describe("runtime runner tools allowlist", () => {
     taskManagerOptions.onTaskEvent({
       type: "task-canceled",
       conversationId: "conv-1",
-      taskId: "local:task:3",
+      taskId: "3",
       agentType: "general",
       description: "Redesign dashboard",
       error: "Canceled by user",
@@ -663,7 +664,7 @@ describe("runtime runner tools allowlist", () => {
     taskManagerOptions.onTaskEvent({
       type: "task-completed",
       conversationId: "conv-1",
-      taskId: "local:task:4",
+      taskId: "4",
       agentType: "general",
       result: "Background result",
     });
@@ -699,4 +700,3 @@ describe("runtime runner tools allowlist", () => {
     db.close();
   });
 });
-

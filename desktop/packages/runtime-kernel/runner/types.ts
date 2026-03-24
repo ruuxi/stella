@@ -290,12 +290,12 @@ export type RunnerPublicApi = {
   runBlockingLocalTask: (
     request: Omit<TaskToolRequest, "storageMode">,
   ) => Promise<
-    | { status: "ok"; finalText: string; taskId: string }
-    | { status: "error"; finalText: ""; error: string; taskId?: string }
+    | { status: "ok"; finalText: string; threadId: string }
+    | { status: "error"; finalText: ""; error: string; threadId?: string }
   >;
   createBackgroundTask: (
     request: Omit<TaskToolRequest, "storageMode">,
-  ) => Promise<{ taskId: string }>;
+  ) => Promise<{ threadId: string }>;
   getActiveTaskCount: () => number;
   getLocalTaskSnapshot: (taskId: string) => Promise<TaskToolSnapshot | null>;
   cancelLocalChat: (runId: string) => void;

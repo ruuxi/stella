@@ -136,14 +136,14 @@ export const buildRuntimeThreadKey = (args: {
   runId: string;
   threadId?: string;
 }): string => {
-  if (args.agentType === "orchestrator") {
-    return args.threadId?.trim() || args.conversationId;
-  }
   const existing = args.threadId?.trim();
-  if (existing && existing.startsWith(`${args.conversationId}::subagent::`)) {
+  if (existing) {
     return existing;
   }
-  const threadKey = existing || `run:${args.runId}`;
+  if (args.agentType === "orchestrator") {
+    return args.conversationId;
+  }
+  const threadKey = `run:${args.runId}`;
   return `${args.conversationId}::subagent::${args.agentType}::${threadKey}`;
 };
 

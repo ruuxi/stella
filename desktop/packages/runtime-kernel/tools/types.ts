@@ -83,8 +83,6 @@ export type TaskToolRequest = {
   maxTaskDepth?: number;
   parentTaskId?: string;
   threadId?: string;
-  threadName?: string;
-  commandId?: string;
   systemPromptOverride?: string;
   toolsAllowlistOverride?: string[];
   omitCoreMemory?: boolean;
@@ -112,16 +110,16 @@ export type TaskToolSnapshot = {
 };
 
 export type TaskToolApi = {
-  createTask: (request: TaskToolRequest) => Promise<{ taskId: string; threadName?: string }>;
-  getTask: (taskId: string) => Promise<TaskToolSnapshot | null>;
-  cancelTask: (taskId: string, reason?: string) => Promise<{ canceled: boolean }>;
+  createTask: (request: TaskToolRequest) => Promise<{ threadId: string }>;
+  getTask: (threadId: string) => Promise<TaskToolSnapshot | null>;
+  cancelTask: (threadId: string, reason?: string) => Promise<{ canceled: boolean }>;
   sendTaskMessage?: (
-    taskId: string,
+    threadId: string,
     message: string,
     from: "orchestrator" | "subagent",
   ) => Promise<{ delivered: boolean }>;
   drainTaskMessages?: (
-    taskId: string,
+    threadId: string,
     recipient: "orchestrator" | "subagent",
   ) => Promise<string[]>;
 };

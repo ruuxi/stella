@@ -71,7 +71,6 @@ describe("runner self-mod HMR transitions", () => {
       runtimeStore: {
         resolveOrCreateActiveThread: vi.fn(() => ({
           threadId: "thread-dashboard",
-          threadName: "dashboard",
           reused: false,
         })),
       },
@@ -114,7 +113,7 @@ describe("runner self-mod HMR transitions", () => {
     expect(runTransition).not.toHaveBeenCalled();
     expect(resume).toHaveBeenCalledTimes(1);
 
-    const snapshot = await context.state.localTaskManager?.getTask(created.taskId);
+    const snapshot = await context.state.localTaskManager?.getTask(created.threadId);
     expect(snapshot?.status).toBe("completed");
   });
 
@@ -152,7 +151,6 @@ describe("runner self-mod HMR transitions", () => {
       runtimeStore: {
         resolveOrCreateActiveThread: vi.fn(() => ({
           threadId: "thread-dashboard",
-          threadName: "dashboard",
           reused: false,
         })),
       },
@@ -199,7 +197,7 @@ describe("runner self-mod HMR transitions", () => {
     );
     expect(resume).toHaveBeenCalledTimes(1);
 
-    const snapshot = await context.state.localTaskManager?.getTask(created.taskId);
+    const snapshot = await context.state.localTaskManager?.getTask(created.threadId);
     expect(snapshot?.status).toBe("completed");
   });
 });
