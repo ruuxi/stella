@@ -17,6 +17,7 @@ import {
   cancelAnimation,
   destroyBlob,
   initBlob,
+  primeBlob,
   startClose,
   startOpen,
   type BlobColors,
@@ -105,19 +106,35 @@ type BlobRefs = {
   colorsRef: React.RefObject<BlobColors>
 }
 
+function getBlobColors(
+  background: string,
+  border: string,
+  card: string,
+  interactive: string,
+  selectedIdx: number,
+): BlobColors {
+  const cardVec = cssToVec3(card)
+  const interactiveVec = cssToVec3(interactive)
+
+  return {
+    fills: WEDGES.map((_, i) => (i === selectedIdx ? interactiveVec : cardVec)),
+    selectedFill: interactiveVec,
+    centerBg: cssToVec3(background),
+    stroke: cssToVec3(border),
+  }
+}
+
 function useRadialBlob(
   colors: ReturnType<typeof useTheme>['colors'],
   selectedIdx: number,
 ): BlobRefs {
+  const { background, border, card, interactive } = colors
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const blobReady = useRef(false)
-  const selectedIdxRef = useRef(-1)
-  const colorsRef = useRef<BlobColors>({
-    fills: Array(5).fill([0.2, 0.2, 0.2] as [number, number, number]),
-    selectedFill: [0.4, 0.4, 0.8],
-    centerBg: [0.1, 0.1, 0.1],
-    stroke: [0.3, 0.3, 0.3],
-  })
+  const selectedIdxRef = useRef(selectedIdx)
+  const colorsRef = useRef<BlobColors>(
+    getBlobColors(background, border, card, interactive, selectedIdx),
+  )
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -126,6 +143,11 @@ function useRadialBlob(
       canvas.width = SIZE * dpr
       canvas.height = SIZE * dpr
       blobReady.current = initBlob(canvas)
+      if (blobReady.current) {
+        // Warm a hidden frame so the first visible open does not stall on the
+        // initial WebGL pipeline work.
+        primeBlob(colorsRef.current)
+      }
     }
     return () => {
       destroyBlob()
@@ -134,16 +156,9 @@ function useRadialBlob(
   }, [])
 
   useEffect(() => {
-    const cardVec = cssToVec3(colors.card)
-    const interactiveVec = cssToVec3(colors.interactive)
     selectedIdxRef.current = selectedIdx
-    colorsRef.current = {
-      fills: WEDGES.map((_, i) => (i === selectedIdx ? interactiveVec : cardVec)),
-      selectedFill: interactiveVec,
-      centerBg: cssToVec3(colors.background),
-      stroke: cssToVec3(colors.border),
-    }
-  }, [colors.background, colors.border, colors.card, colors.interactive, selectedIdx])
+    colorsRef.current = getBlobColors(background, border, card, interactive, selectedIdx)
+  }, [background, border, card, interactive, selectedIdx])
 
   return useMemo(() => ({ canvasRef, blobReady, selectedIdxRef, colorsRef }), [])
 }
@@ -413,4 +428,3 @@ export function RadialDial() {
     </div>
   )
 }
-

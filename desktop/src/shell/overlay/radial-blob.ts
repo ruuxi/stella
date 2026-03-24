@@ -328,6 +328,11 @@ export function startClose(
   animFrame = requestAnimationFrame(tick)
 }
 
+export function primeBlob(colors: BlobColors) {
+  draw(1, 1, 1, 1, 0, -1, colors)
+  clearCanvas()
+}
+
 export function cancelAnimation() {
   if (animFrame !== null) {
     cancelAnimationFrame(animFrame)
