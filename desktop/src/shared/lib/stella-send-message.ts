@@ -36,6 +36,10 @@ export function toStellaMessageMetadata(
 }
 
 export function dispatchStellaSendMessage(detail: StellaSendMessageDetail) {
+  // Ensure the orb chat is open so the user sees the response
+  window.dispatchEvent(
+    new CustomEvent("stella:open-orb-chat", { detail: {} }),
+  );
   window.dispatchEvent(
     new CustomEvent<StellaSendMessageDetail>(STELLA_SEND_MESSAGE_EVENT, {
       detail,
