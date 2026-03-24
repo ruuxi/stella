@@ -14,6 +14,7 @@ import { authClient } from "../../src/lib/auth-client";
 import { env } from "../../src/config/env";
 import { errorMessage } from "../../src/lib/assert";
 import { colors } from "../../src/theme/colors";
+import { fonts } from "../../src/theme/fonts";
 import { TERMS_OF_SERVICE, PRIVACY_POLICY } from "../../src/lib/legal-text";
 
 type LegalDoc = "terms" | "privacy" | null;
@@ -58,29 +59,23 @@ export default function LoginScreen() {
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" />
       <View style={styles.hero}>
-        <Text style={styles.kicker}>STELLA MOBILE</Text>
-        <Text style={styles.title}>Your desktop assistant, pocket-sized.</Text>
+        <Text style={styles.kicker}>STELLA</Text>
+        <Text style={styles.title}>
+          Your assistant,{"\n"}pocket-sized.
+        </Text>
         <Text style={styles.body}>
-          Sign in with the same account you use on desktop. Stella keeps mobile
-          chat ephemeral and only opens your desktop bridge once your machine
-          verifies you.
+          Sign in with the email you use on your computer.
         </Text>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Sign in</Text>
-        <Text style={styles.cardBody}>
-          We&apos;ll email a magic link that opens Stella directly on this
-          phone.
-        </Text>
-
+      <View style={styles.formArea}>
         <TextInput
           autoCapitalize="none"
           autoComplete="email"
           keyboardType="email-address"
           onChangeText={setEmail}
-          placeholder="you@example.com"
-          placeholderTextColor={colors.textMuted}
+          placeholder="Email"
+          placeholderTextColor="rgba(82, 104, 134, 0.4)"
           style={styles.input}
           value={email}
         />
@@ -96,15 +91,13 @@ export default function LoginScreen() {
           ]}
         >
           <Text style={styles.primaryButtonText}>
-            {submitState.type === "sending"
-              ? "Sending..."
-              : "Email me a sign-in link"}
+            {submitState.type === "sending" ? "Sending..." : "Continue"}
           </Text>
         </Pressable>
 
         {submitState.type === "sent" ? (
           <Text style={styles.successText}>
-            Check your inbox, then open the link on this phone.
+            Check your inbox and open the link on this phone.
           </Text>
         ) : null}
 
@@ -113,14 +106,14 @@ export default function LoginScreen() {
         ) : null}
 
         <Text style={styles.legalFooter}>
-          By using Stella, you agree to our{" "}
+          By continuing, you agree to our{" "}
           <Text
             style={styles.legalLink}
             onPress={() => setActiveLegal("terms")}
           >
-            Terms of Service
-          </Text>{" "}
-          and{" "}
+            Terms
+          </Text>
+          {" and "}
           <Text
             style={styles.legalLink}
             onPress={() => setActiveLegal("privacy")}
@@ -171,95 +164,88 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: 24,
-    paddingVertical: 28,
+    paddingHorizontal: 28,
     justifyContent: "space-between",
   },
   hero: {
-    marginTop: 12,
-    gap: 12,
+    flex: 1,
+    justifyContent: "center",
+    gap: 14,
   },
   kicker: {
-    color: colors.accentDark,
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 2,
+    color: colors.textMuted,
+    fontFamily: fonts.mono.medium,
+    fontSize: 11,
+    letterSpacing: 1.5,
   },
   title: {
     color: colors.text,
-    fontSize: 34,
-    lineHeight: 40,
-    fontWeight: "800",
+    fontFamily: fonts.display.light,
+    fontStyle: "italic",
+    fontSize: 42,
+    letterSpacing: -2,
+    lineHeight: 42,
   },
   body: {
     color: colors.textMuted,
-    fontSize: 16,
+    fontFamily: fonts.sans.regular,
+    fontSize: 17,
+    letterSpacing: -0.3,
     lineHeight: 24,
+    marginTop: 2,
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 28,
-    borderWidth: 1,
-    gap: 14,
-    padding: 22,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-  },
-  cardTitle: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: "700",
-  },
-  cardBody: {
-    color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22,
+  formArea: {
+    gap: 12,
+    paddingBottom: 16,
   },
   input: {
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
     borderColor: colors.border,
-    borderRadius: 18,
+    borderRadius: 14,
     borderWidth: 1,
     color: colors.text,
-    fontSize: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 15,
+    fontFamily: fonts.sans.regular,
+    fontSize: 17,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
   },
   primaryButton: {
     alignItems: "center",
     backgroundColor: colors.accent,
-    borderRadius: 18,
-    paddingHorizontal: 18,
-    paddingVertical: 15,
+    borderRadius: 14,
+    paddingVertical: 17,
   },
   primaryButtonPressed: {
-    backgroundColor: colors.accentDark,
+    backgroundColor: colors.accentHover,
   },
   primaryButtonDisabled: {
-    opacity: 0.7,
+    opacity: 0.6,
   },
   primaryButtonText: {
-    color: "#fff7f2",
-    fontSize: 16,
-    fontWeight: "700",
+    color: colors.accentForeground,
+    fontFamily: fonts.sans.semiBold,
+    fontSize: 17,
+    letterSpacing: -0.3,
   },
   successText: {
     color: colors.ok,
-    fontSize: 14,
-    lineHeight: 20,
+    fontFamily: fonts.sans.regular,
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: "center",
   },
   errorText: {
     color: colors.danger,
-    fontSize: 14,
-    lineHeight: 20,
+    fontFamily: fonts.sans.regular,
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: "center",
   },
   legalFooter: {
-    color: colors.textMuted,
+    color: "rgba(82, 104, 134, 0.5)",
+    fontFamily: fonts.sans.regular,
     fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 17,
     textAlign: "center",
     marginTop: 4,
   },
@@ -281,8 +267,9 @@ const styles = StyleSheet.create({
   },
   legalModalTitle: {
     color: colors.text,
+    fontFamily: fonts.sans.semiBold,
     fontSize: 18,
-    fontWeight: "700",
+    letterSpacing: -0.4,
   },
   legalModalClose: {
     paddingHorizontal: 8,
@@ -290,8 +277,8 @@ const styles = StyleSheet.create({
   },
   legalModalCloseText: {
     color: colors.accent,
+    fontFamily: fonts.sans.semiBold,
     fontSize: 16,
-    fontWeight: "600",
   },
   legalModalScroll: {
     flex: 1,
@@ -302,6 +289,7 @@ const styles = StyleSheet.create({
   },
   legalModalBody: {
     color: colors.text,
+    fontFamily: fonts.sans.regular,
     fontSize: 13,
     lineHeight: 20,
     opacity: 0.8,
