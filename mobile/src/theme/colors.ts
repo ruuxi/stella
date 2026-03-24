@@ -13,7 +13,4 @@ export const colors = {
   overlay: "rgba(15, 23, 40, 0.38)",
   ok: "#16a34a",
   danger: "#dc2626",
-  glowCyan: "rgba(99, 212, 255, 0.3)",
-  glowBlue: "rgba(79, 118, 255, 0.22)",
-  glowMint: "rgba(123, 245, 219, 0.2)",
 };

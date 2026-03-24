@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { Slot, usePathname, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import Feather from "@expo/vector-icons/Feather";
 import {
   Animated,
   Pressable,
@@ -13,48 +15,25 @@ import {
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
 
-type TabId = "stella" | "chat" | "account";
+type TabId = "chat" | "stella" | "account";
 
-const TAB_IDS: TabId[] = ["stella", "chat", "account"];
+const TABS: {
+  id: TabId;
+  label: string;
+  icon: React.ComponentProps<typeof Feather>["name"];
+  href: string;
+}[] = [
+  { id: "chat", label: "Chat", icon: "message-square", href: "/chat" },
+  { id: "stella", label: "Desktop", icon: "monitor", href: "/stella" },
+  { id: "account", label: "Account", icon: "user", href: "/account" },
+];
 
-const TABS: Record<
-  TabId,
-  { body: string; href: string; navTitle: string; title: string }
-> = {
-  stella: {
-    body: "Open the live desktop bridge.",
-    href: "/stella",
-    navTitle: "Desktop",
-    title: "Stella",
-  },
-  chat: {
-    body: "Fallback when your desktop is offline.",
-    href: "/chat",
-    navTitle: "Chat",
-    title: "Chat",
-  },
-  account: {
-    body: "Session and security controls.",
-    href: "/account",
-    navTitle: "Account",
-    title: "Account",
-  },
-};
+const SIDEBAR_WIDTH = 260;
 
 function readActiveTab(pathname: string): TabId {
-  if (pathname === "/" || pathname === "/stella") {
-    return "stella";
-  }
-
-  if (pathname === "/chat") {
-    return "chat";
-  }
-
-  if (pathname === "/account") {
-    return "account";
-  }
-
-  throw new Error(`Unknown route: ${pathname}`);
+  if (pathname === "/stella") return "stella";
+  if (pathname === "/account") return "account";
+  return "chat";
 }
 
 function Sidebar({
@@ -66,34 +45,34 @@ function Sidebar({
 }) {
   return (
     <View style={styles.sidebar}>
-      <Text style={styles.sidebarKicker}>STELLA</Text>
-      <Text style={styles.sidebarTitle}>Mobile companion</Text>
-      <Text style={styles.sidebarBody}>
-        Your phone stays light. The desktop does the heavy lifting.
-      </Text>
-
-      <View style={styles.navList}>
-        {TAB_IDS.map((tabId) => (
-          <Pressable
-            key={tabId}
-            onPress={() => onSelectTab(tabId)}
-            style={({ pressed }) => [
-              styles.navItem,
-              activeTab === tabId ? styles.navItemActive : null,
-              pressed ? styles.navItemPressed : null,
-            ]}
-          >
-            <Text
-              style={[
-                styles.navItemTitle,
-                activeTab === tabId ? styles.navItemTitleActive : null,
+      <Text style={styles.brand}>Stella</Text>
+      <View style={styles.nav}>
+        {TABS.map((tab) => {
+          const active = activeTab === tab.id;
+          return (
+            <Pressable
+              key={tab.id}
+              onPress={() => onSelectTab(tab.id)}
+              style={({ pressed }) => [
+                styles.navItem,
+                active && styles.navItemActive,
+                pressed && styles.navItemPressed,
               ]}
             >
-              {TABS[tabId].title}
-            </Text>
-            <Text style={styles.navItemBody}>{TABS[tabId].body}</Text>
-          </Pressable>
-        ))}
+              <Feather
+                name={tab.icon}
+                size={18}
+                color={active ? colors.accent : colors.textMuted}
+                style={styles.navIcon}
+              />
+              <Text
+                style={[styles.navLabel, active && styles.navLabelActive]}
+              >
+                {tab.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );
@@ -105,81 +84,80 @@ export default function MainLayout() {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const sidebarAnimation = useRef(new Animated.Value(0)).current;
+  const sidebarAnim = useRef(new Animated.Value(0)).current;
 
   const activeTab = readActiveTab(pathname);
 
   const navigate = (tab: TabId) => {
-    router.replace(TABS[tab].href);
+    router.replace(TABS.find((t) => t.id === tab)!.href);
     setSidebarOpen(false);
   };
 
   useEffect(() => {
-    Animated.timing(sidebarAnimation, {
+    Animated.timing(sidebarAnim, {
       toValue: sidebarOpen || wide ? 1 : 0,
-      duration: 220,
+      duration: 240,
       useNativeDriver: true,
     }).start();
-  }, [sidebarAnimation, sidebarOpen, wide]);
+  }, [sidebarAnim, sidebarOpen, wide]);
 
   useEffect(() => {
     if (wide) setSidebarOpen(false);
   }, [wide]);
 
-  const translateX = sidebarAnimation.interpolate({
+  const translateX = sidebarAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [-320, 0],
+    outputRange: [-SIDEBAR_WIDTH, 0],
   });
 
   return (
     <SafeAreaView style={styles.shell}>
       <StatusBar style="dark" />
-      <View style={styles.shellBackgroundA} />
-      <View style={styles.shellBackgroundB} />
-      <View style={styles.shellBackgroundC} />
+      <LinearGradient
+        colors={[
+          "rgba(99, 212, 255, 0.09)",
+          colors.background,
+          "rgba(123, 245, 219, 0.06)",
+        ]}
+        locations={[0, 0.5, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
 
       {wide ? (
-        <View style={styles.shellContentWide}>
+        <View style={styles.wideLayout}>
           <Sidebar activeTab={activeTab} onSelectTab={navigate} />
-          <View style={styles.contentPanel}>
+          <View style={styles.content}>
             <Slot />
           </View>
         </View>
       ) : (
-        <View style={styles.shellContentNarrow}>
-          <View style={styles.mobileTopbar}>
+        <View style={styles.narrowLayout}>
+          <View style={styles.topBar}>
             <Pressable
               onPress={() => setSidebarOpen(true)}
-              style={({ pressed }) => [
-                styles.menuButton,
-                pressed ? styles.menuButtonPressed : null,
-              ]}
+              hitSlop={8}
+              style={styles.hamburger}
             >
-              <Text style={styles.menuButtonText}>Menu</Text>
+              <Feather name="menu" size={22} color={colors.text} />
             </Pressable>
-            <Text style={styles.mobileTopbarTitle}>
-              {TABS[activeTab].navTitle}
-            </Text>
-            <View style={styles.mobileTopbarSpacer} />
           </View>
 
-          <View style={styles.contentPanel}>
+          <View style={styles.content}>
             <Slot />
           </View>
 
-          {sidebarOpen ? (
+          {sidebarOpen && (
             <Pressable
               onPress={() => setSidebarOpen(false)}
-              style={styles.overlayBackdrop}
+              style={styles.backdrop}
             />
-          ) : null}
+          )}
 
           <Animated.View
             pointerEvents={sidebarOpen ? "auto" : "none"}
-            style={[
-              styles.sidebarOverlay,
-              { transform: [{ translateX }] },
-            ]}
+            style={[styles.drawerShell, { transform: [{ translateX }] }]}
           >
             <Sidebar activeTab={activeTab} onSelectTab={navigate} />
           </Animated.View>
@@ -194,167 +172,98 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  shellBackgroundA: {
-    position: "absolute",
-    top: -80,
-    left: -40,
-    width: 260,
-    height: 260,
-    borderRadius: 999,
-    backgroundColor: colors.glowCyan,
-  },
-  shellBackgroundB: {
-    position: "absolute",
-    top: -40,
-    right: -30,
-    width: 220,
-    height: 220,
-    borderRadius: 999,
-    backgroundColor: colors.glowBlue,
-  },
-  shellBackgroundC: {
-    position: "absolute",
-    bottom: -100,
-    left: "30%",
-    width: 280,
-    height: 280,
-    borderRadius: 999,
-    backgroundColor: colors.glowMint,
-  },
-  shellContentWide: {
+
+  // Wide (tablet / landscape)
+  wideLayout: {
     flex: 1,
     flexDirection: "row",
   },
-  shellContentNarrow: {
+
+  // Narrow (phone)
+  narrowLayout: {
     flex: 1,
   },
+
+  // Top bar — phone only
+  topBar: {
+    flexDirection: "row",
+    height: 44,
+    paddingHorizontal: 4,
+  },
+  hamburger: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 44,
+    height: 44,
+  },
+
+  // Sidebar
   sidebar: {
-    backgroundColor: colors.panel,
+    backgroundColor: colors.background,
     borderRightColor: colors.border,
-    borderRightWidth: 1,
-    gap: 10,
-    paddingHorizontal: 22,
-    paddingTop: 24,
-    width: 320,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    paddingTop: 16,
+    width: SIDEBAR_WIDTH,
   },
-  sidebarOverlay: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    top: 0,
-    width: 320,
-    zIndex: 5,
-  },
-  overlayBackdrop: {
-    backgroundColor: colors.overlay,
-    bottom: 0,
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: 0,
-    zIndex: 4,
-  },
-  sidebarKicker: {
+  brand: {
     color: colors.textMuted,
-    fontFamily: fonts.mono.regular,
-    fontSize: 11,
-    letterSpacing: 0.5,
+    fontFamily: fonts.sans.medium,
+    fontSize: 13,
+    letterSpacing: 2.6,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    textTransform: "uppercase",
   },
-  sidebarTitle: {
-    color: colors.text,
-    fontFamily: fonts.display.regular,
-    fontSize: 28,
-    letterSpacing: -1.4,
-  },
-  sidebarBody: {
-    color: colors.textMuted,
-    fontFamily: fonts.sans.regular,
-    fontSize: 15,
-    letterSpacing: -0.2,
-    lineHeight: 22,
-    marginBottom: 10,
-  },
-  navList: {
-    gap: 10,
-    marginTop: 12,
+  nav: {
+    gap: 2,
+    paddingHorizontal: 12,
   },
   navItem: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    shadowColor: "#2f5082",
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
+    alignItems: "center",
+    borderRadius: 10,
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
   },
   navItemActive: {
-    backgroundColor: colors.accentSoft,
-    borderColor: "rgba(29, 120, 242, 0.24)",
+    backgroundColor: "rgba(15, 23, 40, 0.05)",
   },
   navItemPressed: {
-    opacity: 0.86,
+    opacity: 0.7,
   },
-  navItemTitle: {
+  navIcon: {
+    width: 20,
+  },
+  navLabel: {
     color: colors.text,
-    fontFamily: fonts.sans.semiBold,
-    fontSize: 17,
-    letterSpacing: -0.4,
+    fontFamily: fonts.sans.medium,
+    fontSize: 15,
   },
-  navItemTitleActive: {
+  navLabelActive: {
     color: colors.accent,
   },
-  navItemBody: {
-    color: colors.textMuted,
-    fontFamily: fonts.sans.regular,
-    fontSize: 14,
-    letterSpacing: -0.2,
-    lineHeight: 20,
+
+  // Drawer overlay — phone only
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.overlay,
+    zIndex: 4,
   },
-  contentPanel: {
+  drawerShell: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    top: 0,
+    width: SIDEBAR_WIDTH,
+    zIndex: 5,
+  },
+
+  // Shared content area
+  content: {
     flex: 1,
-    padding: 16,
-  },
-  mobileTopbar: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingBottom: 12,
-    paddingHorizontal: 16,
-  },
-  mobileTopbarTitle: {
-    color: colors.text,
-    fontFamily: fonts.sans.semiBold,
-    fontSize: 17,
-    letterSpacing: -0.4,
-  },
-  mobileTopbarSpacer: {
-    width: 64,
-  },
-  menuButton: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 10,
-    borderWidth: 1,
-    minWidth: 64,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    shadowColor: "#2f5082",
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  menuButtonPressed: {
-    backgroundColor: colors.panel,
-  },
-  menuButtonText: {
-    color: colors.text,
-    fontFamily: fonts.sans.semiBold,
-    fontSize: 14,
-    letterSpacing: -0.3,
-    textAlign: "center",
+    paddingHorizontal: 20,
+    paddingTop: 4,
   },
 });
