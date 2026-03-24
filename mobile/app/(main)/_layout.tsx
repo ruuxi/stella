@@ -11,6 +11,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { colors } from "../../src/theme/colors";
+import { fonts } from "../../src/theme/fonts";
 
 type TabId = "stella" | "chat" | "account";
 
@@ -135,6 +136,7 @@ export default function MainLayout() {
       <StatusBar style="dark" />
       <View style={styles.shellBackgroundA} />
       <View style={styles.shellBackgroundB} />
+      <View style={styles.shellBackgroundC} />
 
       {wide ? (
         <View style={styles.shellContentWide}>
@@ -194,22 +196,30 @@ const styles = StyleSheet.create({
   },
   shellBackgroundA: {
     position: "absolute",
-    top: -60,
-    right: -10,
-    width: 220,
-    height: 220,
+    top: -80,
+    left: -40,
+    width: 260,
+    height: 260,
     borderRadius: 999,
-    backgroundColor: "#f1cfb4",
-    opacity: 0.5,
+    backgroundColor: colors.glowCyan,
   },
   shellBackgroundB: {
     position: "absolute",
-    bottom: -80,
-    left: -20,
-    width: 240,
-    height: 240,
+    top: -40,
+    right: -30,
+    width: 220,
+    height: 220,
     borderRadius: 999,
-    backgroundColor: "#e8dbcb",
+    backgroundColor: colors.glowBlue,
+  },
+  shellBackgroundC: {
+    position: "absolute",
+    bottom: -100,
+    left: "30%",
+    width: 280,
+    height: 280,
+    borderRadius: 999,
+    backgroundColor: colors.glowMint,
   },
   shellContentWide: {
     flex: 1,
@@ -245,53 +255,63 @@ const styles = StyleSheet.create({
     zIndex: 4,
   },
   sidebarKicker: {
-    color: colors.accentDark,
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 2,
+    color: colors.textMuted,
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    letterSpacing: 0.5,
   },
   sidebarTitle: {
     color: colors.text,
+    fontFamily: fonts.display.regular,
     fontSize: 28,
-    fontWeight: "800",
+    letterSpacing: -1.4,
   },
   sidebarBody: {
     color: colors.textMuted,
+    fontFamily: fonts.sans.regular,
     fontSize: 15,
+    letterSpacing: -0.2,
     lineHeight: 22,
     marginBottom: 10,
   },
   navList: {
-    gap: 12,
+    gap: 10,
     marginTop: 12,
   },
   navItem: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 22,
+    borderRadius: 14,
     borderWidth: 1,
-    gap: 6,
+    gap: 4,
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
+    shadowColor: "#2f5082",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
   navItemActive: {
     backgroundColor: colors.accentSoft,
-    borderColor: colors.accent,
+    borderColor: "rgba(29, 120, 242, 0.24)",
   },
   navItemPressed: {
     opacity: 0.86,
   },
   navItemTitle: {
     color: colors.text,
-    fontSize: 18,
-    fontWeight: "700",
+    fontFamily: fonts.sans.semiBold,
+    fontSize: 17,
+    letterSpacing: -0.4,
   },
   navItemTitleActive: {
-    color: colors.accentDark,
+    color: colors.accent,
   },
   navItemBody: {
     color: colors.textMuted,
+    fontFamily: fonts.sans.regular,
     fontSize: 14,
+    letterSpacing: -0.2,
     lineHeight: 20,
   },
   contentPanel: {
@@ -307,8 +327,9 @@ const styles = StyleSheet.create({
   },
   mobileTopbarTitle: {
     color: colors.text,
-    fontSize: 18,
-    fontWeight: "700",
+    fontFamily: fonts.sans.semiBold,
+    fontSize: 17,
+    letterSpacing: -0.4,
   },
   mobileTopbarSpacer: {
     width: 64,
@@ -316,19 +337,24 @@ const styles = StyleSheet.create({
   menuButton: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 16,
+    borderRadius: 10,
     borderWidth: 1,
     minWidth: 64,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
+    shadowColor: "#2f5082",
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
   menuButtonPressed: {
     backgroundColor: colors.panel,
   },
   menuButtonText: {
     color: colors.text,
+    fontFamily: fonts.sans.semiBold,
     fontSize: 14,
-    fontWeight: "700",
+    letterSpacing: -0.3,
     textAlign: "center",
   },
 });

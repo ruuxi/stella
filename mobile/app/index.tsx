@@ -2,6 +2,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StyleSheet, Text } from "react-native";
 import { hasMobileConfig } from "../src/config/env";
 import { colors } from "../src/theme/colors";
+import { fonts } from "../src/theme/fonts";
 
 export default function Index() {
   if (!hasMobileConfig) {
@@ -34,13 +35,16 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
+    fontFamily: fonts.display.regular,
     fontSize: 34,
-    fontWeight: "800",
-    lineHeight: 40,
+    letterSpacing: -1.5,
+    lineHeight: 38,
   },
   body: {
     color: colors.textMuted,
+    fontFamily: fonts.sans.regular,
     fontSize: 16,
+    letterSpacing: -0.3,
     lineHeight: 24,
   },
 });

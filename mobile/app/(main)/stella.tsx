@@ -14,6 +14,7 @@ import { getConvexToken } from "../../src/lib/auth-token";
 import { getJson } from "../../src/lib/http";
 import { generateShimScript } from "../../src/lib/shim";
 import { colors } from "../../src/theme/colors";
+import { fonts } from "../../src/theme/fonts";
 import type { DesktopBridgeStatus } from "../../src/types";
 
 const timeLabel = (value: number | null) => {
@@ -312,49 +313,61 @@ const styles = StyleSheet.create({
   },
   screenTitle: {
     color: colors.text,
+    fontFamily: fonts.display.regular,
     fontSize: 30,
-    fontWeight: "800",
+    letterSpacing: -1.5,
   },
   screenBody: {
     color: colors.textMuted,
+    fontFamily: fonts.sans.regular,
     fontSize: 15,
+    letterSpacing: -0.2,
     lineHeight: 22,
   },
   stateCard: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 24,
+    borderRadius: 18,
     borderWidth: 1,
     gap: 12,
     padding: 20,
+    shadowColor: "#2f5082",
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
   },
   stateTitle: {
     color: colors.text,
-    fontSize: 22,
-    fontWeight: "700",
+    fontFamily: fonts.display.regular,
+    fontSize: 24,
+    letterSpacing: -1,
   },
   stateBody: {
     color: colors.textMuted,
+    fontFamily: fonts.sans.regular,
     fontSize: 15,
+    letterSpacing: -0.2,
     lineHeight: 22,
   },
   primaryButton: {
     alignItems: "center",
     backgroundColor: colors.accent,
-    borderRadius: 18,
+    borderRadius: 12,
     paddingHorizontal: 18,
-    paddingVertical: 15,
+    paddingVertical: 14,
   },
   primaryButtonPressed: {
-    backgroundColor: colors.accentDark,
+    backgroundColor: colors.accentHover,
   },
   primaryButtonText: {
-    color: "#fff7f2",
-    fontSize: 16,
-    fontWeight: "700",
+    color: colors.accentForeground,
+    fontFamily: fonts.sans.bold,
+    fontSize: 15,
+    letterSpacing: -0.4,
   },
   errorText: {
     color: colors.danger,
+    fontFamily: fonts.sans.regular,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -371,10 +384,14 @@ const styles = StyleSheet.create({
   webCard: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 26,
+    borderRadius: 18,
     borderWidth: 1,
     flex: 1,
     overflow: "hidden",
+    shadowColor: "#2f5082",
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
   },
   webView: {
     flex: 1,
@@ -383,17 +400,22 @@ const styles = StyleSheet.create({
   ghostButton: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 16,
+    borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
+    shadowColor: "#2f5082",
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
   ghostButtonPressed: {
     backgroundColor: colors.panel,
   },
   ghostButtonText: {
     color: colors.text,
+    fontFamily: fonts.sans.semiBold,
     fontSize: 14,
-    fontWeight: "700",
+    letterSpacing: -0.3,
   },
 });

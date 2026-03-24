@@ -12,6 +12,7 @@ import {
 import { assert, assertObject, errorMessage } from "../../src/lib/assert";
 import { postJson } from "../../src/lib/http";
 import { colors } from "../../src/theme/colors";
+import { fonts } from "../../src/theme/fonts";
 import type { ChatMessage } from "../../src/types";
 
 const INTRO_MESSAGE: ChatMessage = {
@@ -118,7 +119,7 @@ export default function ChatScreen() {
           multiline
           onChangeText={setDraft}
           placeholder="Ask Stella something"
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor="rgba(82, 104, 134, 0.46)"
           style={styles.composerInput}
           value={draft}
         />
@@ -157,12 +158,15 @@ const styles = StyleSheet.create({
   },
   screenTitle: {
     color: colors.text,
+    fontFamily: fonts.display.regular,
     fontSize: 30,
-    fontWeight: "800",
+    letterSpacing: -1.5,
   },
   screenBody: {
     color: colors.textMuted,
+    fontFamily: fonts.sans.regular,
     fontSize: 15,
+    letterSpacing: -0.2,
     lineHeight: 22,
   },
   chatList: {
@@ -170,7 +174,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   chatBubble: {
-    borderRadius: 22,
+    borderRadius: 16,
     maxWidth: "88%",
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -180,40 +184,52 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
+    shadowColor: "#2f5082",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
   chatBubbleUser: {
     alignSelf: "flex-end",
     backgroundColor: colors.accentSoft,
-    borderColor: colors.accent,
+    borderColor: "rgba(29, 120, 242, 0.2)",
     borderWidth: 1,
   },
   chatRole: {
     color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1,
-    marginBottom: 8,
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    marginBottom: 6,
     textTransform: "uppercase",
   },
   chatRoleUser: {
-    color: colors.accentDark,
+    color: colors.accent,
   },
   chatText: {
     color: colors.text,
+    fontFamily: fonts.sans.regular,
     fontSize: 15,
+    letterSpacing: -0.2,
     lineHeight: 22,
   },
   composerCard: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 24,
+    borderRadius: 18,
     borderWidth: 1,
     gap: 12,
     padding: 16,
+    shadowColor: "#2f5082",
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
   },
   composerInput: {
     color: colors.text,
+    fontFamily: fonts.sans.regular,
     fontSize: 16,
+    letterSpacing: -0.2,
     lineHeight: 22,
     maxHeight: 150,
     minHeight: 80,
@@ -228,24 +244,26 @@ const styles = StyleSheet.create({
   composerHint: {
     color: colors.textMuted,
     flex: 1,
+    fontFamily: fonts.sans.regular,
     fontSize: 13,
     lineHeight: 18,
   },
   sendButton: {
-    backgroundColor: colors.text,
-    borderRadius: 16,
+    backgroundColor: colors.accent,
+    borderRadius: 10,
     paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingVertical: 11,
   },
   sendButtonPressed: {
-    opacity: 0.9,
+    backgroundColor: colors.accentHover,
   },
   sendButtonDisabled: {
     opacity: 0.7,
   },
   sendButtonText: {
-    color: "#fff",
+    color: colors.accentForeground,
+    fontFamily: fonts.sans.bold,
     fontSize: 14,
-    fontWeight: "700",
+    letterSpacing: -0.3,
   },
 });
