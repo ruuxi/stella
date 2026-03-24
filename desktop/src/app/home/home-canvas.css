@@ -1,0 +1,224 @@
+/* ── Home Canvas ── */
+
+@keyframes hcFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hc {
+  --hc-fg: var(--foreground, #0f1728);
+  --hc-muted: color-mix(in oklch, var(--hc-fg) 78%, transparent);
+  --hc-faint: color-mix(in oklch, var(--hc-fg) 12%, transparent);
+  --hc-border: color-mix(in oklch, var(--hc-fg) 18%, transparent);
+  --hc-serif: var(--font-family-display, 'Cormorant Garamond', Georgia, serif);
+  --hc-mono: var(--font-family-mono, 'IBM Plex Mono', monospace);
+  padding: clamp(1.5rem, 3vw, 3rem) clamp(1.5rem, 4vw, 4rem) 2.5rem;
+  width: 100%;
+  margin: 0 auto;
+  animation: hcFadeIn 0.35s ease both;
+}
+
+/* ── Hero ── */
+
+.hc-hero {
+  margin-left: 20%;
+  padding-top: clamp(1rem, 2vw, 2rem);
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+}
+
+.hc-hero-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10rem;
+  margin-bottom: 1.5rem;
+}
+
+.hc-hero-title {
+  font-family: var(--hc-serif) !important;
+  font-size: clamp(3.2rem, 7vw, 5.5rem) !important;
+  font-weight: 300 !important;
+  letter-spacing: -0.07em !important;
+  line-height: 0.88 !important;
+  margin: 0 !important;
+}
+
+.hc-cta {
+  flex-shrink: 0;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  padding: 12px 28px;
+  border: 1px solid var(--hc-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--hc-fg);
+  cursor: pointer;
+  transition: opacity 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.hc-cta:hover {
+  opacity: 0.7;
+  border-color: color-mix(in oklch, var(--hc-fg) 35%, transparent);
+}
+
+.hc-hero-title em {
+  font-weight: 300;
+  font-style: italic;
+}
+
+.hc-lead {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--hc-muted);
+  margin: 0;
+  max-width: 34rem;
+  letter-spacing: -0.02em;
+}
+
+.hc-lead-subtle {
+  font-size: 13px;
+  color: var(--hc-muted);
+  opacity: 0.65;
+  margin-top: 0.5rem;
+}
+
+/* ── Body: two-column ── */
+
+.hc-body {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: clamp(2rem, 4vw, 4rem);
+  align-items: start;
+}
+
+/* ── Left column: profile ── */
+
+.hc-section {
+  margin-bottom: 0;
+}
+
+.hc-heading {
+  font-family: var(--hc-serif) !important;
+  font-size: 1.6rem !important;
+  font-weight: 400 !important;
+  font-style: italic !important;
+  letter-spacing: -0.02em !important;
+  opacity: 0.9 !important;
+  margin: 0 0 1.2rem !important;
+}
+
+.hc-rule {
+  border: none;
+  border-top: 1px solid var(--hc-border);
+  margin: 2.4rem 0;
+}
+
+.hc-projects {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hc-project {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.hc-project-name {
+  font-family: var(--hc-mono);
+  font-size: 13px;
+  font-weight: 500;
+  flex-shrink: 0;
+  min-width: 90px;
+}
+
+.hc-project-desc {
+  font-size: 13px;
+  color: var(--hc-muted);
+  line-height: 1.45;
+}
+
+.hc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.hc-tag {
+  font-family: var(--hc-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  padding: 5px 10px;
+  border: 1px solid var(--hc-border);
+  border-radius: 3px;
+  color: var(--hc-muted);
+}
+
+.hc-prose {
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--hc-muted);
+  margin-bottom: 0;
+}
+
+/* ── Right column: guide ── */
+
+.hc-guide {
+  padding-left: clamp(1.5rem, 3vw, 3rem);
+}
+
+.hc-guide-title {
+  font-family: var(--hc-mono) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  opacity: 0.65 !important;
+  margin: 0 0 1.5rem !important;
+}
+
+.hc-guide-category {
+  margin-bottom: 2rem;
+}
+
+.hc-guide-category-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.6rem;
+  opacity: 0.5;
+}
+
+.hc-guide-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.hc-guide-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--hc-border);
+}
+
+.hc-guide-item:first-child {
+  border-top: 1px solid var(--hc-border);
+}
+
+.hc-guide-item-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.hc-guide-item-example {
+  font-size: 13.5px;
+  color: var(--hc-muted);
+  line-height: 1.45;
+  font-style: italic;
+}
