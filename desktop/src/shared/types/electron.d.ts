@@ -423,6 +423,13 @@ export type ElectronSystemApi = {
 };
 
 export type ElectronBrowserApi = {
+  onBridgeStatus: (callback: (status: {
+    state: "connecting" | "connected" | "reconnecting";
+    attempt: number;
+    nextRetryMs?: number;
+    error?: string;
+    notifyUser?: boolean;
+  }) => void) => () => void;
   checkCoreMemoryExists: () => Promise<boolean>;
   fetchJson: (
     url: string,

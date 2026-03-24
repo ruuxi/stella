@@ -1,13 +1,23 @@
-import { useEffect } from "react";
+import { useCallback } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { loadAsync, useFonts } from "expo-font";
+import * as SplashScreen from "expo-splash-screen";
+import { useEffect } from "react";
 import { authClient } from "../src/lib/auth-client";
 import { hasMobileConfig } from "../src/config/env";
+import {
+  criticalStellaFontAssets,
+  deferredStellaFontAssets,
+} from "../src/theme/fonts";
+
+void SplashScreen.preventAutoHideAsync();
 
 function RootStack() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="auth" />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(main)" />
     </Stack>
@@ -17,6 +27,10 @@ function RootStack() {
 function readRouteGroup(segment: string | undefined) {
   if (segment === undefined) {
     return "index" as const;
+  }
+
+  if (segment === "auth") {
+    return "callback" as const;
   }
 
   if (segment === "(auth)") {
@@ -37,6 +51,11 @@ function AuthenticatedLayout() {
 
   useEffect(() => {
     if (session.isPending) {
+      return;
+    }
+
+    // Don't interfere while the callback route is verifying the OTT
+    if (routeGroup === "callback") {
       return;
     }
 
@@ -64,8 +83,28 @@ function AppLayout() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts(criticalStellaFontAssets);
+
+  useEffect(() => {
+    if (!fontsLoaded) {
+      return;
+    }
+
+    void loadAsync(deferredStellaFontAssets).catch(() => undefined);
+  }, [fontsLoaded]);
+
+  const onLayoutRootView = useCallback(() => {
+    if (fontsLoaded) {
+      void SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider onLayout={onLayoutRootView}>
       <AppLayout />
     </SafeAreaProvider>
   );

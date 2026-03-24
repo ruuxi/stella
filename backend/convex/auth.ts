@@ -45,6 +45,9 @@ const getEmailLogoSrc = (siteUrl: string) => {
 const extraTrustedOrigins = [
   "http://localhost:5714",
   "http://localhost:5715",
+  // Expo web (`expo start --web` / press `w`) defaults to port 8081
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
   "https://fromyou.ai",
 ];
 
@@ -55,6 +58,15 @@ const getDeepLinkOrigin = () => {
   }
   const protocol = raw.replace("://", "").replace(":", "");
   return `${protocol}://auth`;
+};
+
+/** Matches `EXPO_PUBLIC_STELLA_MOBILE_SCHEME` default in `mobile/src/config/env.ts` (magic-link callback). */
+const getMobileDeepLinkOrigin = () => {
+  const scheme =
+    process.env.EXPO_PUBLIC_STELLA_MOBILE_SCHEME?.trim()
+    || process.env.STELLA_MOBILE_SCHEME?.trim()
+    || "stella-mobile";
+  return `${scheme}://auth`;
 };
 
 const DEFAULT_SESSION_VERSION = 1;
@@ -197,9 +209,12 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
   const convexSiteUrl = getRequiredEnv("CONVEX_SITE_URL");
   const trustedOrigins = Array.from(
     new Set(
-      [siteUrl, getDeepLinkOrigin(), ...extraTrustedOrigins].filter(
-        (origin): origin is string => Boolean(origin),
-      ),
+      [
+        siteUrl,
+        getDeepLinkOrigin(),
+        getMobileDeepLinkOrigin(),
+        ...extraTrustedOrigins,
+      ].filter((origin): origin is string => Boolean(origin)),
     ),
   );
 
