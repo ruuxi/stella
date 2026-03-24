@@ -62,6 +62,7 @@
   --font-family-sans--emphasis-weight: 500;
   --font-family-mono: "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, monospace;
   --font-family-mono--font-feature-settings: "ss01" 1;
+  --font-family-display: "Cormorant Garamond", Georgia, serif;
 
   /* Font feature settings (legacy) */
   --font-feature-settings: normal;
