@@ -310,4 +310,5 @@ export type RunnerPublicApi = {
     role: "user" | "assistant";
     content: string;
   }) => void;
+  convexAction: (ref: unknown, args: unknown) => Promise<unknown>;
 };
