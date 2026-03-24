@@ -3,7 +3,7 @@ import { createStateContext, handleTask } from "../../../packages/runtime-kernel
 
 describe("TaskCreate delegation controls", () => {
   it("forwards inherited depth and defaults parentTaskId from the current task", async () => {
-    const createTask = vi.fn(async () => ({ taskId: "child-task" }));
+    const createTask = vi.fn(async () => ({ threadId: "child-task" }));
     const ctx = createStateContext("state-root", {
       createTask,
       getTask: async () => null,
@@ -40,15 +40,13 @@ describe("TaskCreate delegation controls", () => {
       taskDepth: 2,
       maxTaskDepth: 2,
       parentTaskId: "parent-task",
-      threadName: undefined,
-      commandId: undefined,
       systemPromptOverride: undefined,
       storageMode: "local",
     });
   });
 
   it("prefers the cloud task id when defaulting parentTaskId", async () => {
-    const createTask = vi.fn(async () => ({ taskId: "child-task" }));
+    const createTask = vi.fn(async () => ({ threadId: "child-task" }));
     const ctx = createStateContext("state-root", {
       createTask,
       getTask: async () => null,
@@ -68,7 +66,7 @@ describe("TaskCreate delegation controls", () => {
         deviceId: "device-1",
         requestId: "req-1",
         agentType: "general",
-        taskId: "local:task:parent-task",
+        taskId: "parent-task",
         cloudTaskId: "cloud-parent-task",
         taskDepth: 1,
         maxTaskDepth: 2,
@@ -87,7 +85,7 @@ describe("TaskCreate delegation controls", () => {
   });
 
   it("rejects child agent types outside the caller allowlist", async () => {
-    const createTask = vi.fn(async () => ({ taskId: "child-task" }));
+    const createTask = vi.fn(async () => ({ threadId: "child-task" }));
     const ctx = createStateContext("state-root", {
       createTask,
       getTask: async () => null,
@@ -118,7 +116,7 @@ describe("TaskCreate delegation controls", () => {
   });
 
   it("defaults delegated task storage to local when the caller does not specify a storage mode", async () => {
-    const createTask = vi.fn(async () => ({ taskId: "child-task" }));
+    const createTask = vi.fn(async () => ({ threadId: "child-task" }));
     const ctx = createStateContext("state-root", {
       createTask,
       getTask: async () => null,
@@ -153,7 +151,7 @@ describe("TaskCreate delegation controls", () => {
   });
 
   it("rejects creates that would exceed the inherited depth budget", async () => {
-    const createTask = vi.fn(async () => ({ taskId: "child-task" }));
+    const createTask = vi.fn(async () => ({ threadId: "child-task" }));
     const ctx = createStateContext("state-root", {
       createTask,
       getTask: async () => null,

@@ -130,12 +130,12 @@ const formatTaskEvent = (
       const agentType =
         typeof payload.agentType === "string" ? payload.agentType : "unknown";
       const lines = [`[Task started] ${description} (agent: ${agentType})`];
-      if (taskId) lines.push(`task_id: ${taskId}`);
+      if (taskId) lines.push(`thread_id: ${taskId}`);
       return { role: "user", content: lines.join("\n") };
     }
     case "task_completed": {
       const lines = ["[Task completed]"];
-      if (taskId) lines.push(`task_id: ${taskId}`);
+      if (taskId) lines.push(`thread_id: ${taskId}`);
       if (payload.result !== undefined) {
         lines.push(`result: ${stringifyValue(payload.result)}`);
       }
@@ -143,7 +143,7 @@ const formatTaskEvent = (
     }
     case "task_failed": {
       const lines = ["[Task failed]"];
-      if (taskId) lines.push(`task_id: ${taskId}`);
+      if (taskId) lines.push(`thread_id: ${taskId}`);
       if (payload.error !== undefined) {
         lines.push(`error: ${stringifyValue(payload.error)}`);
       }
@@ -151,7 +151,7 @@ const formatTaskEvent = (
     }
     case "task_canceled": {
       const lines = ["[Task canceled]"];
-      if (taskId) lines.push(`task_id: ${taskId}`);
+      if (taskId) lines.push(`thread_id: ${taskId}`);
       if (payload.error !== undefined) {
         lines.push(`error: ${stringifyValue(payload.error)}`);
       }

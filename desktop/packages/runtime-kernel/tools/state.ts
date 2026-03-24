@@ -41,7 +41,7 @@ const formatTaskSnapshot = (snapshot: TaskToolSnapshot): string => {
   const elapsed = Date.now() - snapshot.startedAt;
   const runningHeader =
     "Task is running in the background.\n" +
-    `Task ID: ${snapshot.id}\n` +
+    `Thread ID: ${snapshot.id}\n` +
     `Elapsed: ${elapsed}ms\n` +
     "You will receive a follow-up message when it completes or fails.";
   if (snapshot.recentActivity && snapshot.recentActivity.length > 0) {
@@ -65,16 +65,16 @@ export const handleTaskUpdate = async (
   args: Record<string, unknown>,
   context: ToolContext,
 ): Promise<ToolResult> => {
-  const explicitTaskId = toOptionalString(args.task_id ?? args.taskId ?? args.id);
-  const contextTaskId = toOptionalString(context.taskId);
-  const taskId = explicitTaskId ?? contextTaskId;
+  const explicitThreadId = toOptionalString(args.thread_id ?? args.threadId ?? args.id);
+  const contextThreadId = toOptionalString(context.taskId);
+  const threadId = explicitThreadId ?? contextThreadId;
   const sender: "orchestrator" | "subagent" =
     context.agentType === "orchestrator" ? "orchestrator" : "subagent";
   if (!ctx.taskApi?.sendTaskMessage) {
     return { error: "Task updates are not configured on this device." };
   }
-  if (!taskId) {
-    return { error: "task_id is required" };
+  if (!threadId) {
+    return { error: "thread_id is required" };
   }
   const message =
     toOptionalString(args.message) ??
@@ -83,12 +83,12 @@ export const handleTaskUpdate = async (
   if (!message) {
     return { error: "message is required" };
   }
-  const delivered = await ctx.taskApi.sendTaskMessage(taskId, message, sender);
+  const delivered = await ctx.taskApi.sendTaskMessage(threadId, message, sender);
   if (!delivered.delivered) {
-    return { error: `Task not found: ${taskId}` };
+    return { error: `Thread not found: ${threadId}` };
   }
   return {
-    result: `Task update delivered to ${taskId}.`,
+    result: `Task update delivered to ${threadId}.`,
   };
 };
 
@@ -98,23 +98,23 @@ export const handleTask = async (
   context: ToolContext,
 ): Promise<ToolResult> => {
   const action = toOptionalString(args.action)?.toLowerCase();
-  const explicitTaskId = toOptionalString(args.task_id ?? args.taskId ?? args.id);
+  const explicitThreadId = toOptionalString(args.thread_id ?? args.threadId ?? args.id);
 
-  if ((action === "cancel" || action === "stop") && explicitTaskId) {
+  if ((action === "cancel" || action === "stop") && explicitThreadId) {
     if (ctx.taskApi) {
       const reason = toOptionalString(args.reason);
-      const canceled = await ctx.taskApi.cancelTask(explicitTaskId, reason);
+      const canceled = await ctx.taskApi.cancelTask(explicitThreadId, reason);
       if (!canceled.canceled) {
-        return { error: `Task not found: ${explicitTaskId}` };
+        return { error: `Thread not found: ${explicitThreadId}` };
       }
-      return { result: `Task canceled.\nTask ID: ${explicitTaskId}` };
+      return { result: `Task canceled.\nThread ID: ${explicitThreadId}` };
     }
-    const localRecord = ctx.tasks.get(explicitTaskId);
-    if (!localRecord) return { error: `Task not found: ${explicitTaskId}` };
+    const localRecord = ctx.tasks.get(explicitThreadId);
+    if (!localRecord) return { error: `Thread not found: ${explicitThreadId}` };
     localRecord.status = "error";
     localRecord.error = "Canceled";
     localRecord.completedAt = Date.now();
-    return { result: `Task canceled.\nTask ID: ${explicitTaskId}` };
+    return { result: `Task canceled.\nThread ID: ${explicitThreadId}` };
   }
 
   const description = toOptionalString(args.description) ?? "Task";
@@ -130,8 +130,6 @@ export const handleTask = async (
     toOptionalString(args.parentTaskId ?? args.parent_task_id) ??
     toOptionalString(context.cloudTaskId) ??
     toOptionalString(context.taskId);
-  const threadName = toOptionalString(args.threadName ?? args.thread_name);
-  const commandId = toOptionalString(args.commandId ?? args.command_id);
   const systemPromptOverride = toOptionalString(
     args.systemPromptOverride ?? args.system_prompt_override,
   );
@@ -168,16 +166,13 @@ export const handleTask = async (
       taskDepth: nextTaskDepth,
       ...(typeof maxTaskDepth === "number" ? { maxTaskDepth } : {}),
       parentTaskId,
-      threadName,
-      commandId,
       systemPromptOverride,
       storageMode,
     });
     return {
       result: [
         "Task is now running in the background.",
-        `Task ID: ${created.taskId}`,
-        ...(created.threadName ? [`Thread: ${created.threadName}`] : []),
+        `Thread ID: ${created.threadId}`,
         "Elapsed: 0ms",
         "You will receive a follow-up message when it completes or fails.",
         "Do not create another task for the same work. You may gently respond to the user or call NoResponse.",
@@ -186,7 +181,7 @@ export const handleTask = async (
   }
 
   // Fallback local in-memory task behavior (used only when no task manager is wired).
-  const id = crypto.randomUUID();
+  const id = String(ctx.tasks.size + 1);
   const record: TaskRecord = {
     id,
     description,
@@ -198,7 +193,7 @@ export const handleTask = async (
   return {
     result: [
       "Task is now running in the background.",
-      `Task ID: ${id}`,
+      `Thread ID: ${id}`,
       "Elapsed: 0ms",
       "You will receive a follow-up message when it completes or fails.",
       "Do not create another task for the same work. You may gently respond to the user or call NoResponse.",
@@ -211,22 +206,22 @@ export const handleTaskOutput = async (
   args: Record<string, unknown>,
   _context: ToolContext,
 ): Promise<ToolResult> => {
-  const taskId = toOptionalString(args.task_id ?? args.taskId ?? args.id);
-  if (!taskId) {
-    return { error: "task_id is required" };
+  const threadId = toOptionalString(args.thread_id ?? args.threadId ?? args.id);
+  if (!threadId) {
+    return { error: "thread_id is required" };
   }
 
   if (ctx.taskApi) {
-    const snapshot = await ctx.taskApi.getTask(taskId);
+    const snapshot = await ctx.taskApi.getTask(threadId);
     if (!snapshot) {
-      return { error: `Task not found: ${taskId}` };
+      return { error: `Thread not found: ${threadId}` };
     }
     return { result: formatTaskSnapshot(snapshot) };
   }
 
-  const record = ctx.tasks.get(taskId);
+  const record = ctx.tasks.get(threadId);
   if (!record) {
-    return { error: `Task not found: ${taskId}` };
+    return { error: `Thread not found: ${threadId}` };
   }
   if (record.status === "completed") {
     const duration = (record.completedAt ?? Date.now()) - record.startedAt;
@@ -244,7 +239,7 @@ export const handleTaskOutput = async (
   return {
     result: [
       "Task is running in the background.",
-      `Task ID: ${taskId}`,
+      `Thread ID: ${threadId}`,
       `Elapsed: ${elapsed}ms`,
       "You will receive a follow-up message when it completes or fails.",
     ].join("\n"),

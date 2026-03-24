@@ -3,82 +3,17 @@ export const RUNTIME_THREAD_REMINDER_INTERVAL_TOKENS = 25_000;
 
 export type RuntimeThreadRecord = {
   conversationId: string;
-  threadKey: string;
+  threadId: string;
   agentType: string;
-  name: string;
   status: "active" | "evicted";
   createdAt: number;
   lastUsedAt: number;
   summary?: string;
 };
 
-export const RUNTIME_THREAD_NAME_POOL = [
-  "apollo",
-  "ares",
-  "artemis",
-  "athena",
-  "atlas",
-  "augustus",
-  "aurelia",
-  "bacchus",
-  "brutus",
-  "caesar",
-  "calypso",
-  "cassius",
-  "ceres",
-  "cicero",
-  "circe",
-  "clio",
-  "daphne",
-  "demeter",
-  "diana",
-  "electra",
-  "euclid",
-  "flora",
-  "fortuna",
-  "gaia",
-  "hector",
-  "helios",
-  "hera",
-  "hermes",
-  "hestia",
-  "hyperion",
-  "iris",
-  "janus",
-  "juno",
-  "jupiter",
-  "lares",
-  "leo",
-  "livia",
-  "lucius",
-  "lyra",
-  "mars",
-  "mercury",
-  "minerva",
-  "neptune",
-  "nike",
-  "nova",
-  "odysseus",
-  "orion",
-  "phoebe",
-  "pluto",
-  "pollux",
-].sort();
-
-export const normalizeRuntimeThreadName = (value: string): string | undefined => {
+export const normalizeRuntimeThreadId = (value: string): string | undefined => {
   const trimmed = value.trim().toLowerCase();
   return trimmed.length > 0 ? trimmed : undefined;
-};
-
-export const pickAvailableRuntimeThreadName = (
-  activeNames: Iterable<string>,
-  random = Math.random,
-): string => {
-  const unavailable = new Set(Array.from(activeNames, (name) => name.toLowerCase()));
-  const available = RUNTIME_THREAD_NAME_POOL.filter((name) => !unavailable.has(name));
-  const pool = available.length > 0 ? available : [...RUNTIME_THREAD_NAME_POOL];
-  const index = Math.max(0, Math.min(pool.length - 1, Math.floor(random() * pool.length)));
-  return pool[index]!;
 };
 
 export const estimateRuntimeTokens = (value: string): number => {
@@ -101,9 +36,9 @@ export const buildActiveThreadsPrompt = (
   if (threads.length === 0) return "";
   const lines = threads.slice(0, MAX_ACTIVE_RUNTIME_THREADS).map((thread) => {
     const summary = thread.summary?.trim()
-      ? ` — ${thread.summary.trim().replace(/\s+/g, " ").slice(0, 180)}`
+      ? ` - ${thread.summary.trim().replace(/\s+/g, " ").slice(0, 180)}`
       : "";
-    return `- ${thread.name} (${thread.agentType}, last used ${formatAge(thread.lastUsedAt, now)})${summary}`;
+    return `- ${thread.threadId} (${thread.agentType}, last used ${formatAge(thread.lastUsedAt, now)})${summary}`;
   });
-  return `# Active Threads\nReuse a thread with thread_name when continuing related work. Omit thread_name to start a fresh thread and the runtime will assign one.\n${lines.join("\n")}`;
+  return `# Active Threads\nEach thread_id is durable and can be reused later for continued work, even if it falls out of the active list.\n${lines.join("\n")}`;
 };
