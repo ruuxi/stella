@@ -6,12 +6,12 @@
   justify-content: flex-end;
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
-  --compact-chat-font-size: 16px;
+  --compact-chat-font-size: 18px;
   --compact-chat-line-height: 1.45;
   --compact-chat-letter-spacing: 0.03em;
   --compact-chat-body-color: var(--text-strong);
   --compact-chat-markdown-color: var(--text-strong);
-  --compact-chat-markdown-weight: 450;
+  --compact-chat-markdown-weight: 425;
   --compact-chat-user-bg: color-mix(in oklch, var(--primary) 12%, transparent);
   --compact-chat-user-radius: 12px;
   --compact-chat-user-tail-radius: var(--compact-chat-user-radius);
@@ -29,11 +29,11 @@
 .chat-conversation-surface--mini {
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
-  --compact-chat-font-size: 16px;
+  --compact-chat-font-size: 18px;
   --compact-chat-line-height: 1.45;
   --compact-chat-body-color: var(--text-strong);
   --compact-chat-markdown-color: var(--text-strong);
-  --compact-chat-markdown-weight: 450;
+  --compact-chat-markdown-weight: 425;
   --compact-chat-user-bg: color-mix(in oklch, var(--primary) 12%, transparent);
   --compact-chat-user-radius: 12px;
   --compact-chat-user-max-width: 85%;
@@ -45,13 +45,13 @@
 }
 
 .chat-conversation-surface--orb {
-  --compact-chat-gap: 10px;
-  --compact-chat-item-padding: 8px 12px;
-  --compact-chat-font-size: 13px;
-  --compact-chat-line-height: 1.5;
-  --compact-chat-body-color: var(--foreground);
-  --compact-chat-markdown-color: var(--foreground);
-  --compact-chat-markdown-weight: 400;
+  --compact-chat-gap: 8px;
+  --compact-chat-item-padding: 10px 12px;
+  --compact-chat-font-size: 18px;
+  --compact-chat-line-height: 1.45;
+  --compact-chat-body-color: var(--text-strong);
+  --compact-chat-markdown-color: var(--text-strong);
+  --compact-chat-markdown-weight: 425;
   --compact-chat-user-bg: color-mix(in srgb, var(--primary) 30%, var(--background));
   --compact-chat-user-radius: 14px;
   --compact-chat-user-tail-radius: 4px;
