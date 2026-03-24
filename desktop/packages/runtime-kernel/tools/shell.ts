@@ -10,6 +10,7 @@ import type { ToolContext, ToolResult, ShellRecord, SecretMountSpec, SkillRecord
 import type { SecretFileMountHandle } from "./utils.js";
 import { removeSecretFile, truncate, writeSecretFile } from "./utils.js";
 import { isDangerousCommand } from "./command-safety.js";
+import { getStellaBrowserBridgeEnv } from "./stella-browser-bridge-config.js";
 
 export type ShellState = {
   shells: Map<string, ShellRecord>;
@@ -318,10 +319,7 @@ export const handleBash = async (
     // Strip any inline session overrides so the model cannot fork ad-hoc
     // browser sessions that fight over the shared extension bridge.
     command = normalizeAppAgentShellCommand(command);
-    envOverrides.STELLA_BROWSER_PROVIDER = "extension";
-    envOverrides.STELLA_BROWSER_SESSION = "default";
-    envOverrides.STELLA_BROWSER_EXT_PORT = "9224";
-    envOverrides.STELLA_BROWSER_EXT_TOKEN = "";
+    Object.assign(envOverrides, getStellaBrowserBridgeEnv());
   }
 
   if (runInBackground) {
