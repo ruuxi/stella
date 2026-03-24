@@ -94,7 +94,7 @@
 }
 
 .event-body {
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1.45;
   color: var(--text-strong);
   white-space: pre-wrap;
@@ -104,7 +104,7 @@
 .event-item.assistant .markdown {
   color: var(--text-strong);
   font-size: 18px;
-  font-weight: 450;
+  font-weight: 425;
 }
 
 .event-window-badge {
