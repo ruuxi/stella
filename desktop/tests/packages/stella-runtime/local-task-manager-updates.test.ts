@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { LocalTaskManager, type LocalTaskManagerAgentContext } from "../../../packages/runtime-kernel/tasks/local-task-manager.js";
+import {
+  LocalTaskManager,
+  TASK_SHUTDOWN_CANCEL_REASON,
+  type LocalTaskManagerAgentContext,
+} from "../../../packages/runtime-kernel/tasks/local-task-manager.js";
 
 const buildAgentContext = (): LocalTaskManagerAgentContext => ({
   systemPrompt: "system",
@@ -94,5 +98,86 @@ describe("LocalTaskManager task updates", () => {
     expect(snapshot?.result).toContain("Switch the output to JSON instead.");
     expect(taskEvents.some((event) => event.statusText === "Applying task update")).toBe(true);
     expect(taskEvents.some((event) => event.type === "task-canceled")).toBe(false);
+  });
+
+  it("cancels pending and running tasks during shutdown", async () => {
+    const taskEvents: Array<{ type: string; taskId?: string; error?: string }> = [];
+
+    const runSubagent = vi.fn(async ({ abortSignal }: { abortSignal: AbortSignal }) => {
+      await new Promise<void>((resolve) => {
+        abortSignal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      return {
+        runId: "run-1",
+        result: "",
+        error: TASK_SHUTDOWN_CANCEL_REASON,
+      };
+    });
+
+    const manager = new LocalTaskManager({
+      maxConcurrent: 1,
+      onTaskEvent: (event) => {
+        taskEvents.push({
+          type: event.type,
+          taskId: event.taskId,
+          error: event.error,
+        });
+      },
+      fetchAgentContext: vi.fn().mockResolvedValue(buildAgentContext()),
+      runSubagent,
+      toolExecutor: vi.fn(async () => ({ result: "ok" })),
+      createCloudTaskRecord: vi.fn(),
+      completeCloudTaskRecord: vi.fn(),
+      getCloudTaskRecord: vi.fn(),
+      cancelCloudTaskRecord: vi.fn(),
+    });
+
+    const runningTask = await manager.createTask({
+      conversationId: "conv-1",
+      description: "Running task",
+      prompt: "Keep working.",
+      agentType: "general",
+      storageMode: "local",
+    });
+    const pendingTask = await manager.createTask({
+      conversationId: "conv-1",
+      description: "Pending task",
+      prompt: "Wait your turn.",
+      agentType: "general",
+      storageMode: "local",
+    });
+
+    await waitForCondition(() =>
+      taskEvents.some((event) =>
+        event.type === "task-started" && event.taskId === runningTask.taskId));
+
+    manager.shutdown();
+
+    await waitForCondition(() =>
+      taskEvents.filter((event) => event.type === "task-canceled").length >= 2);
+
+    expect(taskEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "task-canceled",
+          taskId: runningTask.taskId,
+          error: TASK_SHUTDOWN_CANCEL_REASON,
+        }),
+        expect.objectContaining({
+          type: "task-canceled",
+          taskId: pendingTask.taskId,
+          error: TASK_SHUTDOWN_CANCEL_REASON,
+        }),
+      ]),
+    );
+
+    await expect(manager.getTask(runningTask.taskId)).resolves.toMatchObject({
+      status: "canceled",
+      error: TASK_SHUTDOWN_CANCEL_REASON,
+    });
+    await expect(manager.getTask(pendingTask.taskId)).resolves.toMatchObject({
+      status: "canceled",
+      error: TASK_SHUTDOWN_CANCEL_REASON,
+    });
   });
 });

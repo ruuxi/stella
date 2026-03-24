@@ -376,8 +376,16 @@ export function groupEventsIntoTurns(events: EventRecord[]): MessageTurn[] {
 
 // Get the currently running tool name
 export function getCurrentRunningTool(events: EventRecord[]): string | undefined {
-  const steps = extractStepsFromEvents(events);
-  const running = steps.find((s) => s.status === "running");
+  const turns = groupEventsIntoTurns(events);
+  const latestTurn = turns.at(-1);
+  if (!latestTurn) {
+    const running = extractStepsFromEvents(events).find((s) => s.status === "running");
+    return running?.tool;
+  }
+  if (latestTurn.assistantMessage) {
+    return undefined;
+  }
+  const running = latestTurn.steps.find((s) => s.status === "running");
   return running?.tool;
 }
 
@@ -392,7 +400,9 @@ export function extractTasksFromEvents(
   const failedEvents = events.filter(isTaskFailed);
   const canceledEvents = events.filter(isTaskCanceled);
   const progressEvents = events.filter(isTaskProgress);
-  const assistantMessages = events.filter(isAssistantMessage);
+  const laterTurnMessages = events.filter(
+    (event) => isUserMessage(event) || isAssistantMessage(event),
+  );
 
   // Build maps of taskId -> completion/failure events
   const completedByTaskId = new Map<string, EventRecord & { payload: TaskCompletedPayload }>();
@@ -453,7 +463,7 @@ export function extractTasksFromEvents(
     if (
       status === "running"
       && event.payload.agentType === "schedule"
-      && assistantMessages.some((assistantEvent) => assistantEvent.timestamp > event.timestamp)
+      && laterTurnMessages.some((messageEvent) => messageEvent.timestamp > event.timestamp)
     ) {
       status = "completed";
       outputPreview = outputPreview ?? "Scheduling updated.";
@@ -491,4 +501,3 @@ export function getRunningTasks(
   const tasks = extractTasksFromEvents(events, options);
   return tasks.filter((t) => t.status === "running");
 }
-

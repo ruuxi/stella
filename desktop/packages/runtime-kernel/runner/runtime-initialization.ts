@@ -104,8 +104,10 @@ export const createRuntimeInitialization = (
     context.state.initializationPromise = null;
     deps.syncRemoteTurnBridge();
     deps.disposeConvexClient();
+    deps.shutdownTasks();
     context.state.activeOrchestratorRunId = null;
     context.state.activeOrchestratorConversationId = null;
+    context.state.queuedOrchestratorTurns.length = 0;
     context.state.activeToolExecutionCount = 0;
     context.state.interruptAfterTool = false;
     context.state.activeInterruptedReplayTurn = null;
@@ -117,7 +119,6 @@ export const createRuntimeInitialization = (
     context.state.interruptedRunIds.clear();
     void context.selfModHmrController?.forceResumeAll();
     context.toolHost.killAllShells();
-    deps.shutdownTasks();
   };
 
   const recoverCrashedRuns = async () => {

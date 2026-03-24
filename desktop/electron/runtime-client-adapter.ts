@@ -47,6 +47,9 @@ export type RuntimeAvailabilitySnapshot = {
 const isTerminalEvent = (type: string) =>
   type === AGENT_STREAM_EVENT_TYPES.END || type === AGENT_STREAM_EVENT_TYPES.ERROR;
 
+const isTerminalTaskLifecycleEvent = (type: string) =>
+  type === "task-completed" || type === "task-failed" || type === "task-canceled";
+
 export class RuntimeClientAdapter {
   readonly client: StellaRuntimeClient;
   private lastHealth:
@@ -307,6 +310,16 @@ export class RuntimeClientAdapter {
     };
     let lastRunEventSeq = 0;
     let lastTaskEventSeq = 0;
+    const activeTaskIds = new Set<string>();
+    let runTerminated = false;
+
+    let unsubscribe = () => {};
+    const maybeUnsubscribe = () => {
+      if (!runTerminated || activeTaskIds.size > 0) {
+        return;
+      }
+      unsubscribe();
+    };
 
     const dispatch = (event: RuntimeAgentEventPayload) => {
       if (event.runId !== result.runId) {
@@ -329,6 +342,12 @@ export class RuntimeClientAdapter {
           return;
         }
         lastRunEventSeq = event.seq;
+      }
+
+      if (event.type === "task-started" && event.taskId) {
+        activeTaskIds.add(event.taskId);
+      } else if (isTerminalTaskLifecycleEvent(event.type) && event.taskId) {
+        activeTaskIds.delete(event.taskId);
       }
 
       switch (event.type) {
@@ -363,8 +382,9 @@ export class RuntimeClientAdapter {
           break;
       }
       if (isTerminalEvent(event.type)) {
-        unsubscribe();
+        runTerminated = true;
       }
+      maybeUnsubscribe();
     };
 
     const offEvent = this.client.on("run-event", dispatch);
@@ -373,7 +393,7 @@ export class RuntimeClientAdapter {
         callbacks.onSelfModHmrState?.(payload.state);
       }
     });
-    const unsubscribe = () => {
+    unsubscribe = () => {
       offEvent();
       offHmr();
     };
@@ -458,6 +478,16 @@ export class RuntimeClientAdapter {
       globalThis.crypto?.randomUUID?.() ?? `voice-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let lastRunEventSeq = 0;
     let lastTaskEventSeq = 0;
+    const activeTaskIds = new Set<string>();
+    let runTerminated = false;
+
+    let unsubscribe = () => {};
+    const maybeUnsubscribe = () => {
+      if (!runTerminated || activeTaskIds.size > 0) {
+        return;
+      }
+      unsubscribe();
+    };
 
     const dispatch = (event: RuntimeAgentEventPayload) => {
       const isTaskLifecycleEvent =
@@ -477,6 +507,12 @@ export class RuntimeClientAdapter {
           return;
         }
         lastRunEventSeq = event.seq;
+      }
+
+      if (event.type === "task-started" && event.taskId) {
+        activeTaskIds.add(event.taskId);
+      } else if (isTerminalTaskLifecycleEvent(event.type) && event.taskId) {
+        activeTaskIds.delete(event.taskId);
       }
 
       switch (event.type) {
@@ -510,6 +546,10 @@ export class RuntimeClientAdapter {
           });
           break;
       }
+      if (isTerminalEvent(event.type)) {
+        runTerminated = true;
+      }
+      maybeUnsubscribe();
     };
 
     const offEvent = this.client.on("voice-agent-event", (eventPayload) => {
@@ -524,15 +564,19 @@ export class RuntimeClientAdapter {
       }
       callbacks.onSelfModHmrState?.(hmrPayload.state);
     });
+    unsubscribe = () => {
+      offEvent();
+      offHmr();
+    };
 
     try {
       return await this.client.voiceOrchestratorChat({
         requestId,
         ...payload,
       } satisfies RuntimeVoiceChatPayload);
-    } finally {
-      offEvent();
-      offHmr();
+    } catch (error) {
+      unsubscribe();
+      throw error;
     }
   }
 

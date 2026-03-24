@@ -328,6 +328,7 @@ export const createTaskOrchestration = (
   };
 
   const shutdown = () => {
+    context.state.localTaskManager?.shutdown();
     shutdownSubagentRuntimes();
   };
 
