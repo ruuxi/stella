@@ -84,8 +84,8 @@ const RAW_BUFFER_MAX = SAMPLE_RATE * 10; // 10 seconds
 const COOLDOWN_MS = 1000;
 const WARMUP_FRAMES = 0;
 
-const DEFAULT_THRESHOLD = 0.1;
-const MIN_THRESHOLD = 0.1;
+const DEFAULT_THRESHOLD = 0.6;
+const MIN_THRESHOLD = 0.6;
 
 export function createWakeWordVadGateState(
   vadScore: number,
