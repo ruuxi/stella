@@ -54,13 +54,22 @@
   overflow: hidden;
 }
 
+.home-dashboard--canvas-only {
+  grid-template-columns: 1fr;
+  grid-template-areas: "canvas";
+  gap: 0;
+  padding: 0;
+}
+
 .home-zone-canvas {
   grid-area: canvas;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
   animation: home-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: 0s;
 }
+.home-zone-canvas::-webkit-scrollbar { display: none; }
 .home-zone-sidebar {
   grid-area: sidebar;
   display: flex;
