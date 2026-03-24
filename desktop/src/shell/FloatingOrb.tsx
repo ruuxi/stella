@@ -25,6 +25,8 @@ import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import { StellaAnimation, type StellaAnimationHandle } from "@/shell/ascii-creature/StellaAnimation";
+import { NotificationPanel } from "@/shell/notifications/NotificationPanel";
+import { useActivityData } from "@/shell/notifications/use-activity-data";
 import "./floating-orb.css";
 
 const ORB_POSITION_KEY = "stella:orb-position";
@@ -66,6 +68,7 @@ interface FloatingOrbProps {
   hasOlderEvents: boolean;
   isLoadingOlder: boolean;
   isInitialLoading: boolean;
+  conversationId?: string;
   onSend: (text: string, chatContext?: ChatContext | null) => void;
   onAdd?: () => void;
   onChatOpenChange?: (open: boolean) => void;
@@ -84,6 +87,7 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
       hasOlderEvents,
       isLoadingOlder,
       isInitialLoading,
+      conversationId,
       onSend,
       onAdd,
       onChatOpenChange,
@@ -93,8 +97,10 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
     const [position, setPosition] = useState(loadPosition);
     const [isDragging, setIsDragging] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
+    const [isNotifOpen, setIsNotifOpen] = useState(false);
     const [inputText, setInputText] = useState("");
     const [orbChatContext, setOrbChatContext] = useState<ChatContext | null>(null);
+    const activityData = useActivityData(conversationId);
 
     const { isDragOver, isWindowDragActive, dropHandlers } = useFileDrop({
       setChatContext: setOrbChatContext,
@@ -120,6 +126,7 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
           setOrbChatContext(chatContext);
         }
         setIsChatOpen(true);
+        setIsNotifOpen(false);
       },
       closeChat() {
         setIsChatOpen(false);
@@ -129,6 +136,7 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
       openWithText(text: string) {
         setInputText(text);
         setIsChatOpen(true);
+        setIsNotifOpen(false);
       },
     }));
 
@@ -163,20 +171,25 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
     }, [isChatOpen]);
 
     useEffect(() => {
-      if (!isChatOpen) {
+      if (!isChatOpen && !isNotifOpen) {
         return;
       }
 
       const handleKeyDown = (event: KeyboardEvent) => {
         if (event.key === "Escape") {
-          setIsChatOpen(false);
-          setInputText("");
+          if (isNotifOpen) {
+            setIsNotifOpen(false);
+          }
+          if (isChatOpen) {
+            setIsChatOpen(false);
+            setInputText("");
+          }
         }
       };
 
       document.addEventListener("keydown", handleKeyDown);
       return () => document.removeEventListener("keydown", handleKeyDown);
-    }, [isChatOpen]);
+    }, [isChatOpen, isNotifOpen]);
 
     const handleMouseDown = useCallback(
       (event: React.MouseEvent) => {
@@ -312,9 +325,25 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
           },
         };
 
+    const handleNotifClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setIsNotifOpen((prev) => !prev);
+      if (!isNotifOpen) setIsChatOpen(false);
+    };
+
+    const notifPanel = (
+      <NotificationPanel
+        open={isNotifOpen && !isChatOpen}
+        data={activityData}
+        position={position}
+        orbSize={56}
+      />
+    );
+
     return (
       <>
         {createPortal(miniChatPanel, document.body)}
+        {createPortal(notifPanel, document.body)}
 
         <div
           ref={containerRef}
@@ -391,19 +420,32 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
             )}
           </AnimatePresence>
 
-          <div
-            className={`orb-body ${isDragging ? "orb-body--dragging" : ""} ${isStreaming ? "orb-body--streaming" : ""}`}
-            onMouseDown={handleMouseDown}
-            {...orbBodyDropHandlers}
-          >
-            <div className="orb-animation-scale">
-              <StellaAnimation
-                ref={stellaRef}
-                width={20}
-                height={20}
-                maxDpr={1}
-                frameSkip={2}
-              />
+          <div className="orb-body-wrapper">
+            <button
+              className={`notif-bell${isNotifOpen && !isChatOpen ? " notif-bell--active" : ""}`}
+              onClick={handleNotifClick}
+              aria-label="Notifications"
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 13a2 2 0 0 0 4 0" />
+                <path d="M12 6c0-2.2-1.8-4-4-4S4 3.8 4 6c0 3.1-1.3 4.5-2 5h12c-.7-.5-2-1.9-2-5Z" />
+              </svg>
+
+            </button>
+            <div
+              className={`orb-body ${isDragging ? "orb-body--dragging" : ""} ${isStreaming ? "orb-body--streaming" : ""}`}
+              onMouseDown={handleMouseDown}
+              {...orbBodyDropHandlers}
+            >
+              <div className="orb-animation-scale">
+                <StellaAnimation
+                  ref={stellaRef}
+                  width={20}
+                  height={20}
+                  maxDpr={1}
+                  frameSkip={2}
+                />
+              </div>
             </div>
           </div>
         </div>
