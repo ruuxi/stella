@@ -70,20 +70,18 @@ void main() {
   d.x *= u_aspect;
   float dist = length(d);
 
-  float rippleFreq = 6.0;
-  float rippleAmp = u_strength * 0.012;
-  float ripple = sin(dist * rippleFreq - u_time * 4.0) * rippleAmp;
-  ripple *= smoothstep(0.0, 0.35, dist);
-  ripple *= (1.0 - smoothstep(0.6, 1.0, dist));
+  // Clean ripple expanding outward from center
+  float wave = sin(dist * 2.5 - u_time * 2.5);
+  float ripple = wave * u_strength * 0.008;
+  ripple *= exp(-dist * 1.8);
+  ripple *= smoothstep(0.0, 0.12, dist);
 
-  float warpAmp = u_strength * 0.02;
-  float warp = sin(dist * 3.0 + u_time * 2.0) * warpAmp * smoothstep(0.0, 0.3, dist);
-
-  vec2 offset = normalize(d + vec2(0.001)) * (ripple + warp);
+  vec2 offset = normalize(d + vec2(0.001)) * ripple;
   offset.x /= u_aspect;
   vec2 uv = v_uv + offset;
 
-  float chromatic = u_strength * 0.003;
+  // Subtle chromatic aberration — light refraction
+  float chromatic = u_strength * 0.0015;
   vec2 chromDir = normalize(d + vec2(0.001));
   chromDir.x /= u_aspect;
 
@@ -91,25 +89,9 @@ void main() {
   vec4 col2 = sampleWithChroma(u_tex2, uv, chromDir, chromatic);
   vec4 col = mix(col1, col2, u_mix);
 
-  // Chromatic aberration color appears only on stronger image edges.
-  float dx = 0.002 * u_strength;
-  float lumCenter = dot(col.rgb, vec3(0.299, 0.587, 0.114));
-  vec2 uvR = clamp(uv + vec2(dx, 0.0), 0.0, 1.0);
-  float lumRight = dot(mix(texture2D(u_tex, uvR), texture2D(u_tex2, uvR), u_mix).rgb, vec3(0.299, 0.587, 0.114));
-  vec2 uvU = clamp(uv + vec2(0.0, dx), 0.0, 1.0);
-  float lumUp = dot(mix(texture2D(u_tex, uvU), texture2D(u_tex2, uvU), u_mix).rgb, vec3(0.299, 0.587, 0.114));
-  float edge = length(vec2(lumRight - lumCenter, lumUp - lumCenter));
-
-  float angle = atan(d.y, d.x);
-  float colorPhase = fract(angle / 6.2832 + u_time * 0.3) * 4.0;
-
-  vec3 tint = mix(u_color1, u_color2, smoothstep(0.0, 1.0, colorPhase));
-  tint = mix(tint, u_color3, smoothstep(1.0, 2.0, colorPhase));
-  tint = mix(tint, u_color4, smoothstep(2.0, 3.0, colorPhase));
-  tint = mix(tint, u_color1, smoothstep(3.0, 4.0, colorPhase));
-
-  float colorMask = smoothstep(0.02, 0.08, edge) * u_strength * 0.35;
-  col.rgb = mix(col.rgb, tint, colorMask);
+  // Caustic brightness — light focusing through water
+  float caustic = 1.0 + cos(dist * 2.5 - u_time * 2.5) * u_strength * 0.035 * exp(-dist * 1.8);
+  col.rgb *= caustic;
 
   gl_FragColor = vec4(col.rgb, col.a * u_alpha);
 }`;
