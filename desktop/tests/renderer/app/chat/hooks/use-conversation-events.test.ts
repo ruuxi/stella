@@ -377,6 +377,45 @@ describe("extractTasksFromEvents", () => {
     expect(tasks[0].status).toBe("running");
     expect(getRunningTasks(events, { appSessionStartedAtMs: 2_000 })).toHaveLength(1);
   });
+
+  it("treats stale schedule tasks as completed once a later assistant reply exists", () => {
+    const events = [
+      createEvent({
+        timestamp: 1_000,
+        type: "task_started",
+        payload: { taskId: "t1", description: "Apply schedule", agentType: "schedule" },
+      }),
+      createEvent({
+        timestamp: 2_000,
+        type: "assistant_message",
+        payload: { text: "Okay, I set that reminder." },
+      }),
+    ];
+
+    const tasks = extractTasksFromEvents(events);
+    expect(tasks[0].status).toBe("completed");
+    expect(tasks[0].outputPreview).toBe("Scheduling updated.");
+    expect(getRunningTasks(events)).toEqual([]);
+  });
+
+  it("keeps non-schedule tasks running even when later assistant replies exist", () => {
+    const events = [
+      createEvent({
+        timestamp: 1_000,
+        type: "task_started",
+        payload: { taskId: "t1", description: "Work", agentType: "general" },
+      }),
+      createEvent({
+        timestamp: 2_000,
+        type: "assistant_message",
+        payload: { text: "I kicked that off." },
+      }),
+    ];
+
+    const tasks = extractTasksFromEvents(events);
+    expect(tasks[0].status).toBe("running");
+    expect(getRunningTasks(events)).toHaveLength(1);
+  });
 });
 
 describe("getRunningTasks", () => {

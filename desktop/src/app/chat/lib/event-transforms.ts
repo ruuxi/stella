@@ -392,6 +392,7 @@ export function extractTasksFromEvents(
   const failedEvents = events.filter(isTaskFailed);
   const canceledEvents = events.filter(isTaskCanceled);
   const progressEvents = events.filter(isTaskProgress);
+  const assistantMessages = events.filter(isAssistantMessage);
 
   // Build maps of taskId -> completion/failure events
   const completedByTaskId = new Map<string, EventRecord & { payload: TaskCompletedPayload }>();
@@ -451,6 +452,15 @@ export function extractTasksFromEvents(
 
     if (
       status === "running"
+      && event.payload.agentType === "schedule"
+      && assistantMessages.some((assistantEvent) => assistantEvent.timestamp > event.timestamp)
+    ) {
+      status = "completed";
+      outputPreview = outputPreview ?? "Scheduling updated.";
+    }
+
+    if (
+      status === "running"
       && appSessionStartedAtMs !== null
       && lastUpdatedAtMs < appSessionStartedAtMs
     ) {
@@ -481,5 +491,4 @@ export function getRunningTasks(
   const tasks = extractTasksFromEvents(events, options);
   return tasks.filter((t) => t.status === "running");
 }
-
 
