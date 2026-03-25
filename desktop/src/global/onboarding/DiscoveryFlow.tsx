@@ -3,12 +3,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getOrCreateDeviceId } from "@/platform/electron/device";
 import { synthesizeCoreMemory } from "@/global/onboarding/services/synthesis";
 import { generateHomeCanvas } from "@/global/onboarding/services/home-canvas-generation";
 import { getPersonalizedDashboardPromptConfig } from "@/prompts/transport";
 import homeCanvasTemplate from "@/app/home/HomeCanvas.tsx?raw";
-import { useChatStore } from "@/context/chat-store";
+import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import {
   BROWSER_PROFILE_KEY,
@@ -32,7 +31,7 @@ export type DashboardState = "idle" | "generating";
 
 export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
-  const { isAuthenticated, appendEvent: chatStoreAppendEvent } = useChatStore();
+  const { hasConnectedAccount } = useAuthSessionState();
 
   const [discoveryCategories, setDiscoveryCategories] = useState<
     DiscoveryCategory[] | null
@@ -83,7 +82,7 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
         const synthesisResult = await synthesizeCoreMemory(
           result.formattedSections,
           {
-            includeAuth: isAuthenticated,
+            includeAuth: hasConnectedAccount,
           },
         );
         if (!synthesisResult.coreMemory) return;
@@ -93,28 +92,16 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
             synthesisResult.coreMemory,
           ) ?? Promise.resolve();
 
-        // Resolve independent work in parallel to avoid an async waterfall.
-        const [deviceId] = await Promise.all([
-          getOrCreateDeviceId(),
-          writeCoreMemoryPromise,
-        ]);
+        await writeCoreMemoryPromise;
 
         if (synthesisResult.welcomeMessage) {
-          await chatStoreAppendEvent({
+          await window.electronAPI?.localChat.persistDiscoveryWelcome?.({
             conversationId: activeConversationId,
-            type: "assistant_message",
-            deviceId,
-            payload: { text: synthesisResult.welcomeMessage },
+            message: synthesisResult.welcomeMessage,
+            ...(synthesisResult.suggestions?.length
+              ? { suggestions: synthesisResult.suggestions }
+              : {}),
           });
-
-          if (synthesisResult.suggestions?.length) {
-            await chatStoreAppendEvent({
-              conversationId: activeConversationId,
-              type: "welcome_suggestions",
-              deviceId,
-              payload: { suggestions: synthesisResult.suggestions },
-            });
-          }
         }
 
         // Fire-and-forget: generate personalized home canvas + personal website
@@ -152,9 +139,8 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
     void run();
   }, [
     discoveryCategories,
-    isAuthenticated,
+    hasConnectedAccount,
     activeConversationId,
-    chatStoreAppendEvent,
   ]);
 
   return {
