@@ -341,7 +341,7 @@ const requireCapabilityInputs = (args: {
 const renderMediaDocs = (request: Request): string => {
   const url = new URL(request.url);
   const stellaBaseUrl = `${url.origin}/api/stella/v1`;
-  const musicKeyUrl = `${url.origin}/api/music/api-key`;
+  const musicStreamUrl = `${url.origin}/api/music/stream`;
   return [
     "# Stella Media SDK",
     "",
@@ -465,7 +465,7 @@ const renderMediaDocs = (request: Request): string => {
     ),
     "```",
     "",
-    `Other Stella-managed services: ${stellaBaseUrl}/chat/completions, ${stellaBaseUrl}/models, ${musicKeyUrl}`,
+    `Other Stella-managed services: ${stellaBaseUrl}/chat/completions, ${stellaBaseUrl}/models, ${musicStreamUrl}`,
   ].join("\n");
 };
 
