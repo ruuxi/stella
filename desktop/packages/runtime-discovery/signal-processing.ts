@@ -6,7 +6,7 @@
  * - tierFormattedSignals: reorganizes flat sections into priority tiers
  */
 
-const log = (...args: unknown[]) => console.log("[signal-processing]", ...args);
+const log = (...args: unknown[]) => console.error("[signal-processing]", ...args);
 
 // ---------------------------------------------------------------------------
 // Low-Signal Domain Filtering

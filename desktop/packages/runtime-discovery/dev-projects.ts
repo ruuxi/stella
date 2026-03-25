@@ -19,7 +19,7 @@ import { exec } from "child_process";
 
 import type { DevProject } from "./types.js";
 
-const log = (...args: unknown[]) => console.log("[dev-projects]", ...args);
+const log = (...args: unknown[]) => console.error("[dev-projects]", ...args);
 
 // ---------------------------------------------------------------------------
 // Configuration

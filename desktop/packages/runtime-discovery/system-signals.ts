@@ -22,7 +22,7 @@ import type {
   FilesystemSignals,
 } from "./discovery-types.js";
 
-const log = (...args: unknown[]) => console.log("[system-signals]", ...args);
+const log = (...args: unknown[]) => console.error("[system-signals]", ...args);
 
 // Keep only strongest file-type signals for synthesis input.
 const FILESYSTEM_TOP_FILE_TYPES = 5;

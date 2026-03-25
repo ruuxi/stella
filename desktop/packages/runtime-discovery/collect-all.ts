@@ -48,7 +48,7 @@ import type { SteamLibrarySignals } from "./steam-library.js";
 import type { MusicLibrarySignals } from "./music-library.js";
 import type { BrowserType } from "../boundary-contracts/index.js";
 
-const log = (...args: unknown[]) => console.log("[collect-all]", ...args);
+const log = (...args: unknown[]) => console.error("[collect-all]", ...args);
 
 // Default categories (Category 4 is opt-in)
 const DEFAULT_CATEGORIES: DiscoveryCategory[] = [
