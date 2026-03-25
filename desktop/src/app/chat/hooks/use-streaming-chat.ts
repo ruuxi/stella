@@ -8,8 +8,7 @@ import {
   buildAllLocalAttachments,
   buildCombinedPrompt,
 } from '../streaming/message-context'
-import { toEventId } from '../streaming/streaming-event-utils'
-import { useLocalAgentStream, type LocalAgentEvent } from '../streaming/use-local-agent-stream'
+import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
 
 type UseStreamingChatOptions = {
   conversationId: string | null
@@ -24,22 +23,8 @@ export function useStreamingChat({
   const {
     isLocalStorage,
     storageMode,
-    appendAgentEvent: chatStoreAppendAgentEvent,
-    appendEvent: chatStoreAppendEvent,
     uploadAttachments: chatStoreUploadAttachments,
   } = useChatStore()
-
-  const appendLocalAgentEvent = useCallback(
-    (event: LocalAgentEvent) => {
-      if (!activeConversationId) return
-
-      return chatStoreAppendAgentEvent({
-        conversationId: activeConversationId,
-        ...event,
-      })
-    },
-    [activeConversationId, chatStoreAppendAgentEvent],
-  )
 
   const {
     streamingText,
@@ -54,7 +39,6 @@ export function useStreamingChat({
   } = useLocalAgentStream({
     activeConversationId,
     storageMode,
-    appendAgentEvent: appendLocalAgentEvent,
   })
 
   useEffect(() => {
@@ -110,62 +94,49 @@ export function useStreamingChat({
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
       const shouldQueueFollowUp =
         isStreaming &&
-        Boolean(pendingUserMessageId) &&
-        !events.some((event) => {
-          if (event.type !== 'assistant_message') return false
-          if (!event.payload || typeof event.payload !== 'object') return false
-          return (
-            (event.payload as { userMessageId?: string }).userMessageId
-            === pendingUserMessageId
-          )
-        })
+        (!pendingUserMessageId ||
+          !events.some((event) => {
+            if (event.type !== 'assistant_message') return false
+            if (!event.payload || typeof event.payload !== 'object') return false
+            return (
+              (event.payload as { userMessageId?: string }).userMessageId
+              === pendingUserMessageId
+            )
+          }))
       const mode = shouldQueueFollowUp ? 'follow_up' : undefined
-
-      const event = await chatStoreAppendEvent({
-        conversationId: resolvedConversationId,
-        type: 'user_message',
-        deviceId,
-        payload: {
-          text: combinedText,
-          attachments,
-          platform,
-          timezone,
-          ...(options.metadata ? { metadata: options.metadata } : {}),
-          ...(mode && { mode }),
-        },
-      })
-
-      const eventId = toEventId(event)
-      if (!eventId) {
-        return
-      }
 
       options.onClear()
 
       if (mode === 'follow_up') {
         console.log(
-          `[stella:trace] sendMessage (follow_up queued) | convId=${resolvedConversationId} | eventId=${eventId}`,
+          `[stella:trace] sendMessage (follow_up queued) | convId=${resolvedConversationId}`,
         )
         queueStream({
-          userMessageId: eventId,
           userPrompt: combinedText,
+          deviceId,
+          platform,
+          timezone,
+          ...(mode ? { mode } : {}),
+          ...(options.metadata ? { messageMetadata: options.metadata } : {}),
           attachments,
         })
         return
       }
 
       console.log(
-        `[stella:trace] sendMessage | convId=${resolvedConversationId} | eventId=${eventId} | text=${combinedText.slice(0, 200)}`,
+        `[stella:trace] sendMessage | convId=${resolvedConversationId} | text=${combinedText.slice(0, 200)}`,
       )
       startStream({
-        userMessageId: eventId,
         userPrompt: combinedText,
+        deviceId,
+        platform,
+        timezone,
+        ...(options.metadata ? { messageMetadata: options.metadata } : {}),
         attachments,
       })
     },
     [
       activeConversationId,
-      chatStoreAppendEvent,
       chatStoreUploadAttachments,
       events,
       isLocalStorage,
