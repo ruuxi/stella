@@ -107,6 +107,7 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
         // Fire-and-forget: generate personalized home canvas + personal website
         setDashboardState("generating");
 
+        // Fire-and-forget: generate personalized home canvas + personal website
         generateHomeCanvas(synthesisResult.coreMemory, homeCanvasTemplate)
           .catch(() => {});
 

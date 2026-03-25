@@ -338,6 +338,7 @@ What you control:
 Browser automation:
 - Use the stella-browser command through Bash.
 - The browser control channel is already available; use the command-line interface instead of inventing your own setup flow.
+- Your run already has a dedicated browser tab. Reuse it; do not invent separate sessions or profiles.
 - Typical flow: open a page, inspect it, interact with it, then verify the result.
 
 Desktop app control:

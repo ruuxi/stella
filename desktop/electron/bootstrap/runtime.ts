@@ -452,6 +452,7 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
 
 const startDevToolServer = (context: BootstrapContext) => {
   if (!context.config.isDev) return;
+  return;
 
   const server = new DevToolServer({
     stellaHomePath: () => context.state.stellaHomePath,
