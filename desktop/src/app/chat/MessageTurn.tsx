@@ -311,7 +311,9 @@ export const TurnItem = memo(function TurnItem({
   );
 
   const shouldShowAssistantArea =
-    hasAssistantContent || shouldShowStreamingAssistant || hasWebSearchBadge;
+    hasAssistantContent ||
+    hasWebSearchBadge ||
+    (shouldShowStreamingAssistant && (hasStreamingContent || hasReasoningContent));
   const assistantDisplayText = hasAssistantContent
     ? assistantText
     : (streaming?.streamingText ?? "");
@@ -402,18 +404,31 @@ export const TurnItem = memo(function TurnItem({
         </div>
       )}
 
-      {/* Assistant / Streaming assistant (keep mounted to avoid flicker on completion) */}
+      {/* Consolidated activity indicator — tasks + thinking in one element */}
+      {shouldShowStreamingAssistant && streaming &&
+        !hasStreamingContent && !hasReasoningContent && (
+        <GrowIn
+          animate={true}
+          show={!hasAssistantContent}
+        >
+          {streaming.runningTasks.length > 0 ? (
+            <TaskIndicator tasks={streaming.runningTasks} />
+          ) : (
+            <WorkingIndicator
+              isReasoning={true}
+              toolName={streaming.runningTool}
+            />
+          )}
+        </GrowIn>
+      )}
+
+      {/* Assistant / Streaming assistant */}
       {shouldShowAssistantArea && (
         <div
           className={`event-item assistant${shouldShowStreamingAssistant ? " streaming" : ""}`}
         >
           {shouldShowStreamingAssistant && streaming && (
             <>
-              {streaming.runningTasks.length > 0 && (
-                <GrowIn animate={true}>
-                  <TaskIndicator tasks={streaming.runningTasks} />
-                </GrowIn>
-              )}
               {hasReasoningContent && streaming.reasoningText && (
                 <ReasoningSection
                   content={streaming.reasoningText}
@@ -421,16 +436,6 @@ export const TurnItem = memo(function TurnItem({
                     streaming.isStreaming && !hasStreamingContent,
                   )}
                 />
-              )}
-              {!hasStreamingContent &&
-                !hasReasoningContent &&
-                streaming.runningTasks.length === 0 && (
-                  <GrowIn animate={true}>
-                    <WorkingIndicator
-                      isReasoning={true}
-                      toolName={streaming.runningTool}
-                    />
-                  </GrowIn>
               )}
             </>
           )}
@@ -484,47 +489,50 @@ export const StreamingIndicator = memo(function StreamingIndicator({
     reasoningText && reasoningText.trim().length > 0,
   );
 
+  const hasContent = hasStreamingContent || hasReasoningContent;
+
   return (
     <div className="session-turn">
-      <div className="event-item assistant streaming">
-        {runningTasks.length > 0 && (
-          <GrowIn animate={true}>
+      {/* Consolidated activity indicator */}
+      {!hasContent && (
+        <GrowIn animate={true} show={true}>
+          {runningTasks.length > 0 ? (
             <TaskIndicator tasks={runningTasks} />
-          </GrowIn>
-        )}
-        {hasReasoningContent && (
-          <ReasoningSection
-            content={reasoningText!}
-            isStreaming={isStreaming && !hasStreamingContent}
-          />
-        )}
-        {!hasStreamingContent &&
-          !hasReasoningContent &&
-          runningTasks.length === 0 && (
-            <GrowIn animate={true}>
-              <WorkingIndicator
-                isReasoning={true}
-                toolName={runningTool}
-              />
+          ) : (
+            <WorkingIndicator
+              isReasoning={true}
+              toolName={runningTool}
+            />
+          )}
+        </GrowIn>
+      )}
+
+      {hasContent && (
+        <div className="event-item assistant streaming">
+          {hasReasoningContent && (
+            <ReasoningSection
+              content={reasoningText!}
+              isStreaming={isStreaming && !hasStreamingContent}
+            />
+          )}
+          {hasStreamingContent && streamingText && (
+            <GrowIn animate={Boolean(isStreaming)}>
+              <div className={isStreaming ? "text-reveal" : undefined}>
+                <Markdown
+                  text={streamingText}
+                  cacheKey={
+                    pendingUserMessageId
+                      ? `streaming-${pendingUserMessageId}`
+                      : undefined
+                  }
+                  isAnimating={isStreaming}
+                  enableEmotes={true}
+                />
+              </div>
             </GrowIn>
           )}
-        {hasStreamingContent && streamingText && (
-          <GrowIn animate={Boolean(isStreaming)}>
-            <div className={isStreaming ? "text-reveal" : undefined}>
-              <Markdown
-                text={streamingText}
-                cacheKey={
-                  pendingUserMessageId
-                    ? `streaming-${pendingUserMessageId}`
-                    : undefined
-                }
-                isAnimating={isStreaming}
-                enableEmotes={true}
-              />
-            </div>
-          </GrowIn>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 });
