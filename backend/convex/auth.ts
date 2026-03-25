@@ -48,7 +48,7 @@ const extraTrustedOrigins = [
   // Expo web (`expo start --web` / press `w`) defaults to port 8081
   "http://localhost:8081",
   "http://127.0.0.1:8081",
-  "https://fromyou.ai",
+  "https://stella.sh",
 ];
 
 const getDeepLinkOrigin = () => {

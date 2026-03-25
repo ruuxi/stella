@@ -4,34 +4,49 @@ export const buildMagicLinkEmail = (logoSrc: string, signInUrl: string): string 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Manrope:wght@400;500&display=swap" rel="stylesheet">
 </head>
-<body style="margin:0;padding:0;background-color:#f7f7f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f7f7f8;padding:48px 24px;">
+<body style="margin:0;padding:0;background-color:#f2f4f8;font-family:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f2f4f8;padding:64px 24px;">
     <tr>
       <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:420px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;">
+          <!-- Logo -->
           <tr>
-            <td style="padding-bottom:32px;text-align:center;">
-              <img src="${logoSrc}" alt="Stella logo" width="72" height="72" style="display:block;margin:0 auto 14px;border:0;outline:none;text-decoration:none;">
-              <span style="font-size:16px;font-weight:500;letter-spacing:0.2em;color:#5a5a5a;text-transform:uppercase;">Stella</span>
+            <td style="padding-bottom:40px;text-align:center;">
+              <img src="${logoSrc}" alt="Stella" width="48" height="48" style="display:block;margin:0 auto;border:0;outline:none;text-decoration:none;">
             </td>
           </tr>
+          <!-- Card -->
           <tr>
-            <td style="background-color:#ffffff;border:1px solid #e5e5e5;border-radius:12px;padding:32px;">
-              <p style="margin:0 0 8px;font-size:16px;font-weight:500;color:#1a1a1a;">Sign in</p>
-              <p style="margin:0 0 24px;font-size:14px;color:#6b6b6b;line-height:1.5;">
-                Click the button below to sign in to your account. This link will expire in 10 minutes.
+            <td style="background-color:rgba(255,255,255,0.92);border:1px solid rgba(22,22,22,0.08);border-radius:10px;padding:40px 36px;">
+              <!-- Title -->
+              <h1 style="margin:0 0 6px;font-family:'Cormorant Garamond',Georgia,serif;font-size:28px;font-weight:300;font-style:italic;letter-spacing:-0.02em;line-height:1.1;color:#161616;">
+                Sign in
+              </h1>
+              <p style="margin:0 0 32px;font-size:14px;color:rgba(22,22,22,0.52);line-height:1.55;letter-spacing:-0.01em;">
+                Tap the link below to access your account. It expires in 10 minutes.
               </p>
+              <!-- Divider -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
+                <tr><td style="border-top:1px solid rgba(22,22,22,0.1);font-size:0;line-height:0;">&nbsp;</td></tr>
+              </table>
+              <!-- Button -->
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td align="center">
-                    <a href="${signInUrl}" style="display:inline-block;padding:10px 32px;background-color:#1a1a1a;border-radius:6px;color:#ffffff;font-size:14px;font-weight:500;text-decoration:none;letter-spacing:0.04em;">
+                    <a href="${signInUrl}" style="display:inline-block;padding:12px 36px;border:1px solid rgba(22,22,22,0.18);border-radius:6px;background-color:transparent;color:#161616;font-family:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;font-weight:500;text-decoration:none;letter-spacing:-0.01em;">
                       Sign in to Stella
                     </a>
                   </td>
                 </tr>
               </table>
-              <p style="margin:24px 0 0;font-size:12px;color:#999999;line-height:1.5;">
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding-top:28px;text-align:center;">
+              <p style="margin:0;font-size:12px;color:rgba(22,22,22,0.35);line-height:1.5;letter-spacing:-0.01em;">
                 If you didn't request this email, you can safely ignore it.
               </p>
             </td>
