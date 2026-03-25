@@ -13,19 +13,26 @@ import { useLocalAgentStream } from "../../../../../src/app/chat/streaming/use-l
 
 describe("useLocalAgentStream", () => {
   let rafCallbacks: FrameRequestCallback[];
-  let resolveStartChat: ((value: { runId: string }) => void) | null;
-  let streamCallback: ((event: {
-    type: "end";
-    runId: string;
-    agentType: "orchestrator";
-    seq: number;
-    finalText: string;
-  }) => void) | null;
+  let resolveStartChat:
+    | ((value: { runId: string; userMessageId: string }) => void)
+    | null;
+  let streamCallback:
+    | ((event: {
+        type: "end";
+        runId: string;
+        agentType: "orchestrator";
+        seq: number;
+        finalText: string;
+      }) => void)
+    | null;
 
   const mockHealthCheck = vi.fn(() => Promise.resolve({ ready: true }));
-  const mockStartChat = vi.fn(() => new Promise<{ runId: string }>((resolve) => {
-    resolveStartChat = resolve;
-  }));
+  const mockStartChat = vi.fn(
+    () =>
+      new Promise<{ runId: string; userMessageId: string }>((resolve) => {
+        resolveStartChat = resolve;
+      }),
+  );
   const mockCancelChat = vi.fn();
   const mockOnStream = vi.fn((callback) => {
     streamCallback = callback;
@@ -74,25 +81,22 @@ describe("useLocalAgentStream", () => {
   });
 
   it("cancels a run that is stopped before startChat resolves", async () => {
-    const appendAgentEvent = vi.fn();
     const { result } = renderHook(() =>
       useLocalAgentStream({
         activeConversationId: "conv-1",
         storageMode: "local",
-        appendAgentEvent,
       }),
     );
 
     await act(async () => {
       result.current.startStream({
-        userMessageId: "msg-1",
         userPrompt: "hello",
       });
       await flushMicrotasks();
     });
 
     expect(result.current.isStreaming).toBe(true);
-    expect(result.current.pendingUserMessageId).toBe("msg-1");
+    expect(result.current.pendingUserMessageId).toBeNull();
     expect(mockStartChat).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -105,7 +109,7 @@ describe("useLocalAgentStream", () => {
     expect(mockCancelChat).not.toHaveBeenCalled();
 
     await act(async () => {
-      resolveStartChat?.({ runId: "run-1" });
+      resolveStartChat?.({ runId: "run-1", userMessageId: "msg-1" });
       await flushMicrotasks();
     });
 
@@ -115,73 +119,41 @@ describe("useLocalAgentStream", () => {
     expect(result.current.pendingUserMessageId).toBeNull();
   });
 
-  it("attaches a later completion follow-up to the latest user turn when the run has no direct userMessageId link", async () => {
-    const appendAgentEvent = vi.fn();
+  it("tracks the persisted user message id returned by startChat", async () => {
     const { result } = renderHook(() =>
       useLocalAgentStream({
         activeConversationId: "conv-1",
         storageMode: "local",
-        appendAgentEvent,
       }),
     );
 
     await act(async () => {
       result.current.startStream({
-        userMessageId: "msg-1",
         userPrompt: "open youtube",
       });
       await flushMicrotasks();
     });
 
+    expect(result.current.pendingUserMessageId).toBeNull();
+
     await act(async () => {
-      resolveStartChat?.({ runId: "run-1" });
+      resolveStartChat?.({ runId: "run-1", userMessageId: "msg-1" });
       await flushMicrotasks();
     });
 
-    await act(async () => {
-      streamCallback?.({
-        type: "end",
-        runId: "run-1",
-        agentType: "orchestrator",
-        seq: 1,
-        finalText: "Opening YouTube for you now.",
-      });
-      await flushMicrotasks();
-    });
-
-    await act(async () => {
-      streamCallback?.({
-        type: "end",
-        runId: "run-2",
-        agentType: "orchestrator",
-        seq: 2,
-        finalText: "YouTube is now open in your browser.",
-      });
-      await flushMicrotasks();
-    });
-
-    expect(appendAgentEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "assistant_message",
-        userMessageId: "msg-1",
-        finalText: "YouTube is now open in your browser.",
-      }),
-    );
+    expect(result.current.pendingUserMessageId).toBe("msg-1");
   });
 
   it("passes attachments through when starting a local chat run", async () => {
-    const appendAgentEvent = vi.fn();
     const { result } = renderHook(() =>
       useLocalAgentStream({
         activeConversationId: "conv-1",
         storageMode: "local",
-        appendAgentEvent,
       }),
     );
 
     await act(async () => {
       result.current.startStream({
-        userMessageId: "msg-1",
         userPrompt: "describe this screenshot",
         attachments: [
           {
@@ -196,7 +168,6 @@ describe("useLocalAgentStream", () => {
     expect(mockStartChat).toHaveBeenCalledWith(
       expect.objectContaining({
         conversationId: "conv-1",
-        userMessageId: "msg-1",
         userPrompt: "describe this screenshot",
         attachments: [
           {
@@ -207,5 +178,6 @@ describe("useLocalAgentStream", () => {
         storageMode: "local",
       }),
     );
+    expect(streamCallback).toBeTypeOf("function");
   });
 });

@@ -3,7 +3,6 @@ import { showToast } from "@/ui/toast";
 import {
   AGENT_IDS,
   AGENT_STREAM_EVENT_TYPES,
-  type AgentIdLike,
 } from "@/shared/contracts/agent-runtime";
 import { useRafStringAccumulator } from "@/shared/hooks/use-raf-state";
 import { useResumeAgentRun } from "../hooks/use-resume-agent-run";
@@ -15,43 +14,18 @@ import {
   trySyncHostToken,
 } from "./agent-stream-errors";
 
-export type LocalAgentTaskEventType =
-  | typeof AGENT_STREAM_EVENT_TYPES.TASK_STARTED
-  | typeof AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
-  | typeof AGENT_STREAM_EVENT_TYPES.TASK_FAILED
-  | typeof AGENT_STREAM_EVENT_TYPES.TASK_CANCELED
-  | typeof AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS;
-
-export type LocalAgentEvent = {
-  type:
-    | "tool_request"
-    | "tool_result"
-    | "assistant_message"
-    | LocalAgentTaskEventType;
-  agentType?: AgentIdLike;
-  userMessageId?: string;
-  toolCallId?: string;
-  toolName?: string;
-  args?: Record<string, unknown>;
-  resultPreview?: string;
-  finalText?: string;
-  taskId?: string;
-  description?: string;
-  parentTaskId?: string;
-  result?: string;
-  error?: string;
-  statusText?: string;
-};
-
 type UseLocalAgentStreamOptions = {
   activeConversationId: string | null;
   storageMode: "cloud" | "local";
-  appendAgentEvent: (event: LocalAgentEvent) => Promise<void> | void;
 };
 
 type StartStreamArgs = {
-  userMessageId: string;
   userPrompt: string;
+  deviceId?: string;
+  platform?: string;
+  timezone?: string;
+  mode?: string;
+  messageMetadata?: Record<string, unknown>;
   attachments?: AttachmentRef[];
 };
 
@@ -78,7 +52,6 @@ const isTokenSyncIssue = (reason: string | null) =>
 export function useLocalAgentStream({
   activeConversationId,
   storageMode,
-  appendAgentEvent,
 }: UseLocalAgentStreamOptions) {
   const [
     streamingText,
@@ -97,7 +70,8 @@ export function useLocalAgentStream({
 
   const streamRunIdRef = useRef(0);
   const localRunIdRef = useRef<string | null>(null);
-  const localSeqByRunIdRef = useRef(new Map<string, number>());
+  const localRunSeqByRunIdRef = useRef(new Map<string, number>());
+  const localTaskSeqByRunIdRef = useRef(new Map<string, number>());
   const userMessageIdByRunIdRef = useRef(new Map<string, string>());
   const latestUserMessageIdRef = useRef<string | null>(null);
   const cancelledStreamRunIdsRef = useRef(new Set<number>());
@@ -159,7 +133,8 @@ export function useLocalAgentStream({
     }
 
     userMessageIdByRunIdRef.current.clear();
-    localSeqByRunIdRef.current.clear();
+    localRunSeqByRunIdRef.current.clear();
+    localTaskSeqByRunIdRef.current.clear();
     queuedRunStartsRef.current = [];
     pendingQueuedStartCountRef.current = 0;
     localRunIdRef.current = null;
@@ -174,14 +149,40 @@ export function useLocalAgentStream({
   const handleAgentEvent = useCallback(
     (event: AgentStreamEvent, runIdCounter: number) => {
       if (runIdCounter !== streamRunIdRef.current) return;
-      const currentSeq = localSeqByRunIdRef.current.get(event.runId) ?? 0;
-      if (event.seq <= currentSeq) return;
-
-      localSeqByRunIdRef.current.set(event.runId, event.seq);
-      const isPrimaryRun =
-        !localRunIdRef.current || event.runId === localRunIdRef.current;
       const isOrchestratorEvent =
         (event.agentType ?? AGENT_IDS.ORCHESTRATOR) === AGENT_IDS.ORCHESTRATOR;
+      const hasSeenRun = localRunSeqByRunIdRef.current.has(event.runId);
+      const isAdoptingNewOrchestratorRun =
+        isOrchestratorEvent &&
+        localRunIdRef.current !== event.runId &&
+        !hasSeenRun;
+
+      // Queued/system turns start inside the runtime, so the renderer may never
+      // receive a terminal event for the interrupted run it was tracking.
+      // Orchestrator runs are serialized, so when a new orchestrator run ID
+      // appears we can safely adopt it as the current visible run.
+      if (isAdoptingNewOrchestratorRun) {
+        localRunIdRef.current = event.runId;
+        resetStreamingText();
+        resetReasoningText();
+        setIsStreaming(true);
+      }
+
+      const isTaskLifecycleEvent =
+        event.type === AGENT_STREAM_EVENT_TYPES.TASK_STARTED ||
+        event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED ||
+        event.type === AGENT_STREAM_EVENT_TYPES.TASK_FAILED ||
+        event.type === AGENT_STREAM_EVENT_TYPES.TASK_CANCELED ||
+        event.type === AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS;
+      const seqMap = isTaskLifecycleEvent
+        ? localTaskSeqByRunIdRef.current
+        : localRunSeqByRunIdRef.current;
+      const currentSeq = seqMap.get(event.runId) ?? 0;
+      if (event.seq <= currentSeq) return;
+
+      seqMap.set(event.runId, event.seq);
+      const isPrimaryRun =
+        !localRunIdRef.current || event.runId === localRunIdRef.current;
 
       switch (event.type) {
         case AGENT_STREAM_EVENT_TYPES.STREAM:
@@ -193,25 +194,11 @@ export function useLocalAgentStream({
           console.log(
             `[stella:trace] tool-start | ${event.toolName} | callId=${event.toolCallId}`,
           );
-          appendAgentEvent({
-            type: "tool_request",
-            agentType: event.agentType,
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
-            args: event.args,
-          });
           break;
         case AGENT_STREAM_EVENT_TYPES.TOOL_END:
           console.log(
             `[stella:trace] tool-end   | ${event.toolName} | callId=${event.toolCallId} | preview=${event.resultPreview?.slice(0, 120)}`,
           );
-          appendAgentEvent({
-            type: "tool_result",
-            agentType: event.agentType,
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
-            resultPreview: event.resultPreview,
-          });
           break;
         case AGENT_STREAM_EVENT_TYPES.TASK_STARTED:
         case AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED:
@@ -221,16 +208,6 @@ export function useLocalAgentStream({
           console.log(
             `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ""}`.trim(),
           );
-          appendAgentEvent({
-            type: event.type,
-            agentType: event.agentType,
-            taskId: event.taskId,
-            description: event.description,
-            parentTaskId: event.parentTaskId,
-            result: event.result,
-            error: event.error,
-            statusText: event.statusText,
-          });
           break;
         case AGENT_STREAM_EVENT_TYPES.ERROR:
           console.error(
@@ -241,7 +218,8 @@ export function useLocalAgentStream({
               localRunIdRef.current = null;
             }
             userMessageIdByRunIdRef.current.delete(event.runId);
-            localSeqByRunIdRef.current.delete(event.runId);
+            localRunSeqByRunIdRef.current.delete(event.runId);
+            localTaskSeqByRunIdRef.current.delete(event.runId);
             showToast({
               title: "Something went wrong",
               description: event.error || undefined,
@@ -261,45 +239,19 @@ export function useLocalAgentStream({
             const linkedUserMessageId = userMessageIdByRunIdRef.current.get(
               event.runId,
             );
-            const visibleUserMessageId =
-              linkedUserMessageId ??
-              latestUserMessageIdRef.current ??
-              undefined;
             console.log(
               `[stella:trace] end | finalText=${(event.finalText ?? streamingTextRef.current).slice(0, 200)}`,
             );
-            void Promise.resolve(
-              appendAgentEvent({
-                type: "assistant_message",
-                userMessageId: visibleUserMessageId,
-                finalText: event.finalText ?? streamingTextRef.current,
-              }),
-            )
-              .then(() => {
-                if (
-                  !linkedUserMessageId &&
-                  queuedRunStartsRef.current.length === 0
-                ) {
-                  resetStreamingState(runIdCounter);
-                }
-                if (localRunIdRef.current === event.runId) {
-                  localRunIdRef.current = null;
-                }
-                localSeqByRunIdRef.current.delete(event.runId);
-                activateNextQueuedRun();
-              })
-              .catch(() => {
-                if (queuedRunStartsRef.current.length === 0) {
-                  resetStreamingState(runIdCounter);
-                }
-                if (localRunIdRef.current === event.runId) {
-                  localRunIdRef.current = null;
-                }
-                localSeqByRunIdRef.current.delete(event.runId);
-                activateNextQueuedRun();
-              });
-
             userMessageIdByRunIdRef.current.delete(event.runId);
+            if (!linkedUserMessageId && queuedRunStartsRef.current.length === 0) {
+              resetStreamingState(runIdCounter);
+            }
+            if (localRunIdRef.current === event.runId) {
+              localRunIdRef.current = null;
+            }
+            localRunSeqByRunIdRef.current.delete(event.runId);
+            localTaskSeqByRunIdRef.current.delete(event.runId);
+            activateNextQueuedRun();
 
             if (event.selfModApplied && linkedUserMessageId) {
               const userMessageId = linkedUserMessageId;
@@ -315,9 +267,10 @@ export function useLocalAgentStream({
     },
     [
       activateNextQueuedRun,
-      appendAgentEvent,
       appendStreamingDelta,
+      resetReasoningText,
       resetStreamingState,
+      resetStreamingText,
       streamingTextRef,
     ],
   );
@@ -353,14 +306,20 @@ export function useLocalAgentStream({
       window.electronAPI.agent
         .startChat({
           conversationId: activeConversationId,
-          userMessageId: args.userMessageId,
           userPrompt: args.userPrompt,
+          deviceId: args.deviceId,
+          platform: args.platform,
+          timezone: args.timezone,
+          mode: args.mode,
+          ...(args.messageMetadata
+            ? { messageMetadata: args.messageMetadata }
+            : {}),
           ...(startChatAttachments?.length
             ? { attachments: startChatAttachments }
             : {}),
           storageMode,
         })
-        .then(({ runId: agentRunId }) => {
+        .then(({ runId: agentRunId, userMessageId }) => {
           const wasCancelled =
             cancelledStreamRunIdsRef.current.has(runIdCounter);
           if (runIdCounter !== streamRunIdRef.current) {
@@ -373,7 +332,9 @@ export function useLocalAgentStream({
 
           cancelledStreamRunIdsRef.current.delete(runIdCounter);
           localRunIdRef.current = agentRunId;
-          userMessageIdByRunIdRef.current.set(agentRunId, args.userMessageId);
+          latestUserMessageIdRef.current = userMessageId;
+          userMessageIdByRunIdRef.current.set(agentRunId, userMessageId);
+          setPendingUserMessageId(userMessageId);
         })
         .catch((error) => {
           cancelledStreamRunIdsRef.current.delete(runIdCounter);
@@ -408,16 +369,17 @@ export function useLocalAgentStream({
 
       const runId = streamRunIdRef.current + 1;
       streamRunIdRef.current = runId;
-      latestUserMessageIdRef.current = args.userMessageId;
+      latestUserMessageIdRef.current = null;
       localRunIdRef.current = null;
-      localSeqByRunIdRef.current.clear();
+      localRunSeqByRunIdRef.current.clear();
+      localTaskSeqByRunIdRef.current.clear();
       userMessageIdByRunIdRef.current.clear();
       queuedRunStartsRef.current = [];
       pendingQueuedStartCountRef.current = 0;
       resetStreamingText();
       resetReasoningText();
       setIsStreaming(true);
-      setPendingUserMessageId(args.userMessageId);
+      setPendingUserMessageId(null);
 
       if (agentStreamCleanupRef.current) {
         agentStreamCleanupRef.current();
@@ -502,7 +464,7 @@ export function useLocalAgentStream({
         return;
       }
 
-      latestUserMessageIdRef.current = args.userMessageId;
+      latestUserMessageIdRef.current = null;
 
       pendingQueuedStartCountRef.current += 1;
       ensureAgentStreamSubscription(runIdCounter);
@@ -514,14 +476,20 @@ export function useLocalAgentStream({
       window.electronAPI.agent
         .startChat({
           conversationId: activeConversationId,
-          userMessageId: args.userMessageId,
           userPrompt: args.userPrompt,
+          deviceId: args.deviceId,
+          platform: args.platform,
+          timezone: args.timezone,
+          mode: args.mode,
+          ...(args.messageMetadata
+            ? { messageMetadata: args.messageMetadata }
+            : {}),
           ...(queuedStartChatAttachments?.length
             ? { attachments: queuedStartChatAttachments }
             : {}),
           storageMode,
         })
-        .then(({ runId: agentRunId }) => {
+        .then(({ runId: agentRunId, userMessageId }) => {
           const wasCancelled =
             cancelledStreamRunIdsRef.current.has(runIdCounter);
           if (runIdCounter !== streamRunIdRef.current) {
@@ -535,7 +503,7 @@ export function useLocalAgentStream({
           cancelledStreamRunIdsRef.current.delete(runIdCounter);
           queuedRunStartsRef.current.push({
             runId: agentRunId,
-            userMessageId: args.userMessageId,
+            userMessageId,
           });
           activateNextQueuedRun();
         })
@@ -577,7 +545,8 @@ export function useLocalAgentStream({
     refs: {
       streamRunIdRef,
       localRunIdRef,
-      localSeqByRunIdRef,
+      localRunSeqByRunIdRef,
+      localTaskSeqByRunIdRef,
       agentStreamCleanupRef,
     },
     actions: {

@@ -18,28 +18,12 @@ vi.mock("@/platform/electron/device", () => ({
   getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
 }));
 
-const mockAppendEvent = vi.fn<
-  () => Promise<{ _id?: string; id?: string } | null>
->(() => Promise.resolve(null));
-const mockAppendAgentEvent = vi.fn<
-  (args: {
-    conversationId: string;
-    type: string;
-    userMessageId?: string;
-    toolCallId?: string;
-    toolName?: string;
-    resultPreview?: string;
-    finalText?: string;
-    taskId?: string;
-    description?: string;
-    agentType?: string;
-    parentTaskId?: string;
-  }) => Promise<void>
->(() => Promise.resolve());
 const mockUploadAttachments = vi.fn(() => Promise.resolve([]));
 const mockBuildHistory = vi.fn(() => undefined);
 const mockAgentHealthCheck = vi.fn(() => Promise.resolve({ ready: true }));
-const mockAgentStartChat = vi.fn(() => Promise.resolve({ runId: "run-1" }));
+const mockAgentStartChat = vi.fn(() =>
+  Promise.resolve({ runId: "run-1", userMessageId: "user-event-1" }),
+);
 let mockIsAuthenticated = true;
 type AgentOnStreamHandler = (callback: (event: AgentStreamEvent) => void) => () => void;
 const mockAgentOnStream = vi.fn<AgentOnStreamHandler>(() => vi.fn());
@@ -50,8 +34,6 @@ vi.mock("@/context/chat-store", () => ({
     isLocalStorage: true,
     cloudFeaturesEnabled: false,
     isAuthenticated: mockIsAuthenticated,
-    appendEvent: mockAppendEvent,
-    appendAgentEvent: mockAppendAgentEvent,
     uploadAttachments: mockUploadAttachments,
     buildHistory: mockBuildHistory,
   })),
@@ -376,9 +358,9 @@ describe("useStreamingChat", () => {
     });
 
     it("clears the composer when a follow-up is queued during streaming", async () => {
-      mockAppendEvent
-        .mockResolvedValueOnce({ _id: "user-event-1" })
-        .mockResolvedValueOnce({ _id: "follow-up-event-1" });
+      mockAgentStartChat
+        .mockResolvedValueOnce({ runId: "run-1", userMessageId: "user-event-1" })
+        .mockResolvedValueOnce({ runId: "run-2", userMessageId: "follow-up-event-1" });
 
       const events: EventRecord[] = [
         makeEvent({
@@ -414,29 +396,17 @@ describe("useStreamingChat", () => {
       });
 
       expect(onClear).toHaveBeenCalledTimes(1);
-      expect(mockAppendEvent).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          conversationId: "conv-1",
-          type: "user_message",
-          payload: expect.objectContaining({
-            text: "follow-up request",
-            mode: "follow_up",
-          }),
-        }),
-      );
       expect(mockAgentStartChat).toHaveBeenCalledTimes(2);
       expect(mockAgentStartChat).toHaveBeenLastCalledWith(
         expect.objectContaining({
           conversationId: "conv-1",
-          userMessageId: "follow-up-event-1",
           userPrompt: "follow-up request",
+          mode: "follow_up",
         }),
       );
     });
 
     it("persists screenshot attachments and forwards them to the local agent", async () => {
-      mockAppendEvent.mockResolvedValueOnce({ _id: "user-event-1" });
-
       const { result } = renderHook(() =>
         useStreamingChat({ conversationId: "conv-1", events: [] }),
       );
@@ -457,26 +427,9 @@ describe("useStreamingChat", () => {
         await Promise.resolve();
       });
 
-      expect(mockAppendEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          conversationId: "conv-1",
-          type: "user_message",
-          payload: expect.objectContaining({
-            text: "what is in this screenshot?",
-            attachments: [
-              {
-                url: "data:image/png;base64,abc",
-                mimeType: "image/png",
-              },
-            ],
-          }),
-        }),
-      );
-
       expect(mockAgentStartChat).toHaveBeenCalledWith(
         expect.objectContaining({
           conversationId: "conv-1",
-          userMessageId: "user-event-1",
           userPrompt: "what is in this screenshot?",
           attachments: [
             {
@@ -489,8 +442,6 @@ describe("useStreamingChat", () => {
     });
 
     it("persists WebSearch tool results from streamed tool-end events", async () => {
-      mockAppendEvent.mockResolvedValueOnce({ _id: "user-event-1" });
-
       const { result } = renderHook(() =>
         useStreamingChat({ conversationId: "conv-1", events: [] }),
       );
@@ -531,22 +482,10 @@ describe("useStreamingChat", () => {
         });
       });
 
-      expect(mockAppendAgentEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          conversationId: "conv-1",
-          type: "tool_result",
-          toolCallId: "tool-1",
-          toolName: "WebSearch",
-          resultPreview: "HTML search briefing ready.",
-          agentType: "orchestrator",
-        }),
-      );
       expect(unsubscribeCalled).toBe(false);
     });
 
     it("persists streamed task lifecycle events so activity views can render them", async () => {
-      mockAppendEvent.mockResolvedValueOnce({ _id: "user-event-1" });
-
       const { result } = renderHook(() =>
         useStreamingChat({ conversationId: "conv-1", events: [] }),
       );
@@ -580,21 +519,9 @@ describe("useStreamingChat", () => {
         });
       });
 
-      expect(mockAppendAgentEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          conversationId: "conv-1",
-          type: "task-started",
-          taskId: "local:task:123",
-          description: "Restyle Stella dashboard to look like Xbox dashboard",
-          agentType: "general",
-          parentTaskId: "parent-task",
-        }),
-      );
     });
 
     it("keeps streamed text visible until the final assistant event is present in events", async () => {
-      mockAppendEvent.mockResolvedValueOnce({ _id: "user-event-1" });
-
       const { result, rerender } = renderHook(
         ({ events }: { events: EventRecord[] }) =>
           useStreamingChat({ conversationId: "conv-1", events }),
@@ -634,14 +561,6 @@ describe("useStreamingChat", () => {
         await Promise.resolve();
       });
 
-      expect(mockAppendAgentEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          conversationId: "conv-1",
-          type: "assistant_message",
-          userMessageId: "user-event-1",
-          finalText: "Hello there",
-        }),
-      );
       expect(result.current.isStreaming).toBe(true);
       expect(result.current.pendingUserMessageId).toBe("user-event-1");
 
@@ -723,20 +642,7 @@ describe("useStreamingChat", () => {
         await Promise.resolve()
       })
 
-      expect(mockAppendAgentEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          conversationId: "conv-1",
-          type: "assistant_message",
-          finalText: "Background task finished",
-        }),
-      )
-      const assistantCall = mockAppendAgentEvent.mock.calls.find(
-        ([arg]) => arg?.type === "assistant_message" && arg?.finalText === "Background task finished",
-      )?.[0] as { userMessageId?: string } | undefined
-      expect(assistantCall?.userMessageId).toBeUndefined()
       expect(result.current.isStreaming).toBe(false)
     });
   });
 });
-
-
