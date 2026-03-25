@@ -49,9 +49,26 @@ class MockPeerConnection {
 class MockAudioContext {
   state: AudioContextState = "running";
   destination = {};
+  currentTime = 0;
   close = vi.fn().mockResolvedValue(undefined);
   createAnalyser = vi.fn(() => ({
+    frequencyBinCount: 8,
     fftSize: 0,
+    getByteFrequencyData: vi.fn((buffer: Uint8Array) => buffer.fill(0)),
+  }));
+  createGain = vi.fn(() => ({
+    gain: {
+      value: 1,
+      cancelScheduledValues: vi.fn(),
+      setTargetAtTime: vi.fn(),
+    },
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  }));
+  createMediaStreamDestination = vi.fn(() => ({
+    stream: {
+      getAudioTracks: () => [{ kind: "audio" }],
+    },
   }));
   createMediaStreamSource = vi.fn(() => ({
     connect: vi.fn(),
@@ -61,7 +78,10 @@ class MockAudioContext {
 
 let lastPeerConnection: MockPeerConnection | null = null;
 
-import { RealtimeVoiceSession } from "../../../../../src/features/voice/services/realtime-voice";
+import {
+  RealtimeVoiceSession,
+  shouldGateVoiceInputForEcho,
+} from "../../../../../src/features/voice/services/realtime-voice";
 
 describe("RealtimeVoiceSession", () => {
   beforeEach(() => {
@@ -242,7 +262,9 @@ describe("RealtimeVoiceSession", () => {
       expect(mockAcquireSharedMicrophone).toHaveBeenCalledWith({
         useCase: "voice-rtc",
       });
-      expect(lastPeerConnection?.sender.replaceTrack).toHaveBeenCalledWith(track);
+      expect(lastPeerConnection?.sender.replaceTrack).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "audio" }),
+      );
     });
 
     session.setInputActive(false);
@@ -297,7 +319,9 @@ describe("RealtimeVoiceSession", () => {
       session.setInputActive(true);
 
       await waitFor(() => {
-        expect(lastPeerConnection?.sender.replaceTrack).toHaveBeenCalledWith(track);
+        expect(lastPeerConnection?.sender.replaceTrack).toHaveBeenCalledWith(
+          expect.objectContaining({ kind: "audio" }),
+        );
       });
 
       lastPeerConnection?.dataChannel.onmessage?.({
@@ -358,5 +382,51 @@ describe("RealtimeVoiceSession", () => {
     });
 
     await session.disconnect();
+  });
+
+  it("injects buffered wake-word follow-up text without triggering a response", async () => {
+    const session = new RealtimeVoiceSession();
+    await session.connect("convone");
+
+    session.injectWakeWordPrefill("how are you");
+
+    expect(lastPeerConnection?.dataChannel.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "how are you",
+            },
+          ],
+        },
+      }),
+    );
+    expect(lastPeerConnection?.dataChannel.send).not.toHaveBeenCalledWith(
+      JSON.stringify({ type: "response.create" }),
+    );
+
+    await session.disconnect();
+  });
+
+  it("gates likely speaker echo but still allows real user barge-in", () => {
+    expect(
+      shouldGateVoiceInputForEcho({
+        assistantSpeaking: true,
+        micLevel: 0.03,
+        outputLevel: 0.12,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldGateVoiceInputForEcho({
+        assistantSpeaking: true,
+        micLevel: 0.14,
+        outputLevel: 0.12,
+      }),
+    ).toBe(false);
   });
 });

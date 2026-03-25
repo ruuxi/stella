@@ -133,9 +133,7 @@ export function createWakeWordAdaptiveNoiseFloor(
       };
 
       return {
-        // openWakeWord-style path: always forward real PCM to the detector.
-        // Keep the adaptive front-end state only for telemetry/debugging.
-        pcm,
+        pcm: gateOpen ? pcm : new Int16Array(pcm.length),
         frontEnd: lastState,
       };
     },

@@ -131,6 +131,14 @@ export const broadcastWakeWordState = (context: BootstrapContext) => {
   getMobileBroadcast(context)?.("voice:wakeWordState", { enabled });
 };
 
+export const broadcastWakeWordDetected = (context: BootstrapContext) => {
+  const payload = { detectedAt: Date.now() };
+  forEachWindow(context, (window) => {
+    window.webContents.send("voice:wakeWordDetected", payload);
+  });
+  getMobileBroadcast(context)?.("voice:wakeWordDetected", payload);
+};
+
 export const broadcastStellaBrowserBridgeStatus = (
   context: BootstrapContext,
   status: StellaBrowserBridgeStatus,

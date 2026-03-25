@@ -7,6 +7,7 @@ export type WakeWordDeps = {
   electronDir: string;
   uiStateService: UiStateService;
   isAppReady: () => boolean;
+  onDetection?: () => void;
   onEnabledChange?: (enabled: boolean) => void;
 };
 
@@ -87,6 +88,7 @@ export const initializeWakeWord = async (
   feed.onDetection(() => {
     if (!deps.isAppReady()) return;
 
+    deps.onDetection?.();
     const convId = deps.uiStateService.state.conversationId ?? "voice-rtc";
     deps.uiStateService.activateVoiceRtc(
       convId !== "voice-rtc" ? convId : null,

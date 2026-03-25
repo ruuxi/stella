@@ -4,7 +4,12 @@
  * Ports the openWakeWord streaming inference pipeline faithfully from Python:
  *   raw audio buffer -> melspectrogram (with context overlap) -> embeddings -> classifier
  *
- * Minimal detector wrapper around the openWakeWord-style streaming frontend.
+ * Adds two lightweight gates ahead of the wake-word model:
+ *   very-low-volume gate -> heuristic VAD gate -> wake-word inference
+ *
+ * While the gates are closed we keep only a short raw-audio pre-roll so the
+ * first speech chunk can still include a bit of leading silence without paying
+ * the full continuous inference cost.
  */
 
 import path from "path";
@@ -67,7 +72,7 @@ export interface WakeWordDetector {
 }
 
 // ---------------------------------------------------------------------------
-// Constants (matching Python openwakeword)
+// Constants (matching Python openwakeword where applicable)
 // ---------------------------------------------------------------------------
 
 const SAMPLE_RATE = 16000;
@@ -87,14 +92,184 @@ const WARMUP_FRAMES = 0;
 const DEFAULT_THRESHOLD = 0.6;
 const MIN_THRESHOLD = 0.6;
 
+const PCM_NORMALIZATION_FACTOR = 32768;
+
+const WAKE_WORD_BOOTSTRAP_FLOOR_RATIO = 0.8;
+const WAKE_WORD_FLOOR_FAST_FALL_RATE = 0.2;
+const WAKE_WORD_FLOOR_SLOW_RISE_RATE = 0.02;
+const WAKE_WORD_SIGNAL_FLOOR_RATIO = 1.8;
+const WAKE_WORD_SIGNAL_FLOOR_MARGIN = 0.004;
+const WAKE_WORD_MINIMUM_SIGNAL_LEVEL = 0.0025;
+const WAKE_WORD_SIGNAL_HOLD_FRAMES = 3;
+
+const IDLE_PREROLL_CHUNKS = 3;
+const IDLE_PREROLL_SAMPLES = IDLE_PREROLL_CHUNKS * CHUNK_SAMPLES;
+
+const VAD_ACTIVITY_LEVEL = 0.015;
+const VAD_MIN_RMS_LEVEL = 0.006;
+const VAD_MIN_PEAK_LEVEL = 0.03;
+const VAD_ZCR_MIN = 0.01;
+const VAD_ZCR_MAX = 0.22;
+const VAD_ZCR_MAX_FALLOFF = 0.45;
+
+export const WAKE_WORD_VAD_GATE_THRESHOLD = 0.5;
+
+function clamp01(value: number): number {
+  if (value <= 0) {
+    return 0;
+  }
+  if (value >= 1) {
+    return 1;
+  }
+  return value;
+}
+
+function createIdleFrontEndState(): WakeWordFrontEndState {
+  return {
+    inputLevel: 0,
+    noiseFloor: 0,
+    nextNoiseFloor: 0,
+    signalThreshold: WAKE_WORD_MINIMUM_SIGNAL_LEVEL,
+    signalDelta: 0,
+    signalPresent: false,
+    gateOpen: false,
+  };
+}
+
+export function calculateWakeWordInputLevel(pcm: Int16Array): number {
+  if (pcm.length === 0) {
+    return 0;
+  }
+
+  let sum = 0;
+  for (let i = 0; i < pcm.length; i += 1) {
+    const sample = pcm[i] / PCM_NORMALIZATION_FACTOR;
+    sum += sample * sample;
+  }
+
+  return Math.sqrt(sum / pcm.length);
+}
+
+export function estimateWakeWordVadScore(pcm: Int16Array): number {
+  if (pcm.length === 0) {
+    return 0;
+  }
+
+  let sumSquares = 0;
+  let peak = 0;
+  let zeroCrossings = 0;
+  let activeSamples = 0;
+  let previousSign = 0;
+
+  for (let i = 0; i < pcm.length; i += 1) {
+    const normalized = pcm[i] / PCM_NORMALIZATION_FACTOR;
+    const absValue = Math.abs(normalized);
+    const sign = normalized > 0 ? 1 : normalized < 0 ? -1 : 0;
+
+    sumSquares += normalized * normalized;
+    if (absValue > peak) {
+      peak = absValue;
+    }
+    if (absValue >= VAD_ACTIVITY_LEVEL) {
+      activeSamples += 1;
+    }
+    if (sign !== 0) {
+      if (previousSign !== 0 && sign !== previousSign) {
+        zeroCrossings += 1;
+      }
+      previousSign = sign;
+    }
+  }
+
+  const rms = Math.sqrt(sumSquares / pcm.length);
+  if (
+    rms < WAKE_WORD_MINIMUM_SIGNAL_LEVEL * 0.75 &&
+    peak < VAD_ACTIVITY_LEVEL
+  ) {
+    return 0;
+  }
+
+  const activityRatio = activeSamples / pcm.length;
+  const zeroCrossingRate = zeroCrossings / Math.max(1, pcm.length - 1);
+
+  const rmsScore = clamp01((rms - VAD_MIN_RMS_LEVEL) / 0.03);
+  const peakScore = clamp01((peak - VAD_MIN_PEAK_LEVEL) / 0.12);
+  const activityScore = clamp01((activityRatio - 0.08) / 0.45);
+
+  let zcrScore = 0;
+  if (zeroCrossingRate > 0) {
+    if (zeroCrossingRate < VAD_ZCR_MIN) {
+      zcrScore = clamp01(zeroCrossingRate / VAD_ZCR_MIN);
+    } else if (zeroCrossingRate <= VAD_ZCR_MAX) {
+      zcrScore = 1;
+    } else {
+      zcrScore = clamp01(
+        1 -
+          (zeroCrossingRate - VAD_ZCR_MAX) /
+            (VAD_ZCR_MAX_FALLOFF - VAD_ZCR_MAX),
+      );
+    }
+  }
+
+  return clamp01(
+    rmsScore * 0.45 +
+      peakScore * 0.2 +
+      activityScore * 0.2 +
+      zcrScore * 0.15,
+  );
+}
+
 export function createWakeWordVadGateState(
   vadScore: number,
-  threshold = 0,
+  threshold = WAKE_WORD_VAD_GATE_THRESHOLD,
 ): WakeWordVadGateState {
   return {
     threshold,
-    gateOpen: vadScore >= threshold || threshold === 0,
+    gateOpen: vadScore >= threshold,
   };
+}
+
+export function float16BitsToNumber(bits: number): number {
+  const sign = (bits & 0x8000) !== 0 ? -1 : 1;
+  const exponent = (bits >> 10) & 0x1f;
+  const fraction = bits & 0x03ff;
+
+  if (exponent === 0) {
+    if (fraction === 0) {
+      return sign === -1 ? -0 : 0;
+    }
+    return sign * Math.pow(2, -14) * (fraction / 1024);
+  }
+
+  if (exponent === 0x1f) {
+    if (fraction === 0) {
+      return sign * Number.POSITIVE_INFINITY;
+    }
+    return Number.NaN;
+  }
+
+  return sign * Math.pow(2, exponent - 15) * (1 + fraction / 1024);
+}
+
+export function readScalarTensorValue(
+  tensor: Pick<OrtTensor, "data"> & { type?: string },
+  tensorType = tensor.type,
+): number {
+  const value = tensor.data[0];
+
+  if (typeof value === "bigint") {
+    return Number(value);
+  }
+
+  if (value == null) {
+    return 0;
+  }
+
+  if (tensorType === "float16") {
+    return float16BitsToNumber(Number(value));
+  }
+
+  return Number(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -102,7 +277,7 @@ export function createWakeWordVadGateState(
 // ---------------------------------------------------------------------------
 
 export async function createWakeWordDetector(
-  modelDir: string
+  modelDir: string,
 ): Promise<WakeWordDetector> {
   const ort = await loadOrtModule();
 
@@ -159,12 +334,23 @@ export async function createWakeWordDetector(
   }
 
   function releaseAllSessions() {
-    try { melspecSession?.release(); } catch { /* ignore */ }
-    try { embeddingSession?.release(); } catch { /* ignore */ }
-    try { wakewordSession?.release(); } catch { /* ignore */ }
+    try {
+      melspecSession?.release();
+    } catch {
+      /* ignore */
+    }
+    try {
+      embeddingSession?.release();
+    } catch {
+      /* ignore */
+    }
+    try {
+      wakewordSession?.release();
+    } catch {
+      /* ignore */
+    }
   }
 
-  // Initial creation
   await createAllSessions();
 
   let listening = false;
@@ -172,10 +358,11 @@ export async function createWakeWordDetector(
   let lastActivationTime = 0;
   let warmupFrames = WARMUP_FRAMES;
 
+  let trackedNoiseFloor = 0;
+  let signalHoldFramesRemaining = 0;
+
   const rawBuffer = new Int16Array(RAW_BUFFER_MAX);
   let rawBufferLen = 0;
-
-  let rawRemainder = new Int16Array(0);
   let accumulatedSamples = 0;
 
   const melBuffer = new Float32Array(MEL_BUFFER_MAX * MEL_BINS).fill(1.0);
@@ -184,15 +371,15 @@ export async function createWakeWordDetector(
   const featureBuffer = new Float32Array(FEATURE_BUFFER_MAX * EMBEDDING_DIM);
   let featureRows = 0;
 
-
-
-  async function computeMelspec(audioFloat: Float32Array): Promise<{ data: Float32Array; rows: number }> {
+  async function computeMelspec(
+    audioFloat: Float32Array,
+  ): Promise<{ data: Float32Array; rows: number }> {
     const results = await melspecSession.run({
       input: new ort.Tensor("float32", audioFloat, [1, audioFloat.length]),
     });
     const output = results[Object.keys(results)[0]] as OrtTensor;
     const rawData = new Float32Array(output.data as Float32Array);
-    for (let i = 0; i < rawData.length; i++) {
+    for (let i = 0; i < rawData.length; i += 1) {
       rawData[i] = rawData[i] / 10.0 + 2.0;
     }
 
@@ -204,8 +391,8 @@ export async function createWakeWordDetector(
     const audioFloat = new Float32Array(contextSamples);
     const available = Math.min(rawBufferLen, contextSamples);
     const startIdx = rawBufferLen - available;
-    
-    for (let i = 0; i < available; i++) {
+
+    for (let i = 0; i < available; i += 1) {
       audioFloat[contextSamples - available + i] = rawBuffer[startIdx + i];
     }
 
@@ -226,7 +413,12 @@ export async function createWakeWordDetector(
 
   async function computeEmbedding(melWindow: Float32Array): Promise<Float32Array> {
     const results = await embeddingSession.run({
-      input_1: new ort.Tensor("float32", melWindow, [1, EMBEDDING_WINDOW, MEL_BINS, 1]),
+      input_1: new ort.Tensor("float32", melWindow, [
+        1,
+        EMBEDDING_WINDOW,
+        MEL_BINS,
+        1,
+      ]),
     });
     const output = results[Object.keys(results)[0]] as OrtTensor;
     return new Float32Array(output.data as Float32Array);
@@ -234,66 +426,57 @@ export async function createWakeWordDetector(
 
   async function runClassifier(features: Float32Array): Promise<number> {
     const results = await wakewordSession.run({
-      [wakewordInputName]: new ort.Tensor("float32", features, [1, MODEL_INPUT_FRAMES, EMBEDDING_DIM]),
+      [wakewordInputName]: new ort.Tensor("float32", features, [
+        1,
+        MODEL_INPUT_FRAMES,
+        EMBEDDING_DIM,
+      ]),
     });
     const output = results[wakewordOutputName || Object.keys(results)[0]] as OrtTensor;
-    return Number((output.data as Float32Array | Float64Array | number[])[0] ?? 0);
+    return readScalarTensorValue(output, output.type);
   }
 
   function bufferRawData(data: Int16Array) {
+    if (data.length === 0) {
+      return;
+    }
+
+    if (data.length >= RAW_BUFFER_MAX) {
+      rawBuffer.set(data.subarray(data.length - RAW_BUFFER_MAX));
+      rawBufferLen = RAW_BUFFER_MAX;
+      return;
+    }
+
     if (rawBufferLen + data.length > RAW_BUFFER_MAX) {
       const keep = RAW_BUFFER_MAX - data.length;
       rawBuffer.copyWithin(0, rawBufferLen - keep, rawBufferLen);
       rawBufferLen = keep;
     }
+
     rawBuffer.set(data, rawBufferLen);
     rawBufferLen += data.length;
   }
 
+  function trimRawBuffer(keepSamples: number) {
+    const clampedKeep = Math.max(0, Math.min(keepSamples, rawBufferLen));
+    if (clampedKeep >= rawBufferLen) {
+      return;
+    }
+
+    rawBuffer.copyWithin(0, rawBufferLen - clampedKeep, rawBufferLen);
+    rawBuffer.fill(0, clampedKeep, rawBufferLen);
+    rawBufferLen = clampedKeep;
+  }
+
+  function trimStreamingBacklog(maxPendingSamples: number) {
+    accumulatedSamples = Math.min(accumulatedSamples, maxPendingSamples);
+    trimRawBuffer(accumulatedSamples + MEL_CONTEXT_SAMPLES);
+  }
+
   function queueStreamingAudio(pcm: Int16Array): boolean {
-    if (rawRemainder.length > 0) {
-      const combined = new Int16Array(rawRemainder.length + pcm.length);
-      combined.set(rawRemainder);
-      combined.set(pcm, rawRemainder.length);
-
-      if (accumulatedSamples + combined.length >= CHUNK_SAMPLES) {
-        const totalSamples = accumulatedSamples + combined.length;
-        const remainder = totalSamples % CHUNK_SAMPLES;
-        if (remainder !== 0) {
-          bufferRawData(combined.slice(0, combined.length - remainder));
-          accumulatedSamples += combined.length - remainder;
-          rawRemainder = combined.slice(combined.length - remainder);
-        } else {
-          bufferRawData(combined);
-          accumulatedSamples += combined.length;
-          rawRemainder = new Int16Array(0);
-        }
-        return true;
-      }
-
-      accumulatedSamples += combined.length;
-      bufferRawData(combined);
-      rawRemainder = new Int16Array(0);
-      return false;
-    }
-
-    if (accumulatedSamples + pcm.length >= CHUNK_SAMPLES) {
-      const totalSamples = accumulatedSamples + pcm.length;
-      const remainder = totalSamples % CHUNK_SAMPLES;
-      if (remainder !== 0) {
-        bufferRawData(pcm.slice(0, pcm.length - remainder));
-        accumulatedSamples += pcm.length - remainder;
-        rawRemainder = pcm.slice(pcm.length - remainder);
-      } else {
-        bufferRawData(pcm);
-        accumulatedSamples += pcm.length;
-      }
-      return true;
-    }
-
-    accumulatedSamples += pcm.length;
     bufferRawData(pcm);
-    return false;
+    accumulatedSamples = Math.min(rawBufferLen, accumulatedSamples + pcm.length);
+    return accumulatedSamples >= CHUNK_SAMPLES;
   }
 
   function appendFeatureFrame(embedding: Float32Array) {
@@ -306,7 +489,7 @@ export async function createWakeWordDetector(
       embedding.subarray(0, EMBEDDING_DIM),
       featureRows * EMBEDDING_DIM,
     );
-    featureRows++;
+    featureRows += 1;
   }
 
   async function advanceFeatureBuffer(): Promise<void> {
@@ -319,7 +502,7 @@ export async function createWakeWordDetector(
 
     await streamingMelspec(samplesToProcess);
 
-    for (let i = nChunks - 1; i >= 0; i--) {
+    for (let i = nChunks - 1; i >= 0; i -= 1) {
       const offset = 8 * i;
       const endMel = melRows - offset;
       const startMel = endMel - EMBEDDING_WINDOW;
@@ -345,36 +528,120 @@ export async function createWakeWordDetector(
     return detected;
   }
 
-  async function predict(pcm: Int16Array): Promise<WakeWordResult> {
-    const none: WakeWordResult = {
-      detected: false,
-      score: 0,
-      vadScore: 0,
-      vadGate: createWakeWordVadGateState(0),
-      inference: { classifierRan: false },
-    };
-    if (!listening) return none;
+  function analyzeFrontEnd(pcm: Int16Array): WakeWordFrontEndState {
+    const inputLevel = calculateWakeWordInputLevel(pcm);
+    const noiseFloor =
+      trackedNoiseFloor > 0
+        ? trackedNoiseFloor
+        : inputLevel * WAKE_WORD_BOOTSTRAP_FLOOR_RATIO;
+    const signalThreshold = Math.max(
+      noiseFloor * WAKE_WORD_SIGNAL_FLOOR_RATIO,
+      noiseFloor + WAKE_WORD_SIGNAL_FLOOR_MARGIN,
+      WAKE_WORD_MINIMUM_SIGNAL_LEVEL,
+    );
+    const signalDelta = Math.max(0, inputLevel - noiseFloor);
+    const signalPresent =
+      inputLevel >= WAKE_WORD_MINIMUM_SIGNAL_LEVEL &&
+      (inputLevel >= signalThreshold ||
+        signalDelta > WAKE_WORD_SIGNAL_FLOOR_MARGIN);
 
-    if (!queueStreamingAudio(pcm)) {
+    let gateOpen = signalPresent;
+    if (signalPresent) {
+      signalHoldFramesRemaining = WAKE_WORD_SIGNAL_HOLD_FRAMES;
+    } else if (signalHoldFramesRemaining > 0) {
+      signalHoldFramesRemaining -= 1;
+      gateOpen = true;
+    }
+
+    let nextNoiseFloor = noiseFloor;
+    if (noiseFloor <= 0) {
+      nextNoiseFloor = 0;
+    } else if (!gateOpen) {
+      const rate =
+        inputLevel <= noiseFloor
+          ? WAKE_WORD_FLOOR_FAST_FALL_RATE
+          : WAKE_WORD_FLOOR_SLOW_RISE_RATE;
+      nextNoiseFloor = noiseFloor + (inputLevel - noiseFloor) * rate;
+    }
+
+    trackedNoiseFloor = nextNoiseFloor;
+
+    return {
+      inputLevel,
+      noiseFloor,
+      nextNoiseFloor,
+      signalThreshold,
+      signalDelta,
+      signalPresent,
+      gateOpen,
+    };
+  }
+
+  function createResult(
+    frontEnd: WakeWordFrontEndState,
+    vadScore: number,
+    classifierRan: boolean,
+    score = 0,
+  ): WakeWordResult {
+    return {
+      detected: false,
+      score,
+      vadScore,
+      frontEnd,
+      vadGate: createWakeWordVadGateState(vadScore),
+      inference: { classifierRan },
+    };
+  }
+
+  function resetFeaturePipeline() {
+    melBuffer.fill(1.0);
+    melRows = EMBEDDING_WINDOW;
+    featureBuffer.fill(0);
+    featureRows = 0;
+  }
+
+  function enterLowComputeIdle() {
+    resetFeaturePipeline();
+    trimStreamingBacklog(IDLE_PREROLL_SAMPLES);
+  }
+
+  async function predict(pcm: Int16Array): Promise<WakeWordResult> {
+    if (!listening) {
+      return createResult(createIdleFrontEndState(), 0, false);
+    }
+
+    const hasChunkReady = queueStreamingAudio(pcm);
+    const frontEnd = analyzeFrontEnd(pcm);
+
+    if (!frontEnd.gateOpen) {
+      enterLowComputeIdle();
+      return createResult(frontEnd, 0, false);
+    }
+
+    const vadScore = estimateWakeWordVadScore(pcm);
+    const vadGate = createWakeWordVadGateState(vadScore);
+    if (!vadGate.gateOpen) {
+      enterLowComputeIdle();
       return {
-        detected: false,
-        score: 0,
-        vadScore: 0,
-        vadGate: createWakeWordVadGateState(0),
-        inference: { classifierRan: false },
+        ...createResult(frontEnd, vadScore, false),
+        vadGate,
+      };
+    }
+
+    if (!hasChunkReady) {
+      return {
+        ...createResult(frontEnd, vadScore, false),
+        vadGate,
       };
     }
 
     await advanceFeatureBuffer();
 
     if (warmupFrames > 0) {
-      warmupFrames--;
+      warmupFrames -= 1;
       return {
-        detected: false,
-        score: 0,
-        vadScore: 0,
-        vadGate: createWakeWordVadGateState(0),
-        inference: { classifierRan: false },
+        ...createResult(frontEnd, vadScore, false),
+        vadGate,
       };
     }
 
@@ -390,33 +657,28 @@ export async function createWakeWordDetector(
     }
 
     const score = await runClassifier(features);
-    const finalScore = featureRows < 5 ? 0.0 : score;
+    const finalScore = featureRows < 5 ? 0 : score;
     const detected = detectFromScore(finalScore);
 
     return {
       detected,
       score: finalScore,
-      vadScore: 0,
-      vadGate: createWakeWordVadGateState(0),
+      vadScore,
+      frontEnd,
+      vadGate,
       inference: { classifierRan: true },
     };
-  }
-
-  function resetToSilence() {
-    melBuffer.fill(1.0);
-    melRows = EMBEDDING_WINDOW;
-    featureBuffer.fill(0);
-    featureRows = 0;
-
-    accumulatedSamples = 0;
-    rawRemainder = new Int16Array(0);
   }
 
   function resetState() {
     rawBufferLen = 0;
     rawBuffer.fill(0);
+    accumulatedSamples = 0;
 
-    resetToSilence();
+    trackedNoiseFloor = 0;
+    signalHoldFramesRemaining = 0;
+
+    resetFeaturePipeline();
 
     warmupFrames = WARMUP_FRAMES;
   }
@@ -433,7 +695,9 @@ export async function createWakeWordDetector(
     },
     predict,
     calibrate(scores: number[]) {
-      if (scores.length === 0) return;
+      if (scores.length === 0) {
+        return;
+      }
       const minScore = Math.min(...scores);
       threshold = Math.max(MIN_THRESHOLD, minScore - 0.1);
     },

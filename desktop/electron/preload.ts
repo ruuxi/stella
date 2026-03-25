@@ -323,6 +323,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         enabled: boolean;
       }>,
     onWakeWordState: onIpc<{ enabled: boolean }>("voice:wakeWordState"),
+    onWakeWordDetected: onIpc<{ detectedAt: number }>("voice:wakeWordDetected"),
     pushWakeWordAudio: (buffer: ArrayBuffer) =>
       ipcRenderer.send("voice:wakeWordAudio", buffer),
     pushRuntimeState: (state: {

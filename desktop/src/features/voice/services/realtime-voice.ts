@@ -74,6 +74,40 @@ const RTC_CONFIGURATION: RTCConfiguration = {
   iceCandidatePoolSize: 1,
 };
 const RTC_VOICE_MIC_USE_CASE = "voice-rtc" as const;
+const ECHO_GUARD_SAMPLE_MS = 40;
+const ECHO_GUARD_OUTPUT_LEVEL_THRESHOLD = 0.02;
+const ECHO_GUARD_BARGE_IN_MIN_MIC_LEVEL = 0.05;
+const ECHO_GUARD_BARGE_IN_MARGIN = 0.02;
+const ECHO_GUARD_BARGE_IN_RATIO = 0.85;
+const ECHO_GUARD_RELEASE_MS = 180;
+
+type VoiceEchoMetrics = {
+  assistantSpeaking: boolean;
+  micLevel: number;
+  outputLevel: number;
+  recentOutputActiveUntil?: number;
+  now?: number;
+};
+
+export function shouldGateVoiceInputForEcho({
+  assistantSpeaking,
+  micLevel,
+  outputLevel,
+  recentOutputActiveUntil = 0,
+  now = Date.now(),
+}: VoiceEchoMetrics): boolean {
+  const assistantAudioActive =
+    assistantSpeaking || recentOutputActiveUntil > now;
+  if (!assistantAudioActive || outputLevel < ECHO_GUARD_OUTPUT_LEVEL_THRESHOLD) {
+    return false;
+  }
+
+  const userLikelyBargingIn =
+    micLevel >= ECHO_GUARD_BARGE_IN_MIN_MIC_LEVEL &&
+    micLevel >= outputLevel * ECHO_GUARD_BARGE_IN_RATIO + ECHO_GUARD_BARGE_IN_MARGIN;
+
+  return !userLikelyBargingIn;
+}
 
 const toConvexConversationId = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -108,11 +142,20 @@ export class RealtimeVoiceSession {
   private audioContext: AudioContext | null = null;
   private outputAnalyser: AnalyserNode | null = null;
   private inputSourceNode: MediaStreamAudioSourceNode | null = null;
+  private inputGateNode: GainNode | null = null;
+  private inputDestination: MediaStreamAudioDestinationNode | null = null;
+  private processedInputTrack: MediaStreamTrack | null = null;
   private outputMonitorSource: MediaStreamAudioSourceNode | null = null;
   private pendingRemoteStream: MediaStream | null = null;
   private destroyed = false;
   private inputActive = false;
   private inputSyncPromise: Promise<void> = Promise.resolve();
+  private assistantOutputActive = false;
+  private recentOutputActiveUntil = 0;
+  private softInputMuted = false;
+  private echoGuardTimer: ReturnType<typeof setInterval> | null = null;
+  private inputEnergyBuffer: Uint8Array | null = null;
+  private outputEnergyBuffer: Uint8Array | null = null;
 
   private _state: VoiceSessionState = "idle";
   private listeners = new Set<VoiceSessionListener>();
@@ -341,6 +384,29 @@ export class RealtimeVoiceSession {
     return this.outputAnalyser;
   }
 
+  injectWakeWordPrefill(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    this.lastUserTranscript = trimmed;
+    this.trace("WAKE_WORD_PREFILL", trimmed);
+    this.sendEvent({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: trimmed,
+          },
+        ],
+      },
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // WebRTC internals
   // ---------------------------------------------------------------------------
@@ -419,6 +485,12 @@ export class RealtimeVoiceSession {
         this.audioContext = ctx;
         this.analyser = ctx.createAnalyser();
         this.analyser.fftSize = 256;
+        this.inputGateNode = ctx.createGain();
+        this.inputGateNode.gain.value = 1;
+        this.inputDestination = ctx.createMediaStreamDestination();
+        this.inputGateNode.connect(this.inputDestination);
+        this.processedInputTrack =
+          this.inputDestination.stream.getAudioTracks()[0] ?? null;
 
         if (this.pendingRemoteStream) {
           this.attachOutputMonitor(this.pendingRemoteStream);
@@ -435,7 +507,7 @@ export class RealtimeVoiceSession {
   }
 
   private attachLocalInputStream(stream: MediaStream) {
-    if (!this.audioContext || !this.analyser) {
+    if (!this.audioContext || !this.analyser || !this.inputGateNode) {
       return;
     }
 
@@ -446,7 +518,94 @@ export class RealtimeVoiceSession {
 
     const source = this.audioContext.createMediaStreamSource(stream);
     source.connect(this.analyser);
+    source.connect(this.inputGateNode);
     this.inputSourceNode = source;
+  }
+
+  private getAnalyserEnergy(
+    analyser: AnalyserNode | null,
+    kind: "input" | "output",
+  ): number {
+    if (!analyser) {
+      return 0;
+    }
+
+    const len = analyser.frequencyBinCount;
+    const buffer =
+      kind === "input" ? this.inputEnergyBuffer : this.outputEnergyBuffer;
+    if (!buffer || buffer.length < len) {
+      const nextBuffer = new Uint8Array(len);
+      if (kind === "input") {
+        this.inputEnergyBuffer = nextBuffer;
+      } else {
+        this.outputEnergyBuffer = nextBuffer;
+      }
+    }
+
+    const targetBuffer =
+      (kind === "input" ? this.inputEnergyBuffer : this.outputEnergyBuffer)
+      ?? new Uint8Array(len);
+    analyser.getByteFrequencyData(targetBuffer);
+
+    let sum = 0;
+    for (let i = 0; i < len; i += 1) {
+      const value = targetBuffer[i] / 255;
+      sum += value * value;
+    }
+
+    return Math.sqrt(sum / Math.max(1, len));
+  }
+
+  private startEchoGuardMonitor() {
+    if (this.echoGuardTimer) {
+      return;
+    }
+
+    this.echoGuardTimer = setInterval(() => {
+      this.syncEchoGuard();
+      if (
+        !this.inputActive &&
+        !this.assistantOutputActive &&
+        this.recentOutputActiveUntil <= Date.now()
+      ) {
+        this.stopEchoGuardMonitor();
+      }
+    }, ECHO_GUARD_SAMPLE_MS);
+  }
+
+  private stopEchoGuardMonitor() {
+    if (this.echoGuardTimer) {
+      clearInterval(this.echoGuardTimer);
+      this.echoGuardTimer = null;
+    }
+  }
+
+  private applySoftInputMute(shouldMute: boolean) {
+    this.softInputMuted = shouldMute;
+
+    if (!this.inputGateNode || !this.audioContext) {
+      return;
+    }
+
+    const targetValue = shouldMute ? 0 : 1;
+    const now = this.audioContext.currentTime;
+    this.inputGateNode.gain.cancelScheduledValues(now);
+    this.inputGateNode.gain.setTargetAtTime(targetValue, now, 0.015);
+  }
+
+  private syncEchoGuard() {
+    const shouldMute =
+      this.inputActive &&
+      shouldGateVoiceInputForEcho({
+        assistantSpeaking: this.assistantOutputActive,
+        micLevel: this.getAnalyserEnergy(this.analyser, "input"),
+        outputLevel: this.getAnalyserEnergy(this.outputAnalyser, "output"),
+        recentOutputActiveUntil: this.recentOutputActiveUntil,
+      });
+
+    if (this.softInputMuted !== shouldMute) {
+      this.applySoftInputMute(shouldMute);
+    }
   }
 
   private syncInputState(): Promise<void> {
@@ -473,6 +632,7 @@ export class RealtimeVoiceSession {
 
   private async suspendMicrophoneCapture() {
     if (!this.inputTrack && !this.localStream && !this.micLease) {
+      this.applySoftInputMute(false);
       return;
     }
 
@@ -492,6 +652,7 @@ export class RealtimeVoiceSession {
       this.inputTrack.enabled = false;
     }
 
+    this.applySoftInputMute(false);
     this.releaseLocalMicrophoneCapture();
   }
 
@@ -506,6 +667,8 @@ export class RealtimeVoiceSession {
 
     if (this.inputTrack && this.inputTrack.readyState === "live") {
       this.inputTrack.enabled = true;
+      this.startEchoGuardMonitor();
+      this.syncEchoGuard();
       return;
     }
 
@@ -530,9 +693,11 @@ export class RealtimeVoiceSession {
 
     this.setupLocalAudioPipeline(this.localStream);
     this.inputTrack.enabled = true;
+    this.startEchoGuardMonitor();
+    this.syncEchoGuard();
 
     try {
-      await this.sender.replaceTrack(this.inputTrack);
+      await this.sender.replaceTrack(this.processedInputTrack ?? this.inputTrack);
     } catch (err) {
       this.releaseLocalMicrophoneCapture();
       throw err;
@@ -573,6 +738,8 @@ export class RealtimeVoiceSession {
     const source = this.audioContext.createMediaStreamSource(stream);
     source.connect(this.outputAnalyser);
     this.outputMonitorSource = source;
+    this.startEchoGuardMonitor();
+    this.syncEchoGuard();
   }
 
   private sendEvent(event: Record<string, unknown>) {
@@ -706,10 +873,18 @@ export class RealtimeVoiceSession {
       }
 
       case "output_audio.started":
+        this.assistantOutputActive = true;
+        this.recentOutputActiveUntil = Date.now() + ECHO_GUARD_RELEASE_MS;
+        this.startEchoGuardMonitor();
+        this.syncEchoGuard();
         this.emit({ type: "speaking-start" });
         break;
 
       case "output_audio.done":
+        this.assistantOutputActive = false;
+        this.recentOutputActiveUntil = Date.now() + ECHO_GUARD_RELEASE_MS;
+        this.startEchoGuardMonitor();
+        this.syncEchoGuard();
         this.emit({ type: "speaking-end" });
         break;
 
@@ -979,6 +1154,11 @@ export class RealtimeVoiceSession {
   // ---------------------------------------------------------------------------
 
   private cleanup() {
+    this.stopEchoGuardMonitor();
+    this.assistantOutputActive = false;
+    this.recentOutputActiveUntil = 0;
+    this.softInputMuted = false;
+
     if (this.dc) {
       this.dc.close();
       this.dc = null;
@@ -1007,6 +1187,9 @@ export class RealtimeVoiceSession {
       });
       this.audioContext = null;
       this.analyser = null;
+      this.inputGateNode = null;
+      this.inputDestination = null;
+      this.processedInputTrack = null;
     }
     this.outputAnalyser = null;
     if (this.outputMonitorSource) {
@@ -1017,5 +1200,7 @@ export class RealtimeVoiceSession {
 
     this.assistantTranscriptBuffer = "";
     this.model = null;
+    this.inputEnergyBuffer = null;
+    this.outputEnergyBuffer = null;
   }
 }
