@@ -7,23 +7,23 @@ describe("models.dev price mapping", () => {
       data: {
         vercel: {
           models: {
-            "google/gemini-3-flash": {
+            "google/gemini-3-flash-preview": {
               cost: { input: 0.5, output: 3, cache_read: 0.05 },
               last_updated: "2026-03-16",
             },
           },
         },
       },
-      modelIds: ["google/gemini-3-flash"],
+      modelIds: ["google/gemini-3-flash-preview"],
       syncedAt: 123,
     });
 
     expect(result.missingModels).toEqual([]);
     expect(result.entries).toEqual([
       expect.objectContaining({
-        model: "google/gemini-3-flash",
+        model: "google/gemini-3-flash-preview",
         sourceProvider: "vercel",
-        sourceModelId: "google/gemini-3-flash",
+        sourceModelId: "google/gemini-3-flash-preview",
         inputPerMillionUsd: 0.5,
         outputPerMillionUsd: 3,
         cacheReadPerMillionUsd: 0.05,

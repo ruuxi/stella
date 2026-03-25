@@ -56,7 +56,7 @@ describe("model modes", () => {
     expect(getModeConfig("cheap").model).toBe("zai/glm-4.7");
     expect(getModeConfig("fast").model).toBe("inception/mercury-2");
     expect(getModeConfig("smart").model).toBe("anthropic/claude-sonnet-4.6");
-    expect(getModeConfig("media").model).toBe("google/gemini-3-flash");
+    expect(getModeConfig("media").model).toBe("google/gemini-3-flash-preview");
     expect(getModeConfig("best").fallback).toBe(getModeConfig("smart").model);
   });
 });
@@ -96,7 +96,7 @@ describe("AGENT_MODELS", () => {
     expect(AGENT_MODELS.synthesis).toBeDefined();
     expect(AGENT_MODELS.store_image_safety_review).toBeDefined();
     expect(AGENT_MODELS.synthesis.model).toBe("openai/gpt-5.4-mini");
-    expect(AGENT_MODELS.store_image_safety_review.model).toBe("google/gemini-3-flash");
+    expect(AGENT_MODELS.store_image_safety_review.model).toBe("google/gemini-3-flash-preview");
   });
 
   test("each config has required model field", () => {
