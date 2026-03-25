@@ -1,4 +1,4 @@
-﻿import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import { getEventText } from "@/app/chat/lib/event-transforms";
@@ -84,6 +84,17 @@ describe("MessageTurn helpers", () => {
         }),
       ),
     ).toBe("channel reply");
+  });
+
+  it("strips prepended and trailing timestamp tags for non-channel assistant messages", () => {
+    expect(
+      getDisplayMessageText(
+        createEvent({
+          type: "assistant_message",
+          payload: { text: "[8:00 PM] Answer text\n\n[1:00 PM, Mar 8]" },
+        }),
+      ),
+    ).toBe("Answer text");
   });
 
   it("preserves intentional leading time tags but strips stored suffix tags for non-channel messages", () => {
