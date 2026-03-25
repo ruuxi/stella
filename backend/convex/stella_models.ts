@@ -33,7 +33,7 @@ export type StellaDefaultEntry = {
 const DISPLAY_NAMES: Record<string, string> = {
   "anthropic/claude-opus-4.5": "Claude Opus 4.5",
   "anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
-  "google/gemini-3-flash": "Gemini 3 Flash",
+  "google/gemini-3-flash-preview": "Gemini 3 Flash",
   "inception/mercury-2": "Mercury 2",
   "moonshotai/kimi-k2.5": "Kimi K2.5",
   "openai/gpt-5.4": "GPT-5.4",

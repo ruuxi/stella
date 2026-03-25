@@ -173,10 +173,10 @@ describe("managed billing verification", () => {
     const { db, state } = createMemoryDb({
       billing_model_prices: [{
         _id: "price_1",
-        model: "google/gemini-3-flash",
+        model: "google/gemini-3-flash-preview",
         source: "models.dev",
         sourceProvider: "vercel",
-        sourceModelId: "google/gemini-3-flash",
+        sourceModelId: "google/gemini-3-flash-preview",
         inputPerMillionUsd: 0.5,
         outputPerMillionUsd: 3,
         cacheReadPerMillionUsd: 0.05,
@@ -197,7 +197,7 @@ describe("managed billing verification", () => {
       {
         ownerId: "owner_test",
         agentType: "proxy:general",
-        model: "google/gemini-3-flash",
+        model: "google/gemini-3-flash-preview",
         durationMs: 900,
         success: true,
         inputTokens: 1_000_000,
@@ -206,7 +206,7 @@ describe("managed billing verification", () => {
     );
 
     const expectedCost = computeUsageCostMicroCents({
-      model: "google/gemini-3-flash",
+      model: "google/gemini-3-flash-preview",
       inputTokens: 1_000_000,
       outputTokens: 500_000,
       price: {
@@ -224,7 +224,7 @@ describe("managed billing verification", () => {
     expect(state.billing_usage_windows[0]?.weeklyUsageMicroCents).toBe(expectedCost);
     expect(state.billing_usage_windows[0]?.rollingUsageMicroCents).toBe(expectedCost);
     expect(state.usage_logs).toHaveLength(1);
-    expect(state.usage_logs[0]?.model).toBe("google/gemini-3-flash");
+    expect(state.usage_logs[0]?.model).toBe("google/gemini-3-flash-preview");
     expect(state.usage_logs[0]?.costMicroCents).toBe(expectedCost);
   });
 

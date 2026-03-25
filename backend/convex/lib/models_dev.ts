@@ -39,9 +39,9 @@ type ResolvedModelsDevModel = {
 };
 
 const MODELS_DEV_ALIASES: Record<string, string[]> = {
-  "google/gemini-3-flash": [
+  "google/gemini-3-flash-preview": [
+    "google/gemini-3-flash",
     "vercel/google/gemini-3-flash",
-    "google/gemini-3-flash-preview",
     "vercel/google/gemini-3-flash-preview",
   ],
   "anthropic/claude-sonnet-4.6": [

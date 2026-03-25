@@ -212,10 +212,10 @@ describe("stella llm aliases", () => {
       "anthropic/claude-sonnet-4.6",
     );
     expect(resolveStellaModelSelection("general", STELLA_BEST_MODEL)).toBe(
-      "anthropic/claude-sonnet-4.6",
+      "anthropic/claude-opus-4.6",
     );
     expect(resolveStellaModelSelection("general", STELLA_MEDIA_MODEL)).toBe(
-      "google/gemini-3-flash",
+      "google/gemini-3-flash-preview",
     );
   });
 
