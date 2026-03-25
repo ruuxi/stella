@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { Slot, usePathname, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Feather from "@expo/vector-icons/Feather";
 import {
@@ -43,8 +46,9 @@ function Sidebar({
   activeTab: TabId;
   onSelectTab: (tab: TabId) => void;
 }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.sidebar}>
+    <View style={[styles.sidebar, { paddingTop: insets.top + 12, paddingBottom: insets.bottom }]}>
       <Text style={styles.brand}>Stella</Text>
       <View style={styles.nav}>
         {TABS.map((tab) => {
@@ -79,6 +83,7 @@ function Sidebar({
 }
 
 export default function MainLayout() {
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 920;
   const pathname = usePathname();
@@ -151,13 +156,13 @@ export default function MainLayout() {
           {sidebarOpen && (
             <Pressable
               onPress={() => setSidebarOpen(false)}
-              style={styles.backdrop}
+              style={[styles.backdrop, { top: -insets.top, bottom: -insets.bottom }]}
             />
           )}
 
           <Animated.View
             pointerEvents={sidebarOpen ? "auto" : "none"}
-            style={[styles.drawerShell, { transform: [{ translateX }] }]}
+            style={[styles.drawerShell, { top: -insets.top, bottom: -insets.bottom, transform: [{ translateX }] }]}
           >
             <Sidebar activeTab={activeTab} onSelectTab={navigate} />
           </Animated.View>
@@ -203,7 +208,6 @@ const styles = StyleSheet.create({
     borderRightColor: colors.border,
     borderRightWidth: StyleSheet.hairlineWidth,
     flex: 1,
-    paddingTop: 16,
     width: SIDEBAR_WIDTH,
   },
   brand: {

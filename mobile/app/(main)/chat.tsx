@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { GlassView } from "expo-glass-effect";
 import Feather from "@expo/vector-icons/Feather";
 import { assert, assertObject, errorMessage } from "../../src/lib/assert";
 import { postJson } from "../../src/lib/http";
@@ -279,7 +280,7 @@ export default function ChatScreen() {
               [add] [input] [toolbar: [add-toolbar] [stop] [submit]]
       */}
       <View style={styles.composerWrap}>
-        <View style={[styles.shell, expanded ? styles.shellExpanded : styles.shellPill]}>
+        <GlassView style={[styles.shell, expanded ? styles.shellExpanded : styles.shellPill]}>
 
           {expanded ? (
             /* ---- Expanded: column, textarea on top, toolbar below ---- */
@@ -331,11 +332,12 @@ export default function ChatScreen() {
               </Pressable>
               <TextInput
                 ref={inputRef}
-                multiline
                 scrollEnabled={false}
                 onChangeText={setDraft}
                 onContentSizeChange={handleContentSizeChange}
-                blurOnSubmit={false}
+                blurOnSubmit
+                onSubmitEditing={() => void send()}
+                returnKeyType="send"
                 placeholder="Message Stella"
                 placeholderTextColor="rgba(82, 104, 134, 0.35)"
                 selectionColor={colors.accent}
@@ -361,7 +363,7 @@ export default function ChatScreen() {
               </Pressable>
             </View>
           )}
-        </View>
+        </GlassView>
       </View>
     </KeyboardAvoidingView>
   );
@@ -472,13 +474,7 @@ const styles = StyleSheet.create({
 
   // Shell — desktop: .composer-shell (pill radius, shadow, overflow clip)
   shell: {
-    backgroundColor: colors.surface,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    elevation: 6,
     width: "100%",
   },
   // Pill capsule — desktop: border-radius: 999px (CSS fallback)
