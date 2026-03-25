@@ -15,11 +15,14 @@ export type MusicServiceState = {
   lyrics: boolean
 }
 
-type MusicStreamEvent =
-  | { type: "audio"; chunks?: Array<{ data?: string }> }
-  | { type: "ready"; promptLabel?: string }
-  | { type: "close"; code?: number; reason?: string }
-  | { type: "error"; message?: string }
+type GeneratedMusicResponse = {
+  audio?: {
+    data?: string
+    mimeType?: string
+  }
+  promptLabel?: string | null
+  textParts?: string[]
+}
 
 type StateListener = (state: MusicServiceState) => void
 
@@ -38,15 +41,27 @@ let state: MusicServiceState = {
 let audioContext: AudioContext | null = null
 let masterGain: GainNode | null = null
 let analyserNode: AnalyserNode | null = null
-let nextPlayTime = 0
+let currentSource: AudioBufferSourceNode | null = null
 
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
-let activeStreamController: AbortController | null = null
 let playbackGeneration = 0
 let targetVolume = 1.0
 let intentionallyStopped = false
 
-const SAMPLE_RATE = 44100
+function logMusic(
+  message: string,
+  details?: Record<string, unknown>,
+  level: "log" | "warn" | "error" = "log",
+) {
+  const prefix = "[lyria-music]"
+  if (level === "error") {
+    console.error(prefix, message, details ?? {})
+  } else if (level === "warn") {
+    console.warn(prefix, message, details ?? {})
+  } else {
+    console.log(prefix, message, details ?? {})
+  }
+}
 
 function emit() {
   for (const fn of listeners) fn(state)
@@ -75,7 +90,7 @@ function ensureAudioGraph(): {
   analyser: AnalyserNode
 } {
   if (!audioContext) {
-    audioContext = new AudioContext({ sampleRate: SAMPLE_RATE })
+    audioContext = new AudioContext()
 
     analyserNode = audioContext.createAnalyser()
     analyserNode.fftSize = 256
@@ -108,67 +123,53 @@ function stopElapsedTimer() {
   }
 }
 
-function stopActiveStream() {
-  const controller = activeStreamController
-  activeStreamController = null
-  if (controller && !controller.signal.aborted) {
-    controller.abort()
+function stopCurrentSource() {
+  if (!currentSource) {
+    return
   }
+
+  try {
+    currentSource.onended = null
+    currentSource.stop()
+  } catch {
+    // Source may already be stopped.
+  }
+
+  try {
+    currentSource.disconnect()
+  } catch {
+    // Ignore disconnect failures.
+  }
+
+  currentSource = null
 }
 
 function fadeOutAudio() {
   if (!audioContext || !masterGain) {
+    stopCurrentSource()
     return
   }
 
   const now = audioContext.currentTime
   masterGain.gain.cancelScheduledValues(now)
   masterGain.gain.setValueAtTime(masterGain.gain.value, now)
-  masterGain.gain.linearRampToValueAtTime(0, now + 0.3)
+  masterGain.gain.linearRampToValueAtTime(0, now + 0.2)
+
+  window.setTimeout(() => {
+    stopCurrentSource()
+    if (masterGain && audioContext) {
+      masterGain.gain.setValueAtTime(targetVolume, audioContext.currentTime)
+    }
+  }, 250)
 }
 
-function scheduleAudioChunks(chunks: Array<{ data?: string }>) {
-  if (!chunks.length) {
-    return
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = atob(base64)
+  const bytes = new Uint8Array(binaryString.length)
+  for (let i = 0; i < binaryString.length; i += 1) {
+    bytes[i] = binaryString.charCodeAt(i)
   }
-
-  const { ctx, gain } = ensureAudioGraph()
-
-  for (const chunk of chunks) {
-    if (!chunk.data) continue
-
-    const binaryStr = atob(chunk.data)
-    const bytes = new Uint8Array(binaryStr.length)
-    for (let i = 0; i < binaryStr.length; i++) {
-      bytes[i] = binaryStr.charCodeAt(i)
-    }
-
-    const int16 = new Int16Array(bytes.buffer)
-    const sampleCount = int16.length / 2
-    const left = new Float32Array(sampleCount)
-    const right = new Float32Array(sampleCount)
-
-    for (let i = 0; i < sampleCount; i++) {
-      left[i] = int16[i * 2] / 32768
-      right[i] = int16[i * 2 + 1] / 32768
-    }
-
-    const audioBuffer = ctx.createBuffer(2, sampleCount, SAMPLE_RATE)
-    audioBuffer.copyToChannel(left, 0)
-    audioBuffer.copyToChannel(right, 1)
-
-    const source = ctx.createBufferSource()
-    source.buffer = audioBuffer
-    source.connect(gain)
-
-    const now = ctx.currentTime
-    if (nextPlayTime < now) {
-      nextPlayTime = now + 0.05
-    }
-
-    source.start(nextPlayTime)
-    nextPlayTime += audioBuffer.duration
-  }
+  return bytes.buffer
 }
 
 async function parseErrorResponse(response: Response): Promise<string> {
@@ -182,134 +183,83 @@ async function parseErrorResponse(response: Response): Promise<string> {
   return `Failed to start music (${response.status})`
 }
 
-function applyStreamEvent(
-  event: MusicStreamEvent,
+async function playGeneratedAudio(
+  payload: GeneratedMusicResponse,
   generation: number,
-  streamController: AbortController,
-): { sawTerminalError: boolean } {
-  if (generation !== playbackGeneration || streamController.signal.aborted) {
-    return { sawTerminalError: false }
+): Promise<void> {
+  const encodedAudio = payload.audio?.data
+  const mimeType = payload.audio?.mimeType
+  if (!encodedAudio || !mimeType) {
+    throw new Error("Music generation returned no audio.")
   }
 
-  switch (event.type) {
-    case "audio":
-      scheduleAudioChunks(event.chunks ?? [])
-      return { sawTerminalError: false }
-    case "ready":
-      if (typeof event.promptLabel === "string" && event.promptLabel.trim()) {
-        setState({ currentPromptLabel: event.promptLabel.trim() })
-      }
-      return { sawTerminalError: false }
-    case "close":
-      return { sawTerminalError: false }
-    case "error": {
-      const message = event.message?.trim() || "Music stream failed."
-      stopElapsedTimer()
-      setState({
-        status: "error",
-        error: message,
-      })
-      return { sawTerminalError: true }
-    }
+  const { ctx, gain } = ensureAudioGraph()
+  if (ctx.state === "suspended") {
+    await ctx.resume()
   }
-}
 
-async function consumeMusicStream(
-  body: ReadableStream<Uint8Array>,
-  generation: number,
-  streamController: AbortController,
-) {
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ""
-  let sawTerminalError = false
+  gain.gain.cancelScheduledValues(ctx.currentTime)
+  gain.gain.setValueAtTime(targetVolume, ctx.currentTime)
 
-  const flushLine = (line: string) => {
-    if (!line.startsWith("data:")) {
+  stopCurrentSource()
+
+  const decoded = await ctx.decodeAudioData(base64ToArrayBuffer(encodedAudio).slice(0))
+  if (generation !== playbackGeneration) {
+    return
+  }
+
+  const source = ctx.createBufferSource()
+  source.buffer = decoded
+  source.connect(gain)
+  currentSource = source
+
+  source.onended = () => {
+    if (currentSource !== source) {
       return
     }
-
-    const payload = line.slice(5).trim()
-    if (!payload || payload === "[DONE]") {
-      return
-    }
-
-    const event = JSON.parse(payload) as MusicStreamEvent
-    const result = applyStreamEvent(event, generation, streamController)
-    if (result.sawTerminalError) {
-      sawTerminalError = true
+    currentSource = null
+    stopElapsedTimer()
+    if (!intentionallyStopped && generation === playbackGeneration) {
+      setState({
+        status: "idle",
+        error: null,
+        currentPromptLabel: "",
+        elapsedSeconds: 0,
+      })
     }
   }
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      buffer += decoder.decode(value, { stream: !done })
+  source.start(0)
+  startElapsedTimer()
+  setState({
+    status: "playing",
+    error: null,
+    currentPromptLabel: payload.promptLabel?.trim() || state.currentPromptLabel,
+    elapsedSeconds: 0,
+  })
 
-      let lineBreakIndex = buffer.indexOf("\n")
-      while (lineBreakIndex !== -1) {
-        const line = buffer.slice(0, lineBreakIndex).trim()
-        buffer = buffer.slice(lineBreakIndex + 1)
-        if (line) {
-          flushLine(line)
-        }
-        lineBreakIndex = buffer.indexOf("\n")
-      }
-
-      if (done) {
-        const trailingLine = buffer.trim()
-        if (trailingLine) {
-          flushLine(trailingLine)
-        }
-        break
-      }
-    }
-
-    if (
-      generation === playbackGeneration &&
-      !streamController.signal.aborted &&
-      !intentionallyStopped &&
-      !sawTerminalError
-    ) {
-      stopElapsedTimer()
-      setState({
-        status: "error",
-        error: "Music stream ended unexpectedly.",
-      })
-    }
-  } catch (error) {
-    const isAbortError =
-      error instanceof DOMException && error.name === "AbortError"
-    if (
-      !isAbortError &&
-      generation === playbackGeneration &&
-      !streamController.signal.aborted
-    ) {
-      stopElapsedTimer()
-      setState({
-        status: "error",
-        error:
-          error instanceof Error ? error.message : "Music stream failed.",
-      })
-    }
-  } finally {
-    if (activeStreamController === streamController) {
-      activeStreamController = null
-    }
-  }
+  logMusic("Started generated music playback.", {
+    mimeType,
+    durationSeconds: decoded.duration,
+    textParts: payload.textParts?.length ?? 0,
+  })
 }
 
 export async function play(): Promise<void> {
   const generation = ++playbackGeneration
   intentionallyStopped = false
-  stopActiveStream()
   stopElapsedTimer()
-  nextPlayTime = 0
+  stopCurrentSource()
 
   setState({
     status: "loading",
     error: null,
     elapsedSeconds: 0,
+  })
+  logMusic("Starting music generation request.", {
+    mood: state.mood,
+    lyrics: state.lyrics,
+    userHint: state.userHint,
   })
 
   try {
@@ -324,25 +274,11 @@ export async function play(): Promise<void> {
       return
     }
 
-    const { ctx, gain } = ensureAudioGraph()
-    if (ctx.state === "suspended") {
-      await ctx.resume()
-    }
-
-    gain.gain.cancelScheduledValues(ctx.currentTime)
-    gain.gain.setValueAtTime(targetVolume, ctx.currentTime)
-
     const { endpoint, headers } = await createServiceRequest("/api/music/stream", {
-      Accept: "text/event-stream",
+      Accept: "application/json",
       "Content-Type": "application/json",
     })
-
-    if (generation !== playbackGeneration) {
-      return
-    }
-
-    const streamController = new AbortController()
-    activeStreamController = streamController
+    logMusic("Resolved music generation endpoint.", { endpoint })
 
     const response = await fetch(endpoint, {
       method: "POST",
@@ -356,47 +292,48 @@ export async function play(): Promise<void> {
           brightness: promptSet.config.brightness,
           guidance: promptSet.config.guidance,
           temperature: promptSet.config.temperature,
-          ...(state.lyrics ? { music_generation_mode: "VOCALIZATION" } : {}),
+          ...(state.lyrics ? { musicGenerationMode: "VOCALIZATION" } : {}),
         },
       }),
-      signal: streamController.signal,
+    })
+
+    logMusic("Music generation HTTP response received.", {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
     })
 
     if (!response.ok) {
       throw new Error(await parseErrorResponse(response))
     }
 
-    if (!response.body) {
-      throw new Error("Music stream response body was empty.")
-    }
-
+    const payload = (await response.json()) as GeneratedMusicResponse
     if (generation !== playbackGeneration) {
-      streamController.abort()
       return
     }
 
     setState({
-      status: "playing",
+      status: "loading",
       error: null,
       currentPromptLabel: promptSet.label,
       elapsedSeconds: 0,
     })
 
-    startElapsedTimer()
-    void consumeMusicStream(
-      response.body,
-      generation,
-      streamController,
-    )
+    await playGeneratedAudio(payload, generation)
   } catch (error) {
-    const isAbortError =
-      error instanceof DOMException && error.name === "AbortError"
-    if (generation !== playbackGeneration || isAbortError) {
+    if (generation !== playbackGeneration) {
       return
     }
 
-    stopActiveStream()
+    stopCurrentSource()
     stopElapsedTimer()
+    logMusic(
+      "Failed to generate or play music.",
+      {
+        message: error instanceof Error ? error.message : "Failed to start music",
+      },
+      "error",
+    )
     setState({
       status: "error",
       error: error instanceof Error ? error.message : "Failed to start music",
@@ -405,26 +342,21 @@ export async function play(): Promise<void> {
 }
 
 export async function pause(): Promise<void> {
-  if (state.status !== "playing") {
+  if (state.status !== "playing" || !audioContext) {
     return
   }
 
-  const { ctx, gain } = ensureAudioGraph()
-  gain.gain.setTargetAtTime(0, ctx.currentTime, 0.05)
+  await audioContext.suspend()
   stopElapsedTimer()
   setState({ status: "paused" })
 }
 
 export async function resume(): Promise<void> {
-  if (state.status !== "paused") {
+  if (state.status !== "paused" || !audioContext) {
     return
   }
 
-  const { ctx, gain } = ensureAudioGraph()
-  if (ctx.state === "suspended") {
-    await ctx.resume()
-  }
-  gain.gain.setTargetAtTime(targetVolume, ctx.currentTime, 0.05)
+  await audioContext.resume()
   startElapsedTimer()
   setState({ status: "playing" })
 }
@@ -432,7 +364,6 @@ export async function resume(): Promise<void> {
 export function stop(): void {
   playbackGeneration += 1
   intentionallyStopped = true
-  stopActiveStream()
   stopElapsedTimer()
   fadeOutAudio()
 
