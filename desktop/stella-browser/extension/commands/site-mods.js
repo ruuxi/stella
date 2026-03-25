@@ -3,9 +3,13 @@
  *
  * Persistent per-site CSS/JS overrides stored in chrome.storage.local
  * under key "stella_site_mods".
+ *
+ * The site-mods.js content script is registered dynamically (not in the
+ * manifest) so it only runs on pages that actually have saved mods.
  */
 
 const STORAGE_KEY = 'stella_site_mods';
+const CONTENT_SCRIPT_ID = 'stella-site-mods';
 
 async function getMods() {
   const data = await chrome.storage.local.get(STORAGE_KEY);
@@ -14,6 +18,61 @@ async function getMods() {
 
 async function saveMods(mods) {
   await chrome.storage.local.set({ [STORAGE_KEY]: mods });
+  await syncContentScriptRegistration(mods);
+}
+
+/**
+ * Convert a site-mod glob pattern (e.g. "x.com/*") to a Chrome match pattern
+ * (e.g. "*://x.com/*") suitable for chrome.scripting.registerContentScripts.
+ */
+function globToMatchPattern(pattern) {
+  // Already has a scheme — use as-is
+  if (/^[a-z]+:\/\//.test(pattern)) {
+    return pattern;
+  }
+  // Ensure trailing wildcard for bare hostnames
+  const p = pattern.includes('/') ? pattern : pattern + '/*';
+  return `*://${p}`;
+}
+
+/**
+ * Sync the dynamically registered site-mods.js content script so it only
+ * runs on pages that have at least one enabled mod.
+ */
+export async function syncContentScriptRegistration(mods) {
+  if (!mods) {
+    mods = await getMods();
+  }
+
+  const enabledPatterns = Object.entries(mods)
+    .filter(([, mod]) => mod.enabled)
+    .map(([pattern]) => globToMatchPattern(pattern));
+
+  try {
+    if (enabledPatterns.length === 0) {
+      // No enabled mods — unregister the content script
+      await chrome.scripting.unregisterContentScripts({ ids: [CONTENT_SCRIPT_ID] });
+      return;
+    }
+
+    // Try to update existing registration first
+    const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [CONTENT_SCRIPT_ID] });
+    if (existing.length > 0) {
+      await chrome.scripting.updateContentScripts([{
+        id: CONTENT_SCRIPT_ID,
+        matches: enabledPatterns,
+      }]);
+    } else {
+      await chrome.scripting.registerContentScripts([{
+        id: CONTENT_SCRIPT_ID,
+        matches: enabledPatterns,
+        js: ['site-mods.js'],
+        runAt: 'document_start',
+      }]);
+    }
+  } catch (err) {
+    console.warn('[site-mods] Failed to sync content script registration:', err);
+  }
 }
 
 /**

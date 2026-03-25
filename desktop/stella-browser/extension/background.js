@@ -33,6 +33,7 @@ import { handleDownload } from './commands/downloads.js';
 import { handleChain } from './commands/chain.js';
 import {
   handleSiteModSet, handleSiteModList, handleSiteModRemove, handleSiteModToggle,
+  syncContentScriptRegistration,
 } from './commands/site-mods.js';
 
 // --- Command Router ---
@@ -208,10 +209,25 @@ async function handleCommand(message) {
 
 onCommand(handleCommand);
 
+let disconnectShutdownTimer = null;
+
 onStatus((connected) => {
   console.log('[background] Connection status:', connected ? 'connected' : 'disconnected');
-  if (!connected) {
-    closeAgentWindow();
+  if (connected) {
+    // Cancel pending shutdown if we reconnected
+    if (disconnectShutdownTimer) {
+      clearTimeout(disconnectShutdownTimer);
+      disconnectShutdownTimer = null;
+    }
+  } else {
+    // Only close the agent window after a prolonged disconnect (30s),
+    // not on every transient connection blip.
+    if (!disconnectShutdownTimer) {
+      disconnectShutdownTimer = setTimeout(() => {
+        disconnectShutdownTimer = null;
+        closeAgentWindow();
+      }, 30_000);
+    }
   }
 });
 
@@ -247,11 +263,14 @@ ensureOffscreen();
 // Clean up stale unnamed tab groups from previous sessions
 cleanupStaleGroups();
 
+// Ensure site-mods content script is registered for pages with saved mods
+syncContentScriptRegistration();
+
 // Auto-connect on service worker load (this runs on every SW start, including
 // browser startup and extension install/update - no need for separate listeners)
 async function autoConnect() {
   const config = await chrome.storage.local.get(['port', 'token']);
-  const port = config.port || 9224;
+  const port = config.port || 39040;
   const token = config.token || '';
   console.log('[background] Auto-connecting to port', port);
   connect(port, token);

@@ -177,10 +177,14 @@ const buildShellEnv = (
 });
 
 export const normalizeAppAgentShellCommand = (command: string) =>
-  command.replace(
-    /(?:^|&&\s*|\|\|\s*|;\s*)STELLA_BROWSER_SESSION=[^\s]+(?=\s+stella-browser\b)/g,
-    (match) => match.replace(/STELLA_BROWSER_SESSION=[^\s]+\s*/, ""),
-  ).replace(/\s{2,}/g, " ").trim();
+  command
+    .replace(
+      /(?:^|&&\s*|\|\|\s*|;\s*)STELLA_BROWSER_SESSION=[^\s]+(?=\s+stella-browser\b)/g,
+      (match) => match.replace(/STELLA_BROWSER_SESSION=[^\s]+\s*/, ""),
+    )
+    .replace(/\bstella-browser\s+--session(?:=|\s+)\S+\s*/g, "stella-browser ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 
 export const startShell = (
   state: ShellState,
@@ -315,9 +319,9 @@ export const handleBash = async (
   const envOverrides: Record<string, string> = {};
 
   if (context?.agentType === "app") {
-    // App-agent browser automation uses one shared Stella browser session.
-    // Strip any inline session overrides so the model cannot fork ad-hoc
-    // browser sessions that fight over the shared extension bridge.
+    // App-agent browser automation uses one shared Stella browser bridge.
+    // Each agent run gets its own browser tab, but the model must not fork
+    // ad-hoc sessions that bypass the app-owned bridge lifecycle.
     command = normalizeAppAgentShellCommand(command);
     Object.assign(envOverrides, getStellaBrowserBridgeEnv());
   }

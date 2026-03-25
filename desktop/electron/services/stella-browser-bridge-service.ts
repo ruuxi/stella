@@ -12,6 +12,8 @@ import {
 
 const DAEMON_READY_TIMEOUT_MS = 10_000;
 const COMMAND_TIMEOUT_MS = 10_000;
+const DAEMON_SHUTDOWN_TIMEOUT_MS = 2_000;
+const DAEMON_READY_PROBE_TIMEOUT_MS = 1_000;
 const RETRY_BASE_DELAY_MS = 1_000;
 const RETRY_MAX_DELAY_MS = 30_000;
 const TOAST_AFTER_RETRY_ATTEMPTS = 3;
@@ -249,8 +251,13 @@ export class StellaBrowserBridgeService {
       }
 
       try {
-        const socket = await this.openConnection();
-        socket.destroy();
+        await this.sendCommand(
+          {
+            id: randomUUID(),
+            action: "state_list",
+          },
+          DAEMON_READY_PROBE_TIMEOUT_MS,
+        );
         return;
       } catch {
         await delay(100);
@@ -261,10 +268,21 @@ export class StellaBrowserBridgeService {
   }
 
   private async closeExistingSession() {
+    const daemonPort = getPortForSession(STELLA_BROWSER_BRIDGE_SESSION);
+
     await this.sendCommand({
       id: randomUUID(),
       action: "close",
     }, 1_500).catch(() => undefined);
+
+    const daemonStopped = await this.waitForPortToClose(
+      daemonPort,
+      DAEMON_SHUTDOWN_TIMEOUT_MS,
+    );
+    if (!daemonStopped) {
+      this.killProcessListeningOnPort(daemonPort);
+      await this.waitForPortToClose(daemonPort, DAEMON_SHUTDOWN_TIMEOUT_MS);
+    }
   }
 
   private async sendCommand(
@@ -398,6 +416,88 @@ export class StellaBrowserBridgeService {
         this.daemonProcess.kill("SIGTERM");
       } catch {
         // Best-effort cleanup during reconnect/shutdown.
+      }
+    }
+  }
+
+  private getListeningProcessesForPort(port: number): number[] {
+    if (!Number.isFinite(port) || port <= 0) {
+      return [];
+    }
+
+    try {
+      if (process.platform === "win32") {
+        const output = execFileSync(
+          "powershell",
+          [
+            "-NoProfile",
+            "-Command",
+            `Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique`,
+          ],
+          {
+            encoding: "utf8",
+            windowsHide: true,
+            stdio: ["ignore", "pipe", "ignore"],
+          },
+        );
+
+        return output
+          .split(/\r?\n/)
+          .map((value) => Number.parseInt(value.trim(), 10))
+          .filter((value) => Number.isFinite(value) && value > 0);
+      }
+
+      const output = execFileSync(
+        "lsof",
+        ["-ti", `tcp:${port}`, "-s", "tcp:listen"],
+        {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      );
+
+      return output
+        .split(/\r?\n/)
+        .map((value) => Number.parseInt(value.trim(), 10))
+        .filter((value) => Number.isFinite(value) && value > 0);
+    } catch {
+      return [];
+    }
+  }
+
+  private async waitForPortToClose(port: number, timeoutMs: number) {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      if (this.getListeningProcessesForPort(port).length === 0) {
+        return true;
+      }
+      await delay(100);
+    }
+
+    return this.getListeningProcessesForPort(port).length === 0;
+  }
+
+  private killProcessListeningOnPort(port: number) {
+    const pids = this.getListeningProcessesForPort(port);
+
+    for (const pid of pids) {
+      if (process.platform === "win32") {
+        try {
+          execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
+            stdio: "ignore",
+            windowsHide: true,
+          });
+          continue;
+        } catch {
+          // Fall through to a direct kill attempt below.
+        }
+      }
+
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // Best-effort cleanup for stale daemon listeners.
       }
     }
   }

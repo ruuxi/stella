@@ -1,17 +1,24 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(scriptDir, '..');
 const viteBinPath = resolve(desktopDir, 'node_modules', 'vite', 'bin', 'vite.js');
+const viteDevUrlPath = resolve(desktopDir, '.vite-dev-url');
 
 if (!existsSync(viteBinPath)) {
   console.error(
     `[electron:dev] Missing Vite binary at ${viteBinPath}. Run your package install in desktop/ first.`,
   );
   process.exit(1);
+}
+
+try {
+  rmSync(viteDevUrlPath, { force: true });
+} catch {
+  // Best-effort stale dev URL cleanup before Vite rewrites it for this run.
 }
 
 const processSpecs = [

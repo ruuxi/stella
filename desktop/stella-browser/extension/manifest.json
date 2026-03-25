@@ -5,7 +5,6 @@
   "description": "Connects Stella AI Agent to your browser",
   "permissions": [
     "tabs",
-    "activeTab",
     "scripting",
     "cookies",
     "debugger",
@@ -20,15 +19,6 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "content_scripts": [{
-    "matches": ["<all_urls>"],
-    "js": ["keepalive.js"],
-    "run_at": "document_start"
-  }, {
-    "matches": ["<all_urls>"],
-    "js": ["site-mods.js"],
-    "run_at": "document_start"
-  }],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

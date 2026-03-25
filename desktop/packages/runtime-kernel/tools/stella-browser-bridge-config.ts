@@ -1,6 +1,6 @@
 export const STELLA_BROWSER_BRIDGE_PROVIDER = "extension";
-export const STELLA_BROWSER_BRIDGE_SESSION = "stella-app";
-export const STELLA_BROWSER_BRIDGE_PORT = "9224";
+export const STELLA_BROWSER_BRIDGE_SESSION = "stella-app-bridge";
+export const STELLA_BROWSER_BRIDGE_PORT = "39040";
 export const STELLA_BROWSER_BRIDGE_TOKEN = "";
 
 export const getStellaBrowserBridgeEnv = (): Record<string, string> => ({

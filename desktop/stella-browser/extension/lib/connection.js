@@ -3,7 +3,7 @@
  * Handles MV3 service worker lifecycle (termination after ~30s idle).
  */
 
-const DEFAULT_PORT = 9224;
+const DEFAULT_PORT = 39040;
 const RECONNECT_DELAY = 2000;
 const MAX_RECONNECT_DELAY = 30000;
 
@@ -31,7 +31,7 @@ export function onStatus(callback) {
 
 /**
  * Connect to the daemon's WebSocket server.
- * @param {number} [port] - Port number (default: 9224)
+ * @param {number} [port] - Port number (default: 39040)
  * @param {string} [token] - Auth token for handshake
  */
 export async function connect(port, token) {
