@@ -12,13 +12,18 @@ interface UseMagicLinkAuthResult {
   reset: () => void;
 }
 
-const getCallbackUrl = () => {
-  if (window.electronAPI) {
-    const protocol = (import.meta.env.VITE_STELLA_PROTOCOL as string | undefined) ?? "Stella";
-    return `${protocol}://auth`;
+const getSiteUrl = () => {
+  const configured = (import.meta.env.VITE_SITE_URL as string | undefined)?.trim();
+  if (configured) {
+    return configured;
   }
-  return (import.meta.env.VITE_SITE_URL as string | undefined) ?? window.location.origin;
+  if (!window.electronAPI) {
+    return window.location.origin;
+  }
+  return "https://stella.sh";
 };
+
+const getCallbackUrl = () => new URL("/auth/callback?client=desktop", getSiteUrl()).href;
 
 export const useMagicLinkAuth = (): UseMagicLinkAuthResult => {
   const [email, setEmail] = useState("");
@@ -64,4 +69,3 @@ export const useMagicLinkAuth = (): UseMagicLinkAuthResult => {
     reset,
   };
 };
-

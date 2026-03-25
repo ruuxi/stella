@@ -23,6 +23,7 @@ const deriveConvexSiteUrl = () => {
 export const env = {
   convexSiteUrl: deriveConvexSiteUrl(),
   convexUrl: process.env.EXPO_PUBLIC_CONVEX_URL?.trim() ?? "",
+  siteUrl: process.env.EXPO_PUBLIC_SITE_URL?.trim() || "https://stella.sh",
   mobileScheme: process.env.EXPO_PUBLIC_STELLA_MOBILE_SCHEME?.trim() || "stella-mobile",
 };
 

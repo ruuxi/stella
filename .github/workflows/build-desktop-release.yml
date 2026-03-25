@@ -51,7 +51,7 @@ jobs:
           cat > .env.local << 'ENVEOF'
           VITE_CONVEX_URL=https://impartial-crab-34.convex.cloud
           VITE_CONVEX_SITE_URL=https://impartial-crab-34.convex.site
-          VITE_SITE_URL=http://localhost:5714
+          VITE_SITE_URL=https://stella.sh
           VITE_TWITCH_EMOTE_TWITCH_ID=40934651
           ENVEOF
 

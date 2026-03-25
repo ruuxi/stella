@@ -3,9 +3,19 @@ import { authClient } from "@/global/auth/lib/auth-client";
 
 const AUTH_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/;
 
+const getAllowedProtocols = () => {
+  const configured = (import.meta.env.VITE_STELLA_PROTOCOL as string | undefined)
+    ?.replace("://", "")
+    .replace(":", "")
+    .trim()
+    .toLowerCase();
+  return new Set(["stella", configured].filter((value): value is string => Boolean(value)));
+};
+
 const extractTrustedOtt = (value: string): string | null => {
   const parsed = new URL(value);
-  if (parsed.protocol.toLowerCase() !== "stella:") {
+  const protocol = parsed.protocol.toLowerCase().replace(/:$/, "");
+  if (!getAllowedProtocols().has(protocol)) {
     return null;
   }
   if (parsed.hostname.trim().toLowerCase() !== "auth") {
@@ -57,4 +67,3 @@ export const AuthDeepLinkHandler = () => {
 
   return null;
 };
-
