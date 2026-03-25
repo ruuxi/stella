@@ -31,7 +31,7 @@ const FALLBACK_STELLA_MODELS: CatalogModel[] = [
   { id: "stella/default", name: "Stella Recommended", provider: "stella" },
   { id: "stella/anthropic/claude-opus-4.5", name: "Claude Opus 4.5", provider: "stella", upstreamModel: "anthropic/claude-opus-4.5" },
   { id: "stella/anthropic/claude-sonnet-4.6", name: "Claude Sonnet 4.6", provider: "stella", upstreamModel: "anthropic/claude-sonnet-4.6" },
-  { id: "stella/google/gemini-3-flash", name: "Gemini 3 Flash", provider: "stella", upstreamModel: "google/gemini-3-flash" },
+  { id: "stella/google/gemini-3-flash-preview", name: "Gemini 3 Flash", provider: "stella", upstreamModel: "google/gemini-3-flash-preview" },
   { id: "stella/inception/mercury-2", name: "Mercury 2", provider: "stella", upstreamModel: "inception/mercury-2" },
   { id: "stella/moonshotai/kimi-k2.5", name: "Kimi K2.5", provider: "stella", upstreamModel: "moonshotai/kimi-k2.5" },
   { id: "stella/openai/gpt-5.4", name: "GPT-5.4", provider: "stella", upstreamModel: "openai/gpt-5.4" },
