@@ -14,7 +14,7 @@ import { exec } from "child_process";
 
 import type { DiscoveredApp, AppDiscoveryResult } from "./types.js";
 
-const log = (...args: unknown[]) => console.log("[app-discovery]", ...args);
+const log = (...args: unknown[]) => console.error("[app-discovery]", ...args);
 
 // ---------------------------------------------------------------------------
 // Configuration

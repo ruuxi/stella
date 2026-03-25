@@ -15,7 +15,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 
-const log = (...args: unknown[]) => console.log("[firefox-data]", ...args);
+const log = (...args: unknown[]) => console.error("[firefox-data]", ...args);
 
 // ---------------------------------------------------------------------------
 // Types

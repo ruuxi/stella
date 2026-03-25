@@ -11,7 +11,7 @@ import os from "os";
 
 import type { ShellAnalysis, CommandFrequency } from "./types.js";
 
-const log = (...args: unknown[]) => console.log("[shell-history]", ...args);
+const log = (...args: unknown[]) => console.error("[shell-history]", ...args);
 
 // ---------------------------------------------------------------------------
 // Platform Paths
