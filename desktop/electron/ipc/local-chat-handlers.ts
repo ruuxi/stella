@@ -82,36 +82,30 @@ export const registerLocalChatHandlers = (
   );
 
   ipcMain.handle(
-    "localChat:appendEvent",
+    "localChat:persistDiscoveryWelcome",
     async (
       event,
       payload: {
         conversationId?: string;
-        type?: string;
-        payload?: unknown;
-        deviceId?: string;
-        requestId?: string;
-        targetDeviceId?: string;
-        channelEnvelope?: unknown;
-        timestamp?: number;
-        eventId?: string;
+        message?: string;
+        suggestions?: unknown[];
       },
     ) => {
-      if (!options.assertPrivilegedSender(event, "localChat:appendEvent")) {
-        throw new Error("Blocked untrusted localChat:appendEvent request.");
+      if (
+        !options.assertPrivilegedSender(
+          event,
+          "localChat:persistDiscoveryWelcome",
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted localChat:persistDiscoveryWelcome request.",
+        );
       }
-      const result = await (await waitForRunner(options)).client.appendLocalChatEvent({
+      return await (await waitForRunner(options)).client.persistDiscoveryWelcome({
         conversationId: payload?.conversationId ?? "",
-        type: payload?.type ?? "",
-        payload: payload?.payload,
-        deviceId: payload?.deviceId,
-        requestId: payload?.requestId,
-        targetDeviceId: payload?.targetDeviceId,
-        channelEnvelope: payload?.channelEnvelope,
-        timestamp: payload?.timestamp,
-        eventId: payload?.eventId,
+        message: payload?.message ?? "",
+        suggestions: payload?.suggestions,
       });
-      return result;
     },
   );
 
