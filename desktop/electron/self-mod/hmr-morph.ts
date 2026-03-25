@@ -13,11 +13,13 @@
 import { randomUUID } from "node:crypto";
 import { ipcMain, type BrowserWindow } from "electron";
 import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
+import {
+  MORPH_CAPTURE_SETTLE_MS,
+  MORPH_DONE_TIMEOUT_MS,
+  MORPH_OVERLAY_READY_TIMEOUT_MS,
+  MORPH_POST_LOAD_CAPTURE_DELAY_MS,
+} from "../../src/shared/contracts/morph-timing.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
-
-const OVERLAY_READY_TIMEOUT_MS = 500;
-const CAPTURE_SETTLE_DELAY_MS = 80;
-const MORPH_DONE_TIMEOUT_MS = 5000;
 
 export type HmrTransitionController = {
   runTransition: (opts: {
@@ -116,7 +118,7 @@ export function createHmrTransitionController(deps: {
       }, 5000);
       const onLoad = () => {
         clearTimeout(timer);
-        setTimeout(done, CAPTURE_SETTLE_DELAY_MS);
+        setTimeout(done, MORPH_POST_LOAD_CAPTURE_DELAY_MS);
       };
       win.webContents.once("did-finish-load", onLoad);
     });
@@ -182,7 +184,7 @@ export function createHmrTransitionController(deps: {
     const overlayReady = waitForOverlaySignal(
       "overlay:morphReady",
       transitionId,
-      OVERLAY_READY_TIMEOUT_MS,
+      MORPH_OVERLAY_READY_TIMEOUT_MS,
     );
 
     emitState({
@@ -253,7 +255,9 @@ export function createHmrTransitionController(deps: {
           await waitForWindowLoad(fullWindow);
         } else {
           const settleStartedAt = performance.now();
-          await new Promise((resolve) => setTimeout(resolve, 200));
+          await new Promise((resolve) =>
+            setTimeout(resolve, MORPH_CAPTURE_SETTLE_MS),
+          );
           logMorphTiming("softSettleWait", {
             durationMs: Math.round(performance.now() - settleStartedAt),
           });

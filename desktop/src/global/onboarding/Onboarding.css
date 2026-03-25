@@ -2062,35 +2062,28 @@
   overflow: hidden;
 }
 
-/* Morph animation — blurs out, content swaps at midpoint, blurs back in */
+/*
+ * Onboarding-only CSS fallback when native morph IPC is unavailable.
+ * Duration comes from OnboardingCanvas (`ONBOARDING_MORPH_CSS_DURATION_MS`); easing matches
+ * the overlay morph feel; keep keyframes visually soft (no brightness flash).
+ */
 .onboarding-canvas-morphing {
-  animation: demoMorph 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  animation-name: onboardingMorphFallback;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: both;
 }
 
-@keyframes demoMorph {
+@keyframes onboardingMorphFallback {
   0% {
-    filter: blur(0) brightness(1);
-    transform: scale(1);
+    filter: blur(0);
     opacity: 1;
   }
-  35% {
-    filter: blur(24px) brightness(1.15);
-    transform: scale(1.008);
-    opacity: 0.6;
-  }
   50% {
-    filter: blur(28px) brightness(1.2);
-    transform: scale(1.01);
-    opacity: 0.4;
-  }
-  65% {
-    filter: blur(24px) brightness(1.15);
-    transform: scale(1.008);
-    opacity: 0.6;
+    filter: blur(8px);
+    opacity: 0.92;
   }
   100% {
-    filter: blur(0) brightness(1);
-    transform: scale(1);
+    filter: blur(0);
     opacity: 1;
   }
 }
