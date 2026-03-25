@@ -23,7 +23,7 @@ export function TaskIndicator({ tasks, className }: TaskIndicatorProps) {
         <div key={task.id} className="task-indicator-item">
           <div className="indicator-stella">
             <div className="indicator-stella-scale">
-              <StellaAnimation width={20} height={20} maxDpr={1} frameSkip={2} />
+              <StellaAnimation width={16} height={16} maxDpr={1} frameSkip={2} />
             </div>
           </div>
           <div className="task-indicator-content">

@@ -7,6 +7,7 @@ import {
   type TurnViewModel,
 } from "./MessageTurn";
 import { TaskIndicator } from "@/app/chat/TaskIndicator";
+import { GrowIn } from "@/app/chat/GrowIn";
 import { useTurnViewModels } from "./use-turn-view-models";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 
@@ -169,8 +170,10 @@ export const ConversationEvents = memo(function ConversationEvents({
       />
 
       {/* Persistent task progress â€” visible even when orchestrator is not streaming */}
-      {!showStreaming && runningTasks.length > 0 && (
-        <TaskIndicator tasks={runningTasks} />
+      {!showStreaming && (
+        <GrowIn animate={true} show={runningTasks.length > 0}>
+          <TaskIndicator tasks={runningTasks} />
+        </GrowIn>
       )}
     </div>
   );
