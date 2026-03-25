@@ -16,7 +16,7 @@ import type {
 import { protectValue, unprotectValue } from "../storage/protected-storage.js";
 import { ensurePrivateDir, writePrivateFile } from "./private-fs.js";
 
-const log = (...args: unknown[]) => console.log("[identity-map]", ...args);
+const log = (...args: unknown[]) => console.error("[identity-map]", ...args);
 const IDENTITY_NAME_SCOPE = "identity-map-real-name";
 const IDENTITY_IDENTIFIER_SCOPE = "identity-map-real-identifier";
 

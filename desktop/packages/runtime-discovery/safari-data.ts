@@ -11,7 +11,7 @@ import os from "os";
 import { exec } from "child_process";
 import type { SafariData, BookmarkEntry } from "./discovery-types.js";
 
-const log = (...args: unknown[]) => console.log("[safari-data]", ...args);
+const log = (...args: unknown[]) => console.error("[safari-data]", ...args);
 
 type SqliteDatabase = {
   prepare(sql: string): { all(...params: unknown[]): unknown[] };

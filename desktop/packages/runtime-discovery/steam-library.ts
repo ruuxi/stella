@@ -12,7 +12,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 
-const log = (...args: unknown[]) => console.log("[steam-library]", ...args);
+const log = (...args: unknown[]) => console.error("[steam-library]", ...args);
 
 // ---------------------------------------------------------------------------
 // Types

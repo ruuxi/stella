@@ -49,7 +49,7 @@ const openDatabase = async (dbPath: string): Promise<SqliteDatabase> => {
   return new Database(dbPath, { readonly: true }) as SqliteDatabase;
 };
 
-const log = (...args: unknown[]) => console.log("[browser-data]", ...args);
+const log = (...args: unknown[]) => console.error("[browser-data]", ...args);
 
 // ---------------------------------------------------------------------------
 // Platform Paths

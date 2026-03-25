@@ -17,7 +17,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 
-const log = (...args: unknown[]) => console.log("[music-library]", ...args);
+const log = (...args: unknown[]) => console.error("[music-library]", ...args);
 
 // ---------------------------------------------------------------------------
 // Types

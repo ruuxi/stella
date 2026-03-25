@@ -9,7 +9,7 @@ import type {
   CalendarSummary,
 } from "./discovery-types.js";
 
-const log = (...args: unknown[]) => console.log("[messages-notes]", ...args);
+const log = (...args: unknown[]) => console.error("[messages-notes]", ...args);
 
 // Timeout wrapper
 const withTimeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>

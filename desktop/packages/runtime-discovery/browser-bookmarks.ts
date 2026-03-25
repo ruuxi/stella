@@ -5,7 +5,7 @@ import type { BrowserBookmarks, BookmarkEntry } from "./discovery-types.js";
 import type { BrowserType } from "../boundary-contracts/index.js";
 
 const log = (...args: unknown[]) =>
-  console.log("[browser-bookmarks]", ...args);
+  console.error("[browser-bookmarks]", ...args);
 
 function getAppDataDir(): string {
   const platform = os.platform();
