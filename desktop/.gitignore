@@ -39,7 +39,6 @@ stella-browser/node_modules/
 stella-browser/dist/
 stella-browser/cli/target/
 stella-browser/cli/*.o
-stella-browser/bin/stella-browser-*
 stella-browser/*.png
 stella-browser/*.jpeg
 stella-browser/*.jpg
