@@ -1,5 +1,5 @@
 import { HomeCanvas } from "./HomeCanvas"
-import "./home-view.css"
+import { MusicPlayer } from "./MusicPlayer"
 import "./home-dashboard.css"
 
 type HomeViewProps = {
@@ -13,6 +13,9 @@ export function HomeView({ conversationId: _conversationId }: HomeViewProps) {
         <div className="home-zone-canvas">
           <HomeCanvas />
         </div>
+      </div>
+      <div className="home-music-bar">
+        <MusicPlayer />
       </div>
     </div>
   )

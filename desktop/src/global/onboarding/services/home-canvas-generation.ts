@@ -23,10 +23,11 @@ function stripFences(raw: string): string {
   return trimmed;
 }
 
-export async function generateHomeCanvas(
+/** Fetch the generated HomeCanvas content from the backend without writing to disk. */
+export async function fetchHomeCanvas(
   coreMemory: string,
   templateFile: string,
-): Promise<void> {
+): Promise<string> {
   const { endpoint, headers } = await createServiceRequest(
     "/api/home-canvas",
     { "Content-Type": "application/json" },
@@ -51,9 +52,12 @@ export async function generateHomeCanvas(
   }
 
   const { content } = (await response.json()) as HomeCanvasResponse;
-  const cleaned = stripFences(content);
+  return stripFences(content);
+}
 
-  const result = await window.electronAPI?.browser.writeHomeCanvas(cleaned);
+/** Write the generated HomeCanvas content to disk, triggering HMR. */
+export async function writeHomeCanvasToDisk(content: string): Promise<void> {
+  const result = await window.electronAPI?.browser.writeHomeCanvas(content);
   if (result && !result.ok) {
     throw new Error(`Failed to write HomeCanvas: ${result.error}`);
   }

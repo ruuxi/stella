@@ -1,151 +1,153 @@
+import { useState } from "react"
 import { dispatchStellaSendMessage } from "@/shared/lib/stella-send-message"
 import "./home-canvas.css"
 
-/* ── Content ── */
-
-const USER_NAME = "Name"
-
-const HERO_LEAD =
-  "Stella lives on your computer and knows your projects, tools, and workflow."
-const HERO_SUBTLE = "Personalized to how you work."
-
-const SECTIONS = [
-  {
-    title: "Projects",
-    kind: "list" as const,
-    items: [
-      { label: "nightowl", detail: "A sleep tracking app — React Native, Firebase" },
-      { label: "bento", detail: "Recipe manager with meal planning" },
-      { label: "patchwork", detail: "Open source contribution tracker" },
-    ],
-  },
-  {
-    title: "Tools & stack",
-    kind: "tags" as const,
-    tags: ["React", "TypeScript", "Figma", "Notion", "Linear", "Postgres", "Tailwind"],
-  },
-  {
-    title: "Learning",
-    kind: "prose" as const,
-    text: "Exploring systems design, accessibility patterns, and how to ship side projects faster without burning out.",
-  },
-  {
-    title: "Interests",
-    kind: "tags" as const,
-    tags: ["Film photography", "Bouldering", "Vinyl records", "Sci-fi novels"],
-  },
-]
-
-type GuideItem = { title: string; example: string }
-type GuideCategory = { title: string; items: GuideItem[] }
-
-const GUIDE: GuideCategory[] = [
-  {
-    title: "Build & Create",
-    items: [
-      { title: "Build an app", example: "\"Build a habit tracker with weekly streaks\"" },
-      { title: "Generate media", example: "\"Design a minimal poster for my bouldering gym\"" },
-      { title: "Generate music", example: "\"Lo-fi beats with soft piano for focusing\"" },
-    ],
-  },
-  {
-    title: "Automate & Schedule",
-    items: [
-      { title: "Morning briefing", example: "\"Every morning, check the weather and my calendar\"" },
-      { title: "Monitor a topic", example: "\"Watch for new sci-fi book releases this month\"" },
-    ],
-  },
-  {
-    title: "Use Your Computer",
-    items: [
-      { title: "Browse for you", example: "\"Open Notion and find my meal planning page\"" },
-      { title: "Search your files", example: "\"Find all the TODO comments in my nightowl project\"" },
-    ],
-  },
-  {
-    title: "Connect Everywhere",
-    items: [
-      { title: "Text from your phone", example: "Reach Stella via iMessage, Discord, Slack, or Telegram" },
-      { title: "Teach Stella about you", example: "\"Remember I like dark mode and minimal UI\"" },
-    ],
-  },
-]
-
-/* ── Component ── */
-
 export function HomeCanvas() {
-  const handleSayHi = () => {
-    dispatchStellaSendMessage({ text: "Hey Stella!" })
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const toggle = (prompt: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(prompt)) next.delete(prompt)
+      else next.add(prompt)
+      return next
+    })
+  }
+
+  const sendSelected = () => {
+    if (selected.size === 0) return
+    const text = [...selected].join("\n\n")
+    dispatchStellaSendMessage({ text })
+    setSelected(new Set())
   }
 
   return (
     <div className="hc">
+      {/* ── Hero ── */}
       <section className="hc-hero">
         <div className="hc-hero-row">
           <h1 className="hc-hero-title">
-            <em>Welcome</em> {USER_NAME},<br />
+            <em>Welcome</em> Name,<br />
             your home
           </h1>
-          <button className="hc-cta" onClick={handleSayHi}>Say hi to Stella</button>
+          <button
+            className="hc-cta"
+            onClick={() => dispatchStellaSendMessage({ text: "Hey Stella!" })}
+          >
+            Say hi to Stella
+          </button>
         </div>
-        <p className="hc-lead">{HERO_LEAD}</p>
-        <p className="hc-lead-subtle">{HERO_SUBTLE}</p>
+        <p className="hc-lead">
+          Stella lives on your computer and knows your projects, tools, and workflow.
+        </p>
+        <p className="hc-lead-subtle">Personalized to how you work.</p>
       </section>
 
+      {/* ── Body ── */}
       <div className="hc-body">
         <div className="hc-left">
-          {SECTIONS.map((section, i) => (
-            <div key={section.title}>
-              {i > 0 && <hr className="hc-rule" />}
-              <section className="hc-section">
-                <h2 className="hc-heading">{section.title}</h2>
-
-                {section.kind === "list" && (
-                  <div className="hc-projects">
-                    {section.items!.map((item) => (
-                      <div key={item.label} className="hc-project">
-                        <span className="hc-project-name">{item.label}</span>
-                        <span className="hc-project-desc">{item.detail}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {section.kind === "tags" && (
-                  <div className="hc-tags">
-                    {section.tags!.map((t) => (
-                      <span key={t} className="hc-tag">{t}</span>
-                    ))}
-                  </div>
-                )}
-
-                {section.kind === "prose" && (
-                  <p className="hc-prose">{section.text}</p>
-                )}
-              </section>
-            </div>
-          ))}
-        </div>
-
-        <div className="hc-guide">
-          <h3 className="hc-guide-title">Things Stella can do for you</h3>
-          {GUIDE.map((cat) => (
-            <div key={cat.title} className="hc-guide-category">
-              <div className="hc-guide-category-title">{cat.title}</div>
-              <div className="hc-guide-items">
-                {cat.items.map((item) => (
-                  <div
-                    key={item.title}
-                    className="hc-guide-item"
-                  >
-                    <span className="hc-guide-item-title">{item.title}</span>
-                    <span className="hc-guide-item-example">{item.example}</span>
-                  </div>
-                ))}
+          <section className="hc-section">
+            <h2 className="hc-heading">Projects</h2>
+            <div className="hc-projects">
+              <div className="hc-project">
+                <span className="hc-project-name">nightowl</span>
+                <span className="hc-project-desc">A sleep tracking app — React Native, Firebase</span>
+              </div>
+              <div className="hc-project">
+                <span className="hc-project-name">bento</span>
+                <span className="hc-project-desc">Recipe manager with meal planning</span>
+              </div>
+              <div className="hc-project">
+                <span className="hc-project-name">patchwork</span>
+                <span className="hc-project-desc">Open source contribution tracker</span>
               </div>
             </div>
-          ))}
+          </section>
+
+          <hr className="hc-rule" />
+
+          <section className="hc-section">
+            <h2 className="hc-heading">Tools &amp; stack</h2>
+            <div className="hc-tags">
+              {["React", "TypeScript", "Figma", "Notion", "Linear", "Postgres", "Tailwind"].map((t) => (
+                <span key={t} className="hc-tag">{t}</span>
+              ))}
+            </div>
+          </section>
+
+          <hr className="hc-rule" />
+
+          <section className="hc-section">
+            <h2 className="hc-heading">Learning</h2>
+            <p className="hc-prose">
+              Exploring systems design, accessibility patterns, and how to ship
+              side projects faster without burning out.
+            </p>
+          </section>
+
+          <hr className="hc-rule" />
+
+          <section className="hc-section">
+            <h2 className="hc-heading">Interests</h2>
+            <div className="hc-tags">
+              {["Film photography", "Bouldering", "Vinyl records", "Sci-fi novels"].map((t) => (
+                <span key={t} className="hc-tag">{t}</span>
+              ))}
+            </div>
+          </section>
         </div>
+
+        {/* ── Guide: selectable prompts ── */}
+        <div className="hc-guide">
+          <h3 className="hc-guide-title">Try something with Stella</h3>
+
+          <GuideGroup title="Build &amp; Create" selected={selected} toggle={toggle} items={[
+            { label: "Build an app", prompt: "Build a habit tracker with weekly streaks" },
+            { label: "Generate media", prompt: "Design a minimal poster for my bouldering gym" },
+            { label: "Generate music", prompt: "Lo-fi beats with soft piano for focusing" },
+          ]} />
+
+          <GuideGroup title="Automate &amp; Schedule" selected={selected} toggle={toggle} items={[
+            { label: "Morning briefing", prompt: "Every morning, check the weather and my calendar" },
+            { label: "Monitor a topic", prompt: "Watch for new sci-fi book releases this month" },
+          ]} />
+
+          <GuideGroup title="Use Your Computer" selected={selected} toggle={toggle} items={[
+            { label: "Browse for you", prompt: "Open Notion and find my meal planning page" },
+            { label: "Search your files", prompt: "Find all the TODO comments in my nightowl project" },
+          ]} />
+
+          {selected.size > 0 && (
+            <button className="hc-guide-send" onClick={sendSelected}>
+              Send {selected.size} to Stella
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function GuideGroup({ title, items, selected, toggle }: {
+  title: string
+  items: { label: string; prompt: string }[]
+  selected: Set<string>
+  toggle: (prompt: string) => void
+}) {
+  return (
+    <div className="hc-guide-category">
+      <div className="hc-guide-category-title">{title}</div>
+      <div className="hc-guide-items">
+        {items.map((item) => (
+          <button
+            key={item.prompt}
+            className={`hc-guide-chip${selected.has(item.prompt) ? " hc-guide-chip--selected" : ""}`}
+            onClick={() => toggle(item.prompt)}
+          >
+            <span className="hc-guide-chip-label">{item.label}</span>
+            <span className="hc-guide-chip-prompt">{item.prompt}</span>
+          </button>
+        ))}
       </div>
     </div>
   )
