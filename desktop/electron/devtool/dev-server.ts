@@ -72,17 +72,17 @@ export class DevToolServer {
     });
 
     this.httpServer.listen(DEVTOOL_PORT, "127.0.0.1", () => {
-      log(`debug server listening on ws://127.0.0.1:${DEVTOOL_PORT}`);
+      console.log(`[devtool] debug server listening on ws://127.0.0.1:${DEVTOOL_PORT}`);
     });
 
     this.httpServer.on("error", (err) => {
       if ((err as NodeJS.ErrnoException).code === "EADDRINUSE") {
-        logError(
+        console.warn(
           `[devtool] port ${DEVTOOL_PORT} in use — debug server disabled`,
         );
         this.stop();
       } else {
-        logError(`server error: ${err.message}`);
+        console.error("[devtool] server error:", err.message);
       }
     });
   }
