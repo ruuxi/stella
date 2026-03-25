@@ -8,13 +8,14 @@ import { BrowserWindow, ipcMain } from "electron";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 import type { WindowManager } from "../windows/window-manager.js";
 
-const OVERLAY_READY_TIMEOUT_MS = 500;
-const MORPH_DONE_TIMEOUT_MS = 5000;
-
 type MorphHandlersOptions = {
   windowManager: WindowManager;
   getOverlayController: () => OverlayWindowController | null;
 };
+
+/** Onboarding IPC only — mirrors overlay wait windows (not imported from HMR `morph-timing`). */
+const ONBOARDING_MORPH_OVERLAY_READY_TIMEOUT_MS = 500;
+const ONBOARDING_MORPH_DONE_TIMEOUT_MS = 5000;
 
 export const registerMorphHandlers = (options: MorphHandlersOptions) => {
   let activeOnboardingTransitionId: string | null = null;
@@ -75,7 +76,7 @@ export const registerMorphHandlers = (options: MorphHandlersOptions) => {
     const readyPromise = waitForSignal(
       "overlay:morphReady",
       transitionId,
-      OVERLAY_READY_TIMEOUT_MS,
+      ONBOARDING_MORPH_OVERLAY_READY_TIMEOUT_MS,
     );
     overlay.startMorphForward(transitionId, screenshot, bounds, fullWindow);
     const ready = await readyPromise;
@@ -116,7 +117,7 @@ export const registerMorphHandlers = (options: MorphHandlersOptions) => {
     const donePromise = waitForSignal(
       "overlay:morphDone",
       transitionId,
-      MORPH_DONE_TIMEOUT_MS,
+      ONBOARDING_MORPH_DONE_TIMEOUT_MS,
     );
     const reverseStarted = overlay.startMorphReverse(
       transitionId,
