@@ -189,7 +189,7 @@ const findAppleMusicDb = async (): Promise<string | null> => {
 };
 
 const collectFromAppleMusicDb = async (dbPath: string): Promise<MusicLibrarySignals> => {
-  const { default: Database } = await import("better-sqlite3");
+  const { Database } = await import("bun:sqlite");
   const db = new Database(dbPath, { readonly: true }) as SqliteDatabase;
 
   try {

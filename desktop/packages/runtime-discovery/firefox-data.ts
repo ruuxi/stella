@@ -112,7 +112,7 @@ type SqliteDatabase = {
 };
 
 const openDatabase = async (dbPath: string): Promise<SqliteDatabase> => {
-  const { default: Database } = await import("better-sqlite3");
+  const { Database } = await import("bun:sqlite");
   return new Database(dbPath, { readonly: true }) as SqliteDatabase;
 };
 

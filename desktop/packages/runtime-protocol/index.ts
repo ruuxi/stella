@@ -143,6 +143,8 @@ export const METHOD_NAMES = {
   COMMAND_RUN: "command.run",
   SHELL_KILL_ALL: "shell.killAll",
   SHELL_KILL_BY_PORT: "shell.killByPort",
+  DISCOVERY_COLLECT_BROWSER_DATA: "discovery.collectBrowserData",
+  DISCOVERY_COLLECT_ALL_SIGNALS: "discovery.collectAllSignals",
   HOST_UI_SNAPSHOT: "host.ui.snapshot",
   HOST_UI_ACT: "host.ui.act",
   HOST_DEVICE_IDENTITY_GET: "host.deviceIdentity.get",

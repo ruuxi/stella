@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs";
-import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -41,8 +40,9 @@ type DaemonState = {
       updatedAt: number;
     }
   >;
-  server: http.Server | null;
+  server: ReturnType<typeof Bun.serve> | null;
   tokenPath: string | null;
+  portPath: string | null;
   token: string | null;
   config: Required<Pick<RuntimeConfigureParams, "convexUrl" | "convexSiteUrl" | "authToken" | "cloudSyncEnabled">>;
   suppressWorkerRespawn: boolean;
@@ -52,12 +52,11 @@ const AGENT_EVENT_BUFFER_LIMIT = 1_000;
 const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1_000;
 const TOKEN_HEADER = "x-stella-ui-token";
 
-const getCommandSocketPath = (statePath: string): string => {
-  if (process.platform === "win32") {
-    return "\\\\.\\pipe\\stella-ui";
-  }
-  return path.join(statePath, "stella-ui.sock");
-};
+const getCommandSocketPath = (statePath: string): string =>
+  path.join(statePath, "stella-ui.sock");
+
+const getCommandPortPath = (statePath: string): string =>
+  path.join(statePath, "stella-ui.port");
 
 const getCommandTokenPath = (statePath: string): string =>
   path.join(statePath, "stella-ui.token");
@@ -132,68 +131,69 @@ const startCliServer = async (
   state.tokenPath = tokenPath;
   writePrivateFileSync(tokenPath, token);
 
-  const server = http.createServer(async (req, res) => {
-    if (req.headers[TOKEN_HEADER] !== token) {
-      res.writeHead(401, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
-      res.end("Unauthorized");
-      return;
+  ensurePrivateDirSync(statePath);
+
+  const fetchHandler = async (req: Request) => {
+    if (req.headers.get(TOKEN_HEADER) !== token) {
+      return new Response("Unauthorized", { status: 401 });
     }
     if (req.method !== "POST") {
-      res.writeHead(405, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
-      res.end("Method Not Allowed");
-      return;
-    }
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) {
-      chunks.push(chunk as Buffer);
+      return new Response("Method Not Allowed", { status: 405 });
     }
     let body: RuntimeCommandRunParams;
     try {
-      body = JSON.parse(Buffer.concat(chunks).toString("utf-8")) as RuntimeCommandRunParams;
+      body = await req.json() as RuntimeCommandRunParams;
     } catch {
-      res.writeHead(400, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
-      res.end("Invalid JSON");
-      return;
+      return new Response("Invalid JSON", { status: 400 });
     }
     try {
       const result = await runCommand(body);
-      res.writeHead(result.exitCode === 0 ? 200 : 500, {
-        "Content-Type": "text/plain",
-        "Cache-Control": "no-store",
-      });
-      res.end(result.exitCode === 0 ? result.stdout : result.stderr ?? result.stdout);
+      return new Response(
+        result.exitCode === 0 ? result.stdout : result.stderr ?? result.stdout,
+        { status: result.exitCode === 0 ? 200 : 500 },
+      );
     } catch (error) {
-      res.writeHead(500, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
-      res.end(error instanceof Error ? error.message : String(error));
+      return new Response(
+        error instanceof Error ? error.message : String(error),
+        { status: 500 },
+      );
     }
-  });
+  };
 
-  const socketPath = getCommandSocketPath(statePath);
-  if (process.platform !== "win32") {
-    ensurePrivateDirSync(path.dirname(socketPath));
+  if (process.platform === "win32") {
+    // Windows: Node's http.request({ socketPath }) only supports named pipes,
+    // not AF_UNIX sockets. Use a loopback TCP port instead and write the port
+    // to a file so the CLI client can discover it.
+    const server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: fetchHandler,
+    });
+    state.portPath = getCommandPortPath(statePath);
+    writePrivateFileSync(state.portPath, String(server.port));
+    state.server = server;
+  } else {
+    const socketPath = getCommandSocketPath(statePath);
     try {
       fs.unlinkSync(socketPath);
     } catch {
       // Ignore stale socket cleanup failures.
     }
+    const server = Bun.serve({ unix: socketPath, fetch: fetchHandler });
+    state.server = server;
   }
-  await new Promise<void>((resolve) => {
-    server.listen(socketPath, resolve);
-  });
-  state.server = server;
 };
 
 const stopCliServer = (state: DaemonState) => {
-  state.server?.close();
+  state.server?.stop(true);
   state.server = null;
-  if (state.tokenPath) {
-    try {
-      fs.unlinkSync(state.tokenPath);
-    } catch {
-      // Ignore cleanup failures.
+  for (const filePath of [state.tokenPath, state.portPath]) {
+    if (filePath) {
+      try { fs.unlinkSync(filePath); } catch { /* ignore */ }
     }
   }
   state.tokenPath = null;
+  state.portPath = null;
   state.token = null;
 };
 
@@ -205,6 +205,7 @@ export const createRuntimeDaemonServer = (peer: JsonRpcPeer) => {
     agentEventBuffers: new Map(),
     server: null,
     tokenPath: null,
+    portPath: null,
     token: null,
     config: {
       convexUrl: null,
@@ -236,11 +237,8 @@ export const createRuntimeDaemonServer = (peer: JsonRpcPeer) => {
       state.worker = null;
     }
 
-    const child = spawn(process.execPath, [resolveWorkerEntryPath()], {
-      env: {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: "1",
-      },
+    const child = spawn("bun", ["run", resolveWorkerEntryPath()], {
+      env: { ...process.env },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -664,6 +662,37 @@ export const createRuntimeDaemonServer = (peer: JsonRpcPeer) => {
       );
     },
   );
+
+  // ---------------------------------------------------------------------------
+  // Discovery handlers (run directly in daemon — Bun has bun:sqlite access)
+  // ---------------------------------------------------------------------------
+
+  peer.registerRequestHandler(METHOD_NAMES.DISCOVERY_COLLECT_BROWSER_DATA, async (params) => {
+    if (!state.init) throw createRuntimeUnavailableError("Not initialized.");
+    const { collectBrowserData, formatBrowserDataForSynthesis } = await import(
+      "../runtime-discovery/browser-data.js"
+    );
+    const options = params as { selectedBrowser?: string; selectedProfile?: string } | undefined;
+    const data = await collectBrowserData(state.init.stellaHomePath, options);
+    const formatted = formatBrowserDataForSynthesis(data);
+    return { data, formatted };
+  });
+
+  peer.registerRequestHandler(METHOD_NAMES.DISCOVERY_COLLECT_ALL_SIGNALS, async (params) => {
+    if (!state.init) throw createRuntimeUnavailableError("Not initialized.");
+    const { collectAllSignals } = await import("../runtime-discovery/collect-all.js");
+    const options = params as {
+      categories?: string[];
+      selectedBrowser?: string;
+      selectedProfile?: string;
+    } | undefined;
+    return await collectAllSignals(
+      state.init.stellaHomePath,
+      options?.categories as import("../../src/shared/contracts/discovery.js").DiscoveryCategory[] | undefined,
+      options?.selectedBrowser,
+      options?.selectedProfile,
+    );
+  });
 
   process.once("exit", () => {
     state.suppressWorkerRespawn = true;

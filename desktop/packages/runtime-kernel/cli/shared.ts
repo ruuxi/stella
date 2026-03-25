@@ -17,12 +17,24 @@ const resolveStatePath = () => {
 
 export const getSocketPath = () =>
   process.env.STELLA_UI_SOCKET_PATH ||
-  (process.platform === "win32"
-    ? "\\\\.\\pipe\\stella-ui"
-    : path.join(resolveStatePath(), "stella-ui.sock"));
+  path.join(resolveStatePath(), "stella-ui.sock");
+
+const getPortPath = () =>
+  path.join(resolveStatePath(), "stella-ui.port");
 
 export const getTokenPath = () =>
   process.env.STELLA_UI_TOKEN_PATH || path.join(resolveStatePath(), "stella-ui.token");
+
+const getConnectionOptions = (): { socketPath: string } | { hostname: string; port: number } => {
+  if (process.env.STELLA_UI_SOCKET_PATH) {
+    return { socketPath: process.env.STELLA_UI_SOCKET_PATH };
+  }
+  if (process.platform === "win32") {
+    const port = parseInt(fs.readFileSync(getPortPath(), "utf-8").trim(), 10);
+    return { hostname: "127.0.0.1", port };
+  }
+  return { socketPath: getSocketPath() };
+};
 
 export const runRuntimeCommand = async (args: {
   commandId: string;
@@ -39,7 +51,7 @@ export const runRuntimeCommand = async (args: {
   return await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
     const req = http.request(
       {
-        socketPath: getSocketPath(),
+        ...getConnectionOptions(),
         path: "/",
         method: "POST",
         headers: {

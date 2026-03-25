@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import BetterSqliteDatabase from "better-sqlite3";
+import { Database } from "bun:sqlite";
 import type { SqliteDatabase } from "./shared.js";
 
 const DB_FILE = "stella.sqlite";
@@ -10,7 +10,7 @@ const ensureDir = (dirPath: string): void => {
 };
 
 const openDatabase = (dbPath: string): SqliteDatabase =>
-  new BetterSqliteDatabase(dbPath) as unknown as SqliteDatabase;
+  new Database(dbPath) as unknown as SqliteDatabase;
 
 export const createDesktopDatabase = (stellaHome: string): SqliteDatabase => {
   const stateRoot = path.join(stellaHome, "state");

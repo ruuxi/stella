@@ -3,20 +3,16 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import {
-  collectBrowserData,
   coreMemoryExists,
   detectPreferredBrowserProfile,
-  formatBrowserDataForSynthesis,
   listBrowserProfiles,
   writeCoreMemory,
   type BrowserData,
   type BrowserType,
 } from "../../packages/runtime-discovery/browser-data.js";
-import { collectAllSignals } from "../../packages/runtime-discovery/collect-all.js";
 import { normalizeSafeExternalUrl } from "../../packages/runtime-kernel/tools/network-guards.js";
 import { getStellaBrowserBridgeEnv } from "../../packages/runtime-kernel/tools/stella-browser-bridge-config.js";
 import type { AllUserSignalsResult } from "../../packages/runtime-discovery/types.js";
-import type { DiscoveryCategory } from "../../src/shared/contracts/discovery.js";
 
 type BrowserFetchInit = {
   method?: "GET" | "POST";
@@ -38,6 +34,7 @@ type BrowserCookie = {
 type BrowserHandlersOptions = {
   getStellaHomePath: () => string | null;
   getFrontendRoot: () => string | null;
+  getStellaHostRunner: () => import("../runtime-client-adapter.js").RuntimeClientAdapter | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -182,18 +179,16 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, "browserData:collect")) {
         throw new Error("Blocked untrusted request.");
       }
-      const stellaHomePath = options.getStellaHomePath();
-      if (!stellaHomePath) {
-        return {
-          data: null,
-          formatted: null,
-          error: "Stella home not initialized",
-        };
+      const runner = options.getStellaHostRunner();
+      if (!runner) {
+        return { data: null, formatted: null, error: "Runtime not available" };
       }
       try {
-        const data = await collectBrowserData(stellaHomePath, collectOptions);
-        const formatted = formatBrowserDataForSynthesis(data);
-        return { data, formatted };
+        const result = await runner.collectBrowserData(collectOptions);
+        return {
+          data: result.data as BrowserData | null,
+          formatted: result.formatted,
+        };
       } catch (error) {
         return {
           data: null,
@@ -307,23 +302,19 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, "signals:collectAll")) {
         throw new Error("Blocked untrusted request.");
       }
-      const stellaHomePath = options.getStellaHomePath();
-      if (!stellaHomePath) {
+      const runner = options.getStellaHostRunner();
+      if (!runner) {
+        return { data: null, formatted: null, error: "Runtime not available" };
+      }
+      try {
+        return await runner.collectAllSignals(ipcOptions) as AllUserSignalsResult;
+      } catch (error) {
         return {
           data: null,
           formatted: null,
-          error: "Stella home not initialized",
+          error: (error as Error).message,
         };
       }
-      const categories = ipcOptions?.categories as
-        | DiscoveryCategory[]
-        | undefined;
-      return collectAllSignals(
-        stellaHomePath,
-        categories,
-        ipcOptions?.selectedBrowser,
-        ipcOptions?.selectedProfile,
-      );
     },
   );
 

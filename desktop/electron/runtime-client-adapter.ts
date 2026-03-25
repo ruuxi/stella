@@ -740,4 +740,16 @@ export class RuntimeClientAdapter {
   killShellsByPort(port: number) {
     return this.client.killShellsByPort(port);
   }
+
+  collectBrowserData(options?: { selectedBrowser?: string; selectedProfile?: string }) {
+    return this.client.collectBrowserData(options);
+  }
+
+  collectAllSignals(options?: {
+    categories?: string[];
+    selectedBrowser?: string;
+    selectedProfile?: string;
+  }) {
+    return this.client.collectAllSignals(options);
+  }
 }
