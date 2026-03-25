@@ -580,6 +580,22 @@ export class StellaRuntimeClient {
     }>(METHOD_NAMES.DISCOVERY_COLLECT_ALL_SIGNALS, options);
   }
 
+  async coreMemoryExists() {
+    return await this.request<boolean>(METHOD_NAMES.DISCOVERY_CORE_MEMORY_EXISTS);
+  }
+
+  async writeCoreMemory(content: string) {
+    return await this.request<void>(METHOD_NAMES.DISCOVERY_WRITE_CORE_MEMORY, { content });
+  }
+
+  async detectPreferredBrowserProfile() {
+    return await this.request<unknown>(METHOD_NAMES.DISCOVERY_DETECT_PREFERRED_BROWSER);
+  }
+
+  async listBrowserProfiles(browserType: string) {
+    return await this.request<unknown>(METHOD_NAMES.DISCOVERY_LIST_BROWSER_PROFILES, { browserType });
+  }
+
   private async spawnDaemon() {
     if (this.respawnTimer) {
       clearTimeout(this.respawnTimer);

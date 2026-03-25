@@ -2,14 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
-import {
-  coreMemoryExists,
-  detectPreferredBrowserProfile,
-  listBrowserProfiles,
-  writeCoreMemory,
-  type BrowserData,
-  type BrowserType,
-} from "../../packages/runtime-discovery/browser-data.js";
+import type { BrowserData, BrowserType } from "../../packages/runtime-discovery/browser-data.js";
 import { normalizeSafeExternalUrl } from "../../packages/runtime-kernel/tools/network-guards.js";
 import { getStellaBrowserBridgeEnv } from "../../packages/runtime-kernel/tools/stella-browser-bridge-config.js";
 import type { AllUserSignalsResult } from "../../packages/runtime-discovery/types.js";
@@ -161,9 +154,13 @@ const fetchWithBrowserSession = async (
 
 export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
   ipcMain.handle("browserData:exists", async () => {
-    const stellaHomePath = options.getStellaHomePath();
-    if (!stellaHomePath) return false;
-    return coreMemoryExists(stellaHomePath);
+    const runner = options.getStellaHostRunner();
+    if (!runner) return false;
+    try {
+      return await runner.coreMemoryExists();
+    } catch {
+      return false;
+    }
   });
 
   ipcMain.handle(
@@ -207,12 +204,12 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted request.");
       }
-      const stellaHomePath = options.getStellaHomePath();
-      if (!stellaHomePath) {
-        return { ok: false, error: "Stella home not initialized" };
+      const runner = options.getStellaHostRunner();
+      if (!runner) {
+        return { ok: false, error: "Runtime not available" };
       }
       try {
-        await writeCoreMemory(stellaHomePath, content);
+        await runner.writeCoreMemory(content);
         return { ok: true };
       } catch (error) {
         return { ok: false, error: (error as Error).message };
@@ -243,7 +240,13 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
   );
 
   ipcMain.handle("browserData:detectPreferredBrowser", async () => {
-    return detectPreferredBrowserProfile();
+    const runner = options.getStellaHostRunner();
+    if (!runner) return null;
+    try {
+      return await runner.detectPreferredBrowserProfile();
+    } catch {
+      return null;
+    }
   });
 
   ipcMain.handle(
@@ -285,7 +288,13 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
   ipcMain.handle(
     "browserData:listProfiles",
     async (_event, browserType: string) => {
-      return listBrowserProfiles(browserType as BrowserType);
+      const runner = options.getStellaHostRunner();
+      if (!runner) return [];
+      try {
+        return await runner.listBrowserProfiles(browserType);
+      } catch {
+        return [];
+      }
     },
   );
 

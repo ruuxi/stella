@@ -752,4 +752,20 @@ export class RuntimeClientAdapter {
   }) {
     return this.client.collectAllSignals(options);
   }
+
+  coreMemoryExists() {
+    return this.client.coreMemoryExists();
+  }
+
+  writeCoreMemory(content: string) {
+    return this.client.writeCoreMemory(content);
+  }
+
+  detectPreferredBrowserProfile() {
+    return this.client.detectPreferredBrowserProfile();
+  }
+
+  listBrowserProfiles(browserType: string) {
+    return this.client.listBrowserProfiles(browserType);
+  }
 }
