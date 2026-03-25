@@ -125,7 +125,6 @@ const hasUserCommits = async (
   return new Promise((resolve) => {
     exec(cmd, { encoding: "utf-8", timeout: 5000, windowsHide: true }, (error, stdout) => {
       if (error) {
-        // git log fails on empty repos or non-git dirs — exclude
         resolve(false);
         return;
       }

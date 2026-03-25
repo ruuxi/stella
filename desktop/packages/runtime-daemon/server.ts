@@ -672,10 +672,37 @@ export const createRuntimeDaemonServer = (peer: JsonRpcPeer) => {
     const { collectBrowserData, formatBrowserDataForSynthesis } = await import(
       "../runtime-discovery/browser-data.js"
     );
-    const options = params as { selectedBrowser?: string; selectedProfile?: string } | undefined;
-    const data = await collectBrowserData(state.init.stellaHomePath, options);
+    const raw = params as { selectedBrowser?: string; selectedProfile?: string } | undefined;
+    const data = await collectBrowserData(state.init.stellaHomePath, {
+      selectedBrowser: raw?.selectedBrowser as import("../runtime-discovery/browser-data.js").BrowserType | undefined,
+      selectedProfile: raw?.selectedProfile,
+    });
     const formatted = formatBrowserDataForSynthesis(data);
     return { data, formatted };
+  });
+
+  peer.registerRequestHandler(METHOD_NAMES.DISCOVERY_CORE_MEMORY_EXISTS, async () => {
+    if (!state.init) throw createRuntimeUnavailableError("Not initialized.");
+    const { coreMemoryExists } = await import("../runtime-discovery/browser-data.js");
+    return coreMemoryExists(state.init.stellaHomePath);
+  });
+
+  peer.registerRequestHandler(METHOD_NAMES.DISCOVERY_WRITE_CORE_MEMORY, async (params) => {
+    if (!state.init) throw createRuntimeUnavailableError("Not initialized.");
+    const { writeCoreMemory } = await import("../runtime-discovery/browser-data.js");
+    const { content } = params as { content: string };
+    await writeCoreMemory(state.init.stellaHomePath, content);
+  });
+
+  peer.registerRequestHandler(METHOD_NAMES.DISCOVERY_DETECT_PREFERRED_BROWSER, async () => {
+    const { detectPreferredBrowserProfile } = await import("../runtime-discovery/browser-data.js");
+    return detectPreferredBrowserProfile();
+  });
+
+  peer.registerRequestHandler(METHOD_NAMES.DISCOVERY_LIST_BROWSER_PROFILES, async (params) => {
+    const { listBrowserProfiles } = await import("../runtime-discovery/browser-data.js");
+    const { browserType } = params as { browserType: string };
+    return listBrowserProfiles(browserType as import("../runtime-discovery/browser-data.js").BrowserType);
   });
 
   peer.registerRequestHandler(METHOD_NAMES.DISCOVERY_COLLECT_ALL_SIGNALS, async (params) => {

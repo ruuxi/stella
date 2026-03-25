@@ -30,16 +30,12 @@ const USERASSIST_DAYS = 7;
 // Helper Functions
 // ---------------------------------------------------------------------------
 
-const execAsync = (command: string, shell?: string): Promise<string> => {
+const execAsync = (command: string): Promise<string> => {
   return new Promise((resolve, reject) => {
-    exec(
-      command,
-      { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024, shell, windowsHide: true },
-      (error, stdout) => {
-        if (error) reject(error);
-        else resolve(stdout.trim());
-      }
-    );
+    exec(command, { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024, windowsHide: true }, (error, stdout) => {
+      if (error) reject(error);
+      else resolve(stdout.trim());
+    });
   });
 };
 
