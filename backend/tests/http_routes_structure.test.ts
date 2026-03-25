@@ -25,6 +25,13 @@ describe("http_routes module structure", () => {
     expect(source).toContain("discord");
   });
 
+  test("music.ts exposes a backend-owned music stream instead of returning raw keys", () => {
+    const source = fs.readFileSync("convex/http_routes/music.ts", "utf-8");
+    expect(source).toContain("/api/music/stream");
+    expect(source).toContain("text/event-stream");
+    expect(source).not.toContain("return jsonResponse({ apiKey }, 200, origin)");
+  });
+
   test("connectors.ts does not expose removed bridge routes", () => {
     const source = fs.readFileSync("convex/http_routes/connectors.ts", "utf-8");
     expect(source).not.toContain("/api/bridge/poll");
