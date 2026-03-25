@@ -14,9 +14,11 @@ export type OnboardingDemo =
   | "pomodoro"
   | null;
 
-/** Delay after React swap to let the new demo paint before revealing it */
-const PAINT_SETTLE_MS = 120;
-const CSS_MORPH_MS = 450;
+/** Onboarding-only morph timings (not shared with HMR; keep in sync with overlay behavior manually). */
+const ONBOARDING_MORPH_PAINT_SETTLE_MS = 200;
+/** CSS fallback + `animationDuration` — matches overlay reverse crossfade length. */
+const ONBOARDING_MORPH_CSS_DURATION_MS = 500;
+const CSS_FALLBACK_SWAP_AT_MS = Math.round(ONBOARDING_MORPH_CSS_DURATION_MS / 2);
 const NATIVE_MORPH_RETRY_MS = 80;
 const NATIVE_MORPH_MAX_ATTEMPTS = 6;
 
@@ -74,13 +76,13 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
 
       if (morphApi) {
         setDisplayedDemo(nextDemo);
-        await wait(PAINT_SETTLE_MS);
+        await wait(ONBOARDING_MORPH_PAINT_SETTLE_MS);
         await morphApi.morphComplete();
       } else {
         setCssMorphing(true);
         await new Promise<void>((resolve) => {
-          setTimeout(() => setDisplayedDemo(nextDemo), 200);
-          setTimeout(resolve, CSS_MORPH_MS);
+          setTimeout(() => setDisplayedDemo(nextDemo), CSS_FALLBACK_SWAP_AT_MS);
+          setTimeout(resolve, ONBOARDING_MORPH_CSS_DURATION_MS);
         });
         setCssMorphing(false);
       }
@@ -114,6 +116,11 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
   return (
     <div
       className={`onboarding-canvas ${cssMorphing ? "onboarding-canvas-morphing" : ""}`}
+      style={
+        cssMorphing
+          ? { animationDuration: `${ONBOARDING_MORPH_CSS_DURATION_MS}ms` }
+          : undefined
+      }
     >
       {(displayedDemo === "default" || displayedDemo === "modern") && (
         <StellaAppMock variant={displayedDemo} />

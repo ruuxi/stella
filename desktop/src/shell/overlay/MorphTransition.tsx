@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { cssToVec3 } from "@/shared/lib/color";
 import type { SelfModHmrState } from "../../shared/contracts/boundary";
+import {
+  MORPH_COVER_RAMP_UP_MS,
+  MORPH_REVERSE_CROSSFADE_MS,
+  MORPH_STEADY_STRENGTH,
+} from "../../shared/contracts/morph-timing";
 
 type MorphPhase = "idle" | "rippling" | "crossfading" | "calming";
 
@@ -25,12 +30,6 @@ const IDLE_HMR_STATE: SelfModHmrState = {
   paused: false,
   requiresFullReload: false,
 };
-
-const COVER_RAMP_UP_MS = 220;
-const HMR_REVERSE_MS = 250;
-const RELOAD_REVERSE_MS = 500;
-const REVERSE_TAIL_FADE_RATIO = 0.2;
-const STEADY_STRENGTH = 0.65;
 
 const VERT = `
 attribute vec2 a_pos;
@@ -315,19 +314,6 @@ function tweenRef(
   });
 }
 
-function delayedTweenRef(
-  ref: { current: number },
-  to: number,
-  duration: number,
-  delay: number,
-): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      void tweenRef(ref, to, duration).then(resolve);
-    }, delay);
-  });
-}
-
 export function MorphTransition() {
   const [state, setState] = useState<MorphState>(IDLE_STATE);
   const [hmrState, setHmrState] = useState<SelfModHmrState>(IDLE_HMR_STATE);
@@ -416,7 +402,7 @@ export function MorphTransition() {
           );
 
           // Reach a stable covered state quickly, then hold there until reveal.
-          void tweenRef(strengthRef, STEADY_STRENGTH, COVER_RAMP_UP_MS);
+          void tweenRef(strengthRef, MORPH_STEADY_STRENGTH, MORPH_COVER_RAMP_UP_MS);
         });
       }),
     );
@@ -445,12 +431,6 @@ export function MorphTransition() {
         if (data.transitionId !== activeTransitionIdRef.current) {
           return;
         }
-        const reverseMs = data.requiresFullReload
-          ? RELOAD_REVERSE_MS
-          : HMR_REVERSE_MS;
-        const fadeMs = Math.max(1, Math.round(reverseMs * REVERSE_TAIL_FADE_RATIO));
-        const fadeDelayMs = Math.max(0, reverseMs - fadeMs);
-
         void loadImage(data.screenshotDataUrl)
           .then((img) => {
             if (data.transitionId !== activeTransitionIdRef.current) {
@@ -470,9 +450,8 @@ export function MorphTransition() {
             setState((prev) => ({ ...prev, phase: "crossfading" }));
 
             return Promise.all([
-              tweenRef(mixRef, 1.0, reverseMs),
-              tweenRef(strengthRef, 0, reverseMs),
-              delayedTweenRef(alphaRef, 0, fadeMs, fadeDelayMs),
+              tweenRef(mixRef, 1.0, MORPH_REVERSE_CROSSFADE_MS),
+              tweenRef(strengthRef, 0, MORPH_REVERSE_CROSSFADE_MS),
             ])
               .then(() => {
                 if (data.transitionId !== activeTransitionIdRef.current) {
