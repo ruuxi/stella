@@ -4,7 +4,10 @@ import { getMaxAgentConcurrency } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
 import { LocalTaskManager } from "../tasks/local-task-manager.js";
 import type { TaskToolRequest } from "../tools/types.js";
-import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
+import type {
+  LocalTaskManagerAgentContext,
+  TaskLifecycleEvent,
+} from "../tasks/local-task-manager.js";
 import {
   AGENT_IDS,
   isLocalCliAgentId,
@@ -17,6 +20,76 @@ import type {
 } from "./types.js";
 import { buildTaskEventPrompt, createSelfModHmrState } from "./shared.js";
 import type { SelfModHmrState } from "../../boundary-contracts/index.js";
+
+const appendTaskLifecycleChatEvent = (
+  context: RunnerContext,
+  event: TaskLifecycleEvent,
+) => {
+  if (!context.appendLocalChatEvent) {
+    return;
+  }
+
+  if (event.type === "task-started") {
+    context.appendLocalChatEvent({
+      conversationId: event.conversationId,
+      type: "task_started",
+      payload: {
+        taskId: event.taskId,
+        description: event.description,
+        agentType: event.agentType,
+        ...(event.parentTaskId ? { parentTaskId: event.parentTaskId } : {}),
+      },
+    });
+    return;
+  }
+
+  if (event.type === "task-completed") {
+    context.appendLocalChatEvent({
+      conversationId: event.conversationId,
+      type: "task_completed",
+      payload: {
+        taskId: event.taskId,
+        ...(event.result ? { result: event.result } : {}),
+      },
+    });
+    return;
+  }
+
+  if (event.type === "task-failed") {
+    context.appendLocalChatEvent({
+      conversationId: event.conversationId,
+      type: "task_failed",
+      payload: {
+        taskId: event.taskId,
+        ...(event.error ? { error: event.error } : {}),
+      },
+    });
+    return;
+  }
+
+  if (event.type === "task-canceled") {
+    context.appendLocalChatEvent({
+      conversationId: event.conversationId,
+      type: "task_canceled",
+      payload: {
+        taskId: event.taskId,
+        ...(event.error ? { error: event.error } : {}),
+      },
+    });
+    return;
+  }
+
+  if (event.type === "task-progress") {
+    context.appendLocalChatEvent({
+      conversationId: event.conversationId,
+      type: "task_progress",
+      payload: {
+        taskId: event.taskId,
+        statusText: event.statusText,
+      },
+    });
+  }
+};
 
 export const createTaskOrchestration = (
   context: RunnerContext,
@@ -61,6 +134,7 @@ export const createTaskOrchestration = (
       });
     },
     onTaskEvent: (event) => {
+      appendTaskLifecycleChatEvent(context, event);
       context.state.conversationCallbacks
         .get(event.conversationId)
         ?.onTaskEvent?.(event);

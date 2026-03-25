@@ -90,6 +90,7 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
+      attachments: [],
       replayTurn: payload.requeueOnInterrupt ? payload : null,
       userMessageId: startArgs.userMessageId,
       createRuntimeCallbacks: ({ runId, prepared }) =>
@@ -221,6 +222,7 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
+      attachments: [],
       userMessageId: `automation:${crypto.randomUUID()}`,
       replayTurn: queuedTurn.requeueOnInterrupt ? queuedTurn : null,
       createRuntimeCallbacks: ({ runId, prepared }) =>

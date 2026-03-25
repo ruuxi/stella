@@ -233,7 +233,10 @@ export class StellaRuntimeClient {
   }
 
   async startChat(payload: RuntimeChatPayload) {
-    return await this.request<{ runId: string }>(METHOD_NAMES.RUN_START_CHAT, payload);
+    return await this.request<{ runId: string; userMessageId: string }>(
+      METHOD_NAMES.RUN_START_CHAT,
+      payload,
+    );
   }
 
   async cancelChat(runId: string) {
@@ -323,9 +326,13 @@ export class StellaRuntimeClient {
     return await this.request<number>(METHOD_NAMES.LOCAL_CHAT_GET_EVENT_COUNT, payload);
   }
 
-  async appendLocalChatEvent(payload: Record<string, unknown>) {
-    return await this.request<Record<string, unknown>>(
-      METHOD_NAMES.LOCAL_CHAT_APPEND_EVENT,
+  async persistDiscoveryWelcome(payload: {
+    conversationId: string;
+    message: string;
+    suggestions?: unknown[];
+  }) {
+    return await this.request<{ ok: true }>(
+      METHOD_NAMES.LOCAL_CHAT_PERSIST_DISCOVERY_WELCOME,
       payload,
     );
   }
