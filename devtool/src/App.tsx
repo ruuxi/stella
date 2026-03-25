@@ -87,6 +87,34 @@ function getEventColor(event: DevEvent): string {
   return "#a0aec0";
 }
 
+function formatEventBlock(event: DevEvent): string {
+  const label = getEventLabel(event);
+  const time = formatTime(event.ts);
+  const body = JSON.stringify(event.payload, null, 2);
+  return `[${time}] ${label}\n${body}`;
+}
+
+function FlatEventLog({ events }: { events: DevEvent[] }) {
+  const text = events.map((e) => formatEventBlock(e)).join("\n\n---\n\n");
+  return (
+    <pre
+      style={{
+        margin: 0,
+        padding: "8px 12px",
+        fontSize: 12,
+        lineHeight: 1.45,
+        fontFamily:
+          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+        color: "#cbd5e0",
+      }}
+    >
+      {text}
+    </pre>
+  );
+}
+
 function EventRow({
   event,
   expanded,
@@ -162,6 +190,7 @@ export function App() {
     useDevToolSocket();
   const [filter, setFilter] = useState<EventFilter>("all");
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [expandMode, setExpandMode] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -173,7 +202,7 @@ export function App() {
     if (autoScroll && listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  }, [filtered.length, autoScroll]);
+  }, [filtered, autoScroll, expandMode]);
 
   const handleScroll = () => {
     if (!listRef.current) return;
@@ -228,7 +257,27 @@ export function App() {
           </span>
         )}
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setExpandMode((v) => !v);
+              setExpandedIdx(null);
+            }}
+            title="Show all events as plain text (full payloads, no clicking)"
+            style={{
+              padding: "4px 10px",
+              fontSize: 12,
+              border: "1px solid",
+              borderColor: expandMode ? "#48bb78" : "#4a5568",
+              borderRadius: 4,
+              background: expandMode ? "#22543d" : "transparent",
+              color: expandMode ? "#c6f6d5" : "#a0aec0",
+              cursor: "pointer",
+            }}
+          >
+            Expand
+          </button>
           {EVENT_FILTERS.map((f) => (
             <button
               key={f.value}
@@ -272,6 +321,8 @@ export function App() {
               ? "No events yet. Interact with Stella to see agent events here."
               : "Waiting for connection to Stella..."}
           </div>
+        ) : expandMode ? (
+          <FlatEventLog events={filtered} />
         ) : (
           filtered.map((event, i) => (
             <EventRow
