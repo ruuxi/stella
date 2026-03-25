@@ -1,4 +1,4 @@
-﻿import { memo } from "react";
+import { memo } from "react";
 import type { Attachment, ChannelEnvelope, TaskItem } from "@/app/chat/lib/event-transforms";
 import { WorkingIndicator } from "@/app/chat/WorkingIndicator";
 import { TaskIndicator } from "@/app/chat/TaskIndicator";
@@ -110,14 +110,20 @@ const isChannelMessageEvent = (event: EventRecord): boolean => {
 // eslint-disable-next-line react-refresh/only-export-components
 export const getDisplayMessageText = (event: EventRecord): string => {
   const text = getEventText(event).replace(TRAILING_TIME_TAG_RE, "");
-  if (!isChannelMessageEvent(event)) {
+  if (!isChannelMessageEvent(event) && event.type !== "assistant_message") {
     return text;
   }
   return text.replace(LEADING_TIME_TAG_RE, "");
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
-export const getDisplayUserText = getDisplayMessageText;
+export const getDisplayUserText = (event: EventRecord): string => {
+  const text = getEventText(event).replace(TRAILING_TIME_TAG_RE, "");
+  if (!isChannelMessageEvent(event)) {
+    return text;
+  }
+  return text.replace(LEADING_TIME_TAG_RE, "");
+};
 
 const summarizeReactions = (envelope: ChannelEnvelope): string | null => {
   const reactions = envelope.reactions ?? [];

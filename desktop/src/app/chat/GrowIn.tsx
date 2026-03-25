@@ -38,6 +38,7 @@ export function GrowIn({
   const controlsRef = useRef<ReturnType<typeof animate> | null>(null);
   const cachedChildrenRef = useRef<ReactNode>(children);
   const showRef = useRef(show);
+  const entranceDoneRef = useRef(!canAnimate);
 
   // Cache children while visible so exit animation has content to shrink
   if (show) {
@@ -61,6 +62,7 @@ export function GrowIn({
       // Exit: shrink to 0
       controlsRef.current?.stop();
       setSettled(false);
+      entranceDoneRef.current = false;
       controlsRef.current = animate(
         outer,
         { height: "0px", opacity: 0 },
@@ -75,10 +77,34 @@ export function GrowIn({
       // Re-enter: reset for grow-in
       setExited(false);
       setSettled(false);
+      entranceDoneRef.current = false;
       outer.style.height = "0px";
       outer.style.opacity = "1";
     }
   }, [show, canAnimate, duration]);
+
+  // After the entrance animation period, remove overflow:clip and switch to
+  // snapping height. During streaming the ResizeObserver restarts the spring on
+  // every chunk, so onComplete never fires and overflow:clip persists — clipping
+  // the bottom of the last assistant message. This timer guarantees the clip is
+  // lifted after the entrance window regardless.
+  useEffect(() => {
+    if (!canAnimate || !show) {
+      entranceDoneRef.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      entranceDoneRef.current = true;
+      const inner = innerRef.current;
+      const outer = outerRef.current;
+      if (inner && outer) {
+        controlsRef.current?.stop();
+        outer.style.height = `${inner.getBoundingClientRect().height}px`;
+      }
+      setSettled(true);
+    }, duration);
+    return () => clearTimeout(timer);
+  }, [canAnimate, show, duration]);
 
   // ResizeObserver for entrance/resize tracking (only when showing)
   useEffect(() => {
@@ -91,6 +117,14 @@ export function GrowIn({
       if (!entry) return;
       const h = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
 
+      // After the entrance period, snap height immediately so content is
+      // never clipped by a lagging spring animation.
+      if (entranceDoneRef.current) {
+        controlsRef.current?.stop();
+        outer.style.height = `${h}px`;
+        return;
+      }
+
       controlsRef.current?.stop();
       controlsRef.current = animate(
         outer,
@@ -99,7 +133,10 @@ export function GrowIn({
           type: "spring",
           duration: duration / 1000,
           bounce: 0,
-          onComplete: () => setSettled(true),
+          onComplete: () => {
+            entranceDoneRef.current = true;
+            setSettled(true);
+          },
         },
       );
     });

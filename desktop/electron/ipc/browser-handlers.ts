@@ -225,6 +225,28 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     },
   );
 
+  ipcMain.handle(
+    "browserData:writeHomeCanvas",
+    async (event, content: string) => {
+      if (
+        !options.assertPrivilegedSender(event, "browserData:writeHomeCanvas")
+      ) {
+        throw new Error("Blocked untrusted request.");
+      }
+      const frontendRoot = options.getFrontendRoot();
+      if (!frontendRoot) {
+        return { ok: false, error: "Frontend root not initialized" };
+      }
+      try {
+        const filePath = path.join(frontendRoot, "src", "app", "home", "HomeCanvas.tsx");
+        await fs.writeFile(filePath, content, "utf-8");
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: (error as Error).message };
+      }
+    },
+  );
+
   ipcMain.handle("browserData:detectPreferredBrowser", async () => {
     return detectPreferredBrowserProfile();
   });
