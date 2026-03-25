@@ -26,6 +26,7 @@ import {
   broadcastLocalChatUpdated,
   broadcastScheduleUpdated,
   broadcastStellaBrowserBridgeStatus,
+  broadcastWakeWordDetected,
   broadcastWakeWordState,
   getMobileBroadcast,
 } from "./context.js";
@@ -304,6 +305,9 @@ export const startDeferredStartup = (context: BootstrapContext) => {
             electronDir: config.electronDir,
             uiStateService: services.uiStateService,
             isAppReady: () => state.appReady,
+            onDetection: () => {
+              broadcastWakeWordDetected(context);
+            },
             onEnabledChange: () => {
               broadcastWakeWordState(context);
             },

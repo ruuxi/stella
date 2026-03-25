@@ -4,6 +4,11 @@ import {
   type VoiceSessionEvent,
   type VoiceSessionState,
 } from "@/features/voice/services/realtime-voice";
+import {
+  clearWakeWordHandoffPrefill,
+  getPendingWakeWordHandoffPrefill,
+  subscribeWakeWordHandoffPrefill,
+} from "@/features/voice/services/wake-word-handoff";
 import type { VoiceRuntimeSnapshot } from "@/shared/types/electron";
 
 interface UseRealtimeVoiceResult {
@@ -54,6 +59,7 @@ export class VoiceSessionManager {
   private rotateTimerRef: { current: ReturnType<typeof setTimeout> | null } = {
     current: null,
   };
+  private wakeWordHandoffUnsubscribe: (() => void) | null = null;
   private retryAttemptRef: { current: number } = { current: 0 };
   private connectedConversationIdRef: { current: string | null } = {
     current: null,
@@ -65,6 +71,15 @@ export class VoiceSessionManager {
 
   constructor(deps: VoiceSessionManagerDeps) {
     this.deps = deps;
+    this.wakeWordHandoffUnsubscribe = subscribeWakeWordHandoffPrefill(
+      (prefillPromise) => {
+        const session = this.sessionRef.current;
+        if (!session || session.state !== "connected") {
+          return;
+        }
+        void this.handleWakeWordHandoffPrefill(session, prefillPromise);
+      },
+    );
   }
 
   /** Boot the session lifecycle. */
@@ -77,6 +92,8 @@ export class VoiceSessionManager {
   stop(): void {
     this.aborted = true;
     this.startInFlight = false;
+    this.wakeWordHandoffUnsubscribe?.();
+    this.wakeWordHandoffUnsubscribe = null;
     this.deps.analyserRef.current = null;
     this.deps.outputAnalyserRef.current = null;
     this.assistantSpeaking = false;
@@ -233,6 +250,11 @@ export class VoiceSessionManager {
       this.scheduleRotate(0);
     }
 
+    const pendingWakeWordHandoff = getPendingWakeWordHandoffPrefill();
+    if (pendingWakeWordHandoff) {
+      void this.handleWakeWordHandoffPrefill(session, pendingWakeWordHandoff);
+    }
+
     this.unsubscribeRef.current = session.on((event: VoiceSessionEvent) => {
       if (this.aborted) return;
       if (this.sessionRef.current !== session) return;
@@ -287,6 +309,25 @@ export class VoiceSessionManager {
         this.persistTranscript("assistant", event.text);
       }
     });
+  }
+
+  private async handleWakeWordHandoffPrefill(
+    session: RealtimeVoiceSession,
+    prefillPromise: Promise<string | null>,
+  ): Promise<void> {
+    const prefillText = await prefillPromise.catch(() => null);
+    if (this.aborted || this.sessionRef.current !== session) {
+      return;
+    }
+
+    clearWakeWordHandoffPrefill(prefillPromise);
+
+    const normalized = prefillText?.trim();
+    if (!normalized) {
+      return;
+    }
+
+    session.injectWakeWordPrefill(normalized);
   }
 
   private async startSession(): Promise<void> {

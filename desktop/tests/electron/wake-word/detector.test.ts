@@ -2,9 +2,24 @@ import { describe, expect, it } from "vitest";
 import {
   WAKE_WORD_VAD_GATE_THRESHOLD,
   createWakeWordVadGateState,
+  estimateWakeWordVadScore,
   float16BitsToNumber,
   readScalarTensorValue,
 } from "../../../electron/wake-word/detector.js";
+
+function createSineChunk(
+  level: number,
+  frequencyHz: number,
+  length = 1280,
+  sampleRate = 16000,
+): Int16Array {
+  const amplitude = Math.round(Math.max(0, Math.min(1, level)) * 32767);
+  return Int16Array.from({ length }, (_, index) =>
+    Math.round(
+      Math.sin((2 * Math.PI * frequencyHz * index) / sampleRate) * amplitude,
+    ),
+  );
+}
 
 describe("wake-word detector scalar decoding", () => {
   it("decodes common float16 values correctly", () => {
@@ -45,5 +60,15 @@ describe("wake-word detector scalar decoding", () => {
       threshold: WAKE_WORD_VAD_GATE_THRESHOLD,
       gateOpen: true,
     });
+  });
+
+  it("keeps the heuristic VAD score near zero for silence", () => {
+    expect(estimateWakeWordVadScore(new Int16Array(1280))).toBe(0);
+  });
+
+  it("raises the heuristic VAD score for voiced audio", () => {
+    const score = estimateWakeWordVadScore(createSineChunk(0.08, 220));
+
+    expect(score).toBeGreaterThanOrEqual(WAKE_WORD_VAD_GATE_THRESHOLD);
   });
 });
