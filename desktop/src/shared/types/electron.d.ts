@@ -326,15 +326,19 @@ export type ElectronAgentApi = {
   getAppSessionStartedAt: () => Promise<number>;
   startChat: (payload: {
     conversationId: string;
-    userMessageId: string;
     userPrompt: string;
+    deviceId?: string;
+    platform?: string;
+    timezone?: string;
+    mode?: string;
+    messageMetadata?: Record<string, unknown>;
     attachments?: Array<{
       url: string;
       mimeType?: string;
     }>;
     agentType?: string;
     storageMode?: "cloud" | "local";
-  }) => Promise<{ runId: string }>;
+  }) => Promise<{ runId: string; userMessageId: string }>;
   cancelChat: (runId: string) => void;
   resumeStream: (payload: { runId: string; lastSeq: number }) => Promise<{
     events: AgentStreamIpcEvent[];
@@ -536,17 +540,11 @@ export type ElectronLocalChatApi = {
     maxItems?: number;
   }) => Promise<EventRecord[]>;
   getEventCount: (payload: { conversationId: string }) => Promise<number>;
-  appendEvent: (payload: {
+  persistDiscoveryWelcome: (payload: {
     conversationId: string;
-    type: string;
-    payload?: unknown;
-    deviceId?: string;
-    requestId?: string;
-    targetDeviceId?: string;
-    channelEnvelope?: unknown;
-    timestamp?: number;
-    eventId?: string;
-  }) => Promise<EventRecord>;
+    message: string;
+    suggestions?: unknown[];
+  }) => Promise<{ ok: true }>;
   listSyncMessages: (payload: {
     conversationId: string;
     maxMessages?: number;
