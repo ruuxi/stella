@@ -184,6 +184,7 @@ export const createPiTools = (opts: {
         conversationId: opts.conversationId,
         deviceId: opts.deviceId,
         requestId: toolCallId,
+        runId: opts.runId,
         ...(opts.rootRunId ? { rootRunId: opts.rootRunId } : {}),
         agentType: opts.agentType,
         ...(opts.frontendRoot ? { frontendRoot: opts.frontendRoot } : {}),

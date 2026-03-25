@@ -387,6 +387,8 @@ export type RuntimePersonalWebsiteGenerationRequest = {
   };
 };
 
+
+
 export type RuntimeProjectDirectoryRegistrationResult = {
   projects: LocalDevProjectRecord[];
   selectedProjectId: string;

@@ -1,31 +1,36 @@
 /**
  * Home Canvas Generation Service
  *
- * Reads the user's core memory and the HomeCanvas.tsx template,
- * sends both to the backend, and receives personalized content
- * constants to replace in the template.
+ * Calls the backend with the HomeCanvas.tsx template + core memory,
+ * receives a rewritten file, and writes it to disk via IPC.
  */
 
 import { createServiceRequest } from "@/infra/http/service-request";
 import { getHomeCanvasPromptConfig } from "@/prompts";
 
-export type HomeCanvasResult = {
+type HomeCanvasResponse = {
   content: string;
 };
 
-type HomeCanvasRequestOptions = {
-  includeAuth?: boolean;
-};
+/** Strip markdown code fences if the model wraps its output. */
+function stripFences(raw: string): string {
+  const trimmed = raw.trim();
+  const fenceStart = /^```(?:tsx?|jsx?|typescript|javascript)?\s*\n/;
+  const fenceEnd = /\n```\s*$/;
+  if (fenceStart.test(trimmed) && fenceEnd.test(trimmed)) {
+    return trimmed.replace(fenceStart, "").replace(fenceEnd, "").trim();
+  }
+  return trimmed;
+}
 
 export async function generateHomeCanvas(
   coreMemory: string,
   templateFile: string,
-  options: HomeCanvasRequestOptions = {},
-): Promise<HomeCanvasResult> {
+): Promise<void> {
   const { endpoint, headers } = await createServiceRequest(
     "/api/home-canvas",
     { "Content-Type": "application/json" },
-    { includeAuth: options.includeAuth ?? true },
+    { includeAuth: true },
   );
 
   const promptConfig = getHomeCanvasPromptConfig();
@@ -45,5 +50,11 @@ export async function generateHomeCanvas(
     throw new Error(`Home canvas generation failed: ${response.status} - ${errorText}`);
   }
 
-  return (await response.json()) as HomeCanvasResult;
+  const { content } = (await response.json()) as HomeCanvasResponse;
+  const cleaned = stripFences(content);
+
+  const result = await window.electronAPI?.browser.writeHomeCanvas(cleaned);
+  if (result && !result.ok) {
+    throw new Error(`Failed to write HomeCanvas: ${result.error}`);
+  }
 }

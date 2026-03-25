@@ -558,8 +558,11 @@ DESIGN STYLE — match the Stella home canvas aesthetic:
 Hard constraints:
 - All CSS in a single <style> block with a unique class prefix.
 - Root element must use height: 100%; overflow-y: auto.
-- Use window.electronAPI.browser.fetchJson/fetchText for data fetching (no renderer fetch).
-- No dangerouslySetInnerHTML. Strip HTML from fetched content.
+- Do NOT use renderer fetch() — it is blocked by CORS. Use Stella's browser-backed APIs instead:
+  const browserApi = (window as any).electronAPI?.browser;
+  const fetchJson = (url: string) => browserApi?.fetchJson(url) as Promise<unknown>;
+  const fetchText = (url: string) => browserApi?.fetchText(url) as Promise<string>;
+  Define these helpers once at the top of each file that fetches data. The user's browser cookies are sent with requests, so authenticated APIs (GitHub, Reddit, etc.) work if the user is logged in. URLs must be HTTPS. Only use APIs you are certain exist — do not guess or invent URLs. If unsure, use static content instead. Show loading and error states.
 - Produce complete TSX modules. Must compile in Vite + React + TypeScript.
 - Create files at src/app/personal-site/ with PersonalSite.tsx as entry.
 - Update src/app/registry.ts to register the page.

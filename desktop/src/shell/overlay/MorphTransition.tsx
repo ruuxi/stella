@@ -7,6 +7,13 @@ import {
   MORPH_STEADY_STRENGTH,
 } from "../../shared/contracts/morph-timing";
 
+/** Onboarding demo morph — stronger distortion + snappier timing (see `flavor` IPC). */
+const ONBOARDING_MORPH_STEADY_STRENGTH = 0.92;
+const ONBOARDING_MORPH_COVER_RAMP_MS = 165;
+const ONBOARDING_MORPH_REVERSE_MS = 400;
+
+type MorphFlavor = "hmr" | "onboarding";
+
 type MorphPhase = "idle" | "rippling" | "crossfading" | "calming";
 
 type MorphState = {
@@ -326,6 +333,7 @@ export function MorphTransition() {
   const stopLoopRef = useRef<(() => void) | null>(null);
   const loopStartTimeRef = useRef(0);
   const morphReadySentRef = useRef(false);
+  const activeMorphFlavorRef = useRef<MorphFlavor>("hmr");
 
   useEffect(() => {
     const api = window.electronAPI?.overlay;
@@ -371,6 +379,17 @@ export function MorphTransition() {
         strengthRef.current = 0;
         mixRef.current = 0;
         alphaRef.current = 1;
+        const flavor: MorphFlavor =
+          data.flavor === "onboarding" ? "onboarding" : "hmr";
+        activeMorphFlavorRef.current = flavor;
+        const steadyStrength =
+          flavor === "onboarding"
+            ? ONBOARDING_MORPH_STEADY_STRENGTH
+            : MORPH_STEADY_STRENGTH;
+        const coverRampMs =
+          flavor === "onboarding"
+            ? ONBOARDING_MORPH_COVER_RAMP_MS
+            : MORPH_COVER_RAMP_UP_MS;
         setHmrState(IDLE_HMR_STATE);
         setState({
           phase: "rippling",
@@ -402,7 +421,7 @@ export function MorphTransition() {
           );
 
           // Reach a stable covered state quickly, then hold there until reveal.
-          void tweenRef(strengthRef, MORPH_STEADY_STRENGTH, MORPH_COVER_RAMP_UP_MS);
+          void tweenRef(strengthRef, steadyStrength, coverRampMs);
         });
       }),
     );
@@ -431,6 +450,16 @@ export function MorphTransition() {
         if (data.transitionId !== activeTransitionIdRef.current) {
           return;
         }
+        const flavor: MorphFlavor =
+          data.flavor === "onboarding"
+            ? "onboarding"
+            : data.flavor === "hmr"
+              ? "hmr"
+              : activeMorphFlavorRef.current;
+        const reverseMs =
+          flavor === "onboarding"
+            ? ONBOARDING_MORPH_REVERSE_MS
+            : MORPH_REVERSE_CROSSFADE_MS;
         void loadImage(data.screenshotDataUrl)
           .then((img) => {
             if (data.transitionId !== activeTransitionIdRef.current) {
@@ -450,8 +479,8 @@ export function MorphTransition() {
             setState((prev) => ({ ...prev, phase: "crossfading" }));
 
             return Promise.all([
-              tweenRef(mixRef, 1.0, MORPH_REVERSE_CROSSFADE_MS),
-              tweenRef(strengthRef, 0, MORPH_REVERSE_CROSSFADE_MS),
+              tweenRef(mixRef, 1.0, reverseMs),
+              tweenRef(strengthRef, 0, reverseMs),
             ])
               .then(() => {
                 if (data.transitionId !== activeTransitionIdRef.current) {

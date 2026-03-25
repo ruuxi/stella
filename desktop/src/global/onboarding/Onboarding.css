@@ -2079,8 +2079,8 @@
     opacity: 1;
   }
   50% {
-    filter: blur(8px);
-    opacity: 0.92;
+    filter: blur(12px);
+    opacity: 0.88;
   }
   100% {
     filter: blur(0);

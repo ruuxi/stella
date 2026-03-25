@@ -176,6 +176,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       y: number;
       width: number;
       height: number;
+      flavor?: "hmr" | "onboarding";
     }>("overlay:morphForward"),
     onMorphBounds: onIpc<{
       transitionId: string;
@@ -188,6 +189,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       transitionId: string;
       screenshotDataUrl: string;
       requiresFullReload: boolean;
+      flavor?: "hmr" | "onboarding";
     }>("overlay:morphReverse"),
     onMorphEnd: onIpc<{ transitionId: string }>("overlay:morphEnd"),
     onMorphState: onIpc<{ transitionId: string; state: SelfModHmrState }>(
@@ -589,6 +591,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("browserData:listProfiles", browserType),
     writeCoreMemory: (content: string) =>
       ipcRenderer.invoke("browserData:writeCoreMemory", content),
+    writeHomeCanvas: (content: string) =>
+      ipcRenderer.invoke("browserData:writeHomeCanvas", content) as Promise<{ ok: boolean; error?: string }>,
     collectAllSignals: (options?: {
       categories?: string[];
       selectedBrowser?: string;

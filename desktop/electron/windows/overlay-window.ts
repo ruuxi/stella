@@ -230,10 +230,13 @@ class OverlayWindow {
  * Voice Overlay, modifier-block) within the overlay window. Delegates
  * window lifecycle to OverlayWindow.
  */
+export type MorphTransitionFlavor = 'hmr' | 'onboarding'
+
 export class OverlayWindowController {
   private readonly overlayWindow: OverlayWindow
   private morphTrackedWindow: BrowserWindow | null = null
   private activeMorphTransitionId: string | null = null
+  private morphFlavor: MorphTransitionFlavor = 'hmr'
   private readonly handleMorphWindowBoundsChanged = () => {
     this.syncMorphBounds()
   }
@@ -506,9 +509,11 @@ export class OverlayWindowController {
     screenshotDataUrl: string,
     bounds: { x: number; y: number; width: number; height: number },
     trackedWindow?: BrowserWindow | null,
+    flavor: MorphTransitionFlavor = 'hmr',
   ) {
     this.activeMorph = true
     this.activeMorphTransitionId = transitionId
+    this.morphFlavor = flavor
     this.currentMorphBounds = bounds
     this.stopTrackingMorphWindow()
     if (trackedWindow && !trackedWindow.isDestroyed()) {
@@ -525,6 +530,7 @@ export class OverlayWindowController {
       y: bounds.y - origin.y,
       width: bounds.width,
       height: bounds.height,
+      flavor,
     })
   }
 
@@ -540,6 +546,7 @@ export class OverlayWindowController {
       transitionId,
       screenshotDataUrl,
       requiresFullReload,
+      flavor: this.morphFlavor,
     })
     return true
   }
@@ -558,6 +565,7 @@ export class OverlayWindowController {
     }
     this.activeMorph = false
     this.activeMorphTransitionId = null
+    this.morphFlavor = 'hmr'
     this.currentMorphBounds = null
     this.stopTrackingMorphWindow()
     this.overlayWindow.send('overlay:morphState', {

@@ -17,7 +17,23 @@ const __dirname = path.dirname(__filename);
 
 const isDev = process.env.NODE_ENV === "development";
 
+const installDevBrokenPipeGuards = () => {
+  if (!isDev) {
+    return;
+  }
+
+  const swallowBrokenPipe = (_error: Error & { code?: string }) => {
+    // Dev-mode Electron inherits stdio from the runner process. If that parent
+    // pipe disappears, logging should not crash the app.
+  };
+
+  process.stdout.on("error", swallowBrokenPipe);
+  process.stderr.on("error", swallowBrokenPipe);
+};
+
 export const bootstrapMainProcess = () => {
+  installDevBrokenPipeGuards();
+
   const context = createBootstrapContext({
     authProtocol: AUTH_PROTOCOL,
     electronDir: __dirname,

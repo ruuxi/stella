@@ -209,6 +209,7 @@ export type ElectronOverlayApi = {
       y: number;
       width: number;
       height: number;
+      flavor?: "hmr" | "onboarding";
     }) => void,
   ) => () => void;
   onMorphBounds: (
@@ -225,6 +226,7 @@ export type ElectronOverlayApi = {
       transitionId: string;
       screenshotDataUrl: string;
       requiresFullReload: boolean;
+      flavor?: "hmr" | "onboarding";
     }) => void,
   ) => () => void;
   onMorphEnd: (
@@ -458,6 +460,9 @@ export type ElectronBrowserApi = {
   detectPreferred: () => Promise<PreferredBrowserProfile>;
   listProfiles: (browserType: string) => Promise<BrowserProfile[]>;
   writeCoreMemory: (
+    content: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  writeHomeCanvas: (
     content: string,
   ) => Promise<{ ok: boolean; error?: string }>;
   collectAllSignals: (options?: {

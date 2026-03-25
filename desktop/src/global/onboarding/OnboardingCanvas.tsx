@@ -16,8 +16,8 @@ export type OnboardingDemo =
 
 /** Onboarding-only morph timings (not shared with HMR; keep in sync with overlay behavior manually). */
 const ONBOARDING_MORPH_PAINT_SETTLE_MS = 200;
-/** CSS fallback + `animationDuration` — matches overlay reverse crossfade length. */
-const ONBOARDING_MORPH_CSS_DURATION_MS = 500;
+/** CSS fallback + `animationDuration` — match `ONBOARDING_MORPH_REVERSE_MS` in MorphTransition. */
+const ONBOARDING_MORPH_CSS_DURATION_MS = 400;
 const CSS_FALLBACK_SWAP_AT_MS = Math.round(ONBOARDING_MORPH_CSS_DURATION_MS / 2);
 const NATIVE_MORPH_RETRY_MS = 80;
 const NATIVE_MORPH_MAX_ATTEMPTS = 6;
