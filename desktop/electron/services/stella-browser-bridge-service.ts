@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -380,10 +380,25 @@ export class StellaBrowserBridgeService {
       return;
     }
 
-    try {
-      this.daemonProcess.kill("SIGTERM");
-    } catch {
-      // Best-effort cleanup during reconnect/shutdown.
+    const pid = this.daemonProcess.pid;
+    if (process.platform === "win32" && pid) {
+      // On Windows, child.kill() only kills the wrapper, not the Rust daemon
+      // grandchild. Use taskkill /T to kill the entire process tree.
+      try {
+        execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
+          stdio: "ignore",
+          windowsHide: true,
+        });
+      } catch {
+        // Best-effort: fall back to direct kill
+        try { this.daemonProcess.kill("SIGTERM"); } catch {}
+      }
+    } else {
+      try {
+        this.daemonProcess.kill("SIGTERM");
+      } catch {
+        // Best-effort cleanup during reconnect/shutdown.
+      }
     }
   }
 }

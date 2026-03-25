@@ -13,33 +13,6 @@ import { devEventBus, type DevEvent } from "./dev-event-bus.js";
 
 export const DEVTOOL_PORT = 17710;
 
-const log = (_message: string) => {
-  // Intentionally silent. Devtool server diagnostics should not depend on the
-  // parent process still holding Electron's inherited stdio pipes open.
-};
-
-const logError = (_message: string) => {
-  // Intentionally silent for the same reason as `log`.
-};
-
-let consolePipeGuardsInstalled = false;
-
-const installConsolePipeGuards = () => {
-  if (consolePipeGuardsInstalled) {
-    return;
-  }
-
-  consolePipeGuardsInstalled = true;
-
-  const ignoreBrokenPipe = (_error: Error & { code?: string }) => {
-    // Swallow stdio transport failures in dev mode. These come from inherited
-    // pipes owned by the dev runner, not from product behavior.
-  };
-
-  process.stdout.on("error", ignoreBrokenPipe);
-  process.stderr.on("error", ignoreBrokenPipe);
-};
-
 type DevServerCommand =
   | { command: "hard-reset" }
   | { command: "reload-app" }
@@ -63,8 +36,6 @@ export class DevToolServer {
   }
 
   start() {
-    installConsolePipeGuards();
-
     this.httpServer = http.createServer((_req, res) => {
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Content-Type", "application/json");
@@ -75,7 +46,7 @@ export class DevToolServer {
     this.wss = new WebSocketServer({ server: this.httpServer });
 
     this.wss.on("connection", (ws) => {
-      log("client connected");
+      console.log("[devtool] client connected");
 
       this.sendJson(ws, {
         type: "connected",
@@ -92,7 +63,7 @@ export class DevToolServer {
       });
 
       ws.on("close", () => {
-        log("client disconnected");
+        console.log("[devtool] client disconnected");
       });
     });
 
