@@ -23,10 +23,6 @@ vi.mock("@/platform/electron/device", () => ({
   getOrCreateDeviceId: () => mockGetOrCreateDeviceId(),
 }));
 
-vi.mock("@/app/chat/services/local-chat-store", () => ({
-  appendLocalEvent: vi.fn(),
-}));
-
 vi.mock("@/features/voice/hooks/use-realtime-voice", () => ({
   VoiceSessionManager: class {
     constructor(

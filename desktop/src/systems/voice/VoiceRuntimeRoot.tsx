@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useUiState } from "@/context/ui-state";
-import { getOrCreateDeviceId } from "@/platform/electron/device";
-import { appendLocalEvent } from "@/app/chat/services/local-chat-store";
 import { type VoiceSessionState } from "@/features/voice/services/realtime-voice";
 import { VoiceSessionManager } from "@/features/voice/hooks/use-realtime-voice";
 
@@ -25,18 +23,6 @@ const DEFAULT_RUNTIME_STATE: RuntimeVoiceState = {
 };
 
 let energyBuffer: Uint8Array<ArrayBuffer> | null = null;
-
-const appendEventLocalFallback = async (args: {
-  conversationId: string;
-  type: string;
-  payload?: unknown;
-  deviceId?: string;
-  requestId?: string;
-  targetDeviceId?: string;
-}) => {
-  await appendLocalEvent(args);
-  return null;
-};
 
 const computeEnergy = (analyser: AnalyserNode | null): number => {
   if (!analyser) return 0;
@@ -68,10 +54,8 @@ export function VoiceRuntimeRoot() {
   );
   const analyserRef = useRef<AnalyserNode | null>(null);
   const outputAnalyserRef = useRef<AnalyserNode | null>(null);
-  const deviceIdRef = useRef<string | null>(null);
   const conversationIdRef = useRef<string>(state.conversationId ?? "voice-rtc");
   const inputActiveRef = useRef<boolean>(state.isVoiceRtcActive);
-  const appendEventRef = useRef(appendEventLocalFallback);
   const managerRef = useRef<VoiceSessionManager | null>(null);
   const publishedStateRef = useRef<RuntimeVoiceState>(DEFAULT_RUNTIME_STATE);
   const levelTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -91,12 +75,6 @@ export function VoiceRuntimeRoot() {
     publishedStateRef.current = next;
     window.electronAPI?.voice.pushRuntimeState(next);
   };
-
-  useEffect(() => {
-    void getOrCreateDeviceId().then((deviceId) => {
-      deviceIdRef.current = deviceId;
-    });
-  }, []);
 
   useEffect(() => {
     if (!state.conversationId || state.conversationId === bootConversationId) {
@@ -161,8 +139,6 @@ export function VoiceRuntimeRoot() {
     const manager = new VoiceSessionManager({
       conversationIdRef,
       inputActiveRef,
-      appendEventRef,
-      deviceIdRef,
       analyserRef,
       outputAnalyserRef,
       onStateChange: (sessionState) => {
@@ -234,5 +210,4 @@ export function VoiceRuntimeRoot() {
 
   return null;
 }
-
 
