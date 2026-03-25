@@ -20,7 +20,7 @@ use tokio_tungstenite::tungstenite::Message;
 use uuid::Uuid;
 
 /// Default port for the extension bridge WebSocket server.
-const DEFAULT_EXT_PORT: u16 = 9224;
+const DEFAULT_EXT_PORT: u16 = 39040;
 
 /// Timeout for individual commands sent to the extension (ms).
 const DEFAULT_COMMAND_TIMEOUT_MS: u64 = 60_000;
@@ -48,6 +48,7 @@ struct BridgeInner {
     last_health_check: Instant,
 }
 
+#[derive(Clone)]
 pub struct ExtensionBridge {
     port: u16,
     token: String,
@@ -91,10 +92,7 @@ impl ExtensionBridge {
 
     /// Start the WebSocket server. Returns a channel that fires when the extension
     /// has been disconnected too long (for daemon auto-shutdown).
-    pub async fn start(
-        &mut self,
-        session: &str,
-    ) -> Result<mpsc::Receiver<()>, String> {
+    pub async fn start(&mut self, session: &str) -> Result<mpsc::Receiver<()>, String> {
         let socket_dir = get_socket_dir();
         if !socket_dir.exists() {
             let _ = fs::create_dir_all(&socket_dir);
@@ -127,7 +125,10 @@ impl ExtensionBridge {
                 for _ in 0..20 {
                     tokio::time::sleep(Duration::from_millis(250)).await;
                     match bind_reuse(self.port) {
-                        Ok(l) => { bound = Some(l); break; }
+                        Ok(l) => {
+                            bound = Some(l);
+                            break;
+                        }
                         Err(_) => continue,
                     }
                 }
@@ -266,8 +267,7 @@ impl ExtensionBridge {
                     let mut guard = self.inner.lock().await;
                     guard.connected = false;
                     guard.cmd_tx = None;
-                    guard.last_health_check =
-                        Instant::now() - Duration::from_secs(60);
+                    guard.last_health_check = Instant::now() - Duration::from_secs(60);
                     guard.pending.clear();
                 }
 
@@ -322,9 +322,7 @@ impl ExtensionBridge {
 
         {
             let mut guard = self.inner.lock().await;
-            guard
-                .pending
-                .insert(id.clone(), PendingCommand { tx });
+            guard.pending.insert(id.clone(), PendingCommand { tx });
 
             if let Some(ref cmd_tx) = guard.cmd_tx {
                 cmd_tx
@@ -443,9 +441,7 @@ async fn handle_extension_connection(
         let guard = inner.lock().await;
         if guard.connected && guard.cmd_tx.is_some() {
             // Already have a live connection — reject this one
-            let _ = ws_tx
-                .send(Message::Close(None))
-                .await;
+            let _ = ws_tx.send(Message::Close(None)).await;
             return;
         }
     }
@@ -488,17 +484,11 @@ async fn handle_extension_connection(
             Err(_) => continue,
         };
 
-        let msg_type = parsed
-            .get("type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let msg_type = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
         match msg_type {
             "hello" => {
-                let token = parsed
-                    .get("token")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let token = parsed.get("token").and_then(|v| v.as_str()).unwrap_or("");
 
                 if token == expected_token || expected_token.is_empty() {
                     authenticated = true;
@@ -516,14 +506,10 @@ async fn handle_extension_connection(
                         "type": "welcome",
                         "session": session,
                     });
-                    let _ = cmd_tx
-                        .send(serde_json::to_string(&welcome).unwrap())
-                        .await;
+                    let _ = cmd_tx.send(serde_json::to_string(&welcome).unwrap()).await;
                 } else {
                     let err = json!({ "type": "auth_error", "error": "Invalid token" });
-                    let _ = cmd_tx
-                        .send(serde_json::to_string(&err).unwrap())
-                        .await;
+                    let _ = cmd_tx.send(serde_json::to_string(&err).unwrap()).await;
                     break;
                 }
             }
@@ -532,9 +518,7 @@ async fn handle_extension_connection(
                     break;
                 }
                 let pong = json!({ "type": "pong" });
-                let _ = cmd_tx
-                    .send(serde_json::to_string(&pong).unwrap())
-                    .await;
+                let _ = cmd_tx.send(serde_json::to_string(&pong).unwrap()).await;
             }
             "response" => {
                 if !authenticated {
@@ -637,6 +621,7 @@ fn bind_reuse(port: u16) -> Result<TcpListener, String> {
     let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))
         .map_err(|e| format!("Failed to create socket: {}", e))?;
 
+    #[cfg(unix)]
     socket
         .set_reuse_address(true)
         .map_err(|e| format!("Failed to set SO_REUSEADDR: {}", e))?;
@@ -659,7 +644,7 @@ fn bind_reuse(port: u16) -> Result<TcpListener, String> {
 }
 
 /// Kill any process currently listening on the given port.
-fn kill_process_on_port(port: u16) {
+pub fn kill_process_on_port(port: u16) {
     #[cfg(windows)]
     {
         use std::process::Command;
@@ -669,7 +654,10 @@ fn kill_process_on_port(port: u16) {
             port
         );
         // Encode as UTF-16LE for -EncodedCommand
-        let utf16: Vec<u8> = script.encode_utf16().flat_map(|c| c.to_le_bytes()).collect();
+        let utf16: Vec<u8> = script
+            .encode_utf16()
+            .flat_map(|c| c.to_le_bytes())
+            .collect();
         let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &utf16);
         let _ = Command::new("powershell")
             .args(["-NoProfile", "-EncodedCommand", &encoded])

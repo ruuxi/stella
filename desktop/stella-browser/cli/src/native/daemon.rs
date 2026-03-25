@@ -11,7 +11,9 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::signal;
 use tokio::sync::{mpsc, RwLock};
 
-use super::actions::{execute_command, DaemonState};
+use super::actions::{
+    execute_command, forward_extension_command, teardown_daemon_state, BackendType, DaemonState,
+};
 use super::cdp::client::CdpClient;
 use super::state;
 use super::stream::StreamServer;
@@ -102,9 +104,11 @@ async fn run_socket_server(
     let listener =
         UnixListener::bind(socket_path).map_err(|e| format!("Failed to bind socket: {}", e))?;
 
-    let state: std::sync::Arc<tokio::sync::Mutex<DaemonState>> = std::sync::Arc::new(
-        tokio::sync::Mutex::new(DaemonState::new_with_stream(stream_client, stream_server)),
-    );
+    let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel::<()>();
+    let mut daemon_state = DaemonState::new_with_stream(stream_client, stream_server);
+    daemon_state.daemon_shutdown_tx = Some(shutdown_tx);
+    let state: std::sync::Arc<tokio::sync::Mutex<DaemonState>> =
+        std::sync::Arc::new(tokio::sync::Mutex::new(daemon_state));
 
     let (reset_tx, mut reset_rx) = mpsc::channel::<()>(64);
     let reset_tx = idle_timeout_ms.map(|_| Arc::new(reset_tx));
@@ -135,20 +139,20 @@ async fn run_socket_server(
                     std::future::pending::<()>().await
                 }
             }, if idle_timeout_ms.is_some() => {
-                let mut s = state.lock().await;
-                if let Some(ref mut mgr) = s.browser {
-                    let _ = mgr.close().await;
-                }
+                shutdown_daemon(state.clone(), false).await;
                 break;
             }
             _ = reset_rx.recv(), if idle_timeout_ms.is_some() => {
                 continue;
             }
-            _ = shutdown_signal() => {
-                let mut s = state.lock().await;
-                if let Some(ref mut mgr) = s.browser {
-                    let _ = mgr.close().await;
+            shutdown = shutdown_rx.recv() => {
+                if shutdown.is_some() {
+                    shutdown_daemon(state.clone(), false).await;
                 }
+                break;
+            }
+            _ = shutdown_signal() => {
+                shutdown_daemon(state.clone(), false).await;
                 break;
             }
         }
@@ -168,17 +172,40 @@ async fn run_socket_server(
     use tokio::net::TcpListener;
 
     let port = get_port_for_session(session);
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
-        .await
-        .map_err(|e| format!("Failed to bind TCP: {}", e))?;
+
+    // Retry binding with delays — on Windows, sockets from a dead daemon can
+    // linger in CLOSE_WAIT for up to 2 minutes, blocking the port.
+    let addr = format!("127.0.0.1:{}", port);
+    let mut listener: Option<TcpListener> = None;
+    for attempt in 0..15 {
+        match TcpListener::bind(&addr).await {
+            Ok(l) => {
+                listener = Some(l);
+                break;
+            }
+            Err(e) => {
+                if attempt == 14 {
+                    return Err(format!("Failed to bind TCP: {}", e));
+                }
+                // Kill any stale process on the port and wait
+                if attempt == 0 {
+                    super::extension_bridge::kill_process_on_port(port);
+                }
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+        }
+    }
+    let listener = listener.unwrap();
 
     let socket_dir = socket_path.parent().unwrap_or(std::path::Path::new("."));
     let port_path = socket_dir.join(format!("{}.port", session));
     let _ = fs::write(&port_path, port.to_string());
 
-    let state: std::sync::Arc<tokio::sync::Mutex<DaemonState>> = std::sync::Arc::new(
-        tokio::sync::Mutex::new(DaemonState::new_with_stream(stream_client, stream_server)),
-    );
+    let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel::<()>();
+    let mut daemon_state = DaemonState::new_with_stream(stream_client, stream_server);
+    daemon_state.daemon_shutdown_tx = Some(shutdown_tx);
+    let state: std::sync::Arc<tokio::sync::Mutex<DaemonState>> =
+        std::sync::Arc::new(tokio::sync::Mutex::new(daemon_state));
 
     let (reset_tx, mut reset_rx) = mpsc::channel::<()>(64);
     let reset_tx = idle_timeout_ms.map(|_| Arc::new(reset_tx));
@@ -209,21 +236,22 @@ async fn run_socket_server(
                     std::future::pending::<()>().await
                 }
             }, if idle_timeout_ms.is_some() => {
-                let mut s = state.lock().await;
-                if let Some(ref mut mgr) = s.browser {
-                    let _ = mgr.close().await;
-                }
+                shutdown_daemon(state.clone(), false).await;
                 let _ = fs::remove_file(&port_path);
                 break;
             }
             _ = reset_rx.recv(), if idle_timeout_ms.is_some() => {
                 continue;
             }
-            _ = shutdown_signal() => {
-                let mut s = state.lock().await;
-                if let Some(ref mut mgr) = s.browser {
-                    let _ = mgr.close().await;
+            shutdown = shutdown_rx.recv() => {
+                if shutdown.is_some() {
+                    shutdown_daemon(state.clone(), false).await;
                 }
+                let _ = fs::remove_file(&port_path);
+                break;
+            }
+            _ = shutdown_signal() => {
+                shutdown_daemon(state.clone(), false).await;
                 let _ = fs::remove_file(&port_path);
                 break;
             }
@@ -231,6 +259,16 @@ async fn run_socket_server(
     }
 
     Ok(())
+}
+
+async fn shutdown_daemon(
+    state: std::sync::Arc<tokio::sync::Mutex<DaemonState>>,
+    persist_session: bool,
+) {
+    let mut guard = state.lock().await;
+    if let Err(e) = teardown_daemon_state(&mut guard, persist_session).await {
+        let _ = writeln!(std::io::stderr(), "Daemon shutdown cleanup error: {}", e);
+    }
 }
 
 async fn handle_connection<S>(
@@ -278,7 +316,18 @@ async fn handle_connection<S>(
 
                 let is_close = cmd.get("action").and_then(|v| v.as_str()) == Some("close");
 
-                let response = {
+                let extension_bridge = {
+                    let s = state.lock().await;
+                    if matches!(s.backend_type, BackendType::Extension) && !is_close {
+                        s.extension_bridge.clone()
+                    } else {
+                        None
+                    }
+                };
+
+                let response = if let Some(bridge) = extension_bridge {
+                    forward_extension_command(&cmd, &bridge).await
+                } else {
                     let mut s = state.lock().await;
                     execute_command(&cmd, &mut s).await
                 };
@@ -290,8 +339,14 @@ async fn handle_connection<S>(
                 }
 
                 if is_close {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                    process::exit(0);
+                    let shutdown_tx = {
+                        let guard = state.lock().await;
+                        guard.daemon_shutdown_tx.clone()
+                    };
+                    if let Some(tx) = shutdown_tx {
+                        let _ = tx.send(());
+                    }
+                    break;
                 }
             }
             Err(_) => break,
@@ -384,6 +439,8 @@ fn get_port_for_session(session: &str) -> u16 {
 #[cfg(windows)]
 mod tests {
     use super::*;
+    use serde_json::json;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     #[test]
     fn test_port_matches_client_algorithm() {
@@ -394,5 +451,78 @@ mod tests {
         assert_eq!(get_port_for_session("my-session"), 63105);
         assert_eq!(get_port_for_session("work"), 51184);
         assert_eq!(get_port_for_session(""), 49152);
+    }
+
+    #[tokio::test]
+    async fn test_handle_connection_close_requests_graceful_shutdown() {
+        let (client, server) = tokio::io::duplex(1024);
+        let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel();
+
+        let mut daemon_state = DaemonState::new();
+        daemon_state.daemon_shutdown_tx = Some(shutdown_tx);
+        let state = Arc::new(tokio::sync::Mutex::new(daemon_state));
+
+        let handle = tokio::spawn(async move {
+            handle_connection(server, state, None).await;
+        });
+
+        let (reader, mut writer) = tokio::io::split(client);
+        writer
+            .write_all(br#"{"id":"test-close","action":"close"}"#)
+            .await
+            .unwrap();
+        writer.write_all(b"\n").await.unwrap();
+        writer.shutdown().await.unwrap();
+
+        let mut reader = BufReader::new(reader);
+        let mut response_line = String::new();
+        reader.read_line(&mut response_line).await.unwrap();
+        let response: Value = serde_json::from_str(&response_line).unwrap();
+        assert_eq!(response["success"], true);
+        assert_eq!(response["data"]["closed"], true);
+
+        tokio::time::timeout(Duration::from_secs(1), shutdown_rx.recv())
+            .await
+            .expect("close should trigger daemon shutdown")
+            .expect("shutdown sender should remain open");
+
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_handle_connection_non_close_does_not_shutdown_daemon() {
+        let (client, server) = tokio::io::duplex(1024);
+        let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel();
+
+        let mut daemon_state = DaemonState::new();
+        daemon_state.daemon_shutdown_tx = Some(shutdown_tx);
+        let state = Arc::new(tokio::sync::Mutex::new(daemon_state));
+
+        let handle = tokio::spawn(async move {
+            handle_connection(server, state, None).await;
+        });
+
+        let (reader, mut writer) = tokio::io::split(client);
+        let command = serde_json::to_string(&json!({
+            "id": "test-state-list",
+            "action": "state_list"
+        }))
+        .unwrap();
+        writer.write_all(command.as_bytes()).await.unwrap();
+        writer.write_all(b"\n").await.unwrap();
+        writer.shutdown().await.unwrap();
+
+        let mut reader = BufReader::new(reader);
+        let mut response_line = String::new();
+        reader.read_line(&mut response_line).await.unwrap();
+        let response: Value = serde_json::from_str(&response_line).unwrap();
+        assert_eq!(response["success"], true);
+
+        handle.await.unwrap();
+
+        assert!(
+            shutdown_rx.try_recv().is_err(),
+            "non-close commands should not trigger daemon shutdown"
+        );
     }
 }

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
-use tokio::sync::{broadcast, oneshot, RwLock};
+use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
 
 use super::auth;
 use super::browser::{BrowserManager, WaitUntil};
@@ -18,6 +18,7 @@ use super::cdp::types::{
 use super::cookies;
 use super::diff;
 use super::element::RefMap;
+use super::extension_bridge::ExtensionBridge;
 use super::inspect_server::InspectServer;
 use super::interaction;
 use super::network::{self, DomainFilter, EventTracker};
@@ -31,7 +32,6 @@ use super::storage;
 use super::stream::{self, StreamServer};
 use super::tracing::{self as native_tracing, TracingState};
 use super::webdriver::appium::AppiumManager;
-use super::extension_bridge::ExtensionBridge;
 use super::webdriver::backend::{BrowserBackend, WebDriverBackend, WEBDRIVER_UNSUPPORTED_ACTIONS};
 use super::webdriver::ios;
 use super::webdriver::safari;
@@ -135,6 +135,8 @@ pub struct DaemonState {
     pub stream_client: Option<Arc<RwLock<Option<Arc<CdpClient>>>>>,
     /// Stream server instance kept alive so the broadcast channel remains open.
     pub stream_server: Option<Arc<StreamServer>>,
+    /// Signals the daemon accept loop to stop gracefully.
+    pub daemon_shutdown_tx: Option<mpsc::UnboundedSender<()>>,
 }
 
 impl DaemonState {
@@ -153,7 +155,8 @@ impl DaemonState {
                 .map(|s| DomainFilter::new(&s)),
             event_tracker: EventTracker::new(),
             session_name: env::var("STELLA_BROWSER_SESSION_NAME").ok(),
-            session_id: env::var("STELLA_BROWSER_SESSION").unwrap_or_else(|_| "default".to_string()),
+            session_id: env::var("STELLA_BROWSER_SESSION")
+                .unwrap_or_else(|_| "default".to_string()),
             tracing_state: TracingState::new(),
             recording_state: RecordingState::new(),
             event_rx: None,
@@ -170,6 +173,7 @@ impl DaemonState {
             active_frame_id: None,
             stream_client: None,
             stream_server: None,
+            daemon_shutdown_tx: None,
         }
     }
 
@@ -738,27 +742,12 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
     }
 
     // Extension bridge: forward commands to Chrome extension
-    if matches!(state.backend_type, BackendType::Extension) && action != "launch" && action != "close" {
+    if matches!(state.backend_type, BackendType::Extension)
+        && action != "launch"
+        && action != "close"
+    {
         if let Some(ref bridge) = state.extension_bridge {
-            return match bridge.execute_command(cmd).await {
-                Ok(response) => {
-                    // Extension returns {id, success, data/error} — wrap into daemon response format
-                    let success = response.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
-                    if success {
-                        let mut resp = json!({ "success": true });
-                        if let Some(data) = response.get("data") {
-                            resp["data"] = data.clone();
-                        }
-                        resp
-                    } else {
-                        error_response(
-                            &id,
-                            response.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown extension error"),
-                        )
-                    }
-                }
-                Err(e) => error_response(&id, &e),
-            };
+            return forward_extension_command(cmd, bridge).await;
         }
     }
 
@@ -920,6 +909,40 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
     match result {
         Ok(data) => success_response(&id, data),
         Err(e) => error_response(&id, &super::browser::to_ai_friendly_error(&e)),
+    }
+}
+
+pub(crate) async fn forward_extension_command(cmd: &Value, bridge: &ExtensionBridge) -> Value {
+    let id = cmd
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    match bridge.execute_command(cmd).await {
+        Ok(response) => {
+            // Extension returns {id, success, data/error} — wrap into daemon response format.
+            let success = response
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if success {
+                let mut resp = json!({ "success": true });
+                if let Some(data) = response.get("data") {
+                    resp["data"] = data.clone();
+                }
+                resp
+            } else {
+                error_response(
+                    &id,
+                    response
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown extension error"),
+                )
+            }
+        }
+        Err(e) => error_response(&id, &e),
     }
 }
 
@@ -1127,13 +1150,26 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
     if let Some(provider) = cmd.get("provider").and_then(|v| v.as_str()) {
         match provider.to_lowercase().as_str() {
             "extension" => {
+                // Reuse existing extension bridge if it's still connected
+                if matches!(state.backend_type, BackendType::Extension) {
+                    if let Some(ref bridge) = state.extension_bridge {
+                        if bridge.is_connected().await {
+                            return Ok(
+                                json!({ "launched": true, "provider": "extension", "reused": true }),
+                            );
+                        }
+                    }
+                }
+
                 let ext_port = env::var("STELLA_BROWSER_EXT_PORT")
                     .ok()
                     .and_then(|s| s.parse().ok());
                 let ext_token = env::var("STELLA_BROWSER_EXT_TOKEN").ok();
                 let mut bridge = ExtensionBridge::new(ext_port, ext_token);
-                let session = env::var("STELLA_BROWSER_SESSION").unwrap_or_else(|_| "default".to_string());
+                let session =
+                    env::var("STELLA_BROWSER_SESSION").unwrap_or_else(|_| "default".to_string());
                 let mut disconnect_rx = bridge.start(&session).await?;
+                let daemon_shutdown_tx = state.daemon_shutdown_tx.clone();
                 state.extension_bridge = Some(bridge);
                 state.backend_type = BackendType::Extension;
 
@@ -1144,7 +1180,9 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
                             &mut std::io::stderr(),
                             b"Extension disconnected for too long \xe2\x80\x94 shutting down daemon.\n",
                         );
-                        std::process::exit(1);
+                        if let Some(tx) = daemon_shutdown_tx {
+                            let _ = tx.send(());
+                        }
                     }
                 });
 
@@ -1510,27 +1548,38 @@ async fn handle_evaluate(cmd: &Value, state: &DaemonState) -> Result<Value, Stri
 }
 
 async fn handle_close(state: &mut DaemonState) -> Result<Value, String> {
-    if let Some(ref mgr) = state.browser {
-        if let Some(ref session_name) = state.session_name {
-            if let Ok(session_id) = mgr.active_session_id() {
-                let _ = state::save_state(
-                    &mgr.client,
-                    session_id,
-                    None,
-                    Some(session_name.as_str()),
-                    &state.session_id,
-                )
-                .await;
+    teardown_daemon_state(state, true).await?;
+    Ok(json!({ "closed": true }))
+}
+
+pub(crate) async fn teardown_daemon_state(
+    state: &mut DaemonState,
+    persist_session: bool,
+) -> Result<(), String> {
+    if persist_session {
+        if let Some(ref mgr) = state.browser {
+            if let Some(ref session_name) = state.session_name {
+                if let Ok(session_id) = mgr.active_session_id() {
+                    let _ = state::save_state(
+                        &mgr.client,
+                        session_id,
+                        None,
+                        Some(session_name.as_str()),
+                        &state.session_id,
+                    )
+                    .await;
+                }
             }
         }
     }
+
     if let Some(ref mut mgr) = state.browser {
         mgr.close().await?;
     }
     state.browser = None;
     state.update_stream_client().await;
 
-    // Close WebDriver sessions
+    // Close WebDriver sessions.
     if let Some(ref mut wb) = state.webdriver_backend {
         let _ = wb.close().await;
     }
@@ -1544,7 +1593,7 @@ async fn handle_close(state: &mut DaemonState) -> Result<Value, String> {
     }
     state.safari_driver = None;
 
-    // Close extension bridge
+    // Close extension bridge.
     if let Some(ref mut bridge) = state.extension_bridge {
         bridge.stop().await;
     }
@@ -1557,7 +1606,7 @@ async fn handle_close(state: &mut DaemonState) -> Result<Value, String> {
     }
 
     state.ref_map.clear();
-    Ok(json!({ "closed": true }))
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1590,7 +1639,8 @@ async fn handle_snapshot(cmd: &Value, state: &mut DaemonState) -> Result<Value, 
 
     state.ref_map.clear();
     let tree =
-        snapshot::take_snapshot(&mgr.client, &session_id, &options, &mut state.ref_map, None).await?;
+        snapshot::take_snapshot(&mgr.client, &session_id, &options, &mut state.ref_map, None)
+            .await?;
 
     let url = mgr.get_url().await.unwrap_or_default();
 
@@ -2492,7 +2542,8 @@ async fn handle_diff_snapshot(cmd: &Value, state: &mut DaemonState) -> Result<Va
         ..SnapshotOptions::default()
     };
     let current =
-        snapshot::take_snapshot(&mgr.client, &session_id, &options, &mut state.ref_map, None).await?;
+        snapshot::take_snapshot(&mgr.client, &session_id, &options, &mut state.ref_map, None)
+            .await?;
 
     let baseline = cmd.get("baseline").and_then(|v| v.as_str());
 
@@ -2537,13 +2588,15 @@ async fn handle_diff_url(cmd: &Value, state: &mut DaemonState) -> Result<Value, 
     let session_id = mgr.active_session_id()?.to_string();
     let options = SnapshotOptions::default();
     let snap1 =
-        snapshot::take_snapshot(&mgr.client, &session_id, &options, &mut state.ref_map, None).await?;
+        snapshot::take_snapshot(&mgr.client, &session_id, &options, &mut state.ref_map, None)
+            .await?;
 
     // Navigate to URL2 and snapshot
     mgr.navigate(url2, wait_until).await?;
     state.ref_map.clear();
     let snap2 =
-        snapshot::take_snapshot(&mgr.client, &session_id, &options, &mut state.ref_map, None).await?;
+        snapshot::take_snapshot(&mgr.client, &session_id, &options, &mut state.ref_map, None)
+            .await?;
 
     let result = diff::diff_text(&snap1, &snap2);
     Ok(json!({
