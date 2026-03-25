@@ -29,8 +29,7 @@
     "emotes:label:dry": "node scripts/label-emotes.mjs --dry-run",
     "emotes:emoji-index": "node scripts/build-emote-emoji-index.mjs",
     "emotes:prune-family": "node scripts/prune-emotes-by-emoji-family.mjs",
-    "emotes:optimize": "node scripts/optimize-emotes.mjs",
-    "postinstall": "bun node_modules/@electron/rebuild/lib/cli.js -o better-sqlite3"
+    "emotes:optimize": "node scripts/optimize-emotes.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",
@@ -71,7 +70,6 @@
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "better-auth": "1.4.9",
-    "better-sqlite3": "^12.8.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -112,7 +110,6 @@
     "@eslint/js": "^9.39.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/morphdom": "^2.4.2",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",

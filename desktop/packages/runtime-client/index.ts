@@ -561,17 +561,33 @@ export class StellaRuntimeClient {
     return await this.request<RuntimeCommandRunResult>(METHOD_NAMES.COMMAND_RUN, params);
   }
 
+  async collectBrowserData(options?: { selectedBrowser?: string; selectedProfile?: string }) {
+    return await this.request<{
+      data: unknown;
+      formatted: string | null;
+    }>(METHOD_NAMES.DISCOVERY_COLLECT_BROWSER_DATA, options);
+  }
+
+  async collectAllSignals(options?: {
+    categories?: string[];
+    selectedBrowser?: string;
+    selectedProfile?: string;
+  }) {
+    return await this.request<{
+      data: unknown;
+      formatted: string | null;
+      error?: string;
+    }>(METHOD_NAMES.DISCOVERY_COLLECT_ALL_SIGNALS, options);
+  }
+
   private async spawnDaemon() {
     if (this.respawnTimer) {
       clearTimeout(this.respawnTimer);
       this.respawnTimer = null;
     }
     const daemonEntryPath = this.options.daemonEntryPath ?? resolveDefaultDaemonEntryPath();
-    const child = spawn(process.execPath, [daemonEntryPath], {
-      env: {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: "1",
-      },
+    const child = spawn("bun", ["run", daemonEntryPath], {
+      env: { ...process.env },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });

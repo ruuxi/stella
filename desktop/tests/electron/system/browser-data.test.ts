@@ -19,8 +19,8 @@ const mockDatabase = vi.fn(() => ({
   close: mockClose,
 }));
 
-vi.mock("better-sqlite3", () => ({
-  default: mockDatabase,
+vi.mock("bun:sqlite", () => ({
+  Database: mockDatabase,
 }));
 
 vi.mock("child_process", () => ({
@@ -336,7 +336,7 @@ describe("Browser Data Collection - Integration Test", () => {
   it.skip("should collect real browser data (manual test)", async () => {
     // Unmock for real test
     vi.unmock("fs");
-    vi.unmock("better-sqlite3");
+    vi.unmock("bun:sqlite");
 
     // Dynamically import the real module
     const { collectBrowserData: realCollect, formatBrowserDataForSynthesis: realFormat } =

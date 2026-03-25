@@ -84,6 +84,7 @@ export const registerBootstrapIpcHandlers = (
   registerBrowserHandlers({
     getStellaHomePath: lifecycle.getStellaHomePath,
     getFrontendRoot: () => config.frontendRoot,
+    getStellaHostRunner: lifecycle.getRunner,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

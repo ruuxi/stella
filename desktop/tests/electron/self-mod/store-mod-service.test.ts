@@ -4,10 +4,10 @@ import path from "path";
 import { execFileSync } from "child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("better-sqlite3", async () => {
+vi.mock("bun:sqlite", async () => {
   const { DatabaseSync } = await import("node:sqlite");
 
-  class BetterSqlite3Mock {
+  class BunSqliteMock {
     private readonly db: InstanceType<typeof DatabaseSync>;
 
     constructor(filePath: string, options?: { readonly?: boolean }) {
@@ -29,7 +29,7 @@ vi.mock("better-sqlite3", async () => {
     }
   }
 
-  return { default: BetterSqlite3Mock };
+  return { Database: BunSqliteMock };
 });
 
 import { createDesktopDatabase } from "../../../packages/runtime-kernel/storage/database.js";

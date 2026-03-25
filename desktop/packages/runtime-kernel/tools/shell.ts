@@ -100,7 +100,7 @@ const buildProtectedCommand = (
 
   const preamble = `
 __stella_dd() {
-  ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_DEFERRED_DELETE_HELPER" "$@"
+  "$STELLA_NODE_BIN" "$STELLA_DEFERRED_DELETE_HELPER" "$@"
 }
 __stella_git_stage_feature_dependencies() {
   local repo_root
@@ -151,8 +151,8 @@ erase() { rm "$@"; }
 rd() { rmdir "$@"; }
 powershell() { __stella_dd powershell "$PWD" "$(type -P powershell || true)" "$@"; }
 pwsh() { __stella_dd powershell "$PWD" "$(type -P pwsh || true)" "$@"; }
-${stellaBrowserBin ? `stella-browser() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_BROWSER_BIN" "$@"; }` : ""}
-${stellaUiCli ? `stella-ui() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_UI_CLI" "$@"; }` : ""}
+${stellaBrowserBin ? `stella-browser() { "$STELLA_NODE_BIN" "$STELLA_BROWSER_BIN" "$@"; }` : ""}
+${stellaUiCli ? `stella-ui() { "$STELLA_NODE_BIN" "$STELLA_UI_CLI" "$@"; }` : ""}
 ${pythonFuncs}
 export -f __stella_dd __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaUiCli ? " stella-ui" : ""}${pythonExports} >/dev/null 2>&1 || true
 `;
