@@ -124,12 +124,10 @@ export class ErrorBoundary extends Component<Props, State> {
         throw new Error("No active conversation for repair.");
       }
 
-      const userMessageId = `auto-repair-${Date.now()}`;
       const prompt = buildAutoRepairPrompt(caughtError, caughtErrorInfo?.componentStack ?? "");
 
       const { runId } = await api.agent.startChat({
         conversationId,
-        userMessageId,
         userPrompt: prompt,
         agentType: "orchestrator",
         storageMode: "local",

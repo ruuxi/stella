@@ -106,7 +106,7 @@ export const METHOD_NAMES = {
   LOCAL_CHAT_GET_OR_CREATE_DEFAULT: "localChat.getOrCreateDefaultConversationId",
   LOCAL_CHAT_LIST_EVENTS: "localChat.listEvents",
   LOCAL_CHAT_GET_EVENT_COUNT: "localChat.getEventCount",
-  LOCAL_CHAT_APPEND_EVENT: "localChat.appendEvent",
+  LOCAL_CHAT_PERSIST_DISCOVERY_WELCOME: "localChat.persistDiscoveryWelcome",
   LOCAL_CHAT_LIST_SYNC_MESSAGES: "localChat.listSyncMessages",
   LOCAL_CHAT_GET_SYNC_CHECKPOINT: "localChat.getSyncCheckpoint",
   LOCAL_CHAT_SET_SYNC_CHECKPOINT: "localChat.setSyncCheckpoint",
@@ -190,7 +190,8 @@ export const METHOD_NAMES = {
     "internal.worker.localChat.getOrCreateDefaultConversationId",
   INTERNAL_WORKER_LOCAL_CHAT_LIST_EVENTS: "internal.worker.localChat.listEvents",
   INTERNAL_WORKER_LOCAL_CHAT_GET_EVENT_COUNT: "internal.worker.localChat.getEventCount",
-  INTERNAL_WORKER_LOCAL_CHAT_APPEND_EVENT: "internal.worker.localChat.appendEvent",
+  INTERNAL_WORKER_LOCAL_CHAT_PERSIST_DISCOVERY_WELCOME:
+    "internal.worker.localChat.persistDiscoveryWelcome",
   INTERNAL_WORKER_LOCAL_CHAT_LIST_SYNC_MESSAGES:
     "internal.worker.localChat.listSyncMessages",
   INTERNAL_WORKER_LOCAL_CHAT_GET_SYNC_CHECKPOINT:
@@ -310,8 +311,12 @@ export type RuntimeAttachmentRef = {
 
 export type RuntimeChatPayload = {
   conversationId: string;
-  userMessageId: string;
   userPrompt: string;
+  deviceId?: string;
+  platform?: string;
+  timezone?: string;
+  mode?: string;
+  messageMetadata?: Record<string, unknown>;
   attachments?: RuntimeAttachmentRef[];
   agentType?: string;
   storageMode?: "cloud" | "local";

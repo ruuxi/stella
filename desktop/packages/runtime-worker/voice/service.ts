@@ -2,6 +2,7 @@ import {
   AGENT_STREAM_EVENT_TYPES,
   type AgentStreamEventType,
 } from "../../../src/shared/contracts/agent-runtime.js";
+import { prepareStoredLocalChatPayload } from "../../runtime-kernel/storage/local-chat-payload.js";
 import type {
   RuntimeAgentEventPayload,
   RuntimeVoiceAgentEventPayload,
@@ -19,6 +20,7 @@ import type {
 import { createSelfModHmrState } from "../../runtime-kernel/runner/shared.js";
 import type { TaskLifecycleEvent } from "../../runtime-kernel/tasks/local-task-manager.js";
 import type { SelfModHmrState } from "../../boundary-contracts/index.js";
+import type { ChatStore } from "../../runtime-kernel/storage/chat-store.js";
 
 type VoiceRunner = {
   handleLocalChat: (
@@ -64,6 +66,9 @@ type PendingVoiceRequest = {
 
 type VoiceRuntimeServiceOptions = {
   getRunner: () => VoiceRunner | null;
+  getChatStore: () => ChatStore | null;
+  getDeviceId: () => string | null;
+  onLocalChatUpdated: () => void;
   emitAgentEvent: (payload: RuntimeVoiceAgentEventPayload) => void;
   emitSelfModHmrState: (payload: RuntimeVoiceHmrStatePayload) => void;
   requestHostHmrTransition: (payload: {
@@ -91,6 +96,29 @@ export class VoiceRuntimeService {
       role: payload.role,
       content: payload.text,
     });
+    const chatStore = this.options.getChatStore();
+    if (chatStore) {
+      const timestamp = Date.now();
+      const type = payload.role === "user" ? "user_message" : "assistant_message";
+      chatStore.appendEvent({
+        conversationId: payload.conversationId,
+        type,
+        ...(payload.role === "user" && this.options.getDeviceId()
+          ? { deviceId: this.options.getDeviceId() ?? undefined }
+          : {}),
+        timestamp,
+        payload: prepareStoredLocalChatPayload({
+          type,
+          payload: {
+            text: payload.text,
+            source: "voice",
+          },
+          timestamp,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
+        }),
+      });
+      this.options.onLocalChatUpdated();
+    }
     return { ok: true as const };
   }
 
@@ -153,9 +181,6 @@ export class VoiceRuntimeService {
   private async executeVoiceChat(payload: RuntimeVoiceChatPayload) {
     const runner = this.ensureRunner();
     let activeRunId = "";
-    let handleLocalChatPromise:
-      | Promise<{ runId: string } | undefined>
-      | null = null;
     let fullText = "";
     let syntheticSeq = 1;
     let settled = false;
@@ -176,21 +201,6 @@ export class VoiceRuntimeService {
       reject(normalizeError(error));
     };
 
-    const ensureActiveRunId = async () => {
-      if (activeRunId) {
-        return activeRunId;
-      }
-      if (!handleLocalChatPromise) {
-        return undefined;
-      }
-      const result = await handleLocalChatPromise;
-      if (!result) {
-        return undefined;
-      }
-      activeRunId = result.runId;
-      return activeRunId;
-    };
-
     return await new Promise<string>((resolve, reject) => {
       const emitAgentEvent = (
         event: Omit<RuntimeAgentEventPayload, "type">,
@@ -205,7 +215,7 @@ export class VoiceRuntimeService {
         });
       };
 
-      handleLocalChatPromise = runner
+      runner
         .handleLocalChat(
           {
             conversationId: payload.conversationId,

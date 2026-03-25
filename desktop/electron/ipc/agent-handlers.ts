@@ -200,8 +200,12 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       event,
       payload: {
         conversationId: string;
-        userMessageId: string;
         userPrompt: string;
+        deviceId?: string;
+        platform?: string;
+        timezone?: string;
+        mode?: string;
+        messageMetadata?: Record<string, unknown>;
         attachments?: Array<{
           url: string;
           mimeType?: string;
@@ -231,7 +235,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       }
 
       console.log(
-        `[stella:trace] IPC agent:startChat | convId=${payload.conversationId} | msgId=${payload.userMessageId} | prompt=${redactSensitiveLogText(payload.userPrompt.slice(0, 200))}`,
+        `[stella:trace] IPC agent:startChat | convId=${payload.conversationId} | prompt=${redactSensitiveLogText(payload.userPrompt.slice(0, 200))}`,
       );
       const senderWebContentsId = event.sender.id;
       const result = await stellaHostRunner.handleLocalChat(payload, {
