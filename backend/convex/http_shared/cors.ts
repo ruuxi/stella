@@ -1,6 +1,6 @@
 const DEFAULT_CORS_ALLOWED_ORIGINS = [
   "http://localhost:5714",
-  "https://fromyou.ai",
+  "https://stella.sh",
   "null",
 ];
 
