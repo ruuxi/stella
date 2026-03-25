@@ -35,6 +35,7 @@ import type {
   RuntimeAutomationTurnResult,
   StorePublishArgs,
 } from "../../runtime-protocol/index.js";
+import type { LocalChatAppendEventArgs } from "../storage/shared.js";
 
 export type StellaHostRunnerOptions = {
   deviceId: string;
@@ -111,6 +112,7 @@ export type StellaHostRunnerOptions = {
     conversationId: string,
     maxItems: number,
   ) => LocalContextEvent[];
+  appendLocalChatEvent?: (args: LocalChatAppendEventArgs) => void;
 };
 
 export type ChatPayload = {
@@ -213,6 +215,7 @@ export type RunnerContext = {
   displayHtml?: (html: string) => void;
   runtimeStore: RuntimeStore;
   listLocalChatEvents?: StellaHostRunnerOptions["listLocalChatEvents"];
+  appendLocalChatEvent?: StellaHostRunnerOptions["appendLocalChatEvent"];
   paths: RunnerPaths;
   state: RunnerState;
   hookEmitter: HookEmitter;

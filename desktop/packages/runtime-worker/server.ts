@@ -13,7 +13,6 @@ import {
   type RuntimeAgentEventPayload,
   type RuntimeChatPayload,
   type RuntimeCommandRunParams,
-  type RuntimeHealthSnapshot,
   type RuntimeOverlayAutoPanelEventPayload,
   type RuntimeOverlayAutoPanelStartPayload,
   type RuntimeOverlayChatMessage,
@@ -24,10 +23,12 @@ import {
 import { CapabilityRuntime } from "../runtime-capabilities/runtime.js";
 import type { CapabilityStateApi } from "../runtime-capabilities/types.js";
 import {
+  AGENT_IDS,
   AGENT_STREAM_EVENT_TYPES,
   type AgentIdLike,
   type AgentStreamEventType,
 } from "../../src/shared/contracts/agent-runtime.js";
+import { prepareStoredLocalChatPayload } from "../runtime-kernel/storage/local-chat-payload.js";
 import {
   createStellaHostRunner,
   type StellaHostRunnerOptions,
@@ -50,7 +51,6 @@ import { StoreModStore } from "../runtime-kernel/storage/store-mod-store.js";
 import type { SqliteDatabase } from "../runtime-kernel/storage/shared.js";
 import { TranscriptMirror } from "../runtime-kernel/storage/transcript-mirror.js";
 import type {
-  InstalledStoreModRecord,
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
@@ -512,6 +512,10 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       runtimeStore,
       listLocalChatEvents: (conversationId, maxItems) =>
         chatStore.listEvents(conversationId, maxItems),
+      appendLocalChatEvent: (args) => {
+        chatStore.appendEvent(args);
+        peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+      },
       requestCredential: async (payload) =>
         await peer.request(METHOD_NAMES.HOST_CREDENTIALS_REQUEST, payload),
       displayHtml: async (html) => {
@@ -605,6 +609,11 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
 
     state.voiceService = new VoiceRuntimeService({
       getRunner: () => state.runner,
+      getChatStore: () => state.chatStore,
+      getDeviceId: () => state.deviceId,
+      onLocalChatUpdated: () => {
+        peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+      },
       emitAgentEvent: (payload) => {
         emitVoiceAgentEvent(payload);
       },
@@ -682,14 +691,69 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_START_CHAT, async (params) => {
     const payload = params as RuntimeChatPayload;
+    const userMessageTimestamp = Date.now();
+    const userMessageEvent = ensureChatStore().appendEvent({
+      conversationId: payload.conversationId,
+      type: "user_message",
+      deviceId: payload.deviceId,
+      timestamp: userMessageTimestamp,
+      payload: prepareStoredLocalChatPayload({
+        type: "user_message",
+        payload: {
+          text: payload.userPrompt,
+          ...(payload.attachments?.length ? { attachments: payload.attachments } : {}),
+          ...(payload.platform ? { platform: payload.platform } : {}),
+          ...(payload.timezone ? { timezone: payload.timezone } : {}),
+          ...(payload.messageMetadata ? { metadata: payload.messageMetadata } : {}),
+          ...(payload.mode ? { mode: payload.mode } : {}),
+        },
+        timestamp: userMessageTimestamp,
+        timezone: payload.timezone,
+      }),
+    });
+    peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+
+    const userMessageId = userMessageEvent._id;
     let activeRunId = "";
     let syntheticSeq = 1;
-    const result = await ensureRunner().handleLocalChat(payload, {
+    const result = await ensureRunner().handleLocalChat({
+      conversationId: payload.conversationId,
+      userMessageId,
+      userPrompt: payload.userPrompt,
+      attachments: payload.attachments,
+      agentType: payload.agentType,
+      storageMode: payload.storageMode,
+    }, {
       onStream: (ev) => emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.STREAM }),
-      onToolStart: (ev) =>
-        emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.TOOL_START }),
-      onToolEnd: (ev) =>
-        emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.TOOL_END }),
+      onToolStart: (ev) => {
+        ensureChatStore().appendEvent({
+          conversationId: payload.conversationId,
+          type: "tool_request",
+          requestId: ev.toolCallId,
+          payload: {
+            toolName: ev.toolName,
+            ...(ev.args ? { args: ev.args } : {}),
+            ...(ev.agentType ? { agentType: ev.agentType } : {}),
+          },
+        });
+        peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+        emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.TOOL_START });
+      },
+      onToolEnd: (ev) => {
+        ensureChatStore().appendEvent({
+          conversationId: payload.conversationId,
+          type: "tool_result",
+          requestId: ev.toolCallId,
+          payload: {
+            toolName: ev.toolName,
+            result: ev.resultPreview,
+            resultPreview: ev.resultPreview,
+            ...(ev.agentType ? { agentType: ev.agentType } : {}),
+          },
+        });
+        peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+        emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.TOOL_END });
+      },
       onError: (ev) => emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.ERROR }),
       onTaskEvent: (ev) =>
         emitRunEvent({
@@ -704,7 +768,26 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           error: ev.error,
           statusText: ev.statusText,
         }),
-      onEnd: (ev) => emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.END }),
+      onEnd: (ev) => {
+        if ((ev.agentType ?? AGENT_IDS.ORCHESTRATOR) === AGENT_IDS.ORCHESTRATOR) {
+          ensureChatStore().appendEvent({
+            conversationId: payload.conversationId,
+            type: "assistant_message",
+            requestId: userMessageId,
+            payload: prepareStoredLocalChatPayload({
+              type: "assistant_message",
+              payload: {
+                text: ev.finalText,
+                userMessageId,
+              },
+              timestamp: Date.now(),
+              timezone: payload.timezone,
+            }),
+          });
+          peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+        }
+        emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.END });
+      },
       onSelfModHmrState: (statePayload) =>
         emitSelfModHmrState({ runId: activeRunId || undefined, state: statePayload }),
       onHmrResume: async ({ runId, requiresFullReload }) => {
@@ -715,7 +798,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       },
     });
     activeRunId = result.runId;
-    return result;
+    return { ...result, userMessageId };
   });
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_CANCEL, async (params) => {
@@ -1012,32 +1095,41 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     );
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_APPEND_EVENT, async (params) => {
-    const payload = params as {
-      conversationId?: string;
-      type?: string;
-      payload?: unknown;
-      deviceId?: string;
-      requestId?: string;
-      targetDeviceId?: string;
-      channelEnvelope?: unknown;
-      timestamp?: number;
-      eventId?: string;
-    };
-    const result = ensureChatStore().appendEvent({
-      conversationId: payload.conversationId ?? "",
-      type: payload.type ?? "",
-      payload: payload.payload,
-      deviceId: payload.deviceId,
-      requestId: payload.requestId,
-      targetDeviceId: payload.targetDeviceId,
-      channelEnvelope: payload.channelEnvelope,
-      timestamp: payload.timestamp,
-      eventId: payload.eventId,
-    });
-    peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
-    return result;
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_PERSIST_DISCOVERY_WELCOME,
+    async (params) => {
+      const payload = params as {
+        conversationId?: string;
+        message?: string;
+        suggestions?: unknown[];
+      };
+      const conversationId = payload.conversationId ?? "";
+      const message = typeof payload.message === "string" ? payload.message : "";
+      if (message.trim().length > 0) {
+        ensureChatStore().appendEvent({
+          conversationId,
+          type: "assistant_message",
+          payload: prepareStoredLocalChatPayload({
+            type: "assistant_message",
+            payload: { text: message },
+            timestamp: Date.now(),
+          }),
+        });
+      }
+      const suggestions = Array.isArray(payload.suggestions)
+        ? payload.suggestions
+        : [];
+      if (suggestions.length > 0) {
+        ensureChatStore().appendEvent({
+          conversationId,
+          type: "welcome_suggestions",
+          payload: { suggestions },
+        });
+      }
+      peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+      return { ok: true as const };
+    },
+  );
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_LIST_SYNC_MESSAGES, async (params) => {
     const payload = params as { conversationId?: string; maxMessages?: number };

@@ -59,6 +59,7 @@ export const createRunnerContext = ({
   displayHtml,
   runtimeStore,
   listLocalChatEvents,
+  appendLocalChatEvent,
 }: StellaHostRunnerOptions): RunnerContext => {
   const envProxyBaseUrl = sanitizeStellaBase(
     process.env.STELLA_LLM_PROXY_URL ?? null,
@@ -142,6 +143,7 @@ export const createRunnerContext = ({
     displayHtml,
     runtimeStore,
     listLocalChatEvents,
+    appendLocalChatEvent,
     paths: {
       skillsPath: path.join(stellaHomePath, "skills"),
       coreSkillsPath: path.join(stellaHomePath, "core-skills"),
