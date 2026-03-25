@@ -240,6 +240,7 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   welcome: "smart",
   mercury: "fast",
   suggestions: "smart",
+  "service:home_canvas": "smart",
   music_prompt: "media",
   skill_metadata: "fast",
   skill_selection: "fast",

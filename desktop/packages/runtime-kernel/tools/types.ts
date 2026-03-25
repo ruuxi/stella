@@ -14,6 +14,7 @@ export type ToolContext = {
   conversationId: string;
   deviceId: string;
   requestId: string;
+  runId?: string;
   rootRunId?: string;
   agentType?: string;
   frontendRoot?: string;

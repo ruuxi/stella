@@ -108,7 +108,7 @@ export const registerHomeCanvasRoutes = (http: HttpRouter) => {
             return errorResponse(429, modelAccess.message, origin);
           }
 
-          const config = await resolveModelConfig(ctx, "smart", ownerId, {
+          const config = await resolveModelConfig(ctx, "service:home_canvas", ownerId, {
             access: modelAccess,
             audience: ownerId ? undefined : "anonymous",
           });
@@ -120,7 +120,7 @@ export const registerHomeCanvasRoutes = (http: HttpRouter) => {
 
           const startedAt = Date.now();
           const result = await completeManagedChat({
-            config: { ...config, maxOutputTokens: 4096 },
+            config: { ...config, maxOutputTokens: 16192 },
             context: {
               systemPrompt,
               messages: [{
