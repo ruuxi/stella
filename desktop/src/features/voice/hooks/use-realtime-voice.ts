@@ -15,15 +15,6 @@ interface UseRealtimeVoiceResult {
   outputLevel: number;
 }
 
-type VoiceEventAppendArgs = {
-  conversationId: string;
-  type: string;
-  payload?: unknown;
-  deviceId?: string;
-  requestId?: string;
-  targetDeviceId?: string;
-};
-
 const SESSION_ROTATE_MS = 55 * 60 * 1000;
 const SESSION_ROTATE_IDLE_WAIT_MS = 30_000;
 const RETRY_BASE_MS = 5_000;
@@ -44,8 +35,6 @@ const DEFAULT_RUNTIME_STATE: VoiceRuntimeSnapshot = {
 interface VoiceSessionManagerDeps {
   conversationIdRef: { current: string };
   inputActiveRef: { current: boolean };
-  appendEventRef: { current: (args: VoiceEventAppendArgs) => unknown };
-  deviceIdRef: { current: string | null };
   analyserRef: { current: AnalyserNode | null };
   outputAnalyserRef: { current: AnalyserNode | null };
   onStateChange: (state: VoiceSessionState) => void;
@@ -218,23 +207,6 @@ export class VoiceSessionManager {
       );
     }
 
-    // 2. Persist to localStorage (UI display)
-    const type = role === "user" ? "user_message" : "assistant_message";
-    const payload: Record<string, unknown> = { text, source: "voice" };
-    const args: Parameters<typeof this.deps.appendEventRef.current>[0] = {
-      conversationId: cid,
-      type,
-      payload,
-      ...(role === "user" && this.deps.deviceIdRef.current
-        ? { deviceId: this.deps.deviceIdRef.current }
-        : {}),
-    };
-    Promise.resolve(this.deps.appendEventRef.current(args)).catch((err) => {
-      console.debug(
-        "[VoiceSessionManager] Event persistence failed:",
-        (err as Error).message,
-      );
-    });
   }
 
   private attachLiveSession(
@@ -440,4 +412,3 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
     outputLevel: runtimeState.outputLevel,
   };
 }
-
