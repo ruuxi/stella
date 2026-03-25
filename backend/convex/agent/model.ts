@@ -193,7 +193,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   media: {
-    model: "google/gemini-3-flash",
+    model: "google/gemini-3-flash-preview",
     fallbackMode: "smart",
     temperature: 0.7,
     maxOutputTokens: 8192,

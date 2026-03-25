@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { synthesizeCoreMemory } from "@/global/onboarding/services/synthesis";
-import { generateHomeCanvas } from "@/global/onboarding/services/home-canvas-generation";
+import { fetchHomeCanvas, writeHomeCanvasToDisk } from "@/global/onboarding/services/home-canvas-generation";
 import { getPersonalizedDashboardPromptConfig } from "@/prompts/transport";
 import homeCanvasTemplate from "@/app/home/HomeCanvas.tsx?raw";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
@@ -25,11 +25,12 @@ const withBrowserDiscoveryCategory = (
 };
 type UseDiscoveryFlowOptions = {
   conversationId: string | null;
+  onboardingDone: boolean;
 };
 
 export type DashboardState = "idle" | "generating";
 
-export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
+export function useDiscoveryFlow({ conversationId, onboardingDone }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
   const { hasConnectedAccount } = useAuthSessionState();
 
@@ -37,6 +38,8 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
     DiscoveryCategory[] | null
   >(null);
   const [dashboardState, setDashboardState] = useState<DashboardState>("idle");
+  const [pendingCanvas, setPendingCanvas] = useState<string | null>(null);
+  const canvasWrittenRef = useRef(false);
   const synthesizedRef = useRef(false);
   const synthesizingRef = useRef(false);
 
@@ -107,8 +110,9 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
         // Fire-and-forget: generate personalized home canvas + personal website
         setDashboardState("generating");
 
-        // Fire-and-forget: generate personalized home canvas + personal website
-        generateHomeCanvas(synthesisResult.coreMemory, homeCanvasTemplate)
+        // Fetch canvas content but defer disk write until after onboarding transition
+        fetchHomeCanvas(synthesisResult.coreMemory, homeCanvasTemplate)
+          .then((content) => setPendingCanvas(content))
           .catch(() => {});
 
         const startGeneration =
@@ -143,6 +147,19 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
     hasConnectedAccount,
     activeConversationId,
   ]);
+
+  // Write the generated HomeCanvas to disk only after the onboarding fade
+  // completes + 1s buffer, so the HMR morph doesn't fire during the transition.
+  useEffect(() => {
+    if (!onboardingDone || !pendingCanvas || canvasWrittenRef.current) return;
+    canvasWrittenRef.current = true;
+    const content = pendingCanvas;
+    const timer = setTimeout(() => {
+      writeHomeCanvasToDisk(content).catch(() => {});
+      setPendingCanvas(null);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [onboardingDone, pendingCanvas]);
 
   return {
     handleDiscoveryConfirm,
