@@ -218,8 +218,13 @@ describe("AuthDialog", () => {
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith("/sign-in/magic-link", {
         method: "POST",
-        body: { email: "test@example.com", callbackURL: "Stella://auth" },
+        body: { email: "test@example.com", callbackURL: expect.any(String) },
       });
+      const callbackURL = mockFetch.mock.calls[0][1].body.callbackURL as string;
+      const parsed = new URL(callbackURL);
+      expect(parsed.origin).toBe("http://localhost:5714");
+      expect(parsed.pathname).toBe("/auth/callback");
+      expect(parsed.searchParams.get("client")).toBe("desktop");
     });
   });
 });

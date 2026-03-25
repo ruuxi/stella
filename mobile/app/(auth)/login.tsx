@@ -46,7 +46,7 @@ export default function LoginScreen() {
         method: "POST",
         body: {
           email: trimmed,
-          callbackURL: `${env.mobileScheme}://auth`,
+          callbackURL: new URL("/auth/callback?client=mobile", env.siteUrl).href,
         },
       });
       setSubmitState({ type: "sent" });
