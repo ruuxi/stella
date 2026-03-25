@@ -135,9 +135,11 @@ const formatTextEvent = (
   if (!text) return null;
   const { tag, dateStr } = formatMessageTimestamp(event.timestamp, tsState.prevDate, tsState.timezone);
   tsState.prevDate = dateStr;
+  const body = ellipsize(text, MAX_TEXT_CHARS);
+  const isAssistant = event.type === "assistant_message";
   return {
-    role: event.type === "assistant_message" ? "assistant" : "user",
-    content: `${ellipsize(text, MAX_TEXT_CHARS)}\n\n${tag}`,
+    role: isAssistant ? "assistant" : "user",
+    content: isAssistant ? `${tag}\n\n${body}` : `${body}\n\n${tag}`,
   };
 };
 

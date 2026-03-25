@@ -78,7 +78,13 @@ export const registerMorphHandlers = (options: MorphHandlersOptions) => {
       transitionId,
       ONBOARDING_MORPH_OVERLAY_READY_TIMEOUT_MS,
     );
-    overlay.startMorphForward(transitionId, screenshot, bounds, fullWindow);
+    overlay.startMorphForward(
+      transitionId,
+      screenshot,
+      bounds,
+      fullWindow,
+      "onboarding",
+    );
     const ready = await readyPromise;
     if (!ready || overlay.getActiveMorphTransitionId() !== transitionId) {
       if (activeOnboardingTransitionId === transitionId) {
