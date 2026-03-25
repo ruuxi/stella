@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  desktop:
     strategy:
       matrix:
         include:
@@ -88,3 +88,54 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: stella-desktop-${{ matrix.platform }}.tar.zst
+
+  launcher:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win-x64
+            binary: src-tauri/target/release/StellaSetup.exe
+          - os: macos-latest
+            platform: darwin-arm64
+            binary: src-tauri/target/release/StellaSetup
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: launcher
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: launcher
+        run: bun install
+
+      - name: Build launcher
+        working-directory: launcher
+        run: bunx tauri build
+
+      - name: Stage release binary
+        shell: bash
+        run: |
+          cp "launcher/${{ matrix.binary }}" "StellaSetup-${{ matrix.platform }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stella-launcher-${{ matrix.platform }}
+          path: StellaSetup-${{ matrix.platform }}*
+          retention-days: 30
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: StellaSetup-${{ matrix.platform }}*
