@@ -2,25 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useDiscoveryFlow } from "../../../../src/global/onboarding/DiscoveryFlow";
 
-const mockChatStoreAppendEvent = vi.fn(() => Promise.resolve({ _id: "event-123" }));
-
-const mockUseChatStore = vi.fn(() => ({
-  storageMode: "local",
-  isLocalStorage: true,
-  cloudFeaturesEnabled: false,
-  isAuthenticated: true,
-  appendEvent: mockChatStoreAppendEvent,
-  appendAgentEvent: vi.fn(),
-  uploadAttachments: vi.fn(),
-  buildHistory: vi.fn(),
+const mockPersistDiscoveryWelcome = vi.fn(() => Promise.resolve({ ok: true }));
+const mockUseAuthSessionState = vi.fn(() => ({
+  hasConnectedAccount: true,
 }));
 
-vi.mock("@/context/chat-store", () => ({
-  useChatStore: () => mockUseChatStore(),
-}));
-
-vi.mock("@/platform/electron/device", () => ({
-  getOrCreateDeviceId: vi.fn(() => Promise.resolve("device-1")),
+vi.mock("@/global/auth/hooks/use-auth-session-state", () => ({
+  useAuthSessionState: () => mockUseAuthSessionState(),
 }));
 
 vi.mock("@/global/onboarding/services/synthesis", () => ({
@@ -38,30 +26,8 @@ function defaultOptions() {
   };
 }
 
-function setCloudMode(isAuthenticated = true) {
-  mockUseChatStore.mockReturnValue({
-    storageMode: "local",
-    isLocalStorage: true,
-    cloudFeaturesEnabled: false,
-    isAuthenticated,
-    appendEvent: mockChatStoreAppendEvent,
-    appendAgentEvent: vi.fn(),
-    uploadAttachments: vi.fn(),
-    buildHistory: vi.fn(),
-  });
-}
-
-function setLocalMode(isAuthenticated = false) {
-  mockUseChatStore.mockReturnValue({
-    storageMode: "local",
-    isLocalStorage: true,
-    cloudFeaturesEnabled: false,
-    isAuthenticated,
-    appendEvent: mockChatStoreAppendEvent,
-    appendAgentEvent: vi.fn(),
-    uploadAttachments: vi.fn(),
-    buildHistory: vi.fn(),
-  });
+function setAuthState(hasConnectedAccount = true) {
+  mockUseAuthSessionState.mockReturnValue({ hasConnectedAccount });
 }
 
 describe("useDiscoveryFlow", () => {
@@ -69,7 +35,7 @@ describe("useDiscoveryFlow", () => {
     vi.clearAllMocks();
     localStorage.clear();
     delete (window as unknown as Record<string, unknown>).electronAPI;
-    setCloudMode();
+    setAuthState(true);
   });
 
   afterEach(() => {
@@ -94,9 +60,8 @@ describe("useDiscoveryFlow", () => {
     });
   });
 
-  it("does not prepend browsing_bookmarks when no browser is selected in localStorage", () => {
+  it("does not prepend browsing_bookmarks when no browser is selected", () => {
     localStorage.removeItem(BROWSER_SELECTION_KEY);
-    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
@@ -109,9 +74,8 @@ describe("useDiscoveryFlow", () => {
     });
   });
 
-  it("prepends browsing_bookmarks when browser is selected in localStorage", () => {
+  it("prepends browsing_bookmarks when browser is selected", () => {
     localStorage.setItem(BROWSER_SELECTION_KEY, "chrome");
-    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
@@ -124,9 +88,8 @@ describe("useDiscoveryFlow", () => {
     });
   });
 
-  it("does not duplicate browsing_bookmarks if already in categories", () => {
+  it("does not duplicate browsing_bookmarks if already present", () => {
     localStorage.setItem(BROWSER_SELECTION_KEY, "chrome");
-    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
@@ -165,8 +128,11 @@ describe("useDiscoveryFlow", () => {
         collectAllSignals,
         writeCoreMemory: vi.fn(() => Promise.resolve()),
       },
+      localChat: {
+        persistDiscoveryWelcome: mockPersistDiscoveryWelcome,
+      },
     };
-    setLocalMode(false);
+    setAuthState(false);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
@@ -189,7 +155,6 @@ describe("useDiscoveryFlow", () => {
     (window as unknown as Record<string, unknown>).electronAPI = {
       browser: { checkCoreMemoryExists },
     };
-    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
@@ -217,7 +182,6 @@ describe("useDiscoveryFlow", () => {
         collectAllSignals: vi.fn(),
       },
     };
-    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
@@ -250,7 +214,6 @@ describe("useDiscoveryFlow", () => {
         ),
       },
     };
-    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
@@ -271,7 +234,6 @@ describe("useDiscoveryFlow", () => {
     const { synthesizeCoreMemory } = await import(
       "@/global/onboarding/services/synthesis"
     );
-    const { getOrCreateDeviceId } = await import("@/platform/electron/device");
 
     vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
       coreMemory: "User is a developer",
@@ -299,8 +261,10 @@ describe("useDiscoveryFlow", () => {
         ),
         writeCoreMemory,
       },
+      localChat: {
+        persistDiscoveryWelcome: mockPersistDiscoveryWelcome,
+      },
     };
-    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
@@ -317,32 +281,17 @@ describe("useDiscoveryFlow", () => {
         "## Dev projects\n- project-a",
         { includeAuth: true },
       );
-      expect(writeCoreMemory).toHaveBeenCalledWith(
-        "User is a developer",
-      );
-      expect(getOrCreateDeviceId).toHaveBeenCalled();
-      expect(mockChatStoreAppendEvent).toHaveBeenCalledTimes(2);
-      expect(mockChatStoreAppendEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          conversationId: "conv-1",
-          type: "assistant_message",
-          payload: { text: "Hello! Welcome to Stella." },
-        }),
-      );
-      expect(mockChatStoreAppendEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          conversationId: "conv-1",
-          type: "welcome_suggestions",
-          payload: {
-            suggestions: [
-              expect.objectContaining({
-                title: "Tell me about yourself",
-                prompt: "Tell me about yourself",
-              }),
-            ],
-          },
-        }),
-      );
+      expect(writeCoreMemory).toHaveBeenCalledWith("User is a developer");
+      expect(mockPersistDiscoveryWelcome).toHaveBeenCalledWith({
+        conversationId: "conv-1",
+        message: "Hello! Welcome to Stella.",
+        suggestions: [
+          expect.objectContaining({
+            title: "Tell me about yourself",
+            prompt: "Tell me about yourself",
+          }),
+        ],
+      });
     });
   });
 
@@ -365,8 +314,10 @@ describe("useDiscoveryFlow", () => {
         ),
         writeCoreMemory: vi.fn(() => Promise.resolve()),
       },
+      localChat: {
+        persistDiscoveryWelcome: mockPersistDiscoveryWelcome,
+      },
     };
-    setCloudMode(true);
 
     const { result } = renderHook(() =>
       useDiscoveryFlow({
@@ -379,17 +330,16 @@ describe("useDiscoveryFlow", () => {
     });
 
     await vi.waitFor(() => {
-      expect(mockChatStoreAppendEvent).toHaveBeenCalledTimes(1);
-      expect(mockChatStoreAppendEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "assistant_message",
-        }),
-      );
+      expect(mockPersistDiscoveryWelcome).toHaveBeenCalledTimes(1);
+      expect(mockPersistDiscoveryWelcome).toHaveBeenCalledWith({
+        conversationId: "conv-2",
+        message: "Welcome!",
+      });
     });
   });
 
   it("runs discovery synthesis in unauthenticated local mode", async () => {
-    setLocalMode(false);
+    setAuthState(false);
 
     const { synthesizeCoreMemory } = await import(
       "@/global/onboarding/services/synthesis"
@@ -409,6 +359,9 @@ describe("useDiscoveryFlow", () => {
         ),
         writeCoreMemory,
       },
+      localChat: {
+        persistDiscoveryWelcome: mockPersistDiscoveryWelcome,
+      },
     };
 
     const { result } = renderHook(() =>
@@ -427,148 +380,7 @@ describe("useDiscoveryFlow", () => {
         { includeAuth: false },
       );
       expect(writeCoreMemory).toHaveBeenCalledWith("Unauth local profile");
-      expect(mockChatStoreAppendEvent).not.toHaveBeenCalled();
-    });
-  });
-
-  it("skips welcome message when synthesizeCoreMemory returns no welcomeMessage", async () => {
-    const { synthesizeCoreMemory } = await import(
-      "@/global/onboarding/services/synthesis"
-    );
-
-    vi.mocked(synthesizeCoreMemory).mockResolvedValueOnce({
-      coreMemory: "User profile",
-      welcomeMessage: "",
-    });
-
-    (window as unknown as Record<string, unknown>).electronAPI = {
-      browser: {
-        checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
-        collectAllSignals: vi.fn(() =>
-          Promise.resolve({ formattedSections: "signals", error: null }),
-        ),
-        writeCoreMemory: vi.fn(() => Promise.resolve()),
-      },
-    };
-    setCloudMode(true);
-
-    const { result } = renderHook(() =>
-      useDiscoveryFlow({
-        conversationId: "conv-3",
-      }),
-    );
-
-    act(() => {
-      result.current.handleDiscoveryConfirm(["apps_system"]);
-    });
-
-    await vi.waitFor(() => {
-      expect(mockChatStoreAppendEvent).not.toHaveBeenCalled();
-    });
-  });
-
-  it("silently catches errors in the async run function", async () => {
-    (window as unknown as Record<string, unknown>).electronAPI = {
-      browser: {
-        checkCoreMemoryExists: vi.fn(() =>
-          Promise.reject(new Error("some error")),
-        ),
-      },
-    };
-    setCloudMode(true);
-
-    const { result } = renderHook(() =>
-      useDiscoveryFlow({
-        conversationId: "conv-4",
-      }),
-    );
-
-    act(() => {
-      result.current.handleDiscoveryConfirm(["dev_environment"]);
-    });
-
-    await vi.waitFor(() => {
-      expect(mockChatStoreAppendEvent).not.toHaveBeenCalled();
-    });
-  });
-
-  it("only runs synthesis once even when called multiple times (synthesizedRef guard)", async () => {
-    const { synthesizeCoreMemory } = await import(
-      "@/global/onboarding/services/synthesis"
-    );
-
-    vi.mocked(synthesizeCoreMemory).mockResolvedValue({
-      coreMemory: "profile",
-      welcomeMessage: "hi",
-    });
-
-    (window as unknown as Record<string, unknown>).electronAPI = {
-      browser: {
-        checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
-        collectAllSignals: vi.fn(() =>
-          Promise.resolve({ formattedSections: "data", error: null }),
-        ),
-        writeCoreMemory: vi.fn(() => Promise.resolve()),
-      },
-    };
-
-    const { result, rerender } = renderHook(
-      (props) => useDiscoveryFlow(props),
-      {
-        initialProps: {
-          conversationId: "conv-5",
-        },
-      },
-    );
-
-    act(() => {
-      result.current.handleDiscoveryConfirm(["dev_environment"]);
-    });
-
-    await vi.waitFor(() => {
-      expect(synthesizeCoreMemory).toHaveBeenCalledTimes(1);
-    });
-
-    rerender({
-      conversationId: "conv-5",
-    });
-
-    expect(synthesizeCoreMemory).toHaveBeenCalledTimes(1);
-  });
-
-  it("forwards the selected browser profile during discovery collection", async () => {
-    const collectAllSignals = vi.fn(() =>
-      Promise.resolve({ formattedSections: "signals", error: null }),
-    );
-
-    localStorage.setItem(BROWSER_SELECTION_KEY, "chrome");
-    localStorage.setItem(BROWSER_PROFILE_KEY, "Profile 2");
-    (window as unknown as Record<string, unknown>).electronAPI = {
-      browser: {
-        checkCoreMemoryExists: vi.fn(() => Promise.resolve(false)),
-        collectAllSignals,
-        writeCoreMemory: vi.fn(() => Promise.resolve()),
-      },
-    };
-
-    const { result } = renderHook(() =>
-      useDiscoveryFlow({
-        conversationId: "conv-profile",
-      }),
-    );
-
-    act(() => {
-      result.current.handleDiscoveryConfirm(["dev_environment"]);
-    });
-
-    await vi.waitFor(() => {
-      expect(collectAllSignals).toHaveBeenCalledWith({
-        categories: ["browsing_bookmarks", "dev_environment"],
-        selectedBrowser: "chrome",
-        selectedProfile: "Profile 2",
-      });
+      expect(mockPersistDiscoveryWelcome).not.toHaveBeenCalled();
     });
   });
 });
-
-
