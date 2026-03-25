@@ -292,8 +292,12 @@ export class RuntimeClientAdapter {
   async handleLocalChat(
     payload: {
       conversationId: string;
-      userMessageId: string;
       userPrompt: string;
+      deviceId?: string;
+      platform?: string;
+      timezone?: string;
+      mode?: string;
+      messageMetadata?: Record<string, unknown>;
       attachments?: Array<{
         url: string;
         mimeType?: string;

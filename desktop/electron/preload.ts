@@ -360,8 +360,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("agent:getAppSessionStartedAt") as Promise<number>,
     startChat: (payload: {
       conversationId: string;
-      userMessageId: string;
       userPrompt: string;
+      deviceId?: string;
+      platform?: string;
+      timezone?: string;
+      mode?: string;
+      messageMetadata?: Record<string, unknown>;
       attachments?: Array<{
         url: string;
         mimeType?: string;
@@ -371,6 +375,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) =>
       ipcRenderer.invoke("agent:startChat", payload) as Promise<{
         runId: string;
+        userMessageId: string;
       }>,
     cancelChat: (runId: string) => ipcRenderer.send("agent:cancelChat", runId),
     resumeStream: (payload: { runId: string; lastSeq: number }) =>
@@ -713,17 +718,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("localChat:listEvents", payload),
     getEventCount: (payload: { conversationId: string }) =>
       ipcRenderer.invoke("localChat:getEventCount", payload),
-    appendEvent: (payload: {
+    persistDiscoveryWelcome: (payload: {
       conversationId: string;
-      type: string;
-      payload?: unknown;
-      deviceId?: string;
-      requestId?: string;
-      targetDeviceId?: string;
-      channelEnvelope?: unknown;
-      timestamp?: number;
-      eventId?: string;
-    }) => ipcRenderer.invoke("localChat:appendEvent", payload),
+      message: string;
+      suggestions?: unknown[];
+    }) => ipcRenderer.invoke("localChat:persistDiscoveryWelcome", payload),
     listSyncMessages: (payload: {
       conversationId: string;
       maxMessages?: number;
