@@ -61,7 +61,7 @@ export function MagicLinkAuthFlow({
 }: MagicLinkAuthFlowProps) {
   const { email, setEmail, status, error, handleMagicLinkSubmit, reset } =
     useMagicLinkAuth();
-  const isSent = status === "sent";
+  const isSent = status === "sent" || status === "verifying";
 
   return (
     <div className={cn(className)}>
@@ -100,9 +100,9 @@ export function MagicLinkAuthFlow({
               variant={buttonVariant}
               size={buttonSize}
               className={cn(buttonClassName)}
-              disabled={status === "sending"}
+              disabled={status === "sending" || status === "verifying"}
             >
-              {status === "sending" ? sendingLabel : submitLabel}
+              {status === "sending" ? sendingLabel : status === "verifying" ? "Signing in..." : submitLabel}
             </Button>
           </form>
           {mode === "default" && isSent && successMessage ? (

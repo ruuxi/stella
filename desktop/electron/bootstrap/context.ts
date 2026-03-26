@@ -243,7 +243,7 @@ export const createBootstrapContext = (
   const authService = new AuthService({
     authProtocol: config.authProtocol,
     isDev: config.isDev,
-    projectDir: path.resolve(config.electronDir, ".."),
+    projectDir: path.resolve(config.electronDir, "..", ".."),
     sessionPartition: config.sessionPartition,
     runnerTarget: lifecycle,
     onAuthCallback: (url) => {

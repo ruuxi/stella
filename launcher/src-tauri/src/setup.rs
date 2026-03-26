@@ -17,7 +17,7 @@ const ESTIMATED_INSTALL_BYTES: u64 = 512 * 1024 * 1024; // 512 MB
 const APP_VERSION: &str = "0.0.1";
 const DEFAULT_ENV_FILE_CONTENTS: &str = "\
 VITE_CONVEX_URL=https://impartial-crab-34.convex.cloud\n\
-VITE_CONVEX_SITE_URL=https://impartial-crab-34.convex.site\n\
+VITE_CONVEX_SITE_URL=https://cloud.stella.sh\n\
 VITE_SITE_URL=https://stella.sh\n\
 VITE_TWITCH_EMOTE_TWITCH_ID=40934651\n";
 

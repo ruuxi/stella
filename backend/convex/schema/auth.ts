@@ -37,4 +37,18 @@ export const authSchema = {
     minIssuedAtSec: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_ownerId", ["ownerId"]),
+
+  auth_link_requests: defineTable({
+    email: v.string(),
+    requestId: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("completed"),
+    ),
+    ott: v.optional(v.string()),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_requestId", ["requestId"])
+    .index("by_email_and_createdAt", ["email", "createdAt"]),
 };
