@@ -436,13 +436,15 @@ async fn handle_extension_connection(
 ) {
     let (mut ws_tx, mut ws_rx) = ws_stream.split();
 
-    // Check if already connected
+    // If there's an existing connection, drop it and let the new one take over.
+    // This handles the case where the extension's service worker restarted and
+    // the old WebSocket is half-open (daemon thinks it's connected but the
+    // extension side is gone).
     {
-        let guard = inner.lock().await;
+        let mut guard = inner.lock().await;
         if guard.connected && guard.cmd_tx.is_some() {
-            // Already have a live connection — reject this one
-            let _ = ws_tx.send(Message::Close(None)).await;
-            return;
+            guard.connected = false;
+            guard.cmd_tx = None;
         }
     }
 
