@@ -28,8 +28,8 @@ describe("getCorsHeaders", () => {
   });
 
   test("sets Allow-Origin for allowed origins", () => {
-    const headers = getCorsHeaders("http://localhost:5714");
-    expect(headers["Access-Control-Allow-Origin"]).toBe("http://localhost:5714");
+    const headers = getCorsHeaders("http://localhost:57314");
+    expect(headers["Access-Control-Allow-Origin"]).toBe("http://localhost:57314");
   });
 
   test("sets Allow-Origin for any localhost port", () => {
@@ -52,8 +52,8 @@ describe("getCorsHeaders", () => {
 describe("withCors", () => {
   test("adds CORS headers to response", () => {
     const base = new Response("ok", { status: 200 });
-    const result = withCors(base, "http://localhost:5714");
-    expect(result.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5714");
+    const result = withCors(base, "http://localhost:57314");
+    expect(result.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:57314");
     expect(result.headers.get("Access-Control-Allow-Credentials")).toBe("true");
     expect(result.status).toBe(200);
   });
@@ -68,7 +68,7 @@ describe("withCors", () => {
 
 describe("rejectDisallowedCorsOrigin", () => {
   test("returns null for allowed origins", () => {
-    expect(rejectDisallowedCorsOrigin(makeRequest("http://localhost:5714"))).toBeNull();
+    expect(rejectDisallowedCorsOrigin(makeRequest("http://localhost:57314"))).toBeNull();
     expect(rejectDisallowedCorsOrigin(makeRequest("http://localhost:3000"))).toBeNull();
   });
 
@@ -85,9 +85,9 @@ describe("rejectDisallowedCorsOrigin", () => {
 
 describe("preflightCorsResponse", () => {
   test("returns 204 with CORS headers", () => {
-    const result = preflightCorsResponse(makeRequest("http://localhost:5714"));
+    const result = preflightCorsResponse(makeRequest("http://localhost:57314"));
     expect(result.status).toBe(204);
-    expect(result.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5714");
+    expect(result.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:57314");
   });
 });
 
@@ -106,8 +106,8 @@ describe("jsonResponse", () => {
   });
 
   test("adds CORS headers when origin provided", () => {
-    const result = jsonResponse({ ok: true }, 200, "http://localhost:5714");
-    expect(result.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5714");
+    const result = jsonResponse({ ok: true }, 200, "http://localhost:57314");
+    expect(result.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:57314");
   });
 
   test("omits CORS headers when origin is undefined", () => {
@@ -125,7 +125,7 @@ describe("errorResponse", () => {
   });
 
   test("adds CORS headers when origin provided", () => {
-    const result = errorResponse(500, "Internal error", "http://localhost:5714");
-    expect(result.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5714");
+    const result = errorResponse(500, "Internal error", "http://localhost:57314");
+    expect(result.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:57314");
   });
 });

@@ -43,7 +43,7 @@ const getEmailLogoSrc = (siteUrl: string) => {
 };
 
 const extraTrustedOrigins = [
-  "http://localhost:5714",
+  "http://localhost:57314",
   "http://localhost:5715",
   // Expo web (`expo start --web` / press `w`) defaults to port 8081
   "http://localhost:8081",
