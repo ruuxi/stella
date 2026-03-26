@@ -25,12 +25,11 @@ const withBrowserDiscoveryCategory = (
 };
 type UseDiscoveryFlowOptions = {
   conversationId: string | null;
-  onboardingDone: boolean;
 };
 
 export type DashboardState = "idle" | "generating";
 
-export function useDiscoveryFlow({ conversationId, onboardingDone }: UseDiscoveryFlowOptions) {
+export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
   const { hasConnectedAccount } = useAuthSessionState();
 
@@ -38,7 +37,8 @@ export function useDiscoveryFlow({ conversationId, onboardingDone }: UseDiscover
     DiscoveryCategory[] | null
   >(null);
   const [dashboardState, setDashboardState] = useState<DashboardState>("idle");
-  const [pendingCanvas, setPendingCanvas] = useState<string | null>(null);
+  const [canvasFetched, setCanvasFetched] = useState(true);
+  const pendingCanvasRef = useRef<string | null>(null);
   const canvasWrittenRef = useRef(false);
   const synthesizedRef = useRef(false);
   const synthesizingRef = useRef(false);
@@ -46,6 +46,7 @@ export function useDiscoveryFlow({ conversationId, onboardingDone }: UseDiscover
   const handleDiscoveryConfirm = useCallback(
     (categories: DiscoveryCategory[]) => {
       setDiscoveryCategories(withBrowserDiscoveryCategory(categories));
+      setCanvasFetched(false);
     },
     [],
   );
@@ -63,6 +64,7 @@ export function useDiscoveryFlow({ conversationId, onboardingDone }: UseDiscover
         const exists =
           await window.electronAPI?.browser.checkCoreMemoryExists?.();
         if (exists) {
+          setCanvasFetched(true);
           completed = true;
           synthesizedRef.current = true;
           return;
@@ -110,10 +112,10 @@ export function useDiscoveryFlow({ conversationId, onboardingDone }: UseDiscover
         // Fire-and-forget: generate personalized home canvas + personal website
         setDashboardState("generating");
 
-        // Fetch canvas content but defer disk write until after onboarding transition
+        // Fetch canvas content — disk write is triggered by user clicking "Ready"
         fetchHomeCanvas(synthesisResult.coreMemory, homeCanvasTemplate)
-          .then((content) => setPendingCanvas(content))
-          .catch(() => {});
+          .then((content) => { pendingCanvasRef.current = content; setCanvasFetched(true); })
+          .catch(() => setCanvasFetched(true));
 
         const startGeneration =
           window.electronAPI?.agent.startPersonalWebsiteGeneration;
@@ -136,6 +138,7 @@ export function useDiscoveryFlow({ conversationId, onboardingDone }: UseDiscover
       } finally {
         if (!completed) {
           synthesizedRef.current = false;
+          setCanvasFetched(true);
         }
         synthesizingRef.current = false;
       }
@@ -148,21 +151,19 @@ export function useDiscoveryFlow({ conversationId, onboardingDone }: UseDiscover
     activeConversationId,
   ]);
 
-  // Write the generated HomeCanvas to disk only after the onboarding fade
-  // completes + 1s buffer, so the HMR morph doesn't fire during the transition.
-  useEffect(() => {
-    if (!onboardingDone || !pendingCanvas || canvasWrittenRef.current) return;
+  // Write the pending HomeCanvas to disk on demand (user clicks "Ready").
+  const flushCanvas = useCallback(async () => {
+    const content = pendingCanvasRef.current;
+    if (!content || canvasWrittenRef.current) return;
     canvasWrittenRef.current = true;
-    const content = pendingCanvas;
-    const timer = setTimeout(() => {
-      writeHomeCanvasToDisk(content).catch(() => {});
-      setPendingCanvas(null);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [onboardingDone, pendingCanvas]);
+    pendingCanvasRef.current = null;
+    await writeHomeCanvasToDisk(content);
+  }, []);
 
   return {
     handleDiscoveryConfirm,
     dashboardState,
+    canvasFetched,
+    flushCanvas,
   };
 }

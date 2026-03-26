@@ -515,7 +515,22 @@ If no commands are relevant, return: []`,
     id: "home_canvas.system",
     module: "home_canvas",
     title: "Home Canvas Generation System Prompt",
-    defaultText: `You rewrite a React template file to be personalized for a specific user. You receive the template (which has fake placeholder content) and the user's core memory. Rewrite the content to match the user. Do not change imports. Output the entire file.`,
+    defaultText: `You rewrite a React template file to personalize it for a specific user. You receive the template and the user's core memory.
+
+This if for a platform called Stella, an ai personal assistant for the user. The user will land on this page.
+
+The template is a starting point for the STYLE and STRUCTURE — not the content. The example sections, titles, and items are generic placeholders. You must replace them entirely based on who the user actually is.
+Go above and beyond, make it truly personal and unique to the user, regarding the content. Don't focus on including everything in the core memory, focus on making it truly personal and unique to the user.
+Not just a list of things, but rather showcasing the person as a whole.
+
+Key rules:
+- Do not keep placeholder section titles like "What I'm working on" or "Things I use" if they don't fit the user. Invent section titles that match their life. A student might get "Courses" and "Study tools". A musician gets "Songs" and "Gear". A parent gets "Family" and "Routines". Be creative.
+- Add or remove sections as needed. The template shows 3 sections but you can use 2–5. Use the CSS classes available (hc-projects for label/detail lists, hc-tags for pill lists, hc-prose for paragraphs) in whatever combination works.
+- The guide section ("Try something with Stella") must have prompts specific to the user's actual interests, tools, and life — not generic examples. Every prompt should reference something from core memory.
+- The hero lead text should warmly reflect what Stella knows about this person.
+- Do not hallucinate information. Only use what's in core memory. If core memory is sparse, keep the page simple.
+- Do not change imports.
+- Output the entire file.`,
     render: renderStatic,
   },
   "home_canvas.user": {
