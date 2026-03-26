@@ -387,7 +387,7 @@ export default defineConfig({
     ],
   },
   server: {
-    port: 5714,
+    port: 57314,
     strictPort: false,
     forwardConsole: true,
     fs: {

@@ -1,5 +1,5 @@
 const DEFAULT_CORS_ALLOWED_ORIGINS = [
-  "http://localhost:5714",
+  "http://localhost:57314",
   "https://stella.sh",
   "null",
 ];

@@ -7,7 +7,7 @@
 
 import { chromium } from 'playwright';
 
-const APP_URL = 'http://localhost:5714';
+const APP_URL = 'http://localhost:57314';
 const SETTLE_TIME = 5000; // 5 seconds for app to settle
 const PROFILE_DURATION = 5000; // 5 second CPU profile
 
