@@ -3,8 +3,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import type { BrowserData, BrowserType } from "../../packages/runtime-discovery/browser-data.js";
-import { normalizeSafeExternalUrl } from "../../packages/runtime-kernel/tools/network-guards.js";
 import { getStellaBrowserBridgeEnv } from "../../packages/runtime-kernel/tools/stella-browser-bridge-config.js";
+import {
+  normalizeUrlForPrivilegedRendererFetch,
+  PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
+} from "./renderer-safe-url.js";
 import type { AllUserSignalsResult } from "../../packages/runtime-discovery/types.js";
 
 type BrowserFetchInit = {
@@ -34,8 +37,6 @@ type BrowserHandlersOptions = {
   ) => boolean;
 };
 
-const STELLA_BROWSER_TIMEOUT_MS = 30_000;
-
 const runStellaBrowserJson = (
   frontendRoot: string,
   args: string[],
@@ -54,7 +55,7 @@ const runStellaBrowserJson = (
       [binPath, ...args],
       {
         cwd: frontendRoot,
-        timeout: STELLA_BROWSER_TIMEOUT_MS,
+        timeout: PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
         windowsHide: true,
         env: extraEnv ? { ...process.env, ...extraEnv } : undefined,
       },
@@ -112,9 +113,7 @@ const fetchWithBrowserSession = async (
   frontendRoot: string,
   payload: { url: string; responseType: "json" | "text"; init?: BrowserFetchInit },
 ) => {
-  const url = await normalizeSafeExternalUrl(payload.url, {
-    skipResolvedAddressCheck: process.env.NODE_ENV === "development",
-  });
+  const url = await normalizeUrlForPrivilegedRendererFetch(payload.url);
   const cookieHeader = await getBrowserCookieHeader(frontendRoot, url);
   const method = payload.init?.method ?? "GET";
   const headers = new Headers(payload.init?.headers);
@@ -131,7 +130,7 @@ const fetchWithBrowserSession = async (
     headers,
     body: payload.init?.body,
     redirect: "follow",
-    signal: AbortSignal.timeout(STELLA_BROWSER_TIMEOUT_MS),
+    signal: AbortSignal.timeout(PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -374,7 +373,12 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         const dir = path.join(stellaHomePath, "media", "outputs");
         await fs.mkdir(dir, { recursive: true });
         const destPath = path.join(dir, payload.fileName);
-        const res = await fetch(payload.url);
+        const safeUrl = await normalizeUrlForPrivilegedRendererFetch(payload.url);
+        const res = await fetch(safeUrl, {
+          headers: { "User-Agent": "StellaDesktop/1.0" },
+          redirect: "follow",
+          signal: AbortSignal.timeout(PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS),
+        });
         if (!res.ok) {
           return { ok: false, error: `Download failed (${res.status})` };
         }
