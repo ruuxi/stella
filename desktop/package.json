@@ -76,6 +76,7 @@
     "convex": "^1.33.1",
     "croner": "^10.0.1",
     "date-fns": "^4.1.0",
+    "dugite": "3.2.1",
     "effect": "^4.0.0-beta.28",
     "hera-browser": "^0.0.57",
     "lucide-react": "^0.563.0",

@@ -31,30 +31,6 @@ jobs:
         with:
           sparse-checkout: desktop
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Setup Python (for node-gyp)
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        working-directory: desktop
-        run: bun install
-
-      - name: Write .env.local
-        working-directory: desktop
-        shell: bash
-        run: |
-          cat > .env.local << 'ENVEOF'
-          VITE_CONVEX_URL=https://impartial-crab-34.convex.cloud
-          VITE_CONVEX_SITE_URL=https://impartial-crab-34.convex.site
-          VITE_SITE_URL=https://stella.sh
-          VITE_TWITCH_EMOTE_TWITCH_ID=40934651
-          ENVEOF
-
       - name: Determine version
         id: version
         shell: bash
@@ -74,6 +50,41 @@ jobs:
             --exclude=".github" \
             --exclude="coverage" \
             --exclude=".stella" \
+            --exclude="node_modules" \
+            --exclude="dist" \
+            --exclude="dist-electron" \
+            --exclude="dist-ssr" \
+            --exclude="*.local" \
+            --exclude="*.tsbuildinfo" \
+            --exclude=".vite-dev-url" \
+            --exclude=".stella-hmr-state.json" \
+            --exclude="public/emotes/assets" \
+            --exclude="stella-browser/node_modules" \
+            --exclude="stella-browser/dist" \
+            --exclude="stella-browser/cli/target" \
+            --exclude="stella-browser/*.o" \
+            --exclude="stella-browser/*.png" \
+            --exclude="stella-browser/*.jpeg" \
+            --exclude="stella-browser/*.jpg" \
+            --exclude="stella-browser/.pnpm-store" \
+            --exclude="stella-browser/opensrc" \
+            --exclude="stella-browser/docs/node_modules" \
+            --exclude="stella-browser/docs/.next" \
+            --exclude="stella-browser/docs/out" \
+            --exclude="stella-browser/nul" \
+            --exclude="stella-browser/_bench_chain.js" \
+            --exclude="stella-browser/bun.lock" \
+            --exclude="release" \
+            --exclude="workspace" \
+            --exclude="native/*.exe" \
+            --exclude="native/*.obj" \
+            --exclude=".stella-bindings.json" \
+            --exclude=".stella/state" \
+            --exclude=".stella/logs" \
+            --exclude=".stella/recovery" \
+            --exclude=".stella/canvas" \
+            --exclude=".stella/mods/features.json" \
+            --exclude=".stella/skills" \
             .
 
       - name: Upload artifact

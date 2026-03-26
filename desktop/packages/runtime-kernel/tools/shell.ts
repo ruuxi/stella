@@ -6,6 +6,7 @@ import { spawn } from "child_process";
 import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { resolveGitDir, setupEnvironment } from "dugite";
 import type { ToolContext, ToolResult, ShellRecord, SecretMountSpec, SkillRecord } from "./types.js";
 import type { SecretFileMountHandle } from "./utils.js";
 import { removeSecretFile, truncate, writeSecretFile } from "./utils.js";
@@ -102,9 +103,16 @@ const buildProtectedCommand = (
 __stella_dd() {
   "$STELLA_NODE_BIN" "$STELLA_DEFERRED_DELETE_HELPER" "$@"
 }
+__stella_git_exec() {
+  if [ -n "$STELLA_GIT_BIN" ]; then
+    "$STELLA_GIT_BIN" "$@"
+  else
+    command git "$@"
+  fi
+}
 __stella_git_stage_feature_dependencies() {
   local repo_root
-  repo_root="$(command git rev-parse --show-toplevel 2>/dev/null || true)"
+  repo_root="$(__stella_git_exec rev-parse --show-toplevel 2>/dev/null || true)"
   if [ -z "$repo_root" ]; then
     return 0
   fi
@@ -124,7 +132,7 @@ __stella_git_stage_feature_dependencies() {
     fi
   done
   if [ "\${#existing_files[@]}" -gt 0 ]; then
-    command git add -- "\${existing_files[@]}" >/dev/null 2>&1 || true
+    __stella_git_exec add -- "\${existing_files[@]}" >/dev/null 2>&1 || true
   fi
 }
 git() {
@@ -141,7 +149,7 @@ git() {
       __stella_git_stage_feature_dependencies
     fi
   fi
-  command git "$@"
+  __stella_git_exec "$@"
 }
 rm() { __stella_dd delete "$PWD" rm "$@"; }
 rmdir() { __stella_dd delete "$PWD" rmdir "$@"; }
@@ -154,7 +162,7 @@ pwsh() { __stella_dd powershell "$PWD" "$(type -P pwsh || true)" "$@"; }
 ${stellaBrowserBin ? `stella-browser() { "$STELLA_NODE_BIN" "$STELLA_BROWSER_BIN" "$@"; }` : ""}
 ${stellaUiCli ? `stella-ui() { "$STELLA_NODE_BIN" "$STELLA_UI_CLI" "$@"; }` : ""}
 ${pythonFuncs}
-export -f __stella_dd __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaUiCli ? " stella-ui" : ""}${pythonExports} >/dev/null 2>&1 || true
+export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaUiCli ? " stella-ui" : ""}${pythonExports} >/dev/null 2>&1 || true
 `;
 
   return `${preamble}\n${rewriteDeleteBypassPatterns(command)}`;
@@ -167,14 +175,95 @@ const buildShellEnv = (
     stellaBrowserBinPath?: string;
     stellaUiCliPath?: string;
   },
-) => ({
-  ...(envOverrides ? { ...process.env, ...envOverrides } : process.env),
-  STELLA_NODE_BIN: process.execPath,
-  STELLA_DEFERRED_DELETE_HELPER: deferredDeleteHelperPath,
-  ...(options?.secretStateRoot ? { STELLA_UI_STATE_DIR: options.secretStateRoot } : {}),
-  ...(options?.stellaBrowserBinPath ? { STELLA_BROWSER_BIN: options.stellaBrowserBinPath } : {}),
-  ...(options?.stellaUiCliPath ? { STELLA_UI_CLI: options.stellaUiCliPath } : {}),
-});
+) => {
+  const mergedEnv = {
+    ...(envOverrides ? { ...process.env, ...envOverrides } : process.env),
+    STELLA_NODE_BIN: process.execPath,
+    STELLA_DEFERRED_DELETE_HELPER: deferredDeleteHelperPath,
+    ...(options?.secretStateRoot ? { STELLA_UI_STATE_DIR: options.secretStateRoot } : {}),
+    ...(options?.stellaBrowserBinPath ? { STELLA_BROWSER_BIN: options.stellaBrowserBinPath } : {}),
+    ...(options?.stellaUiCliPath ? { STELLA_UI_CLI: options.stellaUiCliPath } : {}),
+  };
+
+  return setupEnvironment(mergedEnv).env;
+};
+
+const getWin32GitSubfolder = () => {
+  if (process.arch === "x64") {
+    return "mingw64";
+  }
+  if (process.arch === "arm64") {
+    return "clangarm64";
+  }
+  return "mingw32";
+};
+
+const WINDOWS_GIT_BASH_CANDIDATES = [
+  "C:\\Program Files\\Git\\bin\\bash.exe",
+  "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
+  "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+  "C:\\Program Files (x86)\\Git\\usr\\bin\\bash.exe",
+];
+
+const resolveWindowsBash = (): string | null => {
+  try {
+    const resolvedGitDir = resolveGitDir(process.env.LOCAL_GIT_DIRECTORY?.trim());
+    const dugiteCandidates = [
+      path.join(resolvedGitDir, getWin32GitSubfolder(), "bin", "bash.exe"),
+      path.join(resolvedGitDir, getWin32GitSubfolder(), "usr", "bin", "bash.exe"),
+      path.join(resolvedGitDir, "bin", "bash.exe"),
+      path.join(resolvedGitDir, "usr", "bin", "bash.exe"),
+    ];
+    for (const candidate of dugiteCandidates) {
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  } catch {
+    // Fall back to configured/system Git Bash locations.
+  }
+
+  const configured = process.env.STELLA_GIT_BASH?.trim();
+  if (configured && existsSync(configured)) {
+    return configured;
+  }
+
+  for (const candidate of WINDOWS_GIT_BASH_CANDIDATES) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  const pathEntries = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  for (const entry of pathEntries) {
+    const candidate = path.join(entry, "bash.exe");
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+};
+
+const resolveShellLaunch = (
+  command: string,
+):
+  | { shell: string; args: string[] }
+  | { error: string } => {
+  if (process.platform !== "win32") {
+    return { shell: "bash", args: ["-lc", command] };
+  }
+
+  const bashPath = resolveWindowsBash();
+  if (!bashPath) {
+    return {
+      error:
+        "Git Bash was not found on this Windows machine. Install Git for Windows or add bash.exe to PATH.",
+    };
+  }
+
+  return { shell: bashPath, args: ["-lc", command] };
+};
 
 export const normalizeAppAgentShellCommand = (command: string) =>
   command
@@ -195,11 +284,25 @@ export const startShell = (
 ) => {
   const id = crypto.randomUUID();
   const protectedCommand = buildProtectedCommand(command, state);
-  // Use Git Bash on Windows for better AI agent compatibility (bash commands work consistently)
-  const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
-  const args = ["-lc", protectedCommand];
+  const launch = resolveShellLaunch(protectedCommand);
 
-  const child = spawn(shell, args, {
+  if ("error" in launch) {
+    const record: ShellRecord = {
+      id,
+      command,
+      cwd,
+      output: launch.error,
+      running: false,
+      exitCode: 127,
+      startedAt: Date.now(),
+      completedAt: Date.now(),
+      kill: () => {},
+    };
+    state.shells.set(id, record);
+    return record;
+  }
+
+  const child = spawn(launch.shell, launch.args, {
     cwd,
     env: buildShellEnv(envOverrides, state),
     stdio: ["ignore", "pipe", "pipe"],
@@ -247,12 +350,14 @@ export const runShell = async (
   envOverrides?: Record<string, string>,
 ) => {
   const protectedCommand = buildProtectedCommand(command, state);
-  // Use Git Bash on Windows for better AI agent compatibility (bash commands work consistently)
-  const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
-  const args = ["-lc", protectedCommand];
+  const launch = resolveShellLaunch(protectedCommand);
+
+  if ("error" in launch) {
+    return launch.error;
+  }
 
   return new Promise<string>((resolve) => {
-    const child = spawn(shell, args, {
+    const child = spawn(launch.shell, launch.args, {
       cwd,
       env: buildShellEnv(envOverrides, state),
       stdio: ["ignore", "pipe", "pipe"],
