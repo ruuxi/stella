@@ -14,7 +14,10 @@
     },
     "ios": {
       "bundleIdentifier": "com.stella.mobile",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.stella.mobile",
@@ -33,6 +36,12 @@
       "expo-secure-store",
       "expo-router",
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "790ac0ce-d2e0-4989-ad4a-141d85826756"
+      }
+    }
   }
 }

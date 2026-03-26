@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { Slot, usePathname, useRouter } from "expo-router";
 import {
@@ -8,13 +8,20 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import Feather from "@expo/vector-icons/Feather";
 import {
-  Animated,
   Pressable,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
 
@@ -89,31 +96,86 @@ export default function MainLayout() {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const sidebarAnim = useRef(new Animated.Value(0)).current;
+
+  // Reanimated shared value: 0 = closed, 1 = fully open
+  const drawerProgress = useSharedValue(0);
 
   const activeTab = readActiveTab(pathname);
 
+  const openSidebar = () => {
+    setSidebarOpen(true);
+    drawerProgress.value = withTiming(1, { duration: 280 });
+  };
+
+  const closeSidebar = () => {
+    setSidebarOpen(false);
+    drawerProgress.value = withTiming(0, { duration: 240 });
+  };
+
   const navigate = (tab: TabId) => {
     router.replace(TABS.find((t) => t.id === tab)!.href);
-    setSidebarOpen(false);
+    closeSidebar();
   };
 
   useEffect(() => {
-    Animated.timing(sidebarAnim, {
-      toValue: sidebarOpen || wide ? 1 : 0,
-      duration: 240,
-      useNativeDriver: true,
-    }).start();
-  }, [sidebarAnim, sidebarOpen, wide]);
-
-  useEffect(() => {
-    if (wide) setSidebarOpen(false);
+    if (wide) closeSidebar();
   }, [wide]);
 
-  const translateX = sidebarAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-SIDEBAR_WIDTH, 0],
-  });
+  // -- Gesture: swipe right from left edge to open --
+  const openPan = Gesture.Pan()
+    .activeOffsetX(15)
+    .failOffsetY([-20, 20])
+    .onUpdate((e) => {
+      drawerProgress.value = Math.min(1, Math.max(0, e.translationX / SIDEBAR_WIDTH));
+    })
+    .onEnd((e) => {
+      if (e.velocityX > 500 || drawerProgress.value > 0.4) {
+        drawerProgress.value = withTiming(1, { duration: 200 });
+        runOnJS(setSidebarOpen)(true);
+      } else {
+        drawerProgress.value = withTiming(0, { duration: 200 });
+      }
+    });
+
+  // -- Gesture: swipe left to close --
+  const makeCloseGesture = () =>
+    Gesture.Pan()
+      .activeOffsetX(-15)
+      .failOffsetY([-20, 20])
+      .onUpdate((e) => {
+        drawerProgress.value = Math.min(
+          1,
+          Math.max(0, 1 + e.translationX / SIDEBAR_WIDTH),
+        );
+      })
+      .onEnd((e) => {
+        if (e.velocityX < -500 || drawerProgress.value < 0.6) {
+          drawerProgress.value = withTiming(0, { duration: 200 });
+          runOnJS(setSidebarOpen)(false);
+        } else {
+          drawerProgress.value = withTiming(1, { duration: 200 });
+        }
+      });
+
+  const closePanBackdrop = makeCloseGesture();
+  const closePanDrawer = makeCloseGesture();
+
+  // -- Animated styles --
+  const drawerStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: interpolate(
+          drawerProgress.value,
+          [0, 1],
+          [-SIDEBAR_WIDTH, 0],
+        ),
+      },
+    ],
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: drawerProgress.value,
+  }));
 
   return (
     <SafeAreaView style={styles.shell}>
@@ -141,7 +203,7 @@ export default function MainLayout() {
         <View style={styles.narrowLayout}>
           <View style={styles.topBar}>
             <Pressable
-              onPress={() => setSidebarOpen(true)}
+              onPress={openSidebar}
               hitSlop={8}
               style={styles.hamburger}
             >
@@ -153,19 +215,48 @@ export default function MainLayout() {
             <Slot />
           </View>
 
-          {sidebarOpen && (
-            <Pressable
-              onPress={() => setSidebarOpen(false)}
-              style={[styles.backdrop, { top: -insets.top, bottom: -insets.bottom }]}
-            />
-          )}
+          {/* Backdrop — always rendered, animated opacity */}
+          <GestureDetector gesture={closePanBackdrop}>
+            <Animated.View
+              pointerEvents={sidebarOpen ? "auto" : "none"}
+              style={[
+                styles.backdrop,
+                { top: -insets.top, bottom: -insets.bottom },
+                backdropStyle,
+              ]}
+            >
+              <Pressable
+                onPress={closeSidebar}
+                style={StyleSheet.absoluteFill}
+              />
+            </Animated.View>
+          </GestureDetector>
 
-          <Animated.View
-            pointerEvents={sidebarOpen ? "auto" : "none"}
-            style={[styles.drawerShell, { top: -insets.top, bottom: -insets.bottom, transform: [{ translateX }] }]}
-          >
-            <Sidebar activeTab={activeTab} onSelectTab={navigate} />
-          </Animated.View>
+          {/* Drawer */}
+          <GestureDetector gesture={closePanDrawer}>
+            <Animated.View
+              pointerEvents={sidebarOpen ? "auto" : "none"}
+              style={[
+                styles.drawerShell,
+                { top: -insets.top, bottom: -insets.bottom },
+                drawerStyle,
+              ]}
+            >
+              <Sidebar activeTab={activeTab} onSelectTab={navigate} />
+            </Animated.View>
+          </GestureDetector>
+
+          {/* Invisible left-edge zone for swipe-to-open */}
+          {!sidebarOpen && (
+            <GestureDetector gesture={openPan}>
+              <Animated.View
+                style={[
+                  styles.edgeZone,
+                  { top: -insets.top, bottom: -insets.bottom },
+                ]}
+              />
+            </GestureDetector>
+          )}
         </View>
       )}
     </SafeAreaView>
@@ -262,6 +353,16 @@ const styles = StyleSheet.create({
     top: 0,
     width: SIDEBAR_WIDTH,
     zIndex: 5,
+  },
+
+  // Invisible left-edge swipe zone
+  edgeZone: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    top: 0,
+    width: 25,
+    zIndex: 3,
   },
 
   // Shared content area
