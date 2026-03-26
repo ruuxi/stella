@@ -4,7 +4,7 @@ const WS_URL = "ws://127.0.0.1:17710";
 const RECONNECT_INTERVAL_MS = 2000;
 
 export type DevEvent = {
-  type: "agent-event" | "ipc-call" | "app-lifecycle" | "log";
+  type: "agent-event" | "ipc-call";
   ts: number;
   payload: unknown;
 };
@@ -98,5 +98,11 @@ export function useDevToolSocket() {
     setEvents([]);
   }, []);
 
-  return { status, events, stellaHomePath, sendCommand, clearEvents };
+  return {
+    status,
+    events,
+    stellaHomePath,
+    sendCommand,
+    clearEvents,
+  };
 }

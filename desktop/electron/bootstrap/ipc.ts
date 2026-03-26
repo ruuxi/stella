@@ -4,6 +4,7 @@ import { registerCaptureHandlers } from "../ipc/capture-handlers.js";
 import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
 import { registerMiniBridgeHandlers } from "../ipc/mini-bridge-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
+import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
 import { registerOverlayStreamHandlers } from "../ipc/overlay-stream-handlers.js";
 import { registerProjectHandlers } from "../ipc/project-handlers.js";
 import { registerScheduleHandlers } from "../ipc/schedule-handlers.js";
@@ -85,6 +86,13 @@ export const registerBootstrapIpcHandlers = (
     getStellaHomePath: lifecycle.getStellaHomePath,
     getFrontendRoot: () => config.frontendRoot,
     getStellaHostRunner: lifecycle.getRunner,
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
+  });
+
+  registerOnboardingHandlers({
+    authService: services.authService,
+    getDeviceId: () => state.deviceId,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

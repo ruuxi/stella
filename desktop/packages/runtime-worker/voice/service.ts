@@ -152,6 +152,14 @@ export class VoiceRuntimeService {
     }
   }
 
+  isBusy() {
+    return this.voiceRequestActive;
+  }
+
+  getPendingRequestCount() {
+    return this.pendingVoiceRequest ? 1 : 0;
+  }
+
   private ensureRunner() {
     const runner = this.options.getRunner();
     if (!runner) {

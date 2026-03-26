@@ -316,7 +316,9 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         return { data: null, formatted: null, error: "Runtime not available" };
       }
       try {
-        return await runner.collectAllSignals(ipcOptions) as AllUserSignalsResult;
+        const result =
+          await runner.collectAllSignals(ipcOptions) as AllUserSignalsResult;
+        return result;
       } catch (error) {
         return {
           data: null,

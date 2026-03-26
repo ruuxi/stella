@@ -204,6 +204,10 @@ export const METHOD_NAMES = {
     "internal.worker.localChat.getSyncCheckpoint",
   INTERNAL_WORKER_LOCAL_CHAT_SET_SYNC_CHECKPOINT:
     "internal.worker.localChat.setSyncCheckpoint",
+  INTERNAL_WORKER_DISCOVERY_COLLECT_BROWSER_DATA:
+    "internal.worker.discovery.collectBrowserData",
+  INTERNAL_WORKER_DISCOVERY_COLLECT_ALL_SIGNALS:
+    "internal.worker.discovery.collectAllSignals",
   INTERNAL_WORKER_STORE_MODS_LIST_FEATURES: "internal.worker.storeMods.listLocalFeatures",
   INTERNAL_WORKER_STORE_MODS_LIST_BATCHES: "internal.worker.storeMods.listFeatureBatches",
   INTERNAL_WORKER_STORE_MODS_CREATE_RELEASE_DRAFT:
@@ -290,7 +294,7 @@ export type RuntimeInitializeParams = {
 
 export type RuntimeInitializeResult = {
   protocolVersion: string;
-  daemonPid: number;
+  hostPid: number;
 };
 
 export type RuntimeConfigureParams = {
@@ -302,8 +306,9 @@ export type RuntimeConfigureParams = {
 
 export type RuntimeHealthSnapshot = {
   ready: boolean;
-  daemonPid: number;
+  hostPid: number;
   workerPid: number | null;
+  workerRunning?: boolean;
   workerGeneration: number;
   deviceId: string | null;
   activeRunId: string | null;

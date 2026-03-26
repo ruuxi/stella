@@ -8,6 +8,12 @@ import type {
   MiniBridgeUpdate,
   SelfModHmrState,
 } from "../src/shared/contracts/boundary.js";
+import type {
+  OnboardingHomeCanvasRequest,
+  OnboardingHomeCanvasResponse,
+  OnboardingSynthesisRequest,
+  OnboardingSynthesisResponse,
+} from "../src/shared/contracts/onboarding.js";
 
 // ---------------------------------------------------------------------------
 // IPC listener helpers — eliminate boilerplate for the 3 common patterns.
@@ -562,6 +568,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getIdentityMap: () => ipcRenderer.invoke("identity:getMap"),
     depseudonymize: (text: string) =>
       ipcRenderer.invoke("identity:depseudonymize", text),
+  },
+
+  onboarding: {
+    synthesizeCoreMemory: (payload: OnboardingSynthesisRequest) =>
+      ipcRenderer.invoke(
+        "onboarding:synthesizeCoreMemory",
+        payload,
+      ) as Promise<OnboardingSynthesisResponse>,
+    generateHomeCanvas: (payload: OnboardingHomeCanvasRequest) =>
+      ipcRenderer.invoke(
+        "onboarding:generateHomeCanvas",
+        payload,
+      ) as Promise<OnboardingHomeCanvasResponse>,
   },
 
   browser: {

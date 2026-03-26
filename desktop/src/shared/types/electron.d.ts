@@ -53,6 +53,12 @@ import type {
   SocialSessionServiceSnapshot as SharedSocialSessionServiceSnapshot,
 } from "../contracts/boundary";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import type {
+  OnboardingHomeCanvasRequest,
+  OnboardingHomeCanvasResponse,
+  OnboardingSynthesisRequest,
+  OnboardingSynthesisResponse,
+} from "../contracts/onboarding";
 
 export type RadialWedge = SharedRadialWedge;
 export type ChatContext = SharedChatContext;
@@ -431,6 +437,15 @@ export type ElectronSystemApi = {
   depseudonymize: (text: string) => Promise<string>;
 };
 
+export type ElectronOnboardingApi = {
+  synthesizeCoreMemory: (
+    payload: OnboardingSynthesisRequest,
+  ) => Promise<OnboardingSynthesisResponse>;
+  generateHomeCanvas: (
+    payload: OnboardingHomeCanvasRequest,
+  ) => Promise<OnboardingHomeCanvasResponse>;
+};
+
 export type ElectronBrowserApi = {
   onBridgeStatus: (callback: (status: {
     state: "connecting" | "connected" | "reconnecting";
@@ -596,6 +611,7 @@ export type ElectronApi = {
   voice: ElectronVoiceApi;
   agent: ElectronAgentApi;
   system: ElectronSystemApi;
+  onboarding: ElectronOnboardingApi;
   browser: ElectronBrowserApi;
   media: {
     saveOutput: (url: string, fileName: string) => Promise<{ ok: boolean; path?: string; error?: string }>;

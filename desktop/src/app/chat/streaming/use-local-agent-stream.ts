@@ -438,7 +438,7 @@ export function useLocalAgentStream({
             }
           }
 
-          if (!nextHealth?.ready) {
+          if (!nextHealth?.ready && isTokenSyncIssue(reason)) {
             console.error(
               "[chat] Local agent health check failed:",
               nextHealth,

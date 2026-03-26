@@ -1,16 +1,12 @@
 /**
  * Home Canvas Generation Service
  *
- * Calls the backend with the HomeCanvas.tsx template + core memory,
- * receives a rewritten file, and writes it to disk via IPC.
+ * Delegates backend generation through Electron host IPC so onboarding keeps a
+ * single host-coordinated boundary for remote generation work.
  */
 
-import { createServiceRequest } from "@/infra/http/service-request";
 import { getHomeCanvasPromptConfig } from "@/prompts";
-
-type HomeCanvasResponse = {
-  content: string;
-};
+import type { OnboardingHomeCanvasResponse } from "@/shared/contracts/onboarding";
 
 /** Strip markdown code fences if the model wraps its output. */
 function stripFences(raw: string): string {
@@ -28,30 +24,19 @@ export async function fetchHomeCanvas(
   coreMemory: string,
   templateFile: string,
 ): Promise<string> {
-  const { endpoint, headers } = await createServiceRequest(
-    "/api/home-canvas",
-    { "Content-Type": "application/json" },
-    { includeAuth: true },
-  );
-
-  const promptConfig = getHomeCanvasPromptConfig();
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      ...promptConfig,
-      coreMemory,
-      templateFile,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Home canvas generation failed: ${response.status} - ${errorText}`);
+  const onboardingApi = window.electronAPI?.onboarding;
+  if (!onboardingApi?.generateHomeCanvas) {
+    throw new Error(
+      "Onboarding home canvas IPC is unavailable in this renderer context.",
+    );
   }
 
-  const { content } = (await response.json()) as HomeCanvasResponse;
+  const { content } = (await onboardingApi.generateHomeCanvas({
+    coreMemory,
+    templateFile,
+    promptConfig: getHomeCanvasPromptConfig() as Record<string, unknown>,
+  })) as OnboardingHomeCanvasResponse;
+
   return stripFences(content);
 }
 
