@@ -147,6 +147,11 @@ export const createStellaHostRunner = (
     setCloudSyncEnabled: convexSession.setCloudSyncEnabled,
     start: runtimeInitialization.start,
     stop: runtimeInitialization.stop,
+    waitUntilInitialized: async () => {
+      if (context.state.initializationPromise) {
+        await context.state.initializationPromise;
+      }
+    },
     subscribeQuery: convexSession.subscribeQuery,
     getConvexUrl: convexSession.getConvexUrl,
     getProxy: convexSession.getProxy,

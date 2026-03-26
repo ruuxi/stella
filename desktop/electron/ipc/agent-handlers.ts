@@ -223,20 +223,18 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       }
       await stellaHostRunner.waitUntilConnected(5_000);
 
-      // The worker may be asleep. Only block here for auth propagation errors;
-      // execution itself will wake the worker on demand.
+      // The worker is lazily spawned — startChat will wake it on demand
+      // via ensureWorker. Only block here to let a freshly-set auth token
+      // propagate; skip if the worker is simply asleep (no reason string).
       const deadline = Date.now() + 5_000;
       let health = await stellaHostRunner.agentHealthCheck();
       while (
         health?.ready === false &&
-        health.reason === "Missing auth token" &&
+        health.reason &&
         Date.now() < deadline
       ) {
         await new Promise((r) => setTimeout(r, 200));
         health = await stellaHostRunner.agentHealthCheck();
-      }
-      if (health?.ready === false && health.reason === "Missing auth token") {
-        throw new Error("Awaiting auth token");
       }
       if (health?.ready === false && health.reason) {
         throw new Error(health.reason);
