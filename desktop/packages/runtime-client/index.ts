@@ -10,6 +10,12 @@ import type {
   LocalCronJobUpdatePatch,
   LocalHeartbeatUpsertInput,
 } from "../runtime-kernel/shared/scheduling.js";
+import { createDesktopDatabase } from "../runtime-kernel/storage/database-node.js";
+import { ChatStore } from "../runtime-kernel/storage/chat-store.js";
+import { StoreModStore } from "../runtime-kernel/storage/store-mod-store.js";
+import { TranscriptMirror } from "../runtime-kernel/storage/transcript-mirror.js";
+import { prepareStoredLocalChatPayload } from "../runtime-kernel/storage/local-chat-payload.js";
+import type { SqliteDatabase } from "../runtime-kernel/storage/shared.js";
 import {
   METHOD_NAMES,
   NOTIFICATION_NAMES,
@@ -239,6 +245,9 @@ export class StellaRuntimeClient {
   private workerStopPromise: Promise<void> | null = null;
   private workerStoppingPid: number | null = null;
   private workerHealthCache: WorkerHealthSnapshot | null = null;
+  private hostDb: SqliteDatabase | null = null;
+  private hostChatStore: ChatStore | null = null;
+  private hostStoreModStore: StoreModStore | null = null;
   private schedulerService: LocalSchedulerService | null = null;
   private schedulerSubscription: (() => void) | null = null;
   private projectService: DevProjectService | null = null;
@@ -524,36 +533,18 @@ export class StellaRuntimeClient {
   }
 
   async getOrCreateDefaultConversationId() {
-    return await this.requestWorker<string>(
-      METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_OR_CREATE_DEFAULT,
-      undefined,
-      {
-        ensureWorker: true,
-        recordActivity: false,
-      },
-    );
+    return this.ensureHostChatStore().getOrCreateDefaultConversationId();
   }
 
   async listLocalChatEvents(payload: { conversationId: string; maxItems?: number }) {
-    return await this.requestWorker<Array<Record<string, unknown>>>(
-      METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_LIST_EVENTS,
-      payload,
-      {
-        ensureWorker: true,
-        recordActivity: false,
-      },
+    return this.ensureHostChatStore().listEvents(
+      payload.conversationId,
+      payload.maxItems,
     );
   }
 
   async getLocalChatEventCount(payload: { conversationId: string }) {
-    return await this.requestWorker<number>(
-      METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_EVENT_COUNT,
-      payload,
-      {
-        ensureWorker: true,
-        recordActivity: false,
-      },
-    );
+    return this.ensureHostChatStore().getEventCount(payload.conversationId);
   }
 
   async persistDiscoveryWelcome(payload: {
@@ -561,70 +552,68 @@ export class StellaRuntimeClient {
     message: string;
     suggestions?: unknown[];
   }) {
-    return await this.requestWorker<{ ok: true }>(
-      METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_PERSIST_DISCOVERY_WELCOME,
-      payload,
-      {
-        ensureWorker: true,
-        recordActivity: false,
-      },
-    );
+    const store = this.ensureHostChatStore();
+    const message = typeof payload.message === "string" ? payload.message : "";
+    if (message.trim().length > 0) {
+      store.appendEvent({
+        conversationId: payload.conversationId,
+        type: "assistant_message",
+        payload: prepareStoredLocalChatPayload({
+          type: "assistant_message",
+          payload: { text: message },
+          timestamp: Date.now(),
+        }),
+      });
+    }
+    const suggestions = Array.isArray(payload.suggestions)
+      ? payload.suggestions
+      : [];
+    if (suggestions.length > 0) {
+      store.appendEvent({
+        conversationId: payload.conversationId,
+        type: "welcome_suggestions",
+        payload: { suggestions },
+      });
+    }
+    this.events.emit("local-chat-updated", undefined);
+    return { ok: true as const };
   }
 
   async listLocalChatSyncMessages(payload: {
     conversationId: string;
     maxMessages?: number;
   }) {
-    return await this.requestWorker<Array<Record<string, unknown>>>(
-      METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_LIST_SYNC_MESSAGES,
-      payload,
-      {
-        ensureWorker: true,
-        recordActivity: false,
-      },
+    return this.ensureHostChatStore().listSyncMessages(
+      payload.conversationId,
+      payload.maxMessages,
     );
   }
 
   async getLocalChatSyncCheckpoint(payload: { conversationId: string }) {
-    return await this.requestWorker<string | null>(
-      METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_SYNC_CHECKPOINT,
-      payload,
-      {
-        ensureWorker: true,
-        recordActivity: false,
-      },
-    );
+    return this.ensureHostChatStore().getSyncCheckpoint(payload.conversationId);
   }
 
   async setLocalChatSyncCheckpoint(payload: {
     conversationId: string;
     localMessageId: string;
   }) {
-    return await this.requestWorker<{ ok: true }>(
-      METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_SET_SYNC_CHECKPOINT,
-      payload,
-      {
-        ensureWorker: true,
-        recordActivity: false,
-        retryOnceOnDisconnect: true,
-      },
+    this.ensureHostChatStore().setSyncCheckpoint(
+      payload.conversationId,
+      payload.localMessageId,
     );
+    return { ok: true as const };
   }
 
   async listLocalFeatures(limit?: number) {
-    return await this.requestWorker<SelfModFeatureRecord[]>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_FEATURES,
-      { limit },
-      { ensureWorker: true, recordActivity: true },
-    );
+    const features = this.ensureHostStoreModStore().listFeatures();
+    if (typeof limit !== "number" || !Number.isFinite(limit)) {
+      return features;
+    }
+    return features.slice(0, Math.max(0, Math.floor(limit)));
   }
 
   async listFeatureBatches(featureId: string) {
-    return await this.requestWorker<SelfModBatchRecord[]>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_BATCHES,
-      { featureId },
-      { ensureWorker: true, recordActivity: true },
-    );
+    return this.ensureHostStoreModStore().listBatches(featureId);
   }
 
   async createReleaseDraft(payload: { featureId: string; batchIds?: string[] }) {
@@ -636,11 +625,7 @@ export class StellaRuntimeClient {
   }
 
   async listInstalledMods() {
-    return await this.requestWorker<InstalledStoreModRecord[]>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED,
-      undefined,
-      { ensureWorker: true, recordActivity: true },
-    );
+    return this.ensureHostStoreModStore().listInstalledMods();
   }
 
   async listStorePackages() {
@@ -937,9 +922,30 @@ export class StellaRuntimeClient {
     return this.projectService;
   }
 
+  private ensureHostChatStore() {
+    if (!this.hostChatStore) {
+      throw createRuntimeUnavailableError("Host chat store is not available.");
+    }
+    return this.hostChatStore;
+  }
+
+  private ensureHostStoreModStore() {
+    if (!this.hostStoreModStore) {
+      throw createRuntimeUnavailableError("Host store mod store is not available.");
+    }
+    return this.hostStoreModStore;
+  }
+
   private async initializeHostServices() {
     await this.stopHostServices();
     this.deviceIdentity = await this.options.hostHandlers.getDeviceIdentity();
+
+    const stellaHome = this.options.initializeParams.stellaHomePath;
+    const db = createDesktopDatabase(stellaHome);
+    this.hostDb = db;
+    const mirror = new TranscriptMirror(path.join(stellaHome, "state"));
+    this.hostChatStore = new ChatStore(db, mirror);
+    this.hostStoreModStore = new StoreModStore(db);
 
     const scheduler = new LocalSchedulerService({
       stellaHome: this.options.initializeParams.stellaHomePath,
@@ -984,6 +990,10 @@ export class StellaRuntimeClient {
     this.schedulerSubscription = null;
     this.schedulerService?.stop();
     this.schedulerService = null;
+    this.hostChatStore = null;
+    this.hostStoreModStore = null;
+    this.hostDb?.close();
+    this.hostDb = null;
   }
 
   private async emitProjectsUpdated() {
