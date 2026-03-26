@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   FlatList,
-  KeyboardAvoidingView,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -14,6 +13,11 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { GlassView } from "expo-glass-effect";
+import Reanimated, {
+  useAnimatedKeyboard,
+  useAnimatedStyle,
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Feather from "@expo/vector-icons/Feather";
 import { assert, assertObject, errorMessage } from "../../src/lib/assert";
 import { postJson } from "../../src/lib/http";
@@ -115,6 +119,13 @@ export default function ChatScreen() {
   const [atTop, setAtTop] = useState(true);
   const [atBottom, setAtBottom] = useState(true);
 
+  // Native-driven keyboard tracking (replaces KeyboardAvoidingView)
+  const insets = useSafeAreaInsets();
+  const keyboard = useAnimatedKeyboard();
+  const keyboardStyle = useAnimatedStyle(() => ({
+    paddingBottom: Math.max(0, keyboard.height.value - insets.bottom),
+  }));
+
   // Composer expansion state — mirrors desktop Composer.tsx threshold logic
   const [expanded, setExpanded] = useState(false);
   const hasMountedRef = useRef(false);
@@ -215,11 +226,7 @@ export default function ChatScreen() {
   // =====================================================================
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
-      style={styles.screen}
-    >
+    <Reanimated.View style={[styles.screen, keyboardStyle]}>
       {/* ---------- Conversation ---------- */}
       <View style={styles.viewport}>
         {empty ? (
@@ -365,7 +372,7 @@ export default function ChatScreen() {
           )}
         </GlassView>
       </View>
-    </KeyboardAvoidingView>
+    </Reanimated.View>
   );
 }
 
