@@ -594,8 +594,9 @@ export const registerMobileRoutes = (http: HttpRouter) => {
     ),
   });
 
-  // Browser landing page after magic link verification.
+  // Browser landing after magic link verification.
   // The cross-domain plugin appends ?ott=... to this URL after verifying the token.
+  // Stores the OTT, then redirects to stella.sh for a branded landing page.
   http.route({
     path: "/api/auth/link/verify",
     method: "GET",
@@ -611,34 +612,13 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         });
       }
 
-      return new Response(
-        `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stella</title>
-  <style>
-    body { margin:0; min-height:100dvh; display:flex; align-items:center; justify-content:center;
-           font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-           background:#f2f4f8; color:#161616; }
-    .card { text-align:center; padding:40px 32px; max-width:360px; }
-    h1 { font-size:22px; font-weight:500; margin:0 0 8px; }
-    p  { font-size:15px; color:rgba(22,22,22,0.55); margin:0; line-height:1.5; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>You're signed in</h1>
-    <p>You can close this tab and return to Stella on your phone.</p>
-  </div>
-</body>
-</html>`,
-        {
-          status: 200,
-          headers: { "Content-Type": "text/html; charset=utf-8" },
-        },
-      );
+      const websiteUrl = process.env.STELLA_WEBSITE_URL?.trim() || "https://stella.sh";
+      const redirect = `${websiteUrl.replace(/\/+$/, "")}/auth/callback?done=true`;
+
+      return new Response(null, {
+        status: 302,
+        headers: { Location: redirect },
+      });
     }),
   });
 };
