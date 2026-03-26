@@ -221,17 +221,25 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       if (!stellaHostRunner) {
         throw new Error("Stella runtime not available");
       }
+      await stellaHostRunner.waitUntilConnected(5_000);
 
-      // The renderer may call startChat right after syncing the auth token via
-      // setAuthState IPC. Poll briefly so the token has time to propagate.
+      // The worker may be asleep. Only block here for auth propagation errors;
+      // execution itself will wake the worker on demand.
       const deadline = Date.now() + 5_000;
       let health = await stellaHostRunner.agentHealthCheck();
-      while (!health?.ready && Date.now() < deadline) {
+      while (
+        health?.ready === false &&
+        health.reason === "Missing auth token" &&
+        Date.now() < deadline
+      ) {
         await new Promise((r) => setTimeout(r, 200));
         health = await stellaHostRunner.agentHealthCheck();
       }
-      if (!health?.ready) {
-        throw new Error(health?.reason ?? "Agent runtime not ready");
+      if (health?.ready === false && health.reason === "Missing auth token") {
+        throw new Error("Awaiting auth token");
+      }
+      if (health?.ready === false && health.reason) {
+        throw new Error(health.reason);
       }
 
       console.log(

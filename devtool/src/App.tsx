@@ -5,25 +5,21 @@ type AgentEventPayload = {
   type: string;
   runId?: string;
   toolName?: string;
-  toolCallId?: string;
   args?: Record<string, unknown>;
   resultPreview?: string;
   error?: string;
-  fatal?: boolean;
   chunk?: string;
-  taskId?: string;
   agentType?: string;
   description?: string;
   statusText?: string;
 };
 
-type EventFilter = "all" | "agent-event" | "app-lifecycle" | "log";
+type EventFilter = "all" | "agent-event" | "ipc-call";
 
 const EVENT_FILTERS: { value: EventFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "agent-event", label: "Agent" },
-  { value: "app-lifecycle", label: "Lifecycle" },
-  { value: "log", label: "Log" },
+  { value: "ipc-call", label: "IPC" },
 ];
 
 function formatTime(ts: number) {
@@ -39,35 +35,32 @@ function formatTime(ts: number) {
 
 function getEventLabel(event: DevEvent): string {
   if (event.type === "agent-event") {
-    const p = event.payload as AgentEventPayload;
-    if (p.toolName) return `${p.type} — ${p.toolName}`;
-    if (p.agentType) return `${p.type} — ${p.agentType}`;
-    return p.type;
-  }
-  if (event.type === "app-lifecycle") {
-    return (event.payload as { action: string }).action;
+    const payload = event.payload as AgentEventPayload;
+    if (payload.toolName) return `${payload.type} - ${payload.toolName}`;
+    if (payload.agentType) return `${payload.type} - ${payload.agentType}`;
+    return payload.type;
   }
   return event.type;
 }
 
 function getEventDetail(event: DevEvent): string {
   if (event.type === "agent-event") {
-    const p = event.payload as AgentEventPayload;
-    if (p.type === "STREAM" && p.chunk) return p.chunk;
-    if (p.args) return JSON.stringify(p.args).slice(0, 200);
-    if (p.resultPreview) return p.resultPreview.slice(0, 200);
-    if (p.error) return p.error;
-    if (p.description) return p.description;
-    if (p.statusText) return p.statusText;
-    return p.runId ?? "";
+    const payload = event.payload as AgentEventPayload;
+    if (payload.type === "STREAM" && payload.chunk) return payload.chunk;
+    if (payload.args) return JSON.stringify(payload.args).slice(0, 200);
+    if (payload.resultPreview) return payload.resultPreview.slice(0, 200);
+    if (payload.error) return payload.error;
+    if (payload.description) return payload.description;
+    if (payload.statusText) return payload.statusText;
+    return payload.runId ?? "";
   }
   return JSON.stringify(event.payload);
 }
 
 function getEventColor(event: DevEvent): string {
   if (event.type === "agent-event") {
-    const p = event.payload as AgentEventPayload;
-    switch (p.type) {
+    const payload = event.payload as AgentEventPayload;
+    switch (payload.type) {
       case "TOOL_START":
         return "#f0b429";
       case "TOOL_END":
@@ -79,23 +72,23 @@ function getEventColor(event: DevEvent): string {
       case "END":
         return "#4299e1";
       default:
-        if (p.type?.startsWith("TASK_")) return "#9f7aea";
+        if (payload.type?.startsWith("TASK_")) return "#9f7aea";
         return "#a0aec0";
     }
   }
-  if (event.type === "app-lifecycle") return "#ed8936";
-  return "#a0aec0";
+  return "#ed8936";
 }
 
 function formatEventBlock(event: DevEvent): string {
-  const label = getEventLabel(event);
-  const time = formatTime(event.ts);
-  const body = JSON.stringify(event.payload, null, 2);
-  return `[${time}] ${label}\n${body}`;
+  return `[${formatTime(event.ts)}] ${getEventLabel(event)}\n${JSON.stringify(
+    event.payload,
+    null,
+    2,
+  )}`;
 }
 
 function FlatEventLog({ events }: { events: DevEvent[] }) {
-  const text = events.map((e) => formatEventBlock(e)).join("\n\n---\n\n");
+  const text = events.map((event) => formatEventBlock(event)).join("\n\n---\n\n");
   return (
     <pre
       style={{
@@ -124,10 +117,6 @@ function EventRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const label = getEventLabel(event);
-  const detail = getEventDetail(event);
-  const color = getEventColor(event);
-
   return (
     <div
       style={{
@@ -145,14 +134,14 @@ function EventRow({
         </span>
         <span
           style={{
-            color,
+            color: getEventColor(event),
             fontWeight: 600,
             flexShrink: 0,
           }}
         >
-          {label}
+          {getEventLabel(event)}
         </span>
-        {!expanded && (
+        {!expanded ? (
           <span
             style={{
               color: "#a0aec0",
@@ -161,11 +150,11 @@ function EventRow({
               whiteSpace: "nowrap",
             }}
           >
-            {detail}
+            {getEventDetail(event)}
           </span>
-        )}
+        ) : null}
       </div>
-      {expanded && (
+      {expanded ? (
         <pre
           style={{
             marginTop: 6,
@@ -180,8 +169,69 @@ function EventRow({
         >
           {JSON.stringify(event.payload, null, 2)}
         </pre>
-      )}
+      ) : null}
     </div>
+  );
+}
+
+function ToggleButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: "4px 10px",
+        fontSize: 12,
+        border: "1px solid",
+        borderColor: active ? "#4299e1" : "#4a5568",
+        borderRadius: 4,
+        background: active ? "#2b6cb0" : "transparent",
+        color: active ? "#fff" : "#a0aec0",
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ActionButton({
+  label,
+  onClick,
+  confirm,
+  danger,
+}: {
+  label: string;
+  onClick: () => void;
+  confirm?: string;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={() => {
+        if (confirm && !window.confirm(confirm)) return;
+        onClick();
+      }}
+      style={{
+        padding: "4px 10px",
+        fontSize: 12,
+        border: "1px solid",
+        borderColor: danger ? "#e53e3e" : "#4a5568",
+        borderRadius: 4,
+        background: "transparent",
+        color: danger ? "#fc8181" : "#a0aec0",
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -195,9 +245,8 @@ export function App() {
   const listRef = useRef<HTMLDivElement>(null);
 
   const filtered =
-    filter === "all" ? events : events.filter((e) => e.type === filter);
+    filter === "all" ? events : events.filter((event) => event.type === filter);
 
-  // Auto-scroll to bottom
   useEffect(() => {
     if (autoScroll && listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
@@ -228,7 +277,6 @@ export function App() {
         fontFamily: "system-ui, -apple-system, sans-serif",
       }}
     >
-      {/* Header */}
       <div
         style={{
           padding: "10px 16px",
@@ -237,6 +285,7 @@ export function App() {
           alignItems: "center",
           gap: 16,
           flexShrink: 0,
+          flexWrap: "wrap",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -251,20 +300,26 @@ export function App() {
           <span style={{ fontWeight: 700, fontSize: 14 }}>Stella DevTool</span>
         </div>
 
-        {stellaHomePath && (
-          <span style={{ color: "#718096", fontSize: 12 }}>
-            {stellaHomePath}
-          </span>
-        )}
+        {stellaHomePath ? (
+          <span style={{ color: "#718096", fontSize: 12 }}>{stellaHomePath}</span>
+        ) : null}
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+        <div
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
           <button
             type="button"
             onClick={() => {
-              setExpandMode((v) => !v);
+              setExpandMode((value) => !value);
               setExpandedIdx(null);
             }}
-            title="Show all events as plain text (full payloads, no clicking)"
+            title="Show all events as plain text"
             style={{
               padding: "4px 10px",
               fontSize: 12,
@@ -278,28 +333,17 @@ export function App() {
           >
             Expand
           </button>
-          {EVENT_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setFilter(f.value)}
-              style={{
-                padding: "4px 10px",
-                fontSize: 12,
-                border: "1px solid",
-                borderColor: filter === f.value ? "#4299e1" : "#4a5568",
-                borderRadius: 4,
-                background: filter === f.value ? "#2b6cb0" : "transparent",
-                color: filter === f.value ? "#fff" : "#a0aec0",
-                cursor: "pointer",
-              }}
-            >
-              {f.label}
-            </button>
+          {EVENT_FILTERS.map((entry) => (
+            <ToggleButton
+              key={entry.value}
+              active={filter === entry.value}
+              label={entry.label}
+              onClick={() => setFilter(entry.value)}
+            />
           ))}
         </div>
       </div>
 
-      {/* Event list */}
       <div
         ref={listRef}
         onScroll={handleScroll}
@@ -318,24 +362,25 @@ export function App() {
             }}
           >
             {status === "connected"
-              ? "No events yet. Interact with Stella to see agent events here."
+              ? "No events yet. Interact with Stella to see logs here."
               : "Waiting for connection to Stella..."}
           </div>
         ) : expandMode ? (
           <FlatEventLog events={filtered} />
         ) : (
-          filtered.map((event, i) => (
+          filtered.map((event, index) => (
             <EventRow
-              key={`${event.ts}-${i}`}
+              key={`${event.ts}-${index}`}
               event={event}
-              expanded={expandedIdx === i}
-              onToggle={() => setExpandedIdx(expandedIdx === i ? null : i)}
+              expanded={expandedIdx === index}
+              onToggle={() =>
+                setExpandedIdx(expandedIdx === index ? null : index)
+              }
             />
           ))
         )}
       </div>
 
-      {/* Footer — actions */}
       <div
         style={{
           padding: "8px 16px",
@@ -347,8 +392,9 @@ export function App() {
         }}
       >
         <span style={{ fontSize: 12, color: "#718096", marginRight: 8 }}>
-          {filtered.length} event{filtered.length !== 1 ? "s" : ""}
-          {filter !== "all" ? ` (${events.length} total)` : ""}
+          {`${filtered.length} event${filtered.length !== 1 ? "s" : ""}${
+            filter !== "all" ? ` (${events.length} total)` : ""
+          }`}
         </span>
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
@@ -366,38 +412,5 @@ export function App() {
         </div>
       </div>
     </div>
-  );
-}
-
-function ActionButton({
-  label,
-  onClick,
-  confirm: confirmMsg,
-  danger,
-}: {
-  label: string;
-  onClick: () => void;
-  confirm?: string;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      onClick={() => {
-        if (confirmMsg && !window.confirm(confirmMsg)) return;
-        onClick();
-      }}
-      style={{
-        padding: "4px 10px",
-        fontSize: 12,
-        border: "1px solid",
-        borderColor: danger ? "#e53e3e" : "#4a5568",
-        borderRadius: 4,
-        background: "transparent",
-        color: danger ? "#fc8181" : "#a0aec0",
-        cursor: "pointer",
-      }}
-    >
-      {label}
-    </button>
   );
 }

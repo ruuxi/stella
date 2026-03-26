@@ -29,6 +29,11 @@ import {
   type AgentStreamEventType,
 } from "../../src/shared/contracts/agent-runtime.js";
 import { prepareStoredLocalChatPayload } from "../runtime-kernel/storage/local-chat-payload.js";
+import { collectAllSignals } from "../runtime-discovery/collect-all.js";
+import {
+  collectBrowserData,
+  formatBrowserDataForSynthesis,
+} from "../runtime-discovery/browser-data.js";
 import {
   createStellaHostRunner,
   type StellaHostRunnerOptions,
@@ -43,7 +48,6 @@ import {
 import { createSelfModHmrController } from "../runtime-kernel/self-mod/hmr.js";
 import { StoreModService } from "../runtime-kernel/self-mod/store-mod-service.js";
 import { revertGitCommits, revertGitFeature } from "../runtime-kernel/self-mod/git.js";
-import { LocalSchedulerService } from "../runtime-kernel/local-scheduler-service.js";
 import { createDesktopDatabase } from "../runtime-kernel/storage/database.js";
 import { ChatStore } from "../runtime-kernel/storage/chat-store.js";
 import { RuntimeStore } from "../runtime-kernel/storage/runtime-store.js";
@@ -58,7 +62,6 @@ import type {
 import { SocialSessionService } from "./social-sessions/service.js";
 import { SocialSessionStore } from "./social-sessions/store.js";
 import { VoiceRuntimeService } from "./voice/service.js";
-import { DevProjectService } from "../runtime-kernel/dev-projects/dev-project-service.js";
 import { readAssistantText, streamSimple } from "../ai/stream.js";
 import { resolveLlmRoute } from "../runtime-kernel/model-routing.js";
 import {
@@ -116,11 +119,7 @@ type WorkerState = {
   storeModService: StoreModService | null;
   socialSessionStore: SocialSessionStore | null;
   socialSessionService: SocialSessionService | null;
-  devProjectService: DevProjectService | null;
-  devProjectSubscription: (() => void) | null;
   voiceService: VoiceRuntimeService | null;
-  schedulerService: LocalSchedulerService | null;
-  schedulerSubscription: (() => void) | null;
   runner: RuntimeRunner | null;
   capabilityRuntime: CapabilityRuntime | null;
   deviceId: string | null;
@@ -328,17 +327,9 @@ const stopWorkerServices = async (state: WorkerState) => {
     controller.abort();
   }
   state.overlayAutoPanelControllers.clear();
-  state.devProjectSubscription?.();
-  state.devProjectSubscription = null;
-  await state.devProjectService?.stopAll();
-  state.devProjectService = null;
-  state.schedulerSubscription?.();
-  state.schedulerSubscription = null;
   state.socialSessionService?.stop();
   state.socialSessionService = null;
   state.voiceService = null;
-  state.schedulerService?.stop();
-  state.schedulerService = null;
   state.runner?.stop();
   state.runner = null;
   state.capabilityRuntime = null;
@@ -362,11 +353,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     storeModService: null,
     socialSessionStore: null,
     socialSessionService: null,
-    devProjectService: null,
-    devProjectSubscription: null,
     voiceService: null,
-    schedulerService: null,
-    schedulerSubscription: null,
     runner: null,
     capabilityRuntime: null,
     deviceId: null,
@@ -396,16 +383,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     peer.notify(NOTIFICATION_NAMES.VOICE_SELF_MOD_HMR_STATE, payload);
   };
 
-  const emitProjectsUpdated = async () => {
-    if (!state.devProjectService) {
-      return;
-    }
-    peer.notify(
-      NOTIFICATION_NAMES.PROJECTS_UPDATED,
-      await state.devProjectService.listProjects(),
-    );
-  };
-
   const emitOverlayAutoPanelEvent = (
     payload: RuntimeOverlayAutoPanelEventPayload,
   ) => {
@@ -417,13 +394,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       throw new Error("Runtime worker is not ready.");
     }
     return state.runner;
-  };
-
-  const ensureScheduler = () => {
-    if (!state.schedulerService) {
-      throw new Error("Scheduler service is not available.");
-    }
-    return state.schedulerService;
   };
 
   const ensureChatStore = () => {
@@ -447,13 +417,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     return state.voiceService;
   };
 
-  const ensureDevProjectService = () => {
-    if (!state.devProjectService) {
-      throw new Error("Dev project service is not available.");
-    }
-    return state.devProjectService;
-  };
-
   const ensureCapabilityRuntime = () => {
     if (!state.capabilityRuntime) {
       throw new Error("Capability runtime is not available.");
@@ -473,9 +436,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     const storeModStore = new StoreModStore(db);
     const socialSessionStore = new SocialSessionStore(db);
     const storeModService = new StoreModService(init.frontendRoot, storeModStore);
-    const devProjectService = new DevProjectService({
-      getStellaHomePath: () => state.init?.stellaHomePath ?? null,
-    });
     const deviceIdentity = await peer.request<HostDeviceIdentity>(
       METHOD_NAMES.HOST_DEVICE_IDENTITY_GET,
     );
@@ -487,23 +447,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     state.storeModStore = storeModStore;
     state.storeModService = storeModService;
     state.socialSessionStore = socialSessionStore;
-    state.devProjectService = devProjectService;
-    state.devProjectSubscription = devProjectService.subscribe(() => {
-      void emitProjectsUpdated();
-    });
-
-    const runnerTarget = {
-      getRunner: () => state.runner,
-    };
-
-    const schedulerService = new LocalSchedulerService({
-      stellaHome: init.stellaHomePath,
-      runnerTarget,
-    });
-    state.schedulerService = schedulerService;
-    state.schedulerSubscription = schedulerService.subscribe(() => {
-      peer.notify(NOTIFICATION_NAMES.SCHEDULE_UPDATED, null);
-    });
 
     const runnerOptions: StellaHostRunnerOptions = {
       deviceId: deviceIdentity.deviceId,
@@ -522,15 +465,33 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         await peer.request(METHOD_NAMES.HOST_DISPLAY_UPDATE, { html });
       },
       scheduleApi: {
-        listCronJobs: async () => schedulerService.listCronJobs(),
-        addCronJob: async (input) => schedulerService.addCronJob(input),
-        updateCronJob: async (jobId, patch) => schedulerService.updateCronJob(jobId, patch),
-        removeCronJob: async (jobId) => schedulerService.removeCronJob(jobId),
-        runCronJob: async (jobId) => schedulerService.runCronJob(jobId),
+        listCronJobs: async () =>
+          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_LIST_CRON_JOBS),
+        addCronJob: async (input) =>
+          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_ADD_CRON_JOB, input),
+        updateCronJob: async (jobId, patch) =>
+          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_UPDATE_CRON_JOB, {
+            jobId,
+            patch,
+          }),
+        removeCronJob: async (jobId) =>
+          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_REMOVE_CRON_JOB, {
+            jobId,
+          }),
+        runCronJob: async (jobId) =>
+          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_RUN_CRON_JOB, {
+            jobId,
+          }),
         getHeartbeatConfig: async (conversationId) =>
-          schedulerService.getHeartbeatConfig(conversationId),
-        upsertHeartbeat: async (input) => schedulerService.upsertHeartbeat(input),
-        runHeartbeat: async (conversationId) => schedulerService.runHeartbeat(conversationId),
+          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_GET_HEARTBEAT_CONFIG, {
+            conversationId,
+          }),
+        upsertHeartbeat: async (input) =>
+          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_UPSERT_HEARTBEAT, input),
+        runHeartbeat: async (conversationId) =>
+          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_RUN_HEARTBEAT, {
+            conversationId,
+          }),
       },
       signHeartbeatPayload: async (signedAtMs) => ({
         ...(await peer.request<HostHeartbeatSignature>(
@@ -589,8 +550,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     runner.setAuthToken(init.authToken);
     runner.setCloudSyncEnabled(init.cloudSyncEnabled);
     runner.start();
-
-    schedulerService.start();
 
     const socialSessionService = new SocialSessionService({
       getWorkspaceRoot: () => init.stellaWorkspacePath,
@@ -668,12 +627,22 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_HEALTH, async () => {
     const health = state.runner?.agentHealthCheck() ?? ({ ready: false } satisfies AgentHealth);
+    const socialSessions =
+      state.socialSessionService?.getSnapshot() ?? {
+        enabled: false,
+        status: "stopped",
+        sessionCount: 0,
+        sessions: [],
+      };
     return {
       health,
       activeRun: state.runner?.getActiveOrchestratorRun() ?? null,
       activeTaskCount: state.runner?.getActiveTaskCount() ?? 0,
       pid: process.pid,
       deviceId: state.deviceId,
+      voiceBusy: state.voiceService?.isBusy() ?? false,
+      pendingVoiceRequestCount: state.voiceService?.getPendingRequestCount() ?? 0,
+      socialSessions,
     };
   });
 
@@ -1154,6 +1123,49 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     return { ok: true };
   });
 
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_DISCOVERY_COLLECT_BROWSER_DATA,
+    async (params) => {
+      if (!state.init) {
+        throw new Error("Worker has not been initialized.");
+      }
+      const payload = (params as
+        | { selectedBrowser?: string; selectedProfile?: string }
+        | undefined) ?? { };
+      const data = await collectBrowserData(state.init.stellaHomePath, {
+        selectedBrowser: payload.selectedBrowser as
+          | import("../runtime-discovery/browser-data.js").BrowserType
+          | undefined,
+        selectedProfile: payload.selectedProfile,
+      });
+      return { data, formatted: formatBrowserDataForSynthesis(data) };
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_DISCOVERY_COLLECT_ALL_SIGNALS,
+    async (params) => {
+      if (!state.init) {
+        throw new Error("Worker has not been initialized.");
+      }
+      const payload = (params as
+        | {
+            categories?: string[];
+            selectedBrowser?: string;
+            selectedProfile?: string;
+          }
+        | undefined) ?? { };
+      return await collectAllSignals(
+        state.init.stellaHomePath,
+        payload.categories as
+          | import("../../src/shared/contracts/discovery.js").DiscoveryCategory[]
+          | undefined,
+        payload.selectedBrowser,
+        payload.selectedProfile,
+      );
+    },
+  );
+
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_FEATURES, async (params) => {
     return ensureStoreModService().listLocalFeatures(
       (params as { limit?: number } | undefined)?.limit,
@@ -1176,28 +1188,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     return ensureStoreModService().listInstalledMods();
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SCHEDULE_LIST_CRON_JOBS, async () => {
-    return ensureScheduler().listCronJobs();
-  });
-
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SCHEDULE_LIST_HEARTBEATS, async () => {
-    return ensureScheduler().listHeartbeats();
-  });
-
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SCHEDULE_LIST_EVENTS, async (params) => {
-    const payload = params as { conversationId: string; maxItems?: number };
-    return ensureScheduler().listConversationEvents(
-      payload.conversationId,
-      payload.maxItems,
-    );
-  });
-
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SCHEDULE_GET_EVENT_COUNT, async (params) => {
-    return ensureScheduler().getConversationEventCount(
-      (params as { conversationId: string }).conversationId,
-    );
-  });
-
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_GET_STATUS, async () => {
     return state.socialSessionService?.getSnapshot() ?? {
       enabled: false,
@@ -1205,43 +1195,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       sessionCount: 0,
       sessions: [],
     };
-  });
-
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_PROJECTS_LIST, async () => {
-    return await ensureDevProjectService().listProjects();
-  });
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_PROJECTS_REGISTER_DIRECTORY,
-    async (params) => {
-      const projectPath = asTrimmedString(
-        (params as { projectPath?: string } | undefined)?.projectPath,
-      );
-      if (!projectPath) {
-        throw new Error("Project path is required.");
-      }
-      return await ensureDevProjectService().pickProjectDirectory(projectPath);
-    },
-  );
-
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_PROJECTS_START, async (params) => {
-    const projectId = asTrimmedString(
-      (params as { projectId?: string } | undefined)?.projectId,
-    );
-    if (!projectId) {
-      throw new Error("Project ID is required.");
-    }
-    return await ensureDevProjectService().startProject(projectId);
-  });
-
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_PROJECTS_STOP, async (params) => {
-    const projectId = asTrimmedString(
-      (params as { projectId?: string } | undefined)?.projectId,
-    );
-    if (!projectId) {
-      throw new Error("Project ID is required.");
-    }
-    return await ensureDevProjectService().stopProject(projectId);
   });
 
   peer.registerRequestHandler(
@@ -1413,8 +1366,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   peer.registerRequestHandler(METHOD_NAMES.RUNTIME_HEALTH, async () => {
     return {
       ready: Boolean(state.runner?.agentHealthCheck().ready),
-      daemonPid: null,
+      hostPid: process.pid,
       workerPid: process.pid,
+      workerRunning: true,
       workerGeneration: 0,
       deviceId: state.deviceId,
       activeRunId: state.runner?.getActiveOrchestratorRun()?.runId ?? null,

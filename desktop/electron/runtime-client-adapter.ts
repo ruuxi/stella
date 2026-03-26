@@ -7,6 +7,7 @@ import type {
   RuntimeActiveRun,
   RuntimeAgentEventPayload,
   RuntimeAutomationTurnRequest,
+  RuntimeHealthSnapshot,
   RuntimeOverlayAutoPanelEventPayload,
   RuntimeOverlayAutoPanelStartPayload,
   RuntimeVoiceChatPayload,
@@ -55,6 +56,7 @@ export class RuntimeClientAdapter {
   private lastHealth:
     | { ready: boolean; reason?: string; runnerVersion?: string; engine?: string }
     | null = null;
+  private lastRuntimeHealth: RuntimeHealthSnapshot | null = null;
   private activeRun: RuntimeActiveRun | null = null;
   private connected = false;
   private started = false;
@@ -81,14 +83,13 @@ export class RuntimeClientAdapter {
     });
     this.client.on("runtime-disconnected", ({ reason }) => {
       this.connected = false;
+      this.lastRuntimeHealth = null;
       this.lastHealth = { ready: false, reason };
       this.activeRun = null;
       this.emitAvailabilityChange();
     });
     this.client.on("runtime-ready", (snapshot) => {
-      this.lastHealth = snapshot.ready
-        ? { ready: true }
-        : { ready: false, reason: "Runtime reported not ready." };
+      this.lastRuntimeHealth = snapshot;
       this.emitAvailabilityChange();
     });
     this.client.on("run-event", (event) => {
@@ -146,9 +147,11 @@ export class RuntimeClientAdapter {
   }
 
   getAvailabilitySnapshot(): RuntimeAvailabilitySnapshot {
-    const ready = Boolean(this.lastHealth?.ready);
+    const ready = Boolean(this.connected && this.lastRuntimeHealth?.ready);
     const reason =
-      this.lastHealth?.reason ??
+      this.lastRuntimeHealth && !this.lastRuntimeHealth.ready
+        ? "Stella runtime host is not ready."
+        : this.lastHealth?.reason ??
       (!this.connected ? "Stella runtime client is not connected." : undefined);
     return {
       connected: this.connected,
@@ -179,6 +182,7 @@ export class RuntimeClientAdapter {
         throw error;
       }
     }
+    this.lastRuntimeHealth = await this.client.health();
     this.lastHealth = await this.client.healthCheck();
     this.activeRun = await this.client.getActiveRun();
     this.emitAvailabilityChange();

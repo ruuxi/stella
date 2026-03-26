@@ -8,9 +8,7 @@
 
 export type DevEventType =
   | "agent-event"
-  | "ipc-call"
-  | "app-lifecycle"
-  | "log";
+  | "ipc-call";
 
 export type DevEvent = {
   type: DevEventType;

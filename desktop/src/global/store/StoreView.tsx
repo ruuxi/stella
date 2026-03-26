@@ -12,6 +12,7 @@ import Clock from "lucide-react/dist/esm/icons/clock"
 import Layers from "lucide-react/dist/esm/icons/layers"
 import Sparkles from "lucide-react/dist/esm/icons/sparkles"
 import Package from "lucide-react/dist/esm/icons/package"
+import { useSelfModTaintMonitor } from "@/systems/boot/use-self-mod-taint-monitor"
 import "./store.css"
 
 // ---------------------------------------------------------------------------
@@ -953,6 +954,8 @@ function PackageDetailView({
 type StoreTab = "discover" | "creations"
 
 export function StoreView() {
+  useSelfModTaintMonitor()
+
   const [tab, setTab] = useState<StoreTab>("discover")
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null)
   const [scrolled, setScrolled] = useState(false)
