@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { authClient } from "../../src/lib/auth-client";
 import { env } from "../../src/config/env";
 import { errorMessage } from "../../src/lib/assert";
@@ -21,16 +22,21 @@ type LegalDoc = "terms" | "privacy" | null;
 
 const LEGAL_TITLES = { terms: "Terms of Service", privacy: "Privacy Policy" };
 
+const POLL_INTERVAL_MS = 2500;
+
 type SubmitState =
   | { type: "idle" }
   | { type: "sending" }
-  | { type: "sent" }
+  | { type: "sent"; requestId: string }
+  | { type: "verifying" }
   | { type: "error"; message: string };
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>({ type: "idle" });
   const [activeLegal, setActiveLegal] = useState<LegalDoc>(null);
+  const router = useRouter();
+  const cancelledRef = useRef(false);
 
   const sendMagicLink = async () => {
     const trimmed = email.trim();
@@ -42,18 +48,79 @@ export default function LoginScreen() {
     setSubmitState({ type: "sending" });
 
     try {
-      await authClient.$fetch("/sign-in/magic-link", {
-        method: "POST",
-        body: {
-          email: trimmed,
-          callbackURL: new URL("/auth/callback?client=mobile", env.siteUrl).href,
+      const response = await fetch(
+        `${env.convexSiteUrl}/api/auth/link/send`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: trimmed }),
         },
-      });
-      setSubmitState({ type: "sent" });
+      );
+      const data = (await response.json()) as {
+        requestId?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.requestId) {
+        throw new Error(data.error || "Failed to send sign-in email.");
+      }
+      setSubmitState({ type: "sent", requestId: data.requestId });
     } catch (error) {
       setSubmitState({ type: "error", message: errorMessage(error) });
     }
   };
+
+  // Poll for magic link verification.
+  useEffect(() => {
+    if (submitState.type !== "sent") return;
+    const { requestId } = submitState;
+    cancelledRef.current = false;
+
+    const poll = async () => {
+      while (!cancelledRef.current) {
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        if (cancelledRef.current) return;
+
+        try {
+          const res = await fetch(
+            `${env.convexSiteUrl}/api/auth/link/status?requestId=${encodeURIComponent(requestId)}`,
+          );
+          if (!res.ok) continue;
+          const data = (await res.json()) as {
+            status: string;
+            ott?: string;
+          };
+
+          if (data.status === "completed" && data.ott) {
+            if (cancelledRef.current) return;
+            setSubmitState({ type: "verifying" });
+            await authClient.$fetch("/cross-domain/one-time-token/verify", {
+              method: "POST",
+              body: { token: data.ott },
+            });
+            if (cancelledRef.current) return;
+            router.replace("/chat");
+            return;
+          }
+
+          if (data.status === "expired") {
+            if (cancelledRef.current) return;
+            setSubmitState({
+              type: "error",
+              message: "Link expired. Please try again.",
+            });
+            return;
+          }
+        } catch {
+          // Retry silently on network errors.
+        }
+      }
+    };
+
+    void poll();
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, [submitState, router]);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -84,20 +151,27 @@ export default function LoginScreen() {
           onPress={() => {
             void sendMagicLink();
           }}
+          disabled={submitState.type === "sending" || submitState.type === "sent" || submitState.type === "verifying"}
           style={({ pressed }) => [
             styles.primaryButton,
             pressed ? styles.primaryButtonPressed : null,
-            submitState.type === "sending" ? styles.primaryButtonDisabled : null,
+            submitState.type !== "idle" && submitState.type !== "error"
+              ? styles.primaryButtonDisabled
+              : null,
           ]}
         >
           <Text style={styles.primaryButtonText}>
-            {submitState.type === "sending" ? "Sending..." : "Continue"}
+            {submitState.type === "sending"
+              ? "Sending..."
+              : submitState.type === "verifying"
+                ? "Signing in..."
+                : "Continue"}
           </Text>
         </Pressable>
 
         {submitState.type === "sent" ? (
           <Text style={styles.successText}>
-            Check your inbox and open the link on this phone.
+            Check your inbox and tap the link — you'll be signed in automatically.
           </Text>
         ) : null}
 

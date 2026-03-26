@@ -3,13 +3,16 @@ import { authClient } from "@/global/auth/lib/auth-client";
 
 const AUTH_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/;
 
-const getAllowedProtocols = () => {
-  const configured = (import.meta.env.VITE_STELLA_PROTOCOL as string | undefined)
+const STELLA_PROTOCOL = (
+  (import.meta.env.VITE_STELLA_PROTOCOL as string | undefined)
     ?.replace("://", "")
     .replace(":", "")
     .trim()
-    .toLowerCase();
-  return new Set(["stella", configured].filter((value): value is string => Boolean(value)));
+    .toLowerCase() || "stella"
+);
+
+const getAllowedProtocols = () => {
+  return new Set(["stella", STELLA_PROTOCOL].filter((value): value is string => Boolean(value)));
 };
 
 const extractTrustedOtt = (value: string): string | null => {
@@ -45,8 +48,22 @@ const verifyOneTimeToken = async (token: string) => {
   }
 };
 
+const handleBrowserAuthCallback = () => {
+  if (window.electronAPI) return;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("client") !== "desktop") return;
+  if (window.location.pathname !== "/auth/callback") return;
+
+  const ott = params.get("ott");
+  if (!ott || !AUTH_TOKEN_PATTERN.test(ott)) return;
+
+  window.location.href = `${STELLA_PROTOCOL}://auth/callback?ott=${encodeURIComponent(ott)}`;
+};
+
 export const AuthDeepLinkHandler = () => {
   useEffect(() => {
+    handleBrowserAuthCallback();
+
     const api = window.electronAPI;
     if (!api?.system.onAuthCallback) {
       return;

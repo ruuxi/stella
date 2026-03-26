@@ -4,6 +4,7 @@ import { httpAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import {
   assertSensitiveSessionPolicyAction,
+  createAuth,
   isAnonymousIdentity,
 } from "../auth";
 import { AGENT_IDS } from "../lib/agent_constants";
@@ -32,6 +33,11 @@ const OFFLINE_CHAT_RATE_LIMIT = 12;
 const OFFLINE_CHAT_RATE_WINDOW_MS = 60_000;
 const MAX_BASE_URLS = 8;
 const MAX_DEVICE_ID_LENGTH = 256;
+
+const MAGIC_LINK_RATE_LIMIT = 3;
+const MAGIC_LINK_RATE_WINDOW_MS = 60_000;
+const MAGIC_LINK_EXPIRY_MS = 10 * 60_000;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type AuthenticatedOwnerResult =
   | { ownerId: string; name?: string; isAnonymous: boolean }
@@ -472,5 +478,167 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         return jsonResponse({ ok: true }, 200, origin);
       }),
     ),
+  });
+
+  // ── Mobile magic link (no-redirect) ────────────────────────────────
+
+  for (const path of [
+    "/api/auth/link/send",
+    "/api/auth/link/status",
+  ]) {
+    http.route({
+      path,
+      method: "OPTIONS",
+      handler: httpAction(async (_ctx, request) =>
+        corsPreflightHandler(request),
+      ),
+    });
+  }
+
+  // Send a magic link and return a requestId for polling.
+  http.route({
+    path: "/api/auth/link/send",
+    method: "POST",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        let body: { email?: unknown } | null = null;
+        try {
+          body = (await request.json()) as { email?: unknown };
+        } catch {
+          return errorResponse(400, "Invalid JSON body", origin);
+        }
+
+        const email =
+          typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+        if (!email || !EMAIL_PATTERN.test(email)) {
+          return errorResponse(400, "A valid email is required.", origin);
+        }
+
+        const rateLimit = await ctx.runMutation(
+          internal.rate_limits.consumeWebhookRateLimit,
+          {
+            scope: "mobile_magic_link",
+            key: email,
+            limit: MAGIC_LINK_RATE_LIMIT,
+            windowMs: MAGIC_LINK_RATE_WINDOW_MS,
+            blockMs: MAGIC_LINK_RATE_WINDOW_MS,
+          },
+        );
+        if (!rateLimit.allowed) {
+          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+        }
+
+        const convexSiteUrl = process.env.CONVEX_SITE_URL;
+        if (!convexSiteUrl) {
+          console.error("[mobile/auth] Missing CONVEX_SITE_URL");
+          return errorResponse(500, "Server configuration error", origin);
+        }
+
+        const requestId = crypto.randomUUID();
+        const now = Date.now();
+
+        await ctx.runMutation(internal.mobile_auth.createPendingLinkRequest, {
+          email,
+          requestId,
+          expiresAt: now + MAGIC_LINK_EXPIRY_MS,
+          createdAt: now,
+        });
+
+        const callbackURL = `${convexSiteUrl}/api/auth/link/verify?requestId=${encodeURIComponent(requestId)}`;
+
+        try {
+          const auth = createAuth(ctx);
+          await auth.api.signInMagicLink({
+            body: { email, callbackURL },
+            headers: new Headers({ origin: convexSiteUrl }),
+          });
+        } catch (error) {
+          console.error("[mobile/auth] Failed to send magic link:", error);
+          return errorResponse(500, "Failed to send sign-in email.", origin);
+        }
+
+        // Clean up after expiry.
+        await ctx.scheduler.runAfter(
+          MAGIC_LINK_EXPIRY_MS + 30_000,
+          internal.mobile_auth.cleanupLinkRequest,
+          { requestId },
+        );
+
+        return jsonResponse({ requestId }, 200, origin);
+      }),
+    ),
+  });
+
+  // Poll for magic link verification status.
+  http.route({
+    path: "/api/auth/link/status",
+    method: "GET",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const url = new URL(request.url);
+        const requestId = url.searchParams.get("requestId") ?? "";
+        if (!requestId) {
+          return errorResponse(400, "requestId is required", origin);
+        }
+
+        const result = await ctx.runQuery(
+          internal.mobile_auth.getLinkRequestStatus,
+          { requestId },
+        );
+        if (!result) {
+          return errorResponse(404, "Request not found", origin);
+        }
+
+        return jsonResponse(result, 200, origin);
+      }),
+    ),
+  });
+
+  // Browser landing page after magic link verification.
+  // The cross-domain plugin appends ?ott=... to this URL after verifying the token.
+  http.route({
+    path: "/api/auth/link/verify",
+    method: "GET",
+    handler: httpAction(async (ctx, request) => {
+      const url = new URL(request.url);
+      const requestId = url.searchParams.get("requestId") ?? "";
+      const ott = url.searchParams.get("ott") ?? "";
+
+      if (requestId && ott) {
+        await ctx.runMutation(internal.mobile_auth.completeLinkRequest, {
+          requestId,
+          ott,
+        });
+      }
+
+      return new Response(
+        `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stella</title>
+  <style>
+    body { margin:0; min-height:100dvh; display:flex; align-items:center; justify-content:center;
+           font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+           background:#f2f4f8; color:#161616; }
+    .card { text-align:center; padding:40px 32px; max-width:360px; }
+    h1 { font-size:22px; font-weight:500; margin:0 0 8px; }
+    p  { font-size:15px; color:rgba(22,22,22,0.55); margin:0; line-height:1.5; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>You're signed in</h1>
+    <p>You can close this tab and return to Stella on your phone.</p>
+  </div>
+</body>
+</html>`,
+        {
+          status: 200,
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        },
+      );
+    }),
   });
 };
