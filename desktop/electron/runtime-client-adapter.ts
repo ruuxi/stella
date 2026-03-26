@@ -80,6 +80,10 @@ export class RuntimeClientAdapter {
         this.lastHealth = { ready: false };
       }
       this.emitAvailabilityChange();
+      // Flush any config patches that failed before the worker was ready
+      if (this.started && Object.keys(this.pendingConfig).length > 0) {
+        void this.client.configure(this.pendingConfig).catch(() => {});
+      }
     });
     this.client.on("runtime-disconnected", ({ reason }) => {
       this.connected = false;

@@ -1692,11 +1692,28 @@ export const registerConnectorWebhookRoutes = (http: HttpRouter) => {
       };
   
       if (isLinkCode) {
-        await ctx.scheduler.runAfter(0, internal.channels.linq.handleStartCommand, {
-          senderPhone,
-          text: linkPrefix,
-          incomingChatId,
-        });
+        // Only treat as a link code if the phone isn't already linked
+        const existingConnection = await ctx.runQuery(
+          internal.channels.utils.getConnectionByProviderAndExternalId,
+          { provider: "linq", externalUserId: senderPhone },
+        );
+        if (existingConnection) {
+          // Already linked — treat as a normal message
+          await ctx.scheduler.runAfter(0, internal.channels.linq.handleIncomingMessage, {
+            senderPhone,
+            text,
+            incomingChatId,
+            groupId: isGroup ? incomingChatId : undefined,
+            ...(attachments.length > 0 ? { attachments } : {}),
+            channelEnvelope,
+          });
+        } else {
+          await ctx.scheduler.runAfter(0, internal.channels.linq.handleStartCommand, {
+            senderPhone,
+            text: linkPrefix,
+            incomingChatId,
+          });
+        }
       } else {
         await ctx.scheduler.runAfter(0, internal.channels.linq.handleIncomingMessage, {
           senderPhone,

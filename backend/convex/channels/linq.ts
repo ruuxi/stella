@@ -283,6 +283,7 @@ export const handleIncomingMessage = internalAction({
   },
   handler: async (ctx, args) => {
     const shouldRespond = args.respond !== false;
+    console.log(`[linq:trace] Incoming message from ${args.senderPhone}`);
     try {
       const result = await processIncomingMessage({
         ctx,
@@ -299,6 +300,7 @@ export const handleIncomingMessage = internalAction({
         },
       });
 
+      console.log(`[linq:trace] processIncomingMessage result: deferred=${result?.deferred}, hasText=${!!result?.text}`);
       if (result?.deferred) return null;
 
       if (!result) {

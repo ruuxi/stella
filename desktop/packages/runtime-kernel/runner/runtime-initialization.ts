@@ -17,7 +17,7 @@ export const createRuntimeInitialization = (
   },
 ) => {
   const initializeRuntime = () => {
-    const skillsLoad = deps.refreshLoadedSkills().then(() => undefined);
+    const skillsLoad = deps.refreshLoadedSkills().then(() => undefined).catch(() => undefined);
     const agentsLoad = loadAgentsFromHome(context.paths.agentsPath)
       .then((agents) => {
         context.state.loadedAgents = agents;

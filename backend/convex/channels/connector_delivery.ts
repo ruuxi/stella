@@ -8,7 +8,7 @@
  * 3. Mutation inserts a fulfilled marker and schedules `deliverToConnector`
  * 4. `deliverToConnector` sends the response to the appropriate connector
  */
-import { internalAction, internalQuery, mutation } from "../_generated/server";
+import { internalAction, internalMutation, internalQuery, mutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v, ConvexError } from "convex/values";
 import { jsonValueValidator } from "../shared_validators";
@@ -27,8 +27,38 @@ import {
 import { getGoogleAccessToken, getTeamsBotToken } from "./connector_auth";
 
 const BACKEND_FALLBACK_AGENT_TYPE = "offline_responder";
+const EMPTY_RESPONSE_TEXT = "(Stella had nothing to say.)";
 
 // ─── Public Mutation (called by local device via HTTP) ──────────────────────
+export const claimRemoteTurn = mutation({
+  args: {
+    requestId: v.string(),
+    conversationId: v.id("conversations"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireConversationOwner(ctx, args.conversationId);
+
+    const existing = await ctx.db
+      .query("events")
+      .withIndex("by_requestId", (q) =>
+        q.eq("requestId", `claimed:${args.requestId}`),
+      )
+      .first();
+    if (existing) return null;
+
+    await ctx.db.insert("events", {
+      conversationId: args.conversationId,
+      timestamp: Date.now(),
+      type: "remote_turn_claimed",
+      requestId: `claimed:${args.requestId}`,
+      payload: { requestId: args.requestId },
+    });
+
+    return null;
+  },
+});
+
 export const completeRemoteTurn = mutation({
   args: {
     requestId: v.string(),
@@ -39,14 +69,14 @@ export const completeRemoteTurn = mutation({
   handler: async (ctx, args) => {
     await requireConversationOwner(ctx, args.conversationId);
 
-    // Idempotency: skip if already claimed
-    const existing = await ctx.db
+    // Idempotency: skip if already fulfilled
+    const fulfilled = await ctx.db
       .query("events")
       .withIndex("by_requestId", (q) =>
-        q.eq("requestId", `claimed:${args.requestId}`),
+        q.eq("requestId", `fulfilled:${args.requestId}`),
       )
       .first();
-    if (existing) return null;
+    if (fulfilled) return null;
 
     // Read routing metadata from the original remote_turn_request event
     // (never trust caller-provided routing data)
@@ -61,14 +91,22 @@ export const completeRemoteTurn = mutation({
     const provider = reqPayload.provider as string;
     const deliveryMeta = reqPayload.deliveryMeta as Record<string, unknown>;
 
-    // Insert claimed marker (for local device dedup)
-    await ctx.db.insert("events", {
-      conversationId: args.conversationId,
-      timestamp: Date.now(),
-      type: "remote_turn_claimed",
-      requestId: `claimed:${args.requestId}`,
-      payload: { requestId: args.requestId },
-    });
+    // Insert claimed marker if not already claimed (by claimRemoteTurn)
+    const existingClaim = await ctx.db
+      .query("events")
+      .withIndex("by_requestId", (q) =>
+        q.eq("requestId", `claimed:${args.requestId}`),
+      )
+      .first();
+    if (!existingClaim) {
+      await ctx.db.insert("events", {
+        conversationId: args.conversationId,
+        timestamp: Date.now(),
+        type: "remote_turn_claimed",
+        requestId: `claimed:${args.requestId}`,
+        payload: { requestId: args.requestId },
+      });
+    }
 
     // Schedule async delivery — fulfilled marker is inserted by
     // deliverToConnector AFTER successful delivery
@@ -154,6 +192,100 @@ async function deliverToConnectorCore(
     );
   }
 }
+
+// ─── Shared: run backend fallback agent + deliver to connector ──────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- ctx is an ActionCtx; typed loosely to avoid importing generated types
+async function runFallbackAndDeliver(
+  ctx: InternalRunCtx & { runAction?: (...args: any[]) => Promise<unknown> },
+  args: {
+    requestId: string;
+    conversationId: Id<"conversations">;
+    ownerId: string;
+    prompt: string;
+    provider: string;
+    deliveryMeta: Record<string, unknown>;
+    userMessageId?: string;
+  },
+): Promise<void> {
+  const result = await runAgentTurn({
+    ctx: ctx as any,
+    conversationId: args.conversationId,
+    prompt: args.prompt,
+    agentType: BACKEND_FALLBACK_AGENT_TYPE,
+    ownerId: args.ownerId,
+    userMessageId: args.userMessageId as Id<"events"> | undefined,
+  });
+
+  if (result.text.trim() && !result.silent) {
+    await ctx.runMutation(internal.events.appendInternalEvent, {
+      conversationId: args.conversationId,
+      type: "assistant_message",
+      payload: {
+        text: result.text,
+        source: `channel:${args.provider}`,
+        ...(result.usage ? { usage: result.usage } : {}),
+      },
+    });
+  }
+
+  const responseText = result.text.trim() || EMPTY_RESPONSE_TEXT;
+  await deliverToConnectorCore(ctx, {
+    requestId: args.requestId,
+    conversationId: args.conversationId,
+    provider: args.provider,
+    deliveryMeta: args.deliveryMeta,
+    text: responseText,
+  });
+}
+
+// ─── Per-request fallback (scheduled by message_pipeline) ───────────────────
+// Runs a few seconds after a remote_turn_request is inserted. If the desktop
+// hasn't claimed the request yet, runs the offline responder and delivers.
+export const rescueSingleTurn = internalAction({
+  args: {
+    requestId: v.string(),
+    conversationId: v.id("conversations"),
+    ownerId: v.string(),
+    prompt: v.string(),
+    provider: v.string(),
+    deliveryMeta: jsonValueValidator,
+    userMessageId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Check if desktop already claimed or fulfilled this request
+    const [fulfilled, claimedEvent] = (await Promise.all([
+      ctx.runQuery(internal.events.getRemoteTurnFulfilled, {
+        requestId: args.requestId,
+      }),
+      ctx.runQuery(
+        internal.channels.connector_delivery.findClaimedEvent,
+        { requestId: args.requestId },
+      ),
+    ])) as [boolean, unknown];
+
+    console.log(
+      `[rescue:trace] requestId=${args.requestId}, fulfilled=${fulfilled}, claimed=${!!claimedEvent}`,
+    );
+    if (fulfilled || claimedEvent) return null;
+
+    console.log(
+      `[rescue:trace] Desktop did not claim ${args.requestId}, running offline responder`,
+    );
+
+    await runFallbackAndDeliver(ctx, {
+      requestId: args.requestId,
+      conversationId: args.conversationId,
+      ownerId: args.ownerId,
+      prompt: args.prompt,
+      provider: args.provider,
+      deliveryMeta: args.deliveryMeta as Record<string, unknown>,
+      userMessageId: args.userMessageId,
+    });
+
+    return null;
+  },
+});
 
 // ─── Internal Action (delivers message to connector) ────────────────────────
 export const deliverToConnector = internalAction({
@@ -460,16 +592,57 @@ async function getLatestAssistantText(
     },
   )) as Array<{ type: string; payload: Record<string, unknown> }> | null;
 
-  if (!events) return "(Stella had nothing to say.)";
+  if (!events) return EMPTY_RESPONSE_TEXT;
 
   // listEventsSince returns asc order — walk backwards to find the latest
   for (let i = events.length - 1; i >= 0; i--) {
     if (events[i].type === "assistant_message") {
-      return (events[i].payload?.text as string) ?? "(Stella had nothing to say.)";
+      return (events[i].payload?.text as string) ?? EMPTY_RESPONSE_TEXT;
     }
   }
-  return "(Stella had nothing to say.)";
+  return EMPTY_RESPONSE_TEXT;
 }
+
+const RESCUE_DELAY_MS = 5_000;
+
+export const scheduleRescue = internalMutation({
+  args: {
+    requestId: v.string(),
+    conversationId: v.id("conversations"),
+    ownerId: v.string(),
+    prompt: v.string(),
+    provider: v.string(),
+    deliveryMeta: jsonValueValidator,
+    userMessageId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.scheduler.runAfter(
+      RESCUE_DELAY_MS,
+      internal.channels.connector_delivery.rescueSingleTurn,
+      {
+        requestId: args.requestId,
+        conversationId: args.conversationId,
+        ownerId: args.ownerId,
+        prompt: args.prompt,
+        provider: args.provider,
+        deliveryMeta: args.deliveryMeta,
+        userMessageId: args.userMessageId,
+      },
+    );
+  },
+});
+
+export const findClaimedEvent = internalQuery({
+  args: { requestId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("events")
+      .withIndex("by_requestId", (q) =>
+        q.eq("requestId", `claimed:${args.requestId}`),
+      )
+      .first();
+  },
+});
 
 const ORPHAN_MIN_AGE_MS = 90_000; // must be at least 90s old
 const ORPHAN_MAX_AGE_MS = 10 * 60_000; // ignore anything older than 10 min
@@ -479,15 +652,14 @@ export const findOrphanedTurnRequests = internalQuery({
   handler: async (ctx) => {
     const now = Date.now();
 
-    // Find devices that recently went offline (within the orphan window).
-    const offlineDevices = await ctx.db
+    // Check all registered devices — routing always tries the desktop
+    // first and relies on this watchdog for fallback, so we cannot
+    // limit the scan to offline devices only.
+    const allDevices = await ctx.db
       .query("devices")
-      .withIndex("by_online_and_lastSignedAtMs", (q) =>
-        q.eq("online", false).gte("lastSignedAtMs", now - ORPHAN_MAX_AGE_MS),
-      )
       .take(200);
 
-    if (offlineDevices.length === 0) return [];
+    if (allDevices.length === 0) return [];
 
     type OrphanResult = {
       eventId: Id<"events">;
@@ -498,7 +670,7 @@ export const findOrphanedTurnRequests = internalQuery({
       claimed: boolean;
     };
 
-    const devicePromises = offlineDevices.map(async (device) => {
+    const devicePromises = allDevices.map(async (device) => {
       const orphansForDevice: OrphanResult[] = [];
       const events = await ctx.db
         .query("events")
@@ -673,36 +845,14 @@ export const rescueOrphanedTurns = internalAction({
             continue;
           }
 
-          const result = await runAgentTurn({
-            ctx,
-            conversationId,
-            prompt,
-            agentType: BACKEND_FALLBACK_AGENT_TYPE,
-            ownerId: conversation.ownerId,
-            userMessageId: userMessageId as Id<"events"> | undefined,
-          });
-
-          // Persist assistant message
-          if (result.text.trim() && !result.silent) {
-            await ctx.runMutation(internal.events.appendInternalEvent, {
-              conversationId,
-              type: "assistant_message",
-              payload: {
-                text: result.text,
-                source: `channel:${provider}`,
-                ...(result.usage ? { usage: result.usage } : {}),
-              },
-            });
-          }
-
-          const responseText =
-            result.text.trim() || "(Stella had nothing to say.)";
-          await deliverToConnectorCore(ctx, {
+          await runFallbackAndDeliver(ctx, {
             requestId: orphan.requestId,
             conversationId,
+            ownerId: conversation.ownerId,
+            prompt,
             provider,
-            deliveryMeta: JSON.parse(JSON.stringify(deliveryMeta)),
-            text: responseText,
+            deliveryMeta,
+            userMessageId,
           });
         }
 

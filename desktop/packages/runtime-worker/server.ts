@@ -459,6 +459,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         chatStore.appendEvent(args);
         peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
       },
+      getDefaultConversationId: () =>
+        chatStore.getOrCreateDefaultConversationId(),
       requestCredential: async (payload) =>
         await peer.request(METHOD_NAMES.HOST_CREDENTIALS_REQUEST, payload),
       displayHtml: async (html) => {
@@ -603,14 +605,18 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   };
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_INITIALIZE, async (params) => {
-    return await initializeWorker(params as WorkerInitializationState);
+    const result = await initializeWorker(params as WorkerInitializationState);
+    if (pendingConfigPatch) {
+      applyConfigPatch(pendingConfigPatch);
+      pendingConfigPatch = null;
+    }
+    return result;
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_CONFIGURE, async (params) => {
-    const patch = params as Partial<WorkerInitializationState>;
-    if (!state.init) {
-      throw new Error("Worker has not been initialized.");
-    }
+  let pendingConfigPatch: Partial<WorkerInitializationState> | null = null;
+
+  const applyConfigPatch = (patch: Partial<WorkerInitializationState>) => {
+    if (!state.init) return;
     state.init = { ...state.init, ...patch };
     if (patch.convexUrl !== undefined) {
       state.runner?.setConvexUrl(patch.convexUrl);
@@ -623,6 +629,16 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     if (patch.cloudSyncEnabled !== undefined) {
       state.runner?.setCloudSyncEnabled(patch.cloudSyncEnabled);
     }
+  };
+
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_CONFIGURE, async (params) => {
+    const patch = params as Partial<WorkerInitializationState>;
+    if (!state.init) {
+      // Queue the patch — it will be applied after initialization
+      pendingConfigPatch = { ...pendingConfigPatch, ...patch };
+      return { ok: true, queued: true };
+    }
+    applyConfigPatch(patch);
     return { ok: true };
   });
 
@@ -643,6 +659,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       deviceId: state.deviceId,
       voiceBusy: state.voiceService?.isBusy() ?? false,
       pendingVoiceRequestCount: state.voiceService?.getPendingRequestCount() ?? 0,
+      remoteBridgeActive: Boolean(state.init?.convexUrl && state.init?.authToken),
       socialSessions,
     };
   });
