@@ -3,7 +3,7 @@
  * Handles MV3 service worker lifecycle (termination after ~30s idle).
  */
 
-const DEFAULT_PORT = 39040;
+export const DEFAULT_PORT = 39040;
 const RECONNECT_DELAY = 2000;
 const MAX_RECONNECT_DELAY = 30000;
 
@@ -210,11 +210,9 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (isConnected()) {
       send({ type: 'ping' });
     } else {
-      // Try to reconnect
-      const config = await chrome.storage.local.get(['port', 'token']);
-      if (config.port) {
-        doConnect(config.port, config.token || '');
-      }
+      // Try to reconnect — always use DEFAULT_PORT, not stale stored value
+      const config = await chrome.storage.local.get(['token']);
+      doConnect(DEFAULT_PORT, config.token || '');
     }
   }
 });

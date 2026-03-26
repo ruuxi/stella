@@ -5,7 +5,7 @@
  * commands to Chrome extension APIs.
  */
 
-import { connect, disconnect, isConnected, onCommand, onStatus } from './lib/connection.js';
+import { connect, disconnect, isConnected, onCommand, onStatus, DEFAULT_PORT } from './lib/connection.js';
 import { handleTabNew, handleTabList, handleTabSwitch, handleTabClose, closeAgentWindow, cleanupStaleGroups } from './commands/tabs.js';
 import { handleNavigate, handleBack, handleForward, handleReload, handleUrl, handleTitle } from './commands/navigation.js';
 import {
@@ -269,11 +269,9 @@ syncContentScriptRegistration();
 // Auto-connect on service worker load (this runs on every SW start, including
 // browser startup and extension install/update - no need for separate listeners)
 async function autoConnect() {
-  const config = await chrome.storage.local.get(['port', 'token']);
-  const port = config.port || 39040;
-  const token = config.token || '';
-  console.log('[background] Auto-connecting to port', port);
-  connect(port, token);
+  const config = await chrome.storage.local.get(['token']);
+  console.log('[background] Auto-connecting to port', DEFAULT_PORT);
+  connect(DEFAULT_PORT, config.token || '');
 }
 
 autoConnect();
