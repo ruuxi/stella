@@ -254,6 +254,7 @@ export type RunnerPublicApi = {
   setCloudSyncEnabled: (enabled: boolean) => void;
   start: () => void;
   stop: () => void;
+  waitUntilInitialized: () => Promise<void>;
   subscribeQuery: (
     query: unknown,
     args: Record<string, unknown>,
