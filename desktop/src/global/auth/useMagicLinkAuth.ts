@@ -92,8 +92,7 @@ export const useMagicLinkAuth = (): UseMagicLinkAuthResult => {
               method: "POST",
               body: { token: data.ott },
             });
-            if (cancelledRef.current) return;
-            // Session is now updated — the auth state listeners will handle navigation.
+            // Don't check cancelledRef — once verifying, always finish.
             const updateSession = (authClient as unknown as { updateSession?: () => void }).updateSession;
             if (typeof updateSession === "function") {
               updateSession();

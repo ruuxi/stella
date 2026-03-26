@@ -92,12 +92,13 @@ export default function LoginScreen() {
 
           if (data.status === "completed" && data.ott) {
             if (cancelledRef.current) return;
+            // Don't check cancelledRef after this point — once we start
+            // verifying we must finish regardless of effect cleanup.
             setSubmitState({ type: "verifying" });
             await authClient.$fetch("/cross-domain/one-time-token/verify", {
               method: "POST",
               body: { token: data.ott },
             });
-            if (cancelledRef.current) return;
             router.replace("/chat");
             return;
           }
