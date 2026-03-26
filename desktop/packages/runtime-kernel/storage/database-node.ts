@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { Database } from "bun:sqlite";
+import BetterSqliteDatabase from "better-sqlite3";
 import type { SqliteDatabase } from "./shared.js";
 
 const DB_FILE = "stella.sqlite";
@@ -10,7 +10,7 @@ const ensureDir = (dirPath: string): void => {
 };
 
 const openDatabase = (dbPath: string): SqliteDatabase =>
-  new Database(dbPath) as unknown as SqliteDatabase;
+  new BetterSqliteDatabase(dbPath) as unknown as SqliteDatabase;
 
 export const createDesktopDatabase = (stellaHome: string): SqliteDatabase => {
   const stateRoot = path.join(stellaHome, "state");
@@ -20,6 +20,7 @@ export const createDesktopDatabase = (stellaHome: string): SqliteDatabase => {
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA synchronous = NORMAL;");
   db.exec("PRAGMA temp_store = MEMORY;");
+  db.exec("PRAGMA busy_timeout = 5000;");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS settings (

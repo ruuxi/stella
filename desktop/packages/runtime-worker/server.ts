@@ -48,7 +48,7 @@ import {
 import { createSelfModHmrController } from "../runtime-kernel/self-mod/hmr.js";
 import { StoreModService } from "../runtime-kernel/self-mod/store-mod-service.js";
 import { revertGitCommits, revertGitFeature } from "../runtime-kernel/self-mod/git.js";
-import { createDesktopDatabase } from "../runtime-kernel/storage/database.js";
+import { createDesktopDatabase } from "../runtime-kernel/storage/database-node.js";
 import { ChatStore } from "../runtime-kernel/storage/chat-store.js";
 import { RuntimeStore } from "../runtime-kernel/storage/runtime-store.js";
 import { StoreModStore } from "../runtime-kernel/storage/store-mod-store.js";
