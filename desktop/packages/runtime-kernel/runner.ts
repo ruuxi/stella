@@ -24,8 +24,71 @@ export const createStellaHostRunner = (
   const context = createRunnerContext(options);
 
   let syncRemoteTurnBridge = () => {};
+  let deviceRegistered = false;
+  let deviceRegistering = false;
+
+  const registerDevice = async (attempt = 0): Promise<void> => {
+    if (deviceRegistered || deviceRegistering) return;
+    if (!context.state.authToken) return;
+    const client = convexSession.ensureConvexClient();
+    if (!client) return;
+
+    deviceRegistering = true;
+    // Give the Convex client time to authenticate
+    if (attempt === 0) {
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    if (deviceRegistered) {
+      deviceRegistering = false;
+      return;
+    }
+
+    try {
+      await (client as any).mutation(
+        (
+          context.convexApi as {
+            agent: { device_resolver: { registerDevice: unknown } };
+          }
+        ).agent.device_resolver.registerDevice,
+        {
+          deviceId: context.deviceId,
+          platform: process.platform,
+        },
+      );
+      deviceRegistered = true;
+    } catch {
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, 2000));
+        deviceRegistering = false;
+        return registerDevice(attempt + 1);
+      }
+    }
+    deviceRegistering = false;
+  };
+
+  const sendGoOffline = async () => {
+    if (!deviceRegistered) return;
+    const client = convexSession.ensureConvexClient();
+    if (!client) return;
+
+    try {
+      await (client as any).mutation(
+        (
+          context.convexApi as {
+            agent: { device_resolver: { goOffline: unknown } };
+          }
+        ).agent.device_resolver.goOffline,
+        {},
+      );
+      deviceRegistered = false;
+    } catch {
+      // best-effort
+    }
+  };
+
   const convexSession = createConvexSession(context, {
     syncRemoteTurnBridge: () => syncRemoteTurnBridge(),
+    onAuthTokenSet: () => void registerDevice(),
   });
   const storeOperations = createStoreOperations(context, {
     ensureStoreClient: convexSession.ensureStoreClient,
@@ -47,7 +110,7 @@ export const createStellaHostRunner = (
 
   const remoteTurnBridge = createRemoteTurnBridge({
     deviceId: context.deviceId,
-    isEnabled: () => context.state.isRunning && context.state.cloudSyncEnabled,
+    isEnabled: () => context.state.isRunning,
     isRunnerBusy: () => false,
     subscribeRemoteTurnRequests: ({
       deviceId: targetDeviceId,
@@ -89,12 +152,40 @@ export const createStellaHostRunner = (
         subscription.unsubscribe();
       };
     },
-    runLocalTurn: async ({ conversationId, userPrompt, agentType }) =>
-      await orchestratorController.runAutomationTurn({
-        conversationId,
+    runLocalTurn: async ({ conversationId, userPrompt, agentType }) => {
+      const localConversationId =
+        context.getDefaultConversationId?.() ?? conversationId;
+      context.appendLocalChatEvent?.({
+        conversationId: localConversationId,
+        type: "user_message",
+        payload: { text: userPrompt, source: "connector" },
+      });
+      const result = await orchestratorController.runAutomationTurn({
+        conversationId: localConversationId,
         userPrompt,
         agentType,
-      }),
+      });
+      if (result.status === "ok" && result.finalText) {
+        context.appendLocalChatEvent?.({
+          conversationId: localConversationId,
+          type: "assistant_message",
+          payload: { text: result.finalText, source: "connector" },
+        });
+      }
+      return result;
+    },
+    claimRemoteTurn: async ({ requestId, conversationId }) => {
+      const client = convexSession.ensureConvexClient();
+      if (!client) return;
+      await (client as any).mutation(
+        (
+          context.convexApi as {
+            channels: { connector_delivery: { claimRemoteTurn: unknown } };
+          }
+        ).channels.connector_delivery.claimRemoteTurn,
+        { requestId, conversationId },
+      );
+    },
     completeConnectorTurn: async ({ requestId, conversationId, text }) => {
       const client = convexSession.ensureConvexClient();
       if (!client) {
@@ -120,14 +211,16 @@ export const createStellaHostRunner = (
   });
 
   syncRemoteTurnBridge = () => {
-    if (
-      !context.state.isRunning ||
-      !context.state.isInitialized ||
-      !context.state.cloudSyncEnabled
-    ) {
+    if (!context.state.isRunning || !context.state.isInitialized) {
       remoteTurnBridge.stop();
+      void sendGoOffline();
       return;
     }
+    if (!context.state.authToken || !context.state.convexDeploymentUrl) {
+      // Not ready yet — will be called again when auth/url arrive
+      return;
+    }
+    void registerDevice();
     remoteTurnBridge.start();
     remoteTurnBridge.kick();
   };

@@ -8,7 +8,10 @@ import {
 
 export const createConvexSession = (
   context: RunnerContext,
-  options: { syncRemoteTurnBridge: () => void },
+  options: {
+    syncRemoteTurnBridge: () => void;
+    onAuthTokenSet?: () => void;
+  },
 ) => {
   const disposeConvexClient = () => {
     const client = context.state.convexClient;
@@ -157,6 +160,9 @@ export const createConvexSession = (
     context.state.authToken = value;
     refreshConvexAuth();
     options.syncRemoteTurnBridge();
+    if (value) {
+      options.onAuthTokenSet?.();
+    }
   };
 
   const setCloudSyncEnabled = (enabled: boolean) => {

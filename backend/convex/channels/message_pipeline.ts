@@ -13,8 +13,7 @@ import {
   buildDesktopTurnCandidates,
   runAgentTurnWithBackendFallback,
 } from "../scheduling/desktop_handoff_policy";
-
-const BACKEND_FALLBACK_AGENT_TYPE = "offline_responder";
+import { AGENT_IDS } from "../lib/agent_constants";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -380,9 +379,16 @@ export async function processIncomingMessage(
       ownerId: connection.ownerId,
     });
 
+    console.log(
+      `[pipeline:trace] resolveExecutionTarget: ownerId=${connection.ownerId}, targetDeviceId=${executionTarget.targetDeviceId}`,
+    );
+
     const candidates = buildDesktopTurnCandidates({
       targetDeviceId: executionTarget.targetDeviceId,
     });
+    console.log(
+      `[pipeline:trace] candidates: ${JSON.stringify(candidates.map((c) => c.mode))}, deliveryMeta=${!!args.deliveryMeta}, userMessageId=${!!userMessageId}, transient=${transient}`,
+    );
 
     // ─── Inverted Execution: defer to local device ──────────────────────
     // When the local device is online and delivery metadata is provided,
@@ -392,25 +398,42 @@ export async function processIncomingMessage(
     const firstCandidate = candidates[0];
     if (
       firstCandidate?.mode === "desktop" &&
-      args.deliveryMeta &&
-      userMessageId &&
-      !transient
+      args.deliveryMeta
     ) {
       const requestId = crypto.randomUUID();
+
+      const clonedDeliveryMeta = JSON.parse(JSON.stringify(args.deliveryMeta));
+
+      const turnPayload = {
+        conversationId: String(conversationId),
+        ...(userMessageId ? { userMessageId: String(userMessageId) } : {}),
+        text: args.text,
+        provider: args.provider,
+        deliveryMeta: clonedDeliveryMeta,
+      };
 
       await args.ctx.runMutation(internal.events.appendInternalEvent, {
         conversationId,
         type: "remote_turn_request",
         targetDeviceId: firstCandidate.targetDeviceId,
         requestId,
-        payload: {
-          conversationId: String(conversationId),
-          userMessageId: String(userMessageId),
-          text: args.text,
-          provider: args.provider,
-          deliveryMeta: JSON.parse(JSON.stringify(args.deliveryMeta)),
-        },
+        payload: turnPayload,
       });
+
+      // Schedule a fast fallback — if the desktop doesn't claim this
+      // request within a few seconds, run the offline responder.
+      await args.ctx.runMutation(
+        internal.channels.connector_delivery.scheduleRescue,
+        {
+          requestId,
+          conversationId,
+          ownerId: connection.ownerId,
+          prompt: args.text,
+          provider: args.provider,
+          deliveryMeta: clonedDeliveryMeta,
+          ...(userMessageId ? { userMessageId: String(userMessageId) } : {}),
+        },
+      );
 
       console.log(
         `[channels] Deferred to local device (inverted execution): ${requestId}`,
@@ -425,7 +448,7 @@ export async function processIncomingMessage(
         ctx: args.ctx,
         conversationId,
         prompt: args.text,
-        agentType: BACKEND_FALLBACK_AGENT_TYPE,
+        agentType: AGENT_IDS.OFFLINE_RESPONDER,
         ownerId: connection.ownerId,
         userMessageId: userMessageId ?? undefined,
         transient,

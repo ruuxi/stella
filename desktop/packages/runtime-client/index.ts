@@ -336,6 +336,8 @@ export class StellaRuntimeClient {
     this.events.emit("runtime-connected", undefined);
     this.events.emit("runtime-ready", await this.health());
     this.startDevWatcher(resolveDefaultWorkerEntryPath(this.options));
+    // Eagerly start the worker so the remote turn bridge subscription is active
+    void this.ensureWorker().catch(() => {});
   }
 
   async stop() {
@@ -1252,7 +1254,8 @@ export class StellaRuntimeClient {
       health.activeRun ||
       health.activeTaskCount > 0 ||
       socialPinned ||
-      voicePinned
+      voicePinned ||
+      health.remoteBridgeActive
     ) {
       this.scheduleWorkerIdleEvaluation(WORKER_IDLE_RECHECK_MS);
       return;

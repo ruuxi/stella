@@ -1,6 +1,6 @@
 import { mutation, internalQuery } from "../_generated/server";
 import { ConvexError, v } from "convex/values";
-import { requireSensitiveUserId } from "../auth";
+import { requireSensitiveUserId, requireUserId } from "../auth";
 
 const HEARTBEAT_SIGNATURE_MAX_AGE_MS = 2 * 60_000;
 
@@ -115,13 +115,49 @@ export const heartbeat = mutation({
 });
 
 /**
+ * Register: upsert a device record for the authenticated user.
+ * No Ed25519 signing required — auth token is sufficient.
+ */
+export const registerDevice = mutation({
+  args: {
+    deviceId: v.string(),
+    platform: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await requireUserId(ctx);
+
+    const existing = await ctx.db
+      .query("devices")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        deviceId: args.deviceId,
+        online: true,
+        ...(args.platform !== undefined ? { platform: args.platform } : {}),
+      });
+    } else {
+      await ctx.db.insert("devices", {
+        ownerId,
+        deviceId: args.deviceId,
+        online: true,
+        platform: args.platform,
+      });
+    }
+    return null;
+  },
+});
+
+/**
  * Go offline: mark the local device as offline.
  */
 export const goOffline = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    const ownerId = await requireSensitiveUserId(ctx);
+    const ownerId = await requireUserId(ctx);
     const device = await ctx.db
       .query("devices")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
@@ -153,7 +189,14 @@ export const resolveExecutionTarget = internalQuery({
       .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
       .unique();
 
-    if (device?.online) {
+    console.log(
+      `[device_resolver:trace] ownerId=${args.ownerId}, device=${device ? `id=${device.deviceId}, online=${device.online}` : "null"}`,
+    );
+
+    // Always try the desktop first if a device is registered.
+    // The watchdog (rescueOrphanedTurns) handles fallback when the
+    // device is unreachable — no polling heartbeat required.
+    if (device?.deviceId) {
       return { targetDeviceId: device.deviceId };
     }
 

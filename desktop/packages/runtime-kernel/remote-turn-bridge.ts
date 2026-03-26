@@ -40,6 +40,10 @@ type RemoteTurnBridgeDeps = {
     userPrompt: string;
     agentType?: string;
   }) => Promise<RemoteTurnRunResult>;
+  claimRemoteTurn?: (args: {
+    requestId: string;
+    conversationId: string;
+  }) => Promise<void>;
   completeConnectorTurn: (args: {
     requestId: string;
     conversationId: string;
@@ -186,6 +190,9 @@ export const createRemoteTurnBridge = (
           );
           continue;
         }
+
+        // Claim immediately so the rescue timer knows we're handling it
+        await deps.claimRemoteTurn?.({ requestId, conversationId }).catch(() => {});
 
         const result = await deps.runLocalTurn({
           conversationId,

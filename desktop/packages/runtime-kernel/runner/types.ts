@@ -113,6 +113,7 @@ export type StellaHostRunnerOptions = {
     maxItems: number,
   ) => LocalContextEvent[];
   appendLocalChatEvent?: (args: LocalChatAppendEventArgs) => void;
+  getDefaultConversationId?: () => string;
 };
 
 export type ChatPayload = {
@@ -216,6 +217,7 @@ export type RunnerContext = {
   runtimeStore: RuntimeStore;
   listLocalChatEvents?: StellaHostRunnerOptions["listLocalChatEvents"];
   appendLocalChatEvent?: StellaHostRunnerOptions["appendLocalChatEvent"];
+  getDefaultConversationId?: StellaHostRunnerOptions["getDefaultConversationId"];
   paths: RunnerPaths;
   state: RunnerState;
   hookEmitter: HookEmitter;
