@@ -83,8 +83,10 @@ const MICROCOMPACT_ELIGIBLE_TOOLS = new Set([
 
 /** Browser-safe env var access (works in Node, Convex, and browser). */
 const getEnvVar = (key: string): string | undefined => {
-  const processEnv = typeof process !== "undefined" ? process.env : undefined;
-  return processEnv?.[key];
+  const g = globalThis as unknown as {
+    process?: { env?: Record<string, string | undefined> };
+  };
+  return g.process?.env?.[key];
 };
 
 const normalizeRequestId = (event: ContextEvent): string | undefined => {
