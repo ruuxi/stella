@@ -5,14 +5,21 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
 use tokio::fs;
+use tokio::process::Command;
 
 // ── Constants ───────────────────────────────────────────────────────
 
 const INSTALL_MANIFEST: &str = "stella-install.json";
 const LAUNCH_SCRIPT_WIN: &str = "launch.cmd";
 const LAUNCH_SCRIPT_UNIX: &str = "launch.sh";
+const ENV_FILE_NAME: &str = ".env.local";
 const ESTIMATED_INSTALL_BYTES: u64 = 512 * 1024 * 1024; // 512 MB
 const APP_VERSION: &str = "0.0.1";
+const DEFAULT_ENV_FILE_CONTENTS: &str = "\
+VITE_CONVEX_URL=https://impartial-crab-34.convex.cloud\n\
+VITE_CONVEX_SITE_URL=https://impartial-crab-34.convex.site\n\
+VITE_SITE_URL=https://stella.sh\n\
+VITE_TWITCH_EMOTE_TWITCH_ID=40934651\n";
 
 const GITHUB_REPO: &str = "ruuxi/stella";
 
@@ -133,6 +140,98 @@ fn launch_script_name() -> &'static str {
 fn launch_script_of(d: &str) -> PathBuf {
     Path::new(d).join(launch_script_name())
 }
+fn env_file_of(d: &str) -> PathBuf {
+    Path::new(d).join(ENV_FILE_NAME)
+}
+fn dugite_git_root_of(d: &str) -> PathBuf {
+    Path::new(d).join("node_modules").join("dugite").join("git")
+}
+fn dugite_git_bin_of(d: &str) -> PathBuf {
+    if cfg!(target_os = "windows") {
+        dugite_git_root_of(d).join("cmd").join("git.exe")
+    } else {
+        dugite_git_root_of(d).join("bin").join("git")
+    }
+}
+fn dugite_win32_subfolder() -> &'static str {
+    if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        "mingw64"
+    } else if cfg!(all(target_os = "windows", target_arch = "aarch64")) {
+        "clangarm64"
+    } else {
+        "mingw32"
+    }
+}
+fn dugite_git_bash_of(d: &str) -> PathBuf {
+    if cfg!(target_os = "windows") {
+        dugite_git_root_of(d)
+            .join(dugite_win32_subfolder())
+            .join("bin")
+            .join("bash.exe")
+    } else {
+        dugite_git_root_of(d).join("bin").join("bash")
+    }
+}
+fn dugite_git_exec_path_of(d: &str) -> PathBuf {
+    let root = dugite_git_root_of(d);
+    if cfg!(target_os = "windows") {
+        root.join(dugite_win32_subfolder())
+            .join("libexec")
+            .join("git-core")
+    } else {
+        root.join("libexec").join("git-core")
+    }
+}
+fn dugite_launch_env(install_dir: &str) -> HashMap<String, String> {
+    let mut env = HashMap::new();
+    let git_root = dugite_git_root_of(install_dir);
+    if !git_root.exists() {
+        return env;
+    }
+
+    let git_root_str = git_root.to_string_lossy().to_string();
+    env.insert("LOCAL_GIT_DIRECTORY".into(), git_root_str.clone());
+    env.insert(
+        "STELLA_GIT_BIN".into(),
+        dugite_git_bin_of(install_dir).to_string_lossy().to_string(),
+    );
+    env.insert(
+        "GIT_EXEC_PATH".into(),
+        dugite_git_exec_path_of(install_dir).to_string_lossy().to_string(),
+    );
+
+    let existing_path = std::env::var("PATH").unwrap_or_default();
+    if cfg!(target_os = "windows") {
+        let mingw_root = git_root.join(dugite_win32_subfolder());
+        let path_prefix = format!(
+            "{};{}",
+            mingw_root.join("bin").to_string_lossy(),
+            mingw_root.join("usr").join("bin").to_string_lossy()
+        );
+        env.insert("PATH".into(), format!("{path_prefix};{existing_path}"));
+        env.insert(
+            "STELLA_GIT_BASH".into(),
+            dugite_git_bash_of(install_dir).to_string_lossy().to_string(),
+        );
+    } else {
+        env.insert("PATH".into(), format!("{git_root_str}/bin:{existing_path}"));
+        env.insert(
+            "GIT_CONFIG_SYSTEM".into(),
+            git_root.join("etc").join("gitconfig").to_string_lossy().to_string(),
+        );
+        env.insert(
+            "GIT_TEMPLATE_DIR".into(),
+            git_root
+                .join("share")
+                .join("git-core")
+                .join("templates")
+                .to_string_lossy()
+                .to_string(),
+        );
+    }
+
+    env
+}
 
 // ── Validation ──────────────────────────────────────────────────────
 
@@ -183,16 +282,51 @@ async fn write_settings(ctx: &InstallerContext, state: &InstallerState) {
 
 async fn write_launch_script(install_dir: &str) -> String {
     let script_path = launch_script_of(install_dir);
+    let launch_env = dugite_launch_env(install_dir);
 
     if cfg!(target_os = "windows") {
-        let content = format!(
-            "@echo off\r\ncd /d \"{install_dir}\"\r\nbun run electron:dev\r\n"
-        );
+        let mut content = format!("@echo off\r\ncd /d \"{install_dir}\"\r\n");
+        if let Some(git_path) = launch_env.get("STELLA_GIT_BIN") {
+            content.push_str(&format!("set \"STELLA_GIT_BIN={git_path}\"\r\n"));
+        }
+        if let Some(bash_path) = launch_env.get("STELLA_GIT_BASH") {
+            content.push_str(&format!("set \"STELLA_GIT_BASH={bash_path}\"\r\n"));
+        }
+        if let Some(git_dir) = launch_env.get("LOCAL_GIT_DIRECTORY") {
+            content.push_str(&format!("set \"LOCAL_GIT_DIRECTORY={git_dir}\"\r\n"));
+        }
+        if let Some(git_exec_path) = launch_env.get("GIT_EXEC_PATH") {
+            content.push_str(&format!("set \"GIT_EXEC_PATH={git_exec_path}\"\r\n"));
+        }
+        if let Some(path_value) = launch_env.get("PATH") {
+            content.push_str(&format!("set \"PATH={path_value}\"\r\n"));
+        }
+        content.push_str("bun run electron:dev\r\n");
         let _ = fs::write(&script_path, content).await;
     } else {
-        let content = format!(
-            "#!/bin/sh\ncd \"{install_dir}\"\nexec bun run electron:dev\n"
-        );
+        let mut content = format!("#!/bin/sh\ncd \"{install_dir}\"\n");
+        if let Some(git_path) = launch_env.get("STELLA_GIT_BIN") {
+            content.push_str(&format!("export STELLA_GIT_BIN=\"{git_path}\"\n"));
+        }
+        if let Some(bash_path) = launch_env.get("STELLA_GIT_BASH") {
+            content.push_str(&format!("export STELLA_GIT_BASH=\"{bash_path}\"\n"));
+        }
+        if let Some(git_dir) = launch_env.get("LOCAL_GIT_DIRECTORY") {
+            content.push_str(&format!("export LOCAL_GIT_DIRECTORY=\"{git_dir}\"\n"));
+        }
+        if let Some(git_exec_path) = launch_env.get("GIT_EXEC_PATH") {
+            content.push_str(&format!("export GIT_EXEC_PATH=\"{git_exec_path}\"\n"));
+        }
+        if let Some(git_config_system) = launch_env.get("GIT_CONFIG_SYSTEM") {
+            content.push_str(&format!("export GIT_CONFIG_SYSTEM=\"{git_config_system}\"\n"));
+        }
+        if let Some(git_template_dir) = launch_env.get("GIT_TEMPLATE_DIR") {
+            content.push_str(&format!("export GIT_TEMPLATE_DIR=\"{git_template_dir}\"\n"));
+        }
+        if let Some(path_value) = launch_env.get("PATH") {
+            content.push_str(&format!("export PATH=\"{path_value}\"\n"));
+        }
+        content.push_str("exec bun run electron:dev\n");
         let _ = fs::write(&script_path, &content).await;
         #[cfg(unix)]
         {
@@ -206,6 +340,12 @@ async fn write_launch_script(install_dir: &str) -> String {
     }
 
     script_path.to_string_lossy().to_string()
+}
+
+async fn write_default_env_file(install_dir: &str) -> Result<(), String> {
+    fs::write(env_file_of(install_dir), DEFAULT_ENV_FILE_CONTENTS)
+        .await
+        .map_err(|e| format!("Failed to write {ENV_FILE_NAME}: {e}"))
 }
 
 // ── Windows registry ────────────────────────────────────────────────
@@ -302,6 +442,18 @@ async fn install_bun_globally() -> bool {
     false
 }
 
+async fn install_payload_dependencies(install_dir: &str) -> Result<(), String> {
+    let dir = Some(Path::new(install_dir));
+    let result = run(&["bun", "install", "--frozen-lockfile"], dir).await;
+    if result.ok {
+        Ok(())
+    } else if result.stderr.is_empty() {
+        Err("bun install failed.".into())
+    } else {
+        Err(format!("bun install failed: {}", result.stderr))
+    }
+}
+
 // ── Tarball download + extract ──────────────────────────────────────
 
 async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
@@ -362,15 +514,46 @@ async fn init_git_repo(install_dir: &str) {
         return; // Already has a git repo
     }
 
-    // Check if git is available (not required for install, just for self-mod)
-    if !run(&["git", "--version"], None).await.ok {
+    let git_bin = dugite_git_bin_of(install_dir);
+    if !path_exists(&git_bin).await {
         return;
     }
 
-    let dir = Some(Path::new(install_dir));
-    run(&["git", "init"], dir).await;
-    run(&["git", "add", "-A"], dir).await;
-    run(&["git", "commit", "-m", "initial stella install"], dir).await;
+    let env = dugite_launch_env(install_dir);
+    let cwd = PathBuf::from(install_dir);
+
+    let mut version_command = Command::new(&git_bin);
+    version_command.args(["--version"]).current_dir(&cwd).envs(&env);
+    #[cfg(target_os = "windows")]
+    version_command.creation_flags(0x08000000);
+    let _ = version_command.output().await;
+
+    let mut init_command = Command::new(&git_bin);
+    init_command.args(["init"]).current_dir(&cwd).envs(&env);
+    #[cfg(target_os = "windows")]
+    init_command.creation_flags(0x08000000);
+    let _ = init_command.output().await;
+
+    let mut add_command = Command::new(&git_bin);
+    add_command.args(["add", "-A"]).current_dir(&cwd).envs(&env);
+    #[cfg(target_os = "windows")]
+    add_command.creation_flags(0x08000000);
+    let _ = add_command.output().await;
+
+    let mut commit_command = Command::new(&git_bin);
+    commit_command
+        .args(["commit", "-m", "initial stella install"])
+        .current_dir(&cwd)
+        .envs(&env);
+    #[cfg(target_os = "windows")]
+    commit_command.creation_flags(0x08000000);
+    let _ = commit_command.output().await;
+}
+
+fn schedule_git_repo_init(install_dir: String) {
+    tokio::spawn(async move {
+        init_git_repo(&install_dir).await;
+    });
 }
 
 // ── Logging ─────────────────────────────────────────────────────────
@@ -439,13 +622,17 @@ async fn install_step(id: &SetupStepId, state: &InstallerState) -> Result<(), St
         SetupStepId::Payload => {
             let _ = fs::create_dir_all(dir).await;
             download_and_extract_release(dir).await?;
+            write_default_env_file(dir).await?;
+            log_install(dir, "Installing desktop dependencies with Bun").await;
+            install_payload_dependencies(dir).await?;
             Ok(())
         }
         SetupStepId::Finalize => {
             let script_path = write_launch_script(dir).await;
 
-            // Init git repo for self-mod (non-blocking, best-effort)
-            init_git_repo(dir).await;
+            // Init git repo for self-mod in the background so install completion
+            // does not wait on indexing tens of thousands of extracted files.
+            schedule_git_repo_init(dir.clone());
 
             let manifest = Manifest {
                 version: APP_VERSION.into(),
@@ -699,6 +886,7 @@ pub async fn get_launch_info(state: &InstallerState) -> Option<LaunchInfo> {
     Some(LaunchInfo {
         command: vec!["bun".into(), "run".into(), "electron:dev".into()],
         cwd: dir.clone(),
+        env: dugite_launch_env(dir),
     })
 }
 

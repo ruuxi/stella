@@ -115,6 +115,7 @@ pub async fn start_install(
             let mut cmd = StdCommand::new(&info.command[0]);
             cmd.args(&info.command[1..])
                 .current_dir(&info.cwd)
+                .envs(&info.env)
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .stdin(Stdio::null());
@@ -142,6 +143,7 @@ pub async fn launch_desktop(state: State<'_, AppState>) -> Result<OkResult, Stri
         let mut cmd = StdCommand::new(&info.command[0]);
         cmd.args(&info.command[1..])
             .current_dir(&info.cwd)
+            .envs(&info.env)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .stdin(Stdio::null());

@@ -1,11 +1,8 @@
 import { promises as fs } from "fs";
-import { execFile } from "child_process";
 import os from "os";
-import { promisify } from "util";
 import path from "path";
+import { exec } from "dugite";
 import { resolveRuntimeHomePath } from "../home/stella-home.js";
-
-const execFileAsync = promisify(execFile);
 
 const LOG_ENTRY_SEPARATOR = "\x1e";
 const LOG_FIELD_SEPARATOR = "\x1f";
@@ -111,26 +108,32 @@ const extractFeatureIds = (text: string): string[] => {
 const runGit = async (
   repoRoot: string,
   args: string[],
+  options?: {
+    encoding?: "utf8" | "buffer";
+    maxBuffer?: number;
+  },
 ): Promise<string> => {
-  try {
-    const result = await execFileAsync("git", args, {
-      cwd: repoRoot,
-      windowsHide: true,
-      maxBuffer: 10 * 1024 * 1024,
-    });
-    return result.stdout.trim();
-  } catch (error) {
-    const err = error as Error & {
-      code?: string;
-      stderr?: string;
-      stdout?: string;
-    };
-    const details =
-      err.stderr?.trim() ||
-      err.stdout?.trim() ||
-      err.message;
-    throw new Error(`Git command failed (${args.join(" ")}): ${details}`);
+  const result = await exec(args, repoRoot, {
+    encoding: options?.encoding === "buffer" ? "buffer" : "utf8",
+    maxBuffer: options?.maxBuffer ?? 10 * 1024 * 1024,
+  });
+  if (result.exitCode === 0) {
+    const stdout = result.stdout;
+    return typeof stdout === "string"
+      ? stdout.trim()
+      : Buffer.from(stdout).toString("utf8").trim();
   }
+
+  const stderr =
+    typeof result.stderr === "string"
+      ? result.stderr.trim()
+      : Buffer.from(result.stderr).toString("utf8").trim();
+  const stdout =
+    typeof result.stdout === "string"
+      ? result.stdout.trim()
+      : Buffer.from(result.stdout).toString("utf8").trim();
+  const details = stderr || stdout || `exit code ${result.exitCode}`;
+  throw new Error(`Git command failed (${args.join(" ")}): ${details}`);
 };
 
 const assertGitRepository = async (repoRoot: string): Promise<void> => {
@@ -218,16 +221,19 @@ const listTaggedCommits = async (
 };
 
 const listDirtyFiles = async (repoRoot: string): Promise<string[]> => {
-  const result = await execFileAsync("git", [
+  const result = await exec([
     "-c",
     "core.quotepath=false",
     "status",
     "--porcelain",
-  ], {
-    cwd: repoRoot,
-    windowsHide: true,
+  ], repoRoot, {
+    encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024,
   });
+  if (result.exitCode !== 0) {
+    const details = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
+    throw new Error(`Git command failed (status --porcelain): ${details}`);
+  }
   const output = result.stdout.replace(/\r?\n$/, "");
   if (!output) return [];
   return output
@@ -259,17 +265,18 @@ const listDependencyFiles = async (repoRoot: string): Promise<string[]> => {
 };
 
 const hasStagedChanges = async (repoRoot: string): Promise<boolean> => {
-  try {
-    await execFileAsync("git", ["diff", "--cached", "--quiet", "--exit-code"], {
-      cwd: repoRoot,
-      windowsHide: true,
-      maxBuffer: 10 * 1024 * 1024,
-    });
+  const result = await exec(["diff", "--cached", "--quiet", "--exit-code"], repoRoot, {
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  if (result.exitCode === 0) {
     return false;
-  } catch (error) {
-    const err = error as { code?: number | string };
-    return err.code === 1 || err.code === "1";
   }
+  if (result.exitCode === 1) {
+    return true;
+  }
+  const details = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
+  throw new Error(`Git command failed (diff --cached --quiet --exit-code): ${details}`);
 };
 
 export const getGitHead = async (repoRoot: string): Promise<string | null> => {
@@ -551,32 +558,35 @@ export const getCommitFileSnapshot = async (args: {
 }): Promise<{ path: string; deleted: boolean; contentBase64?: string }> => {
   await assertGitRepository(args.repoRoot);
   const gitPath = normalizeGitPath(args.filePath);
-  try {
-    const result = await execFileAsync(
-      "git",
-      ["show", `${args.commitHash}:${gitPath}`],
-      {
-        cwd: args.repoRoot,
-        windowsHide: true,
-        maxBuffer: 25 * 1024 * 1024,
-        encoding: "buffer",
-      } as never,
-    );
-    const buffer =
-      Buffer.isBuffer(result.stdout)
-        ? result.stdout
-        : Buffer.from(result.stdout as unknown as string);
+  const result = await exec(
+    ["show", `${args.commitHash}:${gitPath}`],
+    args.repoRoot,
+    {
+      encoding: "buffer",
+      maxBuffer: 25 * 1024 * 1024,
+    },
+  );
+  if (result.exitCode === 0) {
+    const buffer = Buffer.isBuffer(result.stdout)
+      ? result.stdout
+      : Buffer.from(result.stdout);
     return {
       path: gitPath,
       deleted: false,
       contentBase64: buffer.toString("base64"),
     };
-  } catch {
+  }
+  if (result.exitCode === 128) {
     return {
       path: gitPath,
       deleted: true,
     };
   }
+  const details =
+    (Buffer.isBuffer(result.stderr) ? result.stderr.toString("utf8") : result.stderr).trim()
+    || (Buffer.isBuffer(result.stdout) ? result.stdout.toString("utf8") : result.stdout).trim()
+    || `exit code ${result.exitCode}`;
+  throw new Error(`Git command failed (show ${args.commitHash}:${gitPath}): ${details}`);
 };
 
 export const getCommitReference = async (args: {

@@ -113,6 +113,7 @@ pub struct Manifest {
 pub struct LaunchInfo {
     pub command: Vec<String>,
     pub cwd: String,
+    pub env: std::collections::HashMap<String, String>,
 }
 
 // ── Managed app state ───────────────────────────────────────────────
