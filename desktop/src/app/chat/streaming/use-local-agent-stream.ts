@@ -104,15 +104,29 @@ export function useLocalAgentStream({
   );
 
   const activateNextQueuedRun = useCallback(() => {
-    if (localRunIdRef.current) {
-      return;
-    }
-
-    const nextRun = queuedRunStartsRef.current.shift();
+    const nextRun = queuedRunStartsRef.current[0];
     if (!nextRun) {
       return;
     }
 
+    // The run may have already been adopted by the event handler (the
+    // runtime swallows END/ERROR for interrupted runs, so the renderer
+    // discovers the replacement run when its first event arrives). In
+    // that case localRunIdRef already points at the new run — just
+    // backfill the user-message mapping and pendingUserMessageId that
+    // the adoption path cannot set (the IPC hadn't resolved yet).
+    if (localRunIdRef.current === nextRun.runId) {
+      queuedRunStartsRef.current.shift();
+      userMessageIdByRunIdRef.current.set(nextRun.runId, nextRun.userMessageId);
+      setPendingUserMessageId(nextRun.userMessageId);
+      return;
+    }
+
+    if (localRunIdRef.current) {
+      return;
+    }
+
+    queuedRunStartsRef.current.shift();
     localRunIdRef.current = nextRun.runId;
     userMessageIdByRunIdRef.current.set(nextRun.runId, nextRun.userMessageId);
     resetStreamingText();
@@ -166,6 +180,18 @@ export function useLocalAgentStream({
         resetStreamingText();
         resetReasoningText();
         setIsStreaming(true);
+
+        // If the queued startChat IPC already resolved (pushed to
+        // queuedRunStartsRef) before this event arrived, consume the
+        // entry and backfill pendingUserMessageId + user-message map.
+        const queuedIndex = queuedRunStartsRef.current.findIndex(
+          (entry) => entry.runId === event.runId,
+        );
+        if (queuedIndex !== -1) {
+          const entry = queuedRunStartsRef.current.splice(queuedIndex, 1)[0];
+          userMessageIdByRunIdRef.current.set(entry.runId, entry.userMessageId);
+          setPendingUserMessageId(entry.userMessageId);
+        }
       }
 
       const isTaskLifecycleEvent =

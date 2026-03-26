@@ -39,6 +39,7 @@ export function GrowIn({
   const cachedChildrenRef = useRef<ReactNode>(children);
   const showRef = useRef(show);
   const entranceDoneRef = useRef(!canAnimate);
+  const entranceDoneRef = useRef(!canAnimate);
 
   // Cache children while visible so exit animation has content to shrink
   if (show) {
