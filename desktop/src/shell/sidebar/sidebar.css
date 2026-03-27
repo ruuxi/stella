@@ -13,35 +13,6 @@
   z-index: 2;
 }
 
-/* ---- Drawer mode (mobile) ---- */
-
-.sidebar-drawer {
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 220px;
-  z-index: 100;
-  transform: translate3d(-220px, 0, 0);
-  will-change: transform;
-}
-
-.sidebar-drawer .sidebar {
-  width: 100%;
-  height: 100%;
-}
-
-.sidebar-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 99;
-  background: black;
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-  -webkit-tap-highlight-color: transparent;
-}
-
 /* Reserve space for the fixed title bar */
 .sidebar-header {
   height: 4px;
@@ -318,21 +289,4 @@
 /* On macOS, traffic lights sit inside the sidebar area — that's intentional */
 .window-shell.full .title-bar-mac {
   padding-left: 12px;
-}
-
-/* ---- Mobile overrides ---- */
-@media (max-width: 767px) {
-  .window-shell.full .title-bar {
-    left: 0;
-  }
-
-  .content-area {
-    border-left: none;
-    border-top-left-radius: 0;
-  }
-
-  /* Safe area padding for the drawer on notched devices */
-  .sidebar-drawer .sidebar {
-    padding-top: env(safe-area-inset-top, 0);
-  }
 }
