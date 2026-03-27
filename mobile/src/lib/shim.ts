@@ -25,6 +25,9 @@ export function generateShimScript(
   return `(function() {
   'use strict';
 
+  // ── Tag document for mobile CSS overrides ────────────────────────────
+  document.documentElement.setAttribute('data-platform', 'mobile');
+
   // ── Inject desktop localStorage state ──────────────────────────────
   // Copies the desktop's auth, onboarding, and preference state so the
   // React app sees the same session instead of starting fresh.
@@ -408,6 +411,40 @@ export function generateShimScript(
   };
 
   connectWs();
+
+  // ── Mobile sidebar drawer ────────────────────────────────────────
+  // Injects a hamburger toggle and backdrop into the desktop DOM so
+  // the CSS in mobile.css can drive the slide-over drawer.
+  document.addEventListener('DOMContentLoaded', function() {
+    if (document.documentElement.getAttribute('data-platform') !== 'mobile') return;
+
+    var toggle = document.createElement('button');
+    toggle.className = 'mobile-sidebar-toggle';
+    toggle.setAttribute('aria-label', 'Menu');
+    toggle.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>';
+    toggle.addEventListener('click', function() {
+      document.documentElement.toggleAttribute('data-sidebar-open');
+    });
+
+    var backdrop = document.createElement('div');
+    backdrop.className = 'mobile-sidebar-backdrop';
+    backdrop.addEventListener('click', function() {
+      document.documentElement.removeAttribute('data-sidebar-open');
+    });
+
+    document.body.appendChild(toggle);
+    document.body.appendChild(backdrop);
+
+    // Auto-close sidebar when a nav item is tapped
+    document.addEventListener('click', function(e) {
+      if (e.target.closest('.sidebar-nav-item')) {
+        setTimeout(function() {
+          document.documentElement.removeAttribute('data-sidebar-open');
+        }, 150);
+      }
+    });
+  });
+
   console.log('[stella-bridge] Mobile bridge shim initialized');
 })();
 true;`;
