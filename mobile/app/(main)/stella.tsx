@@ -19,11 +19,17 @@ import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
 import type { DesktopBridgeStatus } from "../../src/types";
 
+type MobileBridgeBootstrap = {
+  localStorage: Record<string, string>;
+};
+
+const EMPTY_BRIDGE_BOOTSTRAP: MobileBridgeBootstrap = { localStorage: {} };
+
 type BridgeState = {
   bridgeUrl: string;
   token: string;
   uri: string;
-  desktopState?: Record<string, string>;
+  bootstrap: MobileBridgeBootstrap;
 };
 
 type ScreenState =
@@ -34,6 +40,31 @@ type ScreenState =
 type ShimMessage =
   | { type: "openExternal"; url: string }
   | { type: "connectionState"; connected: boolean };
+
+function getBridgeOrigin(bridgeUrl: string): string {
+  return new URL(bridgeUrl).origin;
+}
+
+function isAllowedExternalUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isSameOriginUrl(value: string, origin: string): boolean {
+  try {
+    return new URL(value).origin === origin;
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedWebViewUrl(value: string, origin: string): boolean {
+  return value === "about:blank" || isSameOriginUrl(value, origin);
+}
 
 function readDesktopBridgeStatus(value: unknown): DesktopBridgeStatus {
   assertObject(value, "Desktop bridge response must be an object.");
@@ -90,7 +121,6 @@ export default function StellaScreen() {
   const [screenState, setScreenState] = useState<ScreenState>({ type: "loading" });
   const [canGoBack, setCanGoBack] = useState(false);
   const [bridgeConnected, setBridgeConnected] = useState(true);
-  const bridgeToken = screenState.type === "ready" ? screenState.bridge.token : null;
 
   const refreshBridge = async () => {
     try {
@@ -105,16 +135,13 @@ export default function StellaScreen() {
       assert(baseUrl, "Desktop bridge URL is required.");
       const token = await getConvexToken();
 
-      // Fetch the desktop's localStorage state so the WebView can share
-      // the desktop session (auth, onboarding, preferences) instead of
-      // starting with a blank slate.
-      let desktopState: Record<string, string> | undefined;
+      let bootstrap = EMPTY_BRIDGE_BOOTSTRAP;
       try {
-        const stateRes = await fetch(`${baseUrl}/bridge/desktop-state`, {
+        const bootstrapRes = await fetch(`${baseUrl}/bridge/bootstrap`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (stateRes.ok) {
-          desktopState = (await stateRes.json()) as Record<string, string>;
+        if (bootstrapRes.ok) {
+          bootstrap = (await bootstrapRes.json()) as MobileBridgeBootstrap;
         }
       } catch {
         // Best-effort — proceed without desktop state
@@ -122,7 +149,7 @@ export default function StellaScreen() {
 
       setScreenState({
         type: "ready",
-        bridge: { bridgeUrl: baseUrl, token, uri: `${baseUrl}/?mobile=1`, desktopState },
+        bridge: { bridgeUrl: baseUrl, token, uri: `${baseUrl}/?mobile=1`, bootstrap },
       });
     } catch {
       setScreenState({
@@ -144,13 +171,6 @@ export default function StellaScreen() {
   }, []);
 
   useEffect(() => {
-    if (!bridgeToken || !webViewRef.current) return;
-    webViewRef.current.injectJavaScript(
-      `if(window.__stellaUpdateToken)window.__stellaUpdateToken(${JSON.stringify(bridgeToken)});true;`,
-    );
-  }, [bridgeToken]);
-
-  useEffect(() => {
     if (Platform.OS !== "android") return;
     const onBackPress = () => {
       if (canGoBack && webViewRef.current) {
@@ -165,7 +185,9 @@ export default function StellaScreen() {
 
   const handleMessage = (event: WebViewMessageEvent) => {
     const message = readShimMessage(event.nativeEvent.data);
-    if (message.type === "openExternal") void Linking.openURL(message.url);
+    if (message.type === "openExternal" && isAllowedExternalUrl(message.url)) {
+      void Linking.openURL(message.url);
+    }
     if (message.type === "connectionState") setBridgeConnected(message.connected);
   };
 
@@ -207,6 +229,7 @@ export default function StellaScreen() {
   }
 
   // Ready — WebView
+  const bridgeOrigin = getBridgeOrigin(screenState.bridge.bridgeUrl);
   return (
     <View style={styles.screen}>
       {!bridgeConnected && (
@@ -224,13 +247,20 @@ export default function StellaScreen() {
           }}
           injectedJavaScriptBeforeContentLoaded={generateShimScript(
             screenState.bridge.bridgeUrl,
-            screenState.bridge.token,
-            screenState.bridge.desktopState,
+            screenState.bridge.bootstrap,
           )}
           style={styles.webView}
           onMessage={handleMessage}
           onNavigationStateChange={(nav) => setCanGoBack(nav.canGoBack)}
-          mixedContentMode="always"
+          onShouldStartLoadWithRequest={(request) => {
+            if (isAllowedWebViewUrl(request.url, bridgeOrigin)) {
+              return true;
+            }
+            if (isAllowedExternalUrl(request.url)) {
+              void Linking.openURL(request.url);
+            }
+            return false;
+          }}
           onError={() =>
             setScreenState({
               type: "unavailable",
@@ -247,7 +277,7 @@ export default function StellaScreen() {
               });
             }
           }}
-          originWhitelist={["http://*", "https://*"]}
+          originWhitelist={[bridgeOrigin, "about:blank"]}
         />
       </View>
     </View>

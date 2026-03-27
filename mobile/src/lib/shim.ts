@@ -15,12 +15,10 @@
  */
 export function generateShimScript(
   bridgeUrl: string,
-  token: string,
-  desktopState?: Record<string, string>,
+  bootstrap: { localStorage: Record<string, string> },
 ): string {
   const bridgeUrlJson = JSON.stringify(bridgeUrl);
-  const tokenJson = JSON.stringify(token);
-  const stateJson = desktopState ? JSON.stringify(desktopState) : "null";
+  const bootstrapJson = JSON.stringify(bootstrap);
 
   return `(function() {
   'use strict';
@@ -28,42 +26,47 @@ export function generateShimScript(
   // ── Tag document for mobile CSS overrides ────────────────────────────
   document.documentElement.setAttribute('data-platform', 'mobile');
 
-  // ── Inject desktop localStorage state ──────────────────────────────
-  // Copies the desktop's auth, onboarding, and preference state so the
-  // React app sees the same session instead of starting fresh.
-  var __ds = ${stateJson};
-  if (__ds) {
+  // ── Inject bootstrap localStorage state ────────────────────────────
+  // Copies the allowlisted desktop session and preference keys into the
+  // WebView before the React app initializes.
+  var __bootstrap = ${bootstrapJson};
+  if (__bootstrap && __bootstrap.localStorage) {
     try {
-      var __k = Object.keys(__ds);
+      var __k = Object.keys(__bootstrap.localStorage);
       for (var __i = 0; __i < __k.length; __i++) {
-        localStorage.setItem(__k[__i], __ds[__k[__i]]);
+        localStorage.setItem(__k[__i], __bootstrap.localStorage[__k[__i]]);
       }
     } catch(e) {
-      console.warn('[stella-bridge] Failed to inject desktop state:', e);
+      console.warn('[stella-bridge] Failed to inject bootstrap state:', e);
     }
   }
 
   var BRIDGE_URL = ${bridgeUrlJson};
-  var SESSION_TOKEN = ${tokenJson};
   var ws = null;
   var wsReady = false;
   var wsQueue = [];
   var responseCallbacks = new Map();
   var subscriptions = new Map();
-  var callId = 0;
 
   var wsReconnectDelay = 1000;
-  var wsAuthFailures = 0;
 
-  // ── HTTP helpers ──────────────────────────────────────────────────────
+  function postNativeMessage(payload) {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+    }
+  }
 
-  function invoke(channel) {
-    var args = Array.prototype.slice.call(arguments, 1);
-    return fetch(BRIDGE_URL + '/bridge/ipc/' + encodeURIComponent(channel), {
+  function toWebSocketUrl(httpUrl) {
+    var url = new URL(httpUrl);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    return url.toString();
+  }
+
+  function postBridgeJson(path, args) {
+    return fetch(BRIDGE_URL + path, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + SESSION_TOKEN,
       },
       body: JSON.stringify({ args: args }),
     }).then(function(res) {
@@ -73,21 +76,31 @@ export function generateShimScript(
         });
       }
       return res.json();
-    }).then(function(data) {
+    });
+  }
+
+  function postBridgeVoid(path, args) {
+    fetch(BRIDGE_URL + path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ args: args }),
+    }).catch(function() {});
+  }
+
+  // ── HTTP helpers ──────────────────────────────────────────────────────
+
+  function invoke(channel) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return postBridgeJson('/bridge/ipc/' + encodeURIComponent(channel), args).then(function(data) {
       return data.result;
     });
   }
 
   function fire(channel) {
     var args = Array.prototype.slice.call(arguments, 1);
-    fetch(BRIDGE_URL + '/bridge/ipc/' + encodeURIComponent(channel), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + SESSION_TOKEN,
-      },
-      body: JSON.stringify({ args: args }),
-    }).catch(function() {});
+    postBridgeVoid('/bridge/ipc/' + encodeURIComponent(channel), args);
   }
 
   // ── WebSocket ─────────────────────────────────────────────────────────
@@ -95,15 +108,12 @@ export function generateShimScript(
   function connectWs() {
     if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
 
-    ws = new WebSocket(BRIDGE_URL.replace('http', 'ws') + '/bridge/ws?token=' + encodeURIComponent(SESSION_TOKEN));
+    ws = new WebSocket(toWebSocketUrl(BRIDGE_URL) + '/bridge/ws');
 
     ws.onopen = function() {
       wsReady = true;
       wsReconnectDelay = 1000;
-      wsAuthFailures = 0;
-      if (window.ReactNativeWebView) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'connectionState', connected: true }));
-      }
+      postNativeMessage({ type: 'connectionState', connected: true });
       while (wsQueue.length > 0) { ws.send(wsQueue.shift()); }
       for (var ch of subscriptions.keys()) {
         ws.send(JSON.stringify({ type: 'subscribe', channel: ch }));
@@ -132,12 +142,9 @@ export function generateShimScript(
       } catch(e) {}
     };
 
-    ws.onclose = function(ev) {
+    ws.onclose = function() {
       wsReady = false;
-      if (window.ReactNativeWebView) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'connectionState', connected: false }));
-      }
-      if (ev.code === 4001) { wsAuthFailures++; }
+      postNativeMessage({ type: 'connectionState', connected: false });
       wsReconnectDelay = Math.min(wsReconnectDelay * 1.5, 10000);
       setTimeout(connectWs, wsReconnectDelay);
     };
@@ -303,9 +310,7 @@ export function generateShimScript(
       onAuthCallback: noopSub,
       openFullDiskAccess: noop,
       openExternal: function(url) {
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'openExternal', url: url }));
-        }
+        postNativeMessage({ type: 'openExternal', url: url });
       },
       shellKillByPort: function() { return resolved(); },
       getLocalSyncMode: function() { return invoke('preferences:getSyncMode'); },
@@ -389,25 +394,6 @@ export function generateShimScript(
     socialSessions: {
       getStatus: function() { return invoke('socialSessions:getStatus'); },
     },
-  };
-
-  // ── Token refresh ────────────────────────────────────────────────────
-  // Called from the native side via injectJavaScript() when the JWT
-  // is rotated. Updates the token for future HTTP calls and resets
-  // WS auth-failure tracking so reconnects use the fresh credential.
-
-  window.__stellaUpdateToken = function(newToken) {
-    SESSION_TOKEN = newToken;
-    wsAuthFailures = 0;
-    // Force reconnect if the WS is not currently healthy — handles CLOSED,
-    // CLOSING, and stale connections that stopped after auth failures.
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      if (ws && ws.readyState !== WebSocket.CLOSED) {
-        try { ws.close(); } catch(e) {}
-      }
-      ws = null;
-      connectWs();
-    }
   };
 
   connectWs();
