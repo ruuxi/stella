@@ -27,7 +27,9 @@
 
 [data-platform="mobile"][data-sidebar-open] .sidebar {
   transform: translateX(0);
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.12);
+  /* The enormous spread acts as a full-screen backdrop dimmer while
+     staying in the sidebar's own stacking context. */
+  box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.3);
 }
 
 [data-platform="mobile"] .sidebar-header {
@@ -92,22 +94,3 @@
   background: color-mix(in oklch, var(--background) 95%, transparent);
 }
 
-/* ── Backdrop (injected by shim) ──────────────────────────────── */
-
-.mobile-sidebar-backdrop {
-  display: none;
-}
-
-[data-platform="mobile"][data-sidebar-open] .mobile-sidebar-backdrop {
-  display: block;
-  position: fixed;
-  inset: 0;
-  z-index: 250;
-  background: rgba(0, 0, 0, 0.3);
-  animation: mobileBackdropIn 0.2s ease;
-}
-
-@keyframes mobileBackdropIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}

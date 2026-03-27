@@ -422,25 +422,20 @@ export function generateShimScript(
     toggle.className = 'mobile-sidebar-toggle';
     toggle.setAttribute('aria-label', 'Menu');
     toggle.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>';
-    toggle.addEventListener('click', function() {
+    toggle.addEventListener('click', function(e) {
+      e.stopPropagation();
       document.documentElement.toggleAttribute('data-sidebar-open');
     });
-
-    var backdrop = document.createElement('div');
-    backdrop.className = 'mobile-sidebar-backdrop';
-    backdrop.addEventListener('click', function() {
-      document.documentElement.removeAttribute('data-sidebar-open');
-    });
-
     document.body.appendChild(toggle);
-    document.body.appendChild(backdrop);
 
-    // Auto-close sidebar when a nav item is tapped
+    // Close sidebar when tapping outside it or selecting a nav item
     document.addEventListener('click', function(e) {
-      if (e.target.closest('.sidebar-nav-item')) {
+      if (!document.documentElement.hasAttribute('data-sidebar-open')) return;
+      if (e.target.closest('.mobile-sidebar-toggle')) return;
+      if (e.target.closest('.sidebar-nav-item') || !e.target.closest('.sidebar')) {
         setTimeout(function() {
           document.documentElement.removeAttribute('data-sidebar-open');
-        }, 150);
+        }, 100);
       }
     });
   });
