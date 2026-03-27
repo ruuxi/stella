@@ -94,7 +94,7 @@
 }
 
 .event-body {
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1.45;
   color: var(--text-strong);
   white-space: pre-wrap;
@@ -103,7 +103,7 @@
 
 .event-item.assistant .markdown {
   color: var(--text-strong);
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 425;
 }
 
