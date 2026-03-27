@@ -13,12 +13,32 @@
  * Desktop-only features (window chrome, screenshots, overlays, radial menu)
  * are stubbed as no-ops so the frontend never crashes.
  */
-export function generateShimScript(bridgeUrl: string, token: string): string {
+export function generateShimScript(
+  bridgeUrl: string,
+  token: string,
+  desktopState?: Record<string, string>,
+): string {
   const bridgeUrlJson = JSON.stringify(bridgeUrl);
   const tokenJson = JSON.stringify(token);
+  const stateJson = desktopState ? JSON.stringify(desktopState) : "null";
 
   return `(function() {
   'use strict';
+
+  // ── Inject desktop localStorage state ──────────────────────────────
+  // Copies the desktop's auth, onboarding, and preference state so the
+  // React app sees the same session instead of starting fresh.
+  var __ds = ${stateJson};
+  if (__ds) {
+    try {
+      var __k = Object.keys(__ds);
+      for (var __i = 0; __i < __k.length; __i++) {
+        localStorage.setItem(__k[__i], __ds[__k[__i]]);
+      }
+    } catch(e) {
+      console.warn('[stella-bridge] Failed to inject desktop state:', e);
+    }
+  }
 
   var BRIDGE_URL = ${bridgeUrlJson};
   var SESSION_TOKEN = ${tokenJson};
@@ -78,6 +98,9 @@ export function generateShimScript(bridgeUrl: string, token: string): string {
       wsReady = true;
       wsReconnectDelay = 1000;
       wsAuthFailures = 0;
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'connectionState', connected: true }));
+      }
       while (wsQueue.length > 0) { ws.send(wsQueue.shift()); }
       for (var ch of subscriptions.keys()) {
         ws.send(JSON.stringify({ type: 'subscribe', channel: ch }));
@@ -108,14 +131,11 @@ export function generateShimScript(bridgeUrl: string, token: string): string {
 
     ws.onclose = function(ev) {
       wsReady = false;
-      if (ev.code === 4001) {
-        wsAuthFailures++;
-        if (wsAuthFailures >= 3) {
-          console.error('[bridge] Session expired. Please reconnect from your phone.');
-          return;
-        }
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'connectionState', connected: false }));
       }
-      wsReconnectDelay = Math.min(wsReconnectDelay * 1.5, 30000);
+      if (ev.code === 4001) { wsAuthFailures++; }
+      wsReconnectDelay = Math.min(wsReconnectDelay * 1.5, 10000);
       setTimeout(connectWs, wsReconnectDelay);
     };
 
@@ -275,8 +295,8 @@ export function generateShimScript(bridgeUrl: string, token: string): string {
     system: {
       getDeviceId: function() { return invoke('device:getId'); },
       configurePiRuntime: function(c) { return invoke('host:configurePiRuntime', c); },
-      setAuthState: function(p) { return invoke('auth:setState', p); },
-      setCloudSyncEnabled: function(p) { return invoke('host:setCloudSyncEnabled', p); },
+      setAuthState: function() { return resolved(); },
+      setCloudSyncEnabled: function() { return resolved(); },
       onAuthCallback: noopSub,
       openFullDiskAccess: noop,
       openExternal: function(url) {
@@ -376,7 +396,13 @@ export function generateShimScript(bridgeUrl: string, token: string): string {
   window.__stellaUpdateToken = function(newToken) {
     SESSION_TOKEN = newToken;
     wsAuthFailures = 0;
-    if (!ws || ws.readyState === WebSocket.CLOSED) {
+    // Force reconnect if the WS is not currently healthy — handles CLOSED,
+    // CLOSING, and stale connections that stopped after auth failures.
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      if (ws && ws.readyState !== WebSocket.CLOSED) {
+        try { ws.close(); } catch(e) {}
+      }
+      ws = null;
       connectWs();
     }
   };

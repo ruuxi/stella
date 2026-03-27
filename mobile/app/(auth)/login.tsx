@@ -2,7 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -135,17 +138,21 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" />
-      <View style={styles.hero}>
-        <Text style={styles.kicker}>STELLA</Text>
-        <Text style={styles.title}>
-          Your assistant,{"\n"}pocket-sized.
-        </Text>
-        <Text style={styles.body}>
-          Sign in with the email you use on your computer.
-        </Text>
-      </View>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <Pressable style={styles.hero} onPress={Keyboard.dismiss}>
+          <Text style={styles.kicker}>STELLA</Text>
+          <Text style={styles.title}>
+            Your assistant,{"\n"}pocket-sized.
+          </Text>
+          <Text style={styles.body}>
+            Sign in with the email you use on your computer.
+          </Text>
+        </Pressable>
 
-      <View style={styles.formArea}>
+        <View style={styles.formArea}>
         <TextInput
           autoCapitalize="none"
           autoComplete="email"
@@ -206,7 +213,8 @@ export default function LoginScreen() {
           </Text>
           .
         </Text>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
 
       <Modal
         visible={activeLegal !== null}
@@ -249,6 +257,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     paddingHorizontal: 28,
+  },
+  keyboardAvoid: {
+    flex: 1,
     justifyContent: "space-between",
   },
   hero: {

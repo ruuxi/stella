@@ -59,6 +59,21 @@ const startMobileBridge = (context: BootstrapContext) => {
     context.state.mobileBridgeService = bridge;
     bridge.start();
 
+    // Read the desktop renderer's localStorage so the mobile WebView can
+    // share session state (auth, onboarding, preferences).
+    bridge.setDesktopStateGetter(async () => {
+      const win = context.state.windowManager?.getFullWindow();
+      if (!win || win.isDestroyed()) return {};
+      try {
+        const raw = await win.webContents.executeJavaScript(
+          `(()=>{var d={};for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k!==null)d[k]=localStorage.getItem(k)}return JSON.stringify(d)})()`,
+        );
+        return JSON.parse(raw as string);
+      } catch {
+        return {};
+      }
+    });
+
     // Wire auth state into the bridge for Convex registration
     const authService = context.services.authService;
     const syncBridgeAuth = async () => {

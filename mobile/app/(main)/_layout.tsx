@@ -8,12 +8,14 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import Feather from "@expo/vector-icons/Feather";
 import {
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
 } from "react-native";
+import { triggerStellaRefresh } from "../../src/lib/stella-refresh";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   interpolate,
@@ -103,6 +105,7 @@ export default function MainLayout() {
   const activeTab = readActiveTab(pathname);
 
   const openSidebar = () => {
+    Keyboard.dismiss();
     setSidebarOpen(true);
     drawerProgress.value = withTiming(1, { duration: 280 });
   };
@@ -209,6 +212,15 @@ export default function MainLayout() {
             >
               <Feather name="menu" size={22} color={colors.text} />
             </Pressable>
+            {activeTab === "stella" && (
+              <Pressable
+                onPress={triggerStellaRefresh}
+                hitSlop={8}
+                style={styles.topBarAction}
+              >
+                <Feather name="refresh-cw" size={18} color={colors.textMuted} />
+              </Pressable>
+            )}
           </View>
 
           <View style={styles.content}>
@@ -282,9 +294,17 @@ const styles = StyleSheet.create({
 
   // Top bar — phone only
   topBar: {
+    alignItems: "center",
     flexDirection: "row",
     height: 44,
+    justifyContent: "space-between",
     paddingHorizontal: 4,
+  },
+  topBarAction: {
+    alignItems: "center",
+    height: 44,
+    justifyContent: "center",
+    width: 44,
   },
   hamburger: {
     alignItems: "center",

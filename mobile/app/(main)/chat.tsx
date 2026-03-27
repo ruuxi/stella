@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActionSheetIOS,
   Animated,
   FlatList,
+  Image,
+  Keyboard,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -13,13 +16,14 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { GlassView } from "expo-glass-effect";
+import * as ImagePicker from "expo-image-picker";
 import Reanimated, {
   useAnimatedKeyboard,
   useAnimatedStyle,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Feather from "@expo/vector-icons/Feather";
-import { assert, assertObject, errorMessage } from "../../src/lib/assert";
+import { assert, assertObject } from "../../src/lib/assert";
 import { postJson } from "../../src/lib/http";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
@@ -115,6 +119,7 @@ export default function ChatScreen() {
   const inputRef = useRef<TextInput>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
+  const [attachments, setAttachments] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [sending, setSending] = useState(false);
   const [atTop, setAtTop] = useState(true);
   const [atBottom, setAtBottom] = useState(true);
@@ -130,7 +135,23 @@ export default function ChatScreen() {
   const [expanded, setExpanded] = useState(false);
   const hasMountedRef = useRef(false);
 
-  const canSubmit = draft.trim().length > 0 && !sending;
+  const canSubmit = (draft.trim().length > 0 || attachments.length > 0) && !sending;
+
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      quality: 0.8,
+      selectionLimit: 5,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      setAttachments((prev) => [...prev, ...result.assets]);
+    }
+  };
+
+  const removeAttachment = (uri: string) => {
+    setAttachments((prev) => prev.filter((a) => a.uri !== uri));
+  };
 
   const scrollToEnd = useCallback(() => {
     requestAnimationFrame(() =>
@@ -146,6 +167,7 @@ export default function ChatScreen() {
 
     const userMsg: ChatMessage = { id: createId(), role: "user", text };
     setDraft("");
+    setAttachments([]);
     setSending(true);
 
     // Collapse composer back to pill after sending
@@ -163,13 +185,13 @@ export default function ChatScreen() {
         ...m,
         { id: createId(), role: "assistant", text: readOfflineChatText(res) },
       ]);
-    } catch (error) {
+    } catch {
       setMessages((m) => [
         ...m,
         {
           id: createId(),
           role: "assistant",
-          text: `Couldn't respond right now. ${errorMessage(error)}`,
+          text: "I couldn't respond right now. Please try again in a moment.",
         },
       ]);
     } finally {
@@ -230,9 +252,9 @@ export default function ChatScreen() {
       {/* ---------- Conversation ---------- */}
       <View style={styles.viewport}>
         {empty ? (
-          <View style={styles.emptyState}>
+          <Pressable style={styles.emptyState} onPress={() => Keyboard.dismiss()}>
             <Text style={styles.emptyText}>Ask Stella anything</Text>
-          </View>
+          </Pressable>
         ) : (
           <FlatList
             ref={listRef}
@@ -243,6 +265,7 @@ export default function ChatScreen() {
             onScroll={handleScroll}
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={false}
+            keyboardDismissMode="on-drag"
             renderItem={({ item }) => (
               <FadeInMessage>
                 {item.role === "user" ? (
@@ -287,6 +310,22 @@ export default function ChatScreen() {
               [add] [input] [toolbar: [add-toolbar] [stop] [submit]]
       */}
       <View style={styles.composerWrap}>
+        {attachments.length > 0 && (
+          <View style={styles.attachmentStrip}>
+            {attachments.map((asset) => (
+              <View key={asset.uri} style={styles.attachmentThumb}>
+                <Image source={{ uri: asset.uri }} style={styles.attachmentImage} />
+                <Pressable
+                  style={styles.attachmentRemove}
+                  onPress={() => removeAttachment(asset.uri)}
+                  hitSlop={4}
+                >
+                  <Feather name="x" size={12} color={colors.accentForeground} />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
         <GlassView style={[styles.shell, expanded ? styles.shellExpanded : styles.shellPill]}>
 
           {expanded ? (
@@ -307,7 +346,7 @@ export default function ChatScreen() {
               />
               <View style={styles.toolbar}>
                 <View style={styles.toolbarLeft}>
-                  <Pressable style={styles.addButton} hitSlop={4}>
+                  <Pressable style={styles.addButton} hitSlop={4} onPress={() => void pickImage()}>
                     <Feather name="plus" size={18} color={colors.textMuted} />
                   </Pressable>
                 </View>
@@ -334,7 +373,7 @@ export default function ChatScreen() {
           ) : (
             /* ---- Pill: single row, input + submit ---- */
             <View style={styles.formPill}>
-              <Pressable style={styles.addButton} hitSlop={4}>
+              <Pressable style={styles.addButton} hitSlop={4} onPress={() => void pickImage()}>
                 <Feather name="plus" size={18} color={colors.textMuted} />
               </Pressable>
               <TextInput
@@ -477,6 +516,37 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === "ios" ? 4 : 10,
     paddingHorizontal: 4,
     paddingTop: 8,
+  },
+
+  // Attachment preview strip — above the composer shell
+  attachmentStrip: {
+    flexDirection: "row",
+    gap: 8,
+    paddingBottom: 8,
+    paddingHorizontal: 4,
+  },
+  attachmentThumb: {
+    borderRadius: 10,
+    height: 64,
+    overflow: "hidden",
+    position: "relative",
+    width: 64,
+  },
+  attachmentImage: {
+    borderRadius: 10,
+    height: 64,
+    width: 64,
+  },
+  attachmentRemove: {
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 10,
+    height: 20,
+    justifyContent: "center",
+    position: "absolute",
+    right: 3,
+    top: 3,
+    width: 20,
   },
 
   // Shell — desktop: .composer-shell (pill radius, shadow, overflow clip)
