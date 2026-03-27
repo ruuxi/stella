@@ -1,3 +1,5 @@
+import { formatTimestampForHistory, TEN_MINUTES_MS } from "./message-timestamp.js";
+
 export type LocalContextEvent = {
   _id: string;
   timestamp: number;
@@ -74,6 +76,7 @@ type PendingToolCall = {
 type TimestampState = {
   prevDate?: string;
   timezone?: string;
+  prevUserTs?: number;
 };
 
 type MicrocompactState = {
@@ -434,29 +437,6 @@ const buildMicrocompactPlan = (
   };
 };
 
-const formatMessageTimestamp = (
-  timestamp: number,
-  prevDate?: string,
-  timezone?: string,
-): { tag: string; dateStr: string } => {
-  const tz = timezone ?? "UTC";
-  const d = new Date(timestamp);
-  const timeStr = d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: tz,
-  });
-  const dateStr = d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: tz,
-  });
-  return {
-    tag: prevDate && dateStr === prevDate ? `[${timeStr}]` : `[${timeStr}, ${dateStr}]`,
-    dateStr,
-  };
-};
 
 const formatTextEvent = (
   event: LocalContextEvent,
@@ -465,18 +445,22 @@ const formatTextEvent = (
   const payload = asObject(event.payload);
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
   if (!text) return null;
-  const { tag, dateStr } = formatMessageTimestamp(
+  const isAssistant = event.type === "assistant_message";
+  const skipTs = !isAssistant &&
+    tsState.prevUserTs != null &&
+    event.timestamp - tsState.prevUserTs < TEN_MINUTES_MS;
+  if (!isAssistant) tsState.prevUserTs = event.timestamp;
+  const { tag, dateStr } = formatTimestampForHistory(
     event.timestamp,
     tsState.prevDate,
     tsState.timezone,
   );
   tsState.prevDate = dateStr;
   const body = truncateWithSuffix(text, MAX_TEXT_CHARS);
-  const isAssistant = event.type === "assistant_message";
-  return {
-    role: isAssistant ? "assistant" : "user",
-    content: isAssistant ? `${tag}\n\n${body}` : `${body}\n\n${tag}`,
-  };
+  if (isAssistant) {
+    return { role: "assistant", content: body };
+  }
+  return { role: "user", content: skipTs ? body : `${body}\n\n${tag}` };
 };
 
 const formatToolRequest = (event: LocalContextEvent): LocalHistoryMessage => {
