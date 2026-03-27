@@ -328,8 +328,11 @@ export const TurnItem = memo(function TurnItem({
     : shouldShowStreamingAssistant;
   const assistantCacheKey = `assistant-${turn.id}`;
 
+  // Apply entrance animation when the turn is freshly added (no assistant reply yet)
+  const isNewTurn = !hasAssistantContent && !shouldShowStreamingAssistant;
+
   return (
-    <div className="session-turn" data-turn-id={turn.id}>
+    <div className={`session-turn${isNewTurn ? " fade-up-turn" : ""}`} data-turn-id={turn.id}>
       {/* User message (skip if empty, e.g., for standalone assistant messages) */}
       {hasUserContent && (
         <div className="event-item user">
