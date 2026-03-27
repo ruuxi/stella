@@ -18,6 +18,8 @@ export function RegionCapture() {
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
   const [vacuum, setVacuum] = useState<VacuumState | null>(null);
+  /** After the vacuum animation, keep the dim layer off until the overlay closes (avoids a flash while IPC runs). */
+  const [dimSuppressedAfterVacuum, setDimSuppressedAfterVacuum] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const selection = startPoint && currentPoint ? {
@@ -30,6 +32,7 @@ export function RegionCapture() {
   const clearSelection = useCallback(() => {
     setStartPoint(null);
     setCurrentPoint(null);
+    setDimSuppressedAfterVacuum(false);
   }, []);
 
   useEffect(() => {
@@ -64,6 +67,7 @@ export function RegionCapture() {
     runVacuumEffect(canvasRef.current, thumbnail, cx, cy).then(() => {
       if (cancelled) return;
       captureApi?.submitRegionClick?.(clickPoint);
+      setDimSuppressedAfterVacuum(true);
       setVacuum(null);
     });
     return () => {
@@ -140,7 +144,9 @@ export function RegionCapture() {
       onMouseUp={handleMouseUp}
       onContextMenu={handleContextMenu}
     >
-      {!selection && !vacuum && <div className="region-capture-dim" />}
+      {!selection && !vacuum && !dimSuppressedAfterVacuum && (
+        <div className="region-capture-dim" />
+      )}
       {selection && (
         <div
           className="region-capture-selection"
