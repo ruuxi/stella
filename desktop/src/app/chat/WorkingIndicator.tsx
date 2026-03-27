@@ -1,4 +1,5 @@
-﻿import { cn } from "@/shared/lib/utils";
+﻿import { useEffect, useState } from "react";
+import { cn } from "@/shared/lib/utils";
 import { computeStatus } from "./status-utils";
 import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import { getAgentLabel } from "./agent-labels";
@@ -25,6 +26,14 @@ export function WorkingIndicator({
   duration,
   className,
 }: WorkingIndicatorProps) {
+  // Defer StellaAnimation mount so WebGL shader compilation doesn't block
+  // the first streaming frames. The text status renders immediately.
+  const [animReady, setAnimReady] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setAnimReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
   let displayStatus: string;
 
   if (status) {
@@ -41,7 +50,7 @@ export function WorkingIndicator({
     <div className={cn("working-indicator", className)}>
       <div className="indicator-stella">
         <div className="indicator-stella-scale">
-          <StellaAnimation width={20} height={20} maxDpr={1} frameSkip={2} />
+          {animReady && <StellaAnimation width={20} height={20} maxDpr={1} frameSkip={2} />}
         </div>
       </div>
       <TextShimmer text={displayStatus} active={true} className="working-status" />
