@@ -91,10 +91,10 @@ const formatProvider = (provider: string) =>
     .map((part) => part[0].toUpperCase() + part.slice(1))
     .join(" ");
 
-const LEADING_TIME_TAG_RE =
-  /^\[(?:1[0-2]|0?[1-9]):[0-5]\d\s?(?:AM|PM)(?:,\s+[A-Za-z]{3}\s+\d{1,2})?\]\s*/i;
-const TRAILING_TIME_TAG_RE =
-  /\s*\n\n\[(?:1[0-2]|0?[1-9]):[0-5]\d\s?(?:AM|PM)(?:,\s+[A-Za-z]{3}\s+\d{1,2})?\]$/i;
+import {
+  LEADING_TIME_TAG_RE,
+  TRAILING_TIME_TAG_RE,
+} from "@/shared/lib/message-timestamp";
 
 const isChannelMessageEvent = (event: EventRecord): boolean => {
   if (event.channelEnvelope && typeof event.channelEnvelope === "object") {
@@ -110,7 +110,7 @@ const isChannelMessageEvent = (event: EventRecord): boolean => {
 // eslint-disable-next-line react-refresh/only-export-components
 export const getDisplayMessageText = (event: EventRecord): string => {
   const text = getEventText(event).replace(TRAILING_TIME_TAG_RE, "");
-  if (!isChannelMessageEvent(event) && event.type !== "assistant_message") {
+  if (!isChannelMessageEvent(event)) {
     return text;
   }
   return text.replace(LEADING_TIME_TAG_RE, "");

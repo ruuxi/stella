@@ -1,7 +1,8 @@
-const LEADING_TIME_TAG_RE =
-  /^\[(?:1[0-2]|0?[1-9]):[0-5]\d\s?(?:AM|PM)(?:,\s+[A-Za-z]{3}\s+\d{1,2})?\]\s*/i;
-const TRAILING_TIME_TAG_RE =
-  /\s*\n\n\[(?:1[0-2]|0?[1-9]):[0-5]\d\s?(?:AM|PM)(?:,\s+[A-Za-z]{3}\s+\d{1,2})?\]$/i;
+import {
+  LEADING_TIME_TAG_RE,
+  TRAILING_TIME_TAG_RE,
+  formatTimestampTag,
+} from "../message-timestamp.js";
 
 const isMessageEventType = (type: string) =>
   type === "user_message" || type === "assistant_message";
@@ -32,23 +33,6 @@ const isChannelMessage = (
   return typeof source === "string" && source.trim().toLowerCase().startsWith("channel:");
 };
 
-const formatMessageTimestampTag = (timestamp: number, timezone?: string): string => {
-  const tz = timezone ?? "UTC";
-  const date = new Date(timestamp);
-  const timeStr = date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: tz,
-  });
-  const dateStr = date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: tz,
-  });
-  return `[${timeStr}, ${dateStr}]`;
-};
-
 export const prepareStoredLocalChatPayload = (args: {
   type: string;
   payload: unknown;
@@ -71,7 +55,13 @@ export const prepareStoredLocalChatPayload = (args: {
     return nextPayload;
   }
 
-  let normalizedText = rawText.replace(TRAILING_TIME_TAG_RE, "");
+  // If the text already has a timestamp tag, keep it as-is
+  if (TRAILING_TIME_TAG_RE.test(rawText)) {
+    nextPayload.contextText = rawText.trimEnd();
+    return nextPayload;
+  }
+
+  let normalizedText = rawText;
   if (isChannelMessage(nextPayload, args.channelEnvelope)) {
     normalizedText = normalizedText.replace(LEADING_TIME_TAG_RE, "");
   }
@@ -79,7 +69,7 @@ export const prepareStoredLocalChatPayload = (args: {
 
   const effectiveTimestamp =
     getSourceTimestamp(args.channelEnvelope) ?? args.timestamp;
-  nextPayload.contextText = `${normalizedText}\n\n${formatMessageTimestampTag(
+  nextPayload.contextText = `${normalizedText}\n\n${formatTimestampTag(
     effectiveTimestamp,
     args.timezone,
   )}`;

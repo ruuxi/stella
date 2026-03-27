@@ -232,32 +232,13 @@ const flushPendingToolCalls = (
   pendingWithoutId.length = 0;
 };
 
-/** Format a timestamp for message tagging. Includes date only if it differs from prevDate. */
-export const formatMessageTimestamp = (
-  timestamp: number,
-  prevDate?: string,
-  timezone?: string,
-): { tag: string; dateStr: string } => {
-  const tz = timezone ?? "UTC";
-  const d = new Date(timestamp);
-  const timeStr = d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: tz,
-  });
-  const dateStr = d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: tz,
-  });
-  const tag = prevDate && dateStr === prevDate
-    ? `[${timeStr}]`
-    : `[${timeStr}, ${dateStr}]`;
-  return { tag, dateStr };
-};
+import {
+  formatTimestampForHistory,
+  TRAILING_TIME_TAG_RE as TRAILING_TS_RE,
+  TEN_MINUTES_MS,
+} from "@/shared/lib/message-timestamp";
 
-type TimestampState = { prevDate?: string; timezone?: string };
+type TimestampState = { prevDate?: string; timezone?: string; prevUserTs?: number };
 
 const formatTextEvent = (
   event: ContextEvent,
@@ -269,25 +250,32 @@ const formatTextEvent = (
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
   const effectiveText = contextText || text;
   if (!effectiveText) return null;
+
+  const isAssistant = event.type === "assistant_message";
+  const skipTs = !isAssistant &&
+    tsState.prevUserTs != null &&
+    event.timestamp - tsState.prevUserTs < TEN_MINUTES_MS;
+  if (!isAssistant) tsState.prevUserTs = event.timestamp;
+
   if (contextText) {
+    const content = skipTs ? contextText.replace(TRAILING_TS_RE, "") : contextText;
     return {
-      role: event.type === "assistant_message" ? "assistant" : "user",
-      content: truncateWithSuffix(effectiveText, MAX_TEXT_CHARS),
+      role: isAssistant ? "assistant" : "user",
+      content: truncateWithSuffix(content, MAX_TEXT_CHARS),
     };
   }
   if (!text) return null;
-  const { tag, dateStr } = formatMessageTimestamp(
+  const { tag, dateStr } = formatTimestampForHistory(
     event.timestamp,
     tsState.prevDate,
     tsState.timezone,
   );
   tsState.prevDate = dateStr;
   const body = truncateWithSuffix(text, MAX_TEXT_CHARS);
-  const isAssistant = event.type === "assistant_message";
-  return {
-    role: isAssistant ? "assistant" : "user",
-    content: isAssistant ? `${tag}\n\n${body}` : `${body}\n\n${tag}`,
-  };
+  if (isAssistant) {
+    return { role: "assistant", content: body };
+  }
+  return { role: "user", content: skipTs ? body : `${body}\n\n${tag}` };
 };
 
 const asStringArray = (value: unknown): string[] => {
