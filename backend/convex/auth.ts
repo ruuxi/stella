@@ -61,12 +61,15 @@ const getDeepLinkOrigin = () => {
 };
 
 /** Matches `EXPO_PUBLIC_STELLA_MOBILE_SCHEME` default in `mobile/src/config/env.ts` (magic-link callback). */
-const getMobileDeepLinkOrigin = () => {
+const getMobileDeepLinkOrigins = () => {
   const scheme =
     process.env.EXPO_PUBLIC_STELLA_MOBILE_SCHEME?.trim()
     || process.env.STELLA_MOBILE_SCHEME?.trim()
     || "stella-mobile";
-  return `${scheme}://auth`;
+  // expoClient sends `Linking.createURL("", { scheme })` as expo-origin,
+  // which varies by platform (e.g. "stella-mobile://", "stella-mobile:///").
+  // Include both with and without the /auth path.
+  return [`${scheme}://auth`, `${scheme}://`, `${scheme}:///`];
 };
 
 const DEFAULT_SESSION_VERSION = 1;
@@ -212,7 +215,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
       [
         siteUrl,
         getDeepLinkOrigin(),
-        getMobileDeepLinkOrigin(),
+        ...getMobileDeepLinkOrigins(),
         ...extraTrustedOrigins,
       ].filter((origin): origin is string => Boolean(origin)),
     ),

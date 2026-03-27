@@ -99,8 +99,7 @@ export default function LoginScreen() {
               method: "POST",
               body: { token: data.ott },
             });
-            // Don't navigate — the auth guard in _layout.tsx will redirect
-            // to /chat once useSession() sees the new session.
+            await authClient.getSession();
             return;
           }
 
