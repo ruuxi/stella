@@ -6,7 +6,7 @@
   justify-content: flex-end;
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
-  --compact-chat-font-size: 18px;
+  --compact-chat-font-size: 17px;
   --compact-chat-line-height: 1.45;
   --compact-chat-letter-spacing: 0.03em;
   --compact-chat-body-color: var(--text-strong);
@@ -29,7 +29,7 @@
 .chat-conversation-surface--mini {
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
-  --compact-chat-font-size: 16px;
+  --compact-chat-font-size: 15px;
   --compact-chat-line-height: 1.45;
   --compact-chat-body-color: var(--text-strong);
   --compact-chat-markdown-color: var(--text-strong);
@@ -47,7 +47,7 @@
 .chat-conversation-surface--orb {
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
-  --compact-chat-font-size: 16px;
+  --compact-chat-font-size: 15px;
   --compact-chat-line-height: 1.45;
   --compact-chat-body-color: var(--text-strong);
   --compact-chat-markdown-color: var(--text-strong);
