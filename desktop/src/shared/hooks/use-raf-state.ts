@@ -68,3 +68,63 @@ export function useRafStringAccumulator(): [
 
   return [text, appendDelta, reset, textRef];
 }
+
+/**
+ * Smooths bursty streaming text into a steady character drip.
+ * Runs a persistent RAF loop while `active` is true, releasing a fraction
+ * of the buffered characters each frame so text appears at a constant rate
+ * regardless of how unevenly tokens arrive from the network.
+ *
+ * When `active` turns false (stream ends), flushes remaining buffer instantly.
+ */
+export function useStreamBuffer(targetText: string, active: boolean): string {
+  const [displayText, setDisplayText] = useState("");
+  const displayLenRef = useRef(0);
+  const targetRef = useRef("");
+  const activeRef = useRef(false);
+  const rafRef = useRef<number | null>(null);
+
+  targetRef.current = targetText;
+  activeRef.current = active;
+
+  useEffect(() => {
+    if (!active) {
+      // Flush: show full text immediately when stream ends
+      const target = targetRef.current;
+      displayLenRef.current = target.length;
+      setDisplayText(target);
+      return;
+    }
+
+    // Reset cursor when a new stream starts
+    displayLenRef.current = 0;
+    setDisplayText("");
+
+    const tick = () => {
+      const target = targetRef.current;
+      const currentLen = displayLenRef.current;
+
+      if (currentLen < target.length) {
+        const remaining = target.length - currentLen;
+        // Adaptive: release 12% of remaining buffer per frame, minimum 3 chars.
+        // At 60fps this drains a 50-char burst in ~10 frames (~170ms).
+        const step = Math.max(3, Math.ceil(remaining * 0.12));
+        const nextLen = Math.min(currentLen + step, target.length);
+        displayLenRef.current = nextLen;
+        setDisplayText(target.slice(0, nextLen));
+      }
+
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [active]);
+
+  return displayText;
+}

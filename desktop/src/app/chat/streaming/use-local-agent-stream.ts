@@ -4,7 +4,7 @@ import {
   AGENT_IDS,
   AGENT_STREAM_EVENT_TYPES,
 } from "@/shared/contracts/agent-runtime";
-import { useRafStringAccumulator } from "@/shared/hooks/use-raf-state";
+import { useRafStringAccumulator, useStreamBuffer } from "@/shared/hooks/use-raf-state";
 import { useResumeAgentRun } from "../hooks/use-resume-agent-run";
 import type { AgentStreamEvent, SelfModAppliedData } from "./streaming-types";
 import type { AttachmentRef } from "./chat-types";
@@ -54,13 +54,15 @@ export function useLocalAgentStream({
   storageMode,
 }: UseLocalAgentStreamOptions) {
   const [
-    streamingText,
+    rawStreamingText,
     appendStreamingDelta,
     resetStreamingText,
     streamingTextRef,
   ] = useRafStringAccumulator();
-  const [reasoningText, , resetReasoningText] = useRafStringAccumulator();
+  const [rawReasoningText, , resetReasoningText] = useRafStringAccumulator();
   const [isStreaming, setIsStreaming] = useState(false);
+  const streamingText = useStreamBuffer(rawStreamingText, isStreaming);
+  const reasoningText = useStreamBuffer(rawReasoningText, isStreaming);
   const [pendingUserMessageId, setPendingUserMessageId] = useState<
     string | null
   >(null);

@@ -1,4 +1,5 @@
-﻿import { cn } from "@/shared/lib/utils";
+﻿import { useEffect, useState } from "react";
+import { cn } from "@/shared/lib/utils";
 import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import { getAgentLabel } from "./agent-labels";
 import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
@@ -7,6 +8,16 @@ import "./indicators.css";
 interface TaskIndicatorProps {
   tasks: TaskItem[];
   className?: string;
+}
+
+function DeferredStellaAnimation({ width, height }: { width: number; height: number }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  if (!ready) return null;
+  return <StellaAnimation width={width} height={height} maxDpr={1} frameSkip={2} />;
 }
 
 export function TaskIndicator({ tasks, className }: TaskIndicatorProps) {
@@ -23,7 +34,7 @@ export function TaskIndicator({ tasks, className }: TaskIndicatorProps) {
         <div key={task.id} className="task-indicator-item">
           <div className="indicator-stella">
             <div className="indicator-stella-scale">
-              <StellaAnimation width={16} height={16} maxDpr={1} frameSkip={2} />
+              <DeferredStellaAnimation width={16} height={16} />
             </div>
           </div>
           <div className="task-indicator-content">
