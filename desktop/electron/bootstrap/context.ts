@@ -17,7 +17,6 @@ import type { MobileBridgeService } from "../services/mobile-bridge/service.js";
 import type { CloudflareTunnelService } from "../services/mobile-bridge/tunnel-service.js";
 import type { StellaBrowserBridgeStatus } from "../services/stella-browser-bridge-service.js";
 import type { StellaBrowserBridgeService } from "../services/stella-browser-bridge-service.js";
-import type { DevToolServer } from "../devtool/dev-server.js";
 import { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
 import { getDevServerUrl } from "../dev-url.js";
 import type { LocalDevProjectRecord } from "../../packages/boundary-contracts/index.js";
@@ -52,7 +51,6 @@ export type BootstrapState = {
   wakeWordController: WakeWordController | null;
   mobileBridgeService: MobileBridgeService | null;
   tunnelService: CloudflareTunnelService | null;
-  devToolServer: DevToolServer | null;
   windowManager: WindowManager | null;
 };
 
@@ -186,7 +184,6 @@ export const createBootstrapContext = (
     wakeWordController: null,
     mobileBridgeService: null,
     tunnelService: null,
-    devToolServer: null,
     windowManager: null,
   };
 

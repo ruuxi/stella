@@ -46,7 +46,7 @@ export const FullShell = () => {
     runtimeError,
     retryRuntimeBootstrap,
   } = useBootstrapState();
-  const { handleDiscoveryConfirm, dashboardState, canvasFetched, flushCanvas } = useDiscoveryFlow({
+  const { handleDiscoveryConfirm, dashboardState } = useDiscoveryFlow({
     conversationId: activeConversationId,
   });
 
@@ -93,9 +93,8 @@ export const FullShell = () => {
   const appReady = onboarding.onboardingDone && runtimeStatus === "ready";
   const showOnboardingDemos = activeDemo || demoClosing;
 
-  // User clicks "Ready" → write canvas to disk → morph transition → finalize onboarding.
+  // User clicks "Ready" → morph transition → finalize onboarding.
   const handleCanvasReady = useCallback(async () => {
-    await flushCanvas();
     await new Promise((r) => setTimeout(r, 500));
     const morphResult = await window.electronAPI?.ui.morphStart?.();
     onboarding.finalizeOnboarding();
@@ -103,7 +102,7 @@ export const FullShell = () => {
       await new Promise((r) => setTimeout(r, 200));
       await window.electronAPI?.ui.morphComplete?.();
     }
-  }, [flushCanvas, onboarding.finalizeOnboarding]);
+  }, [onboarding.finalizeOnboarding]);
 
   return (
     <div className="window-shell full">
@@ -133,7 +132,7 @@ export const FullShell = () => {
               onboardingDone={onboarding.onboardingDone}
               onboardingExiting={onboarding.onboardingExiting}
               awaitingCanvas={onboarding.awaitingCanvas}
-              canvasReady={canvasFetched}
+              canvasReady
               onCanvasReady={handleCanvasReady}
               isAuthenticated={onboarding.isAuthenticated}
               isAuthLoading={onboarding.isAuthLoading}

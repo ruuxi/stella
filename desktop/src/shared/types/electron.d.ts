@@ -54,8 +54,6 @@ import type {
 } from "../contracts/boundary";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import type {
-  OnboardingHomeCanvasRequest,
-  OnboardingHomeCanvasResponse,
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
 } from "../contracts/onboarding";
@@ -441,9 +439,6 @@ export type ElectronOnboardingApi = {
   synthesizeCoreMemory: (
     payload: OnboardingSynthesisRequest,
   ) => Promise<OnboardingSynthesisResponse>;
-  generateHomeCanvas: (
-    payload: OnboardingHomeCanvasRequest,
-  ) => Promise<OnboardingHomeCanvasResponse>;
 };
 
 export type ElectronBrowserApi = {
@@ -478,9 +473,6 @@ export type ElectronBrowserApi = {
   detectPreferred: () => Promise<PreferredBrowserProfile>;
   listProfiles: (browserType: string) => Promise<BrowserProfile[]>;
   writeCoreMemory: (
-    content: string,
-  ) => Promise<{ ok: boolean; error?: string }>;
-  writeHomeCanvas: (
     content: string,
   ) => Promise<{ ok: boolean; error?: string }>;
   collectAllSignals: (options?: {

@@ -17,12 +17,3 @@ export type OnboardingSynthesisResponse = {
   suggestions?: OnboardingWelcomeSuggestion[];
 };
 
-export type OnboardingHomeCanvasRequest = {
-  coreMemory: string;
-  templateFile: string;
-  promptConfig: Record<string, unknown>;
-};
-
-export type OnboardingHomeCanvasResponse = {
-  content: string;
-};

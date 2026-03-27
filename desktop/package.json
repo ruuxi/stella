@@ -17,7 +17,6 @@
     "preview": "vite preview",
     "native:build": "cd native && npm install && npm run build",
     "workspace:create-app": "node scripts/create-workspace-app.mjs",
-    "devtool": "node scripts/devtool-runner.mjs",
     "electron:dev": "node scripts/generate-game-bindings.mjs && node scripts/electron-dev-runner.mjs",
     "electron:typecheck": "bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json --pretty false --noEmit && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json --pretty false --noEmit",
     "electron:typecheck:watch": "concurrently -k --kill-others-on-fail \"bunx --package typescript@5.9.3 tsc -w -p tsconfig.electron.json --preserveWatchOutput --noEmit\" \"bunx --package typescript@5.9.3 tsc -w -p tsconfig.preload.json --preserveWatchOutput --noEmit\"",

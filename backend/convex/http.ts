@@ -13,7 +13,6 @@ import { registerMusicRoutes } from "./http_routes/music";
 import { registerSkillRoutes } from "./http_routes/skills";
 import { registerSpeechToTextRoutes } from "./http_routes/speech_to_text";
 import { registerStripeRoutes } from "./http_routes/stripe";
-import { registerHomeCanvasRoutes } from "./http_routes/home_canvas";
 import { registerSynthesisRoutes } from "./http_routes/synthesis";
 import { registerVoiceRoutes } from "./http_routes/voice";
 
@@ -39,7 +38,6 @@ authComponent.registerRoutes(http, createAuth, { cors: true });
 // ---------------------------------------------------------------------------
 
 registerSynthesisRoutes(http);
-registerHomeCanvasRoutes(http);
 registerSpeechToTextRoutes(http);
 registerSkillRoutes(http);
 registerConnectorWebhookRoutes(http);
