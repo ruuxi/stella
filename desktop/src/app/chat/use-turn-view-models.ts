@@ -1,4 +1,4 @@
-﻿import { useMemo, useDeferredValue } from "react";
+﻿import { useMemo } from "react";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { MessagePayload } from "@/app/chat/lib/event-transforms";
 import {
@@ -170,23 +170,20 @@ export function useTurnViewModels(opts: {
     return hasAppliedSelfMod ? nextTurns : baseTurns;
   }, [baseTurns, selfModMap]);
 
-  const deferredStreamingText = useDeferredValue(streamingText);
-  const deferredReasoningText = useDeferredValue(reasoningText);
-
   const processedStreamingText = useMemo(
     () =>
-      deferredStreamingText
-        ? depseudonymize(deferredStreamingText)
-        : deferredStreamingText,
-    [deferredStreamingText, depseudonymize],
+      streamingText
+        ? depseudonymize(streamingText)
+        : streamingText,
+    [streamingText, depseudonymize],
   );
 
   const processedReasoningText = useMemo(
     () =>
-      deferredReasoningText
-        ? depseudonymize(deferredReasoningText)
-        : deferredReasoningText,
-    [deferredReasoningText, depseudonymize],
+      reasoningText
+        ? depseudonymize(reasoningText)
+        : reasoningText,
+    [reasoningText, depseudonymize],
   );
 
   const runningTool = useMemo(() => getCurrentRunningTool(events), [events]);
