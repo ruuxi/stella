@@ -10,35 +10,30 @@ import {
   View,
 } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
-import { assert, assertObject, errorMessage } from "../../src/lib/assert";
+import { assert, assertObject } from "../../src/lib/assert";
 import { getConvexToken } from "../../src/lib/auth-token";
 import { getJson } from "../../src/lib/http";
 import { generateShimScript } from "../../src/lib/shim";
+import { registerStellaRefresh } from "../../src/lib/stella-refresh";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
 import type { DesktopBridgeStatus } from "../../src/types";
 
-const timeLabel = (value: number | null) => {
-  if (!value) return "Waiting for desktop";
-  return `Updated ${new Date(value).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  })}`;
+type BridgeState = {
+  bridgeUrl: string;
+  token: string;
+  uri: string;
+  desktopState?: Record<string, string>;
 };
-
-type BridgeState = { bridgeUrl: string; token: string; uri: string };
 
 type ScreenState =
   | { type: "loading" }
-  | {
-      type: "unavailable";
-      error: string | null;
-      title: string;
-      updatedAt: number | null;
-    }
-  | { type: "ready"; bridge: BridgeState; updatedAt: number | null };
+  | { type: "unavailable"; error: string | null; title: string }
+  | { type: "ready"; bridge: BridgeState };
 
-type ShimMessage = { type: "openExternal"; url: string };
+type ShimMessage =
+  | { type: "openExternal"; url: string }
+  | { type: "connectionState"; connected: boolean };
 
 function readDesktopBridgeStatus(value: unknown): DesktopBridgeStatus {
   assertObject(value, "Desktop bridge response must be an object.");
@@ -71,6 +66,9 @@ function readShimMessage(data: string): ShimMessage {
     case "openExternal":
       assert(typeof value.url === "string", "WebView URL is required.");
       return { type: "openExternal", url: value.url };
+    case "connectionState":
+      assert(typeof value.connected === "boolean", "WebView connected flag is required.");
+      return { type: "connectionState", connected: value.connected };
   }
   throw new Error(`Unknown WebView message type: ${value.type}`);
 }
@@ -81,8 +79,9 @@ function readUnavailableState(
   return {
     type: "unavailable",
     error: null,
-    title: status.platform ? `${status.platform} desktop` : "Desktop not ready",
-    updatedAt: status.updatedAt,
+    title: status.platform
+      ? `Your ${status.platform} isn't reachable`
+      : "Can't reach your desktop",
   };
 }
 
@@ -90,6 +89,7 @@ export default function StellaScreen() {
   const webViewRef = useRef<WebView>(null);
   const [screenState, setScreenState] = useState<ScreenState>({ type: "loading" });
   const [canGoBack, setCanGoBack] = useState(false);
+  const [bridgeConnected, setBridgeConnected] = useState(true);
   const bridgeToken = screenState.type === "ready" ? screenState.bridge.token : null;
 
   const refreshBridge = async () => {
@@ -104,17 +104,31 @@ export default function StellaScreen() {
       const baseUrl = status.baseUrls[0];
       assert(baseUrl, "Desktop bridge URL is required.");
       const token = await getConvexToken();
+
+      // Fetch the desktop's localStorage state so the WebView can share
+      // the desktop session (auth, onboarding, preferences) instead of
+      // starting with a blank slate.
+      let desktopState: Record<string, string> | undefined;
+      try {
+        const stateRes = await fetch(`${baseUrl}/bridge/desktop-state`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (stateRes.ok) {
+          desktopState = (await stateRes.json()) as Record<string, string>;
+        }
+      } catch {
+        // Best-effort — proceed without desktop state
+      }
+
       setScreenState({
         type: "ready",
-        bridge: { bridgeUrl: baseUrl, token, uri: `${baseUrl}/?mobile=1` },
-        updatedAt: status.updatedAt,
+        bridge: { bridgeUrl: baseUrl, token, uri: `${baseUrl}/?mobile=1`, desktopState },
       });
-    } catch (error) {
+    } catch {
       setScreenState({
         type: "unavailable",
-        error: errorMessage(error),
-        title: "Desktop not ready",
-        updatedAt: null,
+        error: null,
+        title: "Can't reach your desktop",
       });
     }
   };
@@ -122,7 +136,11 @@ export default function StellaScreen() {
   useEffect(() => {
     void refreshBridge();
     const interval = setInterval(() => void refreshBridge(), 45_000);
-    return () => clearInterval(interval);
+    registerStellaRefresh(() => void refreshBridge());
+    return () => {
+      clearInterval(interval);
+      registerStellaRefresh(null);
+    };
   }, []);
 
   useEffect(() => {
@@ -148,6 +166,7 @@ export default function StellaScreen() {
   const handleMessage = (event: WebViewMessageEvent) => {
     const message = readShimMessage(event.nativeEvent.data);
     if (message.type === "openExternal") void Linking.openURL(message.url);
+    if (message.type === "connectionState") setBridgeConnected(message.connected);
   };
 
   // Loading
@@ -167,9 +186,9 @@ export default function StellaScreen() {
         <View style={styles.statusBlock}>
           <Text style={styles.title}>{screenState.title}</Text>
           <Text style={styles.body}>
-            Open Stella on your computer and sign in with the same account.
+            Make sure Stella is open on your computer and connected to the
+            internet.
           </Text>
-          <Text style={styles.meta}>{timeLabel(screenState.updatedAt)}</Text>
           {screenState.error && (
             <Text style={styles.errorText}>{screenState.error}</Text>
           )}
@@ -181,7 +200,7 @@ export default function StellaScreen() {
             pressed && styles.actionButtonPressed,
           ]}
         >
-          <Text style={styles.actionButtonText}>Check again</Text>
+          <Text style={styles.actionButtonText}>Try again</Text>
         </Pressable>
       </View>
     );
@@ -190,15 +209,12 @@ export default function StellaScreen() {
   // Ready — WebView
   return (
     <View style={styles.screen}>
-      <View style={styles.webBar}>
-        <Text style={styles.meta}>{timeLabel(screenState.updatedAt)}</Text>
-        <Pressable
-          onPress={() => void refreshBridge()}
-          hitSlop={8}
-        >
-          <Text style={styles.linkText}>Refresh</Text>
-        </Pressable>
-      </View>
+      {!bridgeConnected && (
+        <View style={styles.reconnectBanner}>
+          <ActivityIndicator size="small" color={colors.textMuted} />
+          <Text style={styles.reconnectText}>Reconnecting to desktop…</Text>
+        </View>
+      )}
       <View style={styles.webFrame}>
         <WebView
           ref={webViewRef}
@@ -209,6 +225,7 @@ export default function StellaScreen() {
           injectedJavaScriptBeforeContentLoaded={generateShimScript(
             screenState.bridge.bridgeUrl,
             screenState.bridge.token,
+            screenState.bridge.desktopState,
           )}
           style={styles.webView}
           onMessage={handleMessage}
@@ -218,10 +235,18 @@ export default function StellaScreen() {
             setScreenState({
               type: "unavailable",
               error: "Lost connection to desktop.",
-              title: "Desktop not ready",
-              updatedAt: null,
+              title: "Can't reach your desktop",
             })
           }
+          onHttpError={(e) => {
+            if (e.nativeEvent.statusCode >= 500) {
+              setScreenState({
+                type: "unavailable",
+                error: null,
+                title: "Can't reach your desktop",
+              });
+            }
+          }}
           originWhitelist={["http://*", "https://*"]}
         />
       </View>
@@ -232,7 +257,7 @@ export default function StellaScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    gap: 16,
+    gap: 8,
   },
   centered: {
     alignItems: "center",
@@ -255,12 +280,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     lineHeight: 22,
   },
-  meta: {
-    color: colors.textMuted,
-    fontFamily: fonts.sans.regular,
-    fontSize: 13,
-    letterSpacing: -0.1,
-  },
   secondaryText: {
     color: colors.textMuted,
     fontFamily: fonts.sans.regular,
@@ -272,12 +291,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  linkText: {
-    color: colors.accent,
-    fontFamily: fonts.sans.medium,
-    fontSize: 13,
-  },
-
   // Status block (unavailable)
   statusBlock: {
     gap: 8,
@@ -303,13 +316,25 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
 
-  // WebView
-  webBar: {
+  // Reconnecting banner
+  reconnectBanner: {
     alignItems: "center",
+    backgroundColor: colors.panel,
+    borderRadius: 10,
     flexDirection: "row",
-    justifyContent: "space-between",
-    paddingTop: 4,
+    gap: 8,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
+  reconnectText: {
+    color: colors.textMuted,
+    fontFamily: fonts.sans.regular,
+    fontSize: 13,
+    letterSpacing: -0.1,
+  },
+
+  // WebView
   webFrame: {
     borderRadius: 14,
     flex: 1,

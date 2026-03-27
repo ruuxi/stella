@@ -54,22 +54,6 @@ const parseCookies = (cookieHeader?: string | null) =>
       }),
   );
 
-const getBridgeUrls = (port: number) => {
-  const urls = new Set<string>();
-  const interfaces = os.networkInterfaces();
-
-  for (const records of Object.values(interfaces)) {
-    for (const record of records ?? []) {
-      if (!record || record.internal || record.family !== "IPv4") {
-        continue;
-      }
-      urls.add(`http://${record.address}:${port}`);
-    }
-  }
-
-  return [...urls].sort((left, right) => left.localeCompare(right));
-};
-
 const getDesktopPlatformLabel = () => {
   if (process.platform === "darwin") {
     return "Mac";
@@ -179,8 +163,18 @@ export class MobileBridgeService {
   private hostAuthToken: string | null = null;
   private convexSiteUrl: string | null = null;
   private tunnelUrl: string | null = null;
+  private getDesktopState: (() => Promise<Record<string, string>>) | null =
+    null;
 
   constructor(private readonly options: MobileBridgeServiceOptions) {}
+
+  /**
+   * Set a callback that reads the desktop renderer's localStorage.
+   * Used by `/bridge/desktop-state` to share session state with the mobile WebView.
+   */
+  setDesktopStateGetter(getter: () => Promise<Record<string, string>>) {
+    this.getDesktopState = getter;
+  }
 
   // ── External setters (called from bootstrap) ──────────────────────────
 
@@ -341,6 +335,14 @@ export class MobileBridgeService {
       return;
     }
 
+    // Desktop localStorage state for WebView session sharing — requires auth
+    if (req.url === "/bridge/desktop-state") {
+      const authenticated = await this.ensureAuthorized(req, res);
+      if (!authenticated) return;
+      await this.handleDesktopState(res);
+      return;
+    }
+
     // Everything else: serve the desktop frontend (requires auth)
     const authenticated = await this.ensureAuthorized(req, res);
     if (!authenticated) return;
@@ -403,6 +405,22 @@ export class MobileBridgeService {
         error instanceof Error ? error.message : "Internal error";
       console.error(`[mobile-bridge] IPC error on ${channel}: ${message}`);
       sendJson(res, 500, { error: message });
+    }
+  }
+
+  // ── Desktop state (WebView session sharing) ─────────────────────────
+
+  private async handleDesktopState(res: ServerResponse) {
+    if (!this.getDesktopState) {
+      sendJson(res, 200, {});
+      return;
+    }
+    try {
+      const state = await this.getDesktopState();
+      sendJson(res, 200, state);
+    } catch (error) {
+      console.warn("[mobile-bridge] Failed to read desktop state:", error);
+      sendJson(res, 200, {});
     }
   }
 
@@ -711,15 +729,11 @@ export class MobileBridgeService {
       return;
     }
 
-    const localUrls = getBridgeUrls(this.port);
-    const baseUrls = [
-      ...(this.tunnelUrl ? [this.tunnelUrl] : []),
-      ...localUrls,
-    ];
-    if (baseUrls.length === 0) {
+    if (!this.tunnelUrl) {
       await this.clearRegistration();
       return;
     }
+    const baseUrls = [this.tunnelUrl];
 
     try {
       const response = await this.postBridgeJson(
