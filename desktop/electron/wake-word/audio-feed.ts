@@ -133,7 +133,10 @@ export function createWakeWordAdaptiveNoiseFloor(
       };
 
       return {
-        pcm: gateOpen ? pcm : new Int16Array(pcm.length),
+        // Preserve real audio even when the front-end gate is closed.
+        // The detector handles VAD/classification gating downstream; zeroing
+        // audio here can starve the detector and make wake-word capture fail.
+        pcm,
         frontEnd: lastState,
       };
     },
