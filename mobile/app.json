@@ -15,6 +15,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.stella.mobile",
+      "buildNumber": "9",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
