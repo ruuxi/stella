@@ -14,6 +14,8 @@ import {
   shutdownBootstrapRuntime,
   scheduleBootstrapRuntimeShutdown,
 } from "./resets.js";
+import { isMobileBridgeEventChannel } from "../services/mobile-bridge/index.js";
+import { buildMobileBridgeBootstrap } from "../services/mobile-bridge/bootstrap-payload.js";
 import { MobileBridgeService } from "../services/mobile-bridge/service.js";
 import { CloudflareTunnelService } from "../services/mobile-bridge/tunnel-service.js";
 import {
@@ -61,16 +63,16 @@ const startMobileBridge = (context: BootstrapContext) => {
 
     // Read the desktop renderer's localStorage so the mobile WebView can
     // share session state (auth, onboarding, preferences).
-    bridge.setDesktopStateGetter(async () => {
+    bridge.setBootstrapPayloadGetter(async () => {
       const win = context.state.windowManager?.getFullWindow();
-      if (!win || win.isDestroyed()) return {};
+      if (!win || win.isDestroyed()) return buildMobileBridgeBootstrap({});
       try {
         const raw = await win.webContents.executeJavaScript(
           `(()=>{var d={};for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k!==null)d[k]=localStorage.getItem(k)}return JSON.stringify(d)})()`,
         );
-        return JSON.parse(raw as string);
+        return buildMobileBridgeBootstrap(JSON.parse(raw as string));
       } catch {
-        return {};
+        return buildMobileBridgeBootstrap({});
       }
     });
 
@@ -87,13 +89,11 @@ const startMobileBridge = (context: BootstrapContext) => {
       const original = win.webContents.send.bind(win.webContents);
       win.webContents.send = (channel: string, ...args: unknown[]) => {
         original(channel, ...args);
-        try {
+        if (isMobileBridgeEventChannel(channel)) {
           bridge.broadcastToMobile(
             channel,
             args.length === 1 ? args[0] : args,
           );
-        } catch {
-          // Don't let bridge errors break desktop event delivery
         }
       };
       // Re-attach if window is recreated

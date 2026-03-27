@@ -5,6 +5,11 @@ import os from "os";
 import path from "path";
 import { Readable } from "stream";
 import { WebSocketServer, WebSocket } from "ws";
+import {
+  isMobileBridgeEventChannel,
+  isMobileBridgeRequestChannel,
+} from "./bridge-policy.js";
+import type { MobileBridgeBootstrap } from "./bootstrap-payload.js";
 import { getHandler, getOnHandlers } from "./handler-registry.js";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
@@ -13,7 +18,10 @@ const SESSION_TTL_MS = 15 * 60 * 1000;
 const COOKIE_NAME = "stella_mobile_bridge";
 const MAX_BODY_SIZE = 5 * 1024 * 1024;
 const BODY_TIMEOUT_MS = 10_000;
+const ALLOW_METHODS = "GET, POST, OPTIONS";
+const ALLOW_HEADERS = "Content-Type, Authorization";
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
+const MOBILE_BRIDGE_SENDER_URL = "stella-mobile-bridge://mobile";
 
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -108,21 +116,44 @@ const readBody = (req: IncomingMessage): Promise<string> => {
   });
 };
 
-const sendJson = (res: ServerResponse, status: number, data: unknown) => {
+const getCorsHeaders = (origin?: string | null) =>
+  origin
+    ? {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        Vary: "Origin",
+      }
+    : {};
+
+const sendJson = (
+  res: ServerResponse,
+  status: number,
+  data: unknown,
+  origin?: string | null,
+) => {
   const body = JSON.stringify(data);
   res.writeHead(status, {
     "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    ...getCorsHeaders(origin),
     ...NO_STORE_HEADERS,
   });
   res.end(body);
 };
 
+const sendNoContent = (res: ServerResponse, origin?: string | null) => {
+  res.writeHead(204, {
+    "Access-Control-Allow-Methods": ALLOW_METHODS,
+    "Access-Control-Allow-Headers": ALLOW_HEADERS,
+    ...getCorsHeaders(origin),
+    ...NO_STORE_HEADERS,
+  });
+  res.end();
+};
+
 /**
- * Fake IPC event for bridging — handlers check sender URL for privilege
- * (loopback is trusted). sender.send() routes to mobile WebSocket clients.
+ * Fake IPC event for bridging. The dedicated sender URL lets privileged
+ * handlers recognize mobile bridge requests, and sender.send() routes
+ * replies back to subscribed mobile WebSocket clients.
  */
 const createFakeIpcEvent = (
   broadcastFn: MobileBroadcastFn,
@@ -133,10 +164,10 @@ const createFakeIpcEvent = (
       send: (channel: string, ...args: unknown[]) => {
         broadcastFn(channel, args.length === 1 ? args[0] : args);
       },
-      getURL: () => "http://localhost",
+      getURL: () => MOBILE_BRIDGE_SENDER_URL,
       isDestroyed: () => false,
     },
-    senderFrame: { url: "http://localhost" },
+    senderFrame: { url: MOBILE_BRIDGE_SENDER_URL },
     processId: process.pid,
     frameId: 0,
     returnValue: undefined as unknown,
@@ -163,17 +194,19 @@ export class MobileBridgeService {
   private hostAuthToken: string | null = null;
   private convexSiteUrl: string | null = null;
   private tunnelUrl: string | null = null;
-  private getDesktopState: (() => Promise<Record<string, string>>) | null =
+  private getBootstrapPayload: (() => Promise<MobileBridgeBootstrap>) | null =
     null;
 
   constructor(private readonly options: MobileBridgeServiceOptions) {}
 
   /**
-   * Set a callback that reads the desktop renderer's localStorage.
-   * Used by `/bridge/desktop-state` to share session state with the mobile WebView.
+   * Set a callback that reads the desktop renderer's bootstrap payload.
+   * Used by `/bridge/bootstrap` to share session state with the mobile WebView.
    */
-  setDesktopStateGetter(getter: () => Promise<Record<string, string>>) {
-    this.getDesktopState = getter;
+  setBootstrapPayloadGetter(
+    getter: () => Promise<MobileBridgeBootstrap>,
+  ) {
+    this.getBootstrapPayload = getter;
   }
 
   // ── External setters (called from bootstrap) ──────────────────────────
@@ -208,6 +241,62 @@ export class MobileBridgeService {
     return this.port;
   }
 
+  private getBridgeOrigin() {
+    if (!this.tunnelUrl) {
+      return null;
+    }
+    try {
+      return new URL(trimTrailingSlash(this.tunnelUrl)).origin;
+    } catch {
+      return null;
+    }
+  }
+
+  private getRequestOrigin(req: IncomingMessage) {
+    const origin = req.headers.origin;
+    if (typeof origin !== "string") {
+      return null;
+    }
+    const trimmed = origin.trim();
+    if (!trimmed || trimmed === "null") {
+      return null;
+    }
+    try {
+      return new URL(trimmed).origin;
+    } catch {
+      return null;
+    }
+  }
+
+  private isAllowedRequestOrigin(origin: string | null) {
+    if (!origin) {
+      return true;
+    }
+    const bridgeOrigin = this.getBridgeOrigin();
+    return Boolean(bridgeOrigin && origin === bridgeOrigin);
+  }
+
+  private getValidSession(req: IncomingMessage) {
+    const now = Date.now();
+    for (const [sessionId, session] of this.sessions) {
+      if (session.expiresAt <= now) {
+        this.sessions.delete(sessionId);
+      }
+    }
+
+    const cookies = parseCookies(req.headers.cookie);
+    const sessionId = cookies[COOKIE_NAME];
+    if (!sessionId) {
+      return null;
+    }
+
+    const session = this.sessions.get(sessionId);
+    if (!session || session.expiresAt <= now) {
+      return null;
+    }
+    return { sessionId, expiresAt: session.expiresAt };
+  }
+
   // ── Lifecycle ─────────────────────────────────────────────────────────
 
   start() {
@@ -229,7 +318,7 @@ export class MobileBridgeService {
     this.wss = new WebSocketServer({ server: this.server });
     this.wss.on("connection", (ws, req) => this.handleWebSocket(ws, req));
 
-    this.server.listen(0, "0.0.0.0", () => {
+    this.server.listen(0, "127.0.0.1", () => {
       const address = this.server?.address();
       if (address && typeof address === "object") {
         this.port = address.port;
@@ -265,6 +354,9 @@ export class MobileBridgeService {
 
   /** Broadcast an event to mobile WebSocket clients subscribed to a channel. */
   broadcastToMobile: MobileBroadcastFn = (channel, data) => {
+    if (!isMobileBridgeEventChannel(channel)) {
+      return;
+    }
     const message = JSON.stringify({ type: "event", channel, data });
     for (const [ws, client] of this.wsClients) {
       if (
@@ -302,19 +394,25 @@ export class MobileBridgeService {
   // ── HTTP request handling ─────────────────────────────────────────────
 
   private async handleRequest(req: IncomingMessage, res: ServerResponse) {
+    const requestOrigin = this.getRequestOrigin(req);
+
     if (!req.url) {
-      sendJson(res, 400, { error: "Missing request URL." });
+      sendJson(res, 400, { error: "Missing request URL." }, requestOrigin);
       return;
     }
 
-    // CORS preflight
     if (req.method === "OPTIONS") {
-      res.writeHead(204, {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      });
-      res.end();
+      if (!this.isAllowedRequestOrigin(requestOrigin)) {
+        res.writeHead(403, { ...NO_STORE_HEADERS });
+        res.end();
+        return;
+      }
+      sendNoContent(res, requestOrigin);
+      return;
+    }
+
+    if (!this.isAllowedRequestOrigin(requestOrigin)) {
+      sendJson(res, 403, { error: "Forbidden" }, requestOrigin);
       return;
     }
 
@@ -323,28 +421,28 @@ export class MobileBridgeService {
       req.url === "/bridge/health" ||
       req.url === "/__stella_mobile_bridge/health"
     ) {
-      sendJson(res, 200, { ok: true });
+      sendJson(res, 200, { ok: true }, requestOrigin);
+      return;
+    }
+
+    // Bootstrap payload — requires auth
+    if (req.url === "/bridge/bootstrap") {
+      const authenticated = await this.ensureAuthorized(req, res, requestOrigin);
+      if (!authenticated) return;
+      await this.handleBootstrap(res, requestOrigin);
       return;
     }
 
     // IPC bridge — requires auth
     if (req.url.startsWith("/bridge/ipc/")) {
-      const authenticated = await this.ensureAuthorized(req, res);
+      const authenticated = await this.ensureAuthorized(req, res, requestOrigin);
       if (!authenticated) return;
-      await this.handleIpcRequest(req, res);
-      return;
-    }
-
-    // Desktop localStorage state for WebView session sharing — requires auth
-    if (req.url === "/bridge/desktop-state") {
-      const authenticated = await this.ensureAuthorized(req, res);
-      if (!authenticated) return;
-      await this.handleDesktopState(res);
+      await this.handleIpcRequest(req, res, requestOrigin);
       return;
     }
 
     // Everything else: serve the desktop frontend (requires auth)
-    const authenticated = await this.ensureAuthorized(req, res);
+    const authenticated = await this.ensureAuthorized(req, res, requestOrigin);
     if (!authenticated) return;
 
     if (this.options.isDev) {
@@ -356,17 +454,36 @@ export class MobileBridgeService {
 
   // ── IPC routing ───────────────────────────────────────────────────────
 
-  private async handleIpcRequest(req: IncomingMessage, res: ServerResponse) {
+  private async handleIpcRequest(
+    req: IncomingMessage,
+    res: ServerResponse,
+    requestOrigin: string | null,
+  ) {
     const url = new URL(req.url ?? "/", "http://localhost");
     const channel = decodeURIComponent(
       url.pathname.slice("/bridge/ipc/".length),
     );
 
+    if (!isMobileBridgeRequestChannel(channel)) {
+      sendJson(
+        res,
+        403,
+        { error: `Disallowed IPC channel: ${channel}` },
+        requestOrigin,
+      );
+      return;
+    }
+
     const handleHandler = getHandler(channel);
     const onHandlerList = !handleHandler ? getOnHandlers(channel) : undefined;
 
     if (!handleHandler && (!onHandlerList || onHandlerList.length === 0)) {
-      sendJson(res, 404, { error: `Unknown IPC channel: ${channel}` });
+      sendJson(
+        res,
+        404,
+        { error: `Unknown IPC channel: ${channel}` },
+        requestOrigin,
+      );
       return;
     }
 
@@ -379,7 +496,7 @@ export class MobileBridgeService {
 
       if (handleHandler) {
         const result = await handleHandler(fakeEvent, ...spreadArgs);
-        sendJson(res, 200, { result });
+        sendJson(res, 200, { result }, requestOrigin);
       } else {
         for (const handler of onHandlerList!) {
           try {
@@ -394,101 +511,115 @@ export class MobileBridgeService {
             );
           }
         }
-        res.writeHead(204, {
-          "Access-Control-Allow-Origin": "*",
-          ...NO_STORE_HEADERS,
-        });
-        res.end();
+        sendNoContent(res, requestOrigin);
       }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Internal error";
       console.error(`[mobile-bridge] IPC error on ${channel}: ${message}`);
-      sendJson(res, 500, { error: message });
+      sendJson(res, 500, { error: message }, requestOrigin);
     }
   }
 
-  // ── Desktop state (WebView session sharing) ─────────────────────────
+  // ── Bootstrap payload (WebView session sharing) ─────────────────────
 
-  private async handleDesktopState(res: ServerResponse) {
-    if (!this.getDesktopState) {
-      sendJson(res, 200, {});
+  private async handleBootstrap(
+    res: ServerResponse,
+    requestOrigin: string | null,
+  ) {
+    if (!this.getBootstrapPayload) {
+      sendJson(res, 200, { localStorage: {} }, requestOrigin);
       return;
     }
     try {
-      const state = await this.getDesktopState();
-      sendJson(res, 200, state);
+      const payload = await this.getBootstrapPayload();
+      sendJson(res, 200, payload, requestOrigin);
     } catch (error) {
-      console.warn("[mobile-bridge] Failed to read desktop state:", error);
-      sendJson(res, 200, {});
+      console.warn("[mobile-bridge] Failed to read bootstrap payload:", error);
+      sendJson(res, 200, { localStorage: {} }, requestOrigin);
     }
   }
 
   // ── WebSocket handling ────────────────────────────────────────────────
 
   private handleWebSocket(ws: WebSocket, req: IncomingMessage) {
-    const url = new URL(req.url ?? "/", "http://localhost");
-    const token = url.searchParams.get("token");
+    const requestOrigin = this.getRequestOrigin(req);
+    if (!this.isAllowedRequestOrigin(requestOrigin)) {
+      ws.close(1008, "Forbidden");
+      return;
+    }
 
-    if (!token || !this.isBridgeAccessEnabled()) {
+    if (!this.isBridgeAccessEnabled()) {
       ws.close(4001, "Unauthorized");
       return;
     }
 
-    // Validate token asynchronously
-    void this.authorizeBearer(`Bearer ${token}`).then((authorized) => {
-      if (!authorized) {
-        ws.close(4001, "Unauthorized");
-        return;
-      }
+    if (!this.getValidSession(req)) {
+      ws.close(4001, "Unauthorized");
+      return;
+    }
 
-      const client = {
-        subscriptions: new Map<string, () => void>(),
-        authenticated: true,
-      };
-      this.wsClients.set(ws, client);
-      console.log("[mobile-bridge] WebSocket connected");
+    const client = {
+      subscriptions: new Map<string, () => void>(),
+      authenticated: true,
+    };
+    this.wsClients.set(ws, client);
+    console.log("[mobile-bridge] WebSocket connected");
 
-      ws.on("message", (data) => {
-        try {
-          const msg = JSON.parse(data.toString()) as {
-            type: string;
-            channel?: string;
-            id?: string;
-            args?: unknown[];
-          };
+    ws.on("message", (data) => {
+      try {
+        const msg = JSON.parse(data.toString()) as {
+          type: string;
+          channel?: string;
+          id?: string;
+          args?: unknown[];
+        };
 
-          if (msg.type === "subscribe" && msg.channel) {
-            if (!client.subscriptions.has(msg.channel)) {
-              client.subscriptions.set(msg.channel, () => {});
-            }
+        if (msg.type === "subscribe" && msg.channel) {
+          if (
+            isMobileBridgeEventChannel(msg.channel) &&
+            !client.subscriptions.has(msg.channel)
+          ) {
+            client.subscriptions.set(msg.channel, () => {});
           }
-
-          if (msg.type === "unsubscribe" && msg.channel) {
-            const unsub = client.subscriptions.get(msg.channel);
-            if (unsub) {
-              unsub();
-              client.subscriptions.delete(msg.channel);
-            }
-          }
-
-          if (msg.type === "invoke" && msg.channel && msg.id) {
-            void this.handleWsInvoke(ws, msg.channel, msg.id, msg.args ?? []);
-          }
-        } catch {
-          // Ignore malformed messages
         }
-      });
 
-      ws.on("close", () => {
-        for (const unsub of client.subscriptions.values()) unsub();
-        this.wsClients.delete(ws);
-        console.log("[mobile-bridge] WebSocket disconnected");
-      });
+        if (msg.type === "unsubscribe" && msg.channel) {
+          const unsub = client.subscriptions.get(msg.channel);
+          if (unsub) {
+            unsub();
+            client.subscriptions.delete(msg.channel);
+          }
+        }
 
-      ws.on("error", (error) => {
-        console.warn("[mobile-bridge] WebSocket error:", error.message);
-      });
+        if (msg.type === "invoke" && msg.channel && msg.id) {
+          if (!isMobileBridgeRequestChannel(msg.channel)) {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(
+                JSON.stringify({
+                  type: "response",
+                  id: msg.id,
+                  error: `Disallowed IPC channel: ${msg.channel}`,
+                }),
+              );
+            }
+            return;
+          }
+          void this.handleWsInvoke(ws, msg.channel, msg.id, msg.args ?? []);
+        }
+      } catch {
+        // Ignore malformed messages
+      }
+    });
+
+    ws.on("close", () => {
+      for (const unsub of client.subscriptions.values()) unsub();
+      this.wsClients.delete(ws);
+      console.log("[mobile-bridge] WebSocket disconnected");
+    });
+
+    ws.on("error", (error) => {
+      console.warn("[mobile-bridge] WebSocket error:", error.message);
     });
   }
 
@@ -549,44 +680,43 @@ export class MobileBridgeService {
 
   // ── Auth (Convex-mediated) ────────────────────────────────────────────
 
-  private async ensureAuthorized(req: IncomingMessage, res: ServerResponse) {
+  private async ensureAuthorized(
+    req: IncomingMessage,
+    res: ServerResponse,
+    requestOrigin: string | null,
+  ) {
     const now = Date.now();
     for (const [sessionId, session] of this.sessions) {
       if (session.expiresAt <= now) this.sessions.delete(sessionId);
     }
 
     if (!this.isBridgeAccessEnabled()) {
-      sendJson(res, 403, { error: "Desktop bridge unavailable" });
+      sendJson(res, 403, { error: "Desktop bridge unavailable" }, requestOrigin);
       return false;
     }
 
-    // Check existing session cookie
-    const cookies = parseCookies(req.headers.cookie);
-    const existingSession = cookies[COOKIE_NAME];
+    const existingSession = this.getValidSession(req);
     if (existingSession) {
-      const match = this.sessions.get(existingSession);
-      if (match && match.expiresAt > now) return true;
+      return true;
     }
 
-    // Validate Bearer token
     const authorization = req.headers.authorization?.trim();
     if (!authorization?.startsWith("Bearer ")) {
-      sendJson(res, 401, { error: "Unauthorized" });
+      sendJson(res, 401, { error: "Unauthorized" }, requestOrigin);
       return false;
     }
 
     const authorized = await this.authorizeBearer(authorization);
     if (!authorized) {
-      sendJson(res, 403, { error: "Forbidden" });
+      sendJson(res, 403, { error: "Forbidden" }, requestOrigin);
       return false;
     }
 
-    // Create session cookie for future requests
     const sessionId = crypto.randomUUID();
     this.sessions.set(sessionId, { expiresAt: now + SESSION_TTL_MS });
     res.setHeader(
       "Set-Cookie",
-      `${COOKIE_NAME}=${sessionId}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+      `${COOKIE_NAME}=${sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
     );
     return true;
   }
