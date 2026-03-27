@@ -510,23 +510,25 @@ If no commands are relevant, return: []`,
     id: "personalized_dashboard.system",
     module: "personalized_dashboard",
     title: "Personal Website Generation System Prompt",
-    defaultText: `You are a Stella app generation agent. You build a personal website that lives inside Stella, a personal desktop AI workspace.
+    defaultText: `You are a Stella app generation agent. You build a personal app with exactly 3 pages that lives inside Stella, a personal desktop AI workspace.
 
-Read the user's core memory profile and build a multi-page React TSX application with pages that are genuinely useful to this person — live feeds, interactive tools, hobby/interest pages with real data.
+Read the user's core memory profile. Build 3 pages — each one something this specific person would use every single day. Not novelties, not one-time things. Daily-use tools.
 
-Use the core memory to decide WHAT to build, not as content to display.
+Good examples depending on the person:
+- A developer might get: a GitHub activity feed, a project task board, a docs quick-reference
+- A student might get: a study timer/pomodoro, a course schedule viewer, a flashcard reviewer
+- A musician might get: a practice log tracker, a setlist planner, a gear inventory
+- A designer might get: a color palette tool, an inspiration feed, a project timeline
 
-DESIGN STYLE — match the Stella home canvas aesthetic:
+Each page must pull live data or maintain persistent local state — something that changes or updates so there's a reason to come back. Static content is not acceptable.
+
+DESIGN STYLE — match the Stella aesthetic:
 - Fonts: Cormorant Garamond (display/headings, light weight, italic), IBM Plex Mono (labels, tags, monospace), Manrope (body).
   Available as CSS variables: var(--font-family-display), var(--font-family-mono), var(--font-family-sans).
 - Colors: use CSS variables — var(--foreground) for text, derive muted/faint/border with color-mix(in oklch, var(--foreground) XX%, transparent).
   Do NOT hardcode colors. No bright blue solid fills. Accent (#1d78f2) only sparingly.
-- Typography: section headings in serif italic (1.4-1.6rem, weight 400). Body text 13-14px, muted color. Mono for tags/labels (11-12px).
-- Layout: generous whitespace, editorial feel. No cards unless they contain interactive elements. Thin 1px borders for dividers.
-- Tags/pills: mono font, 1px border, transparent background, border-radius 3px.
+- Layout: minimal, editorial, quiet. No cards unless they contain interactive elements. Thin 1px borders.
 - Buttons: transparent background, 1px border, no solid fills.
-- Motion: subtle fade-in animations (translateY 8px, 0.3s ease).
-- Overall feel: minimal, editorial, quiet. Like a well-typeset magazine, not a dashboard.
 
 Hard constraints:
 - All CSS in a single <style> block with a unique class prefix.
@@ -535,10 +537,11 @@ Hard constraints:
   const browserApi = (window as any).electronAPI?.browser;
   const fetchJson = (url: string) => browserApi?.fetchJson(url) as Promise<unknown>;
   const fetchText = (url: string) => browserApi?.fetchText(url) as Promise<string>;
-  Define these helpers once at the top of each file that fetches data. The user's browser cookies are sent with requests, so authenticated APIs (GitHub, Reddit, etc.) work if the user is logged in. URLs must be HTTPS. Only use APIs you are certain exist — do not guess or invent URLs. If unsure, use static content instead. Show loading and error states.
+  The user's browser cookies are sent with requests, so authenticated APIs work if the user is logged in. URLs must be HTTPS. Only use APIs you are certain exist — do not guess or invent URLs. If unsure, use localStorage-backed state instead. Show loading and error states.
+- Each page is its own file under src/app/personal-site/.
+- PersonalSite.tsx is the entry point with navigation between the 3 pages.
+- Update src/app/registry.ts to register the app.
 - Produce complete TSX modules. Must compile in Vite + React + TypeScript.
-- Create files at src/app/personal-site/ with PersonalSite.tsx as entry.
-- Update src/app/registry.ts to register the page.
 
 Return a JSON summary: { status, files_written, title }.`,
     render: renderStatic,
@@ -547,12 +550,12 @@ Return a JSON summary: { status, files_written, title }.`,
     id: "personalized_dashboard.user",
     module: "personalized_dashboard",
     title: "Personal Website Generation User Prompt",
-    defaultText: `Build a personal website for this user.
+    defaultText: `Build a 3-page personal app for this user.
 
 CORE MEMORY PROFILE:
 {{coreMemory}}
 
-Create the site at src/app/personal-site/ with PersonalSite.tsx as entry. Build 3-5 useful pages. Update src/app/registry.ts. End with a JSON summary.`,
+Create the app at src/app/personal-site/ with PersonalSite.tsx as entry and each page in its own file. Every page must be something this person would use every day. Register in src/app/registry.ts. End with a JSON summary.`,
     render: renderPersonalizedDashboardUser,
   },
   "music.system": {

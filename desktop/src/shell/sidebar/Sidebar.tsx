@@ -14,7 +14,6 @@ import {
 } from "@/ui/dropdown-menu";
 import AlertCircle from "lucide-react/dist/esm/icons/circle-alert";
 import Folder from "lucide-react/dist/esm/icons/folder";
-import House from "lucide-react/dist/esm/icons/house";
 import Layout from "lucide-react/dist/esm/icons/layout-dashboard";
 import Link2 from "lucide-react/dist/esm/icons/link-2";
 import Loader from "lucide-react/dist/esm/icons/loader";
@@ -38,7 +37,7 @@ interface SidebarProps {
   onConnect?: () => void;
   onSettings?: () => void;
   onStore?: () => void;
-  onHome?: () => void;
+
   onChat?: () => void;
   onSocial?: () => void;
   onNewApp?: () => void;
@@ -93,7 +92,6 @@ export const Sidebar = ({
   onConnect,
   onSettings,
   onStore,
-  onHome,
   onChat,
   onSocial,
   onNewApp,
@@ -127,23 +125,13 @@ export const Sidebar = ({
   return (
     <aside className="sidebar">
       <div className="sidebar-header" />
-      <button type="button" className="sidebar-brand" onClick={onHome}>
+      <button type="button" className="sidebar-brand" onClick={onChat}>
         <div className="sidebar-brand-logo" aria-hidden="true">
           <img src="stella-logo.svg" alt="" className="sidebar-brand-logo-art" />
         </div>
         <span className="sidebar-brand-text">Stella</span>
       </button>
       <nav className="sidebar-nav">
-        <button
-          type="button"
-          className={`sidebar-nav-item ${activeView === "home" ? "sidebar-nav-item--active" : ""}`}
-          onClick={onHome}
-        >
-          <span className="sidebar-nav-icon">
-            <House size={18} />
-          </span>
-          <span className="sidebar-nav-label">Home</span>
-        </button>
         <button
           type="button"
           className={`sidebar-nav-item ${activeView === "chat" ? "sidebar-nav-item--active" : ""}`}
