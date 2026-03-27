@@ -635,32 +635,36 @@ export const registerMobileRoutes = (http: HttpRouter) => {
       const ott = url.searchParams.get("ott") ?? "";
 
       if (requestId && ott) {
-        // Exchange OTT for session token server-side (bypasses client CSRF issues)
-        const convexSiteUrl = process.env.CONVEX_SITE_URL ?? "";
+        // Exchange OTT for session token server-side using better-auth API directly
+        // (bypasses CSRF / cookie issues that plague the client-side flow in RN)
+        let sessionCookie = "";
         try {
-          const verifyRes = await fetch(
-            `${convexSiteUrl}/api/auth/one-time-token/verify`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                origin: convexSiteUrl,
-              },
-              body: JSON.stringify({ token: ott }),
-            },
-          );
-          const sessionCookie = verifyRes.headers.get("set-cookie") ?? "";
-          await ctx.runMutation(internal.mobile_auth.completeLinkRequest, {
-            requestId,
-            ott,
-            sessionCookie,
+          const auth = createAuth(ctx);
+          const verifyRes = await auth.api.verifyOneTimeToken({
+            body: { token: ott },
+            headers: new Headers(),
+            returnHeaders: true,
           });
-        } catch {
-          await ctx.runMutation(internal.mobile_auth.completeLinkRequest, {
-            requestId,
-            ott,
-          });
+          // better-auth returns headers in _headersList with custom header name
+          const headersList = (verifyRes as Record<string, unknown>)?.headers as
+            | { _headersList?: [string, string][] }
+            | undefined;
+          if (Array.isArray(headersList?._headersList)) {
+            for (const [name, value] of headersList._headersList) {
+              if (name === "set-better-auth-cookie" || name === "set-cookie") {
+                sessionCookie = value;
+                break;
+              }
+            }
+          }
+        } catch (err) {
+          console.error("[mobile/auth] Server-side OTT verify failed:", err);
         }
+        await ctx.runMutation(internal.mobile_auth.completeLinkRequest, {
+          requestId,
+          ott,
+          ...(sessionCookie ? { sessionCookie } : {}),
+        });
       }
 
       const websiteUrl = process.env.STELLA_WEBSITE_URL?.trim() || "https://stella.sh";

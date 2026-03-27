@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
+import { getSetCookie } from "@better-auth/expo/client";
 import { authClient } from "../../src/lib/auth-client";
 import { env } from "../../src/config/env";
 import { errorMessage } from "../../src/lib/assert";
@@ -94,12 +95,10 @@ export default function LoginScreen() {
           if (data.status === "completed" && data.sessionCookie) {
             if (cancelledRef.current) return;
             setSubmitState({ type: "verifying" });
-            // Session cookie was exchanged server-side. Store it directly
-            // and let the auth guard redirect once the session is visible.
-            await SecureStore.setItemAsync(
-              "stella-mobile_cookie",
-              data.sessionCookie,
-            );
+            // Parse the raw set-cookie header into the format expoClient expects
+            const prev = await SecureStore.getItemAsync("stella-mobile_cookie");
+            const parsed = getSetCookie(data.sessionCookie, prev ?? undefined);
+            await SecureStore.setItemAsync("stella-mobile_cookie", parsed);
             // Trigger session refresh so useSession() picks it up
             await authClient.getSession();
             return;
