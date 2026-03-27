@@ -449,7 +449,7 @@ export const TurnItem = memo(function TurnItem({
           {hasWebSearchBadge && renderWebSearchBadge(webSearchBadgeHtml)}
 
           {assistantDisplayText.trim().length > 0 && (
-            <GrowIn animate={shouldShowStreamingAssistant && Boolean(streaming?.isStreaming)}>
+            <GrowIn animate={shouldShowStreamingAssistant && Boolean(streaming?.isStreaming)} duration={shouldShowStreamingAssistant ? 80 : 500}>
               <div className={shouldShowStreamingAssistant && streaming?.isStreaming ? "text-reveal" : undefined}>
                 <Markdown
                   text={assistantDisplayText}
@@ -522,7 +522,7 @@ export const StreamingIndicator = memo(function StreamingIndicator({
             />
           )}
           {hasStreamingContent && streamingText && (
-            <GrowIn animate={Boolean(isStreaming)}>
+            <GrowIn animate={Boolean(isStreaming)} duration={80}>
               <div className={isStreaming ? "text-reveal" : undefined}>
                 <Markdown
                   text={streamingText}

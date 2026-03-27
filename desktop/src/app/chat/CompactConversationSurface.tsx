@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/shared/lib/utils";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
@@ -68,26 +68,26 @@ export function CompactConversationSurface({
     }
   }, [trackEdges]);
 
-  useLayoutEffect(() => {
-    const element = scrollRef.current;
-    if (!element) {
-      return;
-    }
+  // Use a ResizeObserver for auto-scroll instead of tracking streamingText
+  // in a blocking useLayoutEffect. Content resizes drive the scroll, avoiding
+  // synchronous layout on every streaming chunk.
+  const contentRef = useRef<HTMLDivElement>(null);
 
-    if (shouldAutoScrollRef.current) {
-      element.scrollTop = 0;
-    }
+  useEffect(() => {
+    const content = contentRef.current;
+    const scroll = scrollRef.current;
+    if (!content || !scroll) return;
 
-    updateEdges();
-  }, [
-    events.length,
-    streamingText,
-    reasoningText,
-    isStreaming,
-    pendingUserMessageId,
-    showConversation,
-    updateEdges,
-  ]);
+    const observer = new ResizeObserver(() => {
+      if (shouldAutoScrollRef.current) {
+        scroll.scrollTop = 0;
+      }
+      updateEdges();
+    });
+
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [updateEdges, showConversation]);
 
   return (
     <div
@@ -103,6 +103,7 @@ export function CompactConversationSurface({
     >
       {showConversation ? (
         <div
+          ref={contentRef}
           className={cn(
             "chat-conversation-surface",
             `chat-conversation-surface--${variant}`,
