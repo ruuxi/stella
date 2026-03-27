@@ -11,7 +11,6 @@ import {
   type AgentIdLike,
   type AgentStreamEventType,
 } from "../../src/shared/contracts/agent-runtime.js";
-import { devEventBus } from "../devtool/dev-event-bus.js";
 import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import {
@@ -117,7 +116,6 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
   ) => {
     bufferAgentEvent(runId, event);
     pruneAgentEventBuffers();
-    devEventBus.emit("agent-event", event);
     options.getBroadcastToMobile?.()?.("agent:event", event);
     const receiverId = targetWebContentsId ?? agentRunOwners.get(runId);
     if (receiverId == null) {

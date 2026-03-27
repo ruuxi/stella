@@ -9,8 +9,6 @@ import type {
   SelfModHmrState,
 } from "../src/shared/contracts/boundary.js";
 import type {
-  OnboardingHomeCanvasRequest,
-  OnboardingHomeCanvasResponse,
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
 } from "../src/shared/contracts/onboarding.js";
@@ -576,11 +574,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         "onboarding:synthesizeCoreMemory",
         payload,
       ) as Promise<OnboardingSynthesisResponse>,
-    generateHomeCanvas: (payload: OnboardingHomeCanvasRequest) =>
-      ipcRenderer.invoke(
-        "onboarding:generateHomeCanvas",
-        payload,
-      ) as Promise<OnboardingHomeCanvasResponse>,
   },
 
   browser: {
@@ -611,8 +604,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("browserData:listProfiles", browserType),
     writeCoreMemory: (content: string) =>
       ipcRenderer.invoke("browserData:writeCoreMemory", content),
-    writeHomeCanvas: (content: string) =>
-      ipcRenderer.invoke("browserData:writeHomeCanvas", content) as Promise<{ ok: boolean; error?: string }>,
     collectAllSignals: (options?: {
       categories?: string[];
       selectedBrowser?: string;

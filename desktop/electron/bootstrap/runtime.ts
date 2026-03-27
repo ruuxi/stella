@@ -11,7 +11,6 @@ import { WindowManager } from "../windows/window-manager.js";
 import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
 import {
   createBootstrapResetFlows,
-  shutdownBootstrapRuntime,
   scheduleBootstrapRuntimeShutdown,
 } from "./resets.js";
 import { isMobileBridgeEventChannel } from "../services/mobile-bridge/index.js";
@@ -35,7 +34,6 @@ import {
   getAllWindows,
   getMobileBroadcast,
 } from "./context.js";
-import { DevToolServer } from "../devtool/dev-server.js";
 import { StellaBrowserBridgeService } from "../services/stella-browser-bridge-service.js";
 import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
 
@@ -511,26 +509,6 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
   }, config.startupStageDelayMs);
 };
 
-const startDevToolServer = (context: BootstrapContext) => {
-  if (!context.config.isDev) return;
-
-  const server = new DevToolServer({
-    stellaHomePath: () => context.state.stellaHomePath,
-    sessionPartition: context.config.sessionPartition,
-    shutdownRuntime: async () =>
-      await shutdownBootstrapRuntime(context, { stopScheduler: true }),
-    onReloadApp: () => {
-      const fullWindow = context.state.windowManager?.getFullWindow();
-      if (fullWindow && !fullWindow.isDestroyed()) {
-        fullWindow.webContents.reload();
-      }
-    },
-  });
-
-  context.state.devToolServer = server;
-  server.start();
-};
-
 export const initializeBootstrapApplication = async (
   context: BootstrapContext,
 ) => {
@@ -563,7 +541,6 @@ export const initializeBootstrapApplication = async (
           return;
         }
         void startMobileBridge(context);
-        startDevToolServer(context);
       }, POST_WINDOW_AUX_START_DELAY_MS);
     } catch (error) {
       console.error(

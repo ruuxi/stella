@@ -28,11 +28,6 @@ export const getSkillSelectionPromptConfig = () => ({
   userPromptTemplate: getPromptTemplateText("skill_selection.user").trim(),
 })
 
-export const getHomeCanvasPromptConfig = () => ({
-  systemPrompt: getPromptTemplateText("home_canvas.system").trim(),
-  userPromptTemplate: getPromptTemplateText("home_canvas.user").trim(),
-})
-
 export const getPersonalizedDashboardPromptConfig = () => ({
   systemPrompt: getPromptTemplateText("personalized_dashboard.system").trim(),
   userPromptTemplate: getPromptTemplateText("personalized_dashboard.user").trim(),

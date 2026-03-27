@@ -4,9 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { synthesizeCoreMemory } from "@/global/onboarding/services/synthesis";
-import { fetchHomeCanvas, writeHomeCanvasToDisk } from "@/global/onboarding/services/home-canvas-generation";
 import { getPersonalizedDashboardPromptConfig } from "@/prompts/transport";
-import homeCanvasTemplate from "@/app/home/HomeCanvas.tsx?raw";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import {
@@ -37,16 +35,12 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
     DiscoveryCategory[] | null
   >(null);
   const [dashboardState, setDashboardState] = useState<DashboardState>("idle");
-  const [canvasFetched, setCanvasFetched] = useState(true);
-  const pendingCanvasRef = useRef<string | null>(null);
-  const canvasWrittenRef = useRef(false);
   const synthesizedRef = useRef(false);
   const synthesizingRef = useRef(false);
 
   const handleDiscoveryConfirm = useCallback(
     (categories: DiscoveryCategory[]) => {
       setDiscoveryCategories(withBrowserDiscoveryCategory(categories));
-      setCanvasFetched(false);
     },
     [],
   );
@@ -64,7 +58,6 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
         const exists =
           await window.electronAPI?.browser.checkCoreMemoryExists?.();
         if (exists) {
-          setCanvasFetched(true);
           completed = true;
           synthesizedRef.current = true;
           return;
@@ -109,17 +102,11 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
           });
         }
 
-        // Fire-and-forget: generate personalized home canvas + personal website
-        setDashboardState("generating");
-
-        // Fetch canvas content — disk write is triggered by user clicking "Ready"
-        fetchHomeCanvas(synthesisResult.coreMemory, homeCanvasTemplate)
-          .then((content) => { pendingCanvasRef.current = content; setCanvasFetched(true); })
-          .catch(() => setCanvasFetched(true));
-
+        // Fire-and-forget: generate personal website
         const startGeneration =
           window.electronAPI?.agent.startPersonalWebsiteGeneration;
         if (startGeneration) {
+          setDashboardState("generating");
           startGeneration({
             conversationId: activeConversationId,
             coreMemory: synthesisResult.coreMemory,
@@ -127,8 +114,6 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
           })
             .then(() => setDashboardState("idle"))
             .catch(() => setDashboardState("idle"));
-        } else {
-          setDashboardState("idle");
         }
 
         completed = true;
@@ -138,7 +123,6 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
       } finally {
         if (!completed) {
           synthesizedRef.current = false;
-          setCanvasFetched(true);
         }
         synthesizingRef.current = false;
       }
@@ -151,19 +135,8 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
     activeConversationId,
   ]);
 
-  // Write the pending HomeCanvas to disk on demand (user clicks "Ready").
-  const flushCanvas = useCallback(async () => {
-    const content = pendingCanvasRef.current;
-    if (!content || canvasWrittenRef.current) return;
-    canvasWrittenRef.current = true;
-    pendingCanvasRef.current = null;
-    await writeHomeCanvasToDisk(content);
-  }, []);
-
   return {
     handleDiscoveryConfirm,
     dashboardState,
-    canvasFetched,
-    flushCanvas,
   };
 }

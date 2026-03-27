@@ -10,7 +10,6 @@ export {
 } from "./storage"
 export { getPromptTemplateText, resolvePrompt, resolvePromptText } from "./resolve"
 export {
-  getHomeCanvasPromptConfig,
   getPersonalizedDashboardPromptConfig,
   getSkillMetadataPromptConfig,
   getSkillSelectionPromptConfig,

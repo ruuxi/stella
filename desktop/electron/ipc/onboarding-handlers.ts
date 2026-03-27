@@ -1,8 +1,6 @@
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import type { AuthService } from "../services/auth-service.js";
 import type {
-  OnboardingHomeCanvasRequest,
-  OnboardingHomeCanvasResponse,
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
 } from "../../src/shared/contracts/onboarding.js";
@@ -159,31 +157,4 @@ export const registerOnboardingHandlers = (
     },
   );
 
-  ipcMain.handle(
-    "onboarding:generateHomeCanvas",
-    async (
-      event,
-      payload: Partial<OnboardingHomeCanvasRequest>,
-    ) => {
-      if (
-        !options.assertPrivilegedSender(event, "onboarding:generateHomeCanvas")
-      ) {
-        throw new Error(
-          "Blocked untrusted onboarding:generateHomeCanvas request.",
-        );
-      }
-
-      return await invokeOnboardingJson<OnboardingHomeCanvasResponse>(
-        options.authService,
-        options.getDeviceId,
-        "/api/home-canvas",
-        {
-          ...(payload?.promptConfig ?? {}),
-          coreMemory: typeof payload?.coreMemory === "string" ? payload.coreMemory : "",
-          templateFile:
-            typeof payload?.templateFile === "string" ? payload.templateFile : "",
-        },
-      );
-    },
-  );
 };

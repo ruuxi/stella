@@ -2,7 +2,4 @@
 CLAUDE.md
 AGENTS.md
 AGENT.md
-
-# devtool
-devtool/node_modules/
-devtool/bun.lock
+docs/

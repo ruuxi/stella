@@ -47,11 +47,6 @@ export type PromptTemplateValues = {
     catalogText: string
     messagesText: string
   }
-  "home_canvas.system": undefined
-  "home_canvas.user": {
-    coreMemory: string
-    templateFile: string
-  }
   "personalized_dashboard.system": undefined
   "personalized_dashboard.user": {
     coreMemory: string

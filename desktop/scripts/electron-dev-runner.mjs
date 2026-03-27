@@ -43,13 +43,6 @@ const processSpecs = [
     args: [resolve(scriptDir, 'dev-electron.mjs')],
     env: process.env,
   },
-  {
-    name: 'devtool',
-    command: process.execPath,
-    args: [resolve(scriptDir, 'devtool-runner.mjs'), '--optional'],
-    env: process.env,
-    optional: true,
-  },
 ];
 
 const activeChildren = new Map();

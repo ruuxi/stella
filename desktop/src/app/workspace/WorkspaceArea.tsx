@@ -5,9 +5,6 @@ import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas"
 import type { ViewType } from "@/shared/contracts/ui"
 import "./workspace.css"
 
-const HomeView = lazy(() =>
-  import("@/app/home/HomeView").then((module) => ({ default: module.HomeView })),
-)
 const PanelRenderer = lazy(() => import("@/app/workspace/renderers/panel"))
 const OnboardingCanvas = lazy(() =>
   import("@/global/onboarding/OnboardingCanvas").then((m) => ({ default: m.OnboardingCanvas })),
@@ -21,23 +18,10 @@ type WorkspaceAreaProps = {
   conversationId?: string
 }
 
-function HomeViewFallback() {
-  return (
-    <div className="workspace-area">
-      <div className="workspace-content workspace-content--full">
-        <div className="workspace-placeholder" aria-busy="true">
-          <Spinner size="md" />
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export function WorkspaceArea({
   view,
   activeDemo,
   demoClosing,
-  conversationId,
 }: WorkspaceAreaProps) {
   const { state } = useWorkspace()
   const { activePanel } = state
@@ -80,16 +64,6 @@ export function WorkspaceArea({
   }
 
   switch (view) {
-    case "app":
-      return (
-        <Suspense fallback={<HomeViewFallback />}>
-          <div className="workspace-area">
-            <div className="workspace-content workspace-content--full">
-              <HomeView conversationId={conversationId} />
-            </div>
-          </div>
-        </Suspense>
-      )
     case "store":
       return (
         <div className="workspace-area">
@@ -109,15 +83,9 @@ export function WorkspaceArea({
     case "home":
     case "chat":
     case "social":
-      return (
-        <Suspense fallback={<HomeViewFallback />}>
-          <div className="workspace-area">
-            <div className="workspace-content workspace-content--full">
-              <HomeView conversationId={conversationId} />
-            </div>
-          </div>
-        </Suspense>
-      )
+    case "app":
+      // Chat/home/social are handled by FullShellRuntime
+      return null
     default: {
       const exhaustiveCheck: never = view
       return exhaustiveCheck

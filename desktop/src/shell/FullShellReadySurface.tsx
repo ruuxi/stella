@@ -72,7 +72,7 @@ export const FullShellReadySurface = ({
 
   const showHomeView = useCallback(() => {
     closePanel();
-    setView("home");
+    setView("chat");
   }, [closePanel, setView]);
 
   const showChatView = useCallback(() => {
@@ -114,7 +114,7 @@ export const FullShellReadySurface = ({
 
     if (state.view === "chat") {
       closePanel();
-      setView("home");
+      setView("app");
     }
   }, [closePanel, setView, state.view]);
 
@@ -163,7 +163,7 @@ export const FullShellReadySurface = ({
   const handleContextMenuOpenOrbChat = useCallback(
     (chatContext?: ChatContext | null) => {
       if (state.view === "chat" || state.view === "social") {
-        setView("home");
+        setView("chat");
       }
 
       dispatchOpenOrbChat({ chatContext: chatContext ?? null });
