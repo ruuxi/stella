@@ -90,9 +90,14 @@ const COOLDOWN_MS = 1000;
 const WARMUP_FRAMES = 0;
 
 const DEFAULT_THRESHOLD = 0.8;
-const MIN_THRESHOLD = 0.6;
+const MIN_THRESHOLD = 0.7;
 
 const PCM_NORMALIZATION_FACTOR = 32768;
+
+// Pre-computed silence embedding: what the embedding model produces for silent audio.
+// Used to fill the feature buffer on reset so the classifier never sees raw zeros.
+// Generated from: silent audio → melspec → embedding pipeline
+const SILENCE_EMBEDDING = new Float32Array([-6.510640, 14.121664, 7.960846, -10.664983, 12.789005, 27.354668, 1.241761, -4.229153, -12.643964, 17.864643, -25.628899, -12.545390, -0.063731, -5.803477, -9.644623, 6.708320, 0.576913, 8.766088, -2.626410, -16.023851, 7.656816, 21.451744, -12.459038, 9.228924, -12.020554, 12.555403, -18.496780, -0.605187, -0.600914, 4.356796, -15.300756, 20.490107, -28.798176, -2.979313, -12.898738, 11.032096, 30.580040, 11.368026, 2.762535, 30.894215, -8.112326, 1.361912, 50.730991, -13.595288, -13.674005, -8.244160, -25.322432, 3.587938, 0.912574, 7.978722, -17.343872, 11.308382, 13.378486, 3.422306, -13.795641, -13.662560, -7.201516, 22.943735, -12.127248, -9.472979, 11.093309, 4.564369, -0.263198, -11.321832, 26.901873, 11.721809, -1.180710, -15.693601, 3.416359, -8.178585, 5.179155, 16.453489, 4.832705, -15.063478, 17.387722, 4.298107, 5.532624, 13.127432, -22.342621, -28.704634, 14.642874, 12.210789, 16.581112, -10.543222, 12.261341, -2.366544, 4.045248, -7.355757, 10.224414, 36.974907, 4.738570, 26.833698, 17.880943, -31.868952, -16.337807, 31.100613]);
 
 const WAKE_WORD_BOOTSTRAP_FLOOR_RATIO = 0.8;
 const WAKE_WORD_FLOOR_FAST_FALL_RATE = 0.2;
@@ -112,7 +117,7 @@ const VAD_ZCR_MIN = 0.01;
 const VAD_ZCR_MAX = 0.22;
 const VAD_ZCR_MAX_FALLOFF = 0.45;
 
-export const WAKE_WORD_VAD_GATE_THRESHOLD = 0.5;
+export const WAKE_WORD_VAD_GATE_THRESHOLD = 0.65;
 
 function clamp01(value: number): number {
   if (value <= 0) {
@@ -596,7 +601,11 @@ export async function createWakeWordDetector(
   function resetFeaturePipeline() {
     melBuffer.fill(1.0);
     melRows = EMBEDDING_WINDOW;
-    featureBuffer.fill(0);
+    // Fill feature buffer with silence embeddings instead of zeros so the
+    // classifier sees a realistic input even before 16 frames accumulate.
+    for (let i = 0; i < FEATURE_BUFFER_MAX; i += 1) {
+      featureBuffer.set(SILENCE_EMBEDDING, i * EMBEDDING_DIM);
+    }
     featureRows = 0;
   }
 
@@ -646,6 +655,10 @@ export async function createWakeWordDetector(
     }
 
     const features = new Float32Array(MODEL_INPUT_FRAMES * EMBEDDING_DIM);
+    // Fill with silence embeddings first (instead of zeros)
+    for (let i = 0; i < MODEL_INPUT_FRAMES; i += 1) {
+      features.set(SILENCE_EMBEDDING, i * EMBEDDING_DIM);
+    }
     const available = Math.min(featureRows, MODEL_INPUT_FRAMES);
     if (available > 0) {
       const srcStart = (featureRows - available) * EMBEDDING_DIM;

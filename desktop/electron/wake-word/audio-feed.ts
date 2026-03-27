@@ -41,7 +41,7 @@ const DEFAULT_ADAPTIVE_NOISE_FLOOR_OPTIONS: WakeWordAdaptiveNoiseFloorOptions = 
   signalFloorMargin: 0.004,
   minimumSignalLevel: 0.0025,
   signalHoldFrames: 3,
-  speechVadThreshold: 0.5,
+  speechVadThreshold: 0.65,
 };
 
 function createIdleFrontEndState(
