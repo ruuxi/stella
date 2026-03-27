@@ -71,7 +71,9 @@
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "better-auth": "1.4.9",
+    "better-sqlite3": "^12.8.0",
     "class-variance-authority": "^0.7.1",
+    "cloudflared": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "convex": "^1.33.1",
@@ -105,15 +107,14 @@
     "vaul": "^1.1.2",
     "ws": "^8.19.0",
     "yaml": "^2.6.1",
-    "better-sqlite3": "^12.8.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@eslint/js": "^9.39.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/morphdom": "^2.4.2",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
@@ -149,7 +150,9 @@
     "productName": "Stella",
     "protocols": {
       "name": "Stella Auth",
-      "schemes": ["Stella"]
+      "schemes": [
+        "Stella"
+      ]
     },
     "directories": {
       "output": "release"
@@ -169,22 +172,30 @@
       {
         "from": "resources/stella-defaults/core-skills",
         "to": "stella-defaults/core-skills",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "resources/stella-defaults/extensions",
         "to": "stella-defaults/extensions",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "resources/bundled-commands",
         "to": "bundled-commands",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "resources/models",
         "to": "models",
-        "filter": ["*.onnx"]
+        "filter": [
+          "*.onnx"
+        ]
       }
     ],
     "win": {

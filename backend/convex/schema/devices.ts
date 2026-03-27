@@ -31,4 +31,15 @@ export const devicesSchema = {
   })
     .index("by_ownerId_and_deviceId", ["ownerId", "deviceId"])
     .index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
+
+  cloudflare_tunnels: defineTable({
+    ownerId: v.string(),
+    tunnelId: v.string(),
+    tunnelName: v.string(),
+    tunnelToken: v.string(),
+    hostname: v.string(),
+    dnsRecordId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_ownerId", ["ownerId"]),
 };

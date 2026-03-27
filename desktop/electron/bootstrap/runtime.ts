@@ -15,6 +15,7 @@ import {
   scheduleBootstrapRuntimeShutdown,
 } from "./resets.js";
 import { MobileBridgeService } from "../services/mobile-bridge/service.js";
+import { CloudflareTunnelService } from "../services/mobile-bridge/tunnel-service.js";
 import {
   getOrCreateDeviceIdentity,
   signDeviceHeartbeat,
@@ -72,6 +73,28 @@ const startMobileBridge = (context: BootstrapContext) => {
 
     // Clean up interval on quit (bridge.stop() is called separately in lifecycle)
     app.on("before-quit", () => clearInterval(interval));
+
+    // Start Cloudflare tunnel for remote mobile access
+    const tunnelService = new CloudflareTunnelService({
+      getAuthToken: () => authService.getAuthToken(),
+      getConvexSiteUrl: () => authService.getConvexSiteUrl(),
+      onTunnelUrl: (url) => {
+        bridge.setTunnelUrl(url);
+      },
+    });
+    context.state.tunnelService = tunnelService;
+
+    // Wait for the bridge port to be available, then start tunnel
+    const waitForPort = () => {
+      const port = bridge.getPort();
+      if (port) {
+        tunnelService.setBridgePort(port);
+        void tunnelService.start();
+      } else {
+        setTimeout(waitForPort, 500);
+      }
+    };
+    waitForPort();
   } catch (error) {
     console.error(
       "[mobile-bridge] Failed to start:",

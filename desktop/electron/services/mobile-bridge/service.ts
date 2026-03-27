@@ -178,6 +178,7 @@ export class MobileBridgeService {
   private deviceId: string | null = null;
   private hostAuthToken: string | null = null;
   private convexSiteUrl: string | null = null;
+  private tunnelUrl: string | null = null;
 
   constructor(private readonly options: MobileBridgeServiceOptions) {}
 
@@ -202,6 +203,15 @@ export class MobileBridgeService {
   setConvexSiteUrl(value: string | null) {
     this.convexSiteUrl = value?.trim() || null;
     void this.syncRegistration();
+  }
+
+  setTunnelUrl(url: string | null) {
+    this.tunnelUrl = url?.trim() || null;
+    void this.syncRegistration();
+  }
+
+  getPort(): number | null {
+    return this.port;
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -690,7 +700,11 @@ export class MobileBridgeService {
       return;
     }
 
-    const baseUrls = getBridgeUrls(this.port);
+    const localUrls = getBridgeUrls(this.port);
+    const baseUrls = [
+      ...(this.tunnelUrl ? [this.tunnelUrl] : []),
+      ...localUrls,
+    ];
     if (baseUrls.length === 0) {
       await this.clearRegistration();
       return;
