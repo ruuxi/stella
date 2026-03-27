@@ -74,6 +74,33 @@ const startMobileBridge = (context: BootstrapContext) => {
       }
     });
 
+    // Mirror events from the desktop BrowserWindow to mobile WebSocket
+    // clients. The desktop runtime sends real-time updates (agent stream,
+    // chat, UI state, etc.) via webContents.send() — this proxy ensures
+    // the mobile WebView receives them too.
+    const mirrorWindowEvents = () => {
+      const win = context.state.windowManager?.getFullWindow();
+      if (!win || win.isDestroyed()) {
+        setTimeout(mirrorWindowEvents, 1_000);
+        return;
+      }
+      const original = win.webContents.send.bind(win.webContents);
+      win.webContents.send = (channel: string, ...args: unknown[]) => {
+        original(channel, ...args);
+        try {
+          bridge.broadcastToMobile(
+            channel,
+            args.length === 1 ? args[0] : args,
+          );
+        } catch {
+          // Don't let bridge errors break desktop event delivery
+        }
+      };
+      // Re-attach if window is recreated
+      win.once("closed", () => setTimeout(mirrorWindowEvents, 1_000));
+    };
+    mirrorWindowEvents();
+
     // Wire auth state into the bridge for Convex registration
     const authService = context.services.authService;
     const syncBridgeAuth = async () => {
