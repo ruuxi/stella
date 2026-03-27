@@ -12,12 +12,10 @@ import { useUiState } from "@/context/ui-state";
 import { useWorkspace } from "@/context/workspace-state";
 import { secureSignOut } from "@/global/auth/services/auth";
 import type { DashboardState } from "@/global/onboarding/DiscoveryFlow";
-import { useIsMobile } from "@/shared/hooks/use-mobile";
 import { dispatchCloseOrbChat, dispatchOpenOrbChat } from "@/shared/lib/stella-orb-chat";
 import type { ChatContext } from "@/shared/types/electron";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
-import { useSidebarDrawer } from "@/shell/sidebar/use-sidebar-drawer";
 import { DisplayOverlay } from "./DisplayOverlay";
 import { FullShellDialogs } from "./full-shell-dialogs";
 import type { DialogType } from "./full-shell-dialogs";
@@ -55,9 +53,6 @@ export const FullShellReadySurface = ({
   const [isOrbChatOpen, setIsOrbChatOpen] = useState(false);
   const { projects, pickProjectDirectory } = useDevProjects();
 
-  const isMobile = useIsMobile();
-  const { sidebarRef, backdropRef, close: closeSidebar } = useSidebarDrawer(isMobile);
-
   const showAuthDialog = useCallback(() => {
     setActiveDialog("auth");
   }, []);
@@ -73,26 +68,22 @@ export const FullShellReadySurface = ({
   const showStoreView = useCallback(() => {
     closePanel();
     setView("store");
-    closeSidebar();
-  }, [closePanel, setView, closeSidebar]);
+  }, [closePanel, setView]);
 
   const showHomeView = useCallback(() => {
     closePanel();
     setView("home");
-    closeSidebar();
-  }, [closePanel, setView, closeSidebar]);
+  }, [closePanel, setView]);
 
   const showChatView = useCallback(() => {
     closePanel();
     setView("chat");
-    closeSidebar();
-  }, [closePanel, setView, closeSidebar]);
+  }, [closePanel, setView]);
 
   const showSocialView = useCallback(() => {
     closePanel();
     setView("social");
-    closeSidebar();
-  }, [closePanel, setView, closeSidebar]);
+  }, [closePanel, setView]);
 
   const handlePageSelect = useCallback(
     (page: GeneratedPage) => {
@@ -103,9 +94,8 @@ export const FullShellReadySurface = ({
         pageId: page.id,
       });
       setView("app");
-      closeSidebar();
     },
-    [openPanel, setView, closeSidebar],
+    [openPanel, setView],
   );
 
   const handlePendingAskStellaHandled = useCallback((requestId: number) => {
@@ -126,8 +116,7 @@ export const FullShellReadySurface = ({
       closePanel();
       setView("home");
     }
-    closeSidebar();
-  }, [closePanel, setView, state.view, closeSidebar]);
+  }, [closePanel, setView, state.view]);
 
   const handleProjectSelect = useCallback(
     (project: (typeof projects)[number]) => {
@@ -138,9 +127,8 @@ export const FullShellReadySurface = ({
         projectId: project.id,
       });
       setView("app");
-      closeSidebar();
     },
-    [openPanel, setView, closeSidebar],
+    [openPanel, setView],
   );
 
   const handleNewAppLocalProject = useCallback(async () => {
@@ -183,39 +171,26 @@ export const FullShellReadySurface = ({
     [setView, state.view],
   );
 
-  const sidebarElement = (
-    <Sidebar
-      activeView={state.view}
-      onSignIn={showAuthDialog}
-      onConnect={showConnectDialog}
-      onSettings={showSettingsDialog}
-      onStore={showStoreView}
-      onHome={showHomeView}
-      onChat={showChatView}
-      onSocial={showSocialView}
-      onNewAppAskStella={handleNewAppAskStella}
-      onNewAppLocalProject={handleNewAppLocalProject}
-      activePageId={activePageId}
-      onPageSelect={handlePageSelect}
-      dashboardState={dashboardState}
-      projects={projects}
-      activeProjectId={activeProjectId}
-      onProjectSelect={handleProjectSelect}
-    />
-  );
-
   return (
     <>
-      {isMobile ? (
-        <>
-          <div className="sidebar-backdrop" ref={backdropRef} onClick={closeSidebar} />
-          <div className="sidebar-drawer" ref={sidebarRef}>
-            {sidebarElement}
-          </div>
-        </>
-      ) : (
-        sidebarElement
-      )}
+      <Sidebar
+        activeView={state.view}
+        onSignIn={showAuthDialog}
+        onConnect={showConnectDialog}
+        onSettings={showSettingsDialog}
+        onStore={showStoreView}
+        onHome={showHomeView}
+        onChat={showChatView}
+        onSocial={showSocialView}
+        onNewAppAskStella={handleNewAppAskStella}
+        onNewAppLocalProject={handleNewAppLocalProject}
+        activePageId={activePageId}
+        onPageSelect={handlePageSelect}
+        dashboardState={dashboardState}
+        projects={projects}
+        activeProjectId={activeProjectId}
+        onProjectSelect={handleProjectSelect}
+      />
 
       <StellaContextMenu
         isOrbChatOpen={isOrbChatOpen}
