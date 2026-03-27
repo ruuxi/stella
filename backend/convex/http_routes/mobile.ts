@@ -245,6 +245,7 @@ export const registerMobileRoutes = (http: HttpRouter) => {
     "/api/mobile/desktop-bridge/register",
     "/api/mobile/desktop-bridge/clear",
     "/api/mobile/desktop-bridge/authorize",
+    "/api/mobile/desktop-bridge/tunnel-token",
   ]) {
     http.route({
       path,
@@ -476,6 +477,34 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         }
 
         return jsonResponse({ ok: true }, 200, origin);
+      }),
+    ),
+  });
+
+  http.route({
+    path: "/api/mobile/desktop-bridge/tunnel-token",
+    method: "POST",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const owner = await requireMobileAccountOwner(ctx, origin);
+        if ("response" in owner) {
+          return owner.response;
+        }
+
+        try {
+          const result = await ctx.runAction(
+            internal.cloudflare_tunnels.getOrProvisionTunnel,
+            { ownerId: owner.ownerId },
+          );
+          return jsonResponse(result, 200, origin);
+        } catch (error) {
+          console.error("[mobile/tunnel-token] Error:", error);
+          return errorResponse(
+            500,
+            readConvexErrorMessage(error, "Failed to provision tunnel"),
+            origin,
+          );
+        }
       }),
     ),
   });

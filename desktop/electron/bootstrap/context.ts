@@ -14,6 +14,7 @@ import type { WakeWordController } from "../wake-word/initialize.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
 import type { MobileBridgeService } from "../services/mobile-bridge/service.js";
+import type { CloudflareTunnelService } from "../services/mobile-bridge/tunnel-service.js";
 import type { StellaBrowserBridgeStatus } from "../services/stella-browser-bridge-service.js";
 import type { StellaBrowserBridgeService } from "../services/stella-browser-bridge-service.js";
 import type { DevToolServer } from "../devtool/dev-server.js";
@@ -50,6 +51,7 @@ export type BootstrapState = {
   stellaBrowserBridgeService: StellaBrowserBridgeService | null;
   wakeWordController: WakeWordController | null;
   mobileBridgeService: MobileBridgeService | null;
+  tunnelService: CloudflareTunnelService | null;
   devToolServer: DevToolServer | null;
   windowManager: WindowManager | null;
 };
@@ -190,6 +192,7 @@ export const createBootstrapContext = (
     stellaBrowserBridgeService: null,
     wakeWordController: null,
     mobileBridgeService: null,
+    tunnelService: null,
     devToolServer: null,
     windowManager: null,
   };

@@ -42,6 +42,7 @@ import type * as channels_teams from "../channels/teams.js";
 import type * as channels_telegram from "../channels/telegram.js";
 import type * as channels_transient_data from "../channels/transient_data.js";
 import type * as channels_utils from "../channels/utils.js";
+import type * as cloudflare_tunnels from "../cloudflare_tunnels.js";
 import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
 import type * as data_attachments from "../data/attachments.js";
@@ -209,6 +210,7 @@ declare const fullApi: ApiFromModules<{
   "channels/telegram": typeof channels_telegram;
   "channels/transient_data": typeof channels_transient_data;
   "channels/utils": typeof channels_utils;
+  cloudflare_tunnels: typeof cloudflare_tunnels;
   conversations: typeof conversations;
   crons: typeof crons;
   "data/attachments": typeof data_attachments;
