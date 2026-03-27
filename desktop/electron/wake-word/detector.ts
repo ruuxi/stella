@@ -94,7 +94,7 @@ const MIN_THRESHOLD = 0.5;
 
 // Patience: how many consecutive frames above threshold before triggering.
 // Matches openWakeWord's `patience` parameter. 1 = single-frame (default).
-const PATIENCE = 1;
+const PATIENCE = 2;
 const PREDICTION_BUFFER_SIZE = 30;
 
 const PCM_NORMALIZATION_FACTOR = 32768;
@@ -345,6 +345,7 @@ export async function createWakeWordDetector(
   let threshold = DEFAULT_THRESHOLD;
   let lastActivationTime = 0;
   let warmupFrames = WARMUP_FRAMES;
+  let lastOutputScore = 0;
 
   // Prediction buffer — mirrors openWakeWord's prediction_buffer (deque of 30)
   const predictionBuffer: number[] = [];
@@ -357,7 +358,6 @@ export async function createWakeWordDetector(
     signalFloorMargin: WAKE_WORD_SIGNAL_FLOOR_MARGIN,
     minimumSignalLevel: WAKE_WORD_MINIMUM_SIGNAL_LEVEL,
     signalHoldFrames: WAKE_WORD_SIGNAL_HOLD_FRAMES,
-    speechVadThreshold: WAKE_WORD_VAD_GATE_THRESHOLD,
   });
 
   const rawBuffer = new Int16Array(RAW_BUFFER_MAX);
@@ -456,10 +456,10 @@ export async function createWakeWordDetector(
     rawBufferLen += data.length;
   }
 
-  function queueStreamingAudio(pcm: Int16Array): boolean {
+  function queueStreamingAudio(pcm: Int16Array): number {
     bufferRawData(pcm);
     accumulatedSamples = Math.min(rawBufferLen, accumulatedSamples + pcm.length);
-    return accumulatedSamples >= CHUNK_SAMPLES;
+    return accumulatedSamples;
   }
 
   function appendFeatureFrame(embedding: Float32Array) {
@@ -475,9 +475,9 @@ export async function createWakeWordDetector(
     featureRows += 1;
   }
 
-  async function advanceFeatureBuffer(): Promise<void> {
+  async function advanceFeatureBuffer(): Promise<number> {
     if (accumulatedSamples < CHUNK_SAMPLES) {
-      return;
+      return 0;
     }
 
     const nChunks = Math.floor(accumulatedSamples / CHUNK_SAMPLES);
@@ -500,6 +500,28 @@ export async function createWakeWordDetector(
     }
 
     accumulatedSamples -= samplesToProcess;
+    return nChunks;
+  }
+
+  function buildClassifierInput(offsetFromLatest = 0): Float32Array {
+    const features = new Float32Array(MODEL_INPUT_FRAMES * EMBEDDING_DIM);
+    for (let i = 0; i < MODEL_INPUT_FRAMES; i += 1) {
+      features.set(SILENCE_EMBEDDING, i * EMBEDDING_DIM);
+    }
+
+    const end = Math.max(0, featureRows - offsetFromLatest);
+    const start = Math.max(0, end - MODEL_INPUT_FRAMES);
+    const available = Math.max(0, end - start);
+    if (available > 0) {
+      const srcStart = start * EMBEDDING_DIM;
+      const dstStart = (MODEL_INPUT_FRAMES - available) * EMBEDDING_DIM;
+      features.set(
+        featureBuffer.subarray(srcStart, srcStart + available * EMBEDDING_DIM),
+        dstStart,
+      );
+    }
+
+    return features;
   }
 
   function detectFromScore(score: number): boolean {
@@ -567,7 +589,7 @@ export async function createWakeWordDetector(
       return createResult(frontEndStage.getState(), 0, false);
     }
 
-    const hasChunkReady = queueStreamingAudio(pcm);
+    const nPreparedSamples = queueStreamingAudio(pcm);
 
     // Keep front-end state updated for telemetry/debugging, but do not gate
     // classifier inference on it. Over-gating was preventing real detections.
@@ -576,14 +598,18 @@ export async function createWakeWordDetector(
     const vadScore = estimateWakeWordVadScore(pcm);
     const vadGate = createWakeWordVadGateState(vadScore);
 
-    if (!hasChunkReady) {
+    if (nPreparedSamples < CHUNK_SAMPLES) {
       return {
-        ...createResult(frontEnd, vadScore, false),
+        detected: detectFromScore(lastOutputScore),
+        score: lastOutputScore,
+        vadScore,
+        frontEnd,
         vadGate,
+        inference: { classifierRan: false },
       };
     }
 
-    await advanceFeatureBuffer();
+    const nChunks = await advanceFeatureBuffer();
 
     if (warmupFrames > 0) {
       warmupFrames -= 1;
@@ -593,22 +619,21 @@ export async function createWakeWordDetector(
       };
     }
 
-    const features = new Float32Array(MODEL_INPUT_FRAMES * EMBEDDING_DIM);
-    for (let i = 0; i < MODEL_INPUT_FRAMES; i += 1) {
-      features.set(SILENCE_EMBEDDING, i * EMBEDDING_DIM);
-    }
-    const available = Math.min(featureRows, MODEL_INPUT_FRAMES);
-    if (available > 0) {
-      const srcStart = (featureRows - available) * EMBEDDING_DIM;
-      const dstStart = (MODEL_INPUT_FRAMES - available) * EMBEDDING_DIM;
-      features.set(
-        featureBuffer.subarray(srcStart, srcStart + available * EMBEDDING_DIM),
-        dstStart,
-      );
+    let score = 0;
+    if (nChunks > 1) {
+      const scores: number[] = [];
+      for (let i = nChunks - 1; i >= 0; i -= 1) {
+        scores.push(await runClassifier(buildClassifierInput(i)));
+      }
+      score = scores.length > 0 ? Math.max(...scores) : 0;
+    } else {
+      score = await runClassifier(buildClassifierInput(0));
     }
 
-    const score = await runClassifier(features);
-    const finalScore = featureRows < 5 ? 0 : score;
+    // Match OWW startup behavior: zero the first few predictions while the
+    // streaming buffers stabilize.
+    const finalScore = predictionBuffer.length < 5 ? 0 : score;
+    lastOutputScore = finalScore;
     const detected = detectFromScore(finalScore);
 
     return {
@@ -630,6 +655,7 @@ export async function createWakeWordDetector(
     resetFeaturePipeline();
 
     warmupFrames = WARMUP_FRAMES;
+    lastOutputScore = 0;
     predictionBuffer.length = 0;
   }
 
@@ -642,6 +668,7 @@ export async function createWakeWordDetector(
     stop() {
       listening = false;
       lastActivationTime = 0;
+      lastOutputScore = 0;
     },
     predict,
     calibrate(scores: number[]) {

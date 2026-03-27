@@ -14,7 +14,6 @@ export interface WakeWordAdaptiveNoiseFloorOptions {
   signalFloorMargin: number;
   minimumSignalLevel: number;
   signalHoldFrames: number;
-  speechVadThreshold: number;
 }
 
 export interface WakeWordPreparedAudio {
@@ -24,7 +23,6 @@ export interface WakeWordPreparedAudio {
 
 export interface WakeWordAdaptiveNoiseFloorStage {
   process(pcm: Int16Array): WakeWordPreparedAudio;
-  observeResult(result: WakeWordResult): void;
   reset(): void;
   getState(): WakeWordFrontEndState;
 }
@@ -41,7 +39,6 @@ export const DEFAULT_ADAPTIVE_NOISE_FLOOR_OPTIONS: WakeWordAdaptiveNoiseFloorOpt
   signalFloorMargin: 0.004,
   minimumSignalLevel: 0.0025,
   signalHoldFrames: 3,
-  speechVadThreshold: 0.65,
 };
 
 function createIdleFrontEndState(
@@ -141,29 +138,6 @@ export function createWakeWordAdaptiveNoiseFloor(
       };
     },
 
-    observeResult(result: WakeWordResult) {
-      const speechConfirmedByVad =
-        result.vadGate?.gateOpen ??
-        result.vadScore >= resolvedOptions.speechVadThreshold;
-      if (
-        !lastState.signalPresent ||
-        result.detected ||
-        speechConfirmedByVad ||
-        lastState.inputLevel <= lastState.noiseFloor
-      ) {
-        return;
-      }
-
-      trackedNoiseFloor =
-        lastState.noiseFloor +
-        (lastState.inputLevel - lastState.noiseFloor) *
-          resolvedOptions.floorSlowRiseRate;
-      lastState = {
-        ...lastState,
-        nextNoiseFloor: trackedNoiseFloor,
-      };
-    },
-
     reset() {
       trackedNoiseFloor = 0;
       holdFramesRemaining = 0;
@@ -219,10 +193,11 @@ export function createWakeWordAudioFeedManager(
         try {
           const prepared = frontEnd.process(incoming);
           const detectorResult = await detector.predict(prepared.pcm);
-          frontEnd.observeResult(detectorResult);
           const result = {
             ...detectorResult,
-            frontEnd: frontEnd.getState(),
+            // Keep reporting front-end telemetry for debugging, but do not let
+            // it feed back into inference behavior.
+            frontEnd: prepared.frontEnd,
           } satisfies WakeWordResult;
           if (!listening || sessionId !== listeningSessionId) {
             continue;
