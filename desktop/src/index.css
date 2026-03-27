@@ -337,9 +337,17 @@ html:has(.window-voice) #root {
   -webkit-app-region: drag;
 }
 
+.title-bar[data-app-ready] .title-bar-drag-region {
+  right: 170px; /* 138px controls + 32px bell */
+}
+
 .title-bar-mac .title-bar-drag-region {
   left: 80px; /* After traffic lights */
   right: 50px; /* Leave space for left content */
+}
+
+.title-bar-mac[data-app-ready] .title-bar-drag-region {
+  right: 44px; /* Leave space for bell */
 }
 
 .title-bar-title {
@@ -415,4 +423,41 @@ html:has(.window-voice) #root {
   opacity: 0.6;
   -webkit-app-region: no-drag;
   pointer-events: none;
+}
+
+/* ── Notification bell in title bar ── */
+
+.title-bar-notif-bell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: default;
+  padding: 0;
+  opacity: 0.6;
+  transition: opacity 0.15s, background 0.15s;
+  -webkit-app-region: no-drag;
+}
+.title-bar-notif-bell:hover {
+  opacity: 0.9;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+.title-bar-notif-bell--active {
+  opacity: 0.9;
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+.title-bar-notif-bell svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* macOS: bell sits at the right edge */
+.title-bar-mac .title-bar-notif-bell {
+  position: relative;
+  z-index: 10;
+  margin-left: auto;
 }
