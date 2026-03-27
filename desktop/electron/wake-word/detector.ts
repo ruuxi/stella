@@ -1,15 +1,11 @@
 /**
  * Wake word detector using onnxruntime-node.
  *
- * Ports the openWakeWord streaming inference pipeline faithfully from Python:
+ * Ports the openWakeWord streaming inference pipeline from Python:
  *   raw audio buffer -> melspectrogram (with context overlap) -> embeddings -> classifier
  *
- * Adds two lightweight gates ahead of the wake-word model:
- *   very-low-volume gate -> heuristic VAD gate -> wake-word inference
- *
- * While the gates are closed we keep only a short raw-audio pre-roll so the
- * first speech chunk can still include a bit of leading silence without paying
- * the full continuous inference cost.
+ * The adaptive front-end and heuristic VAD are retained for telemetry and
+ * future tuning, but classifier inference is no longer hard-gated by them.
  */
 
 import path from "path";
@@ -93,21 +89,27 @@ const RAW_BUFFER_MAX = SAMPLE_RATE * 10; // 10 seconds
 const COOLDOWN_MS = 1000;
 const WARMUP_FRAMES = 0;
 
-const DEFAULT_THRESHOLD = 0.5;
-const MIN_THRESHOLD = 0.3;
+const DEFAULT_THRESHOLD = 0.7;
+const MIN_THRESHOLD = 0.5;
 
-// Trigger confirmation: require multiple consecutive high-scoring frames
-// before firing. A real "Stella" utterance spans ~6-8 frames (0.5-0.6s);
-// transient sounds (clicks, gasps) produce only 1-2 high frames.
-const TRIGGER_CONFIRM_WINDOW = 5;
-const TRIGGER_CONFIRM_COUNT = 3; // at least 3 of 5 recent frames must exceed threshold
+// Patience: how many consecutive frames above threshold before triggering.
+// Matches openWakeWord's `patience` parameter. 1 = single-frame (default).
+const PATIENCE = 1;
+const PREDICTION_BUFFER_SIZE = 30;
 
 const PCM_NORMALIZATION_FACTOR = 32768;
 
-// Pre-computed silence embedding: what the embedding model produces for silent audio.
-// Used to fill the feature buffer on reset so the classifier never sees raw zeros.
-// Generated from: silent audio → melspec → embedding pipeline
-const SILENCE_EMBEDDING = new Float32Array([-6.510640, 14.121664, 7.960846, -10.664983, 12.789005, 27.354668, 1.241761, -4.229153, -12.643964, 17.864643, -25.628899, -12.545390, -0.063731, -5.803477, -9.644623, 6.708320, 0.576913, 8.766088, -2.626410, -16.023851, 7.656816, 21.451744, -12.459038, 9.228924, -12.020554, 12.555403, -18.496780, -0.605187, -0.600914, 4.356796, -15.300756, 20.490107, -28.798176, -2.979313, -12.898738, 11.032096, 30.580040, 11.368026, 2.762535, 30.894215, -8.112326, 1.361912, 50.730991, -13.595288, -13.674005, -8.244160, -25.322432, 3.587938, 0.912574, 7.978722, -17.343872, 11.308382, 13.378486, 3.422306, -13.795641, -13.662560, -7.201516, 22.943735, -12.127248, -9.472979, 11.093309, 4.564369, -0.263198, -11.321832, 26.901873, 11.721809, -1.180710, -15.693601, 3.416359, -8.178585, 5.179155, 16.453489, 4.832705, -15.063478, 17.387722, 4.298107, 5.532624, 13.127432, -22.342621, -28.704634, 14.642874, 12.210789, 16.581112, -10.543222, 12.261341, -2.366544, 4.045248, -7.355757, 10.224414, 36.974907, 4.738570, 26.833698, 17.880943, -31.868952, -16.337807, 31.100613]);
+// Pre-computed silence embedding: what the embedding model produces for OWW's
+// mel buffer init value (np.ones((76,32))). Used to fill the feature buffer on
+// reset so the classifier sees the same init state as during training.
+const SILENCE_EMBEDDING = new Float32Array([-4.755897, 10.217751, 6.476529, -7.208631, 11.049788, 21.693903, 6.165884, -7.555169, -22.239805, 18.664951, -28.690880, -5.235091, 3.448771, -1.256141, -6.172506, 1.713133, 4.007433, 1.377841, 0.682513, -15.507675, 7.456418, 11.739340, -9.198153, 5.514894, -7.166018, 21.986485, -11.036475, -3.709522, -1.131758, 3.983402, -17.353207, 18.860729, -26.676649, 0.423715, -15.282963, 10.026252, 33.970539, 4.638136, 2.524881, 31.031916, -7.890914, -1.656436, 44.422108, -12.642136, -10.518739, -2.995603, -28.361031, 4.431192, 5.629670, 10.762959, -12.570971, 9.658624, 18.040138, 4.556471, -15.214990, -12.235893, -8.756379, 21.115995, -16.351271, -1.809605, 16.763939, 3.990170, 0.241681, -10.528498, 18.273050, 10.224820, -6.224506, -16.567907, 4.454556, -4.319606, 2.409543, 12.886330, 12.187380, -10.698653, 15.021326, 8.296947, 10.447081, 13.471108, -22.092772, -29.423527, 8.443830, 9.804674, 18.459141, -17.636814, 11.475958, 1.112316, 1.198302, -8.033747, 11.686281, 41.159683, 12.185358, 29.592108, 21.689718, -28.973186, -16.608280, 21.988586]);
+
+// Mel buffer fill value for silence. The melspec model outputs raw log-mel values
+// (silence ≈ -74), then the detector applies OWW's transform: x/10 + 2.
+// In transformed space, silence = (-74.23)/10 + 2 = -5.42.
+// OWW uses np.ones((76,32)) = 1.0 as its init value, which is in transformed space.
+// We use 1.0 to match OWW's behavior (the embedding model was trained with this init).
+const SILENCE_MEL_VALUE = 1.0;
 
 const WAKE_WORD_BOOTSTRAP_FLOOR_RATIO = 0.8;
 const WAKE_WORD_FLOOR_FAST_FALL_RATE = 0.2;
@@ -116,9 +118,6 @@ const WAKE_WORD_SIGNAL_FLOOR_RATIO = 1.8;
 const WAKE_WORD_SIGNAL_FLOOR_MARGIN = 0.004;
 const WAKE_WORD_MINIMUM_SIGNAL_LEVEL = 0.0025;
 const WAKE_WORD_SIGNAL_HOLD_FRAMES = 3;
-
-const IDLE_PREROLL_CHUNKS = 3;
-const IDLE_PREROLL_SAMPLES = IDLE_PREROLL_CHUNKS * CHUNK_SAMPLES;
 
 const VAD_ACTIVITY_LEVEL = 0.015;
 const VAD_MIN_RMS_LEVEL = 0.006;
@@ -347,8 +346,8 @@ export async function createWakeWordDetector(
   let lastActivationTime = 0;
   let warmupFrames = WARMUP_FRAMES;
 
-  // Recent score history for trigger confirmation
-  const recentScores: number[] = [];
+  // Prediction buffer — mirrors openWakeWord's prediction_buffer (deque of 30)
+  const predictionBuffer: number[] = [];
   const frontEndStage = createWakeWordAdaptiveNoiseFloor({
     ...DEFAULT_ADAPTIVE_NOISE_FLOOR_OPTIONS,
     bootstrapFloorRatio: WAKE_WORD_BOOTSTRAP_FLOOR_RATIO,
@@ -365,7 +364,7 @@ export async function createWakeWordDetector(
   let rawBufferLen = 0;
   let accumulatedSamples = 0;
 
-  const melBuffer = new Float32Array(MEL_BUFFER_MAX * MEL_BINS).fill(1.0);
+  const melBuffer = new Float32Array(MEL_BUFFER_MAX * MEL_BINS).fill(SILENCE_MEL_VALUE);
   let melRows = EMBEDDING_WINDOW;
 
   const featureBuffer = new Float32Array(FEATURE_BUFFER_MAX * EMBEDDING_DIM);
@@ -457,22 +456,6 @@ export async function createWakeWordDetector(
     rawBufferLen += data.length;
   }
 
-  function trimRawBuffer(keepSamples: number) {
-    const clampedKeep = Math.max(0, Math.min(keepSamples, rawBufferLen));
-    if (clampedKeep >= rawBufferLen) {
-      return;
-    }
-
-    rawBuffer.copyWithin(0, rawBufferLen - clampedKeep, rawBufferLen);
-    rawBuffer.fill(0, clampedKeep, rawBufferLen);
-    rawBufferLen = clampedKeep;
-  }
-
-  function trimStreamingBacklog(maxPendingSamples: number) {
-    accumulatedSamples = Math.min(accumulatedSamples, maxPendingSamples);
-    trimRawBuffer(accumulatedSamples + MEL_CONTEXT_SAMPLES);
-  }
-
   function queueStreamingAudio(pcm: Int16Array): boolean {
     bufferRawData(pcm);
     accumulatedSamples = Math.min(rawBufferLen, accumulatedSamples + pcm.length);
@@ -520,10 +503,10 @@ export async function createWakeWordDetector(
   }
 
   function detectFromScore(score: number): boolean {
-    // Track recent scores for confirmation
-    recentScores.push(score);
-    if (recentScores.length > TRIGGER_CONFIRM_WINDOW) {
-      recentScores.shift();
+    // Append to prediction buffer (mirrors OWW's prediction_buffer deque)
+    predictionBuffer.push(score);
+    if (predictionBuffer.length > PREDICTION_BUFFER_SIZE) {
+      predictionBuffer.shift();
     }
 
     const now = Date.now();
@@ -531,22 +514,25 @@ export async function createWakeWordDetector(
       return false;
     }
 
-    // Require multiple recent frames above threshold to confirm trigger.
-    // This filters transient spikes (keyboard clicks, gasps) which produce
-    // only 1-2 high frames, while real "Stella" produces 3+ consecutive ones.
-    let aboveCount = 0;
-    for (let i = 0; i < recentScores.length; i += 1) {
-      if (recentScores[i] >= threshold) {
-        aboveCount += 1;
+    if (score < threshold) {
+      return false;
+    }
+
+    // Patience check: last N scores must ALL be >= threshold (OWW semantics)
+    if (PATIENCE > 1) {
+      const recent = predictionBuffer.slice(-PATIENCE);
+      if (recent.length < PATIENCE) {
+        return false;
+      }
+      for (let i = 0; i < recent.length; i += 1) {
+        if (recent[i] < threshold) {
+          return false;
+        }
       }
     }
 
-    const detected = aboveCount >= TRIGGER_CONFIRM_COUNT;
-    if (detected) {
-      lastActivationTime = now;
-      recentScores.length = 0;
-    }
-    return detected;
+    lastActivationTime = now;
+    return true;
   }
 
   function createResult(
@@ -566,7 +552,7 @@ export async function createWakeWordDetector(
   }
 
   function resetFeaturePipeline() {
-    melBuffer.fill(1.0);
+    melBuffer.fill(SILENCE_MEL_VALUE);
     melRows = EMBEDDING_WINDOW;
     // Fill feature buffer with silence embeddings instead of zeros so the
     // classifier sees a realistic input even before 16 frames accumulate.
@@ -576,34 +562,19 @@ export async function createWakeWordDetector(
     featureRows = 0;
   }
 
-  function enterLowComputeIdle() {
-    resetFeaturePipeline();
-    trimStreamingBacklog(IDLE_PREROLL_SAMPLES);
-    recentScores.length = 0;
-  }
-
   async function predict(pcm: Int16Array): Promise<WakeWordResult> {
     if (!listening) {
       return createResult(frontEndStage.getState(), 0, false);
     }
 
     const hasChunkReady = queueStreamingAudio(pcm);
-    const frontEnd = frontEndStage.process(pcm).frontEnd;
 
-    if (!frontEnd.gateOpen) {
-      enterLowComputeIdle();
-      return createResult(frontEnd, 0, false);
-    }
+    // Keep front-end state updated for telemetry/debugging, but do not gate
+    // classifier inference on it. Over-gating was preventing real detections.
+    const frontEnd = frontEndStage.process(pcm).frontEnd;
 
     const vadScore = estimateWakeWordVadScore(pcm);
     const vadGate = createWakeWordVadGateState(vadScore);
-    if (!vadGate.gateOpen) {
-      enterLowComputeIdle();
-      return {
-        ...createResult(frontEnd, vadScore, false),
-        vadGate,
-      };
-    }
 
     if (!hasChunkReady) {
       return {
@@ -623,7 +594,6 @@ export async function createWakeWordDetector(
     }
 
     const features = new Float32Array(MODEL_INPUT_FRAMES * EMBEDDING_DIM);
-    // Fill with silence embeddings first (instead of zeros)
     for (let i = 0; i < MODEL_INPUT_FRAMES; i += 1) {
       features.set(SILENCE_EMBEDDING, i * EMBEDDING_DIM);
     }
@@ -660,7 +630,7 @@ export async function createWakeWordDetector(
     resetFeaturePipeline();
 
     warmupFrames = WARMUP_FRAMES;
-    recentScores.length = 0;
+    predictionBuffer.length = 0;
   }
 
   return {
