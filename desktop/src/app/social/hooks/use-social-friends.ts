@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
@@ -27,6 +27,35 @@ export type SocialPendingRequests = {
   outgoing: OutgoingSocialFriendRequest[];
 };
 
+/** Backend returns a flat list with `direction`; older clients may still see `{ incoming, outgoing }`. */
+type PendingRequestRow = {
+  relationship: IncomingSocialFriendRequest["relationship"] & OutgoingSocialFriendRequest["relationship"];
+  profile: SocialProfile;
+  direction: "incoming" | "outgoing";
+};
+
+function normalizePendingRequests(
+  raw: SocialPendingRequests | PendingRequestRow[] | undefined,
+): SocialPendingRequests | undefined {
+  if (raw === undefined) return undefined;
+  if (Array.isArray(raw)) {
+    const incoming: IncomingSocialFriendRequest[] = [];
+    const outgoing: OutgoingSocialFriendRequest[] = [];
+    for (const row of raw) {
+      if (row.direction === "incoming") {
+        incoming.push({ relationship: row.relationship, profile: row.profile });
+      } else {
+        outgoing.push({ relationship: row.relationship, profile: row.profile });
+      }
+    }
+    return { incoming, outgoing };
+  }
+  return {
+    incoming: raw.incoming ?? [],
+    outgoing: raw.outgoing ?? [],
+  };
+}
+
 export function useSocialFriends() {
   const { hasConnectedAccount } = useAuthSessionState();
 
@@ -35,10 +64,15 @@ export function useSocialFriends() {
     hasConnectedAccount ? {} : "skip",
   ) as SocialFriend[] | undefined;
 
-  const pendingRequests = useQuery(
+  const pendingRequestsRaw = useQuery(
     api.social.relationships.listPendingRequests,
     hasConnectedAccount ? {} : "skip",
-  ) as SocialPendingRequests | undefined;
+  ) as SocialPendingRequests | PendingRequestRow[] | undefined;
+
+  const pendingRequests = useMemo(
+    () => normalizePendingRequests(pendingRequestsRaw),
+    [pendingRequestsRaw],
+  );
 
   const sendRequestMutation = useMutation(api.social.relationships.sendFriendRequest);
   const respondMutation = useMutation(api.social.relationships.respondToFriendRequest);
