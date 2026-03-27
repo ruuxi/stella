@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import { authClient } from "../../src/lib/auth-client";
 import { env } from "../../src/config/env";
 import { errorMessage } from "../../src/lib/assert";
@@ -90,16 +91,25 @@ export default function LoginScreen() {
             ott?: string;
           };
 
-          if (data.status === "completed" && data.ott) {
+          if (data.status === "completed" && data.sessionCookie) {
             if (cancelledRef.current) return;
-            // Don't check cancelledRef after this point — once we start
-            // verifying we must finish regardless of effect cleanup.
             setSubmitState({ type: "verifying" });
-            await authClient.$fetch("/cross-domain/one-time-token/verify", {
-              method: "POST",
-              body: { token: data.ott },
-            });
+            // Session cookie was exchanged server-side. Store it directly
+            // and let the auth guard redirect once the session is visible.
+            await SecureStore.setItemAsync(
+              "stella-mobile_cookie",
+              data.sessionCookie,
+            );
+            // Trigger session refresh so useSession() picks it up
             await authClient.getSession();
+            return;
+          }
+          if (data.status === "completed") {
+            if (cancelledRef.current) return;
+            setSubmitState({
+              type: "error",
+              message: "Sign-in incomplete. Please try again.",
+            });
             return;
           }
 

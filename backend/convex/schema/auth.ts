@@ -46,6 +46,7 @@ export const authSchema = {
       v.literal("completed"),
     ),
     ott: v.optional(v.string()),
+    sessionCookie: v.optional(v.string()),
     expiresAt: v.number(),
     createdAt: v.number(),
   })
