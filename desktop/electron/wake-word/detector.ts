@@ -93,8 +93,14 @@ const RAW_BUFFER_MAX = SAMPLE_RATE * 10; // 10 seconds
 const COOLDOWN_MS = 1000;
 const WARMUP_FRAMES = 0;
 
-const DEFAULT_THRESHOLD = 0.8;
+const DEFAULT_THRESHOLD = 0.75;
 const MIN_THRESHOLD = 0.7;
+
+// Trigger confirmation: require multiple consecutive high-scoring frames
+// before firing. A real "Stella" utterance spans ~6-8 frames (0.5-0.6s);
+// transient sounds (clicks, gasps) produce only 1-2 high frames.
+const TRIGGER_CONFIRM_WINDOW = 5;
+const TRIGGER_CONFIRM_COUNT = 3; // at least 3 of 5 recent frames must exceed threshold
 
 const PCM_NORMALIZATION_FACTOR = 32768;
 
@@ -340,6 +346,9 @@ export async function createWakeWordDetector(
   let threshold = DEFAULT_THRESHOLD;
   let lastActivationTime = 0;
   let warmupFrames = WARMUP_FRAMES;
+
+  // Recent score history for trigger confirmation
+  const recentScores: number[] = [];
   const frontEndStage = createWakeWordAdaptiveNoiseFloor({
     ...DEFAULT_ADAPTIVE_NOISE_FLOOR_OPTIONS,
     bootstrapFloorRatio: WAKE_WORD_BOOTSTRAP_FLOOR_RATIO,
@@ -511,10 +520,31 @@ export async function createWakeWordDetector(
   }
 
   function detectFromScore(score: number): boolean {
+    // Track recent scores for confirmation
+    recentScores.push(score);
+    if (recentScores.length > TRIGGER_CONFIRM_WINDOW) {
+      recentScores.shift();
+    }
+
     const now = Date.now();
-    const detected = score >= threshold && now - lastActivationTime > COOLDOWN_MS;
+    if (now - lastActivationTime <= COOLDOWN_MS) {
+      return false;
+    }
+
+    // Require multiple recent frames above threshold to confirm trigger.
+    // This filters transient spikes (keyboard clicks, gasps) which produce
+    // only 1-2 high frames, while real "Stella" produces 3+ consecutive ones.
+    let aboveCount = 0;
+    for (let i = 0; i < recentScores.length; i += 1) {
+      if (recentScores[i] >= threshold) {
+        aboveCount += 1;
+      }
+    }
+
+    const detected = aboveCount >= TRIGGER_CONFIRM_COUNT;
     if (detected) {
       lastActivationTime = now;
+      recentScores.length = 0;
     }
     return detected;
   }
@@ -549,6 +579,7 @@ export async function createWakeWordDetector(
   function enterLowComputeIdle() {
     resetFeaturePipeline();
     trimStreamingBacklog(IDLE_PREROLL_SAMPLES);
+    recentScores.length = 0;
   }
 
   async function predict(pcm: Int16Array): Promise<WakeWordResult> {
@@ -629,6 +660,7 @@ export async function createWakeWordDetector(
     resetFeaturePipeline();
 
     warmupFrames = WARMUP_FRAMES;
+    recentScores.length = 0;
   }
 
   return {

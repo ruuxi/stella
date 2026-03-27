@@ -141,7 +141,7 @@ export const registerSpeechToTextRoutes = (http: HttpRouter) => {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                expires_at: {
+                expires_after: {
                   anchor: "created_at",
                   seconds: durationSecs,
                 },
