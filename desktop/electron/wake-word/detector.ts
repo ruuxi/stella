@@ -93,8 +93,8 @@ const RAW_BUFFER_MAX = SAMPLE_RATE * 10; // 10 seconds
 const COOLDOWN_MS = 1000;
 const WARMUP_FRAMES = 0;
 
-const DEFAULT_THRESHOLD = 0.75;
-const MIN_THRESHOLD = 0.7;
+const DEFAULT_THRESHOLD = 0.5;
+const MIN_THRESHOLD = 0.3;
 
 // Trigger confirmation: require multiple consecutive high-scoring frames
 // before firing. A real "Stella" utterance spans ~6-8 frames (0.5-0.6s);
