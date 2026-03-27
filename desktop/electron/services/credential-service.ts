@@ -2,16 +2,10 @@ import { randomUUID } from 'crypto'
 import { BrowserWindow } from 'electron'
 import type { CredentialRequestPayload, CredentialResponsePayload } from '../types.js'
 import type { WindowManagerTarget } from '../../packages/runtime-kernel/lifecycle-targets.js'
+import { PendingRequestStore } from './pending-request-store.js'
 
 export class CredentialService {
-  private readonly pending = new Map<
-    string,
-    {
-      resolve: (value: CredentialResponsePayload) => void
-      reject: (reason?: Error) => void
-      timeout: NodeJS.Timeout
-    }
-  >()
+  private readonly pending = new PendingRequestStore<CredentialResponsePayload>()
 
   constructor(private readonly options: { windowManagerTarget: WindowManagerTarget<BrowserWindow>; getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null }) {}
 
@@ -34,40 +28,27 @@ export class CredentialService {
 
     return new Promise<CredentialResponsePayload>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        this.pending.delete(requestId)
-        reject(new Error('Credential request timed out.'))
+        this.pending.reject(requestId, 'Credential request timed out.')
       }, 5 * 60 * 1000)
       this.pending.set(requestId, { resolve, reject, timeout })
     })
   }
 
   submitCredential(payload: CredentialResponsePayload) {
-    const entry = this.pending.get(payload.requestId)
-    if (!entry) {
+    if (!this.pending.resolve(payload.requestId, payload)) {
       return { ok: false, error: 'Credential request not found.' }
     }
-    clearTimeout(entry.timeout)
-    this.pending.delete(payload.requestId)
-    entry.resolve(payload)
     return { ok: true }
   }
 
   cancelCredential(payload: { requestId: string }) {
-    const entry = this.pending.get(payload.requestId)
-    if (!entry) {
+    if (!this.pending.reject(payload.requestId, 'Credential request cancelled.')) {
       return { ok: false, error: 'Credential request not found.' }
     }
-    clearTimeout(entry.timeout)
-    this.pending.delete(payload.requestId)
-    entry.reject(new Error('Credential request cancelled.'))
     return { ok: true }
   }
 
   cancelAll() {
-    for (const [, entry] of this.pending) {
-      clearTimeout(entry.timeout)
-      entry.reject(new Error('Credential request cancelled.'))
-    }
-    this.pending.clear()
+    this.pending.rejectAll('Credential request cancelled.')
   }
 }

@@ -1,5 +1,4 @@
-import { execFile } from 'child_process'
-import { resolveNativeHelperPath } from './native-helper-path.js'
+import { runNativeHelper } from './native-helper.js'
 
 const TIMEOUT_MS = 1000
 
@@ -18,22 +17,8 @@ export const cleanupSelectedTextProcess = (): void => {}
  * Uses UI Automation TextPattern.GetSelection (Windows) or AXSelectedText (macOS).
  */
 export const getSelectedText = async (): Promise<string | null> => {
-  const helperPath = resolveNativeHelperPath('selected_text')
-  if (!helperPath) return null
-
-  return new Promise((resolve) => {
-    execFile(
-      helperPath,
-      [],
-      { timeout: TIMEOUT_MS, encoding: 'utf8', maxBuffer: 512 * 1024, windowsHide: true },
-      (error, stdout) => {
-        if (error) {
-          resolve(null)
-          return
-        }
-        const text = stdout.trim()
-        resolve(text || null)
-      },
-    )
+  return runNativeHelper('selected_text', [], {
+    timeout: TIMEOUT_MS,
+    maxBuffer: 512 * 1024,
   })
 }

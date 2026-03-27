@@ -1,9 +1,8 @@
-import { execFile } from 'child_process'
 import { randomBytes } from 'crypto'
 import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
 import path from 'path'
-import { resolveNativeHelperPath } from './native-helper-path.js'
+import { runNativeHelper } from './native-helper.js'
 
 export type WindowInfo = {
   title: string
@@ -25,9 +24,7 @@ type QueryWindowInfoOptions = {
   excludePids?: number[]
 }
 
-const getWindowInfoBin = () => {
-  return resolveNativeHelperPath('window_info')
-}
+const WINDOW_INFO_HELPER = 'window_info'
 
 const queryWindowInfo = (x: number, y: number, options?: QueryWindowInfoOptions): Promise<WindowInfo | null> => {
   return new Promise((resolve) => {
@@ -36,20 +33,18 @@ const queryWindowInfo = (x: number, y: number, options?: QueryWindowInfoOptions)
       args.push(`--exclude-pids=${options.excludePids.join(',')}`)
     }
 
-    const helperPath = getWindowInfoBin()
-    if (!helperPath) {
-      resolve(null)
-      return
-    }
-
-    execFile(helperPath, args, { timeout: 3000, windowsHide: true }, (error, stdout) => {
-      if (error) {
+    void runNativeHelper(WINDOW_INFO_HELPER, args, {
+      timeout: 3000,
+      onError: (error) => {
         console.warn('window_info failed', error)
+      },
+    }).then((stdout) => {
+      if (!stdout) {
         resolve(null)
         return
       }
       try {
-        const info = JSON.parse(stdout.trim())
+        const info = JSON.parse(stdout)
         if (info.error) {
           resolve(null)
           return
@@ -88,19 +83,12 @@ export const captureWindowScreenshot = async (
   }
 
   try {
-    const helperPath = getWindowInfoBin()
-    if (!helperPath) {
-      return null
-    }
+      const stdout = await runNativeHelper(WINDOW_INFO_HELPER, args, { timeout: 5000 })
+      if (!stdout) {
+        return null
+      }
 
-    const stdout = await new Promise<string>((resolve, reject) => {
-      execFile(helperPath, args, { timeout: 5000, windowsHide: true }, (error, out) => {
-        if (error) return reject(error)
-        resolve(out)
-      })
-    })
-
-    const info = JSON.parse(stdout.trim()) as WindowInfo & { error?: string }
+      const info = JSON.parse(stdout) as WindowInfo & { error?: string }
     if (info.error) return null
 
     let pngBuffer: Buffer

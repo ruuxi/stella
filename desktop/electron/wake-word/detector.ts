@@ -13,6 +13,10 @@
  */
 
 import path from "path";
+import {
+  createWakeWordAdaptiveNoiseFloor,
+  DEFAULT_ADAPTIVE_NOISE_FLOOR_OPTIONS,
+} from "./audio-feed.js";
 
 type OrtModule = typeof import("onnxruntime-node");
 type OrtSession = import("onnxruntime-node").InferenceSession;
@@ -127,32 +131,6 @@ function clamp01(value: number): number {
     return 1;
   }
   return value;
-}
-
-function createIdleFrontEndState(): WakeWordFrontEndState {
-  return {
-    inputLevel: 0,
-    noiseFloor: 0,
-    nextNoiseFloor: 0,
-    signalThreshold: WAKE_WORD_MINIMUM_SIGNAL_LEVEL,
-    signalDelta: 0,
-    signalPresent: false,
-    gateOpen: false,
-  };
-}
-
-export function calculateWakeWordInputLevel(pcm: Int16Array): number {
-  if (pcm.length === 0) {
-    return 0;
-  }
-
-  let sum = 0;
-  for (let i = 0; i < pcm.length; i += 1) {
-    const sample = pcm[i] / PCM_NORMALIZATION_FACTOR;
-    sum += sample * sample;
-  }
-
-  return Math.sqrt(sum / pcm.length);
 }
 
 export function estimateWakeWordVadScore(pcm: Int16Array): number {
@@ -362,9 +340,17 @@ export async function createWakeWordDetector(
   let threshold = DEFAULT_THRESHOLD;
   let lastActivationTime = 0;
   let warmupFrames = WARMUP_FRAMES;
-
-  let trackedNoiseFloor = 0;
-  let signalHoldFramesRemaining = 0;
+  const frontEndStage = createWakeWordAdaptiveNoiseFloor({
+    ...DEFAULT_ADAPTIVE_NOISE_FLOOR_OPTIONS,
+    bootstrapFloorRatio: WAKE_WORD_BOOTSTRAP_FLOOR_RATIO,
+    floorFastFallRate: WAKE_WORD_FLOOR_FAST_FALL_RATE,
+    floorSlowRiseRate: WAKE_WORD_FLOOR_SLOW_RISE_RATE,
+    signalFloorRatio: WAKE_WORD_SIGNAL_FLOOR_RATIO,
+    signalFloorMargin: WAKE_WORD_SIGNAL_FLOOR_MARGIN,
+    minimumSignalLevel: WAKE_WORD_MINIMUM_SIGNAL_LEVEL,
+    signalHoldFrames: WAKE_WORD_SIGNAL_HOLD_FRAMES,
+    speechVadThreshold: WAKE_WORD_VAD_GATE_THRESHOLD,
+  });
 
   const rawBuffer = new Int16Array(RAW_BUFFER_MAX);
   let rawBufferLen = 0;
@@ -533,55 +519,6 @@ export async function createWakeWordDetector(
     return detected;
   }
 
-  function analyzeFrontEnd(pcm: Int16Array): WakeWordFrontEndState {
-    const inputLevel = calculateWakeWordInputLevel(pcm);
-    const noiseFloor =
-      trackedNoiseFloor > 0
-        ? trackedNoiseFloor
-        : inputLevel * WAKE_WORD_BOOTSTRAP_FLOOR_RATIO;
-    const signalThreshold = Math.max(
-      noiseFloor * WAKE_WORD_SIGNAL_FLOOR_RATIO,
-      noiseFloor + WAKE_WORD_SIGNAL_FLOOR_MARGIN,
-      WAKE_WORD_MINIMUM_SIGNAL_LEVEL,
-    );
-    const signalDelta = Math.max(0, inputLevel - noiseFloor);
-    const signalPresent =
-      inputLevel >= WAKE_WORD_MINIMUM_SIGNAL_LEVEL &&
-      (inputLevel >= signalThreshold ||
-        signalDelta > WAKE_WORD_SIGNAL_FLOOR_MARGIN);
-
-    let gateOpen = signalPresent;
-    if (signalPresent) {
-      signalHoldFramesRemaining = WAKE_WORD_SIGNAL_HOLD_FRAMES;
-    } else if (signalHoldFramesRemaining > 0) {
-      signalHoldFramesRemaining -= 1;
-      gateOpen = true;
-    }
-
-    let nextNoiseFloor = noiseFloor;
-    if (noiseFloor <= 0) {
-      nextNoiseFloor = 0;
-    } else if (!gateOpen) {
-      const rate =
-        inputLevel <= noiseFloor
-          ? WAKE_WORD_FLOOR_FAST_FALL_RATE
-          : WAKE_WORD_FLOOR_SLOW_RISE_RATE;
-      nextNoiseFloor = noiseFloor + (inputLevel - noiseFloor) * rate;
-    }
-
-    trackedNoiseFloor = nextNoiseFloor;
-
-    return {
-      inputLevel,
-      noiseFloor,
-      nextNoiseFloor,
-      signalThreshold,
-      signalDelta,
-      signalPresent,
-      gateOpen,
-    };
-  }
-
   function createResult(
     frontEnd: WakeWordFrontEndState,
     vadScore: number,
@@ -616,11 +553,11 @@ export async function createWakeWordDetector(
 
   async function predict(pcm: Int16Array): Promise<WakeWordResult> {
     if (!listening) {
-      return createResult(createIdleFrontEndState(), 0, false);
+      return createResult(frontEndStage.getState(), 0, false);
     }
 
     const hasChunkReady = queueStreamingAudio(pcm);
-    const frontEnd = analyzeFrontEnd(pcm);
+    const frontEnd = frontEndStage.process(pcm).frontEnd;
 
     if (!frontEnd.gateOpen) {
       enterLowComputeIdle();
@@ -688,9 +625,7 @@ export async function createWakeWordDetector(
     rawBuffer.fill(0);
     accumulatedSamples = 0;
 
-    trackedNoiseFloor = 0;
-    signalHoldFramesRemaining = 0;
-
+    frontEndStage.reset();
     resetFeaturePipeline();
 
     warmupFrames = WARMUP_FRAMES;

@@ -84,7 +84,7 @@ export const getMobileBroadcast = (
   return context.state.mobileBridgeService?.broadcastToMobile ?? null;
 };
 
-const getAllWindows = (context: BootstrapContext) =>
+export const getAllWindows = (context: BootstrapContext) =>
   context.state.windowManager
     ? context.state.windowManager.getAllWindows()
     : BrowserWindow.getAllWindows();
@@ -100,75 +100,68 @@ export const forEachWindow = (
   }
 };
 
+export const broadcastToWindows = (
+  context: BootstrapContext,
+  channel: string,
+  payload?: unknown,
+) => {
+  forEachWindow(context, (window) => {
+    window.webContents.send(channel, payload);
+  });
+};
+
+const broadcastToWindowsAndMobile = (
+  context: BootstrapContext,
+  channel: string,
+  payload?: unknown,
+  mobilePayload: unknown = payload ?? null,
+) => {
+  broadcastToWindows(context, channel, payload);
+  getMobileBroadcast(context)?.(channel, mobilePayload);
+};
+
 export const broadcastAuthCallback = (
   context: BootstrapContext,
   url: string,
 ) => {
-  forEachWindow(context, (window) => {
-    window.webContents.send("auth:callback", { url });
-  });
-  getMobileBroadcast(context)?.("auth:callback", { url });
+  broadcastToWindowsAndMobile(context, "auth:callback", { url });
 };
 
 export const broadcastLocalChatUpdated = (context: BootstrapContext) => {
-  forEachWindow(context, (window) => {
-    window.webContents.send("localChat:updated");
-  });
-  getMobileBroadcast(context)?.("localChat:updated", null);
+  broadcastToWindowsAndMobile(context, "localChat:updated");
 };
 
 export const broadcastScheduleUpdated = (context: BootstrapContext) => {
-  forEachWindow(context, (window) => {
-    window.webContents.send("schedule:updated");
-  });
-  getMobileBroadcast(context)?.("schedule:updated", null);
+  broadcastToWindowsAndMobile(context, "schedule:updated");
 };
 
 export const broadcastWakeWordState = (context: BootstrapContext) => {
   const enabled = context.state.wakeWordController?.getEnabled() ?? false;
-
-  forEachWindow(context, (window) => {
-    window.webContents.send("voice:wakeWordState", { enabled });
-  });
-  getMobileBroadcast(context)?.("voice:wakeWordState", { enabled });
+  broadcastToWindowsAndMobile(context, "voice:wakeWordState", { enabled });
 };
 
 export const broadcastWakeWordDetected = (context: BootstrapContext) => {
   const payload = { detectedAt: Date.now() };
-  forEachWindow(context, (window) => {
-    window.webContents.send("voice:wakeWordDetected", payload);
-  });
-  getMobileBroadcast(context)?.("voice:wakeWordDetected", payload);
+  broadcastToWindowsAndMobile(context, "voice:wakeWordDetected", payload);
 };
 
 export const broadcastStellaBrowserBridgeStatus = (
   context: BootstrapContext,
   status: StellaBrowserBridgeStatus,
 ) => {
-  forEachWindow(context, (window) => {
-    window.webContents.send("browser:bridgeStatus", status);
-  });
+  broadcastToWindows(context, "browser:bridgeStatus", status);
 };
 
 export const broadcastDevProjectsChanged = (
   context: BootstrapContext,
   projects: LocalDevProjectRecord[],
 ) => {
-  for (const window of getAllWindows(context)) {
-    if (!window.isDestroyed()) {
-      window.webContents.send("projects:changed", projects);
-    }
-  }
-  getMobileBroadcast(context)?.("projects:changed", projects);
+  broadcastToWindowsAndMobile(context, "projects:changed", projects);
 };
 
 export const syncWakeWordState = (context: BootstrapContext) => {
   const enabled = context.state.wakeWordController?.syncState() ?? false;
-
-  forEachWindow(context, (window) => {
-    window.webContents.send("voice:wakeWordState", { enabled });
-  });
-
+  broadcastToWindows(context, "voice:wakeWordState", { enabled });
   return enabled;
 };
 
@@ -219,10 +212,7 @@ export const createBootstrapContext = (
 
   const captureService = new CaptureService({
     window: {
-      getAllWindows: () =>
-        state.windowManager
-          ? state.windowManager.getAllWindows()
-          : BrowserWindow.getAllWindows(),
+      getAllWindows: () => getAllWindows(context),
       getMiniWindow: () => state.windowManager?.getMiniWindow() ?? null,
       isMiniShowing: () => state.windowManager?.isMiniShowing() ?? false,
       showWindow: (target) => state.windowManager?.showWindow(target),

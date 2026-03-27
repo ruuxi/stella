@@ -6,49 +6,31 @@ import type {
   MiniBridgeResponseEnvelope,
   MiniBridgeUpdate,
 } from '../../src/shared/contracts/boundary.js'
+import { PendingRequestStore } from './pending-request-store.js'
 
 const MINI_BRIDGE_REQUEST_TIMEOUT_MS = 15_000
 
 export class MiniBridgeService {
-  private readonly pendingMiniBridgeRequests = new Map<
-    string,
-    {
-      resolve: (value: MiniBridgeResponse) => void
-      reject: (reason?: Error) => void
-      timeout: NodeJS.Timeout
-    }
-  >()
+  private readonly pendingMiniBridgeRequests = new PendingRequestStore<MiniBridgeResponse>()
   private readonly queuedMiniBridgeRequests = new Map<string, MiniBridgeRequest>()
   private fullMiniBridgeReady = false
 
   private resolveMiniBridgeRequest(requestId: string, response: MiniBridgeResponse) {
-    const pending = this.pendingMiniBridgeRequests.get(requestId)
-    if (!pending) {
-      return
-    }
-    clearTimeout(pending.timeout)
-    this.pendingMiniBridgeRequests.delete(requestId)
-    this.queuedMiniBridgeRequests.delete(requestId)
-    pending.resolve(response)
+    this.pendingMiniBridgeRequests.resolve(requestId, response, (pendingRequestId) => {
+      this.queuedMiniBridgeRequests.delete(pendingRequestId)
+    })
   }
 
   private rejectMiniBridgeRequest(requestId: string, error: Error) {
-    const pending = this.pendingMiniBridgeRequests.get(requestId)
-    if (!pending) {
-      return
-    }
-    clearTimeout(pending.timeout)
-    this.pendingMiniBridgeRequests.delete(requestId)
-    this.queuedMiniBridgeRequests.delete(requestId)
-    pending.reject(error)
+    this.pendingMiniBridgeRequests.reject(requestId, error, (pendingRequestId) => {
+      this.queuedMiniBridgeRequests.delete(pendingRequestId)
+    })
   }
 
   rejectAllMiniBridgeRequests(reason: string) {
-    for (const [requestId, pending] of this.pendingMiniBridgeRequests) {
-      clearTimeout(pending.timeout)
-      pending.reject(new Error(reason))
-      this.pendingMiniBridgeRequests.delete(requestId)
-    }
+    this.pendingMiniBridgeRequests.rejectAll(reason, (requestId) => {
+      this.queuedMiniBridgeRequests.delete(requestId)
+    })
     this.queuedMiniBridgeRequests.clear()
   }
 

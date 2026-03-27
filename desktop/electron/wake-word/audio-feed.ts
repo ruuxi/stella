@@ -33,7 +33,7 @@ export interface WakeWordAudioFeedManagerOptions {
   frontEnd?: WakeWordAdaptiveNoiseFloorStage;
 }
 
-const DEFAULT_ADAPTIVE_NOISE_FLOOR_OPTIONS: WakeWordAdaptiveNoiseFloorOptions = {
+export const DEFAULT_ADAPTIVE_NOISE_FLOOR_OPTIONS: WakeWordAdaptiveNoiseFloorOptions = {
   bootstrapFloorRatio: 0.8,
   floorFastFallRate: 0.2,
   floorSlowRiseRate: 0.02,

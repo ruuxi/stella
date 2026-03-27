@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app } from "electron";
 import path from "path";
 import { getDevServerUrl } from "../dev-url.js";
 import { registerBootstrapIpcHandlers } from "./ipc.js";
@@ -23,12 +23,14 @@ import {
 import {
   type BootstrapContext,
   broadcastAuthCallback,
+  broadcastToWindows,
   broadcastDevProjectsChanged,
   broadcastLocalChatUpdated,
   broadcastScheduleUpdated,
   broadcastStellaBrowserBridgeStatus,
   broadcastWakeWordDetected,
   broadcastWakeWordState,
+  getAllWindows,
   getMobileBroadcast,
 } from "./context.js";
 import { DevToolServer } from "../devtool/dev-server.js";
@@ -196,14 +198,7 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
         requestCredential: (payload) =>
           services.credentialService.requestCredential(payload),
         displayUpdate: (html) => {
-          const targets = state.windowManager
-            ? state.windowManager.getAllWindows()
-            : BrowserWindow.getAllWindows();
-          for (const window of targets) {
-            if (!window.isDestroyed()) {
-              window.webContents.send("display:update", html);
-            }
-          }
+          broadcastToWindows(context, "display:update", html);
         },
         openExternal: async (url) => {
           services.externalLinkService.openSafeExternalUrl(url);
@@ -384,10 +379,7 @@ const bindUiStateTargets = (context: BootstrapContext) => {
 
   services.uiStateService.bind({
     broadcastTarget: {
-      getAllWindows: () =>
-        state.windowManager
-          ? state.windowManager.getAllWindows()
-          : BrowserWindow.getAllWindows(),
+      getAllWindows: () => getAllWindows(context),
     },
     getOverlayTarget: () =>
       state.overlayController

@@ -28,21 +28,38 @@ const waitForRunner = async (
     onRunnerChanged: options.onStellaHostRunnerChanged,
   });
 
+const assertPrivilegedRequest = (
+  options: LocalChatHandlersOptions,
+  event: IpcMainEvent | IpcMainInvokeEvent,
+  channel: string,
+) => {
+  if (!options.assertPrivilegedSender(event, channel)) {
+    throw new Error(`Blocked untrusted ${channel} request.`);
+  }
+};
+
+const withLocalChatClient = async <T>(
+  options: LocalChatHandlersOptions,
+  event: IpcMainEvent | IpcMainInvokeEvent,
+  channel: string,
+  action: (
+    client: Awaited<ReturnType<typeof waitForRunner>>["client"],
+  ) => Promise<T>,
+) => {
+  assertPrivilegedRequest(options, event, channel);
+  return await action((await waitForRunner(options)).client);
+};
+
 export const registerLocalChatHandlers = (
   options: LocalChatHandlersOptions,
 ) => {
   ipcMain.handle("localChat:getOrCreateDefaultConversationId", async (event) => {
-    if (
-      !options.assertPrivilegedSender(
-        event,
-        "localChat:getOrCreateDefaultConversationId",
-      )
-    ) {
-      throw new Error(
-        "Blocked untrusted localChat:getOrCreateDefaultConversationId request.",
-      );
-    }
-    return await (await waitForRunner(options)).client.getOrCreateDefaultConversationId();
+    return await withLocalChatClient(
+      options,
+      event,
+      "localChat:getOrCreateDefaultConversationId",
+      (client) => client.getOrCreateDefaultConversationId(),
+    );
   });
 
   ipcMain.handle(
@@ -53,15 +70,11 @@ export const registerLocalChatHandlers = (
         conversationId?: string;
         maxItems?: number;
       },
-    ) => {
-      if (!options.assertPrivilegedSender(event, "localChat:listEvents")) {
-        throw new Error("Blocked untrusted localChat:listEvents request.");
-      }
-      return await (await waitForRunner(options)).client.listLocalChatEvents({
+    ) => await withLocalChatClient(options, event, "localChat:listEvents", (client) =>
+      client.listLocalChatEvents({
         conversationId: payload?.conversationId ?? "",
         maxItems: payload?.maxItems,
-      });
-    },
+      })),
   );
 
   ipcMain.handle(
@@ -71,14 +84,14 @@ export const registerLocalChatHandlers = (
       payload: {
         conversationId?: string;
       },
-    ) => {
-      if (!options.assertPrivilegedSender(event, "localChat:getEventCount")) {
-        throw new Error("Blocked untrusted localChat:getEventCount request.");
-      }
-      return await (await waitForRunner(options)).client.getLocalChatEventCount({
+    ) => await withLocalChatClient(
+      options,
+      event,
+      "localChat:getEventCount",
+      (client) => client.getLocalChatEventCount({
         conversationId: payload?.conversationId ?? "",
-      });
-    },
+      }),
+    ),
   );
 
   ipcMain.handle(
@@ -90,23 +103,16 @@ export const registerLocalChatHandlers = (
         message?: string;
         suggestions?: unknown[];
       },
-    ) => {
-      if (
-        !options.assertPrivilegedSender(
-          event,
-          "localChat:persistDiscoveryWelcome",
-        )
-      ) {
-        throw new Error(
-          "Blocked untrusted localChat:persistDiscoveryWelcome request.",
-        );
-      }
-      return await (await waitForRunner(options)).client.persistDiscoveryWelcome({
+    ) => await withLocalChatClient(
+      options,
+      event,
+      "localChat:persistDiscoveryWelcome",
+      (client) => client.persistDiscoveryWelcome({
         conversationId: payload?.conversationId ?? "",
         message: payload?.message ?? "",
         suggestions: payload?.suggestions,
-      });
-    },
+      }),
+    ),
   );
 
   ipcMain.handle(
@@ -117,19 +123,15 @@ export const registerLocalChatHandlers = (
         conversationId?: string;
         maxMessages?: number;
       },
-    ) => {
-      if (
-        !options.assertPrivilegedSender(event, "localChat:listSyncMessages")
-      ) {
-        throw new Error(
-          "Blocked untrusted localChat:listSyncMessages request.",
-        );
-      }
-      return await (await waitForRunner(options)).client.listLocalChatSyncMessages({
+    ) => await withLocalChatClient(
+      options,
+      event,
+      "localChat:listSyncMessages",
+      (client) => client.listLocalChatSyncMessages({
         conversationId: payload?.conversationId ?? "",
         maxMessages: payload?.maxMessages,
-      });
-    },
+      }),
+    ),
   );
 
   ipcMain.handle(
@@ -139,18 +141,14 @@ export const registerLocalChatHandlers = (
       payload: {
         conversationId?: string;
       },
-    ) => {
-      if (
-        !options.assertPrivilegedSender(event, "localChat:getSyncCheckpoint")
-      ) {
-        throw new Error(
-          "Blocked untrusted localChat:getSyncCheckpoint request.",
-        );
-      }
-      return await (await waitForRunner(options)).client.getLocalChatSyncCheckpoint({
+    ) => await withLocalChatClient(
+      options,
+      event,
+      "localChat:getSyncCheckpoint",
+      (client) => client.getLocalChatSyncCheckpoint({
         conversationId: payload?.conversationId ?? "",
-      });
-    },
+      }),
+    ),
   );
 
   ipcMain.handle(
@@ -161,18 +159,14 @@ export const registerLocalChatHandlers = (
         conversationId?: string;
         localMessageId?: string;
       },
-    ) => {
-      if (
-        !options.assertPrivilegedSender(event, "localChat:setSyncCheckpoint")
-      ) {
-        throw new Error(
-          "Blocked untrusted localChat:setSyncCheckpoint request.",
-        );
-      }
-      return await (await waitForRunner(options)).client.setLocalChatSyncCheckpoint({
+    ) => await withLocalChatClient(
+      options,
+      event,
+      "localChat:setSyncCheckpoint",
+      (client) => client.setLocalChatSyncCheckpoint({
         conversationId: payload?.conversationId ?? "",
         localMessageId: payload?.localMessageId ?? "",
-      });
-    },
+      }),
+    ),
   );
 };

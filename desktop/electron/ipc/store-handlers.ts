@@ -46,6 +46,16 @@ const listInstalledThemes = async (stellaHomePath: string) => {
   }
 };
 
+const assertPrivilegedRequest = (
+  options: StoreHandlersOptions,
+  event: IpcMainEvent | IpcMainInvokeEvent,
+  channel: string,
+) => {
+  if (!options.assertPrivilegedSender(event, channel)) {
+    throw new Error(`Blocked untrusted ${channel} request.`);
+  }
+};
+
 export const registerStoreHandlers = (options: StoreHandlersOptions) => {
   const waitForRunner = (timeoutMs = 10_000) =>
     waitForConnectedRunner(options.getStellaHostRunner, {
@@ -53,6 +63,14 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       unavailableMessage: "Store backend is unavailable.",
       onRunnerChanged: options.onStellaHostRunnerChanged,
     });
+  const withStoreRunner = async <T>(
+    event: IpcMainEvent | IpcMainInvokeEvent,
+    channel: string,
+    action: (runner: Awaited<ReturnType<typeof waitForRunner>>) => Promise<T>,
+  ) => {
+    assertPrivilegedRequest(options, event, channel);
+    return await action(await waitForRunner());
+  };
 
   ipcMain.handle("theme:listInstalled", async () => {
     const stellaHomePath = options.getStellaHomePath();
@@ -63,27 +81,18 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
   });
 
   ipcMain.handle("store:listLocalFeatures", async (event, payload?: { limit?: number }) => {
-    if (!options.assertPrivilegedSender(event, "store:listLocalFeatures")) {
-      throw new Error("Blocked untrusted store:listLocalFeatures request.");
-    }
-    const runner = await waitForRunner();
-    return await runner.listLocalFeatures(payload?.limit) satisfies SelfModFeatureRecord[];
+    return await withStoreRunner(event, "store:listLocalFeatures", async (runner) =>
+      await runner.listLocalFeatures(payload?.limit) satisfies SelfModFeatureRecord[]);
   });
 
   ipcMain.handle("store:listFeatureBatches", async (event, payload: { featureId: string }) => {
-    if (!options.assertPrivilegedSender(event, "store:listFeatureBatches")) {
-      throw new Error("Blocked untrusted store:listFeatureBatches request.");
-    }
-    const runner = await waitForRunner();
-    return await runner.listFeatureBatches(payload.featureId) satisfies SelfModBatchRecord[];
+    return await withStoreRunner(event, "store:listFeatureBatches", async (runner) =>
+      await runner.listFeatureBatches(payload.featureId) satisfies SelfModBatchRecord[]);
   });
 
   ipcMain.handle("store:createReleaseDraft", async (event, payload: { featureId: string; batchIds?: string[] }) => {
-    if (!options.assertPrivilegedSender(event, "store:createReleaseDraft")) {
-      throw new Error("Blocked untrusted store:createReleaseDraft request.");
-    }
-    const runner = await waitForRunner();
-    return await runner.createReleaseDraft(payload);
+    return await withStoreRunner(event, "store:createReleaseDraft", (runner) =>
+      runner.createReleaseDraft(payload));
   });
 
   ipcMain.handle(
@@ -98,77 +107,49 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         description?: string;
         releaseNotes?: string;
       },
-    ) => {
-      if (!options.assertPrivilegedSender(event, "store:publishRelease")) {
-        throw new Error("Blocked untrusted store:publishRelease request.");
-      }
-      const runner = await waitForRunner();
-      return await runner.publishStoreRelease(payload);
-    },
+    ) => await withStoreRunner(event, "store:publishRelease", (runner) =>
+      runner.publishStoreRelease(payload)),
   );
 
   ipcMain.handle("store:listPackages", async (event) => {
-    if (!options.assertPrivilegedSender(event, "store:listPackages")) {
-      throw new Error("Blocked untrusted store:listPackages request.");
-    }
-    const runner = await waitForRunner();
-    return await runner.listStorePackages() satisfies StorePackageRecord[];
+    return await withStoreRunner(event, "store:listPackages", async (runner) =>
+      await runner.listStorePackages() satisfies StorePackageRecord[]);
   });
 
   ipcMain.handle("store:getPackage", async (event, payload: { packageId: string }) => {
-    if (!options.assertPrivilegedSender(event, "store:getPackage")) {
-      throw new Error("Blocked untrusted store:getPackage request.");
-    }
-    const runner = await waitForRunner();
-    return await runner.getStorePackage(payload.packageId) satisfies StorePackageRecord | null;
+    return await withStoreRunner(event, "store:getPackage", async (runner) =>
+      await runner.getStorePackage(payload.packageId) satisfies StorePackageRecord | null);
   });
 
   ipcMain.handle("store:listReleases", async (event, payload: { packageId: string }) => {
-    if (!options.assertPrivilegedSender(event, "store:listReleases")) {
-      throw new Error("Blocked untrusted store:listReleases request.");
-    }
-    const runner = await waitForRunner();
-    return await runner.listStorePackageReleases(payload.packageId) satisfies StorePackageReleaseRecord[];
+    return await withStoreRunner(event, "store:listReleases", async (runner) =>
+      await runner.listStorePackageReleases(payload.packageId) satisfies StorePackageReleaseRecord[]);
   });
 
   ipcMain.handle(
     "store:getRelease",
-    async (event, payload: { packageId: string; releaseNumber: number }) => {
-      if (!options.assertPrivilegedSender(event, "store:getRelease")) {
-        throw new Error("Blocked untrusted store:getRelease request.");
-      }
-      const runner = await waitForRunner();
-      return await runner.getStorePackageRelease(
+    async (event, payload: { packageId: string; releaseNumber: number }) =>
+      await withStoreRunner(event, "store:getRelease", async (runner) =>
+        await runner.getStorePackageRelease(
         payload.packageId,
         payload.releaseNumber,
-      ) satisfies StorePackageReleaseRecord | null;
-    },
+      ) satisfies StorePackageReleaseRecord | null),
   );
 
   ipcMain.handle(
     "store:installRelease",
-    async (event, payload: { packageId: string; releaseNumber?: number }) => {
-      if (!options.assertPrivilegedSender(event, "store:installRelease")) {
-        throw new Error("Blocked untrusted store:installRelease request.");
-      }
-      const runner = await waitForRunner();
-      return await runner.installStoreRelease(payload) satisfies InstalledStoreModRecord;
-    },
+    async (event, payload: { packageId: string; releaseNumber?: number }) =>
+      await withStoreRunner(event, "store:installRelease", async (runner) =>
+        await runner.installStoreRelease(payload) satisfies InstalledStoreModRecord),
   );
 
   ipcMain.handle("store:listInstalledMods", async (event) => {
-    if (!options.assertPrivilegedSender(event, "store:listInstalledMods")) {
-      throw new Error("Blocked untrusted store:listInstalledMods request.");
-    }
-    const runner = await waitForRunner();
-    return await runner.listInstalledMods() satisfies InstalledStoreModRecord[];
+    return await withStoreRunner(event, "store:listInstalledMods", async (runner) =>
+      await runner.listInstalledMods() satisfies InstalledStoreModRecord[]);
   });
 
   ipcMain.handle("store:uninstallMod", async (event, payload: { packageId: string }) => {
-    if (!options.assertPrivilegedSender(event, "store:uninstallMod")) {
-      throw new Error("Blocked untrusted store:uninstallMod request.");
-    }
-    const runner = await waitForRunner();
-    return await runner.uninstallStoreMod(payload.packageId);
+    return await withStoreRunner(event, "store:uninstallMod", (runner) =>
+      runner.uninstallStoreMod(payload.packageId));
   });
 };

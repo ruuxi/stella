@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useRef, useState } from "react";
-import morphdom from "morphdom";
 import type { ChatMessage } from "@/infra/ai/llm";
+import { applyMorphdomHtml } from "../apply-morphdom-html";
 import "./auto-panel.css";
 
 type AutoPanelProps = {
@@ -206,15 +206,7 @@ Keep it concise. 2-4 sections max. Output raw HTML only — no markdown, no code
     const container = displayRef.current;
     if (!container) return;
 
-    const target = document.createElement("div");
-    target.className = "auto-panel-display";
-    target.innerHTML = html;
-
-    morphdom(container, target, {
-      onBeforeElUpdated(fromEl, toEl) {
-        if (fromEl.isEqualNode(toEl)) return false;
-        return true;
-      },
+    applyMorphdomHtml(container, "auto-panel-display", html, {
       onNodeAdded(node) {
         if (
           node.nodeType === 1 &&
@@ -311,5 +303,3 @@ Keep it concise. 2-4 sections max. Output raw HTML only — no markdown, no code
     </div>
   );
 }
-
-

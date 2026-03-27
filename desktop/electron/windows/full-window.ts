@@ -1,6 +1,7 @@
 import { BrowserWindow, type RenderProcessGoneDetails } from 'electron'
 import path from 'path'
 import { loadWindow } from './window-load.js'
+import { createSharedWebPreferences } from './shared-window-preferences.js'
 
 type FullWindowControllerOptions = {
   electronDir: string
@@ -45,12 +46,10 @@ export class FullWindowController {
       titleBarStyle: isMac ? 'hiddenInset' : undefined,
       trafficLightPosition: isMac ? { x: 16, y: 18 } : undefined,
       ...(isWindows || process.platform === 'linux' ? { frame: false } : {}),
-      webPreferences: {
-        preload: this.options.preloadPath,
-        contextIsolation: true,
-        nodeIntegration: false,
-        partition: this.options.sessionPartition,
-      },
+      webPreferences: createSharedWebPreferences({
+        preloadPath: this.options.preloadPath,
+        sessionPartition: this.options.sessionPartition,
+      }),
     })
 
     this.window = window
