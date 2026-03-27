@@ -625,7 +625,7 @@ export const registerMobileRoutes = (http: HttpRouter) => {
 
   // Browser landing after magic link verification.
   // The cross-domain plugin appends ?ott=... to this URL after verifying the token.
-  // Stores the OTT, then redirects to stella.sh for a branded landing page.
+  // Exchanges the OTT for a session token server-side, stores it, then redirects.
   http.route({
     path: "/api/auth/link/verify",
     method: "GET",
@@ -635,10 +635,32 @@ export const registerMobileRoutes = (http: HttpRouter) => {
       const ott = url.searchParams.get("ott") ?? "";
 
       if (requestId && ott) {
-        await ctx.runMutation(internal.mobile_auth.completeLinkRequest, {
-          requestId,
-          ott,
-        });
+        // Exchange OTT for session token server-side (bypasses client CSRF issues)
+        const convexSiteUrl = process.env.CONVEX_SITE_URL ?? "";
+        try {
+          const verifyRes = await fetch(
+            `${convexSiteUrl}/api/auth/one-time-token/verify`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                origin: convexSiteUrl,
+              },
+              body: JSON.stringify({ token: ott }),
+            },
+          );
+          const sessionCookie = verifyRes.headers.get("set-cookie") ?? "";
+          await ctx.runMutation(internal.mobile_auth.completeLinkRequest, {
+            requestId,
+            ott,
+            sessionCookie,
+          });
+        } catch {
+          await ctx.runMutation(internal.mobile_auth.completeLinkRequest, {
+            requestId,
+            ott,
+          });
+        }
       }
 
       const websiteUrl = process.env.STELLA_WEBSITE_URL?.trim() || "https://stella.sh";

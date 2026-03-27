@@ -43,7 +43,11 @@ export const getLinkRequestStatus = internalQuery({
       return { status: "expired" as const };
     }
     if (record.status === "completed" && record.ott) {
-      return { status: "completed" as const, ott: record.ott };
+      return {
+        status: "completed" as const,
+        ott: record.ott,
+        ...(record.sessionCookie ? { sessionCookie: record.sessionCookie } : {}),
+      };
     }
     return { status: "pending" as const };
   },
@@ -53,6 +57,7 @@ export const completeLinkRequest = internalMutation({
   args: {
     requestId: v.string(),
     ott: v.string(),
+    sessionCookie: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const record = await ctx.db
@@ -71,6 +76,7 @@ export const completeLinkRequest = internalMutation({
     await ctx.db.patch(record._id, {
       status: "completed",
       ott: args.ott,
+      ...(args.sessionCookie ? { sessionCookie: args.sessionCookie } : {}),
     });
     return { ok: true };
   },
