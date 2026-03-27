@@ -17,6 +17,7 @@ import {
 import { useBootstrapState } from "@/systems/boot/bootstrap-state";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import "./full-shell.layout.css";
+import "./mobile.css";
 import { TitleBar } from "./TitleBar";
 
 const OnboardingCanvas = lazy(() =>
