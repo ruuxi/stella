@@ -1,5 +1,6 @@
 {
   "expo": {
+    "owner": "stella-ai",
     "name": "Stella",
     "slug": "stella-mobile",
     "version": "1.0.0",
@@ -40,7 +41,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "790ac0ce-d2e0-4989-ad4a-141d85826756"
+        "projectId": "892d4162-8a4f-40e8-a0d5-b24516cb7537"
       }
     }
   }
