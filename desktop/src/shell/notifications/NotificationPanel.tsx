@@ -92,11 +92,10 @@ function ScheduleItem({ item }: { item: ActivityItem }) {
 type NotificationPanelProps = {
   open: boolean
   data: NotificationData
-  position: { right: number; bottom: number }
-  orbSize: number
+  style?: React.CSSProperties
 }
 
-export function NotificationPanel({ open, data, position, orbSize }: NotificationPanelProps) {
+export function NotificationPanel({ open, data, style }: NotificationPanelProps) {
   const hasAny = data.tasks.length > 0 || data.scheduled.length > 0
 
   return (
@@ -105,10 +104,7 @@ export function NotificationPanel({ open, data, position, orbSize }: Notificatio
         <motion.div
           key="notif-panel"
           className="notif-panel"
-          style={{
-            right: `${position.right}px`,
-            bottom: `${position.bottom + orbSize + 12}px`,
-          }}
+          style={style}
           initial={{ opacity: 0, y: 8, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 8, scale: 0.96 }}

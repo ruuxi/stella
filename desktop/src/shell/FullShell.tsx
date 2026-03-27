@@ -106,7 +106,10 @@ export const FullShell = () => {
 
   return (
     <div className="window-shell full">
-      <TitleBar />
+      <TitleBar
+        conversationId={activeConversationId ?? undefined}
+        appReady={appReady}
+      />
       <ShiftingGradient
         mode={gradientMode}
         colorMode={gradientColor}
