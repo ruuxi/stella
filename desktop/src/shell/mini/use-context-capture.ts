@@ -1,12 +1,25 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getElectronApi } from "@/platform/electron/electron";
-import type { ChatContext, ChatContextUpdate } from "@/shared/types/electron";
+import { useCapturedChatContext } from "../use-captured-chat-context";
 
 export function useContextCapture() {
-  const [chatContext, setChatContext] = useState<ChatContext | null>(null);
-  const [selectedText, setSelectedText] = useState<string | null>(null);
   const [shellVisible, setShellVisible] = useState(false);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const handleContextUpdate = useCallback(
+    (update: { version?: number } | null, electronApi: NonNullable<ReturnType<typeof getElectronApi>>) => {
+      const version = typeof update?.version === "number" ? update.version : null;
+      if (version !== null) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            electronApi.capture.ackContext({ version });
+          });
+        });
+      }
+    },
+    [],
+  );
+  const { chatContext, setChatContext, selectedText, setSelectedText } =
+    useCapturedChatContext({ onContextUpdate: handleContextUpdate });
 
   useEffect(() => {
     const electronApi = getElectronApi();
@@ -20,37 +33,7 @@ export function useContextCapture() {
       setPreviewIndex(null);
     });
 
-    // Fetch initial context
-    electronApi.capture
-      .getContext()
-      .then((context) => {
-        if (!context) return;
-        setChatContext(context);
-        setSelectedText(context.selectedText ?? null);
-      })
-      .catch((error) => {
-        console.warn("Failed to load chat context", error);
-      });
-
-    const unsubscribe = electronApi.capture.onContext((payload) => {
-      const update = payload as ChatContextUpdate | null;
-      const context = update?.context ?? null;
-      const version = typeof update?.version === "number" ? update.version : null;
-
-      setChatContext(context);
-      setSelectedText(context?.selectedText ?? null);
-
-      if (version !== null) {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            electronApi.capture.ackContext({ version });
-          });
-        });
-      }
-    });
-
     return () => {
-      unsubscribe?.();
       unsubscribeVisibility?.();
       unsubscribeDismissPreview?.();
     };
@@ -66,5 +49,4 @@ export function useContextCapture() {
     setPreviewIndex,
   };
 }
-
 

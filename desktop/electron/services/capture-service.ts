@@ -258,6 +258,21 @@ export class CaptureService {
     return screen.getDisplayNearestPoint(targetPoint)
   }
 
+  private getDisplayScaleFactor(display: Display) {
+    return process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
+  }
+
+  private toNativeScreenPoint(point: { x: number; y: number }) {
+    const display = screen.getDisplayNearestPoint(point)
+    const scaleFactor = this.getDisplayScaleFactor(display)
+    return {
+      display,
+      scaleFactor,
+      x: Math.round(point.x * scaleFactor),
+      y: Math.round(point.y * scaleFactor),
+    }
+  }
+
   private async getDisplaySource(display: Display) {
     const scaleFactor = display.scaleFactor ?? 1
     const thumbnailSize = {
@@ -356,11 +371,10 @@ export class CaptureService {
 
     const dipX = regionBounds.x + overlayRelative.x
     const dipY = regionBounds.y + overlayRelative.y
-    const display = screen.getDisplayNearestPoint({ x: dipX, y: dipY })
-    const scaleFactor = process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
+    const { x, y } = this.toNativeScreenPoint({ x: dipX, y: dipY })
     return {
-      x: Math.round(dipX * scaleFactor),
-      y: Math.round(dipY * scaleFactor),
+      x,
+      y,
     }
   }
 
@@ -439,10 +453,8 @@ export class CaptureService {
 
     const dipX = regionBounds.x + point.x
     const dipY = regionBounds.y + point.y
-    const clickDisplay = screen.getDisplayNearestPoint({ x: dipX, y: dipY })
-    const scaleFactor = process.platform === 'darwin' ? 1 : (clickDisplay.scaleFactor ?? 1)
-    const screenX = Math.round(dipX * scaleFactor)
-    const screenY = Math.round(dipY * scaleFactor)
+    const { display: clickDisplay, scaleFactor, x: screenX, y: screenY } =
+      this.toNativeScreenPoint({ x: dipX, y: dipY })
 
     const capture = await captureWindowScreenshot(screenX, screenY, { excludePids: [process.pid] })
     if (!capture) return null
@@ -488,12 +500,7 @@ export class CaptureService {
     const point = this.lastRadialPoint
     if (!point) return null
 
-    const display = this.getDisplayForPoint(point)
-    const scaleFactor = process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
-    const capturePoint = {
-      x: Math.round(point.x * scaleFactor),
-      y: Math.round(point.y * scaleFactor),
-    }
+    const capturePoint = this.toNativeScreenPoint(point)
 
     return getWindowText(capturePoint.x, capturePoint.y, { excludePids: [process.pid] })
   }
@@ -501,11 +508,7 @@ export class CaptureService {
   async captureScreenshot(point?: { x: number; y: number }) {
     const display = this.getDisplayForPoint(point)
     const cursorDip = point ?? screen.getCursorScreenPoint()
-    const scaleFactor = process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
-    const capturePoint = {
-      x: Math.round(cursorDip.x * scaleFactor),
-      y: Math.round(cursorDip.y * scaleFactor),
-    }
+    const capturePoint = this.toNativeScreenPoint(cursorDip)
 
     return this.withCaptureContext(async () => {
       const windowCapture = await captureWindowScreenshot(

@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import morphdom from "morphdom"
+import { applyMorphdomHtml } from "./apply-morphdom-html"
 import "./display-overlay.css"
 
 export function DisplayOverlay() {
@@ -18,15 +18,7 @@ export function DisplayOverlay() {
     const container = containerRef.current
     if (!container) return
 
-    const target = document.createElement("div")
-    target.className = "display-overlay__content"
-    target.innerHTML = html
-    morphdom(container, target, {
-      onBeforeElUpdated(fromEl, toEl) {
-        if (fromEl.isEqualNode(toEl)) return false
-        return true
-      },
-    })
+    applyMorphdomHtml(container, "display-overlay__content", html)
   }, [])
 
   // Listen for Display tool updates

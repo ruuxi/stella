@@ -1,6 +1,5 @@
-import { execFile } from 'child_process'
 import { getWindowInfoAtPoint } from './window-capture.js'
-import { resolveNativeHelperPath } from './native-helper-path.js'
+import { runNativeHelper } from './native-helper.js'
 
 const TIMEOUT_MS = 6000
 const MAX_TEXT_LENGTH = 16000
@@ -33,27 +32,8 @@ export async function getWindowText(
 }
 
 function extractWindowText(pid: number, x: number, y: number): Promise<string | null> {
-  const helperPath = resolveNativeHelperPath('window_text')
-  if (!helperPath) return Promise.resolve(null)
-
-  return new Promise((resolve) => {
-    execFile(
-      helperPath,
-      [String(pid), String(x), String(y)],
-      {
-        timeout: TIMEOUT_MS,
-        encoding: 'utf8',
-        maxBuffer: 2 * 1024 * 1024,
-        windowsHide: true,
-      },
-      (error, stdout) => {
-        if (error) {
-          resolve(null)
-          return
-        }
-        const text = stdout.trim()
-        resolve(text || null)
-      },
-    )
+  return runNativeHelper('window_text', [String(pid), String(x), String(y)], {
+    timeout: TIMEOUT_MS,
+    maxBuffer: 2 * 1024 * 1024,
   })
 }

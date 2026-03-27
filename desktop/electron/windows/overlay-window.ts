@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, screen } from 'electron'
 import { RADIAL_SIZE } from '../layout-constants.js'
 import type { SelfModHmrState } from '../../src/shared/contracts/boundary.js'
 import { loadWindow } from './window-load.js'
+import { createSharedWebPreferences } from './shared-window-preferences.js'
 
 const getAllDisplaysBounds = () => {
   const displays = screen.getAllDisplays()
@@ -97,13 +98,11 @@ class OverlayWindow {
       focusable: false,
       show: false,
       backgroundColor: '#00000000',
-      webPreferences: {
-        preload: this.options.preloadPath,
-        contextIsolation: true,
-        nodeIntegration: false,
-        partition: this.options.sessionPartition,
+      webPreferences: createSharedWebPreferences({
+        preloadPath: this.options.preloadPath,
+        sessionPartition: this.options.sessionPartition,
         backgroundThrottling: false,
-      },
+      }),
     })
 
     this.window.setAlwaysOnTop(true, 'screen-saver')
@@ -288,22 +287,72 @@ export class OverlayWindowController {
     this.overlayWindow.fadeOut()
   }
 
+  private showSurface(options: {
+    setActive: () => void
+    channel: string
+    payload?: unknown
+    showOptions?: { focus?: boolean; inactive?: boolean }
+    interactive?: boolean
+    focusable?: boolean
+    sendBeforeShow?: boolean
+  }) {
+    options.setActive()
+    if (options.focusable !== undefined) {
+      this.overlayWindow.setFocusable(options.focusable)
+    }
+    if (options.sendBeforeShow) {
+      this.overlayWindow.send(options.channel, options.payload)
+    }
+    this.overlayWindow.show(options.showOptions)
+    if (options.interactive !== undefined) {
+      this.overlayWindow.setIgnoreMouseEvents(!options.interactive)
+    }
+    if (!options.sendBeforeShow) {
+      this.overlayWindow.send(options.channel, options.payload)
+    }
+  }
+
+  private hideSurface(options: {
+    setInactive: () => void
+    channel: string
+    payload?: unknown
+    restoreIgnoreMouseEvents?: boolean
+    focusable?: boolean
+  }) {
+    options.setInactive()
+    if (options.restoreIgnoreMouseEvents && !this.isAnyActive) {
+      this.overlayWindow.setIgnoreMouseEvents(true)
+    }
+    if (options.focusable !== undefined) {
+      this.overlayWindow.setFocusable(options.focusable)
+    }
+    this.overlayWindow.send(options.channel, options.payload)
+    this.hideOverlayIfIdle()
+  }
+
   // ─── Modifier Block ──────────────────────────────────────────────────
 
   showModifierBlock() {
-    this.activeModifierBlock = true
-    this.overlayWindow.show({ inactive: true })
-    this.overlayWindow.setIgnoreMouseEvents(false)
-    this.overlayWindow.send('overlay:modifierBlock', true)
+    this.showSurface({
+      setActive: () => {
+        this.activeModifierBlock = true
+      },
+      channel: 'overlay:modifierBlock',
+      payload: true,
+      showOptions: { inactive: true },
+      interactive: true,
+    })
   }
 
   hideModifierBlock() {
-    this.activeModifierBlock = false
-    if (!this.isAnyActive) {
-      this.overlayWindow.setIgnoreMouseEvents(true)
-    }
-    this.overlayWindow.send('overlay:modifierBlock', false)
-    this.hideOverlayIfIdle()
+    this.hideSurface({
+      setInactive: () => {
+        this.activeModifierBlock = false
+      },
+      channel: 'overlay:modifierBlock',
+      payload: false,
+      restoreIgnoreMouseEvents: true,
+    })
   }
 
   // ─── Radial Dial ──────────────────────────────────────────────────────
@@ -383,38 +432,54 @@ export class OverlayWindowController {
   // ─── Region Capture ───────────────────────────────────────────────────
 
   startRegionCapture() {
-    this.activeRegionCapture = true
-    this.overlayWindow.setFocusable(true)
-    this.overlayWindow.show({ focus: true })
-    this.overlayWindow.setIgnoreMouseEvents(false)
-    this.overlayWindow.send('overlay:startRegionCapture')
+    this.showSurface({
+      setActive: () => {
+        this.activeRegionCapture = true
+      },
+      channel: 'overlay:startRegionCapture',
+      showOptions: { focus: true },
+      interactive: true,
+      focusable: true,
+    })
   }
 
   endRegionCapture() {
-    this.activeRegionCapture = false
-    this.overlayWindow.setIgnoreMouseEvents(true)
-    this.overlayWindow.setFocusable(false)
-    this.overlayWindow.send('overlay:endRegionCapture')
-    this.hideOverlayIfIdle()
+    this.hideSurface({
+      setInactive: () => {
+        this.activeRegionCapture = false
+      },
+      channel: 'overlay:endRegionCapture',
+      restoreIgnoreMouseEvents: true,
+      focusable: false,
+    })
   }
 
   // ─── Mini Shell ────────────────────────────────────────────────────────
 
   showMini(screenX: number, screenY: number) {
-    this.activeMini = true
     const origin = this.overlayWindow.getOverlayOrigin()
-    this.overlayWindow.send('overlay:showMini', { x: screenX - origin.x, y: screenY - origin.y })
-    this.overlayWindow.show({ focus: true })
-    this.overlayWindow.setIgnoreMouseEvents(false)
-    this.overlayWindow.setFocusable(true)
+    this.showSurface({
+      setActive: () => {
+        this.activeMini = true
+      },
+      channel: 'overlay:showMini',
+      payload: { x: screenX - origin.x, y: screenY - origin.y },
+      showOptions: { focus: true },
+      interactive: true,
+      focusable: true,
+      sendBeforeShow: true,
+    })
   }
 
   hideMini() {
-    this.activeMini = false
-    this.overlayWindow.send('overlay:hideMini')
-    this.overlayWindow.setIgnoreMouseEvents(true)
-    this.overlayWindow.setFocusable(false)
-    this.hideOverlayIfIdle()
+    this.hideSurface({
+      setInactive: () => {
+        this.activeMini = false
+      },
+      channel: 'overlay:hideMini',
+      restoreIgnoreMouseEvents: true,
+      focusable: false,
+    })
   }
 
   concealMiniForCapture() {
@@ -445,27 +510,36 @@ export class OverlayWindowController {
   private activeAutoPanel = false
 
   showAutoPanel(data: { x: number; y: number; width: number; height: number; windowText: string; windowTitle: string | null }) {
-    this.activeAutoPanel = true
     const origin = this.overlayWindow.getOverlayOrigin()
-    this.overlayWindow.send('overlay:showAutoPanel', {
-      x: data.x - origin.x,
-      y: data.y - origin.y,
-      width: data.width,
-      height: data.height,
-      windowText: data.windowText,
-      windowTitle: data.windowTitle,
+    this.showSurface({
+      setActive: () => {
+        this.activeAutoPanel = true
+      },
+      channel: 'overlay:showAutoPanel',
+      payload: {
+        x: data.x - origin.x,
+        y: data.y - origin.y,
+        width: data.width,
+        height: data.height,
+        windowText: data.windowText,
+        windowTitle: data.windowTitle,
+      },
+      showOptions: { inactive: true },
+      interactive: true,
+      focusable: true,
+      sendBeforeShow: true,
     })
-    this.overlayWindow.show({ inactive: true })
-    this.overlayWindow.setIgnoreMouseEvents(false)
-    this.overlayWindow.setFocusable(true)
   }
 
   hideAutoPanel() {
-    this.activeAutoPanel = false
-    this.overlayWindow.send('overlay:hideAutoPanel')
-    this.overlayWindow.setIgnoreMouseEvents(true)
-    this.overlayWindow.setFocusable(false)
-    this.hideOverlayIfIdle()
+    this.hideSurface({
+      setInactive: () => {
+        this.activeAutoPanel = false
+      },
+      channel: 'overlay:hideAutoPanel',
+      restoreIgnoreMouseEvents: true,
+      focusable: false,
+    })
   }
 
   // ─── Morph Transition (HMR Resume) ───────────────────────────────────

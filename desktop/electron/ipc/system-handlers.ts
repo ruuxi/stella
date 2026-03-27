@@ -53,6 +53,21 @@ type SystemHandlersOptions = {
 const asTrimmedString = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
 
+const sanitizeStringRecord = (value: unknown): Record<string, string> => {
+  const nextRecord: Record<string, string> = {};
+  for (const [key, entryValue] of Object.entries(
+    value && typeof value === "object" ? value as Record<string, unknown> : {},
+  )) {
+    const trimmedKey = asTrimmedString(key);
+    const trimmedValue = asTrimmedString(entryValue);
+    if (!trimmedKey || !trimmedValue) {
+      continue;
+    }
+    nextRecord[trimmedKey] = trimmedValue;
+  }
+  return nextRecord;
+};
+
 const createStoppedSocialSessionSnapshot = () => ({
   enabled: false,
   status: "stopped" as const,
@@ -372,39 +387,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       if (!stellaHomePath) return { ok: true };
 
       const prefs = loadLocalPreferences(stellaHomePath);
-      const nextDefaultModels: Record<string, string> = {};
-      for (const [agentType, model] of Object.entries(
-        payload?.defaultModels ?? {},
-      )) {
-        const trimmedAgentType = asTrimmedString(agentType);
-        const trimmedModel = asTrimmedString(model);
-        if (!trimmedAgentType || !trimmedModel) {
-          continue;
-        }
-        nextDefaultModels[trimmedAgentType] = trimmedModel;
-      }
-      const nextResolvedDefaultModels: Record<string, string> = {};
-      for (const [agentType, model] of Object.entries(
-        payload?.resolvedDefaultModels ?? {},
-      )) {
-        const trimmedAgentType = asTrimmedString(agentType);
-        const trimmedModel = asTrimmedString(model);
-        if (!trimmedAgentType || !trimmedModel) {
-          continue;
-        }
-        nextResolvedDefaultModels[trimmedAgentType] = trimmedModel;
-      }
-      const nextOverrides: Record<string, string> = {};
-      for (const [agentType, model] of Object.entries(
-        payload?.modelOverrides ?? {},
-      )) {
-        const trimmedAgentType = asTrimmedString(agentType);
-        const trimmedModel = asTrimmedString(model);
-        if (!trimmedAgentType || !trimmedModel) {
-          continue;
-        }
-        nextOverrides[trimmedAgentType] = trimmedModel;
-      }
+      const nextDefaultModels = sanitizeStringRecord(payload?.defaultModels);
+      const nextResolvedDefaultModels = sanitizeStringRecord(
+        payload?.resolvedDefaultModels,
+      );
+      const nextOverrides = sanitizeStringRecord(payload?.modelOverrides);
 
       const generalAgentEngine =
         payload?.generalAgentEngine === "claude_code_local"

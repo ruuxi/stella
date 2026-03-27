@@ -579,21 +579,32 @@ export class MobileBridgeService {
     if (!convexSiteUrl || !deviceId) return false;
 
     try {
-      const response = await fetch(
-        `${trimTrailingSlash(convexSiteUrl)}/api/mobile/desktop-bridge/authorize`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: authorization,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ deviceId }),
-        },
+      const response = await this.postBridgeJson(
+        convexSiteUrl,
+        "/api/mobile/desktop-bridge/authorize",
+        authorization,
+        { deviceId },
       );
       return response.ok;
     } catch {
       return false;
     }
+  }
+
+  private postBridgeJson(
+    siteUrl: string,
+    route: string,
+    authorization: string,
+    body: unknown,
+  ) {
+    return fetch(`${trimTrailingSlash(siteUrl)}${route}`, {
+      method: "POST",
+      headers: {
+        Authorization: authorization,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
   }
 
   // ── Frontend serving ──────────────────────────────────────────────────
@@ -711,19 +722,14 @@ export class MobileBridgeService {
     }
 
     try {
-      const response = await fetch(
-        `${trimTrailingSlash(this.convexSiteUrl)}/api/mobile/desktop-bridge/register`,
+      const response = await this.postBridgeJson(
+        this.convexSiteUrl,
+        "/api/mobile/desktop-bridge/register",
+        `Bearer ${this.hostAuthToken}`,
         {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.hostAuthToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            deviceId: this.deviceId,
-            baseUrls,
-            platform: getDesktopPlatformLabel(),
-          }),
+          deviceId: this.deviceId,
+          baseUrls,
+          platform: getDesktopPlatformLabel(),
         },
       );
       this.registered = Boolean(response?.ok);
@@ -747,16 +753,11 @@ export class MobileBridgeService {
     }
 
     try {
-      await fetch(
-        `${trimTrailingSlash(this.convexSiteUrl)}/api/mobile/desktop-bridge/clear`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ deviceId: this.deviceId }),
-        },
+      await this.postBridgeJson(
+        this.convexSiteUrl,
+        "/api/mobile/desktop-bridge/clear",
+        `Bearer ${token}`,
+        { deviceId: this.deviceId },
       );
     } catch {
       // Ignore

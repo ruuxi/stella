@@ -21,6 +21,18 @@ import { useChatScrollManagement } from './use-chat-scroll-management'
 
 const NO_OP = () => {}
 
+const resetChatScroll = (
+  resetScrollState: () => void,
+  scrollToBottom: (behavior: 'instant' | 'smooth') => void,
+) => {
+  resetScrollState()
+  scrollToBottom('instant')
+  const raf = requestAnimationFrame(() => {
+    scrollToBottom('instant')
+  })
+  return () => cancelAnimationFrame(raf)
+}
+
 type UseFullShellChatOptions = {
   activeConversationId: string | null
   activeView: import('@/shared/contracts/ui').ViewType
@@ -124,26 +136,13 @@ export function useFullShellChat({
 
   // Reset scroll on conversation change
   useLayoutEffect(() => {
-    resetScrollState()
-    scrollToBottom('instant')
-    const raf = requestAnimationFrame(() => {
-      scrollToBottom('instant')
-    })
-
-    return () => cancelAnimationFrame(raf)
+    return resetChatScroll(resetScrollState, scrollToBottom)
   }, [activeConversationId, resetScrollState, scrollToBottom])
 
   // Reset scroll when switching to chat view
   useLayoutEffect(() => {
     if (activeView !== 'chat') return
-
-    resetScrollState()
-    scrollToBottom('instant')
-    const raf = requestAnimationFrame(() => {
-      scrollToBottom('instant')
-    })
-
-    return () => cancelAnimationFrame(raf)
+    return resetChatScroll(resetScrollState, scrollToBottom)
   }, [activeView, resetScrollState, scrollToBottom])
 
   // Auto-scroll is now driven by the content ResizeObserver in useChatScrollManagement.
@@ -299,4 +298,3 @@ export function useFullShellChat({
     },
   }
 }
-

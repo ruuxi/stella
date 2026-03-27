@@ -151,6 +151,40 @@ const fetchWithBrowserSession = async (
   return response.text();
 };
 
+const getFrontendRootOrThrow = (options: BrowserHandlersOptions) => {
+  const frontendRoot = options.getFrontendRoot();
+  if (!frontendRoot?.trim()) {
+    throw new Error("Frontend root not available; restart the app.");
+  }
+  return frontendRoot;
+};
+
+const collectWithRunnerEnvelope = async <T extends { data: unknown; formatted: string | null }>(
+  options: BrowserHandlersOptions,
+  event: IpcMainEvent | IpcMainInvokeEvent,
+  channel: string,
+  action: (
+    runner: NonNullable<ReturnType<BrowserHandlersOptions["getStellaHostRunner"]>>,
+  ) => Promise<T>,
+): Promise<{ data: T["data"] | null; formatted: string | null; error?: string }> => {
+  if (!options.assertPrivilegedSender(event, channel)) {
+    throw new Error("Blocked untrusted request.");
+  }
+  const runner = options.getStellaHostRunner();
+  if (!runner) {
+    return { data: null, formatted: null, error: "Runtime not available" };
+  }
+  try {
+    return await action(runner);
+  } catch (error) {
+    return {
+      data: null,
+      formatted: null,
+      error: (error as Error).message,
+    };
+  }
+};
+
 export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
   ipcMain.handle("browserData:exists", async () => {
     const runner = options.getStellaHostRunner();
@@ -171,28 +205,14 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       data: BrowserData | null;
       formatted: string | null;
       error?: string;
-    }> => {
-      if (!options.assertPrivilegedSender(event, "browserData:collect")) {
-        throw new Error("Blocked untrusted request.");
-      }
-      const runner = options.getStellaHostRunner();
-      if (!runner) {
-        return { data: null, formatted: null, error: "Runtime not available" };
-      }
-      try {
+    }> =>
+      await collectWithRunnerEnvelope(options, event, "browserData:collect", async (runner) => {
         const result = await runner.collectBrowserData(collectOptions);
         return {
           data: result.data as BrowserData | null,
           formatted: result.formatted,
         };
-      } catch (error) {
-        return {
-          data: null,
-          formatted: null,
-          error: (error as Error).message,
-        };
-      }
-    },
+      }),
   );
 
   ipcMain.handle(
@@ -254,10 +274,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, "browser:fetchJson")) {
         throw new Error("Blocked untrusted request.");
       }
-      const frontendRoot = options.getFrontendRoot();
-      if (!frontendRoot?.trim()) {
-        throw new Error("Frontend root not available; restart the app.");
-      }
+      const frontendRoot = getFrontendRootOrThrow(options);
       return fetchWithBrowserSession(frontendRoot, {
         url: payload.url,
         responseType: "json",
@@ -272,10 +289,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, "browser:fetchText")) {
         throw new Error("Blocked untrusted request.");
       }
-      const frontendRoot = options.getFrontendRoot();
-      if (!frontendRoot?.trim()) {
-        throw new Error("Frontend root not available; restart the app.");
-      }
+      const frontendRoot = getFrontendRootOrThrow(options);
       return fetchWithBrowserSession(frontendRoot, {
         url: payload.url,
         responseType: "text",
@@ -306,26 +320,9 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         selectedBrowser?: string;
         selectedProfile?: string;
       },
-    ): Promise<AllUserSignalsResult> => {
-      if (!options.assertPrivilegedSender(event, "signals:collectAll")) {
-        throw new Error("Blocked untrusted request.");
-      }
-      const runner = options.getStellaHostRunner();
-      if (!runner) {
-        return { data: null, formatted: null, error: "Runtime not available" };
-      }
-      try {
-        const result =
-          await runner.collectAllSignals(ipcOptions) as AllUserSignalsResult;
-        return result;
-      } catch (error) {
-        return {
-          data: null,
-          formatted: null,
-          error: (error as Error).message,
-        };
-      }
-    },
+    ): Promise<AllUserSignalsResult> =>
+      await collectWithRunnerEnvelope(options, event, "signals:collectAll", async (runner) =>
+        await runner.collectAllSignals(ipcOptions) as AllUserSignalsResult),
   );
 
   ipcMain.handle("identity:getMap", async (event) => {
