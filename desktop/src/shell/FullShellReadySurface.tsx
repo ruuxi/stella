@@ -70,11 +70,6 @@ export const FullShellReadySurface = ({
     setView("store");
   }, [closePanel, setView]);
 
-  const showHomeView = useCallback(() => {
-    closePanel();
-    setView("chat");
-  }, [closePanel, setView]);
-
   const showChatView = useCallback(() => {
     closePanel();
     setView("chat");
@@ -179,7 +174,6 @@ export const FullShellReadySurface = ({
         onConnect={showConnectDialog}
         onSettings={showSettingsDialog}
         onStore={showStoreView}
-        onHome={showHomeView}
         onChat={showChatView}
         onSocial={showSocialView}
         onNewAppAskStella={handleNewAppAskStella}
@@ -210,7 +204,7 @@ export const FullShellReadySurface = ({
             fallback={
               showChatSurface ? (
                 <WorkspaceArea
-                  view="home"
+                  view="chat"
                   activeDemo={null}
                   demoClosing={false}
                 />
