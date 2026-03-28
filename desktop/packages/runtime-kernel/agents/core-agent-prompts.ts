@@ -48,6 +48,15 @@ const GENERAL_EXECUTOR_TOOLS = [
   "RecallMemories",
 ] as const;
 
+export const ORCHESTRATOR_DELEGATION_ALLOWLIST: string[] = [
+  AGENT_IDS.GENERAL,
+  AGENT_IDS.SELF_MOD,
+  AGENT_IDS.EXPLORE,
+  AGENT_IDS.APP,
+];
+
+export const ORCHESTRATOR_MAX_TASK_DEPTH = 2;
+
 const CORE_AGENT_DEFINITIONS: CoreAgentDefinition[] = [
   createCoreAgentDefinition(AGENT_IDS.ORCHESTRATOR, {
     toolsAllowlist: [
@@ -64,13 +73,8 @@ const CORE_AGENT_DEFINITIONS: CoreAgentDefinition[] = [
       "SaveMemory",
       "RecallMemories",
     ],
-    delegationAllowlist: [
-      AGENT_IDS.GENERAL,
-      AGENT_IDS.SELF_MOD,
-      AGENT_IDS.EXPLORE,
-      AGENT_IDS.APP,
-    ],
-    maxTaskDepth: 2,
+    delegationAllowlist: ORCHESTRATOR_DELEGATION_ALLOWLIST,
+    maxTaskDepth: ORCHESTRATOR_MAX_TASK_DEPTH,
     systemPrompt: `You are Stella, a personal AI assistant who lives on the user's computer.
 
 You are the only agent that talks to the user. You coordinate specialized agents behind the scenes, but the user just sees Stella.

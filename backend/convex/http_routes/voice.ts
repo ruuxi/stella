@@ -119,7 +119,7 @@ const parseVoiceUsageBody = (body: VoiceUsageBody | null) => {
 export const registerVoiceRoutes = (http: HttpRouter) => {
   // --- Voice Session ---
 
-  for (const path of ["/api/voice/session", "/api/voice/usage"]) {
+  for (const path of ["/api/voice/session", "/api/voice/usage", "/api/voice/ice-servers"]) {
     http.route({
       path,
       method: "OPTIONS",
@@ -128,6 +128,37 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
       ),
     });
   }
+
+  http.route({
+    path: "/api/voice/ice-servers",
+    method: "GET",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const identity = await ctx.auth.getUserIdentity();
+        if (!identity) {
+          return errorResponse(401, "Unauthorized", origin);
+        }
+
+        const inworldApiKey = process.env.INWORLD_API_KEY;
+        if (!inworldApiKey) {
+          return errorResponse(503, "Voice not configured", origin);
+        }
+
+        try {
+          const res = await fetch("https://api.inworld.ai/v1/realtime/ice-servers", {
+            headers: { Authorization: `Bearer ${inworldApiKey}` },
+          });
+          if (!res.ok) {
+            return errorResponse(res.status, "Failed to fetch ICE servers", origin);
+          }
+          const data = await res.json();
+          return jsonResponse(data, 200, origin);
+        } catch (error) {
+          return errorResponse(502, "Failed to fetch ICE servers", origin);
+        }
+      }),
+    ),
+  });
 
   http.route({
     path: "/api/voice/session",
@@ -154,18 +185,29 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
         }
 
         type VoiceSessionBody = {
+          sdpOffer: string;
           conversationId?: string;
           voice?: string;
-          model?: string;
           turnDetection?: "semantic_vad" | "server_vad";
           turnEagerness?: "low" | "medium" | "high";
           basePrompt?: string;
+          tools?: Array<{
+            type: "function";
+            name: string;
+            description: string;
+            parameters: Record<string, unknown>;
+          }>;
         };
         let body: VoiceSessionBody | null = null;
         try {
           body = (await request.json()) as VoiceSessionBody;
         } catch {
           return errorResponse(400, "Invalid JSON body", origin);
+        }
+
+        const sdpOffer = typeof body?.sdpOffer === "string" ? body.sdpOffer : "";
+        if (!sdpOffer) {
+          return errorResponse(400, "sdpOffer is required", origin);
         }
 
         const basePrompt = body?.basePrompt?.trim();
@@ -195,8 +237,8 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           }
         }
 
-        const resolveOpenAiApiKey = async (): Promise<string | null> =>
-          process.env.OPENAI_API_KEY ?? null;
+        const resolveInworldApiKey = async (): Promise<string | null> =>
+          process.env.INWORLD_API_KEY ?? null;
 
         const resolveDeviceStatus = async (): Promise<string | undefined> => {
           try {
@@ -248,15 +290,15 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           }
         };
 
-        const [openaiApiKey, deviceStatus, activeThreads] = await Promise.all([
-          resolveOpenAiApiKey(),
+        const [inworldApiKey, deviceStatus, activeThreads] = await Promise.all([
+          resolveInworldApiKey(),
           resolveDeviceStatus(),
           resolveActiveThreads(),
         ]);
-        if (!openaiApiKey) {
+        if (!inworldApiKey) {
           return errorResponse(
             503,
-            "Voice sessions are not configured yet.",
+            "Voice sessions are not configured yet (INWORLD_API_KEY missing).",
             origin,
           );
         }
@@ -277,85 +319,94 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           activeThreads,
         });
 
-        const tools = getVoiceToolSchemas();
-        const model = body.model ?? "gpt-realtime-1.5";
-        const voice = body.voice ?? "marin";
+        const tools = Array.isArray(body?.tools) && body.tools.length > 0
+          ? body.tools
+          : getVoiceToolSchemas();
+        const model = "fireworks/kimi-k2-5";
+        const voice = body.voice ?? "Olivia";
 
-        // Request ephemeral client secret from OpenAI
-        const turnDetection =
-          body?.turnDetection === "semantic_vad"
-            ? {
-                type: "semantic_vad",
-                eagerness: body.turnEagerness ?? "high",
-                create_response: true,
-                interrupt_response: true,
-              }
-            : {
-                type: "server_vad",
-                // Faster end-of-turn detection profile.
-                threshold: 0.5,
-                prefix_padding_ms: 120,
-                silence_duration_ms: 220,
-                create_response: true,
-                interrupt_response: true,
-              };
-
-        const sessionConfig = {
-          model,
-          voice,
-          instructions,
-          tools,
-          input_audio_transcription: {
-            model: "gpt-4o-transcribe",
-          },
-          turn_detection: turnDetection,
+        const turnDetection = {
+          type: "semantic_vad",
+          eagerness: body?.turnEagerness ?? "high",
+          create_response: true,
+          interrupt_response: true,
         };
 
+        // Proxy SDP exchange with Inworld — API key stays server-side.
+        // Tools are sent inline (session.update rejects them); the rest of
+        // the session config is reinforced via session.update on DC open to
+        // properly suppress reasoning output from the model.
         try {
-          const openaiResponse = await fetch(
-            "https://api.openai.com/v1/realtime/sessions",
+          const sessionConfig = {
+            type: "realtime",
+            model,
+            instructions,
+            output_modalities: ["audio", "text"],
+            audio: {
+              input: {
+                transcription: {
+                  model: "assemblyai/universal-streaming-multilingual",
+                },
+                turn_detection: turnDetection,
+                noise_reduction: { type: "near_field" },
+              },
+              output: {
+                model: "inworld-tts-1.5-mini",
+                voice,
+              },
+            },
+          };
+
+          const inworldResponse = await fetch(
+            "https://api.inworld.ai/v1/realtime/calls",
             {
               method: "POST",
               headers: {
-                Authorization: `Bearer ${openaiApiKey}`,
+                "Authorization": `Bearer ${inworldApiKey}`,
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify(sessionConfig),
+              body: JSON.stringify({
+                sdp: sdpOffer,
+                session: { ...sessionConfig, tools, tool_choice: "auto" },
+              }),
             },
           );
 
-          const responseText = await openaiResponse.text();
-          if (!openaiResponse.ok) {
+          if (!inworldResponse.ok) {
+            const detail = await inworldResponse.text();
             console.error(
-              "[voice/session] OpenAI sessions failed:",
-              openaiResponse.status,
-              responseText,
+              "[voice/session] Inworld SDP exchange failed:",
+              inworldResponse.status,
+              detail,
             );
             return errorResponse(
-              openaiResponse.status,
+              inworldResponse.status,
               "Failed to create voice session",
               origin,
             );
           }
 
-          const openaiData = JSON.parse(responseText);
+          const inworldData = await inworldResponse.json() as {
+            id: string;
+            sdp: string;
+            ice_servers?: Array<{ urls: string[]; username?: string; credential?: string }>;
+          };
+
           return jsonResponse(
             {
-              clientSecret:
-                openaiData.client_secret?.value ??
-                openaiData.client_secret,
-              expiresAt: openaiData.client_secret?.expires_at,
-              sessionId:
-                typeof openaiData.id === "string" ? openaiData.id : undefined,
+              sdpAnswer: inworldData.sdp,
+              callId: inworldData.id,
+              iceServers: inworldData.ice_servers,
               model,
               voice,
+              sessionConfig,
             },
             200,
             origin,
           );
         } catch (error) {
           console.error(
-            "[voice/session] Failed to contact OpenAI:",
+            "[voice/session] Failed to contact Inworld:",
             (error as Error).message,
           );
           return errorResponse(502, "Failed to create voice session", origin);

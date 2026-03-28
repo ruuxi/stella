@@ -1,10 +1,6 @@
 import type { AgentTool } from "../agent-core/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
-import {
-  localActivateSkill,
-  localNoResponse,
-  localWebFetch,
-} from "../tools/local-tool-overrides.js";
+import { localActivateSkill } from "../tools/local-tool-overrides.js";
 import {
   DEVICE_TOOL_NAMES,
   TOOL_DESCRIPTIONS,
@@ -14,6 +10,7 @@ import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { TOOL_IDS } from "../../../src/shared/contracts/agent-runtime.js";
 import { AnyToolArgsSchema, textFromUnknown } from "./shared.js";
+import { dispatchLocalTool } from "../tools/local-tool-dispatch.js";
 
 const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
@@ -27,12 +24,6 @@ const STELLA_LOCAL_TOOLS = [
   TOOL_IDS.SAVE_MEMORY,
   TOOL_IDS.RECALL_MEMORIES,
 ] as const;
-
-const getRecallQuery = (args: Record<string, unknown>): string =>
-  typeof args.query === "string" ? args.query : "";
-
-const getSaveMemoryText = (args: Record<string, unknown>): string =>
-  typeof args.content === "string" ? args.content : "";
 
 const formatToolResult = (
   toolResult: ToolResult,
@@ -98,36 +89,6 @@ export const createPiTools = (opts: {
     execute: async (toolCallId, params, signal) => {
       const args = (params as Record<string, unknown>) ?? {};
 
-      if (toolName === TOOL_IDS.WEB_SEARCH) {
-        const query = typeof args.query === "string" ? args.query : "";
-        if (!opts.webSearch) {
-          return {
-            content: [{ type: "text", text: "WebSearch is not available." }],
-            details: {},
-          };
-        }
-        const category =
-          typeof args.category === "string" ? args.category : undefined;
-        const result = await opts.webSearch(query, { category });
-        return {
-          content: [
-            {
-              type: "text",
-              text: result.text || "WebSearch returned no response.",
-            },
-          ],
-          details: result,
-        };
-      }
-
-      if (toolName === TOOL_IDS.WEB_FETCH) {
-        const url = typeof args.url === "string" ? args.url : "";
-        const prompt =
-          typeof args.prompt === "string" ? args.prompt : undefined;
-        const text = await localWebFetch({ url, prompt });
-        return { content: [{ type: "text", text }], details: { text } };
-      }
-
       if (toolName === TOOL_IDS.ACTIVATE_SKILL) {
         const skillId =
           (typeof args.skillId === "string" ? args.skillId : undefined) ??
@@ -140,44 +101,16 @@ export const createPiTools = (opts: {
         return { content: [{ type: "text", text }], details: { text } };
       }
 
-      if (toolName === TOOL_IDS.NO_RESPONSE) {
-        const text = await localNoResponse();
-        return { content: [{ type: "text", text }], details: { text } };
-      }
-
-      if (toolName === TOOL_IDS.SAVE_MEMORY) {
-        const content = getSaveMemoryText(args);
-        const tags = Array.isArray(args.tags)
-          ? args.tags.filter(
-              (entry): entry is string => typeof entry === "string",
-            )
-          : undefined;
-        opts.store.saveMemory({
-          conversationId: opts.conversationId,
-          content,
-          ...(tags && tags.length > 0 ? { tags } : {}),
-        });
-        const text = content.trim()
-          ? "Saved memory entry."
-          : "No memory content provided.";
-        return { content: [{ type: "text", text }], details: { ok: true } };
-      }
-
-      if (toolName === TOOL_IDS.RECALL_MEMORIES) {
-        const query = getRecallQuery(args);
-        const requestedLimit =
-          typeof args.limit === "number" ? args.limit : undefined;
-        const rows = opts.store.recallMemories({
-          query,
-          ...(requestedLimit ? { limit: requestedLimit } : {}),
-        });
-        const text =
-          rows.length > 0
-            ? rows
-                .map((row, index) => `${index + 1}. ${row.content}`)
-                .join("\n")
-            : "No matching memories found.";
-        return { content: [{ type: "text", text }], details: { rows } };
+      const localResult = await dispatchLocalTool(toolName, args, {
+        conversationId: opts.conversationId,
+        webSearch: opts.webSearch,
+        store: opts.store,
+      });
+      if (localResult.handled) {
+        return {
+          content: [{ type: "text", text: localResult.text }],
+          details: { text: localResult.text },
+        };
       }
 
       const context: ToolContext = {
