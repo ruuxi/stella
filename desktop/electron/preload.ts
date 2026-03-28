@@ -278,12 +278,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
       role: "user" | "assistant";
       text: string;
     }) => ipcRenderer.send("voice:persistTranscript", payload),
-    orchestratorChat: (payload: { conversationId: string; message: string }) =>
-      ipcRenderer.invoke("voice:orchestratorChat", payload) as Promise<string>,
-    webSearch: (payload: { query: string; category?: string }) =>
-      ipcRenderer.invoke("voice:webSearch", payload) as Promise<{
-        text: string;
-        results: Array<{ title: string; url: string; snippet: string }>;
+    executeTool: (payload: {
+      toolName: string;
+      toolArgs: Record<string, unknown>;
+      conversationId: string;
+      callId: string;
+    }) =>
+      ipcRenderer.invoke("voice:executeTool", payload) as Promise<{
+        result: string;
+        error?: string;
       }>,
     getRuntimeState: () =>
       ipcRenderer.invoke("voice:getRuntimeState") as Promise<{
