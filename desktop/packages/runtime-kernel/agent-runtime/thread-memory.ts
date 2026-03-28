@@ -7,7 +7,7 @@ import {
 } from "../thread-runtime.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { now } from "./shared.js";
-import { stripLeakedInternalToolTranscript } from "../internal-tool-transcript.js";
+import { sanitizeAssistantText } from "../internal-tool-transcript.js";
 
 export const buildRunThreadKey = ({
   conversationId,
@@ -40,7 +40,7 @@ export const buildHistorySource = (
       role: entry.role,
       content:
         entry.role === "assistant"
-          ? stripLeakedInternalToolTranscript(entry.content).trim()
+          ? sanitizeAssistantText(entry.content)
           : entry.content,
     }))
     .filter((entry) => entry.content.length > 0) ?? [];

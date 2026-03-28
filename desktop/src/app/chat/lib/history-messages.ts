@@ -1,7 +1,10 @@
 import { asObjectRecord } from "./object-record";
 import { stringifyBounded, truncateWithSuffix } from "./text-utils";
 import { estimateContextEventTokens } from "./context-window";
-import { stripLeakedInternalToolTranscript } from "@/shared/lib/internal-tool-transcript";
+import {
+  isInternalTaskToolName,
+  sanitizeAssistantText,
+} from "../../../../packages/runtime-kernel/internal-tool-transcript.js";
 
 /**
  * Generic context event shape — compatible with both Convex Doc<"events">
@@ -50,13 +53,6 @@ type PendingToolCall = {
   requestId?: string;
   toolName: string;
 };
-
-const INTERNAL_TASK_HISTORY_TOOL_NAMES = new Set([
-  "TaskCreate",
-  "TaskUpdate",
-  "TaskCancel",
-  "TaskOutput",
-]);
 
 const MAX_TEXT_CHARS = 30_000;
 const MAX_JSON_CHARS = 12_000;
@@ -117,7 +113,7 @@ const normalizeToolName = (
 };
 
 const shouldHideToolFromHistory = (toolName: string): boolean =>
-  INTERNAL_TASK_HISTORY_TOOL_NAMES.has(toolName);
+  isInternalTaskToolName(toolName);
 
 const isMicrocompactDisabled = (enabledOverride?: boolean): boolean => {
   if (enabledOverride === false) return true;
@@ -261,7 +257,7 @@ const formatTextEvent = (
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
   const isAssistant = event.type === "assistant_message";
   const effectiveText = isAssistant
-    ? stripLeakedInternalToolTranscript(contextText || text).trim()
+    ? sanitizeAssistantText(contextText || text)
     : contextText || text;
   if (!effectiveText) return null;
   const skipTs = !isAssistant &&
@@ -270,7 +266,7 @@ const formatTextEvent = (
   if (!isAssistant) tsState.prevUserTs = event.timestamp;
 
   if (contextText) {
-    const content = skipTs ? contextText.replace(TRAILING_TS_RE, "") : contextText;
+    const content = skipTs ? effectiveText.replace(TRAILING_TS_RE, "") : effectiveText;
     return {
       role: isAssistant ? "assistant" : "user",
       content: truncateWithSuffix(content, MAX_TEXT_CHARS),

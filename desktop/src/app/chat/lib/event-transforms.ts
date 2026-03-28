@@ -1,3 +1,5 @@
+import { sanitizeAssistantText } from "../../../../packages/runtime-kernel/internal-tool-transcript.js";
+
 export interface StepItem {
   id: string;
   tool: string;
@@ -103,7 +105,9 @@ export const getEventText = (event: EventRecord): string => {
   if (!event.payload || typeof event.payload !== "object") return "";
   const payload = event.payload as MessagePayload;
   if (typeof payload.text === "string" && payload.text.trim().length > 0)
-    return payload.text;
+    return event.type === "assistant_message"
+      ? sanitizeAssistantText(payload.text)
+      : payload.text;
   return "";
 };
 

@@ -13,7 +13,7 @@ import {
 import type { RuntimeRunCallbacks } from "./types.js";
 import {
   containsLeakedInternalToolTranscript,
-  stripLeakedInternalToolTranscript,
+  sanitizeAssistantText,
 } from "../internal-tool-transcript.js";
 
 const MAX_INTERNAL_TOOL_TRANSCRIPT_RECOVERY_ATTEMPTS = 2;
@@ -93,7 +93,7 @@ export const executeRuntimeAgentPrompt = async (args: {
     }
 
     if (containsLeakedInternalToolTranscript(completion.finalText)) {
-      const cleaned = stripLeakedInternalToolTranscript(completion.finalText).trim();
+      const cleaned = sanitizeAssistantText(completion.finalText);
       return {
         finalText: cleaned || INTERNAL_TOOL_TRANSCRIPT_FALLBACK_REPLY,
       };
@@ -101,7 +101,7 @@ export const executeRuntimeAgentPrompt = async (args: {
 
     return {
       ...completion,
-      finalText: stripLeakedInternalToolTranscript(completion.finalText).trim(),
+      finalText: sanitizeAssistantText(completion.finalText),
     };
   } finally {
     try {
