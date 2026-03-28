@@ -35,7 +35,6 @@ export const initializeWakeWord = async (
 
   const shouldEnableWakeWord = () =>
     deps.isAppReady() &&
-    !deps.uiStateService.state.isVoiceActive &&
     !deps.uiStateService.state.isVoiceRtcActive;
 
   const publishEnabledState = (enabled: boolean) => {

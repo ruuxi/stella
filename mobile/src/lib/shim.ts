@@ -267,9 +267,6 @@ export function generateShimScript(
     // ── Voice ───────────────────────────────────────────────────────────
 
     voice: {
-      submitTranscript: function(t) { fire('voice:transcript', t); },
-      setShortcut: function() { return resolved({ ok: false, requestedShortcut: '', activeShortcut: '', error: 'Not supported on mobile' }); },
-      onTranscript: function(cb) { return subscribe('voice:transcript', cb); },
       persistTranscript: function(p) { fire('voice:persistTranscript', p); },
       orchestratorChat: function(p) { return invoke('voice:orchestratorChat', p); },
       webSearch: function(p) { return invoke('voice:webSearch', p); },

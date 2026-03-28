@@ -17,7 +17,6 @@ const defaultState: UiState = {
   window: 'full',
   view: 'chat',
   conversationId: null,
-  isVoiceActive: false,
   isVoiceRtcActive: false,
 }
 

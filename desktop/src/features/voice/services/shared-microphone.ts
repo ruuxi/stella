@@ -7,7 +7,6 @@ export const MIC_ENABLED_KEY = "stella-mic-enabled";
 
 export type SharedMicrophoneUseCase =
   | "voice-rtc"
-  | "speech-recording"
   | "wake-word";
 
 export interface SharedMicrophoneAcquireOptions {

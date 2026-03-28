@@ -7,7 +7,6 @@ describe("http_routes module structure", () => {
     { file: "convex/http_routes/music.ts", export: "registerMusicRoutes" },
     { file: "convex/http_routes/skills.ts", export: "registerSkillRoutes" },
     { file: "convex/http_routes/synthesis.ts", export: "registerSynthesisRoutes" },
-    { file: "convex/http_routes/speech_to_text.ts", export: "registerSpeechToTextRoutes" },
     { file: "convex/http_routes/voice.ts", export: "registerVoiceRoutes" },
   ];
 

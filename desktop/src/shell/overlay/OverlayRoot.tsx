@@ -290,7 +290,7 @@ function useOverlayIPC(
     if (!api) return;
 
     const cleanupShow = api.overlay.onShowVoice?.(
-      (data: { x: number; y: number; mode: "stt" | "realtime" }) => {
+      (data: { x: number; y: number; mode: "realtime" }) => {
         dispatch({ type: "voice:show", position: { x: data.x, y: data.y } });
       },
     );
@@ -572,10 +572,6 @@ export function OverlayRoot() {
     dispatch({ type: "mini:preview", visible });
   }, []);
 
-  const handleVoiceTranscript = useCallback((transcript: string) => {
-    window.electronAPI?.voice.submitTranscript?.(transcript);
-  }, []);
-
   return (
     <div
       className="overlay-root"
@@ -633,7 +629,6 @@ export function OverlayRoot() {
       </div>
 
       <VoiceOverlay
-        onTranscript={handleVoiceTranscript}
         visible={state.voiceVisible && Boolean(state.voicePosition)}
         style={
           state.voiceVisible && state.voicePosition

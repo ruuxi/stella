@@ -690,29 +690,6 @@ export const OnboardingStep1 = ({
       localStorage.setItem(PREFERRED_MIC_KEY, selectedMicId);
     }
 
-    const finalShortcut = "CommandOrControl+Shift+V";
-    localStorage.setItem("stella-voice-shortcut", finalShortcut);
-    void window.electronAPI?.voice
-      .setShortcut?.(finalShortcut)
-      .then((result) => {
-        if (!result || result.activeShortcut === finalShortcut) {
-          return;
-        }
-
-        if (result.activeShortcut) {
-          localStorage.setItem(
-            "stella-voice-shortcut",
-            result.activeShortcut,
-          );
-          return;
-        }
-
-        localStorage.removeItem("stella-voice-shortcut");
-      })
-      .catch(() => {
-        // The default shortcut is already the active fallback.
-      });
-
     nextSplitStep();
   }, [nextSplitStep, selectedMicId, voicePermissionGranted]);
 

@@ -32,8 +32,8 @@ export function OnboardingVoicePhase({
     <div className="onboarding-step-content">
       <div className="onboarding-step-label">Voice Interaction</div>
       <p className="onboarding-step-desc">
-        I can listen to your voice and instantly transcribe it for you. When
-        you're done speaking, your text will appear right where you need it.
+        Talk to me directly using voice conversations. Just activate the
+        shortcut and start speaking naturally.
       </p>
 
       <div className="onboarding-voice-demo onboarding-pill-stagger">
@@ -123,15 +123,15 @@ export function OnboardingVoicePhase({
         Voice Shortcut
       </div>
       <p className="onboarding-step-desc">
-        Press this shortcut anywhere to start or stop voice dictation. (You can
-        also use the Voice button in the Radial Dial).
+        Press this shortcut anywhere to start or stop a voice conversation.
+        (You can also use the Voice button in the Radial Dial).
       </p>
       <div className="onboarding-shortcut-config onboarding-pill-stagger">
         <div
           className="onboarding-pill"
           style={{ cursor: "default", opacity: 0.8 }}
         >
-          {platform === "darwin" ? "Cmd+Shift+V" : "Ctrl+Shift+V"}
+          {platform === "darwin" ? "Cmd+Shift+D" : "Ctrl+Shift+D"}
         </div>
       </div>
 

@@ -12,23 +12,6 @@ const wait = (ms: number) =>
     window.setTimeout(resolve, ms)
   })
 
-const restoreVoiceShortcut = async () => {
-  const savedShortcut = localStorage.getItem('stella-voice-shortcut')
-  if (!savedShortcut) return
-
-  const result = await window.electronAPI?.voice.setShortcut(savedShortcut)
-  if (!result || result.activeShortcut === savedShortcut) {
-    return
-  }
-
-  if (result.activeShortcut) {
-    localStorage.setItem('stella-voice-shortcut', result.activeShortcut)
-    return
-  }
-
-  localStorage.removeItem('stella-voice-shortcut')
-}
-
 export const useConversationBootstrap = () => {
   const { setConversationId } = useUiState()
   const {
@@ -49,7 +32,6 @@ export const useConversationBootstrap = () => {
       const settleRuntime = () => Promise.allSettled([hostPromise, devicePromise])
       const settleRuntimeAndRestoreShortcut = async () => {
         await settleRuntime()
-        await restoreVoiceShortcut()
       }
       const startedAt = Date.now()
 

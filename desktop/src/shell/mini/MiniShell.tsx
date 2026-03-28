@@ -76,20 +76,6 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
     return () => onPreviewVisibilityChange?.(false);
   }, [onPreviewVisibilityChange]);
 
-  const handleVoiceTranscript = useCallback(
-    (transcript: string) => {
-      setMessage((prev) => (prev ? `${prev} ${transcript}` : transcript));
-    },
-    [setMessage],
-  );
-
-  useEffect(() => {
-    if (!shellVisible) {
-      return;
-    }
-    return window.electronAPI?.voice.onTranscript?.(handleVoiceTranscript);
-  }, [handleVoiceTranscript, shellVisible]);
-
   const windowTitle = chatContext?.window
     ? (chatContext.window.title || chatContext.window.app || null)
     : null;

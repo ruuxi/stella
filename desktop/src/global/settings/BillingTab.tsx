@@ -62,7 +62,7 @@ const PLAN_DESCRIPTIONS: Record<BillingPlan, { tagline: string; features: string
   },
   go: {
     tagline: "For everyday personal use",
-    features: ["More conversations per day", "Browser automation", "Voice & dictation"],
+    features: ["More conversations per day", "Browser automation", "Voice conversations"],
   },
   pro: {
     tagline: "For power users",

@@ -71,15 +71,11 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
       return options.uiState;
     const {
       window: nextWindow,
-      isVoiceActive,
       isVoiceRtcActive,
       ...rest
     } = partial;
     if (nextWindow === "mini" || nextWindow === "full") {
       options.windowManager.showWindow(nextWindow);
-    }
-    if (isVoiceActive !== undefined) {
-      options.uiState.isVoiceActive = isVoiceActive;
     }
     if (isVoiceRtcActive !== undefined) {
       options.uiState.isVoiceRtcActive = isVoiceRtcActive;
@@ -87,12 +83,12 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     if (Object.keys(rest).length > 0) {
       options.updateUiState(rest);
     }
-    if (isVoiceActive !== undefined || isVoiceRtcActive !== undefined) {
+    if (isVoiceRtcActive !== undefined) {
       options.syncVoiceOverlay();
       options.broadcastUiState();
       options.syncWakeWordState();
       if (
-        (isVoiceActive === false || isVoiceRtcActive === false) &&
+        isVoiceRtcActive === false &&
         options.getResumeWakeWordCapture()
       ) {
         options.scheduleResumeWakeWord();
