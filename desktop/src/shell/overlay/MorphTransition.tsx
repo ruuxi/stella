@@ -63,61 +63,53 @@ uniform vec3 u_color3;
 uniform vec3 u_color4;
 varying vec2 v_uv;
 
-vec4 sampleWithChroma(sampler2D tex, vec2 uv, vec2 chromDir, float chromatic) {
-  float r = texture2D(tex, clamp(uv + chromDir * chromatic, 0.0, 1.0)).r;
-  float g = texture2D(tex, clamp(uv, 0.0, 1.0)).g;
-  float b = texture2D(tex, clamp(uv - chromDir * chromatic, 0.0, 1.0)).b;
-  float a = texture2D(tex, clamp(uv, 0.0, 1.0)).a;
-  return vec4(r, g, b, a);
-}
-
 void main() {
   vec2 d = v_uv - u_center;
   d.x *= u_aspect;
   float dist = length(d);
 
-  float rippleFreq = 6.0;
-  float rippleAmp = u_strength * 0.012;
-  float ripple = sin(dist * rippleFreq - u_time * 4.0) * rippleAmp;
-  ripple *= smoothstep(0.0, 0.35, dist);
-  ripple *= (1.0 - smoothstep(0.6, 1.0, dist));
+  // Concentric rings expanding outward from center
+  float phase = dist * 28.0 - u_time * 6.0;
+  float ripple = sin(phase);
 
-  float warpAmp = u_strength * 0.02;
-  float warp = sin(dist * 3.0 + u_time * 2.0) * warpAmp * smoothstep(0.0, 0.3, dist);
+  // Soft second harmonic for texture — same speed so rings stay concentric
+  ripple += sin(phase * 2.0 + 0.5) * 0.3;
 
-  vec2 offset = normalize(d + vec2(0.001)) * (ripple + warp);
-  offset.x /= u_aspect;
-  vec2 uv = v_uv + offset;
+  // Damping: rings lose energy as they travel outward
+  float damping = exp(-dist * 4.0);
+  float envelope = smoothstep(0.0, 0.06, dist) * (1.0 - smoothstep(0.7, 1.0, dist));
+  ripple *= envelope * damping;
 
-  float chromatic = u_strength * 0.003;
-  vec2 chromDir = normalize(d + vec2(0.001));
-  chromDir.x /= u_aspect;
+  // Wave slope drives chromatic split direction
+  float dRipple = cos(phase) * 28.0 + cos(phase * 2.0 + 0.5) * 0.3 * 56.0;
+  dRipple *= envelope;
 
-  vec4 col1 = sampleWithChroma(u_tex, uv, chromDir, chromatic);
-  vec4 col2 = sampleWithChroma(u_tex2, uv, chromDir, chromatic);
-  vec4 col = mix(col1, col2, u_mix);
+  // Gentle UV displacement
+  float displaceAmp = u_strength * 0.002;
+  vec2 radial = d / (dist + 0.0001);
+  radial.x /= u_aspect;
+  vec2 uv = v_uv + radial * ripple * displaceAmp;
 
-  // Edge detection for chromatic color tinting
-  float dx = 0.002 * u_strength;
-  float lumCenter = dot(col.rgb, vec3(0.299, 0.587, 0.114));
-  float lumRight = dot(texture2D(u_tex, clamp(uv + vec2(dx, 0.0), 0.0, 1.0)).rgb, vec3(0.299, 0.587, 0.114));
-  float lumUp = dot(texture2D(u_tex, clamp(uv + vec2(0.0, dx), 0.0, 1.0)).rgb, vec3(0.299, 0.587, 0.114));
-  float edge = length(vec2(lumRight - lumCenter, lumUp - lumCenter));
+  // Chromatic aberration — 3-way split along radial direction
+  float chromAmt = u_strength * 0.011;
+  float slopeNorm = sign(dRipple) * min(abs(dRipple) / 30.0, 1.0);
+  float chromBase = chromAmt * (0.5 + 0.5 * abs(slopeNorm));
 
-  // 4-color gradient rotating around center
-  float angle = atan(d.y, d.x);
-  float colorPhase = fract(angle / 6.2832 + u_time * 0.3) * 4.0;
+  vec2 rOff = radial * chromBase;
+  vec2 bOff = radial * -chromBase;
+  vec2 gOff = radial * chromBase * 0.3 * slopeNorm;
 
-  vec3 tint = mix(u_color1, u_color2, smoothstep(0.0, 1.0, colorPhase));
-  tint = mix(tint, u_color3, smoothstep(1.0, 2.0, colorPhase));
-  tint = mix(tint, u_color4, smoothstep(2.0, 3.0, colorPhase));
-  tint = mix(tint, u_color1, smoothstep(3.0, 4.0, colorPhase));
+  float r1 = texture2D(u_tex,  clamp(uv + rOff, 0.0, 1.0)).r;
+  float g1 = texture2D(u_tex,  clamp(uv + gOff, 0.0, 1.0)).g;
+  float b1 = texture2D(u_tex,  clamp(uv + bOff, 0.0, 1.0)).b;
 
-  // Colored outlines at edges where chromatic split is visible
-  float colorMask = smoothstep(0.02, 0.08, edge) * u_strength * 0.35;
-  col.rgb = mix(col.rgb, tint, colorMask);
+  float r2 = texture2D(u_tex2, clamp(uv + rOff, 0.0, 1.0)).r;
+  float g2 = texture2D(u_tex2, clamp(uv + gOff, 0.0, 1.0)).g;
+  float b2 = texture2D(u_tex2, clamp(uv + bOff, 0.0, 1.0)).b;
 
-  gl_FragColor = vec4(col.rgb, col.a * u_alpha);
+  vec3 col = mix(vec3(r1, g1, b1), vec3(r2, g2, b2), u_mix);
+
+  gl_FragColor = vec4(col, u_alpha);
 }`;
 
 type GLContext = {
