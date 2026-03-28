@@ -13,6 +13,7 @@ import {
   type MessagePayload,
 } from "@/app/chat/lib/event-transforms";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
+import { stripLeakedInternalToolTranscript } from "@/shared/lib/internal-tool-transcript";
 
 export type TurnViewModel = {
   id: string;
@@ -109,7 +110,9 @@ const isChannelMessageEvent = (event: EventRecord): boolean => {
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const getDisplayMessageText = (event: EventRecord): string => {
-  const text = getEventText(event).replace(TRAILING_TIME_TAG_RE, "");
+  const text = stripLeakedInternalToolTranscript(
+    getEventText(event),
+  ).replace(TRAILING_TIME_TAG_RE, "");
   if (!isChannelMessageEvent(event)) {
     return text;
   }

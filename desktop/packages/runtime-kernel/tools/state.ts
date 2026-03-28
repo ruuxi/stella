@@ -23,32 +23,50 @@ const toOptionalString = (value: unknown): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
-const formatTaskSnapshot = (snapshot: TaskToolSnapshot): string => {
+const buildTaskSnapshotResult = (snapshot: TaskToolSnapshot) => {
   const duration = (snapshot.completedAt ?? Date.now()) - snapshot.startedAt;
-  const messageSection =
-    snapshot.messages && snapshot.messages.length > 0
-      ? `\n\nMessages:\n${snapshot.messages
-          .map((entry) => `- [${entry.from}] ${truncate(entry.text, 240)}`)
-          .join("\n")}`
-      : "";
+  const messages = snapshot.messages?.map((entry) => ({
+    from: entry.from,
+    text: truncate(entry.text, 240),
+    timestamp: entry.timestamp,
+  }));
   if (snapshot.status === "completed") {
-    return `Task completed.\nDuration: ${duration}ms\n\n--- Result ---\n${truncate(snapshot.result ?? "")}${messageSection}`;
+    return {
+      thread_id: snapshot.id,
+      status: snapshot.status,
+      description: snapshot.description,
+      duration_ms: duration,
+      result: truncate(snapshot.result ?? ""),
+      ...(messages && messages.length > 0 ? { messages } : {}),
+    };
   }
   if (snapshot.status === "error" || snapshot.status === "canceled") {
-    const label = snapshot.status === "canceled" ? "Task canceled." : "Task failed.";
-    return `${label}\nDuration: ${duration}ms\n\n--- Error ---\n${truncate(snapshot.error ?? "")}${messageSection}`;
+    return {
+      thread_id: snapshot.id,
+      status: snapshot.status,
+      description: snapshot.description,
+      duration_ms: duration,
+      error: truncate(snapshot.error ?? ""),
+      ...(messages && messages.length > 0 ? { messages } : {}),
+    };
   }
   const elapsed = Date.now() - snapshot.startedAt;
-  const runningHeader =
-    "Task is running in the background.\n" +
-    `Thread ID: ${snapshot.id}\n` +
-    `Elapsed: ${elapsed}ms\n` +
-    "You will receive a follow-up message when it completes or fails.";
-  if (snapshot.recentActivity && snapshot.recentActivity.length > 0) {
-    const activity = snapshot.recentActivity.map((line) => `- ${truncate(line, 300)}`).join("\n");
-    return `${runningHeader}\n\nRecent activity:\n${activity}${messageSection}`;
-  }
-  return `${runningHeader}${messageSection}`;
+  return {
+    thread_id: snapshot.id,
+    status: snapshot.status,
+    description: snapshot.description,
+    elapsed_ms: elapsed,
+    background: true,
+    follow_up_on_completion: true,
+    ...(snapshot.recentActivity && snapshot.recentActivity.length > 0
+      ? {
+          recent_activity: snapshot.recentActivity.map((line) =>
+            truncate(line, 300),
+          ),
+        }
+      : {}),
+    ...(messages && messages.length > 0 ? { messages } : {}),
+  };
 };
 
 export const createStateContext = (
@@ -88,7 +106,11 @@ export const handleTaskUpdate = async (
     return { error: `Thread not found: ${threadId}` };
   }
   return {
-    result: `Task update delivered to ${threadId}.`,
+    result: {
+      thread_id: threadId,
+      status: "updated",
+      delivered: true,
+    },
   };
 };
 
@@ -107,14 +129,26 @@ export const handleTask = async (
       if (!canceled.canceled) {
         return { error: `Thread not found: ${explicitThreadId}` };
       }
-      return { result: `Task canceled.\nThread ID: ${explicitThreadId}` };
+      return {
+        result: {
+          thread_id: explicitThreadId,
+          status: "canceled",
+          canceled: true,
+        },
+      };
     }
     const localRecord = ctx.tasks.get(explicitThreadId);
     if (!localRecord) return { error: `Thread not found: ${explicitThreadId}` };
     localRecord.status = "error";
     localRecord.error = "Canceled";
     localRecord.completedAt = Date.now();
-    return { result: `Task canceled.\nThread ID: ${explicitThreadId}` };
+    return {
+      result: {
+        thread_id: explicitThreadId,
+        status: "canceled",
+        canceled: true,
+      },
+    };
   }
 
   const description = toOptionalString(args.description) ?? "Task";
@@ -170,13 +204,13 @@ export const handleTask = async (
       storageMode,
     });
     return {
-      result: [
-        "Task is now running in the background.",
-        `Thread ID: ${created.threadId}`,
-        "Elapsed: 0ms",
-        "You will receive a follow-up message when it completes or fails.",
-        "Do not create another task for the same work. You may gently respond to the user or call NoResponse.",
-      ].join("\n"),
+      result: {
+        thread_id: created.threadId,
+        status: "running",
+        background: true,
+        elapsed_ms: 0,
+        follow_up_on_completion: true,
+      },
     };
   }
 
@@ -191,13 +225,13 @@ export const handleTask = async (
   };
   ctx.tasks.set(id, record);
   return {
-    result: [
-      "Task is now running in the background.",
-      `Thread ID: ${id}`,
-      "Elapsed: 0ms",
-      "You will receive a follow-up message when it completes or fails.",
-      "Do not create another task for the same work. You may gently respond to the user or call NoResponse.",
-    ].join("\n"),
+    result: {
+      thread_id: id,
+      status: "running",
+      background: true,
+      elapsed_ms: 0,
+      follow_up_on_completion: true,
+    },
   };
 };
 
@@ -216,7 +250,7 @@ export const handleTaskOutput = async (
     if (!snapshot) {
       return { error: `Thread not found: ${threadId}` };
     }
-    return { result: formatTaskSnapshot(snapshot) };
+    return { result: buildTaskSnapshotResult(snapshot) };
   }
 
   const record = ctx.tasks.get(threadId);
@@ -226,22 +260,33 @@ export const handleTaskOutput = async (
   if (record.status === "completed") {
     const duration = (record.completedAt ?? Date.now()) - record.startedAt;
     return {
-      result: `Task completed.\nDuration: ${duration}ms\n\n--- Result ---\n${truncate(record.result ?? "")}`,
+      result: {
+        thread_id: threadId,
+        status: "completed",
+        duration_ms: duration,
+        result: truncate(record.result ?? ""),
+      },
     };
   }
   if (record.status === "error") {
     const duration = (record.completedAt ?? Date.now()) - record.startedAt;
     return {
-      result: `Task failed.\nDuration: ${duration}ms\n\n--- Error ---\n${truncate(record.error ?? "")}`,
+      result: {
+        thread_id: threadId,
+        status: "error",
+        duration_ms: duration,
+        error: truncate(record.error ?? ""),
+      },
     };
   }
   const elapsed = Date.now() - record.startedAt;
   return {
-    result: [
-      "Task is running in the background.",
-      `Thread ID: ${threadId}`,
-      `Elapsed: ${elapsed}ms`,
-      "You will receive a follow-up message when it completes or fails.",
-    ].join("\n"),
+    result: {
+      thread_id: threadId,
+      status: "running",
+      background: true,
+      elapsed_ms: elapsed,
+      follow_up_on_completion: true,
+    },
   };
 };

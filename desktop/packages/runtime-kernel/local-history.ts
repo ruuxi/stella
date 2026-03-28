@@ -1,4 +1,5 @@
 import { formatTimestampForHistory, TEN_MINUTES_MS } from "./message-timestamp.js";
+import { stripLeakedInternalToolTranscript } from "./internal-tool-transcript.js";
 
 export type LocalContextEvent = {
   _id: string;
@@ -72,6 +73,13 @@ type PendingToolCall = {
   requestId?: string;
   toolName: string;
 };
+
+const INTERNAL_TASK_HISTORY_TOOL_NAMES = new Set([
+  "TaskCreate",
+  "TaskUpdate",
+  "TaskCancel",
+  "TaskOutput",
+]);
 
 type TimestampState = {
   prevDate?: string;
@@ -194,6 +202,53 @@ const normalizeToolName = (
 ): string => {
   const payloadToolName = typeof payload.toolName === "string" ? payload.toolName.trim() : "";
   return payloadToolName || fallbackToolName || "unknown_tool";
+};
+
+const shouldHideToolFromHistory = (toolName: string): boolean =>
+  INTERNAL_TASK_HISTORY_TOOL_NAMES.has(toolName);
+
+const formatTaskEvent = (
+  eventType: string,
+  payload: Record<string, unknown>,
+): LocalHistoryMessage | null => {
+  const taskId = typeof payload.taskId === "string" ? payload.taskId : undefined;
+  switch (eventType) {
+    case "task_started": {
+      const description =
+        typeof payload.description === "string" ? payload.description : "Task started";
+      const agentType =
+        typeof payload.agentType === "string" ? payload.agentType : "unknown";
+      const lines = [`[Task started] ${description} (agent: ${agentType})`];
+      if (taskId) lines.push(`thread_id: ${taskId}`);
+      return { role: "user", content: lines.join("\n") };
+    }
+    case "task_completed": {
+      const lines = ["[Task completed]"];
+      if (taskId) lines.push(`thread_id: ${taskId}`);
+      if (payload.result !== undefined) {
+        lines.push(`result: ${stringifyBounded(payload.result, MAX_JSON_CHARS)}`);
+      }
+      return { role: "user", content: lines.join("\n") };
+    }
+    case "task_failed": {
+      const lines = ["[Task failed]"];
+      if (taskId) lines.push(`thread_id: ${taskId}`);
+      if (payload.error !== undefined) {
+        lines.push(`error: ${stringifyBounded(payload.error, MAX_TEXT_CHARS)}`);
+      }
+      return { role: "user", content: lines.join("\n") };
+    }
+    case "task_canceled": {
+      const lines = ["[Task canceled]"];
+      if (taskId) lines.push(`thread_id: ${taskId}`);
+      if (payload.error !== undefined) {
+        lines.push(`error: ${stringifyBounded(payload.error, MAX_TEXT_CHARS)}`);
+      }
+      return { role: "user", content: lines.join("\n") };
+    }
+    default:
+      return null;
+  }
 };
 
 const microcompactTrimmedMessage = () =>
@@ -444,8 +499,11 @@ const formatTextEvent = (
 ): LocalHistoryMessage | null => {
   const payload = asObject(event.payload);
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
-  if (!text) return null;
   const isAssistant = event.type === "assistant_message";
+  const effectiveText = isAssistant
+    ? stripLeakedInternalToolTranscript(text).trim()
+    : text;
+  if (!effectiveText) return null;
   const skipTs = !isAssistant &&
     tsState.prevUserTs != null &&
     event.timestamp - tsState.prevUserTs < TEN_MINUTES_MS;
@@ -456,7 +514,7 @@ const formatTextEvent = (
     tsState.timezone,
   );
   tsState.prevDate = dateStr;
-  const body = truncateWithSuffix(text, MAX_TEXT_CHARS);
+  const body = truncateWithSuffix(effectiveText, MAX_TEXT_CHARS);
   if (isAssistant) {
     return { role: "assistant", content: body };
   }
@@ -537,9 +595,13 @@ const eventsToHistoryMessages = (
       continue;
     }
     if (event.type === "tool_request") {
-      out.push(formatToolRequest(event));
       const payload = asObject(event.payload);
-      const pending: PendingToolCall = { toolName: normalizeToolName(payload) };
+      const toolName = normalizeToolName(payload);
+      if (shouldHideToolFromHistory(toolName)) {
+        continue;
+      }
+      out.push(formatToolRequest(event));
+      const pending: PendingToolCall = { toolName };
       const requestId = normalizeRequestId(event);
       if (requestId) {
         pending.requestId = requestId;
@@ -550,6 +612,11 @@ const eventsToHistoryMessages = (
       continue;
     }
     if (event.type === "tool_result") {
+      const payload = asObject(event.payload);
+      const toolName = normalizeToolName(payload);
+      if (shouldHideToolFromHistory(toolName)) {
+        continue;
+      }
       let fallbackName: string | undefined;
       const requestId = normalizeRequestId(event);
       if (requestId) {
@@ -567,6 +634,9 @@ const eventsToHistoryMessages = (
       if (message) out.push(message);
       continue;
     }
+
+    const taskMessage = formatTaskEvent(event.type, asObject(event.payload));
+    if (taskMessage) out.push(taskMessage);
   }
 
   if (pendingById.size > 0 || pendingWithoutId.length > 0) {

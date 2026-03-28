@@ -10,6 +10,7 @@ import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
 import { useDepseudonymize } from "@/app/chat/hooks/use-depseudonymize";
 import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-started-at";
 import { isOrchestratorChatMessagePayload } from "@/app/chat/emotes/message-source";
+import { stripLeakedInternalToolTranscript } from "@/shared/lib/internal-tool-transcript";
 import {
   type TurnViewModel,
   getDisplayMessageText,
@@ -173,7 +174,7 @@ export function useTurnViewModels(opts: {
   const processedStreamingText = useMemo(
     () =>
       streamingText
-        ? depseudonymize(streamingText)
+        ? depseudonymize(stripLeakedInternalToolTranscript(streamingText))
         : streamingText,
     [streamingText, depseudonymize],
   );

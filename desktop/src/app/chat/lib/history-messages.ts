@@ -1,6 +1,7 @@
 import { asObjectRecord } from "./object-record";
 import { stringifyBounded, truncateWithSuffix } from "./text-utils";
 import { estimateContextEventTokens } from "./context-window";
+import { stripLeakedInternalToolTranscript } from "@/shared/lib/internal-tool-transcript";
 
 /**
  * Generic context event shape — compatible with both Convex Doc<"events">
@@ -49,6 +50,13 @@ type PendingToolCall = {
   requestId?: string;
   toolName: string;
 };
+
+const INTERNAL_TASK_HISTORY_TOOL_NAMES = new Set([
+  "TaskCreate",
+  "TaskUpdate",
+  "TaskCancel",
+  "TaskOutput",
+]);
 
 const MAX_TEXT_CHARS = 30_000;
 const MAX_JSON_CHARS = 12_000;
@@ -107,6 +115,9 @@ const normalizeToolName = (
     typeof payload.toolName === "string" ? payload.toolName.trim() : "";
   return payloadToolName || fallbackToolName || "unknown_tool";
 };
+
+const shouldHideToolFromHistory = (toolName: string): boolean =>
+  INTERNAL_TASK_HISTORY_TOOL_NAMES.has(toolName);
 
 const isMicrocompactDisabled = (enabledOverride?: boolean): boolean => {
   if (enabledOverride === false) return true;
@@ -248,10 +259,11 @@ const formatTextEvent = (
   const contextText =
     typeof payload.contextText === "string" ? payload.contextText.trim() : "";
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
-  const effectiveText = contextText || text;
-  if (!effectiveText) return null;
-
   const isAssistant = event.type === "assistant_message";
+  const effectiveText = isAssistant
+    ? stripLeakedInternalToolTranscript(contextText || text).trim()
+    : contextText || text;
+  if (!effectiveText) return null;
   const skipTs = !isAssistant &&
     tsState.prevUserTs != null &&
     event.timestamp - tsState.prevUserTs < TEN_MINUTES_MS;
@@ -602,10 +614,13 @@ export const eventsToHistoryMessages = (
     }
 
     if (event.type === "tool_request") {
-      const toolMessage = formatToolRequest(event);
-      out.push(toolMessage);
       const payload = asObjectRecord(event.payload);
       const toolName = normalizeToolName(payload);
+      if (shouldHideToolFromHistory(toolName)) {
+        continue;
+      }
+      const toolMessage = formatToolRequest(event);
+      out.push(toolMessage);
       const pending: PendingToolCall = { toolName };
       const requestId = normalizeRequestId(event);
       if (requestId) {
@@ -618,6 +633,11 @@ export const eventsToHistoryMessages = (
     }
 
     if (event.type === "tool_result") {
+      const payload = asObjectRecord(event.payload);
+      const toolName = normalizeToolName(payload);
+      if (shouldHideToolFromHistory(toolName)) {
+        continue;
+      }
       let fallbackName: string | undefined;
       const requestId = normalizeRequestId(event);
       if (requestId) {
