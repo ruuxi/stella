@@ -6,7 +6,6 @@ import {
   type CSSProperties,
 } from "react";
 import { useUiState } from "@/context/ui-state";
-import { useVoiceRecording } from "@/features/voice/hooks/use-voice-recording";
 import { useRealtimeVoice } from "@/features/voice/hooks/use-realtime-voice";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import {
@@ -16,13 +15,11 @@ import {
 import "./voice-overlay.css";
 
 interface VoiceOverlayProps {
-  onTranscript: (text: string) => void;
   visible: boolean;
   style?: CSSProperties;
 }
 
 export function VoiceOverlay({
-  onTranscript,
   visible,
   style,
 }: VoiceOverlayProps) {
@@ -37,12 +34,6 @@ export function VoiceOverlay({
   const isActiveWindow =
     windowType === "overlay" || state.window === windowType;
 
-  // STT mode
-  const { analyserRef: sttAnalyserRef, isRecording } = useVoiceRecording({
-    isActive: isActiveWindow && state.isVoiceActive,
-    onTranscript,
-  });
-
   // RTC mode
   const {
     micLevel: rtcMicLevel,
@@ -53,9 +44,9 @@ export function VoiceOverlay({
   } = useRealtimeVoice();
 
   const isAnyVoiceActive =
-    isActiveWindow && (state.isVoiceActive || state.isVoiceRtcActive);
+    isActiveWindow && state.isVoiceRtcActive;
   const shouldDisplayOverlay = isAnyVoiceActive || (visible && isActiveWindow);
-  const isAudioReady = isRecording || isConnected;
+  const isAudioReady = isConnected;
 
   /* eslint-disable react-hooks/refs -- retainedStyleRef caches latest style prop; always re-derived from props so render-time access is safe */
   if (style) {
@@ -65,19 +56,14 @@ export function VoiceOverlay({
   }
   /* eslint-enable react-hooks/refs */
 
-  // Voice mode uses server-reported speaking state for RTC (more reliable
-  // than energy thresholds which decay slowly due to analyser smoothing).
   let voiceMode: VoiceMode = "idle";
-  const micAnalyserRef = sttAnalyserRef;
   let micLevel: number | undefined;
   let outputLevel: number | undefined;
 
   if (isAudioReady) {
-    voiceMode = state.isVoiceRtcActive && isSpeaking ? "speaking" : "listening";
-    if (state.isVoiceRtcActive) {
-      micLevel = rtcMicLevel;
-      outputLevel = rtcOutputLevel;
-    }
+    voiceMode = isSpeaking ? "speaking" : "listening";
+    micLevel = rtcMicLevel;
+    outputLevel = rtcOutputLevel;
   }
 
   // Show/hide with exit animation
@@ -130,12 +116,8 @@ export function VoiceOverlay({
   }, []);
 
   const handleClick = useCallback(() => {
-    if (state.isVoiceRtcActive) {
-      updateState({ isVoiceRtcActive: false });
-    } else {
-      updateState({ isVoiceActive: false });
-    }
-  }, [state.isVoiceRtcActive, updateState]);
+    updateState({ isVoiceRtcActive: false });
+  }, [updateState]);
 
   if (!showOverlay) return null;
 
@@ -154,7 +136,6 @@ export function VoiceOverlay({
           maxDpr={2}
           voiceMode={voiceMode}
           isUserSpeaking={isUserSpeaking}
-          analyserRef={micAnalyserRef}
           micLevel={micLevel}
           outputLevel={outputLevel}
         />

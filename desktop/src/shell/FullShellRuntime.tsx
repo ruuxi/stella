@@ -14,7 +14,6 @@ import {
 } from "@/shared/lib/stella-send-message";
 import { FloatingOrb, type FloatingOrbHandle } from "./FloatingOrb";
 import { useFullShellChat } from "./use-full-shell-chat";
-import { useFullShellVoiceTranscript } from "./use-full-shell-voice-transcript";
 
 type PendingAskStellaRequest = {
   id: number;
@@ -49,12 +48,6 @@ export const FullShellRuntime = ({
     activeConversationId,
     activeView,
     isDev: import.meta.env.DEV,
-  });
-
-  useFullShellVoiceTranscript({
-    activeView,
-    orbRef,
-    setMessage: chat.composer.setMessage,
   });
 
   useEffect(() => {

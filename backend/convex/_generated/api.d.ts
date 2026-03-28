@@ -65,7 +65,6 @@ import type * as http_routes_media from "../http_routes/media.js";
 import type * as http_routes_mobile from "../http_routes/mobile.js";
 import type * as http_routes_music from "../http_routes/music.js";
 import type * as http_routes_skills from "../http_routes/skills.js";
-import type * as http_routes_speech_to_text from "../http_routes/speech_to_text.js";
 import type * as http_routes_stripe from "../http_routes/stripe.js";
 import type * as http_routes_synthesis from "../http_routes/synthesis.js";
 import type * as http_routes_voice from "../http_routes/voice.js";
@@ -233,7 +232,6 @@ declare const fullApi: ApiFromModules<{
   "http_routes/mobile": typeof http_routes_mobile;
   "http_routes/music": typeof http_routes_music;
   "http_routes/skills": typeof http_routes_skills;
-  "http_routes/speech_to_text": typeof http_routes_speech_to_text;
   "http_routes/stripe": typeof http_routes_stripe;
   "http_routes/synthesis": typeof http_routes_synthesis;
   "http_routes/voice": typeof http_routes_voice;

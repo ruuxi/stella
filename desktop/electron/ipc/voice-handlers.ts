@@ -44,7 +44,6 @@ type ShortcutRegistrationResult = {
 };
 
 export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
-  let currentVoiceShortcut = "";
   let currentVoiceRtcShortcut = "";
   let runtimeState: VoiceRuntimeSnapshot = DEFAULT_RUNTIME_STATE;
   const nextTaskEventSeq = createMonotonicSeqGenerator();
@@ -147,25 +146,10 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     options.getBroadcastToMobile?.()?.("voice:runtimeState", runtimeState);
   };
 
-  const toggleVoice = () => {
-    if (!options.getAppReady()) return;
-    options.uiState.isVoiceActive = !options.uiState.isVoiceActive;
-    if (options.uiState.isVoiceActive) {
-      options.uiState.isVoiceRtcActive = false;
-      options.uiState.mode = "voice";
-    } else {
-      options.scheduleResumeWakeWord();
-    }
-    options.syncVoiceOverlay();
-    options.broadcastUiState();
-    options.syncWakeWordState();
-  };
-
   const toggleVoiceRtc = () => {
     if (!options.getAppReady()) return;
     options.uiState.isVoiceRtcActive = !options.uiState.isVoiceRtcActive;
     if (options.uiState.isVoiceRtcActive) {
-      options.uiState.isVoiceActive = false;
       options.uiState.mode = "voice";
     } else {
       options.scheduleResumeWakeWord();
@@ -174,17 +158,6 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     options.broadcastUiState();
     options.syncWakeWordState();
   };
-
-  const initialVoiceShortcut = applyShortcutRegistration(
-    "Voice",
-    "CommandOrControl+Shift+V",
-    currentVoiceShortcut,
-    toggleVoice,
-  );
-  currentVoiceShortcut = initialVoiceShortcut.activeShortcut;
-  if (!initialVoiceShortcut.ok) {
-    console.warn("[voice]", initialVoiceShortcut.error);
-  }
 
   const initialVoiceRtcShortcut = applyShortcutRegistration(
     "Voice realtime",
@@ -196,20 +169,6 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   if (!initialVoiceRtcShortcut.ok) {
     console.warn("[voice]", initialVoiceRtcShortcut.error);
   }
-
-  ipcMain.handle("voice:setShortcut", (_event, shortcut: string) => {
-    const result = applyShortcutRegistration(
-      "Voice",
-      shortcut,
-      currentVoiceShortcut,
-      toggleVoice,
-    );
-    currentVoiceShortcut = result.activeShortcut;
-    if (!result.ok) {
-      console.warn("[voice]", result.error);
-    }
-    return result;
-  });
 
   ipcMain.handle("voice-rtc:setShortcut", (_event, shortcut: string) => {
     const result = applyShortcutRegistration(
@@ -223,20 +182,6 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       console.warn("[voice]", result.error);
     }
     return result;
-  });
-
-  ipcMain.on("voice:transcript", (_event, transcript: string) => {
-    console.log(`[${ts()}] [Voice] Transcript:`, transcript);
-    const miniWindow = options.windowManager.getMiniWindow();
-    const fullWindow = options.windowManager.getFullWindow();
-    const preferredWindow =
-      options.uiState.window === "mini"
-        ? (miniWindow ?? fullWindow)
-        : (fullWindow ?? miniWindow);
-
-    if (preferredWindow && !preferredWindow.isDestroyed()) {
-      preferredWindow.webContents.send("voice:transcript", transcript);
-    }
   });
 
   ipcMain.on(

@@ -492,7 +492,7 @@ export class OverlayWindowController {
 
   // ─── Voice ─────────────────────────────────────────────────────────────
 
-  showVoice(screenX: number, screenY: number, mode: 'stt' | 'realtime') {
+  showVoice(screenX: number, screenY: number, mode: 'realtime') {
     this.activeVoice = true
     const origin = this.overlayWindow.getOverlayOrigin()
     this.overlayWindow.show({ inactive: true })

@@ -62,7 +62,6 @@ export const createBootstrapResetFlows = (
     services.authService.setHostAuthState(false);
     state.appReady = false;
     services.authService.clearPendingAuthCallback();
-    services.uiStateService.state.isVoiceActive = false;
     services.uiStateService.state.isVoiceRtcActive = false;
     services.uiStateService.syncVoiceOverlay();
     services.captureService.resetForHardReset();

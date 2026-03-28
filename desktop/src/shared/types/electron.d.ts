@@ -195,7 +195,7 @@ export type ElectronOverlayApi = {
     callback: (data: {
       x: number;
       y: number;
-      mode: "stt" | "realtime";
+      mode: "realtime";
     }) => void,
   ) => () => void;
   onHideVoice: (callback: () => void) => () => void;
@@ -295,9 +295,6 @@ export type ElectronThemeApi = {
 };
 
 export type ElectronVoiceApi = {
-  submitTranscript: (transcript: string) => void;
-  setShortcut: (shortcut: string) => Promise<VoiceShortcutRegistrationResult>;
-  onTranscript: (callback: (transcript: string) => void) => () => void;
   persistTranscript: (payload: {
     conversationId: string;
     role: "user" | "assistant";

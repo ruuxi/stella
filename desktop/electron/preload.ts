@@ -165,7 +165,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onShowMini: onIpc<{ x: number; y: number }>("overlay:showMini"),
     onHideMini: onIpcSignal("overlay:hideMini"),
     onRestoreMini: onIpcSignal("overlay:restoreMini"),
-    onShowVoice: onIpc<{ x: number; y: number; mode: "stt" | "realtime" }>(
+    onShowVoice: onIpc<{ x: number; y: number; mode: "realtime" }>(
       "overlay:showVoice",
     ),
     onHideVoice: onIpcSignal("overlay:hideVoice"),
@@ -273,16 +273,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   voice: {
-    submitTranscript: (transcript: string) =>
-      ipcRenderer.send("voice:transcript", transcript),
-    setShortcut: (shortcut: string) =>
-      ipcRenderer.invoke("voice:setShortcut", shortcut) as Promise<{
-        ok: boolean;
-        requestedShortcut: string;
-        activeShortcut: string;
-        error?: string;
-      }>,
-    onTranscript: onIpc<string>("voice:transcript"),
     persistTranscript: (payload: {
       conversationId: string;
       role: "user" | "assistant";

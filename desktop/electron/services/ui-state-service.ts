@@ -6,7 +6,7 @@ export type UiStateBroadcastTarget = {
 }
 
 export type VoiceOverlayTarget = {
-  showVoice: (x: number, y: number, mode: 'stt' | 'realtime') => void
+  showVoice: (x: number, y: number, mode: 'realtime') => void
   hideVoice: () => void
 }
 
@@ -22,7 +22,6 @@ export class UiStateService {
     window: 'full',
     view: 'chat',
     conversationId: null,
-    isVoiceActive: false,
     isVoiceRtcActive: false,
   }
 
@@ -54,23 +53,17 @@ export class UiStateService {
     const overlay = this.deps?.getOverlayTarget()
     if (!overlay) return
     if (this.state.isVoiceRtcActive) {
-      const pos = this.getStandaloneVoicePosition('realtime')
+      const pos = this.getStandaloneVoicePosition()
       overlay.showVoice(pos.x, pos.y, 'realtime')
-      return
-    }
-    if (this.state.isVoiceActive) {
-      const pos = this.getStandaloneVoicePosition('stt')
-      overlay.showVoice(pos.x, pos.y, 'stt')
       return
     }
     overlay.hideVoice()
   }
 
   deactivateVoiceModes(): boolean {
-    if (!this.state.isVoiceActive && !this.state.isVoiceRtcActive) {
+    if (!this.state.isVoiceRtcActive) {
       return false
     }
-    this.state.isVoiceActive = false
     this.state.isVoiceRtcActive = false
     this.syncVoiceOverlay()
     this.scheduleResumeWakeWord()
@@ -80,7 +73,6 @@ export class UiStateService {
 
   activateVoiceRtc(conversationId: string | null) {
     this.state.isVoiceRtcActive = true
-    this.state.isVoiceActive = false
     this.state.mode = 'voice'
     this.state.conversationId = conversationId ?? this.state.conversationId
     this.syncVoiceOverlay()
@@ -103,13 +95,12 @@ export class UiStateService {
     }, UiStateService.WAKE_WORD_RESUME_DELAY_MS)
   }
 
-  private getStandaloneVoicePosition(mode: 'stt' | 'realtime') {
+  private getStandaloneVoicePosition() {
     const cursor = screen.getCursorScreenPoint()
     const display = screen.getDisplayNearestPoint(cursor)
-    const yOffset = mode === 'realtime' ? 88 : 56
     return {
       x: display.bounds.x + Math.round(display.bounds.width / 2),
-      y: display.bounds.y + display.bounds.height - yOffset,
+      y: display.bounds.y + display.bounds.height - 88,
     }
   }
 }

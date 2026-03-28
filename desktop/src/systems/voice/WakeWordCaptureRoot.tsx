@@ -5,25 +5,13 @@ import {
   resampleLinear,
 } from "@/features/voice/services/audio-encoding";
 import {
-  createStreamingSession,
-  type StreamingTranscribeSession,
-} from "@/features/voice/services/speech-to-text";
-import {
   acquireSharedMicrophone,
   type SharedMicrophoneLease,
 } from "@/features/voice/services/shared-microphone";
-import {
-  normalizeWakeWordHandoffText,
-  publishWakeWordHandoffPrefill,
-} from "@/features/voice/services/wake-word-handoff";
 
 const WAKE_WORD_SAMPLE_RATE = 16_000;
 const WAKE_WORD_CHUNK_SAMPLES = 1280;
 const WAKE_WORD_MIC_USE_CASE = "wake-word" as const;
-const WAKE_WORD_HANDOFF_RECENT_SAMPLES = WAKE_WORD_SAMPLE_RATE * 2;
-const WAKE_WORD_HANDOFF_CAPTURE_MS = 1_200;
-const WAKE_WORD_HANDOFF_PROMPT =
-  'The wake word is "Stella". Transcribe only the user speech after the wake word. If the clip only contains the wake word or silence, return an empty transcript.';
 
 const combinePcm = (left: Int16Array, right: Int16Array): Int16Array => {
   if (left.length === 0) {
@@ -39,16 +27,9 @@ const combinePcm = (left: Int16Array, right: Int16Array): Int16Array => {
   return merged;
 };
 
-const copyChunk = (chunk: Float32Array): Float32Array => {
-  const copy = new Float32Array(chunk.length);
-  copy.set(chunk);
-  return copy;
-};
-
 export function WakeWordCaptureRoot() {
   const { state } = useUiState();
   const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
-  const [handoffCaptureActive, setHandoffCaptureActive] = useState(false);
 
   useEffect(() => {
     const api = window.electronAPI?.voice;
@@ -81,10 +62,9 @@ export function WakeWordCaptureRoot() {
   }, []);
 
   const shouldCapture = useMemo(
-    () => wakeWordEnabled && !state.isVoiceActive && !state.isVoiceRtcActive,
-    [state.isVoiceActive, state.isVoiceRtcActive, wakeWordEnabled],
+    () => wakeWordEnabled && !state.isVoiceRtcActive,
+    [state.isVoiceRtcActive, wakeWordEnabled],
   );
-  const shouldRunCapture = shouldCapture || handoffCaptureActive;
   const shouldCaptureRef = useRef(shouldCapture);
 
   useEffect(() => {
@@ -92,7 +72,7 @@ export function WakeWordCaptureRoot() {
   }, [shouldCapture]);
 
   useEffect(() => {
-    if (!shouldRunCapture) {
+    if (!shouldCapture) {
       return;
     }
 
@@ -108,84 +88,8 @@ export function WakeWordCaptureRoot() {
     let workletNode: AudioWorkletNode | null = null;
     let silentSink: GainNode | null = null;
     let remainder = new Int16Array(0);
-    let handoffSession: StreamingTranscribeSession | null = null;
-    let handoffTimer: ReturnType<typeof window.setTimeout> | null = null;
-    let unsubscribeWakeWordDetected: (() => void) | null = null;
-    const recentChunks: Float32Array[] = [];
-    let recentChunkSamples = 0;
-
-    const clearRecentChunks = () => {
-      recentChunks.length = 0;
-      recentChunkSamples = 0;
-    };
-
-    const appendRecentChunk = (chunk: Float32Array) => {
-      const storedChunk = copyChunk(chunk);
-      recentChunks.push(storedChunk);
-      recentChunkSamples += storedChunk.length;
-
-      while (
-        recentChunkSamples > WAKE_WORD_HANDOFF_RECENT_SAMPLES &&
-        recentChunks.length > 1
-      ) {
-        const removed = recentChunks.shift();
-        recentChunkSamples -= removed?.length ?? 0;
-      }
-    };
-
-    const finalizeHandoffCapture = () => {
-      if (handoffTimer) {
-        window.clearTimeout(handoffTimer);
-        handoffTimer = null;
-      }
-
-      const session = handoffSession;
-      handoffSession = null;
-      setHandoffCaptureActive(false);
-
-      if (!session) {
-        return;
-      }
-
-      const prefillPromise = session
-        .commit()
-        .then((result) => normalizeWakeWordHandoffText(result.text))
-        .catch(() => null);
-      publishWakeWordHandoffPrefill(prefillPromise);
-    };
-
-    const startHandoffCapture = () => {
-      if (handoffSession) {
-        return;
-      }
-
-      handoffSession = createStreamingSession({
-        properties: {
-          prompt: WAKE_WORD_HANDOFF_PROMPT,
-        },
-      });
-
-      setHandoffCaptureActive(true);
-      for (const chunk of recentChunks) {
-        handoffSession.sendChunk(chunk, WAKE_WORD_SAMPLE_RATE);
-      }
-
-      handoffTimer = window.setTimeout(() => {
-        finalizeHandoffCapture();
-      }, WAKE_WORD_HANDOFF_CAPTURE_MS);
-    };
 
     const cleanup = () => {
-      unsubscribeWakeWordDetected?.();
-      unsubscribeWakeWordDetected = null;
-      if (handoffTimer) {
-        window.clearTimeout(handoffTimer);
-        handoffTimer = null;
-      }
-      if (handoffSession) {
-        handoffSession.abort();
-        handoffSession = null;
-      }
       if (workletNode) {
         workletNode.port.onmessage = null;
         workletNode.disconnect();
@@ -208,7 +112,6 @@ export function WakeWordCaptureRoot() {
         micLease = null;
       }
       remainder = new Int16Array(0);
-      clearRecentChunks();
     };
 
     const flushPcm = (pcm: Int16Array) => {
@@ -277,19 +180,10 @@ export function WakeWordCaptureRoot() {
             audioContext.sampleRate,
             WAKE_WORD_SAMPLE_RATE,
           );
-          appendRecentChunk(resampled);
-          handoffSession?.sendChunk(resampled, WAKE_WORD_SAMPLE_RATE);
           if (shouldCaptureRef.current) {
             flushPcm(floatToInt16Pcm(resampled));
           }
         };
-
-        unsubscribeWakeWordDetected = api.onWakeWordDetected(() => {
-          if (stopped) {
-            return;
-          }
-          startHandoffCapture();
-        });
 
         sourceNode.connect(workletNode);
         workletNode.connect(silentSink);
@@ -307,7 +201,7 @@ export function WakeWordCaptureRoot() {
       stopped = true;
       cleanup();
     };
-  }, [shouldRunCapture]);
+  }, [shouldCapture]);
 
   return null;
 }

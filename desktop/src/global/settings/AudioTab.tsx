@@ -118,8 +118,7 @@ export function AudioTab() {
       <div className="settings-card">
         <h3 className="settings-card-title">Microphone</h3>
         <p className="settings-card-desc">
-          Allow Stella to use your microphone for voice dictation and
-          conversations.
+          Allow Stella to use your microphone for voice conversations.
         </p>
         {permissionError ? (
           <p className="settings-card-desc settings-card-desc--error" role="alert">
