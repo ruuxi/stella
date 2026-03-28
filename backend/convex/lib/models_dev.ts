@@ -83,6 +83,9 @@ const resolveModelsDevModel = (
 
   if (direct) {
     candidates.push(`${direct.provider}/${direct.modelId.replace(/\./g, "-")}`);
+    if (direct.provider === "accounts" && direct.modelId.startsWith("fireworks/models/")) {
+      candidates.push(`fireworks/${direct.modelId.slice("fireworks/models/".length)}`);
+    }
   }
 
   for (const candidate of candidates) {

@@ -53,8 +53,8 @@ describe("model modes", () => {
   });
 
   test("resolves mode configs", () => {
-    expect(getModeConfig("cheap").model).toBe("zai/glm-4.7");
-    expect(getModeConfig("fast").model).toBe("inception/mercury-2");
+    expect(getModeConfig("cheap").model).toBe("accounts/fireworks/models/kimi-k2p5");
+    expect(getModeConfig("fast").model).toBe("accounts/fireworks/models/kimi-k2p5");
     expect(getModeConfig("smart").model).toBe("anthropic/claude-sonnet-4.6");
     expect(getModeConfig("media").model).toBe("google/gemini-3-flash-preview");
     expect(getModeConfig("best").fallback).toBe(getModeConfig("smart").model);
@@ -89,7 +89,7 @@ describe("AGENT_MODELS", () => {
 
   test("includes mercury config", () => {
     expect(AGENT_MODELS.mercury).toBeDefined();
-    expect(AGENT_MODELS.mercury.model).toBe("inception/mercury-2");
+    expect(AGENT_MODELS.mercury.model).toBe("accounts/fireworks/models/kimi-k2p5");
   });
 
   test("includes synthesis and media configs", () => {
@@ -223,7 +223,7 @@ describe("listStellaDefaultSelections", () => {
     expect(defaults).toContainEqual({
       agentType: "explore",
       model: "stella/default",
-      resolvedModel: "zai/glm-4.7",
+      resolvedModel: "accounts/fireworks/models/kimi-k2p5",
     });
   });
 

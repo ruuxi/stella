@@ -8,7 +8,15 @@
 import type { ActionCtx } from "./_generated/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { getModelConfig, MANAGED_GATEWAY, type ManagedModelAudience } from "./agent/model";
+import {
+  getModelConfig,
+  type ManagedModelAudience,
+} from "./agent/model";
+import {
+  resolveManagedGatewayConfig,
+  resolveManagedGatewayProvider,
+  type ManagedGatewayProvider,
+} from "./lib/managed_gateway";
 import { getClientAddressKey } from "./lib/http_utils";
 import {
   isAnonDeviceHashSaltMissingError,
@@ -415,6 +423,7 @@ async function createStreamingRuntimeResponse(args: {
   requestBody: StellaRequestBody;
   serverModelConfig: {
     model: string;
+    managedGatewayProvider?: ManagedGatewayProvider;
     temperature?: number;
     maxOutputTokens?: number;
     providerOptions?: Record<string, Record<string, unknown>>;
@@ -799,14 +808,6 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
     }
   }
 
-  if (!process.env[MANAGED_GATEWAY.apiKeyEnvVar]?.trim()) {
-    return stellaProviderErrorResponse(
-      503,
-      "Stella upstream gateway is not configured",
-      request,
-    );
-  }
-
   const requestJson = await parseRequestJson(request);
   if (!requestJson) {
     return stellaProviderErrorResponse(400, "Stella request body must be valid JSON", request);
@@ -831,8 +832,24 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
   }
 
   const defaults = getModelConfig(agentType, modelAudience);
+  const managedGatewayProvider: ManagedGatewayProvider = resolveManagedGatewayProvider({
+    model: resolvedModel,
+    configuredProvider: defaults.managedGatewayProvider,
+  });
+  const managedGateway = resolveManagedGatewayConfig({
+    model: resolvedModel,
+    configuredProvider: defaults.managedGatewayProvider,
+  });
+  if (!process.env[managedGateway.apiKeyEnvVar]?.trim()) {
+    return stellaProviderErrorResponse(
+      503,
+      "Stella upstream gateway is not configured",
+      request,
+    );
+  }
   const serverModelConfig = {
     model: resolvedModel,
+    managedGatewayProvider,
     temperature: defaults.temperature,
     maxOutputTokens: defaults.maxOutputTokens,
     providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
