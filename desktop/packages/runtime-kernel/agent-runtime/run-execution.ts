@@ -11,6 +11,21 @@ import {
   now,
 } from "./shared.js";
 import type { RuntimeRunCallbacks } from "./types.js";
+import {
+  containsLeakedInternalToolTranscript,
+  stripLeakedInternalToolTranscript,
+} from "../internal-tool-transcript.js";
+
+const MAX_INTERNAL_TOOL_TRANSCRIPT_RECOVERY_ATTEMPTS = 2;
+const INTERNAL_TOOL_TRANSCRIPT_FALLBACK_REPLY =
+  "I ran into an internal formatting issue while checking that task. Ask again and I'll reply normally.";
+const INTERNAL_TOOL_TRANSCRIPT_RECOVERY_PROMPT =
+  [
+    "System correction: your previous reply exposed Stella's internal tool transcript.",
+    "Do not output raw tool call blocks, request IDs, JSON arguments, or thread IDs.",
+    "Based on the tool results already in context, answer the user normally in plain language.",
+    "If you do not need to say anything else to the user, call NoResponse instead of exposing internal state.",
+  ].join("\n");
 
 type RuntimeExecutableAgent = {
   state: {
@@ -20,6 +35,8 @@ type RuntimeExecutableAgent = {
   prompt: (
     message: ReturnType<typeof createUserPromptMessage> & { timestamp: number },
   ) => Promise<void>;
+  followUp: (message: ReturnType<typeof createUserPromptMessage> & { timestamp: number }) => void;
+  continue: () => Promise<void>;
   abort: () => void;
 };
 
@@ -58,7 +75,34 @@ export const executeRuntimeAgentPrompt = async (args: {
       timestamp: now(),
     });
     await args.onAfterPrompt?.();
-    return getAgentCompletion(args.agent);
+    let completion = getAgentCompletion(args.agent);
+    let recoveryAttempts = 0;
+
+    while (
+      containsLeakedInternalToolTranscript(completion.finalText) &&
+      recoveryAttempts < MAX_INTERNAL_TOOL_TRANSCRIPT_RECOVERY_ATTEMPTS
+    ) {
+      args.agent.followUp({
+        ...createUserPromptMessage(INTERNAL_TOOL_TRANSCRIPT_RECOVERY_PROMPT),
+        timestamp: now(),
+      });
+      await args.agent.continue();
+      await args.onAfterPrompt?.();
+      completion = getAgentCompletion(args.agent);
+      recoveryAttempts += 1;
+    }
+
+    if (containsLeakedInternalToolTranscript(completion.finalText)) {
+      const cleaned = stripLeakedInternalToolTranscript(completion.finalText).trim();
+      return {
+        finalText: cleaned || INTERNAL_TOOL_TRANSCRIPT_FALLBACK_REPLY,
+      };
+    }
+
+    return {
+      ...completion,
+      finalText: stripLeakedInternalToolTranscript(completion.finalText).trim(),
+    };
   } finally {
     try {
       await args.onCleanup?.();

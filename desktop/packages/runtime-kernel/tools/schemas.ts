@@ -653,7 +653,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- description: short summary shown in the task list.\n" +
     "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, relevant file paths, and expected output.\n" +
     "- subagent_type: 'general' (external code, files, shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), or 'app' (browser and desktop app automation).\n" +
-    "- Starts background work and immediately returns a durable thread_id.\n" +
+    "- Starts background work and immediately returns a structured status object with a durable thread_id.\n" +
     "- After calling it, do not create another task for the same work.\n" +
     "- Wait for the completion/failure event; in the meantime you may gently reply to the user or call NoResponse.\n" +
     "- Use the returned thread_id for TaskOutput, TaskUpdate, and TaskCancel.",
@@ -661,7 +661,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Check the status and output of a task thread.\n\n" +
     "Usage:\n" +
     "- thread_id: the durable thread ID returned by TaskCreate.\n" +
-    "- Returns the task's current status (running/completed/error) and result or error text.",
+    "- Returns a structured status object (running/completed/error/canceled) with timing and any available result or error text.",
   TaskCancel:
     "Cancel a running task.\n\n" +
     "Usage:\n" +
@@ -672,7 +672,8 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- thread_id: the durable thread ID to continue.\n" +
     "- message: the new instruction to deliver.\n" +
     "- If the task is currently running, interrupts the subagent and redelivers the update immediately on the next attempt.\n" +
-    "- If the task is not running, starts a new attempt on the same persisted thread.",
+    "- If the task is not running, starts a new attempt on the same persisted thread.\n" +
+    "- Returns a small structured acknowledgment object when the update is accepted.",
   WebFetch:
     "Fetch and read content from a URL.\n\n" +
     "Usage:\n" +

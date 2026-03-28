@@ -7,6 +7,7 @@ import {
 } from "../thread-runtime.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { now } from "./shared.js";
+import { stripLeakedInternalToolTranscript } from "../internal-tool-transcript.js";
 
 export const buildRunThreadKey = ({
   conversationId,
@@ -35,7 +36,14 @@ export const buildHistorySource = (
         (entry.role === "user" || entry.role === "assistant") &&
         typeof entry.content === "string",
     )
-    .map((entry) => ({ role: entry.role, content: entry.content })) ?? [];
+    .map((entry) => ({
+      role: entry.role,
+      content:
+        entry.role === "assistant"
+          ? stripLeakedInternalToolTranscript(entry.content).trim()
+          : entry.content,
+    }))
+    .filter((entry) => entry.content.length > 0) ?? [];
 
 const getPlatformShellPrompt = (): string | null => {
   if (process.platform === "win32") {
