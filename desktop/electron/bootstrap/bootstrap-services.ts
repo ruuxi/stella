@@ -1,0 +1,142 @@
+import type { BrowserWindow } from "electron";
+import path from "path";
+import { AuthService } from "../services/auth-service.js";
+import { CaptureService } from "../services/capture-service.js";
+import { CredentialService } from "../services/credential-service.js";
+import { ExternalLinkService } from "../services/external-link-service.js";
+import { MiniBridgeService } from "../services/mini-bridge-service.js";
+import { RadialGestureService } from "../services/radial-gesture-service.js";
+import { SecurityPolicyService } from "../services/security-policy-service.js";
+import { UiStateService } from "../services/ui-state-service.js";
+import { getDevServerUrl } from "../dev-url.js";
+import type {
+  BootstrapConfig,
+  BootstrapServices,
+  BootstrapState,
+  MobileBroadcastFn,
+} from "./context.js";
+import type { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
+
+export const createBootstrapServices = (
+  options: {
+    config: BootstrapConfig;
+    lifecycle: BootstrapLifecycleBindings;
+    state: BootstrapState;
+    getAllWindows: () => BrowserWindow[];
+    getMobileBroadcast: () => MobileBroadcastFn | null;
+    onAuthCallback: (url: string) => void;
+  },
+): BootstrapServices => {
+  const { config, lifecycle, state } = options;
+
+  const uiStateService = new UiStateService();
+  const externalLinkService = new ExternalLinkService();
+  externalLinkService.setDevBuild(config.isDev);
+  if (config.isDev) {
+    externalLinkService.trustDevServerBaseUrl(getDevServerUrl());
+  }
+  const miniBridgeService = new MiniBridgeService();
+
+  const securityPolicyService = new SecurityPolicyService({
+    windowManagerTarget: lifecycle,
+  });
+
+  const credentialService = new CredentialService({
+    windowManagerTarget: lifecycle,
+    getBroadcastToMobile: () => options.getMobileBroadcast(),
+  });
+
+  const captureService = new CaptureService({
+    window: {
+      getAllWindows: () => options.getAllWindows(),
+      getMiniWindow: () => state.windowManager?.getMiniWindow() ?? null,
+      isMiniShowing: () => state.windowManager?.isMiniShowing() ?? false,
+      showWindow: (target) => state.windowManager?.showWindow(target),
+      concealMiniWindowForCapture: () =>
+        state.windowManager?.concealMiniWindowForCapture() ?? false,
+      restoreMiniWindowAfterCapture: () => {
+        state.windowManager?.restoreMiniWindowAfterCapture();
+      },
+    },
+    overlay: {
+      hideRadial: () => state.overlayController?.hideRadial(),
+      hideModifierBlock: () => state.overlayController?.hideModifierBlock(),
+      startRegionCapture: () => state.overlayController?.startRegionCapture(),
+      endRegionCapture: () => state.overlayController?.endRegionCapture(),
+      getOverlayBounds: () =>
+        state.overlayController?.getWindow()?.getBounds() ?? null,
+    },
+    updateUiState: (partial) => uiStateService.update(partial),
+  });
+
+  const authService = new AuthService({
+    authProtocol: config.authProtocol,
+    isDev: config.isDev,
+    projectDir: path.resolve(config.electronDir, "..", ".."),
+    sessionPartition: config.sessionPartition,
+    runnerTarget: lifecycle,
+    onAuthCallback: (url) => {
+      state.windowManager?.showWindow("full");
+      options.onAuthCallback(url);
+    },
+    onSecondInstanceFocus: () => {
+      state.windowManager?.getFullWindow()?.focus();
+    },
+  });
+
+  const radialGestureService = new RadialGestureService({
+    isAppReady: () => state.appReady,
+    capture: {
+      cancelRadialContextCapture: () =>
+        captureService.cancelRadialContextCapture(),
+      getChatContextSnapshot: () => captureService.getChatContextSnapshot(),
+      setPendingChatContext: (ctx) => captureService.setPendingChatContext(ctx),
+      clearTransientContext: () => captureService.clearTransientContext(),
+      setRadialContextShouldCommit: (commit) =>
+        captureService.setRadialContextShouldCommit(commit),
+      commitStagedRadialContext: (before) =>
+        captureService.commitStagedRadialContext(before),
+      hasPendingRadialCapture: () => captureService.hasPendingRadialCapture(),
+      captureRadialContext: (x, y, before) =>
+        captureService.captureRadialContext(x, y, before),
+      startRegionCapture: () => captureService.startRegionCapture(),
+      captureAutoWindowText: () => captureService.captureAutoWindowText(),
+      emptyContext: () => captureService.emptyContext(),
+      broadcastChatContext: () => captureService.broadcastChatContext(),
+    },
+    overlay: {
+      showModifierBlock: () => state.overlayController?.showModifierBlock(),
+      hideModifierBlock: () => state.overlayController?.hideModifierBlock(),
+      showRadial: () => state.overlayController?.showRadial(),
+      hideRadial: () => state.overlayController?.hideRadial(),
+      updateRadialCursor: () => state.overlayController?.updateRadialCursor(),
+      getRadialBounds: () => state.overlayController?.getRadialBounds() ?? null,
+      showAutoPanel: (data) => state.overlayController?.showAutoPanel(data),
+      hideAutoPanel: () => state.overlayController?.hideAutoPanel(),
+    },
+    window: {
+      isMiniShowing: () => state.windowManager?.isMiniShowing() ?? false,
+      hasPendingMiniShow: () =>
+        state.windowManager?.hasPendingMiniShow() ?? false,
+      getMiniWindow: () => state.windowManager?.getMiniWindow() ?? null,
+      showWindow: (target) => state.windowManager?.showWindow(target),
+      hideMiniWindow: (animate) => state.windowManager?.hideMiniWindow(animate),
+      concealMiniWindowForCapture: () =>
+        state.windowManager?.concealMiniWindowForCapture() ?? false,
+      restoreMiniWindowAfterCapture: () =>
+        state.windowManager?.restoreMiniWindowAfterCapture(),
+    },
+    updateUiState: (partial) => uiStateService.update(partial),
+  });
+
+  return {
+    authService,
+    captureService,
+    credentialService,
+    externalLinkService,
+    miniBridgeService,
+    radialGestureService,
+    securityPolicyService,
+    uiStateService,
+  };
+};
