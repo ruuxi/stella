@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import type { PiRunnerTarget } from '../../packages/runtime-kernel/lifecycle-targets.js'
-import { readConfiguredConvexSiteUrl } from '../../src/shared/lib/convex-urls.js'
+import { readConfiguredConvexSiteUrl } from '../../packages/runtime-kernel/convex-urls.js'
 
 const AUTH_CALLBACK_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/
 

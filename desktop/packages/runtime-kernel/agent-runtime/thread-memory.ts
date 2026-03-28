@@ -8,7 +8,7 @@ import {
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { now } from "./shared.js";
 import { sanitizeAssistantText } from "../internal-tool-transcript.js";
-import { managedMediaDocsUrlFromConvexSiteUrl } from "../../../src/shared/lib/convex-urls.js";
+import { managedMediaDocsUrlFromConvexSiteUrl } from "../convex-urls.js";
 
 export const buildRunThreadKey = ({
   conversationId,

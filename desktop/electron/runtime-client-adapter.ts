@@ -19,7 +19,7 @@ import {
 } from "../packages/runtime-client/index.js";
 import { createRuntimeUnavailableError } from "../packages/runtime-protocol/rpc-peer.js";
 import type { TaskLifecycleEvent } from "../packages/runtime-kernel/tasks/local-task-manager.js";
-import { readConfiguredStellaBaseUrl } from "../src/shared/lib/convex-urls.js";
+import { readConfiguredStellaBaseUrl } from "../packages/runtime-kernel/convex-urls.js";
 
 type AgentCallbacks = {
   onStream: (event: RuntimeAgentEventPayload) => void;

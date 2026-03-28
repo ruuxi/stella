@@ -9,7 +9,7 @@ import {
   managedMediaDocsUrlFromConvexSiteUrl as buildManagedMediaDocsUrl,
   readConfiguredConvexUrl as sanitizeConvexDeploymentUrl,
   readConfiguredStellaBaseUrl as sanitizeStellaBase,
-} from "../../../src/shared/lib/convex-urls.js";
+} from "../convex-urls.js";
 import { isOrchestratorAgentType } from "../../../src/shared/contracts/agent-runtime.js";
 import type { SelfModHmrState } from "../../boundary-contracts/index.js";
 

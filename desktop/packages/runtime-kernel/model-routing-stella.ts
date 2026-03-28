@@ -3,7 +3,7 @@ import {
   normalizeStellaApiBaseUrl,
   STELLA_DEFAULT_MODEL,
 } from "./stella-provider.js";
-import { readConfiguredStellaBaseUrl } from "../../src/shared/lib/convex-urls.js";
+import { readConfiguredStellaBaseUrl } from "./convex-urls.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 
 const STELLA_CONTEXT_WINDOW = 256_000;
