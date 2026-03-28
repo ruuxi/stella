@@ -9,11 +9,7 @@ import type {
   RuntimeWebSearchResult,
 } from "../../runtime-protocol/index.js";
 import type { ChatStore } from "../../runtime-kernel/storage/chat-store.js";
-
-type ToolResult = {
-  result?: unknown;
-  error?: string;
-};
+import type { ToolContext, ToolResult } from "../../runtime-kernel/tools/types.js";
 
 type VoiceRunner = {
   appendThreadMessage: (args: {
@@ -28,7 +24,7 @@ type VoiceRunner = {
   executeTool: (
     toolName: string,
     toolArgs: Record<string, unknown>,
-    toolContext: Record<string, unknown>,
+    toolContext: ToolContext,
   ) => Promise<ToolResult>;
 };
 
