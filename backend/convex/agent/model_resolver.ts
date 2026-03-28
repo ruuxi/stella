@@ -1,5 +1,5 @@
 /**
- * Model resolver — resolves backend model config with user model overrides.
+ * Model resolver - resolves backend model config with user model overrides.
  *
  * Backend execution is Stella-managed. Local/runtime BYOK happens in the
  * desktop runtime, not here.
@@ -7,12 +7,17 @@
 
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { getModelConfig, type ManagedModelAudience } from "./model";
+import {
+  getModelConfig,
+  type ManagedModelAudience,
+} from "./model";
+import { resolveManagedGatewayProvider, type ManagedGatewayProvider } from "../lib/managed_gateway";
 import { resolveStellaModelSelection } from "../stella_models";
 import type { ManagedModelAccess } from "../lib/managed_billing";
 
 export type ResolvedModelConfig = {
   model: string;
+  managedGatewayProvider?: ManagedGatewayProvider;
   temperature?: number;
   maxOutputTokens?: number;
   providerOptions?: Record<string, Record<string, unknown>>;
@@ -23,12 +28,6 @@ type ResolveModelConfigOptions = {
   access?: ManagedModelAccess;
 };
 
-/**
- * Resolve the model config for an agent type, applying user model overrides.
- *
- * - If no ownerId is provided, returns the default config (same as getModelConfig).
- * - If ownerId is provided, checks for a user model override preference.
- */
 export async function resolveModelConfig(
   ctx: { runQuery: ActionCtx["runQuery"] },
   agentType: string,
@@ -41,13 +40,13 @@ export async function resolveModelConfig(
   if (!ownerId) {
     return {
       model: defaults.model,
+      managedGatewayProvider: defaults.managedGatewayProvider,
       temperature: defaults.temperature,
       maxOutputTokens: defaults.maxOutputTokens,
       providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
     };
   }
 
-  // Check for user model override
   let modelString = defaults.model;
   const override = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
     ownerId,
@@ -59,19 +58,16 @@ export async function resolveModelConfig(
 
   return {
     model: modelString,
+    managedGatewayProvider: resolveManagedGatewayProvider({
+      model: modelString,
+      configuredProvider: defaults.managedGatewayProvider,
+    }),
     temperature: defaults.temperature,
     maxOutputTokens: defaults.maxOutputTokens,
     providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
   };
 }
 
-/**
- * Resolve a fallback model config for an agent type.
- *
- * Returns null if the agent has no fallback configured.
- * Uses the same managed resolution as resolveModelConfig but with the fallback model string.
- * Temperature and maxOutputTokens are inherited from the primary config.
- */
 export async function resolveFallbackConfig(
   ctx: { runQuery: ActionCtx["runQuery"] },
   agentType: string,
@@ -82,21 +78,18 @@ export async function resolveFallbackConfig(
   const defaults = getModelConfig(agentType, audience);
   if (!defaults.fallback) return null;
 
-  const fallbackModel = defaults.fallback;
-
-  if (!ownerId) {
-    return {
-      model: fallbackModel,
-      temperature: defaults.temperature,
-      maxOutputTokens: defaults.maxOutputTokens,
-      providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
-    };
-  }
-
-  return {
-    model: fallbackModel,
+  const resolvedFallback: ResolvedModelConfig = {
+    model: defaults.fallback,
+    managedGatewayProvider: resolveManagedGatewayProvider({
+      model: defaults.fallback,
+      configuredProvider: defaults.fallbackManagedGatewayProvider,
+    }),
     temperature: defaults.temperature,
     maxOutputTokens: defaults.maxOutputTokens,
-    providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
+    providerOptions: defaults.fallbackProviderOptions as Record<string, Record<string, unknown>> | undefined,
   };
+
+  void ctx;
+  void ownerId;
+  return resolvedFallback;
 }

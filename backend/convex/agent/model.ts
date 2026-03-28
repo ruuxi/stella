@@ -7,17 +7,15 @@
  * - audience overrides: sparse per-plan patches applied to modes
  */
 import { AGENT_IDS } from "../lib/agent_constants";
+import {
+  getManagedGatewayConfig,
+  type ManagedGatewayProvider,
+} from "../lib/managed_gateway";
+export { getManagedGatewayConfig } from "../lib/managed_gateway";
+export type { ManagedGatewayProvider } from "../lib/managed_gateway";
 
-// ─── Managed Gateway ────────────────────────────────────────────────────────
-
-/**
- * Managed AI gateway configuration.
- * Change `baseURL` and `apiKeyEnvVar` to point to any OpenAI-compatible gateway.
- */
-export const MANAGED_GATEWAY = {
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKeyEnvVar: "OPENROUTER_API_KEY",
-} as const;
+// Legacy default for older call sites that still assume one gateway.
+export const MANAGED_GATEWAY = getManagedGatewayConfig("openrouter");
 
 type JSONValue =
   | string
@@ -30,9 +28,12 @@ type JSONValue =
 export type ModelConfig = {
   model: string;
   fallback?: string;
+  managedGatewayProvider?: ManagedGatewayProvider;
+  fallbackManagedGatewayProvider?: ManagedGatewayProvider;
   temperature?: number;
   maxOutputTokens?: number;
   providerOptions?: Record<string, Record<string, JSONValue>>;
+  fallbackProviderOptions?: Record<string, Record<string, JSONValue>>;
 };
 
 export const MANAGED_MODEL_AUDIENCES = [
@@ -63,7 +64,7 @@ export const MODEL_MODES = [
 
 export type ModelMode = (typeof MODEL_MODES)[number];
 
-type ModeConfig = Omit<ModelConfig, "fallback"> & {
+type ModeConfig = Omit<ModelConfig, "fallback" | "fallbackManagedGatewayProvider" | "fallbackProviderOptions"> & {
   fallbackMode?: ModelMode;
 };
 
@@ -93,82 +94,78 @@ const deepMerge = <T>(base: T, patch?: Partial<T>): T => {
   return output as T;
 };
 
+const gatewayOptions = (
+  provider: ManagedGatewayProvider,
+): Record<string, Record<string, JSONValue>> => ({
+  gateway: {
+    order: [provider],
+  },
+});
+
 const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   cheap: {
-    model: "zai/glm-4.7",
+    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
     fallbackMode: "fast",
+    managedGatewayProvider: "fireworks",
     temperature: 1.0,
     maxOutputTokens: 16192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "baseten", "fireworks", "amazon-bedrock"],
-      },
-    },
+    providerOptions: gatewayOptions("fireworks"),
   },
 
   compact: {
-    model: "zai/glm-4.7",
+    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
     fallbackMode: "fast",
+    managedGatewayProvider: "fireworks",
     temperature: 1.0,
     maxOutputTokens: 12096,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras"],
-      },
-    },
+    providerOptions: gatewayOptions("fireworks"),
   },
 
   fast: {
-    model: "inception/mercury-2",
+    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
     fallbackMode: "cheap",
+    managedGatewayProvider: "fireworks",
     temperature: 0.8,
     maxOutputTokens: 8192,
-    providerOptions: {
-      gateway: {
-        order: ["cerebras", "fireworks", "amazon-bedrock"],
-      },
-    },
+    providerOptions: gatewayOptions("fireworks"),
   },
 
   smart: {
-    model: "anthropic/claude-sonnet-4.6",
+    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
     fallbackMode: "smart",
+    managedGatewayProvider: "fireworks",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
       openai: {
         reasoningEffort: "low",
       },
-      gateway: {
-        order: ["baseten", "fireworks", "cerebras"],
-      },
+      ...gatewayOptions("fireworks"),
     },
   },
 
   best: {
-    model: "anthropic/claude-opus-4.6",
+    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
     fallbackMode: "smart",
+    managedGatewayProvider: "fireworks",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
       openai: {
         reasoningEffort: "medium",
       },
-      gateway: {
-        order: ["amazon-bedrock", "fireworks"],
-      },
+      ...gatewayOptions("fireworks"),
     },
   },
 
   reasoning: {
-    model: "anthropic/claude-opus-4.6",
+    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
     fallbackMode: "smart",
+    managedGatewayProvider: "fireworks",
     temperature: 1.0,
     maxOutputTokens: 16096,
     providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
+      ...gatewayOptions("fireworks"),
       openai: {
         reasoningEffort: "high",
         forceReasoning: true,
@@ -177,14 +174,13 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   synthesis: {
-    model: "openai/gpt-5.4-mini",
+    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
     fallbackMode: "cheap",
+    managedGatewayProvider: "fireworks",
     temperature: 1.0,
     maxOutputTokens: 9500,
     providerOptions: {
-      gateway: {
-        order: ["fireworks", "cerebras"],
-      },
+      ...gatewayOptions("fireworks"),
       openai: {
         reasoningEffort: "low",
         forceReasoning: true,
@@ -195,15 +191,14 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   media: {
     model: "google/gemini-3-flash-preview",
     fallbackMode: "smart",
+    managedGatewayProvider: "openrouter",
     temperature: 0.7,
     maxOutputTokens: 8192,
     providerOptions: {
       openai: {
         reasoningEffort: "low",
       },
-      gateway: {
-        order: ["fireworks", "amazon-bedrock", "cerebras"],
-      },
+      ...gatewayOptions("openrouter"),
     },
   },
 };
@@ -253,12 +248,19 @@ const buildResolvedModeConfig = (
   rawModeCatalog: Record<ModelMode, ModeConfig>,
 ): ModelConfig => {
   const config = rawModeCatalog[mode];
+  const fallbackConfig = config.fallbackMode ? rawModeCatalog[config.fallbackMode] : undefined;
+
   return {
     model: config.model,
-    fallback: config.fallbackMode ? rawModeCatalog[config.fallbackMode].model : undefined,
+    fallback: fallbackConfig?.model,
+    managedGatewayProvider: config.managedGatewayProvider,
+    fallbackManagedGatewayProvider: fallbackConfig?.managedGatewayProvider,
     temperature: config.temperature,
     maxOutputTokens: config.maxOutputTokens,
     providerOptions: config.providerOptions ? clone(config.providerOptions) : undefined,
+    fallbackProviderOptions: fallbackConfig?.providerOptions
+      ? clone(fallbackConfig.providerOptions)
+      : undefined,
   };
 };
 
@@ -350,9 +352,6 @@ export function getModeConfig(
   return config;
 }
 
-/**
- * Get the model config for a specific agent type.
- */
 export function getModelConfig(
   agentType: string,
   audience: ManagedModelAudience = "free",

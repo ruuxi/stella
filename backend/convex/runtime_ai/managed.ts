@@ -1,5 +1,8 @@
 import OpenAI from "openai";
-import { MANAGED_GATEWAY } from "../agent/model";
+import {
+  resolveManagedGatewayConfig,
+  type ManagedGatewayProvider,
+} from "../lib/managed_gateway";
 import { buildOpenAICompletionsParams, mapStopReason } from "./openai_completions";
 import { completeSimple, streamSimple } from "./stream";
 import type {
@@ -20,6 +23,7 @@ export type ManagedProtocol = "openai-completions" | "openai-responses";
 
 export type ManagedModelConfig = {
   model: string;
+  managedGatewayProvider?: ManagedGatewayProvider;
   temperature?: number;
   maxOutputTokens?: number;
   providerOptions?: Record<string, Record<string, unknown>>;
@@ -96,6 +100,9 @@ function normalizeReasoning(
 function providerFromBaseUrl(baseUrl: string): string {
   if (baseUrl.includes("openrouter.ai")) {
     return "openrouter";
+  }
+  if (baseUrl.includes("api.fireworks.ai")) {
+    return "fireworks";
   }
   if (baseUrl.includes("ai-gateway.vercel.sh")) {
     return "vercel-ai-gateway";
@@ -299,13 +306,17 @@ export function buildManagedModel<TApi extends Api>(
   api: TApi,
   headers?: Record<string, string>,
 ): Model<TApi> {
-  const provider = providerFromBaseUrl(MANAGED_GATEWAY.baseURL);
+  const managedGateway = resolveManagedGatewayConfig({
+    model: config.model,
+    configuredProvider: config.managedGatewayProvider,
+  });
+  const provider = providerFromBaseUrl(managedGateway.baseURL);
   return {
     id: config.model,
     name: config.model,
     api,
     provider,
-    baseUrl: MANAGED_GATEWAY.baseURL,
+    baseUrl: managedGateway.baseURL,
     reasoning: true,
     input: ["text", "image"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -414,6 +425,11 @@ function buildSimpleOptions(args: {
     || (args.config.providerOptions?.openai?.forceReasoning ? "high" : undefined)
     || args.request?.reasoning;
 
+  const managedGateway = resolveManagedGatewayConfig({
+    model: args.config.model,
+    configuredProvider: args.config.managedGatewayProvider,
+  });
+
   return {
     temperature: args.request?.temperature ?? args.config.temperature,
     maxTokens: args.request?.maxTokens ?? args.config.maxOutputTokens,
@@ -422,7 +438,7 @@ function buildSimpleOptions(args: {
     responseFormat: args.request?.responseFormat,
     extraBody: args.request?.extraBody,
     signal: args.request?.signal,
-    apiKey: process.env[MANAGED_GATEWAY.apiKeyEnvVar]?.trim(),
+    apiKey: process.env[managedGateway.apiKeyEnvVar]?.trim(),
     headers: args.request?.headers,
   };
 }
@@ -432,9 +448,13 @@ async function completeManagedOpenAICompletions(args: {
   context: Context;
   request?: ManagedCompletionRequest;
 }): Promise<AssistantMessage> {
-  const apiKey = process.env[MANAGED_GATEWAY.apiKeyEnvVar]?.trim();
+  const managedGateway = resolveManagedGatewayConfig({
+    model: args.config.model,
+    configuredProvider: args.config.managedGatewayProvider,
+  });
+  const apiKey = process.env[managedGateway.apiKeyEnvVar]?.trim();
   if (!apiKey) {
-    throw new Error(`Missing ${MANAGED_GATEWAY.apiKeyEnvVar}`);
+    throw new Error(`Missing ${managedGateway.apiKeyEnvVar}`);
   }
 
   const model = buildManagedModel(

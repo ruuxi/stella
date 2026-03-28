@@ -53,7 +53,13 @@ const deriveDisplayName = (upstreamModel: string): string => {
   if (mapped) return mapped;
 
   const slash = upstreamModel.indexOf("/");
-  const rawId = slash >= 0 ? upstreamModel.slice(slash + 1) : upstreamModel;
+  const rawId = upstreamModel.startsWith("accounts/fireworks/models/")
+    ? upstreamModel.slice("accounts/fireworks/models/".length)
+    : upstreamModel.startsWith("accounts/fireworks/routers/")
+      ? upstreamModel.slice("accounts/fireworks/routers/".length)
+      : slash >= 0
+        ? upstreamModel.slice(slash + 1)
+        : upstreamModel;
   return titleCase(rawId);
 };
 

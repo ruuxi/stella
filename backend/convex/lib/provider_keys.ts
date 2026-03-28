@@ -86,6 +86,7 @@ export const PROVIDER_ENV_KEY_MAP: Record<string, string> = {
   opencode: "OPENCODE_API_KEY",
   inception: "INCEPTION_API_KEY",
   baseten: "BASETEN_API_KEY",
+  fireworks: "FIREWORKS_API_KEY",
 };
 
 /**

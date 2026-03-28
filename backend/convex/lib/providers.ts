@@ -32,6 +32,7 @@ export const PROVIDER_SDK_MAP: Record<string, SdkType> = {
   moonshotai: "openai",
   zai: "openai",
   inception: "openai",
+  fireworks: "openai",
 
   // Baseten (native SDK)
   baseten: "baseten",
@@ -86,6 +87,7 @@ export const PROVIDER_SECRET_KEYS: Record<string, string> = {
   opencode: "llm:opencode",
   inception: "llm:inception",
   baseten: "llm:baseten",
+  fireworks: "llm:fireworks",
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ describe("PROVIDER_ENV_KEY_MAP", () => {
     expect(PROVIDER_ENV_KEY_MAP["openai"]).toBe("OPENAI_API_KEY");
     expect(PROVIDER_ENV_KEY_MAP["google"]).toBe("GOOGLE_AI_API_KEY");
     expect(PROVIDER_ENV_KEY_MAP["openrouter"]).toBe("OPENROUTER_API_KEY");
+    expect(PROVIDER_ENV_KEY_MAP["fireworks"]).toBe("FIREWORKS_API_KEY");
   });
 
   test("includes all expected providers", () => {
@@ -17,6 +18,7 @@ describe("PROVIDER_ENV_KEY_MAP", () => {
     expect(providers.length).toBeGreaterThan(10);
     expect(providers).toContain("cerebras");
     expect(providers).toContain("azure");
+    expect(providers).toContain("fireworks");
   });
 });
 

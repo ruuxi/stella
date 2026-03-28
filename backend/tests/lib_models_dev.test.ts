@@ -41,4 +41,32 @@ describe("models.dev price mapping", () => {
     expect(result.entries).toEqual([]);
     expect(result.missingModels).toEqual(["moonshotai/kimi-k2.5"]);
   });
+
+  test("maps Fireworks account-scoped model ids onto models.dev Fireworks entries", () => {
+    const result = buildManagedModelPriceEntries({
+      data: {
+        fireworks: {
+          models: {
+            "kimi-k2p5": {
+              cost: { input: 0.6, output: 2.4 },
+              last_updated: "2026-03-27",
+            },
+          },
+        },
+      },
+      modelIds: ["accounts/fireworks/models/kimi-k2p5"],
+      syncedAt: 123,
+    });
+
+    expect(result.missingModels).toEqual([]);
+    expect(result.entries).toEqual([
+      expect.objectContaining({
+        model: "accounts/fireworks/models/kimi-k2p5",
+        sourceProvider: "fireworks",
+        sourceModelId: "kimi-k2p5",
+        inputPerMillionUsd: 0.6,
+        outputPerMillionUsd: 2.4,
+      }),
+    ]);
+  });
 });
