@@ -1,20 +1,20 @@
 import { spawn, type ChildProcess } from "child_process";
 import fs from "fs";
 import { bin, install } from "cloudflared";
+import { stopChildProcessTree } from "../../process-runtime.js";
 
 export class CloudflareTunnelService {
   private process: ChildProcess | null = null;
   private tunnelUrl: string | null = null;
   private bridgePort: number | null = null;
   private started = false;
-  private retryCount = 0;
-  private retryTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly options: {
       getAuthToken: () => Promise<string | null>;
       getConvexSiteUrl: () => string | null;
       onTunnelUrl: (url: string | null) => void;
+      onUnexpectedExit?: (error: string) => void;
     },
   ) {}
 
@@ -23,13 +23,14 @@ export class CloudflareTunnelService {
   }
 
   async start() {
-    if (this.started) return;
-    this.started = true;
+    if (this.started || this.process) return;
 
     if (!this.bridgePort) {
       console.log("[cloudflare-tunnel] No bridge port set, skipping start");
       return;
     }
+
+    this.started = true;
 
     try {
       const { tunnelToken, hostname } = await this.fetchTunnelToken();
@@ -65,7 +66,6 @@ export class CloudflareTunnelService {
           this.tunnelUrl = `https://${hostname}`;
           console.log(`[cloudflare-tunnel] Connected: ${this.tunnelUrl}`);
           this.options.onTunnelUrl(this.tunnelUrl);
-          this.retryCount = 0;
         }
       });
 
@@ -77,50 +77,32 @@ export class CloudflareTunnelService {
       });
 
       this.process.on("exit", (code) => {
+        const wasRunning = this.started;
         console.log(`[cloudflare-tunnel] Process exited with code ${code}`);
         this.process = null;
+        this.started = false;
         this.tunnelUrl = null;
         this.options.onTunnelUrl(null);
 
-        if (!this.started) return;
-
-        const delay = Math.min(30_000, 1000 * Math.pow(2, this.retryCount));
-        this.retryCount++;
-        console.log(
-          `[cloudflare-tunnel] Restarting in ${delay}ms (attempt ${this.retryCount})`,
+        if (!wasRunning) return;
+        this.options.onUnexpectedExit?.(
+          `Cloudflare tunnel exited with code ${code ?? 0}`,
         );
-        this.retryTimer = setTimeout(() => {
-          this.started = false;
-          void this.start();
-        }, delay);
       });
     } catch (error) {
+      this.started = false;
       console.error(
         "[cloudflare-tunnel] Failed to start:",
         (error as Error).message,
       );
-      this.started = false;
-
-      const delay = Math.min(30_000, 1000 * Math.pow(2, this.retryCount));
-      this.retryCount++;
-      this.retryTimer = setTimeout(() => void this.start(), delay);
+      throw error;
     }
   }
 
-  stop() {
+  async stop() {
     this.started = false;
-    if (this.retryTimer) {
-      clearTimeout(this.retryTimer);
-      this.retryTimer = null;
-    }
     if (this.process) {
-      if (process.platform === "win32") {
-        spawn("taskkill", ["/pid", String(this.process.pid), "/T", "/F"], {
-          windowsHide: true,
-        });
-      } else {
-        this.process.kill("SIGTERM");
-      }
+      await stopChildProcessTree(this.process);
       this.process = null;
     }
     this.tunnelUrl = null;
