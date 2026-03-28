@@ -1,7 +1,15 @@
 import { useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { authClient } from "../../src/lib/auth-client";
 import { clearCachedToken } from "../../src/lib/auth-token";
+import { userFacingError } from "../../src/lib/user-facing-error";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
 
@@ -12,12 +20,6 @@ export default function AccountScreen() {
   const user = session.data?.user;
   const email = user?.email ?? "";
   const name = user?.name || email || "Account";
-  const isAnonymous =
-    user !== undefined &&
-    typeof user === "object" &&
-    "isAnonymous" in user &&
-    (user as { isAnonymous?: boolean }).isAnonymous === true;
-
   const signOut = async () => {
     setIsSigningOut(true);
     try {
@@ -41,9 +43,7 @@ export default function AccountScreen() {
       clearCachedToken();
       await authClient.signOut();
     } catch (e) {
-      const message =
-        e instanceof Error ? e.message : "Something went wrong. Try again.";
-      Alert.alert("Could not delete account", message);
+      Alert.alert("Could not delete account", userFacingError(e));
     } finally {
       setIsDeletingAccount(false);
     }
@@ -86,23 +86,38 @@ export default function AccountScreen() {
         Uses the same session as your desktop.
       </Text>
 
+      <View style={styles.legalBlock}>
+        <Pressable
+          onPress={() => void Linking.openURL("https://stella.sh/terms")}
+          style={({ pressed }) => [styles.legalRow, pressed && styles.legalRowPressed]}
+        >
+          <Text style={styles.legalLabel}>Terms of Service</Text>
+          <Text style={styles.legalChevron}>›</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => void Linking.openURL("https://stella.sh/privacy")}
+          style={({ pressed }) => [styles.legalRow, pressed && styles.legalRowPressed]}
+        >
+          <Text style={styles.legalLabel}>Privacy Policy</Text>
+          <Text style={styles.legalChevron}>›</Text>
+        </Pressable>
+      </View>
+
       <View style={styles.spacer} />
 
-      {!isAnonymous ? (
-        <Pressable
-          onPress={confirmDeleteAccount}
-          disabled={isDeletingAccount || isSigningOut}
-          style={({ pressed }) => [
-            styles.deleteAccount,
-            pressed && styles.deleteAccountPressed,
-            (isDeletingAccount || isSigningOut) && styles.deleteAccountDisabled,
-          ]}
-        >
-          <Text style={styles.deleteAccountText}>
-            {isDeletingAccount ? "Deleting account\u2026" : "Delete account"}
-          </Text>
-        </Pressable>
-      ) : null}
+      <Pressable
+        onPress={confirmDeleteAccount}
+        disabled={isDeletingAccount || isSigningOut}
+        style={({ pressed }) => [
+          styles.deleteAccount,
+          pressed && styles.deleteAccountPressed,
+          (isDeletingAccount || isSigningOut) && styles.deleteAccountDisabled,
+        ]}
+      >
+        <Text style={styles.deleteAccountText}>
+          {isDeletingAccount ? "Deleting account\u2026" : "Delete account"}
+        </Text>
+      </Pressable>
 
       <Pressable
         onPress={() => void signOut()}
@@ -150,6 +165,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     letterSpacing: -0.1,
     lineHeight: 20,
+  },
+  legalBlock: {
+    gap: 4,
+    marginTop: 8,
+  },
+  legalRow: {
+    alignItems: "center",
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  legalRowPressed: {
+    opacity: 0.85,
+  },
+  legalLabel: {
+    color: colors.text,
+    fontFamily: fonts.sans.medium,
+    fontSize: 15,
+    letterSpacing: -0.2,
+  },
+  legalChevron: {
+    color: colors.textMuted,
+    fontFamily: fonts.sans.regular,
+    fontSize: 18,
   },
   spacer: {
     flex: 1,

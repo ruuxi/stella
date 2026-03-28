@@ -37,7 +37,13 @@
     "plugins": [
       "expo-secure-store",
       "expo-router",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Stella needs access to your photo library so you can attach images to messages."
+        }
+      ]
     ],
     "extra": {
       "router": {},

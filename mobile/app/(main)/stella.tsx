@@ -264,7 +264,7 @@ export default function StellaScreen() {
           onError={() =>
             setScreenState({
               type: "unavailable",
-              error: "Lost connection to desktop.",
+              error: "The link to your computer was interrupted.",
               title: "Can't reach your desktop",
             })
           }
