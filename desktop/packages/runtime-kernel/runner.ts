@@ -247,7 +247,7 @@ export const createStellaHostRunner = (
     },
     subscribeQuery: convexSession.subscribeQuery,
     getConvexUrl: convexSession.getConvexUrl,
-    getProxy: convexSession.getProxy,
+    getStellaSiteAuth: convexSession.getStellaSiteAuth,
     killAllShells: () => context.toolHost.killAllShells(),
     killShellsByPort: (port) => context.toolHost.killShellsByPort(port),
     executeTool: (toolName, toolArgs, toolContext) =>

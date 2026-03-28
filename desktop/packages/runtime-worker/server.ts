@@ -262,7 +262,7 @@ const createCapabilityRuntime = (args: {
   new CapabilityRuntime({
     frontendRoot: args.frontendRoot,
     stellaHomePath: args.stellaHomePath,
-    getProxy: () => args.runner.getProxy(),
+    getStellaSiteAuth: () => args.runner.getStellaSiteAuth(),
     host: {
       ui: {
         snapshot: async () => await args.peer.request(METHOD_NAMES.HOST_UI_SNAPSHOT),
@@ -1219,7 +1219,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               getModelOverride(stellaHomePath, agentType) ??
               getDefaultModel(stellaHomePath, agentType),
             agentType,
-            proxy: {
+            site: {
               baseUrl: state.init?.convexSiteUrl ?? null,
               getAuthToken: () => authToken,
             },

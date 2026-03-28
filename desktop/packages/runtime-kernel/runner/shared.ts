@@ -5,7 +5,11 @@ import {
   type TaskLifecycleEvent,
 } from "../tasks/local-task-manager.js";
 import { LOCAL_CONTEXT_EVENT_TYPES } from "../local-history.js";
-import { normalizeStellaApiBaseUrl } from "../stella-provider.js";
+import {
+  managedMediaDocsUrlFromConvexSiteUrl as buildManagedMediaDocsUrl,
+  readConfiguredConvexUrl as sanitizeConvexDeploymentUrl,
+  readConfiguredStellaBaseUrl as sanitizeStellaBase,
+} from "../../../src/shared/lib/convex-urls.js";
 import { isOrchestratorAgentType } from "../../../src/shared/contracts/agent-runtime.js";
 import type { SelfModHmrState } from "../../boundary-contracts/index.js";
 
@@ -20,7 +24,12 @@ export const DEFAULT_ORCHESTRATOR_PROMPT =
 export const DEFAULT_SUBAGENT_PROMPT =
   "You are a Stella sub-agent. Execute delegated work directly, provide concise progress, and run tools safely. " +
   "When creating or modifying UI components, add data-stella-label, data-stella-state, and data-stella-action attributes.";
-export { LOCAL_CONTEXT_EVENT_TYPES };
+export {
+  LOCAL_CONTEXT_EVENT_TYPES,
+  sanitizeConvexDeploymentUrl,
+  sanitizeStellaBase,
+  buildManagedMediaDocsUrl,
+};
 export const QUEUED_TURN_INTERRUPT_ERROR =
   "Interrupted by queued orchestrator turn";
 
@@ -36,39 +45,11 @@ export const defaultPromptForAgentType = (agentType: string): string => {
   return DEFAULT_SUBAGENT_PROMPT;
 };
 
-export const sanitizeConvexDeploymentUrl = (
-  value: string | null,
-): string | null => {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  return trimmed.replace(/\/+$/, "");
-};
-
-export const buildManagedMediaDocsUrl = (
-  convexDeploymentUrl: string | null | undefined,
-): string | null => {
-  const normalized = sanitizeConvexDeploymentUrl(convexDeploymentUrl ?? null);
-  if (!normalized) return null;
-
-  try {
-    const url = new URL(normalized);
-    if (url.hostname.endsWith(".convex.cloud")) {
-      url.hostname = url.hostname.replace(/\.convex\.cloud$/i, ".convex.site");
-    }
-    url.pathname = "/api/media/v1/docs";
-    url.search = "";
-    url.hash = "";
-    return url.toString();
-  } catch {
-    return null;
-  }
-};
-
 export const buildManagedMediaDocsPrompt = (
   convexDeploymentUrl: string | null | undefined,
 ): string => {
-  const docsUrl = buildManagedMediaDocsUrl(convexDeploymentUrl);
+  const siteUrl = sanitizeConvexDeploymentUrl(convexDeploymentUrl ?? null);
+  const docsUrl = siteUrl ? buildManagedMediaDocsUrl(siteUrl) : null;
   if (!docsUrl) return "";
 
   return [
@@ -77,17 +58,6 @@ export const buildManagedMediaDocsPrompt = (
     `- Before wiring media generation or media analysis features, fetch the live docs with \`curl -L "${docsUrl}"\` so you use the latest backend contract and examples.`,
     "- Docs are public, but media generation and job polling still require Stella auth from the client.",
   ].join("\n");
-};
-
-export const sanitizeStellaBase = (value: string | null): string | null => {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const normalized = trimmed.replace(/\/+$/, "");
-  if (normalized.includes("/api/stella/v1")) {
-    return normalizeStellaApiBaseUrl(normalized);
-  }
-  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/stella/v1`;
 };
 
 export const buildPanelInventory = (frontendRoot: string): string => {

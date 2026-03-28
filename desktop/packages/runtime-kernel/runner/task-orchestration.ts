@@ -199,8 +199,8 @@ export const createTaskOrchestration = (
         stellaHomePath: context.stellaHomePath,
         modelName: agentContext.model,
         agentType,
-        proxy: {
-          baseUrl: context.state.proxyBaseUrl,
+        site: {
+          baseUrl: context.state.convexSiteUrl,
           getAuthToken: () => context.state.authToken?.trim(),
         },
       });

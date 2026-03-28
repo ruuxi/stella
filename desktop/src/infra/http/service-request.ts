@@ -1,5 +1,6 @@
 import { getAuthHeaders } from "@/global/auth/services/auth-token";
 import { getOrCreateDeviceId } from "@/platform/electron/device";
+import { readConfiguredConvexSiteUrl } from "@/shared/lib/convex-urls";
 
 type ServiceRequest = {
   endpoint: string;
@@ -12,13 +13,12 @@ type ServiceRequestOptions = {
 };
 
 const resolveCloudBaseUrl = (): string => {
-  const baseUrl = import.meta.env.VITE_CONVEX_URL;
-  if (!baseUrl) {
-    throw new Error("VITE_CONVEX_URL is not set.");
+  const resolved = readConfiguredConvexSiteUrl(
+    import.meta.env.VITE_CONVEX_SITE_URL as string | undefined,
+  );
+  if (!resolved) {
+    throw new Error("VITE_CONVEX_SITE_URL is not set.");
   }
-  const resolved =
-    import.meta.env.VITE_CONVEX_HTTP_URL ??
-    baseUrl.replace(".convex.cloud", ".convex.site");
 
   const parsed = new URL(resolved);
   const host = parsed.hostname.toLowerCase();

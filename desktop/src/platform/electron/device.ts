@@ -1,4 +1,8 @@
 import { getElectronApi } from "./electron";
+import {
+  readConfiguredConvexSiteUrl,
+  readConfiguredConvexUrl,
+} from "@/shared/lib/convex-urls";
 
 const DEVICE_ID_KEY = "Stella.deviceId";
 
@@ -18,15 +22,16 @@ const generateFallbackDeviceId = () => {
 
 export const configurePiRuntime = async () => {
   const api = getElectronApi();
-  const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
-  if (!api?.system?.configurePiRuntime || !convexUrl) {
+  const convexUrl = readConfiguredConvexUrl(
+    import.meta.env.VITE_CONVEX_URL as string | undefined,
+  );
+  const convexSiteUrl = readConfiguredConvexSiteUrl(
+    import.meta.env.VITE_CONVEX_SITE_URL as string | undefined,
+  );
+  if (!api?.system?.configurePiRuntime || !convexUrl || !convexSiteUrl) {
     return;
   }
   try {
-    const convexSiteUrl =
-      (import.meta.env.VITE_CONVEX_SITE_URL as string | undefined)
-      ?? (import.meta.env.VITE_CONVEX_HTTP_URL as string | undefined)
-      ?? convexUrl.replace(".convex.cloud", ".convex.site");
     const response = await api.system.configurePiRuntime({ convexUrl, convexSiteUrl });
     if (response?.deviceId) {
       cachedDeviceId = response.deviceId;

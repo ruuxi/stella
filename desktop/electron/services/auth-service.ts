@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import type { PiRunnerTarget } from '../../packages/runtime-kernel/lifecycle-targets.js'
+import { readConfiguredConvexSiteUrl } from '../../src/shared/lib/convex-urls.js'
 
 const AUTH_CALLBACK_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/
 
@@ -11,24 +12,6 @@ type AuthServiceOptions = {
   runnerTarget: PiRunnerTarget
   onAuthCallback: (url: string) => void
   onSecondInstanceFocus: () => void
-}
-
-const deriveConvexSiteUrl = (convexUrl: string | null, explicitSiteUrl?: string | null) => {
-  const explicit = explicitSiteUrl?.trim()
-  if (explicit) {
-    return explicit
-  }
-  const source = convexUrl?.trim()
-  if (!source) {
-    return null
-  }
-  if (source.includes('.convex.site')) {
-    return source
-  }
-  if (source.includes('.convex.cloud')) {
-    return source.replace('.convex.cloud', '.convex.site')
-  }
-  return null
 }
 
 export class AuthService {
@@ -156,7 +139,7 @@ export class AuthService {
 
   configurePiRuntime(config: { convexUrl: string; convexSiteUrl?: string }) {
     this.pendingConvexUrl = config.convexUrl
-    this.pendingConvexSiteUrl = config.convexSiteUrl ?? null
+    this.pendingConvexSiteUrl = readConfiguredConvexSiteUrl(config.convexSiteUrl)
     this.options.runnerTarget.getRunner()?.setConvexUrl(config.convexUrl)
     this.options.runnerTarget.getRunner()?.setConvexSiteUrl(this.getConvexSiteUrl())
     if (this.hostAuthToken) {
@@ -169,7 +152,7 @@ export class AuthService {
   }
 
   getConvexSiteUrl(): string | null {
-    return deriveConvexSiteUrl(this.pendingConvexUrl, this.pendingConvexSiteUrl)
+    return readConfiguredConvexSiteUrl(this.pendingConvexSiteUrl)
   }
 
   async getAuthToken(): Promise<string | null> {

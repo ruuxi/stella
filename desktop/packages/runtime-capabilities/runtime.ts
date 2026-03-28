@@ -21,7 +21,7 @@ type CapabilityRuntimeOptions = {
   frontendRoot: string;
   stellaHomePath: string;
   host: CapabilityCommandContext["host"];
-  getProxy: CapabilityCommandContext["getProxy"];
+  getStellaSiteAuth: CapabilityCommandContext["getStellaSiteAuth"];
   state: CapabilityStateApi;
 };
 
@@ -121,7 +121,7 @@ export class CapabilityRuntime {
       stdinText: params.stdinText,
       frontendRoot: this.options.frontendRoot,
       stellaHomePath: this.options.stellaHomePath,
-      getProxy: this.options.getProxy,
+      getStellaSiteAuth: this.options.getStellaSiteAuth,
       host: this.options.host,
       state: this.options.state,
     });

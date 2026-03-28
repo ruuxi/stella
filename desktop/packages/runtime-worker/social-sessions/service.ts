@@ -2,6 +2,7 @@ import path from "path";
 import { promises as fs } from "fs";
 import { ConvexClient } from "convex/browser";
 import { api } from "../../../src/convex/api.js";
+import { readConfiguredConvexUrl } from "../../../src/shared/lib/convex-urls.js";
 import type {
   RuntimeActiveRun,
   RuntimeAutomationTurnRequest,
@@ -141,11 +142,6 @@ type SocialSessionServiceDeps = {
 const TICK_INTERVAL_MS = 2_500;
 const MAX_FILE_SYNC_OPS_PER_TICK = 32;
 
-const sanitizeConvexDeploymentUrl = (value: string | null) => {
-  const trimmed = value?.trim() || "";
-  return trimmed || null;
-};
-
 const toSessionRole = (summary: RemoteSessionSummary): SocialSessionRole =>
   summary.isHost ? "host" : "follower";
 
@@ -167,7 +163,7 @@ export class SocialSessionService {
   constructor(private readonly deps: SocialSessionServiceDeps) {}
 
   private ensureClient(): ConvexClient | null {
-    const deploymentUrl = sanitizeConvexDeploymentUrl(this.convexDeploymentUrl);
+    const deploymentUrl = readConfiguredConvexUrl(this.convexDeploymentUrl);
     if (!deploymentUrl || !this.authToken?.trim()) {
       this.disposeClient();
       return null;
@@ -242,7 +238,7 @@ export class SocialSessionService {
   }
 
   setConvexUrl(value: string | null) {
-    this.convexDeploymentUrl = sanitizeConvexDeploymentUrl(value);
+    this.convexDeploymentUrl = readConfiguredConvexUrl(value);
     this.refreshSessionSubscription();
   }
 

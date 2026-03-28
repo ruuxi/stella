@@ -8,6 +8,7 @@ import {
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { now } from "./shared.js";
 import { sanitizeAssistantText } from "../internal-tool-transcript.js";
+import { managedMediaDocsUrlFromConvexSiteUrl } from "../../../src/shared/lib/convex-urls.js";
 
 export const buildRunThreadKey = ({
   conversationId,
@@ -68,22 +69,10 @@ const hasShellToolGuidance = (
 };
 
 const resolveMediaSdkDocsUrl = (): string | null => {
-  const raw =
-    process.env.STELLA_CONVEX_URL?.trim() ||
-    process.env.STELLA_LLM_PROXY_URL?.trim() ||
-    null;
-  if (!raw) {
-    return null;
-  }
-
-  const normalized = raw.replace(/\/+$/, "");
-  if (normalized.includes("/api/stella/v1")) {
-    return `${normalized.replace(/\/api\/stella\/v1$/i, "")}/api/media/v1/docs`;
-  }
-  if (normalized.includes(".convex.cloud")) {
-    return `${normalized.replace(".convex.cloud", ".convex.site")}/api/media/v1/docs`;
-  }
-  return `${normalized}/api/media/v1/docs`;
+  const configuredSiteUrl = process.env.STELLA_LLM_PROXY_URL?.trim() || null;
+  return configuredSiteUrl
+    ? managedMediaDocsUrlFromConvexSiteUrl(configuredSiteUrl)
+    : null;
 };
 
 export const buildSystemPrompt = (
