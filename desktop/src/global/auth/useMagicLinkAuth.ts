@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { authClient } from "@/global/auth/lib/auth-client";
+import { readConfiguredConvexSiteUrl } from "@/shared/lib/convex-urls";
 
 type Status = "idle" | "sending" | "sent" | "verifying" | "error";
 
@@ -15,11 +16,9 @@ interface UseMagicLinkAuthResult {
 }
 
 const getConvexSiteUrl = () => {
-  const url =
-    (import.meta.env.VITE_CONVEX_SITE_URL as string | undefined)
-    ?? (import.meta.env.VITE_CONVEX_HTTP_URL as string | undefined)
-    ?? (import.meta.env.VITE_CONVEX_URL as string | undefined)
-      ?.replace(".convex.cloud", ".convex.site");
+  const url = readConfiguredConvexSiteUrl(
+    import.meta.env.VITE_CONVEX_SITE_URL as string | undefined,
+  );
   if (!url) {
     throw new Error("Convex site URL is not configured.");
   }

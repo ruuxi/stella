@@ -51,7 +51,7 @@ export type CapabilityCommandContext = {
   stdinText?: string | null;
   frontendRoot: string;
   stellaHomePath: string;
-  getProxy: () => { baseUrl: string; authToken: string } | null;
+  getStellaSiteAuth: () => { baseUrl: string; authToken: string } | null;
   host: {
     ui: {
       snapshot: () => Promise<string>;

@@ -153,7 +153,7 @@ export const createRunnerContext = ({
       extensionsPath: path.join(stellaHomePath, "extensions"),
     },
     state: {
-      proxyBaseUrl: envProxyBaseUrl,
+      convexSiteUrl: envProxyBaseUrl,
       authToken: envAuthToken,
       convexDeploymentUrl: envConvexDeploymentUrl,
       convexClient: null,
@@ -318,7 +318,7 @@ export const buildAgentContext = async (
       : "",
     args.agentType === AGENT_IDS.SELF_MOD ||
     args.agentType === AGENT_IDS.DASHBOARD_GENERATION
-      ? buildManagedMediaDocsPrompt(context.state.convexDeploymentUrl)
+      ? buildManagedMediaDocsPrompt(context.state.convexSiteUrl)
       : "",
     activeThreadsPrompt,
   ].filter((section) => section.trim().length > 0);

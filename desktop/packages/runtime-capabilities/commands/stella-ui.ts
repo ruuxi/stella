@@ -64,12 +64,12 @@ const resolvePanelFile = async (panelName: string, frontendRoot: string) => {
 const callGenerateModel = async (args: {
   currentSource: string;
   prompt: string;
-  proxyBaseUrl: string;
+  siteBaseUrl: string;
   authToken: string;
 }) => {
   const fullContent = await streamStellaChatCompletion({
     transport: {
-      endpoint: `${args.proxyBaseUrl}/chat/completions`,
+      endpoint: `${args.siteBaseUrl}/chat/completions`,
       headers: {
         Authorization: `Bearer ${args.authToken}`,
       },
@@ -173,20 +173,20 @@ export const stellaUiCommand: CapabilityCommandDefinition = {
           stderr: `Panel not found: "${panelName}"`,
         };
       }
-      const proxy = context.getProxy();
-      if (!proxy) {
+      const siteAuth = context.getStellaSiteAuth();
+      if (!siteAuth) {
         return {
           exitCode: 1,
           stdout: "",
-          stderr: "LLM proxy not configured yet",
+          stderr: "Stella site URL not configured yet",
         };
       }
       const currentSource = await fs.readFile(filePath, "utf-8");
       const updatedSource = await callGenerateModel({
         currentSource,
         prompt,
-        proxyBaseUrl: proxy.baseUrl,
-        authToken: proxy.authToken,
+        siteBaseUrl: siteAuth.baseUrl,
+        authToken: siteAuth.authToken,
       });
       await fs.writeFile(filePath, updatedSource, "utf-8");
       return {

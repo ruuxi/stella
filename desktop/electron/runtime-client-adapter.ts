@@ -19,6 +19,7 @@ import {
 } from "../packages/runtime-client/index.js";
 import { createRuntimeUnavailableError } from "../packages/runtime-protocol/rpc-peer.js";
 import type { TaskLifecycleEvent } from "../packages/runtime-kernel/tasks/local-task-manager.js";
+import { readConfiguredStellaBaseUrl } from "../src/shared/lib/convex-urls.js";
 
 type AgentCallbacks = {
   onStream: (event: RuntimeAgentEventPayload) => void;
@@ -264,6 +265,17 @@ export class RuntimeClientAdapter {
 
   setCloudSyncEnabled(enabled: boolean) {
     this.queueRuntimeConfigPatch({ cloudSyncEnabled: enabled });
+  }
+
+  getStellaSiteAuth(): { baseUrl: string; authToken: string } | null {
+    const baseUrl = readConfiguredStellaBaseUrl(
+      this.pendingConfig.convexSiteUrl ?? null,
+    );
+    const authToken = this.pendingConfig.authToken?.trim() || null;
+    if (!baseUrl || !authToken) {
+      return null;
+    }
+    return { baseUrl, authToken };
   }
 
   async agentHealthCheck() {

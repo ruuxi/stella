@@ -8,6 +8,7 @@ import {
   consumeBillingCheckoutCompletionMarker,
   withCheckoutMarker,
 } from "@/global/settings/lib/billing-checkout";
+import { readConfiguredConvexSiteUrl } from "@/shared/lib/convex-urls";
 import { Button } from "@/ui/button";
 
 type BillingPlan = "free" | "go" | "pro" | "plus" | "ultra";
@@ -113,9 +114,9 @@ const getSettingsErrorMessage = (error: unknown, fallback: string) =>
 const resolveCheckoutReturnUrl = () => {
   const configuredCandidates = [
     import.meta.env.VITE_BILLING_RETURN_URL as string | undefined,
-    import.meta.env.VITE_SITE_URL as string | undefined,
-    import.meta.env.VITE_CONVEX_SITE_URL as string | undefined,
-    import.meta.env.VITE_CONVEX_HTTP_URL as string | undefined,
+    readConfiguredConvexSiteUrl(
+      import.meta.env.VITE_CONVEX_SITE_URL as string | undefined,
+    ) ?? undefined,
   ];
 
   for (const candidate of configuredCandidates) {
@@ -130,11 +131,9 @@ const resolveCheckoutReturnUrl = () => {
     }
   }
 
-  if (window.location.protocol === "http:" || window.location.protocol === "https:") {
-    return withCheckoutMarker(window.location.href);
-  }
-
-  throw new Error("Billing return URL is not configured. Set VITE_BILLING_RETURN_URL.");
+  throw new Error(
+    "Billing return URL is not configured. Set VITE_BILLING_RETURN_URL or VITE_CONVEX_SITE_URL.",
+  );
 };
 
 const toUsagePercent = (usedUsd: number, limitUsd: number) => {

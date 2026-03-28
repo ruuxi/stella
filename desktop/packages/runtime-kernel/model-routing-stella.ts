@@ -1,18 +1,22 @@
 import type { Model } from "../ai/types.js";
-import { normalizeStellaApiBaseUrl, STELLA_DEFAULT_MODEL } from "./stella-provider.js";
+import {
+  normalizeStellaApiBaseUrl,
+  STELLA_DEFAULT_MODEL,
+} from "./stella-provider.js";
+import { readConfiguredStellaBaseUrl } from "../../src/shared/lib/convex-urls.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 
 const STELLA_CONTEXT_WINDOW = 256_000;
 const STELLA_MAX_TOKENS = 16_384;
 export const STELLA_PROVIDER = "stella";
 
-export type StellaProxyConfig = {
+export type StellaSiteConfig = {
   baseUrl: string | null;
   getAuthToken: () => string | null | undefined;
 };
 
 const createStellaModel = (
-  proxyBaseUrl: string,
+  siteBaseUrl: string,
   modelId: string,
   agentType: string,
 ): Model<"openai-completions"> => ({
@@ -23,7 +27,7 @@ const createStellaModel = (
       : modelId.replace(/^stella\//, ""),
   api: "openai-completions",
   provider: STELLA_PROVIDER,
-  baseUrl: normalizeStellaApiBaseUrl(proxyBaseUrl),
+  baseUrl: normalizeStellaApiBaseUrl(siteBaseUrl),
   reasoning: true,
   input: ["text", "image"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -41,33 +45,22 @@ const createStellaModel = (
   },
 });
 
-export const normalizeStellaBase = (
-  value: string | null | undefined,
-): string | null => {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const normalized = trimmed.replace(/\/+$/, "");
-  if (normalized.includes("/api/stella/v1")) {
-    return normalized;
-  }
-  return `${normalized.replace(".convex.cloud", ".convex.site")}/api/stella/v1`;
-};
+export const normalizeStellaBase = readConfiguredStellaBaseUrl;
 
 export const createStellaRoute = (args: {
-  proxy: StellaProxyConfig;
+  site: StellaSiteConfig;
   agentType: string;
   modelId: string;
 }): ResolvedLlmRoute | null => {
-  const proxyBaseUrl = normalizeStellaBase(args.proxy.baseUrl);
-  const authToken = args.proxy.getAuthToken()?.trim();
-  if (!proxyBaseUrl || !authToken) {
+  const siteBaseUrl = normalizeStellaBase(args.site.baseUrl);
+  const authToken = args.site.getAuthToken()?.trim();
+  if (!siteBaseUrl || !authToken) {
     return null;
   }
 
   return {
     route: "stella",
-    model: createStellaModel(proxyBaseUrl, args.modelId, args.agentType),
-    getApiKey: () => args.proxy.getAuthToken()?.trim() || authToken,
+    model: createStellaModel(siteBaseUrl, args.modelId, args.agentType),
+    getApiKey: () => args.site.getAuthToken()?.trim() || authToken,
   };
 };

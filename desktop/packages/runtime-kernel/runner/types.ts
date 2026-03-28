@@ -175,7 +175,7 @@ export type RunnerPaths = {
 };
 
 export type RunnerState = {
-  proxyBaseUrl: string | null;
+  convexSiteUrl: string | null;
   authToken: string | null;
   convexDeploymentUrl: string | null;
   convexClient: ConvexClient | null;
@@ -264,7 +264,7 @@ export type RunnerPublicApi = {
     onError?: (error: Error) => void,
   ) => (() => void) | null;
   getConvexUrl: () => string | null;
-  getProxy: () => { baseUrl: string; authToken: string } | null;
+  getStellaSiteAuth: () => { baseUrl: string; authToken: string } | null;
   killAllShells: () => void;
   killShellsByPort: (port: number) => void;
   executeTool: (

@@ -6,8 +6,8 @@ import {
 } from "../model-routing.js";
 import type { RunnerContext } from "./types.js";
 
-export const createRunnerProxyConfig = (context: RunnerContext) => ({
-  baseUrl: context.state.proxyBaseUrl,
+export const createRunnerSiteConfig = (context: RunnerContext) => ({
+  baseUrl: context.state.convexSiteUrl,
   getAuthToken: () => context.state.authToken?.trim(),
 });
 
@@ -20,7 +20,7 @@ export const resolveRunnerLlmRoute = (
     stellaHomePath: context.stellaHomePath,
     modelName,
     agentType,
-    proxy: createRunnerProxyConfig(context),
+    site: createRunnerSiteConfig(context),
   });
 
 export const canResolveRunnerLlmRoute = (
@@ -32,6 +32,6 @@ export const canResolveRunnerLlmRoute = (
     stellaHomePath: context.stellaHomePath,
     modelName,
     agentType,
-    proxy: createRunnerProxyConfig(context),
+    site: createRunnerSiteConfig(context),
   });
 

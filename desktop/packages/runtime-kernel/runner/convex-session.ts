@@ -58,12 +58,12 @@ export const createConvexSession = (
     );
   };
 
-  const ensureProxyReady = (): { baseUrl: string; authToken: string } => {
-    const baseUrl = sanitizeStellaBase(context.state.proxyBaseUrl);
+  const ensureStellaSiteReady = (): { baseUrl: string; authToken: string } => {
+    const baseUrl = sanitizeStellaBase(context.state.convexSiteUrl);
     const nextAuthToken = context.state.authToken?.trim();
     if (!baseUrl) {
       throw new Error(
-        "Stella runtime is missing proxy URL. Set STELLA_LLM_PROXY_URL or configure host URL.",
+        "Stella runtime is missing site URL. Set STELLA_LLM_PROXY_URL or configure host URL.",
       );
     }
     if (!nextAuthToken) {
@@ -150,7 +150,7 @@ export const createConvexSession = (
       context.state.convexDeploymentUrl = nextConvexDeploymentUrl;
     }
     if (!process.env.STELLA_LLM_PROXY_URL) {
-      context.state.proxyBaseUrl = sanitizeStellaBase(value);
+      context.state.convexSiteUrl = sanitizeStellaBase(value);
     }
     options.syncRemoteTurnBridge();
   };
@@ -195,15 +195,15 @@ export const createConvexSession = (
     disposeConvexClient,
     ensureConvexClient,
     ensureStoreClient,
-    ensureProxyReady,
+    ensureStellaSiteReady,
     setConvexUrl,
     setAuthToken,
     setCloudSyncEnabled,
     subscribeQuery,
-    getConvexUrl: () => context.state.proxyBaseUrl,
-    getProxy: (): { baseUrl: string; authToken: string } | null => {
+    getConvexUrl: () => context.state.convexDeploymentUrl,
+    getStellaSiteAuth: (): { baseUrl: string; authToken: string } | null => {
       try {
-        return ensureProxyReady();
+        return ensureStellaSiteReady();
       } catch {
         return null;
       }

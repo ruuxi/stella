@@ -11,7 +11,7 @@ import {
 import {
   createStellaRoute,
   STELLA_PROVIDER,
-  type StellaProxyConfig,
+  type StellaSiteConfig,
 } from "./model-routing-stella.js";
 
 export type ResolvedLlmRoute = {
@@ -157,13 +157,13 @@ const resolveMaybeLlmRoute = (args: {
   stellaHomePath: string;
   modelName: string | undefined;
   agentType: string;
-  proxy: StellaProxyConfig;
+  site: StellaSiteConfig;
 }): ResolvedLlmRoute | null => {
   const parsed = parseModelReference(args.modelName);
 
   if (parsed?.provider === STELLA_PROVIDER) {
     return createStellaRoute({
-      proxy: args.proxy,
+      site: args.site,
       agentType: args.agentType,
       modelId: parsed.fullModelId,
     });
@@ -172,7 +172,7 @@ const resolveMaybeLlmRoute = (args: {
   if (!parsed) {
     return (
       createStellaRoute({
-        proxy: args.proxy,
+        site: args.site,
         agentType: args.agentType,
         modelId: STELLA_DEFAULT_MODEL,
       }) ?? null
@@ -217,7 +217,7 @@ const resolveMaybeLlmRoute = (args: {
 
   return (
     createStellaRoute({
-      proxy: args.proxy,
+      site: args.site,
       agentType: args.agentType,
       modelId: `${STELLA_PROVIDER}/${parsed.fullModelId}`,
     }) ?? null
@@ -228,7 +228,7 @@ export const canResolveLlmRoute = (args: {
   stellaHomePath: string;
   modelName: string | undefined;
   agentType?: string;
-  proxy: StellaProxyConfig;
+  site: StellaSiteConfig;
 }): boolean =>
   Boolean(
     resolveMaybeLlmRoute({
@@ -241,7 +241,7 @@ export const resolveLlmRoute = (args: {
   stellaHomePath: string;
   modelName: string | undefined;
   agentType: string;
-  proxy: StellaProxyConfig;
+  site: StellaSiteConfig;
 }): ResolvedLlmRoute => {
   const route = resolveMaybeLlmRoute(args);
   if (route) return route;
