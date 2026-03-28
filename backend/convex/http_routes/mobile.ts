@@ -28,11 +28,151 @@ import {
   completeManagedChat,
   usageSummaryFromAssistant,
 } from "../runtime_ai/managed";
+import type {
+  AssistantMessage,
+  Context,
+  ImageContent,
+  Message,
+  TextContent,
+  Usage,
+  UserMessage,
+} from "../runtime_ai/types";
 
 const OFFLINE_CHAT_RATE_LIMIT = 12;
 const OFFLINE_CHAT_RATE_WINDOW_MS = 60_000;
 const MAX_BASE_URLS = 8;
 const MAX_DEVICE_ID_LENGTH = 256;
+const MAX_OFFLINE_HISTORY_ITEMS = 40;
+const MAX_OFFLINE_MESSAGE_CHARS = 12_000;
+const MAX_OFFLINE_IMAGES = 5;
+/** ~6M chars base64 ≈ ~4.5MB decoded — guardrail per image */
+const MAX_IMAGE_BASE64_CHARS = 6_000_000;
+
+const EMPTY_USAGE: Usage = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+
+const assistantHistoryMessage = (text: string): AssistantMessage => ({
+  role: "assistant",
+  content: [{ type: "text", text }],
+  api: "openai-completions",
+  provider: "managed",
+  model: "offline-history",
+  usage: EMPTY_USAGE,
+  stopReason: "stop",
+  timestamp: Date.now(),
+});
+
+const parseOfflineHistory = (
+  raw: unknown,
+): Array<{ role: "user" | "assistant"; text: string }> => {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const out: Array<{ role: "user" | "assistant"; text: string }> = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const record = item as { role?: unknown; text?: unknown };
+    const role = record.role;
+    const text =
+      typeof record.text === "string" ? record.text.slice(0, MAX_OFFLINE_MESSAGE_CHARS) : "";
+    const trimmed = text.trim();
+    if (!trimmed || (role !== "user" && role !== "assistant")) {
+      continue;
+    }
+    out.push({ role, text: trimmed });
+  }
+  return out.slice(-MAX_OFFLINE_HISTORY_ITEMS);
+};
+
+const parseOfflineImages = (
+  raw: unknown,
+): Array<{ base64: string; mimeType: string }> => {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const out: Array<{ base64: string; mimeType: string }> = [];
+  for (const item of raw) {
+    if (out.length >= MAX_OFFLINE_IMAGES) {
+      break;
+    }
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const record = item as { base64?: unknown; mimeType?: unknown };
+    const base64 = typeof record.base64 === "string" ? record.base64 : "";
+    if (!base64 || base64.length > MAX_IMAGE_BASE64_CHARS) {
+      continue;
+    }
+    const mimeType =
+      typeof record.mimeType === "string" && record.mimeType.trim().length > 0
+        ? record.mimeType.trim()
+        : "image/jpeg";
+    out.push({ base64, mimeType });
+  }
+  return out;
+};
+
+const buildOfflineChatContext = (args: {
+  systemPrompt: string;
+  history: Array<{ role: "user" | "assistant"; text: string }>;
+  message: string;
+  images: Array<{ base64: string; mimeType: string }>;
+}): Context => {
+  const messages: Message[] = [];
+  for (const turn of args.history) {
+    if (turn.role === "user") {
+      messages.push({
+        role: "user",
+        content: turn.text,
+        timestamp: Date.now(),
+      });
+    } else {
+      messages.push(assistantHistoryMessage(turn.text));
+    }
+  }
+
+  const parts: Array<TextContent | ImageContent> = [];
+  const msg = args.message.trim();
+  if (msg) {
+    parts.push({ type: "text", text: msg });
+  }
+  for (const img of args.images) {
+    parts.push({
+      type: "image",
+      data: img.base64,
+      mimeType: img.mimeType,
+    });
+  }
+  if (parts.length === 0) {
+    parts.push({ type: "text", text: "(Image)" });
+  }
+
+  let userContent: UserMessage["content"];
+  if (parts.length === 1 && parts[0].type === "text") {
+    userContent = parts[0].text;
+  } else {
+    userContent = parts;
+  }
+
+  messages.push({
+    role: "user",
+    content: userContent,
+    timestamp: Date.now(),
+  });
+
+  return {
+    systemPrompt: args.systemPrompt,
+    messages,
+  };
+};
 
 const MAGIC_LINK_RATE_LIMIT = 3;
 const MAGIC_LINK_RATE_WINDOW_MS = 60_000;
@@ -167,6 +307,8 @@ const generateOfflineReply = async (args: {
   userName?: string;
   message: string;
   isAnonymous: boolean;
+  history: Array<{ role: "user" | "assistant"; text: string }>;
+  images: Array<{ base64: string; mimeType: string }>;
 }) => {
   const modelAccess = await resolveManagedModelAccess(args.ctx, args.ownerId, {
     isAnonymous: args.isAnonymous,
@@ -195,22 +337,23 @@ const generateOfflineReply = async (args: {
     OFFLINE_RESPONDER_SYSTEM_PROMPT,
     "You are replying inside Stella's mobile offline chat.",
     "Answer in plain text and keep the response practical and concise.",
+    "Use prior messages in this conversation for context when relevant.",
     args.userName ? `The user's name is ${args.userName}.` : null,
   ]
     .filter((value): value is string => Boolean(value))
     .join("\n\n");
 
+  const context = buildOfflineChatContext({
+    systemPrompt,
+    history: args.history,
+    message: args.message,
+    images: args.images,
+  });
+
   const execute = async (config: typeof primaryConfig) =>
     await completeManagedChat({
       config,
-      context: {
-        systemPrompt,
-        messages: [{
-          role: "user",
-          content: [{ type: "text", text: args.message }],
-          timestamp: Date.now(),
-        }],
-      },
+      context,
     });
 
   const startedAt = Date.now();
@@ -288,17 +431,30 @@ export const registerMobileRoutes = (http: HttpRouter) => {
           return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
         }
 
-        let body: { message?: unknown } | null = null;
+        let body: {
+          message?: unknown;
+          history?: unknown;
+          images?: unknown;
+        } | null = null;
         try {
-          body = (await request.json()) as { message?: unknown };
+          body = (await request.json()) as {
+            message?: unknown;
+            history?: unknown;
+            images?: unknown;
+          };
         } catch {
-          return errorResponse(400, "Invalid JSON body", origin);
+          return errorResponse(400, "Invalid request body", origin);
         }
 
         const message =
-          typeof body?.message === "string" ? body.message.trim() : "";
-        if (!message) {
-          return errorResponse(400, "message is required", origin);
+          typeof body?.message === "string"
+            ? body.message.slice(0, MAX_OFFLINE_MESSAGE_CHARS).trim()
+            : "";
+        const history = parseOfflineHistory(body?.history);
+        const images = parseOfflineImages(body?.images);
+
+        if (!message && images.length === 0) {
+          return errorResponse(400, "Message or image required", origin);
         }
 
         try {
@@ -308,6 +464,8 @@ export const registerMobileRoutes = (http: HttpRouter) => {
             userName: owner.name,
             message,
             isAnonymous: owner.isAnonymous,
+            history,
+            images,
           });
           return jsonResponse({ text }, 200, origin);
         } catch (error) {
@@ -316,7 +474,7 @@ export const registerMobileRoutes = (http: HttpRouter) => {
             readConvexErrorCode(error) === "USAGE_LIMIT_REACHED" ? 429 : 500;
           return errorResponse(
             status,
-            readConvexErrorMessage(error, "Offline chat failed"),
+            readConvexErrorMessage(error, "Could not send your message"),
             origin,
           );
         }
