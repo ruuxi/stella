@@ -17,6 +17,18 @@ export type LocalHistoryMessage = {
   content: string;
 };
 
+export const LOCAL_CONTEXT_EVENT_TYPES = new Set([
+  "user_message",
+  "assistant_message",
+  "tool_request",
+  "tool_result",
+  "task_started",
+  "task_completed",
+  "task_failed",
+  "task_canceled",
+  "microcompact_boundary",
+]);
+
 type MicrocompactTrigger = "auto" | "manual";
 
 type MicrocompactBoundaryPayload = {

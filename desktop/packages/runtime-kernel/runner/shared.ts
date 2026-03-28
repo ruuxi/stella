@@ -4,6 +4,7 @@ import {
   TASK_SHUTDOWN_CANCEL_REASON,
   type TaskLifecycleEvent,
 } from "../tasks/local-task-manager.js";
+import { LOCAL_CONTEXT_EVENT_TYPES } from "../local-history.js";
 import { normalizeStellaApiBaseUrl } from "../stella-provider.js";
 import { isOrchestratorAgentType } from "../../../src/shared/contracts/agent-runtime.js";
 import type { SelfModHmrState } from "../../boundary-contracts/index.js";
@@ -19,17 +20,7 @@ export const DEFAULT_ORCHESTRATOR_PROMPT =
 export const DEFAULT_SUBAGENT_PROMPT =
   "You are a Stella sub-agent. Execute delegated work directly, provide concise progress, and run tools safely. " +
   "When creating or modifying UI components, add data-stella-label, data-stella-state, and data-stella-action attributes.";
-export const LOCAL_CONTEXT_EVENT_TYPES = new Set([
-  "user_message",
-  "assistant_message",
-  "tool_request",
-  "tool_result",
-  "task_started",
-  "task_completed",
-  "task_failed",
-  "task_canceled",
-  "microcompact_boundary",
-]);
+export { LOCAL_CONTEXT_EVENT_TYPES };
 export const QUEUED_TURN_INTERRUPT_ERROR =
   "Interrupted by queued orchestrator turn";
 

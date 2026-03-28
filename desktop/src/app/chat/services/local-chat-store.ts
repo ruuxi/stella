@@ -1,19 +1,13 @@
 import { type EventRecord } from "@/app/chat/lib/event-transforms";
 import {
-  eventsToHistoryMessages,
-  type ContextEvent,
-} from "@/app/chat/lib/history-messages";
-import {
-  estimateContextEventTokens,
-  selectRecentByTokenBudget,
-} from "@/app/chat/lib/context-window";
+  buildLocalHistoryFromEvents,
+  LOCAL_CONTEXT_EVENT_TYPES,
+  type LocalHistoryMessage,
+} from "../../../../packages/runtime-kernel/local-history.js";
+
+export type { LocalHistoryMessage } from "../../../../packages/runtime-kernel/local-history.js";
 
 const MAX_EVENTS_PER_CONVERSATION = 2000;
-
-export type LocalHistoryMessage = {
-  role: "user" | "assistant";
-  content: string;
-};
 
 export type LocalSyncMessage = {
   localMessageId: string;
@@ -22,18 +16,6 @@ export type LocalSyncMessage = {
   timestamp: number;
   deviceId?: string;
 };
-
-const CONTEXT_EVENT_TYPES = new Set([
-  "user_message",
-  "assistant_message",
-  "tool_request",
-  "tool_result",
-  "task_started",
-  "task_completed",
-  "task_failed",
-  "task_canceled",
-  "microcompact_boundary",
-]);
 
 const DEFAULT_HISTORY_MAX_TOKENS = 24_000;
 const DEFAULT_WARNING_THRESHOLD_TOKENS = 170_000;
@@ -68,34 +50,14 @@ export const buildLocalHistoryMessages = async (
   conversationId: string,
 ): Promise<LocalHistoryMessage[]> => {
   const events = await listLocalEvents(conversationId, 800);
-  const contextEvents = events.filter((event) => CONTEXT_EVENT_TYPES.has(event.type));
+  const contextEvents = events.filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
   if (contextEvents.length === 0) return [];
-
-  const newestFirst = [...contextEvents].reverse();
-  const selected = selectRecentByTokenBudget({
-    itemsNewestFirst: newestFirst,
+  return buildLocalHistoryFromEvents({
+    events: contextEvents,
     maxTokens: DEFAULT_HISTORY_MAX_TOKENS,
-    estimateTokens: (event) =>
-      estimateContextEventTokens({
-        type: event.type,
-        payload: event.payload,
-        requestId: event.requestId,
-      }),
+    timezone: getLocalTimezone(),
+    warningThresholdTokens: DEFAULT_WARNING_THRESHOLD_TOKENS,
   });
-
-  const chronological = [...selected].reverse();
-  const { messages } = eventsToHistoryMessages(
-    chronological as ContextEvent[],
-    {
-      timezone: getLocalTimezone(),
-      microcompact: {
-        trigger: "auto",
-        warningThresholdTokens: DEFAULT_WARNING_THRESHOLD_TOKENS,
-      },
-    },
-  );
-
-  return messages;
 };
 
 export const buildLocalSyncMessages = async (
