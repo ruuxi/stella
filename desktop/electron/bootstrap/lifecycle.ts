@@ -35,6 +35,7 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
     context.services.authService.stopAuthRefreshLoop();
     context.state.stellaHostRunner?.killAllShells();
     void context.state.stellaBrowserBridgeService?.stop();
+    context.state.tunnelService?.stop();
     context.state.wakeWordController?.dispose();
     context.state.wakeWordController = null;
     cleanupSelectedTextProcess();
