@@ -90,7 +90,7 @@ const createWorkerConnection = (workerEntryPath: string) => {
   } satisfies WorkerConnection;
 };
 
-export type RuntimeWorkerLifecycleControllerOptions<TWorkerHealth> = {
+export type RuntimeWorkerLifecycleControllerOptions = {
   workerEntryPath: string;
   isHostStarted: () => boolean;
   createConnection?: (workerEntryPath: string) => WorkerConnection;
@@ -99,13 +99,32 @@ export type RuntimeWorkerLifecycleControllerOptions<TWorkerHealth> = {
   onUnexpectedExit: () => Promise<void> | void;
   onAfterStop: (reason: "idle" | "restart" | "stopped") => Promise<void> | void;
   onStateChange?: (state: WorkerLifecycleState) => void;
-  fetchHealth: (connection: WorkerConnection) => Promise<TWorkerHealth | null>;
-  shouldKeepAlive: (health: TWorkerHealth) => boolean;
+  fetchHealth: (connection: WorkerConnection) => Promise<WorkerHealthSnapshot | null>;
   idleTimeoutMs?: number;
   idleRecheckMs?: number;
 };
 
-export class RuntimeWorkerLifecycleController<TWorkerHealth> {
+const shouldKeepWorkerAlive = (health: WorkerHealthSnapshot) => {
+  const social = health.socialSessions ?? {
+    enabled: false,
+    status: "stopped" as const,
+    sessionCount: 0,
+    sessions: [],
+  };
+  const socialPinned = social.sessionCount > 0 || Boolean(social.processingTurnId);
+  const voicePinned =
+    Boolean(health.voiceBusy) || (health.pendingVoiceRequestCount ?? 0) > 0;
+
+  return Boolean(
+    health.activeRun ||
+    health.activeTaskCount > 0 ||
+    socialPinned ||
+    voicePinned ||
+    health.remoteBridgeActive,
+  );
+};
+
+export class RuntimeWorkerLifecycleController {
   private connection: WorkerConnection | null = null;
   private startupPromise: Promise<void> | null = null;
   private stopPromise: Promise<void> | null = null;
@@ -118,7 +137,7 @@ export class RuntimeWorkerLifecycleController<TWorkerHealth> {
   private lastExecutionActivityAt = 0;
 
   constructor(
-    private readonly options: RuntimeWorkerLifecycleControllerOptions<TWorkerHealth>,
+    private readonly options: RuntimeWorkerLifecycleControllerOptions,
   ) {}
 
   getState() {
@@ -355,7 +374,7 @@ export class RuntimeWorkerLifecycleController<TWorkerHealth> {
     }
     const health = await this.getHealth({ ensureWorker: false }).catch(() => null);
     if (!health) return;
-    if (this.options.shouldKeepAlive(health)) {
+    if (shouldKeepWorkerAlive(health)) {
       this.scheduleIdleEvaluation(this.options.idleRecheckMs ?? 30_000);
       return;
     }

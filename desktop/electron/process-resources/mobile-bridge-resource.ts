@@ -32,26 +32,20 @@ export const createMobileBridgeResource = (options: {
   let bridge: MobileBridgeService | null = null;
   let tunnel: CloudflareTunnelResource | null = null;
   let stopped = true;
-  let bridgePort: number | null = null;
-  let authSyncCancel: (() => void) | null = null;
-  let portWaitCancel: (() => void) | null = null;
-  let windowRetryCancel: (() => void) | null = null;
+  let sessionId = 0;
+  let stopAuthSync: (() => void) | null = null;
   let mirroredWindow: BrowserWindow | null = null;
   let restoreWindowSend: (() => void) | null = null;
 
-  const clearAuthSync = () => {
-    authSyncCancel?.();
-    authSyncCancel = null;
-  };
-
-  const clearPortWait = () => {
-    portWaitCancel?.();
-    portWaitCancel = null;
-  };
-
-  const clearWindowRetry = () => {
-    windowRetryCancel?.();
-    windowRetryCancel = null;
+  const createTunnel = () => {
+    tunnel = createCloudflareTunnelResource({
+      processRuntime: options.processRuntime,
+      getAuthToken: options.getAuthToken,
+      getConvexSiteUrl: options.getConvexSiteUrl,
+      onTunnelUrl: (url) => {
+        bridge?.setTunnelUrl(url);
+      },
+    });
   };
 
   const clearWindowMirror = () => {
@@ -60,29 +54,40 @@ export const createMobileBridgeResource = (options: {
     mirroredWindow = null;
   };
 
-  const syncBridgeAuth = async () => {
-    if (!bridge) {
+  const isInactiveSession = (candidateSessionId: number) => {
+    return (
+      stopped ||
+      sessionId !== candidateSessionId ||
+      options.processRuntime.isShuttingDown() ||
+      !bridge
+    );
+  };
+
+  const syncBridgeAuth = async (candidateSessionId: number) => {
+    if (isInactiveSession(candidateSessionId)) {
       return;
     }
 
-    bridge.setDeviceId(options.getDeviceId());
-    bridge.setHostAuthToken(await options.getAuthToken());
-    bridge.setConvexSiteUrl(options.getConvexSiteUrl());
+    const activeBridge = bridge;
+    if (!activeBridge) {
+      return;
+    }
+
+    activeBridge.setDeviceId(options.getDeviceId());
+    activeBridge.setHostAuthToken(await options.getAuthToken());
+    activeBridge.setConvexSiteUrl(options.getConvexSiteUrl());
   };
 
-  const attachWindowMirror = () => {
-    clearWindowRetry();
-
-    if (stopped || options.processRuntime.isShuttingDown() || !bridge) {
+  const attachWindowMirror = (candidateSessionId: number) => {
+    if (isInactiveSession(candidateSessionId)) {
       return;
     }
 
     const window = options.getFullWindow();
     if (!window || window.isDestroyed()) {
-      windowRetryCancel = options.processRuntime.setManagedTimeout(
-        attachWindowMirror,
-        WINDOW_RETRY_DELAY_MS,
-      );
+      options.processRuntime.setManagedTimeout(() => {
+        attachWindowMirror(candidateSessionId);
+      }, WINDOW_RETRY_DELAY_MS);
       return;
     }
 
@@ -113,40 +118,37 @@ export const createMobileBridgeResource = (options: {
         restoreWindowSend = null;
         mirroredWindow = null;
       }
-      if (!stopped && !options.processRuntime.isShuttingDown()) {
-        windowRetryCancel = options.processRuntime.setManagedTimeout(
-          attachWindowMirror,
-          WINDOW_RETRY_DELAY_MS,
-        );
+      if (!isInactiveSession(candidateSessionId)) {
+        options.processRuntime.setManagedTimeout(() => {
+          attachWindowMirror(candidateSessionId);
+        }, WINDOW_RETRY_DELAY_MS);
       }
     });
   };
 
-  const waitForBridgePort = () => {
-    clearPortWait();
-
-    if (stopped || options.processRuntime.isShuttingDown() || !bridge) {
+  const waitForBridgePort = (candidateSessionId: number) => {
+    if (isInactiveSession(candidateSessionId)) {
       return;
     }
 
-    const port = bridge.getPort();
+    const activeBridge = bridge;
+    if (!activeBridge) {
+      return;
+    }
+
+    const port = activeBridge.getPort();
     if (port) {
-      if (bridgePort === port) {
-        return;
-      }
-      bridgePort = port;
       tunnel?.setBridgePort(port);
       tunnel?.start();
       return;
     }
 
-    portWaitCancel = options.processRuntime.setManagedTimeout(
-      waitForBridgePort,
-      PORT_RETRY_DELAY_MS,
-    );
+    options.processRuntime.setManagedTimeout(() => {
+      waitForBridgePort(candidateSessionId);
+    }, PORT_RETRY_DELAY_MS);
   };
 
-  const startBridge = () => {
+  const startBridge = (candidateSessionId: number) => {
     if (bridge || options.processRuntime.isShuttingDown()) {
       return;
     }
@@ -159,13 +161,13 @@ export const createMobileBridgeResource = (options: {
     bridge.setBootstrapPayloadGetter(options.getBootstrapPayload);
     bridge.start();
 
-    authSyncCancel = options.processRuntime.setManagedInterval(() => {
-      void syncBridgeAuth();
+    stopAuthSync = options.processRuntime.setManagedInterval(() => {
+      void syncBridgeAuth(candidateSessionId);
     }, AUTH_SYNC_INTERVAL_MS);
-    void syncBridgeAuth();
+    void syncBridgeAuth(candidateSessionId);
 
-    attachWindowMirror();
-    waitForBridgePort();
+    attachWindowMirror(candidateSessionId);
+    waitForBridgePort(candidateSessionId);
   };
 
   return {
@@ -177,28 +179,20 @@ export const createMobileBridgeResource = (options: {
       if (bridge || options.processRuntime.isShuttingDown()) {
         return;
       }
-      bridgePort = null;
-      tunnel = createCloudflareTunnelResource({
-        processRuntime: options.processRuntime,
-        getAuthToken: options.getAuthToken,
-        getConvexSiteUrl: options.getConvexSiteUrl,
-        onTunnelUrl: (url) => {
-          bridge?.setTunnelUrl(url);
-        },
-      });
-      startBridge();
+      sessionId += 1;
+      createTunnel();
+      startBridge(sessionId);
     },
     stop: async () => {
       stopped = true;
-      clearAuthSync();
-      clearPortWait();
-      clearWindowRetry();
+      sessionId += 1;
+      stopAuthSync?.();
+      stopAuthSync = null;
       clearWindowMirror();
       await tunnel?.stop();
       tunnel = null;
       bridge?.stop();
       bridge = null;
-      bridgePort = null;
     },
   };
 };

@@ -189,7 +189,7 @@ export class StellaRuntimeClient {
     string,
     { events: RuntimeAgentEventPayload[]; updatedAt: number }
   >();
-  private readonly workerController: RuntimeWorkerLifecycleController<WorkerHealthSnapshot>;
+  private readonly workerController: RuntimeWorkerLifecycleController;
   private workerHealthCache: WorkerHealthSnapshot | null = null;
   private hostDb: SqliteDatabase | null = null;
   private hostChatStore: ChatStore | null = null;
@@ -256,20 +256,6 @@ export class StellaRuntimeClient {
         );
         this.workerHealthCache = snapshot;
         return snapshot;
-      },
-      shouldKeepAlive: (health) => {
-        const social = health.socialSessions ?? buildDefaultSocialSessionSnapshot();
-        const socialPinned =
-          social.sessionCount > 0 || Boolean(social.processingTurnId);
-        const voicePinned =
-          Boolean(health.voiceBusy) || (health.pendingVoiceRequestCount ?? 0) > 0;
-        return Boolean(
-          health.activeRun ||
-          health.activeTaskCount > 0 ||
-          socialPinned ||
-          voicePinned ||
-          health.remoteBridgeActive,
-        );
       },
     });
   }
