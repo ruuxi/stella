@@ -3,7 +3,6 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Pressable, StyleSheet, Text } from "react-native";
 import { authClient } from "../src/lib/auth-client";
-import { errorMessage } from "../src/lib/assert";
 import { colors } from "../src/theme/colors";
 import { fonts } from "../src/theme/fonts";
 
@@ -13,7 +12,7 @@ type CallbackError = {
 };
 
 const readCallbackError = (error: unknown): CallbackError => {
-  const message = error instanceof Error ? errorMessage(error) : "";
+  const message = error instanceof Error ? error.message : "";
 
   if (
     message === "Invalid token"

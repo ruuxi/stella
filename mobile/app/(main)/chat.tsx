@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActionSheetIOS,
+  Alert,
   Animated,
   FlatList,
   Image,
@@ -23,8 +23,12 @@ import Reanimated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Feather from "@expo/vector-icons/Feather";
-import { assert, assertObject } from "../../src/lib/assert";
+import {
+  loadOfflineChatMessages,
+  saveOfflineChatMessages,
+} from "../../src/lib/offline-chat-storage";
 import { postJson } from "../../src/lib/http";
+import { userFacingError } from "../../src/lib/user-facing-error";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
 import type { ChatMessage } from "../../src/types";
@@ -72,10 +76,15 @@ const LAYOUT_SPRING = {
 const createId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-function readOfflineChatText(value: unknown) {
-  assertObject(value, "Offline chat response must be an object.");
-  assert(typeof value.text === "string", "Offline chat response text is required.");
-  return value.text;
+function readOfflineChatText(value: unknown): string {
+  if (
+    value
+    && typeof value === "object"
+    && typeof (value as { text?: unknown }).text === "string"
+  ) {
+    return (value as { text: string }).text;
+  }
+  return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +127,7 @@ export default function ChatScreen() {
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const inputRef = useRef<TextInput>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [storageLoaded, setStorageLoaded] = useState(false);
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [sending, setSending] = useState(false);
@@ -135,14 +145,36 @@ export default function ChatScreen() {
   const [expanded, setExpanded] = useState(false);
   const hasMountedRef = useRef(false);
 
+  useEffect(() => {
+    void loadOfflineChatMessages().then((loaded) => {
+      setMessages(loaded);
+      setStorageLoaded(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!storageLoaded) return;
+    void saveOfflineChatMessages(messages);
+  }, [messages, storageLoaded]);
+
   const canSubmit = (draft.trim().length > 0 || attachments.length > 0) && !sending;
 
   const pickImage = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        "Photos",
+        "Allow Stella to access your photo library in Settings so you can attach images.",
+        [{ text: "OK" }],
+      );
+      return;
+    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsMultipleSelection: true,
-      quality: 0.8,
+      quality: 0.75,
       selectionLimit: 5,
+      base64: true,
     });
     if (!result.canceled && result.assets.length > 0) {
       setAttachments((prev) => [...prev, ...result.assets]);
@@ -163,14 +195,24 @@ export default function ChatScreen() {
 
   const send = async () => {
     const text = draft.trim();
-    if (!text || sending) return;
+    if ((!text && attachments.length === 0) || sending) return;
 
-    const userMsg: ChatMessage = { id: createId(), role: "user", text };
+    const prior = messages;
+    const history = prior.map((m) => ({ role: m.role, text: m.text }));
+    const assets = attachments.slice();
+
+    const displayText = text || (assets.length ? "Photo" : "");
+    const userMsg: ChatMessage = {
+      id: createId(),
+      role: "user",
+      text: displayText,
+      hasImage: assets.length > 0,
+    };
+
     setDraft("");
     setAttachments([]);
     setSending(true);
 
-    // Collapse composer back to pill after sending
     if (expanded) {
       LayoutAnimation.configureNext(LAYOUT_SPRING);
       setExpanded(false);
@@ -179,20 +221,45 @@ export default function ChatScreen() {
     setMessages((m) => [...m, userMsg]);
     scrollToEnd();
 
+    const imagesPayload: { base64: string; mimeType: string }[] = [];
+    for (const a of assets) {
+      if (!a.base64) {
+        setMessages((m) => [
+          ...m,
+          {
+            id: createId(),
+            role: "assistant",
+            text: "Could not read that image. Try choosing it again.",
+          },
+        ]);
+        setSending(false);
+        return;
+      }
+      imagesPayload.push({
+        base64: a.base64,
+        mimeType: a.mimeType ?? "image/jpeg",
+      });
+    }
+
     try {
-      const res = await postJson("/api/mobile/offline-chat", { message: text });
-      setMessages((m) => [
-        ...m,
-        { id: createId(), role: "assistant", text: readOfflineChatText(res) },
-      ]);
-    } catch {
+      const res = await postJson("/api/mobile/offline-chat", {
+        message: text,
+        history,
+        images: imagesPayload,
+      });
+      const reply = readOfflineChatText(res);
       setMessages((m) => [
         ...m,
         {
           id: createId(),
           role: "assistant",
-          text: "I couldn't respond right now. Please try again in a moment.",
+          text: reply || "No reply came back. Try again.",
         },
+      ]);
+    } catch (e) {
+      setMessages((m) => [
+        ...m,
+        { id: createId(), role: "assistant", text: userFacingError(e) },
       ]);
     } finally {
       setSending(false);
@@ -272,6 +339,9 @@ export default function ChatScreen() {
                   <View style={styles.userRow}>
                     <View style={styles.userBubble}>
                       <Text style={styles.userText}>{item.text}</Text>
+                      {item.hasImage ? (
+                        <Text style={styles.userImageHint}>Includes a photo</Text>
+                      ) : null}
                     </View>
                   </View>
                 ) : (
@@ -492,6 +562,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     letterSpacing: 0.54,
     lineHeight: 26,
+  },
+  userImageHint: {
+    color: colors.textMuted,
+    fontFamily: fonts.sans.regular,
+    fontSize: 12,
+    marginTop: 4,
+    opacity: 0.75,
   },
 
   // Assistant — desktop: transparent, no border, full width

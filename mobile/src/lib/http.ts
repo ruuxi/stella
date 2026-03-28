@@ -1,5 +1,5 @@
 import { env } from "../config/env";
-import { assert, assertObject } from "./assert";
+import { assert } from "./assert";
 import { getConvexToken } from "./auth-token";
 
 type JsonRequest =
@@ -12,10 +12,23 @@ type JsonRequest =
     };
 
 const readErrorMessage = async (response: Response) => {
-  const parsed = (await response.json()) as unknown;
-  assertObject(parsed, "Request failed.");
-  assert(typeof parsed.error === "string", "Request failed.");
-  return parsed.error;
+  const text = await response.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    return "Could not complete that request. Try again.";
+  }
+  if (parsed && typeof parsed === "object") {
+    const o = parsed as Record<string, unknown>;
+    if (typeof o.error === "string" && o.error.trim()) {
+      return o.error.trim();
+    }
+    if (typeof o.message === "string" && o.message.trim()) {
+      return o.message.trim();
+    }
+  }
+  return "Could not complete that request. Try again.";
 };
 
 async function requestJson(path: string, request: JsonRequest) {

@@ -18,7 +18,7 @@ import * as SecureStore from "expo-secure-store";
 import { getSetCookie } from "@better-auth/expo/client";
 import { authClient } from "../../src/lib/auth-client";
 import { env } from "../../src/config/env";
-import { errorMessage } from "../../src/lib/assert";
+import { userFacingError } from "../../src/lib/user-facing-error";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
 import { TERMS_OF_SERVICE, PRIVACY_POLICY } from "../../src/lib/legal-text";
@@ -70,7 +70,7 @@ export default function LoginScreen() {
       }
       setSubmitState({ type: "sent", requestId: data.requestId });
     } catch (error) {
-      setSubmitState({ type: "error", message: errorMessage(error) });
+      setSubmitState({ type: "error", message: userFacingError(error) });
     }
   };
 
@@ -93,6 +93,7 @@ export default function LoginScreen() {
           const data = (await res.json()) as {
             status: string;
             ott?: string;
+            sessionCookie?: string;
           };
 
           if (data.status === "completed" && data.sessionCookie) {
