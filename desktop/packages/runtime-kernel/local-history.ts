@@ -1,5 +1,8 @@
 import { formatTimestampForHistory, TEN_MINUTES_MS } from "./message-timestamp.js";
-import { stripLeakedInternalToolTranscript } from "./internal-tool-transcript.js";
+import {
+  isInternalTaskToolName,
+  sanitizeAssistantText,
+} from "./internal-tool-transcript.js";
 
 export type LocalContextEvent = {
   _id: string;
@@ -73,13 +76,6 @@ type PendingToolCall = {
   requestId?: string;
   toolName: string;
 };
-
-const INTERNAL_TASK_HISTORY_TOOL_NAMES = new Set([
-  "TaskCreate",
-  "TaskUpdate",
-  "TaskCancel",
-  "TaskOutput",
-]);
 
 type TimestampState = {
   prevDate?: string;
@@ -205,7 +201,7 @@ const normalizeToolName = (
 };
 
 const shouldHideToolFromHistory = (toolName: string): boolean =>
-  INTERNAL_TASK_HISTORY_TOOL_NAMES.has(toolName);
+  isInternalTaskToolName(toolName);
 
 const formatTaskEvent = (
   eventType: string,
@@ -501,7 +497,7 @@ const formatTextEvent = (
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
   const isAssistant = event.type === "assistant_message";
   const effectiveText = isAssistant
-    ? stripLeakedInternalToolTranscript(text).trim()
+    ? sanitizeAssistantText(text)
     : text;
   if (!effectiveText) return null;
   const skipTs = !isAssistant &&
