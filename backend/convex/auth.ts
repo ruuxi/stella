@@ -227,6 +227,17 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
     baseURL: convexSiteUrl,
     trustedOrigins,
     database: authComponent.adapter(ctx),
+    user: {
+      deleteUser: {
+        enabled: true,
+        beforeDelete: async (user) => {
+          const actionCtx = requireActionCtx(ctx);
+          await actionCtx.runAction(internal.account_deletion.purgeOwnerCloudData, {
+            ownerId: user.id,
+          });
+        },
+      },
+    },
     // Social providers are disabled until OAuth onboarding is implemented.
     // Enable by setting GOOGLE_CLIENT_ID/SECRET and GITHUB_CLIENT_ID/SECRET env vars.
     plugins: [
