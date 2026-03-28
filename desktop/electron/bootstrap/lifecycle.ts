@@ -1,7 +1,6 @@
 import { app, globalShortcut } from "electron";
-import { cleanupSelectedTextProcess } from "../selected-text.js";
 import type { BootstrapContext } from "./context.js";
-import { scheduleBootstrapRuntimeShutdown } from "./resets.js";
+import { shutdownBootstrapRuntime } from "./resets.js";
 import { initializeBootstrapApplication } from "./runtime.js";
 
 export const initializeBootstrapSingleInstance = (
@@ -16,6 +15,28 @@ export const initializeBootstrapSingleInstance = (
 };
 
 export const registerBootstrapLifecycle = (context: BootstrapContext) => {
+  context.state.processRuntime.registerCleanup(
+    "will-quit",
+    "global-shortcuts",
+    () => {
+      globalShortcut.unregisterAll();
+    },
+  );
+  context.state.processRuntime.registerCleanup(
+    "will-quit",
+    "radial-gesture-service",
+    () => {
+      context.services.radialGestureService.stop();
+    },
+  );
+  context.state.processRuntime.registerCleanup(
+    "will-quit",
+    "bootstrap-runtime",
+    async () => {
+      await shutdownBootstrapRuntime(context, { stopScheduler: true });
+    },
+  );
+
   app.whenReady().then(async () => {
     await initializeBootstrapApplication(context);
 
@@ -32,20 +53,10 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
 
   app.on("before-quit", () => {
     context.state.isQuitting = true;
-    context.services.authService.stopAuthRefreshLoop();
-    context.state.stellaHostRunner?.killAllShells();
-    void context.state.stellaBrowserBridgeService?.stop();
-    context.state.tunnelService?.stop();
-    context.state.wakeWordController?.dispose();
-    context.state.wakeWordController = null;
-    cleanupSelectedTextProcess();
-    context.state.overlayController?.destroy();
-    context.state.mobileBridgeService?.stop();
+    void context.state.processRuntime.runPhase("before-quit");
   });
 
   app.on("will-quit", () => {
-    globalShortcut.unregisterAll();
-    context.services.radialGestureService.stop();
-    scheduleBootstrapRuntimeShutdown(context, { stopScheduler: true });
+    void context.state.processRuntime.runPhase("will-quit");
   });
 };

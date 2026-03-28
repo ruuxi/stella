@@ -4,8 +4,7 @@ const {
   appHandlers,
   app,
   globalShortcut,
-  cleanupSelectedTextProcess,
-  scheduleBootstrapRuntimeShutdown,
+  shutdownBootstrapRuntime,
   initializeBootstrapApplication,
 } = vi.hoisted(() => {
   const handlers = new Map<string, (...args: unknown[]) => void>();
@@ -24,8 +23,7 @@ const {
     globalShortcut: {
       unregisterAll: vi.fn(),
     },
-    cleanupSelectedTextProcess: vi.fn(),
-    scheduleBootstrapRuntimeShutdown: vi.fn(),
+    shutdownBootstrapRuntime: vi.fn(),
     initializeBootstrapApplication: vi.fn(),
   };
 });
@@ -35,12 +33,8 @@ vi.mock("electron", () => ({
   globalShortcut,
 }));
 
-vi.mock("../../../electron/selected-text.js", () => ({
-  cleanupSelectedTextProcess,
-}));
-
 vi.mock("../../../electron/bootstrap/resets.js", () => ({
-  scheduleBootstrapRuntimeShutdown,
+  shutdownBootstrapRuntime,
 }));
 
 vi.mock("../../../electron/bootstrap/runtime.js", () => ({
@@ -56,43 +50,24 @@ describe("bootstrap lifecycle", () => {
     app.whenReady.mockClear();
     app.quit.mockClear();
     globalShortcut.unregisterAll.mockClear();
-    cleanupSelectedTextProcess.mockClear();
-    scheduleBootstrapRuntimeShutdown.mockClear();
+    shutdownBootstrapRuntime.mockClear();
     initializeBootstrapApplication.mockClear();
   });
 
-  it("stops the Cloudflare tunnel on app quit", () => {
-    const wakeWordController = {
-      dispose: vi.fn(),
+  it("routes quit events through the shared process runtime", async () => {
+    const processRuntime = {
+      registerCleanup: vi.fn(),
+      runPhase: vi.fn(async () => undefined),
     };
-
     const context = {
       services: {
-        authService: {
-          stopAuthRefreshLoop: vi.fn(),
-        },
         radialGestureService: {
           stop: vi.fn(),
         },
       },
       state: {
         isQuitting: false,
-        stellaHostRunner: {
-          killAllShells: vi.fn(),
-        },
-        stellaBrowserBridgeService: {
-          stop: vi.fn(),
-        },
-        tunnelService: {
-          stop: vi.fn(),
-        },
-        wakeWordController,
-        overlayController: {
-          destroy: vi.fn(),
-        },
-        mobileBridgeService: {
-          stop: vi.fn(),
-        },
+        processRuntime,
         windowManager: null,
       },
     };
@@ -102,17 +77,31 @@ describe("bootstrap lifecycle", () => {
     const beforeQuit = appHandlers.get("before-quit");
     expect(beforeQuit).toBeTypeOf("function");
 
-    beforeQuit?.();
+    await beforeQuit?.();
 
     expect(context.state.isQuitting).toBe(true);
-    expect(context.services.authService.stopAuthRefreshLoop).toHaveBeenCalledOnce();
-    expect(context.state.stellaHostRunner.killAllShells).toHaveBeenCalledOnce();
-    expect(context.state.stellaBrowserBridgeService.stop).toHaveBeenCalledOnce();
-    expect(context.state.tunnelService.stop).toHaveBeenCalledOnce();
-    expect(wakeWordController.dispose).toHaveBeenCalledOnce();
-    expect(context.state.wakeWordController).toBeNull();
-    expect(cleanupSelectedTextProcess).toHaveBeenCalledOnce();
-    expect(context.state.overlayController.destroy).toHaveBeenCalledOnce();
-    expect(context.state.mobileBridgeService.stop).toHaveBeenCalledOnce();
+    expect(processRuntime.runPhase).toHaveBeenCalledWith("before-quit");
+    expect(processRuntime.registerCleanup).toHaveBeenCalledWith(
+      "will-quit",
+      "global-shortcuts",
+      expect.any(Function),
+    );
+    expect(processRuntime.registerCleanup).toHaveBeenCalledWith(
+      "will-quit",
+      "radial-gesture-service",
+      expect.any(Function),
+    );
+    expect(processRuntime.registerCleanup).toHaveBeenCalledWith(
+      "will-quit",
+      "bootstrap-runtime",
+      expect.any(Function),
+    );
+
+    const willQuit = appHandlers.get("will-quit");
+    expect(willQuit).toBeTypeOf("function");
+
+    await willQuit?.();
+
+    expect(processRuntime.runPhase).toHaveBeenCalledWith("will-quit");
   });
 });

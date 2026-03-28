@@ -1,4 +1,3 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { watch, type FSWatcher } from "node:fs";
 import path from "node:path";
@@ -64,11 +63,16 @@ import {
   type StoreReleaseDraft,
   type RuntimeInitializeParams,
 } from "../runtime-protocol/index.js";
-import { attachJsonRpcPeerToStreams } from "../runtime-protocol/jsonl.js";
 import {
   createRuntimeUnavailableError,
   type JsonRpcPeer,
 } from "../runtime-protocol/rpc-peer.js";
+import {
+  RuntimeWorkerLifecycleController,
+  type WorkerConnection,
+  type WorkerHealthSnapshot,
+  type WorkerLifecycleState,
+} from "./worker-lifecycle.js";
 
 type RuntimeClientEvents = {
   "runtime-connected": void;
@@ -129,34 +133,8 @@ type WorkerInitializationState = {
   cloudSyncEnabled: boolean;
 };
 
-type WorkerConnection = {
-  process: ChildProcessWithoutNullStreams;
-  peer: JsonRpcPeer;
-  pid: number;
-};
-
-type WorkerLifecycleState = "idle" | "starting" | "running" | "stopping";
-
-type InFlightDrainWaiter = {
-  resolve: () => void;
-  promise: Promise<void>;
-};
-
-type WorkerHealthSnapshot = {
-  health: AgentHealth;
-  activeRun: RuntimeActiveRun | null;
-  activeTaskCount: number;
-  pid: number;
-  deviceId: string | null;
-  voiceBusy?: boolean;
-  pendingVoiceRequestCount?: number;
-  socialSessions?: SocialSessionServiceSnapshot;
-};
-
 const AGENT_EVENT_BUFFER_LIMIT = 1_000;
 const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1_000;
-const WORKER_IDLE_TIMEOUT_MS = 5 * 60 * 1_000;
-const WORKER_IDLE_RECHECK_MS = 30_000;
 
 const parseDisplayUpdateParams = (params: unknown): string => {
   if (typeof params === "string") return params;
@@ -169,35 +147,6 @@ const parseDisplayUpdateParams = (params: unknown): string => {
     return (params as HostDisplayUpdateParams).html;
   }
   throw new Error("Invalid host display update payload.");
-};
-
-const waitForProcessExit = async (
-  child: ChildProcessWithoutNullStreams,
-  timeoutMs = 1_500,
-) => {
-  await new Promise<void>((resolve) => {
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    };
-    child.once("exit", finish);
-    try {
-      child.kill("SIGTERM");
-    } catch {
-      finish();
-      return;
-    }
-    const timeout = setTimeout(() => {
-      if (settled) return;
-      try {
-        child.kill("SIGKILL");
-      } catch {}
-      finish();
-    }, timeoutMs);
-    timeout.unref?.();
-  });
 };
 
 const buildDefaultSocialSessionSnapshot = (): SocialSessionServiceSnapshot => ({
@@ -240,10 +189,7 @@ export class StellaRuntimeClient {
     string,
     { events: RuntimeAgentEventPayload[]; updatedAt: number }
   >();
-  private worker: WorkerConnection | null = null;
-  private workerStartupPromise: Promise<void> | null = null;
-  private workerStopPromise: Promise<void> | null = null;
-  private workerStoppingPid: number | null = null;
+  private readonly workerController: RuntimeWorkerLifecycleController<WorkerHealthSnapshot>;
   private workerHealthCache: WorkerHealthSnapshot | null = null;
   private hostDb: SqliteDatabase | null = null;
   private hostChatStore: ChatStore | null = null;
@@ -255,67 +201,77 @@ export class StellaRuntimeClient {
   private watcher: FSWatcher | null = null;
   private reloadTimer: NodeJS.Timeout | null = null;
   private reloadQueue = Promise.resolve();
-  private workerIdleTimer: NodeJS.Timeout | null = null;
   private configCache: RuntimeConfigureParams = {};
   private deviceIdentity: HostDeviceIdentity | null = null;
   private workerGeneration = 0;
-  private activeExecutionRequests = 0;
-  private inFlightWorkerRequests = 0;
-  private inFlightDrainWaiter: InFlightDrainWaiter | null = null;
-  private lastExecutionActivityAt = 0;
   private started = false;
   private hostReady = false;
-  private workerState: WorkerLifecycleState = "idle";
 
-  constructor(private readonly options: StellaRuntimeClientOptions) {}
-  private clearWorkerIdleTimer() {
-    if (!this.workerIdleTimer) {
-      return;
-    }
-    clearTimeout(this.workerIdleTimer);
-    this.workerIdleTimer = null;
-  }
-
-  private setWorkerState(nextState: WorkerLifecycleState) {
-    this.workerState = nextState;
-  }
-
-  private getOrCreateInFlightDrainWaiter() {
-    if (this.inFlightDrainWaiter) {
-      return this.inFlightDrainWaiter;
-    }
-    let resolve = () => {};
-    const promise = new Promise<void>((innerResolve) => {
-      resolve = innerResolve;
+  constructor(private readonly options: StellaRuntimeClientOptions) {
+    this.workerController = new RuntimeWorkerLifecycleController({
+      workerEntryPath: resolveDefaultWorkerEntryPath(this.options),
+      isHostStarted: () => this.started,
+      initializeConnection: async (connection) => {
+        this.registerHostHandlers(connection.peer);
+        this.registerNotifications(connection.peer);
+        await connection.peer.request(
+          METHOD_NAMES.INTERNAL_WORKER_INITIALIZE,
+          this.buildWorkerInitializationState(),
+        );
+        if (Object.keys(this.configCache).length > 0) {
+          await connection.peer.request(
+            METHOD_NAMES.INTERNAL_WORKER_CONFIGURE,
+            this.configCache,
+          );
+        }
+      },
+      onConnectionStarted: async () => {
+        this.workerGeneration += 1;
+        this.workerHealthCache = await this.workerController.getHealth({
+          ensureWorker: false,
+        });
+        this.events.emit("runtime-ready", await this.health());
+      },
+      onUnexpectedExit: async () => {
+        this.workerHealthCache = null;
+        if (this.started) {
+          this.events.emit("runtime-ready", await this.health());
+        }
+      },
+      onAfterStop: async (reason) => {
+        this.workerHealthCache = null;
+        if (this.started) {
+          this.events.emit("runtime-reloading", { reason: `worker-${reason}` });
+          this.events.emit("runtime-ready", await this.health());
+        }
+      },
+      onStateChange: (_state: WorkerLifecycleState) => {
+        if (_state === "idle" && !this.workerController.getConnection()) {
+          this.workerHealthCache = null;
+        }
+      },
+      fetchHealth: async (connection: WorkerConnection) => {
+        const snapshot = await connection.peer.request<WorkerHealthSnapshot>(
+          METHOD_NAMES.INTERNAL_WORKER_HEALTH,
+        );
+        this.workerHealthCache = snapshot;
+        return snapshot;
+      },
+      shouldKeepAlive: (health) => {
+        const social = health.socialSessions ?? buildDefaultSocialSessionSnapshot();
+        const socialPinned =
+          social.sessionCount > 0 || Boolean(social.processingTurnId);
+        const voicePinned =
+          Boolean(health.voiceBusy) || (health.pendingVoiceRequestCount ?? 0) > 0;
+        return Boolean(
+          health.activeRun ||
+          health.activeTaskCount > 0 ||
+          socialPinned ||
+          voicePinned ||
+          health.remoteBridgeActive,
+        );
+      },
     });
-    this.inFlightDrainWaiter = { resolve, promise };
-    return this.inFlightDrainWaiter;
-  }
-
-  private incrementInFlightWorkerRequests() {
-    this.inFlightWorkerRequests += 1;
-  }
-
-  private decrementInFlightWorkerRequests() {
-    this.inFlightWorkerRequests = Math.max(0, this.inFlightWorkerRequests - 1);
-    if (this.inFlightWorkerRequests === 0 && this.inFlightDrainWaiter) {
-      const waiter = this.inFlightDrainWaiter;
-      this.inFlightDrainWaiter = null;
-      waiter.resolve();
-    }
-  }
-
-  private async waitForInFlightWorkerRequestsToDrain(timeoutMs = 1_500) {
-    if (this.inFlightWorkerRequests === 0) {
-      return;
-    }
-    const waiter = this.getOrCreateInFlightDrainWaiter();
-    await Promise.race([
-      waiter.promise,
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, timeoutMs).unref?.();
-      }),
-    ]);
   }
 
   on<K extends keyof RuntimeClientEvents>(
@@ -332,12 +288,11 @@ export class StellaRuntimeClient {
     if (this.started) return;
     this.started = true;
     await this.initializeHostServices();
-    this.lastExecutionActivityAt = Date.now();
     this.events.emit("runtime-connected", undefined);
     this.events.emit("runtime-ready", await this.health());
     this.startDevWatcher(resolveDefaultWorkerEntryPath(this.options));
     // Eagerly start the worker so the remote turn bridge subscription is active
-    void this.ensureWorker().catch(() => {});
+    void this.workerController.ensureStarted().catch(() => {});
   }
 
   async stop() {
@@ -347,27 +302,23 @@ export class StellaRuntimeClient {
     this.configCache = {};
     this.workerHealthCache = null;
     this.workerGeneration = 0;
-    this.inFlightWorkerRequests = 0;
-    this.inFlightDrainWaiter?.resolve();
-    this.inFlightDrainWaiter = null;
     this.agentEventBuffers.clear();
     if (this.reloadTimer) clearTimeout(this.reloadTimer);
     this.reloadTimer = null;
-    this.clearWorkerIdleTimer();
     this.watcher?.close();
     this.watcher = null;
-    await this.stopWorker("stopped");
+    await this.workerController.stop("stopped");
     await this.stopHostServices();
-    this.setWorkerState("idle");
     this.events.emit("runtime-disconnected", { reason: "stopped" });
   }
 
   async configure(params: RuntimeConfigureParams) {
     this.configCache = { ...this.configCache, ...params };
-    if (!this.worker?.peer) {
+    const connection = this.workerController.getConnection();
+    if (!connection?.peer) {
       return { ok: true };
     }
-    return await this.worker.peer.request(METHOD_NAMES.INTERNAL_WORKER_CONFIGURE, params);
+    return await connection.peer.request(METHOD_NAMES.INTERNAL_WORKER_CONFIGURE, params);
   }
 
   async health(): Promise<RuntimeHealthSnapshot> {
@@ -384,8 +335,8 @@ export class StellaRuntimeClient {
 
   async restartWorker() {
     this.events.emit("runtime-reloading", { reason: "worker-restart" });
-    await this.stopWorker("restart");
-    await this.ensureWorker();
+    await this.workerController.stop("restart");
+    await this.workerController.ensureStarted();
     return { ok: true };
   }
 
@@ -1015,133 +966,6 @@ export class StellaRuntimeClient {
     };
   }
 
-  private async ensureWorker() {
-    if (!this.started) {
-      throw createRuntimeUnavailableError("Stella runtime host is not started.");
-    }
-    if (this.workerState === "running" && this.worker?.peer) return;
-    if (this.workerState === "stopping" && this.workerStopPromise) {
-      await this.workerStopPromise;
-    }
-    if (this.workerStartupPromise) {
-      await this.workerStartupPromise;
-      return;
-    }
-
-    this.setWorkerState("starting");
-    this.workerStartupPromise = (async () => {
-      const workerEntryPath = resolveDefaultWorkerEntryPath(this.options);
-      const child = spawn("bun", ["run", workerEntryPath], {
-        env: { ...process.env },
-        stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
-      });
-      child.stderr.on("data", (chunk) => {
-        process.stderr.write(chunk);
-      });
-
-      const { peer } = attachJsonRpcPeerToStreams({
-        input: child.stdout,
-        output: child.stdin,
-        onError: (error) => {
-          console.error("[runtime-client] worker RPC error:", error);
-        },
-      });
-
-      const connection: WorkerConnection = {
-        process: child,
-        peer,
-        pid: child.pid ?? 0,
-      };
-      this.worker = connection;
-      this.workerStoppingPid = null;
-      this.registerHostHandlers(peer);
-      this.registerNotifications(peer);
-
-      child.once("exit", () => {
-        const wasIntentional = this.workerStoppingPid === connection.pid;
-        if (this.worker?.process === child) {
-          this.worker = null;
-          this.workerHealthCache = null;
-        }
-        if (!wasIntentional) {
-          this.setWorkerState("idle");
-        }
-        if (this.workerStopPromise && wasIntentional) return;
-        if (this.started) {
-          void this.health().then((snapshot) => {
-            this.events.emit("runtime-ready", snapshot);
-          });
-        }
-      });
-      try {
-        await peer.request(
-          METHOD_NAMES.INTERNAL_WORKER_INITIALIZE,
-          this.buildWorkerInitializationState(),
-        );
-        if (Object.keys(this.configCache).length > 0) {
-          await peer.request(METHOD_NAMES.INTERNAL_WORKER_CONFIGURE, this.configCache);
-        }
-        this.workerGeneration += 1;
-        this.workerHealthCache = await this.getWorkerHealth({ ensureWorker: false });
-        this.setWorkerState("running");
-        this.noteExecutionActivity();
-        this.scheduleWorkerIdleEvaluation();
-        this.events.emit("runtime-ready", await this.health());
-      } catch (error) {
-        if (this.worker?.pid === connection.pid) {
-          this.worker = null;
-          this.workerHealthCache = null;
-        }
-        this.setWorkerState("idle");
-        try {
-          await waitForProcessExit(connection.process);
-        } catch {}
-        throw error;
-      }
-    })();
-
-    try {
-      await this.workerStartupPromise;
-    } finally {
-      this.workerStartupPromise = null;
-      if (!this.worker?.peer && this.workerState === "starting") {
-        this.setWorkerState("idle");
-      }
-    }
-  }
-
-  private async stopWorker(reason: "idle" | "restart" | "stopped") {
-    if (this.workerStopPromise) {
-      await this.workerStopPromise;
-      return;
-    }
-    this.clearWorkerIdleTimer();
-    const connection = this.worker;
-    if (!connection) return;
-    if (reason !== "idle") {
-      await this.waitForInFlightWorkerRequestsToDrain();
-    }
-    this.setWorkerState("stopping");
-    this.workerStoppingPid = connection.pid;
-    this.workerStopPromise = waitForProcessExit(connection.process).finally(() => {
-      if (this.worker?.pid === connection.pid) {
-        this.worker = null;
-      }
-      this.workerHealthCache = null;
-      this.workerStoppingPid = null;
-      this.workerStopPromise = null;
-      this.setWorkerState("idle");
-      if (this.started) {
-        this.events.emit("runtime-reloading", { reason: `worker-${reason}` });
-      }
-    });
-    await this.workerStopPromise;
-    if (this.started) {
-      this.events.emit("runtime-ready", await this.health());
-    }
-  }
-
   private async requestWorker<TResult>(
     method: string,
     params: unknown,
@@ -1151,55 +975,18 @@ export class StellaRuntimeClient {
       retryOnceOnDisconnect?: boolean;
     },
   ): Promise<TResult> {
-    if (options.ensureWorker) {
-      await this.ensureWorker();
-    }
-    const peer = this.worker?.peer;
-    if (!peer) {
-      throw createRuntimeUnavailableError("Runtime worker is not running.");
-    }
-    this.incrementInFlightWorkerRequests();
-    if (options.recordActivity) {
-      this.activeExecutionRequests += 1;
-      this.noteExecutionActivity();
-    }
-    try {
-      const result = await peer.request<TResult>(method, params);
-      this.workerHealthCache = null;
-      return result;
-    } catch (error) {
-      if (
-        options.retryOnceOnDisconnect &&
-        this.started &&
-        !this.worker?.peer
-      ) {
-        await this.ensureWorker();
-        return await this.requestWorker(method, params, {
-          ...options,
-          retryOnceOnDisconnect: false,
-        });
-      }
-      throw error;
-    } finally {
-      this.decrementInFlightWorkerRequests();
-      if (options.recordActivity) {
-        this.activeExecutionRequests = Math.max(0, this.activeExecutionRequests - 1);
-        this.noteExecutionActivity();
-      }
-      this.scheduleWorkerIdleEvaluation();
-    }
+    return await this.workerController.request(
+      async (peer) => {
+        const result = await peer.request<TResult>(method, params);
+        this.workerHealthCache = null;
+        return result;
+      },
+      options,
+    );
   }
 
   private async getWorkerHealth(args: { ensureWorker: boolean }) {
-    if (args.ensureWorker) {
-      await this.ensureWorker();
-    }
-    if (!this.worker?.peer) return null;
-    const snapshot = await this.worker.peer.request<WorkerHealthSnapshot>(
-      METHOD_NAMES.INTERNAL_WORKER_HEALTH,
-    );
-    this.workerHealthCache = snapshot;
-    return snapshot;
+    return await this.workerController.getHealth(args);
   }
 
   private async buildHealthSnapshot(): Promise<RuntimeHealthSnapshot> {
@@ -1211,56 +998,13 @@ export class StellaRuntimeClient {
       hostPid: process.pid,
       workerPid: workerHealth?.pid ?? null,
       workerRunning:
-        this.workerState === "running" || this.workerState === "starting",
+        this.workerController.getState() === "running" ||
+        this.workerController.getState() === "starting",
       workerGeneration: this.workerGeneration,
       deviceId: workerHealth?.deviceId ?? this.deviceIdentity?.deviceId ?? null,
       activeRunId: workerHealth?.activeRun?.runId ?? null,
       activeTaskCount: workerHealth?.activeTaskCount ?? 0,
     };
-  }
-
-  private noteExecutionActivity() {
-    this.lastExecutionActivityAt = Date.now();
-  }
-
-  private scheduleWorkerIdleEvaluation(delayMs = WORKER_IDLE_TIMEOUT_MS) {
-    if (!this.worker?.peer || !this.started || this.workerState !== "running") return;
-    this.clearWorkerIdleTimer();
-    this.workerIdleTimer = setTimeout(() => {
-      this.workerIdleTimer = null;
-      void this.evaluateWorkerIdle();
-    }, delayMs);
-    this.workerIdleTimer.unref?.();
-  }
-
-  private async evaluateWorkerIdle() {
-    if (!this.worker?.peer || !this.started || this.workerState !== "running") return;
-    if (this.inFlightWorkerRequests > 0 || this.activeExecutionRequests > 0) {
-      this.scheduleWorkerIdleEvaluation(WORKER_IDLE_RECHECK_MS);
-      return;
-    }
-    const idleForMs = Date.now() - this.lastExecutionActivityAt;
-    if (idleForMs < WORKER_IDLE_TIMEOUT_MS) {
-      this.scheduleWorkerIdleEvaluation(WORKER_IDLE_TIMEOUT_MS - idleForMs);
-      return;
-    }
-    const health = await this.getWorkerHealth({ ensureWorker: false }).catch(() => null);
-    if (!health) return;
-    const social = health.socialSessions ?? buildDefaultSocialSessionSnapshot();
-    const socialPinned = social.sessionCount > 0 || Boolean(social.processingTurnId);
-    const voicePinned =
-      Boolean(health.voiceBusy) || (health.pendingVoiceRequestCount ?? 0) > 0;
-    if (
-      health.activeRun ||
-      health.activeTaskCount > 0 ||
-      socialPinned ||
-      voicePinned ||
-      health.remoteBridgeActive
-    ) {
-      this.scheduleWorkerIdleEvaluation(WORKER_IDLE_RECHECK_MS);
-      return;
-    }
-    await this.stopWorker("idle");
   }
 
   private registerHostHandlers(peer: JsonRpcPeer) {

@@ -9,28 +9,16 @@ import {
   STELLA_BROWSER_BRIDGE_SESSION,
   STELLA_BROWSER_BRIDGE_TOKEN,
 } from "../../packages/runtime-kernel/tools/stella-browser-bridge-config.js";
+import { stopChildProcessTree } from "../process-runtime.js";
 
 const DAEMON_READY_TIMEOUT_MS = 10_000;
 const COMMAND_TIMEOUT_MS = 10_000;
 const DAEMON_SHUTDOWN_TIMEOUT_MS = 2_000;
 const DAEMON_READY_PROBE_TIMEOUT_MS = 1_000;
-const RETRY_BASE_DELAY_MS = 1_000;
-const RETRY_MAX_DELAY_MS = 30_000;
-const TOAST_AFTER_RETRY_ATTEMPTS = 3;
-
-type StellaBrowserBridgeState = "connecting" | "connected" | "reconnecting";
-
-export type StellaBrowserBridgeStatus = {
-  state: StellaBrowserBridgeState;
-  attempt: number;
-  nextRetryMs?: number;
-  error?: string;
-  notifyUser?: boolean;
-};
 
 type StellaBrowserBridgeServiceOptions = {
   frontendRoot: string;
-  onStatus: (status: StellaBrowserBridgeStatus) => void;
+  onUnexpectedExit?: (error: string) => void;
 };
 
 type DaemonResponse = {
@@ -41,19 +29,16 @@ type DaemonResponse = {
 
 export class StellaBrowserBridgeService {
   private readonly frontendRoot: string;
-  private readonly onStatus: (status: StellaBrowserBridgeStatus) => void;
+  private readonly onUnexpectedExit?: (error: string) => void;
 
   private daemonProcess: ChildProcess | null = null;
-  private reconnectTimer: NodeJS.Timeout | null = null;
   private launchPromise: Promise<void> | null = null;
   private isLaunching = false;
   private stopped = false;
-  private retryAttempt = 0;
-  private toastShownForCurrentOutage = false;
 
   constructor(options: StellaBrowserBridgeServiceOptions) {
     this.frontendRoot = options.frontendRoot;
-    this.onStatus = options.onStatus;
+    this.onUnexpectedExit = options.onUnexpectedExit;
   }
 
   start() {
@@ -61,14 +46,19 @@ export class StellaBrowserBridgeService {
       this.stopped = false;
     }
     if (this.daemonProcess || this.launchPromise) {
-      return;
+      return this.launchPromise ?? Promise.resolve();
     }
-    void this.ensureBridge("connecting");
+    const launchPromise = this.launchBridge().finally(() => {
+      if (this.launchPromise === launchPromise) {
+        this.launchPromise = null;
+      }
+    });
+    this.launchPromise = launchPromise;
+    return launchPromise;
   }
 
   async stop() {
     this.stopped = true;
-    this.clearReconnectTimer();
 
     const closePromise = this.sendCommand({
       id: randomUUID(),
@@ -76,35 +66,16 @@ export class StellaBrowserBridgeService {
     }).catch(() => undefined);
 
     await Promise.race([closePromise, delay(1_500)]).catch(() => undefined);
-    this.killDaemonProcess();
+    await this.killDaemonProcess();
     this.daemonProcess = null;
   }
 
-  private ensureBridge(state: StellaBrowserBridgeState) {
-    if (this.launchPromise) {
-      return this.launchPromise;
-    }
-
-    const launchPromise = this.launchBridge(state).finally(() => {
-      if (this.launchPromise === launchPromise) {
-        this.launchPromise = null;
-      }
-    });
-
-    this.launchPromise = launchPromise;
-    return launchPromise;
-  }
-
-  private async launchBridge(state: StellaBrowserBridgeState) {
+  private async launchBridge() {
     if (this.stopped) {
       return;
     }
 
     this.isLaunching = true;
-    this.onStatus({
-      state,
-      attempt: this.retryAttempt,
-    });
 
     try {
       await this.closeExistingSession();
@@ -115,60 +86,11 @@ export class StellaBrowserBridgeService {
         action: "launch",
         provider: "extension",
       });
-
-      this.retryAttempt = 0;
-      this.toastShownForCurrentOutage = false;
-      this.onStatus({
-        state: "connected",
-        attempt: 0,
-      });
     } catch (error) {
-      this.killDaemonProcess();
-      this.scheduleReconnect(
-        error instanceof Error ? error.message : String(error),
-      );
+      await this.killDaemonProcess();
+      throw error;
     } finally {
       this.isLaunching = false;
-    }
-  }
-
-  private scheduleReconnect(error: string) {
-    if (this.stopped) {
-      return;
-    }
-
-    this.retryAttempt += 1;
-    const nextRetryMs = Math.min(
-      RETRY_BASE_DELAY_MS * 2 ** Math.max(0, this.retryAttempt - 1),
-      RETRY_MAX_DELAY_MS,
-    );
-    const notifyUser =
-      !this.toastShownForCurrentOutage &&
-      this.retryAttempt > TOAST_AFTER_RETRY_ATTEMPTS;
-
-    if (notifyUser) {
-      this.toastShownForCurrentOutage = true;
-    }
-
-    this.onStatus({
-      state: "reconnecting",
-      attempt: this.retryAttempt,
-      nextRetryMs,
-      error,
-      notifyUser,
-    });
-
-    this.clearReconnectTimer();
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      void this.ensureBridge("reconnecting");
-    }, nextRetryMs);
-  }
-
-  private clearReconnectTimer() {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
     }
   }
 
@@ -221,7 +143,7 @@ export class StellaBrowserBridgeService {
       const reason = signal
         ? `Bridge process exited via ${signal}.`
         : `Bridge process exited with code ${code ?? 0}.`;
-      this.scheduleReconnect(reason);
+      this.onUnexpectedExit?.(reason);
     });
 
     daemon.once("error", (error) => {
@@ -232,7 +154,7 @@ export class StellaBrowserBridgeService {
       if (this.stopped || this.isLaunching) {
         return;
       }
-      this.scheduleReconnect(`Failed to start browser bridge: ${error.message}`);
+      this.onUnexpectedExit?.(`Failed to start browser bridge: ${error.message}`);
     });
 
     this.daemonProcess = daemon;
@@ -393,31 +315,11 @@ export class StellaBrowserBridgeService {
     });
   }
 
-  private killDaemonProcess() {
+  private async killDaemonProcess() {
     if (!this.daemonProcess || this.daemonProcess.killed) {
       return;
     }
-
-    const pid = this.daemonProcess.pid;
-    if (process.platform === "win32" && pid) {
-      // On Windows, child.kill() only kills the wrapper, not the Rust daemon
-      // grandchild. Use taskkill /T to kill the entire process tree.
-      try {
-        execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
-          stdio: "ignore",
-          windowsHide: true,
-        });
-      } catch {
-        // Best-effort: fall back to direct kill
-        try { this.daemonProcess.kill("SIGTERM"); } catch {}
-      }
-    } else {
-      try {
-        this.daemonProcess.kill("SIGTERM");
-      } catch {
-        // Best-effort cleanup during reconnect/shutdown.
-      }
-    }
+    await stopChildProcessTree(this.daemonProcess);
   }
 
   private getListeningProcessesForPort(port: number): number[] {

@@ -1,5 +1,6 @@
 import { BrowserWindow } from "electron";
 import path from "path";
+import { cleanupSelectedTextProcess } from "../selected-text.js";
 import { OverlayWindowController } from "../windows/overlay-window.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { AuthService } from "../services/auth-service.js";
@@ -13,12 +14,14 @@ import { UiStateService } from "../services/ui-state-service.js";
 import type { WakeWordController } from "../wake-word/initialize.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
-import type { MobileBridgeService } from "../services/mobile-bridge/service.js";
-import type { CloudflareTunnelService } from "../services/mobile-bridge/tunnel-service.js";
-import type { StellaBrowserBridgeStatus } from "../services/stella-browser-bridge-service.js";
-import type { StellaBrowserBridgeService } from "../services/stella-browser-bridge-service.js";
+import type {
+  StellaBrowserBridgeResource,
+  StellaBrowserBridgeStatus,
+} from "../process-resources/browser-bridge-resource.js";
+import type { MobileBridgeResource } from "../process-resources/mobile-bridge-resource.js";
 import { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
 import { getDevServerUrl } from "../dev-url.js";
+import { ProcessRuntime } from "../process-runtime.js";
 import type { LocalDevProjectRecord } from "../../packages/boundary-contracts/index.js";
 
 export type MobileBroadcastFn = (channel: string, data: unknown) => void;
@@ -43,14 +46,14 @@ export type BootstrapState = {
   devProjectsUpdateUnsubscribe: (() => void) | null;
   localChatUpdateUnsubscribe: (() => void) | null;
   overlayController: OverlayWindowController | null;
+  processRuntime: ProcessRuntime;
   scheduleUpdateUnsubscribe: (() => void) | null;
   stellaHomePath: string | null;
   stellaWorkspacePath: string | null;
   stellaHostRunner: StellaHostRunner | null;
-  stellaBrowserBridgeService: StellaBrowserBridgeService | null;
+  stellaBrowserBridgeService: StellaBrowserBridgeResource | null;
   wakeWordController: WakeWordController | null;
-  mobileBridgeService: MobileBridgeService | null;
-  tunnelService: CloudflareTunnelService | null;
+  mobileBridgeResource: MobileBridgeResource | null;
   windowManager: WindowManager | null;
 };
 
@@ -79,7 +82,7 @@ export type BootstrapContext = {
 export const getMobileBroadcast = (
   context: BootstrapContext,
 ): MobileBroadcastFn | null => {
-  return context.state.mobileBridgeService?.broadcastToMobile ?? null;
+  return context.state.mobileBridgeResource?.broadcastToMobile ?? null;
 };
 
 export const getAllWindows = (context: BootstrapContext) =>
@@ -166,6 +169,7 @@ export const syncWakeWordState = (context: BootstrapContext) => {
 export const createBootstrapContext = (
   config: BootstrapConfig,
 ): BootstrapContext => {
+  const processRuntime = new ProcessRuntime();
   const state: BootstrapState = {
     appReady: false,
     appSessionStartedAt: Date.now(),
@@ -176,14 +180,14 @@ export const createBootstrapContext = (
     isQuitting: false,
     localChatUpdateUnsubscribe: null,
     overlayController: null,
+    processRuntime,
     scheduleUpdateUnsubscribe: null,
     stellaHomePath: null,
     stellaWorkspacePath: null,
     stellaHostRunner: null,
     stellaBrowserBridgeService: null,
     wakeWordController: null,
-    mobileBridgeService: null,
-    tunnelService: null,
+    mobileBridgeResource: null,
     windowManager: null,
   };
 
@@ -300,6 +304,29 @@ export const createBootstrapContext = (
     securityPolicyService,
     uiStateService,
   };
+
+  processRuntime.registerCleanup("before-quit", "auth-refresh-loop", () => {
+    authService.stopAuthRefreshLoop();
+  });
+  processRuntime.registerCleanup("before-quit", "runtime-shells", () => {
+    state.stellaHostRunner?.killAllShells();
+  });
+  processRuntime.registerCleanup("before-quit", "browser-bridge", async () => {
+    await state.stellaBrowserBridgeService?.stop();
+  });
+  processRuntime.registerCleanup("before-quit", "wake-word", () => {
+    state.wakeWordController?.dispose();
+    state.wakeWordController = null;
+  });
+  processRuntime.registerCleanup("before-quit", "selected-text", () => {
+    cleanupSelectedTextProcess();
+  });
+  processRuntime.registerCleanup("before-quit", "overlay-window", () => {
+    state.overlayController?.destroy();
+  });
+  processRuntime.registerCleanup("before-quit", "mobile-bridge", async () => {
+    await state.mobileBridgeResource?.stop();
+  });
 
   return context;
 };
