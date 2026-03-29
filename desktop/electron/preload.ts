@@ -68,7 +68,7 @@ const unwrapIpcInvokeError = (error: unknown): Error => {
   return new Error(inner);
 };
 
-const invokeBrowserFetch = async <T,>(
+const invokeBrowserFetch = async <T>(
   channel: "browser:fetchJson" | "browser:fetchText",
   payload: { url: string; init?: unknown },
 ): Promise<T> => {
@@ -476,6 +476,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   system: {
     getDeviceId: () => ipcRenderer.invoke("device:getId"),
+    startPhoneAccessSession: () =>
+      ipcRenderer.invoke("phoneAccess:startSession") as Promise<{
+        ok: boolean;
+      }>,
+    stopPhoneAccessSession: () =>
+      ipcRenderer.invoke("phoneAccess:stopSession") as Promise<{ ok: boolean }>,
     configurePiRuntime: (config: {
       convexUrl?: string;
       convexSiteUrl?: string;
@@ -487,7 +493,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onAuthCallback: onIpc<{ url: string }>("auth:callback"),
     openFullDiskAccess: () => ipcRenderer.send("system:openFullDiskAccess"),
     openExternal: (url: string) => ipcRenderer.send("shell:openExternal", url),
-    showItemInFolder: (filePath: string) => ipcRenderer.send("shell:showItemInFolder", filePath),
+    showItemInFolder: (filePath: string) =>
+      ipcRenderer.send("shell:showItemInFolder", filePath),
     shellKillByPort: (port: number) =>
       ipcRenderer.invoke("shell:killByPort", { port }),
     getLocalSyncMode: () =>

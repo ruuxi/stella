@@ -45,11 +45,15 @@ export const startMobileBridge = (context: BootstrapContext) => {
     context.state.mobileBridgeResource = resource;
     resource.start();
   } catch (error) {
-    console.error(
-      "[mobile-bridge] Failed to start:",
-      (error as Error).message,
-    );
+    console.error("[mobile-bridge] Failed to start:", (error as Error).message);
   }
+};
+
+export const stopMobileBridge = async (context: BootstrapContext) => {
+  if (!context.state.mobileBridgeResource) {
+    return;
+  }
+  await context.state.mobileBridgeResource.stop();
 };
 
 export const startStellaBrowserBridge = (context: BootstrapContext) => {

@@ -9,6 +9,7 @@ import {
 } from "./cloudflare-tunnel-resource.js";
 
 const AUTH_SYNC_INTERVAL_MS = 30_000;
+const MOBILE_SESSION_IDLE_TIMEOUT_MS = 10 * 60_000;
 const WINDOW_RETRY_DELAY_MS = 1_000;
 const PORT_RETRY_DELAY_MS = 500;
 
@@ -34,6 +35,7 @@ export const createMobileBridgeResource = (options: {
   let stopped = true;
   let sessionId = 0;
   let stopAuthSync: (() => void) | null = null;
+  let stopSessionTimer: (() => void) | null = null;
   let mirroredWindow: BrowserWindow | null = null;
   let restoreWindowSend: (() => void) | null = null;
 
@@ -52,6 +54,13 @@ export const createMobileBridgeResource = (options: {
     restoreWindowSend?.();
     restoreWindowSend = null;
     mirroredWindow = null;
+  };
+
+  const rearmSessionTimer = () => {
+    stopSessionTimer?.();
+    stopSessionTimer = options.processRuntime.setManagedTimeout(() => {
+      void resource.stop();
+    }, MOBILE_SESSION_IDLE_TIMEOUT_MS);
   };
 
   const isInactiveSession = (candidateSessionId: number) => {
@@ -108,7 +117,8 @@ export const createMobileBridgeResource = (options: {
     mirroredWindow = window;
     restoreWindowSend = () => {
       if (!window.isDestroyed()) {
-        window.webContents.send = originalSend as typeof window.webContents.send;
+        window.webContents.send =
+          originalSend as typeof window.webContents.send;
       }
       mirroredWindow = null;
     };
@@ -157,6 +167,7 @@ export const createMobileBridgeResource = (options: {
       electronDir: options.electronDir,
       isDev: options.isDev,
       getDevServerUrl: options.getDevServerUrl,
+      onClientActivity: rearmSessionTimer,
     });
     bridge.setBootstrapPayloadGetter(options.getBootstrapPayload);
     bridge.start();
@@ -170,12 +181,13 @@ export const createMobileBridgeResource = (options: {
     waitForBridgePort(candidateSessionId);
   };
 
-  return {
+  const resource: MobileBridgeResource = {
     broadcastToMobile: (channel, data) => {
       bridge?.broadcastToMobile(channel, data);
     },
     start: () => {
       stopped = false;
+      rearmSessionTimer();
       if (bridge || options.processRuntime.isShuttingDown()) {
         return;
       }
@@ -188,6 +200,8 @@ export const createMobileBridgeResource = (options: {
       sessionId += 1;
       stopAuthSync?.();
       stopAuthSync = null;
+      stopSessionTimer?.();
+      stopSessionTimer = null;
       clearWindowMirror();
       await tunnel?.stop();
       tunnel = null;
@@ -195,4 +209,6 @@ export const createMobileBridgeResource = (options: {
       bridge = null;
     },
   };
+
+  return resource;
 };

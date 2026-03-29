@@ -109,6 +109,7 @@ import type * as media_contract from "../media_contract.js";
 import type * as media_fal_webhooks from "../media_fal_webhooks.js";
 import type * as media_jobs from "../media_jobs.js";
 import type * as media_realtime_sessions from "../media_realtime_sessions.js";
+import type * as mobile_access from "../mobile_access.js";
 import type * as mobile_auth from "../mobile_auth.js";
 import type * as mobile_bridge from "../mobile_bridge.js";
 import type * as prompts_discovery_facts from "../prompts/discovery_facts.js";
@@ -275,6 +276,7 @@ declare const fullApi: ApiFromModules<{
   media_fal_webhooks: typeof media_fal_webhooks;
   media_jobs: typeof media_jobs;
   media_realtime_sessions: typeof media_realtime_sessions;
+  mobile_access: typeof mobile_access;
   mobile_auth: typeof mobile_auth;
   mobile_bridge: typeof mobile_bridge;
   "prompts/discovery_facts": typeof prompts_discovery_facts;

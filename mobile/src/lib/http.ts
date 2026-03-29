@@ -5,10 +5,12 @@ import { getConvexToken } from "./auth-token";
 type JsonRequest =
   | {
       method: "GET";
+      headers?: Record<string, string>;
     }
   | {
       method: "POST";
       body: string;
+      headers?: Record<string, string>;
     };
 
 const readErrorMessage = async (response: Response) => {
@@ -38,7 +40,10 @@ async function requestJson(path: string, request: JsonRequest) {
     ...request,
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(request.method === "POST" ? { "Content-Type": "application/json" } : {}),
+      ...(request.method === "POST"
+        ? { "Content-Type": "application/json" }
+        : {}),
+      ...request.headers,
     },
   });
 
@@ -49,10 +54,18 @@ async function requestJson(path: string, request: JsonRequest) {
   return (await response.json()) as unknown;
 }
 
-export const getJson = (path: string) => requestJson(path, { method: "GET" });
+export const getJson = (
+  path: string,
+  options?: { headers?: Record<string, string> },
+) => requestJson(path, { method: "GET", headers: options?.headers });
 
-export const postJson = (path: string, body: unknown) =>
+export const postJson = (
+  path: string,
+  body: unknown,
+  options?: { headers?: Record<string, string> },
+) =>
   requestJson(path, {
     method: "POST",
     body: JSON.stringify(body),
+    headers: options?.headers,
   });

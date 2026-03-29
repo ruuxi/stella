@@ -192,11 +192,7 @@ export type ElectronOverlayApi = {
   onHideMini: (callback: () => void) => () => void;
   onRestoreMini?: (callback: () => void) => () => void;
   onShowVoice: (
-    callback: (data: {
-      x: number;
-      y: number;
-      mode: "realtime";
-    }) => void,
+    callback: (data: { x: number; y: number; mode: "realtime" }) => void,
   ) => () => void;
   onHideVoice: (callback: () => void) => () => void;
   onDisplayChange: (
@@ -359,6 +355,8 @@ export type ElectronAgentApi = {
 
 export type ElectronSystemApi = {
   getDeviceId: () => Promise<string | null>;
+  startPhoneAccessSession: () => Promise<{ ok: boolean }>;
+  stopPhoneAccessSession: () => Promise<{ ok: boolean }>;
   configurePiRuntime: (config: {
     convexUrl?: string;
     convexSiteUrl?: string;
@@ -432,13 +430,15 @@ export type ElectronOnboardingApi = {
 };
 
 export type ElectronBrowserApi = {
-  onBridgeStatus: (callback: (status: {
-    state: "connecting" | "connected" | "reconnecting";
-    attempt: number;
-    nextRetryMs?: number;
-    error?: string;
-    notifyUser?: boolean;
-  }) => void) => () => void;
+  onBridgeStatus: (
+    callback: (status: {
+      state: "connecting" | "connected" | "reconnecting";
+      attempt: number;
+      nextRetryMs?: number;
+      error?: string;
+      notifyUser?: boolean;
+    }) => void,
+  ) => () => void;
   checkCoreMemoryExists: () => Promise<boolean>;
   fetchJson: (
     url: string,
@@ -596,7 +596,10 @@ export type ElectronApi = {
   onboarding: ElectronOnboardingApi;
   browser: ElectronBrowserApi;
   media: {
-    saveOutput: (url: string, fileName: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
+    saveOutput: (
+      url: string,
+      fileName: string,
+    ) => Promise<{ ok: boolean; path?: string; error?: string }>;
     getStellaMediaDir: () => Promise<string | null>;
   };
   projects: ElectronProjectsApi;

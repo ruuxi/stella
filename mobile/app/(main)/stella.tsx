@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
   BackHandler,
@@ -7,39 +8,62 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { assert, assertObject } from "../../src/lib/assert";
 import { getConvexToken } from "../../src/lib/auth-token";
-import { getJson } from "../../src/lib/http";
+import {
+  buildPhoneAccessHeaders,
+  clearStoredPhoneAccess,
+  completePhonePairing,
+  getDesktopBridgeStatus,
+  getPreferredPhoneAccess,
+  requestDesktopConnection,
+  type StoredPhoneAccess,
+} from "../../src/lib/phone-access";
 import { generateShimScript } from "../../src/lib/shim";
 import { registerStellaRefresh } from "../../src/lib/stella-refresh";
+import { userFacingError } from "../../src/lib/user-facing-error";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
-import type { DesktopBridgeStatus } from "../../src/types";
 
 type MobileBridgeBootstrap = {
   localStorage: Record<string, string>;
 };
 
 const EMPTY_BRIDGE_BOOTSTRAP: MobileBridgeBootstrap = { localStorage: {} };
+const DESKTOP_WAKE_ATTEMPTS = 8;
+const DESKTOP_WAKE_RETRY_MS = 1_000;
 
 type BridgeState = {
   bridgeUrl: string;
   token: string;
   uri: string;
   bootstrap: MobileBridgeBootstrap;
+  access: StoredPhoneAccess;
 };
 
 type ScreenState =
-  | { type: "loading" }
+  | { type: "loading"; message: string }
   | { type: "unavailable"; error: string | null; title: string }
   | { type: "ready"; bridge: BridgeState };
 
 type ShimMessage =
   | { type: "openExternal"; url: string }
   | { type: "connectionState"; connected: boolean };
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const normalizePairingCode = (value: string) =>
+  value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 12);
 
 function getBridgeOrigin(bridgeUrl: string): string {
   return new URL(bridgeUrl).origin;
@@ -66,29 +90,6 @@ function isAllowedWebViewUrl(value: string, origin: string): boolean {
   return value === "about:blank" || isSameOriginUrl(value, origin);
 }
 
-function readDesktopBridgeStatus(value: unknown): DesktopBridgeStatus {
-  assertObject(value, "Desktop bridge response must be an object.");
-  assert(typeof value.available === "boolean", "Desktop bridge availability is required.");
-  assert(Array.isArray(value.baseUrls), "Desktop bridge URLs must be an array.");
-  for (const item of value.baseUrls) {
-    assert(typeof item === "string", "Desktop bridge URL must be a string.");
-  }
-  assert(
-    value.platform === undefined || typeof value.platform === "string",
-    "Desktop bridge platform must be a string.",
-  );
-  assert(
-    value.updatedAt === undefined || typeof value.updatedAt === "number",
-    "Desktop bridge updatedAt must be a number.",
-  );
-  return {
-    available: value.available,
-    baseUrls: value.baseUrls,
-    platform: value.platform ?? null,
-    updatedAt: value.updatedAt ?? null,
-  };
-}
-
 function readShimMessage(data: string): ShimMessage {
   const value = JSON.parse(data) as unknown;
   assertObject(value, "WebView message must be an object.");
@@ -98,77 +99,224 @@ function readShimMessage(data: string): ShimMessage {
       assert(typeof value.url === "string", "WebView URL is required.");
       return { type: "openExternal", url: value.url };
     case "connectionState":
-      assert(typeof value.connected === "boolean", "WebView connected flag is required.");
+      assert(
+        typeof value.connected === "boolean",
+        "WebView connected flag is required.",
+      );
       return { type: "connectionState", connected: value.connected };
   }
   throw new Error(`Unknown WebView message type: ${value.type}`);
 }
 
 function readUnavailableState(
-  status: DesktopBridgeStatus,
+  title: string,
+  error: string | null = null,
 ): Extract<ScreenState, { type: "unavailable" }> {
   return {
     type: "unavailable",
-    error: null,
-    title: status.platform
-      ? `Your ${status.platform} isn't reachable`
-      : "Can't reach your desktop",
+    error,
+    title,
   };
 }
 
 export default function StellaScreen() {
   const webViewRef = useRef<WebView>(null);
-  const [screenState, setScreenState] = useState<ScreenState>({ type: "loading" });
+  const preferredAccessRef = useRef<StoredPhoneAccess | null>(null);
+  const screenStateRef = useRef<ScreenState["type"]>("loading");
+  const attemptedRouteCodeRef = useRef<string | null>(null);
+  const routeParams = useLocalSearchParams<{ code?: string | string[] }>();
+  const routeCode = normalizePairingCode(
+    typeof routeParams.code === "string"
+      ? routeParams.code
+      : Array.isArray(routeParams.code)
+        ? (routeParams.code[0] ?? "")
+        : "",
+  );
+
+  const [screenState, setScreenStateRaw] = useState<ScreenState>({
+    type: "loading",
+    message: "Connecting to desktop",
+  });
+  const setScreenState = useCallback((next: ScreenState) => {
+    screenStateRef.current = next.type;
+    setScreenStateRaw(next);
+  }, []);
   const [canGoBack, setCanGoBack] = useState(false);
   const [bridgeConnected, setBridgeConnected] = useState(true);
+  const [preferredAccess, setPreferredAccess] =
+    useState<StoredPhoneAccess | null>(null);
+  const [pairingCode, setPairingCode] = useState(routeCode);
+  const [isPairing, setIsPairing] = useState(false);
 
-  const refreshBridge = async () => {
-    try {
-      const status = readDesktopBridgeStatus(
-        await getJson("/api/mobile/desktop-bridge"),
-      );
-      if (!status.available) {
-        setScreenState(readUnavailableState(status));
+  const updatePreferredAccess = useCallback(
+    (nextAccess: StoredPhoneAccess | null) => {
+      preferredAccessRef.current = nextAccess;
+      setPreferredAccess(nextAccess);
+    },
+    [],
+  );
+
+  const refreshBridge = useCallback(
+    async (nextAccess?: StoredPhoneAccess | null) => {
+      setScreenState({
+        type: "loading",
+        message: "Connecting to desktop",
+      });
+
+      const access =
+        nextAccess === undefined
+          ? (preferredAccessRef.current ?? (await getPreferredPhoneAccess()))
+          : nextAccess;
+
+      if (!access) {
+        updatePreferredAccess(null);
+        setScreenState(readUnavailableState("Pair your phone"));
         return;
       }
-      const baseUrl = status.baseUrls[0];
-      assert(baseUrl, "Desktop bridge URL is required.");
-      const token = await getConvexToken();
 
-      let bootstrap = EMPTY_BRIDGE_BOOTSTRAP;
+      updatePreferredAccess(access);
+
       try {
-        const bootstrapRes = await fetch(`${baseUrl}/bridge/bootstrap`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (bootstrapRes.ok) {
-          bootstrap = (await bootstrapRes.json()) as MobileBridgeBootstrap;
+        await requestDesktopConnection(access);
+        let status = await getDesktopBridgeStatus(access.desktopDeviceId);
+        for (
+          let attempt = 1;
+          attempt < DESKTOP_WAKE_ATTEMPTS && !status.available;
+          attempt += 1
+        ) {
+          await sleep(DESKTOP_WAKE_RETRY_MS);
+          status = await getDesktopBridgeStatus(access.desktopDeviceId);
         }
-      } catch {
-        // Best-effort — proceed without desktop state
+
+        if (!status.available) {
+          setScreenState(
+            readUnavailableState(
+              status.platform
+                ? `Your ${status.platform} isn't reachable`
+                : "Can't reach your desktop",
+            ),
+          );
+          return;
+        }
+
+        const baseUrl = status.baseUrls[0];
+        assert(baseUrl, "Desktop bridge URL is required.");
+        const token = await getConvexToken();
+        const accessHeaders = buildPhoneAccessHeaders(access);
+
+        let bootstrap = EMPTY_BRIDGE_BOOTSTRAP;
+        try {
+          const bootstrapRes = await fetch(`${baseUrl}/bridge/bootstrap`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              ...accessHeaders,
+            },
+          });
+          if (bootstrapRes.ok) {
+            bootstrap = (await bootstrapRes.json()) as MobileBridgeBootstrap;
+          }
+        } catch {
+          // Best-effort: proceed without desktop state.
+        }
+
+        setBridgeConnected(true);
+        setScreenState({
+          type: "ready",
+          bridge: {
+            bridgeUrl: baseUrl,
+            token,
+            uri: `${baseUrl}/?mobile=1`,
+            bootstrap,
+            access,
+          },
+        });
+      } catch (error) {
+        const message = userFacingError(error);
+        if (message.toLowerCase().includes("pair")) {
+          await clearStoredPhoneAccess(access.desktopDeviceId);
+          updatePreferredAccess(null);
+          setScreenState(
+            readUnavailableState(
+              "Pair your phone",
+              "This phone needs to be paired with your computer again.",
+            ),
+          );
+          return;
+        }
+
+        setScreenState(
+          readUnavailableState("Can't reach your desktop", message),
+        );
+      }
+    },
+    [updatePreferredAccess],
+  );
+
+  const pairPhone = useCallback(
+    async (value?: string) => {
+      const nextCode = normalizePairingCode(value ?? pairingCode);
+      if (!nextCode) {
+        setScreenState(
+          readUnavailableState(
+            "Pair your phone",
+            "Enter the code shown on your computer.",
+          ),
+        );
+        return;
       }
 
+      setPairingCode(nextCode);
+      setIsPairing(true);
       setScreenState({
-        type: "ready",
-        bridge: { bridgeUrl: baseUrl, token, uri: `${baseUrl}/?mobile=1`, bootstrap },
+        type: "loading",
+        message: "Pairing this phone",
       });
-    } catch {
-      setScreenState({
-        type: "unavailable",
-        error: null,
-        title: "Can't reach your desktop",
-      });
-    }
-  };
+
+      try {
+        const access = await completePhonePairing({ pairingCode: nextCode });
+        updatePreferredAccess(access);
+        await refreshBridge(access);
+      } catch (error) {
+        setScreenState(
+          readUnavailableState("Pair your phone", userFacingError(error)),
+        );
+      } finally {
+        setIsPairing(false);
+      }
+    },
+    [pairingCode, refreshBridge, updatePreferredAccess],
+  );
 
   useEffect(() => {
     void refreshBridge();
-    const interval = setInterval(() => void refreshBridge(), 45_000);
+    const interval = setInterval(() => {
+      const access = preferredAccessRef.current;
+      if (!access || screenStateRef.current !== "ready") {
+        return;
+      }
+      void getDesktopBridgeStatus(access.desktopDeviceId)
+        .then((status) => {
+          if (!status.available) {
+            void refreshBridge(access);
+          }
+        })
+        .catch(() => {});
+    }, 45_000);
     registerStellaRefresh(() => void refreshBridge());
     return () => {
       clearInterval(interval);
       registerStellaRefresh(null);
     };
-  }, []);
+  }, [refreshBridge]);
+
+  useEffect(() => {
+    if (!routeCode || attemptedRouteCodeRef.current === routeCode) {
+      return;
+    }
+    attemptedRouteCodeRef.current = routeCode;
+    setPairingCode(routeCode);
+    void pairPhone(routeCode);
+  }, [pairPhone, routeCode]);
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -188,54 +336,100 @@ export default function StellaScreen() {
     if (message.type === "openExternal" && isAllowedExternalUrl(message.url)) {
       void Linking.openURL(message.url);
     }
-    if (message.type === "connectionState") setBridgeConnected(message.connected);
+    if (message.type === "connectionState") {
+      setBridgeConnected(message.connected);
+    }
   };
 
-  // Loading
   if (screenState.type === "loading") {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="small" color={colors.textMuted} />
-        <Text style={styles.secondaryText}>Connecting to desktop</Text>
+        <Text style={styles.secondaryText}>{screenState.message}</Text>
       </View>
     );
   }
 
-  // Unavailable
   if (screenState.type === "unavailable") {
+    const showRetry = Boolean(preferredAccess);
     return (
       <View style={styles.screen}>
         <View style={styles.statusBlock}>
           <Text style={styles.title}>{screenState.title}</Text>
           <Text style={styles.body}>
-            Make sure Stella is open on your computer and connected to the
-            internet.
+            {preferredAccess
+              ? "Open Stella on your computer and keep it connected to the internet."
+              : "Enter the code shown in Stella on your computer. After that, this phone can reconnect on its own."}
           </Text>
           {screenState.error && (
             <Text style={styles.errorText}>{screenState.error}</Text>
           )}
+          {preferredAccess && (
+            <Text style={styles.caption}>
+              Want to connect to a different computer? Enter a new code below.
+            </Text>
+          )}
         </View>
-        <Pressable
-          onPress={() => void refreshBridge()}
-          style={({ pressed }) => [
-            styles.actionButton,
-            pressed && styles.actionButtonPressed,
-          ]}
-        >
-          <Text style={styles.actionButtonText}>Try again</Text>
-        </Pressable>
+
+        <View style={styles.pairingCard}>
+          <Text style={styles.inputLabel}>Code from your computer</Text>
+          <TextInput
+            autoCapitalize="characters"
+            autoCorrect={false}
+            keyboardType="ascii-capable"
+            maxLength={12}
+            onChangeText={(value) =>
+              setPairingCode(normalizePairingCode(value))
+            }
+            placeholder="ABCDEFGH"
+            placeholderTextColor={colors.textMuted}
+            style={styles.input}
+            textContentType="oneTimeCode"
+            value={pairingCode}
+          />
+        </View>
+
+        <View style={styles.actionRow}>
+          <Pressable
+            onPress={() => void pairPhone()}
+            style={({ pressed }) => [
+              styles.actionButton,
+              pressed && styles.actionButtonPressed,
+              isPairing && styles.actionButtonDisabled,
+            ]}
+          >
+            <Text style={styles.actionButtonText}>
+              {isPairing
+                ? "Pairing..."
+                : preferredAccess
+                  ? "Pair New Computer"
+                  : "Pair Phone"}
+            </Text>
+          </Pressable>
+
+          {showRetry && (
+            <Pressable
+              onPress={() => void refreshBridge()}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                pressed && styles.secondaryButtonPressed,
+              ]}
+            >
+              <Text style={styles.secondaryButtonText}>Try again</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
     );
   }
 
-  // Ready — WebView
   const bridgeOrigin = getBridgeOrigin(screenState.bridge.bridgeUrl);
   return (
     <View style={styles.screen}>
       {!bridgeConnected && (
         <View style={styles.reconnectBanner}>
           <ActivityIndicator size="small" color={colors.textMuted} />
-          <Text style={styles.reconnectText}>Reconnecting to desktop…</Text>
+          <Text style={styles.reconnectText}>Reconnecting to desktop...</Text>
         </View>
       )}
       <View style={styles.webFrame}>
@@ -243,7 +437,10 @@ export default function StellaScreen() {
           ref={webViewRef}
           source={{
             uri: screenState.bridge.uri,
-            headers: { Authorization: `Bearer ${screenState.bridge.token}` },
+            headers: {
+              Authorization: `Bearer ${screenState.bridge.token}`,
+              ...buildPhoneAccessHeaders(screenState.bridge.access),
+            },
           }}
           injectedJavaScriptBeforeContentLoaded={generateShimScript(
             screenState.bridge.bridgeUrl,
@@ -262,19 +459,16 @@ export default function StellaScreen() {
             return false;
           }}
           onError={() =>
-            setScreenState({
-              type: "unavailable",
-              error: "The link to your computer was interrupted.",
-              title: "Can't reach your desktop",
-            })
+            setScreenState(
+              readUnavailableState(
+                "Can't reach your desktop",
+                "The link to your computer was interrupted.",
+              ),
+            )
           }
           onHttpError={(e) => {
             if (e.nativeEvent.statusCode >= 500) {
-              setScreenState({
-                type: "unavailable",
-                error: null,
-                title: "Can't reach your desktop",
-              });
+              setScreenState(readUnavailableState("Can't reach your desktop"));
             }
           }}
           originWhitelist={[bridgeOrigin, "about:blank"]}
@@ -287,7 +481,7 @@ export default function StellaScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    gap: 8,
+    gap: 12,
   },
   centered: {
     alignItems: "center",
@@ -295,8 +489,6 @@ const styles = StyleSheet.create({
     gap: 12,
     justifyContent: "center",
   },
-
-  // Typography
   title: {
     color: colors.text,
     fontFamily: fonts.display.regular,
@@ -321,23 +513,62 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  // Status block (unavailable)
+  caption: {
+    color: colors.textMuted,
+    fontFamily: fonts.sans.regular,
+    fontSize: 13,
+    letterSpacing: -0.1,
+    lineHeight: 19,
+  },
   statusBlock: {
     gap: 8,
     paddingTop: 8,
   },
-
-  // Action button
+  pairingCard: {
+    backgroundColor: colors.panel,
+    borderColor: colors.border,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 10,
+    padding: 14,
+  },
+  inputLabel: {
+    color: colors.textMuted,
+    fontFamily: fonts.sans.medium,
+    fontSize: 13,
+    letterSpacing: 0.2,
+  },
+  input: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: colors.text,
+    fontFamily: fonts.sans.semiBold,
+    fontSize: 18,
+    letterSpacing: 3,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  actionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
   actionButton: {
     alignItems: "center",
-    alignSelf: "flex-start",
     backgroundColor: colors.accent,
     borderRadius: 22,
+    justifyContent: "center",
+    minHeight: 44,
     paddingHorizontal: 24,
     paddingVertical: 12,
   },
   actionButtonPressed: {
     opacity: 0.8,
+  },
+  actionButtonDisabled: {
+    opacity: 0.65,
   },
   actionButtonText: {
     color: colors.accentForeground,
@@ -345,8 +576,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     letterSpacing: -0.3,
   },
-
-  // Reconnecting banner
+  secondaryButton: {
+    alignItems: "center",
+    borderColor: colors.border,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: "center",
+    minHeight: 44,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  secondaryButtonPressed: {
+    opacity: 0.8,
+  },
+  secondaryButtonText: {
+    color: colors.text,
+    fontFamily: fonts.sans.medium,
+    fontSize: 15,
+    letterSpacing: -0.2,
+  },
   reconnectBanner: {
     alignItems: "center",
     backgroundColor: colors.panel,
@@ -363,8 +611,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: -0.1,
   },
-
-  // WebView
   webFrame: {
     borderRadius: 14,
     flex: 1,

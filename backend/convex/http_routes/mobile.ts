@@ -9,7 +9,10 @@ import {
 } from "../auth";
 import { AGENT_IDS } from "../lib/agent_constants";
 import { MANAGED_GATEWAY } from "../agent/model";
-import { resolveFallbackConfig, resolveModelConfig } from "../agent/model_resolver";
+import {
+  resolveFallbackConfig,
+  resolveModelConfig,
+} from "../agent/model_resolver";
 import { OFFLINE_RESPONDER_SYSTEM_PROMPT } from "../prompts/offline_responder";
 import {
   errorResponse,
@@ -28,6 +31,7 @@ import {
   completeManagedChat,
   usageSummaryFromAssistant,
 } from "../runtime_ai/managed";
+import { verifyPairedMobileSecret } from "../mobile_access";
 import type {
   AssistantMessage,
   Context,
@@ -82,7 +86,9 @@ const parseOfflineHistory = (
     const record = item as { role?: unknown; text?: unknown };
     const role = record.role;
     const text =
-      typeof record.text === "string" ? record.text.slice(0, MAX_OFFLINE_MESSAGE_CHARS) : "";
+      typeof record.text === "string"
+        ? record.text.slice(0, MAX_OFFLINE_MESSAGE_CHARS)
+        : "";
     const trimmed = text.trim();
     if (!trimmed || (role !== "user" && role !== "assistant")) {
       continue;
@@ -189,9 +195,9 @@ const readConvexErrorCode = (error: unknown) => {
   }
   const data = error.data;
   if (
-    data
-    && typeof data === "object"
-    && typeof (data as { code?: unknown }).code === "string"
+    data &&
+    typeof data === "object" &&
+    typeof (data as { code?: unknown }).code === "string"
   ) {
     return (data as { code: string }).code;
   }
@@ -202,9 +208,9 @@ const readConvexErrorMessage = (error: unknown, fallback: string) => {
   if (error instanceof ConvexError) {
     const data = error.data;
     if (
-      data
-      && typeof data === "object"
-      && typeof (data as { message?: unknown }).message === "string"
+      data &&
+      typeof data === "object" &&
+      typeof (data as { message?: unknown }).message === "string"
     ) {
       return (data as { message: string }).message;
     }
@@ -301,6 +307,60 @@ const normalizeBaseUrls = (value: unknown) => {
   return Array.from(unique);
 };
 
+const requirePairedMobileCredentials = async (
+  ctx: ActionCtx,
+  request: Request,
+  args: { ownerId: string; desktopDeviceId: string; origin: string },
+): Promise<
+  | { mobileDeviceId: string; response?: undefined }
+  | { response: Response }
+> => {
+  const mobileDeviceId = normalizeDeviceId(
+    request.headers.get("X-Stella-Mobile-Device-Id"),
+  );
+  const pairSecret =
+    request.headers.get("X-Stella-Mobile-Pair-Secret")?.trim() ?? "";
+  if (!mobileDeviceId || !pairSecret) {
+    return {
+      response: errorResponse(
+        403,
+        "A paired phone credential is required",
+        args.origin,
+      ),
+    };
+  }
+
+  const pairedDevice = await ctx.runQuery(
+    internal.mobile_access.getPairedMobileDevice,
+    {
+      ownerId: args.ownerId,
+      desktopDeviceId: args.desktopDeviceId,
+      mobileDeviceId,
+    },
+  );
+  if (!pairedDevice) {
+    return {
+      response: errorResponse(403, "This phone is not paired", args.origin),
+    };
+  }
+
+  const secretOk = await verifyPairedMobileSecret({
+    pairSecret,
+    pairSecretHash: pairedDevice.pairSecretHash,
+  });
+  if (!secretOk) {
+    return {
+      response: errorResponse(
+        403,
+        "This phone credential is invalid",
+        args.origin,
+      ),
+    };
+  }
+
+  return { mobileDeviceId };
+};
+
 const generateOfflineReply = async (args: {
   ctx: ActionCtx;
   ownerId: string;
@@ -385,8 +445,10 @@ const generateOfflineReply = async (args: {
 export const registerMobileRoutes = (http: HttpRouter) => {
   for (const path of [
     "/api/mobile/offline-chat",
+    "/api/mobile/pairing/complete",
     "/api/mobile/desktop-bridge/register",
     "/api/mobile/desktop-bridge/clear",
+    "/api/mobile/desktop-bridge/request",
     "/api/mobile/desktop-bridge/authorize",
     "/api/mobile/desktop-bridge/tunnel-token",
   ]) {
@@ -492,10 +554,22 @@ export const registerMobileRoutes = (http: HttpRouter) => {
           return owner.response;
         }
 
-        const registration = await ctx.runQuery(
-          internal.mobile_bridge.getLatestRegistrationForOwner,
-          { ownerId: owner.ownerId },
+        const url = new URL(request.url);
+        const requestedDesktopDeviceId = normalizeDeviceId(
+          url.searchParams.get("desktopDeviceId"),
         );
+        const registration = requestedDesktopDeviceId
+          ? await ctx.runQuery(
+              internal.mobile_bridge.getRegistrationForOwnerDevice,
+              {
+                ownerId: owner.ownerId,
+                deviceId: requestedDesktopDeviceId,
+              },
+            )
+          : await ctx.runQuery(
+              internal.mobile_bridge.getLatestRegistrationForOwner,
+              { ownerId: owner.ownerId },
+            );
         if (!registration) {
           return jsonResponse(
             {
@@ -524,6 +598,75 @@ export const registerMobileRoutes = (http: HttpRouter) => {
   });
 
   http.route({
+    path: "/api/mobile/pairing/complete",
+    method: "POST",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const owner = await requireMobileAccountOwner(ctx, origin);
+        if ("response" in owner) {
+          return owner.response;
+        }
+
+        let body: {
+          pairingCode?: unknown;
+          mobileDeviceId?: unknown;
+          displayName?: unknown;
+          platform?: unknown;
+        } | null = null;
+        try {
+          body = (await request.json()) as {
+            pairingCode?: unknown;
+            mobileDeviceId?: unknown;
+            displayName?: unknown;
+            platform?: unknown;
+          };
+        } catch {
+          return errorResponse(400, "Invalid JSON body", origin);
+        }
+
+        const pairingCode =
+          typeof body?.pairingCode === "string"
+            ? body.pairingCode.trim().toUpperCase().slice(0, 12)
+            : "";
+        const mobileDeviceId = normalizeDeviceId(body?.mobileDeviceId);
+        const displayName =
+          typeof body?.displayName === "string"
+            ? body.displayName.trim().slice(0, 64)
+            : undefined;
+        const platform = normalizePlatform(body?.platform);
+
+        if (!pairingCode || !mobileDeviceId) {
+          return errorResponse(
+            400,
+            "pairingCode and mobileDeviceId are required",
+            origin,
+          );
+        }
+
+        try {
+          const result = await ctx.runMutation(
+            internal.mobile_access.completePairingSession,
+            {
+              ownerId: owner.ownerId,
+              pairingCode,
+              mobileDeviceId,
+              ...(displayName ? { displayName } : {}),
+              ...(platform ? { platform } : {}),
+            },
+          );
+          return jsonResponse(result, 200, origin);
+        } catch (error) {
+          return errorResponse(
+            400,
+            readConvexErrorMessage(error, "Unable to pair this phone"),
+            origin,
+          );
+        }
+      }),
+    ),
+  });
+
+  http.route({
     path: "/api/mobile/desktop-bridge/register",
     method: "POST",
     handler: httpAction(async (ctx, request) =>
@@ -533,13 +676,11 @@ export const registerMobileRoutes = (http: HttpRouter) => {
           return owner.response;
         }
 
-        let body:
-          | {
-              deviceId?: unknown;
-              baseUrls?: unknown;
-              platform?: unknown;
-            }
-          | null = null;
+        let body: {
+          deviceId?: unknown;
+          baseUrls?: unknown;
+          platform?: unknown;
+        } | null = null;
         try {
           body = (await request.json()) as {
             deviceId?: unknown;
@@ -554,7 +695,11 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         const baseUrls = normalizeBaseUrls(body?.baseUrls);
         const platform = normalizePlatform(body?.platform);
         if (!deviceId || baseUrls.length === 0) {
-          return errorResponse(400, "deviceId and baseUrls are required", origin);
+          return errorResponse(
+            400,
+            "deviceId and baseUrls are required",
+            origin,
+          );
         }
 
         await ctx.runMutation(internal.mobile_bridge.upsertRegistration, {
@@ -602,6 +747,53 @@ export const registerMobileRoutes = (http: HttpRouter) => {
   });
 
   http.route({
+    path: "/api/mobile/desktop-bridge/request",
+    method: "POST",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const owner = await requireMobileAccountOwner(ctx, origin);
+        if ("response" in owner) {
+          return owner.response;
+        }
+
+        let body: {
+          desktopDeviceId?: unknown;
+        } | null = null;
+        try {
+          body = (await request.json()) as {
+            desktopDeviceId?: unknown;
+          };
+        } catch {
+          return errorResponse(400, "Invalid JSON body", origin);
+        }
+
+        const desktopDeviceId = normalizeDeviceId(body?.desktopDeviceId);
+        if (!desktopDeviceId) {
+          return errorResponse(400, "desktopDeviceId is required", origin);
+        }
+
+        const paired = await requirePairedMobileCredentials(ctx, request, {
+          ownerId: owner.ownerId,
+          desktopDeviceId,
+          origin,
+        });
+        if ("response" in paired) {
+          return paired.response;
+        }
+
+        await ctx.runMutation(internal.mobile_access.upsertConnectIntent, {
+          ownerId: owner.ownerId,
+          desktopDeviceId,
+          mobileDeviceId: paired.mobileDeviceId,
+          createdAt: Date.now(),
+        });
+
+        return jsonResponse({ ok: true }, 200, origin);
+      }),
+    ),
+  });
+
+  http.route({
     path: "/api/mobile/desktop-bridge/authorize",
     method: "POST",
     handler: httpAction(async (ctx, request) =>
@@ -633,6 +825,22 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         if (!registration?.available) {
           return errorResponse(403, "Desktop bridge is unavailable", origin);
         }
+
+        const paired = await requirePairedMobileCredentials(ctx, request, {
+          ownerId: owner.ownerId,
+          desktopDeviceId: deviceId,
+          origin,
+        });
+        if ("response" in paired) {
+          return paired.response;
+        }
+
+        await ctx.runMutation(internal.mobile_access.markPairedMobileSeen, {
+          ownerId: owner.ownerId,
+          desktopDeviceId: deviceId,
+          mobileDeviceId: paired.mobileDeviceId,
+          seenAt: Date.now(),
+        });
 
         return jsonResponse({ ok: true }, 200, origin);
       }),
@@ -669,10 +877,7 @@ export const registerMobileRoutes = (http: HttpRouter) => {
 
   // ── Mobile magic link (no-redirect) ────────────────────────────────
 
-  for (const path of [
-    "/api/auth/link/send",
-    "/api/auth/link/status",
-  ]) {
+  for (const path of ["/api/auth/link/send", "/api/auth/link/status"]) {
     http.route({
       path,
       method: "OPTIONS",
@@ -696,7 +901,9 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         }
 
         const email =
-          typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+          typeof body?.email === "string"
+            ? body.email.trim().toLowerCase()
+            : "";
         if (!email || !EMAIL_PATTERN.test(email)) {
           return errorResponse(400, "A valid email is required.", origin);
         }
@@ -804,9 +1011,8 @@ export const registerMobileRoutes = (http: HttpRouter) => {
             returnHeaders: true,
           });
           // better-auth returns headers in _headersList with custom header name
-          const headersList = (verifyRes as Record<string, unknown>)?.headers as
-            | { _headersList?: [string, string][] }
-            | undefined;
+          const headersList = (verifyRes as Record<string, unknown>)
+            ?.headers as { _headersList?: [string, string][] } | undefined;
           if (Array.isArray(headersList?._headersList)) {
             for (const [name, value] of headersList._headersList) {
               if (name === "set-better-auth-cookie" || name === "set-cookie") {
@@ -825,7 +1031,8 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         });
       }
 
-      const websiteUrl = process.env.STELLA_WEBSITE_URL?.trim() || "https://stella.sh";
+      const websiteUrl =
+        process.env.STELLA_WEBSITE_URL?.trim() || "https://stella.sh";
       const redirect = `${websiteUrl.replace(/\/+$/, "")}/auth/callback?done=true`;
 
       return new Response(null, {
