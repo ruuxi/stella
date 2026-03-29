@@ -3,7 +3,7 @@ import { promises as fs } from "fs";
 import type { Dirent } from "fs";
 import { fileURLToPath } from "url";
 import type { App } from "electron";
-import { ensurePrivateDir } from "./private-fs.js";
+import { ensurePrivateDir } from "../shared/private-fs.js";
 import { buildBundledCoreAgents } from "../agents/core-agent-prompts.js";
 
 export type StellaHome = {

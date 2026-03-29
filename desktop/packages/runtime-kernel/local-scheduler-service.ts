@@ -2,7 +2,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import { Cron } from 'croner'
-import { ensurePrivateDirSync, writePrivateFileSync } from './home/private-fs.js'
+import { ensurePrivateDirSync, writePrivateFileSync } from './shared/private-fs.js'
 import type { StellaHostRunnerTarget } from './lifecycle-targets.js'
 import type {
   LocalCronJobCreateInput,
