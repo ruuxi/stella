@@ -1,13 +1,11 @@
 export { OFFLINE_RESPONDER_SYSTEM_PROMPT } from "./offline_responder";
-export { buildSuggestionUserMessage } from "./suggestions";
-export { SUGGESTIONS_USER_PROMPT_TEMPLATE } from "./suggestions";
 export {
   buildCategoryAnalysisUserMessage,
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
-  buildWelcomeSuggestionsPrompt,
+  buildHomeSuggestionsPrompt,
 } from "./synthesis";
-export type { WelcomeSuggestion } from "./synthesis";
+export type { HomeSuggestion } from "./synthesis";
 export { buildSkillMetadataUserMessage } from "./skill_metadata";
 export { buildSkillSelectionUserMessage } from "./skill_selection";
 export {

@@ -9,10 +9,10 @@ import { getSynthesisPromptConfig } from "@/prompts";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import type {
   OnboardingSynthesisResponse,
-  OnboardingWelcomeSuggestion,
+  OnboardingHomeSuggestion,
 } from "@/shared/contracts/onboarding";
 
-export type WelcomeSuggestion = OnboardingWelcomeSuggestion;
+export type HomeSuggestion = OnboardingHomeSuggestion;
 
 export type SynthesisResult = OnboardingSynthesisResponse;
 

@@ -7,9 +7,9 @@ import {
   buildCategoryAnalysisUserMessage,
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
-  buildWelcomeSuggestionsPrompt,
+  buildHomeSuggestionsPrompt,
 } from "../prompts/index";
-import type { WelcomeSuggestion } from "../prompts/index";
+import type { HomeSuggestion } from "../prompts/index";
 import {
   corsPreflightHandler,
   errorResponse,
@@ -26,7 +26,7 @@ import {
   resolveManagedModelAccess,
   scheduleManagedUsage,
 } from "../lib/managed_billing";
-import { parseWelcomeSuggestionsFromModelText } from "../lib/welcome_suggestions_parse";
+import { parseHomeSuggestionsFromModelText } from "../lib/welcome_suggestions_parse";
 import {
   assistantText,
   completeManagedChat,
@@ -43,13 +43,13 @@ type SynthesizeRequest = {
   coreMemorySystemPrompt?: string;
   coreMemoryUserPromptTemplate?: string;
   welcomeMessagePromptTemplate?: string;
-  welcomeSuggestionsPromptTemplate?: string;
+  homeSuggestionsPromptTemplate?: string;
 };
 
 type SynthesizeResponse = {
   coreMemory: string;
   welcomeMessage: string;
-  suggestions: WelcomeSuggestion[];
+  suggestions: HomeSuggestion[];
 };
 
 const DEFAULT_WELCOME_MESSAGE =
@@ -57,7 +57,7 @@ const DEFAULT_WELCOME_MESSAGE =
 /** Local/testing: high anon allowance; re-tighten before production. */
 const MAX_ANON_SYNTHESIS_REQUESTS = 1_000_000;
 
-export const getWelcomeSuggestionsText = (
+export const getHomeSuggestionsText = (
   result: { result: Parameters<typeof assistantText>[0] } | null | undefined,
 ): string => (result ? assistantText(result.result) : "");
 
@@ -100,12 +100,12 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
         const coreMemorySystemPrompt = body.coreMemorySystemPrompt?.trim();
         const coreMemoryUserPromptTemplate = body.coreMemoryUserPromptTemplate?.trim();
         const welcomeMessagePromptTemplate = body.welcomeMessagePromptTemplate?.trim();
-        const welcomeSuggestionsPromptTemplate = body.welcomeSuggestionsPromptTemplate?.trim();
+        const homeSuggestionsPromptTemplate = body.homeSuggestionsPromptTemplate?.trim();
         if (
           !coreMemorySystemPrompt ||
           !coreMemoryUserPromptTemplate ||
           !welcomeMessagePromptTemplate ||
-          !welcomeSuggestionsPromptTemplate
+          !homeSuggestionsPromptTemplate
         ) {
           return errorResponse(400, "Missing synthesis prompt payload", origin);
         }
@@ -325,9 +325,9 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
                   role: "user",
                   content: [{
                     type: "text",
-                    text: buildWelcomeSuggestionsPrompt(
+                    text: buildHomeSuggestionsPrompt(
                       coreMemory,
-                      welcomeSuggestionsPromptTemplate,
+                      homeSuggestionsPromptTemplate,
                     ),
                   }],
                   timestamp: Date.now(),
@@ -354,7 +354,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             if (suggestionsResult) {
               await scheduleManagedUsage(ctx, {
                 ownerId,
-                agentType: "service:synthesis:welcome_suggestions",
+                agentType: "service:synthesis:home_suggestions",
                 model: welcomeConfig.model,
                 durationMs: suggestionsResult.durationMs,
                 success: true,
@@ -363,13 +363,13 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             }
           }
 
-          const suggestionsText = getWelcomeSuggestionsText(suggestionsResult);
-          const suggestions = parseWelcomeSuggestionsFromModelText(
+          const suggestionsText = getHomeSuggestionsText(suggestionsResult);
+          const suggestions = parseHomeSuggestionsFromModelText(
             suggestionsText,
           );
           if (!suggestions.length && suggestionsText) {
             console.warn(
-              "[synthesize] Welcome suggestions: model output was not a usable JSON array",
+              "[synthesize] Home suggestions: model output was not a usable JSON array",
             );
           }
 

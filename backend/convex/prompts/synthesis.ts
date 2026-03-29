@@ -26,14 +26,13 @@ export const buildWelcomeMessagePrompt = (
   promptTemplate: string,
 ): string => `${promptTemplate}\n\n${coreMemory}`;
 
-export type WelcomeSuggestion = {
-  category: "cron" | "skill" | "app";
-  title: string;
-  description: string;
+export type HomeSuggestion = {
+  category: "stella" | "task" | "explore" | "schedule";
+  label: string;
   prompt: string;
 };
 
-export const buildWelcomeSuggestionsPrompt = (
+export const buildHomeSuggestionsPrompt = (
   coreMemory: string,
   promptTemplate: string,
 ): string => `${promptTemplate}\n\n${coreMemory}`;

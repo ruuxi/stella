@@ -1,5 +1,4 @@
 import type { Dispatch, RefCallback, SetStateAction } from 'react'
-import type { CommandSuggestion } from '@/app/chat/hooks/use-command-suggestions'
 import type { EventRecord } from '@/app/chat/lib/event-transforms'
 import type { SelfModAppliedData } from '@/app/chat/streaming/streaming-types'
 import type { ChatContext } from '@/shared/types/electron'
@@ -37,7 +36,6 @@ export type ChatColumnComposer = {
   onAdd?: () => void
   onSend: () => void
   onStop: () => void
-  onCommandSelect?: (suggestion: CommandSuggestion) => void
 }
 
 export type ChatColumnScroll = {

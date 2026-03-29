@@ -2,7 +2,7 @@ import { resolvePromptText } from "./resolve"
 import type { DiscoveryCategory } from "@/shared/contracts/discovery"
 import type { PromptId } from "./types"
 
-export type { WelcomeSuggestion } from "./types"
+export type { HomeSuggestion } from "./types"
 
 type CategoryAnalysisPromptId = Extract<
   PromptId,
@@ -36,5 +36,5 @@ export const buildCoreSynthesisUserMessage = (rawOutputs: string): string =>
 export const buildWelcomeMessagePrompt = (coreMemory: string): string =>
   resolvePromptText("synthesis.welcome_message.user", { coreMemory })
 
-export const buildWelcomeSuggestionsPrompt = (coreMemory: string): string =>
-  resolvePromptText("synthesis.welcome_suggestions.user", { coreMemory })
+export const buildHomeSuggestionsPrompt = (coreMemory: string): string =>
+  resolvePromptText("synthesis.home_suggestions.user", { coreMemory })

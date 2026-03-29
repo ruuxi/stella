@@ -132,8 +132,6 @@ export const METHOD_NAMES = {
   PROJECTS_STOP: "projects.stop",
   OVERLAY_AUTO_PANEL_START: "overlay.autoPanel.start",
   OVERLAY_AUTO_PANEL_CANCEL: "overlay.autoPanel.cancel",
-  DASHBOARD_START_PERSONAL_WEBSITE_GENERATION:
-    "dashboard.startPersonalWebsiteGeneration",
   SELF_MOD_REVERT: "selfMod.revert",
   SELF_MOD_LAST_FEATURE: "selfMod.lastFeature",
   SELF_MOD_RECENT_FEATURES: "selfMod.recentFeatures",
@@ -227,8 +225,6 @@ export const METHOD_NAMES = {
     "internal.worker.overlay.autoPanel.start",
   INTERNAL_WORKER_OVERLAY_AUTO_PANEL_CANCEL:
     "internal.worker.overlay.autoPanel.cancel",
-  INTERNAL_WORKER_DASHBOARD_START_PERSONAL_WEBSITE_GENERATION:
-    "internal.worker.dashboard.startPersonalWebsiteGeneration",
   INTERNAL_WORKER_SELF_MOD_REVERT: "internal.worker.selfMod.revert",
   INTERNAL_WORKER_SELF_MOD_LAST_FEATURE: "internal.worker.selfMod.lastFeature",
   INTERNAL_WORKER_SELF_MOD_RECENT_FEATURES:
@@ -379,17 +375,6 @@ export type RuntimeAutomationTurnResult =
   | { status: "ok"; finalText: string }
   | { status: "busy"; finalText: ""; error: string }
   | { status: "error"; finalText: ""; error: string };
-
-export type RuntimePersonalWebsiteGenerationRequest = {
-  conversationId: string;
-  coreMemory: string;
-  promptConfig: {
-    systemPrompt: string;
-    userPromptTemplate: string;
-  };
-};
-
-
 
 export type RuntimeProjectDirectoryRegistrationResult = {
   projects: LocalDevProjectRecord[];

@@ -1,16 +1,19 @@
-import type { WelcomeSuggestion } from "../prompts/synthesis";
+import type { HomeSuggestion } from "../prompts/synthesis";
 import { extractJsonBlock } from "./json";
 
-const isWelcomeSuggestion = (value: unknown): value is WelcomeSuggestion =>
+const VALID_CATEGORIES = new Set(["stella", "task", "explore", "schedule"]);
+
+const isHomeSuggestion = (value: unknown): value is HomeSuggestion =>
   typeof value === "object" &&
   value !== null &&
-  typeof (value as WelcomeSuggestion).category === "string" &&
-  typeof (value as WelcomeSuggestion).title === "string" &&
-  typeof (value as WelcomeSuggestion).prompt === "string";
+  typeof (value as HomeSuggestion).category === "string" &&
+  VALID_CATEGORIES.has((value as HomeSuggestion).category) &&
+  typeof (value as HomeSuggestion).label === "string" &&
+  typeof (value as HomeSuggestion).prompt === "string";
 
-export const parseWelcomeSuggestionsFromModelText = (
+export const parseHomeSuggestionsFromModelText = (
   text: string | undefined,
-): WelcomeSuggestion[] => {
+): HomeSuggestion[] => {
   const raw = text?.trim();
   if (!raw) return [];
   const jsonSlice = extractJsonBlock(raw);
@@ -18,7 +21,7 @@ export const parseWelcomeSuggestionsFromModelText = (
   try {
     const parsed: unknown = JSON.parse(jsonSlice);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isWelcomeSuggestion).slice(0, 5);
+    return parsed.filter(isHomeSuggestion).slice(0, 20);
   } catch {
     return [];
   }

@@ -4,7 +4,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { synthesizeCoreMemory } from "@/global/onboarding/services/synthesis";
-import { getPersonalizedDashboardPromptConfig } from "@/prompts/transport";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 import {
@@ -25,8 +24,6 @@ type UseDiscoveryFlowOptions = {
   conversationId: string | null;
 };
 
-export type DashboardState = "idle" | "generating";
-
 export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
   const activeConversationId = conversationId;
   const { hasConnectedAccount } = useAuthSessionState();
@@ -34,7 +31,6 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
   const [discoveryCategories, setDiscoveryCategories] = useState<
     DiscoveryCategory[] | null
   >(null);
-  const [dashboardState, setDashboardState] = useState<DashboardState>("idle");
   const synthesizedRef = useRef(false);
   const synthesizingRef = useRef(false);
 
@@ -102,20 +98,6 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
           });
         }
 
-        // Fire-and-forget: generate personal website
-        const startGeneration =
-          window.electronAPI?.agent.startPersonalWebsiteGeneration;
-        if (startGeneration) {
-          setDashboardState("generating");
-          startGeneration({
-            conversationId: activeConversationId,
-            coreMemory: synthesisResult.coreMemory,
-            promptConfig: getPersonalizedDashboardPromptConfig(),
-          })
-            .then(() => setDashboardState("idle"))
-            .catch(() => setDashboardState("idle"));
-        }
-
         completed = true;
         synthesizedRef.current = true;
       } catch {
@@ -137,6 +119,5 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
 
   return {
     handleDiscoveryConfirm,
-    dashboardState,
   };
 }

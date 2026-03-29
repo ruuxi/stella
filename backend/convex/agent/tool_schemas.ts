@@ -12,7 +12,6 @@ import { z } from "zod";
 export const DEVICE_TOOL_NAMES = [
   "Read",
   "Edit",
-  "Glob",
   "Grep",
   "Bash",
   "KillShell",
@@ -64,11 +63,6 @@ export const EditSchema = z.object({
   old_string: z.string().describe("Exact text to find and replace (must be unique unless replace_all=true)"),
   new_string: z.string().describe("Replacement text"),
   replace_all: z.boolean().optional().describe("Replace all occurrences instead of requiring uniqueness"),
-});
-
-export const GlobSchema = z.object({
-  pattern: z.string().describe("Glob pattern to match (e.g. \"**/*.ts\", \"src/**/*.json\")"),
-  path: z.string().optional().describe("Directory to search in (defaults to working directory)"),
 });
 
 export const GrepSchema = z.object({
@@ -149,13 +143,6 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- old_string must match the file content exactly, including whitespace and indentation.\n" +
     "- The edit will FAIL if old_string appears more than once in the file. Provide more surrounding context to make it unique, or use replace_all=true to change every occurrence.\n" +
     "- Prefer this over Write for modifying existing files.",
-  Glob:
-    "Find files by glob pattern.\n\n" +
-    "Usage:\n" +
-    "- Supports patterns like \"**/*.ts\", \"src/**/*.tsx\", \"*.json\".\n" +
-    "- Returns matching file paths sorted by modification time (newest first).\n" +
-    "- Use path to limit the search to a specific directory.\n" +
-    "- Use this instead of Bash with find or ls.",
   Grep:
     "Search file contents using ripgrep regex.\n\n" +
     "Usage:\n" +
@@ -215,7 +202,6 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
 export const TOOL_SCHEMAS = {
   Read: ReadSchema,
   Edit: EditSchema,
-  Glob: GlobSchema,
   Grep: GrepSchema,
   Bash: BashSchema,
   KillShell: KillShellSchema,

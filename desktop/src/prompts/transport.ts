@@ -69,7 +69,7 @@ export const getSynthesisPromptConfig = () => ({
   coreMemorySystemPrompt: getPromptTemplateText("synthesis.core_memory.system").trim(),
   coreMemoryUserPromptTemplate: getPromptTemplateText("synthesis.core_memory.user").trim(),
   welcomeMessagePromptTemplate: getPromptTemplateText("synthesis.welcome_message.user").trim(),
-  welcomeSuggestionsPromptTemplate: getPromptTemplateText("synthesis.welcome_suggestions.user").trim(),
+  homeSuggestionsPromptTemplate: getPromptTemplateText("synthesis.home_suggestions.user").trim(),
 })
 
 export const getSkillMetadataPromptConfig = () => ({
@@ -82,7 +82,3 @@ export const getSkillSelectionPromptConfig = () => ({
   userPromptTemplate: getPromptTemplateText("skill_selection.user").trim(),
 })
 
-export const getPersonalizedDashboardPromptConfig = () => ({
-  systemPrompt: getPromptTemplateText("personalized_dashboard.system").trim(),
-  userPromptTemplate: getPromptTemplateText("personalized_dashboard.user").trim(),
-})

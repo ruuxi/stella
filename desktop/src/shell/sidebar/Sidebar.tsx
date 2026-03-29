@@ -2,7 +2,6 @@ import type { GeneratedPage } from "@/app/registry";
 import { generatedPages, MEDIA_PAGE } from "@/app/registry";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
-import type { DashboardState } from "@/global/onboarding/DiscoveryFlow";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import type { ViewType } from "@/shared/contracts/ui";
 import type { LocalDevProjectRecord } from "@/shared/types/electron";
@@ -16,7 +15,6 @@ import AlertCircle from "lucide-react/dist/esm/icons/circle-alert";
 import Folder from "lucide-react/dist/esm/icons/folder";
 import Layout from "lucide-react/dist/esm/icons/layout-dashboard";
 import Link2 from "lucide-react/dist/esm/icons/link-2";
-import Loader from "lucide-react/dist/esm/icons/loader";
 import LogIn from "lucide-react/dist/esm/icons/log-in";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square";
 import PlusSquare from "lucide-react/dist/esm/icons/square-plus";
@@ -45,7 +43,6 @@ interface SidebarProps {
   onNewAppLocalProject?: () => void;
   activePageId: string | null;
   onPageSelect: (page: GeneratedPage) => void;
-  dashboardState: DashboardState;
   projects?: LocalDevProjectRecord[];
   activeProjectId?: string | null;
   onProjectSelect?: (project: LocalDevProjectRecord) => void;
@@ -99,7 +96,6 @@ export const Sidebar = ({
   onNewAppLocalProject,
   activePageId,
   onPageSelect,
-  dashboardState,
   projects = [],
   activeProjectId,
   onProjectSelect,
@@ -162,16 +158,8 @@ export const Sidebar = ({
           </span>
           <span className="sidebar-nav-label">Media</span>
         </button>
-        {(generatedPages.length > 0 || dashboardState === "generating") && (
+        {generatedPages.length > 0 && (
           <>
-            {dashboardState === "generating" && generatedPages.length === 0 && (
-              <div className="sidebar-nav-item sidebar-nav-item--generating">
-                <span className="sidebar-nav-icon">
-                  <Loader size={18} className="sidebar-spinner" />
-                </span>
-                <span className="sidebar-nav-label">Generating pages...</span>
-              </div>
-            )}
             {generatedPages.map((page) => (
               <button
                 key={page.id}

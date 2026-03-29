@@ -353,11 +353,6 @@ export type ElectronAgentApi = {
   selfModRevert: (featureId?: string, steps?: number) => Promise<unknown>;
   getLastSelfModFeature: () => Promise<string | null>;
   listSelfModFeatures: (limit?: number) => Promise<SelfModFeatureSummary[]>;
-  startPersonalWebsiteGeneration: (payload: {
-    conversationId: string;
-    coreMemory: string;
-    promptConfig: { systemPrompt: string; userPromptTemplate: string };
-  }) => Promise<void>;
   triggerViteError: () => Promise<{ ok: boolean }>;
   fixViteError: () => Promise<{ ok: boolean }>;
 };

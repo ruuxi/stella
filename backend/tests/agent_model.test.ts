@@ -82,11 +82,6 @@ describe("AGENT_MODELS", () => {
     expect(typeof AGENT_MODELS.self_mod.model).toBe("string");
   });
 
-  test("includes dashboard_generation config", () => {
-    expect(AGENT_MODELS.dashboard_generation).toBeDefined();
-    expect(typeof AGENT_MODELS.dashboard_generation.model).toBe("string");
-  });
-
   test("includes mercury config", () => {
     expect(AGENT_MODELS.mercury).toBeDefined();
     expect(AGENT_MODELS.mercury.model).toBe("accounts/fireworks/models/kimi-k2p5");
@@ -158,11 +153,6 @@ describe("getModelConfig", () => {
     expect(config).toBe(AGENT_MODELS.self_mod);
   });
 
-  test("returns dashboard_generation config for dashboard_generation", () => {
-    const config = getModelConfig("dashboard_generation");
-    expect(config).toBe(AGENT_MODELS.dashboard_generation);
-  });
-
   test("returns mercury config for mercury", () => {
     const config = getModelConfig("mercury");
     expect(config).toBe(AGENT_MODELS.mercury);
@@ -203,7 +193,6 @@ describe("hasModelConfig", () => {
     expect(hasModelConfig("orchestrator")).toBe(true);
     expect(hasModelConfig("general")).toBe(true);
     expect(hasModelConfig("self_mod")).toBe(true);
-    expect(hasModelConfig("dashboard_generation")).toBe(true);
   });
 
   test("returns false for unknown agent types", () => {
