@@ -3,8 +3,6 @@ export const AGENT_IDS = {
   SCHEDULE: "schedule",
   GENERAL: "general",
   SELF_MOD: "self_mod",
-  /** Onboarding personalized home dashboard pages (separate model config from self-mod). */
-  DASHBOARD_GENERATION: "dashboard_generation",
   EXPLORE: "explore",
   APP: "app",
   BROWSER: "browser",
@@ -115,23 +113,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
       description: "Stella internal code, prompts, runtime, and UI",
       order: 2,
     },
-  },
-  {
-    id: AGENT_IDS.DASHBOARD_GENERATION,
-    name: "Dashboard generation",
-    description:
-      "Creates personalized home dashboard panels during onboarding (React pages and registry updates).",
-    activityLabel: "Building dashboard",
-    bundledCore: true,
-    taskSubagent: false,
-    includeInAgentRoster: false,
-    usesLocalCliRuntime: true,
-    promptRole: "subagent",
-    includesStellaDocumentation: true,
-    controlsSelfModHmr: true,
-    localCliWorkingDirectory: "frontend",
-    agentEnginePreference: null,
-    modelSettings: null,
   },
   {
     id: AGENT_IDS.EXPLORE,

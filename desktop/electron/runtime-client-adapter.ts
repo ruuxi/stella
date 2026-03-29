@@ -624,14 +624,6 @@ export class RuntimeClientAdapter {
     return this.client.cancelOverlayAutoPanelStream(requestId);
   }
 
-  startPersonalWebsiteGeneration(payload: {
-    conversationId: string;
-    coreMemory: string;
-    promptConfig: { systemPrompt: string; userPromptTemplate: string };
-  }) {
-    return this.client.startPersonalWebsiteGeneration(payload);
-  }
-
   revertSelfModFeature(payload: { featureId?: string; steps?: number }) {
     return this.client.revertSelfModFeature(payload);
   }

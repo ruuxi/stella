@@ -1,7 +1,6 @@
-export type OnboardingWelcomeSuggestion = {
-  category: "cron" | "skill" | "app";
-  title: string;
-  description: string;
+export type OnboardingHomeSuggestion = {
+  category: "stella" | "task" | "explore" | "schedule";
+  label: string;
   prompt: string;
 };
 
@@ -14,6 +13,6 @@ export type OnboardingSynthesisRequest = {
 export type OnboardingSynthesisResponse = {
   coreMemory: string;
   welcomeMessage: string;
-  suggestions?: OnboardingWelcomeSuggestion[];
+  suggestions?: OnboardingHomeSuggestion[];
 };
 

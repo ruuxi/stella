@@ -16,7 +16,6 @@ import {
   type RuntimeOverlayAutoPanelEventPayload,
   type RuntimeOverlayAutoPanelStartPayload,
   type RuntimeOverlayChatMessage,
-  type RuntimePersonalWebsiteGenerationRequest,
   type StorePublishArgs,
   type RuntimeTaskRequest,
 } from "../runtime-protocol/index.js";
@@ -72,9 +71,6 @@ import {
   buildStellaChatContext,
   type ChatMessage,
 } from "../runtime-kernel/stella-provider.js";
-import {
-  startPersonalWebsiteGeneration,
-} from "../runtime-kernel/dashboard-generation.js";
 
 type WorkerInitializationState = {
   stellaHomePath: string;
@@ -534,6 +530,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     const runner = createStellaHostRunner(runnerOptions);
     state.runner = runner;
     runner.setConvexUrl(init.convexUrl);
+    runner.setConvexSiteUrl(init.convexSiteUrl);
     runner.setAuthToken(init.authToken);
     runner.setCloudSyncEnabled(init.cloudSyncEnabled);
     runner.start();
@@ -598,6 +595,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     if (patch.convexUrl !== undefined) {
       state.runner?.setConvexUrl(patch.convexUrl);
       state.socialSessionService?.setConvexUrl(patch.convexUrl);
+    }
+    if (patch.convexSiteUrl !== undefined) {
+      state.runner?.setConvexSiteUrl(patch.convexSiteUrl);
     }
     if (patch.authToken !== undefined) {
       state.runner?.setAuthToken(patch.authToken);
@@ -1078,7 +1078,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       if (suggestions.length > 0) {
         ensureChatStore().appendEvent({
           conversationId,
-          type: "welcome_suggestions",
+          type: "home_suggestions",
           payload: { suggestions },
         });
       }
@@ -1299,18 +1299,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         controller.abort();
       }
       return { ok: true };
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_DASHBOARD_START_PERSONAL_WEBSITE_GENERATION,
-    async (params) => {
-      await startPersonalWebsiteGeneration(
-        (request) => ensureRunner().createBackgroundTask(request),
-        (taskId) => ensureRunner().getLocalTaskSnapshot(taskId),
-        params as RuntimePersonalWebsiteGenerationRequest,
-      );
-      return undefined;
     },
   );
 

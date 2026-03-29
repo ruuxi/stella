@@ -1,5 +1,4 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { CommandSuggestion } from '@/app/chat/hooks/use-command-suggestions'
 import type {
   ChatColumnComposer,
   ChatColumnConversation,
@@ -161,15 +160,6 @@ export function useFullShellChat({
     })
   }, [chatContext, message, selectedText, sendMessage, setChatContext, setSelectedText])
 
-  const handleCommandSelect = useCallback(
-    (suggestion: CommandSuggestion) => {
-      sendContextlessMessage(
-        `Run the command "${suggestion.name}" (${suggestion.description}). Create a task for the general agent with command_id "${suggestion.commandId}", using the current or most recently used thread.`,
-      )
-    },
-    [sendContextlessMessage],
-  )
-
   useEffect(() => {
     const handleSuggestionMessage = (event: Event) => {
       const detail = (event as CustomEvent<StellaSendMessageDetail>).detail
@@ -232,7 +222,6 @@ export function useFullShellChat({
       canSubmit,
       onSend: handleSend,
       onStop: cancelCurrentStream,
-      onCommandSelect: handleCommandSelect,
     }),
     [
       message,
@@ -244,7 +233,6 @@ export function useFullShellChat({
       canSubmit,
       handleSend,
       cancelCurrentStream,
-      handleCommandSelect,
     ],
   )
 
@@ -289,7 +277,6 @@ export function useFullShellChat({
       ...chatColumnComposer,
       handleSend,
       handleStop: cancelCurrentStream,
-      handleCommandSelect,
     },
     scroll: {
       ...chatColumnScroll,

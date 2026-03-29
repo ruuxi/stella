@@ -11,7 +11,6 @@ import { useDevProjects } from "@/context/dev-projects-state";
 import { useUiState } from "@/context/ui-state";
 import { useWorkspace } from "@/context/workspace-state";
 import { secureSignOut } from "@/global/auth/services/auth";
-import type { DashboardState } from "@/global/onboarding/DiscoveryFlow";
 import { dispatchCloseOrbChat, dispatchOpenOrbChat } from "@/shared/lib/stella-orb-chat";
 import type { ChatContext } from "@/shared/types/electron";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
@@ -35,12 +34,10 @@ type PendingAskStellaRequest = {
 };
 
 type FullShellReadySurfaceProps = {
-  dashboardState: DashboardState;
   onboardingExiting: boolean;
 };
 
 export const FullShellReadySurface = ({
-  dashboardState,
   onboardingExiting,
 }: FullShellReadySurfaceProps) => {
   const { state, setView } = useUiState();
@@ -180,7 +177,6 @@ export const FullShellReadySurface = ({
         onNewAppLocalProject={handleNewAppLocalProject}
         activePageId={activePageId}
         onPageSelect={handlePageSelect}
-        dashboardState={dashboardState}
         projects={projects}
         activeProjectId={activeProjectId}
         onProjectSelect={handleProjectSelect}

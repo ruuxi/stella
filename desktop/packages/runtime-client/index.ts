@@ -40,7 +40,6 @@ import {
   type RuntimeHealthSnapshot,
   type RuntimeOverlayAutoPanelEventPayload,
   type RuntimeOverlayAutoPanelStartPayload,
-  type RuntimePersonalWebsiteGenerationRequest,
   type RuntimeProjectDirectoryRegistrationResult,
   type RuntimeSelfModRevertResult,
   type RuntimeTaskRequest,
@@ -504,7 +503,7 @@ export class StellaRuntimeClient {
     if (suggestions.length > 0) {
       store.appendEvent({
         conversationId: payload.conversationId,
-        type: "welcome_suggestions",
+        type: "home_suggestions",
         payload: { suggestions },
       });
     }
@@ -716,17 +715,6 @@ export class StellaRuntimeClient {
       METHOD_NAMES.INTERNAL_WORKER_OVERLAY_AUTO_PANEL_CANCEL,
       { requestId },
       { ensureWorker: false, recordActivity: true },
-    );
-  }
-
-  async startPersonalWebsiteGeneration(payload: RuntimePersonalWebsiteGenerationRequest) {
-    return await this.requestWorker<void>(
-      METHOD_NAMES.INTERNAL_WORKER_DASHBOARD_START_PERSONAL_WEBSITE_GENERATION,
-      payload,
-      {
-        ensureWorker: true,
-        recordActivity: true,
-      },
     );
   }
 

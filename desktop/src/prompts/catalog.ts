@@ -32,9 +32,9 @@ const renderWelcomeMessageUser = (
   values: PromptTemplateValues["synthesis.welcome_message.user"],
 ): string => interpolateTemplate(template, values);
 
-const renderWelcomeSuggestionsUser = (
+const renderHomeSuggestionsUser = (
   template: string,
-  values: PromptTemplateValues["synthesis.welcome_suggestions.user"],
+  values: PromptTemplateValues["synthesis.home_suggestions.user"],
 ): string => interpolateTemplate(template, values);
 
 const renderSkillMetadataUser = (
@@ -73,11 +73,6 @@ const renderSuggestionsUser = (
   template: string,
   values: PromptTemplateValues["suggestions.user"],
 ): string => interpolateTemplate(template, values);
-
-const renderPersonalizedDashboardUser = (
-  template: string,
-  values: PromptTemplateValues["personalized_dashboard.user"],
-): string => interpolateTemplate(template, { coreMemory: values.coreMemory });
 
 export const PROMPT_CATALOG = {
   "offline_responder.system": {
@@ -421,28 +416,61 @@ Avoid:
 Write ONLY the welcome message.`,
     render: renderWelcomeMessageUser,
   },
-  "synthesis.welcome_suggestions.user": {
-    id: "synthesis.welcome_suggestions.user",
+  "synthesis.home_suggestions.user": {
+    id: "synthesis.home_suggestions.user",
     module: "synthesis",
-    title: "Welcome Suggestions User Prompt",
-    defaultText: `You are generating personalized onboarding suggestions for Stella, an AI desktop assistant. Based on the user's profile, suggest 3-5 actionable things Stella can set up right now.
+    title: "Home Suggestions User Prompt",
+    defaultText: `You are generating personalized home page suggestions for Stella, an AI desktop assistant. Based on the user's profile, generate suggestions across 4 categories.
 
 {{coreMemory}}
 
-Return a JSON array of 3-5 objects. Each object must have:
-- "category": one of "cron", "skill", or "app"
-- "title": 3-5 word label
-- "description": one sentence under 80 characters
+## What Stella Can Do
+
+Stella is a desktop AI assistant with these capabilities:
+
+**stella** — Things about Stella herself:
+- Build apps that live inside Stella — trackers, dashboards, games, planners, calculators, anything interactive
+- Add widgets to her home page — music player, weather, calendar, clock, notes, quick actions
+- Change her visual theme — dark mode, custom colors, different styles
+- Change how she talks — more casual, more formal, different tone or personality
+- AI music player — generates music on-the-fly in moods like Focus, Calm, Energy, Lo-fi, or from a custom description
+- Media Studio — generate images from text, create videos, sound effects, dialogue audio, 3D models
+- Always include "Add a music player to home" as the first stella suggestion.
+
+**task** — Things Stella does for you in the outside world:
+- Browser control — go to any website, fill out forms, click buttons, log into accounts, place orders, scrape information, download files
+- Work with local files — read, write, and edit files on the computer; run terminal commands; fix bugs in code projects
+- Create documents — Word docs, PowerPoint slide decks, Excel spreadsheets, PDFs (create, merge, split, watermark, OCR)
+- Connected apps — Slack, Gmail, Outlook, Notion, Linear, Jira, Salesforce, Google Drive, and more
+
+**explore** — Finding things out:
+- Web search — find anything online, read and summarize articles, compare products side-by-side
+- Research topics in depth across multiple sources
+- Catch up on news, find events, look up flights, restaurants, reviews
+- Search across all connected apps at once (email, chat, docs, CRM)
+
+**schedule** — Things that happen on a schedule:
+- One-time reminders ("remind me at 3pm to call the dentist")
+- Recurring routines with flexible schedules ("every morning at 9am, summarize my unread emails")
+- Daily or weekly briefings pulled from connected sources
+- Monitor websites for changes, periodic check-ins
+
+Return a JSON array of exactly 16 objects (4 per category). Each object must have:
+- "category": one of "stella", "task", "explore", "schedule"
+- "label": short action label (3-8 words)
 - "prompt": the complete instruction the user would send to Stella
 
 Rules:
-1. Every suggestion must connect to something in the profile.
-2. Include at least 2 different categories.
-3. Make prompts specific and immediately executable.
-4. Do not hallucinate details not present in the profile.
+1. Personalize suggestions to the user's profile — reference their job, interests, tools, and workflows when possible.
+2. Suggestions should be specific and immediately actionable, not generic.
+3. Do not hallucinate details not present in the profile.
+4. The first "stella" suggestion must always be: {"category": "stella", "label": "Add a music player to home", "prompt": "Add the music player to my home page. The component already exists at src/app/home/MusicPlayer.tsx — integrate it into the home page layout, don't rebuild it."}
+5. Keep labels concise and natural — how a normal person would say it, not a developer. Say "Order groceries online" not "Automate grocery procurement via browser". Say "Make me a budget tracker" not "Build a React budget tracking application".
+6. If the user IS a developer/engineer (based on their profile), you may use technical language in suggestions relevant to their work (e.g. "Fix a bug in my project", "Set up a CI pipeline"). Otherwise, keep everything plain and friendly.
+7. If the profile is empty or minimal, use broadly useful defaults that showcase Stella's capabilities.
 
 Output ONLY the JSON array.`,
-    render: renderWelcomeSuggestionsUser,
+    render: renderHomeSuggestionsUser,
   },
   "skill_metadata.system": {
     id: "skill_metadata.system",
@@ -522,58 +550,6 @@ Only suggest commands that are clearly relevant to the conversation context. Ret
 Return ONLY a JSON array (no markdown fences). Each element: {"commandId": "...", "name": "...", "description": "..."}
 If no commands are relevant, return: []`,
     render: renderSuggestionsUser,
-  },
-  "personalized_dashboard.system": {
-    id: "personalized_dashboard.system",
-    module: "personalized_dashboard",
-    title: "Personal Website Generation System Prompt",
-    defaultText: `You are a Stella app generation agent. You build a personal app with exactly 3 pages that lives inside Stella, a personal desktop AI workspace.
-
-Read the user's core memory profile. Build 3 pages — each one something this specific person would use every single day. Not novelties, not one-time things. Daily-use tools.
-
-Good examples depending on the person:
-- A developer might get: a GitHub activity feed, a project task board, a docs quick-reference
-- A student might get: a study timer/pomodoro, a course schedule viewer, a flashcard reviewer
-- A musician might get: a practice log tracker, a setlist planner, a gear inventory
-- A designer might get: a color palette tool, an inspiration feed, a project timeline
-
-Each page must pull live data or maintain persistent local state — something that changes or updates so there's a reason to come back. Static content is not acceptable.
-
-DESIGN STYLE — match the Stella aesthetic:
-- Fonts: Cormorant Garamond (display/headings, light weight, italic), IBM Plex Mono (labels, tags, monospace), Manrope (body).
-  Available as CSS variables: var(--font-family-display), var(--font-family-mono), var(--font-family-sans).
-- Colors: use CSS variables — var(--foreground) for text, derive muted/faint/border with color-mix(in oklch, var(--foreground) XX%, transparent).
-  Do NOT hardcode colors. No bright blue solid fills. Accent (#1d78f2) only sparingly.
-- Layout: minimal, editorial, quiet. No cards unless they contain interactive elements. Thin 1px borders.
-- Buttons: transparent background, 1px border, no solid fills.
-
-Hard constraints:
-- All CSS in a single <style> block with a unique class prefix.
-- Root element must use height: 100%; overflow-y: auto.
-- Do NOT use renderer fetch() — it is blocked by CORS. Use Stella's browser-backed APIs instead:
-  const browserApi = (window as any).electronAPI?.browser;
-  const fetchJson = (url: string) => browserApi?.fetchJson(url) as Promise<unknown>;
-  const fetchText = (url: string) => browserApi?.fetchText(url) as Promise<string>;
-  The user's browser cookies are sent with requests, so authenticated APIs work if the user is logged in. URLs must be HTTPS. Only use APIs you are certain exist — do not guess or invent URLs. If unsure, use localStorage-backed state instead. Show loading and error states.
-- Each page is its own file under src/app/personal-site/.
-- PersonalSite.tsx is the entry point with navigation between the 3 pages.
-- Update src/app/registry.ts to register the app.
-- Produce complete TSX modules. Must compile in Vite + React + TypeScript.
-
-Return a JSON summary: { status, files_written, title }.`,
-    render: renderStatic,
-  },
-  "personalized_dashboard.user": {
-    id: "personalized_dashboard.user",
-    module: "personalized_dashboard",
-    title: "Personal Website Generation User Prompt",
-    defaultText: `Build a 3-page personal app for this user.
-
-CORE MEMORY PROFILE:
-{{coreMemory}}
-
-Create the app at src/app/personal-site/ with PersonalSite.tsx as entry and each page in its own file. Every page must be something this person would use every day. Register in src/app/registry.ts. End with a JSON summary.`,
-    render: renderPersonalizedDashboardUser,
   },
   "music.system": {
     id: "music.system",

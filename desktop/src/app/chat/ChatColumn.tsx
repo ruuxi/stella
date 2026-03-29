@@ -5,8 +5,6 @@
 import { memo, useCallback, useRef } from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
-import { CommandChips } from "@/app/chat/CommandChips";
-import { useCommandSuggestions } from "@/app/chat/hooks/use-command-suggestions";
 import type { ChatColumnProps } from "./chat-column-types";
 import "./full-shell.chat.css";
 
@@ -19,11 +17,6 @@ export const ChatColumn = memo(function ChatColumn({
   composerEntering,
   conversationId,
 }: ChatColumnProps) {
-  const suggestions = useCommandSuggestions(
-    conversation.events,
-    conversation.streaming.isStreaming,
-  );
-
   // --- Custom scrollbar thumb drag ---
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<{ y: number; scrollTop: number } | null>(null);
@@ -97,14 +90,6 @@ export const ChatColumn = memo(function ChatColumn({
               isLoadingOlder={conversation.history.isLoadingOlder}
               isLoadingHistory={conversation.history.isInitialLoading}
             />
-            {!conversation.streaming.isStreaming &&
-              suggestions.length > 0 &&
-              composer.onCommandSelect && (
-                <CommandChips
-                  suggestions={suggestions}
-                  onSelect={composer.onCommandSelect}
-                />
-              )}
           </div>
         </div>
 

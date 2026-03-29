@@ -821,13 +821,3 @@ export const getRemoteTurnFulfilled = internalQuery({
     return event !== null;
   },
 });
-
-export const subscribeDashboardGenRequestsForDevice = query({
-  args: deviceSubscriptionArgs,
-  returns: v.array(eventValidator),
-  handler: deviceSubscriptionHandler({
-    eventType: "dashboard_generation_request",
-    defaultLimit: 10,
-    maxLimit: 50,
-  }),
-});

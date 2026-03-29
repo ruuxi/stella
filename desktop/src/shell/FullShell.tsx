@@ -46,7 +46,7 @@ export const FullShell = () => {
     runtimeError,
     retryRuntimeBootstrap,
   } = useBootstrapState();
-  const { handleDiscoveryConfirm, dashboardState } = useDiscoveryFlow({
+  const { handleDiscoveryConfirm } = useDiscoveryFlow({
     conversationId: activeConversationId,
   });
 
@@ -120,7 +120,6 @@ export const FullShell = () => {
         {appReady ? (
           <Suspense fallback={null}>
             <FullShellReadySurface
-              dashboardState={dashboardState}
               onboardingExiting={onboarding.onboardingExiting}
             />
           </Suspense>

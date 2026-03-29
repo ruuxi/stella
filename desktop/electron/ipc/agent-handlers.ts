@@ -13,9 +13,6 @@ import {
 } from "../../src/shared/contracts/agent-runtime.js";
 import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
-import {
-  type RuntimePersonalWebsiteGenerationRequest,
-} from "../../packages/runtime-protocol/index.js";
 import type { HmrTransitionController } from "../self-mod/hmr-morph.js";
 import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
 
@@ -329,23 +326,6 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       agentRunOwners.delete(runId);
     }
   });
-
-  ipcMain.handle(
-    "agent:startPersonalWebsiteGeneration",
-    async (event, payload: RuntimePersonalWebsiteGenerationRequest) => {
-      if (
-        !options.assertPrivilegedSender(event, "agent:startPersonalWebsiteGeneration")
-      ) {
-        throw new Error("Blocked untrusted request.");
-      }
-      const stellaHostRunner = options.getStellaHostRunner();
-      if (!stellaHostRunner) {
-        throw new Error("Stella runtime not available");
-      }
-
-      return await stellaHostRunner.startPersonalWebsiteGeneration(payload);
-    },
-  );
 
   ipcMain.handle(
     "selfmod:revert",

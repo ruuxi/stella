@@ -5,10 +5,9 @@ export type SkillCatalogItem = {
   tags?: string[]
 }
 
-export type WelcomeSuggestion = {
-  category: "cron" | "skill" | "app"
-  title: string
-  description: string
+export type HomeSuggestion = {
+  category: "stella" | "task" | "explore" | "schedule"
+  label: string
   prompt: string
 }
 
@@ -30,7 +29,7 @@ export type PromptTemplateValues = {
   "synthesis.welcome_message.user": {
     coreMemory: string
   }
-  "synthesis.welcome_suggestions.user": {
+  "synthesis.home_suggestions.user": {
     coreMemory: string
   }
   "skill_metadata.system": undefined
@@ -42,14 +41,6 @@ export type PromptTemplateValues = {
   "skill_selection.user": {
     userProfile: string
     catalog: SkillCatalogItem[]
-  }
-  "suggestions.user": {
-    catalogText: string
-    messagesText: string
-  }
-  "personalized_dashboard.system": undefined
-  "personalized_dashboard.user": {
-    coreMemory: string
   }
   "music.system": undefined
 }

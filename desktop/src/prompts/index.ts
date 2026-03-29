@@ -10,7 +10,6 @@ export {
 } from "./storage"
 export { getPromptTemplateText, resolvePrompt, resolvePromptText } from "./resolve"
 export {
-  getPersonalizedDashboardPromptConfig,
   getSkillMetadataPromptConfig,
   getSkillSelectionPromptConfig,
   getSynthesisPromptConfig,
@@ -23,7 +22,7 @@ export type {
   PromptTemplateValues,
   ResolvedPrompt,
   SkillCatalogItem,
-  WelcomeSuggestion,
+  HomeSuggestion,
 } from "./types"
 export {
   OFFLINE_RESPONDER_SYSTEM_PROMPT,
@@ -39,7 +38,7 @@ export {
   buildCategoryAnalysisUserMessage,
   buildCoreSynthesisUserMessage,
   buildWelcomeMessagePrompt,
-  buildWelcomeSuggestionsPrompt,
+  buildHomeSuggestionsPrompt,
   getCategoryAnalysisPrompt,
   getCoreMemorySynthesisPrompt,
 } from "./synthesis"
