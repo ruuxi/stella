@@ -1,4 +1,14 @@
 import crypto from "crypto";
+import type {
+  AssistantMessage,
+  ImageContent,
+  TextContent,
+  ThinkingContent,
+  ToolCall,
+  ToolResultMessage,
+  Usage,
+  UserMessage,
+} from "../../ai/types.js";
 
 export type LocalChatEventRecord = {
   _id: string;
@@ -31,12 +41,18 @@ export type LocalChatSyncMessage = {
   deviceId?: string;
 };
 
+export type PersistedRuntimeThreadPayload =
+  | UserMessage
+  | AssistantMessage
+  | Omit<ToolResultMessage, "details">;
+
 export type RuntimeThreadMessage = {
   timestamp: number;
   threadKey: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "toolResult";
   content: string;
   toolCallId?: string;
+  payload?: PersistedRuntimeThreadPayload;
 };
 
 export type RuntimeRunEvent = {
@@ -145,11 +161,178 @@ export const toJsonString = (value: unknown): string | null => {
   }
 };
 
+export const toJsonValueString = (value: unknown): string | null => {
+  if (value == null) return null;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+};
+
 export const parseJsonRecord = (value: string | null): Record<string, unknown> | undefined => {
   if (!value) return undefined;
   try {
     const parsed = JSON.parse(value) as unknown;
     return asObject(parsed) ?? undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const isTextContent = (value: unknown): value is TextContent =>
+  Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      (value as { type?: unknown }).type === "text" &&
+      typeof (value as { text?: unknown }).text === "string",
+  );
+
+const isImageContent = (value: unknown): value is ImageContent =>
+  Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      (value as { type?: unknown }).type === "image" &&
+      typeof (value as { data?: unknown }).data === "string" &&
+      typeof (value as { mimeType?: unknown }).mimeType === "string",
+  );
+
+const isThinkingContent = (value: unknown): value is ThinkingContent =>
+  Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      (value as { type?: unknown }).type === "thinking" &&
+      typeof (value as { thinking?: unknown }).thinking === "string",
+  );
+
+const isToolCall = (value: unknown): value is ToolCall =>
+  Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      (value as { type?: unknown }).type === "toolCall" &&
+      typeof (value as { id?: unknown }).id === "string" &&
+      typeof (value as { name?: unknown }).name === "string" &&
+      typeof (value as { arguments?: unknown }).arguments === "object" &&
+      (value as { arguments?: unknown }).arguments !== null &&
+      !Array.isArray((value as { arguments?: unknown }).arguments),
+  );
+
+const isUserContent = (
+  value: unknown,
+): value is string | (TextContent | ImageContent)[] =>
+  typeof value === "string" ||
+  (Array.isArray(value) && value.every((entry) => isTextContent(entry) || isImageContent(entry)));
+
+const isAssistantContent = (
+  value: unknown,
+): value is (TextContent | ThinkingContent | ToolCall)[] =>
+  Array.isArray(value) &&
+  value.every((entry) => isTextContent(entry) || isThinkingContent(entry) || isToolCall(entry));
+
+const isToolResultContent = (
+  value: unknown,
+): value is (TextContent | ImageContent)[] =>
+  Array.isArray(value) &&
+  value.every((entry) => isTextContent(entry) || isImageContent(entry));
+
+const isUsage = (value: unknown): value is Usage => {
+  const record = asObject(value);
+  const cost = asObject(record?.cost);
+  return Boolean(
+    record &&
+      typeof record.input === "number" &&
+      typeof record.output === "number" &&
+      typeof record.cacheRead === "number" &&
+      typeof record.cacheWrite === "number" &&
+      typeof record.totalTokens === "number" &&
+      cost &&
+      typeof cost.input === "number" &&
+      typeof cost.output === "number" &&
+      typeof cost.cacheRead === "number" &&
+      typeof cost.cacheWrite === "number" &&
+      typeof cost.total === "number",
+  );
+};
+
+const isFiniteTimestamp = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+const isStopReason = (
+  value: unknown,
+): value is AssistantMessage["stopReason"] =>
+  value === "stop" ||
+  value === "length" ||
+  value === "toolUse" ||
+  value === "error" ||
+  value === "aborted";
+
+export const parseRuntimeThreadPayload = (
+  value: string | null,
+): PersistedRuntimeThreadPayload | undefined => {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return undefined;
+    }
+    const record = parsed as Record<string, unknown>;
+    if (
+      record.role === "user" &&
+      isUserContent(record.content) &&
+      isFiniteTimestamp(record.timestamp)
+    ) {
+      return {
+        role: "user",
+        content: record.content,
+        timestamp: record.timestamp,
+      };
+    }
+    if (
+      record.role === "assistant" &&
+      isAssistantContent(record.content) &&
+      typeof record.api === "string" &&
+      typeof record.provider === "string" &&
+      typeof record.model === "string" &&
+      isUsage(record.usage) &&
+      isStopReason(record.stopReason) &&
+      isFiniteTimestamp(record.timestamp)
+    ) {
+      return {
+        role: "assistant",
+        content: record.content,
+        api: record.api,
+        provider: record.provider,
+        model: record.model,
+        usage: record.usage,
+        stopReason: record.stopReason,
+        timestamp: record.timestamp,
+        ...(typeof record.errorMessage === "string" && record.errorMessage.trim()
+          ? { errorMessage: record.errorMessage }
+          : {}),
+      };
+    }
+    if (
+      record.role === "toolResult" &&
+      typeof record.toolCallId === "string" &&
+      typeof record.toolName === "string" &&
+      typeof record.isError === "boolean" &&
+      isToolResultContent(record.content) &&
+      isFiniteTimestamp(record.timestamp)
+    ) {
+      return {
+        role: "toolResult",
+        toolCallId: record.toolCallId,
+        toolName: record.toolName,
+        isError: record.isError,
+        content: record.content,
+        timestamp: record.timestamp,
+      };
+    }
+    return undefined;
   } catch {
     return undefined;
   }

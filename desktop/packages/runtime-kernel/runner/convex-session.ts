@@ -155,6 +155,12 @@ export const createConvexSession = (
     options.syncRemoteTurnBridge();
   };
 
+  const setConvexSiteUrl = (value: string | null) => {
+    if (process.env.STELLA_LLM_PROXY_URL) return;
+    context.state.convexSiteUrl = sanitizeStellaBase(value);
+    options.syncRemoteTurnBridge();
+  };
+
   const setAuthToken = (value: string | null) => {
     if (process.env.STELLA_LLM_PROXY_TOKEN) return;
     context.state.authToken = value;
@@ -197,6 +203,7 @@ export const createConvexSession = (
     ensureStoreClient,
     ensureStellaSiteReady,
     setConvexUrl,
+    setConvexSiteUrl,
     setAuthToken,
     setCloudSyncEnabled,
     subscribeQuery,

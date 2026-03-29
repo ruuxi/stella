@@ -76,7 +76,6 @@ const MICROCOMPACT_TRIMMED_RESULT_TOKENS = Math.max(
 const MICROCOMPACT_ELIGIBLE_TOOLS = new Set([
   "Read",
   "Grep",
-  "Glob",
   "Bash",
   "ListFiles",
   "Write",

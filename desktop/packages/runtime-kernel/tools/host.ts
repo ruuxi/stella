@@ -7,7 +7,7 @@
  * - tools-types.ts    — Shared type definitions
  * - tools-utils.ts    — Shared utilities (logging, path expansion, truncation, etc.)
  * - tools-file.ts     — Read, Edit handlers
- * - tools-search.ts   — Glob, Grep handlers
+ * - tools-search.ts   — Grep handler
  * - tools-shell.ts    — Bash, SkillBash handlers
  * - tools-web.ts      — WebFetch, WebSearch handlers
  * - tools-state.ts    — TaskCreate/TaskCancel, TaskUpdate, TaskOutput handlers

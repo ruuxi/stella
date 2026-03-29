@@ -267,6 +267,41 @@
 }
 .auto-panel-display li { margin-bottom: 4px; }
 
+/* ─── Pre-styled interactive elements ─────────────────────────────────── */
+
+.auto-panel-display button {
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 0.5px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  background: transparent;
+  color: var(--foreground);
+  opacity: 0.65;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
+  transition: background 0.15s, opacity 0.15s;
+}
+.auto-panel-display button:hover {
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  opacity: 0.88;
+}
+.auto-panel-display button:active {
+  transform: scale(0.98);
+}
+
+.auto-panel-display details > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.auto-panel-display details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.auto-panel-display input[type="range"] {
+  flex: 1;
+}
+
 /* ─── Skeleton loader ────────────────────────────────────────────────── */
 
 .auto-panel-content:has(.auto-panel-skeleton) {

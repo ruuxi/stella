@@ -15,7 +15,6 @@ export const DEVICE_TOOL_NAMES = [
   "Read",
   "Write",
   "Edit",
-  "Glob",
   "Grep",
   "Bash",
   "KillShell",
@@ -135,21 +134,6 @@ const EditJsonSchema = {
     },
   },
   required: ["file_path", "old_string", "new_string"],
-};
-
-const GlobJsonSchema = {
-  type: "object",
-  properties: {
-    pattern: {
-      type: "string",
-      description: 'Glob pattern to match (e.g. "**/*.ts", "src/**/*.json")',
-    },
-    path: {
-      type: "string",
-      description: "Directory to search in (defaults to working directory)",
-    },
-  },
-  required: ["pattern"],
 };
 
 const GrepJsonSchema = {
@@ -385,7 +369,7 @@ const DisplayGuidelinesJsonSchema = {
       type: "array",
       items: {
         type: "string",
-        enum: ["interactive", "chart", "mockup", "art", "diagram"],
+        enum: ["interactive", "chart", "mockup", "art", "diagram", "text"],
       },
       description: "Which module(s) to load. Pick all that fit.",
     },
@@ -528,13 +512,6 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- old_string must match the file content exactly, including whitespace and indentation.\n" +
     "- The edit will FAIL if old_string appears more than once in the file. Provide more surrounding context to make it unique, or use replace_all=true to change every occurrence.\n" +
     "- Prefer this over Write for modifying existing files.",
-  Glob:
-    "Find files by glob pattern.\n\n" +
-    "Usage:\n" +
-    '- Supports patterns like "**/*.ts", "src/**/*.tsx", "*.json".\n' +
-    "- Returns matching file paths sorted by modification time (newest first).\n" +
-    "- Use path to limit the search to a specific directory.\n" +
-    "- Use this instead of Bash with find or ls.",
   Grep:
     "Search file contents using ripgrep regex.\n\n" +
     "Usage:\n" +
@@ -711,7 +688,6 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   Read: ReadJsonSchema,
   Write: WriteJsonSchema,
   Edit: EditJsonSchema,
-  Glob: GlobJsonSchema,
   Grep: GrepJsonSchema,
   Bash: BashJsonSchema,
   KillShell: KillShellJsonSchema,

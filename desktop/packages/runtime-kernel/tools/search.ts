@@ -1,5 +1,5 @@
 /**
- * Search tools: Glob, Grep handlers.
+ * Search tools: Grep handler.
  */
 
 import { promises as fs } from "fs";
@@ -15,59 +15,6 @@ import {
   truncate,
 } from "./utils.js";
 import { isBlockedPath } from "./command-safety.js";
-
-export const handleGlob = async (
-  args: Record<string, unknown>,
-  context?: ToolContext,
-): Promise<ToolResult> => {
-  const pattern = String(args.pattern ?? "");
-  const basePath = expandHomePath(
-    String(args.path ?? context?.frontendRoot ?? process.cwd()),
-  );
-
-  // Safety check: block system directories
-  const pathBlock = isBlockedPath(basePath);
-  if (pathBlock) return { error: pathBlock };
-
-  try {
-    const stat = await fs.stat(basePath);
-    if (!stat.isDirectory()) {
-      return { error: `Path is not a directory: ${basePath}` };
-    }
-  } catch {
-    return { error: `Directory not found: ${basePath}` };
-  }
-
-  const regex = globToRegExp(toPosix(pattern));
-
-  const files = await walkFiles(basePath);
-  const matches = files.filter((file) => {
-    const rel = toPosix(path.relative(basePath, file));
-    return regex.test(rel);
-  });
-
-  if (matches.length === 0) {
-    return { result: `No files found matching "${pattern}" in ${basePath}` };
-  }
-
-  const withTimes = await Promise.all(
-    matches.map(async (file) => {
-      try {
-        const stat = await fs.stat(file);
-        return { file, mtime: stat.mtime.getTime() };
-      } catch {
-        return { file, mtime: 0 };
-      }
-    }),
-  );
-
-  withTimes.sort((a, b) => b.mtime - a.mtime);
-  return {
-    result: `Found ${withTimes.length} files:\n\n${withTimes
-      .map((entry) => entry.file)
-      .join("\n")}`,
-  };
-};
 
 const runRipgrep = async (args: string[], cwd: string) => {
   return new Promise<{ ok: boolean; output: string; error?: string }>((resolve) => {

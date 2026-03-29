@@ -4,6 +4,7 @@ const CORE = `# Display — Visual Creation Suite
 
 ## Modules
 Call DisplayGuidelines again with the modules parameter to load detailed guidance:
+- \`text\` — text-based information: summaries, explanations, lists, follow-up buttons, key-value data
 - \`diagram\` — SVG flowcharts, structural diagrams, illustrative diagrams
 - \`mockup\` — UI mockups, forms, cards, dashboards
 - \`interactive\` — interactive explainers with controls
@@ -767,12 +768,185 @@ Use \`Display\`. Wrap the entire thing in a single raised card. All content is s
 </div>
 \`\`\``;
 
+const TEXT_INFORMATION = `## Text information display
+*"Summarize this article" / "Explain what's on my screen" / "Help me understand this"*
+
+For presenting text-based information as rich, interactive HTML — an evolution of plain chat text. Use when the content is primarily textual but benefits from hierarchy, structure, and interactive affordances.
+
+**When to use**: Content near the user's cursor, article summaries, explanations, fact-checks, reply suggestions, translations, research results, how-to guides, Q&A, and any response that would otherwise be a wall of text.
+
+### Philosophy
+- **Progressive disclosure**: Lead with the key takeaway. Let the user drill deeper.
+- **Scannable**: A user should get 80% of the value in 3 seconds by reading headings and highlighted text.
+- **Actionable**: If there's something the user can do, surface it as a button or link — don't bury it in prose.
+- **Narrow column**: Target width ~500px. Single-column layout only.
+
+### Structure
+Organize content into 2–4 sections maximum. Each section has:
+1. A heading (\`<h2>\` or \`<h3>\`) — short, sentence case, describes the section's value
+2. Body content — concise prose, lists, or key-value pairs
+3. Optional actions — follow-up buttons, links, or selectable items
+
+**Section ordering**: Most important first. If the user asked "what is this?", the answer goes in section 1 — not after a preamble.
+
+### Typography
+- **Headings**: \`h2\` at 15px, \`h3\` at 13px uppercase with letter-spacing. Font: Georgia, serif; weight 500.
+- **Body**: 13px, line-height 1.55. Color: \`var(--foreground)\` at opacity 0.65.
+- **Key values / highlights**: opacity 0.92, weight 500.
+- **Secondary / meta**: opacity 0.42, 11px.
+- **Two weights only**: 400 (regular) and 500 (medium). Never 600 or 700.
+- **Sentence case** always. Never Title Case or ALL CAPS.
+
+### Interactive elements
+
+**Follow-up buttons** — for suggesting next actions or deeper exploration:
+\`\`\`html
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0;">
+  <button onclick="handleFollowUp('summarize')" style="font-size: 12px; padding: 6px 14px; border-radius: 8px; border: 0.5px solid color-mix(in oklch, var(--foreground) 12%, transparent); background: transparent; color: var(--foreground); opacity: 0.65; cursor: pointer;">
+    Summarize further
+  </button>
+  <button onclick="handleFollowUp('translate')" style="font-size: 12px; padding: 6px 14px; border-radius: 8px; border: 0.5px solid color-mix(in oklch, var(--foreground) 12%, transparent); background: transparent; color: var(--foreground); opacity: 0.65; cursor: pointer;">
+    Translate
+  </button>
+</div>
+\`\`\`
+
+Buttons use the pre-styled transparent bg with 0.5px border. On hover, bg becomes \`color-mix(in oklch, var(--foreground) 3%, transparent)\`. Keep labels short (2–4 words). Max 4 buttons per row.
+
+**Selectable list items** — for when the user needs to pick from options:
+\`\`\`html
+<div style="display: flex; flex-direction: column; gap: 2px; margin: 8px 0;">
+  <div onclick="selectItem(0)" style="padding: 10px 14px; border-radius: 8px; cursor: pointer; transition: background 0.15s;" onmouseenter="this.style.background='color-mix(in oklch, var(--foreground) 3%, transparent)'" onmouseleave="this.style.background='transparent'">
+    <div style="font-size: 13px; font-weight: 500; color: var(--foreground); opacity: 0.92;">Option title</div>
+    <div style="font-size: 12px; color: var(--foreground); opacity: 0.42; margin-top: 2px;">Brief description of this option</div>
+  </div>
+</div>
+\`\`\`
+
+Each item has a title (13px, 500 weight, 0.92 opacity) and optional subtitle (12px, 0.42 opacity). Items highlight on hover with the 3% foreground surface. No borders between items — spacing alone separates them.
+
+**Expandable sections** — for content the user might want to see but isn't essential:
+\`\`\`html
+<details style="margin: 8px 0;">
+  <summary style="font-size: 13px; font-weight: 500; color: var(--foreground); opacity: 0.65; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px;">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s;"><polyline points="6 9 12 15 18 9"/></svg>
+    More details
+  </summary>
+  <div style="padding: 8px 0 0 18px; font-size: 13px; color: var(--foreground); opacity: 0.65; line-height: 1.55;">
+    Extended content here.
+  </div>
+</details>
+<style>
+  details[open] > summary svg { transform: rotate(180deg); }
+</style>
+\`\`\`
+
+Use sparingly — max 2 per display. The most important content is always visible, never collapsed.
+
+**Key-value pairs** — for structured data like metadata, specs, or properties:
+\`\`\`html
+<div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 13px; margin: 8px 0;">
+  <span style="color: var(--foreground); opacity: 0.42;">Author</span>
+  <span style="color: var(--foreground); opacity: 0.65;">Jane Smith</span>
+  <span style="color: var(--foreground); opacity: 0.42;">Published</span>
+  <span style="color: var(--foreground); opacity: 0.65;">March 2026</span>
+</div>
+\`\`\`
+
+Labels on the left at 0.42 opacity, values on the right at 0.65. Grid layout keeps columns aligned.
+
+**Highlighted callout** — for the single most important insight or takeaway:
+\`\`\`html
+<div style="padding: 12px 16px; border-left: 2px solid color-mix(in oklch, var(--foreground) 18%, transparent); margin: 12px 0; border-radius: 0;">
+  <p style="font-size: 13px; color: var(--foreground); opacity: 0.88; margin: 0; line-height: 1.55;">
+    Key insight or takeaway goes here. Keep it to 1–2 sentences.
+  </p>
+</div>
+\`\`\`
+
+Left border accent, no rounded corners (single-sided border rule). Max one callout per display.
+
+**Pill tags** — for categories, topics, or status indicators:
+\`\`\`html
+<div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0;">
+  <span style="font-size: 11px; padding: 3px 10px; border-radius: 99px; background: color-mix(in oklch, var(--foreground) 5%, transparent); color: var(--foreground); opacity: 0.65;">Technology</span>
+  <span style="font-size: 11px; padding: 3px 10px; border-radius: 99px; background: color-mix(in oklch, var(--foreground) 5%, transparent); color: var(--foreground); opacity: 0.65;">AI</span>
+</div>
+\`\`\`
+
+### Layout patterns
+
+**Summary + detail** — the most common pattern:
+\`\`\`html
+<h2 style="font-size: 15px; font-weight: 500; font-family: Georgia, serif; color: var(--foreground); opacity: 0.92; margin: 0 0 8px;">Key finding</h2>
+<p style="font-size: 13px; color: var(--foreground); opacity: 0.65; line-height: 1.55; margin: 0 0 12px;">
+  One paragraph that gives the user the essential answer.
+</p>
+<hr style="border: none; border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent); margin: 12px 0;">
+<h3 style="font-size: 13px; font-weight: 500; font-family: Georgia, serif; color: var(--foreground); opacity: 0.65; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 8px;">Context</h3>
+<p style="font-size: 13px; color: var(--foreground); opacity: 0.65; line-height: 1.55; margin: 0 0 10px;">
+  Supporting details, background, or nuance.
+</p>
+\`\`\`
+
+**List with annotations** — for multi-item results (search results, steps, options):
+\`\`\`html
+<div style="display: flex; flex-direction: column; gap: 12px; margin: 8px 0;">
+  <div>
+    <div style="font-size: 13px; font-weight: 500; color: var(--foreground); opacity: 0.92;">Item title</div>
+    <div style="font-size: 12px; color: var(--foreground); opacity: 0.42; margin-top: 2px;">Source or metadata</div>
+    <div style="font-size: 13px; color: var(--foreground); opacity: 0.65; margin-top: 4px; line-height: 1.55;">
+      Brief description or excerpt.
+    </div>
+  </div>
+</div>
+\`\`\`
+
+### Scripting
+
+Scripts run after the full HTML is set. Use for:
+- Follow-up button handlers that interact with the host
+- Expandable/collapsible sections with smooth animations
+- Dynamic calculations or live-updating values
+- Copy-to-clipboard functionality
+
+\`\`\`html
+<script>
+function handleFollowUp(action) {
+  const event = new CustomEvent('auto-panel-action', { detail: { action } });
+  document.dispatchEvent(event);
+}
+</script>
+\`\`\`
+
+Keep scripts minimal. No CDN libraries for text displays — everything should work with vanilla JS. Scripts execute once after the HTML is fully streamed.
+
+### Rules
+- **Inline styles only** for element-level styling. A short \`<style>\` block (under ~10 lines) is allowed for pseudo-classes and states that inline styles can't handle (hover, details/summary, transitions).
+- No class names (except host-provided ones from \`.auto-panel-display\`).
+- No external resources or CDN libraries.
+- No position: fixed.
+- All colors via \`var(--foreground)\`, \`var(--background)\`, and opacity / color-mix. Never hardcode hex colors for text.
+- \`<a href="...">\` links open in the default browser.
+- Content streams via morphdom-style DOM diffing — structure HTML so useful content appears early (heading first, then body, then actions at the bottom).
+- No emoji — use words or CSS shapes.
+- Dark mode works automatically via CSS variables.
+
+### What NOT to do
+- Don't repeat back what the user can already see on screen.
+- Don't pad with generic tips or filler.
+- Don't describe the UI structure — just render it.
+- Don't use markdown syntax inside the HTML.
+- Don't put multiple card wrappers — the panel itself is the container.
+- Don't use tabs or carousels — stack everything vertically.`;
+
 const MODULE_SECTIONS: Record<string, string[]> = {
   art: [SVG_SETUP, ART_AND_ILLUSTRATION],
   mockup: [UI_COMPONENTS, COLOR_PALETTE],
   interactive: [UI_COMPONENTS, COLOR_PALETTE],
   chart: [UI_COMPONENTS, COLOR_PALETTE, CHARTS_CHART_JS],
   diagram: [COLOR_PALETTE, SVG_SETUP, DIAGRAM_TYPES],
+  text: [TEXT_INFORMATION],
 };
 
 export const AVAILABLE_DISPLAY_MODULES = Object.keys(MODULE_SECTIONS);
