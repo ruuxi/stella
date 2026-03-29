@@ -109,7 +109,12 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     managedGatewayProvider: "fireworks",
     temperature: 1.0,
     maxOutputTokens: 16192,
-    providerOptions: gatewayOptions("fireworks"),
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      ...gatewayOptions("fireworks"),
+    },
   },
 
   compact: {
@@ -118,16 +123,26 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     managedGatewayProvider: "fireworks",
     temperature: 1.0,
     maxOutputTokens: 12096,
-    providerOptions: gatewayOptions("fireworks"),
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      ...gatewayOptions("fireworks"),
+    },
   },
 
   fast: {
     model: "accounts/fireworks/routers/kimi-k2p5-turbo",
     fallbackMode: "cheap",
     managedGatewayProvider: "fireworks",
-    temperature: 0.8,
+    temperature: 1.0,
     maxOutputTokens: 8192,
-    providerOptions: gatewayOptions("fireworks"),
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      ...gatewayOptions("fireworks"),
+    },
   },
 
   smart: {
@@ -138,7 +153,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     maxOutputTokens: 16192,
     providerOptions: {
       openai: {
-        reasoningEffort: "low",
+        reasoningEffort: "medium",
       },
       ...gatewayOptions("fireworks"),
     },
@@ -192,7 +207,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     model: "google/gemini-3-flash-preview",
     fallbackMode: "smart",
     managedGatewayProvider: "openrouter",
-    temperature: 0.7,
+    temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
       openai: {
