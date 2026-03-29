@@ -1,7 +1,6 @@
 import Play from "lucide-react/dist/esm/icons/play"
 import Square from "lucide-react/dist/esm/icons/square"
 import { useRef, useEffect, useState, useCallback } from "react"
-import { DashboardCard } from "./DashboardCard"
 import { preloadLyriaMusic, useLyriaMusic } from "@/features/music/hooks/use-lyria-music"
 import type { MusicMood } from "@/prompts/music"
 
@@ -167,7 +166,8 @@ export function MusicPlayer() {
   }, [localHint, play, setUserHint])
 
   return (
-    <DashboardCard
+    <div
+      className="dashboard-card"
       data-stella-label="Music Player"
       data-stella-state={`status: ${status} | mood: ${mood}${isActive ? ` | elapsed: ${formatTime(elapsedSeconds)}` : ""}${lyrics ? " | lyrics: on" : ""}`}
     >
@@ -250,7 +250,7 @@ export function MusicPlayer() {
           </div>
         </div>
       </div>
-    </DashboardCard>
+    </div>
   )
 }
 

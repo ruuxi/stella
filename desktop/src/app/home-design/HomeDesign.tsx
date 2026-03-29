@@ -1,0 +1,148 @@
+import { useState } from "react"
+import { dispatchStellaSendMessage } from "@/shared/lib/stella-send-message"
+import "./home-design.css"
+
+type SuggestionOption = {
+  label: string
+  prompt: string
+}
+
+type Category = {
+  label: string
+  options: SuggestionOption[]
+}
+
+const categories: Category[] = [
+  { label: "Stella", options: [
+    { label: "Add a music player to home", prompt: "Add the music player to my home page. The component already exists at src/app/home/MusicPlayer.tsx — integrate it into the home page layout, don't rebuild it." },
+    { label: "Change my theme to dark", prompt: "Change my theme to dark mode" },
+    { label: "Build me a budget tracker app", prompt: "Build me a budget tracker app" },
+    { label: "Create a habit tracker app", prompt: "Create a habit tracker app" },
+    { label: "Make me sound more casual", prompt: "Change your personality to sound more casual and friendly" },
+  ]},
+  { label: "Task", options: [
+    { label: "Book a restaurant nearby", prompt: "Book a restaurant nearby" },
+    { label: "Fix a bug in my project", prompt: "Fix a bug in my project" },
+    { label: "Order groceries online", prompt: "Order groceries online" },
+    { label: "Fill out a form for me", prompt: "Fill out a form for me" },
+  ]},
+  { label: "Explore", options: [
+    { label: "What's happening in the news", prompt: "What's happening in the news today?" },
+    { label: "Find the best laptop under $1000", prompt: "Find the best laptop under $1000" },
+    { label: "Look up flights to Tokyo", prompt: "Look up flights to Tokyo" },
+    { label: "Compare iPhone vs Pixel", prompt: "Compare the latest iPhone vs the latest Pixel" },
+  ]},
+  { label: "Schedule", options: [
+    { label: "Remind me to stretch every hour", prompt: "Remind me to stretch every hour" },
+    { label: "Send me a daily news briefing", prompt: "Every morning at 9am, send me a news briefing" },
+    { label: "Check my email every morning", prompt: "Every morning at 8am, check my email and summarize what's new" },
+    { label: "Monitor a website for changes", prompt: "Monitor a website for changes" },
+  ]},
+]
+
+export default function HomeDesign() {
+  const [openCategory, setOpenCategory] = useState<string | null>(null)
+  const [hasOpened, setHasOpened] = useState(false)
+
+  return (
+    <div className="home-page" onClick={() => setOpenCategory(null)}>
+      <h1 className="home-stella-title">
+        What can I do for you today?
+      </h1>
+
+      <div className="home-center-group">
+        <div className="home-categories">
+          {categories.map((cat) => (
+            <button
+              key={cat.label}
+              className={`home-category${openCategory === cat.label ? " active" : ""}`}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                const next = openCategory === cat.label ? null : cat.label
+                setOpenCategory(next)
+                if (next && !hasOpened) setHasOpened(true)
+              }}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="home-options-reveal" data-visible={openCategory ? true : undefined} data-entered={hasOpened ? true : undefined}>
+          <div className="home-options-reveal__inner">
+            <div className="home-options">
+              {categories.map((cat) => (
+                <div
+                  key={cat.label}
+                  className="home-options-group"
+                  data-active={openCategory === cat.label ? true : undefined}
+                >
+                  {cat.options.map((opt, i) => (
+                    <button
+                      key={opt.label}
+                      className="home-option"
+                      type="button"
+                      style={{ "--stagger": i } as React.CSSProperties}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        dispatchStellaSendMessage({ text: opt.prompt })
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      {/*
+        AGENT NOTE: When the user customizes their home page (adding widgets, etc.),
+        the center-group above will likely be removed. When that happens:
+        1. Remove the home-center-group section above
+        2. Uncomment the bottom bar below — it provides the same category navigation
+           as a sticky footer with drop-up menus
+
+      <div className="home-bottom-bar">
+        <div className="home-categories">
+          {categories.map((cat) => (
+            <div key={cat.label} className="home-bottom-wrapper">
+              {openCategory === cat.label && (
+                <div className="home-dropup" onClick={(e) => e.stopPropagation()}>
+                  {cat.options.map((opt) => (
+                    <button
+                      key={opt.label}
+                      className="home-dropup-item"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        dispatchStellaSendMessage({ text: opt.prompt })
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                className={`home-category${openCategory === cat.label ? " active" : ""}`}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setOpenCategory(openCategory === cat.label ? null : cat.label)
+                }}
+              >
+                {cat.label}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      */}
+    </div>
+  )
+}
