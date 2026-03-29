@@ -42,6 +42,10 @@ export type PromptTemplateValues = {
     userProfile: string
     catalog: SkillCatalogItem[]
   }
+  "suggestions.user": {
+    catalogText: string
+    messagesText: string
+  }
   "music.system": undefined
 }
 
