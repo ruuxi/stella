@@ -1,8 +1,8 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { createPrivateKey, generateKeyPairSync, sign } from "crypto";
-import { protectValue, unprotectValue } from "../storage/protected-storage.js";
-import { ensurePrivateDir, writePrivateFile } from "./private-fs.js";
+import { protectValue, unprotectValue } from "../shared/protected-storage.js";
+import { ensurePrivateDir, writePrivateFile } from "../shared/private-fs.js";
 
 type DeviceRecord = {
   deviceId: string;

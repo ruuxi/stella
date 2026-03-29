@@ -8,7 +8,7 @@
 
 import fs from "fs";
 import path from "path";
-import { ensurePrivateDirSync, writePrivateFileSync } from "../home/private-fs.js";
+import { ensurePrivateDirSync, writePrivateFileSync } from "../shared/private-fs.js";
 
 type AgentEngine = "default" | "claude_code_local";
 

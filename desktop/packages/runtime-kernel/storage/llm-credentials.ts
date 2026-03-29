@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { protectValue, unprotectValue } from "./protected-storage.js";
-import { ensurePrivateDirSync, writePrivateFileSync } from "../home/private-fs.js";
+import { protectValue, unprotectValue } from "../shared/protected-storage.js";
+import { ensurePrivateDirSync, writePrivateFileSync } from "../shared/private-fs.js";
 
 const LLM_CREDENTIALS_FILE = "llm_credentials.json";
 const LLM_CREDENTIAL_SCOPE_PREFIX = "llm-credential";
