@@ -1,5 +1,6 @@
-﻿import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage } from "@/infra/ai/llm";
+import { getDisplayGuidelines } from "../../../packages/runtime-kernel/tools/display-guidelines";
 import { applyMorphdomHtml } from "../apply-morphdom-html";
 import "./auto-panel.css";
 
@@ -47,6 +48,17 @@ function SkeletonLoader() {
   );
 }
 
+const AUTO_PANEL_PROMPT = `You receive text from near the user's cursor on their screen. Output a clean HTML fragment that helps the user understand or act on the content.
+
+You are rendering into a narrow overlay panel (~500px wide) that sits beside the user's active window. The panel has its own scroll, header, and close button — your HTML goes inside the content area.
+
+Do: summarize, explain, give your take, fact-check, suggest a reply, translate, recommend — whatever fits the content best.
+Don't: describe the UI, list generic tips, repeat back what they can already see, or pad your response.
+
+Keep it concise. 2-4 sections max. Output raw HTML only — no markdown, no code fences.
+
+Structure your output for streaming: content that matters most goes first. \`<style>\` blocks (if any, keep short) before content HTML, \`<script>\` blocks last.`;
+
 export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) {
   const [streamState, setStreamState] = useState<{
     requestKey: string | null;
@@ -74,6 +86,8 @@ export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) 
     setAtBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
   }, []);
 
+  const displayGuidelines = useMemo(() => getDisplayGuidelines(["text"]), []);
+
   const requestKey = windowText ? `${windowTitle ?? ""}\u0000${windowText}` : null;
 
   useEffect(() => {
@@ -91,22 +105,7 @@ export function AutoPanel({ windowText, windowTitle, onClose }: AutoPanelProps) 
     const messages: ChatMessage[] = [
       {
         role: "system",
-        content: `You receive text from near the user's cursor on their screen. Output a clean HTML fragment that helps the user understand or act on the content.
-
-DESIGN RULES:
-- Colors: ONLY var(--foreground) and var(--background). Use opacity for hierarchy.
-- Opacity tiers: 0.92 (headings), 0.65 (body), 0.42 (secondary), 0.25 (meta).
-- Surfaces: color-mix(in oklch, var(--foreground) 3%, transparent).
-- Borders/dividers: color-mix(in oklch, var(--foreground) 5-7%, transparent).
-- Font: 13px base, line-height 1.55. Headlines: Georgia, serif; font-weight 500.
-- Layout: flexbox via inline styles. No cards, no background surfaces on items.
-- No <style> blocks, no class names, no scripts, no external resources.
-- Target width: ~500px. Design for a narrow panel.
-
-Do: summarize, explain, give your take, fact-check, suggest a reply, translate, recommend whatever fits.
-Don't: describe the UI, list generic tips, repeat back what they can already see, or pad your response.
-
-Keep it concise. 2-4 sections max. Output raw HTML only — no markdown, no code fences.`,
+        content: `${AUTO_PANEL_PROMPT}\n\n${displayGuidelines}`,
       },
       { role: "user", content: userContent },
     ];

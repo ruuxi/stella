@@ -7,7 +7,7 @@ import {
   handleWrite,
   handleEdit,
 } from "./file.js";
-import { handleGlob, handleGrep } from "./search.js";
+import { handleGrep } from "./search.js";
 import {
   handleBash,
   handleKillShell,
@@ -51,7 +51,6 @@ export const createFileToolHandlers = (): Record<string, ToolHandler> => ({
 });
 
 export const createSearchToolHandlers = (): Record<string, ToolHandler> => ({
-  Glob: (args, context) => handleGlob(args, context),
   Grep: (args, context) => handleGrep(args, context),
 });
 

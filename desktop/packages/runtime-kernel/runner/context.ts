@@ -9,12 +9,18 @@ import {
   getModelOverride,
   getSelfModAgentEngine,
 } from "../preferences/local-preferences.js";
-import { buildLocalHistoryFromEvents } from "../local-history.js";
+import {
+  type LocalContextEvent,
+  buildLocalHistoryFromEvents,
+} from "../local-history.js";
 import {
   buildRuntimeThreadKey,
   parseThreadCheckpoint,
 } from "../thread-runtime.js";
-import { buildActiveThreadsPrompt } from "../runtime-threads.js";
+import {
+  buildActiveThreadsPrompt,
+  estimateRuntimeTokens,
+} from "../runtime-threads.js";
 import { anyApi } from "convex/server";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
 import type { ParsedSkill } from "../agents/manifests.js";
@@ -28,6 +34,7 @@ import {
   getAgentEnginePreference,
   isLocalCliAgentId,
 } from "../../../src/shared/contracts/agent-runtime.js";
+import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 import { getBundledCoreAgentFallback } from "../agents/agents.js";
 import {
   buildManagedMediaDocsPrompt,
@@ -42,6 +49,135 @@ import {
   sanitizeStellaBase,
 } from "./shared.js";
 import { resolveRunnerLlmRoute } from "./model-selection.js";
+
+type ThreadHistoryEntry = {
+  timestamp?: number;
+  role: string;
+  content: string;
+  toolCallId?: string;
+  payload?: PersistedRuntimeThreadPayload;
+};
+
+const getLocalHistoryBudget = (contextWindow: number): number =>
+  Math.max(
+    MIN_LOCAL_HISTORY_TOKENS,
+    contextWindow - LOCAL_HISTORY_RESERVE_TOKENS,
+  );
+
+const getLocalHistoryWarningThreshold = (contextWindow: number): number =>
+  Math.max(
+    MIN_LOCAL_HISTORY_TOKENS,
+    Math.floor(contextWindow * 0.85),
+  );
+
+const hasStoredCheckpoint = (messages: ThreadHistoryEntry[]): boolean =>
+  messages.some(
+    (message) =>
+      message.role === "assistant" &&
+      Boolean(parseThreadCheckpoint(message.content)),
+  );
+
+const getStoredMessagePreview = (
+  message: ThreadHistoryEntry | undefined,
+): string => message?.content.trim() ?? "";
+
+const getLocalEventText = (event: LocalContextEvent): string => {
+  if (!event.payload || typeof event.payload !== "object") {
+    return "";
+  }
+  const payload = event.payload as Record<string, unknown>;
+  const rawText =
+    typeof payload.text === "string" && payload.text.trim()
+      ? payload.text
+      : typeof payload.contextText === "string"
+        ? payload.contextText
+        : "";
+  return rawText.trim();
+};
+
+const trimDuplicatedTransitionUserEvent = (
+  events: LocalContextEvent[],
+  storedThreadMessages: ThreadHistoryEntry[],
+): LocalContextEvent[] => {
+  const firstStoredUserPreview = getStoredMessagePreview(
+    storedThreadMessages.find((message) => message.role === "user"),
+  );
+  if (!firstStoredUserPreview || events.length === 0) {
+    return events;
+  }
+  const nextEvents = [...events];
+  const lastEvent = nextEvents[nextEvents.length - 1];
+  if (!lastEvent || lastEvent.type !== "user_message") {
+    return events;
+  }
+  if (getLocalEventText(lastEvent) !== firstStoredUserPreview) {
+    return events;
+  }
+  nextEvents.pop();
+  return nextEvents;
+};
+
+export const buildOrchestratorThreadHistory = (args: {
+  storedThreadMessages: ThreadHistoryEntry[];
+  localEvents?: LocalContextEvent[];
+  contextWindow: number;
+}): ThreadHistoryEntry[] => {
+  const localEvents = args.localEvents ?? [];
+  const localHistoryBudget = getLocalHistoryBudget(args.contextWindow);
+  const warningThresholdTokens =
+    getLocalHistoryWarningThreshold(args.contextWindow);
+
+  if (args.storedThreadMessages.length === 0) {
+    return buildLocalHistoryFromEvents({
+      events: localEvents,
+      maxTokens: localHistoryBudget,
+      warningThresholdTokens,
+    });
+  }
+
+  if (
+    localEvents.length === 0 ||
+    hasStoredCheckpoint(args.storedThreadMessages)
+  ) {
+    return args.storedThreadMessages;
+  }
+
+  const transitionCutoff =
+    args.storedThreadMessages.find((message) => message.role !== "user")
+      ?.timestamp ?? args.storedThreadMessages[0]?.timestamp;
+  if (!transitionCutoff || !Number.isFinite(transitionCutoff)) {
+    return args.storedThreadMessages;
+  }
+
+  const legacyEvents = trimDuplicatedTransitionUserEvent(
+    localEvents.filter((event) => event.timestamp < transitionCutoff),
+    args.storedThreadMessages,
+  );
+  if (legacyEvents.length === 0) {
+    return args.storedThreadMessages;
+  }
+
+  const storedTokenEstimate = args.storedThreadMessages.reduce(
+    (total, message) => total + estimateRuntimeTokens(message.content),
+    0,
+  );
+  const legacyBudget = Math.max(
+    MIN_LOCAL_HISTORY_TOKENS,
+    localHistoryBudget - storedTokenEstimate,
+  );
+
+  const legacyHistory = buildLocalHistoryFromEvents({
+    events: legacyEvents,
+    maxTokens: legacyBudget,
+    warningThresholdTokens,
+  });
+
+  if (legacyHistory.length === 0) {
+    return args.storedThreadMessages;
+  }
+
+  return [...legacyHistory, ...args.storedThreadMessages];
+};
 
 export const createRunnerContext = ({
   deviceId,
@@ -255,53 +391,22 @@ export const buildAgentContext = async (
   const storedThreadMessages =
     context.runtimeStore.loadThreadMessages(threadKey);
 
-  let threadHistory:
-    | Array<{ role: string; content: string; toolCallId?: string }>
-    | undefined;
-  if (
-    args.agentType === AGENT_IDS.ORCHESTRATOR &&
-    context.listLocalChatEvents
-  ) {
+  const resolvedContextWindow = Number(resolvedLlm.model.contextWindow);
+  const contextWindow =
+    Number.isFinite(resolvedContextWindow) && resolvedContextWindow > 0
+      ? Math.floor(resolvedContextWindow)
+      : 128_000;
+
+  let threadHistory: ThreadHistoryEntry[] | undefined;
+  if (args.agentType === AGENT_IDS.ORCHESTRATOR && context.listLocalChatEvents) {
     const localEvents = context
       .listLocalChatEvents(args.conversationId, 800)
       .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
-    const resolvedContextWindow = Number(resolvedLlm.model.contextWindow);
-    const contextWindow =
-      Number.isFinite(resolvedContextWindow) && resolvedContextWindow > 0
-        ? Math.floor(resolvedContextWindow)
-        : 128_000;
-    const localHistoryBudget = Math.max(
-      MIN_LOCAL_HISTORY_TOKENS,
-      contextWindow - LOCAL_HISTORY_RESERVE_TOKENS,
-    );
-    const eventHistory = buildLocalHistoryFromEvents({
-      events: localEvents,
-      maxTokens: localHistoryBudget,
-      warningThresholdTokens: Math.max(
-        MIN_LOCAL_HISTORY_TOKENS,
-        Math.floor(contextWindow * 0.85),
-      ),
+    threadHistory = buildOrchestratorThreadHistory({
+      storedThreadMessages,
+      localEvents,
+      contextWindow,
     });
-    const checkpointMessage = storedThreadMessages.find((message) => {
-      if (message.role !== "assistant") return false;
-      return Boolean(parseThreadCheckpoint(message.content));
-    });
-    const checkpoint = checkpointMessage
-      ? parseThreadCheckpoint(checkpointMessage.content)
-      : null;
-    threadHistory = [
-      ...(checkpoint
-        ? [
-            {
-              role: "assistant",
-              content: checkpoint.previousThreadFile
-                ? `${checkpoint.summary}\n\nPrevious thread file: ${checkpoint.previousThreadFile}`
-                : checkpoint.summary,
-            },
-          ]
-        : []),
-      ...eventHistory,
-    ];
   } else {
     threadHistory = storedThreadMessages;
   }
@@ -316,8 +421,7 @@ export const buildAgentContext = async (
     args.agentType === AGENT_IDS.ORCHESTRATOR && context.frontendRoot
       ? buildPanelInventory(context.frontendRoot)
       : "",
-    args.agentType === AGENT_IDS.SELF_MOD ||
-    args.agentType === AGENT_IDS.DASHBOARD_GENERATION
+    args.agentType === AGENT_IDS.SELF_MOD
       ? buildManagedMediaDocsPrompt(context.state.convexSiteUrl)
       : "",
     activeThreadsPrompt,
@@ -351,8 +455,7 @@ export const buildAgentContext = async (
     agentEngine:
       enginePref === "general"
         ? getGeneralAgentEngine(context.stellaHomePath)
-        : enginePref === "self_mod" ||
-            args.agentType === AGENT_IDS.DASHBOARD_GENERATION
+        : enginePref === "self_mod"
           ? getSelfModAgentEngine(context.stellaHomePath)
           : undefined,
     maxAgentConcurrency: isLocalCliAgentId(args.agentType)

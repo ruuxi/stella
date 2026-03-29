@@ -2,6 +2,7 @@ import os from "os";
 import { Type } from "@sinclair/typebox";
 import { Agent } from "../agent-core/agent.js";
 import type { AgentMessage, AgentTool } from "../agent-core/types.js";
+import type { Message } from "../../ai/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import { selectRecentByTokenBudget } from "../local-history.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
@@ -302,7 +303,7 @@ export const createRuntimeAgent = (args: {
   resolvedLlm: ResolvedLlmRoute;
   hookEmitter?: HookEmitter;
   tools: AgentTool[];
-  historySource: Array<{ role: "user" | "assistant"; content: string }>;
+  historySource: Message[];
 }): Agent =>
   new Agent({
     initialState: {
@@ -310,7 +311,7 @@ export const createRuntimeAgent = (args: {
       model: args.resolvedLlm.model,
       thinkingLevel: "medium",
       tools: args.tools,
-      messages: toAgentMessages(args.historySource),
+      messages: args.historySource,
     },
     convertToLlm: PI_AGENT_MESSAGE_FILTER,
     transformContext: buildDefaultTransformContext(args.resolvedLlm),

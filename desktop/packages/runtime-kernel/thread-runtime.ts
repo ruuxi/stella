@@ -1,5 +1,8 @@
 import { completeSimple, readAssistantText } from "../ai/stream.js";
-import type { RuntimeThreadMessage } from "./storage/shared.js";
+import type {
+  PersistedRuntimeThreadPayload,
+  RuntimeThreadMessage,
+} from "./storage/shared.js";
 import type { RuntimeStore } from "./storage/runtime-store.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 
@@ -54,15 +57,26 @@ Update the existing structured summary with new information:
 Use the same exact output format as the base summary prompt.`;
 
 const THREAD_COMPACTION_RESERVE_TOKENS = 16_384;
+const THREAD_COMPACTION_KEEP_RECENT_TOKENS = 20_000;
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 const MIN_TRIGGER_TOKENS = 8_000;
-const TAIL_USER_ASSISTANT_PAIRS = 4;
 const MAX_BLOCK_CHARS = 100_000;
+const TOOL_RESULT_MAX_CHARS = 2_000;
+const ESTIMATED_IMAGE_TOKENS = 1_200;
 
 type ThreadMessage = {
+  timestamp: number;
   role: "user" | "assistant";
   content: string;
   toolCallId?: string;
+};
+
+type StoredThreadMessage = {
+  timestamp: number;
+  role: string;
+  content: string;
+  toolCallId?: string;
+  payload?: RuntimeThreadMessage["payload"];
 };
 
 type ThreadCheckpoint = {
@@ -78,6 +92,11 @@ const truncateWithSuffix = (
 
 const ellipsize = (value: string): string => truncateWithSuffix(value.trim(), MAX_BLOCK_CHARS);
 
+const truncateForSummary = (value: string, maxChars: number): string =>
+  value.length <= maxChars
+    ? value
+    : `${value.slice(0, maxChars)}\n\n[... ${value.length - maxChars} more characters truncated]`;
+
 const stringifyMessage = (message: ThreadMessage): string => {
   const content = message.content.trim();
   if (!content) {
@@ -89,14 +108,150 @@ const stringifyMessage = (message: ThreadMessage): string => {
   return `[Assistant] ${ellipsize(content)}`;
 };
 
-const formatThreadMessagesForCompaction = (messages: ThreadMessage[]): string =>
+const stringifyPayloadMessage = (
+  payload: PersistedRuntimeThreadPayload,
+): string[] => {
+  if (payload.role === "user") {
+    const content =
+      typeof payload.content === "string"
+        ? payload.content
+        : payload.content
+            .map((block) =>
+              block.type === "text"
+                ? block.text
+                : `[Image: ${block.mimeType}]`,
+            )
+            .join("\n");
+    return content.trim() ? [`[User] ${content.trim()}`] : [];
+  }
+
+  if (payload.role === "assistant") {
+    const parts: string[] = [];
+    const textParts: string[] = [];
+    const thinkingParts: string[] = [];
+    const toolCalls: string[] = [];
+
+    for (const block of payload.content) {
+      if (block.type === "text") {
+        if (block.text.trim()) {
+          textParts.push(block.text);
+        }
+        continue;
+      }
+      if (block.type === "thinking") {
+        if (block.thinking.trim()) {
+          thinkingParts.push(block.thinking);
+        }
+        continue;
+      }
+      toolCalls.push(
+        `${block.name}(${Object.entries(block.arguments ?? {})
+          .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+          .join(", ")})`,
+      );
+    }
+
+    if (thinkingParts.length > 0) {
+      parts.push(`[Assistant thinking] ${thinkingParts.join("\n")}`);
+    }
+    if (textParts.length > 0) {
+      parts.push(`[Assistant] ${textParts.join("\n")}`);
+    }
+    if (toolCalls.length > 0) {
+      parts.push(`[Assistant tool calls] ${toolCalls.join("; ")}`);
+    }
+    return parts;
+  }
+
+  const content = payload.content
+    .map((block) =>
+      block.type === "text"
+        ? block.text
+        : `[Image: ${block.mimeType}]`,
+    )
+    .join("\n")
+    .trim();
+  return content
+    ? [`[Tool result] ${truncateForSummary(content, TOOL_RESULT_MAX_CHARS)}`]
+    : [];
+};
+
+const stringifyStoredMessage = (message: StoredThreadMessage): string[] => {
+  if (message.payload) {
+    return stringifyPayloadMessage(message.payload);
+  }
+  if (message.role === "toolResult") {
+    const content = message.content.trim();
+    return content ? [`[Tool result] ${truncateForSummary(content, TOOL_RESULT_MAX_CHARS)}`] : [];
+  }
+  return [stringifyMessage(message as ThreadMessage)].filter(
+    (entry) => entry.length > 0,
+  );
+};
+
+export const formatThreadMessagesForCompaction = (
+  messages: StoredThreadMessage[],
+): string =>
   messages
-    .map((message) => stringifyMessage(message))
+    .flatMap((message) => stringifyStoredMessage(message))
     .filter((entry) => entry.length > 0)
     .join("\n\n");
 
 const estimateMessageTokens = (message: ThreadMessage): number =>
   Math.max(1, Math.ceil((message.content ?? "").length / 4));
+
+const estimatePayloadTokens = (
+  payload: PersistedRuntimeThreadPayload,
+): number => {
+  if (payload.role === "user") {
+    if (typeof payload.content === "string") {
+      return Math.max(1, Math.ceil(payload.content.length / 4));
+    }
+    let tokens = 0;
+    for (const block of payload.content) {
+      tokens +=
+        block.type === "text"
+          ? Math.max(1, Math.ceil(block.text.length / 4))
+          : ESTIMATED_IMAGE_TOKENS;
+    }
+    return tokens;
+  }
+
+  if (payload.role === "assistant") {
+    let tokens = 0;
+    for (const block of payload.content) {
+      if (block.type === "text") {
+        tokens += Math.max(1, Math.ceil(block.text.length / 4));
+        continue;
+      }
+      if (block.type === "thinking") {
+        tokens += Math.max(1, Math.ceil(block.thinking.length / 4));
+        continue;
+      }
+      tokens += Math.max(
+        1,
+        Math.ceil(
+          (block.name.length + JSON.stringify(block.arguments ?? {}).length) / 4,
+        ),
+      );
+    }
+    return tokens;
+  }
+
+  let tokens = 0;
+  for (const block of payload.content) {
+    tokens +=
+      block.type === "text"
+        ? Math.max(1, Math.ceil(block.text.length / 4))
+        : ESTIMATED_IMAGE_TOKENS;
+  }
+  return tokens;
+};
+
+const estimateStoredMessageTokens = (message: StoredThreadMessage): number =>
+  message.payload
+    ? estimatePayloadTokens(message.payload)
+    : estimateMessageTokens(message as ThreadMessage);
 
 const getContextWindow = (route: ResolvedLlmRoute): number => {
   const value = Number(route.model.contextWindow);
@@ -109,25 +264,76 @@ const getContextWindow = (route: ResolvedLlmRoute): number => {
 const getCompactionTriggerTokens = (route: ResolvedLlmRoute): number =>
   Math.max(MIN_TRIGGER_TOKENS, getContextWindow(route) - THREAD_COMPACTION_RESERVE_TOKENS);
 
-const getThreadTokenEstimate = (messages: ThreadMessage[]): number =>
-  messages.reduce((sum, message) => sum + estimateMessageTokens(message), 0);
+export const getThreadTokenEstimate = (messages: StoredThreadMessage[]): number =>
+  messages.reduce((sum, message) => sum + estimateStoredMessageTokens(message), 0);
 
-const extractRecentTailStartIndex = (
-  messages: ThreadMessage[],
-  pairCount = TAIL_USER_ASSISTANT_PAIRS,
+const isCutPointMessage = (
+  entry: StoredThreadMessage,
+): entry is ThreadMessage =>
+  (entry.role === "user" || entry.role === "assistant") &&
+  typeof entry.content === "string";
+
+const findTailStartIndexByTokenBudget = (
+  messages: StoredThreadMessage[],
+  keepRecentTokens = THREAD_COMPACTION_KEEP_RECENT_TOKENS,
 ): number => {
-  if (messages.length === 0) return 0;
-  let userCount = 0;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.role !== "user") {
-      continue;
-    }
-    userCount += 1;
-    if (userCount >= pairCount) {
-      return index;
+  const cutPoints: number[] = [];
+  for (let index = 0; index < messages.length; index += 1) {
+    if (isCutPointMessage(messages[index]!)) {
+      cutPoints.push(index);
     }
   }
-  return 0;
+  if (cutPoints.length === 0) {
+    return 0;
+  }
+
+  let accumulatedTokens = 0;
+  let cutIndex = cutPoints[0]!;
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    accumulatedTokens += estimateStoredMessageTokens(messages[index]!);
+    if (accumulatedTokens < keepRecentTokens) {
+      continue;
+    }
+    const nextCutPoint = cutPoints.find((entryIndex) => entryIndex >= index);
+    if (typeof nextCutPoint === "number") {
+      cutIndex = nextCutPoint;
+    }
+    break;
+  }
+
+  return cutIndex;
+};
+
+export const splitThreadMessagesForCompaction = (
+  messages: StoredThreadMessage[],
+  keepRecentTokens = THREAD_COMPACTION_KEEP_RECENT_TOKENS,
+): {
+  oldMessages: StoredThreadMessage[];
+  recentMessages: StoredThreadMessage[];
+} | null => {
+  if (messages.length === 0) {
+    return null;
+  }
+
+  const tailStartIndex = findTailStartIndexByTokenBudget(
+    messages,
+    keepRecentTokens,
+  );
+  if (tailStartIndex <= 0) {
+    return null;
+  }
+
+  const oldMessages = messages.slice(0, tailStartIndex);
+  const recentMessages = messages.slice(tailStartIndex);
+  if (oldMessages.length === 0 || recentMessages.length === 0) {
+    return null;
+  }
+
+  return {
+    oldMessages,
+    recentMessages,
+  };
 };
 
 export const buildRuntimeThreadKey = (args: {
@@ -189,7 +395,7 @@ export const formatThreadCheckpointMessage = (checkpoint: ThreadCheckpoint): str
   ].join("\n");
 
 const generateThreadSummary = async (args: {
-  messages: ThreadMessage[];
+  messages: StoredThreadMessage[];
   previousSummary?: string;
   resolvedLlm: ResolvedLlmRoute;
 }): Promise<string | null> => {
@@ -245,41 +451,37 @@ export const maybeCompactRuntimeThread = async (args: {
   resolvedLlm: ResolvedLlmRoute;
   agentType: string;
 }): Promise<void> => {
-  const messages = args.store.loadThreadMessages(args.threadKey).filter(
-    (entry): entry is ThreadMessage =>
-      (entry.role === "user" || entry.role === "assistant") &&
-      typeof entry.content === "string",
-  );
-  if (messages.length === 0) {
+  const storedMessages = args.store.loadThreadMessages(args.threadKey);
+  if (storedMessages.length === 0) {
     return;
   }
 
-  const totalTokens = getThreadTokenEstimate(messages);
+  const totalTokens = getThreadTokenEstimate(storedMessages);
   if (totalTokens < getCompactionTriggerTokens(args.resolvedLlm)) {
     return;
   }
 
-  const tailStartIndex = extractRecentTailStartIndex(messages);
-  if (tailStartIndex <= 0) {
+  const splitMessages = splitThreadMessagesForCompaction(storedMessages);
+  if (!splitMessages) {
     return;
   }
 
-  const oldMessages = messages.slice(0, tailStartIndex);
-  const recentMessages = messages.slice(tailStartIndex);
-  if (oldMessages.length === 0 || recentMessages.length === 0) {
-    return;
-  }
+  const { oldMessages, recentMessages } = splitMessages;
 
   let previousSummary: string | undefined;
-  const firstCheckpoint = parseThreadCheckpoint(oldMessages[0]!.content);
-  const summarizableMessages = [...oldMessages];
-  if (firstCheckpoint && oldMessages[0]!.role === "assistant") {
+  const firstOldMessage = oldMessages[0];
+  const firstCheckpoint =
+    firstOldMessage?.role === "assistant"
+      ? parseThreadCheckpoint(firstOldMessage.content)
+      : null;
+  const summaryInputMessages = [...oldMessages];
+  if (firstCheckpoint) {
     previousSummary = firstCheckpoint.summary;
-    summarizableMessages.shift();
+    summaryInputMessages.shift();
   }
 
   const summary = await generateThreadSummary({
-    messages: summarizableMessages,
+    messages: summaryInputMessages,
     previousSummary,
     resolvedLlm: args.resolvedLlm,
   });
@@ -299,11 +501,12 @@ export const maybeCompactRuntimeThread = async (args: {
       }),
     },
     ...recentMessages.map((message) => ({
-      timestamp: Date.now(),
+      timestamp: message.timestamp,
       threadKey: args.threadKey,
-      role: message.role,
+      role: message.role as RuntimeThreadMessage["role"],
       content: message.content,
       ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
+      ...(message.payload ? { payload: message.payload } : {}),
     })),
   ];
 

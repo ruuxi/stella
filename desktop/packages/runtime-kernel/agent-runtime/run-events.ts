@@ -3,12 +3,15 @@ import type { AgentEvent, AgentMessage } from "../agent-core/types.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { HookEventMap } from "../extensions/types.js";
+import { sanitizeAssistantText } from "../internal-tool-transcript.js";
+import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import {
   extractAssistantText,
   getToolResultPreview,
   now,
 } from "./shared.js";
+import { persistThreadPayloadMessage } from "./thread-memory.js";
 import type {
   RuntimeEndEvent,
   RuntimeErrorEvent,
@@ -20,6 +23,10 @@ import type {
 } from "./types.js";
 
 const logger = createRuntimeLogger("agent-runtime.events");
+type PersistedAssistantContent = Extract<
+  PersistedRuntimeThreadPayload,
+  { role: "assistant" }
+>["content"];
 
 type RuntimeAgentLike = {
   state: {
@@ -202,6 +209,8 @@ export const subscribeRuntimeAgentEvents = ({
   onProgress,
   displayEventHandler,
   hookEmitter,
+  threadStore,
+  threadKey,
 }: {
   agent: RuntimeAgentLike;
   runId: string;
@@ -211,8 +220,20 @@ export const subscribeRuntimeAgentEvents = ({
   onProgress?: (chunk: string) => void;
   displayEventHandler?: (event: AgentEvent) => boolean;
   hookEmitter?: HookEmitter;
+  threadStore?: RuntimeStore;
+  threadKey?: string;
 }) =>
   agent.subscribe((event) => {
+    if (event.type === "message_end" && threadStore && threadKey) {
+      const payload = toPersistedThreadPayload(event.message);
+      if (payload && payload.role !== "user") {
+        persistThreadPayloadMessage(threadStore, {
+          threadKey,
+          payload,
+        });
+      }
+    }
+
     if (
       event.type === "message_update" &&
       event.assistantMessageEvent.type === "text_delta"
@@ -290,3 +311,39 @@ export const subscribeRuntimeAgentEvents = ({
       );
     }
   });
+
+const toPersistedThreadPayload = (
+  message: AgentMessage,
+): PersistedRuntimeThreadPayload | null => {
+  if (message.role === "assistant") {
+    const sanitizedContent: PersistedAssistantContent = [];
+    for (const block of message.content) {
+      if (block.type !== "text") {
+        sanitizedContent.push(block);
+        continue;
+      }
+      const sanitized = sanitizeAssistantText(block.text);
+      if (sanitized) {
+        sanitizedContent.push({ ...block, text: sanitized });
+      }
+    }
+    if (sanitizedContent.length === 0) {
+      return null;
+    }
+    return {
+      ...message,
+      content: sanitizedContent,
+    };
+  }
+  if (message.role === "toolResult") {
+    return {
+      role: "toolResult",
+      toolCallId: message.toolCallId,
+      toolName: message.toolName,
+      content: message.content,
+      isError: message.isError,
+      timestamp: message.timestamp,
+    };
+  }
+  return null;
+};

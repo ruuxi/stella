@@ -83,7 +83,6 @@ const claudeCodeTools = [
 	"Edit",
 	"Bash",
 	"Grep",
-	"Glob",
 	"AskUserQuestion",
 	"EnterPlanMode",
 	"ExitPlanMode",

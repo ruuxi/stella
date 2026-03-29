@@ -3,9 +3,7 @@ import { createRuntimeLogger } from "../debug.js";
 import type { RuntimeRunEventRecorder } from "./run-events.js";
 import {
   compactRuntimeThreadHistory,
-  persistAssistantReply,
   updateOrchestratorReminderState,
-  appendThreadMessage,
 } from "./thread-memory.js";
 import type {
   OrchestratorRunOptions,
@@ -80,12 +78,6 @@ const maybeCompactOrchestratorThread = async (args: {
   if (!args.finalText.trim()) {
     return;
   }
-
-  appendThreadMessage(args.opts.store, {
-    threadKey: args.threadKey,
-    role: "assistant",
-    content: args.finalText,
-  });
 
   let shouldCompact = true;
   if (args.opts.hookEmitter) {
@@ -172,13 +164,14 @@ export const finalizeSubagentSuccess = async (args: {
   threadKey: string;
   result: string;
 }): Promise<SubagentRunResult> => {
-  await persistAssistantReply({
-    store: args.opts.store,
-    threadKey: args.threadKey,
-    resolvedLlm: args.opts.resolvedLlm,
-    agentType: args.opts.agentType,
-    content: args.result,
-  });
+  if (args.result.trim()) {
+    await compactRuntimeThreadHistory({
+      store: args.opts.store,
+      threadKey: args.threadKey,
+      resolvedLlm: args.opts.resolvedLlm,
+      agentType: args.opts.agentType,
+    });
+  }
   args.opts.callbacks?.onEnd?.(
     args.runEvents.recordRunEnd({ finalText: args.result }),
   );

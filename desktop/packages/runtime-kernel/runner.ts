@@ -236,6 +236,7 @@ export const createStellaHostRunner = (
     deviceId: context.deviceId,
     hookEmitter: context.hookEmitter,
     setConvexUrl: convexSession.setConvexUrl,
+    setConvexSiteUrl: convexSession.setConvexSiteUrl,
     setAuthToken: convexSession.setAuthToken,
     setCloudSyncEnabled: convexSession.setCloudSyncEnabled,
     start: runtimeInitialization.start,

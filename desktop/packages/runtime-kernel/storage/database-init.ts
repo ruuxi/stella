@@ -69,9 +69,15 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       timestamp INTEGER NOT NULL,
       role TEXT NOT NULL,
       content TEXT NOT NULL,
-      tool_call_id TEXT
+      tool_call_id TEXT,
+      payload_json TEXT
     );
   `);
+  try {
+    db.exec("ALTER TABLE runtime_thread_messages ADD COLUMN payload_json TEXT;");
+  } catch {
+    // Column already exists.
+  }
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_runtime_thread_messages_thread_ts
     ON runtime_thread_messages(thread_key, timestamp, id);

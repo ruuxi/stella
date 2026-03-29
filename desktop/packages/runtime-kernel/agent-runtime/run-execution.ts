@@ -15,6 +15,7 @@ import {
   containsLeakedInternalToolTranscript,
   sanitizeAssistantText,
 } from "../internal-tool-transcript.js";
+import { persistThreadPayloadMessage } from "./thread-memory.js";
 
 const MAX_INTERNAL_TOOL_TRANSCRIPT_RECOVERY_ATTEMPTS = 2;
 const INTERNAL_TOOL_TRANSCRIPT_FALLBACK_REPLY =
@@ -52,6 +53,8 @@ export const executeRuntimeAgentPrompt = async (args: {
   onProgress?: (chunk: string) => void;
   displayEventHandler?: (event: AgentEvent) => boolean;
   hookEmitter?: HookEmitter;
+  threadStore?: import("../storage/runtime-store.js").RuntimeStore;
+  threadKey?: string;
   onAfterPrompt?: () => Promise<void> | void;
   onCleanup?: () => Promise<void> | void;
 }): Promise<{ finalText: string; errorMessage?: string }> => {
@@ -67,13 +70,22 @@ export const executeRuntimeAgentPrompt = async (args: {
     onProgress: args.onProgress,
     displayEventHandler: args.displayEventHandler,
     hookEmitter: args.hookEmitter,
+    threadStore: args.threadStore,
+    threadKey: args.threadKey,
   });
 
   try {
-    await args.agent.prompt({
+    const promptMessage = {
       ...createUserPromptMessage(args.promptText, args.attachments),
       timestamp: now(),
-    });
+    };
+    if (args.threadStore && args.threadKey) {
+      persistThreadPayloadMessage(args.threadStore, {
+        threadKey: args.threadKey,
+        payload: promptMessage,
+      });
+    }
+    await args.agent.prompt(promptMessage);
     await args.onAfterPrompt?.();
     let completion = getAgentCompletion(args.agent);
     let recoveryAttempts = 0;

@@ -1,5 +1,16 @@
+import type {
+  AssistantMessage,
+  ImageContent,
+  Message,
+  TextContent,
+  ThinkingContent,
+  ToolCall,
+  ToolResultMessage,
+  UserMessage,
+} from "../../ai/types.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import { estimateRuntimeTokens } from "../runtime-threads.js";
+import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
 import {
   buildRuntimeThreadKey,
@@ -30,21 +41,154 @@ export const buildRunThreadKey = ({
 
 export const buildHistorySource = (
   context: LocalTaskManagerAgentContext,
-): Array<{ role: "user" | "assistant"; content: string }> =>
+): Message[] =>
   context.threadHistory
-    ?.filter(
-      (entry): entry is { role: "user" | "assistant"; content: string } =>
-        (entry.role === "user" || entry.role === "assistant") &&
-        typeof entry.content === "string",
+    ?.map((entry) => {
+      if (entry.payload) {
+        return toRuntimeMessage(entry.payload);
+      }
+      if (entry.role === "user" && typeof entry.content === "string") {
+        return {
+          role: "user",
+          content: entry.content,
+          timestamp: now(),
+        } satisfies UserMessage;
+      }
+      if (entry.role === "assistant" && typeof entry.content === "string") {
+        const sanitized = sanitizeAssistantText(entry.content);
+        if (!sanitized) return null;
+        return createHistoryAssistantMessage([
+          { type: "text", text: sanitized } satisfies TextContent,
+        ]);
+      }
+      return null;
+    })
+    .filter((entry): entry is Message => entry !== null) ?? [];
+
+const createHistoryAssistantMessage = (
+  content: (TextContent | ThinkingContent | ToolCall)[],
+  errorMessage?: string,
+): AssistantMessage => ({
+  role: "assistant",
+  content,
+  api: "openai-completions",
+  provider: "openai",
+  model: "history",
+  usage: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
+    },
+  },
+  stopReason: "stop",
+  ...(errorMessage ? { errorMessage } : {}),
+  timestamp: now(),
+});
+
+const toRuntimeMessage = (
+  payload: PersistedRuntimeThreadPayload,
+): Message | null => {
+  if (payload.role === "user") {
+    return payload;
+  }
+  if (payload.role === "assistant") {
+    const sanitizedContent: (TextContent | ThinkingContent | ToolCall)[] = [];
+    for (const block of payload.content) {
+      if (block.type !== "text") {
+        sanitizedContent.push(block);
+        continue;
+      }
+      const sanitized = sanitizeAssistantText(block.text);
+      if (sanitized) {
+        sanitizedContent.push({ ...block, text: sanitized });
+      }
+    }
+    return {
+      ...payload,
+      content: sanitizedContent,
+    };
+  }
+  return payload;
+};
+
+const stringifyPayload = (value: unknown): string => {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const contentPreviewFromTextAndImages = (
+  content: (TextContent | ImageContent)[],
+): string =>
+  content
+    .map((block) =>
+      block.type === "text"
+        ? block.text
+        : `[Image: ${block.mimeType}]`,
     )
-    .map((entry) => ({
-      role: entry.role,
-      content:
-        entry.role === "assistant"
-          ? sanitizeAssistantText(entry.content)
-          : entry.content,
-    }))
-    .filter((entry) => entry.content.length > 0) ?? [];
+    .join("\n")
+    .trim();
+
+export const buildThreadMessagePreview = (
+  payload: PersistedRuntimeThreadPayload,
+): string => {
+  if (payload.role === "user") {
+    return typeof payload.content === "string"
+      ? payload.content
+      : contentPreviewFromTextAndImages(payload.content);
+  }
+  if (payload.role === "assistant") {
+    return payload.content
+      .flatMap((block) => {
+        if (block.type === "text") {
+          const sanitized = sanitizeAssistantText(block.text);
+          return sanitized ? [sanitized] : [];
+        }
+        if (block.type === "toolCall") {
+          return [
+            `[Tool call] ${block.name}\nargs: ${stringifyPayload(block.arguments ?? {})}`,
+          ];
+        }
+        return [];
+      })
+      .join("\n\n")
+      .trim();
+  }
+  const body = contentPreviewFromTextAndImages(payload.content);
+  return [
+    `[Tool result] ${payload.toolName}`,
+    ...(body ? [body] : []),
+  ].join("\n").trim();
+};
+
+export const persistThreadPayloadMessage = (
+  store: RuntimeStore,
+  args: {
+    threadKey: string;
+    payload: PersistedRuntimeThreadPayload;
+  },
+): void => {
+  const preview = buildThreadMessagePreview(args.payload);
+  const toolCallId =
+    args.payload.role === "toolResult" ? args.payload.toolCallId : undefined;
+  appendThreadMessage(store, {
+    threadKey: args.threadKey,
+    role: args.payload.role,
+    content: preview,
+    ...(toolCallId ? { toolCallId } : {}),
+    payload: args.payload,
+  });
+};
 
 const getPlatformShellPrompt = (): string | null => {
   if (process.platform === "win32") {
@@ -184,8 +328,10 @@ export const appendThreadMessage = (
   store: RuntimeStore,
   args: {
     threadKey: string;
-    role: "user" | "assistant";
+    role: "user" | "assistant" | "toolResult";
     content: string;
+    toolCallId?: string;
+    payload?: PersistedRuntimeThreadPayload;
   },
 ): void => {
   store.appendThreadMessage({
@@ -193,6 +339,8 @@ export const appendThreadMessage = (
     threadKey: args.threadKey,
     role: args.role,
     content: args.content,
+    ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
+    ...(args.payload ? { payload: args.payload } : {}),
   });
 };
 

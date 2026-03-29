@@ -17,7 +17,6 @@ import {
   createSubagentExecutionSession,
 } from "./run-session.js";
 import {
-  appendThreadMessage,
   buildOrchestratorUserPrompt,
 } from "./thread-memory.js";
 import type {
@@ -79,11 +78,6 @@ export const runPiOrchestratorTurn = async (
       opts.agentContext,
       opts.userPrompt,
     );
-    appendThreadMessage(opts.store, {
-      threadKey,
-      role: "user",
-      content: opts.userPrompt,
-    });
 
     const { finalText, errorMessage } = await executeRuntimeAgentPrompt({
       agent,
@@ -96,6 +90,8 @@ export const runPiOrchestratorTurn = async (
       callbacks: opts.callbacks,
       displayEventHandler: displayStream.handleEvent,
       hookEmitter: opts.hookEmitter,
+      threadStore: opts.store,
+      threadKey,
       onAfterPrompt: () => {
         displayStream.flush();
       },
@@ -165,14 +161,6 @@ export const runPiSubagentTask = async (
     );
   }
 
-  if (prompt) {
-    appendThreadMessage(opts.store, {
-      threadKey,
-      role: "user",
-      content: prompt,
-    });
-  }
-
   if (opts.abortSignal?.aborted) {
     runEvents.recordError("Aborted");
     if (isDashboardGeneration) {
@@ -195,6 +183,8 @@ export const runPiSubagentTask = async (
       abortSignal: opts.abortSignal,
       callbacks: opts.callbacks,
       onProgress: opts.onProgress,
+      threadStore: opts.store,
+      threadKey,
     });
     if (errorMessage) {
       throw new Error(errorMessage);

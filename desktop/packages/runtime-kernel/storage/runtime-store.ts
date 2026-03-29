@@ -8,6 +8,7 @@ import type { SqliteDatabase } from "./shared.js";
 import {
   MAX_RECALL_RESULTS,
   SQLITE_MEMORY_SCAN_LIMIT,
+  parseRuntimeThreadPayload,
   type RuntimeMemory,
   type RuntimeRunEvent,
   type RuntimeThreadMessage,
@@ -15,6 +16,7 @@ import {
   parseRuntimeSelfModApplied,
   parseJsonTags,
   scoreMemoryMatches,
+  toJsonValueString,
   toJsonString,
   toJsonTags,
 } from "./shared.js";
@@ -78,16 +80,17 @@ export class RuntimeStore {
 
   private listAllThreadMessages(threadKey: string): RuntimeThreadMessage[] {
     const rows = this.db.prepare(`
-      SELECT timestamp, thread_key AS threadKey, role, content, tool_call_id AS toolCallId
+      SELECT timestamp, thread_key AS threadKey, role, content, tool_call_id AS toolCallId, payload_json AS payloadJson
       FROM runtime_thread_messages
       WHERE thread_key = ?
       ORDER BY timestamp ASC, id ASC
     `).all(threadKey) as Array<{
       timestamp: number;
       threadKey: string;
-      role: "user" | "assistant";
+      role: "user" | "assistant" | "toolResult";
       content: string;
       toolCallId: string | null;
+      payloadJson: string | null;
     }>;
     return rows.map((row) => ({
       timestamp: row.timestamp,
@@ -95,6 +98,9 @@ export class RuntimeStore {
       role: row.role,
       content: row.content,
       ...(row.toolCallId ? { toolCallId: row.toolCallId } : {}),
+      ...(parseRuntimeThreadPayload(row.payloadJson)
+        ? { payload: parseRuntimeThreadPayload(row.payloadJson) }
+        : {}),
     }));
   }
 
@@ -105,14 +111,15 @@ export class RuntimeStore {
   appendThreadMessage(message: RuntimeThreadMessage): void {
     const threadKey = this.sanitizeThreadKey(message.threadKey);
     this.db.prepare(`
-      INSERT INTO runtime_thread_messages (thread_key, timestamp, role, content, tool_call_id)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO runtime_thread_messages (thread_key, timestamp, role, content, tool_call_id, payload_json)
+      VALUES (?, ?, ?, ?, ?, ?)
     `).run(
       threadKey,
       message.timestamp,
       message.role,
       message.content,
       message.toolCallId ?? null,
+      toJsonValueString(message.payload) ?? null,
     );
     this.touchThread(threadKey);
     try {
@@ -130,16 +137,22 @@ export class RuntimeStore {
   loadThreadMessages(
     threadKeyInput: string,
     limit?: number,
-  ): Array<{ role: string; content: string; toolCallId?: string }> {
+  ): Array<{
+    timestamp: number;
+    role: RuntimeThreadMessage["role"];
+    content: string;
+    toolCallId?: string;
+    payload?: RuntimeThreadMessage["payload"];
+  }> {
     const threadKey = this.sanitizeThreadKey(threadKeyInput);
     const normalizedLimit =
       typeof limit === "number" && Number.isFinite(limit)
         ? Math.max(1, Math.floor(limit))
         : undefined;
     const sql = `
-      SELECT role, content, tool_call_id AS toolCallId
+      SELECT timestamp, role, content, tool_call_id AS toolCallId, payload_json AS payloadJson
       FROM (
-        SELECT id, timestamp, role, content, tool_call_id
+        SELECT id, timestamp, role, content, tool_call_id, payload_json
         FROM runtime_thread_messages
         WHERE thread_key = ?
         ORDER BY timestamp DESC, id DESC
@@ -152,14 +165,20 @@ export class RuntimeStore {
         ? this.db.prepare(sql).all(threadKey, normalizedLimit)
         : this.db.prepare(sql).all(threadKey)
     ) as Array<{
-      role: string;
+      timestamp: number;
+      role: RuntimeThreadMessage["role"];
       content: string;
       toolCallId: string | null;
+      payloadJson: string | null;
     }>;
     return rows.map((row) => ({
+      timestamp: row.timestamp,
       role: row.role,
       content: row.content,
       ...(row.toolCallId ? { toolCallId: row.toolCallId } : {}),
+      ...(parseRuntimeThreadPayload(row.payloadJson)
+        ? { payload: parseRuntimeThreadPayload(row.payloadJson) }
+        : {}),
     }));
   }
 
@@ -168,8 +187,8 @@ export class RuntimeStore {
     this.withTransaction(() => {
       this.db.prepare("DELETE FROM runtime_thread_messages WHERE thread_key = ?").run(threadKey);
       const stmt = this.db.prepare(`
-        INSERT INTO runtime_thread_messages (thread_key, timestamp, role, content, tool_call_id)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO runtime_thread_messages (thread_key, timestamp, role, content, tool_call_id, payload_json)
+        VALUES (?, ?, ?, ?, ?, ?)
       `);
       for (const message of nextMessages) {
         stmt.run(
@@ -178,6 +197,7 @@ export class RuntimeStore {
           message.role,
           message.content,
           message.toolCallId ?? null,
+          toJsonValueString(message.payload) ?? null,
         );
       }
     });

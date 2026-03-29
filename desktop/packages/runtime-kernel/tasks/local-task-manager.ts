@@ -2,6 +2,7 @@ import path from "path";
 import type { ToolContext, ToolResult, TaskToolApi, TaskToolRequest, TaskToolSnapshot } from "../tools/types.js";
 import { truncate } from "../tools/utils.js";
 import type { PersistedTaskRecord } from "../storage/runtime-store.js";
+import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 
 export type LocalTaskManagerAgentContext = {
   systemPrompt: string;
@@ -16,7 +17,13 @@ export type LocalTaskManagerAgentContext = {
   defaultSkills: string[];
   skillIds: string[];
   coreMemory?: string;
-  threadHistory?: Array<{ role: string; content: string; toolCallId?: string }>;
+  threadHistory?: Array<{
+    timestamp?: number;
+    role: string;
+    content: string;
+    toolCallId?: string;
+    payload?: PersistedRuntimeThreadPayload;
+  }>;
   activeThreadId?: string;
   agentEngine?: "default" | "claude_code_local";
   maxAgentConcurrency?: number;

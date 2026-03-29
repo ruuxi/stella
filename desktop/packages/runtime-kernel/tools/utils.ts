@@ -10,6 +10,7 @@ import { spawn } from "child_process";
 import { createHash } from "crypto";
 import { resolveRuntimeStatePath } from "../home/stella-home.js";
 import { createRuntimeLogger } from "../debug.js";
+import picomatch from "picomatch";
 
 // Constants
 export const MAX_OUTPUT = 30_000;
@@ -112,7 +113,7 @@ export const expandHomePath = (value: string) => {
   let expanded = value.replace(/^~(?=$|[\\/])/, home);
 
   // Expand common env placeholders used in prompts/tool args.
-  // Note: SqliteQuery/Read/Glob/Grep run in Node (not bash), so we must expand
+  // Note: SqliteQuery/Read/Grep run in Node (not bash), so we must expand
   // these ourselves if the agent includes them.
   expanded = expanded
     .replace(/\$USERPROFILE\b/gi, userProfile)
@@ -220,21 +221,8 @@ export const isIgnoredDir = (name: string) =>
   name === "release";
 
 export const globToRegExp = (pattern: string) => {
-  const escaped = pattern
-    .split("")
-    .map((char) => {
-      if (char === "*") return "__STAR__";
-      if (char === "?") return "__Q__";
-      return /[.+^${}()|[\]\\]/.test(char) ? `\\${char}` : char;
-    })
-    .join("");
-
-  const withStars = escaped
-    .replace(/__STAR____STAR__/g, ".*")
-    .replace(/__STAR__/g, "[^/]*")
-    .replace(/__Q__/g, ".");
-
-  return new RegExp(`^${withStars}$`);
+  const isMatch = picomatch(pattern, { nocase: process.platform === "win32" });
+  return { test: (str: string) => isMatch(str) };
 };
 
 export const walkFiles = async (basePath: string) => {

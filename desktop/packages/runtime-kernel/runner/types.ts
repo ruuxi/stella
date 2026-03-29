@@ -252,6 +252,7 @@ export type RunnerPublicApi = {
   deviceId: string;
   hookEmitter: HookEmitter;
   setConvexUrl: (value: string | null) => void;
+  setConvexSiteUrl: (value: string | null) => void;
   setAuthToken: (value: string | null) => void;
   setCloudSyncEnabled: (enabled: boolean) => void;
   start: () => void;
