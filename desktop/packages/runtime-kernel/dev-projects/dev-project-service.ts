@@ -4,7 +4,7 @@ import crypto from 'crypto'
 import net from 'net'
 import path from 'path'
 import { collectDevProjects } from '../../runtime-discovery/dev-projects.js'
-import { writePrivateFile } from '../home/private-fs.js'
+import { writePrivateFile } from '../shared/private-fs.js'
 import type { StellaHomePathTarget } from '../lifecycle-targets.js'
 import type {
   DiscoveryCategory,
