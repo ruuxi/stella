@@ -13,8 +13,8 @@ import type {
   IdentityMap,
   IdentityMappingSource,
 } from "../../runtime-discovery/discovery-types.js";
-import { protectValue, unprotectValue } from "../storage/protected-storage.js";
-import { ensurePrivateDir, writePrivateFile } from "./private-fs.js";
+import { protectValue, unprotectValue } from "../shared/protected-storage.js";
+import { ensurePrivateDir, writePrivateFile } from "../shared/private-fs.js";
 
 const log = (...args: unknown[]) => console.error("[identity-map]", ...args);
 const IDENTITY_NAME_SCOPE = "identity-map-real-name";
