@@ -26,11 +26,17 @@
     }
   },
   "bundle": {
-    "active": false,
+    "active": true,
+    "targets": ["app", "dmg"],
     "icon": [
       "icons/icon.png",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "entitlements": "./Entitlements.plist",
+      "hardenedRuntime": true,
+      "minimumSystemVersion": "11.0"
+    },
     "windows": {
       "webviewInstallMode": { "type": "downloadBootstrapper" }
     }
