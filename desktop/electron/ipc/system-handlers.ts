@@ -47,7 +47,11 @@ type SystemHandlersOptions = {
     ok: boolean;
     error?: string;
   };
-  getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
+  getBroadcastToMobile?: () =>
+    | ((channel: string, data: unknown) => void)
+    | null;
+  startPhoneAccessSession: () => { ok: boolean };
+  stopPhoneAccessSession: () => Promise<{ ok: boolean }>;
 };
 
 const asTrimmedString = (value: unknown) =>
@@ -56,7 +60,9 @@ const asTrimmedString = (value: unknown) =>
 const sanitizeStringRecord = (value: unknown): Record<string, string> => {
   const nextRecord: Record<string, string> = {};
   for (const [key, entryValue] of Object.entries(
-    value && typeof value === "object" ? value as Record<string, unknown> : {},
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {},
   )) {
     const trimmedKey = asTrimmedString(key);
     const trimmedValue = asTrimmedString(entryValue);
@@ -97,6 +103,30 @@ const sanitizeOptionalHttpUrl = (value: unknown, fieldName: string) => {
 
 export const registerSystemHandlers = (options: SystemHandlersOptions) => {
   ipcMain.handle("device:getId", () => options.getDeviceId());
+
+  ipcMain.handle("phoneAccess:startSession", (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "phoneAccess:startSession",
+      )
+    ) {
+      throw new Error("Blocked untrusted phoneAccess:startSession request.");
+    }
+    return options.startPhoneAccessSession();
+  });
+
+  ipcMain.handle("phoneAccess:stopSession", async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "phoneAccess:stopSession",
+      )
+    ) {
+      throw new Error("Blocked untrusted phoneAccess:stopSession request.");
+    }
+    return await options.stopPhoneAccessSession();
+  });
 
   ipcMain.handle("socialSessions:getStatus", async (event) => {
     if (
@@ -402,9 +432,10 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           ? payload.selfModAgentEngine
           : "default";
       const parsedConcurrency = Number(payload?.maxAgentConcurrency);
-      const maxAgentConcurrency = Number.isFinite(parsedConcurrency) && parsedConcurrency >= 1
-        ? Math.min(24, Math.floor(parsedConcurrency))
-        : 24;
+      const maxAgentConcurrency =
+        Number.isFinite(parsedConcurrency) && parsedConcurrency >= 1
+          ? Math.min(24, Math.floor(parsedConcurrency))
+          : 24;
 
       prefs.defaultModels = nextDefaultModels;
       prefs.resolvedDefaultModels = nextResolvedDefaultModels;

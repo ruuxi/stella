@@ -1,15 +1,10 @@
 import { registerBootstrapIpcHandlers } from "./ipc.js";
-import {
-  createBootstrapResetFlows,
-} from "./resets.js";
+import { createBootstrapResetFlows } from "./resets.js";
 import { initializeStellaHostRunner } from "./host-runner.js";
 import { createHostRunnerResource } from "../process-resources/host-runner-resource.js";
 import { type BootstrapContext } from "./context.js";
 import { initializeBootstrapAppShell } from "./app-shell.js";
-import {
-  startMobileBridge,
-  startStellaBrowserBridge,
-} from "./aux-runtime.js";
+import { startStellaBrowserBridge } from "./aux-runtime.js";
 
 export const initializeBootstrapApplication = async (
   context: BootstrapContext,
@@ -32,8 +27,5 @@ export const initializeBootstrapApplication = async (
     processRuntime: context.state.processRuntime,
     isQuitting: () => context.state.isQuitting,
     initializeHostRunner: () => initializeStellaHostRunner(context),
-    onHostRunnerReady: () => {
-      void startMobileBridge(context);
-    },
   }).start();
 };

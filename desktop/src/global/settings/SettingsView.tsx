@@ -1,4 +1,12 @@
-import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  lazy,
+  Suspense,
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
@@ -26,11 +34,14 @@ import { TextField } from "@/ui/text-field";
 import { NativeSelect } from "@/ui/native-select";
 import { BillingTab } from "@/global/settings/BillingTab";
 import { AudioTab } from "@/global/settings/AudioTab";
+import { PhoneAccessCard } from "@/global/settings/PhoneAccessCard";
 import { hasBillingCheckoutCompletionMarker } from "@/global/settings/lib/billing-checkout";
 import "@/global/settings/settings.css";
 
 const LegalDialog = lazy(() =>
-  import("@/global/legal/LegalDialog").then((m) => ({ default: m.LegalDialog })),
+  import("@/global/legal/LegalDialog").then((m) => ({
+    default: m.LegalDialog,
+  })),
 );
 
 // ---------------------------------------------------------------------------
@@ -90,9 +101,16 @@ function getSettingsErrorMessage(error: unknown, fallback: string) {
 // Basic Tab
 // ---------------------------------------------------------------------------
 
-function BasicTab({ onSignOut, onOpenLegal }: { onSignOut?: () => void; onOpenLegal?: (doc: LegalDocument) => void }) {
+function BasicTab({
+  onSignOut,
+  onOpenLegal,
+}: {
+  onSignOut?: () => void;
+  onOpenLegal?: (doc: LegalDocument) => void;
+}) {
   return (
     <div className="settings-tab-content">
+      <PhoneAccessCard />
       <div className="settings-card">
         <div className="settings-row">
           <div className="settings-row-info">
@@ -290,8 +308,9 @@ function ModelConfigSection() {
   const [localSelfModAgentEngine, setLocalSelfModAgentEngine] = useState<
     "default" | "claude_code_local" | null
   >(null);
-  const [localMaxAgentConcurrency, setLocalMaxAgentConcurrency] =
-    useState<number | null>(null);
+  const [localMaxAgentConcurrency, setLocalMaxAgentConcurrency] = useState<
+    number | null
+  >(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [modelConfigError, setModelConfigError] = useState<string | null>(null);
   const [isSavingRuntimePreference, setIsSavingRuntimePreference] =
@@ -485,9 +504,7 @@ function ModelConfigSection() {
       }
 
       const engine =
-        value === "claude_code_local"
-          ? "claude_code_local"
-          : "default";
+        value === "claude_code_local" ? "claude_code_local" : "default";
       const previousValue =
         agentType === "general"
           ? localGeneralAgentEngine
@@ -541,9 +558,8 @@ function ModelConfigSection() {
       }
 
       const parsed = Number(value);
-      const normalized = Number.isFinite(parsed) && parsed >= 1
-        ? Math.floor(parsed)
-        : 24;
+      const normalized =
+        Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 24;
       const previousValue = localMaxAgentConcurrency;
 
       setRuntimeError(null);
@@ -1096,8 +1112,12 @@ export const SettingsDialog = ({
   const [selectedTab, setSelectedTab] = useState<SettingsTab>(() =>
     hasBillingCheckoutCompletionMarker() ? "billing" : "basic",
   );
-  const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(null);
-  const activeTab = hasBillingCheckoutCompletionMarker() ? "billing" : selectedTab;
+  const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(
+    null,
+  );
+  const activeTab = hasBillingCheckoutCompletionMarker()
+    ? "billing"
+    : selectedTab;
 
   return (
     <>
@@ -1123,7 +1143,10 @@ export const SettingsDialog = ({
               </nav>
               <SettingsPanel>
                 {activeTab === "basic" ? (
-                  <BasicTab onSignOut={onSignOut} onOpenLegal={setActiveLegalDoc} />
+                  <BasicTab
+                    onSignOut={onSignOut}
+                    onOpenLegal={setActiveLegalDoc}
+                  />
                 ) : activeTab === "models" ? (
                   <ModelsTab />
                 ) : activeTab === "audio" ? (
@@ -1139,7 +1162,9 @@ export const SettingsDialog = ({
       <Suspense fallback={null}>
         <LegalDialog
           document={activeLegalDoc}
-          onOpenChange={(open) => { if (!open) setActiveLegalDoc(null); }}
+          onOpenChange={(open) => {
+            if (!open) setActiveLegalDoc(null);
+          }}
         />
       </Suspense>
     </>

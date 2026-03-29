@@ -13,8 +13,13 @@ import { registerSystemHandlers } from "../ipc/system-handlers.js";
 import { registerUiHandlers } from "../ipc/ui-handlers.js";
 import { registerVoiceHandlers } from "../ipc/voice-handlers.js";
 import { startCapturingHandlers } from "../services/mobile-bridge/handler-registry.js";
-import { type BootstrapContext, getMobileBroadcast, syncWakeWordState } from "./context.js";
+import {
+  type BootstrapContext,
+  getMobileBroadcast,
+  syncWakeWordState,
+} from "./context.js";
 import type { BootstrapResetFlows } from "./resets.js";
+import { startMobileBridge, stopMobileBridge } from "./aux-runtime.js";
 
 export const registerBootstrapIpcHandlers = (
   context: BootstrapContext,
@@ -73,6 +78,14 @@ export const registerBootstrapIpcHandlers = (
     cancelCredential: (payload) =>
       services.credentialService.cancelCredential(payload),
     getBroadcastToMobile: lazyMobileBroadcast,
+    startPhoneAccessSession: () => {
+      startMobileBridge(context);
+      return { ok: true };
+    },
+    stopPhoneAccessSession: async () => {
+      await stopMobileBridge(context);
+      return { ok: true };
+    },
   });
 
   registerScheduleHandlers({

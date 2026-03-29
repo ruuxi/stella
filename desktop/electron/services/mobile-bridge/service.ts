@@ -19,7 +19,8 @@ const COOKIE_NAME = "stella_mobile_bridge";
 const MAX_BODY_SIZE = 5 * 1024 * 1024;
 const BODY_TIMEOUT_MS = 10_000;
 const ALLOW_METHODS = "GET, POST, OPTIONS";
-const ALLOW_HEADERS = "Content-Type, Authorization";
+const ALLOW_HEADERS =
+  "Content-Type, Authorization, X-Stella-Mobile-Device-Id, X-Stella-Mobile-Pair-Secret";
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 const MOBILE_BRIDGE_SENDER_URL = "stella-mobile-bridge://mobile";
 
@@ -40,6 +41,7 @@ type MobileBridgeServiceOptions = {
   electronDir: string;
   isDev: boolean;
   getDevServerUrl: () => string;
+  onClientActivity?: () => void;
 };
 
 type BridgeSessionRecord = {
@@ -203,10 +205,12 @@ export class MobileBridgeService {
    * Set a callback that reads the desktop renderer's bootstrap payload.
    * Used by `/bridge/bootstrap` to share session state with the mobile WebView.
    */
-  setBootstrapPayloadGetter(
-    getter: () => Promise<MobileBridgeBootstrap>,
-  ) {
+  setBootstrapPayloadGetter(getter: () => Promise<MobileBridgeBootstrap>) {
     this.getBootstrapPayload = getter;
+  }
+
+  private markClientActivity() {
+    this.options.onClientActivity?.();
   }
 
   // ── External setters (called from bootstrap) ──────────────────────────
@@ -384,10 +388,10 @@ export class MobileBridgeService {
 
   private isBridgeAccessEnabled() {
     return Boolean(
-      this.registered
-      && this.hostAuthToken
-      && this.convexSiteUrl
-      && this.deviceId,
+      this.registered &&
+        this.hostAuthToken &&
+        this.convexSiteUrl &&
+        this.deviceId,
     );
   }
 
@@ -427,7 +431,11 @@ export class MobileBridgeService {
 
     // Bootstrap payload — requires auth
     if (req.url === "/bridge/bootstrap") {
-      const authenticated = await this.ensureAuthorized(req, res, requestOrigin);
+      const authenticated = await this.ensureAuthorized(
+        req,
+        res,
+        requestOrigin,
+      );
       if (!authenticated) return;
       await this.handleBootstrap(res, requestOrigin);
       return;
@@ -435,7 +443,11 @@ export class MobileBridgeService {
 
     // IPC bridge — requires auth
     if (req.url.startsWith("/bridge/ipc/")) {
-      const authenticated = await this.ensureAuthorized(req, res, requestOrigin);
+      const authenticated = await this.ensureAuthorized(
+        req,
+        res,
+        requestOrigin,
+      );
       if (!authenticated) return;
       await this.handleIpcRequest(req, res, requestOrigin);
       return;
@@ -488,8 +500,7 @@ export class MobileBridgeService {
     }
 
     try {
-      const body =
-        req.method === "POST" ? JSON.parse(await readBody(req)) : {};
+      const body = req.method === "POST" ? JSON.parse(await readBody(req)) : {};
       const args = body.args ?? [];
       const fakeEvent = createFakeIpcEvent(this.broadcastToMobile);
       const spreadArgs = Array.isArray(args) ? args : [args];
@@ -500,10 +511,7 @@ export class MobileBridgeService {
       } else {
         for (const handler of onHandlerList!) {
           try {
-            handler(
-              fakeEvent as unknown as IpcMainEvent,
-              ...spreadArgs,
-            );
+            handler(fakeEvent as unknown as IpcMainEvent, ...spreadArgs);
           } catch (handlerErr) {
             console.warn(
               `[mobile-bridge] on-handler error for ${channel}:`,
@@ -514,8 +522,7 @@ export class MobileBridgeService {
         sendNoContent(res, requestOrigin);
       }
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Internal error";
+      const message = error instanceof Error ? error.message : "Internal error";
       console.error(`[mobile-bridge] IPC error on ${channel}: ${message}`);
       sendJson(res, 500, { error: message }, requestOrigin);
     }
@@ -564,9 +571,11 @@ export class MobileBridgeService {
       authenticated: true,
     };
     this.wsClients.set(ws, client);
+    this.markClientActivity();
     console.log("[mobile-bridge] WebSocket connected");
 
     ws.on("message", (data) => {
+      this.markClientActivity();
       try {
         const msg = JSON.parse(data.toString()) as {
           type: string;
@@ -659,9 +668,7 @@ export class MobileBridgeService {
           handler(fakeEvent as unknown as IpcMainEvent, ...spreadArgs);
         }
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({ type: "response", id, result: undefined }),
-          );
+          ws.send(JSON.stringify({ type: "response", id, result: undefined }));
         }
       }
     } catch (error) {
@@ -670,8 +677,7 @@ export class MobileBridgeService {
           JSON.stringify({
             type: "response",
             id,
-            error:
-              error instanceof Error ? error.message : "Internal error",
+            error: error instanceof Error ? error.message : "Internal error",
           }),
         );
       }
@@ -691,12 +697,18 @@ export class MobileBridgeService {
     }
 
     if (!this.isBridgeAccessEnabled()) {
-      sendJson(res, 403, { error: "Desktop bridge unavailable" }, requestOrigin);
+      sendJson(
+        res,
+        403,
+        { error: "Desktop bridge unavailable" },
+        requestOrigin,
+      );
       return false;
     }
 
     const existingSession = this.getValidSession(req);
     if (existingSession) {
+      this.markClientActivity();
       return true;
     }
 
@@ -706,7 +718,7 @@ export class MobileBridgeService {
       return false;
     }
 
-    const authorized = await this.authorizeBearer(authorization);
+    const authorized = await this.authorizeBearer(authorization, req.headers);
     if (!authorized) {
       sendJson(res, 403, { error: "Forbidden" }, requestOrigin);
       return false;
@@ -718,13 +730,29 @@ export class MobileBridgeService {
       "Set-Cookie",
       `${COOKIE_NAME}=${sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
     );
+    this.markClientActivity();
     return true;
   }
 
-  private async authorizeBearer(authorization: string) {
+  private async authorizeBearer(
+    authorization: string,
+    requestHeaders: IncomingMessage["headers"],
+  ) {
     const convexSiteUrl = this.convexSiteUrl;
     const deviceId = this.deviceId;
     if (!convexSiteUrl || !deviceId) return false;
+
+    const mobileDeviceId =
+      typeof requestHeaders["x-stella-mobile-device-id"] === "string"
+        ? requestHeaders["x-stella-mobile-device-id"].trim()
+        : "";
+    const pairSecret =
+      typeof requestHeaders["x-stella-mobile-pair-secret"] === "string"
+        ? requestHeaders["x-stella-mobile-pair-secret"].trim()
+        : "";
+    if (!mobileDeviceId || !pairSecret) {
+      return false;
+    }
 
     try {
       const response = await this.postBridgeJson(
@@ -732,6 +760,10 @@ export class MobileBridgeService {
         "/api/mobile/desktop-bridge/authorize",
         authorization,
         { deviceId },
+        {
+          "X-Stella-Mobile-Device-Id": mobileDeviceId,
+          "X-Stella-Mobile-Pair-Secret": pairSecret,
+        },
       );
       return response.ok;
     } catch {
@@ -744,12 +776,14 @@ export class MobileBridgeService {
     route: string,
     authorization: string,
     body: unknown,
+    extraHeaders?: Record<string, string>,
   ) {
     return fetch(`${trimTrailingSlash(siteUrl)}${route}`, {
       method: "POST",
       headers: {
         Authorization: authorization,
         "Content-Type": "application/json",
+        ...extraHeaders,
       },
       body: JSON.stringify(body),
     });
@@ -764,9 +798,7 @@ export class MobileBridgeService {
     );
     const method = req.method ?? "GET";
     const body =
-      method === "GET" || method === "HEAD"
-        ? undefined
-        : await readBody(req);
+      method === "GET" || method === "HEAD" ? undefined : await readBody(req);
 
     const headers = new Headers();
     for (const [key, value] of Object.entries(req.headers)) {
