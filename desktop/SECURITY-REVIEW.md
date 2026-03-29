@@ -180,19 +180,71 @@ Stella is a feature-rich Electron desktop application with an AI agent runtime, 
 
 ---
 
+## Verification Status
+
+All 37 findings were independently verified against actual source code. Results:
+
+| Category | Verified | Accurate | Partially Accurate | Inaccurate |
+|----------|----------|----------|-------------------|------------|
+| CRITICAL (C1-C5) | 5/5 | 4 | 1 (C3) | 0 |
+| HIGH (H1-H7) | 7/7 | 7 | 0 | 0 |
+| MEDIUM (M1-M25) | 25/25 | 23 | 2 (M4, M17) | 0 |
+| **Total** | **37/37** | **34** | **3** | **0** |
+
+### Corrections from Verification
+
+- **C3** (Partially Accurate): JS injection into MAIN world is achieved via DOM `<script>` tag insertion, not an explicit `world: 'MAIN'` parameter on the content script registration. The end result is the same (page-context execution), but the mechanism differs from what was implied.
+- **M3** (Context Added): `unsafe-eval` is specifically required by the AJV JSON schema validator, which compiles schemas via `new Function()`. The overlay window's CSP omits `unsafe-eval`, confirming it's not universally needed.
+- **M4** (Partially Accurate): The unprotected agent handlers at lines 142-190 are read-only informational endpoints (healthCheck, getActiveRun, getAppSessionStartedAt, resume). The more dangerous mutation endpoints (startChat, cancelChat, selfmod) all have `assertPrivilegedSender`. Voice handlers remain the primary concern — `VoiceHandlersOptions` doesn't even include `assertPrivilegedSender` as a field.
+- **M15** (Context Added): `sanitizeHtmlFragment` is currently dead code — not imported or called anywhere in the codebase. The vulnerability is theoretical but becomes live if anyone imports it.
+- **M17** (Partially Accurate): The dangerous command blocklist is supplemented by deferred-delete shell wrappers that intercept `rm`/`rmdir`/`unlink`. So `rm --recursive --force /` would actually be caught by the wrapper. However, `chmod 000 /` and `find / -delete` bypass both the blocklist and the wrappers.
+- **H3** (Minor Correction): `llmCredentials` entries are on lines 26-28 of bridge-policy.ts (off by one from original report).
+- **H7** (Nuance Added): The `-p` flag filter requires whitespace after `-p` (`/-p\s+\S+/`), so MySQL's no-space syntax (`mysql -pMyPassword`) is NOT caught. The `/auth/i` pattern is overly broad, catching harmless commands like `gh auth status`.
+
+### New Findings from Verification
+
+The verification process uncovered additional issues not in the original review:
+
+- **SSRF TOCTOU vulnerability** (P4): DNS resolution check and actual `fetch()` are separate operations. An attacker controlling DNS could return a public IP during the check, then a private IP for the actual connection. Additionally, IPv6-mapped IPv4 addresses (e.g., `::ffff:127.0.0.1`) may bypass the IPv6 blocklist since they don't match the `fc`/`fd`/`fe8` prefix checks.
+- **External link rate-limit bypass** (P6): Rate limiting only applies to the `shell:openExternal` IPC handler. Links opened via `window.open()` and `will-navigate` events call `openSafeExternalUrl` directly without consuming the rate-limit budget.
+- **Social session symlink escape** (P7): `ensurePathWithinRoot` validates logical paths but does not resolve symlinks via `fs.realpath()`. A symlink within the session workspace pointing outside the root would be followed by subsequent `fs.rm`/`fs.writeFile` operations. TOCTOU gap exists between validation and filesystem operation.
+- **Deferred delete doesn't protect home directory** (P8): `isRootPath` only blocks literal filesystem root (`/`). The agent could delete `/home/user` which passes the root check. Critical system directories like `/usr`, `/etc` are handled by the separate `isBlockedPath` check, but the home directory is not protected by either.
+
+---
+
 ## Positive Security Observations
 
 The following areas demonstrate strong security practices:
 
-1. **Electron fundamentals:** `contextIsolation: true`, `nodeIntegration: false` everywhere. Preload exposes only a narrow, channel-specific API. `window.open` denied, `will-navigate` intercepted.
-2. **SQL injection prevention:** All queries use parameterized prepared statements. `escapeSqlLike` properly escapes LIKE wildcards.
-3. **PKCE OAuth:** Correctly implemented with 256-bit verifiers and SHA-256 challenges across Anthropic, OpenAI, Google providers.
-4. **SSRF protection:** `normalizeSafeExternalUrl` blocks localhost, private IPs, performs DNS resolution checks, blocks embedded credentials, auto-upgrades HTTP→HTTPS.
-5. **Credential encryption:** LLM API keys encrypted via `safeStorage` (OS keychain). Device private keys encrypted at rest. Identity map encrypted before disk write.
-6. **External link handling:** Rate-limited (max 20/15s, 300ms minimum interval), protocol-validated (HTTP/HTTPS only), sender-checked.
-7. **Social session path traversal protection:** `ensurePathWithinRoot` validates resolved paths don't escape workspace root.
-8. **Deferred delete safety:** Root path protection, trash directory validation, shell function wrappers for `rm`/`rmdir`/`unlink`.
+1. **Electron fundamentals:** `contextIsolation: true`, `nodeIntegration: false` everywhere. Exactly 2 `BrowserWindow` creations exist, both using `createSharedWebPreferences`. Preload exposes only a narrow, channel-specific API. `window.open` denied, `will-navigate` intercepted. **Verified: Confirmed.**
+2. **SQL injection prevention:** All queries use parameterized prepared statements. Dynamic WHERE clauses in `recallMemories` are safe (user data only in bind params). `escapeSqlLike` properly escapes LIKE wildcards. **Verified: Confirmed.**
+3. **PKCE OAuth:** Correctly implemented per RFC 7636 with 256-bit verifiers (32 bytes → 43-char base64url) and SHA-256 challenges. **Verified: Confirmed.**
+4. **SSRF protection:** `normalizeSafeExternalUrl` blocks RFC 1918, loopback, link-local, CGN, ULA ranges. Performs DNS resolution checks, blocks embedded credentials, auto-upgrades HTTP→HTTPS, re-validates redirects. **Verified: Partially confirmed — TOCTOU/DNS rebinding vulnerability and possible IPv6-mapped IPv4 bypass exist.**
+5. **Credential encryption:** LLM API keys encrypted via `safeStorage` (OS keychain). No plaintext fallback — fails closed when safeStorage unavailable. Device private keys and identity map encrypted at rest. **Verified: Confirmed.**
+6. **External link handling:** Rate-limited (max 20/15s, 300ms minimum interval), protocol-validated (HTTP/HTTPS only), sender-checked. **Verified: Partially confirmed — rate limit only applies to `shell:openExternal` IPC, not `window.open()` or `will-navigate` paths.**
+7. **Social session path traversal protection:** `ensurePathWithinRoot` validates resolved paths, `normalizeSessionRelativePath` rejects `..` segments. **Verified: Partially confirmed — no symlink resolution, TOCTOU gap between check and filesystem operation.**
+8. **Deferred delete safety:** Root path protection, trash directory validation via `isSubPath`, shell function wrappers for `rm`/`rmdir`/`unlink`. Purge validates trashPath containment. **Verified: Confirmed with caveat — only literal root `/` is blocked, not `/home` or other critical directories.**
 9. **Mobile bridge:** Cloudflare tunnel hostname is server-assigned (not predictable), auth is server-mediated, CORS origin checking present, sessions invalidated on sign-out, loopback-only binding.
+
+---
+
+## Regression Risk Assessment
+
+Fixes for several findings carry significant regression risk. This table summarizes the key trade-offs:
+
+| Finding | Fix Difficulty | Regression Risk | Key Concern |
+|---------|---------------|----------------|-------------|
+| C1: Empty auth token | Low | Medium | Extension must coordinate token with Electron app |
+| C2: Cookie domain allowlist | Medium | High | `fetchWithBrowserSession` needs cross-domain cookie access |
+| C3: Site-mod restrictions | Medium | High | Core feature for persistent per-site customization |
+| H1: Agent loop limits | Medium | High | Long-running legitimate tasks (multi-file refactoring) |
+| H2: Network sandboxing | High | Very High | `git clone`, `npm install`, `pip install` all need network |
+| H4: Database encryption | High | High | Requires driver replacement, migration, key management |
+| H6: Extension sandboxing | Very High | Very High | Breaks all extensions using Node.js APIs |
+| M3: Remove unsafe-eval | Medium | Medium-High | Required by AJV; needs schema pre-compilation or move to main process |
+| M5: beforeToolCall fail-closed | Low | High | Any buggy hook would block ALL tool execution |
+| M14: Extension model credentials | Low | High | Would break Ollama/LM Studio local model integrations |
+| M19: Block sensitive dotfiles | Low | High | Blocking ~/.ssh breaks git SSH; blocking ~/.config breaks dev tools |
 
 ---
 
@@ -225,3 +277,8 @@ The following areas demonstrate strong security practices:
 20. Move CSP from meta tags to HTTP response headers with violation reporting.
 21. Implement TLS certificate pinning for AI provider endpoints.
 22. Bind mobile bridge sessions to client metadata (device ID, IP) to prevent session hijacking.
+23. Fix SSRF TOCTOU: use a custom DNS resolver or connect-time IP validation to prevent DNS rebinding.
+24. Handle IPv6-mapped IPv4 addresses (e.g., `::ffff:127.0.0.1`) in SSRF blocklist.
+25. Apply rate limiting to `window.open()` and `will-navigate` external link paths.
+26. Add `fs.realpath()` symlink resolution to social session path traversal checks.
+27. Protect home directory and Stella home directory in deferred-delete `isRootPath` check.
