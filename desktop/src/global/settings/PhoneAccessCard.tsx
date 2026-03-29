@@ -54,6 +54,16 @@ export function PhoneAccessCard() {
     api.mobile_access.revokePairedMobileDevice,
   );
 
+  const phoneAccessState = useQuery(
+    api.mobile_access.getPhoneAccessState,
+    hasConnectedAccount && desktopDeviceId ? { desktopDeviceId } : "skip",
+  ) as
+    | {
+        activePairing: PairingSessionState;
+        pairedDevices: PairedPhoneRecord[];
+      }
+    | undefined;
+
   useEffect(() => {
     if (!hasConnectedAccount) {
       setDesktopDeviceId(null);
@@ -108,16 +118,6 @@ export function PhoneAccessCard() {
       window.clearInterval(intervalId);
     };
   }, [hasActivePairing]);
-
-  const phoneAccessState = useQuery(
-    api.mobile_access.getPhoneAccessState,
-    hasConnectedAccount && desktopDeviceId ? { desktopDeviceId } : "skip",
-  ) as
-    | {
-        activePairing: PairingSessionState;
-        pairedDevices: PairedPhoneRecord[];
-      }
-    | undefined;
 
   const activePairing = useMemo(() => {
     const pairing = phoneAccessState?.activePairing ?? null;
