@@ -1,3 +1,11 @@
+/**
+ * Renderer-side type declarations for `window.electronAPI`.
+ *
+ * Channel name constants live in `@/shared/contracts/ipc-channels.ts`.
+ * When adding a new IPC channel, add the constant there first, then wire
+ * the preload bridge (electron/preload.ts) and handler (electron/ipc/*.ts)
+ * using that constant — never raw strings.
+ */
 import type { UiState, WindowMode } from "./ui";
 import type { Theme } from "@/shared/theme/themes/types";
 import type { AgentStreamEvent } from "@/app/chat/streaming/streaming-types";
