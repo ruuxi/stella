@@ -46,7 +46,6 @@ desktop/src/
 |   |   |-- GenerativeCanvas.tsx   # Morphdom-based live canvas
 |   |   |-- ActivityFeed.tsx       # Activity feed display
 |   |   |-- SuggestionsPanel.tsx   # Suggestions widget
-|   |   |-- DashboardCard.tsx      # Card component
 |   |   |-- MusicPlayer.tsx        # Music playback UI
 |   |   |-- hooks/                 # use-welcome-suggestions, etc.
 |   |   `-- *.css

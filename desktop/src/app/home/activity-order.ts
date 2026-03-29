@@ -1,13 +1,13 @@
-import type { ActivityItem } from "./schedule-item";
+import type { ActivityItem } from "./schedule-item"
 
 type ActivityOrderKey = {
-  distanceMs: number;
-  sourcePriority: 0 | 1;
-  sourceTimeMs: number;
-};
+  distanceMs: number
+  sourcePriority: 0 | 1
+  sourceTimeMs: number
+}
 
 const isFiniteTime = (value: number | undefined): value is number =>
-  typeof value === "number" && Number.isFinite(value);
+  typeof value === "number" && Number.isFinite(value)
 
 function getActivityOrderKey(
   item: ActivityItem,
@@ -62,37 +62,37 @@ export function compareActivityItems(
   b: ActivityItem,
   now = Date.now(),
 ): number {
-  const aKey = getActivityOrderKey(a, now);
-  const bKey = getActivityOrderKey(b, now);
+  const aKey = getActivityOrderKey(a, now)
+  const bKey = getActivityOrderKey(b, now)
 
   if (!aKey && !bKey) {
-    return a.name.localeCompare(b.name);
+    return a.name.localeCompare(b.name)
   }
   if (!aKey) {
-    return 1;
+    return 1
   }
   if (!bKey) {
-    return -1;
+    return -1
   }
 
   if (aKey.distanceMs !== bKey.distanceMs) {
-    return aKey.distanceMs - bKey.distanceMs;
+    return aKey.distanceMs - bKey.distanceMs
   }
   if (aKey.sourcePriority !== bKey.sourcePriority) {
-    return aKey.sourcePriority - bKey.sourcePriority;
+    return aKey.sourcePriority - bKey.sourcePriority
   }
   if (aKey.sourcePriority === 0 && aKey.sourceTimeMs !== bKey.sourceTimeMs) {
-    return aKey.sourceTimeMs - bKey.sourceTimeMs;
+    return aKey.sourceTimeMs - bKey.sourceTimeMs
   }
   if (aKey.sourcePriority === 1 && aKey.sourceTimeMs !== bKey.sourceTimeMs) {
-    return bKey.sourceTimeMs - aKey.sourceTimeMs;
+    return bKey.sourceTimeMs - aKey.sourceTimeMs
   }
-  return a.name.localeCompare(b.name);
+  return a.name.localeCompare(b.name)
 }
 
 export function sortActivityItems(
   items: ActivityItem[],
   now = Date.now(),
 ): ActivityItem[] {
-  return items.toSorted((a, b) => compareActivityItems(a, b, now));
+  return items.toSorted((a, b) => compareActivityItems(a, b, now))
 }
