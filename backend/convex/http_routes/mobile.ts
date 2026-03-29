@@ -310,9 +310,9 @@ const normalizeBaseUrls = (value: unknown) => {
 const requirePairedMobileCredentials = async (
   ctx: ActionCtx,
   request: Request,
-  args: { ownerId: string; desktopDeviceId: string; origin: string },
+  args: { ownerId: string; desktopDeviceId: string; origin: string | null },
 ): Promise<
-  | { mobileDeviceId: string; response?: undefined }
+  | { mobileDeviceId: string }
   | { response: Response }
 > => {
   const mobileDeviceId = normalizeDeviceId(
