@@ -5,6 +5,7 @@
   "main": "dist-electron/electron/main.js",
   "scripts": {
     "dev": "vite",
+    "reset": "node scripts/reset-dev.mjs",
     "build": "bunx --package typescript@5.9.3 tsc --build && vite build",
     "format": "bunx prettier@3.6.2 --write .",
     "format:check": "bunx prettier@3.6.2 --check .",

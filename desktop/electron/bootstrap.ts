@@ -1,3 +1,4 @@
+import { app } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
@@ -11,6 +12,7 @@ import {
   initializeBootstrapSingleInstance,
   registerBootstrapLifecycle,
 } from "./bootstrap/lifecycle.js";
+import { resolveRuntimeHomePath } from "../packages/runtime-kernel/home/stella-home.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,8 +33,22 @@ const installDevBrokenPipeGuards = () => {
   process.stderr.on("error", swallowBrokenPipe);
 };
 
+const configureDevUserDataPath = () => {
+  if (!isDev) {
+    return;
+  }
+
+  const devUserDataPath = path.join(
+    resolveRuntimeHomePath(app),
+    "electron-user-data",
+  );
+  app.setPath("userData", devUserDataPath);
+  app.setPath("sessionData", path.join(devUserDataPath, "session-data"));
+};
+
 export const bootstrapMainProcess = () => {
   installDevBrokenPipeGuards();
+  configureDevUserDataPath();
 
   const context = createBootstrapContext({
     authProtocol: AUTH_PROTOCOL,
