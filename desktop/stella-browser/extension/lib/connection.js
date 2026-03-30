@@ -1,13 +1,14 @@
 /**
- * WebSocket connection manager with reconnection and keepalive.
- * Handles MV3 service worker lifecycle (termination after ~30s idle).
+ * Native messaging connection to the Stella bridge (Chrome native host → localhost TCP).
+ * Reconnects after disconnects and keeps the service worker warm via alarms.
  */
 
-export const DEFAULT_PORT = 39040;
+import { STELLA_NATIVE_HOST_NAME } from './native-host-name.js';
+
 const RECONNECT_DELAY = 2000;
 const MAX_RECONNECT_DELAY = 30000;
 
-let ws = null;
+let nativePort = null;
 let reconnectTimer = null;
 let reconnectDelay = RECONNECT_DELAY;
 let commandHandler = null;
@@ -30,128 +31,95 @@ export function onStatus(callback) {
 }
 
 /**
- * Connect to the daemon's WebSocket server.
- * @param {number} [port] - Port number (default: 39040)
- * @param {string} [token] - Auth token for handshake
+ * Connect via Chrome native messaging to the Stella native host (no port/token setup).
  */
-export async function connect(port, token) {
-  // Don't reconnect if already connected
+export function connect() {
   if (isConnected()) return;
-
-  const config = await chrome.storage.local.get(['port', 'token']);
-  const usePort = port ?? config.port ?? DEFAULT_PORT;
-  const useToken = token ?? config.token ?? '';
-
-  // Save config for reconnection after service worker restart
-  await chrome.storage.local.set({ port: usePort, token: useToken });
-
-  doConnect(usePort, useToken);
+  doConnect();
 }
 
 /**
- * Disconnect from the daemon.
+ * Disconnect from the bridge.
  */
 export function disconnect() {
   clearTimeout(reconnectTimer);
   reconnectTimer = null;
-  if (ws) {
-    ws.close(1000, 'user disconnect');
-    ws = null;
+  if (nativePort) {
+    try {
+      nativePort.disconnect();
+    } catch {
+      // ignore
+    }
+    nativePort = null;
   }
   setStatus(false);
 }
 
 /**
- * Check if connected.
  * @returns {boolean}
  */
 export function isConnected() {
-  return ws !== null && ws.readyState === WebSocket.OPEN;
+  return nativePort !== null;
 }
 
 /**
- * Send a response back to the daemon.
  * @param {object} message
  */
 export function send(message) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(message));
+  if (nativePort) {
+    try {
+      nativePort.postMessage(message);
+    } catch {
+      // ignore
+    }
   }
 }
 
-function doConnect(port, token) {
-  if (ws) {
-    ws.close();
-    ws = null;
+function doConnect() {
+  if (nativePort) {
+    try {
+      nativePort.disconnect();
+    } catch {
+      // ignore
+    }
+    nativePort = null;
   }
 
-  let socket;
+  let port;
   try {
-    socket = new WebSocket(`ws://127.0.0.1:${port}`);
+    port = chrome.runtime.connectNative(STELLA_NATIVE_HOST_NAME);
   } catch (err) {
-    console.error('[connection] WebSocket creation failed:', err);
-    scheduleReconnect(port, token);
+    console.error('[connection] connectNative failed:', err);
+    scheduleReconnect();
     return;
   }
 
-  ws = socket;
+  nativePort = port;
 
-  // Helper to send on THIS specific socket (not module-level ws which may be clobbered)
-  function sendOn(message) {
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify(message));
-    }
-  }
-
-  socket.onopen = () => {
-    console.log('[connection] Connected to daemon on port', port);
-    reconnectDelay = RECONNECT_DELAY; // Reset backoff
-
-    // Send handshake
-    sendOn({
-      type: 'hello',
-      version: '1.0.0',
-      token: token || '',
-    });
-  };
-
-  socket.onmessage = async (event) => {
-    let msg;
-    try {
-      msg = JSON.parse(event.data);
-    } catch {
-      console.error('[connection] Invalid JSON:', event.data);
-      return;
-    }
-
+  port.onMessage.addListener(async (msg) => {
     if (msg.type === 'welcome') {
       console.log('[connection] Authenticated, session:', msg.session);
+      reconnectDelay = RECONNECT_DELAY;
       setStatus(true);
-      // Store session token for reconnection
-      if (msg.sessionToken) {
-        await chrome.storage.local.set({ token: msg.sessionToken });
-      }
       return;
     }
 
     if (msg.type === 'pong') {
-      return; // Keepalive response, ignore
+      return;
     }
 
     if (msg.type === 'auth_error') {
       console.error('[connection] Auth failed:', msg.error);
       setStatus(false);
-      // Don't reconnect on auth failure
       return;
     }
 
-    // It's a command from the daemon
     if (msg.type === 'command' && commandHandler) {
       try {
         const response = await commandHandler(msg);
-        sendOn(response);
+        send(response);
       } catch (err) {
-        sendOn({
+        send({
           type: 'response',
           id: msg.id,
           success: false,
@@ -159,40 +127,38 @@ function doConnect(port, token) {
         });
       }
     }
-  };
+  });
 
-  socket.onclose = (event) => {
-    console.log('[connection] Disconnected:', event.code, event.reason);
-    // Only clear module-level ws if this is still the active connection
-    // (prevents stale onclose handlers from clobbering a newer connection)
-    if (ws === socket) {
-      ws = null;
-      setStatus(false);
-      if (event.code !== 1000) {
-        // Not a clean close, try to reconnect
-        scheduleReconnect(port, token);
-      }
+  port.onDisconnect.addListener(() => {
+    const err = chrome.runtime.lastError;
+    if (err?.message) {
+      console.error('[connection] Native port disconnected:', err.message);
     }
-  };
+    const wasActive = nativePort === port;
+    nativePort = null;
+    if (wasActive) {
+      setStatus(false);
+      scheduleReconnect();
+    }
+  });
 
-  socket.onerror = (err) => {
-    console.error('[connection] WebSocket error:', err);
-  };
+  port.postMessage({
+    type: 'hello',
+    version: '1.0.0',
+    token: '',
+  });
 }
 
-function scheduleReconnect(port, token) {
+function scheduleReconnect() {
   clearTimeout(reconnectTimer);
   reconnectTimer = setTimeout(() => {
-    console.log('[connection] Reconnecting...');
-    doConnect(port, token);
+    console.log('[connection] Reconnecting native messaging…');
+    reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_RECONNECT_DELAY);
+    doConnect();
   }, reconnectDelay);
-
-  // Exponential backoff
-  reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_RECONNECT_DELAY);
 }
 
 function setStatus(connected) {
-  // Clear any badge - the popup shows connection status
   chrome.action.setBadgeText({ text: '' });
 
   if (statusCallback) {
@@ -200,19 +166,15 @@ function setStatus(connected) {
   }
 }
 
-// --- Keepalive ---
+chrome.alarms.create('keepalive', { periodInMinutes: 24 / 60 });
 
-// Set up alarm to keep service worker alive and maintain WebSocket connection
-chrome.alarms.create('keepalive', { periodInMinutes: 24 / 60 }); // Every 24 seconds
-
-chrome.alarms.onAlarm.addListener(async (alarm) => {
+chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
     if (isConnected()) {
       send({ type: 'ping' });
-    } else {
-      // Try to reconnect — always use DEFAULT_PORT, not stale stored value
-      const config = await chrome.storage.local.get(['token']);
-      doConnect(DEFAULT_PORT, config.token || '');
+    } else if (!reconnectTimer) {
+      // Only attempt reconnect if no backoff timer is already pending.
+      doConnect();
     }
   }
 });

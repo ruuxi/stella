@@ -1,25 +1,21 @@
-//! ExtensionBridge — WebSocket server that bridges the daemon to a Chrome extension.
-//!
-//! The daemon forwards commands to the extension via WebSocket, and the extension
-//! executes them using Chrome extension APIs (chrome.debugger, chrome.tabs, etc.).
+//! ExtensionBridge — localhost TCP server that bridges the daemon to the Chrome
+//! extension via the native messaging host (stdio ↔ this socket).
 
-use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::Write as IoWrite;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::net::TcpListener;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot, Mutex, Notify};
-use tokio_tungstenite::accept_hdr_async;
-use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
-use tokio_tungstenite::tungstenite::Message;
 use uuid::Uuid;
 
-/// Default port for the extension bridge WebSocket server.
+/// Default port for the extension bridge TCP server.
 const DEFAULT_EXT_PORT: u16 = 39040;
 
 /// Timeout for individual commands sent to the extension (ms).
@@ -90,8 +86,8 @@ impl ExtensionBridge {
         }
     }
 
-    /// Start the WebSocket server. Returns a channel that fires when the extension
-    /// has been disconnected too long (for daemon auto-shutdown).
+    /// Start the TCP server (native host connects from localhost). Returns a channel
+    /// that fires when the extension has been disconnected too long (for daemon auto-shutdown).
     pub async fn start(&mut self, session: &str) -> Result<mpsc::Receiver<()>, String> {
         let socket_dir = get_socket_dir();
         if !socket_dir.exists() {
@@ -148,51 +144,34 @@ impl ExtensionBridge {
         let token = self.token.clone();
         let session_str = session.to_string();
 
-        // Spawn the WebSocket server accept loop
+        // Spawn the TCP accept loop (native messaging host connects to 127.0.0.1:port).
         tokio::spawn(async move {
             loop {
                 tokio::select! {
                     accept = listener.accept() => {
                         match accept {
                             Ok((stream, addr)) => {
-                                let origin_ok = Arc::new(std::sync::atomic::AtomicBool::new(true));
-                                let origin_ok_clone = origin_ok.clone();
-
-                                let ws = accept_hdr_async(stream, |req: &Request, resp: Response| {
-                                    // Verify origin — allow chrome-extension:// or no origin
-                                    if let Some(origin) = req.headers().get("origin") {
-                                        if let Ok(origin_str) = origin.to_str() {
-                                            if !origin_str.starts_with("chrome-extension://") {
-                                                origin_ok_clone.store(false, std::sync::atomic::Ordering::SeqCst);
-                                            }
-                                        }
-                                    }
-                                    Ok(resp)
-                                }).await;
-
-                                if !origin_ok.load(std::sync::atomic::Ordering::SeqCst) {
-                                    let _ = writeln!(std::io::stderr(), "Extension bridge: rejected connection from non-extension origin ({})", addr);
+                                if !is_local_socket(addr) {
+                                    let _ = writeln!(std::io::stderr(), "Extension bridge: rejected non-local connection ({})", addr);
                                     continue;
                                 }
 
-                                match ws {
-                                    Ok(ws_stream) => {
-                                        let inner = inner.clone();
-                                        let notify = connected_notify.clone();
-                                        let token = token.clone();
-                                        let session = session_str.clone();
-                                        let disconnect_tx = disconnect_shutdown_tx.clone();
+                                let inner = inner.clone();
+                                let notify = connected_notify.clone();
+                                let token = token.clone();
+                                let session = session_str.clone();
+                                let disconnect_tx = disconnect_shutdown_tx.clone();
 
-                                        tokio::spawn(async move {
-                                            handle_extension_connection(
-                                                ws_stream, inner, notify, token, session, disconnect_tx,
-                                            ).await;
-                                        });
-                                    }
-                                    Err(e) => {
-                                        let _ = writeln!(std::io::stderr(), "Extension bridge WebSocket error: {}", e);
-                                    }
-                                }
+                                tokio::spawn(async move {
+                                    handle_extension_connection(
+                                        stream,
+                                        inner,
+                                        notify,
+                                        token,
+                                        session,
+                                        disconnect_tx,
+                                    ).await;
+                                });
                             }
                             Err(e) => {
                                 let _ = writeln!(std::io::stderr(), "Extension bridge accept error: {}", e);
@@ -425,21 +404,16 @@ impl ExtensionBridge {
     }
 }
 
-/// Handle a single WebSocket connection from the Chrome extension.
+/// Handle a single TCP connection from the native messaging host (line-delimited JSON).
 async fn handle_extension_connection(
-    ws_stream: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+    stream: TcpStream,
     inner: Arc<Mutex<BridgeInner>>,
     connected_notify: Arc<Notify>,
     expected_token: String,
     session: String,
     disconnect_shutdown_tx: mpsc::Sender<()>,
 ) {
-    let (mut ws_tx, mut ws_rx) = ws_stream.split();
-
     // If there's an existing connection, drop it and let the new one take over.
-    // This handles the case where the extension's service worker restarted and
-    // the old WebSocket is half-open (daemon thinks it's connected but the
-    // extension side is gone).
     {
         let mut guard = inner.lock().await;
         if guard.connected && guard.cmd_tx.is_some() {
@@ -451,37 +425,52 @@ async fn handle_extension_connection(
     let mut authenticated = false;
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<String>(256);
 
-    // Spawn writer task
+    let (read_half, mut write_half) = stream.into_split();
+    let mut reader = BufReader::new(read_half);
+
+    // Spawn writer task — one JSON object per line
     let write_handle = tokio::spawn(async move {
         while let Some(msg) = cmd_rx.recv().await {
-            if ws_tx.send(Message::Text(msg.into())).await.is_err() {
+            let mut line = msg;
+            line.push('\n');
+            if write_half.write_all(line.as_bytes()).await.is_err() {
+                break;
+            }
+            if write_half.flush().await.is_err() {
                 break;
             }
         }
-        let _ = ws_tx.close().await;
+        let _ = write_half.shutdown().await;
     });
 
-    // Auth timeout
     let auth_deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let mut line = String::new();
 
     loop {
+        line.clear();
+        let read_fut = reader.read_line(&mut line);
         let msg = tokio::select! {
-            msg = ws_rx.next() => msg,
+            r = read_fut => r,
             _ = tokio::time::sleep_until(auth_deadline), if !authenticated => {
-                // Auth timeout
                 break;
             }
         };
 
-        let msg = match msg {
-            Some(Ok(Message::Text(text))) => text,
-            Some(Ok(Message::Close(_))) | None => break,
-            Some(Ok(Message::Ping(_))) => continue,
-            Some(Err(_)) => break,
-            _ => continue,
+        let n = match msg {
+            Ok(n) => n,
+            Err(_) => break,
         };
 
-        let parsed: Value = match serde_json::from_str(&msg) {
+        if n == 0 {
+            break;
+        }
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let parsed: Value = match serde_json::from_str(trimmed) {
             Ok(v) => v,
             Err(_) => continue,
         };
@@ -491,11 +480,12 @@ async fn handle_extension_connection(
         match msg_type {
             "hello" => {
                 let token = parsed.get("token").and_then(|v| v.as_str()).unwrap_or("");
+                let token_matches = token == expected_token;
 
-                if token == expected_token || expected_token.is_empty() {
+                // Native host injects token from disk; empty expected_token disables auth (dev only).
+                if token_matches || expected_token.is_empty() {
                     authenticated = true;
 
-                    // Register this connection
                     {
                         let mut guard = inner.lock().await;
                         guard.connected = true;
@@ -503,14 +493,17 @@ async fn handle_extension_connection(
                     }
                     connected_notify.notify_waiters();
 
-                    // Send welcome
                     let welcome = json!({
                         "type": "welcome",
                         "session": session,
+                        "sessionToken": expected_token,
                     });
                     let _ = cmd_tx.send(serde_json::to_string(&welcome).unwrap()).await;
                 } else {
-                    let err = json!({ "type": "auth_error", "error": "Invalid token" });
+                    let err = json!({
+                        "type": "auth_error",
+                        "error": "Invalid token",
+                    });
                     let _ = cmd_tx.send(serde_json::to_string(&err).unwrap()).await;
                     break;
                 }
@@ -561,14 +554,12 @@ async fn handle_extension_connection(
         }
     }
 
-    // Connection closed — clean up
     if authenticated {
         let mut guard = inner.lock().await;
         guard.connected = false;
         guard.cmd_tx = None;
         guard.last_health_check = Instant::now() - Duration::from_secs(60);
 
-        // Reject all pending commands
         for (_, pending) in guard.pending.drain() {
             let _ = pending.tx.send(json!({
                 "success": false,
@@ -576,7 +567,6 @@ async fn handle_extension_connection(
             }));
         }
 
-        // Start auto-shutdown timer
         let inner_clone = inner.clone();
         let disconnect_tx = disconnect_shutdown_tx.clone();
         tokio::spawn(async move {
@@ -589,6 +579,13 @@ async fn handle_extension_connection(
     }
 
     write_handle.abort();
+}
+
+fn is_local_socket(addr: SocketAddr) -> bool {
+    match addr.ip() {
+        std::net::IpAddr::V4(v4) => v4.is_loopback(),
+        std::net::IpAddr::V6(v6) => v6.is_loopback(),
+    }
 }
 
 fn get_socket_dir() -> PathBuf {
