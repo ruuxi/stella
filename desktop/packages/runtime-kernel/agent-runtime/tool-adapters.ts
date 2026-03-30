@@ -11,6 +11,10 @@ import type { RuntimeStore } from "../storage/runtime-store.js";
 import { TOOL_IDS } from "../../../src/shared/contracts/agent-runtime.js";
 import { AnyToolArgsSchema, textFromUnknown } from "./shared.js";
 import { dispatchLocalTool } from "../tools/local-tool-dispatch.js";
+import {
+  getMcpToolDescription,
+  getMcpToolSchema,
+} from "../mcp/mcp-tool-metadata-registry.js";
 
 const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
@@ -83,8 +87,12 @@ export const createPiTools = (opts: {
   const buildTool = (toolName: string): AgentTool => ({
     name: toolName,
     label: toolName,
-    description: TOOL_DESCRIPTIONS[toolName] ?? `${toolName} tool`,
+    description:
+      TOOL_DESCRIPTIONS[toolName] ??
+      getMcpToolDescription(toolName) ??
+      `${toolName} tool`,
     parameters: (TOOL_JSON_SCHEMAS[toolName] ??
+      getMcpToolSchema(toolName) ??
       AnyToolArgsSchema) as typeof AnyToolArgsSchema,
     execute: async (toolCallId, params, signal) => {
       const args = (params as Record<string, unknown>) ?? {};

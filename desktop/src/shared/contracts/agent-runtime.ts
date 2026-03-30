@@ -5,6 +5,7 @@ export const AGENT_IDS = {
   SELF_MOD: "self_mod",
   EXPLORE: "explore",
   APP: "app",
+  GOOGLE_WORKSPACE: "google_workspace",
   BROWSER: "browser",
   OFFLINE_RESPONDER: "offline_responder",
   AUTO: "auto",
@@ -148,6 +149,25 @@ const BUILTIN_AGENT_DEFINITIONS = [
     localCliWorkingDirectory: null,
     agentEnginePreference: null,
     modelSettings: null,
+  },
+  {
+    id: AGENT_IDS.GOOGLE_WORKSPACE,
+    name: "Google Workspace",
+    description:
+      "Google Workspace: Gmail, Calendar, Drive, and Docs via dedicated integration tools.",
+    activityLabel: "Workspace",
+    bundledCore: true,
+    taskSubagent: true,
+    usesLocalCliRuntime: false,
+    promptRole: "subagent",
+    includesStellaDocumentation: false,
+    controlsSelfModHmr: false,
+    localCliWorkingDirectory: null,
+    agentEnginePreference: null,
+    modelSettings: {
+      description: "Google Workspace specialist (Gmail, Calendar, Drive, Docs)",
+      order: 5,
+    },
   },
   {
     id: AGENT_IDS.BROWSER,

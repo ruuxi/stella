@@ -256,6 +256,9 @@ export const METHOD_NAMES = {
   INTERNAL_CAPABILITY_STATE_GET: "internal.capabilityState.get",
   INTERNAL_CAPABILITY_STATE_SET: "internal.capabilityState.set",
   INTERNAL_CAPABILITY_STATE_APPEND_EVENT: "internal.capabilityState.appendEvent",
+  INTERNAL_WORKER_GOOGLE_WORKSPACE_AUTH_STATUS: "internal.worker.googleWorkspace.authStatus",
+  INTERNAL_WORKER_GOOGLE_WORKSPACE_CONNECT: "internal.worker.googleWorkspace.connect",
+  INTERNAL_WORKER_GOOGLE_WORKSPACE_DISCONNECT: "internal.worker.googleWorkspace.disconnect",
 } as const;
 
 export const NOTIFICATION_NAMES = {
@@ -272,6 +275,7 @@ export const NOTIFICATION_NAMES = {
   OVERLAY_AUTO_PANEL_EVENT: "overlay.autoPanel.event",
   CAPABILITY_CHANGED: "capability.changed",
   APPROVAL_REQUESTED: "approval.requested",
+  GOOGLE_WORKSPACE_AUTH_REQUIRED: "googleWorkspace.authRequired",
 } as const;
 
 export type RuntimeInitializeParams = {
