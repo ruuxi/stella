@@ -749,4 +749,26 @@ contextBridge.exposeInMainWorld("electronAPI", {
   socialSessions: {
     getStatus: () => ipcRenderer.invoke("socialSessions:getStatus"),
   },
+
+  googleWorkspace: {
+    getAuthStatus: () =>
+      ipcRenderer.invoke("googleWorkspace:authStatus") as Promise<{
+        connected: boolean;
+        unavailable?: boolean;
+        email?: string;
+        name?: string;
+      }>,
+    connect: () =>
+      ipcRenderer.invoke("googleWorkspace:connect") as Promise<{
+        connected: boolean;
+        unavailable?: boolean;
+        email?: string;
+        name?: string;
+      }>,
+    disconnect: () =>
+      ipcRenderer.invoke("googleWorkspace:disconnect") as Promise<{
+        ok: boolean;
+      }>,
+    onAuthRequired: onIpcSignal("googleWorkspace:authRequired"),
+  },
 });
