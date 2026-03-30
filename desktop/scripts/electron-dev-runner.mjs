@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,6 +7,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(scriptDir, '..');
 const viteBinPath = resolve(desktopDir, 'node_modules', 'vite', 'bin', 'vite.js');
 const viteDevUrlPath = resolve(desktopDir, '.vite-dev-url');
+const pidFilePath = resolve(desktopDir, '.electron-dev-runner.pid');
 
 if (!existsSync(viteBinPath)) {
   console.error(
@@ -20,6 +21,36 @@ try {
 } catch {
   // Best-effort stale dev URL cleanup before Vite rewrites it for this run.
 }
+
+const writePidFile = () => {
+  writeFileSync(
+    pidFilePath,
+    JSON.stringify(
+      {
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+};
+
+const removeOwnPidFile = () => {
+  try {
+    const raw = readFileSync(pidFilePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (parsed?.pid !== process.pid) {
+      return;
+    }
+    rmSync(pidFilePath, { force: true });
+  } catch {
+    // Ignore stale or missing pid files during shutdown.
+  }
+};
+
+writePidFile();
 
 const processSpecs = [
   {
@@ -121,6 +152,7 @@ async function shutdownAll(trigger) {
     await waitForChildExit(child);
   }));
 
+  removeOwnPidFile();
   process.exit(exitCode);
 }
 
@@ -179,6 +211,10 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     void shutdownAll(`received ${signal}`);
   });
 }
+
+process.on('exit', () => {
+  removeOwnPidFile();
+});
 
 for (const spec of processSpecs) {
   spawnProcess(spec);
