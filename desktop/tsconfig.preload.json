@@ -13,6 +13,6 @@
   },
   "include": [
     "electron/preload.ts",
-    "src/shared/contracts/boundary.ts"
+    "src/shared/contracts/**/*"
   ]
 }
