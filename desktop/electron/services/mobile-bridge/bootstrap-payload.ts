@@ -21,7 +21,7 @@ const MOBILE_BRIDGE_LOCAL_STORAGE_KEYS = new Set([
   "stella:orb-last-seen-message",
 ]);
 
-const MOBILE_BRIDGE_LOCAL_STORAGE_PREFIXES = ["better-auth"];
+const MOBILE_BRIDGE_LOCAL_STORAGE_PREFIXES: string[] = [];
 
 const isAllowedMobileBridgeLocalStorageKey = (key: string) =>
   MOBILE_BRIDGE_LOCAL_STORAGE_KEYS.has(key)
