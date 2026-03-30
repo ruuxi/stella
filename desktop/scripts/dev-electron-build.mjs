@@ -107,7 +107,8 @@ const createBuildOptions = async () => {
     },
     {
       absWorkingDir: projectDir,
-      bundle: false,
+      bundle: true,
+      external: ["electron"],
       entryPoints: [preloadEntryPoint],
       format: "cjs",
       logLevel: "info",
