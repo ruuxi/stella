@@ -393,7 +393,7 @@ const TaskCreateJsonSchema = {
       type: "string",
       enum: TASK_SUBAGENT_ENUM,
       description:
-        "Which agent executes the task: 'general' (external code/files/shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), 'app' (browser/desktop app automation), 'google_workspace' (Gmail, Calendar, Drive, Docs). Default: general",
+        "Which agent executes the task: 'general' (external code/files/shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), 'computer' (browser/desktop app automation), 'google_workspace' (Gmail, Calendar, Drive, Docs). Default: general",
     },
   },
   required: ["description", "prompt"],
@@ -629,7 +629,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Usage:\n" +
     "- description: short summary shown in the task list.\n" +
     "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, relevant file paths, and expected output.\n" +
-    "- subagent_type: 'general' (external code, files, shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), 'app' (browser and desktop app automation), or 'google_workspace' (Gmail, Calendar, Drive, Docs).\n" +
+    "- subagent_type: 'general' (external code, files, shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), 'computer' (browser and desktop app automation), or 'google_workspace' (Gmail, Calendar, Drive, Docs).\n" +
     "- Starts background work and immediately returns a structured status object with a durable thread_id.\n" +
     "- After calling it, do not create another task for the same work.\n" +
     "- Wait for the completion/failure event; in the meantime you may gently reply to the user or call NoResponse.\n" +

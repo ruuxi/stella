@@ -12,7 +12,7 @@ import { scrubProviderTerms, scrubValue } from "../lib/provider_redaction";
 import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
 import { streamTextWithFailover } from "./model_execution";
 import { PREFERRED_BROWSER_KEY } from "../data/preferences";
-import { BROWSER_AGENT_SAFARI_DENIED_REASON } from "../lib/agent_constants";
+import { COMPUTER_AGENT_SAFARI_DENIED_REASON } from "../lib/agent_constants";
 import {
   AGENT_INVOKE_SYSTEM_INSTRUCTIONS,
   buildAgentInvokeUserPrompt,
@@ -65,7 +65,7 @@ export const invoke = internalAction({
       ownerId = convo.ownerId;
     }
 
-    if (args.agentType === "browser" && ownerId) {
+    if (args.agentType === "computer" && ownerId) {
       const preferredBrowser = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
         ownerId,
         key: PREFERRED_BROWSER_KEY,
@@ -73,8 +73,8 @@ export const invoke = internalAction({
       if (preferredBrowser?.trim().toLowerCase() === "safari") {
         return {
           ok: false,
-          reason: BROWSER_AGENT_SAFARI_DENIED_REASON,
-          rawText: BROWSER_AGENT_SAFARI_DENIED_REASON,
+          reason: COMPUTER_AGENT_SAFARI_DENIED_REASON,
+          rawText: COMPUTER_AGENT_SAFARI_DENIED_REASON,
         };
       }
     }

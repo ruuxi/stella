@@ -265,7 +265,7 @@ const resolveShellLaunch = (
   return { shell: bashPath, args: ["-lc", command] };
 };
 
-export const normalizeAppAgentShellCommand = (command: string) =>
+export const normalizeComputerAgentShellCommand = (command: string) =>
   command
     .replace(
       /(?:^|&&\s*|\|\|\s*|;\s*)STELLA_BROWSER_SESSION=[^\s]+(?=\s+stella-browser\b)/g,
@@ -423,11 +423,11 @@ export const handleBash = async (
   const runInBackground = Boolean(args.run_in_background ?? false);
   const envOverrides: Record<string, string> = {};
 
-  if (context?.agentType === "app") {
-    // App-agent browser automation uses one shared Stella browser bridge.
+  if (context?.agentType === "computer") {
+    // Computer-agent browser automation uses one shared Stella browser bridge.
     // Each agent run gets its own browser tab, but the model must not fork
     // ad-hoc sessions that bypass the app-owned bridge lifecycle.
-    command = normalizeAppAgentShellCommand(command);
+    command = normalizeComputerAgentShellCommand(command);
     Object.assign(envOverrides, getStellaBrowserBridgeEnv());
   }
 
