@@ -1,11 +1,11 @@
 /**
  * Stella Browser Bridge - Background Service Worker
  *
- * Connects to the stella-browser daemon via WebSocket and routes
+ * Connects to the stella-browser daemon via native messaging and routes
  * commands to Chrome extension APIs.
  */
 
-import { connect, disconnect, isConnected, onCommand, onStatus, DEFAULT_PORT } from './lib/connection.js';
+import { connect, disconnect, isConnected, onCommand, onStatus } from './lib/connection.js';
 import { handleTabNew, handleTabList, handleTabSwitch, handleTabClose, closeAgentWindow, cleanupStaleGroups } from './commands/tabs.js';
 import { handleNavigate, handleBack, handleForward, handleReload, handleUrl, handleTitle } from './commands/navigation.js';
 import {
@@ -249,7 +249,7 @@ async function ensureOffscreen() {
       await chrome.offscreen.createDocument({
         url: 'offscreen.html',
         reasons: ['WORKERS'],
-        justification: 'Keep service worker alive for WebSocket connection',
+        justification: 'Keep service worker alive for the browser bridge',
       });
       console.log('[background] Offscreen keepalive document created');
     }
@@ -269,9 +269,8 @@ syncContentScriptRegistration();
 // Auto-connect on service worker load (this runs on every SW start, including
 // browser startup and extension install/update - no need for separate listeners)
 async function autoConnect() {
-  const config = await chrome.storage.local.get(['token']);
-  console.log('[background] Auto-connecting to port', DEFAULT_PORT);
-  connect(DEFAULT_PORT, config.token || '');
+  console.log('[background] Auto-connecting via native messaging');
+  connect();
 }
 
 autoConnect();
@@ -279,7 +278,7 @@ autoConnect();
 // Listen for messages from popup and content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'connect') {
-    connect(message.port, message.token);
+    connect();
     sendResponse({ ok: true });
   } else if (message.type === 'disconnect') {
     disconnect();

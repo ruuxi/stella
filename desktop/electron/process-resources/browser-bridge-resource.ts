@@ -4,7 +4,11 @@ import { createManagedResource } from "../managed-resource.js";
 
 const TOAST_AFTER_RETRY_ATTEMPTS = 3;
 
-type StellaBrowserBridgeState = "connecting" | "connected" | "reconnecting";
+type StellaBrowserBridgeState =
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "host_registration_failed";
 
 export type StellaBrowserBridgeStatus = {
   state: StellaBrowserBridgeState;
@@ -55,6 +59,21 @@ export const createStellaBrowserBridgeResource = (options: {
         nextRetryMs: delayMs,
         error,
         notifyUser,
+      });
+    },
+    onError: (error) => {
+      const isHostRegistration =
+        error.includes("browser extension connector") ||
+        error.includes("Native messaging host registration") ||
+        error.includes("Browser bridge is not installed");
+      if (!isHostRegistration) {
+        return;
+      }
+      options.onStatus({
+        state: "host_registration_failed",
+        attempt: 0,
+        error,
+        notifyUser: true,
       });
     },
   });

@@ -601,7 +601,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       selectedProfile?: string;
     }) => ipcRenderer.invoke("signals:collectAll", options),
     onBridgeStatus: onIpc<{
-      state: "connecting" | "connected" | "reconnecting";
+      state:
+        | "connecting"
+        | "connected"
+        | "reconnecting"
+        | "host_registration_failed";
       attempt: number;
       nextRetryMs?: number;
       error?: string;
