@@ -1,12 +1,12 @@
-import fs from "fs";
 import path from "path";
 import type { SqliteDatabase } from "./shared.js";
+import { ensurePrivateDirSync } from "../shared/private-fs.js";
 
 const DB_FILE = "stella.sqlite";
 
 export const ensureDatabaseStateRoot = (stellaHome: string) => {
   const stateRoot = path.join(stellaHome, "state");
-  fs.mkdirSync(stateRoot, { recursive: true });
+  ensurePrivateDirSync(stateRoot);
   return stateRoot;
 };
 
