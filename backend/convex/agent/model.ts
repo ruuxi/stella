@@ -189,13 +189,13 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   synthesis: {
-    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
+    model: "openai/gpt-5.4-mini",
     fallbackMode: "cheap",
-    managedGatewayProvider: "fireworks",
+    managedGatewayProvider: "openrouter",
     temperature: 1.0,
     maxOutputTokens: 9500,
     providerOptions: {
-      ...gatewayOptions("fireworks"),
+      ...gatewayOptions("openrouter"),
       openai: {
         reasoningEffort: "low",
         forceReasoning: true,
