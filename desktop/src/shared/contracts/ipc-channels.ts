@@ -203,15 +203,6 @@ export const IPC_STORE_LIST_INSTALLED = "store:listInstalledMods" as const;
 export const IPC_STORE_INSTALL_RELEASE = "store:installRelease" as const;
 export const IPC_STORE_UNINSTALL = "store:uninstallMod" as const;
 
-// ── Games ───────────────────────────────────────────────────────────────────
-
-export const IPC_GAMES_CREATE = "games:create" as const;
-export const IPC_GAMES_BUILD = "games:build" as const;
-export const IPC_GAMES_DEPLOY = "games:deploy" as const;
-export const IPC_GAMES_GET_JOIN_INFO = "games:getJoinInfo" as const;
-export const IPC_GAMES_LIST = "games:list" as const;
-export const IPC_GAMES_ARCHIVE = "games:archive" as const;
-
 // ── Local Chat ──────────────────────────────────────────────────────────────
 
 export const IPC_LOCAL_CHAT_GET_OR_CREATE_ID = "localChat:getOrCreateDefaultConversationId" as const;

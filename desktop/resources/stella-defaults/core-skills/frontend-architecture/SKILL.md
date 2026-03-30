@@ -52,7 +52,7 @@ desktop/src/
 |   |-- workspace/                 # Workspace panels
 |   |   |-- WorkspaceArea.tsx      # View router (home/app/onboarding)
 |   |   |-- WorkspaceErrorBoundary.tsx
-|   |   `-- renderers/             # panel.tsx, dev-project-panel.tsx, hosted-game-panel.tsx
+|   |   `-- renderers/             # panel.tsx, dev-project-panel.tsx, generated-page renderer
 |   `-- social/                    # Social/friends view
 |       |-- SocialView.tsx
 |       `-- *.css
@@ -116,7 +116,6 @@ desktop/src/
 |   `-- voice/                     # Voice runtime, wake word capture
 |
 |-- features/                      # Feature modules
-|   |-- games/                     # Multiplayer game bindings & hooks
 |   |-- media/                     # Media handling services
 |   |-- music/                     # Music playback hooks & services
 |   `-- voice/                     # Voice feature hooks & services
@@ -179,7 +178,7 @@ The app uses `ViewType = 'home' | 'app' | 'chat' | 'store' | 'social'`.
 
 Interactive content rendered in `WorkspaceArea` when the view is `'app'`:
 
-- Panels: renderers in `src/app/workspace/renderers/` (dev-project, hosted-game, generated-page)
+- Panels: renderers in `src/app/workspace/renderers/` (dev-project, generated-page)
 - Generated dashboard pages: `src/app/{panelName}/{PanelName}.tsx` (written by self-mod agent, picked up by HMR)
 - Page registry: `src/app/registry.ts` — agents append entries using the Edit tool (fs-locked across concurrent tasks)
 

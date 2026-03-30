@@ -13,8 +13,6 @@ export default defineConfig([
     'release',
     'workspace',
     'workspace/**',
-    'src/features/games/generated-bindings',
-    'src/features/games/generated-bindings/**',
     '**/dist/**',
     '.eslint-browser.json',
     '.eslint-focus.json',
