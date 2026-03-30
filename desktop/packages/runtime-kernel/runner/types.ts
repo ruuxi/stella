@@ -114,6 +114,7 @@ export type StellaHostRunnerOptions = {
   ) => LocalContextEvent[];
   appendLocalChatEvent?: (args: LocalChatAppendEventArgs) => void;
   getDefaultConversationId?: () => string;
+  onGoogleWorkspaceAuthRequired?: () => void;
 };
 
 export type ChatPayload = {
@@ -197,6 +198,12 @@ export type RunnerState = {
   loadedAgents: ParsedAgentLike[];
   loadedSkills: ParsedSkill[];
   loadedSkillsPromise: Promise<ParsedSkill[]> | null;
+  /** MCP tool names registered for the Google Workspace subagent (empty if MCP server not loaded). */
+  googleWorkspaceMcpToolNames: string[] | null;
+  googleWorkspaceMcpDisconnect: (() => Promise<void>) | null;
+  googleWorkspaceMcpCallTool: ((name: string, args: Record<string, unknown>) => Promise<ToolResult>) | null;
+  /** Cached Google Workspace auth state. null = unknown, true/false = last observed state. */
+  googleWorkspaceMcpAuthenticated: boolean | null;
 };
 
 export type RunnerContext = {
@@ -318,4 +325,17 @@ export type RunnerPublicApi = {
     content: string;
   }) => void;
   convexAction: (ref: unknown, args: unknown) => Promise<unknown>;
+  googleWorkspaceGetAuthStatus: () => Promise<{
+    connected: boolean;
+    unavailable?: boolean;
+    email?: string;
+    name?: string;
+  }>;
+  googleWorkspaceConnect: () => Promise<{
+    connected: boolean;
+    unavailable?: boolean;
+    email?: string;
+    name?: string;
+  }>;
+  googleWorkspaceDisconnect: () => Promise<{ ok: boolean }>;
 };

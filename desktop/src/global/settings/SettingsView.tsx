@@ -35,6 +35,7 @@ import { NativeSelect } from "@/ui/native-select";
 import { BillingTab } from "@/global/settings/BillingTab";
 import { AudioTab } from "@/global/settings/AudioTab";
 import { PhoneAccessCard } from "@/global/settings/PhoneAccessCard";
+import { ConnectionsTab } from "@/global/settings/ConnectionsTab";
 import { hasBillingCheckoutCompletionMarker } from "@/global/settings/lib/billing-checkout";
 import "@/global/settings/settings.css";
 
@@ -48,7 +49,7 @@ const LegalDialog = lazy(() =>
 // Types
 // ---------------------------------------------------------------------------
 
-type SettingsTab = "basic" | "models" | "audio" | "billing";
+type SettingsTab = "basic" | "models" | "audio" | "billing" | "connections";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -90,6 +91,7 @@ const TABS: { key: SettingsTab; label: string }[] = [
   { key: "basic", label: "Basic" },
   { key: "models", label: "Models" },
   { key: "audio", label: "Audio" },
+  { key: "connections", label: "Connections" },
   { key: "billing", label: "Billing" },
 ];
 
@@ -1151,6 +1153,8 @@ export const SettingsDialog = ({
                   <ModelsTab />
                 ) : activeTab === "audio" ? (
                   <AudioTab />
+                ) : activeTab === "connections" ? (
+                  <ConnectionsTab />
                 ) : (
                   <BillingTab />
                 )}
