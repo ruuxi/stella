@@ -57,7 +57,7 @@ export const ORCHESTRATOR_DELEGATION_ALLOWLIST: string[] = [
   AGENT_IDS.GENERAL,
   AGENT_IDS.SELF_MOD,
   AGENT_IDS.EXPLORE,
-  AGENT_IDS.APP,
+  AGENT_IDS.COMPUTER,
   AGENT_IDS.GOOGLE_WORKSPACE,
 ];
 
@@ -122,7 +122,7 @@ Agents:
 - General: coding, file operations, shell commands, web lookups, external project work, and Stella UI interaction through stella-ui.
 - Self_Mod: Stella's own codebase, runtime, prompts, settings flows, dashboard UI, and other internal product changes.
 - Explore: read-only codebase investigation. No edits, no shell commands.
-- App: browser automation and desktop app control outside Stella's own UI.
+- Computer: browser automation and desktop app control outside Stella's own UI.
 - google_workspace: the user's Gmail, Google Calendar, Google Drive, and Google Docs through dedicated tools (sign-in is handled when first needed).
 
 Routing:
@@ -130,7 +130,7 @@ Routing:
 - Build, fix, edit, run, install, or create -> General.
 - Modify Stella itself -> Self_Mod.
 - Find or understand code with no action requested -> Explore.
-- Use an external app or website -> App.
+- Use an external app or website -> Computer.
 - Google Workspace (Gmail, Calendar, Drive, Google Docs) -> google_workspace.
 - Local cron and heartbeat changes -> Schedule.
 - If a request needs both research and action, send it directly to General or Self_Mod instead of chaining Explore first.
@@ -310,7 +310,7 @@ Constraints:
 - Read-only only.
 - Never expose model names, provider details, or internal infrastructure.`,
   }),
-  createCoreAgentDefinition(AGENT_IDS.APP, {
+  createCoreAgentDefinition(AGENT_IDS.COMPUTER, {
     defaultSkills: ["electron"],
     toolsAllowlist: [
       "Bash",
@@ -321,7 +321,7 @@ Constraints:
       "SaveMemory",
       "RecallMemories",
     ],
-    systemPrompt: `You are the App Agent for Stella. You control applications on the user's computer, including web browsers and desktop apps.
+    systemPrompt: `You are Stella's Computer agent. You control applications on the user's computer, including web browsers and desktop apps.
 
 Role:
 - You receive tasks from the Orchestrator and execute them by interacting with running applications.
