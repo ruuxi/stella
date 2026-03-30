@@ -7,6 +7,7 @@ import type {
   RuntimeActiveRun,
   RuntimeAutomationTurnRequest,
   RuntimeAutomationTurnResult,
+  RuntimeSocialSessionStatus,
   SocialSessionServiceSnapshot,
   SocialSessionRuntimeRecord,
 } from "../../runtime-protocol/index.js";
@@ -70,6 +71,27 @@ type SessionRuntime = SocialSessionSyncRecord & {
   hostOwnerId: string;
   hostDeviceId: string;
   isActiveHost: boolean;
+};
+
+type SessionStatus = RuntimeSocialSessionStatus;
+
+const sanitizeWorkspaceSlugLocal = (value: string): string => {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return slug || "stella-session";
+};
+
+const sanitizeWorkspaceFolderNameLocal = (value: string): string => {
+  const cleaned = value
+    .replace(/[<>:"/\\|?*]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/[. ]+$/g, "")
+    .trim()
+    .slice(0, 80);
+  return cleaned || "Stella Session";
 };
 
 export type SocialSessionRunner = {
@@ -141,9 +163,24 @@ type SocialSessionServiceDeps = {
 
 const TICK_INTERVAL_MS = 2_500;
 const MAX_FILE_SYNC_OPS_PER_TICK = 32;
+const CONNECTED_ACCOUNT_REQUIRED_MESSAGE =
+  "Waiting for a connected account before syncing social sessions.";
 
 const toSessionRole = (summary: RemoteSessionSummary): SocialSessionRole =>
   summary.isHost ? "host" : "follower";
+
+const isUnauthorizedError = (error: unknown): boolean => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  return (
+    message.includes('"code":"UNAUTHORIZED"') ||
+    message.includes("Sign in with an account to use this feature.")
+  );
+};
 
 export class SocialSessionService {
   private convexDeploymentUrl: string | null = null;
@@ -159,12 +196,48 @@ export class SocialSessionService {
   private reconcileSessionsPromise: Promise<void> | null = null;
   private lastError: string | null = null;
   private lastSyncAt: number | null = null;
+  private suspendedForUnauthorized = false;
 
   constructor(private readonly deps: SocialSessionServiceDeps) {}
 
+  private clearSuspension() {
+    this.suspendedForUnauthorized = false;
+    this.lastError = null;
+  }
+
+  private handleSyncError(error: unknown): void {
+    if (isUnauthorizedError(error)) {
+      this.suspendUntilAuthChanges();
+      return;
+    }
+    this.lastError = error instanceof Error ? error.message : String(error);
+  }
+
+  private requireClientForRequest(): ConvexClient {
+    const client = this.ensureClient();
+    if (!client) {
+      throw new Error("Sign in to use Stella together.");
+    }
+    return client;
+  }
+
+  private async runClientRequest<T>(handler: (client: ConvexClient) => Promise<T>): Promise<T> {
+    const client = this.requireClientForRequest();
+    try {
+      return await handler(client);
+    } catch (error) {
+      this.handleSyncError(error);
+      throw error;
+    }
+  }
+
   private ensureClient(): ConvexClient | null {
     const deploymentUrl = readConfiguredConvexUrl(this.convexDeploymentUrl);
-    if (!deploymentUrl || !this.authToken?.trim()) {
+    if (
+      this.suspendedForUnauthorized ||
+      !deploymentUrl ||
+      !this.authToken?.trim()
+    ) {
       this.disposeClient();
       return null;
     }
@@ -224,10 +297,17 @@ export class SocialSessionService {
   }
 
   getSnapshot(): SocialSessionServiceSnapshot {
-    const clientReady = Boolean(this.client && this.clientUrl);
+    const enabled = this.started;
+    const clientReady = Boolean(enabled && this.client && this.clientUrl);
     return {
-      enabled: this.started,
-      status: !this.started ? "stopped" : clientReady ? "running" : "connecting",
+      enabled,
+      status: !enabled
+        ? "stopped"
+        : this.suspendedForUnauthorized
+          ? "error"
+          : clientReady
+            ? "running"
+            : "connecting",
       deviceId: this.deps.getDeviceId() ?? undefined,
       sessionCount: this.activeSessions.size,
       sessions: this.rebuildSessionSnapshot(),
@@ -239,21 +319,81 @@ export class SocialSessionService {
 
   setConvexUrl(value: string | null) {
     this.convexDeploymentUrl = readConfiguredConvexUrl(value);
+    this.clearSuspension();
     this.refreshSessionSubscription();
   }
 
   setAuthToken(value: string | null) {
     this.authToken = value?.trim() || null;
+    this.clearSuspension();
     if (this.client) {
       this.client.setAuth(async () => this.authToken?.trim() || null);
     }
     this.refreshSessionSubscription();
   }
 
+  async createSession(args: {
+    roomId: string;
+    workspaceLabel?: string;
+  }): Promise<{ sessionId: string }> {
+    const deviceId = this.deps.getDeviceId()?.trim();
+    if (!deviceId) {
+      throw new Error("This device is not ready for Stella together yet.");
+    }
+    const workspaceLabel = args.workspaceLabel?.trim() || `Stella Session ${args.roomId.slice(-6)}`;
+    const workspaceSlug = sanitizeWorkspaceSlugLocal(workspaceLabel);
+    const workspaceFolderName = sanitizeWorkspaceFolderNameLocal(workspaceLabel);
+    const created = await this.runClientRequest(async (client) =>
+      ((await (client as any).mutation((api as any).social.sessions.createSession, {
+        roomId: args.roomId,
+        hostDeviceId: deviceId,
+        workspaceSlug,
+        workspaceFolderName,
+      })) as { _id: string }),
+    );
+    this.start();
+    return { sessionId: created._id };
+  }
+
+  async updateSessionStatus(args: {
+    sessionId: string;
+    status: SessionStatus;
+  }): Promise<{ sessionId: string; status: SessionStatus }> {
+    const updated = await this.runClientRequest(async (client) =>
+      ((await (client as any).mutation((api as any).social.sessions.updateSessionStatus, {
+        sessionId: args.sessionId,
+        status: args.status,
+      })) as { _id: string; status: SessionStatus }),
+    );
+    if (args.status !== "ended") {
+      this.start();
+    }
+    return { sessionId: updated._id, status: updated.status };
+  }
+
+  async queueTurn(args: {
+    sessionId: string;
+    prompt: string;
+    agentType?: string;
+    clientTurnId?: string;
+  }): Promise<{ turnId: string }> {
+    const queued = await this.runClientRequest(async (client) =>
+      ((await (client as any).mutation((api as any).social.sessions.queueTurn, {
+        sessionId: args.sessionId,
+        prompt: args.prompt,
+        ...(args.agentType ? { agentType: args.agentType } : {}),
+        ...(args.clientTurnId ? { clientTurnId: args.clientTurnId } : {}),
+      })) as { _id: string }),
+    );
+    this.start();
+    return { turnId: queued._id };
+  }
+
   start() {
     if (this.started) {
       return;
     }
+    this.clearSuspension();
     this.started = true;
     void fs.mkdir(this.getWorkspaceRoot(), { recursive: true }).catch(() => undefined);
     this.refreshSessionSubscription();
@@ -261,6 +401,9 @@ export class SocialSessionService {
   }
 
   stop() {
+    if (!this.started) {
+      return;
+    }
     this.started = false;
     this.clearTickTimer();
     this.sessionsUnsubscribe?.();
@@ -268,6 +411,16 @@ export class SocialSessionService {
     this.reconcileSessionsPromise = null;
     this.activeSessions.clear();
     this.processingTurnId = null;
+    this.clearSuspension();
+    this.disposeClient();
+  }
+
+  private suspendUntilAuthChanges() {
+    this.suspendedForUnauthorized = true;
+    this.lastError = CONNECTED_ACCOUNT_REQUIRED_MESSAGE;
+    this.activeSessions.clear();
+    this.sessionsUnsubscribe?.();
+    this.sessionsUnsubscribe = null;
     this.disposeClient();
   }
 
@@ -297,18 +450,14 @@ export class SocialSessionService {
         (payload: unknown) => {
           const reconcilePromise = this.reconcileRemoteSessions(
             payload as RemoteSessionSummary[],
-          ).catch((error) => {
-            this.lastError = (error as Error).message;
-          });
+          ).catch((error) => this.handleSyncError(error));
           this.reconcileSessionsPromise = reconcilePromise.finally(() => {
             if (this.reconcileSessionsPromise === reconcilePromise) {
               this.reconcileSessionsPromise = null;
             }
           });
         },
-        (error) => {
-          this.lastError = error.message;
-        },
+        (error) => this.handleSyncError(error),
       )
       .unsubscribe;
   }
@@ -361,6 +510,7 @@ export class SocialSessionService {
         this.activeSessions.delete(sessionId);
       }
     }
+
   }
 
   private async runTick() {
@@ -384,7 +534,7 @@ export class SocialSessionService {
       this.lastSyncAt = Date.now();
       this.lastError = null;
     } catch (error) {
-      this.lastError = (error as Error).message;
+      this.handleSyncError(error);
     } finally {
       this.tickRunning = false;
       this.scheduleTick();

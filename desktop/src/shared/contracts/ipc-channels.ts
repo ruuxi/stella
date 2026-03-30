@@ -216,6 +216,9 @@ export const IPC_LOCAL_CHAT_UPDATED = "localChat:updated" as const;
 
 // ── Social Sessions ─────────────────────────────────────────────────────────
 
+export const IPC_SOCIAL_SESSIONS_CREATE = "socialSessions:create" as const;
+export const IPC_SOCIAL_SESSIONS_UPDATE_STATUS = "socialSessions:updateStatus" as const;
+export const IPC_SOCIAL_SESSIONS_QUEUE_TURN = "socialSessions:queueTurn" as const;
 export const IPC_SOCIAL_SESSIONS_GET_STATUS = "socialSessions:getStatus" as const;
 
 // ── Google Workspace ────────────────────────────────────────────────────────

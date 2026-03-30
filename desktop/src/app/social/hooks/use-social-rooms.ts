@@ -9,6 +9,7 @@ export type SocialRoomSummary = {
     _id: string;
     kind: "dm" | "group";
     title?: string;
+    stellaSessionId?: string;
     latestMessageAt?: number;
   };
   membership: {

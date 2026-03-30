@@ -1,8 +1,15 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { Avatar } from "@/ui/avatar";
+import { showToast } from "@/ui/toast";
+import { getSocialActionErrorMessage } from "./social-errors";
 import { useSocialMessages } from "./hooks/use-social-messages";
+import {
+  useSocialSession,
+  type SocialSessionStatus,
+  type SocialSessionTurn,
+} from "./hooks/use-social-session";
 import { SocialComposer } from "./SocialComposer";
 import type { SocialRoomSummary } from "./hooks/use-social-rooms";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square";
@@ -53,6 +60,23 @@ function getProfileForOwner(
 export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) {
   const roomData = useQuery(api.social.rooms.getRoom, { roomId }) as SocialRoomSummary | null;
   const { messages, sendMessage } = useSocialMessages(roomId);
+  const [sessionLookupId, setSessionLookupId] = useState<string | null>(null);
+  const { sessionSummary, turns } = useSocialSession(sessionLookupId);
+  const [stellaPrompt, setStellaPrompt] = useState("");
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const [isUpdatingSession, setIsUpdatingSession] = useState(false);
+  const [isSendingTurn, setIsSendingTurn] = useState(false);
+
+  useEffect(() => {
+    setSessionLookupId(null);
+  }, [roomId]);
+
+  useEffect(() => {
+    if (!roomData?.room.stellaSessionId) {
+      return;
+    }
+    setSessionLookupId(roomData.room.stellaSessionId);
+  }, [roomData?.room.stellaSessionId]);
 
   const messageGroups = useMemo(() => {
     if (!messages.length) return [];
@@ -87,11 +111,91 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
     return groups;
   }, [messages]);
 
+  const displayName = roomData ? getRoomDisplayName(roomData, currentOwnerId) : "";
+  const activeSession = sessionSummary?.session ?? null;
+  const isHost = sessionSummary?.isHost === true;
+
+  const handleStartSession = useCallback(async () => {
+    if (!roomData) {
+      return;
+    }
+    setIsStartingSession(true);
+    try {
+      await window.electronAPI.socialSessions.create({
+        roomId,
+        workspaceLabel: displayName,
+      });
+    } catch (error) {
+      showToast({
+        variant: "error",
+        description: getSocialActionErrorMessage(
+          "Couldn't start Stella here. Please try again.",
+          error,
+        ),
+      });
+    } finally {
+      setIsStartingSession(false);
+    }
+  }, [displayName, roomData, roomId]);
+
+  const handleUpdateSessionStatus = useCallback(
+    async (status: SocialSessionStatus) => {
+      if (!activeSession) {
+        return;
+      }
+      setIsUpdatingSession(true);
+      try {
+        await window.electronAPI.socialSessions.updateStatus({
+          sessionId: activeSession._id,
+          status,
+        });
+      } catch (error) {
+        showToast({
+          variant: "error",
+          description: getSocialActionErrorMessage(
+            "Couldn't update Stella right now. Please try again.",
+            error,
+          ),
+        });
+      } finally {
+        setIsUpdatingSession(false);
+      }
+    },
+    [activeSession],
+  );
+
+  const handleSendStellaTurn = useCallback(async () => {
+    if (!activeSession) {
+      return;
+    }
+    const prompt = stellaPrompt.trim();
+    if (!prompt) {
+      return;
+    }
+    setIsSendingTurn(true);
+    try {
+      await window.electronAPI.socialSessions.queueTurn({
+        sessionId: activeSession._id,
+        prompt,
+        clientTurnId: `social-stella-${Date.now()}`,
+      });
+      setStellaPrompt("");
+    } catch (error) {
+      showToast({
+        variant: "error",
+        description: getSocialActionErrorMessage(
+          "Couldn't send that to Stella. Please try again.",
+          error,
+        ),
+      });
+    } finally {
+      setIsSendingTurn(false);
+    }
+  }, [activeSession, stellaPrompt]);
+
   if (!roomData) {
     return <div className="social-chat-pane" />;
   }
-
-  const displayName = getRoomDisplayName(roomData, currentOwnerId);
 
   return (
     <div className="social-chat-pane">
@@ -104,6 +208,136 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
             </div>
           )}
         </div>
+      </div>
+
+      <div className="social-session-panel">
+        <div className="social-session-header">
+          <div>
+            <div className="social-session-title">Stella Together</div>
+            <div className="social-session-subtitle">
+              {activeSession
+                ? activeSession.status === "active"
+                  ? "Anyone here can ask Stella and share the response."
+                  : activeSession.status === "paused"
+                    ? "This shared Stella space is paused."
+                    : "This shared Stella space has ended."
+                : "Bring Stella into this conversation when you want shared help."}
+            </div>
+          </div>
+          <div className="social-session-actions">
+            {activeSession ? (
+              <>
+                <span className="social-session-badge" data-status={activeSession.status}>
+                  {activeSession.status === "active"
+                    ? "Live"
+                    : activeSession.status === "paused"
+                      ? "Paused"
+                      : "Ended"}
+                </span>
+                {activeSession.status === "ended" ? (
+                  <button
+                    type="button"
+                    className="social-session-button"
+                    onClick={() => void handleStartSession()}
+                    disabled={isStartingSession}
+                  >
+                    {isStartingSession ? "Starting..." : "Start Again"}
+                  </button>
+                ) : null}
+                {isHost && activeSession.status !== "ended" ? (
+                  <>
+                    <button
+                      type="button"
+                      className="social-session-button"
+                      onClick={() =>
+                        void handleUpdateSessionStatus(
+                          activeSession.status === "active" ? "paused" : "active",
+                        )
+                      }
+                      disabled={isUpdatingSession}
+                    >
+                      {activeSession.status === "active" ? "Pause" : "Resume"}
+                    </button>
+                    <button
+                      type="button"
+                      className="social-session-button"
+                      data-variant="danger"
+                      onClick={() => void handleUpdateSessionStatus("ended")}
+                      disabled={isUpdatingSession}
+                    >
+                      End
+                    </button>
+                  </>
+                ) : null}
+              </>
+            ) : (
+              <button
+                type="button"
+                className="social-session-button"
+                onClick={() => void handleStartSession()}
+                disabled={isStartingSession}
+              >
+                {isStartingSession ? "Starting..." : "Start Stella"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {activeSession && activeSession.status !== "ended" ? (
+          <div className="social-session-composer">
+            <textarea
+              className="social-session-input"
+              placeholder={
+                activeSession.status === "active"
+                  ? "Ask Stella something for this conversation..."
+                  : "Resume Stella to ask another question..."
+              }
+              value={stellaPrompt}
+              onChange={(event) => setStellaPrompt(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void handleSendStellaTurn();
+                }
+              }}
+              rows={1}
+              disabled={activeSession.status !== "active" || isSendingTurn}
+            />
+            <button
+              type="button"
+              className="social-session-button"
+              onClick={() => void handleSendStellaTurn()}
+              disabled={
+                activeSession.status !== "active" ||
+                isSendingTurn ||
+                stellaPrompt.trim().length === 0
+              }
+            >
+              {isSendingTurn ? "Sending..." : "Ask Stella"}
+            </button>
+          </div>
+        ) : null}
+
+        {turns.length > 0 ? (
+          <div className="social-session-turns">
+            {[...turns]
+              .sort((left, right) => left.ordinal - right.ordinal)
+              .map((turn) => {
+                const isMine = turn.requestedByOwnerId === currentOwnerId;
+                return (
+                  <SocialSessionTurnRow
+                    key={turn._id}
+                    turn={turn}
+                    isMine={isMine}
+                  />
+                );
+              })}
+          </div>
+        ) : activeSession ? (
+          <div className="social-session-empty">
+            No shared Stella replies yet.
+          </div>
+        ) : null}
       </div>
 
       <div className="social-messages-viewport">
@@ -171,6 +405,32 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
       </div>
 
       <SocialComposer onSend={sendMessage} />
+    </div>
+  );
+}
+
+function SocialSessionTurnRow({
+  turn,
+  isMine,
+}: {
+  turn: SocialSessionTurn;
+  isMine: boolean;
+}) {
+  return (
+    <div className="social-session-turn">
+      <div className="social-session-turn-label">
+        {isMine ? "You asked Stella" : "A friend asked Stella"}
+      </div>
+      <div className="social-session-turn-prompt">{turn.prompt}</div>
+      <div className="social-session-turn-response" data-status={turn.status}>
+        {turn.status === "completed"
+          ? turn.resultText || "Stella finished without a reply."
+          : turn.status === "failed"
+            ? turn.error || "Stella couldn't finish that request."
+            : turn.status === "canceled"
+              ? "This Stella request was canceled."
+              : "Stella is thinking..."}
+      </div>
     </div>
   );
 }

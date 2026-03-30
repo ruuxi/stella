@@ -5,6 +5,7 @@ import SquarePen from "lucide-react/dist/esm/icons/square-pen";
 import Copy from "lucide-react/dist/esm/icons/copy";
 import { Avatar } from "@/ui/avatar";
 import { showToast } from "@/ui/toast";
+import { getSocialActionErrorMessage } from "./social-errors";
 import { useSocialProfile } from "./hooks/use-social-profile";
 import { useSocialRooms, type SocialRoomSummary } from "./hooks/use-social-rooms";
 import { SocialChatPane } from "./SocialChatPane";
@@ -15,13 +16,6 @@ import "./social.css";
 type SocialViewProps = {
   onSignIn: () => void;
 };
-
-function getSocialActionErrorMessage(
-  fallback: string,
-  error: unknown,
-): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
 
 function formatRoomTime(timestamp?: number): string {
   if (timestamp === undefined) return "";
