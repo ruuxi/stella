@@ -17,6 +17,8 @@ pub mod element;
 #[allow(dead_code)]
 pub mod extension_bridge;
 #[allow(dead_code)]
+pub mod native_host;
+#[allow(dead_code)]
 pub mod inspect_server;
 #[allow(dead_code)]
 pub mod interaction;

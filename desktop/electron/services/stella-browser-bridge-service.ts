@@ -1,14 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   STELLA_BROWSER_BRIDGE_PORT,
   STELLA_BROWSER_BRIDGE_SESSION,
   STELLA_BROWSER_BRIDGE_TOKEN,
+  getStellaBrowserSocketDir,
 } from "../../packages/runtime-kernel/tools/stella-browser-bridge-config.js";
+import { registerStellaNativeMessagingHost } from "../utils/register-stella-native-messaging-host.js";
 import { stopChildProcessTree } from "../process-runtime.js";
 
 const DAEMON_READY_TIMEOUT_MS = 10_000;
@@ -78,6 +79,14 @@ export class StellaBrowserBridgeService {
     this.isLaunching = true;
 
     try {
+      const registration = registerStellaNativeMessagingHost(this.frontendRoot);
+      if (!registration.ok) {
+        throw new Error(
+          registration.error ??
+            "Could not register the browser extension connector. Stella may need permission to update browser settings.",
+        );
+      }
+
       await this.closeExistingSession();
       this.spawnDaemon();
       await this.waitForDaemonReady();
@@ -405,24 +414,7 @@ export class StellaBrowserBridgeService {
   }
 }
 
-const getSocketDir = () => {
-  const explicit = process.env.STELLA_BROWSER_SOCKET_DIR?.trim();
-  if (explicit) {
-    return explicit;
-  }
-
-  const runtimeDir = process.env.XDG_RUNTIME_DIR?.trim();
-  if (runtimeDir) {
-    return path.join(runtimeDir, "stella-browser");
-  }
-
-  const homeDir = os.homedir();
-  if (homeDir) {
-    return path.join(homeDir, ".stella-browser");
-  }
-
-  return path.join(os.tmpdir(), "stella-browser");
-};
+const getSocketDir = getStellaBrowserSocketDir;
 
 const getSocketPath = (session: string) =>
   path.join(getSocketDir(), `${session}.sock`);

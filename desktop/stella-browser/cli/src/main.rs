@@ -178,6 +178,15 @@ fn main() {
         env::set_var("MSYS2_ARG_CONV_EXCL", "*");
     }
 
+    // Chrome native messaging host (stdio ↔ extension TCP bridge)
+    if env::var("STELLA_BROWSER_NATIVE_HOST").is_ok() {
+        if let Err(e) = native::native_host::run_native_host() {
+            eprintln!("{}", e);
+            exit(1);
+        }
+        return;
+    }
+
     // Native daemon mode: when STELLA_BROWSER_DAEMON is set, run as the daemon process
     if env::var("STELLA_BROWSER_DAEMON").is_ok() {
         // Ignore SIGPIPE so the daemon isn't killed when the parent drops

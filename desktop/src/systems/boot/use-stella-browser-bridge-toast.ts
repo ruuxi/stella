@@ -40,6 +40,18 @@ export const useStellaBrowserBridgeToast = () => {
 
       lastToastKeyRef.current = toastKey
 
+      if (status.state === 'host_registration_failed') {
+        showToast({
+          title: 'Browser extension unavailable',
+          description:
+            status.error ??
+            'Stella could not connect to your browser. Restart the app or reinstall Stella if this continues.',
+          variant: 'error',
+          duration: 9000,
+        })
+        return
+      }
+
       const description = status.error
         ? `${status.error}.${formatRetryDelay(status.nextRetryMs)}`
         : `The Stella browser bridge disconnected.${formatRetryDelay(status.nextRetryMs)}`

@@ -440,7 +440,11 @@ export type ElectronOnboardingApi = {
 export type ElectronBrowserApi = {
   onBridgeStatus: (
     callback: (status: {
-      state: "connecting" | "connected" | "reconnecting";
+      state:
+        | "connecting"
+        | "connected"
+        | "reconnecting"
+        | "host_registration_failed";
       attempt: number;
       nextRetryMs?: number;
       error?: string;
