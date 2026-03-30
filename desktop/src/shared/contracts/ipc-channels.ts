@@ -226,3 +226,10 @@ export const IPC_LOCAL_CHAT_UPDATED = "localChat:updated" as const;
 // ── Social Sessions ─────────────────────────────────────────────────────────
 
 export const IPC_SOCIAL_SESSIONS_GET_STATUS = "socialSessions:getStatus" as const;
+
+// ── Google Workspace ────────────────────────────────────────────────────────
+
+export const IPC_GOOGLE_WORKSPACE_AUTH_STATUS = "googleWorkspace:authStatus" as const;
+export const IPC_GOOGLE_WORKSPACE_CONNECT = "googleWorkspace:connect" as const;
+export const IPC_GOOGLE_WORKSPACE_DISCONNECT = "googleWorkspace:disconnect" as const;
+export const IPC_GOOGLE_WORKSPACE_AUTH_REQUIRED = "googleWorkspace:authRequired" as const;

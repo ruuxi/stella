@@ -47,6 +47,7 @@ export type BootstrapState = {
   overlayController: OverlayWindowController | null;
   processRuntime: ProcessRuntime;
   scheduleUpdateUnsubscribe: (() => void) | null;
+  googleWorkspaceAuthRequiredUnsubscribe: (() => void) | null;
   stellaHomePath: string | null;
   stellaWorkspacePath: string | null;
   stellaHostRunner: StellaHostRunner | null;
@@ -135,6 +136,12 @@ export const broadcastScheduleUpdated = (context: BootstrapContext) => {
   broadcastToWindowsAndMobile(context, "schedule:updated");
 };
 
+export const broadcastGoogleWorkspaceAuthRequired = (
+  context: BootstrapContext,
+) => {
+  broadcastToWindows(context, "googleWorkspace:authRequired");
+};
+
 export const broadcastWakeWordState = (context: BootstrapContext) => {
   const enabled = context.state.wakeWordController?.getEnabled() ?? false;
   broadcastToWindowsAndMobile(context, "voice:wakeWordState", { enabled });
@@ -181,6 +188,7 @@ export const createBootstrapContext = (
     overlayController: null,
     processRuntime,
     scheduleUpdateUnsubscribe: null,
+    googleWorkspaceAuthRequiredUnsubscribe: null,
     stellaHomePath: null,
     stellaWorkspacePath: null,
     stellaHostRunner: null,

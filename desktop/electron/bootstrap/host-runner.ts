@@ -11,6 +11,7 @@ import {
 import {
   type BootstrapContext,
   broadcastDevProjectsChanged,
+  broadcastGoogleWorkspaceAuthRequired,
   broadcastLocalChatUpdated,
   broadcastScheduleUpdated,
   broadcastToWindows,
@@ -129,6 +130,8 @@ const clearHostRunnerSubscriptions = (context: BootstrapContext) => {
   state.scheduleUpdateUnsubscribe = null;
   state.devProjectsUpdateUnsubscribe?.();
   state.devProjectsUpdateUnsubscribe = null;
+  state.googleWorkspaceAuthRequiredUnsubscribe?.();
+  state.googleWorkspaceAuthRequiredUnsubscribe = null;
 };
 
 const connectHostRunner = async (context: BootstrapContext) => {
@@ -154,6 +157,9 @@ const connectHostRunner = async (context: BootstrapContext) => {
   });
   state.devProjectsUpdateUnsubscribe = runner.onProjectsUpdated((projects) => {
     broadcastDevProjectsChanged(context, projects);
+  });
+  state.googleWorkspaceAuthRequiredUnsubscribe = runner.onGoogleWorkspaceAuthRequired(() => {
+    broadcastGoogleWorkspaceAuthRequired(context);
   });
 
   await runner.start();

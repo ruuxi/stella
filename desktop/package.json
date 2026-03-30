@@ -20,7 +20,7 @@
     "electron:dev": "node scripts/generate-game-bindings.mjs && node scripts/electron-dev-runner.mjs",
     "electron:typecheck": "bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json --pretty false --noEmit && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json --pretty false --noEmit",
     "electron:typecheck:watch": "concurrently -k --kill-others-on-fail \"bunx --package typescript@5.9.3 tsc -w -p tsconfig.electron.json --preserveWatchOutput --noEmit\" \"bunx --package typescript@5.9.3 tsc -w -p tsconfig.preload.json --preserveWatchOutput --noEmit\"",
-    "electron:build": "node scripts/generate-game-bindings.mjs && npm run native:build && bunx --package typescript@5.9.3 tsc --build && vite build && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron-builder",
+    "electron:build": "node scripts/generate-game-bindings.mjs && npm run vendor:google-workspace-mcp:ensure && npm run native:build && bunx --package typescript@5.9.3 tsc --build && vite build && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron-builder",
     "electron:preview": "node scripts/generate-game-bindings.mjs && bunx --package typescript@5.9.3 tsc -p tsconfig.electron.json && bunx --package typescript@5.9.3 tsc -p tsconfig.preload.json && electron .",
     "emotes:sync": "node scripts/fetch-emotes.mjs",
     "emotes:sync:clean": "node scripts/fetch-emotes.mjs --clean",
@@ -29,7 +29,9 @@
     "emotes:emoji-index": "node scripts/build-emote-emoji-index.mjs",
     "emotes:prune-family": "node scripts/prune-emotes-by-emoji-family.mjs",
     "emotes:optimize": "node scripts/optimize-emotes.mjs",
-    "postinstall": "npx @electron/rebuild -o better-sqlite3"
+    "postinstall": "npx @electron/rebuild -o better-sqlite3",
+    "vendor:google-workspace-mcp": "node scripts/vendor-google-workspace-mcp.mjs",
+    "vendor:google-workspace-mcp:ensure": "node -e \"if(!require('fs').existsSync('resources/google-workspace-mcp/workspace-server/dist/index.js')){process.exit(1)}\" || npm run vendor:google-workspace-mcp"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",
@@ -37,6 +39,7 @@
     "@convex-dev/better-auth": "^0.10.0",
     "@google/genai": "^1.44.0",
     "@hookform/resolvers": "^5.2.2",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-aspect-ratio": "^1.1.8",
     "@radix-ui/react-avatar": "^1.1.11",
@@ -196,6 +199,13 @@
         "to": "models",
         "filter": [
           "*.onnx"
+        ]
+      },
+      {
+        "from": "resources/google-workspace-mcp",
+        "to": "google-workspace-mcp",
+        "filter": [
+          "**/*"
         ]
       }
     ],

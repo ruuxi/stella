@@ -1,5 +1,6 @@
 import { loadAgentsFromHome } from "../agents/agents.js";
 import { loadExtensions } from "../extensions/loader.js";
+import { loadGoogleWorkspaceMcpTools } from "../mcp/google-workspace-mcp.js";
 import { registerModel } from "../../ai/models.js";
 import type { Api, Model } from "../../ai/types.js";
 import { createRuntimeLogger } from "../debug.js";
@@ -14,6 +15,7 @@ export const createRuntimeInitialization = (
     disposeConvexClient: () => void;
     syncRemoteTurnBridge: () => void;
     shutdownTasks: () => void;
+    onGoogleWorkspaceAuthRequired?: () => void;
   },
 ) => {
   const initializeRuntime = () => {
@@ -73,10 +75,41 @@ export const createRuntimeInitialization = (
         );
       });
 
+    const googleWorkspaceMcpLoad = loadGoogleWorkspaceMcpTools({
+      frontendRoot: context.frontendRoot,
+      stellaHomePath: context.stellaHomePath,
+      onAuthRequired: deps.onGoogleWorkspaceAuthRequired,
+      onAuthStateChanged: (authenticated) => {
+        context.state.googleWorkspaceMcpAuthenticated = authenticated;
+      },
+    })
+      .then(async ({ tools, disconnect, callTool, hasStoredCredentials }) => {
+        context.state.googleWorkspaceMcpDisconnect = disconnect;
+        context.state.googleWorkspaceMcpCallTool = callTool;
+        context.state.googleWorkspaceMcpToolNames =
+          tools.length > 0 ? tools.map((tool) => tool.name) : [];
+        if (tools.length > 0) {
+          context.toolHost.registerExtensionTools(tools);
+        }
+        // Seed auth state from stored credentials so the UI can show
+        // "Connected" without making an MCP call that triggers OAuth.
+        if (hasStoredCredentials) {
+          context.state.googleWorkspaceMcpAuthenticated = true;
+        }
+      })
+      .catch((error) => {
+        console.error(
+          "[stella:google-workspace-mcp] Failed to load:",
+          (error as Error).message,
+        );
+        context.state.googleWorkspaceMcpToolNames = [];
+      });
+
     context.state.initializationPromise = Promise.all([
       skillsLoad,
       agentsLoad,
       extensionsLoad,
+      googleWorkspaceMcpLoad,
     ]).then(() => {
       context.state.isInitialized = true;
       deps.syncRemoteTurnBridge();
@@ -119,6 +152,14 @@ export const createRuntimeInitialization = (
     context.state.interruptedRunIds.clear();
     void context.selfModHmrController?.forceResumeAll();
     context.toolHost.killAllShells();
+    const disconnectGoogleWorkspaceMcp = context.state.googleWorkspaceMcpDisconnect;
+    context.state.googleWorkspaceMcpDisconnect = null;
+    context.state.googleWorkspaceMcpCallTool = null;
+    context.state.googleWorkspaceMcpToolNames = null;
+    context.state.googleWorkspaceMcpAuthenticated = null;
+    if (disconnectGoogleWorkspaceMcp) {
+      void disconnectGoogleWorkspaceMcp().catch(() => undefined);
+    }
   };
 
   const recoverCrashedRuns = async () => {
