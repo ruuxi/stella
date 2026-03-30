@@ -87,6 +87,7 @@ type RuntimeClientEvents = {
   "projects-updated": LocalDevProjectRecord[];
   "overlay-auto-panel-event": RuntimeOverlayAutoPanelEventPayload;
   "capability-changed": { workerGeneration: number; sourcePaths: string[] };
+  "google-workspace-auth-required": void;
 };
 
 export type RuntimeHostHandlers = {
@@ -917,6 +918,39 @@ export class StellaRuntimeClient {
     this.hostDb = null;
   }
 
+  async googleWorkspaceGetAuthStatus() {
+    return await this.requestWorker<{
+      connected: boolean;
+      unavailable?: boolean;
+      email?: string;
+      name?: string;
+    }>(METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_AUTH_STATUS, undefined, {
+      ensureWorker: true,
+      recordActivity: false,
+    });
+  }
+
+  async googleWorkspaceConnect() {
+    return await this.requestWorker<{
+      connected: boolean;
+      unavailable?: boolean;
+      email?: string;
+      name?: string;
+    }>(METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_CONNECT, undefined, {
+      ensureWorker: true,
+      recordActivity: true,
+      retryOnceOnDisconnect: true,
+    });
+  }
+
+  async googleWorkspaceDisconnect() {
+    return await this.requestWorker<{ ok: boolean }>(
+      METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_DISCONNECT,
+      undefined,
+      { ensureWorker: true, recordActivity: true },
+    );
+  }
+
   private async emitProjectsUpdated() {
     if (!this.projectService) return;
     this.events.emit("projects-updated", await this.projectService.listProjects());
@@ -1158,6 +1192,10 @@ export class StellaRuntimeClient {
         "capability-changed",
         params as { workerGeneration: number; sourcePaths: string[] },
       );
+    });
+
+    peer.registerNotificationHandler(NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED, () => {
+      this.events.emit("google-workspace-auth-required");
     });
   }
 

@@ -585,6 +585,27 @@ export type ElectronLocalChatApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Google Workspace
+// ---------------------------------------------------------------------------
+
+export type ElectronGoogleWorkspaceApi = {
+  getAuthStatus: () => Promise<{
+    connected: boolean;
+    unavailable?: boolean;
+    email?: string;
+    name?: string;
+  }>;
+  connect: () => Promise<{
+    connected: boolean;
+    unavailable?: boolean;
+    email?: string;
+    name?: string;
+  }>;
+  disconnect: () => Promise<{ ok: boolean }>;
+  onAuthRequired: (callback: () => void) => () => void;
+};
+
+// ---------------------------------------------------------------------------
 // Main ElectronApi â€” composed from namespaced sub-types
 // ---------------------------------------------------------------------------
 
@@ -619,6 +640,7 @@ export type ElectronApi = {
   store: ElectronStoreApi;
   socialSessions: ElectronSocialSessionsApi;
   localChat: ElectronLocalChatApi;
+  googleWorkspace: ElectronGoogleWorkspaceApi;
 };
 
 declare global {
