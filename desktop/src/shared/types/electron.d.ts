@@ -65,6 +65,7 @@ import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
 } from "../contracts/onboarding";
+import type { RuntimeSocialSessionStatus } from "../../packages/runtime-protocol/index";
 
 export type RadialWedge = SharedRadialWedge;
 export type ChatContext = SharedChatContext;
@@ -547,6 +548,20 @@ export type ElectronStoreApi = {
 };
 
 export type ElectronSocialSessionsApi = {
+  create: (payload: {
+    roomId: string;
+    workspaceLabel?: string;
+  }) => Promise<{ sessionId: string }>;
+  updateStatus: (payload: {
+    sessionId: string;
+    status: RuntimeSocialSessionStatus;
+  }) => Promise<{ sessionId: string; status: RuntimeSocialSessionStatus }>;
+  queueTurn: (payload: {
+    sessionId: string;
+    prompt: string;
+    agentType?: string;
+    clientTurnId?: string;
+  }) => Promise<{ turnId: string }>;
   getStatus: () => Promise<SocialSessionServiceSnapshot>;
 };
 

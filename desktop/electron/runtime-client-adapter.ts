@@ -10,6 +10,7 @@ import type {
   RuntimeHealthSnapshot,
   RuntimeOverlayAutoPanelEventPayload,
   RuntimeOverlayAutoPanelStartPayload,
+  RuntimeSocialSessionStatus,
   SelfModFeatureSummary,
   StorePublishArgs,
 } from "../packages/runtime-protocol/index.js";
@@ -598,6 +599,26 @@ export class RuntimeClientAdapter {
 
   onGoogleWorkspaceAuthRequired(listener: () => void) {
     return this.client.on("google-workspace-auth-required", listener);
+  }
+
+  createSocialSession(payload: { roomId: string; workspaceLabel?: string }) {
+    return this.client.createSocialSession(payload);
+  }
+
+  updateSocialSessionStatus(payload: {
+    sessionId: string;
+    status: RuntimeSocialSessionStatus;
+  }) {
+    return this.client.updateSocialSessionStatus(payload);
+  }
+
+  queueSocialSessionTurn(payload: {
+    sessionId: string;
+    prompt: string;
+    agentType?: string;
+    clientTurnId?: string;
+  }) {
+    return this.client.queueSocialSessionTurn(payload);
   }
 
   getSocialSessionStatus() {

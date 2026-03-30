@@ -41,6 +41,7 @@ import {
   type RuntimeOverlayAutoPanelEventPayload,
   type RuntimeOverlayAutoPanelStartPayload,
   type RuntimeProjectDirectoryRegistrationResult,
+  type RuntimeSocialSessionStatus,
   type RuntimeSelfModRevertResult,
   type RuntimeTaskRequest,
   type RuntimeTaskSnapshot,
@@ -675,6 +676,47 @@ export class StellaRuntimeClient {
 
   async getConversationEventCount(payload: { conversationId: string }) {
     return this.ensureScheduler().getConversationEventCount(payload.conversationId);
+  }
+
+  async createSocialSession(payload: {
+    roomId: string;
+    workspaceLabel?: string;
+  }) {
+    this.workerHealthCache = null;
+    return await this.requestWorker<{ sessionId: string }>(
+      METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_CREATE,
+      payload,
+      { ensureWorker: true, recordActivity: true },
+    );
+  }
+
+  async updateSocialSessionStatus(payload: {
+    sessionId: string;
+    status: RuntimeSocialSessionStatus;
+  }) {
+    this.workerHealthCache = null;
+    return await this.requestWorker<{
+      sessionId: string;
+      status: RuntimeSocialSessionStatus;
+    }>(
+      METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_UPDATE_STATUS,
+      payload,
+      { ensureWorker: true, recordActivity: true },
+    );
+  }
+
+  async queueSocialSessionTurn(payload: {
+    sessionId: string;
+    prompt: string;
+    agentType?: string;
+    clientTurnId?: string;
+  }) {
+    this.workerHealthCache = null;
+    return await this.requestWorker<{ turnId: string }>(
+      METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_QUEUE_TURN,
+      payload,
+      { ensureWorker: true, recordActivity: true },
+    );
   }
 
   async getSocialSessionStatus() {

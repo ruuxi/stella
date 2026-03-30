@@ -551,7 +551,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     });
     socialSessionService.setConvexUrl(init.convexUrl);
     socialSessionService.setAuthToken(init.authToken);
-    socialSessionService.start();
     state.socialSessionService = socialSessionService;
 
     state.voiceService = new VoiceRuntimeService({
@@ -1176,6 +1175,69 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED, async () => {
     return ensureStoreModService().listInstalledMods();
+  });
+
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_CREATE, async (params) => {
+    if (!state.socialSessionService) {
+      throw new Error("Social session service is unavailable.");
+    }
+    const payload = params as { roomId?: string; workspaceLabel?: string };
+    const roomId = asTrimmedString(payload?.roomId);
+    if (!roomId) {
+      throw new Error("Room ID is required.");
+    }
+    return await state.socialSessionService.createSession({
+      roomId,
+      workspaceLabel: asTrimmedString(payload?.workspaceLabel) || undefined,
+    });
+  });
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_UPDATE_STATUS,
+    async (params) => {
+      if (!state.socialSessionService) {
+        throw new Error("Social session service is unavailable.");
+      }
+      const payload = params as { sessionId?: string; status?: "active" | "paused" | "ended" };
+      const sessionId = asTrimmedString(payload?.sessionId);
+      if (!sessionId) {
+        throw new Error("Session ID is required.");
+      }
+      const status = payload?.status;
+      if (status !== "active" && status !== "paused" && status !== "ended") {
+        throw new Error("Session status is invalid.");
+      }
+      return await state.socialSessionService.updateSessionStatus({
+        sessionId,
+        status,
+      });
+    },
+  );
+
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_QUEUE_TURN, async (params) => {
+    if (!state.socialSessionService) {
+      throw new Error("Social session service is unavailable.");
+    }
+    const payload = params as {
+      sessionId?: string;
+      prompt?: string;
+      agentType?: string;
+      clientTurnId?: string;
+    };
+    const sessionId = asTrimmedString(payload?.sessionId);
+    const prompt = asTrimmedString(payload?.prompt);
+    if (!sessionId) {
+      throw new Error("Session ID is required.");
+    }
+    if (!prompt) {
+      throw new Error("Prompt is required.");
+    }
+    return await state.socialSessionService.queueTurn({
+      sessionId,
+      prompt,
+      agentType: asTrimmedString(payload?.agentType) || undefined,
+      clientTurnId: asTrimmedString(payload?.clientTurnId) || undefined,
+    });
   });
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_GET_STATUS, async () => {

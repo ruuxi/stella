@@ -17,7 +17,14 @@ import {
   listLocalLlmCredentials,
   saveLocalLlmCredential,
 } from "../../packages/runtime-kernel/storage/llm-credentials.js";
+import type { RuntimeSocialSessionStatus } from "../../packages/runtime-protocol/index.js";
 import { isRuntimeUnavailableError } from "../../packages/runtime-protocol/rpc-peer.js";
+import {
+  IPC_SOCIAL_SESSIONS_CREATE,
+  IPC_SOCIAL_SESSIONS_GET_STATUS,
+  IPC_SOCIAL_SESSIONS_QUEUE_TURN,
+  IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
+} from "../../src/shared/contracts/ipc-channels.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
 
 type SystemHandlersOptions = {
@@ -101,6 +108,15 @@ const sanitizeOptionalHttpUrl = (value: unknown, fieldName: string) => {
   return parsed.toString();
 };
 
+const asSocialSessionStatus = (
+  value: unknown,
+): RuntimeSocialSessionStatus => {
+  if (value === "active" || value === "paused" || value === "ended") {
+    return value;
+  }
+  throw new Error("Invalid social session status.");
+};
+
 export const registerSystemHandlers = (options: SystemHandlersOptions) => {
   ipcMain.handle("device:getId", () => options.getDeviceId());
 
@@ -128,11 +144,81 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     return await options.stopPhoneAccessSession();
   });
 
-  ipcMain.handle("socialSessions:getStatus", async (event) => {
+  ipcMain.handle(IPC_SOCIAL_SESSIONS_CREATE, async (event, payload: {
+    roomId?: string;
+    workspaceLabel?: string;
+  }) => {
     if (
       !options.externalLinkService.assertPrivilegedSender(
         event,
-        "socialSessions:getStatus",
+        IPC_SOCIAL_SESSIONS_CREATE,
+      )
+    ) {
+      throw new Error("Blocked untrusted socialSessions:create request.");
+    }
+    const runner = await waitForConnectedRunner(options.getStellaHostRunner, {
+      timeoutMs: 2_000,
+      onRunnerChanged: options.onStellaHostRunnerChanged,
+    });
+    return await runner.createSocialSession({
+      roomId: asTrimmedString(payload?.roomId),
+      workspaceLabel: asTrimmedString(payload?.workspaceLabel) || undefined,
+    });
+  });
+
+  ipcMain.handle(IPC_SOCIAL_SESSIONS_UPDATE_STATUS, async (event, payload: {
+    sessionId?: string;
+    status?: RuntimeSocialSessionStatus;
+  }) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
+      )
+    ) {
+      throw new Error("Blocked untrusted socialSessions:updateStatus request.");
+    }
+    const runner = await waitForConnectedRunner(options.getStellaHostRunner, {
+      timeoutMs: 2_000,
+      onRunnerChanged: options.onStellaHostRunnerChanged,
+    });
+    return await runner.updateSocialSessionStatus({
+      sessionId: asTrimmedString(payload?.sessionId),
+      status: asSocialSessionStatus(payload?.status),
+    });
+  });
+
+  ipcMain.handle(IPC_SOCIAL_SESSIONS_QUEUE_TURN, async (event, payload: {
+    sessionId?: string;
+    prompt?: string;
+    agentType?: string;
+    clientTurnId?: string;
+  }) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_SOCIAL_SESSIONS_QUEUE_TURN,
+      )
+    ) {
+      throw new Error("Blocked untrusted socialSessions:queueTurn request.");
+    }
+    const runner = await waitForConnectedRunner(options.getStellaHostRunner, {
+      timeoutMs: 2_000,
+      onRunnerChanged: options.onStellaHostRunnerChanged,
+    });
+    return await runner.queueSocialSessionTurn({
+      sessionId: asTrimmedString(payload?.sessionId),
+      prompt: asTrimmedString(payload?.prompt),
+      agentType: asTrimmedString(payload?.agentType) || undefined,
+      clientTurnId: asTrimmedString(payload?.clientTurnId) || undefined,
+    });
+  });
+
+  ipcMain.handle(IPC_SOCIAL_SESSIONS_GET_STATUS, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_SOCIAL_SESSIONS_GET_STATUS,
       )
     ) {
       throw new Error("Blocked untrusted socialSessions:getStatus request.");

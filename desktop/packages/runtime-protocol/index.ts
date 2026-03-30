@@ -214,6 +214,12 @@ export const METHOD_NAMES = {
     "internal.worker.schedule.listConversationEvents",
   INTERNAL_WORKER_SCHEDULE_GET_EVENT_COUNT:
     "internal.worker.schedule.getConversationEventCount",
+  INTERNAL_WORKER_SOCIAL_SESSIONS_CREATE:
+    "internal.worker.socialSessions.create",
+  INTERNAL_WORKER_SOCIAL_SESSIONS_UPDATE_STATUS:
+    "internal.worker.socialSessions.updateStatus",
+  INTERNAL_WORKER_SOCIAL_SESSIONS_QUEUE_TURN:
+    "internal.worker.socialSessions.queueTurn",
   INTERNAL_WORKER_SOCIAL_SESSIONS_GET_STATUS:
     "internal.worker.socialSessions.getStatus",
   INTERNAL_WORKER_PROJECTS_LIST: "internal.worker.projects.list",
@@ -619,7 +625,23 @@ export type RuntimeScheduleApi = {
   getConversationEventCount: (args: { conversationId: string }) => Promise<number>;
 };
 
+export type RuntimeSocialSessionStatus = "active" | "paused" | "ended";
+
 export type RuntimeSocialSessionApi = {
+  createSession: (args: {
+    roomId: string;
+    workspaceLabel?: string;
+  }) => Promise<{ sessionId: string }>;
+  updateSessionStatus: (args: {
+    sessionId: string;
+    status: RuntimeSocialSessionStatus;
+  }) => Promise<{ sessionId: string; status: RuntimeSocialSessionStatus }>;
+  queueTurn: (args: {
+    sessionId: string;
+    prompt: string;
+    agentType?: string;
+    clientTurnId?: string;
+  }) => Promise<{ turnId: string }>;
   getStatus: () => Promise<SocialSessionServiceSnapshot>;
 };
 
