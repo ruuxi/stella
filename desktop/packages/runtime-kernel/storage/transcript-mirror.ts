@@ -2,9 +2,12 @@ import fs from "fs";
 import path from "path";
 import type { RuntimeMemory, RuntimeRunEvent, RuntimeThreadMessage } from "./shared.js";
 import { fileSafeId } from "./shared.js";
+import { ensurePrivateDirSync } from "../shared/private-fs.js";
+
+const PRIVATE_FILE_MODE = 0o600;
 
 const ensureDir = (dirPath: string): void => {
-  fs.mkdirSync(dirPath, { recursive: true });
+  ensurePrivateDirSync(dirPath);
 };
 
 const ensureParentDir = (filePath: string): void => {
@@ -13,7 +16,10 @@ const ensureParentDir = (filePath: string): void => {
 
 const appendJsonl = (filePath: string, value: unknown): void => {
   ensureParentDir(filePath);
-  fs.appendFileSync(filePath, `${JSON.stringify(value)}\n`, "utf-8");
+  fs.appendFileSync(filePath, `${JSON.stringify(value)}\n`, {
+    encoding: "utf-8",
+    mode: PRIVATE_FILE_MODE,
+  });
 };
 
 const writeJsonl = (filePath: string, rows: unknown[]): void => {
@@ -25,7 +31,10 @@ const writeJsonl = (filePath: string, rows: unknown[]): void => {
   }
   ensureParentDir(filePath);
   const lines = rows.map((row) => JSON.stringify(row));
-  fs.writeFileSync(filePath, `${lines.join("\n")}\n`, "utf-8");
+  fs.writeFileSync(filePath, `${lines.join("\n")}\n`, {
+    encoding: "utf-8",
+    mode: PRIVATE_FILE_MODE,
+  });
 };
 
 export class TranscriptMirror {
