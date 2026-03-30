@@ -12,6 +12,13 @@ import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
 } from "../src/shared/contracts/onboarding.js";
+import {
+  IPC_SOCIAL_SESSIONS_CREATE,
+  IPC_SOCIAL_SESSIONS_GET_STATUS,
+  IPC_SOCIAL_SESSIONS_QUEUE_TURN,
+  IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
+} from "../src/shared/contracts/ipc-channels.js";
+import type { RuntimeSocialSessionStatus } from "../packages/runtime-protocol/index.js";
 
 // ---------------------------------------------------------------------------
 // IPC listener helpers — eliminate boilerplate for the 3 common patterns.
@@ -703,7 +710,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   socialSessions: {
-    getStatus: () => ipcRenderer.invoke("socialSessions:getStatus"),
+    create: (payload: { roomId: string; workspaceLabel?: string }) =>
+      ipcRenderer.invoke(IPC_SOCIAL_SESSIONS_CREATE, payload),
+    updateStatus: (payload: {
+      sessionId: string;
+      status: RuntimeSocialSessionStatus;
+    }) => ipcRenderer.invoke(IPC_SOCIAL_SESSIONS_UPDATE_STATUS, payload),
+    queueTurn: (payload: {
+      sessionId: string;
+      prompt: string;
+      agentType?: string;
+      clientTurnId?: string;
+    }) => ipcRenderer.invoke(IPC_SOCIAL_SESSIONS_QUEUE_TURN, payload),
+    getStatus: () => ipcRenderer.invoke(IPC_SOCIAL_SESSIONS_GET_STATUS),
   },
 
   googleWorkspace: {
