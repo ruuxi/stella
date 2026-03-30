@@ -4,9 +4,8 @@ export const AGENT_IDS = {
   GENERAL: "general",
   SELF_MOD: "self_mod",
   EXPLORE: "explore",
-  APP: "app",
+  COMPUTER: "computer",
   GOOGLE_WORKSPACE: "google_workspace",
-  BROWSER: "browser",
   OFFLINE_RESPONDER: "offline_responder",
   AUTO: "auto",
 } as const;
@@ -135,8 +134,8 @@ const BUILTIN_AGENT_DEFINITIONS = [
     },
   },
   {
-    id: AGENT_IDS.APP,
-    name: "App",
+    id: AGENT_IDS.COMPUTER,
+    name: "Computer",
     description:
       "Controls applications: browser automation, desktop app control, navigation, forms, and screenshots.",
     activityLabel: "Browsing",
@@ -167,24 +166,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     modelSettings: {
       description: "Google Workspace specialist (Gmail, Calendar, Drive, Docs)",
       order: 5,
-    },
-  },
-  {
-    id: AGENT_IDS.BROWSER,
-    name: "Browser",
-    description: "Browser automation via Playwright.",
-    activityLabel: "Browsing",
-    bundledCore: false,
-    taskSubagent: false,
-    usesLocalCliRuntime: false,
-    promptRole: "subagent",
-    includesStellaDocumentation: false,
-    controlsSelfModHmr: false,
-    localCliWorkingDirectory: null,
-    agentEnginePreference: null,
-    modelSettings: {
-      description: "Browser automation via Playwright",
-      order: 3,
     },
   },
   {
