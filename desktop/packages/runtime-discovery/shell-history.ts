@@ -48,13 +48,24 @@ const SENSITIVE_PATTERNS = [
   /secret/i,
   /token/i,
   /api[_-]?key/i,
-  /auth/i,
   /credential/i,
   /--password/i,
-  /-p\s+\S+/i, // -p flag often used for passwords
-  /export\s+\w*(KEY|TOKEN|SECRET|PASSWORD)/i,
+  /-p\S/i, // -pPASSWORD (no space, e.g. mysql -pMyPassword)
+  /-p\s+\S+/i, // -p PASSWORD (with space)
+  /export\s+\w*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|URL)/i,
   /curl.*-H.*Authorization/i,
   /curl.*-u\s/i,
+  // Connection strings with embedded credentials (user:pass@host)
+  /\w+:\/\/[^/\s]*:[^/\s]*@/i,
+  // Private key references
+  /private[_-]?key/i,
+  /encryption[_-]?key/i,
+  // .env file operations that may dump secrets
+  /cat\s+.*\.env\b/i,
+  /source\s+.*\.env\b/i,
+  // sshpass or other credential-passing tools
+  /sshpass/i,
+  /htpasswd/i,
 ];
 
 const isSensitiveCommand = (line: string): boolean => {
