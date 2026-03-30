@@ -1,5 +1,6 @@
 import { registerAgentHandlers } from "../ipc/agent-handlers.js";
 import { registerBrowserHandlers } from "../ipc/browser-handlers.js";
+import { registerGoogleWorkspaceHandlers } from "../ipc/google-workspace-handlers.js";
 import { registerCaptureHandlers } from "../ipc/capture-handlers.js";
 import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
 import { registerMiniBridgeHandlers } from "../ipc/mini-bridge-handlers.js";
@@ -156,6 +157,13 @@ export const registerBootstrapIpcHandlers = (
 
   registerStoreHandlers({
     getStellaHomePath: lifecycle.getStellaHomePath,
+    getStellaHostRunner: lifecycle.getRunner,
+    onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
+  });
+
+  registerGoogleWorkspaceHandlers({
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     assertPrivilegedSender: (event, channel) =>

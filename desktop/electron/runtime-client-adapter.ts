@@ -596,6 +596,10 @@ export class RuntimeClientAdapter {
     return this.client.on("overlay-auto-panel-event", listener);
   }
 
+  onGoogleWorkspaceAuthRequired(listener: () => void) {
+    return this.client.on("google-workspace-auth-required", listener);
+  }
+
   getSocialSessionStatus() {
     return this.client.getSocialSessionStatus();
   }
@@ -670,5 +674,17 @@ export class RuntimeClientAdapter {
 
   listBrowserProfiles(browserType: string) {
     return this.client.listBrowserProfiles(browserType);
+  }
+
+  googleWorkspaceGetAuthStatus() {
+    return this.client.googleWorkspaceGetAuthStatus();
+  }
+
+  googleWorkspaceConnect() {
+    return this.client.googleWorkspaceConnect();
+  }
+
+  googleWorkspaceDisconnect() {
+    return this.client.googleWorkspaceDisconnect();
   }
 }

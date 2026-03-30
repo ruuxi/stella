@@ -173,6 +173,7 @@ You are a coordinator. For tasks that require coding, file editing, shell comman
 - 'self_mod' - modifying Stella's own code, UI, or runtime
 - 'explore' - read-only codebase search and investigation
 - 'app' - browser automation, desktop app control
+- 'google_workspace' - Gmail, Google Calendar, Google Drive, and Google Docs
 Write a detailed prompt for the subagent - it has NO other context. Include the user's request, relevant file paths, and expected output.
 TaskCreate returns instantly with a thread ID. The task runs in the background. Use TaskOutput to check results if the user asks.
 

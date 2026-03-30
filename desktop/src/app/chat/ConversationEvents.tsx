@@ -1,4 +1,4 @@
-﻿import { memo } from "react";
+﻿import { memo, useState, useEffect, useCallback } from "react";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { Attachment, TaskItem } from "@/app/chat/lib/event-transforms";
 import {
@@ -7,6 +7,7 @@ import {
   type TurnViewModel,
 } from "./MessageTurn";
 import { TaskIndicator } from "@/app/chat/TaskIndicator";
+import { GoogleWorkspaceConnectCard } from "@/app/chat/GoogleWorkspaceConnectCard";
 import { GrowIn } from "@/app/chat/GrowIn";
 import { useTurnViewModels } from "./use-turn-view-models";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
@@ -104,6 +105,19 @@ export const ConversationEvents = memo(function ConversationEvents({
   isLoadingHistory,
   onOpenAttachment,
 }: Props) {
+  const [showGwsConnect, setShowGwsConnect] = useState(false);
+
+  useEffect(() => {
+    const unsub = window.electronAPI?.googleWorkspace.onAuthRequired(() => {
+      setShowGwsConnect(true);
+    });
+    return () => { unsub?.(); };
+  }, []);
+
+  const handleGwsConnected = useCallback(() => {
+    setShowGwsConnect(false);
+  }, []);
+
   const {
     turns,
     showStreaming,
@@ -169,12 +183,16 @@ export const ConversationEvents = memo(function ConversationEvents({
         onOpenAttachment={onOpenAttachment}
       />
 
-      {/* Persistent task progress â€” visible even when orchestrator is not streaming */}
+      {/* Persistent task progress — visible even when orchestrator is not streaming */}
       {!showStreaming && (
         <GrowIn animate={true} show={runningTasks.length > 0}>
           <TaskIndicator tasks={runningTasks} />
         </GrowIn>
       )}
+
+      <GrowIn animate={true} show={showGwsConnect}>
+        <GoogleWorkspaceConnectCard onConnected={handleGwsConnected} />
+      </GrowIn>
     </div>
   );
 });

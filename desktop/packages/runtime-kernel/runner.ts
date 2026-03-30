@@ -18,6 +18,89 @@ import type {
 
 export type { StellaHostRunnerOptions } from "./runner/types.js";
 
+import type { ToolResult } from "./tools/types.js";
+
+type GoogleWorkspaceAuthResult = {
+  connected: boolean;
+  unavailable?: boolean;
+  email?: string;
+  name?: string;
+};
+
+const getGoogleWorkspaceRecord = (
+  value: unknown,
+): Record<string, unknown> | null =>
+  value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+
+const getGoogleWorkspaceString = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim() ? value.trim() : undefined;
+
+const getGoogleWorkspacePrimaryArrayField = (
+  value: unknown,
+  fieldName: string,
+): string | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  for (const entry of value) {
+    const record = getGoogleWorkspaceRecord(entry);
+    const fieldValue = getGoogleWorkspaceString(record?.[fieldName]);
+    if (fieldValue) {
+      return fieldValue;
+    }
+  }
+
+  return undefined;
+};
+
+export const parseGoogleWorkspaceProfile = (
+  value: unknown,
+): { email?: string; name?: string } => {
+  const record = getGoogleWorkspaceRecord(value);
+  if (!record) {
+    return {};
+  }
+
+  return {
+    email:
+      getGoogleWorkspacePrimaryArrayField(record.emailAddresses, "value") ??
+      getGoogleWorkspaceString(record.emailAddress) ??
+      getGoogleWorkspaceString(record.email),
+    name:
+      getGoogleWorkspacePrimaryArrayField(record.names, "displayName") ??
+      getGoogleWorkspacePrimaryArrayField(record.names, "unstructuredName") ??
+      getGoogleWorkspaceString(record.displayName),
+  };
+};
+
+const AUTH_PENDING_PATTERN = /\bauth\b|oauth|sign[._-]?in|login|consent|credential|unauthorized|unauthenticated|\b403\b|\b401\b/i;
+
+const parseGoogleProfileResult = (
+  result: ToolResult,
+): GoogleWorkspaceAuthResult => {
+  if ("error" in result) return { connected: false };
+  try {
+    const text =
+      typeof result.result === "string"
+        ? result.result
+        : JSON.stringify(result.result);
+    const data = JSON.parse(text);
+    return {
+      connected: true,
+      ...parseGoogleWorkspaceProfile(data),
+    };
+  } catch {
+    return { connected: true };
+  }
+};
+
+/** True when a tool error looks like a missing/expired credential (polling should continue). */
+const isAuthPendingError = (result: ToolResult): boolean =>
+  "error" in result && AUTH_PENDING_PATTERN.test(result.error ?? "");
+
 export const createStellaHostRunner = (
   options: StellaHostRunnerOptions,
 ): RunnerPublicApi => {
@@ -230,6 +313,7 @@ export const createStellaHostRunner = (
     disposeConvexClient: convexSession.disposeConvexClient,
     syncRemoteTurnBridge,
     shutdownTasks: taskOrchestration.shutdown,
+    onGoogleWorkspaceAuthRequired: options.onGoogleWorkspaceAuthRequired,
   });
 
   return {
@@ -292,6 +376,47 @@ export const createStellaHostRunner = (
         throw new Error("Convex client not available — check connection and auth.");
       }
       return (client as { action: (ref: unknown, args: unknown) => Promise<unknown> }).action(ref, args);
+    },
+
+    googleWorkspaceGetAuthStatus: async () => {
+      const callTool = context.state.googleWorkspaceMcpCallTool;
+      if (!callTool) return { connected: false, unavailable: true };
+      // Return cached auth state. Calling any MCP tool would trigger the
+      // upstream OAuth browser flow when not authenticated, so we never probe
+      // here — state is updated passively by callGoogleWorkspaceTool.
+      return { connected: context.state.googleWorkspaceMcpAuthenticated === true };
+    },
+
+    googleWorkspaceConnect: async () => {
+      const callTool = context.state.googleWorkspaceMcpCallTool;
+      if (!callTool) return { connected: false, unavailable: true };
+      // Trigger the upstream OAuth browser flow.
+      const initial = await callTool("people.getMe", {});
+      const initialParsed = parseGoogleProfileResult(initial);
+      if (initialParsed.connected) return initialParsed;
+      // Only poll if the error looks auth-related (consent pending). Fail fast on
+      // hard errors like network failures or MCP crashes.
+      if (!isAuthPendingError(initial)) return { connected: false };
+      const maxAttempts = 60;
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const result = await callTool("people.getMe", {});
+        const status = parseGoogleProfileResult(result);
+        if (status.connected) return status;
+        if (!isAuthPendingError(result)) return { connected: false };
+      }
+      return { connected: false };
+    },
+
+    googleWorkspaceDisconnect: async () => {
+      const callTool = context.state.googleWorkspaceMcpCallTool;
+      if (!callTool) return { ok: false };
+      const result = await callTool("auth.clear", {});
+      const ok = !("error" in result);
+      if (ok) {
+        context.state.googleWorkspaceMcpAuthenticated = false;
+      }
+      return { ok };
     },
   };
 };

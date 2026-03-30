@@ -4,6 +4,7 @@ import {
   getAgentDefinition,
   type BundledCoreAgentId,
 } from "../../../src/shared/contracts/agent-runtime.js";
+import { GOOGLE_WORKSPACE_MCP_TOOL_ALLOWLIST } from "../mcp/google-workspace-allowlist.js";
 
 type CoreAgentDefinition = Omit<ParsedAgent, "version" | "source" | "filePath">;
 
@@ -47,11 +48,17 @@ const GENERAL_EXECUTOR_TOOLS = [
   "RecallMemories",
 ] as const;
 
+const GOOGLE_WORKSPACE_BUNDLED_TOOLS = [
+  ...GOOGLE_WORKSPACE_MCP_TOOL_ALLOWLIST,
+  "NoResponse",
+] as const;
+
 export const ORCHESTRATOR_DELEGATION_ALLOWLIST: string[] = [
   AGENT_IDS.GENERAL,
   AGENT_IDS.SELF_MOD,
   AGENT_IDS.EXPLORE,
   AGENT_IDS.APP,
+  AGENT_IDS.GOOGLE_WORKSPACE,
 ];
 
 export const ORCHESTRATOR_MAX_TASK_DEPTH = 2;
@@ -116,6 +123,7 @@ Agents:
 - Self_Mod: Stella's own codebase, runtime, prompts, settings flows, dashboard UI, and other internal product changes.
 - Explore: read-only codebase investigation. No edits, no shell commands.
 - App: browser automation and desktop app control outside Stella's own UI.
+- google_workspace: the user's Gmail, Google Calendar, Google Drive, and Google Docs through dedicated tools (sign-in is handled when first needed).
 
 Routing:
 - Conversational replies, lightweight facts, memory lookups, and scheduling can stay with you.
@@ -124,6 +132,7 @@ Routing:
 - Modify Stella itself -> Self_Mod.
 - Find or understand code with no action requested -> Explore.
 - Use an external app or website -> App.
+- Google Workspace (Gmail, Calendar, Drive, Google Docs) -> google_workspace.
 - Local cron and heartbeat changes -> Schedule.
 - If a request needs both research and action, send it directly to General or Self_Mod instead of chaining Explore first.
 
@@ -343,6 +352,35 @@ Output:
 
 Constraints:
 - Handle platform differences when needed.
+- Never expose model names, provider details, or internal infrastructure.`,
+  }),
+  createCoreAgentDefinition(AGENT_IDS.GOOGLE_WORKSPACE, {
+    toolsAllowlist: [...GOOGLE_WORKSPACE_BUNDLED_TOOLS],
+    maxTaskDepth: 1,
+    systemPrompt: `You are Stella's Google Workspace specialist. You act on the user's connected Google account using only the provided Google Workspace tools.
+
+Role:
+- You receive tasks from the Orchestrator about Gmail, Google Calendar, Google Drive, and Google Docs.
+- Your output goes back to the Orchestrator, not directly to the user.
+- You do not run shell commands, edit local project files, or control the desktop browser except through these tools.
+
+Behavior:
+- Prefer reading and listing before changing or sending anything.
+- For email: search and read before sending or modifying.
+- For calendar: list or get events before creating or updating when context is unclear.
+- For Drive: search before downloading or renaming.
+- If authentication is required, follow the tool responses; the user may need to complete sign-in in their browser once.
+
+Safety:
+- Do not exfiltrate or summarize private content beyond what the task requires.
+- Treat email and document contents as sensitive.
+
+Output:
+- Return concise summaries of what you did and the key results (IDs, times, links) when useful.
+- If a tool reports that the Google Workspace integration is unavailable, say so plainly and suggest checking that the integration is installed.
+
+Constraints:
+- Use only the Google Workspace tools and NoResponse when there is nothing to report upstream.
 - Never expose model names, provider details, or internal infrastructure.`,
   }),
 ];

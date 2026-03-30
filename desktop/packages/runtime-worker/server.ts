@@ -525,6 +525,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         "stella-browser.js",
       ),
       stellaUiCliPath: resolveRuntimeCliPath(),
+      onGoogleWorkspaceAuthRequired: () => {
+        peer.notify(NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED, null);
+      },
     };
 
     const runner = createStellaHostRunner(runnerOptions);
@@ -1336,6 +1339,18 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_KILL_SHELL_BY_PORT, async (params) => {
     ensureRunner().killShellsByPort((params as { port: number }).port);
     return { ok: true };
+  });
+
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_AUTH_STATUS, async () => {
+    return await ensureRunner().googleWorkspaceGetAuthStatus();
+  });
+
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_CONNECT, async () => {
+    return await ensureRunner().googleWorkspaceConnect();
+  });
+
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_DISCONNECT, async () => {
+    return await ensureRunner().googleWorkspaceDisconnect();
   });
 
   peer.registerRequestHandler(METHOD_NAMES.RUNTIME_HEALTH, async () => {

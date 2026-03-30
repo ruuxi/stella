@@ -311,6 +311,10 @@ export const createRunnerContext = ({
       loadedAgents: [],
       loadedSkills: [],
       loadedSkillsPromise: null,
+      googleWorkspaceMcpToolNames: null,
+      googleWorkspaceMcpDisconnect: null,
+      googleWorkspaceMcpCallTool: null,
+      googleWorkspaceMcpAuthenticated: null,
     },
     hookEmitter,
     toolHost,
@@ -417,12 +421,19 @@ export const buildAgentContext = async (
           context.runtimeStore.listActiveThreads(args.conversationId),
         )
       : "";
+  const googleWorkspaceUnavailable =
+    args.agentType === AGENT_IDS.ORCHESTRATOR &&
+    !context.state.googleWorkspaceMcpToolNames?.length;
+
   const dynamicContextSections = [
     args.agentType === AGENT_IDS.ORCHESTRATOR && context.frontendRoot
       ? buildPanelInventory(context.frontendRoot)
       : "",
     args.agentType === AGENT_IDS.SELF_MOD
       ? buildManagedMediaDocsPrompt(context.state.convexSiteUrl)
+      : "",
+    googleWorkspaceUnavailable
+      ? "Note: The Google Workspace integration is not installed. Do not delegate to google_workspace. If the user asks about Gmail, Calendar, Drive, or Docs, let them know the integration is currently unavailable."
       : "",
     activeThreadsPrompt,
   ].filter((section) => section.trim().length > 0);
@@ -435,13 +446,22 @@ export const buildAgentContext = async (
         };
   const enginePref = getAgentEnginePreference(args.agentType);
 
+  let toolsAllowlist = agent?.toolsAllowlist;
+  if (args.agentType === AGENT_IDS.GOOGLE_WORKSPACE) {
+    if (context.state.googleWorkspaceMcpToolNames?.length) {
+      toolsAllowlist = [...context.state.googleWorkspaceMcpToolNames, "NoResponse"];
+    } else {
+      toolsAllowlist = ["NoResponse"];
+    }
+  }
+
   return {
     systemPrompt:
       agent?.systemPrompt || defaultPromptForAgentType(args.agentType),
     dynamicContext: dynamicContextSections.join("\n\n"),
     orchestratorReminderText: activeThreadsPrompt || undefined,
     shouldInjectDynamicReminder: reminderState.shouldInjectDynamicReminder,
-    toolsAllowlist: agent?.toolsAllowlist,
+    toolsAllowlist,
     delegationAllowlist: agent?.delegationAllowlist,
     model,
     maxTaskDepth: agent?.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH,
