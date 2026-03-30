@@ -8,7 +8,6 @@ import { usersSchema } from "./schema/users";
 import { telemetrySchema } from "./schema/telemetry";
 import { billingSchema } from "./schema/billing";
 import { storeSchema } from "./schema/store";
-import { gamesSchema } from "./schema/games";
 import { mediaSchema } from "./schema/media";
 import { socialSchema } from "./schema/social";
 
@@ -22,7 +21,6 @@ export default defineSchema({
   ...telemetrySchema,
   ...billingSchema,
   ...storeSchema,
-  ...gamesSchema,
   ...mediaSchema,
   ...socialSchema,
 });

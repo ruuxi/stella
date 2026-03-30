@@ -11,19 +11,14 @@ export type DevProjectWorkspacePanel = WorkspacePanelBase & {
   projectId: string;
 };
 
-export type HostedGameWorkspacePanel = WorkspacePanelBase & {
-  kind: "hosted-game";
-  gameId: string;
-  gameUrl: string;
-  joinCode: string;
-};
-
 export type GeneratedPageWorkspacePanel = WorkspacePanelBase & {
   kind: "generated-page";
   pageId: string;
 };
 
-export type WorkspacePanel = DevProjectWorkspacePanel | HostedGameWorkspacePanel | GeneratedPageWorkspacePanel;
+export type WorkspacePanel =
+  | DevProjectWorkspacePanel
+  | GeneratedPageWorkspacePanel;
 
 export type WorkspaceState = {
   activePanel: WorkspacePanel | null;

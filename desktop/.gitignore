@@ -63,9 +63,6 @@ workspace/
 # native/out/
 native/*.exe
 native/*.obj
-# src/features/games/generated-bindings/
-.stella-bindings.json
-
 # Stella local runtime state
 .stella/state/
 .stella/logs/
@@ -73,3 +70,5 @@ native/*.obj
 .stella/canvas/
 .stella/mods/features.json
 .stella/skills/
+
+SECURITY-REVIEW.md

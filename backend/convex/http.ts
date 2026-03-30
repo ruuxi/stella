@@ -5,7 +5,6 @@ import { corsPreflightHandler } from "./http_shared/cors";
 
 // Route modules
 import { registerConnectorWebhookRoutes } from "./http_routes/connectors";
-import { registerGameRoutes } from "./http_routes/games";
 import { registerMediaRoutes } from "./http_routes/media";
 import { registerMobileRoutes } from "./http_routes/mobile";
 
@@ -45,7 +44,6 @@ registerMobileRoutes(http);
 registerVoiceRoutes(http);
 
 registerStripeRoutes(http);
-registerGameRoutes(http);
 
 // ---------------------------------------------------------------------------
 // Stella provider endpoints
@@ -82,4 +80,3 @@ http.route({
 });
 
 export default http;
-

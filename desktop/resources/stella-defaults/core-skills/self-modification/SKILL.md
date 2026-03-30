@@ -26,8 +26,6 @@ Activate the `frontend-architecture` skill before:
 - slot overrides
 - theme system modifications
 
-Activate the `multiplayer-game` skill before creating or modifying multiplayer game apps, hosted multiplayer game flows, or shared multiplayer runtime integrations. Do not use it for single-player game UI work.
-
 ## Best Practices
 - Read files before modifying them so you understand existing patterns.
 - New CSS files must be imported in `src/main.tsx`.

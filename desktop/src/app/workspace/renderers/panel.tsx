@@ -5,11 +5,9 @@ import { WorkspaceErrorBoundary } from '../WorkspaceErrorBoundary'
 import {
   type DevProjectWorkspacePanel,
   type GeneratedPageWorkspacePanel,
-  type HostedGameWorkspacePanel,
   type WorkspacePanel,
 } from '@/context/workspace-state'
 import { DevProjectPanel } from './dev-project-panel'
-import { HostedGamePanel } from './hosted-game-panel'
 import './workspace-renderers.css'
 
 const DevProjectPanelRenderer = ({
@@ -21,20 +19,6 @@ const DevProjectPanelRenderer = ({
     <WorkspaceErrorBoundary>
       <div className="workspace-panel-content">
         <DevProjectPanel projectId={panel.projectId} />
-      </div>
-    </WorkspaceErrorBoundary>
-  </div>
-)
-
-const HostedGamePanelRenderer = ({
-  panel,
-}: {
-  panel: HostedGameWorkspacePanel
-}) => (
-  <div className="workspace-panel-wrap">
-    <WorkspaceErrorBoundary>
-      <div className="workspace-panel-content">
-        <HostedGamePanel panel={panel} />
       </div>
     </WorkspaceErrorBoundary>
   </div>
@@ -70,8 +54,6 @@ const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
   switch (panel.kind) {
     case 'dev-project':
       return <DevProjectPanelRenderer panel={panel} />
-    case 'hosted-game':
-      return <HostedGamePanelRenderer panel={panel} />
     case 'generated-page':
       return <GeneratedPagePanelRenderer panel={panel} />
     default: {
