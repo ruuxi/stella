@@ -42,9 +42,17 @@ fn release_download_url(tag: &str) -> String {
     )
 }
 
-/// Get the latest desktop release tag from GitHub.
+/// Stable URL that always resolves to whatever GitHub marks as the latest non-prerelease release.
+fn release_latest_download_url() -> String {
+    format!(
+        "https://github.com/{GITHUB_REPO}/releases/latest/download/{}",
+        release_tarball_name()
+    )
+}
+
+/// Get the newest `desktop-v*` release tag from GitHub (fallback when `releases/latest` is not a desktop release).
 async fn latest_release_tag() -> Option<String> {
-    let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=10");
+    let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=100");
     let client = reqwest::Client::new();
     let resp = client
         .get(&url)
@@ -457,24 +465,42 @@ async fn install_payload_dependencies(install_dir: &str) -> Result<(), String> {
 // ── Tarball download + extract ──────────────────────────────────────
 
 async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
-    let tag = latest_release_tag()
-        .await
-        .ok_or("Could not find a desktop release. Check your internet connection.")?;
-
-    let url = release_download_url(&tag);
-    log_install(install_dir, &format!("Downloading {url}")).await;
-
     let client = reqwest::Client::new();
+    let latest_url = release_latest_download_url();
+    log_install(install_dir, &format!("Downloading {latest_url}")).await;
+
     let resp = client
-        .get(&url)
+        .get(&latest_url)
         .header("User-Agent", "stella-launcher")
         .send()
         .await
         .map_err(|e| format!("Download failed: {e}"))?;
 
-    if !resp.status().is_success() {
+    let resp = if resp.status().is_success() {
+        resp
+    } else if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        let tag = latest_release_tag()
+            .await
+            .ok_or("Could not find a desktop release. Check your internet connection.")?;
+        let url = release_download_url(&tag);
+        log_install(
+            install_dir,
+            &format!("Latest release had no desktop asset; using tag {tag}: {url}"),
+        )
+        .await;
+        let resp = client
+            .get(&url)
+            .header("User-Agent", "stella-launcher")
+            .send()
+            .await
+            .map_err(|e| format!("Download failed: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("Download failed: HTTP {}", resp.status()));
+        }
+        resp
+    } else {
         return Err(format!("Download failed: HTTP {}", resp.status()));
-    }
+    };
 
     let bytes = resp
         .bytes()
