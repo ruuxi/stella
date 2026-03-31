@@ -4,9 +4,9 @@ const theme: Theme = {
   id: "nightowl",
   name: "Midnight",
   light: {
-    background: "#fbfbfb",
-    backgroundWeak: "#f0f0f0",
-    backgroundStrong: "#ffffff",
+    background: "#e7f1fb",
+    backgroundWeak: "#dbe8f6",
+    backgroundStrong: "#f2f8fd",
     foreground: "#403f53",
     foregroundWeak: "#716f8a",
     foregroundStrong: "#1a1a2e",

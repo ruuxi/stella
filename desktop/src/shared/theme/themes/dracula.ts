@@ -4,9 +4,9 @@ const theme: Theme = {
   id: "dracula",
   name: "Orchid",
   light: {
-    background: "#f8f8f2",
-    backgroundWeak: "#f1f2ed",
-    backgroundStrong: "#f6f6f1",
+    background: "#eee8ff",
+    backgroundWeak: "#e2daf8",
+    backgroundStrong: "#f6f2ff",
     foreground: "#1f1f2f",
     foregroundWeak: "#52526b",
     foregroundStrong: "#05040c",

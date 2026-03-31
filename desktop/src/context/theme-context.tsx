@@ -73,6 +73,8 @@ function applyThemeToDocument(colors: ThemeColors, isDark: boolean) {
   root.style.setProperty("--text-mix-blend-mode", isDark ? "plus-lighter" : "multiply");
 
   root.style.setProperty("--background", colors.background);
+  root.style.setProperty("--background-weak", colors.backgroundWeak);
+  root.style.setProperty("--background-strong", colors.backgroundStrong);
   root.style.setProperty("--foreground", colors.foreground);
   root.style.setProperty("--card", colors.card);
   root.style.setProperty("--card-foreground", colors.cardForeground);

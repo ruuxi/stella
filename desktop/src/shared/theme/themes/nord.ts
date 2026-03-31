@@ -4,9 +4,9 @@ const theme: Theme = {
   id: "nord",
   name: "Glacier",
   light: {
-    background: "#eceff4",
-    backgroundWeak: "#e4e8f0",
-    backgroundStrong: "#f1f3f8",
+    background: "#e2ecf8",
+    backgroundWeak: "#d6e3f2",
+    backgroundStrong: "#ebf3fb",
     foreground: "#2e3440",
     foregroundWeak: "#4c566a",
     foregroundStrong: "#1f2530",

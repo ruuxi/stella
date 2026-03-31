@@ -4,9 +4,9 @@ const theme: Theme = {
   id: "tokyonight",
   name: "Twilight",
   light: {
-    background: "#eef0f5",
-    backgroundWeak: "#e6e8f0",
-    backgroundStrong: "#f5f6fa",
+    background: "#e1e6f6",
+    backgroundWeak: "#d5ddf0",
+    backgroundStrong: "#ebf0fb",
     foreground: "#273153",
     foregroundWeak: "#5c6390",
     foregroundStrong: "#1c2544",

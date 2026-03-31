@@ -198,6 +198,7 @@
   position: relative;
   overflow: hidden;
   padding-top: 32px;
+  background: var(--background);
   border-left: 1px solid var(--border-weak);
   border-top: 1px solid var(--border-weak);
   border-top-left-radius: 12px;

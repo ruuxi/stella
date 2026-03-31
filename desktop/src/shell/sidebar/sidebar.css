@@ -8,7 +8,7 @@
   flex-direction: column;
   width: 220px;
   flex-shrink: 0;
-  background: var(--background);
+  background: var(--background-weak, var(--background));
   position: relative;
   z-index: 2;
 }

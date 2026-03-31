@@ -4,9 +4,9 @@ const theme: Theme = {
   id: "onedarkpro",
   name: "Graphite",
   light: {
-    background: "#fafafa",
-    backgroundWeak: "#f0f0f0",
-    backgroundStrong: "#ffffff",
+    background: "#e8edf3",
+    backgroundWeak: "#dde4ec",
+    backgroundStrong: "#f1f5f9",
     foreground: "#383a42",
     foregroundWeak: "#6b717d",
     foregroundStrong: "#1a1c20",
