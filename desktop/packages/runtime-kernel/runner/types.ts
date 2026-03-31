@@ -198,7 +198,7 @@ export type RunnerState = {
   loadedAgents: ParsedAgentLike[];
   loadedSkills: ParsedSkill[];
   loadedSkillsPromise: Promise<ParsedSkill[]> | null;
-  /** MCP tool names registered for the Google Workspace subagent (empty if MCP server not loaded). */
+  /** `null` before lazy load, `[]` when loaded but unavailable, otherwise registered tool names. */
   googleWorkspaceMcpToolNames: string[] | null;
   googleWorkspaceMcpDisconnect: (() => Promise<void>) | null;
   googleWorkspaceMcpCallTool: ((name: string, args: Record<string, unknown>) => Promise<ToolResult>) | null;
@@ -227,6 +227,7 @@ export type RunnerContext = {
   getDefaultConversationId?: StellaHostRunnerOptions["getDefaultConversationId"];
   paths: RunnerPaths;
   state: RunnerState;
+  ensureGoogleWorkspaceMcpLoaded: () => Promise<void>;
   hookEmitter: HookEmitter;
   toolHost: {
     setSkills: (skills: ParsedSkill[]) => void;

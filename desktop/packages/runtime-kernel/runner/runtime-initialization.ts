@@ -18,6 +18,72 @@ export const createRuntimeInitialization = (
     onGoogleWorkspaceAuthRequired?: () => void;
   },
 ) => {
+  let googleWorkspaceMcpLoadPromise: Promise<void> | null = null;
+  let googleWorkspaceMcpLoadGeneration = 0;
+
+  const ensureGoogleWorkspaceMcpLoaded = async () => {
+    if (
+      context.state.googleWorkspaceMcpCallTool ||
+      context.state.googleWorkspaceMcpToolNames !== null
+    ) {
+      return;
+    }
+    if (googleWorkspaceMcpLoadPromise) {
+      await googleWorkspaceMcpLoadPromise;
+      return;
+    }
+
+    const loadGeneration = googleWorkspaceMcpLoadGeneration;
+    const loadPromise = loadGoogleWorkspaceMcpTools({
+      frontendRoot: context.frontendRoot,
+      onAuthRequired: deps.onGoogleWorkspaceAuthRequired,
+      onAuthStateChanged: (authenticated) => {
+        context.state.googleWorkspaceMcpAuthenticated = authenticated;
+      },
+    })
+      .then(async ({ tools, disconnect, callTool, hasStoredCredentials }) => {
+        if (
+          loadGeneration !== googleWorkspaceMcpLoadGeneration ||
+          !context.state.isRunning
+        ) {
+          await disconnect().catch(() => undefined);
+          return;
+        }
+
+        context.state.googleWorkspaceMcpDisconnect = disconnect;
+        context.state.googleWorkspaceMcpCallTool = callTool;
+        context.state.googleWorkspaceMcpToolNames =
+          tools.length > 0 ? tools.map((tool) => tool.name) : [];
+
+        if (tools.length > 0) {
+          context.toolHost.registerExtensionTools(tools);
+        }
+
+        // Seed auth state from stored credentials so the UI can show
+        // "Connected" without making an MCP call that triggers OAuth.
+        if (hasStoredCredentials) {
+          context.state.googleWorkspaceMcpAuthenticated = true;
+        }
+      })
+      .catch((error) => {
+        console.error(
+          "[stella:google-workspace-mcp] Failed to load:",
+          (error as Error).message,
+        );
+        if (loadGeneration === googleWorkspaceMcpLoadGeneration) {
+          context.state.googleWorkspaceMcpToolNames = [];
+        }
+      })
+      .finally(() => {
+        if (googleWorkspaceMcpLoadPromise === loadPromise) {
+          googleWorkspaceMcpLoadPromise = null;
+        }
+      });
+
+    googleWorkspaceMcpLoadPromise = loadPromise;
+    await loadPromise;
+  };
+
   const initializeRuntime = () => {
     const skillsLoad = deps.refreshLoadedSkills().then(() => undefined).catch(() => undefined);
     const agentsLoad = loadAgentsFromHome(context.paths.agentsPath)
@@ -75,40 +141,10 @@ export const createRuntimeInitialization = (
         );
       });
 
-    const googleWorkspaceMcpLoad = loadGoogleWorkspaceMcpTools({
-      frontendRoot: context.frontendRoot,
-      onAuthRequired: deps.onGoogleWorkspaceAuthRequired,
-      onAuthStateChanged: (authenticated) => {
-        context.state.googleWorkspaceMcpAuthenticated = authenticated;
-      },
-    })
-      .then(async ({ tools, disconnect, callTool, hasStoredCredentials }) => {
-        context.state.googleWorkspaceMcpDisconnect = disconnect;
-        context.state.googleWorkspaceMcpCallTool = callTool;
-        context.state.googleWorkspaceMcpToolNames =
-          tools.length > 0 ? tools.map((tool) => tool.name) : [];
-        if (tools.length > 0) {
-          context.toolHost.registerExtensionTools(tools);
-        }
-        // Seed auth state from stored credentials so the UI can show
-        // "Connected" without making an MCP call that triggers OAuth.
-        if (hasStoredCredentials) {
-          context.state.googleWorkspaceMcpAuthenticated = true;
-        }
-      })
-      .catch((error) => {
-        console.error(
-          "[stella:google-workspace-mcp] Failed to load:",
-          (error as Error).message,
-        );
-        context.state.googleWorkspaceMcpToolNames = [];
-      });
-
     context.state.initializationPromise = Promise.all([
       skillsLoad,
       agentsLoad,
       extensionsLoad,
-      googleWorkspaceMcpLoad,
     ]).then(() => {
       context.state.isInitialized = true;
       deps.syncRemoteTurnBridge();
@@ -131,6 +167,8 @@ export const createRuntimeInitialization = (
       activeAbortControllers: context.state.activeRunAbortControllers.size,
       conversationCallbacks: context.state.conversationCallbacks.size,
     });
+    googleWorkspaceMcpLoadGeneration += 1;
+    googleWorkspaceMcpLoadPromise = null;
     context.state.isRunning = false;
     context.state.isInitialized = false;
     context.state.initializationPromise = null;
@@ -166,6 +204,7 @@ export const createRuntimeInitialization = (
   };
 
   return {
+    ensureGoogleWorkspaceMcpLoaded,
     initializeRuntime,
     start,
     stop,
