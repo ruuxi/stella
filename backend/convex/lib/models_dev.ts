@@ -38,6 +38,12 @@ type ResolvedModelsDevModel = {
   entry: ModelsDevModelEntry;
 };
 
+/** When models.dev lists $0 for a router/wrapper, use sibling model pricing. */
+const MODELS_DEV_PRICING_FALLBACKS: Record<string, string> = {
+  "accounts/fireworks/routers/kimi-k2p5-turbo":
+    "accounts/fireworks/models/kimi-k2p5",
+};
+
 const MODELS_DEV_ALIASES: Record<string, string[]> = {
   "google/gemini-3-flash-preview": [
     "google/gemini-3-flash",
@@ -80,6 +86,12 @@ const resolveModelsDevModel = (
     model,
     ...(MODELS_DEV_ALIASES[model] ?? []),
   ];
+
+  // models.dev uses provider "fireworks-ai" with full IDs (e.g. accounts/fireworks/routers/…)
+  // as keys; a naive split on the first "/" looks under data.accounts instead.
+  if (model.startsWith("accounts/fireworks/")) {
+    candidates.push(`fireworks-ai/${model}`);
+  }
 
   if (direct) {
     candidates.push(`${direct.provider}/${direct.modelId.replace(/\./g, "-")}`);
@@ -127,16 +139,29 @@ export const buildManagedModelPriceEntries = (args: {
       continue;
     }
 
+    const fallbackId = MODELS_DEV_PRICING_FALLBACKS[model];
+    let costEntry = resolved.entry;
+    if (
+      fallbackId
+      && toNumber(resolved.entry.cost?.input) === 0
+      && toNumber(resolved.entry.cost?.output) === 0
+    ) {
+      const fallbackResolved = resolveModelsDevModel(args.data, fallbackId);
+      if (fallbackResolved?.entry.cost) {
+        costEntry = fallbackResolved.entry;
+      }
+    }
+
     entries.push({
       model,
       source: "models.dev",
       sourceProvider: resolved.sourceProvider,
       sourceModelId: resolved.sourceModelId,
-      inputPerMillionUsd: toNumber(resolved.entry.cost?.input),
-      outputPerMillionUsd: toNumber(resolved.entry.cost?.output),
-      cacheReadPerMillionUsd: toNumber(resolved.entry.cost?.cache_read),
-      cacheWritePerMillionUsd: toNumber(resolved.entry.cost?.cache_write),
-      reasoningPerMillionUsd: toNumber(resolved.entry.cost?.reasoning),
+      inputPerMillionUsd: toNumber(costEntry.cost?.input),
+      outputPerMillionUsd: toNumber(costEntry.cost?.output),
+      cacheReadPerMillionUsd: toNumber(costEntry.cost?.cache_read),
+      cacheWritePerMillionUsd: toNumber(costEntry.cost?.cache_write),
+      reasoningPerMillionUsd: toNumber(costEntry.cost?.reasoning),
       sourceUpdatedAt: resolved.entry.last_updated?.trim() ?? "",
       syncedAt: args.syncedAt,
     });
