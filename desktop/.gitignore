@@ -12,12 +12,7 @@ lerna-debug.log*
 
 node_modules
 dist
-!resources/google-workspace-mcp/**/dist/
 dist-electron
-
-# Google Workspace MCP runtime credentials (written by upstream server)
-resources/google-workspace-mcp/gemini-cli-workspace-token.json
-resources/google-workspace-mcp/.gemini-cli-workspace-master-key
 dist-ssr
 *.local
 *.tsbuildinfo
