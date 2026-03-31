@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatGoogleWorkspaceCallToolResult } from "../../../../packages/runtime-kernel/mcp/google-workspace-mcp.js";
+import { formatGoogleWorkspaceCallToolResult } from "../../../../packages/runtime-kernel/google-workspace/format-google-workspace-result.js";
 
 describe("google-workspace-mcp", () => {
   it("treats JSON error text payloads as tool errors", () => {
