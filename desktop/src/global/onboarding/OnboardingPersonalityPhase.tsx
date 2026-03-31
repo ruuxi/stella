@@ -53,7 +53,7 @@ export function OnboardingPersonalityPhase({
         disabled={splitTransitionActive}
         onClick={onFinish}
       >
-        Finish
+        Continue
       </button>
     </div>
   );
