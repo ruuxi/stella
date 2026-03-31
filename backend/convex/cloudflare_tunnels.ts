@@ -10,12 +10,21 @@ const CF_ACCOUNT_ID = "f34b91c9c7dc22f0aef0ba855a9f026f";
 const CF_ZONE_ID = "a7665eb56e4ec7be06f675b2c13077d4";
 const CF_TUNNEL_DOMAIN = "stellatunnel.com";
 
-export const getTunnelForOwner = internalQuery({
-  args: { ownerId: v.string() },
+const tunnelNameForDevice = (ownerId: string, deviceId: string) => {
+  const safeOwner = ownerId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10);
+  const safeDev = deviceId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20);
+  const base = `t-${safeOwner}-${safeDev || "dev"}`;
+  return base.slice(0, 63);
+};
+
+export const getTunnelForOwnerDevice = internalQuery({
+  args: { ownerId: v.string(), deviceId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("cloudflare_tunnels")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId_and_deviceId", (q) =>
+        q.eq("ownerId", args.ownerId).eq("deviceId", args.deviceId),
+      )
       .unique();
   },
 });
@@ -23,6 +32,7 @@ export const getTunnelForOwner = internalQuery({
 export const upsertTunnel = internalMutation({
   args: {
     ownerId: v.string(),
+    deviceId: v.string(),
     tunnelId: v.string(),
     tunnelName: v.string(),
     tunnelToken: v.string(),
@@ -34,7 +44,9 @@ export const upsertTunnel = internalMutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("cloudflare_tunnels")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId_and_deviceId", (q) =>
+        q.eq("ownerId", args.ownerId).eq("deviceId", args.deviceId),
+      )
       .unique();
 
     if (existing) {
@@ -51,6 +63,7 @@ export const upsertTunnel = internalMutation({
 
     await ctx.db.insert("cloudflare_tunnels", {
       ownerId: args.ownerId,
+      deviceId: args.deviceId,
       tunnelId: args.tunnelId,
       tunnelName: args.tunnelName,
       tunnelToken: args.tunnelToken,
@@ -63,11 +76,11 @@ export const upsertTunnel = internalMutation({
 });
 
 export const getOrProvisionTunnel = internalAction({
-  args: { ownerId: v.string() },
+  args: { ownerId: v.string(), deviceId: v.string() },
   handler: async (ctx, args): Promise<{ tunnelToken: string; hostname: string }> => {
     const existing = await ctx.runQuery(
-      internal.cloudflare_tunnels.getTunnelForOwner,
-      { ownerId: args.ownerId },
+      internal.cloudflare_tunnels.getTunnelForOwnerDevice,
+      { ownerId: args.ownerId, deviceId: args.deviceId },
     );
     if (existing) {
       return { tunnelToken: existing.tunnelToken, hostname: existing.hostname };
@@ -78,7 +91,7 @@ export const getOrProvisionTunnel = internalAction({
       throw new ConvexError("Missing CLOUDFLARE_API_TOKEN");
     }
 
-    const tunnelName = `t-${args.ownerId.slice(0, 10)}`;
+    const tunnelName = tunnelNameForDevice(args.ownerId, args.deviceId);
     const tunnelSecret = btoa(
       String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))),
     );
@@ -141,6 +154,7 @@ export const getOrProvisionTunnel = internalAction({
 
     await ctx.runMutation(internal.cloudflare_tunnels.upsertTunnel, {
       ownerId: args.ownerId,
+      deviceId: args.deviceId,
       tunnelId,
       tunnelName,
       tunnelToken,

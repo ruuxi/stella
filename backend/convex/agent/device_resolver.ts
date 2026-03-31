@@ -1,4 +1,9 @@
-import { mutation, internalQuery } from "../_generated/server";
+import {
+  mutation,
+  internalQuery,
+  type MutationCtx,
+  type QueryCtx,
+} from "../_generated/server";
 import { ConvexError, v } from "convex/values";
 import { requireSensitiveUserId, requireUserId } from "../auth";
 
@@ -37,9 +42,48 @@ const verifyHeartbeatSignature = async (args: {
       message.buffer as ArrayBuffer,
     );
   } catch {
-    // best-effort: treat malformed or unsupported keys as verification failure
     return false;
   }
+};
+
+const loadDeviceRow = async (
+  ctx: QueryCtx | MutationCtx,
+  ownerId: string,
+  deviceId: string,
+) => {
+  return await ctx.db
+    .query("devices")
+    .withIndex("by_ownerId_and_deviceId", (q) =>
+      q.eq("ownerId", ownerId).eq("deviceId", deviceId),
+    )
+    .unique();
+};
+
+const listDevicesForOwner = async (ctx: QueryCtx, ownerId: string) => {
+  return await ctx.db
+    .query("devices")
+    .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+    .collect();
+};
+
+const pickBestOnlineTarget = (
+  rows: Array<{
+    deviceId: string;
+    online: boolean;
+    lastSignedAtMs?: number;
+  }>,
+): string | null => {
+  const online = rows.filter((r) => r.online && r.deviceId);
+  if (online.length === 0) {
+    const fallback = rows
+      .filter((r) => r.deviceId)
+      .sort((a, b) => (b.lastSignedAtMs ?? 0) - (a.lastSignedAtMs ?? 0))[0];
+    return fallback?.deviceId ?? null;
+  }
+  const sorted = online.sort(
+    (a, b) => (b.lastSignedAtMs ?? 0) - (a.lastSignedAtMs ?? 0),
+  );
+  return sorted[0]?.deviceId ?? null;
 };
 
 // ---------------------------------------------------------------------------
@@ -80,21 +124,17 @@ export const heartbeat = mutation({
       });
     }
 
-    const existing = await ctx.db
-      .query("devices")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-      .unique();
+    const existing = await loadDeviceRow(ctx, ownerId, args.deviceId);
 
     if (existing?.devicePublicKey && existing.devicePublicKey !== args.publicKey) {
       throw new ConvexError({
         code: "UNAUTHORIZED",
-        message: "Device key mismatch for owner.",
+        message: "Device key mismatch for this machine.",
       });
     }
 
     if (existing) {
       await ctx.db.patch(existing._id, {
-        deviceId: args.deviceId,
         devicePublicKey: args.publicKey,
         lastSignedAtMs: args.signedAtMs,
         online: true,
@@ -127,14 +167,10 @@ export const registerDevice = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
 
-    const existing = await ctx.db
-      .query("devices")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-      .unique();
+    const existing = await loadDeviceRow(ctx, ownerId, args.deviceId);
 
     if (existing) {
       await ctx.db.patch(existing._id, {
-        deviceId: args.deviceId,
         online: true,
         ...(args.platform !== undefined ? { platform: args.platform } : {}),
       });
@@ -151,17 +187,16 @@ export const registerDevice = mutation({
 });
 
 /**
- * Go offline: mark the local device as offline.
+ * Go offline: mark this desktop machine as offline.
  */
 export const goOffline = mutation({
-  args: {},
+  args: {
+    deviceId: v.string(),
+  },
   returns: v.null(),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const device = await ctx.db
-      .query("devices")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-      .unique();
+    const device = await loadDeviceRow(ctx, ownerId, args.deviceId);
 
     if (device) {
       await ctx.db.patch(device._id, { online: false });
@@ -175,48 +210,66 @@ export const goOffline = mutation({
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the best execution target for an owner.
- * Local device online -> return its deviceId.
- * Otherwise return null.
+ * Resolve execution target for connector / remote turns.
+ * Prefers conversation affinity when the last user_message device is still registered.
  */
 export const resolveExecutionTarget = internalQuery({
-  args: { ownerId: v.string() },
-  handler: async (ctx, args): Promise<{
+  args: {
+    ownerId: v.string(),
+    conversationId: v.optional(v.id("conversations")),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
     targetDeviceId: string | null;
   }> => {
-    const device = await ctx.db
-      .query("devices")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
-      .unique();
-
-    console.log(
-      `[device_resolver:trace] ownerId=${args.ownerId}, device=${device ? `id=${device.deviceId}, online=${device.online}` : "null"}`,
-    );
-
-    // Always try the desktop first if a device is registered.
-    // The watchdog (rescueOrphanedTurns) handles fallback when the
-    // device is unreachable — no polling heartbeat required.
-    if (device?.deviceId) {
-      return { targetDeviceId: device.deviceId };
+    const rows = await listDevicesForOwner(ctx, args.ownerId);
+    if (rows.length === 0) {
+      return { targetDeviceId: null };
     }
 
-    return { targetDeviceId: null };
+    let preferred: string | null = null;
+    if (args.conversationId) {
+      const conversationId = args.conversationId;
+      const event = await ctx.db
+        .query("events")
+        .withIndex("by_conversationId_and_type_and_timestamp", (q) =>
+          q.eq("conversationId", conversationId).eq("type", "user_message"),
+        )
+        .order("desc")
+        .first();
+      const fromEvent =
+        typeof event?.deviceId === "string" ? event.deviceId.trim() : "";
+      if (fromEvent) {
+        const match = rows.find((r) => r.deviceId === fromEvent);
+        if (match?.deviceId) {
+          preferred = match.deviceId;
+        }
+      }
+    }
+
+    const target =
+      preferred && rows.some((r) => r.deviceId === preferred && r.online)
+        ? preferred
+        : pickBestOnlineTarget(rows);
+
+    console.log(
+      `[device_resolver:trace] ownerId=${args.ownerId}, conversationId=${args.conversationId ?? "none"}, devices=${rows.length}, targetDeviceId=${target}`,
+    );
+
+    return { targetDeviceId: target };
   },
 });
 
 /**
- * Get device status for system prompt injection.
+ * Get device status for system prompt injection (any desktop online).
  */
 export const getDeviceStatus = internalQuery({
   args: { ownerId: v.string() },
   handler: async (ctx, args) => {
-    const device = await ctx.db
-      .query("devices")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
-      .unique();
-
-    return {
-      localOnline: device?.online ?? false,
-    };
+    const rows = await listDevicesForOwner(ctx, args.ownerId);
+    const localOnline = rows.some((r) => r.online);
+    return { localOnline };
   },
 });

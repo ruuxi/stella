@@ -13,6 +13,7 @@ export class CloudflareTunnelService {
     private readonly options: {
       getAuthToken: () => Promise<string | null>;
       getConvexSiteUrl: () => string | null;
+      getDeviceId: () => string | null;
       onTunnelUrl: (url: string | null) => void;
       onUnexpectedExit?: (error: string) => void;
     },
@@ -120,6 +121,11 @@ export class CloudflareTunnelService {
       throw new Error("Missing site URL or auth token");
     }
 
+    const deviceId = this.options.getDeviceId()?.trim();
+    if (!deviceId) {
+      throw new Error("Missing desktop device id for tunnel token");
+    }
+
     const response = await fetch(
       `${siteUrl.replace(/\/+$/, "")}/api/mobile/desktop-bridge/tunnel-token`,
       {
@@ -128,6 +134,7 @@ export class CloudflareTunnelService {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
+        body: JSON.stringify({ deviceId }),
       },
     );
 

@@ -857,10 +857,22 @@ export const registerMobileRoutes = (http: HttpRouter) => {
           return owner.response;
         }
 
+        let body: { deviceId?: unknown } | null = null;
+        try {
+          body = (await request.json()) as { deviceId?: unknown };
+        } catch {
+          return errorResponse(400, "Invalid JSON body", origin);
+        }
+        const deviceId =
+          typeof body?.deviceId === "string" ? body.deviceId.trim() : "";
+        if (!deviceId) {
+          return errorResponse(400, "deviceId is required", origin);
+        }
+
         try {
           const result = await ctx.runAction(
             internal.cloudflare_tunnels.getOrProvisionTunnel,
-            { ownerId: owner.ownerId },
+            { ownerId: owner.ownerId, deviceId },
           );
           return jsonResponse(result, 200, origin);
         } catch (error) {

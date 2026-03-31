@@ -216,8 +216,9 @@ export function PhoneAccessCard() {
         </Button>
       </div>
       <p className="settings-card-desc">
-        Pair your phone once, then it can reconnect to this desktop without
-        asking again.
+        Pair your phone with this computer once, then it can reconnect here
+        without asking again. If you use Stella on more than one computer,
+        pair your phone on each one separately.
       </p>
       {!hasConnectedAccount ? (
         <p className="settings-card-desc">Sign in to pair your phone.</p>

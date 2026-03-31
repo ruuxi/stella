@@ -7,7 +7,11 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { requireConnectedUserId, requireSensitiveUserId } from "./auth";
+import {
+  isAnonymousIdentity,
+  requireConnectedUserId,
+  requireSensitiveUserId,
+} from "./auth";
 import { constantTimeEqual, hashSha256Hex } from "./lib/crypto_utils";
 
 const MOBILE_PAIRING_SESSION_TTL_MS = 10 * 60_000;
@@ -274,7 +278,11 @@ export const watchIncomingConnectIntent = query({
   },
   returns: connectIntentValidator,
   handler: async (ctx, args) => {
-    const ownerId = await requireConnectedUserId(ctx);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity || isAnonymousIdentity(identity)) {
+      return null;
+    }
+    const ownerId = identity.subject;
     const intents = await ctx.db
       .query("mobile_connect_intents")
       .withIndex("by_ownerId_and_desktopDeviceId_and_expiresAt", (q) =>

@@ -135,6 +135,14 @@ export const _deleteOwnerBatch = internalMutation({
     await Promise.all(devices.map((d) => ctx.db.delete(d._id)));
     totalDeleted += devices.length;
 
+    // Cloudflare tunnels (per desktop)
+    const tunnels = await ctx.db
+      .query("cloudflare_tunnels")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+      .take(BATCH);
+    await Promise.all(tunnels.map((t) => ctx.db.delete(t._id)));
+    totalDeleted += tunnels.length;
+
     return totalDeleted > 0;
   },
 });
