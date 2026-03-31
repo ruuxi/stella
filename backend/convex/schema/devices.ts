@@ -83,8 +83,8 @@ export const devicesSchema = {
 
   cloudflare_tunnels: defineTable({
     ownerId: v.string(),
-    /** Desktop machine id (matches `devices.deviceId` / mobile bridge device). */
-    deviceId: v.string(),
+    /** Desktop machine id (matches `devices.deviceId` / mobile bridge device). Omitted until claimed for older one-row-per-owner tunnel records. */
+    deviceId: v.optional(v.string()),
     tunnelId: v.string(),
     tunnelName: v.string(),
     tunnelToken: v.string(),
