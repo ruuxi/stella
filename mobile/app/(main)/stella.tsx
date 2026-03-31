@@ -20,7 +20,9 @@ import {
   completePhonePairing,
   getDesktopBridgeStatus,
   getPreferredPhoneAccess,
+  listStoredPairedPhoneAccess,
   requestDesktopConnection,
+  setPreferredDesktopDeviceId,
   type StoredPhoneAccess,
 } from "../../src/lib/phone-access";
 import { generateShimScript } from "../../src/lib/shim";
@@ -147,6 +149,13 @@ export default function StellaScreen() {
     useState<StoredPhoneAccess | null>(null);
   const [pairingCode, setPairingCode] = useState(routeCode);
   const [isPairing, setIsPairing] = useState(false);
+  const [pairedDesktops, setPairedDesktops] = useState<StoredPhoneAccess[]>(
+    [],
+  );
+
+  useEffect(() => {
+    void listStoredPairedPhoneAccess().then(setPairedDesktops);
+  }, [preferredAccess]);
 
   const updatePreferredAccess = useCallback(
     (nextAccess: StoredPhoneAccess | null) => {
@@ -170,11 +179,13 @@ export default function StellaScreen() {
 
       if (!access) {
         updatePreferredAccess(null);
+        setPairedDesktops([]);
         setScreenState(readUnavailableState("Pair your phone"));
         return;
       }
 
       updatePreferredAccess(access);
+      void listStoredPairedPhoneAccess().then(setPairedDesktops);
 
       try {
         await requestDesktopConnection(access);
@@ -371,6 +382,34 @@ export default function StellaScreen() {
           )}
         </View>
 
+        {pairedDesktops.length > 1 ? (
+          <View style={styles.switchDesktopRow}>
+            <Text style={styles.inputLabel}>Paired computers</Text>
+            <View style={styles.switchDesktopChips}>
+              {pairedDesktops.map((d) => (
+                <Pressable
+                  key={d.desktopDeviceId}
+                  onPress={() => {
+                    void setPreferredDesktopDeviceId(d.desktopDeviceId);
+                    void refreshBridge(d);
+                  }}
+                  style={({ pressed }) => [
+                    styles.desktopChip,
+                    pressed && styles.desktopChipPressed,
+                    preferredAccess?.desktopDeviceId === d.desktopDeviceId
+                      ? styles.desktopChipActive
+                      : null,
+                  ]}
+                >
+                  <Text style={styles.desktopChipText}>
+                    {d.desktopDeviceId.slice(0, 8)}…
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.pairingCard}>
           <Text style={styles.inputLabel}>Code from your computer</Text>
           <TextInput
@@ -523,6 +562,34 @@ const styles = StyleSheet.create({
   statusBlock: {
     gap: 8,
     paddingTop: 8,
+  },
+  switchDesktopRow: {
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  switchDesktopChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  desktopChip: {
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  desktopChipPressed: {
+    opacity: 0.85,
+  },
+  desktopChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.panel,
+  },
+  desktopChipText: {
+    color: colors.text,
+    fontFamily: fonts.sans.medium,
+    fontSize: 13,
   },
   pairingCard: {
     backgroundColor: colors.panel,

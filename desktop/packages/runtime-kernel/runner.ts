@@ -149,7 +149,15 @@ export const createStellaHostRunner = (
     deviceRegistering = false;
   };
 
-  const sendGoOffline = async () => {
+  let sendGoOffline: () => Promise<void> = async () => {};
+
+  const convexSession = createConvexSession(context, {
+    syncRemoteTurnBridge: () => syncRemoteTurnBridge(),
+    onAuthTokenSet: () => void registerDevice(),
+    onBeforeAuthTokenClear: () => sendGoOffline(),
+  });
+
+  sendGoOffline = async () => {
     if (!deviceRegistered) return;
     const client = convexSession.ensureConvexClient();
     if (!client) return;
@@ -161,18 +169,13 @@ export const createStellaHostRunner = (
             agent: { device_resolver: { goOffline: unknown } };
           }
         ).agent.device_resolver.goOffline,
-        {},
+        { deviceId: context.deviceId },
       );
       deviceRegistered = false;
     } catch {
       // best-effort
     }
   };
-
-  const convexSession = createConvexSession(context, {
-    syncRemoteTurnBridge: () => syncRemoteTurnBridge(),
-    onAuthTokenSet: () => void registerDevice(),
-  });
   const storeOperations = createStoreOperations(context, {
     ensureStoreClient: convexSession.ensureStoreClient,
   });
@@ -300,7 +303,8 @@ export const createStellaHostRunner = (
       return;
     }
     if (!context.state.authToken || !context.state.convexDeploymentUrl) {
-      // Not ready yet — will be called again when auth/url arrive
+      remoteTurnBridge.stop();
+      deviceRegistered = false;
       return;
     }
     void registerDevice();

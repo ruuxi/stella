@@ -11,6 +11,8 @@ export const createConvexSession = (
   options: {
     syncRemoteTurnBridge: () => void;
     onAuthTokenSet?: () => void;
+    /** Called before clearing auth so the client can still authenticate (e.g. goOffline). */
+    onBeforeAuthTokenClear?: () => void | Promise<void>;
   },
 ) => {
   const disposeConvexClient = () => {
@@ -163,6 +165,15 @@ export const createConvexSession = (
 
   const setAuthToken = (value: string | null) => {
     if (process.env.STELLA_LLM_PROXY_TOKEN) return;
+    const hadToken = Boolean(context.state.authToken?.trim());
+    if (value === null && hadToken) {
+      void Promise.resolve(options.onBeforeAuthTokenClear?.()).finally(() => {
+        context.state.authToken = value;
+        refreshConvexAuth();
+        options.syncRemoteTurnBridge();
+      });
+      return;
+    }
     context.state.authToken = value;
     refreshConvexAuth();
     options.syncRemoteTurnBridge();

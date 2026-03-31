@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { getSetCookie } from "@convex-dev/better-auth/client/plugins";
 import { authClient } from "@/global/auth/lib/auth-client";
 import { readConfiguredConvexSiteUrl } from "@/shared/lib/convex-urls";
+
+/** Same key as `crossDomainClient()` default in `auth-client.ts`. */
+const BETTER_AUTH_COOKIE_STORAGE_KEY = "better-auth_cookie";
 
 type Status = "idle" | "sending" | "sent" | "verifying" | "error";
 
@@ -82,22 +86,48 @@ export const useMagicLinkAuth = (): UseMagicLinkAuthResult => {
             `${convexSiteUrl}/api/auth/link/status?requestId=${encodeURIComponent(requestId)}`,
           );
           if (!res.ok) continue;
-          const data = (await res.json()) as { status: string; ott?: string };
+          const data = (await res.json()) as {
+            status: string;
+            ott?: string;
+            sessionCookie?: string;
+          };
 
-          if (data.status === "completed" && data.ott) {
+          if (data.status === "completed" && (data.sessionCookie || data.ott)) {
             if (cancelledRef.current) return;
             setStatus("verifying");
-            await authClient.$fetch("/cross-domain/one-time-token/verify", {
-              method: "POST",
-              body: { token: data.ott },
-            });
-            // Don't check cancelledRef — once verifying, always finish.
-            const updateSession = (authClient as unknown as { updateSession?: () => void }).updateSession;
-            if (typeof updateSession === "function") {
-              updateSession();
-            } else {
-              await authClient.getSession();
+            try {
+              // Browser `/api/auth/link/verify` already exchanges the OTT server-side; the token
+              // is single-use. Apply the returned Set-Cookie payload instead of verifying again.
+              if (data.sessionCookie) {
+                const prev = localStorage.getItem(BETTER_AUTH_COOKIE_STORAGE_KEY);
+                const merged = getSetCookie(data.sessionCookie, prev ?? undefined);
+                localStorage.setItem(BETTER_AUTH_COOKIE_STORAGE_KEY, merged);
+              } else {
+                await authClient.$fetch("/cross-domain/one-time-token/verify", {
+                  method: "POST",
+                  body: { token: data.ott as string },
+                });
+              }
+              // Don't check cancelledRef — once verifying, always finish.
+              const updateSession = (authClient as unknown as { updateSession?: () => void }).updateSession;
+              if (typeof updateSession === "function") {
+                updateSession();
+              } else {
+                await authClient.getSession();
+              }
+            } catch {
+              setStatus("error");
+              setError("Could not finish sign-in. Please try again.");
+              setRequestId(null);
             }
+            return;
+          }
+
+          if (data.status === "completed") {
+            if (cancelledRef.current) return;
+            setStatus("error");
+            setError("Sign-in incomplete. Please try again.");
+            setRequestId(null);
             return;
           }
 

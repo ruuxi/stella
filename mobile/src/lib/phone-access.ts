@@ -7,6 +7,8 @@ import type { DesktopBridgeStatus } from "../types";
 const MOBILE_DEVICE_ID_KEY = "stella-mobile_phone-access/mobile-device-id";
 const PREFERRED_DESKTOP_DEVICE_ID_KEY =
   "stella-mobile_phone-access/preferred-desktop-device-id";
+/** JSON string array of desktop device ids (multiple computers per account). */
+const PAIRED_DESKTOP_IDS_KEY = "stella-mobile_phone-access/paired-desktop-ids";
 const DESKTOP_ACCESS_KEY_PREFIX = "stella-mobile_phone-access/desktop/";
 
 export type StoredPhoneAccess = {
@@ -18,6 +20,34 @@ export type StoredPhoneAccess = {
 
 const desktopAccessKey = (desktopDeviceId: string) =>
   `${DESKTOP_ACCESS_KEY_PREFIX}${desktopDeviceId}`;
+
+const readPairedDesktopIds = async (): Promise<string[]> => {
+  const raw = await SecureStore.getItemAsync(PAIRED_DESKTOP_IDS_KEY);
+  if (!raw?.trim()) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    const ids = parsed.filter(
+      (x): x is string => typeof x === "string" && x.trim().length > 0,
+    );
+    return [...new Set(ids)];
+  } catch {
+    return [];
+  }
+};
+
+const writePairedDesktopIds = async (ids: string[]) => {
+  const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+  if (unique.length === 0) {
+    await SecureStore.deleteItemAsync(PAIRED_DESKTOP_IDS_KEY);
+    return;
+  }
+  await SecureStore.setItemAsync(PAIRED_DESKTOP_IDS_KEY, JSON.stringify(unique));
+};
 
 const createMobileDeviceId = () => {
   const randomUuid = globalThis.crypto?.randomUUID?.();
@@ -156,15 +186,60 @@ export async function getPreferredPhoneAccess() {
   return readStoredPhoneAccess(stored);
 }
 
+/**
+ * All desktops this phone has paired with (same account can have several machines).
+ */
+export async function listStoredPairedPhoneAccess(): Promise<StoredPhoneAccess[]> {
+  let ids = await readPairedDesktopIds();
+  if (ids.length === 0) {
+    const fallback = await getPreferredPhoneAccess();
+    if (fallback) {
+      await writePairedDesktopIds([fallback.desktopDeviceId]);
+      ids = [fallback.desktopDeviceId];
+    }
+  }
+  const out: StoredPhoneAccess[] = [];
+  for (const id of ids) {
+    const raw = await SecureStore.getItemAsync(desktopAccessKey(id));
+    const access = readStoredPhoneAccess(raw);
+    if (access) {
+      out.push(access);
+    }
+  }
+  return out;
+}
+
+export async function setPreferredDesktopDeviceId(desktopDeviceId: string) {
+  const trimmed = desktopDeviceId.trim();
+  if (!trimmed) {
+    return;
+  }
+  const ids = await readPairedDesktopIds();
+  if (!ids.includes(trimmed)) {
+    return;
+  }
+  await SecureStore.setItemAsync(PREFERRED_DESKTOP_DEVICE_ID_KEY, trimmed);
+}
+
 export async function clearStoredPhoneAccess(desktopDeviceId: string) {
   const key = desktopAccessKey(desktopDeviceId);
   await SecureStore.deleteItemAsync(key);
+
+  const ids = await readPairedDesktopIds();
+  const next = ids.filter((id) => id !== desktopDeviceId);
+  await writePairedDesktopIds(next);
 
   const preferredDesktopDeviceId = await SecureStore.getItemAsync(
     PREFERRED_DESKTOP_DEVICE_ID_KEY,
   );
   if (preferredDesktopDeviceId?.trim() === desktopDeviceId) {
     await SecureStore.deleteItemAsync(PREFERRED_DESKTOP_DEVICE_ID_KEY);
+    if (next.length > 0) {
+      await SecureStore.setItemAsync(
+        PREFERRED_DESKTOP_DEVICE_ID_KEY,
+        next[0] as string,
+      );
+    }
   }
 }
 
@@ -195,6 +270,11 @@ export async function completePhonePairing(args: {
     desktopAccessKey(result.desktopDeviceId),
     JSON.stringify(access),
   );
+  const ids = await readPairedDesktopIds();
+  if (!ids.includes(result.desktopDeviceId)) {
+    ids.push(result.desktopDeviceId);
+  }
+  await writePairedDesktopIds(ids);
   await SecureStore.setItemAsync(
     PREFERRED_DESKTOP_DEVICE_ID_KEY,
     result.desktopDeviceId,

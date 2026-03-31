@@ -192,7 +192,15 @@ export const createRemoteTurnBridge = (
         }
 
         // Claim immediately so the rescue timer knows we're handling it
-        await deps.claimRemoteTurn?.({ requestId, conversationId }).catch(() => {});
+        await deps.claimRemoteTurn?.({ requestId, conversationId }).catch((err) => {
+          deps.log?.(
+            "warn",
+            `[remote-turn] claimRemoteTurn failed for ${requestId} (rescue will run if unclaimed): ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+            err,
+          );
+        });
 
         const result = await deps.runLocalTurn({
           conversationId,
