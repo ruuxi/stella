@@ -315,6 +315,8 @@ export const createStellaHostRunner = (
     shutdownTasks: taskOrchestration.shutdown,
     onGoogleWorkspaceAuthRequired: options.onGoogleWorkspaceAuthRequired,
   });
+  context.ensureGoogleWorkspaceMcpLoaded =
+    runtimeInitialization.ensureGoogleWorkspaceMcpLoaded;
 
   return {
     deviceId: context.deviceId,
@@ -379,6 +381,7 @@ export const createStellaHostRunner = (
     },
 
     googleWorkspaceGetAuthStatus: async () => {
+      await context.ensureGoogleWorkspaceMcpLoaded();
       const callTool = context.state.googleWorkspaceMcpCallTool;
       if (!callTool) return { connected: false, unavailable: true };
       // Return cached auth state. Calling any MCP tool would trigger the
@@ -388,6 +391,7 @@ export const createStellaHostRunner = (
     },
 
     googleWorkspaceConnect: async () => {
+      await context.ensureGoogleWorkspaceMcpLoaded();
       const callTool = context.state.googleWorkspaceMcpCallTool;
       if (!callTool) return { connected: false, unavailable: true };
       // Trigger the upstream OAuth browser flow.
@@ -409,6 +413,7 @@ export const createStellaHostRunner = (
     },
 
     googleWorkspaceDisconnect: async () => {
+      await context.ensureGoogleWorkspaceMcpLoaded();
       const callTool = context.state.googleWorkspaceMcpCallTool;
       if (!callTool) return { ok: false };
       const result = await callTool("auth.clear", {});

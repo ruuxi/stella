@@ -206,7 +206,7 @@ export const createRunnerContext = ({
     process.env.STELLA_CONVEX_URL ?? null,
   );
 
-  let context!: RunnerContext;
+  const context = {} as RunnerContext;
   const hookEmitter = new HookEmitter();
   const toolHost = createToolHost({
     stellaHomePath,
@@ -263,7 +263,7 @@ export const createRunnerContext = ({
     },
   });
 
-  context = {
+  Object.assign(context, {
     convexApi: anyApi,
     deviceId,
     stellaHomePath,
@@ -316,9 +316,10 @@ export const createRunnerContext = ({
       googleWorkspaceMcpCallTool: null,
       googleWorkspaceMcpAuthenticated: null,
     },
+    ensureGoogleWorkspaceMcpLoaded: async () => undefined,
     hookEmitter,
     toolHost,
-  };
+  });
 
   return context;
 };
@@ -376,6 +377,9 @@ export const buildAgentContext = async (
   const availableSkills = context.state.loadedSkillsPromise
     ? await context.state.loadedSkillsPromise
     : context.state.loadedSkills;
+  if (args.agentType === AGENT_IDS.GOOGLE_WORKSPACE) {
+    await context.ensureGoogleWorkspaceMcpLoaded();
+  }
   const availableSkillIds = Array.from(
     new Set(availableSkills.map((skill) => skill.id)),
   );
@@ -423,6 +427,7 @@ export const buildAgentContext = async (
       : "";
   const googleWorkspaceUnavailable =
     args.agentType === AGENT_IDS.ORCHESTRATOR &&
+    context.state.googleWorkspaceMcpToolNames !== null &&
     !context.state.googleWorkspaceMcpToolNames?.length;
 
   const dynamicContextSections = [
