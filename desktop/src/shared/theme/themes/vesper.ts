@@ -4,9 +4,9 @@ const theme: Theme = {
   id: "vesper",
   name: "Ember",
   light: {
-    background: "#f7f5f3",
-    backgroundWeak: "#ede9e5",
-    backgroundStrong: "#fcfbfa",
+    background: "#f4ebe1",
+    backgroundWeak: "#e9ddd1",
+    backgroundStrong: "#faf3ec",
     foreground: "#1f1d1b",
     foregroundWeak: "#5c5654",
     foregroundStrong: "#0a0908",

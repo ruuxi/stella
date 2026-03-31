@@ -4,9 +4,9 @@ const theme: Theme = {
   id: "monokai",
   name: "Neon",
   light: {
-    background: "#fafaf8",
-    backgroundWeak: "#f2f2ef",
-    backgroundStrong: "#ffffff",
+    background: "#eef6e3",
+    backgroundWeak: "#e3eed5",
+    backgroundStrong: "#f6faee",
     foreground: "#272822",
     foregroundWeak: "#75715e",
     foregroundStrong: "#1a1a16",
