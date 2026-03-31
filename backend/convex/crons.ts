@@ -41,4 +41,11 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  "purge stale anonymous data",
+  { hours: 24 },
+  internal.anon_cleanup.purgeStaleAnonymousData,
+  {},
+);
+
 export default crons;
