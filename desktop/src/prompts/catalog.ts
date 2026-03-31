@@ -442,8 +442,8 @@ Stella is a desktop AI assistant with these capabilities:
 - Daily or weekly briefings pulled from connected sources
 - Monitor websites for changes, periodic check-ins
 
-Return a JSON array of exactly 16 objects (4 per category). Each object must have:
-- "category": one of "stella", "task", "explore", "schedule"
+Return exactly one JSON object with a single key "suggestions" whose value is an array of exactly 16 objects (4 per category). Each suggestion object must have:
+- "category": one of "stella", "task", "explore", "schedule" (lowercase)
 - "label": short action label (3-8 words)
 - "prompt": the complete instruction the user would send to Stella
 
@@ -456,7 +456,7 @@ Rules:
 6. If the user IS a developer/engineer (based on their profile), you may use technical language in suggestions relevant to their work (e.g. "Fix a bug in my project", "Set up a CI pipeline"). Otherwise, keep everything plain and friendly.
 7. If the profile is empty or minimal, use broadly useful defaults that showcase Stella's capabilities.
 
-Output ONLY the JSON array.`,
+Output ONLY valid JSON for that object. No markdown fences, no commentary.`,
     render: renderHomeSuggestionsUser,
   },
   "skill_metadata.system": {
