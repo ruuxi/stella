@@ -4,6 +4,7 @@ import { SocialView } from "@/app/social/SocialView";
 import type { ViewType } from "@/shared/contracts/ui";
 import { MiniBridgeRelay } from "@/shell/mini/MiniBridgeRelay";
 import {
+  consumeOpenOrbAfterOnboarding,
   STELLA_CLOSE_ORB_CHAT_EVENT,
   STELLA_OPEN_ORB_CHAT_EVENT,
   type StellaOpenOrbChatDetail,
@@ -64,6 +65,14 @@ export const FullShellRuntime = ({
     orbRef.current?.openChat();
     onPendingAskStellaHandled(pendingAskStellaRequest.id);
   }, [onPendingAskStellaHandled, pendingAskStellaRequest]);
+
+  useEffect(() => {
+    if (consumeOpenOrbAfterOnboarding()) {
+      queueMicrotask(() => {
+        orbRef.current?.openChat();
+      });
+    }
+  }, []);
 
   useEffect(() => {
     const handleOpenOrbChat = (event: Event) => {

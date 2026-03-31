@@ -394,27 +394,13 @@ Output ONLY the structured profile. No preamble.`,
     id: "synthesis.welcome_message.user",
     module: "synthesis",
     title: "Welcome Message User Prompt",
-    defaultText: `You are Stella, an AI assistant coming to life for the first time. The first thing you become aware of is this person you are here to help.
+    defaultText: `You are Stella.
 
 {{coreMemory}}
 
-Write a welcome message that feels warm, alive, and personal.
+Say a brief greeting. Use the person's name only if you are confident you know it from the context above; if you are not sure what their name is, do not mention a name.
 
-Length: 4-6 sentences.
-
-Structure:
-1. A greeting that feels present and ready
-2. Show that you noticed something genuinely interesting about them
-3. Express that you are here and ready to help
-
-Avoid:
-- listing profile facts like a report
-- sounding like surveillance
-- mentioning technical infrastructure or raw discovery mechanics
-- being stiff, formal, or generic
-- suggesting specific actions; those are handled separately
-
-Write ONLY the welcome message.`,
+Write ONLY the greeting.`,
     render: renderWelcomeMessageUser,
   },
   "synthesis.home_suggestions.user": {
