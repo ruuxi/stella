@@ -1,4 +1,4 @@
-import { internalMutation } from "../_generated/server";
+import { internalMutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { hashSha256Hex } from "../lib/crypto_utils";
 import { normalizeOptionalInt } from "../lib/number_utils";
@@ -96,9 +96,9 @@ const normalizePurgeArgs = (args: {
 });
 
 const purgeExpiredByIndex = async (
-  ctx: { db: any },
-  table: string,
-  index: string,
+  ctx: MutationCtx,
+  table: "transient_channel_events" | "transient_cleanup_failures",
+  index: "by_expiresAt",
   rawArgs: { nowMs?: number; limit?: number; maxBatches?: number },
 ) => {
   const { nowMs, limit, maxBatches } = normalizePurgeArgs(rawArgs);
@@ -106,7 +106,7 @@ const purgeExpiredByIndex = async (
   for (let i = 0; i < maxBatches; i += 1) {
     const expired = await ctx.db
       .query(table)
-      .withIndex(index, (q: any) => q.lte("expiresAt", nowMs))
+      .withIndex(index, (q) => q.lte("expiresAt", nowMs))
       .take(limit);
 
     if (expired.length === 0) break;

@@ -102,6 +102,7 @@ export const clearRegistration = internalMutation({
 export const getLatestRegistrationForOwner = internalQuery({
   args: {
     ownerId: v.string(),
+    nowMs: v.number(),
   },
   returns: v.union(v.null(), bridgeRegistrationValidator),
   handler: async (ctx: QueryCtx, args) => {
@@ -121,7 +122,7 @@ export const getLatestRegistrationForOwner = internalQuery({
       baseUrls: registration.baseUrls,
       updatedAt: registration.updatedAt,
       ...(platform ? { platform } : {}),
-      available: registration.updatedAt + MOBILE_BRIDGE_STALE_MS > Date.now(),
+      available: registration.updatedAt + MOBILE_BRIDGE_STALE_MS > args.nowMs,
     };
   },
 });
@@ -130,6 +131,7 @@ export const getRegistrationForOwnerDevice = internalQuery({
   args: {
     ownerId: v.string(),
     deviceId: v.string(),
+    nowMs: v.number(),
   },
   returns: v.union(v.null(), bridgeRegistrationValidator),
   handler: async (ctx: QueryCtx, args) => {
@@ -154,7 +156,7 @@ export const getRegistrationForOwnerDevice = internalQuery({
       baseUrls: registration.baseUrls,
       updatedAt: registration.updatedAt,
       ...(platform ? { platform } : {}),
-      available: registration.updatedAt + MOBILE_BRIDGE_STALE_MS > Date.now(),
+      available: registration.updatedAt + MOBILE_BRIDGE_STALE_MS > args.nowMs,
     };
   },
 });
