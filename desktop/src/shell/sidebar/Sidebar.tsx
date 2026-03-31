@@ -1,5 +1,5 @@
 import type { GeneratedPage } from "@/app/registry";
-import { generatedPages, MEDIA_PAGE } from "@/app/registry";
+import { generatedPages, HOME_DESIGN_PAGE, MEDIA_PAGE } from "@/app/registry";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { ThemePicker } from "@/global/settings/ThemePicker";
@@ -13,6 +13,7 @@ import {
 } from "@/ui/dropdown-menu";
 import AlertCircle from "lucide-react/dist/esm/icons/circle-alert";
 import Folder from "lucide-react/dist/esm/icons/folder";
+import House from "lucide-react/dist/esm/icons/house";
 import Layout from "lucide-react/dist/esm/icons/layout-dashboard";
 import Link2 from "lucide-react/dist/esm/icons/link-2";
 import LogIn from "lucide-react/dist/esm/icons/log-in";
@@ -101,6 +102,7 @@ export const Sidebar = ({
   onProjectSelect,
 }: SidebarProps) => {
   const handleAskStella = onNewAppAskStella ?? onNewApp;
+  const customPages = generatedPages.filter((page) => page.id !== HOME_DESIGN_PAGE.id);
   const getProjectMeta = (project: LocalDevProjectRecord) => {
     switch (project.runtime.status) {
       case "stopped":
@@ -121,13 +123,27 @@ export const Sidebar = ({
   return (
     <aside className="sidebar">
       <div className="sidebar-header" />
-      <button type="button" className="sidebar-brand" onClick={onChat}>
+      <button
+        type="button"
+        className="sidebar-brand"
+        onClick={() => onPageSelect(HOME_DESIGN_PAGE)}
+      >
         <div className="sidebar-brand-logo" aria-hidden="true">
           <img src="stella-logo.svg" alt="" className="sidebar-brand-logo-art" />
         </div>
         <span className="sidebar-brand-text">Stella</span>
       </button>
       <nav className="sidebar-nav">
+        <button
+          type="button"
+          className={`sidebar-nav-item ${activePageId === HOME_DESIGN_PAGE.id ? "sidebar-nav-item--active" : ""}`}
+          onClick={() => onPageSelect(HOME_DESIGN_PAGE)}
+        >
+          <span className="sidebar-nav-icon">
+            <House size={18} />
+          </span>
+          <span className="sidebar-nav-label">Home</span>
+        </button>
         <button
           type="button"
           className={`sidebar-nav-item ${activeView === "chat" ? "sidebar-nav-item--active" : ""}`}
@@ -158,9 +174,9 @@ export const Sidebar = ({
           </span>
           <span className="sidebar-nav-label">Media</span>
         </button>
-        {generatedPages.length > 0 && (
+        {customPages.length > 0 && (
           <>
-            {generatedPages.map((page) => (
+            {customPages.map((page) => (
               <button
                 key={page.id}
                 type="button"
