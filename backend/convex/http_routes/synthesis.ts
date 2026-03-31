@@ -317,7 +317,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             completeManagedChat({
               config: {
                 ...welcomeConfig,
-                maxOutputTokens: 1024,
+                maxOutputTokens: 6096,
                 temperature: 0.7,
               },
               context: {
@@ -370,7 +370,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           if (!suggestions.length && suggestionsText) {
             console.warn(
               "[synthesize] Home suggestions: model output was not a usable JSON array",
-              suggestionsText.slice(0, 500),
+              suggestionsText,
             );
           }
 
