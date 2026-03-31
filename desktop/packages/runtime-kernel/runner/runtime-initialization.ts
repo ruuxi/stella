@@ -1,6 +1,6 @@
 import { loadAgentsFromHome } from "../agents/agents.js";
 import { loadExtensions } from "../extensions/loader.js";
-import { loadGoogleWorkspaceMcpTools } from "../mcp/google-workspace-mcp.js";
+import { loadGoogleWorkspaceTools } from "../google-workspace/load-google-workspace-tools.js";
 import { registerModel } from "../../ai/models.js";
 import type { Api, Model } from "../../ai/types.js";
 import { createRuntimeLogger } from "../debug.js";
@@ -34,8 +34,8 @@ export const createRuntimeInitialization = (
     }
 
     const loadGeneration = googleWorkspaceMcpLoadGeneration;
-    const loadPromise = loadGoogleWorkspaceMcpTools({
-      frontendRoot: context.frontendRoot,
+    const loadPromise = loadGoogleWorkspaceTools({
+      stellaHomePath: context.stellaHomePath,
       onAuthRequired: deps.onGoogleWorkspaceAuthRequired,
       onAuthStateChanged: (authenticated) => {
         context.state.googleWorkspaceMcpAuthenticated = authenticated;
@@ -67,7 +67,7 @@ export const createRuntimeInitialization = (
       })
       .catch((error) => {
         console.error(
-          "[stella:google-workspace-mcp] Failed to load:",
+          "[stella:google-workspace] Failed to load:",
           (error as Error).message,
         );
         if (loadGeneration === googleWorkspaceMcpLoadGeneration) {
