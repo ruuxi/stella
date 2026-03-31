@@ -558,17 +558,19 @@ export const registerMobileRoutes = (http: HttpRouter) => {
         const requestedDesktopDeviceId = normalizeDeviceId(
           url.searchParams.get("desktopDeviceId"),
         );
+        const nowMs = Date.now();
         const registration = requestedDesktopDeviceId
           ? await ctx.runQuery(
               internal.mobile_bridge.getRegistrationForOwnerDevice,
               {
                 ownerId: owner.ownerId,
                 deviceId: requestedDesktopDeviceId,
+                nowMs,
               },
             )
           : await ctx.runQuery(
               internal.mobile_bridge.getLatestRegistrationForOwner,
-              { ownerId: owner.ownerId },
+              { ownerId: owner.ownerId, nowMs },
             );
         if (!registration) {
           return jsonResponse(
@@ -820,6 +822,7 @@ export const registerMobileRoutes = (http: HttpRouter) => {
           {
             ownerId: owner.ownerId,
             deviceId,
+            nowMs: Date.now(),
           },
         );
         if (!registration?.available) {

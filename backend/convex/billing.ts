@@ -9,6 +9,7 @@ import {
   type MutationCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import {
   requireSensitiveUserIdentityAction,
   requireUserId,
@@ -45,6 +46,39 @@ const paidPlanValidator = v.union(
   v.literal("plus"),
   v.literal("ultra"),
 );
+
+const planConfigShapeValidator = v.object({
+  label: v.string(),
+  monthlyPriceCents: v.number(),
+  rollingLimitUsd: v.number(),
+  rollingWindowHours: v.number(),
+  weeklyLimitUsd: v.number(),
+  monthlyLimitUsd: v.number(),
+  tokensPerMinute: v.number(),
+});
+
+const subscriptionStatusReturnValidator = v.object({
+  authenticated: v.boolean(),
+  isAnonymous: v.boolean(),
+  plan: planValidator,
+  subscriptionStatus: v.string(),
+  cancelAtPeriodEnd: v.boolean(),
+  currentPeriodEnd: v.union(v.number(), v.null()),
+  usage: v.object({
+    rollingUsedUsd: v.number(),
+    rollingLimitUsd: v.number(),
+    weeklyUsedUsd: v.number(),
+    weeklyLimitUsd: v.number(),
+    monthlyUsedUsd: v.number(),
+    monthlyLimitUsd: v.number(),
+  }),
+  plans: v.object({
+    free: planConfigShapeValidator,
+    go: planConfigShapeValidator,
+    pro: planConfigShapeValidator,
+    plus: planConfigShapeValidator,
+  }),
+});
 
 const STRIPE_API_VERSION = "2026-02-25.clover";
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set([
@@ -387,7 +421,7 @@ export type ManagedUsageRecordArgs = {
   model: string;
   durationMs: number;
   success: boolean;
-  conversationId?: string | null;
+  conversationId?: Id<"conversations"> | null;
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
@@ -491,7 +525,7 @@ export const persistManagedUsage = async (
   if (conversationId) {
     await ctx.db.insert("usage_logs", {
       ownerId: args.ownerId,
-      conversationId: conversationId as never,
+      conversationId,
       agentType: args.agentType,
       model: args.model,
       inputTokens,
@@ -1231,8 +1265,11 @@ export const syncManagedModelPricesFromModelsDev = internalAction({
 });
 
 export const getSubscriptionStatus = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    now: v.number(),
+  },
+  returns: subscriptionStatusReturnValidator,
+  handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     const planCatalog = getPlanCatalog();
 
@@ -1273,7 +1310,7 @@ export const getSubscriptionStatus = query({
       .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
       .unique();
 
-    const fallbackNow = Date.now();
+    const fallbackNow = args.now;
     const normalizedProfile = profile ?? createDefaultProfile(ownerId, fallbackNow);
     const normalizedUsage = usage ?? createDefaultUsage(ownerId, fallbackNow);
     const plan = normalizedProfile.activePlan as SubscriptionPlan;
@@ -1281,7 +1318,7 @@ export const getSubscriptionStatus = query({
       profile: normalizedProfile,
       usage: normalizedUsage,
       plan,
-      now: Date.now(),
+      now: args.now,
     });
 
     return {

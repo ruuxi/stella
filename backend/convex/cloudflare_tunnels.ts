@@ -6,9 +6,29 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-const CF_ACCOUNT_ID = "f34b91c9c7dc22f0aef0ba855a9f026f";
-const CF_ZONE_ID = "a7665eb56e4ec7be06f675b2c13077d4";
 const CF_TUNNEL_DOMAIN = "stellatunnel.com";
+
+const requireCfAccountId = (): string => {
+  const id = process.env.CF_ACCOUNT_ID?.trim();
+  if (!id) {
+    throw new ConvexError({
+      code: "SERVICE_UNAVAILABLE",
+      message: "CF_ACCOUNT_ID is not configured.",
+    });
+  }
+  return id;
+};
+
+const requireCfZoneId = (): string => {
+  const id = process.env.CF_ZONE_ID?.trim();
+  if (!id) {
+    throw new ConvexError({
+      code: "SERVICE_UNAVAILABLE",
+      message: "CF_ZONE_ID is not configured.",
+    });
+  }
+  return id;
+};
 
 const tunnelNameForDevice = (ownerId: string, deviceId: string) => {
   const safeOwner = ownerId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10);
@@ -129,8 +149,14 @@ export const getOrProvisionTunnel = internalAction({
 
     const apiToken = process.env.CLOUDFLARE_API_TOKEN;
     if (!apiToken) {
-      throw new ConvexError("Missing CLOUDFLARE_API_TOKEN");
+      throw new ConvexError({
+        code: "SERVICE_UNAVAILABLE",
+        message: "Missing CLOUDFLARE_API_TOKEN",
+      });
     }
+
+    const cfAccountId = requireCfAccountId();
+    const cfZoneId = requireCfZoneId();
 
     const tunnelName = tunnelNameForDevice(args.ownerId, args.deviceId);
     const tunnelSecret = btoa(
@@ -138,7 +164,7 @@ export const getOrProvisionTunnel = internalAction({
     );
 
     const createTunnelRes = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/cfd_tunnel`,
+      `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/cfd_tunnel`,
       {
         method: "POST",
         headers: {
@@ -156,7 +182,10 @@ export const getOrProvisionTunnel = internalAction({
     if (!createTunnelBody.success || !createTunnelBody.result) {
       const msg =
         createTunnelBody.errors?.[0]?.message ?? "Failed to create tunnel";
-      throw new ConvexError(msg);
+      throw new ConvexError({
+        code: "INTERNAL_ERROR",
+        message: msg,
+      });
     }
 
     const tunnelId = createTunnelBody.result.id;
@@ -164,7 +193,7 @@ export const getOrProvisionTunnel = internalAction({
     const hostname = `${tunnelName}.${CF_TUNNEL_DOMAIN}`;
 
     const createDnsRes = await fetch(
-      `https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records`,
+      `https://api.cloudflare.com/client/v4/zones/${cfZoneId}/dns_records`,
       {
         method: "POST",
         headers: {
@@ -187,7 +216,10 @@ export const getOrProvisionTunnel = internalAction({
     if (!createDnsBody.success || !createDnsBody.result) {
       const msg =
         createDnsBody.errors?.[0]?.message ?? "Failed to create DNS record";
-      throw new ConvexError(msg);
+      throw new ConvexError({
+        code: "INTERNAL_ERROR",
+        message: msg,
+      });
     }
 
     const dnsRecordId = createDnsBody.result.id;

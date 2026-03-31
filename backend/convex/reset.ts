@@ -4,7 +4,7 @@ import {
   internalQuery,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Id, TableNames } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { requireUserId } from "./auth";
 
@@ -119,7 +119,7 @@ export const _deleteOwnerBatch = internalMutation({
   handler: async (ctx, { ownerId }) => {
     let totalDeleted = 0;
 
-    const deleteBatch = async <T extends { _id: any }>(rows: T[]) => {
+    const deleteBatch = async <T extends { _id: Id<TableNames> }>(rows: T[]) => {
       await Promise.all(rows.map((r) => ctx.db.delete(r._id)));
       totalDeleted += rows.length;
     };

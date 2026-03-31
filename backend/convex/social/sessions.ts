@@ -33,6 +33,10 @@ const MAX_WORKSPACE_FOLDER_NAME_LENGTH = 80;
 const MAX_TURN_LIMIT = 200;
 const MAX_FILE_OP_LIMIT = 500;
 const MAX_FILE_BYTES = 700_000;
+const MAX_SESSIONS_PER_ROOM_COLLECT = 100;
+const MAX_ROOM_MEMBERS_COLLECT = 500;
+const MAX_SESSION_TURNS_COLLECT = 500;
+const MAX_SESSION_FILES_COLLECT = 5_000;
 const MAX_BASE64_LENGTH = 950_000;
 const MAX_SESSION_TURN_PROMPT_LENGTH = 20_000;
 const MAX_SESSION_RESULT_LENGTH = 100_000;
@@ -165,7 +169,7 @@ const resolveActiveRoomSession = async (
   const sessions = await ctx.db
     .query("stella_sessions")
     .withIndex("by_roomId", (q) => q.eq("roomId", roomId))
-    .collect();
+    .take(MAX_SESSIONS_PER_ROOM_COLLECT);
   return sessions.find((session) => session.status !== "ended") ?? null;
 };
 
@@ -177,7 +181,7 @@ const createSessionMembers = async (
   const roomMembers = await ctx.db
     .query("social_room_members")
     .withIndex("by_roomId_and_joinedAt", (q) => q.eq("roomId", roomId))
-    .collect();
+    .take(MAX_ROOM_MEMBERS_COLLECT);
   const timestamp = Date.now();
   await Promise.all(
     roomMembers.map((member) =>
@@ -623,13 +627,13 @@ export const listPendingTurnsForHostDevice = query({
             .withIndex("by_sessionId_and_status_and_createdAt", (q) =>
               q.eq("sessionId", session._id).eq("status", "queued"),
             )
-            .collect(),
+            .take(MAX_SESSION_TURNS_COLLECT),
           ctx.db
             .query("stella_session_turns")
             .withIndex("by_sessionId_and_status_and_createdAt", (q) =>
               q.eq("sessionId", session._id).eq("status", "claimed"),
             )
-            .collect(),
+            .take(MAX_SESSION_TURNS_COLLECT),
         ]);
         const resumableTurns = claimedTurns.filter(
           (turn) => turn.claimedByDeviceId === args.deviceId.trim(),
@@ -847,7 +851,7 @@ export const listWorkspaceFiles = query({
     const files = await ctx.db
       .query("stella_session_files")
       .withIndex("by_sessionId_and_relativePath", (q) => q.eq("sessionId", args.sessionId))
-      .collect();
+      .take(MAX_SESSION_FILES_COLLECT);
     const activeFiles = files.filter((file) => file.deleted === false);
     return await Promise.all(
       activeFiles.map(async (file) => ({

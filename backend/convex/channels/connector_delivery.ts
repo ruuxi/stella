@@ -8,7 +8,13 @@
  * 3. Mutation inserts a fulfilled marker and schedules `deliverToConnector`
  * 4. `deliverToConnector` sends the response to the appropriate connector
  */
-import { internalAction, internalMutation, internalQuery, mutation } from "../_generated/server";
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+  mutation,
+  type ActionCtx,
+} from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v, ConvexError } from "convex/values";
 import { jsonValueValidator } from "../shared_validators";
@@ -126,15 +132,9 @@ export const completeRemoteTurn = mutation({
   },
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Convex ActionCtx.runQuery/runMutation have complex generated types
-type InternalRunCtx = {
-  runQuery: (...args: any[]) => Promise<unknown>;
-  runMutation: (...args: any[]) => Promise<unknown>;
-};
-
 // ─── Shared delivery logic (callable from any action in the same runtime) ───
 
-type DeliveryCtx = Pick<InternalRunCtx, "runQuery" | "runMutation">;
+type DeliveryCtx = Pick<ActionCtx, "runQuery" | "runMutation">;
 
 type DeliveryArgs = {
   requestId: string;
@@ -195,9 +195,8 @@ async function deliverToConnectorCore(
 
 // ─── Shared: run backend fallback agent + deliver to connector ──────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- ctx is an ActionCtx; typed loosely to avoid importing generated types
 async function runFallbackAndDeliver(
-  ctx: InternalRunCtx & { runAction?: (...args: any[]) => Promise<unknown> },
+  ctx: ActionCtx,
   args: {
     requestId: string;
     conversationId: Id<"conversations">;
@@ -209,7 +208,7 @@ async function runFallbackAndDeliver(
   },
 ): Promise<void> {
   const result = await runAgentTurn({
-    ctx: ctx as any,
+    ctx,
     conversationId: args.conversationId,
     prompt: args.prompt,
     agentType: BACKEND_FALLBACK_AGENT_TYPE,
@@ -309,7 +308,7 @@ export const deliverToConnector = internalAction({
 });
 
 async function deliverSlack(
-  ctx: Pick<InternalRunCtx, "runQuery">,
+  ctx: Pick<ActionCtx, "runQuery">,
   meta: Record<string, unknown>,
   text: string,
 ) {
@@ -581,7 +580,7 @@ async function deliverLinq(meta: Record<string, unknown>, text: string) {
 }
 /** Fetch the most recent assistant_message text for a conversation. */
 async function getLatestAssistantText(
-  ctx: Pick<InternalRunCtx, "runQuery">,
+  ctx: Pick<ActionCtx, "runQuery">,
   conversationId: Id<"conversations">,
 ): Promise<string> {
   const events = (await ctx.runQuery(

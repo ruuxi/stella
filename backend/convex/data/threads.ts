@@ -39,6 +39,8 @@ import {
 } from "../runtime_ai/managed";
 
 const MAX_THREADS_PER_CONVERSATION = 16;
+/** Upper bound for thread_messages reads (compaction / load); guards unbounded collect. */
+const MAX_THREAD_MESSAGES_PER_QUERY = 10_000;
 const MAX_CONTENT_LENGTH = 500_000;
 const MIN_MESSAGES_FOR_COMPACTION = 6;
 const THREAD_SWEEP_BATCH_SIZE = 200;
@@ -400,7 +402,7 @@ export const loadThreadMessages = internalQuery({
       .withIndex("by_threadId_and_ordinal", (q) =>
         q.eq("threadId", args.threadId),
       )
-      .collect();
+      .take(MAX_THREAD_MESSAGES_PER_QUERY);
   },
 });
 
@@ -641,7 +643,7 @@ export const finalizeThreadCompaction = internalMutation({
     const allMessages = await ctx.db
       .query("thread_messages")
       .withIndex("by_threadId_and_ordinal", (q) => q.eq("threadId", args.threadId))
-      .collect();
+      .take(MAX_THREAD_MESSAGES_PER_QUERY);
     const dropped = allMessages.filter((msg) => msg.ordinal < args.keepFromOrdinal);
     const retained = allMessages.filter((msg) => msg.ordinal >= args.keepFromOrdinal);
     await Promise.all(dropped.map((msg) => ctx.db.delete(msg._id)));

@@ -2,6 +2,30 @@ import { defineTable } from "convex/server";
 import { v } from "convex/values";
 import { jsonValueValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 
+/** All event `type` values written by the app (appendEvent + internal inserters). */
+export const eventTypeValidator = v.union(
+  v.literal("user_message"),
+  v.literal("assistant_message"),
+  v.literal("task_started"),
+  v.literal("task_completed"),
+  v.literal("task_failed"),
+  v.literal("task_canceled"),
+  v.literal("task_progress"),
+  v.literal("tool_request"),
+  v.literal("tool_result"),
+  v.literal("microcompact_boundary"),
+  v.literal("remote_turn_request"),
+  v.literal("remote_turn_claimed"),
+  v.literal("remote_turn_fulfilled"),
+  v.literal("screen_event"),
+);
+
+export const threadStatusValidator = v.union(
+  v.literal("active"),
+  v.literal("idle"),
+  v.literal("archived"),
+);
+
 export const conversationsSchema = {
   conversations: defineTable({
     ownerId: v.string(),
@@ -17,7 +41,7 @@ export const conversationsSchema = {
   events: defineTable({
     conversationId: v.id("conversations"),
     timestamp: v.number(),
-    type: v.string(),
+    type: eventTypeValidator,
     deviceId: v.optional(v.string()),
     requestId: v.optional(v.string()),
     targetDeviceId: v.optional(v.string()),
@@ -44,7 +68,7 @@ export const conversationsSchema = {
   threads: defineTable({
     conversationId: v.id("conversations"),
     name: v.string(),
-    status: v.string(),
+    status: threadStatusValidator,
     summary: v.optional(v.string()),
     messageCount: v.number(),
     totalTokenEstimate: v.number(),

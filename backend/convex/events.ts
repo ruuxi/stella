@@ -12,6 +12,7 @@ import {
   estimateContextEventTokens,
   selectRecentByTokenBudget,
 } from "./lib/context_window";
+import { eventTypeValidator } from "./schema/conversations";
 
 const rateLimiter = new RateLimiter(components.rateLimiter);
 
@@ -20,7 +21,7 @@ const eventValidator = v.object({
   _creationTime: v.number(),
   conversationId: v.id("conversations"),
   timestamp: v.number(),
-  type: v.string(),
+  type: eventTypeValidator,
   deviceId: v.optional(v.string()),
   requestId: v.optional(v.string()),
   targetDeviceId: v.optional(v.string()),
@@ -444,7 +445,7 @@ const deviceRequiredTypes = new Set([
 
 type AppendEventArgs = {
   conversationId: Id<"conversations">;
-  type: string;
+  type: Infer<typeof eventTypeValidator>;
   timestamp?: number;
   deviceId?: string;
   requestId?: string;
@@ -504,7 +505,7 @@ const appendEventCore = async (ctx: MutationCtx, args: AppendEventArgs) => {
 export const appendEvent = mutation({
   args: {
     conversationId: v.id("conversations"),
-    type: v.string(),
+    type: eventTypeValidator,
     timestamp: v.optional(v.number()),
     deviceId: v.optional(v.string()),
     requestId: v.optional(v.string()),
@@ -610,7 +611,7 @@ export const importLocalMessagesChunk = mutation({
 export const appendInternalEvent = internalMutation({
   args: {
     conversationId: v.id("conversations"),
-    type: v.string(),
+    type: eventTypeValidator,
     timestamp: v.optional(v.number()),
     deviceId: v.optional(v.string()),
     requestId: v.optional(v.string()),

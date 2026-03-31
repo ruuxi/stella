@@ -44,7 +44,10 @@ export const purgeStaleAnonymousData = internalAction({
     let totalScheduled = 0;
 
     do {
-      const batch = await ctx.runQuery(
+      const batch: {
+        ownerIds: string[];
+        nextCursor: string | null;
+      } = await ctx.runQuery(
         internal.anon_cleanup._listStaleAnonymousOwnerIds,
         { cursor, cutoffMs },
       );

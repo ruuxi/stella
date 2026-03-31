@@ -17,6 +17,7 @@ import { components, internal } from "./_generated/api";
 import type { DataModel, Id } from "./_generated/dataModel";
 import authConfig from "./auth.config";
 import { ConvexError, v } from "convex/values";
+import betterAuthSchema from "./betterAuth/schema";
 import { buildMagicLinkEmail } from "./lib/email_templates";
 
 const getRequiredEnv = (name: string) => {
@@ -103,7 +104,14 @@ const parseNumericClaim = (
   return null;
 };
 
-export const authComponent = createClient<DataModel>(components.betterAuth);
+export const authComponent = createClient<DataModel, typeof betterAuthSchema>(
+  components.betterAuth,
+  {
+    local: {
+      schema: betterAuthSchema,
+    },
+  },
+);
 const resend = new Resend(components.resend, { testMode: false });
 
 const getSessionPolicyFromDb = async (
