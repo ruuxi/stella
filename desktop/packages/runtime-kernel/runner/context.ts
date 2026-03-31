@@ -149,11 +149,11 @@ export const buildOrchestratorThreadHistory = (args: {
     return args.storedThreadMessages;
   }
 
-  const legacyEvents = trimDuplicatedTransitionUserEvent(
+  const preTransitionEvents = trimDuplicatedTransitionUserEvent(
     localEvents.filter((event) => event.timestamp < transitionCutoff),
     args.storedThreadMessages,
   );
-  if (legacyEvents.length === 0) {
+  if (preTransitionEvents.length === 0) {
     return args.storedThreadMessages;
   }
 
@@ -161,22 +161,22 @@ export const buildOrchestratorThreadHistory = (args: {
     (total, message) => total + estimateRuntimeTokens(message.content),
     0,
   );
-  const legacyBudget = Math.max(
+  const preTransitionBudget = Math.max(
     MIN_LOCAL_HISTORY_TOKENS,
     localHistoryBudget - storedTokenEstimate,
   );
 
-  const legacyHistory = buildLocalHistoryFromEvents({
-    events: legacyEvents,
-    maxTokens: legacyBudget,
+  const preTransitionHistory = buildLocalHistoryFromEvents({
+    events: preTransitionEvents,
+    maxTokens: preTransitionBudget,
     warningThresholdTokens,
   });
 
-  if (legacyHistory.length === 0) {
+  if (preTransitionHistory.length === 0) {
     return args.storedThreadMessages;
   }
 
-  return [...legacyHistory, ...args.storedThreadMessages];
+  return [...preTransitionHistory, ...args.storedThreadMessages];
 };
 
 export const createRunnerContext = ({
