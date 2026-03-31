@@ -22,6 +22,7 @@ import type * as agent_model_resolver from "../agent/model_resolver.js";
 import type * as agent_prompt_builder from "../agent/prompt_builder.js";
 import type * as agent_tool_schemas from "../agent/tool_schemas.js";
 import type * as ai_proxy_data from "../ai_proxy_data.js";
+import type * as anon_cleanup from "../anon_cleanup.js";
 import type * as auth from "../auth.js";
 import type * as auth_migration from "../auth_migration.js";
 import type * as automation_index from "../automation/index.js";
@@ -185,6 +186,7 @@ declare const fullApi: ApiFromModules<{
   "agent/prompt_builder": typeof agent_prompt_builder;
   "agent/tool_schemas": typeof agent_tool_schemas;
   ai_proxy_data: typeof ai_proxy_data;
+  anon_cleanup: typeof anon_cleanup;
   auth: typeof auth;
   auth_migration: typeof auth_migration;
   "automation/index": typeof automation_index;
