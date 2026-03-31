@@ -10,7 +10,7 @@ import {
   OFFLINE_RESPONDER_SYSTEM_PROMPT,
   buildFallbackAgentSystemPrompt,
 } from "../prompts/index";
-import { requireUserId } from "../auth";
+import { requireConnectedUserId, requireUserId } from "../auth";
 import { AGENT_IDS, BACKEND_TOOL_IDS } from "../lib/agent_constants";
 import { BUILTIN_OWNER_ID } from "../lib/owner_ids";
 import { coerceStringArray } from "../lib/coerce";
@@ -234,7 +234,7 @@ export const upsertMany = mutation({
   },
   returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     const items = Array.isArray(args.agents) ? args.agents : [];
     const validAgents = items.map(normalizeAgent).filter((a): a is AgentRecord => a !== null);
     

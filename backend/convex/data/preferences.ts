@@ -1,6 +1,6 @@
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
-import { requireUserId } from "../auth";
+import { requireConnectedUserId, requireUserId } from "../auth";
 import { hasModelConfig, resolveManagedModelAudience } from "../agent/model";
 import { listStellaDefaultSelections } from "../stella_models";
 
@@ -137,7 +137,7 @@ export const setAccountMode = mutation({
   },
   returns: accountModeValidator,
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     await upsertPreferenceRecord(ctx, ownerId, ACCOUNT_MODE_KEY, args.mode);
     return args.mode;
   },
@@ -164,7 +164,7 @@ export const setSyncMode = mutation({
   },
   returns: syncModeValidator,
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     await upsertPreferenceRecord(ctx, ownerId, SYNC_MODE_KEY, args.mode);
     return args.mode;
   },
@@ -176,7 +176,7 @@ export const setPreferredBrowser = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     await upsertPreferenceRecord(ctx, ownerId, PREFERRED_BROWSER_KEY, args.browser);
 
     return null;
@@ -213,7 +213,7 @@ export const getGeneralAgentEngine = query({
   args: {},
   returns: generalAgentEngineValidator,
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     const record = await ctx.db
       .query("user_preferences")
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", GENERAL_AGENT_ENGINE_KEY))
@@ -228,7 +228,7 @@ export const setGeneralAgentEngine = mutation({
   },
   returns: generalAgentEngineValidator,
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     await upsertPreferenceRecord(ctx, ownerId, GENERAL_AGENT_ENGINE_KEY, args.engine);
     return args.engine;
   },
@@ -238,7 +238,7 @@ export const getSelfModAgentEngine = query({
   args: {},
   returns: generalAgentEngineValidator,
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     const record = await ctx.db
       .query("user_preferences")
       .withIndex("by_ownerId_and_key", (q) =>
@@ -255,7 +255,7 @@ export const setSelfModAgentEngine = mutation({
   },
   returns: generalAgentEngineValidator,
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     await upsertPreferenceRecord(ctx, ownerId, SELF_MOD_AGENT_ENGINE_KEY, args.engine);
     return args.engine;
   },
@@ -265,7 +265,7 @@ export const getMaxAgentConcurrency = query({
   args: {},
   returns: v.number(),
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     const record = await ctx.db
       .query("user_preferences")
       .withIndex("by_ownerId_and_key", (q) =>
@@ -282,7 +282,7 @@ export const setMaxAgentConcurrency = mutation({
   },
   returns: v.number(),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     const normalized = normalizeMaxAgentConcurrency(String(args.value));
     await upsertPreferenceRecord(ctx, ownerId, MAX_AGENT_CONCURRENCY_KEY, String(normalized));
     return normalized;
@@ -299,7 +299,7 @@ export const getModelOverrides = query({
   args: {},
   returns: v.string(),
   handler: async (ctx) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     const records = await ctx.db
       .query("user_preferences")
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId))
@@ -369,7 +369,7 @@ export const setModelOverride = mutation({
         message: "Model override exceeds maximum allowed length of 200 characters",
       });
     }
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     const key = `${MODEL_CONFIG_PREFIX}${args.agentType}`;
     await upsertPreferenceRecord(ctx, ownerId, key, args.model);
     return null;
@@ -382,7 +382,7 @@ export const clearModelOverride = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     const key = `${MODEL_CONFIG_PREFIX}${args.agentType}`;
     const existing = await ctx.db
       .query("user_preferences")
@@ -404,7 +404,7 @@ export const setExpressionStyle = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     await upsertPreferenceRecord(ctx, ownerId, EXPRESSION_STYLE_KEY, args.style);
     return null;
   },

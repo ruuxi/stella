@@ -245,17 +245,6 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
       anonymous({
         emailDomainName: "anon.stella.local",
         disableDeleteAnonymousUser: true,
-        onLinkAccount: async ({ anonymousUser, newUser }) => {
-          const actionCtx = requireActionCtx(ctx);
-          await actionCtx.scheduler.runAfter(
-            0,
-            internal.auth_migration.migrateOwnership,
-            {
-              fromOwnerId: anonymousUser.user.id,
-              toOwnerId: newUser.user.id,
-            },
-          );
-        },
       }),
       magicLink({
         sendMagicLink: async ({ email, url }) => {

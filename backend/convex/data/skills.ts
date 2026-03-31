@@ -7,7 +7,7 @@ import {
 } from "../_generated/server";
 import { v } from "convex/values";
 import { secretMountsValidator } from "../shared_validators";
-import { requireUserId } from "../auth";
+import { requireConnectedUserId, requireUserId } from "../auth";
 import { coerceStringArray } from "../lib/coerce";
 
 
@@ -203,7 +203,7 @@ export const upsertMany = mutation({
   },
   returns: v.object({ upserted: v.number() }),
   handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
+    const ownerId = await requireConnectedUserId(ctx);
     return await upsertManyHandler(ctx, args, ownerId);
   },
 });
