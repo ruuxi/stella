@@ -119,29 +119,46 @@ export const _deleteOwnerBatch = internalMutation({
   handler: async (ctx, { ownerId }) => {
     let totalDeleted = 0;
 
-    // User preferences
-    const prefs = await ctx.db
-      .query("user_preferences")
-      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId))
-      .take(BATCH);
-    await Promise.all(prefs.map((p) => ctx.db.delete(p._id)));
-    totalDeleted += prefs.length;
+    const deleteBatch = async <T extends { _id: any }>(rows: T[]) => {
+      await Promise.all(rows.map((r) => ctx.db.delete(r._id)));
+      totalDeleted += rows.length;
+    };
 
-    // Devices
-    const devices = await ctx.db
-      .query("devices")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-      .take(BATCH);
-    await Promise.all(devices.map((d) => ctx.db.delete(d._id)));
-    totalDeleted += devices.length;
-
-    // Cloudflare tunnels (per desktop)
-    const tunnels = await ctx.db
-      .query("cloudflare_tunnels")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-      .take(BATCH);
-    await Promise.all(tunnels.map((t) => ctx.db.delete(t._id)));
-    totalDeleted += tunnels.length;
+    await deleteBatch(
+      await ctx.db.query("user_preferences")
+        .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId))
+        .take(BATCH),
+    );
+    await deleteBatch(
+      await ctx.db.query("devices")
+        .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+        .take(BATCH),
+    );
+    await deleteBatch(
+      await ctx.db.query("cloudflare_tunnels")
+        .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+        .take(BATCH),
+    );
+    await deleteBatch(
+      await ctx.db.query("auth_session_policies")
+        .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+        .take(BATCH),
+    );
+    await deleteBatch(
+      await ctx.db.query("usage_logs")
+        .withIndex("by_ownerId_and_createdAt", (q) => q.eq("ownerId", ownerId))
+        .take(BATCH),
+    );
+    await deleteBatch(
+      await ctx.db.query("billing_usage_windows")
+        .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+        .take(BATCH),
+    );
+    await deleteBatch(
+      await ctx.db.query("billing_profiles")
+        .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+        .take(BATCH),
+    );
 
     return totalDeleted > 0;
   },
