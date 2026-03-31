@@ -5,6 +5,7 @@ import {
   type QueryCtx,
 } from "../_generated/server";
 import { ConvexError, v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
 import { requireSensitiveUserId, requireUserId } from "../auth";
 
 const HEARTBEAT_SIGNATURE_MAX_AGE_MS = 2 * 60_000;
@@ -230,8 +231,9 @@ export const resolveExecutionTarget = internalQuery({
     }
 
     let preferred: string | null = null;
-    if (args.conversationId) {
-      const conversationId = args.conversationId;
+    const convId = args.conversationId;
+    if (convId !== undefined) {
+      const conversationId: Id<"conversations"> = convId;
       const event = await ctx.db
         .query("events")
         .withIndex("by_conversationId_and_type_and_timestamp", (q) =>
