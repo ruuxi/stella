@@ -35,12 +35,11 @@ const resolveRegistrationPlatform = async (
 
   const device = await ctx.db
     .query("devices")
-    .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
+    .withIndex("by_ownerId_and_deviceId", (q) =>
+      q.eq("ownerId", args.ownerId).eq("deviceId", args.deviceId),
+    )
     .unique();
-  if (!device || device.deviceId !== args.deviceId) {
-    return undefined;
-  }
-  return device.platform ?? undefined;
+  return device?.platform ?? undefined;
 };
 
 export const upsertRegistration = internalMutation({

@@ -14,6 +14,19 @@ export const secureSignOut = async (
       console.debug('[auth] Session revocation failed (best-effort):', (error as Error).message);
     }
   }
+  const deviceId = await window.electronAPI?.system.getDeviceId?.();
+  if (deviceId) {
+    try {
+      await convexClient.mutation(api.agent.device_resolver.goOffline, {
+        deviceId,
+      });
+    } catch (error) {
+      console.debug(
+        "[auth] goOffline before sign-out failed (best-effort):",
+        (error as Error).message,
+      );
+    }
+  }
   await authClient.signOut();
 };
 

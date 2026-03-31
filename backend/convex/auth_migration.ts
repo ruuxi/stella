@@ -22,7 +22,6 @@ const OWNER_TABLES: Array<{
 }> = [
   { table: "conversations", index: "by_ownerId_and_updatedAt" },
   { table: "user_preferences", index: "by_ownerId_and_key" },
-  { table: "devices", index: "by_ownerId" },
   { table: "auth_session_policies", index: "by_ownerId" },
   { table: "secrets", index: "by_ownerId_and_updatedAt" },
   { table: "secret_access_audit", index: "by_ownerId_and_createdAt" },
@@ -113,6 +112,11 @@ export const migrateOwnership = internalAction({
   handler: async (ctx, args) => {
     if (args.fromOwnerId === args.toOwnerId) return null;
 
+    await ctx.runMutation(internal.auth_migration.migrateDevicesForAccountLink, {
+      fromOwnerId: args.fromOwnerId,
+      toOwnerId: args.toOwnerId,
+    });
+
     for (const { table, index } of OWNER_TABLES) {
       let hasMore = true;
       while (hasMore) {
@@ -148,6 +152,41 @@ export const migrateOwnership = internalAction({
     console.log(
       `[auth_migration] Completed ownership migration from ${args.fromOwnerId} to ${args.toOwnerId}`,
     );
+    return null;
+  },
+});
+
+/**
+ * Move or merge `devices` rows when linking anonymous → real account.
+ * One physical machine is one `(ownerId, deviceId)` row; if the target account
+ * already has that machine, drop the anonymous duplicate instead of migrating.
+ */
+export const migrateDevicesForAccountLink = internalMutation({
+  args: {
+    fromOwnerId: v.string(),
+    toOwnerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("devices")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.fromOwnerId))
+      .collect();
+
+    for (const row of rows) {
+      const existing = await ctx.db
+        .query("devices")
+        .withIndex("by_ownerId_and_deviceId", (q) =>
+          q.eq("ownerId", args.toOwnerId).eq("deviceId", row.deviceId),
+        )
+        .unique();
+
+      if (existing) {
+        await ctx.db.delete(row._id);
+      } else {
+        await ctx.db.patch(row._id, { ownerId: args.toOwnerId });
+      }
+    }
+
     return null;
   },
 });

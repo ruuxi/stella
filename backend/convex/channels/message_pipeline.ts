@@ -192,10 +192,11 @@ const deleteTransientBatch = async (args: {
 const resolveExecutionTarget = async (args: {
   ctx: ActionCtx;
   ownerId: string;
+  conversationId: Id<"conversations">;
 }): Promise<{ targetDeviceId: string | null }> => {
   return await args.ctx.runQuery(
     internal.agent.device_resolver.resolveExecutionTarget,
-    { ownerId: args.ownerId },
+    { ownerId: args.ownerId, conversationId: args.conversationId },
   );
 };
 
@@ -377,6 +378,7 @@ export async function processIncomingMessage(
     const executionTarget = await resolveExecutionTarget({
       ctx: args.ctx,
       ownerId: connection.ownerId,
+      conversationId,
     });
 
     console.log(

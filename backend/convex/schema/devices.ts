@@ -11,6 +11,7 @@ export const devicesSchema = {
     platform: v.optional(v.string()),
   })
     .index("by_ownerId", ["ownerId"])
+    .index("by_ownerId_and_deviceId", ["ownerId", "deviceId"])
     .index("by_deviceId", ["deviceId"])
     .index("by_online_and_lastSignedAtMs", ["online", "lastSignedAtMs"]),
 
@@ -82,6 +83,8 @@ export const devicesSchema = {
 
   cloudflare_tunnels: defineTable({
     ownerId: v.string(),
+    /** Desktop machine id (matches `devices.deviceId` / mobile bridge device). */
+    deviceId: v.string(),
     tunnelId: v.string(),
     tunnelName: v.string(),
     tunnelToken: v.string(),
@@ -89,5 +92,7 @@ export const devicesSchema = {
     dnsRecordId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_ownerId", ["ownerId"]),
+  })
+    .index("by_ownerId", ["ownerId"])
+    .index("by_ownerId_and_deviceId", ["ownerId", "deviceId"]),
 };

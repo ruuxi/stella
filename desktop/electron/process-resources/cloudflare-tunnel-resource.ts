@@ -12,6 +12,7 @@ export const createCloudflareTunnelResource = (options: {
   processRuntime: ProcessRuntime;
   getAuthToken: () => Promise<string | null>;
   getConvexSiteUrl: () => string | null;
+  getDeviceId: () => string | null;
   onTunnelUrl: (url: string | null) => void;
 }): CloudflareTunnelResource => {
   let bridgePort: number | null = null;
@@ -24,6 +25,7 @@ export const createCloudflareTunnelResource = (options: {
         new CloudflareTunnelService({
           getAuthToken: options.getAuthToken,
           getConvexSiteUrl: options.getConvexSiteUrl,
+          getDeviceId: options.getDeviceId,
           onTunnelUrl: options.onTunnelUrl,
           onUnexpectedExit,
         }),
