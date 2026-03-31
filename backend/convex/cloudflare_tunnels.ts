@@ -17,15 +17,50 @@ const tunnelNameForDevice = (ownerId: string, deviceId: string) => {
   return base.slice(0, 63);
 };
 
+/** Tunnel rows may omit `deviceId` until a desktop claims the row (older one-row-per-owner data). */
+const tunnelRowMissingDeviceId = (row: { deviceId?: string }) =>
+  row.deviceId === undefined || row.deviceId === "";
+
 export const getTunnelForOwnerDevice = internalQuery({
   args: { ownerId: v.string(), deviceId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const specific = await ctx.db
       .query("cloudflare_tunnels")
       .withIndex("by_ownerId_and_deviceId", (q) =>
         q.eq("ownerId", args.ownerId).eq("deviceId", args.deviceId),
       )
       .unique();
+    if (specific) {
+      return specific;
+    }
+    // One tunnel per owner with no deviceId yet; first desktop to request a token claims it.
+    const forOwner = await ctx.db
+      .query("cloudflare_tunnels")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
+      .collect();
+    return (
+      forOwner.find((r) => tunnelRowMissingDeviceId(r)) ?? null
+    );
+  },
+});
+
+export const attachDeviceIdToTunnel = internalMutation({
+  args: {
+    tunnelDocumentId: v.id("cloudflare_tunnels"),
+    deviceId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.tunnelDocumentId);
+    if (!row) {
+      return;
+    }
+    if (!tunnelRowMissingDeviceId(row)) {
+      return;
+    }
+    await ctx.db.patch(args.tunnelDocumentId, {
+      deviceId: args.deviceId,
+      updatedAt: Date.now(),
+    });
   },
 });
 
@@ -83,6 +118,12 @@ export const getOrProvisionTunnel = internalAction({
       { ownerId: args.ownerId, deviceId: args.deviceId },
     );
     if (existing) {
+      if (tunnelRowMissingDeviceId(existing)) {
+        await ctx.runMutation(internal.cloudflare_tunnels.attachDeviceIdToTunnel, {
+          tunnelDocumentId: existing._id,
+          deviceId: args.deviceId,
+        });
+      }
       return { tunnelToken: existing.tunnelToken, hostname: existing.hostname };
     }
 
