@@ -40,6 +40,7 @@ const loadCreationPhase = () => import("./OnboardingCreationPhase");
 const loadVoicePhase = () => import("./OnboardingVoicePhase");
 const loadThemePhase = () => import("./OnboardingThemePhase");
 const loadPersonalityPhase = () => import("./OnboardingPersonalityPhase");
+const loadShortcutsPhase = () => import("./OnboardingShortcutsPhase");
 const loadMockWindows = () => import("./OnboardingMockWindows");
 
 const OnboardingBrowserPhase = lazy(() =>
@@ -67,6 +68,11 @@ const OnboardingPersonalityPhase = lazy(() =>
     default: module.OnboardingPersonalityPhase,
   })),
 );
+const OnboardingShortcutsPhase = lazy(() =>
+  loadShortcutsPhase().then((module) => ({
+    default: module.OnboardingShortcutsPhase,
+  })),
+);
 const OnboardingMockWindows = lazy(() =>
   loadMockWindows().then((module) => ({
     default: module.OnboardingMockWindows,
@@ -83,6 +89,8 @@ const STEP_TITLES: Partial<Record<Phase, string>> = {
   voice: "Speak your mind.",
   theme: "How should I look?",
   personality: "How should I talk?",
+  "shortcuts-global": "Anywhere on your desktop.",
+  "shortcuts-local": "Inside Stella.",
 };
 
 type CategoryStates = Record<DiscoveryCategory, boolean>;
@@ -236,6 +244,10 @@ const getNextPhaseToPrefetch = (phase: Phase): Phase | null => {
       return "theme";
     case "theme":
       return "personality";
+    case "personality":
+      return "shortcuts-global";
+    case "shortcuts-global":
+      return "shortcuts-local";
     default:
       return null;
   }
@@ -258,6 +270,10 @@ const prefetchPhaseModule = (phase: Phase | null) => {
       break;
     case "personality":
       void loadPersonalityPhase();
+      break;
+    case "shortcuts-global":
+    case "shortcuts-local":
+      void loadShortcutsPhase();
       break;
     default:
       break;
@@ -364,7 +380,6 @@ export const OnboardingStep1 = ({
       onDemoChange?.("default");
     } else {
       onDemoChange?.(null);
-      setActiveShowcase(null);
     }
   }, [leaving, onDemoChange, phase]);
 
@@ -399,6 +414,10 @@ export const OnboardingStep1 = ({
     (next: Phase) => {
       clearTimeoutRef();
 
+      if (phase === "creation" && next !== "creation") {
+        setActiveShowcase(null);
+      }
+
       if (prefersReducedMotion) {
         setLeaving(false);
         setPhase(next);
@@ -412,7 +431,7 @@ export const OnboardingStep1 = ({
         timeoutRef.current = null;
       }, FADE_OUT_MS + FADE_GAP_MS);
     },
-    [clearTimeoutRef, prefersReducedMotion],
+    [clearTimeoutRef, phase, prefersReducedMotion],
   );
 
   const handleStart = useCallback(() => {
@@ -806,6 +825,26 @@ export const OnboardingStep1 = ({
               splitTransitionActive={leaving}
               onFinish={nextSplitStep}
               onSelectStyle={handleExpressionStyleSelect}
+            />
+          </Suspense>
+        );
+      case "shortcuts-global":
+        return (
+          <Suspense fallback={splitPhaseFallback}>
+            <OnboardingShortcutsPhase
+              mode="global"
+              splitTransitionActive={leaving}
+              onFinish={nextSplitStep}
+            />
+          </Suspense>
+        );
+      case "shortcuts-local":
+        return (
+          <Suspense fallback={splitPhaseFallback}>
+            <OnboardingShortcutsPhase
+              mode="local"
+              splitTransitionActive={leaving}
+              onFinish={nextSplitStep}
             />
           </Suspense>
         );
