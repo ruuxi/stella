@@ -81,9 +81,9 @@ for window in windowList {
     let rect = CGRect(x: wx, y: wy, width: ww, height: wh)
     guard rect.contains(point) else { continue }
 
-    // Skip windows with zero area or layer < 0 (system elements)
+    // Skip windows with zero area or non-zero layer (Dock=20, MenuBar=24, StatusItems=25, etc.)
     guard ww > 0, wh > 0 else { continue }
-    if let layer = window[kCGWindowLayer as String] as? Int, layer < 0 { continue }
+    if let layer = window[kCGWindowLayer as String] as? Int, layer != 0 { continue }
 
     let title = (window[kCGWindowName as String] as? String) ?? ""
     let ownerName = (window[kCGWindowOwnerName as String] as? String) ?? ""

@@ -106,6 +106,7 @@ class OverlayWindow {
     })
 
     this.window.setAlwaysOnTop(true, 'screen-saver')
+    this.window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     this.window.setIgnoreMouseEvents(true, { forward: true })
 
     this.window.once('ready-to-show', () => {
