@@ -94,6 +94,7 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
     const [isDragging, setIsDragging] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [inputText, setInputText] = useState("");
+    const [isIndicatorPrewarmed, setIsIndicatorPrewarmed] = useState(false);
     const [orbChatContext, setOrbChatContext] = useState<ChatContext | null>(null);
 
     const { isDragOver, isWindowDragActive, dropHandlers } = useFileDrop({
@@ -177,6 +178,27 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
       document.addEventListener("keydown", handleKeyDown);
       return () => document.removeEventListener("keydown", handleKeyDown);
     }, [isChatOpen]);
+
+    useEffect(() => {
+      if (!visible || isIndicatorPrewarmed) {
+        return;
+      }
+
+      // Prewarm the orb chat's tiny status animation offscreen so the first
+      // streaming indicator doesn't pay WebGL setup cost during send.
+      if (typeof window.requestIdleCallback === "function") {
+        const idleId = window.requestIdleCallback(
+          () => setIsIndicatorPrewarmed(true),
+          { timeout: 1500 },
+        );
+        return () => window.cancelIdleCallback(idleId);
+      }
+
+      const timeoutId = window.setTimeout(() => {
+        setIsIndicatorPrewarmed(true);
+      }, 150);
+      return () => window.clearTimeout(timeoutId);
+    }, [visible, isIndicatorPrewarmed]);
 
     const handleMouseDown = useCallback(
       (event: React.MouseEvent) => {
@@ -314,6 +336,30 @@ export const FloatingOrb = forwardRef<FloatingOrbHandle, FloatingOrbProps>(
 
     return (
       <>
+        {isIndicatorPrewarmed && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "fixed",
+              top: -9999,
+              left: -9999,
+              width: 1,
+              height: 1,
+              overflow: "hidden",
+              opacity: 0,
+              pointerEvents: "none",
+            }}
+          >
+            <StellaAnimation
+              width={20}
+              height={20}
+              maxDpr={1}
+              frameSkip={2}
+              paused
+            />
+          </div>
+        )}
+
         {createPortal(miniChatPanel, document.body)}
 
         <div
