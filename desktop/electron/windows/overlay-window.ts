@@ -168,6 +168,13 @@ class OverlayWindow {
       } else {
         this.window.show()
       }
+    } else {
+      // The window is already visible (fadeOut only zeroes opacity, it never
+      // calls hide()). Re-read the actual content origin so overlay-local
+      // coordinates stay correct — macOS can silently reposition windows
+      // (e.g. to accommodate the menu bar or notch).
+      const cb = this.window.getContentBounds()
+      this.overlayOrigin = { x: cb.x, y: cb.y }
     }
     // Use 0.99 instead of 1 so Chrome's occlusion tracker doesn't consider
     // this window as fully opaque (alpha < 255 = not occluding). Without this,
@@ -494,8 +501,8 @@ export class OverlayWindowController {
 
   showVoice(screenX: number, screenY: number, mode: 'realtime') {
     this.activeVoice = true
-    const origin = this.overlayWindow.getOverlayOrigin()
     this.overlayWindow.show({ inactive: true })
+    const origin = this.overlayWindow.getOverlayOrigin()
     this.overlayWindow.send('overlay:showVoice', { x: screenX - origin.x, y: screenY - origin.y, mode })
   }
 
@@ -595,8 +602,8 @@ export class OverlayWindowController {
       trackedWindow.on('move', this.handleMorphWindowBoundsChanged)
       trackedWindow.on('resize', this.handleMorphWindowBoundsChanged)
     }
-    const origin = this.overlayWindow.getOverlayOrigin()
     this.overlayWindow.show({ inactive: true })
+    const origin = this.overlayWindow.getOverlayOrigin()
     this.overlayWindow.send('overlay:morphForward', {
       transitionId,
       screenshotDataUrl,
