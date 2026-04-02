@@ -30,7 +30,8 @@
     "targets": ["app", "dmg"],
     "icon": [
       "icons/icon.png",
-      "icons/icon.ico"
+      "icons/icon.ico",
+      "icons/icon.icns"
     ],
     "macOS": {
       "entitlements": "./Entitlements.plist",
