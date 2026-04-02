@@ -1,7 +1,12 @@
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
-import type { ToolContext, ToolResult } from "../tools/types.js";
+import type {
+  TaskToolRequest,
+  ToolContext,
+  ToolMetadata,
+  ToolResult,
+} from "../tools/types.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import type { RuntimeAttachmentRef } from "../../runtime-protocol/index.js";
 
@@ -69,15 +74,28 @@ export type RuntimeRunCallbacks = {
   onEnd: (event: RuntimeEndEvent) => void;
 };
 
+export type RuntimeToolLoadResult = {
+  addedTools: string[];
+  currentTools: string[];
+};
+
 export type BaseRunOptions = {
   runId?: string;
   rootRunId?: string;
+  taskId?: string;
   conversationId: string;
   userMessageId: string;
   agentType: string;
   userPrompt: string;
   attachments?: RuntimeAttachmentRef[];
+  selfModMetadata?: TaskToolRequest["selfModMetadata"];
   agentContext: LocalTaskManagerAgentContext;
+  toolCatalog?: ToolMetadata[];
+  loadTools?: (args: {
+    taskId?: string;
+    prompt: string;
+    loadedToolNames: string[];
+  }) => Promise<RuntimeToolLoadResult>;
   toolExecutor: (
     toolName: string,
     args: Record<string, unknown>,

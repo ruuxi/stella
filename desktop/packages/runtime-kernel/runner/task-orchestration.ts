@@ -1,17 +1,18 @@
 import crypto from "crypto";
+import path from "path";
 import { resolveLlmRoute } from "../model-routing.js";
 import { getMaxAgentConcurrency } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
 import { LocalTaskManager } from "../tasks/local-task-manager.js";
-import type { TaskToolRequest } from "../tools/types.js";
+import type { TaskToolRequest, ToolContext, ToolResult } from "../tools/types.js";
 import type {
   LocalTaskManagerAgentContext,
   TaskLifecycleEvent,
 } from "../tasks/local-task-manager.js";
+import { GENERAL_STARTER_TOOLS } from "../agents/core-agent-prompts.js";
 import {
   AGENT_IDS,
   isLocalCliAgentId,
-  shouldControlSelfModHmr,
 } from "../../../src/shared/contracts/agent-runtime.js";
 import type {
   AgentCallbacks,
@@ -19,7 +20,89 @@ import type {
   QueuedOrchestratorTurn,
 } from "./types.js";
 import { buildTaskEventPrompt, createSelfModHmrState } from "./shared.js";
+import { routeToolsForPrompt } from "./tool-router.js";
 import type { SelfModHmrState } from "../../boundary-contracts/index.js";
+
+const WINDOWS_PATH_PATTERN = /^(?:[A-Za-z]:[\\/]|\\\\)/;
+const SHELL_PATH_SOURCE = String.raw`(?:[A-Za-z]:[\\/]|\\\\|\/|\.\.?[\\/])`;
+const SHELL_REDIRECT_PATTERN = new RegExp(
+  String.raw`(?:^|[;&|]\s*|\s)\d*>>?\s*(?:"([^"]+)"|'([^']+)'|([^\s"'` +
+    "`" +
+    String.raw`]+))`,
+);
+const SHELL_PATH_PATTERN = new RegExp(
+  String.raw`(?:^|\s)(?:"(${SHELL_PATH_SOURCE}[^"]+)"|'(${SHELL_PATH_SOURCE}[^']+)'|(${SHELL_PATH_SOURCE}[^\s"'` +
+    "`" +
+    String.raw`]+))`,
+);
+
+const normalizeString = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const getPathApi = (...values: Array<string | undefined>) =>
+  values.some((value) => value && WINDOWS_PATH_PATTERN.test(value))
+    ? path.win32
+    : path.posix;
+
+const pickMatch = (value: string, pattern: RegExp): string | undefined =>
+  value.match(pattern)?.slice(1).find((part): part is string => Boolean(part));
+
+const extractShellPath = (command: string): string | undefined =>
+  pickMatch(command, SHELL_REDIRECT_PATTERN) ?? pickMatch(command, SHELL_PATH_PATTERN);
+
+const resolvePath = (candidate: string, cwd?: string): string => {
+  const pathApi = getPathApi(candidate, cwd);
+  const base = normalizeString(cwd) ?? process.cwd();
+  return pathApi.normalize(
+    pathApi.isAbsolute(candidate)
+      ? candidate
+      : pathApi.resolve(base, candidate),
+  );
+};
+
+export const resolveHmrToolTargetPath = (
+  toolName: string,
+  args: Record<string, unknown>,
+  fallbackCwd?: string,
+): string | null => {
+  const workingDirectory =
+    normalizeString(args.working_directory ?? args.cwd) ?? fallbackCwd;
+  if (toolName === "Write" || toolName === "Edit") {
+    const rawPath = normalizeString(
+      args.file_path ?? args.path ?? args.target_path,
+    );
+    return rawPath ? resolvePath(rawPath, workingDirectory) : null;
+  }
+  if (toolName === "Bash" || toolName === "SkillBash") {
+    const command = normalizeString(args.command);
+    if (!command) return null;
+    const rawPath = extractShellPath(command);
+    return rawPath ? resolvePath(rawPath, workingDirectory) : null;
+  }
+  return null;
+};
+
+export const isHmrPathUnderDirectory = (
+  filePath: string,
+  directory: string,
+): boolean => {
+  const pathApi = getPathApi(filePath, directory);
+  const normalizeForCompare = (value: string) =>
+    pathApi === path.win32
+      ? pathApi.normalize(value).toLowerCase()
+      : pathApi.normalize(value);
+  const relativePath = pathApi.relative(
+    normalizeForCompare(directory),
+    normalizeForCompare(filePath),
+  );
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !pathApi.isAbsolute(relativePath))
+  );
+};
 
 const appendTaskLifecycleChatEvent = (
   context: RunnerContext,
@@ -99,6 +182,7 @@ export const createTaskOrchestration = (
       agentType: string;
       runId: string;
       threadId?: string;
+      selfModMetadata?: TaskToolRequest["selfModMetadata"];
     }) => Promise<LocalTaskManagerAgentContext>;
     queueOrchestratorTurn: (turn: QueuedOrchestratorTurn) => void;
     startStreamingOrchestratorTurn: (
@@ -123,6 +207,19 @@ export const createTaskOrchestration = (
   context.state.localTaskManager = new LocalTaskManager({
     maxConcurrent: 24,
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaHomePath),
+    getStarterTools: (agentType) =>
+      agentType === AGENT_IDS.GENERAL ? [...GENERAL_STARTER_TOOLS] : [],
+    routeTools: async ({ agentType, description, prompt, loadedTools }) => {
+      if (agentType !== AGENT_IDS.GENERAL) {
+        return [];
+      }
+      return await routeToolsForPrompt({
+        context,
+        description,
+        prompt,
+        loadedTools,
+      });
+    },
     resolveTaskThread: ({ conversationId, agentType, threadId }) => {
       if (!isLocalCliAgentId(agentType)) {
         return null;
@@ -171,6 +268,7 @@ export const createTaskOrchestration = (
       conversationId,
       userMessageId,
       agentType,
+      taskId,
       rootRunId,
       agentContext,
       taskDescription,
@@ -181,19 +279,8 @@ export const createTaskOrchestration = (
       toolExecutor,
     }) => {
       const runId = `local:sub:${crypto.randomUUID()}`;
-      const shouldControlHmr = shouldControlSelfModHmr(agentType);
       const shouldAttachSelfModLifecycle =
-        agentType === AGENT_IDS.SELF_MOD && Boolean(context.selfModLifecycle);
-      const pauseApplied =
-        shouldControlHmr && context.selfModHmrController
-          ? await context.selfModHmrController.pause(runId)
-          : true;
-
-      if (shouldControlHmr && !pauseApplied) {
-        console.warn(
-          "[self-mod-hmr] Pause endpoint unavailable for self_mod subagent.",
-        );
-      }
+        Boolean(selfModMetadata) && Boolean(context.selfModLifecycle);
 
       const resolvedLlm = resolveLlmRoute({
         stellaHomePath: context.stellaHomePath,
@@ -209,9 +296,38 @@ export const createTaskOrchestration = (
       const reportSelfModHmrState = (state: SelfModHmrState) => {
         taskCallbacks?.onSelfModHmrState?.(state);
       };
-      if (shouldControlHmr && pauseApplied) {
-        reportSelfModHmrState(createSelfModHmrState("paused", true));
-      }
+
+      let hmrPaused = false;
+      const pauseHmrIfStellaWrite = async (
+        toolName: string,
+        args: Record<string, unknown>,
+      ) => {
+        if (hmrPaused || !context.selfModHmrController || !context.frontendRoot) return;
+        const targetPath = resolveHmrToolTargetPath(
+          toolName,
+          args,
+          context.frontendRoot,
+        );
+        if (!targetPath || !isHmrPathUnderDirectory(targetPath, context.frontendRoot)) return;
+        hmrPaused = true;
+        const applied = await context.selfModHmrController.pause(runId);
+        if (!applied) {
+          console.warn("[self-mod-hmr] Pause endpoint unavailable for Stella file write.");
+        } else {
+          reportSelfModHmrState(createSelfModHmrState("paused", true));
+        }
+      };
+
+      const hmrAwareToolExecutor = async (
+        toolName: string,
+        args: Record<string, unknown>,
+        ctx: ToolContext,
+        signal?: AbortSignal,
+      ): Promise<ToolResult> => {
+        await pauseHmrIfStellaWrite(toolName, args);
+        return toolExecutor(toolName, args, ctx, signal);
+      };
+
       if (shouldAttachSelfModLifecycle) {
         await Promise.resolve(
           context.selfModLifecycle!.beginRun({
@@ -229,11 +345,20 @@ export const createTaskOrchestration = (
           conversationId,
           userMessageId,
           runId,
+          taskId,
           rootRunId,
           agentType,
           userPrompt: `${taskDescription}\n\n${taskPrompt}`,
+          selfModMetadata,
           agentContext,
-          toolExecutor,
+          toolCatalog: context.toolHost.getToolCatalog(),
+          loadTools: async ({ taskId, prompt }) => {
+            if (!taskId || !context.state.localTaskManager) {
+              return { addedTools: [], currentTools: agentContext.toolsAllowlist ?? [] };
+            }
+            return await context.state.localTaskManager.loadTools(taskId, prompt);
+          },
+          toolExecutor: hmrAwareToolExecutor,
           deviceId: context.deviceId,
           stellaHome: context.stellaHomePath,
           resolvedLlm,
@@ -273,7 +398,7 @@ export const createTaskOrchestration = (
             await Promise.resolve(context.selfModLifecycle!.cancelRun(runId));
           }
         }
-        if (shouldControlHmr && context.selfModHmrController) {
+        if (hmrPaused && context.selfModHmrController) {
           const status = await context.selfModHmrController
             .getStatus()
             .catch(() => null);
@@ -286,7 +411,7 @@ export const createTaskOrchestration = (
               await context.selfModHmrController?.resume(runId);
             if (!resumeApplied) {
               console.warn(
-                "[self-mod-hmr] Resume endpoint unavailable for self_mod subagent.",
+                "[self-mod-hmr] Resume endpoint unavailable after Stella file write.",
               );
             }
           };
@@ -321,7 +446,7 @@ export const createTaskOrchestration = (
             }
           } catch (error) {
             console.warn(
-              "[self-mod-hmr] Failed to resume self_mod subagent HMR:",
+              "[self-mod-hmr] Failed to resume HMR after Stella file write:",
               (error as Error).message,
             );
             await context.selfModHmrController

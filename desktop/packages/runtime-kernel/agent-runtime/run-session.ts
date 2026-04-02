@@ -13,9 +13,12 @@ type SessionOptions = Pick<
   BaseRunOptions,
   | "runId"
   | "rootRunId"
+  | "taskId"
   | "conversationId"
   | "agentType"
   | "agentContext"
+  | "toolCatalog"
+  | "loadTools"
   | "deviceId"
   | "stellaHome"
   | "frontendRoot"
@@ -57,6 +60,7 @@ export const createRuntimeExecutionSession = (
   const tools = createPiTools({
     runId,
     rootRunId: opts.rootRunId ?? runId,
+    taskId: opts.taskId,
     conversationId: opts.conversationId,
     agentType: opts.agentType,
     deviceId: opts.deviceId,
@@ -66,10 +70,12 @@ export const createRuntimeExecutionSession = (
     maxTaskDepth: opts.agentContext.maxTaskDepth,
     delegationAllowlist: opts.agentContext.delegationAllowlist,
     toolsAllowlist: opts.agentContext.toolsAllowlist,
+    toolCatalog: opts.toolCatalog,
     defaultSkills: opts.agentContext.defaultSkills,
     skillIds: opts.agentContext.skillIds,
     store: opts.store,
     toolExecutor: opts.toolExecutor,
+    loadTools: opts.loadTools,
     webSearch: opts.webSearch,
     hookEmitter: opts.hookEmitter,
   });

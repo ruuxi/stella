@@ -99,6 +99,13 @@ export type TaskLifecycleEvent = {
 type LocalTaskManagerOpts = {
   maxConcurrent?: number;
   getMaxConcurrent?: () => number;
+  getStarterTools?: (agentType: string) => string[];
+  routeTools?: (args: {
+    agentType: string;
+    description: string;
+    prompt: string;
+    loadedTools: string[];
+  }) => Promise<string[]>;
   resolveTaskThread?: (args: {
     conversationId: string;
     agentType: string;
@@ -110,6 +117,7 @@ type LocalTaskManagerOpts = {
     agentType: string;
     runId: string;
     threadId?: string;
+    selfModMetadata?: TaskToolRequest["selfModMetadata"];
   }) => Promise<LocalTaskManagerAgentContext>;
   runSubagent: (args: {
     conversationId: string;
@@ -164,6 +172,20 @@ const normalizeString = (value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const mergeToolNames = (...lists: Array<string[] | undefined>): string[] => {
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const list of lists) {
+    for (const value of list ?? []) {
+      const toolName = normalizeString(value);
+      if (!toolName || seen.has(toolName)) continue;
+      seen.add(toolName);
+      merged.push(toolName);
+    }
+  }
+  return merged;
 };
 
 const normalizeFsPathKey = (candidate: string, cwd?: string): string => {
@@ -360,6 +382,28 @@ export class LocalTaskManager implements TaskToolApi {
     task.terminalEventEmitted = false;
   }
 
+  private async buildInitialToolsAllowlist(
+    request: TaskToolRequest,
+  ): Promise<string[] | undefined> {
+    const starterTools = mergeToolNames(
+      this.opts.getStarterTools?.(request.agentType),
+      request.toolsAllowlistOverride,
+    );
+    if (!this.opts.routeTools) {
+      return starterTools.length > 0 ? starterTools : undefined;
+    }
+    const routedTools = await this.opts
+      .routeTools({
+        agentType: request.agentType,
+        description: request.description,
+        prompt: request.prompt,
+        loadedTools: starterTools,
+      })
+      .catch(() => []);
+    const resolved = mergeToolNames(starterTools, routedTools);
+    return resolved.length > 0 ? resolved : undefined;
+  }
+
   private hydrateTaskFromRecord(
     record: PersistedTaskRecord,
     prompt: string,
@@ -484,6 +528,7 @@ export class LocalTaskManager implements TaskToolApi {
         agentType: task.agentType,
         runId,
         threadId: task.threadId,
+        selfModMetadata: task.selfModMetadata,
       });
 
       context.maxTaskDepth =
@@ -658,6 +703,7 @@ export class LocalTaskManager implements TaskToolApi {
 
   async createTask(request: TaskToolRequest): Promise<{ threadId: string }> {
     const controller = new AbortController();
+    const initialToolsAllowlist = await this.buildInitialToolsAllowlist(request);
     const resolvedThread = this.opts.resolveTaskThread?.({
       conversationId: request.conversationId,
       agentType: request.agentType,
@@ -688,7 +734,7 @@ export class LocalTaskManager implements TaskToolApi {
       parentTaskId: request.parentTaskId,
       threadId: id,
       systemPromptOverride: request.systemPromptOverride,
-      toolsAllowlistOverride: request.toolsAllowlistOverride,
+      toolsAllowlistOverride: initialToolsAllowlist,
       omitCoreMemory: request.omitCoreMemory === true,
       selfModMetadata: request.selfModMetadata,
       recentActivity: [],
@@ -726,6 +772,43 @@ export class LocalTaskManager implements TaskToolApi {
     return {
       threadId: task.id,
     };
+  }
+
+  async loadTools(
+    taskId: string,
+    prompt: string,
+  ): Promise<{ addedTools: string[]; currentTools: string[] }> {
+    const task = this.tasks.get(taskId);
+    if (!task) {
+      return { addedTools: [], currentTools: [] };
+    }
+    const requestPrompt = prompt.trim();
+    if (!requestPrompt || !this.opts.routeTools) {
+      return {
+        addedTools: [],
+        currentTools: task.toolsAllowlistOverride ?? [],
+      };
+    }
+    const currentTools = mergeToolNames(
+      this.opts.getStarterTools?.(task.agentType),
+      task.toolsAllowlistOverride,
+    );
+    const routedTools = await this.opts
+      .routeTools({
+        agentType: task.agentType,
+        description: task.description,
+        prompt: requestPrompt,
+        loadedTools: currentTools,
+      })
+      .catch(() => []);
+    const mergedTools = mergeToolNames(currentTools, routedTools);
+    const addedTools = mergedTools.filter((tool) => !currentTools.includes(tool));
+    if (addedTools.length === 0) {
+      return { addedTools: [], currentTools };
+    }
+    task.toolsAllowlistOverride = mergedTools;
+    this.persistTask(task);
+    return { addedTools, currentTools: mergedTools };
   }
 
   async getTask(taskId: string): Promise<TaskToolSnapshot | null> {

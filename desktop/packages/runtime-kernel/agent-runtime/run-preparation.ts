@@ -63,7 +63,8 @@ export const buildSubagentSystemPrompt = (
 ): string =>
   [
     buildSystemPrompt(opts.agentContext),
-    shouldIncludeStellaDocumentation(opts.agentType)
+    (shouldIncludeStellaDocumentation(opts.agentType) ||
+      Boolean(opts.selfModMetadata))
       ? buildSelfModDocumentationPrompt(opts.frontendRoot)
       : "",
   ]

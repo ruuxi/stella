@@ -269,7 +269,7 @@ export const loadGoogleWorkspaceTools = async (options: {
     toolsOut.push({
       name: toolName,
       description: meta.description,
-      agentTypes: ["google_workspace"],
+      agentTypes: ["general"],
       parameters: meta.parameters,
       execute,
     });

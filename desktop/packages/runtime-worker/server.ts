@@ -970,7 +970,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             release,
             mode,
           }),
-          agentType: "self_mod",
+          agentType: "general",
           selfModMetadata: {
             featureId: packageRecord.featureId,
             packageId: packageRecord.packageId,

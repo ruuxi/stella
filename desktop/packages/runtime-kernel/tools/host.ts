@@ -23,6 +23,7 @@ import type {
   ToolHostOptions,
   SkillRecord,
   SecretMountSpec,
+  ToolMetadata,
 } from "./types.js";
 
 // Utilities
@@ -50,6 +51,7 @@ import {
   mergeToolHandlers,
   registerExtensionToolHandlers,
 } from "./registry.js";
+import { TOOL_DESCRIPTIONS, TOOL_JSON_SCHEMAS } from "./schemas.js";
 
 import type { ToolDefinition } from "../extensions/types.js";
 
@@ -69,6 +71,16 @@ export const createToolHost = ({
   displayHtml,
 }: ToolHostOptions) => {
   const stateRoot = path.join(stellaHomePath, "state");
+  const toolCatalog = new Map<string, ToolMetadata>(
+    Object.entries(TOOL_DESCRIPTIONS).map(([name, description]) => [
+      name,
+      {
+        name,
+        description,
+        parameters: (TOOL_JSON_SCHEMAS[name] ?? {}) as Record<string, unknown>,
+      },
+    ]),
+  );
 
   // Configure file tools.
   setFileToolsConfig({ frontendRoot });
@@ -147,6 +159,13 @@ export const createToolHost = ({
   );
 
   registerExtensionToolHandlers(handlers, extensionTools);
+  for (const tool of extensionTools ?? []) {
+    toolCatalog.set(tool.name, {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    });
+  }
 
   const executeTool = async (
     toolName: string,
@@ -207,6 +226,7 @@ export const createToolHost = ({
 
   return {
     executeTool,
+    getToolCatalog: () => Array.from(toolCatalog.values()),
     getHandlerNames: () => Object.keys(handlers),
     getShells: () => Array.from(shellState.shells.values()),
     killAllShells,
@@ -214,6 +234,13 @@ export const createToolHost = ({
     setSkills,
     registerExtensionTools: (tools: ToolDefinition[]) => {
       registerExtensionToolHandlers(handlers, tools);
+      for (const tool of tools) {
+        toolCatalog.set(tool.name, {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        });
+      }
     },
   };
 };

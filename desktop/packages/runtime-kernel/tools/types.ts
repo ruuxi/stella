@@ -33,6 +33,12 @@ export type ToolResult = {
   error?: string;
 };
 
+export type ToolMetadata = {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+};
+
 export type SecretMountSpec = {
   provider: string;
   label?: string;

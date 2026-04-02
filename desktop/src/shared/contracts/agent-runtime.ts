@@ -2,10 +2,6 @@ export const AGENT_IDS = {
   ORCHESTRATOR: "orchestrator",
   SCHEDULE: "schedule",
   GENERAL: "general",
-  SELF_MOD: "self_mod",
-  EXPLORE: "explore",
-  COMPUTER: "computer",
-  GOOGLE_WORKSPACE: "google_workspace",
   OFFLINE_RESPONDER: "offline_responder",
   AUTO: "auto",
 } as const;
@@ -15,7 +11,7 @@ export type AgentIdLike = AgentId | (string & {});
 
 type AgentPromptRole = "orchestrator" | "subagent";
 type LocalCliWorkingDirectory = "home" | "frontend";
-type AgentEnginePreferenceKey = "general" | "self_mod";
+type AgentEnginePreferenceKey = "general";
 
 type AgentModelSettings = {
   description?: string;
@@ -80,7 +76,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     id: AGENT_IDS.GENERAL,
     name: "General",
     description:
-      "Executes tasks: coding, file operations, shell commands, UI interaction, and web lookups.",
+      "Executes all delegated work with a starter tool pack and dynamically loads more tools when needed.",
     activityLabel: "Working",
     bundledCore: true,
     taskSubagent: true,
@@ -91,81 +87,8 @@ const BUILTIN_AGENT_DEFINITIONS = [
     localCliWorkingDirectory: "frontend",
     agentEnginePreference: "general",
     modelSettings: {
-      description: "Full tool access for general tasks",
+      description: "Single execution agent with dynamic tool loading",
       order: 1,
-    },
-  },
-  {
-    id: AGENT_IDS.SELF_MOD,
-    name: "Self Mod",
-    description:
-      "Modifies Stella itself: runtime, prompts, settings, dashboard UI, and internal product code.",
-    activityLabel: "Modifying",
-    bundledCore: true,
-    taskSubagent: true,
-    usesLocalCliRuntime: true,
-    promptRole: "subagent",
-    includesStellaDocumentation: true,
-    controlsSelfModHmr: true,
-    localCliWorkingDirectory: "frontend",
-    agentEnginePreference: "self_mod",
-    modelSettings: {
-      description: "Stella internal code, prompts, runtime, and UI",
-      order: 2,
-    },
-  },
-  {
-    id: AGENT_IDS.EXPLORE,
-    name: "Explore",
-    description:
-      "Read-only codebase investigation: searches files, reads code, traces imports.",
-    activityLabel: "Exploring",
-    bundledCore: true,
-    taskSubagent: true,
-    usesLocalCliRuntime: false,
-    promptRole: "subagent",
-    includesStellaDocumentation: false,
-    controlsSelfModHmr: false,
-    localCliWorkingDirectory: null,
-    agentEnginePreference: null,
-    modelSettings: {
-      description: "Lightweight read-only exploration",
-      order: 4,
-    },
-  },
-  {
-    id: AGENT_IDS.COMPUTER,
-    name: "Computer",
-    description:
-      "Controls applications: browser automation, desktop app control, navigation, forms, and screenshots.",
-    activityLabel: "Browsing",
-    bundledCore: true,
-    taskSubagent: true,
-    usesLocalCliRuntime: false,
-    promptRole: "subagent",
-    includesStellaDocumentation: false,
-    controlsSelfModHmr: false,
-    localCliWorkingDirectory: null,
-    agentEnginePreference: null,
-    modelSettings: null,
-  },
-  {
-    id: AGENT_IDS.GOOGLE_WORKSPACE,
-    name: "Google Workspace",
-    description:
-      "Google Workspace: Gmail, Calendar, Drive, and Docs via dedicated integration tools.",
-    activityLabel: "Workspace",
-    bundledCore: true,
-    taskSubagent: true,
-    usesLocalCliRuntime: false,
-    promptRole: "subagent",
-    includesStellaDocumentation: false,
-    controlsSelfModHmr: false,
-    localCliWorkingDirectory: null,
-    agentEnginePreference: null,
-    modelSettings: {
-      description: "Google Workspace specialist (Gmail, Calendar, Drive, Docs)",
-      order: 5,
     },
   },
   {
@@ -275,9 +198,6 @@ export const isLocalCliAgentId = (
 
 export const isOrchestratorAgentType = (agentType: string): boolean =>
   getAgentDefinition(agentType)?.promptRole === "orchestrator";
-
-export const shouldControlSelfModHmr = (agentType: string): boolean =>
-  getAgentDefinition(agentType)?.controlsSelfModHmr ?? false;
 
 export const shouldIncludeStellaDocumentation = (
   agentType: string,
