@@ -1,5 +1,6 @@
 import { BrowserWindow, type RenderProcessGoneDetails } from 'electron'
 import path from 'path'
+import { resolveAppIconPath } from '../app-icon.js'
 import { loadWindow } from './window-load.js'
 import { createSharedWebPreferences } from './shared-window-preferences.js'
 
@@ -37,6 +38,7 @@ export class FullWindowController {
 
     const isMac = process.platform === 'darwin'
     const isWindows = process.platform === 'win32'
+    const windowIcon = !isMac ? resolveAppIconPath(this.options.electronDir) : undefined
     const window = new BrowserWindow({
       width: 1200,
       height: 800,
@@ -46,6 +48,7 @@ export class FullWindowController {
       titleBarStyle: isMac ? 'hiddenInset' : undefined,
       trafficLightPosition: isMac ? { x: 16, y: 18 } : undefined,
       ...(isWindows || process.platform === 'linux' ? { frame: false } : {}),
+      icon: windowIcon,
       webPreferences: createSharedWebPreferences({
         preloadPath: this.options.preloadPath,
         sessionPartition: this.options.sessionPartition,

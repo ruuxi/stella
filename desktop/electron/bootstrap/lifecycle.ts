@@ -1,4 +1,5 @@
 import { app, globalShortcut } from "electron";
+import { applyDockIcon } from "../app-icon.js";
 import type { BootstrapContext } from "./context.js";
 import { shutdownBootstrapRuntime } from "./resets.js";
 import { initializeBootstrapApplication } from "./runtime.js";
@@ -41,6 +42,7 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
     if (app.isPackaged) {
       process.env.STELLA_APP_RESOURCES_PATH = process.resourcesPath;
     }
+    applyDockIcon(context.config.electronDir);
     await initializeBootstrapApplication(context);
 
     app.on("activate", () => {
