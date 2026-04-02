@@ -33,6 +33,7 @@ export const DEVICE_TOOL_NAMES = [
   "CronUpdate",
   "CronRemove",
   "CronRun",
+  "LoadTools",
 ] as const;
 
 export type DeviceToolName = (typeof DEVICE_TOOL_NAMES)[number];
@@ -393,7 +394,7 @@ const TaskCreateJsonSchema = {
       type: "string",
       enum: TASK_SUBAGENT_ENUM,
       description:
-        "Which agent executes the task: 'general' (external code/files/shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), 'computer' (browser/desktop app automation), 'google_workspace' (Gmail, Calendar, Drive, Docs). Default: general",
+        "Which agent executes the task. Only 'general' is currently available. Default: general.",
     },
   },
   required: ["description", "prompt"],
@@ -476,6 +477,18 @@ const ActivateSkillJsonSchema = {
     skill_id: { type: "string", description: "ID of the skill to activate" },
   },
   required: ["skill_id"],
+};
+
+const LoadToolsJsonSchema = {
+  type: "object",
+  properties: {
+    prompt: {
+      type: "string",
+      description:
+        "Describe the capability you need in plain language. Do not name tools directly.",
+    },
+  },
+  required: ["prompt"],
 };
 
 const NoResponseJsonSchema = {
@@ -625,11 +638,11 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   CronRun:
     "Trigger a local cron job immediately, ignoring its next scheduled time.",
   TaskCreate:
-    "Create a background task executed by a specialized subagent.\n\n" +
+    "Create a background task executed by the general subagent.\n\n" +
     "Usage:\n" +
     "- description: short summary shown in the task list.\n" +
     "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, relevant file paths, and expected output.\n" +
-    "- subagent_type: 'general' (external code, files, shell work), 'self_mod' (Stella code, Stella UI, Stella runtime), 'explore' (read-only codebase search), 'computer' (browser and desktop app automation), or 'google_workspace' (Gmail, Calendar, Drive, Docs).\n" +
+    "- subagent_type: only 'general' is supported.\n" +
     "- Starts background work and immediately returns a structured status object with a durable thread_id.\n" +
     "- After calling it, do not create another task for the same work.\n" +
     "- Wait for the completion/failure event; in the meantime you may gently reply to the user or call NoResponse.\n" +
@@ -676,6 +689,13 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- skill_id: exact ID of an installed skill (e.g. 'electron').\n" +
     "- Only use skill IDs listed in your agent config (defaultSkills) or that you have confirmed exist.\n" +
     "- Do NOT guess or invent skill IDs — if the skill doesn't exist, it will fail.",
+  LoadTools:
+    "Load additional tools into the current run.\n\n" +
+    "Usage:\n" +
+    "- prompt: describe the capability you need in plain language.\n" +
+    "- Do NOT ask for tool names directly.\n" +
+    "- Use this when your current starter pack is insufficient.\n" +
+    "- Newly loaded tools become available in subsequent turns of the same run.",
   NoResponse:
     "Signal that you have nothing to say right now.\n\n" +
     "Call this instead of generating a message when a system event, task result, or heartbeat check " +
@@ -707,5 +727,6 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   SaveMemory: SaveMemoryJsonSchema,
   RecallMemories: RecallMemoriesJsonSchema,
   ActivateSkill: ActivateSkillJsonSchema,
+  LoadTools: LoadToolsJsonSchema,
   NoResponse: NoResponseJsonSchema,
 };
