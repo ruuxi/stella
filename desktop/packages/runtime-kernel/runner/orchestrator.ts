@@ -36,6 +36,7 @@ export const createOrchestratorController = (
       agentType: string;
       runId: string;
       threadId?: string;
+      selfModMetadata?: import("../tools/types.js").TaskToolRequest["selfModMetadata"];
     }) => Promise<LocalTaskManagerAgentContext>;
     resolveAgent: (agentType: string) => unknown;
     getConfiguredModel: (

@@ -67,7 +67,8 @@ export const runExternalSubagentTurn = async (
   const prompt = opts.userPrompt.trim();
   const effectiveSystemPrompt = [
     buildSystemPrompt(opts.agentContext),
-    shouldIncludeStellaDocumentation(opts.agentType)
+    (shouldIncludeStellaDocumentation(opts.agentType) ||
+      Boolean(opts.selfModMetadata))
       ? buildSelfModDocumentationPrompt(opts.frontendRoot)
       : "",
   ]

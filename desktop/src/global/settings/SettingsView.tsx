@@ -500,44 +500,27 @@ function ModelConfigSection() {
   ]);
 
   const handleAgentEngineChange = useCallback(
-    async (agentType: "general" | "self_mod", value: string) => {
+    async (_agentType: "general", value: string) => {
       if (isSavingRuntimePreference) {
         return;
       }
 
       const engine =
         value === "claude_code_local" ? "claude_code_local" : "default";
-      const previousValue =
-        agentType === "general"
-          ? localGeneralAgentEngine
-          : localSelfModAgentEngine;
+      const previousValue = localGeneralAgentEngine;
 
       setRuntimeError(null);
       setIsSavingRuntimePreference(true);
-      if (agentType === "general") {
-        setLocalGeneralAgentEngine(engine);
-      } else {
-        setLocalSelfModAgentEngine(engine);
-      }
+      setLocalGeneralAgentEngine(engine);
 
       try {
-        if (agentType === "general") {
-          await setGeneralAgentEngine({ engine });
-        } else {
-          await setSelfModAgentEngine({ engine });
-        }
+        await setGeneralAgentEngine({ engine });
       } catch (error) {
-        if (agentType === "general") {
-          setLocalGeneralAgentEngine(previousValue);
-        } else {
-          setLocalSelfModAgentEngine(previousValue);
-        }
+        setLocalGeneralAgentEngine(previousValue);
         setRuntimeError(
           getSettingsErrorMessage(
             error,
-            agentType === "general"
-              ? "Failed to update the general agent runtime."
-              : "Failed to update the self-mod agent runtime.",
+            "Failed to update the general agent runtime.",
           ),
         );
       } finally {
@@ -547,9 +530,7 @@ function ModelConfigSection() {
     [
       isSavingRuntimePreference,
       localGeneralAgentEngine,
-      localSelfModAgentEngine,
       setGeneralAgentEngine,
-      setSelfModAgentEngine,
     ],
   );
 
@@ -624,45 +605,6 @@ function ModelConfigSection() {
                 value={effectiveGeneralAgentEngine}
                 onChange={(e) =>
                   void handleAgentEngineChange("general", e.target.value)
-                }
-                disabled={isSavingRuntimePreference}
-              >
-                {GENERAL_AGENT_ENGINE_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            ) : (
-              <NativeSelect
-                className="settings-runtime-select"
-                value="loading"
-                disabled
-              >
-                <option value="loading">
-                  {hasConnectedAccount
-                    ? "Loading saved setting..."
-                    : "Sign in required"}
-                </option>
-              </NativeSelect>
-            )}
-          </div>
-        </div>
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <div className="settings-row-label">Self Mod Engine</div>
-            <div className="settings-row-sublabel">
-              Stella-internal work. Local CLI mode requires the corresponding{" "}
-              <code>claude</code> CLI.
-            </div>
-          </div>
-          <div className="settings-row-control">
-            {runtimePreferencesLoaded ? (
-              <NativeSelect
-                className="settings-runtime-select"
-                value={effectiveSelfModAgentEngine}
-                onChange={(e) =>
-                  void handleAgentEngineChange("self_mod", e.target.value)
                 }
                 disabled={isSavingRuntimePreference}
               >

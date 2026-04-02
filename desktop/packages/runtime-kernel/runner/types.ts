@@ -15,6 +15,7 @@ import type {
   TaskToolRequest,
   TaskToolSnapshot,
   ToolContext,
+  ToolMetadata,
   ToolResult,
 } from "../tools/types.js";
 import type { ToolDefinition } from "../extensions/types.js";
@@ -231,6 +232,7 @@ export type RunnerContext = {
   hookEmitter: HookEmitter;
   toolHost: {
     setSkills: (skills: ParsedSkill[]) => void;
+    getToolCatalog: () => ToolMetadata[];
     executeTool: (
       toolName: string,
       toolArgs: Record<string, unknown>,

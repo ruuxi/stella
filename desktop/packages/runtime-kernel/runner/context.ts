@@ -372,14 +372,19 @@ export const buildAgentContext = async (
     agentType: string;
     runId: string;
     threadId?: string;
+    selfModMetadata?: {
+      featureId?: string;
+      packageId?: string;
+      releaseNumber?: number;
+      mode?: "author" | "install" | "update";
+      displayName?: string;
+      description?: string;
+    };
   },
 ): Promise<LocalTaskManagerAgentContext> => {
   const availableSkills = context.state.loadedSkillsPromise
     ? await context.state.loadedSkillsPromise
     : context.state.loadedSkills;
-  if (args.agentType === AGENT_IDS.GOOGLE_WORKSPACE) {
-    await context.ensureGoogleWorkspaceMcpLoaded();
-  }
   const availableSkillIds = Array.from(
     new Set(availableSkills.map((skill) => skill.id)),
   );
@@ -429,16 +434,17 @@ export const buildAgentContext = async (
     args.agentType === AGENT_IDS.ORCHESTRATOR &&
     context.state.googleWorkspaceMcpToolNames !== null &&
     !context.state.googleWorkspaceMcpToolNames?.length;
+  const isSelfModTask = Boolean(args.selfModMetadata);
 
   const dynamicContextSections = [
     args.agentType === AGENT_IDS.ORCHESTRATOR && context.frontendRoot
       ? buildPanelInventory(context.frontendRoot)
       : "",
-    args.agentType === AGENT_IDS.SELF_MOD
+    isSelfModTask
       ? buildManagedMediaDocsPrompt(context.state.convexSiteUrl)
       : "",
     googleWorkspaceUnavailable
-      ? "Note: The Google Workspace integration is not installed. Do not delegate to google_workspace. If the user asks about Gmail, Calendar, Drive, or Docs, let them know the integration is currently unavailable."
+      ? "Note: The Google Workspace integration is not installed, so related tools are currently unavailable."
       : "",
     activeThreadsPrompt,
   ].filter((section) => section.trim().length > 0);
@@ -452,13 +458,6 @@ export const buildAgentContext = async (
   const enginePref = getAgentEnginePreference(args.agentType);
 
   let toolsAllowlist = agent?.toolsAllowlist;
-  if (args.agentType === AGENT_IDS.GOOGLE_WORKSPACE) {
-    if (context.state.googleWorkspaceMcpToolNames?.length) {
-      toolsAllowlist = [...context.state.googleWorkspaceMcpToolNames, "NoResponse"];
-    } else {
-      toolsAllowlist = ["NoResponse"];
-    }
-  }
 
   return {
     systemPrompt:
@@ -478,11 +477,11 @@ export const buildAgentContext = async (
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
     agentEngine:
-      enginePref === "general"
+      isSelfModTask
+        ? getSelfModAgentEngine(context.stellaHomePath)
+        : enginePref === "general"
         ? getGeneralAgentEngine(context.stellaHomePath)
-        : enginePref === "self_mod"
-          ? getSelfModAgentEngine(context.stellaHomePath)
-          : undefined,
+        : undefined,
     maxAgentConcurrency: isLocalCliAgentId(args.agentType)
       ? getMaxAgentConcurrency(context.stellaHomePath)
       : undefined,
