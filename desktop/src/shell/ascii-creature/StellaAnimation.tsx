@@ -42,6 +42,8 @@ const SPEAKING_ATTACK_LERP = 0.18;
 const SPEAKING_RELEASE_LERP = 0.12;
 const VOICE_ENERGY_ATTACK_RATE = 0.24;
 const VOICE_ENERGY_RELEASE_RATE = 0.08;
+/** Shader time units per second — 2x the original 0.008-per-frame-at-60fps rate. */
+const TIME_RATE = 0.96;
 
 export interface StellaAnimationHandle {
   triggerFlash: () => void;
@@ -85,6 +87,7 @@ export const StellaAnimation = React.forwardRef<
     const animateRef = useRef<(() => void) | null>(null);
     const pausedRef = useRef(paused);
     const timeRef = useRef<number>(0);
+    const lastFrameTimeRef = useRef<number>(0);
     const birthRef = useRef<number>(initialBirthProgress);
     const flashRef = useRef<number>(0);
     const birthAnimationRef = useRef<{
@@ -237,14 +240,17 @@ export const StellaAnimation = React.forwardRef<
           requestRef.current = undefined;
           return;
         }
-        timeRef.current += 0.008;
+        const now = performance.now();
+        const dt = lastFrameTimeRef.current > 0
+          ? Math.min(now - lastFrameTimeRef.current, 100)
+          : 16.667;
+        lastFrameTimeRef.current = now;
+        timeRef.current += (dt / 1000) * TIME_RATE;
 
         if (frameSkip > 0 && ++frameCount % (frameSkip + 1) !== 0) {
           requestRef.current = requestAnimationFrame(animate);
           return;
         }
-
-        const now = performance.now();
 
         const birthAnimation = birthAnimationRef.current;
         if (birthAnimation) {
