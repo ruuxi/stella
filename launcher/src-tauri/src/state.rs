@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::process::Child;
 use tokio::sync::Mutex;
 
 // ── Step types ──────────────────────────────────────────────────────
@@ -121,5 +120,4 @@ pub struct LaunchInfo {
 pub struct AppState {
     pub installer: Mutex<InstallerState>,
     pub context: InstallerContext,
-    pub desktop_process: Mutex<Option<Child>>,
 }

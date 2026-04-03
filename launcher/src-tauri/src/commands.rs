@@ -1,6 +1,7 @@
 use crate::setup;
 use crate::state::*;
 use serde::Serialize;
+use std::path::Path;
 use std::process::{Command as StdCommand, Stdio};
 use tauri::{AppHandle, Emitter, State};
 
@@ -9,6 +10,81 @@ use std::os::windows::process::CommandExt;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+const PID_FILE_NAME: &str = ".electron-dev-runner.pid";
+
+fn read_pid_file(install_path: &str) -> Option<u32> {
+    let path = Path::new(install_path).join(PID_FILE_NAME);
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    parsed.get("pid")?.as_u64().map(|p| p as u32)
+}
+
+fn is_desktop_alive(install_path: &str) -> bool {
+    read_pid_file(install_path).map_or(false, |pid| is_pid_alive(pid))
+}
+
+fn is_pid_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        unsafe { libc::kill(pid as i32, 0) == 0 }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
+    }
+}
+
+fn kill_pid_tree(pid: u32) {
+    #[cfg(unix)]
+    {
+        unsafe {
+            libc::kill(-(pid as i32), libc::SIGTERM);
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+    }
+}
+
+pub fn stop_desktop_by_path(install_path: &str) {
+    if let Some(pid) = read_pid_file(install_path) {
+        if is_pid_alive(pid) {
+            kill_pid_tree(pid);
+        }
+        let _ = std::fs::remove_file(
+            Path::new(install_path).join(PID_FILE_NAME),
+        );
+    }
+}
+
+fn spawn_detached(info: &LaunchInfo) -> bool {
+    let mut cmd = StdCommand::new(&info.command[0]);
+    cmd.args(&info.command[1..])
+        .current_dir(&info.cwd)
+        .envs(&info.env)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .stdin(Stdio::null());
+
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+    }
+
+    cmd.spawn().is_ok()
+}
 
 #[derive(Serialize)]
 pub struct OkResult {
@@ -110,23 +186,8 @@ pub async fn start_install(
     let result = setup::install_all(&mut installer, &state.context, &app).await;
 
     if result.is_ok() && installer.run_after_install && installer.can_launch {
-        // Launch desktop
         if let Some(info) = setup::get_launch_info(&installer).await {
-            let mut cmd = StdCommand::new(&info.command[0]);
-            cmd.args(&info.command[1..])
-                .current_dir(&info.cwd)
-                .envs(&info.env)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .stdin(Stdio::null());
-            #[cfg(target_os = "windows")]
-            cmd.creation_flags(CREATE_NO_WINDOW);
-            let child = cmd.spawn();
-
-            if let Ok(child) = child {
-                let mut proc = state.desktop_process.lock().await;
-                *proc = Some(child);
-            }
+            spawn_detached(&info);
         }
     }
 
@@ -137,39 +198,14 @@ pub async fn start_install(
 
 #[tauri::command]
 pub async fn launch_desktop(state: State<'_, AppState>) -> Result<OkResult, String> {
-    // Already running?
-    {
-        let mut proc = state.desktop_process.lock().await;
-        if let Some(ref mut child) = *proc {
-            match child.try_wait() {
-                Ok(None) => return Ok(OkResult { ok: true }),
-                _ => { *proc = None; }
-            }
-        }
-    }
-
     let installer = state.installer.lock().await;
 
-    if let Some(info) = setup::get_launch_info(&installer).await {
-        let mut cmd = StdCommand::new(&info.command[0]);
-        cmd.args(&info.command[1..])
-            .current_dir(&info.cwd)
-            .envs(&info.env)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .stdin(Stdio::null());
-        #[cfg(target_os = "windows")]
-        cmd.creation_flags(CREATE_NO_WINDOW);
-        let child = cmd.spawn();
+    if is_desktop_alive(&installer.install_path) {
+        return Ok(OkResult { ok: true });
+    }
 
-        match child {
-            Ok(child) => {
-                let mut proc = state.desktop_process.lock().await;
-                *proc = Some(child);
-                Ok(OkResult { ok: true })
-            }
-            Err(_) => Ok(OkResult { ok: false }),
-        }
+    if let Some(info) = setup::get_launch_info(&installer).await {
+        Ok(OkResult { ok: spawn_detached(&info) })
     } else {
         Ok(OkResult { ok: false })
     }
@@ -177,25 +213,15 @@ pub async fn launch_desktop(state: State<'_, AppState>) -> Result<OkResult, Stri
 
 #[tauri::command]
 pub async fn stop_desktop(state: State<'_, AppState>) -> Result<OkResult, String> {
-    let mut proc = state.desktop_process.lock().await;
-    if let Some(ref mut child) = *proc {
-        let _ = child.kill();
-        let _ = child.wait();
-    }
-    *proc = None;
+    let installer = state.installer.lock().await;
+    stop_desktop_by_path(&installer.install_path);
     Ok(OkResult { ok: true })
 }
 
 #[tauri::command]
 pub async fn is_desktop_running(state: State<'_, AppState>) -> Result<bool, String> {
-    let mut proc = state.desktop_process.lock().await;
-    if let Some(ref mut child) = *proc {
-        match child.try_wait() {
-            Ok(None) => return Ok(true),
-            _ => { *proc = None; }
-        }
-    }
-    Ok(false)
+    let installer = state.installer.lock().await;
+    Ok(is_desktop_alive(&installer.install_path))
 }
 
 #[tauri::command]

@@ -51,7 +51,6 @@ fn main() {
             let app_state = AppState {
                 installer: Mutex::new(initial_state),
                 context: ctx,
-                desktop_process: Mutex::new(None),
             };
 
             app.manage(app_state);
@@ -75,11 +74,8 @@ fn main() {
                         }
                         "quit" => {
                             let state = app.state::<AppState>();
-                            if let Ok(mut proc) = state.desktop_process.try_lock() {
-                                if let Some(ref mut child) = *proc {
-                                    let _ = child.kill();
-                                }
-                                *proc = None;
+                            if let Ok(installer) = state.installer.try_lock() {
+                                commands::stop_desktop_by_path(&installer.install_path);
                             }
                             app.exit(0);
                         }
@@ -106,12 +102,8 @@ fn main() {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let app = window.app_handle();
                 let state = app.state::<AppState>();
-                let result = state.desktop_process.try_lock();
-                if let Ok(mut proc) = result {
-                    if let Some(ref mut child) = *proc {
-                        let _ = child.kill();
-                    }
-                    *proc = None;
+                if let Ok(installer) = state.installer.try_lock() {
+                    commands::stop_desktop_by_path(&installer.install_path);
                 }
             }
         })
