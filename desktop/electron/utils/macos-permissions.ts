@@ -1,4 +1,4 @@
-import { desktopCapturer, shell, systemPreferences } from 'electron'
+import { desktopCapturer, systemPreferences } from 'electron'
 
 export type MacPermissionKind = 'accessibility' | 'screen' | 'microphone'
 
@@ -72,26 +72,7 @@ export const requestAllMacPermissions = async (): Promise<void> => {
   }
   permissionCache.set('screen', checkScreenRecording())
 
-  // 3. Full Disk Access — no native prompt API exists; probe a protected path
-  //    so macOS adds the app to the FDA list (unchecked), then open System Settings
-  //    if access was denied so the user can toggle it on.
-  let hasFullDisk = false
-  try {
-    const { readdirSync } = await import('fs')
-    readdirSync(`${process.env.HOME}/Library/Safari`, { encoding: 'utf8' })
-    hasFullDisk = true
-  } catch {}
-
-  if (!hasFullDisk) {
-    try {
-      await shell.openExternal(
-        'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles',
-      )
-    } catch {}
-    await delay(1000)
-  }
-
-  // 4. Microphone — shows native permission dialog
+  // 3. Microphone — shows native permission dialog
   if (!checkMicrophone()) {
     try {
       const granted = await systemPreferences.askForMediaAccess('microphone')
