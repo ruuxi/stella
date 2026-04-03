@@ -1,13 +1,43 @@
-import { spawn } from 'node:child_process'
-import { watch } from 'node:fs'
+import { spawn, execSync } from 'node:child_process'
+import { copyFileSync, existsSync, readFileSync, watch } from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import { createHash } from 'node:crypto'
 import waitOn from 'wait-on'
 import { shouldRestartElectronForBuildPath } from './dev-electron-restart-filter.mjs'
 
 const require = createRequire(import.meta.url)
 const projectDir = process.cwd()
 const electronBinary = require('electron')
+
+const patchDevIcon = () => {
+  const appIcon = path.join(projectDir, 'build', 'icon.icns')
+  const appBundle = path.join(path.dirname(electronBinary), '..')
+  const electronIcon = path.join(appBundle, 'Resources', 'electron.icns')
+  const infoPlist = path.join(appBundle, 'Info.plist')
+  if (!existsSync(appIcon) || !existsSync(electronIcon)) {
+    return
+  }
+
+  const srcHash = createHash('md5').update(readFileSync(appIcon)).digest('hex')
+  const dstHash = createHash('md5').update(readFileSync(electronIcon)).digest('hex')
+  if (srcHash === dstHash) {
+    return
+  }
+
+  try {
+    copyFileSync(appIcon, electronIcon)
+    if (existsSync(infoPlist)) {
+      execSync(`touch "${path.join(appBundle, '..')}"`, { stdio: 'ignore' })
+    }
+  } catch {
+    // Best-effort; may fail if node_modules is read-only.
+  }
+}
+
+if (process.platform === 'darwin') {
+  patchDevIcon()
+}
 const watchedDir = path.join(projectDir, 'dist-electron')
 const requiredFiles = [
   path.join(projectDir, '.vite-dev-url'),
