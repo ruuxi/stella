@@ -1,5 +1,6 @@
 import { uIOhook, UiohookMouseEvent, UiohookKeyboardEvent } from 'uiohook-napi'
 import { startMouseBlock, stopMouseBlock, isNativeBlockingAvailable } from './mouse-block.js'
+import { hasMacPermission } from '../utils/macos-permissions.js'
 
 type MouseHookEvents = {
   onModifierDown: () => void
@@ -41,6 +42,12 @@ export class MouseHookManager {
 
   start() {
     if (this.started) return
+
+    if (!hasMacPermission('accessibility', true)) {
+      console.warn('[mouse-hook] Accessibility permission not granted — input hooks disabled until approved')
+      return
+    }
+
     this.started = true
 
     // Try to use native blocking on Windows (blocks context menu completely)
@@ -114,7 +121,12 @@ export class MouseHookManager {
       }
     })
 
-    uIOhook.start()
+    try {
+      uIOhook.start()
+    } catch (error) {
+      console.error('[mouse-hook] Failed to start input hook:', (error as Error).message)
+      this.started = false
+    }
   }
 
   stop() {

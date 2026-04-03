@@ -11,6 +11,7 @@ import type {
 import { toChatContextWindow } from '../types.js'
 import { captureWindowScreenshot } from '../window-capture.js'
 import { getWindowText } from '../window-text.js'
+import { hasMacPermission } from '../utils/macos-permissions.js'
 
 const CAPTURE_OVERLAY_HIDE_DELAY_MS = 80
 
@@ -274,6 +275,8 @@ export class CaptureService {
   }
 
   private async getDisplaySource(display: Display) {
+    if (!hasMacPermission('screen')) return null
+
     const scaleFactor = display.scaleFactor ?? 1
     const thumbnailSize = {
       width: Math.floor(display.size.width * scaleFactor),
