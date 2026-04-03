@@ -1,4 +1,5 @@
 import { getSelectedText, initSelectedTextProcess } from "../selected-text.js";
+import { requestAllMacPermissions } from "../utils/macos-permissions.js";
 import { initializeWakeWord } from "../wake-word/initialize.js";
 import {
   type BootstrapContext,
@@ -37,6 +38,12 @@ const createDeferredStartupTasks = (
   const { config, services, state } = context;
 
   return [
+    {
+      label: "permissions",
+      run: async () => {
+        await requestAllMacPermissions();
+      },
+    },
     {
       label: "overlay-window",
       run: () => {

@@ -29,7 +29,7 @@ function App() {
 	const [state, setState] = useState<InstallerState | null>(null);
 	const [installPathDraft, setInstallPathDraft] = useState("");
 	const [locationBusy, setLocationBusy] = useState(false);
-	const [autoLaunching, setAutoLaunching] = useState(false);
+	const [desktopRunning, setDesktopRunning] = useState(false);
 
 	const applyState = useCallback((nextState: InstallerState) => {
 		startTransition(() => setState(nextState));
@@ -38,18 +38,6 @@ function App() {
 	useEffect(() => {
 		if (state) setInstallPathDraft(state.installPath);
 	}, [state?.installPath]);
-
-	// Auto-launch if already installed
-	useEffect(() => {
-		if (!state || autoLaunching) return;
-		if (state.phase === "complete" && state.canLaunch && state.installed) {
-			setAutoLaunching(true);
-			invoke("launch_desktop").then(() => {
-				// Close the launcher window after a brief delay
-				setTimeout(() => window.close(), 1500);
-			});
-		}
-	}, [state, autoLaunching]);
 
 	useEffect(() => {
 		const unlisten = listen<{ state: InstallerState }>(
@@ -61,6 +49,17 @@ function App() {
 			unlisten.then((fn) => fn());
 		};
 	}, [applyState]);
+
+	// Poll desktop running state
+	useEffect(() => {
+		if (!state || state.phase !== "complete") return;
+		const poll = () => {
+			invoke<boolean>("is_desktop_running").then(setDesktopRunning).catch(() => {});
+		};
+		poll();
+		const id = setInterval(poll, 3000);
+		return () => clearInterval(id);
+	}, [state?.phase]);
 
 	const commitInstallPath = useCallback(async () => {
 		if (!state) return;
@@ -104,17 +103,6 @@ function App() {
 		}
 	}, [applyState, state]);
 
-	const handleRunAfterInstallChange = useCallback(
-		async (checked: boolean) => {
-			applyState(
-				await invoke<InstallerState>("set_run_after_install", {
-					value: checked,
-				}),
-			);
-		},
-		[applyState],
-	);
-
 	const handleInstall = useCallback(async () => {
 		await commitInstallPath();
 		await invoke("start_install");
@@ -122,6 +110,12 @@ function App() {
 
 	const handleLaunch = useCallback(async () => {
 		await invoke("launch_desktop");
+		setDesktopRunning(true);
+	}, []);
+
+	const handleStop = useCallback(async () => {
+		await invoke("stop_desktop");
+		setDesktopRunning(false);
 	}, []);
 
 	const handleOpenFolder = useCallback(async () => {
@@ -168,7 +162,7 @@ function App() {
 
 	/* ── Loading / splash ────────────────────────────────────────── */
 
-	if (!state || autoLaunching) {
+	if (!state) {
 		return (
 			<div className="shell">
 				<div className="drag-region" />
@@ -177,9 +171,7 @@ function App() {
 					<h1 className="brand-name">Stella</h1>
 				</div>
 				<div className="body" style={{ alignItems: "center", justifyContent: "center" }}>
-					<p className="status-text">
-						{autoLaunching ? "Launching..." : "Loading..."}
-					</p>
+					<p className="status-text">Loading...</p>
 					<div className="progress-wrap">
 						<div className="progress-track">
 							<div className="progress-fill indeterminate" />
@@ -284,16 +276,6 @@ function App() {
 							</div>
 						)}
 
-						<label className="checkbox-row">
-							<input
-								type="checkbox"
-								checked={state.runAfterInstall}
-								onChange={(e) =>
-									void handleRunAfterInstallChange(e.target.checked)
-								}
-							/>
-							<span>Launch Stella when finished</span>
-						</label>
 					</>
 				)}
 
@@ -354,11 +336,14 @@ function App() {
 				{/* ── Complete ────────────────────────────────────── */}
 				{isComplete && (
 					<div className="complete-body">
-						<svg width="36" height="36" viewBox="0 0 36 36" fill="none" style={{ marginBottom: 16, color: "var(--green)" }}>
-							<circle cx="18" cy="18" r="17" stroke="currentColor" strokeWidth="1.2" />
-							<path d="M11 18.5L15.5 23L25 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-						</svg>
-						<p className="complete-title">Stella is ready</p>
+						{desktopRunning ? (
+							<span className="status-dot status-dot--running" />
+						) : (
+							<span className="status-dot status-dot--stopped" />
+						)}
+						<p className="complete-title">
+							{desktopRunning ? "Stella is running" : "Stella is ready"}
+						</p>
 						<p className="complete-path">{state.installPath}</p>
 						{state.errorMessage && (
 							<div className="banner banner-error" style={{ marginTop: 16 }}>
@@ -390,14 +375,24 @@ function App() {
 
 				{isComplete && (
 					<>
-						<button
-							type="button"
-							className="btn-primary"
-							disabled={!state.canLaunch}
-							onClick={() => void handleLaunch()}
-						>
-							Launch Stella
-						</button>
+						{desktopRunning ? (
+							<button
+								type="button"
+								className="btn-stop"
+								onClick={() => void handleStop()}
+							>
+								Stop Stella
+							</button>
+						) : (
+							<button
+								type="button"
+								className="btn-primary"
+								disabled={!state.canLaunch}
+								onClick={() => void handleLaunch()}
+							>
+								Launch Stella
+							</button>
+						)}
 						<div className="footer-links">
 							<button
 								type="button"
@@ -406,7 +401,7 @@ function App() {
 							>
 								Open folder
 							</button>
-							{state.installed && (
+							{state.installed && !desktopRunning && (
 								<button
 									type="button"
 									className="link-btn link-danger"

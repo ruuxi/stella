@@ -97,6 +97,8 @@ fn main() {
             commands::set_run_after_install,
             commands::start_install,
             commands::launch_desktop,
+            commands::stop_desktop,
+            commands::is_desktop_running,
             commands::open_install_location,
             commands::uninstall_stella,
         ])

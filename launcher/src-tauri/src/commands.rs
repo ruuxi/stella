@@ -137,6 +137,17 @@ pub async fn start_install(
 
 #[tauri::command]
 pub async fn launch_desktop(state: State<'_, AppState>) -> Result<OkResult, String> {
+    // Already running?
+    {
+        let mut proc = state.desktop_process.lock().await;
+        if let Some(ref mut child) = *proc {
+            match child.try_wait() {
+                Ok(None) => return Ok(OkResult { ok: true }),
+                _ => { *proc = None; }
+            }
+        }
+    }
+
     let installer = state.installer.lock().await;
 
     if let Some(info) = setup::get_launch_info(&installer).await {
@@ -162,6 +173,29 @@ pub async fn launch_desktop(state: State<'_, AppState>) -> Result<OkResult, Stri
     } else {
         Ok(OkResult { ok: false })
     }
+}
+
+#[tauri::command]
+pub async fn stop_desktop(state: State<'_, AppState>) -> Result<OkResult, String> {
+    let mut proc = state.desktop_process.lock().await;
+    if let Some(ref mut child) = *proc {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    *proc = None;
+    Ok(OkResult { ok: true })
+}
+
+#[tauri::command]
+pub async fn is_desktop_running(state: State<'_, AppState>) -> Result<bool, String> {
+    let mut proc = state.desktop_process.lock().await;
+    if let Some(ref mut child) = *proc {
+        match child.try_wait() {
+            Ok(None) => return Ok(true),
+            _ => { *proc = None; }
+        }
+    }
+    Ok(false)
 }
 
 #[tauri::command]
