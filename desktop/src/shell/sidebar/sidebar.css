@@ -13,11 +13,61 @@
   z-index: 2;
 }
 
-/* Reserve space for the fixed title bar */
+/* Reserve space for native window controls (macOS traffic lights / custom controls) */
 .sidebar-header {
-  height: 4px;
+  height: 48px;
   flex-shrink: 0;
   -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 8px;
+}
+
+/* ── Custom window controls (Windows / Linux) ── */
+
+.sidebar-window-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-wc-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--text-weak);
+  cursor: default;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.sidebar-wc-btn:hover {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  color: var(--text-strong);
+}
+
+.sidebar-wc-btn:active {
+  background: color-mix(in oklch, var(--foreground) 15%, transparent);
+}
+
+.sidebar-wc-close:hover {
+  background: #e81123;
+  color: white;
+}
+
+.sidebar-wc-close:active {
+  background: #c50f1f;
+  color: white;
+}
+
+.sidebar-wc-btn svg {
+  flex-shrink: 0;
 }
 
 .sidebar-brand {
@@ -281,12 +331,3 @@
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
-/* Push the title bar to start after the sidebar */
-.window-shell.full .title-bar {
-  left: 220px;
-}
-
-/* On macOS, traffic lights sit inside the sidebar area — that's intentional */
-.window-shell.full .title-bar-mac {
-  padding-left: 12px;
-}

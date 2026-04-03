@@ -39,11 +39,6 @@
   pointer-events: auto;
 }
 
-/* Adjust header when custom title bar is present */
-.window-header.has-title-bar {
-  top: 32px;
-}
-
 .header-title {
   display: flex;
   align-items: center;
@@ -197,11 +192,22 @@
   flex-direction: column;
   position: relative;
   overflow: hidden;
-  padding-top: 32px;
   background: var(--background);
   border-left: 1px solid var(--border-weak);
   border-top: 1px solid var(--border-weak);
   border-top-left-radius: 12px;
+}
+
+/* Drag strip at top of content area for window dragging */
+.content-area::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  z-index: 50;
+  -webkit-app-region: drag;
 }
 
 .content-area .workspace-content.workspace-content--full {

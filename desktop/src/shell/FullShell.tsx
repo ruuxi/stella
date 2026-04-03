@@ -18,7 +18,6 @@ import { useBootstrapState } from "@/systems/boot/bootstrap-state";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import "./full-shell.layout.css";
 import "./mobile.css";
-import { TitleBar } from "./TitleBar";
 
 const OnboardingCanvas = lazy(() =>
   import("@/global/onboarding/OnboardingCanvas").then((module) => ({
@@ -106,10 +105,6 @@ export const FullShell = () => {
 
   return (
     <div className="window-shell full">
-      <TitleBar
-        conversationId={activeConversationId ?? undefined}
-        appReady={appReady}
-      />
       <ShiftingGradient
         mode={gradientMode}
         colorMode={gradientColor}
