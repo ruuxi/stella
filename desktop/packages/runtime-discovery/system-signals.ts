@@ -342,19 +342,40 @@ async function collectStartupItemsWindows(): Promise<StartupItem[]> {
 async function collectStartupItemsMac(): Promise<StartupItem[]> {
   const items: StartupItem[] = [];
 
-  // Login items via osascript
+  // Read login items from backgrounditems plist (avoids osascript Automation permission dialog)
   try {
-    const output = await execAsync(
-      `osascript -e 'tell application "System Events" to get the name of every login item'`
+    const loginItemsDir = path.join(
+      os.homedir(),
+      "Library/Application Support/com.apple.backgroundtaskmanagementagent"
     );
-    for (const name of output.split(", ")) {
-      const trimmed = name.trim();
-      if (trimmed) {
-        items.push({ name: trimmed, path: "" });
+    const plistPath = path.join(loginItemsDir, "backgrounditems.btm");
+    const output = await execAsync(`plutil -convert json -o - "${plistPath}" 2>/dev/null`);
+    const parsed = JSON.parse(output);
+    const loginItems = parsed?.["$objects"] ?? [];
+    for (const obj of loginItems) {
+      if (typeof obj === "string" && obj.endsWith(".app") && !obj.startsWith("$")) {
+        const name = path.basename(obj, ".app");
+        items.push({ name, path: obj });
       }
     }
   } catch {
-    // May fail without accessibility permissions
+    // Plist may not exist or format may vary
+  }
+
+  // Fallback: parse launchctl list for user agents
+  if (items.length === 0) {
+    try {
+      const output = await execAsync(`launchctl list 2>/dev/null`);
+      for (const line of output.split("\n").slice(1)) {
+        const parts = line.trim().split(/\t+/);
+        const label = parts[2];
+        if (!label || label.startsWith("com.apple.") || label.startsWith("[")) continue;
+        const name = label.split(".").pop() ?? label;
+        items.push({ name, path: "" });
+      }
+    } catch {
+      // launchctl may fail in restricted contexts
+    }
   }
 
   return items;
