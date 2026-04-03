@@ -721,7 +721,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.TOOL_END });
       },
       onError: (ev) => emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.ERROR }),
-      onTaskEvent: (ev) =>
+      onTaskEvent: (ev) => {
         emitRunEvent({
           type: ev.type,
           runId: ev.rootRunId ?? activeRunId ?? payload.conversationId,
@@ -733,7 +733,19 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           result: ev.result,
           error: ev.error,
           statusText: ev.statusText,
-        }),
+        });
+        if (ev.type === "task-completed") {
+          peer.request(METHOD_NAMES.HOST_NOTIFICATION_SHOW, {
+            title: "Task completed",
+            body: ev.description ?? ev.result ?? "A task finished successfully.",
+          }).catch(() => {});
+        } else if (ev.type === "task-failed") {
+          peer.request(METHOD_NAMES.HOST_NOTIFICATION_SHOW, {
+            title: "Task failed",
+            body: ev.description ?? ev.error ?? "A task encountered an error.",
+          }).catch(() => {});
+        }
+      },
       onEnd: (ev) => {
         if ((ev.agentType ?? AGENT_IDS.ORCHESTRATOR) === AGENT_IDS.ORCHESTRATOR) {
           ensureChatStore().appendEvent({

@@ -216,10 +216,26 @@ export const loadGoogleWorkspaceTools = async (options: {
     options.onAuthRequired?.();
   };
 
+  const NON_AUTH_TOOLS = new Set(["time.getCurrentDate", "time.getCurrentTime", "time.getTimeZone"]);
+
   const callGoogleWorkspaceTool = async (
     name: string,
     args: Record<string, unknown>,
   ): Promise<ToolResult> => {
+    // Fail fast when no credentials are stored instead of silently opening a
+    // browser and blocking the tool call for up to 5 minutes.  Fire the
+    // auth-required notification so the inline connect card appears immediately.
+    if (!NON_AUTH_TOOLS.has(name) && !hasStoredCredentialsFile()) {
+      notifyAuthRequired();
+      options.onAuthStateChanged?.(false);
+      return {
+        error:
+          "Google Workspace is not connected. The user has been prompted to " +
+          "connect their Google account. Wait for them to complete sign-in, " +
+          "then retry.",
+      };
+    }
+
     try {
       const handler = handlers[name];
       if (!handler) {

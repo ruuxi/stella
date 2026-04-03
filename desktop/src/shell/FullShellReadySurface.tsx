@@ -12,7 +12,6 @@ import { useUiState } from "@/context/ui-state";
 import { useWorkspace } from "@/context/workspace-state";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { dispatchCloseSidebarChat, dispatchOpenSidebarChat } from "@/shared/lib/stella-orb-chat";
-import type { ChatContext } from "@/shared/types/electron";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { DisplayOverlay } from "./DisplayOverlay";
@@ -149,16 +148,13 @@ export const FullShellReadySurface = ({
     activePanel?.kind === "generated-page" ? activePanel.pageId : null;
   const showChatSurface = state.view === "chat" || state.view === "social";
 
-  const handleContextMenuOpenSidebarChat = useCallback(
-    (chatContext?: ChatContext | null) => {
-      if (state.view === "chat" || state.view === "social") {
-        setView("chat");
-      }
+  const handleContextMenuOpenSidebarChat = useCallback(() => {
+    if (state.view === "chat" || state.view === "social") {
+      setView("chat");
+    }
 
-      dispatchOpenSidebarChat({ chatContext: chatContext ?? null });
-    },
-    [setView, state.view],
-  );
+    dispatchOpenSidebarChat();
+  }, [setView, state.view]);
 
   return (
     <>

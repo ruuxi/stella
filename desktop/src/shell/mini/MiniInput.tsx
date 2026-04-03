@@ -14,7 +14,7 @@ import {
   ComposerAddButton,
   ComposerStopButton,
   ComposerSubmitButton,
-  ComposerTextInput,
+  ComposerTextarea,
 } from "@/app/chat/ComposerPrimitives";
 import { useFileDrop } from "@/app/chat/hooks/use-file-drop";
 import { DropOverlay } from "@/app/chat/DropOverlay";
@@ -50,7 +50,7 @@ export const MiniInput = ({
   onStop,
   onAdd,
 }: Props) => {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const { isDragOver, dropHandlers } = useFileDrop({
     setChatContext,
@@ -71,14 +71,14 @@ export const MiniInput = ({
   const { placeholder, canSubmit } = composerState;
 
   const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       setMessage(e.target.value);
     },
     [setMessage],
   );
 
   const handleInputKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Backspace" && !message && selectedText) {
         clearComposerSelectedTextContext(setSelectedText, setChatContext);
         return;
@@ -142,11 +142,12 @@ export const MiniInput = ({
           setChatContext={setChatContext}
         />
 
-        <ComposerTextInput
+        <ComposerTextarea
           ref={inputRef}
           className="mini-composer-input"
           placeholder={placeholder}
           value={message}
+          rows={1}
           onChange={handleInputChange}
           onKeyDown={handleInputKeyDown}
           autoFocus
