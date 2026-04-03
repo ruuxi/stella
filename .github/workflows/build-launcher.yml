@@ -2,9 +2,8 @@ name: Build Launcher
 
 on:
   push:
-    paths:
-      - "launcher/**"
-      - ".github/workflows/build-launcher.yml"
+    tags:
+      - "launcher-v*"
   workflow_dispatch:
 
 permissions:
