@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import { calendar_v3, google } from 'googleapis';
 import type { AuthManager } from "./AuthManager.js";
 import { logToFile } from './logger.js';
-import { gaxiosOptions } from './GaxiosConfig.js';
+import { createGoogleClientOptions } from './GaxiosConfig.js';
 import { iso8601DateTimeSchema, emailArraySchema } from './validation.js';
 import { z } from 'zod';
 
@@ -148,8 +148,10 @@ export class CalendarService {
     logToFile('Getting authenticated client for calendar...');
     const auth = await this.authManager.getAuthenticatedClient();
     logToFile('Got auth client, creating calendar instance...');
-    const options = { ...gaxiosOptions, auth };
-    return google.calendar({ version: 'v3', ...options });
+    return google.calendar({
+      version: 'v3',
+      ...createGoogleClientOptions(auth),
+    });
   }
 
   private async getPrimaryCalendarId(): Promise<string> {

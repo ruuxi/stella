@@ -253,11 +253,14 @@ export class AuthManager {
       }
 
       const newTokens = await response.json();
+      if (!newTokens || typeof newTokens !== 'object') {
+        throw new Error('Token refresh returned an invalid payload');
+      }
 
       // Merge new tokens with existing credentials, preserving refresh_token
       // Note: Google does NOT return a new refresh_token on refresh
-      const mergedCredentials = {
-        ...newTokens,
+      const mergedCredentials: Auth.Credentials = {
+        ...(newTokens as Auth.Credentials),
         refresh_token: currentCredentials.refresh_token, // Always preserve original
       };
 

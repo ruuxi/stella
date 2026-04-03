@@ -7,15 +7,17 @@
 import { google, people_v1 } from 'googleapis';
 import { AuthManager } from './AuthManager.js';
 import { logToFile } from './logger.js';
-import { gaxiosOptions } from './GaxiosConfig.js';
+import { createGoogleClientOptions } from './GaxiosConfig.js';
 
 export class PeopleService {
   constructor(private authManager: AuthManager) {}
 
   private async getPeopleClient(): Promise<people_v1.People> {
     const auth = await this.authManager.getAuthenticatedClient();
-    const options = { ...gaxiosOptions, auth };
-    return google.people({ version: 'v1', ...options });
+    return google.people({
+      version: 'v1',
+      ...createGoogleClientOptions(auth),
+    });
   }
 
   public getUserProfile = async ({

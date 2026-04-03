@@ -292,11 +292,9 @@ export async function createWakeWordDetector(
   let wakewordSession: OrtSession;
   let wakewordInputName = "x";
   let wakewordOutputName = "";
-  let activeProviders = [...defaultProviders];
 
   async function createAllSessions() {
     const createWithProviders = async (executionProviders: string[]) => {
-      activeProviders = [...executionProviders];
       const opts = makeOpts(executionProviders);
       [melspecSession, embeddingSession, wakewordSession] =
         await Promise.all([

@@ -15,7 +15,7 @@ import {
   GMAIL_BATCH_MODIFY_MAX_IDS,
   GMAIL_NO_LABEL_CHANGES_MESSAGE,
 } from './constants.js';
-import { gaxiosOptions } from './GaxiosConfig.js';
+import { createGoogleClientOptions } from './GaxiosConfig.js';
 import { emailArraySchema } from './validation.js';
 
 // Type definitions for email parameters
@@ -44,8 +44,10 @@ export class GmailService {
 
   private async getGmailClient(): Promise<gmail_v1.Gmail> {
     const auth = await this.authManager.getAuthenticatedClient();
-    const options = { ...gaxiosOptions, auth };
-    return google.gmail({ version: 'v1', ...options });
+    return google.gmail({
+      version: 'v1',
+      ...createGoogleClientOptions(auth),
+    });
   }
 
   /**

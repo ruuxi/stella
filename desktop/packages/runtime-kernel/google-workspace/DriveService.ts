@@ -7,7 +7,7 @@
 import { google, drive_v3 } from 'googleapis';
 import { AuthManager } from './AuthManager.js';
 import { logToFile } from './logger.js';
-import { gaxiosOptions } from './GaxiosConfig.js';
+import { createGoogleClientOptions } from './GaxiosConfig.js';
 import { escapeQueryString } from './DriveQueryBuilder.js';
 import { extractDocumentId } from './validation.js';
 import * as fs from 'node:fs';
@@ -31,8 +31,10 @@ export class DriveService {
 
   private async getDriveClient(): Promise<drive_v3.Drive> {
     const auth = await this.authManager.getAuthenticatedClient();
-    const options = { ...gaxiosOptions, auth };
-    return google.drive({ version: 'v3', ...options });
+    return google.drive({
+      version: 'v3',
+      ...createGoogleClientOptions(auth),
+    });
   }
 
   private handleError(
