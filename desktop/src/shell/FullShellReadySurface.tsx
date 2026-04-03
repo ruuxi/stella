@@ -11,7 +11,7 @@ import { useDevProjects } from "@/context/dev-projects-state";
 import { useUiState } from "@/context/ui-state";
 import { useWorkspace } from "@/context/workspace-state";
 import { secureSignOut } from "@/global/auth/services/auth";
-import { dispatchCloseOrbChat, dispatchOpenOrbChat } from "@/shared/lib/stella-orb-chat";
+import { dispatchCloseSidebarChat, dispatchOpenSidebarChat } from "@/shared/lib/stella-orb-chat";
 import type { ChatContext } from "@/shared/types/electron";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
@@ -47,7 +47,7 @@ export const FullShellReadySurface = ({
   const [activeDialog, setActiveDialog] = useState<DialogType>(null);
   const [pendingAskStellaRequest, setPendingAskStellaRequest] =
     useState<PendingAskStellaRequest | null>(null);
-  const [isOrbChatOpen, setIsOrbChatOpen] = useState(false);
+  const [isSidebarChatOpen, setIsSidebarChatOpen] = useState(false);
   const { projects, pickProjectDirectory } = useDevProjects();
 
   const showAuthDialog = useCallback(() => {
@@ -143,22 +143,19 @@ export const FullShellReadySurface = ({
     void secureSignOut();
   }, []);
 
-  const isOrbVisible = state.view !== "chat" && state.view !== "social";
   const activeProjectId =
     activePanel?.kind === "dev-project" ? activePanel.projectId : null;
   const activePageId =
     activePanel?.kind === "generated-page" ? activePanel.pageId : null;
   const showChatSurface = state.view === "chat" || state.view === "social";
 
-  // ---- Context menu handlers ----
-
-  const handleContextMenuOpenOrbChat = useCallback(
+  const handleContextMenuOpenSidebarChat = useCallback(
     (chatContext?: ChatContext | null) => {
       if (state.view === "chat" || state.view === "social") {
         setView("chat");
       }
 
-      dispatchOpenOrbChat({ chatContext: chatContext ?? null });
+      dispatchOpenSidebarChat({ chatContext: chatContext ?? null });
     },
     [setView, state.view],
   );
@@ -183,9 +180,9 @@ export const FullShellReadySurface = ({
       />
 
       <StellaContextMenu
-        isOrbChatOpen={isOrbChatOpen}
-        onOpenOrbChat={handleContextMenuOpenOrbChat}
-        onCloseOrbChat={dispatchCloseOrbChat}
+        isSidebarChatOpen={isSidebarChatOpen}
+        onOpenSidebarChat={handleContextMenuOpenSidebarChat}
+        onCloseSidebarChat={dispatchCloseSidebarChat}
       >
         <div className="content-area">
           {!showChatSurface && (
@@ -212,11 +209,10 @@ export const FullShellReadySurface = ({
               activeView={state.view}
               composerEntering={onboardingExiting}
               conversationId={activeConversationId}
-              isOrbVisible={isOrbVisible}
               onSignIn={showAuthDialog}
               pendingAskStellaRequest={pendingAskStellaRequest}
               onPendingAskStellaHandled={handlePendingAskStellaHandled}
-              onOrbChatOpenChange={setIsOrbChatOpen}
+              onSidebarChatOpenChange={setIsSidebarChatOpen}
             />
           </Suspense>
         </div>
