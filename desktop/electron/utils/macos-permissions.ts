@@ -1,6 +1,6 @@
-import { systemPreferences } from 'electron'
+import { desktopCapturer, shell, systemPreferences } from 'electron'
 
-export type MacPermissionKind = 'accessibility' | 'screen'
+export type MacPermissionKind = 'accessibility' | 'screen' | 'microphone'
 
 const permissionCache = new Map<MacPermissionKind, boolean>()
 
@@ -9,6 +9,9 @@ const checkAccessibility = (prompt: boolean): boolean =>
 
 const checkScreenRecording = (): boolean =>
   systemPreferences.getMediaAccessStatus('screen') === 'granted'
+
+const checkMicrophone = (): boolean =>
+  systemPreferences.getMediaAccessStatus('microphone') === 'granted'
 
 export const hasMacPermission = (kind: MacPermissionKind, prompt = false): boolean => {
   if (process.platform !== 'darwin') return true
@@ -24,6 +27,9 @@ export const hasMacPermission = (kind: MacPermissionKind, prompt = false): boole
     case 'screen':
       granted = checkScreenRecording()
       break
+    case 'microphone':
+      granted = checkMicrophone()
+      break
   }
 
   if (granted) {
@@ -38,5 +44,56 @@ export const clearPermissionCache = (kind?: MacPermissionKind) => {
     permissionCache.delete(kind)
   } else {
     permissionCache.clear()
+  }
+}
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+/**
+ * Request all macOS permissions upfront so the user sees all dialogs at once
+ * instead of progressively as features activate.
+ */
+export const requestAllMacPermissions = async (): Promise<void> => {
+  if (process.platform !== 'darwin') return
+
+  // 1. Accessibility — opens System Preferences prompt
+  if (!checkAccessibility(false)) {
+    checkAccessibility(true)
+    await delay(500)
+  }
+  permissionCache.set('accessibility', checkAccessibility(false))
+
+  // 2. Screen Recording — no direct prompt API; trigger via desktopCapturer
+  if (!checkScreenRecording()) {
+    try {
+      await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
+    } catch {}
+    await delay(500)
+  }
+  permissionCache.set('screen', checkScreenRecording())
+
+  // 3. Full Disk Access — no native prompt API exists; probe a protected path
+  //    so macOS adds the app to the FDA list (unchecked), then open System Settings
+  //    if access was denied so the user can toggle it on.
+  let hasFullDisk = false
+  try {
+    const { readdirSync } = await import('fs')
+    readdirSync(`${process.env.HOME}/Library/Safari`, { encoding: 'utf8' })
+    hasFullDisk = true
+  } catch {}
+
+  if (!hasFullDisk) {
+    await shell.openExternal(
+      'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles',
+    )
+    await delay(1000)
+  }
+
+  // 4. Microphone — shows native permission dialog
+  if (!checkMicrophone()) {
+    const granted = await systemPreferences.askForMediaAccess('microphone')
+    permissionCache.set('microphone', granted)
+  } else {
+    permissionCache.set('microphone', true)
   }
 }

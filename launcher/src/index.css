@@ -372,6 +372,29 @@ body {
 	flex: 1;
 }
 
+.status-dot {
+	display: block;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	margin-bottom: 16px;
+}
+
+.status-dot--running {
+	background: var(--green);
+	box-shadow: 0 0 8px rgba(52, 199, 89, 0.5);
+	animation: pulse-green 2s ease-in-out infinite;
+}
+
+.status-dot--stopped {
+	background: var(--text-faint);
+}
+
+@keyframes pulse-green {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.5; }
+}
+
 .complete-title {
 	font-size: 17px;
 	font-weight: 600;
@@ -425,6 +448,25 @@ body {
 	background: var(--surface);
 	color: var(--text-faint);
 	cursor: not-allowed;
+}
+
+.btn-stop {
+	width: 100%;
+	padding: 10px 16px;
+	border: 1.5px solid var(--red);
+	border-radius: 8px;
+	font-family: var(--font);
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.15s, color 0.15s;
+	background: transparent;
+	color: var(--red);
+}
+
+.btn-stop:hover {
+	background: var(--red);
+	color: #fff;
 }
 
 .btn-secondary {
