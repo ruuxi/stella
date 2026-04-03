@@ -73,10 +73,6 @@ fn main() {
                             }
                         }
                         "quit" => {
-                            let state = app.state::<AppState>();
-                            if let Ok(installer) = state.installer.try_lock() {
-                                commands::stop_desktop_by_path(&installer.install_path);
-                            }
                             app.exit(0);
                         }
                         _ => {}
@@ -98,15 +94,7 @@ fn main() {
             commands::open_install_location,
             commands::uninstall_stella,
         ])
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                let app = window.app_handle();
-                let state = app.state::<AppState>();
-                if let Ok(installer) = state.installer.try_lock() {
-                    commands::stop_desktop_by_path(&installer.install_path);
-                }
-            }
-        })
+        .on_window_event(|_window, _event| {})
         .run(tauri::generate_context!())
         .expect("error running stella launcher");
 }
