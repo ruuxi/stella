@@ -1,6 +1,6 @@
 import type { ChatContext } from "@/shared/types/electron";
 
-/** Set when onboarding finishes; FullShellRuntime consumes to open the orb once. */
+/** Set when onboarding finishes; FullShellRuntime consumes to open the sidebar chat once. */
 const OPEN_ORB_AFTER_ONBOARDING_KEY = "stella-open-orb-after-onboarding";
 
 export function markOpenOrbAfterOnboarding(): void {
@@ -23,21 +23,21 @@ export function consumeOpenOrbAfterOnboarding(): boolean {
   return false;
 }
 
-export const STELLA_OPEN_ORB_CHAT_EVENT = "stella:open-orb-chat";
-export const STELLA_CLOSE_ORB_CHAT_EVENT = "stella:close-orb-chat";
+export const STELLA_OPEN_SIDEBAR_CHAT_EVENT = "stella:open-sidebar-chat";
+export const STELLA_CLOSE_SIDEBAR_CHAT_EVENT = "stella:close-sidebar-chat";
 
-export type StellaOpenOrbChatDetail = {
+export type StellaOpenSidebarChatDetail = {
   chatContext?: ChatContext | null;
 };
 
-export function dispatchOpenOrbChat(detail: StellaOpenOrbChatDetail = {}) {
+export function dispatchOpenSidebarChat(detail: StellaOpenSidebarChatDetail = {}) {
   window.dispatchEvent(
-    new CustomEvent<StellaOpenOrbChatDetail>(STELLA_OPEN_ORB_CHAT_EVENT, {
+    new CustomEvent<StellaOpenSidebarChatDetail>(STELLA_OPEN_SIDEBAR_CHAT_EVENT, {
       detail,
     }),
   );
 }
 
-export function dispatchCloseOrbChat() {
-  window.dispatchEvent(new CustomEvent(STELLA_CLOSE_ORB_CHAT_EVENT));
+export function dispatchCloseSidebarChat() {
+  window.dispatchEvent(new CustomEvent(STELLA_CLOSE_SIDEBAR_CHAT_EVENT));
 }

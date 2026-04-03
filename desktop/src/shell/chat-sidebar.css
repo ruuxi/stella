@@ -1,0 +1,104 @@
+.chat-sidebar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  width: clamp(320px, 28vw, 420px);
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  border-left: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.08);
+}
+
+.chat-sidebar-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 35%, transparent);
+}
+
+.chat-sidebar-title {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+  letter-spacing: -0.01em;
+}
+
+.chat-sidebar-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.chat-sidebar-close:hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+}
+
+.chat-sidebar-messages {
+  flex: 1;
+  display: flex;
+  flex-direction: column-reverse;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 4px 12px;
+  min-height: 0;
+  scrollbar-width: thin;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 16px, black 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 16px, black 100%);
+}
+
+.chat-sidebar-conversation {
+  padding: 4px 10px 6px;
+}
+
+.chat-sidebar-composer {
+  flex-shrink: 0;
+  position: relative;
+  padding: 10px 12px 12px;
+  border-top: 1px solid color-mix(in oklch, var(--border) 35%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-sidebar-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.chat-sidebar-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-sidebar-add {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+}
+
+.chat-sidebar-input {
+  flex: 1;
+  width: 100%;
+  field-sizing: content;
+  min-height: 30px;
+  max-height: 120px;
+  font-size: 15px;
+}

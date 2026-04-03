@@ -3610,6 +3610,58 @@
   letter-spacing: -0.01em;
 }
 
+/* ── Sidebar demo (local mode right-click tutorial) ── */
+
+.onboarding-shortcut-sidebar-demo {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 42%;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  border-left: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-top-right-radius: 20px;
+  border-bottom-right-radius: 20px;
+  animation: sidebarSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  z-index: 4;
+}
+
+@keyframes sidebarSlideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.onboarding-shortcut-sidebar-demo__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--foreground);
+  opacity: 0.8;
+}
+
+.onboarding-shortcut-sidebar-demo__messages {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 8px;
+  overflow: hidden;
+}
+
+.onboarding-shortcut-sidebar-demo__composer {
+  padding: 10px 12px;
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  font-size: 10px;
+  color: var(--foreground);
+  opacity: 0.35;
+}
+
 /* ── Menu visual effects (local mode) ── */
 
 .onboarding-shortcut-menu-effects {
