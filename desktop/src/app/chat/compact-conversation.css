@@ -189,13 +189,13 @@
   --compact-chat-user-tail-radius: 4px;
   --compact-chat-user-max-width: 88%;
   --compact-chat-user-color: var(--text-strong);
-  --compact-chat-assistant-bg: color-mix(in srgb, var(--secondary) 50%, var(--background));
-  --compact-chat-assistant-border-width: 1px;
-  --compact-chat-assistant-border-color: color-mix(in oklch, var(--foreground) 8%, transparent);
-  --compact-chat-assistant-radius: 14px;
-  --compact-chat-assistant-tail-radius: 4px;
+  --compact-chat-assistant-bg: transparent;
+  --compact-chat-assistant-border-width: 0px;
+  --compact-chat-assistant-border-color: transparent;
+  --compact-chat-assistant-radius: 0px;
+  --compact-chat-assistant-tail-radius: 0px;
   --compact-chat-assistant-max-width: 100%;
-  --compact-chat-assistant-streaming-opacity: 0.92;
+  --compact-chat-assistant-streaming-opacity: 1;
 }
 
 .chat-conversation-surface--orb .event-item.assistant .text-shimmer {
