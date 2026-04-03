@@ -8,11 +8,17 @@ import type {
   MiniBridgeUpdate,
   SelfModHmrState,
 } from "../src/shared/contracts/boundary.js";
+import type { RadialTriggerCode } from "../src/shared/lib/radial-trigger.js";
 import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
 } from "../src/shared/contracts/onboarding.js";
 import {
+  IPC_PREFERENCES_GET_RADIAL_TRIGGER,
+  IPC_PREFERENCES_GET_SYNC_MODE,
+  IPC_PREFERENCES_SET_RADIAL_TRIGGER,
+  IPC_PREFERENCES_SET_SYNC_MODE,
+  IPC_PREFERENCES_SYNC_MODELS,
   IPC_SOCIAL_SESSIONS_CREATE,
   IPC_SOCIAL_SESSIONS_GET_STATUS,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
@@ -166,7 +172,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   overlay: {
     setInteractive: (interactive: boolean) =>
       ipcRenderer.send("overlay:setInteractive", interactive),
-    onModifierBlock: onIpc<boolean>("overlay:modifierBlock"),
     onStartRegionCapture: onIpcSignal("overlay:startRegionCapture"),
     onEndRegionCapture: onIpcSignal("overlay:endRegionCapture"),
     onShowMini: onIpc<{ x: number; y: number }>("overlay:showMini"),
@@ -505,9 +510,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     shellKillByPort: (port: number) =>
       ipcRenderer.invoke("shell:killByPort", { port }),
     getLocalSyncMode: () =>
-      ipcRenderer.invoke("preferences:getSyncMode") as Promise<string>,
+      ipcRenderer.invoke(IPC_PREFERENCES_GET_SYNC_MODE) as Promise<string>,
     setLocalSyncMode: (mode: string) =>
-      ipcRenderer.invoke("preferences:setSyncMode", mode),
+      ipcRenderer.invoke(IPC_PREFERENCES_SET_SYNC_MODE, mode),
     syncLocalModelPreferences: (payload: {
       defaultModels: Record<string, string>;
       resolvedDefaultModels: Record<string, string>;
@@ -517,9 +522,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
       maxAgentConcurrency: number;
     }) =>
       ipcRenderer.invoke(
-        "preferences:syncLocalModelPreferences",
+        IPC_PREFERENCES_SYNC_MODELS,
         payload,
       ) as Promise<{ ok: boolean }>,
+    getRadialTriggerKey: () =>
+      ipcRenderer.invoke(IPC_PREFERENCES_GET_RADIAL_TRIGGER) as Promise<RadialTriggerCode>,
+    setRadialTriggerKey: (triggerKey: RadialTriggerCode) =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_SET_RADIAL_TRIGGER,
+        triggerKey,
+      ) as Promise<{ triggerKey: RadialTriggerCode }>,
     listLlmCredentials: () =>
       ipcRenderer.invoke("llmCredentials:list") as Promise<
         Array<{
