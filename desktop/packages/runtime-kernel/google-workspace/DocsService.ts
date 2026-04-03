@@ -8,7 +8,7 @@ import { google, docs_v1 } from 'googleapis';
 import { AuthManager } from './AuthManager.js';
 import { logToFile } from './logger.js';
 import { extractDocId } from './IdUtils.js';
-import { gaxiosOptions } from './GaxiosConfig.js';
+import { createGoogleClientOptions } from './GaxiosConfig.js';
 import { extractDocumentId as validateAndExtractDocId } from './validation.js';
 
 interface BaseDocsSuggestion {
@@ -39,6 +39,18 @@ interface DocsParagraphStyleChangeSuggestion extends BaseDocsSuggestion {
   namedStyleType?: string;
 }
 
+interface DocsDateElementProperties {
+  displayText?: string | null;
+  timestamp?: string | null;
+}
+
+interface DocsParagraphElementWithDate
+  extends docs_v1.Schema$ParagraphElement {
+  dateElement?: {
+    dateElementProperties?: DocsDateElementProperties | null;
+  } | null;
+}
+
 type DocsSuggestion =
   | DocsInsertionSuggestion
   | DocsDeletionSuggestion
@@ -61,8 +73,10 @@ export class DocsService {
 
   private async getDocsClient(): Promise<docs_v1.Docs> {
     const auth = await this.authManager.getAuthenticatedClient();
-    const options = { ...gaxiosOptions, auth };
-    return google.docs({ version: 'v1', ...options });
+    return google.docs({
+      version: 'v1',
+      ...createGoogleClientOptions(auth),
+    });
   }
 
   public getSuggestions = async ({ documentId }: { documentId: string }) => {
@@ -663,10 +677,12 @@ export class DocsService {
           text += this._renderRichLinkChip(
             pElement.richLink.richLinkProperties,
           );
-        } else if (pElement.dateElement?.dateElementProperties) {
-          text += this._renderDateChip(
-            pElement.dateElement.dateElementProperties,
-          );
+        } else {
+          const dateElement = (pElement as DocsParagraphElementWithDate)
+            .dateElement?.dateElementProperties;
+          if (dateElement) {
+            text += this._renderDateChip(dateElement);
+          }
         }
       });
     } else if (element.table) {
@@ -699,7 +715,7 @@ export class DocsService {
     return title || '';
   }
 
-  private _renderDateChip(props: docs_v1.Schema$DateElementProperties): string {
+  private _renderDateChip(props: DocsDateElementProperties): string {
     const { displayText, timestamp } = props;
     return displayText || timestamp || '';
   }

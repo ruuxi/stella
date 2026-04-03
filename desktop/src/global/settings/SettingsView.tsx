@@ -251,9 +251,6 @@ function ModelConfigSection() {
     api.data.preferences.getSelfModAgentEngine,
     shouldQueryPreferences,
   ) as "default" | "claude_code_local" | undefined;
-  const setSelfModAgentEngine = useMutation(
-    api.data.preferences.setSelfModAgentEngine,
-  );
   const maxAgentConcurrency = useQuery(
     api.data.preferences.getMaxAgentConcurrency,
     shouldQueryPreferences,
@@ -305,9 +302,6 @@ function ModelConfigSection() {
     Record<string, string | null>
   >({});
   const [localGeneralAgentEngine, setLocalGeneralAgentEngine] = useState<
-    "default" | "claude_code_local" | null
-  >(null);
-  const [localSelfModAgentEngine, setLocalSelfModAgentEngine] = useState<
     "default" | "claude_code_local" | null
   >(null);
   const [localMaxAgentConcurrency, setLocalMaxAgentConcurrency] = useState<
@@ -363,13 +357,6 @@ function ModelConfigSection() {
       ? localGeneralAgentEngine
       : null) ??
     generalAgentEngine ??
-    "default";
-  const effectiveSelfModAgentEngine =
-    (localSelfModAgentEngine !== null &&
-    localSelfModAgentEngine !== selfModAgentEngine
-      ? localSelfModAgentEngine
-      : null) ??
-    selfModAgentEngine ??
     "default";
   const effectiveMaxAgentConcurrency =
     (localMaxAgentConcurrency !== null &&
