@@ -36,7 +36,22 @@
     "macOS": {
       "entitlements": "./Entitlements.plist",
       "hardenedRuntime": true,
-      "minimumSystemVersion": "11.0"
+      "minimumSystemVersion": "11.0",
+      "dmg": {
+        "background": "./dmg/background.png",
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        },
+        "appPosition": {
+          "x": 180,
+          "y": 210
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 210
+        }
+      }
     },
     "windows": {
       "webviewInstallMode": { "type": "downloadBootstrapper" }
