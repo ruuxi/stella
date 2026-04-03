@@ -58,7 +58,6 @@ jobs:
             --exclude="*.tsbuildinfo" \
             --exclude=".vite-dev-url" \
             --exclude=".stella-hmr-state.json" \
-            --exclude="public/emotes/assets" \
             --exclude="stella-browser/node_modules" \
             --exclude="stella-browser/dist" \
             --exclude="stella-browser/cli/target" \
