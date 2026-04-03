@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { ConvexProviderWithAuth } from "convex/react";
 import { authClient } from "@/global/auth/lib/auth-client";
-import { getConvexToken } from "@/global/auth/services/auth-token";
+import { getConvexToken, clearCachedToken } from "@/global/auth/services/auth-token";
 import { convexClient } from "@/infra/convex-client";
 
 const TOKEN_REFRESH_MS = 3 * 60 * 1000;
@@ -11,11 +11,22 @@ const TOKEN_BOOTSTRAP_RETRY_MS = 3_000;
 function useDesktopConvexAuth() {
   const session = authClient.useSession();
 
+  const sessionUserId =
+    (session.data as { user?: { id?: string } } | null | undefined)?.user?.id ??
+    null;
+
+  useEffect(() => {
+    clearCachedToken();
+  }, [sessionUserId]);
+
   const fetchAccessToken = useCallback(
     async ({ forceRefreshToken = false }: { forceRefreshToken?: boolean } = {}) => {
       return await getConvexToken({ forceRefresh: forceRefreshToken });
     },
-    [],
+    // Intentionally keyed on sessionUserId so ConvexProviderWithAuth re-calls
+    // setAuth when the signed-in identity changes (e.g. anonymous → real account).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessionUserId],
   );
 
   return useMemo(

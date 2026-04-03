@@ -11,6 +11,7 @@ import { Button } from "@/ui/button";
 import { showToast } from "@/ui/toast";
 import type { Integration } from "./integration-configs";
 import { sanitizeExternalLinkUrl } from "@/shared/lib/url-safety";
+import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -265,9 +266,20 @@ export function IntegrationDetailArea({
   integration: Integration;
 }) {
   const isConnected = useIntegrationConnectionStatus(integration.provider);
-  const detailContent = isConnected
-    ? <ConnectedView integration={integration} />
-    : <BotSetupView integration={integration} isExpanded={true} />;
+  const { hasConnectedAccount } = useAuthSessionState();
+
+  let detailContent;
+  if (!hasConnectedAccount) {
+    detailContent = (
+      <p className="connect-instructions">
+        Sign in to connect {integration.displayName}.
+      </p>
+    );
+  } else if (isConnected) {
+    detailContent = <ConnectedView integration={integration} />;
+  } else {
+    detailContent = <BotSetupView integration={integration} isExpanded={true} />;
+  }
 
   return (
     <div className="connect-detail-area">
