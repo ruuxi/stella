@@ -1,4 +1,5 @@
 import path from "path";
+import { Notification } from "electron";
 import {
   getOrCreateDeviceIdentity,
   signDeviceHeartbeat,
@@ -82,6 +83,11 @@ export const createHostRunnerHandlers = (
     context.services.credentialService.requestCredential(payload),
   displayUpdate: (html) => {
     broadcastToWindows(context, "display:update", html);
+  },
+  showNotification: ({ title, body }) => {
+    if (Notification.isSupported()) {
+      new Notification({ title, body }).show();
+    }
   },
   openExternal: async (url) => {
     context.services.externalLinkService.openSafeExternalUrl(url);

@@ -46,7 +46,7 @@ export class FullWindowController {
       minHeight: 300,
       frame: isMac,
       titleBarStyle: isMac ? 'hiddenInset' : undefined,
-      trafficLightPosition: isMac ? { x: 16, y: 18 } : undefined,
+      trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
       ...(isWindows || process.platform === 'linux' ? { frame: false } : {}),
       icon: windowIcon,
       webPreferences: createSharedWebPreferences({

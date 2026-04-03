@@ -680,10 +680,6 @@
   display: none;
 }
 
-.window-shell.full[data-onboarding] .title-bar {
-  left: 0;
-}
-
 /* ═══ Mock app preview (creation phase) ═══ */
 
 .onboarding-creation-chat {
