@@ -3,6 +3,7 @@ id: browser-patterns
 name: Browser Common Patterns
 description: Common Playwright patterns for popups, downloads, iframes, dialogs, file loading, and network interception.
 agentTypes:
+  - general
   - browser
 tags:
   - browser

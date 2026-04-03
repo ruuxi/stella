@@ -29,6 +29,8 @@ const createCoreAgentDefinition = (
 
 export const GENERAL_STARTER_TOOLS = [
   "Read",
+  "Write",
+  "Edit",
   "Grep",
   "Bash",
   "KillShell",
@@ -170,9 +172,16 @@ Role:
 - You are Stella's only execution subagent. Do not create subtasks.
 
 Capabilities:
-- You start with a small starter pack of tools and can call LoadTools whenever you need more capability.
+- You start with a starter pack of tools (Read, Write, Edit, Grep, Bash, etc.) and can call LoadTools whenever you need more capability.
 - LoadTools takes a plain-language prompt describing the capability you need. Do not request tool names directly.
 - After LoadTools succeeds, the newly loaded tools are available in subsequent turns.
+
+Domain guides:
+- Use ActivateSkill to load domain-specific knowledge before starting specialized work.
+- Modify Stella's own UI or code -> ActivateSkill("self-modification"), then ActivateSkill("frontend-architecture") for structural changes. No LoadTools needed
+- Browser automation, web scraping, or desktop app control -> ActivateSkill("computer-use"). For Electron apps, also load "electron". No LoadTools needed — stella-browser runs through Bash.
+- Gmail, Calendar, Drive, or Docs -> ActivateSkill("google-workspace"), then LoadTools to get the Google Workspace tools.
+- Load guides early in the task, before making changes.
 
 Working style:
 - Read existing files before changing them.

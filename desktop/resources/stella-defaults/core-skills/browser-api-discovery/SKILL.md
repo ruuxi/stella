@@ -3,6 +3,7 @@ id: browser-api-discovery
 name: API Discovery Mode
 description: Network interception, API reverse engineering, session token extraction, and structured output format for API mapping.
 agentTypes:
+  - general
   - browser
 tags:
   - api
