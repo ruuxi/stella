@@ -38,16 +38,19 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
     },
   );
 
+  app.on("activate", () => {
+    context.state.windowManager?.onActivate();
+  });
+
   app.whenReady().then(async () => {
     if (app.isPackaged) {
       process.env.STELLA_APP_RESOURCES_PATH = process.resourcesPath;
+    } else {
+      app.setName("Stella");
     }
     applyDockIcon(context.config.electronDir);
     await initializeBootstrapApplication(context);
-
-    app.on("activate", () => {
-      context.state.windowManager?.onActivate();
-    });
+    applyDockIcon(context.config.electronDir);
   });
 
   app.on("window-all-closed", () => {

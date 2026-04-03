@@ -1,8 +1,19 @@
-import { app } from 'electron'
+import { app, nativeImage } from 'electron'
 import fs from 'fs'
 import path from 'path'
 
 const resolveProjectRoot = (electronDir: string) => path.resolve(electronDir, '..', '..')
+
+const resolveDockIconPath = (electronDir: string) => {
+  const projectRoot = resolveProjectRoot(electronDir)
+  const preferredPaths = [
+    path.join(projectRoot, 'build', 'icon.png'),
+    path.join(projectRoot, 'dist', 'stella-app-icon.png'),
+    path.join(projectRoot, 'public', 'stella-app-icon.png'),
+  ]
+
+  return preferredPaths.find((candidatePath) => fs.existsSync(candidatePath)) ?? preferredPaths[0]
+}
 
 export const resolveAppIconPath = (electronDir: string) => {
   const projectRoot = resolveProjectRoot(electronDir)
@@ -20,10 +31,15 @@ export const applyDockIcon = (electronDir: string) => {
     return
   }
 
-  const iconPath = resolveAppIconPath(electronDir)
+  const iconPath = resolveDockIconPath(electronDir)
   if (!fs.existsSync(iconPath)) {
     return
   }
 
-  app.dock.setIcon(iconPath)
+  const iconImage = nativeImage.createFromPath(iconPath)
+  if (iconImage.isEmpty()) {
+    return
+  }
+
+  app.dock.setIcon(iconImage)
 }

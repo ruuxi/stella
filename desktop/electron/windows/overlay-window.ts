@@ -86,6 +86,7 @@ class OverlayWindow {
       y: bounds.y,
       width: bounds.width,
       height: bounds.height,
+      ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
       frame: false,
       transparent: true,
       resizable: false,
@@ -94,6 +95,7 @@ class OverlayWindow {
       maximizable: false,
       closable: false,
       skipTaskbar: true,
+      ...(process.platform === 'darwin' ? { hiddenInMissionControl: true } : {}),
       hasShadow: false,
       focusable: false,
       show: false,
@@ -106,7 +108,12 @@ class OverlayWindow {
     })
 
     this.window.setAlwaysOnTop(true, 'screen-saver')
-    this.window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    if (process.platform !== 'darwin') {
+      this.window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    }
+    if (process.platform === 'darwin') {
+      this.window.excludedFromShownWindowsMenu = true
+    }
     this.window.setIgnoreMouseEvents(true, { forward: true })
 
     this.window.once('ready-to-show', () => {
@@ -114,7 +121,9 @@ class OverlayWindow {
       if (this.window && !this.window.isDestroyed()) {
         this.respanDisplays()
         this.window.setOpacity(0)
-        this.window.showInactive()
+        if (process.platform !== 'darwin') {
+          this.window.showInactive()
+        }
         this.window.setIgnoreMouseEvents(true, { forward: true })
       }
     })
@@ -192,6 +201,9 @@ class OverlayWindow {
     this.window.setIgnoreMouseEvents(true, { forward: true })
     this.window.setFocusable(false)
     this.window.setOpacity(0)
+    if (process.platform === 'darwin') {
+      this.window.hide()
+    }
   }
 
   setIgnoreMouseEvents(ignore: boolean) {

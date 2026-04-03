@@ -260,8 +260,19 @@ export class WindowManager {
         }
       }, 75)
     } else {
+      app.show()
+      app.focus({ steal: true })
+      fullWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
       fullWindow.show()
+      fullWindow.moveTop()
+      fullWindow.setAlwaysOnTop(true, 'screen-saver')
       fullWindow.focus()
+      setTimeout(() => {
+        if (!fullWindow.isDestroyed()) {
+          fullWindow.setAlwaysOnTop(false)
+          fullWindow.setVisibleOnAllWorkspaces(false)
+        }
+      }, 75)
     }
 
     this.hideMiniWindow(false)
