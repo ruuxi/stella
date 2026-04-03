@@ -38,7 +38,7 @@
       "hardenedRuntime": true,
       "minimumSystemVersion": "11.0",
       "dmg": {
-        "background": "./dmg/background.png",
+        "background": "./dmg/background@1x.png",
         "windowSize": {
           "width": 660,
           "height": 400
