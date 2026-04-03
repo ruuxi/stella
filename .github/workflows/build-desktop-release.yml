@@ -62,9 +62,6 @@ jobs:
             --exclude="stella-browser/dist" \
             --exclude="stella-browser/cli/target" \
             --exclude="stella-browser/*.o" \
-            --exclude="stella-browser/*.png" \
-            --exclude="stella-browser/*.jpeg" \
-            --exclude="stella-browser/*.jpg" \
             --exclude="stella-browser/.pnpm-store" \
             --exclude="stella-browser/opensrc" \
             --exclude="stella-browser/docs/node_modules" \

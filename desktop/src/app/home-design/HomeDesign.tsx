@@ -1,5 +1,8 @@
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { dispatchStellaSendMessage } from "@/shared/lib/stella-send-message"
+import { useUiState } from "@/context/ui-state"
+import { listLocalEvents } from "@/app/chat/services/local-chat-store"
+import type { OnboardingHomeSuggestion } from "@/shared/contracts/onboarding"
 import "./home-design.css"
 
 type SuggestionOption = {
@@ -12,7 +15,7 @@ type Category = {
   options: SuggestionOption[]
 }
 
-const categories: Category[] = [
+const DEFAULT_CATEGORIES: Category[] = [
   { label: "Stella", options: [
     { label: "Add a music player to home", prompt: "Add the music player to my home page. The component already exists at src/app/home/MusicPlayer.tsx — integrate it into the home page layout, don't rebuild it." },
     { label: "Change my theme to dark", prompt: "Change my theme to dark mode" },
@@ -40,7 +43,76 @@ const categories: Category[] = [
   ]},
 ]
 
+const CATEGORY_LABEL_MAP: Record<OnboardingHomeSuggestion["category"], string> = {
+  stella: "Stella",
+  task: "Task",
+  explore: "Explore",
+  schedule: "Schedule",
+}
+
+const CATEGORY_ORDER: OnboardingHomeSuggestion["category"][] = [
+  "stella", "task", "explore", "schedule",
+]
+
+function buildCategoriesFromSuggestions(
+  suggestions: OnboardingHomeSuggestion[],
+): Category[] {
+  const grouped = new Map<string, SuggestionOption[]>()
+  for (const s of suggestions) {
+    const key = s.category
+    if (!grouped.has(key)) grouped.set(key, [])
+    grouped.get(key)!.push({ label: s.label, prompt: s.prompt })
+  }
+  return CATEGORY_ORDER
+    .filter((key) => grouped.has(key))
+    .map((key) => ({
+      label: CATEGORY_LABEL_MAP[key],
+      options: grouped.get(key)!,
+    }))
+}
+
+function usePersonalizedCategories(conversationId: string | null): Category[] {
+  const [persisted, setPersisted] = useState<OnboardingHomeSuggestion[] | null>(null)
+
+  useEffect(() => {
+    if (!conversationId) return
+
+    let cancelled = false
+
+    const load = async () => {
+      try {
+        const events = await listLocalEvents(conversationId, 200)
+        const suggestionsEvent = events.findLast((e) => e.type === "home_suggestions")
+        if (cancelled) return
+        if (
+          suggestionsEvent?.payload &&
+          Array.isArray((suggestionsEvent.payload as { suggestions?: unknown }).suggestions)
+        ) {
+          setPersisted(
+            (suggestionsEvent.payload as { suggestions: OnboardingHomeSuggestion[] }).suggestions,
+          )
+        }
+      } catch {
+        // fall through — defaults will be used
+      }
+    }
+
+    void load()
+    return () => { cancelled = true }
+  }, [conversationId])
+
+  return useMemo(
+    () =>
+      persisted && persisted.length > 0
+        ? buildCategoriesFromSuggestions(persisted)
+        : DEFAULT_CATEGORIES,
+    [persisted],
+  )
+}
+
 export default function HomeDesign() {
+  const { state } = useUiState()
+  const categories = usePersonalizedCategories(state.conversationId)
   const [openCategory, setOpenCategory] = useState<string | null>(null)
   const [hasOpened, setHasOpened] = useState(false)
 
