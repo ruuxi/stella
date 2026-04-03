@@ -3,6 +3,7 @@ import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
 import path from 'path'
 import { runNativeHelper } from './native-helper.js'
+import { hasMacPermission } from './utils/macos-permissions.js'
 
 export type WindowInfo = {
   title: string
@@ -76,6 +77,8 @@ export const captureWindowScreenshot = async (
   y: number,
   options?: QueryWindowInfoOptions,
 ): Promise<WindowCapture | null> => {
+  if (!hasMacPermission('screen')) return null
+
   const tempPath = path.join(tmpdir(), `stella_cap_${randomBytes(8).toString('hex')}.png`)
   const args = [String(x), String(y), `--screenshot=${tempPath}`]
   if (options?.excludePids?.length) {

@@ -17,6 +17,8 @@ const requiredFiles = [
 const restartDebounceMs = 150
 const forcedShutdownTimeoutMs = 1_500
 const startupWatchDelayMs = 2_500
+const maxRapidCrashes = 5
+const rapidCrashWindowMs = 10_000
 
 let shuttingDown = false
 let currentApp = null
@@ -26,6 +28,7 @@ let restartQueue = Promise.resolve()
 let watchReady = false
 let watchReadyTimer = null
 const expectedExits = new WeakSet()
+const crashTimestamps = []
 
 const startApp = () => {
   if (shuttingDown || currentApp) {
@@ -100,8 +103,23 @@ const stopApp = async () => {
   })
 }
 
+const isRapidCrashLoop = () => {
+  const now = Date.now()
+  crashTimestamps.push(now)
+  while (crashTimestamps.length > 0 && now - crashTimestamps[0] > rapidCrashWindowMs) {
+    crashTimestamps.shift()
+  }
+  return crashTimestamps.length >= maxRapidCrashes
+}
+
 const scheduleRestart = () => {
   if (shuttingDown) {
+    return
+  }
+
+  if (isRapidCrashLoop()) {
+    logError(`Electron crashed ${maxRapidCrashes} times within ${rapidCrashWindowMs / 1000}s — stopping. Check permissions or logs, then re-run.`)
+    void shutdown(1)
     return
   }
 
