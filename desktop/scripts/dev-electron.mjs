@@ -27,8 +27,8 @@ let watcher = null
 let restartQueue = Promise.resolve()
 let watchReady = false
 let watchReadyTimer = null
+let restartRequestedByWatcher = false
 const expectedExits = new WeakSet()
-const crashTimestamps = []
 
 const startApp = () => {
   if (shuttingDown || currentApp) {
@@ -52,19 +52,30 @@ const startApp = () => {
       currentApp = null
     }
 
-    if (!shuttingDown) {
+    if (!shuttingDown && restartRequestedByWatcher) {
       scheduleRestart()
     }
   })
 
-  child.once('exit', () => {
+  child.once('exit', (code, signal) => {
     if (currentApp === child) {
       currentApp = null
     }
 
-    if (!shuttingDown && !expectedExits.has(child)) {
-      scheduleRestart()
+    if (shuttingDown || expectedExits.has(child)) {
+      return
     }
+
+    if (restartRequestedByWatcher) {
+      scheduleRestart()
+      return
+    }
+
+    exitCode = code ?? 1
+    logError(
+      `electron-main exited ${signal ? `via ${signal}` : `with code ${code ?? 0}`} without a watched build change; stopping electron dev.`,
+    )
+    void shutdown(exitCode)
   })
 }
 
@@ -103,23 +114,8 @@ const stopApp = async () => {
   })
 }
 
-const isRapidCrashLoop = () => {
-  const now = Date.now()
-  crashTimestamps.push(now)
-  while (crashTimestamps.length > 0 && now - crashTimestamps[0] > rapidCrashWindowMs) {
-    crashTimestamps.shift()
-  }
-  return crashTimestamps.length >= maxRapidCrashes
-}
-
 const scheduleRestart = () => {
   if (shuttingDown) {
-    return
-  }
-
-  if (isRapidCrashLoop()) {
-    logError(`Electron crashed ${maxRapidCrashes} times within ${rapidCrashWindowMs / 1000}s — stopping. Check permissions or logs, then re-run.`)
-    void shutdown(1)
     return
   }
 
@@ -134,6 +130,7 @@ const scheduleRestart = () => {
       .then(async () => {
         await stopApp()
         if (!shuttingDown) {
+          restartRequestedByWatcher = false
           startApp()
         }
       })
@@ -187,6 +184,7 @@ watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {
     return
   }
 
+  restartRequestedByWatcher = true
   scheduleRestart()
 })
 
