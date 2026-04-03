@@ -17,19 +17,24 @@ export const _listStaleAnonymousOwnerIds = internalQuery({
     cutoffMs: v.number(),
   },
   handler: async (ctx, args) => {
+    // Only pass isAnonymous in the where clause so the adapter's findIndex
+    // matches the isAnonymous_updatedAt index prefix. The updatedAt range
+    // filter is applied below; this works around a bug in
+    // @convex-dev/better-auth <=0.10.10 where findIndex prepends "_" to
+    // bound fields in compound lookups, turning "updatedAt" into
+    // "_updatedAt" and missing the index.
     const result: PaginatedResult = await ctx.runQuery(
       components.betterAuth.adapter.findMany,
       {
         model: "user" as const,
-        where: [
-          { field: "isAnonymous", value: true },
-          { field: "updatedAt", operator: "lt" as const, value: args.cutoffMs },
-        ],
+        where: [{ field: "isAnonymous", value: true }],
         paginationOpts: { cursor: args.cursor, numItems: PAGE_SIZE },
       },
     );
 
-    const ownerIds = result.page.map((u) => u._id);
+    const ownerIds = result.page
+      .filter((u) => u.updatedAt < args.cutoffMs)
+      .map((u) => u._id);
     const done = result.isDone === true;
 
     return { ownerIds, nextCursor: done ? null : (result.continueCursor ?? null) };
