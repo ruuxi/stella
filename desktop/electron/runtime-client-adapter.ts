@@ -11,6 +11,7 @@ import type {
   RuntimeOverlayAutoPanelEventPayload,
   RuntimeOverlayAutoPanelStartPayload,
   RuntimeSocialSessionStatus,
+  RuntimeVoiceChatPayload,
   SelfModFeatureSummary,
   StorePublishArgs,
 } from "../packages/runtime-protocol/index.js";
@@ -491,17 +492,125 @@ export class RuntimeClientAdapter {
     return this.client.persistVoiceTranscript(args);
   }
 
+  async handleVoiceChat(
+    payload: {
+      conversationId: string;
+      message: string;
+    },
+    callbacks: AgentCallbacks,
+  ) {
+    const requestId =
+      globalThis.crypto?.randomUUID?.() ?? `voice-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let lastRunEventSeq = 0;
+    let lastTaskEventSeq = 0;
+    const activeTaskIds = new Set<string>();
+    let runTerminated = false;
+
+    let unsubscribe = () => {};
+    const maybeUnsubscribe = () => {
+      if (!runTerminated || activeTaskIds.size > 0) {
+        return;
+      }
+      unsubscribe();
+    };
+
+    const dispatch = (event: RuntimeAgentEventPayload) => {
+      const isTaskLifecycleEvent =
+        event.type !== AGENT_STREAM_EVENT_TYPES.STREAM &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_START &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_END &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.ERROR &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.END;
+
+      if (isTaskLifecycleEvent) {
+        if (event.seq <= lastTaskEventSeq) {
+          return;
+        }
+        lastTaskEventSeq = event.seq;
+      } else {
+        if (event.seq <= lastRunEventSeq) {
+          return;
+        }
+        lastRunEventSeq = event.seq;
+      }
+
+      if (event.type === "task-started" && event.taskId) {
+        activeTaskIds.add(event.taskId);
+      } else if (isTerminalTaskLifecycleEvent(event.type) && event.taskId) {
+        activeTaskIds.delete(event.taskId);
+      }
+
+      switch (event.type) {
+        case AGENT_STREAM_EVENT_TYPES.STREAM:
+          callbacks.onStream(event);
+          break;
+        case AGENT_STREAM_EVENT_TYPES.TOOL_START:
+          callbacks.onToolStart(event);
+          break;
+        case AGENT_STREAM_EVENT_TYPES.TOOL_END:
+          callbacks.onToolEnd(event);
+          break;
+        case AGENT_STREAM_EVENT_TYPES.ERROR:
+          callbacks.onError(event);
+          break;
+        case AGENT_STREAM_EVENT_TYPES.END:
+          callbacks.onEnd(event);
+          break;
+        default:
+          callbacks.onTaskEvent?.({
+            type: event.type as TaskLifecycleEvent["type"],
+            conversationId: payload.conversationId,
+            rootRunId: event.runId,
+            taskId: event.taskId ?? "",
+            agentType: event.agentType ?? "",
+            ...(event.description ? { description: event.description } : {}),
+            ...(event.parentTaskId ? { parentTaskId: event.parentTaskId } : {}),
+            ...(event.result ? { result: event.result } : {}),
+            ...(event.error ? { error: event.error } : {}),
+            ...(event.statusText ? { statusText: event.statusText } : {}),
+          });
+          break;
+      }
+      if (isTerminalEvent(event.type)) {
+        runTerminated = true;
+      }
+      maybeUnsubscribe();
+    };
+
+    const offEvent = this.client.on("voice-agent-event", (eventPayload) => {
+      if (eventPayload.requestId !== requestId) {
+        return;
+      }
+      dispatch(eventPayload.event);
+    });
+    const offHmr = this.client.on("voice-self-mod-hmr-state", (hmrPayload) => {
+      if (hmrPayload.requestId !== requestId) {
+        return;
+      }
+      callbacks.onSelfModHmrState?.(hmrPayload.state);
+    });
+    unsubscribe = () => {
+      offEvent();
+      offHmr();
+    };
+
+    try {
+      return await this.client.voiceOrchestratorChat({
+        requestId,
+        ...payload,
+      } satisfies RuntimeVoiceChatPayload);
+    } catch (error) {
+      unsubscribe();
+      throw error;
+    }
+  }
+
   webSearch(query: string, options?: { category?: string; displayResults?: boolean }) {
     return this.client.webSearch(query, options);
   }
 
-  voiceExecuteTool(payload: {
-    toolName: string;
-    toolArgs: Record<string, unknown>;
-    conversationId: string;
-    callId: string;
-  }) {
-    return this.client.voiceExecuteTool(payload);
+  voiceWebSearch(payload: { query: string; category?: string }) {
+    return this.client.voiceWebSearch(payload);
   }
 
   listStorePackages() {
