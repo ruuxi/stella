@@ -364,6 +364,21 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     peer.notify(NOTIFICATION_NAMES.RUN_SELF_MOD_HMR_STATE, payload);
   };
 
+  const emitVoiceAgentEvent = (payload: {
+    requestId: string;
+    event: RuntimeAgentEventPayload;
+  }) => {
+    peer.notify(NOTIFICATION_NAMES.VOICE_AGENT_EVENT, payload);
+  };
+
+  const emitVoiceSelfModHmrState = (payload: {
+    requestId: string;
+    runId?: string;
+    state: unknown;
+  }) => {
+    peer.notify(NOTIFICATION_NAMES.VOICE_SELF_MOD_HMR_STATE, payload);
+  };
+
   const emitOverlayAutoPanelEvent = (
     payload: RuntimeOverlayAutoPanelEventPayload,
   ) => {
@@ -556,10 +571,18 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     state.voiceService = new VoiceRuntimeService({
       getRunner: () => state.runner,
       getChatStore: () => state.chatStore,
-      getRuntimeStore: () => state.runtimeStore,
       getDeviceId: () => state.deviceId,
       onLocalChatUpdated: () => {
         peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+      },
+      emitAgentEvent: (payload) => {
+        emitVoiceAgentEvent(payload);
+      },
+      emitSelfModHmrState: (payload) => {
+        emitVoiceSelfModHmrState(payload);
+      },
+      requestHostHmrTransition: async (payload) => {
+        await peer.request(METHOD_NAMES.HOST_HMR_RUN_TRANSITION, payload);
       },
     });
 
@@ -636,8 +659,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       activeTaskCount: state.runner?.getActiveTaskCount() ?? 0,
       pid: process.pid,
       deviceId: state.deviceId,
-      voiceBusy: false,
-      pendingVoiceRequestCount: 0,
+      voiceBusy: state.voiceService?.isBusy() ?? false,
+      pendingVoiceRequestCount: state.voiceService?.getPendingRequestCount() ?? 0,
       remoteBridgeActive: Boolean(state.init?.convexUrl && state.init?.authToken),
       socialSessions,
     };
@@ -853,18 +876,26 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   );
 
   peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_VOICE_EXECUTE_TOOL,
+    METHOD_NAMES.INTERNAL_WORKER_VOICE_ORCHESTRATOR_CHAT,
     async (params) => {
-      return await ensureVoiceService().executeTool(
+      return await ensureVoiceService().orchestratorChat(
         params as {
-          toolName: string;
-          toolArgs: Record<string, unknown>;
+          requestId: string;
           conversationId: string;
-          callId: string;
+          message: string;
         },
       );
     },
   );
+
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_VOICE_WEB_SEARCH, async (params) => {
+    return await ensureVoiceService().webSearch(
+      params as {
+        query: string;
+        category?: string;
+      },
+    );
+  });
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LIST_STORE_PACKAGES, async () => {
     return await ensureRunner().listStorePackages();

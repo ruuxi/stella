@@ -100,7 +100,8 @@ export const IPC_THEME_LIST_INSTALLED = "theme:listInstalled" as const;
 // ── Voice ───────────────────────────────────────────────────────────────────
 
 export const IPC_VOICE_PERSIST_TRANSCRIPT = "voice:persistTranscript" as const;
-export const IPC_VOICE_EXECUTE_TOOL = "voice:executeTool" as const;
+export const IPC_VOICE_ORCHESTRATOR_CHAT = "voice:orchestratorChat" as const;
+export const IPC_VOICE_WEB_SEARCH = "voice:webSearch" as const;
 export const IPC_VOICE_GET_RUNTIME_STATE = "voice:getRuntimeState" as const;
 export const IPC_VOICE_RUNTIME_STATE = "voice:runtimeState" as const;
 export const IPC_VOICE_GET_WAKE_WORD_STATE = "voice:getWakeWordState" as const;

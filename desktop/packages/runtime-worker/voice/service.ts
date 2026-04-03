@@ -1,17 +1,52 @@
-import { prepareStoredLocalChatPayload } from "../../runtime-kernel/storage/local-chat-payload.js";
 import {
-  ORCHESTRATOR_DELEGATION_ALLOWLIST,
-  ORCHESTRATOR_MAX_TASK_DEPTH,
-} from "../../runtime-kernel/agents/core-agent-prompts.js";
-import { dispatchLocalTool, type LocalToolStore } from "../../runtime-kernel/tools/local-tool-dispatch.js";
-import { AGENT_IDS } from "../../../src/shared/contracts/agent-runtime.js";
+  AGENT_STREAM_EVENT_TYPES,
+  type AgentStreamEventType,
+} from "../../../src/shared/contracts/agent-runtime.js";
+import { prepareStoredLocalChatPayload } from "../../runtime-kernel/storage/local-chat-payload.js";
 import type {
+  RuntimeAgentEventPayload,
+  RuntimeVoiceAgentEventPayload,
+  RuntimeVoiceChatPayload,
+  RuntimeVoiceHmrStatePayload,
   RuntimeWebSearchResult,
 } from "../../runtime-protocol/index.js";
+import type {
+  RuntimeEndEvent,
+  RuntimeErrorEvent,
+  RuntimeStreamEvent,
+  RuntimeToolEndEvent,
+  RuntimeToolStartEvent,
+} from "../../runtime-kernel/agent-runtime.js";
+import { createSelfModHmrState } from "../../runtime-kernel/runner/shared.js";
+import type { TaskLifecycleEvent } from "../../runtime-kernel/tasks/local-task-manager.js";
+import type { SelfModHmrState } from "../../boundary-contracts/index.js";
 import type { ChatStore } from "../../runtime-kernel/storage/chat-store.js";
-import type { ToolContext, ToolResult } from "../../runtime-kernel/tools/types.js";
 
 type VoiceRunner = {
+  handleLocalChat: (
+    payload: {
+      conversationId: string;
+      userMessageId: string;
+      userPrompt: string;
+      agentType?: string;
+      storageMode?: "cloud" | "local";
+    },
+    callbacks: {
+      onStream: (event: RuntimeStreamEvent) => void;
+      onToolStart: (event: RuntimeToolStartEvent) => void;
+      onToolEnd: (event: RuntimeToolEndEvent) => void;
+      onError: (event: RuntimeErrorEvent) => void;
+      onEnd: (event: RuntimeEndEvent) => void;
+      onTaskEvent?: (event: TaskLifecycleEvent) => void;
+      onSelfModHmrState?: (state: SelfModHmrState) => void;
+      onHmrResume?: (args: {
+        runId: string;
+        resumeHmr: () => Promise<void>;
+        reportState?: (state: SelfModHmrState) => void;
+        requiresFullReload: boolean;
+      }) => Promise<void>;
+    },
+  ) => Promise<{ runId: string }>;
   appendThreadMessage: (args: {
     threadKey: string;
     role: "user" | "assistant";
@@ -21,22 +56,34 @@ type VoiceRunner = {
     query: string,
     options?: { category?: string; displayResults?: boolean },
   ) => Promise<RuntimeWebSearchResult>;
-  executeTool: (
-    toolName: string,
-    toolArgs: Record<string, unknown>,
-    toolContext: ToolContext,
-  ) => Promise<ToolResult>;
+};
+
+type PendingVoiceRequest = {
+  payload: RuntimeVoiceChatPayload;
+  resolve: (value: string) => void;
+  reject: (error: Error) => void;
 };
 
 type VoiceRuntimeServiceOptions = {
   getRunner: () => VoiceRunner | null;
   getChatStore: () => ChatStore | null;
-  getRuntimeStore: () => LocalToolStore | null;
   getDeviceId: () => string | null;
   onLocalChatUpdated: () => void;
+  emitAgentEvent: (payload: RuntimeVoiceAgentEventPayload) => void;
+  emitSelfModHmrState: (payload: RuntimeVoiceHmrStatePayload) => void;
+  requestHostHmrTransition: (payload: {
+    runId: string;
+    requiresFullReload: boolean;
+  }) => Promise<void>;
 };
 
+const normalizeError = (error: unknown) =>
+  error instanceof Error ? error : new Error(String(error ?? "Unknown voice runtime error"));
+
 export class VoiceRuntimeService {
+  private pendingVoiceRequest: PendingVoiceRequest | null = null;
+  private voiceRequestActive = false;
+
   constructor(private readonly options: VoiceRuntimeServiceOptions) {}
 
   persistTranscript(payload: {
@@ -53,11 +100,12 @@ export class VoiceRuntimeService {
     if (chatStore) {
       const timestamp = Date.now();
       const type = payload.role === "user" ? "user_message" : "assistant_message";
-      const deviceId = this.options.getDeviceId();
       chatStore.appendEvent({
         conversationId: payload.conversationId,
         type,
-        ...(payload.role === "user" && deviceId ? { deviceId } : {}),
+        ...(payload.role === "user" && this.options.getDeviceId()
+          ? { deviceId: this.options.getDeviceId() ?? undefined }
+          : {}),
         timestamp,
         payload: prepareStoredLocalChatPayload({
           type,
@@ -74,55 +122,42 @@ export class VoiceRuntimeService {
     return { ok: true as const };
   }
 
-  async executeTool(payload: {
-    toolName: string;
-    toolArgs: Record<string, unknown>;
-    conversationId: string;
-    callId: string;
-  }): Promise<{ result: string; error?: string }> {
-    const runner = this.ensureRunner();
-    const { toolName, toolArgs, conversationId, callId } = payload;
+  async webSearch(payload: {
+    query: string;
+    category?: string;
+  }) {
+    return await this.ensureRunner().webSearch(payload.query, {
+      category: payload.category,
+      displayResults: true,
+    });
+  }
 
-    try {
-      const localResult = await dispatchLocalTool(toolName, toolArgs, {
-        conversationId,
-        webSearch: (query, opts) =>
-          runner.webSearch(query, { ...opts, displayResults: true }),
-        store: this.options.getRuntimeStore(),
+  async orchestratorChat(payload: RuntimeVoiceChatPayload) {
+    if (this.voiceRequestActive) {
+      if (this.pendingVoiceRequest) {
+        this.pendingVoiceRequest.reject(
+          new Error("Superseded by newer voice request"),
+        );
+      }
+      return await new Promise<string>((resolve, reject) => {
+        this.pendingVoiceRequest = { payload, resolve, reject };
       });
-      if (localResult.handled) {
-        return { result: localResult.text };
-      }
+    }
 
-      const toolContext = this.buildToolContext(conversationId, callId);
-      const result = await runner.executeTool(toolName, toolArgs, toolContext);
-      if (result.error) {
-        return { result: "", error: result.error };
-      }
-      const text = typeof result.result === "string"
-        ? result.result
-        : JSON.stringify(result.result ?? "Done.");
-      return { result: text };
-    } catch (error) {
-      return {
-        result: "",
-        error: error instanceof Error ? error.message : String(error),
-      };
+    this.voiceRequestActive = true;
+    try {
+      return await this.executeVoiceChat(payload);
+    } finally {
+      await this.drainVoiceQueue();
     }
   }
 
-  private buildToolContext(conversationId: string, callId: string) {
-    return {
-      conversationId,
-      deviceId: this.options.getDeviceId() ?? "",
-      requestId: callId,
-      runId: `voice-${Date.now()}`,
-      agentType: AGENT_IDS.ORCHESTRATOR,
-      storageMode: "local" as const,
-      taskDepth: 0,
-      maxTaskDepth: ORCHESTRATOR_MAX_TASK_DEPTH,
-      delegationAllowlist: ORCHESTRATOR_DELEGATION_ALLOWLIST,
-    };
+  isBusy() {
+    return this.voiceRequestActive;
+  }
+
+  getPendingRequestCount() {
+    return this.pendingVoiceRequest ? 1 : 0;
   }
 
   private ensureRunner() {
@@ -133,4 +168,138 @@ export class VoiceRuntimeService {
     return runner;
   }
 
+  private async drainVoiceQueue() {
+    const pending = this.pendingVoiceRequest;
+    this.pendingVoiceRequest = null;
+
+    if (!pending) {
+      this.voiceRequestActive = false;
+      return;
+    }
+
+    try {
+      pending.resolve(await this.executeVoiceChat(pending.payload));
+    } catch (error) {
+      pending.reject(normalizeError(error));
+    } finally {
+      await this.drainVoiceQueue();
+    }
+  }
+
+  private async executeVoiceChat(payload: RuntimeVoiceChatPayload) {
+    const runner = this.ensureRunner();
+    let activeRunId = "";
+    let fullText = "";
+    let syntheticSeq = 1;
+    let settled = false;
+
+    const resolveOnce = (resolve: (value: string) => void, value: string) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(value);
+    };
+
+    const rejectOnce = (reject: (error: Error) => void, error: unknown) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(normalizeError(error));
+    };
+
+    return await new Promise<string>((resolve, reject) => {
+      const emitAgentEvent = (
+        event: Omit<RuntimeAgentEventPayload, "type">,
+        type: AgentStreamEventType,
+      ) => {
+        this.options.emitAgentEvent({
+          requestId: payload.requestId,
+          event: {
+            ...event,
+            type,
+          },
+        });
+      };
+
+      runner
+        .handleLocalChat(
+          {
+            conversationId: payload.conversationId,
+            userMessageId: `voice-${Date.now()}`,
+            userPrompt: payload.message,
+            agentType: "orchestrator",
+            storageMode: "local",
+          },
+          {
+            onStream: (event) => {
+              if (event.chunk) {
+                fullText += event.chunk;
+              }
+              emitAgentEvent(event, AGENT_STREAM_EVENT_TYPES.STREAM);
+            },
+            onToolStart: (event) =>
+              emitAgentEvent(event, AGENT_STREAM_EVENT_TYPES.TOOL_START),
+            onToolEnd: (event) =>
+              emitAgentEvent(event, AGENT_STREAM_EVENT_TYPES.TOOL_END),
+            onTaskEvent: (event) => {
+              this.options.emitAgentEvent({
+                requestId: payload.requestId,
+                event: {
+                  type: event.type,
+                  runId: event.rootRunId ?? activeRunId ?? payload.conversationId,
+                  seq: syntheticSeq++,
+                  taskId: event.taskId,
+                  agentType: event.agentType,
+                  description: event.description,
+                  parentTaskId: event.parentTaskId,
+                  result: event.result,
+                  error: event.error,
+                  statusText: event.statusText,
+                },
+              });
+            },
+            onSelfModHmrState: (state) => {
+              this.options.emitSelfModHmrState({
+                requestId: payload.requestId,
+                runId: activeRunId || undefined,
+                state,
+              });
+            },
+            onHmrResume: async ({ runId, requiresFullReload, reportState }) => {
+              activeRunId = runId;
+              reportState?.(
+                createSelfModHmrState(
+                  requiresFullReload ? "reloading" : "applying",
+                  false,
+                  requiresFullReload,
+                ),
+              );
+              await this.options.requestHostHmrTransition({
+                runId,
+                requiresFullReload,
+              });
+              reportState?.(createSelfModHmrState("idle", false));
+            },
+            onEnd: (event) => {
+              emitAgentEvent(event, AGENT_STREAM_EVENT_TYPES.END);
+              resolveOnce(resolve, (event.finalText ?? fullText) || "Done.");
+            },
+            onError: (event) => {
+              emitAgentEvent(event, AGENT_STREAM_EVENT_TYPES.ERROR);
+              rejectOnce(reject, event.error ?? "Unknown voice runtime error");
+            },
+          },
+        )
+        .then(({ runId }) => {
+          activeRunId = runId;
+          return { runId };
+        })
+        .catch((error) => {
+          rejectOnce(reject, error);
+          return undefined;
+        });
+    });
+  }
 }

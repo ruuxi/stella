@@ -2,6 +2,7 @@ import { globalShortcut, ipcMain } from "electron";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { UiState } from "../types.js";
 import type { WindowManager } from "../windows/window-manager.js";
+import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
 
 type VoiceHandlersOptions = {
   uiState: UiState;
@@ -45,10 +46,31 @@ type ShortcutRegistrationResult = {
 export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   let currentVoiceRtcShortcut = "";
   let runtimeState: VoiceRuntimeSnapshot = DEFAULT_RUNTIME_STATE;
+  const nextTaskEventSeq = createMonotonicSeqGenerator();
 
   const ts = () => {
     const d = new Date();
     return `${d.toLocaleTimeString("en-US", { hour12: false })}.${String(d.getMilliseconds()).padStart(3, "0")}`;
+  };
+
+  const emitVoiceAgentEvent = (eventPayload: Record<string, unknown>) => {
+    const fullWindow = options.windowManager.getFullWindow();
+    if (fullWindow && !fullWindow.isDestroyed()) {
+      fullWindow.webContents.send("agent:event", eventPayload);
+    }
+    options.getBroadcastToMobile?.()?.("agent:event", eventPayload);
+  };
+
+  const emitVoiceHmrState = (state: unknown) => {
+    const miniWindow = options.windowManager.getMiniWindow();
+    const fullWindow = options.windowManager.getFullWindow();
+    const targetWindow =
+      options.uiState.window === "mini"
+        ? (miniWindow ?? fullWindow)
+        : (fullWindow ?? miniWindow);
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      targetWindow.webContents.send("agent:selfModHmrState", state);
+    }
   };
 
   const applyShortcutRegistration = (
@@ -189,21 +211,70 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   );
 
   ipcMain.handle(
-    "voice:executeTool",
+    "voice:orchestratorChat",
+    async (_event, payload: { conversationId: string; message: string }) => {
+      console.log(
+        `[${ts()}] [Voice] orchestratorChat request:`,
+        payload.message,
+      );
+      const stellaHostRunner = options.getStellaHostRunner();
+      if (!stellaHostRunner) {
+        throw new Error("Stella runtime not initialized");
+      }
+
+      return await stellaHostRunner.handleVoiceChat(payload, {
+        onStream: () => {},
+        onToolStart: (event) => {
+          emitVoiceAgentEvent({ ...event, type: "tool-start" });
+        },
+        onToolEnd: (event) => {
+          emitVoiceAgentEvent({ ...event, type: "tool-end" });
+        },
+        onTaskEvent: (event) => {
+          emitVoiceAgentEvent({
+            type: event.type,
+            runId: event.rootRunId ?? "voice",
+            seq: nextTaskEventSeq(),
+            taskId: event.taskId,
+            agentType: event.agentType,
+            description: event.description,
+            parentTaskId: event.parentTaskId,
+            result: event.result,
+            error: event.error,
+            statusText: event.statusText,
+          });
+        },
+        onSelfModHmrState: (state) => {
+          emitVoiceHmrState(state);
+        },
+        onEnd: (event) => {
+          emitVoiceAgentEvent({ ...event, type: "end" });
+        },
+        onError: (event) => {
+          console.error(
+            `[${ts()}] [Voice] orchestratorChat error:`,
+            event.error,
+          );
+          emitVoiceAgentEvent({ ...event, type: "error" });
+        },
+      });
+    },
+  );
+
+  ipcMain.handle(
+    "voice:webSearch",
     async (
       _event,
       payload: {
-        toolName: string;
-        toolArgs: Record<string, unknown>;
-        conversationId: string;
-        callId: string;
+        query: string;
+        category?: string;
       },
     ) => {
       const stellaHostRunner = options.getStellaHostRunner();
       if (!stellaHostRunner) {
-        return { result: "", error: "Stella runtime not initialized" };
+        return { text: "Stella runtime not initialized.", results: [] };
       }
-      return await stellaHostRunner.voiceExecuteTool(payload);
+      return await stellaHostRunner.voiceWebSearch(payload);
     },
   );
 

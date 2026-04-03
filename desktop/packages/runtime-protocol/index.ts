@@ -100,6 +100,8 @@ export const METHOD_NAMES = {
   TASK_GET_SNAPSHOT: "task.getSnapshot",
   SEARCH_WEB: "search.web",
   VOICE_PERSIST_TRANSCRIPT: "voice.persistTranscript",
+  VOICE_ORCHESTRATOR_CHAT: "voice.orchestratorChat",
+  VOICE_WEB_SEARCH: "voice.webSearch",
   THREAD_APPEND_MESSAGE: "thread.appendMessage",
   LOCAL_CHAT_GET_OR_CREATE_DEFAULT: "localChat.getOrCreateDefaultConversationId",
   LOCAL_CHAT_LIST_EVENTS: "localChat.listEvents",
@@ -171,8 +173,9 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_WEB_SEARCH: "internal.worker.webSearch",
   INTERNAL_WORKER_VOICE_PERSIST_TRANSCRIPT:
     "internal.worker.voice.persistTranscript",
-  INTERNAL_WORKER_VOICE_EXECUTE_TOOL:
-    "internal.worker.voice.executeTool",
+  INTERNAL_WORKER_VOICE_ORCHESTRATOR_CHAT:
+    "internal.worker.voice.orchestratorChat",
+  INTERNAL_WORKER_VOICE_WEB_SEARCH: "internal.worker.voice.webSearch",
   INTERNAL_WORKER_LIST_STORE_PACKAGES: "internal.worker.listStorePackages",
   INTERNAL_WORKER_GET_STORE_PACKAGE: "internal.worker.getStorePackage",
   INTERNAL_WORKER_LIST_STORE_RELEASES: "internal.worker.listStoreReleases",
@@ -340,6 +343,12 @@ export type RuntimeVoiceTranscriptPayload = {
   conversationId: string;
   role: "user" | "assistant";
   text: string;
+};
+
+export type RuntimeVoiceChatPayload = {
+  requestId: string;
+  conversationId: string;
+  message: string;
 };
 
 export type RuntimeOverlayChatMessage = {

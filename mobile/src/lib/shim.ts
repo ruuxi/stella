@@ -268,7 +268,8 @@ export function generateShimScript(
 
     voice: {
       persistTranscript: function(p) { fire('voice:persistTranscript', p); },
-      executeTool: function(p) { return invoke('voice:executeTool', p); },
+      orchestratorChat: function(p) { return invoke('voice:orchestratorChat', p); },
+      webSearch: function(p) { return invoke('voice:webSearch', p); },
       getRuntimeState: function() { return invoke('voice:getRuntimeState'); },
       onRuntimeState: function(cb) { return subscribe('voice:runtimeState', cb); },
       getWakeWordState: function() { return resolved({ enabled: false }); },
