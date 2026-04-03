@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GeneratedPage } from "@/app/registry";
-import { generatedPages, HOME_DESIGN_PAGE, MEDIA_PAGE } from "@/app/registry";
+import { generatedPages, HOME_DESIGN_PAGE } from "@/app/registry";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { ThemePicker } from "@/global/settings/ThemePicker";
@@ -22,7 +22,6 @@ import LogIn from "lucide-react/dist/esm/icons/log-in";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square";
 import PlusSquare from "lucide-react/dist/esm/icons/square-plus";
 import Settings from "lucide-react/dist/esm/icons/settings";
-import ImageIcon from "lucide-react/dist/esm/icons/image";
 import Sparkles from "lucide-react/dist/esm/icons/sparkles";
 import User from "lucide-react/dist/esm/icons/user";
 import Users from "lucide-react/dist/esm/icons/users";
@@ -225,16 +224,6 @@ export const Sidebar = ({
             <Users size={18} />
           </span>
           <span className="sidebar-nav-label">Social</span>
-        </button>
-        <button
-          type="button"
-          className={`sidebar-nav-item ${activePageId === "media" ? "sidebar-nav-item--active" : ""}`}
-          onClick={() => onPageSelect(MEDIA_PAGE)}
-        >
-          <span className="sidebar-nav-icon">
-            <ImageIcon size={18} />
-          </span>
-          <span className="sidebar-nav-label">Media</span>
         </button>
         {customPages.length > 0 && (
           <>
