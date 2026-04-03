@@ -1,8 +1,5 @@
 /**
- * StellaContextMenu — right-click opens the sidebar chat panel.
- *
- * If the right-click target is over meaningful content, captured context
- * is passed to the sidebar so the user can "ask about" what they clicked.
+ * StellaContextMenu — right-click toggles the sidebar chat panel.
  */
 
 import {
@@ -10,29 +7,13 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import type { ChatContext } from "@/shared/types/electron";
-import {
-  captureContextAtPoint,
-  type CapturedContext,
-} from "./context-capture";
 
 type StellaContextMenuProps = {
   children: ReactNode;
   isSidebarChatOpen: boolean;
-  onOpenSidebarChat: (chatContext?: ChatContext | null) => void;
+  onOpenSidebarChat: () => void;
   onCloseSidebarChat: () => void;
 };
-
-function toSidebarChatContext(captured: CapturedContext): ChatContext {
-  return {
-    window: {
-      app: "Stella",
-      title: captured.contextLabel,
-      bounds: { x: 0, y: 0, width: 0, height: 0 },
-    },
-    windowText: captured.tightSnapshot,
-  };
-}
 
 export function StellaContextMenu({
   children,
@@ -52,15 +33,9 @@ export function StellaContextMenu({
 
     if (isOpenRef.current) {
       onCloseRef.current();
-      return;
+    } else {
+      onOpenRef.current();
     }
-
-    const target = e.target as Element;
-    const captured = captureContextAtPoint(target);
-    const hasContent =
-      captured.tightSnapshot && captured.tightSnapshot.trim().length > 0;
-
-    onOpenRef.current(hasContent ? toSidebarChatContext(captured) : null);
   }, []);
 
   return (
