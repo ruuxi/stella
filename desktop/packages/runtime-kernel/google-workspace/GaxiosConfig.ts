@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { Auth } from 'googleapis';
+import type { GlobalOptions } from 'googleapis-common';
 import { GaxiosOptions } from 'gaxios';
 import { logToFile } from './logger.js';
 
@@ -33,3 +35,13 @@ export const mediaUploadOptions: GaxiosOptions = {
   ...gaxiosOptions,
   timeout: 60000, // 60 seconds for media uploads
 };
+
+export function createGoogleClientOptions(
+  auth: Auth.OAuth2Client,
+): GlobalOptions {
+  return {
+    auth,
+    timeout: gaxiosOptions.timeout,
+    retryConfig: gaxiosOptions.retryConfig as GlobalOptions['retryConfig'],
+  };
+}
