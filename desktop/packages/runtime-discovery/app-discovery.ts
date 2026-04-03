@@ -132,29 +132,18 @@ const discoverRunningAppsMac = async (): Promise<DiscoveredApp[]> => {
   const seen = new Set<string>();
 
   try {
-    // AppleScript: Get user-facing apps (background only = false)
-    // Also get the bundle path directly for each app
-    const script = `
-      tell application "System Events"
-        set appList to {}
-        repeat with p in (processes whose background only is false)
-          try
-            set appPath to POSIX path of (file of p as alias)
-            set end of appList to (name of p) & "|||" & appPath
-          on error
-            set end of appList to (name of p) & "|||"
-          end try
-        end repeat
-        return appList as text
-      end tell
-    `;
+    // Use lsappinfo instead of osascript+System Events to avoid Automation permission dialog
+    const output = await execAsync(`lsappinfo list -apps`);
 
-    const output = await execAsync(`osascript -e '${script.replace(/'/g, "'\\''")}'`);
-
-    for (const entry of output.split(", ")) {
-      const [name, appPath] = entry.split("|||");
-      const trimmed = name?.trim();
+    for (const line of output.split("\n")) {
+      const nameMatch = line.match(/"LSDisplayName"\s*=\s*"([^"]+)"/);
+      if (!nameMatch) continue;
+      const trimmed = nameMatch[1].trim();
       if (!trimmed) continue;
+
+      const bundleMatch = line.match(/"CFBundleIdentifier"\s*=\s*"([^"]+)"/);
+      const pathMatch = line.match(/"LSBundlePath"\s*=\s*"([^"]+)"/);
+      const appPath = pathMatch?.[1] ?? "";
 
       let executablePath = appPath?.trim() || "";
 
