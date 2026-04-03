@@ -1,5 +1,5 @@
 /**
- * RealtimeVoiceSession — WebRTC session manager for Inworld Realtime API.
+ * RealtimeVoiceSession — WebRTC session manager for OpenAI Realtime API.
  *
  * Manages the full lifecycle of a voice-to-voice session:
  * - WebRTC peer connection + audio I/O
@@ -41,12 +41,12 @@ export type VoiceSessionEvent =
 
 type VoiceSessionListener = (event: VoiceSessionEvent) => void;
 
-type VoiceSessionResult = {
-  sdpAnswer: string;
+type VoiceSessionToken = {
+  clientSecret: string;
   model: string;
   voice: string;
-  callId?: string;
-  sessionConfig?: Record<string, unknown>;
+  expiresAt?: number;
+  sessionId?: string;
 };
 
 type VoiceRuntimeState = {
@@ -67,13 +67,10 @@ const getVoiceRuntimeState = (): VoiceRuntimeState => {
   return root[VOICE_RUNTIME_STATE_KEY];
 };
 
-/** Strip reasoning model `<think>…</think>` blocks from text. */
-const stripThinkTags = (text: string): string =>
-  text.replace(/<think>[\s\S]*?<\/think>\s*/g, "");
-
 const CONVEX_CONVERSATION_ID_PATTERN = /^[a-z][a-z0-9]+$/;
 
 const RTC_CONFIGURATION: RTCConfiguration = {
+  // Pre-gather one ICE candidate batch to shorten negotiation time.
   iceCandidatePoolSize: 1,
 };
 const RTC_VOICE_MIC_USE_CASE = "voice-rtc" as const;
@@ -120,12 +117,10 @@ const toConvexConversationId = (value: unknown): string | null => {
 };
 
 const buildVoiceSessionRequestBody = (
-  sdpOffer: string,
   conversationId?: string,
-) => {
+): { conversationId?: string; basePrompt: string } => {
   const convexConversationId = toConvexConversationId(conversationId);
   return {
-    sdpOffer,
     ...(convexConversationId ? { conversationId: convexConversationId } : {}),
     ...getVoiceSessionPromptConfig(),
   };
@@ -159,17 +154,18 @@ export class RealtimeVoiceSession {
   private recentOutputActiveUntil = 0;
   private softInputMuted = false;
   private echoGuardTimer: ReturnType<typeof setInterval> | null = null;
-  private inputEnergyBuffer: Uint8Array<ArrayBuffer> | null = null;
-  private outputEnergyBuffer: Uint8Array<ArrayBuffer> | null = null;
+  private inputEnergyBuffer: Uint8Array | null = null;
+  private outputEnergyBuffer: Uint8Array | null = null;
 
   private _state: VoiceSessionState = "idle";
   private listeners = new Set<VoiceSessionListener>();
   private conversationId: string | null = null;
   private model: string | null = null;
-  private pendingSessionConfig: Record<string, unknown> | null = null;
 
   // Accumulated transcript fragments
   private assistantTranscriptBuffer = "";
+  private lastUserTranscript = "";
+
   // Conversation trace log — sequential record of every event for debugging
   private static readonly MAX_TRACE_ENTRIES = 500;
   private traceLog: Array<{
@@ -252,7 +248,6 @@ export class RealtimeVoiceSession {
   // ---------------------------------------------------------------------------
 
   async connect(conversationId: string): Promise<void> {
-    this.trace("CONNECT", `state=${this._state}`);
     if (this._state !== "idle") {
       throw new Error(`Cannot connect in state: ${this._state}`);
     }
@@ -260,27 +255,28 @@ export class RealtimeVoiceSession {
     this.setState("connecting");
 
     try {
-      // ── Phase 1: Fetch ICE servers for NAT traversal ──────────────
-      const { endpoint: iceEndpoint, headers: iceHeaders } =
-        await createServiceRequest("/api/voice/ice-servers");
-      const iceRes = await fetch(iceEndpoint, { headers: iceHeaders });
-      const iceData = iceRes.ok
-        ? (await iceRes.json()) as { ice_servers?: RTCIceServer[] }
-        : null;
-      if (this.destroyed) { this.cleanup(); return; }
+      // ── Phase 1: Start ALL work in parallel ────────────────────────
 
-      // ── Phase 2: Create RTCPeerConnection + SDP offer ─────────────
-      const rtcConfig: RTCConfiguration = {
-        ...RTC_CONFIGURATION,
-        ...(iceData?.ice_servers?.length ? { iceServers: iceData.ice_servers } : {}),
-      };
-      this.pc = new RTCPeerConnection(rtcConfig);
-      this.pc.oniceconnectionstatechange = () => {
-        this.trace("ICE", this.pc?.iceConnectionState ?? "unknown");
-      };
-      this.pc.onconnectionstatechange = () => {
-        this.trace("PC", this.pc?.connectionState ?? "unknown");
-      };
+      // A) Create the ephemeral session token in parallel with local setup.
+      const keyPromise = (async () => {
+        const { endpoint, headers } =
+          await createServiceRequest("/api/voice/session");
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify(buildVoiceSessionRequestBody(conversationId)),
+        });
+        if (!res.ok) {
+          const detail = await res.text();
+          throw new Error(
+            `Failed to create voice session: ${res.status} ${detail}`,
+          );
+        }
+        return (await res.json()) as VoiceSessionToken;
+      })();
+
+      // B) Create RTCPeerConnection + SDP offer locally (no network, no mic needed)
+      this.pc = new RTCPeerConnection(RTC_CONFIGURATION);
       const transceiver = this.pc.addTransceiver("audio", {
         direction: "sendrecv",
       });
@@ -304,41 +300,49 @@ export class RealtimeVoiceSession {
         return;
       }
 
-      // ── Phase 3: Proxy SDP exchange through backend ────────────────
-      const { endpoint, headers } =
-        await createServiceRequest("/api/voice/session");
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify(
-          buildVoiceSessionRequestBody(offer.sdp!, conversationId),
-        ),
-      });
+      // ── Phase 2: SDP exchange — needs token, NOT mic ───────────────
+      const keyResult = await keyPromise;
       if (this.destroyed) {
         this.cleanup();
         return;
       }
-      if (!res.ok) {
-        const detail = await res.text();
+
+      const { clientSecret, model } = keyResult;
+      this.model = model;
+
+      const sdpResponse = await fetch(
+        `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${clientSecret}`,
+            "Content-Type": "application/sdp",
+          },
+          body: offer.sdp,
+        },
+      );
+      if (this.destroyed) {
+        this.cleanup();
+        return;
+      }
+
+      if (!sdpResponse.ok) {
         throw new Error(
-          `Failed to create voice session: ${res.status} ${detail}`,
+          `SDP negotiation failed: ${sdpResponse.status} ${await sdpResponse.text()}`,
         );
       }
 
-      const sessionResult = (await res.json()) as VoiceSessionResult;
-      this.model = sessionResult.model;
-      this.pendingSessionConfig = sessionResult.sessionConfig ?? null;
-
+      const answerSdp = await sdpResponse.text();
       await this.pc.setRemoteDescription({
         type: "answer",
-        sdp: sessionResult.sdpAnswer,
+        sdp: answerSdp,
       });
       if (this.destroyed) {
         this.cleanup();
         return;
       }
 
-      // ── Phase 3: Attach mic track ─────────────────────────────────
+      // ── Phase 3: Attach mic track (likely already resolved) ────────
       await this.syncInputState();
 
       getVoiceRuntimeState().activeSession = this;
@@ -386,6 +390,7 @@ export class RealtimeVoiceSession {
       return;
     }
 
+    this.lastUserTranscript = trimmed;
     this.trace("WAKE_WORD_PREFILL", trimmed);
     this.sendEvent({
       type: "conversation.item.create",
@@ -409,25 +414,11 @@ export class RealtimeVoiceSession {
   private setupDataChannel() {
     if (!this.dc) return;
 
-    this.dc.onopen = () => {
-      this.trace("DC", "opened");
-      if (this.pendingSessionConfig) {
-        const msg = JSON.stringify({
-          type: "session.update",
-          session: this.pendingSessionConfig,
-        });
-        this.trace("DC", `session.update sent (${msg.length} bytes)`);
-        this.dc!.send(msg);
-        this.pendingSessionConfig = null;
-      } else {
-        console.warn("[voice] DC opened but no pendingSessionConfig");
-      }
-    };
+    this.dc.onopen = () => {};
 
     this.dc.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        this.trace("DC_EVENT", data.type as string);
         this.handleServerEvent(data);
       } catch (err) {
         console.debug(
@@ -438,7 +429,6 @@ export class RealtimeVoiceSession {
     };
 
     this.dc.onclose = () => {
-      this.trace("DC", "closed");
       if (this._state === "connected") {
         this.cleanup();
         this.setState("error", "Connection lost");
@@ -555,7 +545,7 @@ export class RealtimeVoiceSession {
     const targetBuffer =
       (kind === "input" ? this.inputEnergyBuffer : this.outputEnergyBuffer)
       ?? new Uint8Array(len);
-    analyser.getByteFrequencyData(targetBuffer);
+    analyser.getByteFrequencyData(targetBuffer as Uint8Array<ArrayBuffer>);
 
     let sum = 0;
     for (let i = 0; i < len; i += 1) {
@@ -809,15 +799,10 @@ export class RealtimeVoiceSession {
 
     switch (type) {
       case "session.created":
-        console.warn("[voice] session.created received");
         this.trace("SESSION", "created");
         break;
       case "session.updated":
-        console.warn("[voice] session.updated received");
         this.trace("SESSION", "updated");
-        break;
-      case "error":
-        console.warn("[voice] ERROR from server:", JSON.stringify(event.error ?? event));
         break;
 
       case "response.output_item.done": {
@@ -837,14 +822,18 @@ export class RealtimeVoiceSession {
         const delta = (event as { delta?: string }).delta;
         if (delta) {
           this.assistantTranscriptBuffer += delta;
+          this.emit({
+            type: "assistant-transcript",
+            text: delta,
+            isFinal: false,
+          });
         }
         break;
       }
 
       case "response.audio_transcript.done":
       case "response.output_audio_transcript.done": {
-        const raw = (event as { transcript?: string }).transcript;
-        const transcript = raw ? stripThinkTags(raw).trim() : "";
+        const transcript = (event as { transcript?: string }).transcript;
         if (transcript) {
           this.trace("ASSISTANT_MSG", transcript);
           this.emit({
@@ -852,14 +841,15 @@ export class RealtimeVoiceSession {
             text: transcript,
             isFinal: true,
           });
+          this.assistantTranscriptBuffer = "";
         }
-        this.assistantTranscriptBuffer = "";
         break;
       }
 
       case "conversation.item.input_audio_transcription.completed": {
         const transcript = (event as { transcript?: string }).transcript;
         if (transcript) {
+          this.lastUserTranscript = transcript;
           this.trace("USER_MSG", transcript);
           this.emit({
             type: "user-transcript",
@@ -883,7 +873,6 @@ export class RealtimeVoiceSession {
       }
 
       case "output_audio.started":
-      case "output_audio_buffer.started":
         this.assistantOutputActive = true;
         this.recentOutputActiveUntil = Date.now() + ECHO_GUARD_RELEASE_MS;
         this.startEchoGuardMonitor();
@@ -892,7 +881,6 @@ export class RealtimeVoiceSession {
         break;
 
       case "output_audio.done":
-      case "output_audio_buffer.stopped":
         this.assistantOutputActive = false;
         this.recentOutputActiveUntil = Date.now() + ECHO_GUARD_RELEASE_MS;
         this.startEchoGuardMonitor();
@@ -931,38 +919,33 @@ export class RealtimeVoiceSession {
   // ---------------------------------------------------------------------------
 
   /**
-   * Execute a tool via the generic IPC bridge. The tool call already returned
-   * an immediate acknowledgment so the voice model can keep speaking. When the
-   * tool result arrives, inject it into the conversation and trigger a
-   * follow-up response so the model speaks the result.
+   * Delegate a voice action to the orchestrator in the background.
+   * The tool call already returned a quick acknowledgment so the voice
+   * agent can speak immediately. When the orchestrator responds, inject
+   * the result and trigger a follow-up response.
    */
-  private runToolAsync(
-    toolName: string,
-    toolArgs: Record<string, unknown>,
-    callId: string,
-  ): void {
+  private runPerformActionAsync(message: string): void {
     const api = window.electronAPI?.voice;
-    if (!api?.executeTool || !this.conversationId) {
+    if (!api?.orchestratorChat || !this.conversationId) {
       console.warn(
-        "[realtime-voice] Cannot execute tool: missing IPC or conversation ID",
+        "[realtime-voice] Cannot delegate to orchestrator: missing IPC or conversation ID",
       );
       return;
     }
 
     api
-      .executeTool({
-        toolName,
-        toolArgs,
+      .orchestratorChat({
         conversationId: this.conversationId,
-        callId,
+        message,
       })
-      .then((response) => {
-        const resultText = response.error
-          ? `Tool "${toolName}" failed: ${response.error}`
-          : (response.result || "Done.");
-
-        if (!response.error && resultText === "Done.") return;
-
+      .then((reply) => {
+        const spokenResult = reply.trim();
+        window.electronAPI?.voice.persistTranscript?.({
+          conversationId: this.conversationId ?? "voice-rtc",
+          role: "assistant",
+          text: `[ORCHESTRATOR RESULT] ${spokenResult || "(empty)"}`,
+        });
+        if (!spokenResult || spokenResult === "Working on it.") return;
         this.sendEvent({
           type: "conversation.item.create",
           item: {
@@ -971,9 +954,7 @@ export class RealtimeVoiceSession {
             content: [
               {
                 type: "input_text",
-                text: response.error
-                  ? `[System: ${resultText}. Let the user know briefly.]`
-                  : `[System: Tool "${toolName}" completed. Result: ${resultText}]\n\nShare this with the user conversationally. Be concise.`,
+                text: `[System: the action completed. Here is the result to share with the user: "${spokenResult}"]`,
               },
             ],
           },
@@ -981,7 +962,7 @@ export class RealtimeVoiceSession {
         this.sendEvent({ type: "response.create" });
       })
       .catch((err) => {
-        console.error(`[realtime-voice] Tool ${toolName} error:`, err);
+        console.error("[realtime-voice] Orchestrator delegation error:", err);
         this.sendEvent({
           type: "conversation.item.create",
           item: {
@@ -990,7 +971,72 @@ export class RealtimeVoiceSession {
             content: [
               {
                 type: "input_text",
-                text: `[System: Tool "${toolName}" failed: ${(err as Error).message}. Let the user know briefly.]`,
+                text: `[System: the action failed with error: "${(err as Error).message}". Let the user know briefly.]`,
+              },
+            ],
+          },
+        });
+        this.sendEvent({ type: "response.create" });
+      });
+  }
+
+  private runWebSearchAsync(query: string, category?: string): void {
+    const api = window.electronAPI?.voice;
+    if (!api?.webSearch) {
+      console.warn("[realtime-voice] Cannot run web search: missing IPC");
+      return;
+    }
+
+    api
+      .webSearch({
+        query,
+        category,
+      })
+      .then((result) => {
+        window.electronAPI?.voice.persistTranscript?.({
+          conversationId: this.conversationId ?? "voice-rtc",
+          role: "assistant",
+          text: `[WEB SEARCH] ${query} → ${result.results.length} results`,
+        });
+
+        let resultText: string;
+        if (result.results.length === 0) {
+          resultText = `Web search for "${query}" returned no results.`;
+        } else {
+          const summary = result.results
+            .slice(0, 5)
+            .map((r) => `${r.title}: ${r.snippet}`)
+            .join("\n\n");
+          resultText = `Web search results for "${query}":\n\n${summary}`;
+        }
+
+        // Inject results into the conversation so the model knows the search finished
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `[System: ${resultText}]\n\nSummarize these results for the user conversationally. Be concise.`,
+              },
+            ],
+          },
+        });
+        this.sendEvent({ type: "response.create" });
+      })
+      .catch((err) => {
+        console.error("[realtime-voice] Web search error:", err);
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `[System: Web search failed: ${(err as Error).message}]. Let the user know briefly.`,
               },
             ],
           },
@@ -1001,7 +1047,13 @@ export class RealtimeVoiceSession {
 
   private async handleFunctionCall(item: Record<string, unknown>) {
     const name = item.name as string;
-    console.debug("[realtime-voice] handleFunctionCall:", name);
+    console.log("[realtime-voice] handleFunctionCall called with tool:", name);
+    // Forward to main process so it shows in terminal
+    window.electronAPI?.voice.persistTranscript?.({
+      conversationId: this.conversationId ?? "voice-rtc",
+      role: "assistant",
+      text: `[TOOL CALL: ${name}]`,
+    });
     const callId = item.call_id as string;
     const argsStr = item.arguments as string;
 
@@ -1018,48 +1070,71 @@ export class RealtimeVoiceSession {
 
     this.emit({ type: "tool-start", name, callId });
 
-    // ── Silent tools (no speech generated) ──────────────────────────────
-    if (name === "no_response") {
-      this.sendEvent({
-        type: "conversation.item.create",
-        item: {
-          type: "function_call_output",
-          call_id: callId,
-          output: "ok",
-        },
-      });
-      this.emit({ type: "tool-end", name, callId, result: "ok" });
-      return;
+    let result: string;
+    try {
+      if (name === "no_response") {
+        // User is still thinking — stay silent. Send tool output but
+        // do NOT trigger response.create so the model produces no speech.
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: callId,
+            output: "ok",
+          },
+        });
+        this.emit({ type: "tool-end", name, callId, result: "ok" });
+        return;
+      } else if (name === "goodbye" || name === "close") {
+        // The model already spoke its farewell before calling the tool.
+        // Stop live RTC input now, but keep the warm session/output alive.
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: callId,
+            output: "ok",
+          },
+        });
+        this.emit({ type: "tool-end", name, callId, result: "ok" });
+        this.closeRealtimeVoiceInput();
+        return;
+      } else if (name === "web_search") {
+        const query = (args.query as string) || this.lastUserTranscript || "";
+        result = "Searching now.";
+        this.runWebSearchAsync(query, args.category as string | undefined);
+      } else if (name === "perform_action") {
+        // Delegate to orchestrator. Use the user's actual transcript
+        // instead of the model's paraphrase for better fidelity.
+        const message =
+          this.lastUserTranscript || (args.message as string) || "";
+        result = "Working on it.";
+        this.runPerformActionAsync(message);
+      } else {
+        throw new Error(`Unknown tool: ${name}`);
+      }
+    } catch (err) {
+      result = `Error: ${(err as Error).message}`;
     }
 
-    if (name === "goodbye" || name === "close") {
-      this.sendEvent({
-        type: "conversation.item.create",
-        item: {
-          type: "function_call_output",
-          call_id: callId,
-          output: "ok",
-        },
-      });
-      this.emit({ type: "tool-end", name, callId, result: "ok" });
-      this.closeRealtimeVoiceInput();
-      return;
-    }
+    this.trace("TOOL_RESULT", `${name} → ${result.slice(0, 300)}`);
+    this.emit({ type: "tool-end", name, callId, result });
 
-    // ── All other tools: execute via generic IPC bridge ──────────────────
-    const ack = "Processing...";
+    // Send function call output back to the Realtime API
     this.sendEvent({
       type: "conversation.item.create",
       item: {
         type: "function_call_output",
         call_id: callId,
-        output: ack,
+        output: result,
       },
     });
-    this.trace("TOOL_RESULT", `${name} → ${ack}`);
-    this.emit({ type: "tool-end", name, callId, result: ack });
 
-    this.runToolAsync(name, args, callId);
+    // For async calls (perform_action, web_search), don't request a response here —
+    // the async handler will inject the real result and trigger response.create.
+    if (name !== "perform_action" && name !== "web_search") {
+      this.sendEvent({ type: "response.create" });
+    }
   }
 
   // ---------------------------------------------------------------------------

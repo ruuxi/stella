@@ -301,17 +301,19 @@ export type ElectronThemeApi = {
 };
 
 export type ElectronVoiceApi = {
-  executeTool: (payload: {
-    toolName: string;
-    toolArgs: Record<string, unknown>;
-    conversationId: string;
-    callId: string;
-  }) => Promise<{ result: string; error?: string }>;
   persistTranscript: (payload: {
     conversationId: string;
     role: "user" | "assistant";
     text: string;
   }) => void;
+  orchestratorChat: (payload: {
+    conversationId: string;
+    message: string;
+  }) => Promise<string>;
+  webSearch: (payload: { query: string; category?: string }) => Promise<{
+    text: string;
+    results: Array<{ title: string; url: string; snippet: string }>;
+  }>;
   getRuntimeState: () => Promise<VoiceRuntimeSnapshot>;
   onRuntimeState: (
     callback: (state: VoiceRuntimeSnapshot) => void,

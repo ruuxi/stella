@@ -46,6 +46,7 @@ import {
   type RuntimeTaskRequest,
   type RuntimeTaskSnapshot,
   type RuntimeVoiceAgentEventPayload,
+  type RuntimeVoiceChatPayload,
   type RuntimeVoiceHmrStatePayload,
   type RuntimeVoiceTranscriptPayload,
   type RuntimeWebSearchResult,
@@ -449,15 +450,20 @@ export class StellaRuntimeClient {
     );
   }
 
+  async voiceOrchestratorChat(payload: RuntimeVoiceChatPayload) {
+    return await this.requestWorker<string>(
+      METHOD_NAMES.INTERNAL_WORKER_VOICE_ORCHESTRATOR_CHAT,
+      payload,
+      {
+        ensureWorker: true,
+        recordActivity: true,
+      },
+    );
+  }
 
-  async voiceExecuteTool(payload: {
-    toolName: string;
-    toolArgs: Record<string, unknown>;
-    conversationId: string;
-    callId: string;
-  }) {
-    return await this.requestWorker<{ result: string; error?: string }>(
-      METHOD_NAMES.INTERNAL_WORKER_VOICE_EXECUTE_TOOL,
+  async voiceWebSearch(payload: { query: string; category?: string }) {
+    return await this.requestWorker<RuntimeWebSearchResult>(
+      METHOD_NAMES.INTERNAL_WORKER_VOICE_WEB_SEARCH,
       payload,
       {
         ensureWorker: true,
