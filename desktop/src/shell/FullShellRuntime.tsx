@@ -5,15 +5,15 @@ import type { ViewType } from "@/shared/contracts/ui";
 import { MiniBridgeRelay } from "@/shell/mini/MiniBridgeRelay";
 import {
   consumeOpenOrbAfterOnboarding,
-  STELLA_CLOSE_ORB_CHAT_EVENT,
-  STELLA_OPEN_ORB_CHAT_EVENT,
-  type StellaOpenOrbChatDetail,
+  STELLA_CLOSE_SIDEBAR_CHAT_EVENT,
+  STELLA_OPEN_SIDEBAR_CHAT_EVENT,
+  type StellaOpenSidebarChatDetail,
 } from "@/shared/lib/stella-orb-chat";
 import {
   dispatchStellaSendMessage,
   WORKSPACE_CREATION_TRIGGER_KIND,
 } from "@/shared/lib/stella-send-message";
-import { FloatingOrb, type FloatingOrbHandle } from "./FloatingOrb";
+import { ChatSidebar, type ChatSidebarHandle } from "./ChatSidebar";
 import { useFullShellChat } from "./use-full-shell-chat";
 
 type PendingAskStellaRequest = {
@@ -26,11 +26,10 @@ type FullShellRuntimeProps = {
   activeView: ViewType;
   composerEntering: boolean;
   conversationId: string | null;
-  isOrbVisible: boolean;
   onSignIn: () => void;
   pendingAskStellaRequest: PendingAskStellaRequest | null;
   onPendingAskStellaHandled: (requestId: number) => void;
-  onOrbChatOpenChange?: (open: boolean) => void;
+  onSidebarChatOpenChange?: (open: boolean) => void;
 };
 
 export const FullShellRuntime = ({
@@ -38,13 +37,12 @@ export const FullShellRuntime = ({
   activeView,
   composerEntering,
   conversationId,
-  isOrbVisible,
   onSignIn,
   pendingAskStellaRequest,
   onPendingAskStellaHandled,
-  onOrbChatOpenChange,
+  onSidebarChatOpenChange,
 }: FullShellRuntimeProps) => {
-  const orbRef = useRef<FloatingOrbHandle>(null);
+  const sidebarRef = useRef<ChatSidebarHandle>(null);
   const chat = useFullShellChat({
     activeConversationId,
     activeView,
@@ -62,40 +60,40 @@ export const FullShellRuntime = ({
       triggerKind: WORKSPACE_CREATION_TRIGGER_KIND,
       triggerSource: "sidebar",
     });
-    orbRef.current?.openChat();
+    sidebarRef.current?.open();
     onPendingAskStellaHandled(pendingAskStellaRequest.id);
   }, [onPendingAskStellaHandled, pendingAskStellaRequest]);
 
   useEffect(() => {
     if (consumeOpenOrbAfterOnboarding()) {
       queueMicrotask(() => {
-        orbRef.current?.openChat();
+        sidebarRef.current?.open();
       });
     }
   }, []);
 
   useEffect(() => {
-    const handleOpenOrbChat = (event: Event) => {
-      const detail = (event as CustomEvent<StellaOpenOrbChatDetail>).detail;
+    const handleOpen = (event: Event) => {
+      const detail = (event as CustomEvent<StellaOpenSidebarChatDetail>).detail;
       const chatContext = detail?.chatContext;
 
       if (chatContext === undefined) {
-        orbRef.current?.openChat();
+        sidebarRef.current?.open();
         return;
       }
 
-      orbRef.current?.openChat(chatContext ?? null);
+      sidebarRef.current?.open(chatContext ?? null);
     };
 
-    const handleCloseOrbChat = () => {
-      orbRef.current?.closeChat();
+    const handleClose = () => {
+      sidebarRef.current?.close();
     };
 
-    window.addEventListener(STELLA_OPEN_ORB_CHAT_EVENT, handleOpenOrbChat);
-    window.addEventListener(STELLA_CLOSE_ORB_CHAT_EVENT, handleCloseOrbChat);
+    window.addEventListener(STELLA_OPEN_SIDEBAR_CHAT_EVENT, handleOpen);
+    window.addEventListener(STELLA_CLOSE_SIDEBAR_CHAT_EVENT, handleClose);
     return () => {
-      window.removeEventListener(STELLA_OPEN_ORB_CHAT_EVENT, handleOpenOrbChat);
-      window.removeEventListener(STELLA_CLOSE_ORB_CHAT_EVENT, handleCloseOrbChat);
+      window.removeEventListener(STELLA_OPEN_SIDEBAR_CHAT_EVENT, handleOpen);
+      window.removeEventListener(STELLA_CLOSE_SIDEBAR_CHAT_EVENT, handleClose);
     };
   }, []);
 
@@ -124,9 +122,8 @@ export const FullShellRuntime = ({
         <SocialView onSignIn={onSignIn} />
       ) : null}
 
-      <FloatingOrb
-        ref={orbRef}
-        visible={isOrbVisible}
+      <ChatSidebar
+        ref={sidebarRef}
         events={chat.conversation.events}
         streamingText={chat.conversation.streamingText}
         reasoningText={chat.conversation.reasoningText}
@@ -138,7 +135,7 @@ export const FullShellRuntime = ({
         isInitialLoading={chat.conversation.isInitialLoading}
         onAdd={chat.composer.onAdd}
         onSend={chat.conversation.sendMessageWithContext}
-        onChatOpenChange={onOrbChatOpenChange}
+        onOpenChange={onSidebarChatOpenChange}
       />
     </>
   );

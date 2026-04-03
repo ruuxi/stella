@@ -176,6 +176,28 @@
   opacity: var(--compact-chat-assistant-streaming-opacity);
 }
 
+.chat-conversation-surface--sidebar {
+  --compact-chat-gap: 8px;
+  --compact-chat-item-padding: 10px 12px;
+  --compact-chat-font-size: 15px;
+  --compact-chat-line-height: 1.45;
+  --compact-chat-body-color: var(--text-strong);
+  --compact-chat-markdown-color: var(--text-strong);
+  --compact-chat-markdown-weight: 425;
+  --compact-chat-user-bg: color-mix(in oklch, var(--primary) 12%, transparent);
+  --compact-chat-user-radius: 14px;
+  --compact-chat-user-tail-radius: 4px;
+  --compact-chat-user-max-width: 88%;
+  --compact-chat-user-color: var(--text-strong);
+  --compact-chat-assistant-bg: color-mix(in srgb, var(--secondary) 50%, var(--background));
+  --compact-chat-assistant-border-width: 1px;
+  --compact-chat-assistant-border-color: color-mix(in oklch, var(--foreground) 8%, transparent);
+  --compact-chat-assistant-radius: 14px;
+  --compact-chat-assistant-tail-radius: 4px;
+  --compact-chat-assistant-max-width: 100%;
+  --compact-chat-assistant-streaming-opacity: 0.92;
+}
+
 .chat-conversation-surface--orb .event-item.assistant .text-shimmer {
   background-image: linear-gradient(
     90deg,

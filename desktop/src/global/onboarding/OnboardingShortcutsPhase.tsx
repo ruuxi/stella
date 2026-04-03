@@ -9,7 +9,6 @@ import {
 import {
   Camera,
   Maximize2,
-  MessageCircle,
   MessageSquare,
   Mic,
   Scan,
@@ -28,7 +27,7 @@ type ShortcutsPhaseProps = {
 };
 
 type RadialActionId = "capture" | "chat" | "full" | "voice" | "auto" | "dismiss";
-type MenuActionId = "ask-anything" | "ask-about-this" | "close";
+type MenuActionId = "open-chat";
 
 type Point = {
   x: number;
@@ -43,8 +42,6 @@ const RADIAL_DEAD_ZONE_RADIUS = 30;
 const RADIAL_CENTER_BG_RADIUS = RADIAL_INNER_RADIUS - 5;
 const RADIAL_WEDGE_ANGLE = 72;
 const SURFACE_PADDING = 28;
-const MENU_WIDTH = 264;
-const MENU_HEIGHT = 214;
 
 const RADIAL_ACTIONS: {
   id: Exclude<RadialActionId, "dismiss">;
@@ -96,35 +93,15 @@ const RADIAL_ACTIONS: {
   },
 ];
 
-const MENU_ACTIONS: {
+const MENU_ACTION: {
   id: MenuActionId;
-  label: string;
-  icon: LucideIcon;
   resultTitle: string;
   resultBody: string;
-}[] = [
-  {
-    id: "ask-anything",
-    label: "Ask Stella anything",
-    icon: MessageCircle,
-    resultTitle: "Floating chat opened",
-    resultBody: "Use this when you just want Stella without attaching any nearby context.",
-  },
-  {
-    id: "ask-about-this",
-    label: "Ask about this card",
-    icon: Scan,
-    resultTitle: "Context attached",
-    resultBody: "Stella captures the thing you hovered and opens chat with that content already in view.",
-  },
-  {
-    id: "close",
-    label: "Close",
-    icon: X,
-    resultTitle: "Quick chat closed",
-    resultBody: "If Stella is already open, this dismisses it right from the hold menu.",
-  },
-];
+} = {
+  id: "open-chat",
+  resultTitle: "Chat sidebar opened",
+  resultBody: "Right-click anywhere inside Stella to open the chat sidebar. If it\u2019s already open, right-click again to close it.",
+};
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
@@ -201,16 +178,13 @@ export function OnboardingShortcutsPhase({
     platform === "darwin" ? "Cmd + right click" : "Ctrl + right click";
   const radialSurfaceRef = useRef<HTMLDivElement | null>(null);
   const menuSurfaceRef = useRef<HTMLDivElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const [radialOpen, setRadialOpen] = useState(false);
   const [radialAnchor, setRadialAnchor] = useState<Point>({ x: 0, y: 0 });
   const [radialSelected, setRadialSelected] = useState<RadialActionId>("dismiss");
   const [radialResult, setRadialResult] = useState<Exclude<RadialActionId, "dismiss"> | null>(null);
 
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<Point>({ x: 0, y: 0 });
-  const [menuHovered, setMenuHovered] = useState<MenuActionId | null>(null);
+  const [menuSidebarOpen, setMenuSidebarOpen] = useState(false);
   const [menuResult, setMenuResult] = useState<MenuActionId | null>(null);
 
   // Capture region selection state
@@ -218,22 +192,17 @@ export function OnboardingShortcutsPhase({
   const [captureStart, setCaptureStart] = useState<Point>({ x: 0, y: 0 });
   const [captureEnd, setCaptureEnd] = useState<Point>({ x: 0, y: 0 });
 
-  const gestureModeRef = useRef<"idle" | "radial" | "menu">("idle");
+  const gestureModeRef = useRef<"idle" | "radial">("idle");
 
   const radialResultCard = useMemo(
     () => RADIAL_ACTIONS.find((action) => action.id === radialResult) ?? null,
     [radialResult],
   );
-  const menuResultCard = useMemo(
-    () => MENU_ACTIONS.find((action) => action.id === menuResult) ?? null,
-    [menuResult],
-  );
+  const menuResultCard = menuResult ? MENU_ACTION : null;
 
   const closeGesture = useCallback(() => {
     gestureModeRef.current = "idle";
     setRadialOpen(false);
-    setMenuOpen(false);
-    setMenuHovered(null);
     setRadialSelected("dismiss");
   }, []);
 
@@ -254,31 +223,6 @@ export function OnboardingShortcutsPhase({
         setRadialSelected(
           getRadialAction({ x: event.clientX, y: event.clientY }, center),
         );
-        return;
-      }
-
-      if (gestureModeRef.current === "menu") {
-        const menu = menuRef.current;
-        if (!menu) {
-          return;
-        }
-
-        const items = menu.querySelectorAll<HTMLElement>("[data-menu-id]");
-        let hoveredId: MenuActionId | null = null;
-        for (const item of items) {
-          const rect = item.getBoundingClientRect();
-          if (
-            event.clientX >= rect.left &&
-            event.clientX <= rect.right &&
-            event.clientY >= rect.top &&
-            event.clientY <= rect.bottom
-          ) {
-            hoveredId = item.dataset.menuId as MenuActionId;
-            break;
-          }
-        }
-
-        setMenuHovered(hoveredId);
       }
     };
 
@@ -290,10 +234,6 @@ export function OnboardingShortcutsPhase({
       if (gestureModeRef.current === "radial") {
         if (radialSelected !== "dismiss") {
           setRadialResult(radialSelected);
-        }
-      } else if (gestureModeRef.current === "menu") {
-        if (menuHovered) {
-          setMenuResult(menuHovered);
         }
       }
 
@@ -315,7 +255,7 @@ export function OnboardingShortcutsPhase({
       window.removeEventListener("mouseup", handleMouseUp);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [closeGesture, menuHovered, radialAnchor.x, radialAnchor.y, radialSelected]);
+  }, [closeGesture, radialAnchor.x, radialAnchor.y, radialSelected]);
 
   // Activate capture mode when "capture" is selected from radial
   useEffect(() => {
@@ -403,35 +343,15 @@ export function OnboardingShortcutsPhase({
     setRadialOpen(true);
   }, []);
 
-  const handleMenuMouseDown = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-    if (event.button !== 2) {
-      return;
-    }
-
+  const handleMenuContextMenu = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
-
-    const surface = menuSurfaceRef.current;
-    if (!surface) {
-      return;
-    }
-
-    const rect = surface.getBoundingClientRect();
-    const localX = clamp(
-      event.clientX - rect.left + 12,
-      14,
-      rect.width - MENU_WIDTH - 14,
-    );
-    const localY = clamp(
-      event.clientY - rect.top - MENU_HEIGHT / 2,
-      14,
-      rect.height - MENU_HEIGHT - 14,
-    );
-
-    gestureModeRef.current = "menu";
-    setMenuPosition({ x: localX, y: localY });
-    setMenuHovered(null);
-    setMenuResult(null);
-    setMenuOpen(true);
+    setMenuSidebarOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setMenuResult("open-chat");
+      }
+      return next;
+    });
   }, []);
 
   const finishVisible = mode === "global" ? radialResult !== null : menuResult !== null;
@@ -784,10 +704,10 @@ export function OnboardingShortcutsPhase({
           <section className="onboarding-shortcut-demo">
           <div className="onboarding-shortcut-demo__copy">
             <span className="onboarding-step-label">How to use Stella inside the app</span>
-            <h3 className="onboarding-shortcut-demo__title">Right-click hold for the context menu</h3>
+            <h3 className="onboarding-shortcut-demo__title">Right-click to open chat</h3>
             <p className="onboarding-step-subdesc">
-              Hold right-click on any card, note, or content inside Stella to
-              get quick actions without leaving what you&apos;re doing.
+              Right-click anywhere inside Stella to open the chat sidebar.
+              Right-click again to close it.
             </p>
           </div>
 
@@ -796,8 +716,7 @@ export function OnboardingShortcutsPhase({
             className="onboarding-shortcut-surface onboarding-shortcut-surface--menu"
             data-testid="shortcuts-menu-surface"
             data-menu-result={menuResult ?? undefined}
-            onMouseDown={handleMenuMouseDown}
-            onContextMenu={(event) => event.preventDefault()}
+            onContextMenu={handleMenuContextMenu}
           >
             <div className="onboarding-shortcut-app">
               <div className="onboarding-shortcut-app__sidebar">
@@ -812,12 +731,7 @@ export function OnboardingShortcutsPhase({
                 <div className="onboarding-shortcut-app__header">
                   <strong>Project notes</strong>
                 </div>
-                <div
-                  className="onboarding-shortcut-context-card"
-                  data-highlighted={
-                    menuOpen && menuHovered === "ask-about-this" ? "true" : undefined
-                  }
-                >
+                <div className="onboarding-shortcut-context-card">
                   <div className="onboarding-shortcut-context-card__eyebrow">
                     Sprint planning
                   </div>
@@ -843,101 +757,33 @@ export function OnboardingShortcutsPhase({
                   </p>
                 </div>
               </div>
+
+              {menuSidebarOpen && (
+                <div className="onboarding-shortcut-sidebar-demo">
+                  <div className="onboarding-shortcut-sidebar-demo__header">
+                    <span>Stella</span>
+                    <X size={11} />
+                  </div>
+                  <div className="onboarding-shortcut-sidebar-demo__messages">
+                    <div className="scene-effect__mini-shell-msg scene-effect__mini-shell-msg--assistant">
+                      I can see your sprint planning card. What would you like to know?
+                    </div>
+                    <div className="scene-effect__mini-shell-msg scene-effect__mini-shell-msg--user">
+                      Break down the remaining tasks
+                    </div>
+                    <div className="scene-effect__mini-shell-msg scene-effect__mini-shell-msg--assistant">
+                      Here are the key tasks before the June 15 deadline: finalize dashboard layout, confirm API deadlines, and coordinate with design.
+                    </div>
+                  </div>
+                  <div className="onboarding-shortcut-sidebar-demo__composer">
+                    <span>Ask Stella...</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="onboarding-shortcut-hint onboarding-shortcut-hint--left">
-              Hold right click over a card
-            </div>
-
-            {menuOpen ? (
-              <div
-                ref={menuRef}
-                className="onboarding-shortcut-menu"
-                data-testid="shortcuts-menu"
-                style={{
-                  left: menuPosition.x,
-                  top: menuPosition.y,
-                }}
-              >
-                {MENU_ACTIONS.map((action) => {
-                  const Icon = action.icon;
-                  const isHovered = menuHovered === action.id;
-
-                  return (
-                    <div
-                      key={action.id}
-                      data-menu-id={action.id}
-                      className="onboarding-shortcut-menu__item"
-                      data-hovered={isHovered || undefined}
-                    >
-                      <span className="onboarding-shortcut-menu__icon">
-                        <Icon size={18} strokeWidth={1.8} />
-                      </span>
-                      <span className="onboarding-shortcut-menu__label">
-                        {action.label}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-
-            {/* Per-action visual effects */}
-            <div className="onboarding-shortcut-menu-effects" aria-hidden="true">
-              {/* Ask anything: floating orb chat */}
-              <div className="menu-effect menu-effect--ask-anything">
-                <div className="scene-effect__mini-shell menu-effect__shell">
-                  <div className="scene-effect__mini-shell-bar">
-                    <span>Stella</span>
-                    <div className="scene-effect__mini-shell-actions">
-                      <Maximize2 size={11} />
-                      <X size={11} />
-                    </div>
-                  </div>
-                  <div className="scene-effect__mini-shell-messages">
-                    <div className="scene-effect__mini-shell-msg scene-effect__mini-shell-msg--assistant">
-                      What can I help you with?
-                    </div>
-                  </div>
-                  <div className="scene-effect__mini-shell-composer">
-                    <span>Ask anything...</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Ask about this: chat with context */}
-              <div className="menu-effect menu-effect--ask-about-this">
-                <div className="scene-effect__mini-shell menu-effect__shell">
-                  <div className="scene-effect__mini-shell-bar">
-                    <span>Stella</span>
-                    <div className="scene-effect__mini-shell-actions">
-                      <Maximize2 size={11} />
-                      <X size={11} />
-                    </div>
-                  </div>
-                  <div className="scene-effect__mini-shell-messages">
-                    <div className="menu-effect__context-badge">
-                      <Scan size={11} />
-                      <span>Q2 launch prep</span>
-                    </div>
-                    <div className="scene-effect__mini-shell-msg scene-effect__mini-shell-msg--assistant">
-                      I can see your sprint planning card. The June 15 deadline is
-                      tight — want me to help break down the remaining tasks?
-                    </div>
-                  </div>
-                  <div className="scene-effect__mini-shell-composer">
-                    <span>Ask about this card...</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Close: dismiss animation */}
-              <div className="menu-effect menu-effect--close">
-                <div className="menu-effect__dismiss-indicator">
-                  <X size={16} />
-                  <span>Dismissed</span>
-                </div>
-              </div>
+              Right-click to {menuSidebarOpen ? "close" : "open"} chat
             </div>
           </div>
           </section>

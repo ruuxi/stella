@@ -6,7 +6,7 @@ import { ConversationEvents } from "./ConversationEvents";
 import "./full-shell.chat.css";
 import "./compact-conversation.css";
 
-type CompactConversationVariant = "mini" | "orb";
+type CompactConversationVariant = "mini" | "orb" | "sidebar";
 
 type CompactConversationSurfaceProps = {
   className: string;
