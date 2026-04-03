@@ -5,12 +5,6 @@
    single-column layout with the sidebar as a slide-over drawer.
    ================================================================ */
 
-/* ── Hide desktop window chrome ───────────────────────────────── */
-
-[data-platform="mobile"] .title-bar {
-  display: none;
-}
-
 /* ── Sidebar → slide-over drawer ──────────────────────────────── */
 
 [data-platform="mobile"] .sidebar {
