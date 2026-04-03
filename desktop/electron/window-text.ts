@@ -1,5 +1,6 @@
 import { getWindowInfoAtPoint } from './window-capture.js'
 import { runNativeHelper } from './native-helper.js'
+import { hasMacPermission } from './utils/macos-permissions.js'
 
 const TIMEOUT_MS = 6000
 const MAX_TEXT_LENGTH = 16000
@@ -18,6 +19,8 @@ export async function getWindowText(
   y: number,
   options?: { excludePids?: number[] },
 ): Promise<{ text: string; title: string; app: string } | null> {
+  if (!hasMacPermission('accessibility')) return null
+
   const windowInfo = await getWindowInfoAtPoint(x, y, options)
   if (!windowInfo) return null
 

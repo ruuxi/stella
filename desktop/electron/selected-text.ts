@@ -1,4 +1,5 @@
 import { runNativeHelper } from './native-helper.js'
+import { hasMacPermission } from './utils/macos-permissions.js'
 
 const TIMEOUT_MS = 1000
 
@@ -17,6 +18,8 @@ export const cleanupSelectedTextProcess = (): void => {}
  * Uses UI Automation TextPattern.GetSelection (Windows) or AXSelectedText (macOS).
  */
 export const getSelectedText = async (): Promise<string | null> => {
+  if (!hasMacPermission('accessibility')) return null
+
   return runNativeHelper('selected_text', [], {
     timeout: TIMEOUT_MS,
     maxBuffer: 512 * 1024,
