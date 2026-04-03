@@ -9,6 +9,11 @@
 import fs from "fs";
 import path from "path";
 import { ensurePrivateDirSync, writePrivateFileSync } from "../shared/private-fs.js";
+import {
+  DEFAULT_RADIAL_TRIGGER_CODE,
+  normalizeRadialTriggerCode,
+  type RadialTriggerCode,
+} from "../../../src/shared/lib/radial-trigger.js";
 
 type AgentEngine = "default" | "claude_code_local";
 
@@ -29,6 +34,8 @@ export type LocalPreferences = {
   maxAgentConcurrency: number;
   /** Sync mode: "on" | "off". Defaults to off so cloud persistence is opt-in. */
   syncMode: "on" | "off";
+  /** Hold key used to open the radial dial. */
+  radialTriggerKey: RadialTriggerCode;
 };
 
 const DEFAULT_MAX_AGENT_CONCURRENCY = 24;
@@ -42,6 +49,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   selfModAgentEngine: "default",
   maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
   syncMode: "off",
+  radialTriggerKey: DEFAULT_RADIAL_TRIGGER_CODE,
 };
 
 let _cached: LocalPreferences | null = null;
@@ -72,6 +80,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       selfModAgentEngine: normalizeEngine(parsed.selfModAgentEngine),
       maxAgentConcurrency: normalizeConcurrency(parsed.maxAgentConcurrency),
       syncMode: parsed.syncMode === "on" ? "on" : "off",
+      radialTriggerKey: normalizeRadialTriggerCode(parsed.radialTriggerKey),
     };
     _cached = prefs;
     _cachedMtime = stat.mtimeMs;

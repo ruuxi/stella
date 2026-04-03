@@ -87,6 +87,9 @@ export const registerBootstrapIpcHandlers = (
       await stopMobileBridge(context);
       return { ok: true };
     },
+    setRadialTriggerKey: (triggerKey) => {
+      services.radialGestureService.setRadialTriggerKey(triggerKey);
+    },
   });
 
   registerScheduleHandlers({

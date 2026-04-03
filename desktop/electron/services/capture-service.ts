@@ -26,7 +26,6 @@ export type CaptureWindowBridge = {
 
 export type CaptureOverlayBridge = {
   hideRadial: () => void
-  hideModifierBlock: () => void
   startRegionCapture: () => void
   endRegionCapture: () => void
   getOverlayBounds: () => { x: number; y: number; width: number; height: number } | null
@@ -353,7 +352,6 @@ export class CaptureService {
    */
   private async withCaptureContext<T>(fn: () => Promise<T>): Promise<T> {
     this.options.overlay.hideRadial()
-    this.options.overlay.hideModifierBlock()
     this.options.overlay.endRegionCapture()
     const miniWasConcealed = this.options.window.concealMiniWindowForCapture()
 
@@ -456,7 +454,7 @@ export class CaptureService {
 
     const dipX = regionBounds.x + point.x
     const dipY = regionBounds.y + point.y
-    const { display: clickDisplay, scaleFactor, x: screenX, y: screenY } =
+    const { scaleFactor, x: screenX, y: screenY } =
       this.toNativeScreenPoint({ x: dipX, y: dipY })
 
     const capture = await captureWindowScreenshot(screenX, screenY, { excludePids: [process.pid] })

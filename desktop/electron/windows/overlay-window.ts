@@ -178,14 +178,13 @@ class OverlayWindow {
       } else {
         this.window.show()
       }
-    } else {
-      // The window is already visible (fadeOut only zeroes opacity, it never
-      // calls hide()). Re-read the actual content origin so overlay-local
-      // coordinates stay correct — macOS can silently reposition windows
-      // (e.g. to accommodate the menu bar or notch).
-      const cb = this.window.getContentBounds()
-      this.overlayOrigin = { x: cb.x, y: cb.y }
     }
+    // Re-read the actual content origin after showing so overlay-local
+    // coordinates stay correct. macOS can silently reposition windows
+    // (for example around the menu bar or notch), which otherwise leaves
+    // first-open surfaces slightly offset from the cursor.
+    const cb = this.window.getContentBounds()
+    this.overlayOrigin = { x: cb.x, y: cb.y }
     // Use 0.99 instead of 1 so Chrome's occlusion tracker doesn't consider
     // this window as fully opaque (alpha < 255 = not occluding). Without this,
     // Chrome stops rendering video when the overlay becomes visible.
@@ -246,7 +245,7 @@ class OverlayWindow {
 
 /**
  * Orchestrates overlay components (Radial Dial, Region Capture, Mini Shell,
- * Voice Overlay, modifier-block) within the overlay window. Delegates
+ * Voice Overlay) within the overlay window. Delegates
  * window lifecycle to OverlayWindow.
  */
 export type MorphTransitionFlavor = 'hmr' | 'onboarding'
@@ -261,7 +260,6 @@ export class OverlayWindowController {
   }
 
   // Active component tracking — overlay stays visible when any component is active.
-  private activeModifierBlock = false
   private activeRadial = false
   private activeRegionCapture = false
   private activeMini = false
@@ -299,7 +297,7 @@ export class OverlayWindowController {
   }
 
   private get isAnyActive() {
-    return this.activeModifierBlock || this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeAutoPanel || this.activeMorph
+    return this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeAutoPanel || this.activeMorph
   }
 
   private hideOverlayIfIdle() {
@@ -348,31 +346,6 @@ export class OverlayWindowController {
     }
     this.overlayWindow.send(options.channel, options.payload)
     this.hideOverlayIfIdle()
-  }
-
-  // ─── Modifier Block ──────────────────────────────────────────────────
-
-  showModifierBlock() {
-    this.showSurface({
-      setActive: () => {
-        this.activeModifierBlock = true
-      },
-      channel: 'overlay:modifierBlock',
-      payload: true,
-      showOptions: { inactive: true },
-      interactive: true,
-    })
-  }
-
-  hideModifierBlock() {
-    this.hideSurface({
-      setInactive: () => {
-        this.activeModifierBlock = false
-      },
-      channel: 'overlay:modifierBlock',
-      payload: false,
-      restoreIgnoreMouseEvents: true,
-    })
   }
 
   // ─── Radial Dial ──────────────────────────────────────────────────────

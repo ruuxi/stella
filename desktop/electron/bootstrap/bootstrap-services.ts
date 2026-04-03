@@ -9,6 +9,8 @@ import { RadialGestureService } from "../services/radial-gesture-service.js";
 import { SecurityPolicyService } from "../services/security-policy-service.js";
 import { UiStateService } from "../services/ui-state-service.js";
 import { getDevServerUrl } from "../dev-url.js";
+import { loadLocalPreferences } from "../../packages/runtime-kernel/preferences/local-preferences.js";
+import { DEFAULT_RADIAL_TRIGGER_CODE } from "../../src/shared/lib/radial-trigger.js";
 import type {
   BootstrapConfig,
   BootstrapServices,
@@ -60,7 +62,6 @@ export const createBootstrapServices = (
     },
     overlay: {
       hideRadial: () => state.overlayController?.hideRadial(),
-      hideModifierBlock: () => state.overlayController?.hideModifierBlock(),
       startRegionCapture: () => state.overlayController?.startRegionCapture(),
       endRegionCapture: () => state.overlayController?.endRegionCapture(),
       getOverlayBounds: () =>
@@ -86,6 +87,13 @@ export const createBootstrapServices = (
 
   const radialGestureService = new RadialGestureService({
     isAppReady: () => state.appReady,
+    getRadialTriggerKey: () => {
+      const stellaHomePath = state.stellaHomePath;
+      if (!stellaHomePath) {
+        return DEFAULT_RADIAL_TRIGGER_CODE;
+      }
+      return loadLocalPreferences(stellaHomePath).radialTriggerKey;
+    },
     capture: {
       cancelRadialContextCapture: () =>
         captureService.cancelRadialContextCapture(),
@@ -105,8 +113,6 @@ export const createBootstrapServices = (
       broadcastChatContext: () => captureService.broadcastChatContext(),
     },
     overlay: {
-      showModifierBlock: () => state.overlayController?.showModifierBlock(),
-      hideModifierBlock: () => state.overlayController?.hideModifierBlock(),
       showRadial: () => state.overlayController?.showRadial(),
       hideRadial: () => state.overlayController?.hideRadial(),
       updateRadialCursor: () => state.overlayController?.updateRadialCursor(),

@@ -17,7 +17,10 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { getPlatform } from "@/platform/electron/platform";
+import {
+  DEFAULT_RADIAL_TRIGGER_CODE,
+  getRadialTriggerLabel,
+} from "@/shared/lib/radial-trigger";
 import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
 
 type ShortcutsPhaseProps = {
@@ -173,9 +176,11 @@ export function OnboardingShortcutsPhase({
   splitTransitionActive,
   onFinish,
 }: ShortcutsPhaseProps) {
-  const platform = getPlatform();
-  const radialTriggerLabel =
-    platform === "darwin" ? "Cmd + right click" : "Ctrl + right click";
+  const platform = window.electronAPI?.platform;
+  const radialTriggerLabel = getRadialTriggerLabel(
+    DEFAULT_RADIAL_TRIGGER_CODE,
+    platform,
+  );
   const radialSurfaceRef = useRef<HTMLDivElement | null>(null);
   const menuSurfaceRef = useRef<HTMLDivElement | null>(null);
 
@@ -234,6 +239,7 @@ export function OnboardingShortcutsPhase({
       if (gestureModeRef.current === "radial") {
         if (radialSelected !== "dismiss") {
           setRadialResult(radialSelected);
+          setCapturePhase(radialSelected === "capture" ? "ready" : "idle");
         }
       }
 
@@ -256,15 +262,6 @@ export function OnboardingShortcutsPhase({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [closeGesture, radialAnchor.x, radialAnchor.y, radialSelected]);
-
-  // Activate capture mode when "capture" is selected from radial
-  useEffect(() => {
-    if (radialResult === "capture" && capturePhase === "idle") {
-      setCapturePhase("ready");
-    } else if (radialResult !== "capture") {
-      setCapturePhase("idle");
-    }
-  }, [radialResult, capturePhase]);
 
   const handleCaptureMouseDown = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     if (capturePhase !== "ready" || event.button !== 0) return;
@@ -340,6 +337,7 @@ export function OnboardingShortcutsPhase({
     setRadialAnchor({ x: localX, y: localY });
     setRadialSelected("dismiss");
     setRadialResult(null);
+    setCapturePhase("idle");
     setRadialOpen(true);
   }, []);
 
@@ -371,7 +369,7 @@ export function OnboardingShortcutsPhase({
             <span className="onboarding-step-label">How to use Stella on your computer</span>
             <h3 className="onboarding-shortcut-demo__title">{radialTriggerLabel} for the radial dial</h3>
             <p className="onboarding-step-subdesc">
-              Hold the modifier, drag through the wedge you want, then release.
+              Hold the trigger key, drag through the wedge you want, then release.
               This mirrors Stella&apos;s system-level quick gesture.
             </p>
           </div>

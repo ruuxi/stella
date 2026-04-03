@@ -4,6 +4,7 @@ import { RADIAL_SIZE } from '../layout-constants.js'
 import { MouseHookManager } from '../input/mouse-hook.js'
 import { calculateSelectedWedge, type RadialWedge } from '../radial-wedge.js'
 import type { ChatContext } from '../../src/shared/contracts/boundary.js'
+import type { RadialTriggerCode } from '../../src/shared/lib/radial-trigger.js'
 
 export type RadialCaptureBridge = {
   cancelRadialContextCapture: () => void
@@ -24,9 +25,7 @@ export type RadialCaptureBridge = {
 }
 
 export type RadialOverlayBridge = {
-  showModifierBlock: () => void
-  hideModifierBlock: () => void
-  showRadial: (x: number, y: number) => void
+  showRadial: () => void
   hideRadial: () => void
   updateRadialCursor: (x: number, y: number) => void
   getRadialBounds: () => { x: number; y: number } | null
@@ -46,6 +45,7 @@ export type RadialWindowBridge = {
 
 type RadialGestureDeps = {
   isAppReady: () => boolean
+  getRadialTriggerKey: () => RadialTriggerCode
   capture: RadialCaptureBridge
   overlay: RadialOverlayBridge
   window: RadialWindowBridge
@@ -57,10 +57,12 @@ export class RadialGestureService {
   private selectionCommitted = false
   private startedWithMiniVisible = false
   private contextBeforeGesture: ChatContext | null = null
+  private radialTriggerKey: RadialTriggerCode
   private readonly deps: RadialGestureDeps
 
   constructor(deps: RadialGestureDeps) {
     this.deps = deps
+    this.radialTriggerKey = deps.getRadialTriggerKey()
   }
 
   private async handleSelection(wedge: RadialWedge) {
@@ -85,7 +87,6 @@ export class RadialGestureService {
         capture.cancelRadialContextCapture()
         updateUiState({ mode: 'chat' })
         overlay.hideRadial()
-        overlay.hideModifierBlock()
         const miniWasConcealed = win.concealMiniWindowForCapture()
         const regionCapture = await capture.startRegionCapture()
         if (regionCapture && (regionCapture.screenshot || regionCapture.window)) {
@@ -183,31 +184,10 @@ export class RadialGestureService {
 
   start() {
     const { isAppReady, capture, overlay, window: win } = this.deps
+    this.radialTriggerKey = this.deps.getRadialTriggerKey()
 
     this.mouseHook = new MouseHookManager({
-      onModifierDown: () => {
-        if (process.platform === 'darwin') {
-          overlay.showModifierBlock()
-        }
-      },
-      onModifierUp: () => {
-        if (
-          !win.isMiniShowing() &&
-          !win.hasPendingMiniShow() &&
-          !capture.hasPendingRadialCapture()
-        ) {
-          capture.clearTransientContext()
-        }
-        if (process.platform === 'darwin') {
-          if (!this.mouseHook?.isRadialActive()) {
-            overlay.hideModifierBlock()
-          }
-        }
-      },
-      onLeftClick: () => {
-        // Mini shell no longer auto-hides on external click.
-      },
-      onRadialShow: (x: number, y: number) => {
+      onRadialShow: () => {
         if (!isAppReady()) return
 
         this.startedWithMiniVisible = win.isMiniShowing()
@@ -224,9 +204,9 @@ export class RadialGestureService {
         }
 
         this.selectionCommitted = false
-        overlay.showRadial(x, y)
-        overlay.showModifierBlock()
-        capture.captureRadialContext(x, y, this.contextBeforeGesture)
+        overlay.showRadial()
+        const cursorPoint = screen.getCursorScreenPoint()
+        capture.captureRadialContext(cursorPoint.x, cursorPoint.y, this.contextBeforeGesture)
       },
       onRadialHide: () => {
         if (!this.selectionCommitted) {
@@ -242,12 +222,11 @@ export class RadialGestureService {
         }
         this.selectionCommitted = false
         overlay.hideRadial()
-        overlay.hideModifierBlock()
       },
       onMouseMove: (x: number, y: number) => {
         overlay.updateRadialCursor(x, y)
       },
-      onMouseUp: () => {
+      onTriggerUp: () => {
         const radialBounds = overlay.getRadialBounds()
         if (!radialBounds) {
           return
@@ -266,7 +245,7 @@ export class RadialGestureService {
         this.selectionCommitted = true
         void this.handleSelection(wedge)
       },
-    })
+    }, this.radialTriggerKey)
 
     this.mouseHook.start()
   }
@@ -276,5 +255,10 @@ export class RadialGestureService {
       this.mouseHook.stop()
       this.mouseHook = null
     }
+  }
+
+  setRadialTriggerKey(radialTriggerKey: RadialTriggerCode) {
+    this.radialTriggerKey = radialTriggerKey
+    this.mouseHook?.setRadialTriggerKey(radialTriggerKey)
   }
 }

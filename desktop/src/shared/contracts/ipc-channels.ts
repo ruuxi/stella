@@ -59,7 +59,6 @@ export const IPC_RADIAL_CURSOR = "radial:cursor" as const;
 // ── Overlay ─────────────────────────────────────────────────────────────────
 
 export const IPC_OVERLAY_SET_INTERACTIVE = "overlay:setInteractive" as const;
-export const IPC_OVERLAY_MODIFIER_BLOCK = "overlay:modifierBlock" as const;
 export const IPC_OVERLAY_START_REGION_CAPTURE = "overlay:startRegionCapture" as const;
 export const IPC_OVERLAY_END_REGION_CAPTURE = "overlay:endRegionCapture" as const;
 export const IPC_OVERLAY_SHOW_MINI = "overlay:showMini" as const;
@@ -142,6 +141,8 @@ export const IPC_SHELL_KILL_BY_PORT = "shell:killByPort" as const;
 export const IPC_PREFERENCES_GET_SYNC_MODE = "preferences:getSyncMode" as const;
 export const IPC_PREFERENCES_SET_SYNC_MODE = "preferences:setSyncMode" as const;
 export const IPC_PREFERENCES_SYNC_MODELS = "preferences:syncLocalModelPreferences" as const;
+export const IPC_PREFERENCES_GET_RADIAL_TRIGGER = "preferences:getRadialTrigger" as const;
+export const IPC_PREFERENCES_SET_RADIAL_TRIGGER = "preferences:setRadialTrigger" as const;
 export const IPC_LLM_CREDENTIALS_LIST = "llmCredentials:list" as const;
 export const IPC_LLM_CREDENTIALS_SAVE = "llmCredentials:save" as const;
 export const IPC_LLM_CREDENTIALS_DELETE = "llmCredentials:delete" as const;

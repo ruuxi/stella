@@ -20,8 +20,18 @@ import {
 import type { RuntimeSocialSessionStatus } from "../../packages/runtime-protocol/index.js";
 import { isRuntimeUnavailableError } from "../../packages/runtime-protocol/rpc-peer.js";
 import {
+  DEFAULT_RADIAL_TRIGGER_CODE,
+  normalizeRadialTriggerCode,
+  type RadialTriggerCode,
+} from "../../src/shared/lib/radial-trigger.js";
+import {
   IPC_SOCIAL_SESSIONS_CREATE,
   IPC_SOCIAL_SESSIONS_GET_STATUS,
+  IPC_PREFERENCES_GET_RADIAL_TRIGGER,
+  IPC_PREFERENCES_GET_SYNC_MODE,
+  IPC_PREFERENCES_SET_RADIAL_TRIGGER,
+  IPC_PREFERENCES_SET_SYNC_MODE,
+  IPC_PREFERENCES_SYNC_MODELS,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
 } from "../../src/shared/contracts/ipc-channels.js";
@@ -59,6 +69,7 @@ type SystemHandlersOptions = {
     | null;
   startPhoneAccessSession: () => { ok: boolean };
   stopPhoneAccessSession: () => Promise<{ ok: boolean }>;
+  setRadialTriggerKey: (triggerKey: RadialTriggerCode) => void;
 };
 
 const asTrimmedString = (value: unknown) =>
@@ -446,11 +457,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     },
   );
 
-  ipcMain.handle("preferences:getSyncMode", (event) => {
+  ipcMain.handle(IPC_PREFERENCES_GET_SYNC_MODE, (event) => {
     if (
       !options.externalLinkService.assertPrivilegedSender(
         event,
-        "preferences:getSyncMode",
+        IPC_PREFERENCES_GET_SYNC_MODE,
       )
     ) {
       throw new Error("Blocked untrusted preferences:getSyncMode request.");
@@ -460,11 +471,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     return getSyncMode(stellaHomePath);
   });
 
-  ipcMain.handle("preferences:setSyncMode", (event, mode: string) => {
+  ipcMain.handle(IPC_PREFERENCES_SET_SYNC_MODE, (event, mode: string) => {
     if (
       !options.externalLinkService.assertPrivilegedSender(
         event,
-        "preferences:setSyncMode",
+        IPC_PREFERENCES_SET_SYNC_MODE,
       )
     ) {
       throw new Error("Blocked untrusted preferences:setSyncMode request.");
@@ -476,8 +487,45 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     saveLocalPreferences(stellaHomePath, prefs);
   });
 
+  ipcMain.handle(IPC_PREFERENCES_GET_RADIAL_TRIGGER, (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_GET_RADIAL_TRIGGER,
+      )
+    ) {
+      throw new Error("Blocked untrusted preferences:getRadialTrigger request.");
+    }
+    const stellaHomePath = options.getStellaHomePath();
+    if (!stellaHomePath) return DEFAULT_RADIAL_TRIGGER_CODE;
+    return loadLocalPreferences(stellaHomePath).radialTriggerKey;
+  });
+
   ipcMain.handle(
-    "preferences:syncLocalModelPreferences",
+    IPC_PREFERENCES_SET_RADIAL_TRIGGER,
+    (event, triggerKey: string) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_PREFERENCES_SET_RADIAL_TRIGGER,
+        )
+      ) {
+        throw new Error("Blocked untrusted preferences:setRadialTrigger request.");
+      }
+      const nextTriggerKey = normalizeRadialTriggerCode(triggerKey);
+      const stellaHomePath = options.getStellaHomePath();
+      if (stellaHomePath) {
+        const prefs = loadLocalPreferences(stellaHomePath);
+        prefs.radialTriggerKey = nextTriggerKey;
+        saveLocalPreferences(stellaHomePath, prefs);
+      }
+      options.setRadialTriggerKey(nextTriggerKey);
+      return { triggerKey: nextTriggerKey };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_PREFERENCES_SYNC_MODELS,
     (
       event,
       payload: {
@@ -492,7 +540,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       if (
         !options.externalLinkService.assertPrivilegedSender(
           event,
-          "preferences:syncLocalModelPreferences",
+          IPC_PREFERENCES_SYNC_MODELS,
         )
       ) {
         throw new Error(

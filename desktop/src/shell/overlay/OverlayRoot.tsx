@@ -18,7 +18,7 @@ import "./overlays.css";
  * OverlayRoot manages the unified transparent overlay window.
  *
  * All overlay components (Radial Dial, Region Capture, Mini Shell, and
- * modifier-block behavior) live as absolutely-positioned children.
+ * floating overlay behavior) live as absolutely-positioned children.
  * The overlay window is hidden when idle and only shown when a component
  * activates, preventing it from blocking interaction with windows below.
  *
@@ -36,7 +36,6 @@ type AutoPanelData = {
 };
 
 type OverlayState = {
-  modifierBlock: boolean;
   radialVisible: boolean;
   radialPosition: { x: number; y: number } | null;
   regionCaptureActive: boolean;
@@ -51,7 +50,6 @@ type OverlayState = {
 type OverlayAction =
   | { type: "radial:show"; position?: { x: number; y: number } }
   | { type: "radial:hide" }
-  | { type: "modifier"; active: boolean }
   | { type: "region"; active: boolean }
   | { type: "mini:show"; position: { x: number; y: number } }
   | { type: "mini:hide" }
@@ -71,7 +69,6 @@ function isSamePosition(
 }
 
 const initialState: OverlayState = {
-  modifierBlock: false,
   radialVisible: false,
   radialPosition: null,
   regionCaptureActive: false,
@@ -100,10 +97,6 @@ function overlayReducer(
     }
     case "radial:hide":
       return state.radialVisible ? { ...state, radialVisible: false } : state;
-    case "modifier":
-      return state.modifierBlock === action.active
-        ? state
-        : { ...state, modifierBlock: action.active };
     case "region":
       return state.regionCaptureActive === action.active
         ? state
@@ -154,13 +147,11 @@ const VOICE_CREATURE_SIZE = {
 
 // ---------------------------------------------------------------------------
 // Hook: useOverlayIPC
-// Consolidates ALL IPC subscription effects (radial show/hide, modifier block,
-// region capture, mini show/hide/restore, voice show/hide) into a single hook.
-// Also handles context-menu suppression when modifier block is active.
+// Consolidates ALL IPC subscription effects (radial show/hide, region capture,
+// mini show/hide/restore, voice show/hide) into a single hook.
 // ---------------------------------------------------------------------------
 function useOverlayIPC(
   dispatch: Dispatch<OverlayAction>,
-  modifierBlock: boolean,
 ) {
   const radialHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -224,25 +215,6 @@ function useOverlayIPC(
       cleanupHide();
     };
   }, [dispatch]);
-
-  // Modifier block (context-menu suppression).
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanup = api.overlay.onModifierBlock?.((active: boolean) => {
-      dispatch({ type: "modifier", active });
-    });
-    return () => cleanup?.();
-  }, [dispatch]);
-
-  // Block native context menu when modifier block is active
-  useEffect(() => {
-    if (!modifierBlock) return;
-    const handler = (e: Event) => e.preventDefault();
-    document.addEventListener("contextmenu", handler, true);
-    return () => document.removeEventListener("contextmenu", handler, true);
-  }, [modifierBlock]);
 
   // Region capture.
   useEffect(() => {
@@ -410,7 +382,6 @@ function useOverlayHitTesting(
   const {
     regionCaptureActive,
     miniPreviewVisible,
-    modifierBlock,
     radialVisible,
     miniVisible,
     voiceVisible,
@@ -430,12 +401,6 @@ function useOverlayHitTesting(
 
     // Screenshot preview behaves like a modal over the overlay; keep full hit-test enabled.
     if (miniPreviewVisible) {
-      updateInteractive(true);
-      return;
-    }
-
-    // When modifier block is active, the overlay must capture right-clicks
-    if (modifierBlock) {
       updateInteractive(true);
       return;
     }
@@ -498,7 +463,6 @@ function useOverlayHitTesting(
   }, [
     regionCaptureActive,
     miniPreviewVisible,
-    modifierBlock,
     radialVisible,
     miniVisible,
     voiceVisible,
@@ -512,7 +476,6 @@ function useOverlayHitTesting(
 
   useEffect(() => {
     const anythingActive =
-      modifierBlock ||
       radialVisible ||
       regionCaptureActive ||
       miniPreviewVisible ||
@@ -524,7 +487,6 @@ function useOverlayHitTesting(
       updateInteractive(false);
     }
   }, [
-    modifierBlock,
     radialVisible,
     regionCaptureActive,
     miniPreviewVisible,
@@ -547,8 +509,8 @@ export function OverlayRoot() {
   const autoPanelRef = useRef<HTMLDivElement>(null);
   const miniDisplayed = state.miniVisible && !state.regionCaptureActive;
 
-  // Wire up all IPC subscriptions (radial, modifier, region, mini, voice)
-  useOverlayIPC(dispatch, state.modifierBlock);
+  // Wire up all IPC subscriptions (radial, region, mini, voice)
+  useOverlayIPC(dispatch);
 
   // Mini shell drag mechanics
   const { handleMiniTitlebarMouseDown } = useMiniDrag(miniRef, dispatch);

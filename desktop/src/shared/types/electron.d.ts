@@ -61,6 +61,7 @@ import type {
   SocialSessionServiceSnapshot as SharedSocialSessionServiceSnapshot,
 } from "../contracts/boundary";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import type { RadialTriggerCode as SharedRadialTriggerCode } from "@/shared/lib/radial-trigger";
 import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
@@ -115,6 +116,7 @@ export type ScheduledConversationEvent = SharedScheduledConversationEvent;
 export type VoiceRuntimeSnapshot = SharedVoiceRuntimeSnapshot;
 export type SocialSessionRuntimeRecord = SharedSocialSessionRuntimeRecord;
 export type SocialSessionServiceSnapshot = SharedSocialSessionServiceSnapshot;
+export type RadialTriggerCode = SharedRadialTriggerCode;
 export type VoiceShortcutRegistrationResult = {
   ok: boolean;
   requestedShortcut: string;
@@ -192,7 +194,6 @@ export type ElectronRadialApi = {
 
 export type ElectronOverlayApi = {
   setInteractive: (interactive: boolean) => void;
-  onModifierBlock: (callback: (active: boolean) => void) => () => void;
   onStartRegionCapture: (callback: () => void) => () => void;
   onEndRegionCapture: (callback: () => void) => () => void;
   onShowMini: (
@@ -384,6 +385,10 @@ export type ElectronSystemApi = {
   shellKillByPort: (port: number) => Promise<void>;
   getLocalSyncMode: () => Promise<string>;
   setLocalSyncMode: (mode: string) => Promise<void>;
+  getRadialTriggerKey: () => Promise<RadialTriggerCode>;
+  setRadialTriggerKey: (
+    triggerKey: RadialTriggerCode,
+  ) => Promise<{ triggerKey: RadialTriggerCode }>;
   syncLocalModelPreferences: (payload: {
     defaultModels: Record<string, string>;
     resolvedDefaultModels: Record<string, string>;
