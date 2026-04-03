@@ -7,7 +7,7 @@ import {
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { InstallerState } from "./types";
+import type { InstallerState, SetupStep } from "./types";
 import stellaLogo from "./stella-logo.svg";
 
 const formatBytes = (bytes: number | null): string => {
@@ -140,22 +140,30 @@ function App() {
 
 	/* ── Derived ─────────────────────────────────────────────────── */
 
-	const progress = useMemo(() => {
-		if (!state) return 0;
-		const total = state.steps.length;
-		if (total === 0) return 0;
-		const done = state.steps.filter(
-			(s) => s.status === "done" || s.status === "skipped",
-		).length;
-		return Math.round((done / total) * 100);
-	}, [state]);
+	const { progress, activeStep } = useMemo(() => {
+		if (!state) return { progress: 0, activeStep: null as null | SetupStep };
+		const steps = state.steps;
+		const total = steps.length;
+		if (total === 0) return { progress: 0, activeStep: null };
 
-	const activeStepLabel = useMemo(() => {
-		if (!state) return "";
-		const active = state.steps.find(
-			(s) => s.status === "installing" || s.status === "checking",
-		);
-		return active?.label ?? "";
+		let completed = 0;
+		let active: typeof steps[0] | null = null;
+		for (const s of steps) {
+			if (s.status === "done" || s.status === "skipped") {
+				completed++;
+			} else if (!active && (s.status === "installing" || s.status === "checking")) {
+				active = s;
+			}
+		}
+
+		const base = (completed / total) * 100;
+		const stepWeight = 100 / total;
+		const inProgress = active ? stepWeight * 0.5 : 0;
+
+		return {
+			progress: Math.min(Math.round(base + inProgress), 99),
+			activeStep: active,
+		};
 	}, [state]);
 
 	/* ── Loading / splash ────────────────────────────────────────── */
@@ -291,10 +299,7 @@ function App() {
 
 				{/* ── Installing / Checking ───────────────────────── */}
 				{isWorking && (
-					<div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1 }}>
-						<p className="status-text">
-							{activeStepLabel || (state.phase === "checking" ? "Checking..." : "Setting up...")}
-						</p>
+					<div className="install-progress">
 						<div className="progress-wrap">
 							<div className="progress-track">
 								<div
@@ -303,6 +308,46 @@ function App() {
 								/>
 							</div>
 						</div>
+
+						<ul className="step-list">
+							{state.steps.map((step) => (
+								<li
+									key={step.id}
+									className={`step-item ${step.status}`}
+								>
+									<span className="step-icon">
+										{step.status === "done" ? (
+											<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+												<circle cx="7" cy="7" r="6.5" stroke="var(--green)" strokeWidth="1" />
+												<path d="M4 7.2L6 9.2L10 5" stroke="var(--green)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+											</svg>
+										) : step.status === "skipped" ? (
+											<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+												<circle cx="7" cy="7" r="6.5" stroke="var(--text-faint)" strokeWidth="1" />
+												<path d="M4.5 7H9.5" stroke="var(--text-faint)" strokeWidth="1.2" strokeLinecap="round" />
+											</svg>
+										) : step.status === "installing" || step.status === "checking" ? (
+											<span className="step-spinner" />
+										) : step.status === "error" ? (
+											<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+												<circle cx="7" cy="7" r="6.5" stroke="var(--red)" strokeWidth="1" />
+												<path d="M5 5L9 9M9 5L5 9" stroke="var(--red)" strokeWidth="1.2" strokeLinecap="round" />
+											</svg>
+										) : (
+											<span className="step-dot" />
+										)}
+									</span>
+									<span className="step-label">{step.label}</span>
+									{step.detail && step.status === "installing" && (
+										<span className="step-detail">{step.detail}</span>
+									)}
+								</li>
+							))}
+						</ul>
+
+						{activeStep?.detail && (
+							<p className="active-detail">{activeStep.detail}</p>
+						)}
 					</div>
 				)}
 
@@ -339,7 +384,7 @@ function App() {
 
 				{isWorking && (
 					<button type="button" className="btn-primary" disabled>
-						Setting up...
+						{state.phase === "checking" ? "Checking..." : `Installing · ${progress}%`}
 					</button>
 				)}
 

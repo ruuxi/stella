@@ -397,7 +397,30 @@ async fn remove_registry() {
 // ── Bun ─────────────────────────────────────────────────────────────
 
 async fn bun_on_path() -> bool {
-    run(&["bun", "--version"], None).await.ok
+    if run(&["bun", "--version"], None).await.ok {
+        return true;
+    }
+
+    // macOS GUI apps don't inherit shell PATH — check ~/.bun/bin directly
+    let bun_bin = if cfg!(target_os = "windows") {
+        home_dir().join(".bun").join("bin").join("bun.exe")
+    } else {
+        home_dir().join(".bun").join("bin").join("bun")
+    };
+
+    if path_exists(&bun_bin).await {
+        if let Some(bin_dir) = bun_bin.parent() {
+            let current_path = std::env::var("PATH").unwrap_or_default();
+            let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
+            std::env::set_var(
+                "PATH",
+                format!("{}{sep}{current_path}", bin_dir.to_string_lossy()),
+            );
+            return run(&["bun", "--version"], None).await.ok;
+        }
+    }
+
+    false
 }
 
 async fn install_bun_globally() -> bool {
@@ -424,30 +447,7 @@ async fn install_bun_globally() -> bool {
         }
     }
 
-    if bun_on_path().await {
-        return true;
-    }
-
-    // Bun was installed but not on PATH yet — add it
-    let bun_bin = if cfg!(target_os = "windows") {
-        home_dir().join(".bun").join("bin").join("bun.exe")
-    } else {
-        home_dir().join(".bun").join("bin").join("bun")
-    };
-
-    if path_exists(&bun_bin).await {
-        if let Some(bin_dir) = bun_bin.parent() {
-            let current_path = std::env::var("PATH").unwrap_or_default();
-            let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
-            std::env::set_var(
-                "PATH",
-                format!("{}{sep}{current_path}", bin_dir.to_string_lossy()),
-            );
-            return bun_on_path().await;
-        }
-    }
-
-    false
+    bun_on_path().await
 }
 
 async fn install_payload_dependencies(install_dir: &str) -> Result<(), String> {
