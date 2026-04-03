@@ -3,6 +3,7 @@ id: browser-advanced-tools
 name: Browser Advanced Tools
 description: Utility functions such as getCleanHTML, createDebugger, createEditor, getLatestLogs, getReactSource, getStylesForLocator, and response body reading.
 agentTypes:
+  - general
   - browser
 tags:
   - browser
