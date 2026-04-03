@@ -70,6 +70,12 @@ pub fn ensure_installed() -> bool {
         return false;
     }
 
+    // macOS apps are .app bundles — copying just the binary breaks Tauri/WebKit.
+    // Users install by dragging .app to /Applications; skip self-install entirely.
+    if cfg!(target_os = "macos") {
+        return false;
+    }
+
     if is_running_from_install_dir() {
         return false;
     }
