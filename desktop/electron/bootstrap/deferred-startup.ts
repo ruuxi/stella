@@ -41,7 +41,14 @@ const createDeferredStartupTasks = (
     {
       label: "permissions",
       run: async () => {
-        await requestAllMacPermissions();
+        try {
+          await requestAllMacPermissions();
+        } catch (error) {
+          console.warn(
+            "[permissions] Failed to request permissions:",
+            (error as Error).message,
+          );
+        }
       },
     },
     {

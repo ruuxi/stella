@@ -83,16 +83,22 @@ export const requestAllMacPermissions = async (): Promise<void> => {
   } catch {}
 
   if (!hasFullDisk) {
-    await shell.openExternal(
-      'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles',
-    )
+    try {
+      await shell.openExternal(
+        'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles',
+      )
+    } catch {}
     await delay(1000)
   }
 
   // 4. Microphone — shows native permission dialog
   if (!checkMicrophone()) {
-    const granted = await systemPreferences.askForMediaAccess('microphone')
-    permissionCache.set('microphone', granted)
+    try {
+      const granted = await systemPreferences.askForMediaAccess('microphone')
+      permissionCache.set('microphone', granted)
+    } catch {
+      permissionCache.set('microphone', false)
+    }
   } else {
     permissionCache.set('microphone', true)
   }
