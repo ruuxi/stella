@@ -75,9 +75,6 @@ jobs:
             --exclude="stella-browser/_bench_chain.js" \
             --exclude="stella-browser/bun.lock" \
             --exclude="release" \
-            --exclude="./workspace" \
-            --exclude="native/*.exe" \
-            --exclude="native/*.obj" \
             --exclude=".stella-bindings.json" \
             --exclude=".stella/state" \
             --exclude=".stella/logs" \
