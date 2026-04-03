@@ -59,6 +59,7 @@ jobs:
       - name: Build launcher
         working-directory: launcher
         env:
+          CI: false
           APPLE_SIGNING_IDENTITY: ${{ matrix.os == 'macos-latest' && secrets.APPLE_SIGNING_IDENTITY || '' }}
           APPLE_ID: ${{ matrix.os == 'macos-latest' && secrets.APPLE_ID || '' }}
           APPLE_PASSWORD: ${{ matrix.os == 'macos-latest' && secrets.APPLE_PASSWORD || '' }}
