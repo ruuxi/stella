@@ -3725,6 +3725,7 @@ dependencies = [
  "dirs",
  "fs2",
  "futures-util",
+ "libc",
  "open",
  "regex-lite",
  "reqwest 0.12.28",

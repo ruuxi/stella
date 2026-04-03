@@ -23,5 +23,8 @@ tar = "0.4"
 zstd = "0.13"
 futures-util = "0.3"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
