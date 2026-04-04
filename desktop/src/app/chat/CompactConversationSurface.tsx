@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/shared/lib/utils";
-import type { EventRecord } from "@/app/chat/lib/event-transforms";
-import { getCurrentRunningTool, getRunningTasks } from "./lib/event-transforms";
+import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
+import {
+  getCurrentRunningTool,
+  getRunningTasks,
+  mergeRunningTasks,
+} from "./lib/event-transforms";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import { ConversationEvents } from "./ConversationEvents";
@@ -22,6 +26,7 @@ type CompactConversationSurfaceProps = {
   isStreaming: boolean;
   pendingUserMessageId: string | null;
   selfModMap?: Record<string, SelfModAppliedData>;
+  liveTasks?: TaskItem[];
   hasOlderEvents?: boolean;
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
@@ -40,6 +45,7 @@ export function CompactConversationSurface({
   isStreaming,
   pendingUserMessageId,
   selfModMap,
+  liveTasks,
   hasOlderEvents,
   isLoadingOlder,
   isLoadingHistory,
@@ -73,9 +79,13 @@ export function CompactConversationSurface({
 
   const appSessionStartedAtMs = useAgentSessionStartedAt();
   const runningTool = useMemo(() => getCurrentRunningTool(events), [events]);
-  const runningTasks = useMemo(
+  const persistedRunningTasks = useMemo(
     () => getRunningTasks(events, { appSessionStartedAtMs }),
     [appSessionStartedAtMs, events],
+  );
+  const runningTasks = useMemo(
+    () => mergeRunningTasks(persistedRunningTasks, liveTasks),
+    [liveTasks, persistedRunningTasks],
   );
   const showThinkingFooter = runningTasks.length > 0 || Boolean(isStreaming);
 

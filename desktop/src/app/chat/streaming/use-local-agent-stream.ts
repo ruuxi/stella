@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import { showToast } from "@/ui/toast";
 import {
   AGENT_IDS,
@@ -69,6 +70,9 @@ export function useLocalAgentStream({
   const [selfModMap, setSelfModMap] = useState<
     Record<string, SelfModAppliedData>
   >({});
+  const [liveTasksById, setLiveTasksById] = useState<Record<string, TaskItem>>(
+    {},
+  );
 
   const streamRunIdRef = useRef(0);
   const localRunIdRef = useRef<string | null>(null);
@@ -82,6 +86,37 @@ export function useLocalAgentStream({
   >([]);
   const pendingQueuedStartCountRef = useRef(0);
   const agentStreamCleanupRef = useRef<(() => void) | null>(null);
+
+  const upsertLiveTask = useCallback(
+    (
+      taskId: string,
+      updater: (current?: TaskItem) => TaskItem,
+    ) => {
+      setLiveTasksById((current) => {
+        const nextTask = updater(current[taskId]);
+        return {
+          ...current,
+          [taskId]: nextTask,
+        };
+      });
+    },
+    [],
+  );
+
+  const removeLiveTask = useCallback((taskId: string) => {
+    setLiveTasksById((current) => {
+      if (!(taskId in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[taskId];
+      return next;
+    });
+  }, []);
+
+  const clearLiveTasks = useCallback(() => {
+    setLiveTasksById({});
+  }, []);
 
   const resetStreamingState = useCallback(
     (runId?: number) => {
@@ -154,13 +189,14 @@ export function useLocalAgentStream({
     queuedRunStartsRef.current = [];
     pendingQueuedStartCountRef.current = 0;
     localRunIdRef.current = null;
+    clearLiveTasks();
     resetStreamingState();
 
     if (agentStreamCleanupRef.current) {
       agentStreamCleanupRef.current();
       agentStreamCleanupRef.current = null;
     }
-  }, [resetStreamingState]);
+  }, [clearLiveTasks, resetStreamingState]);
 
   const handleAgentEvent = useCallback(
     (event: AgentStreamEvent, runIdCounter: number) => {
@@ -229,10 +265,63 @@ export function useLocalAgentStream({
           );
           break;
         case AGENT_STREAM_EVENT_TYPES.TASK_STARTED:
-        case AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED:
-        case AGENT_STREAM_EVENT_TYPES.TASK_FAILED:
-        case AGENT_STREAM_EVENT_TYPES.TASK_CANCELED:
+          if (event.taskId) {
+            const lastUpdatedAtMs = Date.now();
+            upsertLiveTask(event.taskId, (current) => ({
+              id: event.taskId!,
+              description: event.description ?? current?.description ?? "Task",
+              agentType: event.agentType ?? current?.agentType ?? "task",
+              status: "running",
+              parentTaskId: event.parentTaskId ?? current?.parentTaskId,
+              statusText: current?.statusText,
+              startedAtMs: current?.startedAtMs ?? lastUpdatedAtMs,
+              lastUpdatedAtMs,
+              outputPreview: current?.outputPreview,
+            }));
+          }
+          console.log(
+            `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ""}`.trim(),
+          );
+          break;
         case AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS:
+          if (event.taskId) {
+            const lastUpdatedAtMs = Date.now();
+            upsertLiveTask(event.taskId, (current) => ({
+              id: event.taskId!,
+              description: event.description ?? current?.description ?? "Task",
+              agentType: event.agentType ?? current?.agentType ?? "task",
+              status: "running",
+              parentTaskId: event.parentTaskId ?? current?.parentTaskId,
+              statusText: event.statusText ?? current?.statusText,
+              startedAtMs: current?.startedAtMs ?? lastUpdatedAtMs,
+              lastUpdatedAtMs,
+              outputPreview: current?.outputPreview,
+            }));
+          }
+          console.log(
+            `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ""}`.trim(),
+          );
+          break;
+        case AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED:
+          if (event.taskId) {
+            removeLiveTask(event.taskId);
+          }
+          console.log(
+            `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ""}`.trim(),
+          );
+          break;
+        case AGENT_STREAM_EVENT_TYPES.TASK_FAILED:
+          if (event.taskId) {
+            removeLiveTask(event.taskId);
+          }
+          console.log(
+            `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ""}`.trim(),
+          );
+          break;
+        case AGENT_STREAM_EVENT_TYPES.TASK_CANCELED:
+          if (event.taskId) {
+            removeLiveTask(event.taskId);
+          }
           console.log(
             `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ""}`.trim(),
           );
@@ -408,6 +497,7 @@ export function useLocalAgentStream({
       resetReasoningText();
       setIsStreaming(true);
       setPendingUserMessageId(null);
+      clearLiveTasks();
 
       if (agentStreamCleanupRef.current) {
         agentStreamCleanupRef.current();
@@ -476,6 +566,7 @@ export function useLocalAgentStream({
       resetReasoningText,
       resetStreamingState,
       resetStreamingText,
+      clearLiveTasks,
       startLocalStream,
     ],
   );
@@ -588,6 +679,9 @@ export function useLocalAgentStream({
   });
 
   return {
+    liveTasks: Object.values(liveTasksById).sort(
+      (a, b) => a.startedAtMs - b.startedAtMs,
+    ),
     streamingText,
     reasoningText,
     isStreaming,

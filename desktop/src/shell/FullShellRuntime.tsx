@@ -130,6 +130,7 @@ export const FullShellRuntime = ({
         isStreaming={chat.conversation.isStreaming}
         pendingUserMessageId={chat.conversation.pendingUserMessageId}
         selfModMap={chat.conversation.selfModMap}
+        liveTasks={chat.conversation.streaming.liveTasks}
         hasOlderEvents={chat.conversation.hasOlderEvents}
         isLoadingOlder={chat.conversation.isLoadingOlder}
         isInitialLoading={chat.conversation.isInitialLoading}

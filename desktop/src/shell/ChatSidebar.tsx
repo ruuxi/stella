@@ -21,7 +21,7 @@ import { deriveComposerState } from "@/app/chat/composer-context";
 import { useFileDrop } from "@/app/chat/hooks/use-file-drop";
 import { DropOverlay } from "@/app/chat/DropOverlay";
 import type { ChatContext } from "@/shared/types/electron";
-import type { EventRecord } from "@/app/chat/lib/event-transforms";
+import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import "./chat-sidebar.css";
 
@@ -37,6 +37,7 @@ interface ChatSidebarProps {
   isStreaming: boolean;
   pendingUserMessageId: string | null;
   selfModMap: Record<string, SelfModAppliedData>;
+  liveTasks?: TaskItem[];
   hasOlderEvents: boolean;
   isLoadingOlder: boolean;
   isInitialLoading: boolean;
@@ -54,6 +55,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
       isStreaming,
       pendingUserMessageId,
       selfModMap,
+      liveTasks,
       hasOlderEvents,
       isLoadingOlder,
       isInitialLoading,
@@ -156,6 +158,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
             isStreaming={isStreaming}
             pendingUserMessageId={pendingUserMessageId}
             selfModMap={selfModMap}
+            liveTasks={liveTasks}
             hasOlderEvents={hasOlderEvents}
             isLoadingOlder={isLoadingOlder}
             isLoadingHistory={isInitialLoading}
