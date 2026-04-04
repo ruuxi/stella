@@ -305,6 +305,7 @@ export type ElectronVoiceApi = {
     conversationId: string;
     role: "user" | "assistant";
     text: string;
+    uiVisibility?: "visible" | "hidden";
   }) => void;
   orchestratorChat: (payload: {
     conversationId: string;

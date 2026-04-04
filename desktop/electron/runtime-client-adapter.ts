@@ -488,6 +488,7 @@ export class RuntimeClientAdapter {
     conversationId: string;
     role: "user" | "assistant";
     text: string;
+    uiVisibility?: "visible" | "hidden";
   }) {
     return this.client.persistVoiceTranscript(args);
   }
