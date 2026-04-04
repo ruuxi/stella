@@ -322,8 +322,6 @@ export function generateShimScript(
       },
       submitCredential: function(p) { return invoke('credential:submit', p); },
       cancelCredential: function(p) { return invoke('credential:cancel', p); },
-      getIdentityMap: function() { return invoke('identity:getMap'); },
-      depseudonymize: function(t) { return invoke('identity:depseudonymize', t); },
     },
 
     // ── Browser data ────────────────────────────────────────────────────

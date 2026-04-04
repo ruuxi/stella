@@ -429,15 +429,6 @@ export type ElectronSystemApi = {
   cancelCredential: (payload: {
     requestId: string;
   }) => Promise<{ ok: boolean; error?: string }>;
-  getIdentityMap: () => Promise<{
-    version: number;
-    mappings: {
-      real: { name: string; identifier: string };
-      alias: { name: string; identifier: string };
-      source: string;
-    }[];
-  }>;
-  depseudonymize: (text: string) => Promise<string>;
 };
 
 export type ElectronOnboardingApi = {

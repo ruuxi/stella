@@ -11,6 +11,9 @@ import type {
 
 const log = (...args: unknown[]) => console.error("[messages-notes]", ...args);
 
+const getErrorCode = (error: unknown): string | undefined =>
+  (error as NodeJS.ErrnoException | undefined)?.code;
+
 // Timeout wrapper
 const withTimeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
   Promise.race([promise, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
@@ -202,7 +205,14 @@ async function collectAppleNotes(stellaHome: string): Promise<NoteFolder[]> {
       await fs.unlink(cachedDb).catch(() => {});
     }
   } catch (error) {
-    log("Error collecting Apple Notes:", error);
+    const code = getErrorCode(error);
+    if (code === "EPERM" || code === "EACCES") {
+      log("Apple Notes access denied - grant Full Disk Access");
+    } else if (code === "ENOENT") {
+      log("Apple Notes database not found");
+    } else {
+      log("Error collecting Apple Notes:", error);
+    }
     await fs.unlink(cachedDb).catch(() => {});
     return [];
   }
@@ -358,7 +368,14 @@ async function collectCalendar(stellaHome: string): Promise<CalendarSummary[]> {
       await fs.unlink(cachedDb).catch(() => {});
     }
   } catch (error) {
-    log("Error collecting Calendar:", error);
+    const code = getErrorCode(error);
+    if (code === "ENOENT") {
+      log("Calendar database not found");
+    } else if (code === "EPERM" || code === "EACCES") {
+      log("Calendar access denied - grant Full Disk Access");
+    } else {
+      log("Error collecting Calendar:", error);
+    }
     await fs.unlink(cachedDb).catch(() => {});
     return [];
   }

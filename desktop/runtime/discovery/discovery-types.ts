@@ -127,8 +127,8 @@ export type SystemSignals = {
 // ---------------------------------------------------------------------------
 
 export type ContactFrequency = {
-  identifier: string; // phone/email (will be pseudonymized)
-  displayName: string; // contact name (will be pseudonymized)
+  identifier: string; // phone/email
+  displayName: string; // contact name
   messageCount: number;
 };
 
@@ -145,7 +145,7 @@ export type NoteFolder = {
 export type CalendarSummary = {
   calendarName: string;
   eventCount: number;
-  recurringTitles: string[]; // recurring event titles (pseudonymized)
+  recurringTitles: string[]; // recurring event titles
 };
 
 export type MessagesNotesSignals = {
@@ -153,26 +153,4 @@ export type MessagesNotesSignals = {
   groupChats: GroupChat[];
   noteFolders: NoteFolder[];
   calendars: CalendarSummary[];
-};
-
-// ---------------------------------------------------------------------------
-// Identity Map (Pseudonymization)
-// ---------------------------------------------------------------------------
-
-export type IdentityMappingSource =
-  | "imessage"
-  | "calendar"
-  | "notes"
-  | "reminders"
-  | "git_config";
-
-export type IdentityMapping = {
-  real: { name: string; identifier: string };
-  alias: { name: string; identifier: string };
-  source: IdentityMappingSource;
-};
-
-export type IdentityMap = {
-  version: 1;
-  mappings: IdentityMapping[];
 };

@@ -303,32 +303,6 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         await runner.collectAllSignals(ipcOptions) as AllUserSignalsResult),
   );
 
-  ipcMain.handle("identity:getMap", async (event) => {
-    if (!options.assertPrivilegedSender(event, "identity:getMap")) {
-      throw new Error("Blocked untrusted request.");
-    }
-    const stellaHomePath = options.getStellaHomePath();
-    if (!stellaHomePath) return { version: 1, mappings: [] };
-    const { loadIdentityMap } = await import(
-      "../../runtime/kernel/home/identity-map.js"
-    );
-    return loadIdentityMap(stellaHomePath);
-  });
-
-  ipcMain.handle("identity:depseudonymize", async (event, text: string) => {
-    if (!options.assertPrivilegedSender(event, "identity:depseudonymize")) {
-      throw new Error("Blocked untrusted request.");
-    }
-    const stellaHomePath = options.getStellaHomePath();
-    if (!stellaHomePath || !text) return text;
-    const { loadIdentityMap, depseudonymize } = await import(
-      "../../runtime/kernel/home/identity-map.js"
-    );
-    const map = await loadIdentityMap(stellaHomePath);
-    if (map.mappings.length === 0) return text;
-    return depseudonymize(text, map);
-  });
-
   // ── Media file operations ──
 
   ipcMain.handle(

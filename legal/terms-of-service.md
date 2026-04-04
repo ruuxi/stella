@@ -25,12 +25,15 @@ You must be at least 13 years of age to use the Service. If you are under 18, yo
 ## 3. Accounts and Authentication
 
 ### 3.1 Anonymous Use
+
 Stella can be used without creating an account. Anonymous users receive access to core functionality subject to rate limits.
 
 ### 3.2 Registered Accounts
+
 You may optionally create an account using magic-link email authentication. If you create an account, you are responsible for maintaining the security of your login credentials and for all activity that occurs under your account.
 
 ### 3.3 Account Linking
+
 If you upgrade from anonymous use to a registered account, any anonymous session data may be linked to your new account.
 
 ---
@@ -38,6 +41,7 @@ If you upgrade from anonymous use to a registered account, any anonymous session
 ## 4. Description of the Service
 
 ### 4.1 The Stella Platform (Free)
+
 Stella is a personal AI assistant that runs primarily on your local device. The platform is **completely free** and open source. It includes:
 
 - **Desktop application** — An Electron-based application that runs AI agent orchestration, tool execution, computer use, and data storage locally on your computer.
@@ -45,9 +49,11 @@ Stella is a personal AI assistant that runs primarily on your local device. The 
 - **Open-source codebase** — Stella's platform is open source. You may inspect, modify, and contribute to the source code subject to the applicable open-source license(s) governing the repository.
 
 ### 4.2 The Stella Provider (Paid LLM Service)
+
 Separately, FromYou operates the **Stella Provider**, a managed LLM inference service that routes AI model requests to upstream providers on your behalf. The Stella Provider is the paid component of the Service — subscription plans and usage-based billing apply to LLM inference consumed through the Stella Provider. You are never required to use the Stella Provider; you may supply your own API keys (BYOK) and use the platform entirely for free.
 
 ### 4.3 Additional Backend Services
+
 Our backend also provides authentication, an offline fallback responder, connector integrations (Slack, Discord, Telegram, etc.), the mod store, social features, and media generation capabilities.
 
 ---
@@ -55,18 +61,23 @@ Our backend also provides authentication, an offline fallback responder, connect
 ## 5. Local-First Architecture and Your Data
 
 ### 5.1 Local Storage
+
 Stella is designed with a local-first architecture. Your conversations, chat history, agent state, event transcripts, tool outputs, and personal data are stored **locally on your device** — not on our servers. We do not have access to this data.
 
 ### 5.2 No Cloud Storage of Conversations
+
 We do not store your conversation content, prompts, or AI responses on our cloud infrastructure under normal operation. The sole exception is the **offline responder** described in Section 5.3.
 
 ### 5.3 Offline Responder
+
 When your desktop application is not running or not reachable, you may interact with Stella through the mobile app or connected channels (Slack, Discord, etc.). In this case, your message is sent to our backend, processed by a minimal fallback AI agent, and a response is returned. **These offline interactions are transient** — they are processed in memory and are not persistently stored in our systems beyond what is required to deliver the response and record usage for billing purposes.
 
 ### 5.4 Discovery Signals
-During onboarding, Stella may optionally collect signals from your device (browser bookmarks, installed applications, development environment, etc.) to personalize your experience. This data is processed and stored **entirely on your local device**. Contact information and personal identifiers are pseudonymized locally before use. Discovery categories involving sensitive data (messages, notes) are opt-in and disabled by default.
+
+During onboarding, Stella may optionally collect signals from your device (browser bookmarks, installed applications, development environment, etc.) to personalize your experience. This data is processed and stored **entirely on your local device**. Discovery categories involving sensitive data (messages, notes) are opt-in and disabled by default.
 
 ### 5.5 Connector Integrations
+
 If you connect Stella to third-party platforms (Slack, Discord, Telegram, Google Chat, Microsoft Teams), inbound messages from those platforms are routed to your desktop device for local processing whenever possible. When your desktop is offline, the backend offline responder processes them transiently as described in Section 5.3. Connector routing metadata (connection identifiers, conversation mappings) is stored on our backend to facilitate message delivery.
 
 ---
@@ -74,6 +85,7 @@ If you connect Stella to third-party platforms (Slack, Discord, Telegram, Google
 ## 6. Computer Use and Agent Autonomy
 
 ### 6.1 What Stella Can Do on Your Computer
+
 Stella's AI agents can perform actions on your computer on your behalf, including but not limited to:
 
 - Reading, writing, editing, and deleting files and directories.
@@ -86,6 +98,7 @@ Stella's AI agents can perform actions on your computer on your behalf, includin
 - Interacting with connected services and APIs.
 
 ### 6.2 Your Responsibility
+
 **You are solely and entirely responsible for all actions that Stella's AI agents perform on your computer and accounts.** Stella acts as a tool under your direction. When you instruct Stella to perform a task, you authorize it to take the actions necessary to complete that task, including any intermediate steps the AI determines are needed.
 
 You acknowledge and agree that:
@@ -96,6 +109,7 @@ You acknowledge and agree that:
 - FromYou is **not liable** for any loss, damage, cost, or consequence resulting from actions performed by Stella's AI agents on your device, accounts, or connected services, regardless of whether those actions were intended, expected, or authorized by you.
 
 ### 6.3 Safety Mechanisms
+
 Stella includes certain safety mechanisms (e.g., command safety checks, network guards, security policies, confirmation prompts for sensitive operations). These mechanisms are provided as a convenience and are **not guaranteed** to prevent all harmful actions. You should not rely on them as a substitute for your own judgment and supervision.
 
 ---
@@ -103,17 +117,21 @@ Stella includes certain safety mechanisms (e.g., command safety checks, network 
 ## 7. AI Services and the Stella Provider
 
 ### 7.1 Managed LLM Inference (Stella Provider)
+
 The Stella Provider is a managed LLM inference service. When you do not supply your own API keys, Stella routes AI model requests through our backend to upstream AI model providers. We resolve the underlying model on the server side. Your prompts and responses pass through our infrastructure in transit but are **not stored** by us beyond what is necessary for real-time processing and usage metering.
 
 The Stella Provider is the only paid component of the Service. Subscription plans provide access to higher usage limits and additional AI models.
 
 ### 7.2 Bring Your Own Keys (BYOK)
+
 You may configure your own API keys for supported AI providers (Anthropic, OpenAI, Google, etc.). When using BYOK, requests are sent directly from your device to the provider, and our backend is not involved in those AI calls. Your API keys are stored locally on your device in encrypted form. **Using BYOK means you can use Stella entirely for free.**
 
 ### 7.3 Third-Party AI Providers
+
 Whether using the Stella Provider or BYOK, your prompts and data are processed by third-party AI model providers. These providers have their own terms of service and privacy policies. We do not control how third-party providers handle your data once it reaches their systems. FromYou is not responsible for the outputs, accuracy, or behavior of any third-party AI model.
 
 ### 7.4 Media Generation
+
 Stella may offer media generation features (image, audio, video) through third-party providers. Media generation requests are processed by those providers and subject to their terms.
 
 ---
@@ -121,18 +139,23 @@ Stella may offer media generation features (image, audio, video) through third-p
 ## 8. Subscription Plans and Billing
 
 ### 8.1 Free Use
+
 The Stella platform is **free to use**. You can use all features of the desktop and mobile application at no cost by providing your own API keys (BYOK).
 
 ### 8.2 Stella Provider Plans
+
 The Stella Provider LLM inference service offers a free tier with rate-limited access, as well as paid subscription plans (currently Go, Pro, Plus, and Ultra) with higher usage limits and access to additional AI models. Paid plans are billed monthly through Stripe.
 
 ### 8.3 Pricing Changes
+
 All prices are **subject to change** at any time, including during the beta period. We will make reasonable efforts to notify active subscribers of pricing changes in advance. Continued use of a paid plan after a price change constitutes acceptance of the new pricing.
 
 ### 8.4 Usage Limits
+
 Each plan includes usage allowances measured in token consumption. If you exceed your plan's limits, service may be temporarily throttled until the next billing period.
 
 ### 8.5 Cancellation
+
 You may cancel your subscription at any time. Cancellation takes effect at the end of the current billing period. No refunds are provided for partial billing periods.
 
 ---
@@ -146,12 +169,15 @@ Stella's AI agents can modify the application's own user interface and functiona
 ## 10. Mod Store
 
 ### 10.1 Publishing
+
 You may publish modifications ("mods") to the Stella Mod Store. By publishing, you grant FromYou and other Stella users a non-exclusive, worldwide, royalty-free license to use, install, and distribute your mod through the Service.
 
 ### 10.2 Installing
+
 Mods are community-created and are not reviewed or endorsed by FromYou. You install mods at your own risk. We are not responsible for any damage, data loss, or security issues caused by third-party mods.
 
 ### 10.3 Prohibited Content
+
 You may not publish mods that contain malware, violate any law, infringe third-party rights, or are designed to harm users or their systems.
 
 ---
@@ -180,12 +206,15 @@ You agree not to:
 ## 13. Intellectual Property
 
 ### 13.1 Our Rights
+
 The Stella name, logo, and branding are the property of FromYou LLC. The hosted backend services, API infrastructure, and any proprietary components not released under an open-source license remain the intellectual property of FromYou.
 
 ### 13.2 Your Rights
+
 You retain all rights to your data, conversations, and any content you create using the Service. You retain all rights to mods you create, subject to the license granted in Section 10.1.
 
 ### 13.3 Open Source
+
 Open-source components of Stella are licensed under their respective open-source licenses.
 
 ---

@@ -51,7 +51,7 @@ No Cloud Storage of Conversations — We do not store your conversation content,
 
 Offline Responder — When your desktop application is not running or not reachable, you may interact with Stella through the mobile app or connected channels (Slack, Discord, etc.). In this case, your message is sent to our backend, processed by a minimal fallback AI agent, and a response is returned. These offline interactions are transient — they are processed in memory and are not persistently stored in our systems beyond what is required to deliver the response and record usage for billing purposes.
 
-Discovery Signals — During onboarding, Stella may optionally collect signals from your device (browser bookmarks, installed applications, development environment, etc.) to personalize your experience. This data is processed and stored entirely on your local device. Contact information and personal identifiers are pseudonymized locally before use. Discovery categories involving sensitive data (messages, notes) are opt-in and disabled by default.
+Discovery Signals — During onboarding, Stella may optionally collect signals from your device (browser bookmarks, installed applications, development environment, etc.) to personalize your experience. This data is processed and stored entirely on your local device. Discovery categories involving sensitive data (messages, notes) are opt-in and disabled by default.
 
 Connector Integrations — If you connect Stella to third-party platforms (Slack, Discord, Telegram, Google Chat, Microsoft Teams), inbound messages from those platforms are routed to your desktop device for local processing whenever possible. When your desktop is offline, the backend offline responder processes them transiently as described above. Connector routing metadata (connection identifiers, conversation mappings) is stored on our backend to facilitate message delivery.
 
@@ -228,7 +228,6 @@ The following data is created and stored entirely on your device and is never tr
 • Tool execution results — output from shell commands, file operations, web searches, browser actions
 • Computer-use activity logs — records of agent actions (browsing, file edits, commands)
 • Discovery signals — optional onboarding personalization data (browser bookmarks, apps, dev environment, etc.)
-• Pseudonymized identity map — de-identification of personal names/contacts found during discovery
 • Voice transcripts — records of voice interactions
 • LLM API keys (encrypted) — your own provider credentials for BYOK use
 • Local preferences and settings — theme, model preferences, configuration

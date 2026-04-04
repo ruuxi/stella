@@ -43,6 +43,9 @@ const execAsync = (command: string): Promise<string> => {
   });
 };
 
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 // ---------------------------------------------------------------------------
 // SQLite Helper
 // ---------------------------------------------------------------------------
@@ -89,7 +92,12 @@ async function collectDockPins(): Promise<DockPin[]> {
 
     return pins;
   } catch (error) {
-    log("Failed to read dock pins:", error);
+    const message = getErrorMessage(error);
+    if (message.includes("invalid object in plist")) {
+      log("Dock plist could not be parsed, skipping dock pins");
+    } else {
+      log("Failed to read dock pins:", message);
+    }
     return [];
   }
 }
