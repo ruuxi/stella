@@ -24,7 +24,7 @@ import {
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
 } from "../src/shared/contracts/ipc-channels.js";
-import type { RuntimeSocialSessionStatus } from "../packages/runtime-protocol/index.js";
+import type { RuntimeSocialSessionStatus } from "../runtime/protocol/index.js";
 
 // ---------------------------------------------------------------------------
 // IPC listener helpers — eliminate boilerplate for the 3 common patterns.

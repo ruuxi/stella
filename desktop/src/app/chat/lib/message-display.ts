@@ -1,6 +1,6 @@
 import type { EventRecord, MessagePayload } from "./event-transforms";
 import { WORKSPACE_CREATION_TRIGGER_KIND } from "@/shared/lib/stella-send-message";
-import { isUiOnlyAssistantStatus } from "../../../../packages/runtime-kernel/internal-tool-transcript.js";
+import { isUiOnlyAssistantStatus } from "../../../../runtime/kernel/internal-tool-transcript.js";
 
 const UI_HIDDEN_TRIGGER_KINDS = new Set<string>([
   WORKSPACE_CREATION_TRIGGER_KIND,

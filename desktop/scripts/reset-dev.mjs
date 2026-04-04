@@ -5,10 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(scriptDir, '..');
-const repoRoot = resolve(desktopDir, '..');
 const runnerScriptPath = resolve(scriptDir, 'electron-dev-runner.mjs');
 const runnerPidFilePath = resolve(desktopDir, '.electron-dev-runner.pid');
-const stellaHomePath = resolve(repoRoot, '.stella');
+const stellaStatePath = resolve(desktopDir, 'state');
 const desktopGeneratedPaths = [
   resolve(desktopDir, '.vite-dev-url'),
   resolve(desktopDir, '.stella-hmr-state.json'),
@@ -146,7 +145,7 @@ const main = async () => {
   const stoppedRunner = await stopExistingDevRunner();
 
   await clearPaths([
-    stellaHomePath,
+    stellaStatePath,
     ...desktopGeneratedPaths,
   ]);
 
@@ -155,7 +154,7 @@ const main = async () => {
   console.log(
     [
       '[reset] Fresh Stella desktop dev session started.',
-      `Cleared ${stellaHomePath}`,
+      `Cleared ${stellaStatePath}`,
       stoppedRunner
         ? 'Stopped and restarted the existing dev runner.'
         : 'Started a new dev runner.',

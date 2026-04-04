@@ -171,22 +171,15 @@
         ]
       },
       {
-        "from": "resources/stella-defaults/core-skills",
-        "to": "stella-defaults/core-skills",
+        "from": "runtime/skills",
+        "to": "runtime/skills",
         "filter": [
           "**/*"
         ]
       },
       {
-        "from": "resources/stella-defaults/extensions",
-        "to": "stella-defaults/extensions",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "resources/bundled-commands",
-        "to": "bundled-commands",
+        "from": "runtime/extensions",
+        "to": "runtime/extensions",
         "filter": [
           "**/*"
         ]

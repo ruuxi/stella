@@ -19,7 +19,7 @@ import type {
 import type { MobileBridgeResource } from "../process-resources/mobile-bridge-resource.js";
 import { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
 import { ProcessRuntime } from "../process-runtime.js";
-import type { LocalDevProjectRecord } from "../../packages/boundary-contracts/index.js";
+import type { LocalDevProjectRecord } from "../../runtime/contracts/index.js";
 import { createBootstrapServices } from "./bootstrap-services.js";
 import { registerBootstrapProcessCleanups } from "./cleanup.js";
 
