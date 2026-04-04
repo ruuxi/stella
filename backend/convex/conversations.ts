@@ -7,6 +7,9 @@ import { components, internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
 import { requireUserId } from "./auth";
 import { RateLimiter } from "@convex-dev/rate-limiter";
+import {
+  pendingDeviceSelectionValidator,
+} from "./schema/conversations";
 
 const rateLimiter = new RateLimiter(components.rateLimiter);
 
@@ -17,9 +20,16 @@ const conversationDocValidator = v.union(v.null(), v.object({
   title: v.optional(v.string()),
   isDefault: v.boolean(),
   activeThreadId: v.optional(v.id("threads")),
+  activeTargetDeviceId: v.optional(v.string()),
+  pendingDeviceSelection: v.optional(pendingDeviceSelectionValidator),
   createdAt: v.number(),
   updatedAt: v.number(),
 }));
+
+const conversationRoutingStateValidator = v.object({
+  activeTargetDeviceId: v.union(v.string(), v.null()),
+  pendingDeviceSelection: v.union(v.null(), pendingDeviceSelectionValidator),
+});
 
 export const getById = internalQuery({
   args: { id: v.id("conversations") },
@@ -167,6 +177,20 @@ export const getActiveThreadId = internalQuery({
   },
 });
 
+export const getRoutingState = internalQuery({
+  args: {
+    conversationId: v.id("conversations"),
+  },
+  returns: conversationRoutingStateValidator,
+  handler: async (ctx, args) => {
+    const conversation = await ctx.db.get(args.conversationId);
+    return {
+      activeTargetDeviceId: conversation?.activeTargetDeviceId ?? null,
+      pendingDeviceSelection: conversation?.pendingDeviceSelection ?? null,
+    };
+  },
+});
+
 export const setActiveThreadId = internalMutation({
   args: {
     conversationId: v.id("conversations"),
@@ -175,6 +199,50 @@ export const setActiveThreadId = internalMutation({
   handler: async (ctx, args) => {
     await ctx.db.patch(args.conversationId, {
       activeThreadId: args.threadId,
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const setActiveTargetDeviceId = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+    deviceId: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.conversationId, {
+      activeTargetDeviceId: args.deviceId,
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const setPendingDeviceSelection = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+    selection: pendingDeviceSelectionValidator,
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.conversationId, {
+      pendingDeviceSelection: args.selection,
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const clearPendingDeviceSelection = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.conversationId, {
+      pendingDeviceSelection: undefined,
       updatedAt: Date.now(),
     });
     return null;

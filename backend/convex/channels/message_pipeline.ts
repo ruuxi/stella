@@ -1,5 +1,5 @@
 import { internal } from "../_generated/api";
-import { Infer } from "convex/values";
+import { Infer, type Value } from "convex/values";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import type { RunAgentTurnResult } from "../automation/runner";
@@ -46,6 +46,27 @@ type ProcessIncomingMessageArgs = {
   deliveryMeta?: Record<string, unknown>;
 };
 
+type FreshDeviceOption = {
+  deviceId: string;
+  deviceName: string;
+  platform?: string;
+  lastHeartbeatAt: number;
+};
+
+type PendingDeviceSelectionState = {
+  createdAt: number;
+  provider: string;
+  promptText: string;
+  attachments?: ChannelInboundAttachment[];
+  channelEnvelope?: Infer<typeof optionalChannelEnvelopeValidator>;
+  deliveryMeta: Value;
+  deviceOptions: Array<{
+    deviceId: string;
+    deviceName: string;
+    platform?: string;
+  }>;
+};
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -70,6 +91,55 @@ const toErrorMessage = (value: unknown): string | undefined => {
     return value;
   }
   return undefined;
+};
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? JSON.parse(JSON.stringify(value)) as Record<string, unknown>
+    : {};
+
+const formatDeviceLabel = (device: {
+  deviceName: string;
+  platform?: string;
+}): string =>
+  device.platform ? `${device.deviceName} (${device.platform})` : device.deviceName;
+
+const buildDeviceSelectionPrompt = (
+  devices: Array<{ deviceId: string; deviceName: string; platform?: string }>,
+  prefix?: string,
+): string => {
+  const lines = [
+    prefix ?? "Multiple devices are online. Which device should I use?",
+    ...devices.map((device, index) => `${index + 1}. ${formatDeviceLabel(device)}`),
+    "Reply with the number or device name.",
+  ];
+  return lines.join("\n");
+};
+
+const parseDeviceSelectionReply = (
+  replyText: string,
+  deviceOptions: Array<{ deviceId: string; deviceName: string; platform?: string }>,
+) => {
+  const trimmed = replyText.trim();
+  if (!trimmed) return null;
+
+  const index = Number(trimmed);
+  if (Number.isInteger(index) && index >= 1 && index <= deviceOptions.length) {
+    return deviceOptions[index - 1] ?? null;
+  }
+
+  const normalized = trimmed.toLowerCase();
+  const exactMatch = deviceOptions.find((device) =>
+    device.deviceName.trim().toLowerCase() === normalized
+    || formatDeviceLabel(device).trim().toLowerCase() === normalized,
+  );
+  if (exactMatch) return exactMatch;
+
+  const prefixMatches = deviceOptions.filter((device) =>
+    device.deviceName.trim().toLowerCase().startsWith(normalized)
+    || formatDeviceLabel(device).trim().toLowerCase().startsWith(normalized),
+  );
+  return prefixMatches.length === 1 ? prefixMatches[0] : null;
 };
 
 const getTransientCleanupBackoffMs = (attempt: number): number =>
@@ -189,14 +259,27 @@ const deleteTransientBatch = async (args: {
   });
 };
 
-const resolveExecutionTarget = async (args: {
+const listFreshDevicesForOwner = async (args: {
   ctx: ActionCtx;
   ownerId: string;
-  conversationId: Id<"conversations">;
-}): Promise<{ targetDeviceId: string | null }> => {
+  nowMs: number;
+}): Promise<FreshDeviceOption[]> => {
   return await args.ctx.runQuery(
-    internal.agent.device_resolver.resolveExecutionTarget,
-    { ownerId: args.ownerId, conversationId: args.conversationId },
+    internal.agent.device_resolver.listFreshDevicesForOwner,
+    { ownerId: args.ownerId, nowMs: args.nowMs },
+  );
+};
+
+const getConversationRoutingState = async (args: {
+  ctx: ActionCtx;
+  conversationId: Id<"conversations">;
+}): Promise<{
+  activeTargetDeviceId: string | null;
+  pendingDeviceSelection: PendingDeviceSelectionState | null;
+}> => {
+  return await args.ctx.runQuery(
+    internal.conversations.getRoutingState,
+    { conversationId: args.conversationId },
   );
 };
 
@@ -255,6 +338,7 @@ export async function processIncomingMessage(
     internal.data.preferences.getSyncModeForOwner,
     { ownerId: connection.ownerId },
   )) as SyncMode;
+  const nowMs = Date.now();
   // See backend/docs/sync_off_operational_writes.md for intentionally retained
   // operational metadata writes while sync mode is off.
   const transient = syncMode === SYNC_MODE_OFF;
@@ -344,15 +428,152 @@ export async function processIncomingMessage(
   };
 
   try {
+    const [routingState, freshDevices] = await Promise.all([
+      getConversationRoutingState({
+        ctx: args.ctx,
+        conversationId,
+      }),
+      listFreshDevicesForOwner({
+        ctx: args.ctx,
+        ownerId: connection.ownerId,
+        nowMs,
+      }),
+    ]);
+    const freshDeviceIds = new Set(freshDevices.map((device) => device.deviceId));
+
+    let promptText = args.text;
+    let promptAttachments = args.attachments;
+    let promptChannelEnvelope = args.channelEnvelope;
+    let promptDeliveryMeta = args.deliveryMeta;
+    let targetDeviceId: string | null = null;
+
+    if (routingState.pendingDeviceSelection) {
+      const pendingSelection = routingState.pendingDeviceSelection;
+      const selectedOption = parseDeviceSelectionReply(
+        args.text,
+        pendingSelection.deviceOptions,
+      );
+
+      if (!selectedOption) {
+        return {
+          text: buildDeviceSelectionPrompt(
+            pendingSelection.deviceOptions,
+            "I couldn't match that choice.",
+          ),
+        };
+      }
+
+      const freshMatch = freshDevices.find(
+        (device) => device.deviceId === selectedOption.deviceId,
+      );
+      if (!freshMatch) {
+        if (freshDevices.length === 0) {
+          await args.ctx.runMutation(
+            internal.conversations.clearPendingDeviceSelection,
+            { conversationId },
+          );
+          await args.ctx.runMutation(
+            internal.conversations.setActiveTargetDeviceId,
+            { conversationId, deviceId: undefined },
+          );
+          promptText = pendingSelection.promptText;
+          promptAttachments = pendingSelection.attachments;
+          promptChannelEnvelope = pendingSelection.channelEnvelope;
+          promptDeliveryMeta = asRecord(pendingSelection.deliveryMeta);
+        } else {
+          const refreshedOptions = freshDevices.map((device) => ({
+            deviceId: device.deviceId,
+            deviceName: device.deviceName,
+            platform: device.platform,
+          }));
+          await args.ctx.runMutation(
+            internal.conversations.setPendingDeviceSelection,
+            {
+              conversationId,
+              selection: {
+                ...pendingSelection,
+                createdAt: nowMs,
+                deviceOptions: refreshedOptions,
+              },
+            },
+          );
+          return {
+            text: buildDeviceSelectionPrompt(
+              refreshedOptions,
+              `${selectedOption.deviceName} is no longer online.`,
+            ),
+          };
+        }
+      } else {
+        await args.ctx.runMutation(
+          internal.conversations.clearPendingDeviceSelection,
+          { conversationId },
+        );
+        await args.ctx.runMutation(
+          internal.conversations.setActiveTargetDeviceId,
+          { conversationId, deviceId: freshMatch.deviceId },
+        );
+        promptText = pendingSelection.promptText;
+        promptAttachments = pendingSelection.attachments;
+        promptChannelEnvelope = pendingSelection.channelEnvelope;
+        promptDeliveryMeta = asRecord(pendingSelection.deliveryMeta);
+        targetDeviceId = freshMatch.deviceId;
+      }
+    } else if (
+      routingState.activeTargetDeviceId
+      && freshDeviceIds.has(routingState.activeTargetDeviceId)
+    ) {
+      targetDeviceId = routingState.activeTargetDeviceId;
+    } else {
+      if (routingState.activeTargetDeviceId) {
+        await args.ctx.runMutation(
+          internal.conversations.setActiveTargetDeviceId,
+          { conversationId, deviceId: undefined },
+        );
+      }
+
+      if (freshDevices.length === 1) {
+        targetDeviceId = freshDevices[0]?.deviceId ?? null;
+        if (targetDeviceId) {
+          await args.ctx.runMutation(
+            internal.conversations.setActiveTargetDeviceId,
+            { conversationId, deviceId: targetDeviceId },
+          );
+        }
+      } else if (freshDevices.length > 1) {
+        const deviceOptions = freshDevices.map((device) => ({
+          deviceId: device.deviceId,
+          deviceName: device.deviceName,
+          platform: device.platform,
+        }));
+        await args.ctx.runMutation(
+          internal.conversations.setPendingDeviceSelection,
+          {
+            conversationId,
+            selection: {
+              createdAt: nowMs,
+              provider: args.provider,
+              promptText: args.text,
+              attachments: args.attachments,
+              channelEnvelope: args.channelEnvelope,
+              deliveryMeta: JSON.parse(JSON.stringify(args.deliveryMeta ?? {})) as Value,
+              deviceOptions,
+            },
+          },
+        );
+        return { text: buildDeviceSelectionPrompt(deviceOptions) };
+      }
+    }
+
     const userMessageId = transient
       ? null
       : await appendInboundUserMessage({
           ctx: args.ctx,
           conversationId,
           provider: args.provider,
-          text: args.text,
-          attachments: args.attachments,
-          channelEnvelope: args.channelEnvelope,
+          text: promptText,
+          attachments: promptAttachments,
+          channelEnvelope: promptChannelEnvelope,
         });
 
     if (transient && transientBatchKey) {
@@ -362,7 +583,7 @@ export async function processIncomingMessage(
         conversationId,
         provider: args.provider,
         direction: "inbound",
-        text: args.text,
+        text: promptText,
         batchKey: transientBatchKey,
         metadata: {
           source: "connector",
@@ -375,18 +596,12 @@ export async function processIncomingMessage(
       return { text: "" };
     }
 
-    const executionTarget = await resolveExecutionTarget({
-      ctx: args.ctx,
-      ownerId: connection.ownerId,
-      conversationId,
-    });
-
     console.log(
-      `[pipeline:trace] resolveExecutionTarget: ownerId=${connection.ownerId}, targetDeviceId=${executionTarget.targetDeviceId}`,
+      `[pipeline:trace] conversationRouting: ownerId=${connection.ownerId}, activeTargetDeviceId=${routingState.activeTargetDeviceId ?? "none"}, freshDevices=${freshDevices.length}, targetDeviceId=${targetDeviceId}`,
     );
 
     const candidates = buildDesktopTurnCandidates({
-      targetDeviceId: executionTarget.targetDeviceId,
+      targetDeviceId,
     });
     console.log(
       `[pipeline:trace] candidates: ${JSON.stringify(candidates.map((c) => c.mode))}, deliveryMeta=${!!args.deliveryMeta}, userMessageId=${!!userMessageId}, transient=${transient}`,
@@ -400,16 +615,16 @@ export async function processIncomingMessage(
     const firstCandidate = candidates[0];
     if (
       firstCandidate?.mode === "desktop" &&
-      args.deliveryMeta
+      promptDeliveryMeta
     ) {
       const requestId = crypto.randomUUID();
 
-      const clonedDeliveryMeta = JSON.parse(JSON.stringify(args.deliveryMeta));
+      const clonedDeliveryMeta = JSON.parse(JSON.stringify(promptDeliveryMeta));
 
       const turnPayload = {
         conversationId: String(conversationId),
         ...(userMessageId ? { userMessageId: String(userMessageId) } : {}),
-        text: args.text,
+        text: promptText,
         provider: args.provider,
         deliveryMeta: clonedDeliveryMeta,
       };
@@ -430,7 +645,7 @@ export async function processIncomingMessage(
           requestId,
           conversationId,
           ownerId: connection.ownerId,
-          prompt: args.text,
+          prompt: promptText,
           provider: args.provider,
           deliveryMeta: clonedDeliveryMeta,
           ...(userMessageId ? { userMessageId: String(userMessageId) } : {}),
@@ -449,7 +664,7 @@ export async function processIncomingMessage(
       const outcome = await runAgentTurnWithBackendFallback({
         ctx: args.ctx,
         conversationId,
-        prompt: args.text,
+        prompt: promptText,
         agentType: AGENT_IDS.OFFLINE_RESPONDER,
         ownerId: connection.ownerId,
         userMessageId: userMessageId ?? undefined,
@@ -474,7 +689,7 @@ export async function processIncomingMessage(
 
     const responseText = result.text.trim() || "(Stella had nothing to say.)";
     const usedBackendFallback =
-      !executionTarget.targetDeviceId &&
+      !targetDeviceId &&
       selectedMode === "backend";
 
     await persistAssistant({
