@@ -9,6 +9,23 @@ import type { Id } from "../_generated/dataModel";
 import { requireSensitiveUserId, requireUserId } from "../auth";
 
 const HEARTBEAT_SIGNATURE_MAX_AGE_MS = 2 * 60_000;
+const DEVICE_FRESHNESS_MS = 90_000;
+
+const freshDeviceOptionValidator = v.object({
+  deviceId: v.string(),
+  deviceName: v.string(),
+  platform: v.optional(v.string()),
+  lastHeartbeatAt: v.number(),
+});
+
+type DeviceRow = {
+  deviceId: string;
+  deviceName?: string;
+  online: boolean;
+  platform?: string;
+  lastHeartbeatAt?: number;
+  lastSignedAtMs?: number;
+};
 
 const base64ToBytes = (value: string): Uint8Array => {
   const binary = atob(value);
@@ -67,23 +84,36 @@ const listDevicesForOwner = async (ctx: QueryCtx, ownerId: string) => {
     .collect();
 };
 
+const getLastHeartbeatAt = (row: Pick<DeviceRow, "lastHeartbeatAt" | "lastSignedAtMs">) =>
+  row.lastHeartbeatAt ?? row.lastSignedAtMs ?? 0;
+
+const isFreshDevice = (row: DeviceRow, nowMs: number) =>
+  row.online
+  && getLastHeartbeatAt(row) > 0
+  && nowMs - getLastHeartbeatAt(row) <= DEVICE_FRESHNESS_MS;
+
+const getDeviceDisplayName = (row: Pick<DeviceRow, "deviceId" | "deviceName" | "platform">) => {
+  const explicitName = typeof row.deviceName === "string" ? row.deviceName.trim() : "";
+  if (explicitName) return explicitName;
+  const platform = typeof row.platform === "string" ? row.platform.trim() : "";
+  if (platform) return `${platform}-${row.deviceId.slice(0, 6)}`;
+  return `device-${row.deviceId.slice(0, 6)}`;
+};
+
+const listFreshDeviceRows = (rows: DeviceRow[], nowMs: number) =>
+  rows
+    .filter((row) => row.deviceId && isFreshDevice(row, nowMs))
+    .sort((a, b) => {
+      const tsDiff = getLastHeartbeatAt(b) - getLastHeartbeatAt(a);
+      if (tsDiff !== 0) return tsDiff;
+      return getDeviceDisplayName(a).localeCompare(getDeviceDisplayName(b));
+    });
+
 const pickBestOnlineTarget = (
-  rows: Array<{
-    deviceId: string;
-    online: boolean;
-    lastSignedAtMs?: number;
-  }>,
+  rows: DeviceRow[],
+  nowMs: number,
 ): string | null => {
-  const online = rows.filter((r) => r.online && r.deviceId);
-  if (online.length === 0) {
-    const fallback = rows
-      .filter((r) => r.deviceId)
-      .sort((a, b) => (b.lastSignedAtMs ?? 0) - (a.lastSignedAtMs ?? 0))[0];
-    return fallback?.deviceId ?? null;
-  }
-  const sorted = online.sort(
-    (a, b) => (b.lastSignedAtMs ?? 0) - (a.lastSignedAtMs ?? 0),
-  );
+  const sorted = listFreshDeviceRows(rows, nowMs);
   return sorted[0]?.deviceId ?? null;
 };
 
@@ -97,6 +127,7 @@ const pickBestOnlineTarget = (
 export const heartbeat = mutation({
   args: {
     deviceId: v.string(),
+    deviceName: v.optional(v.string()),
     platform: v.optional(v.string()),
     signedAtMs: v.number(),
     signature: v.string(),
@@ -136,7 +167,9 @@ export const heartbeat = mutation({
 
     if (existing) {
       await ctx.db.patch(existing._id, {
+        ...(args.deviceName !== undefined ? { deviceName: args.deviceName } : {}),
         devicePublicKey: args.publicKey,
+        lastHeartbeatAt: now,
         lastSignedAtMs: args.signedAtMs,
         online: true,
         ...(args.platform !== undefined ? { platform: args.platform } : {}),
@@ -145,7 +178,9 @@ export const heartbeat = mutation({
       await ctx.db.insert("devices", {
         ownerId,
         deviceId: args.deviceId,
+        deviceName: args.deviceName,
         devicePublicKey: args.publicKey,
+        lastHeartbeatAt: now,
         lastSignedAtMs: args.signedAtMs,
         online: true,
         platform: args.platform,
@@ -162,16 +197,20 @@ export const heartbeat = mutation({
 export const registerDevice = mutation({
   args: {
     deviceId: v.string(),
+    deviceName: v.optional(v.string()),
     platform: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
+    const now = Date.now();
 
     const existing = await loadDeviceRow(ctx, ownerId, args.deviceId);
 
     if (existing) {
       await ctx.db.patch(existing._id, {
+        ...(args.deviceName !== undefined ? { deviceName: args.deviceName } : {}),
+        lastHeartbeatAt: now,
         online: true,
         ...(args.platform !== undefined ? { platform: args.platform } : {}),
       });
@@ -179,6 +218,8 @@ export const registerDevice = mutation({
       await ctx.db.insert("devices", {
         ownerId,
         deviceId: args.deviceId,
+        deviceName: args.deviceName,
+        lastHeartbeatAt: now,
         online: true,
         platform: args.platform,
       });
@@ -210,6 +251,26 @@ export const goOffline = mutation({
 // Internal Queries - used by channels, schedulers, and agent execution
 // ---------------------------------------------------------------------------
 
+export const listFreshDevicesForOwner = internalQuery({
+  args: {
+    ownerId: v.string(),
+    nowMs: v.number(),
+  },
+  returns: v.array(freshDeviceOptionValidator),
+  handler: async (ctx, args) => {
+    const rows = listFreshDeviceRows(
+      await listDevicesForOwner(ctx, args.ownerId),
+      args.nowMs,
+    );
+    return rows.map((row) => ({
+      deviceId: row.deviceId,
+      deviceName: getDeviceDisplayName(row),
+      platform: row.platform,
+      lastHeartbeatAt: getLastHeartbeatAt(row),
+    }));
+  },
+});
+
 /**
  * Resolve execution target for connector / remote turns.
  * Prefers conversation affinity when the last user_message device is still registered.
@@ -218,6 +279,7 @@ export const resolveExecutionTarget = internalQuery({
   args: {
     ownerId: v.string(),
     conversationId: v.optional(v.id("conversations")),
+    nowMs: v.number(),
   },
   handler: async (
     ctx,
@@ -226,7 +288,8 @@ export const resolveExecutionTarget = internalQuery({
     targetDeviceId: string | null;
   }> => {
     const rows = await listDevicesForOwner(ctx, args.ownerId);
-    if (rows.length === 0) {
+    const freshRows = listFreshDeviceRows(rows, args.nowMs);
+    if (freshRows.length === 0) {
       return { targetDeviceId: null };
     }
 
@@ -252,12 +315,12 @@ export const resolveExecutionTarget = internalQuery({
     }
 
     const target =
-      preferred && rows.some((r) => r.deviceId === preferred && r.online)
+      preferred && freshRows.some((r) => r.deviceId === preferred)
         ? preferred
-        : pickBestOnlineTarget(rows);
+        : pickBestOnlineTarget(freshRows, args.nowMs);
 
     console.log(
-      `[device_resolver:trace] ownerId=${args.ownerId}, conversationId=${args.conversationId ?? "none"}, devices=${rows.length}, targetDeviceId=${target}`,
+      `[device_resolver:trace] ownerId=${args.ownerId}, conversationId=${args.conversationId ?? "none"}, devices=${rows.length}, freshDevices=${freshRows.length}, targetDeviceId=${target}`,
     );
 
     return { targetDeviceId: target };
@@ -268,10 +331,10 @@ export const resolveExecutionTarget = internalQuery({
  * Get device status for system prompt injection (any desktop online).
  */
 export const getDeviceStatus = internalQuery({
-  args: { ownerId: v.string() },
+  args: { ownerId: v.string(), nowMs: v.number() },
   handler: async (ctx, args) => {
     const rows = await listDevicesForOwner(ctx, args.ownerId);
-    const localOnline = rows.some((r) => r.online);
+    const localOnline = rows.some((r) => isFreshDevice(r, args.nowMs));
     return { localOnline };
   },
 });

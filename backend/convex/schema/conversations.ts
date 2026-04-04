@@ -1,6 +1,10 @@
 import { defineTable } from "convex/server";
 import { v } from "convex/values";
-import { jsonValueValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
+import {
+  channelAttachmentValidator,
+  jsonValueValidator,
+  optionalChannelEnvelopeValidator,
+} from "../shared_validators";
 
 /** All event `type` values written by the app (appendEvent + internal inserters). */
 export const eventTypeValidator = v.union(
@@ -26,12 +30,30 @@ export const threadStatusValidator = v.union(
   v.literal("archived"),
 );
 
+export const pendingDeviceOptionValidator = v.object({
+  deviceId: v.string(),
+  deviceName: v.string(),
+  platform: v.optional(v.string()),
+});
+
+export const pendingDeviceSelectionValidator = v.object({
+  createdAt: v.number(),
+  provider: v.string(),
+  promptText: v.string(),
+  attachments: v.optional(v.array(channelAttachmentValidator)),
+  channelEnvelope: optionalChannelEnvelopeValidator,
+  deliveryMeta: jsonValueValidator,
+  deviceOptions: v.array(pendingDeviceOptionValidator),
+});
+
 export const conversationsSchema = {
   conversations: defineTable({
     ownerId: v.string(),
     title: v.optional(v.string()),
     isDefault: v.boolean(),
     activeThreadId: v.optional(v.id("threads")),
+    activeTargetDeviceId: v.optional(v.string()),
+    pendingDeviceSelection: v.optional(pendingDeviceSelectionValidator),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
