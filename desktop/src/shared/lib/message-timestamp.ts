@@ -4,4 +4,4 @@ export {
   TEN_MINUTES_MS,
   formatTimestampTag,
   formatTimestampForHistory,
-} from "../../../packages/runtime-kernel/message-timestamp.js";
+} from "../../../runtime/kernel/message-timestamp.js";

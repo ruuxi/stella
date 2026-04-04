@@ -2,13 +2,13 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
-import type { BrowserData, BrowserType } from "../../packages/runtime-discovery/browser-data.js";
-import { getStellaBrowserBridgeEnv } from "../../packages/runtime-kernel/tools/stella-browser-bridge-config.js";
+import type { BrowserData, BrowserType } from "../../runtime/discovery/browser-data.js";
+import { getStellaBrowserBridgeEnv } from "../../runtime/kernel/tools/stella-browser-bridge-config.js";
 import {
   normalizeUrlForPrivilegedRendererFetch,
   PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
 } from "./renderer-safe-url.js";
-import type { AllUserSignalsResult } from "../../packages/runtime-discovery/types.js";
+import type { AllUserSignalsResult } from "../../runtime/discovery/types.js";
 
 type BrowserFetchInit = {
   method?: "GET" | "POST";
@@ -310,7 +310,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     const stellaHomePath = options.getStellaHomePath();
     if (!stellaHomePath) return { version: 1, mappings: [] };
     const { loadIdentityMap } = await import(
-      "../../packages/runtime-kernel/home/identity-map.js"
+      "../../runtime/kernel/home/identity-map.js"
     );
     return loadIdentityMap(stellaHomePath);
   });
@@ -322,7 +322,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     const stellaHomePath = options.getStellaHomePath();
     if (!stellaHomePath || !text) return text;
     const { loadIdentityMap, depseudonymize } = await import(
-      "../../packages/runtime-kernel/home/identity-map.js"
+      "../../runtime/kernel/home/identity-map.js"
     );
     const map = await loadIdentityMap(stellaHomePath);
     if (map.mappings.length === 0) return text;
@@ -345,7 +345,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         return { ok: false, error: "Stella home not initialized" };
       }
       try {
-        const dir = path.join(stellaHomePath, "media", "outputs");
+        const dir = path.join(stellaHomePath, "state", "media", "outputs");
         await fs.mkdir(dir, { recursive: true });
         const destPath = path.join(dir, payload.fileName);
         const safeUrl = await normalizeUrlForPrivilegedRendererFetch(payload.url);
@@ -374,7 +374,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       }
       const stellaHomePath = options.getStellaHomePath();
       if (!stellaHomePath) return null;
-      return path.join(stellaHomePath, "media");
+      return path.join(stellaHomePath, "state", "media");
     },
   );
 };

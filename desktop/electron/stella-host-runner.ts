@@ -4,7 +4,7 @@ import {
 import type {
   RuntimeHostHandlers,
   StellaRuntimeClientOptions,
-} from "../packages/runtime-client/index.js";
+} from "../runtime/client/index.js";
 
 export type StellaHostRunner = RuntimeClientAdapter;
 

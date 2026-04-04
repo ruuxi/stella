@@ -12,7 +12,7 @@ import {
   STELLA_BROWSER_EXTENSION_ID,
   STELLA_NATIVE_MESSAGING_HOST_NAME,
   getStellaBrowserSocketDir,
-} from "../../packages/runtime-kernel/tools/stella-browser-bridge-config.js";
+} from "../../runtime/kernel/tools/stella-browser-bridge-config.js";
 
 function getStellaBrowserBinaryName(): string | null {
   const plat = os.platform();

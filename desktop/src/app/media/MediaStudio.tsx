@@ -268,7 +268,7 @@ export default function MediaStudio() {
   const jobOutput = job?.output
   const jobError = job?.error as { message?: string } | undefined
 
-  // When job completes, save to history + .stella
+  // When job completes, save to history + desktop/state
   useEffect(() => {
     if (!activeJobId) return
     if (savedJobRef.current.has(activeJobId)) return
@@ -281,7 +281,7 @@ export default function MediaStudio() {
       const jobIdCopy = activeJobId
       let cancelled = false
 
-      // Save files to .stella
+      // Save files to desktop/state
       void saveOutputToStella(output, jobIdCopy).then((saved) => {
         if (!cancelled && saved !== output) {
           setHistory(updateHistoryEntry(jobIdCopy, { output: saved }))

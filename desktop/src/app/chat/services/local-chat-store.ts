@@ -3,9 +3,9 @@ import {
   buildLocalHistoryFromEvents,
   LOCAL_CONTEXT_EVENT_TYPES,
   type LocalHistoryMessage,
-} from "../../../../packages/runtime-kernel/local-history.js";
+} from "../../../../runtime/kernel/local-history.js";
 
-export type { LocalHistoryMessage } from "../../../../packages/runtime-kernel/local-history.js";
+export type { LocalHistoryMessage } from "../../../../runtime/kernel/local-history.js";
 
 const MAX_EVENTS_PER_CONVERSATION = 2000;
 

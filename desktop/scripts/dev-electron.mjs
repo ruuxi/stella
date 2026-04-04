@@ -89,6 +89,7 @@ if (process.platform === 'darwin') {
   patchDevAppName()
 }
 const watchedDir = path.join(projectDir, 'dist-electron')
+const runtimeReloadStateFile = path.join(projectDir, '.stella-runtime-reload-state.json')
 const requiredFiles = [
   path.join(projectDir, '.vite-dev-url'),
   path.join(watchedDir, 'electron', 'main.js'),
@@ -108,7 +109,43 @@ let restartQueue = Promise.resolve()
 let watchReady = false
 let watchReadyTimer = null
 let restartRequestedByWatcher = false
+let exitCode = 0
+let rootWatcher = null
+let pendingRestartWhilePaused = false
 const expectedExits = new WeakSet()
+
+const isPidAlive = (pid) => {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false
+  }
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const isRuntimeReloadPaused = () => {
+  if (!existsSync(runtimeReloadStateFile)) {
+    return false
+  }
+  try {
+    const raw = JSON.parse(readFileSync(runtimeReloadStateFile, 'utf8'))
+    return raw?.paused === true && isPidAlive(Number(raw?.pid))
+  } catch {
+    return false
+  }
+}
+
+const flushDeferredRestartIfReady = () => {
+  if (!pendingRestartWhilePaused || shuttingDown || isRuntimeReloadPaused()) {
+    return
+  }
+  pendingRestartWhilePaused = false
+  restartRequestedByWatcher = true
+  scheduleRestart()
+}
 
 const startApp = () => {
   if (shuttingDown || currentApp) {
@@ -246,6 +283,7 @@ const shutdown = async (exitCode) => {
   }
 
   watcher?.close()
+  rootWatcher?.close()
   await stopApp()
   process.exit(exitCode)
 }
@@ -264,8 +302,23 @@ watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {
     return
   }
 
+  if (isRuntimeReloadPaused()) {
+    pendingRestartWhilePaused = true
+    return
+  }
+
   restartRequestedByWatcher = true
   scheduleRestart()
+})
+
+rootWatcher = watch(projectDir, (_eventType, filename) => {
+  if (
+    typeof filename !== 'string' ||
+    filename !== path.basename(runtimeReloadStateFile)
+  ) {
+    return
+  }
+  flushDeferredRestartIfReady()
 })
 
 startApp()

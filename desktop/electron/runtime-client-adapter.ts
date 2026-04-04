@@ -14,14 +14,14 @@ import type {
   RuntimeVoiceChatPayload,
   SelfModFeatureSummary,
   StorePublishArgs,
-} from "../packages/runtime-protocol/index.js";
+} from "../runtime/protocol/index.js";
 import {
   StellaRuntimeClient,
   type StellaRuntimeClientOptions,
-} from "../packages/runtime-client/index.js";
-import { createRuntimeUnavailableError } from "../packages/runtime-protocol/rpc-peer.js";
-import type { TaskLifecycleEvent } from "../packages/runtime-kernel/tasks/local-task-manager.js";
-import { readConfiguredStellaBaseUrl } from "../packages/runtime-kernel/convex-urls.js";
+} from "../runtime/client/index.js";
+import { createRuntimeUnavailableError } from "../runtime/protocol/rpc-peer.js";
+import type { TaskLifecycleEvent } from "../runtime/kernel/tasks/local-task-manager.js";
+import { readConfiguredStellaBaseUrl } from "../runtime/kernel/convex-urls.js";
 
 type AgentCallbacks = {
   onStream: (event: RuntimeAgentEventPayload) => void;

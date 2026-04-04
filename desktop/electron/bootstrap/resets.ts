@@ -1,8 +1,8 @@
 import { promises as fs } from "fs";
 import { app, session } from "electron";
 import path from "path";
-import { resetMessageStorage } from "../../packages/runtime-kernel/storage/reset-message-storage.js";
-import { resolveRuntimeHomePath } from "../../packages/runtime-kernel/home/stella-home.js";
+import { resetMessageStorage } from "../../runtime/kernel/storage/reset-message-storage.js";
+import { resolveRuntimeHomePath } from "../../runtime/kernel/home/stella-home.js";
 import { type BootstrapContext, broadcastLocalChatUpdated } from "./context.js";
 
 export type BootstrapResetFlows = {

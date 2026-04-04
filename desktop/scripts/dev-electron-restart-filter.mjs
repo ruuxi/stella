@@ -11,31 +11,29 @@ export const shouldRestartElectronForBuildPath = (filename) => {
   }
 
   const sidecarOwnedPackagePrefixes = [
-    'packages/runtime-kernel/agent-core/',
-    'packages/runtime-worker/',
-    'packages/runtime-capabilities/',
-    'packages/runtime-kernel/cli/',
-    'resources/bundled-commands/',
+    'runtime/kernel/agent-core/',
+    'runtime/worker/',
+    'runtime/kernel/cli/',
   ]
   if (sidecarOwnedPackagePrefixes.some((prefix) => normalized.startsWith(prefix))) {
     return false
   }
 
   const hostOwnedPackagePrefixes = [
-    'packages/runtime-client/',
-    'packages/runtime-protocol/',
+    'runtime/client/',
+    'runtime/protocol/',
     // Keep host reloads scoped to the runtime modules the Electron host
     // actually executes, either directly or through runtime-client.
-    'packages/runtime-discovery/browser-data',
-    'packages/runtime-kernel/convex-urls',
-    'packages/runtime-kernel/dev-projects/',
-    'packages/runtime-kernel/home/',
-    'packages/runtime-kernel/local-scheduler-service',
-    'packages/runtime-kernel/preferences/local-preferences',
-    'packages/runtime-kernel/shared/',
-    'packages/runtime-kernel/storage/',
-    'packages/runtime-kernel/tools/network-guards',
-    'packages/runtime-kernel/tools/stella-browser-bridge-config',
+    'runtime/discovery/browser-data',
+    'runtime/kernel/convex-urls',
+    'runtime/kernel/dev-projects/',
+    'runtime/kernel/home/',
+    'runtime/kernel/local-scheduler-service',
+    'runtime/kernel/preferences/local-preferences',
+    'runtime/kernel/shared/',
+    'runtime/kernel/storage/',
+    'runtime/kernel/tools/network-guards',
+    'runtime/kernel/tools/stella-browser-bridge-config',
   ]
   if (hostOwnedPackagePrefixes.some((prefix) => normalized.startsWith(prefix))) {
     return true

@@ -1,6 +1,6 @@
 import { app } from "electron";
 import path from "path";
-import { resolveStellaHome } from "../../packages/runtime-kernel/home/stella-home.js";
+import { resolveStellaHome } from "../../runtime/kernel/home/stella-home.js";
 import { getDevServerUrl } from "../dev-url.js";
 import { OverlayWindowController } from "../windows/overlay-window.js";
 import { WindowManager } from "../windows/window-manager.js";

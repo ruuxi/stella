@@ -18,6 +18,7 @@ dist-ssr
 *.tsbuildinfo
 .vite-dev-url
 .stella-hmr-state.json
+.stella-runtime-reload-state.json
 src/testing/__vite_error_trigger.tsx
 
 # Editor directories and files
@@ -59,11 +60,6 @@ workspace/
 native/*.exe
 native/*.obj
 # Stella local runtime state
-.stella/state/
-.stella/logs/
-.stella/recovery/
-.stella/canvas/
-.stella/mods/features.json
-.stella/skills/
+state/
 
 SECURITY-REVIEW.md

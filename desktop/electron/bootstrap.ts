@@ -14,7 +14,7 @@ import {
   initializeBootstrapSingleInstance,
   registerBootstrapLifecycle,
 } from "./bootstrap/lifecycle.js";
-import { resolveRuntimeHomePath } from "../packages/runtime-kernel/home/stella-home.js";
+import { resolveRuntimeStatePath } from "../runtime/kernel/home/stella-home.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,7 +41,7 @@ const configureDevUserDataPath = () => {
   }
 
   const devUserDataPath = path.join(
-    resolveRuntimeHomePath(app),
+    resolveRuntimeStatePath(app),
     "electron-user-data",
   );
   app.setPath("userData", devUserDataPath);

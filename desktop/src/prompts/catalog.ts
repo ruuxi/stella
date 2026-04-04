@@ -489,7 +489,7 @@ Selection criteria:
 Output ONLY a JSON array of skill IDs. No explanation. No markdown fences.
 
 Example output:
-["docx", "frontend-design", "mcp-builder", "doc-coauthoring"]`,
+["google-workspace", "computer-use", "browser-api-discovery", "self-modification"]`,
     render: renderStatic,
   },
   "skill_selection.user": {

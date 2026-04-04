@@ -1,1 +1,1 @@
-export * from "../../../packages/boundary-contracts/index.js";
+export * from "../../../runtime/contracts/index.js";

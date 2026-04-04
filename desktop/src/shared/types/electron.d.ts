@@ -66,7 +66,7 @@ import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
 } from "../contracts/onboarding";
-import type { RuntimeSocialSessionStatus } from "../../packages/runtime-protocol/index";
+import type { RuntimeSocialSessionStatus } from "../../runtime/protocol/index";
 
 export type RadialWedge = SharedRadialWedge;
 export type ChatContext = SharedChatContext;

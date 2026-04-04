@@ -37,9 +37,9 @@ export default defineConfig({
       },
       {
         test: {
-          name: 'packages',
+          name: 'runtime',
           environment: 'node',
-          include: ['tests/packages/**/*.{test,spec}.{ts,tsx}'],
+          include: ['tests/runtime/**/*.{test,spec}.{ts,tsx}'],
         },
       },
     ],
