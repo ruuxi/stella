@@ -571,9 +571,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.invoke("credential:submit", payload),
     cancelCredential: (payload: { requestId: string }) =>
       ipcRenderer.invoke("credential:cancel", payload),
-    getIdentityMap: () => ipcRenderer.invoke("identity:getMap"),
-    depseudonymize: (text: string) =>
-      ipcRenderer.invoke("identity:depseudonymize", text),
   },
 
   onboarding: {

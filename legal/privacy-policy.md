@@ -49,7 +49,6 @@ The following data is created and stored **entirely on your device** and is neve
 | Tool execution results | Output from shell commands, file operations, web searches, browser actions |
 | Computer-use activity logs | Records of agent actions (browsing, file edits, commands) — stored only on your device |
 | Discovery signals (browser bookmarks, apps, dev environment, etc.) | Optional onboarding personalization |
-| Pseudonymized identity map | De-identification of personal names/contacts found during discovery |
 | Voice transcripts | Records of voice interactions |
 | LLM API keys (encrypted) | Your own provider credentials for BYOK use |
 | Local preferences and settings | Theme, model preferences, configuration |

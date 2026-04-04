@@ -27,8 +27,6 @@ export const MOBILE_BRIDGE_REQUEST_CHANNELS = [
   "app:resetLocalMessages",
   "credential:submit",
   "credential:cancel",
-  "identity:getMap",
-  "identity:depseudonymize",
   "browserData:exists",
   "browserData:collect",
   "browserData:detectPreferredBrowser",

@@ -30,11 +30,6 @@ import { collectFirefoxData, formatFirefoxDataForSynthesis } from "./firefox-dat
 import { collectSteamLibrary, formatSteamLibraryForSynthesis } from "./steam-library.js";
 import { collectMusicLibrary, formatMusicLibraryForSynthesis } from "./music-library.js";
 import {
-  addContacts,
-  pseudonymize,
-  loadIdentityMap,
-} from "../kernel/home/identity-map.js";
-import {
   ensurePrivateDir,
   writePrivateFile,
 } from "../kernel/home/private-fs.js";
@@ -244,7 +239,6 @@ export const collectAllUserSignals = async (
 
 /**
  * Format all collected data for LLM synthesis into CORE_MEMORY.
- * Category 4 output is pseudonymized before inclusion.
  */
 export const formatAllSignalsForSynthesis = async (
   data: ExtendedUserSignals,
@@ -350,70 +344,11 @@ const formatSignalsForSynthesisWithSections = async (
     }
   }
 
-  // --- Category 4: Messages & Notes (pseudonymized) ---
+  // --- Category 4: Messages & Notes ---
   if (categories.includes("messages_notes") && data.messagesNotes) {
-    // Build identity map from contacts + git config
-    const contactsToMap: { name: string; identifier: string; source: "imessage" | "calendar" | "notes" | "reminders" | "git_config" }[] = [];
-
-    // Add iMessage contacts
-    for (const c of data.messagesNotes.contacts) {
-      if (c.displayName && c.identifier) {
-        contactsToMap.push({ name: c.displayName, identifier: c.identifier, source: "imessage" });
-      }
-    }
-
-    // Add git config identity if available
-    if (data.devEnvironment?.gitConfig?.name && data.devEnvironment?.gitConfig?.email) {
-      contactsToMap.push({
-        name: data.devEnvironment.gitConfig.name,
-        identifier: data.devEnvironment.gitConfig.email,
-        source: "git_config",
-      });
-    }
-
-    // Add calendar recurring event people (extract names from titles like "1:1 with Sarah")
-    for (const cal of data.messagesNotes.calendars) {
-      for (const title of cal.recurringTitles) {
-        // Simple heuristic: "with {Name}" pattern
-        const withMatch = title.match(/\bwith\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/);
-        if (withMatch) {
-          contactsToMap.push({ name: withMatch[1], identifier: withMatch[1], source: "calendar" });
-        }
-      }
-    }
-
-    // Register contacts in identity map
-    if (contactsToMap.length > 0) {
-      await addContacts(StellaHome, contactsToMap);
-    }
-
-    // Format then pseudonymize
-    let identityMap: Awaited<ReturnType<typeof loadIdentityMap>> | null = null;
-    const getIdentityMap = async () => {
-      if (!identityMap) {
-        identityMap = await loadIdentityMap(StellaHome);
-      }
-      return identityMap;
-    };
-
-    let messagesSection = formatMessagesNotesForSynthesis(data.messagesNotes);
+    const messagesSection = formatMessagesNotesForSynthesis(data.messagesNotes);
     if (messagesSection) {
-      const map = await getIdentityMap();
-      if (map.mappings.length > 0) {
-        messagesSection = pseudonymize(messagesSection, map);
-      }
       formattedSections.messages_notes = messagesSection;
-    }
-
-    // Also pseudonymize git config in dev environment section if present
-    if (data.devEnvironment?.gitConfig?.name && formattedSections.dev_environment) {
-      const map = await getIdentityMap();
-      if (map.mappings.length > 0) {
-        formattedSections.dev_environment = pseudonymize(
-          formattedSections.dev_environment,
-          map,
-        );
-      }
     }
   }
 

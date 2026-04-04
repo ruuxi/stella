@@ -7,7 +7,6 @@ import {
   getRunningTasks,
 } from "@/app/chat/lib/event-transforms";
 import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
-import { useDepseudonymize } from "@/app/chat/hooks/use-depseudonymize";
 import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-started-at";
 import { isOrchestratorChatMessagePayload } from "@/app/chat/emotes/message-source";
 import { sanitizeAssistantText } from "../../../runtime/kernel/internal-tool-transcript.js";
@@ -124,7 +123,6 @@ export function useTurnViewModels(opts: {
     return allTurns.slice(baseStart);
   }, [allTurns, maxTurns, pendingUserMessageId, showStreaming]);
 
-  const depseudonymize = useDepseudonymize();
   const appSessionStartedAtMs = useAgentSessionStartedAt();
 
   const baseTurns = useMemo(() => {
@@ -133,7 +131,7 @@ export function useTurnViewModels(opts: {
       const userAttachments = getAttachments(turn.userMessage);
       const userChannelEnvelope = getChannelEnvelope(turn.userMessage);
       const assistantText = turn.assistantMessage
-        ? depseudonymize(getDisplayMessageText(turn.assistantMessage))
+        ? getDisplayMessageText(turn.assistantMessage)
         : "";
       const assistantMessageId = turn.assistantMessage?._id ?? null;
       const assistantEmotesEnabled = isOrchestratorChatMessagePayload(
@@ -151,7 +149,7 @@ export function useTurnViewModels(opts: {
         webSearchBadgeHtml: getWebSearchBadgeHtml(turn.toolEvents),
       };
     });
-  }, [slicedTurns, depseudonymize]);
+  }, [slicedTurns]);
 
   const turns = useMemo(() => {
     if (!selfModMap) {
@@ -174,17 +172,17 @@ export function useTurnViewModels(opts: {
   const processedStreamingText = useMemo(
     () =>
       streamingText
-        ? depseudonymize(sanitizeAssistantText(streamingText))
+        ? sanitizeAssistantText(streamingText)
         : streamingText,
-    [streamingText, depseudonymize],
+    [streamingText],
   );
 
   const processedReasoningText = useMemo(
     () =>
       reasoningText
-        ? depseudonymize(reasoningText)
+        ? reasoningText
         : reasoningText,
-    [reasoningText, depseudonymize],
+    [reasoningText],
   );
 
   const runningTool = useMemo(() => getCurrentRunningTool(events), [events]);
