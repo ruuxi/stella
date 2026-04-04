@@ -68,7 +68,6 @@ export const createRuntimeExecutionSession = (
     frontendRoot: opts.frontendRoot,
     taskDepth: opts.agentContext.taskDepth ?? 0,
     maxTaskDepth: opts.agentContext.maxTaskDepth,
-    delegationAllowlist: opts.agentContext.delegationAllowlist,
     toolsAllowlist: opts.agentContext.toolsAllowlist,
     toolCatalog: opts.toolCatalog,
     defaultSkills: opts.agentContext.defaultSkills,

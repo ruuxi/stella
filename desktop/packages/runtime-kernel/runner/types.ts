@@ -163,7 +163,6 @@ export type ParsedAgentLike = {
   systemPrompt: string;
   agentTypes: string[];
   toolsAllowlist?: string[];
-  delegationAllowlist?: string[];
   defaultSkills?: string[];
   model?: string;
   maxTaskDepth?: number;
@@ -172,7 +171,6 @@ export type ParsedAgentLike = {
 export type RunnerPaths = {
   skillsPath: string;
   coreSkillsPath: string;
-  agentsPath: string;
   extensionsPath: string;
 };
 

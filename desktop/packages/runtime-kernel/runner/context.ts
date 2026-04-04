@@ -285,7 +285,6 @@ export const createRunnerContext = ({
     paths: {
       skillsPath: path.join(stellaHomePath, "skills"),
       coreSkillsPath: path.join(stellaHomePath, "core-skills"),
-      agentsPath: path.join(stellaHomePath, "agents"),
       extensionsPath: path.join(stellaHomePath, "extensions"),
     },
     state: {
@@ -463,7 +462,6 @@ export const buildAgentContext = async (
     orchestratorReminderText: activeThreadsPrompt || undefined,
     shouldInjectDynamicReminder: reminderState.shouldInjectDynamicReminder,
     toolsAllowlist,
-    delegationAllowlist: agent?.delegationAllowlist,
     model,
     maxTaskDepth: agent?.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH,
     defaultSkills: (agent?.defaultSkills ?? []).filter((skillId) =>

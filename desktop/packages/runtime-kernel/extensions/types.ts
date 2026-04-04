@@ -6,10 +6,9 @@
 //   providers/<name>.provider.ts - Custom LLM providers
 //   prompts/<name>.prompt.md   - Reusable prompt templates
 //
-// Agent skills and agent definitions are loaded separately from:
+// Agent skills are loaded separately from:
 //   ../skills/<name>/SKILL.md  (user-installed, gitignored)
 //   ../core-skills/<name>/SKILL.md  (bundled defaults)
-//   ../agents/<name>/AGENT.md
 
 import type { ToolContext, ToolResult } from "../tools/types.js";
 

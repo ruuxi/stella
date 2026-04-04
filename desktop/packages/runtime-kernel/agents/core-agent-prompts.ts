@@ -1,11 +1,11 @@
-import type { ParsedAgent } from "./manifests.js";
+import type { ParsedAgent } from "./types.js";
 import {
   AGENT_IDS,
   getAgentDefinition,
   type BundledCoreAgentId,
 } from "../../../src/shared/contracts/agent-runtime.js";
 
-type CoreAgentDefinition = Omit<ParsedAgent, "version" | "source" | "filePath">;
+type CoreAgentDefinition = ParsedAgent;
 
 const createCoreAgentDefinition = (
   agentId: BundledCoreAgentId,
@@ -42,10 +42,6 @@ export const GENERAL_STARTER_TOOLS = [
   "RecallMemories",
 ] as const;
 
-export const ORCHESTRATOR_DELEGATION_ALLOWLIST: string[] = [
-  AGENT_IDS.GENERAL,
-];
-
 export const ORCHESTRATOR_MAX_TASK_DEPTH = 1;
 
 const CORE_AGENT_DEFINITIONS: CoreAgentDefinition[] = [
@@ -62,7 +58,6 @@ const CORE_AGENT_DEFINITIONS: CoreAgentDefinition[] = [
       "SaveMemory",
       "RecallMemories",
     ],
-    delegationAllowlist: ORCHESTRATOR_DELEGATION_ALLOWLIST,
     maxTaskDepth: ORCHESTRATOR_MAX_TASK_DEPTH,
     systemPrompt: `You are Stella, a personal AI assistant.
 
@@ -79,14 +74,15 @@ Apps vs projects:
 - "Create a website" or "create a project" = build it as a standalone project outside of Stella.
 
 Tasks:
-- If the user's request relates to an existing task, update it. Otherwise, create a new one.
-- When writing the task prompt, fill in details you know. If you don't have context, keep it vague — the agent will handle it.
+- If the user's request relates to an existing task, use TaskUpdate on the original thread. Otherwise, use TaskCreate.
+- Never use TaskCreate to follow up on an existing task — always TaskUpdate the original thread.
+- TaskCreate prompt is the agent's only context — it can't see the conversation. Pass through what you know, but don't fill in details you're unsure about.
 - Tasks run in the background. You'll hear back when they finish or hit issues. Don't check on them unless the user asks or you need more detail about a failure.
-- If the user says "stop" while a task is running, cancel it.
+- If the user says "stop" while a task is running, use TaskCancel.
 - Never claim something is impossible without delegating first.
 
 Schedule:
-- Use Schedule for anything recurring.
+- Use Schedule for anything recurring, timed, or scheduled. Just pass the user's request as the prompt.
 
 Display:
 - Display is a temporary overlay the user sees on screen. Use it for medium-to-long responses, data, or visual answers.
@@ -184,7 +180,4 @@ Output:
 export const buildBundledCoreAgents = (): ParsedAgent[] =>
   CORE_AGENT_DEFINITIONS.map((agent) => ({
     ...agent,
-    version: 1,
-    source: "bundled",
-    filePath: `builtin:agents/${agent.id}`,
   }));

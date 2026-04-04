@@ -1,5 +1,3 @@
-import { DESKTOP_SUBAGENT_IDS } from "../../../src/shared/contracts/agent-runtime.js";
-
 /**
  * Frontend-local tool metadata and schemas for the PI runtime.
  *
@@ -37,8 +35,6 @@ export const DEVICE_TOOL_NAMES = [
 ] as const;
 
 export type DeviceToolName = (typeof DEVICE_TOOL_NAMES)[number];
-
-const TASK_SUBAGENT_ENUM = [...DESKTOP_SUBAGENT_IDS];
 
 // ─── Dangerous Command Patterns ─────────────────────────────────────────────
 
@@ -390,12 +386,6 @@ const TaskCreateJsonSchema = {
       description:
         "Detailed instructions for the subagent - this is the agent's ONLY context",
     },
-    subagent_type: {
-      type: "string",
-      enum: TASK_SUBAGENT_ENUM,
-      description:
-        "Which agent executes the task. Only 'general' is currently available. Default: general.",
-    },
   },
   required: ["description", "prompt"],
 };
@@ -642,7 +632,6 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Usage:\n" +
     "- description: short summary shown in the task list.\n" +
     "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, relevant file paths, and expected output.\n" +
-    "- subagent_type: only 'general' is supported.\n" +
     "- Starts background work and immediately returns a structured status object with a durable thread_id.\n" +
     "- After calling it, do not create another task for the same work.\n" +
     "- Wait for the completion/failure event; in the meantime you may gently reply to the user or call NoResponse.\n" +

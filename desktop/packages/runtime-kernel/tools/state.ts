@@ -10,6 +10,7 @@ import type {
   TaskToolSnapshot,
 } from "./types.js";
 import { truncate } from "./utils.js";
+import { AGENT_IDS } from "../../../src/shared/contracts/agent-runtime.js";
 
 export type StateContext = {
   stateRoot: string;
@@ -156,10 +157,7 @@ export const handleTask = async (
     toOptionalString(args.prompt) ??
     toOptionalString(args.command) ??
     description;
-  const agentType =
-    toOptionalString(args.subagentType ?? args.subagent_type ?? args.agentType) ??
-    "general";
-  const delegationAllowlist = context.delegationAllowlist ?? [];
+  const agentType = AGENT_IDS.GENERAL;
   const parentTaskId =
     toOptionalString(args.parentTaskId ?? args.parent_task_id) ??
     toOptionalString(context.cloudTaskId) ??
@@ -172,15 +170,9 @@ export const handleTask = async (
   const nextTaskDepth = parentTaskDepth + 1;
   const maxTaskDepth = context.maxTaskDepth;
 
-  if (delegationAllowlist.length === 0) {
+  if (context.agentType !== AGENT_IDS.ORCHESTRATOR) {
     return {
-      error: "This agent cannot create subtasks.",
-    };
-  }
-
-  if (!delegationAllowlist.includes(agentType)) {
-    return {
-      error: `This agent can only create these subtask types: ${delegationAllowlist.join(", ")}.`,
+      error: "Only the orchestrator can create tasks.",
     };
   }
 
