@@ -14,9 +14,9 @@ use std::os::windows::process::CommandExt;
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// Spawn a command with console window hidden on Windows.
+#[cfg(target_os = "windows")]
 fn silent_cmd(program: &str) -> Command {
     let mut cmd = Command::new(program);
-    #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
     cmd
 }
