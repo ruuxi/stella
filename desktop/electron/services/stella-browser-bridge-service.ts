@@ -115,6 +115,7 @@ export class StellaBrowserBridgeService {
       cwd: this.frontendRoot,
       env: {
         ...process.env,
+        ELECTRON_RUN_AS_NODE: "1",
         STELLA_BROWSER_DAEMON: "1",
         STELLA_BROWSER_SESSION: STELLA_BROWSER_BRIDGE_SESSION,
         STELLA_BROWSER_EXT_PORT: STELLA_BROWSER_BRIDGE_PORT,
