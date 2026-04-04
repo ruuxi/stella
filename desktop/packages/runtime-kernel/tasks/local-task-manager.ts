@@ -10,7 +10,6 @@ export type LocalTaskManagerAgentContext = {
   orchestratorReminderText?: string;
   shouldInjectDynamicReminder?: boolean;
   toolsAllowlist?: string[];
-  delegationAllowlist?: string[];
   model?: string;
   taskDepth?: number;
   maxTaskDepth: number;
@@ -592,7 +591,6 @@ export class LocalTaskManager implements TaskToolApi {
             ...(task.cloudTaskId ? { cloudTaskId: task.cloudTaskId } : {}),
             taskDepth: task.taskDepth,
             maxTaskDepth: context.maxTaskDepth,
-            delegationAllowlist: context.delegationAllowlist,
           };
           const lockKey = getFsLockKey(toolName, toolArgs, scopedContext);
           if (!lockKey) {

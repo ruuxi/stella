@@ -23,7 +23,6 @@ export type ToolContext = {
   cloudTaskId?: string;
   taskDepth?: number;
   maxTaskDepth?: number;
-  delegationAllowlist?: string[];
   defaultSkills?: string[];
   skillIds?: string[];
 };

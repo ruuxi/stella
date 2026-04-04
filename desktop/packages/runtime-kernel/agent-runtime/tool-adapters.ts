@@ -56,7 +56,6 @@ export const createPiTools = (opts: {
   frontendRoot?: string;
   taskDepth?: number;
   maxTaskDepth?: number;
-  delegationAllowlist?: string[];
   toolsAllowlist?: string[];
   toolCatalog?: ToolMetadata[];
   defaultSkills?: string[];
@@ -124,9 +123,6 @@ export const createPiTools = (opts: {
       : {}),
     ...(typeof opts.maxTaskDepth === "number"
       ? { maxTaskDepth: opts.maxTaskDepth }
-      : {}),
-    ...(opts.delegationAllowlist
-      ? { delegationAllowlist: opts.delegationAllowlist }
       : {}),
     ...(opts.defaultSkills ? { defaultSkills: opts.defaultSkills } : {}),
     ...(opts.skillIds ? { skillIds: opts.skillIds } : {}),
