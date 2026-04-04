@@ -10,6 +10,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 #[derive(Debug)]
 pub struct RunResult {
     pub ok: bool,
+    #[allow(dead_code)]
     pub stdout: String,
     pub stderr: String,
 }
