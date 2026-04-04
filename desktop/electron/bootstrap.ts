@@ -5,7 +5,9 @@ import {
   AUTH_PROTOCOL,
   HARD_RESET_MUTABLE_HOME_PATHS,
   STARTUP_STAGE_DELAY_MS,
+  STELLA_APP_NAME,
   STELLA_SESSION_PARTITION,
+  STELLA_WINDOWS_APP_USER_MODEL_ID,
 } from "./bootstrap/constants.js";
 import { createBootstrapContext } from "./bootstrap/context.js";
 import {
@@ -47,8 +49,12 @@ const configureDevUserDataPath = () => {
 };
 
 export const bootstrapMainProcess = () => {
+  app.setName(STELLA_APP_NAME);
   installDevBrokenPipeGuards();
   configureDevUserDataPath();
+  if (process.platform === "win32") {
+    app.setAppUserModelId(STELLA_WINDOWS_APP_USER_MODEL_ID);
+  }
 
   const context = createBootstrapContext({
     authProtocol: AUTH_PROTOCOL,

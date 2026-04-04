@@ -45,8 +45,6 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
   app.whenReady().then(async () => {
     if (app.isPackaged) {
       process.env.STELLA_APP_RESOURCES_PATH = process.resourcesPath;
-    } else {
-      app.setName("Stella");
     }
     applyDockIcon(context.config.electronDir);
     await initializeBootstrapApplication(context);

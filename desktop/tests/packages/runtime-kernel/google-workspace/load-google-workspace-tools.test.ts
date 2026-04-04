@@ -5,7 +5,7 @@ import path from "node:path";
 import { loadGoogleWorkspaceTools } from "../../../../packages/runtime-kernel/google-workspace/load-google-workspace-tools.js";
 
 describe("loadGoogleWorkspaceTools", () => {
-  it("registers allowlisted tools and time helpers work without Google auth", async () => {
+  it("registers provider-safe allowlisted tools and time helpers work without Google auth", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "stella-gw-"));
     try {
       const { tools, callTool, disconnect, hasStoredCredentials } =
@@ -15,6 +15,8 @@ describe("loadGoogleWorkspaceTools", () => {
       expect(tools.length).toBeGreaterThan(10);
       expect(callTool).toBeTypeOf("function");
       expect(hasStoredCredentials).toBe(false);
+      expect(tools.every((tool) => !tool.name.includes("."))).toBe(true);
+      expect(tools.some((tool) => tool.name === "time_getTimeZone")).toBe(true);
 
       const tz = await callTool!("time.getTimeZone", {});
       expect("result" in tz).toBe(true);

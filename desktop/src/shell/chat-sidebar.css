@@ -2,6 +2,24 @@
   flex-shrink: 0;
   overflow: hidden;
   height: 100%;
+  width: 0;
+  opacity: 0;
+  margin-left: auto;
+  order: 999;
+  transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: width;
+}
+
+.chat-sidebar--open {
+  width: clamp(320px, 28vw, 420px);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-sidebar {
+    transition: none;
+  }
 }
 
 .chat-sidebar-inner {

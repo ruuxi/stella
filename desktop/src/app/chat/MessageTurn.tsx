@@ -1,11 +1,8 @@
 import { memo } from "react";
-import type { Attachment, ChannelEnvelope, TaskItem } from "@/app/chat/lib/event-transforms";
-import { WorkingIndicator } from "@/app/chat/WorkingIndicator";
-import { TaskIndicator } from "@/app/chat/TaskIndicator";
+import type { Attachment, ChannelEnvelope } from "@/app/chat/lib/event-transforms";
 import { Markdown } from "@/app/chat/Markdown";
 import { ReasoningSection } from "@/app/chat/ReasoningSection";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
-import { GrowIn } from "@/app/chat/GrowIn";
 import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
 import {
   getEventText,
@@ -31,8 +28,6 @@ export type StreamingTurnProps = {
   reasoningText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
-  runningTasks: TaskItem[];
-  runningTool?: string;
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -215,26 +210,6 @@ const selfModAppliedEqual = (
   return true;
 };
 
-const taskItemEqual = (a: TaskItem, b: TaskItem): boolean => (
-  a.id === b.id &&
-  a.description === b.description &&
-  a.agentType === b.agentType &&
-  a.status === b.status &&
-  (a.parentTaskId ?? null) === (b.parentTaskId ?? null) &&
-  (a.statusText ?? null) === (b.statusText ?? null)
-);
-
-const runningTasksEqual = (a: TaskItem[], b: TaskItem[]): boolean => {
-  if (a === b) return true;
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (!taskItemEqual(a[i], b[i])) {
-      return false;
-    }
-  }
-  return true;
-};
-
 const streamingPropsEqual = (
   a: StreamingTurnProps | undefined,
   b: StreamingTurnProps | undefined,
@@ -246,9 +221,7 @@ const streamingPropsEqual = (
     a.streamingText === b.streamingText &&
     a.reasoningText === b.reasoningText &&
     Boolean(a.isStreaming) === Boolean(b.isStreaming) &&
-    (a.pendingUserMessageId ?? null) === (b.pendingUserMessageId ?? null) &&
-    (a.runningTool ?? null) === (b.runningTool ?? null) &&
-    runningTasksEqual(a.runningTasks, b.runningTasks)
+    (a.pendingUserMessageId ?? null) === (b.pendingUserMessageId ?? null)
   );
 };
 
@@ -312,7 +285,6 @@ export const TurnItem = memo(function TurnItem({
       Boolean(streaming) &&
       (hasStreamingContent ||
         hasReasoningContent ||
-        (streaming?.runningTasks.length ?? 0) > 0 ||
         streaming?.isStreaming),
   );
 
@@ -413,24 +385,6 @@ export const TurnItem = memo(function TurnItem({
         </div>
       )}
 
-      {/* Consolidated activity indicator — tasks + thinking in one element */}
-      {shouldShowStreamingAssistant && streaming &&
-        !hasStreamingContent && !hasReasoningContent && (
-        <GrowIn
-          animate={true}
-          show={!hasAssistantContent}
-        >
-          {streaming.runningTasks.length > 0 ? (
-            <TaskIndicator tasks={streaming.runningTasks} />
-          ) : (
-            <WorkingIndicator
-              isReasoning={true}
-              toolName={streaming.runningTool}
-            />
-          )}
-        </GrowIn>
-      )}
-
       {/* Assistant / Streaming assistant */}
       {shouldShowAssistantArea && (
         <div
@@ -452,18 +406,14 @@ export const TurnItem = memo(function TurnItem({
           {hasWebSearchBadge && renderWebSearchBadge(webSearchBadgeHtml)}
 
           {assistantDisplayText.trim().length > 0 && (
-            <GrowIn animate={shouldShowStreamingAssistant && Boolean(streaming?.isStreaming)} duration={shouldShowStreamingAssistant ? 80 : 500}>
-              <div className={shouldShowStreamingAssistant && streaming?.isStreaming ? "text-reveal" : undefined}>
-                <Markdown
-                  text={assistantDisplayText}
-                  cacheKey={assistantCacheKey}
-                  isAnimating={
-                    shouldShowStreamingAssistant && streaming?.isStreaming
-                  }
-                  enableEmotes={assistantEnableEmotes}
-                />
-              </div>
-            </GrowIn>
+            <Markdown
+              text={assistantDisplayText}
+              cacheKey={assistantCacheKey}
+              isAnimating={
+                shouldShowStreamingAssistant && streaming?.isStreaming
+              }
+              enableEmotes={assistantEnableEmotes}
+            />
           )}
 
           {turn.selfModApplied && !shouldShowStreamingAssistant && (
@@ -481,15 +431,11 @@ export const StreamingIndicator = memo(function StreamingIndicator({
   reasoningText,
   isStreaming,
   pendingUserMessageId,
-  runningTasks,
-  runningTool,
 }: {
   streamingText?: string;
   reasoningText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
-  runningTasks: TaskItem[];
-  runningTool?: string;
 }) {
   const hasStreamingContent = Boolean(
     streamingText && streamingText.trim().length > 0,
@@ -500,48 +446,32 @@ export const StreamingIndicator = memo(function StreamingIndicator({
 
   const hasContent = hasStreamingContent || hasReasoningContent;
 
+  if (!hasContent) {
+    return null;
+  }
+
   return (
     <div className="session-turn">
-      {/* Consolidated activity indicator */}
-      {!hasContent && (
-        <GrowIn animate={true} show={true}>
-          {runningTasks.length > 0 ? (
-            <TaskIndicator tasks={runningTasks} />
-          ) : (
-            <WorkingIndicator
-              isReasoning={true}
-              toolName={runningTool}
-            />
-          )}
-        </GrowIn>
-      )}
-
-      {hasContent && (
-        <div className="event-item assistant streaming">
-          {hasReasoningContent && (
-            <ReasoningSection
-              content={reasoningText!}
-              isStreaming={isStreaming && !hasStreamingContent}
-            />
-          )}
-          {hasStreamingContent && streamingText && (
-            <GrowIn animate={Boolean(isStreaming)} duration={80}>
-              <div className={isStreaming ? "text-reveal" : undefined}>
-                <Markdown
-                  text={streamingText}
-                  cacheKey={
-                    pendingUserMessageId
-                      ? `streaming-${pendingUserMessageId}`
-                      : undefined
-                  }
-                  isAnimating={isStreaming}
-                  enableEmotes={true}
-                />
-              </div>
-            </GrowIn>
-          )}
-        </div>
-      )}
+      <div className="event-item assistant streaming">
+        {hasReasoningContent && (
+          <ReasoningSection
+            content={reasoningText!}
+            isStreaming={isStreaming && !hasStreamingContent}
+          />
+        )}
+        {hasStreamingContent && streamingText && (
+          <Markdown
+            text={streamingText}
+            cacheKey={
+              pendingUserMessageId
+                ? `streaming-${pendingUserMessageId}`
+                : undefined
+            }
+            isAnimating={isStreaming}
+            enableEmotes={true}
+          />
+        )}
+      </div>
     </div>
   );
 });
