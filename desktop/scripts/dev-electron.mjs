@@ -1,5 +1,5 @@
 import { spawn, execSync } from 'node:child_process'
-import { copyFileSync, existsSync, readFileSync, watch } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, watch } from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
@@ -8,7 +8,7 @@ import { shouldRestartElectronForBuildPath } from './dev-electron-restart-filter
 
 const require = createRequire(import.meta.url)
 const projectDir = process.cwd()
-const electronBinary = require('electron')
+let electronBinary = require('electron')
 
 const patchDevIcon = () => {
   const appIcon = path.join(projectDir, 'build', 'icon.icns')
@@ -35,8 +35,58 @@ const patchDevIcon = () => {
   }
 }
 
+const patchDevAppName = () => {
+  const distDir = path.resolve(path.dirname(electronBinary), '..', '..', '..')
+  const oldBundle = path.join(distDir, 'Electron.app')
+  const newBundle = path.join(distDir, 'Stella.app')
+  const pathTxtFile = path.resolve(distDir, '..', 'path.txt')
+
+  if (!existsSync(oldBundle)) {
+    return
+  }
+
+  try {
+    renameSync(oldBundle, newBundle)
+    electronBinary = electronBinary.replace('Electron.app', 'Stella.app')
+
+    if (existsSync(pathTxtFile)) {
+      const pathTxt = readFileSync(pathTxtFile, 'utf8')
+      writeFileSync(pathTxtFile, pathTxt.replace('Electron.app', 'Stella.app'))
+    }
+
+    const infoPlist = path.join(newBundle, 'Contents', 'Info.plist')
+    if (existsSync(infoPlist)) {
+      let plist = readFileSync(infoPlist, 'utf8')
+      let changed = false
+
+      const replaceName = (key) => {
+        const pattern = new RegExp(
+          `(<key>${key}</key>\\s*<string>)([^<]+)(<\\/string>)`,
+        )
+        const match = plist.match(pattern)
+        if (match && match[2] !== 'Stella') {
+          plist = plist.replace(pattern, `$1Stella$3`)
+          changed = true
+        }
+      }
+
+      replaceName('CFBundleName')
+      replaceName('CFBundleDisplayName')
+
+      if (changed) {
+        writeFileSync(infoPlist, plist)
+      }
+    }
+
+    execSync(`touch "${distDir}"`, { stdio: 'ignore' })
+  } catch {
+    // Best-effort; may fail if node_modules is read-only.
+  }
+}
+
 if (process.platform === 'darwin') {
   patchDevIcon()
+  patchDevAppName()
 }
 const watchedDir = path.join(projectDir, 'dist-electron')
 const requiredFiles = [

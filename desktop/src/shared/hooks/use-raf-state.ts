@@ -69,62 +69,101 @@ export function useRafStringAccumulator(): [
   return [text, appendDelta, reset, textRef];
 }
 
+const PACE_MS = 24;
+const SNAP_RE = /[\s.,!?;:)\]]/;
+
+function pacedStep(remaining: number) {
+  if (remaining <= 12) return 2;
+  if (remaining <= 48) return 4;
+  if (remaining <= 96) return 8;
+  return Math.min(24, Math.ceil(remaining / 8));
+}
+
+function pacedNext(text: string, start: number) {
+  const end = Math.min(text.length, start + pacedStep(text.length - start));
+  const max = Math.min(text.length, end + 8);
+  for (let i = end; i < max; i++) {
+    if (SNAP_RE.test(text[i] ?? "")) return i + 1;
+  }
+  return end;
+}
+
 /**
- * Smooths bursty streaming text into a steady character drip.
- * Runs a persistent RAF loop while `active` is true, releasing a fraction
- * of the buffered characters each frame so text appears at a constant rate
- * regardless of how unevenly tokens arrive from the network.
+ * Paced text reveal modeled on OpenCode's createPacedValue.
+ * Uses setTimeout (not RAF) to drip characters at ~24ms intervals with
+ * adaptive step sizes that snap to word boundaries. Stops scheduling
+ * when caught up — no idle spinning loop.
  *
- * When `active` turns false (stream ends), flushes remaining buffer instantly.
+ * When `active` turns false (stream ends), flushes remaining text instantly.
  */
 export function useStreamBuffer(targetText: string, active: boolean): string {
   const [displayText, setDisplayText] = useState("");
-  const displayLenRef = useRef(0);
+  const shownRef = useRef("");
   const targetRef = useRef("");
-  const activeRef = useRef(false);
-  const rafRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   targetRef.current = targetText;
-  activeRef.current = active;
 
-  useEffect(() => {
-    if (!active) {
-      // Flush: show full text immediately when stream ends
-      const target = targetRef.current;
-      displayLenRef.current = target.length;
-      setDisplayText(target);
+  const clearTimer = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const sync = useCallback((text: string) => {
+    shownRef.current = text;
+    setDisplayText(text);
+  }, []);
+
+  const tick = useCallback(() => {
+    timerRef.current = null;
+    const text = targetRef.current;
+    const shown = shownRef.current;
+
+    if (!text.startsWith(shown) || text.length <= shown.length) {
+      sync(text);
       return;
     }
 
-    // Reset cursor when a new stream starts
-    displayLenRef.current = 0;
+    const end = pacedNext(text, shown.length);
+    sync(text.slice(0, end));
+
+    if (end < text.length) {
+      timerRef.current = setTimeout(tick, PACE_MS);
+    }
+  }, [sync]);
+
+  useEffect(() => {
+    if (!active) {
+      clearTimer();
+      sync(targetRef.current);
+      return;
+    }
+
+    shownRef.current = "";
     setDisplayText("");
+  }, [active, clearTimer, sync]);
 
-    const tick = () => {
-      const target = targetRef.current;
-      const currentLen = displayLenRef.current;
+  useEffect(() => {
+    if (!active) {
+      clearTimer();
+      sync(targetText);
+      return;
+    }
 
-      if (currentLen < target.length) {
-        const remaining = target.length - currentLen;
-        // Adaptive: release 12% of remaining buffer per frame, minimum 3 chars.
-        // At 60fps this drains a 50-char burst in ~10 frames (~170ms).
-        const step = Math.max(3, Math.ceil(remaining * 0.12));
-        const nextLen = Math.min(currentLen + step, target.length);
-        displayLenRef.current = nextLen;
-        setDisplayText(target.slice(0, nextLen));
-      }
+    const shown = shownRef.current;
+    if (!targetText.startsWith(shown) || targetText.length < shown.length) {
+      clearTimer();
+      sync(targetText);
+      return;
+    }
 
-      rafRef.current = requestAnimationFrame(tick);
-    };
+    if (targetText.length === shown.length || timerRef.current !== null) return;
+    timerRef.current = setTimeout(tick, PACE_MS);
+  }, [active, targetText, clearTimer, sync, tick]);
 
-    rafRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-    };
-  }, [active]);
+  useEffect(() => clearTimer, [clearTimer]);
 
   return displayText;
 }

@@ -9,7 +9,10 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { createRuntimeLogger } from "../debug.js";
-import { GOOGLE_WORKSPACE_MCP_TOOL_ALLOWLIST } from "../mcp/google-workspace-allowlist.js";
+import {
+  GOOGLE_WORKSPACE_MCP_TOOL_ALLOWLIST,
+  toGoogleWorkspaceMcpToolRegistrationName,
+} from "../mcp/google-workspace-allowlist.js";
 import {
   clearMcpToolMetadata,
   registerMcpToolMetadata,
@@ -265,6 +268,8 @@ export const loadGoogleWorkspaceTools = async (options: {
 
   const toolsOut: ToolDefinition[] = [];
   for (const toolName of GOOGLE_WORKSPACE_MCP_TOOL_ALLOWLIST) {
+    const registrationToolName =
+      toGoogleWorkspaceMcpToolRegistrationName(toolName);
     const meta = GOOGLE_WORKSPACE_TOOL_METADATA[toolName];
     if (!meta) {
       logger.warn("google_workspace.missing_metadata", { toolName });
@@ -275,7 +280,11 @@ export const loadGoogleWorkspaceTools = async (options: {
       continue;
     }
 
-    registerMcpToolMetadata(toolName, meta.description, meta.parameters);
+    registerMcpToolMetadata(
+      registrationToolName,
+      meta.description,
+      meta.parameters,
+    );
 
     const execute = async (
       executeArgs: Record<string, unknown>,
@@ -283,7 +292,7 @@ export const loadGoogleWorkspaceTools = async (options: {
     ): Promise<ToolResult> => callGoogleWorkspaceTool(toolName, executeArgs);
 
     toolsOut.push({
-      name: toolName,
+      name: registrationToolName,
       description: meta.description,
       agentTypes: ["general"],
       parameters: meta.parameters,

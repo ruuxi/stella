@@ -7,7 +7,6 @@ import {
   useImperativeHandle,
 } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "motion/react";
 import { CompactConversationSurface } from "@/app/chat/CompactConversationSurface";
 import {
   ComposerAddButton,
@@ -142,92 +141,85 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
       document.querySelector(".full-body") ?? document.body;
 
     return createPortal(
-      <AnimatePresence>
-        {isOpen && (
-          <motion.aside
-            className="chat-sidebar"
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: "clamp(320px, 28vw, 420px)", opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ type: "spring", duration: 0.35, bounce: 0 }}
+      <aside
+        className={`chat-sidebar${isOpen ? " chat-sidebar--open" : ""}`}
+        aria-hidden={!isOpen}
+      >
+        <div className="chat-sidebar-inner">
+          <CompactConversationSurface
+            className="chat-sidebar-messages"
+            conversationClassName="chat-sidebar-conversation"
+            variant="sidebar"
+            events={events}
+            streamingText={streamingText}
+            reasoningText={reasoningText}
+            isStreaming={isStreaming}
+            pendingUserMessageId={pendingUserMessageId}
+            selfModMap={selfModMap}
+            hasOlderEvents={hasOlderEvents}
+            isLoadingOlder={isLoadingOlder}
+            isLoadingHistory={isInitialLoading}
+          />
+
+          <form
+            className="chat-sidebar-composer"
+            onSubmit={handleSubmit}
+            {...dropHandlers}
           >
-            <div className="chat-sidebar-inner">
-              <CompactConversationSurface
-                className="chat-sidebar-messages"
-                conversationClassName="chat-sidebar-conversation"
-                variant="sidebar"
-                events={events}
-                streamingText={streamingText}
-                reasoningText={reasoningText}
-                isStreaming={isStreaming}
-                pendingUserMessageId={pendingUserMessageId}
-                selfModMap={selfModMap}
-                hasOlderEvents={hasOlderEvents}
-                isLoadingOlder={isLoadingOlder}
-                isLoadingHistory={isInitialLoading}
-              />
+            <DropOverlay visible={isDragOver} variant="orb" />
 
-              <form
-                className="chat-sidebar-composer"
-                onSubmit={handleSubmit}
-                {...dropHandlers}
-              >
-                <DropOverlay visible={isDragOver} variant="orb" />
-
-                {hasContextChips && (
-                  <div className="chat-sidebar-attachments">
-                    <ComposerWindowContextSection
-                      variant="mini"
-                      chatContext={chatContext}
-                      setChatContext={setChatContext}
-                    />
-                    {(chatContext?.regionScreenshots?.length ?? 0) > 0 && (
-                      <ScreenshotContextChips
-                        screenshots={chatContext!.regionScreenshots!}
-                        setChatContext={setChatContext}
-                        chipClassName="chat-composer-context-chip chat-composer-context-chip--screenshot mini-context-chip mini-context-chip--screenshot"
-                        imageClassName="chat-composer-context-thumb mini-context-thumb"
-                        removeClassName="chat-composer-context-remove mini-context-remove"
-                      />
-                    )}
-                    {(chatContext?.files?.length ?? 0) > 0 && (
-                      <FileContextChips
-                        files={chatContext!.files!}
-                        setChatContext={setChatContext}
-                        chipClassName="mini-context-chip"
-                        removeClassName="chat-composer-context-remove mini-context-remove"
-                      />
-                    )}
-                  </div>
+            {hasContextChips && (
+              <div className="chat-sidebar-attachments">
+                <ComposerWindowContextSection
+                  variant="mini"
+                  chatContext={chatContext}
+                  setChatContext={setChatContext}
+                />
+                {(chatContext?.regionScreenshots?.length ?? 0) > 0 && (
+                  <ScreenshotContextChips
+                    screenshots={chatContext!.regionScreenshots!}
+                    setChatContext={setChatContext}
+                    chipClassName="chat-composer-context-chip chat-composer-context-chip--screenshot mini-context-chip mini-context-chip--screenshot"
+                    imageClassName="chat-composer-context-thumb mini-context-thumb"
+                    removeClassName="chat-composer-context-remove mini-context-remove"
+                  />
                 )}
+                {(chatContext?.files?.length ?? 0) > 0 && (
+                  <FileContextChips
+                    files={chatContext!.files!}
+                    setChatContext={setChatContext}
+                    chipClassName="mini-context-chip"
+                    removeClassName="chat-composer-context-remove mini-context-remove"
+                  />
+                )}
+              </div>
+            )}
 
-                <div className="chat-sidebar-input-row">
-                  <ComposerAddButton
-                    className="chat-sidebar-add"
-                    title="Add"
-                    onClick={onAdd}
-                  />
-                  <ComposerTextarea
-                    ref={inputRef}
-                    className="chat-sidebar-input"
-                    tone="default"
-                    value={inputText}
-                    rows={1}
-                    onChange={(event) => setInputText(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        handleSubmit(event);
-                      }
-                    }}
-                    placeholder={composerState.placeholder}
-                  />
-                </div>
-              </form>
+            <div className="chat-sidebar-input-row">
+              <ComposerAddButton
+                className="chat-sidebar-add"
+                title="Add"
+                onClick={onAdd}
+              />
+              <ComposerTextarea
+                ref={inputRef}
+                className="chat-sidebar-input"
+                tone="default"
+                value={inputText}
+                rows={1}
+                onChange={(event) => setInputText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    handleSubmit(event);
+                  }
+                }}
+                placeholder={composerState.placeholder}
+              />
             </div>
-          </motion.aside>
-        )}
-      </AnimatePresence>,
+          </form>
+        </div>
+      </aside>,
       portalTarget,
     );
   },
