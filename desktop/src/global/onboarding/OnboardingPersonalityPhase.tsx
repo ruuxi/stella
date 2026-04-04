@@ -36,8 +36,8 @@ export function OnboardingPersonalityPhase({
           <>
             Got it! I'll get that done for you{" "}
             <img
-              src="/emotes/assets/7tv/catNOD-7eeffb97edbf.webp"
-              alt="catNOD"
+              src="/emotes/assets/7tv/Agreeing-6db2604d601b.webp"
+              alt="Agreeing"
               className="onboarding-emote-preview"
             />
           </>
