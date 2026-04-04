@@ -944,6 +944,7 @@ export class RealtimeVoiceSession {
           conversationId: this.conversationId ?? "voice-rtc",
           role: "assistant",
           text: `[ORCHESTRATOR RESULT] ${spokenResult || "(empty)"}`,
+          uiVisibility: "hidden",
         });
         if (!spokenResult || spokenResult === "Working on it.") return;
         this.sendEvent({
@@ -997,6 +998,7 @@ export class RealtimeVoiceSession {
           conversationId: this.conversationId ?? "voice-rtc",
           role: "assistant",
           text: `[WEB SEARCH] ${query} → ${result.results.length} results`,
+          uiVisibility: "hidden",
         });
 
         let resultText: string;
@@ -1053,6 +1055,7 @@ export class RealtimeVoiceSession {
       conversationId: this.conversationId ?? "voice-rtc",
       role: "assistant",
       text: `[TOOL CALL: ${name}]`,
+      uiVisibility: "hidden",
     });
     const callId = item.call_id as string;
     const argsStr = item.arguments as string;

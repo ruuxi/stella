@@ -192,6 +192,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
         conversationId: string;
         role: "user" | "assistant";
         text: string;
+        uiVisibility?: "visible" | "hidden";
       },
     ) => {
       console.log(

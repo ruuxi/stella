@@ -90,6 +90,7 @@ export class VoiceRuntimeService {
     conversationId: string;
     role: "user" | "assistant";
     text: string;
+    uiVisibility?: "visible" | "hidden";
   }) {
     this.ensureRunner().appendThreadMessage({
       threadKey: payload.conversationId,
@@ -112,6 +113,15 @@ export class VoiceRuntimeService {
           payload: {
             text: payload.text,
             source: "voice",
+            ...(payload.uiVisibility
+              ? {
+                  metadata: {
+                    ui: {
+                      visibility: payload.uiVisibility,
+                    },
+                  },
+                }
+              : {}),
           },
           timestamp,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,

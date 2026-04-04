@@ -289,6 +289,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       conversationId: string;
       role: "user" | "assistant";
       text: string;
+      uiVisibility?: "visible" | "hidden";
     }) => ipcRenderer.send("voice:persistTranscript", payload),
     orchestratorChat: (payload: { conversationId: string; message: string }) =>
       ipcRenderer.invoke("voice:orchestratorChat", payload) as Promise<string>,

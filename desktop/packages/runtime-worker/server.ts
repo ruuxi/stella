@@ -870,6 +870,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           conversationId: string;
           role: "user" | "assistant";
           text: string;
+          uiVisibility?: "visible" | "hidden";
         },
       );
     },
