@@ -92,17 +92,6 @@ export const FullShell = () => {
   const appReady = onboarding.onboardingDone && runtimeStatus === "ready";
   const showOnboardingDemos = activeDemo || demoClosing;
 
-  // User clicks "Ready" → morph transition → finalize onboarding.
-  const handleCanvasReady = useCallback(async () => {
-    await new Promise((r) => setTimeout(r, 500));
-    const morphResult = await window.electronAPI?.ui.morphStart?.();
-    onboarding.finalizeOnboarding();
-    if (morphResult?.ok) {
-      await new Promise((r) => setTimeout(r, 200));
-      await window.electronAPI?.ui.morphComplete?.();
-    }
-  }, [onboarding.finalizeOnboarding]);
-
   return (
     <div className="window-shell full">
       <ShiftingGradient
@@ -128,9 +117,6 @@ export const FullShell = () => {
               hasExpanded={onboarding.hasExpanded}
               onboardingDone={onboarding.onboardingDone}
               onboardingExiting={onboarding.onboardingExiting}
-              awaitingCanvas={onboarding.awaitingCanvas}
-              canvasReady
-              onCanvasReady={handleCanvasReady}
               isAuthenticated={onboarding.isAuthenticated}
               isAuthLoading={onboarding.isAuthLoading}
               isPreparingRuntime={runtimeStatus === "preparing"}

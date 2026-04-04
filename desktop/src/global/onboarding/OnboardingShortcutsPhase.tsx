@@ -59,7 +59,7 @@ const RADIAL_ACTIONS: {
     label: "Capture",
     icon: Camera,
     resultTitle: "Captured selection",
-    resultBody: "Stella grabs the area you marked and opens it as context for the next question.",
+    resultBody: "I grab the area you marked and open it as context for the next question.",
     resultPrompt: "Ask about this screenshot...",
   },
   {
@@ -67,7 +67,7 @@ const RADIAL_ACTIONS: {
     label: "Chat",
     icon: MessageSquare,
     resultTitle: "Quick chat opened",
-    resultBody: "A lightweight Stella chat opens over what you were already doing.",
+    resultBody: "A lightweight chat with me opens over what you were already doing.",
     resultPrompt: "Ask Stella about this page...",
   },
   {
@@ -83,7 +83,7 @@ const RADIAL_ACTIONS: {
     label: "Voice",
     icon: Mic,
     resultTitle: "Voice mode listening",
-    resultBody: "Talk naturally and Stella keeps the current context while transcribing.",
+    resultBody: "Talk naturally and I'll keep the current context while transcribing.",
     resultPrompt: "Listening...",
   },
   {
@@ -91,7 +91,7 @@ const RADIAL_ACTIONS: {
     label: "Auto",
     icon: Sparkles,
     resultTitle: "Auto summary ready",
-    resultBody: "Stella reads the current surface and brings back a fast summary with key takeaways.",
+    resultBody: "I read the current surface and bring back a fast summary with key takeaways.",
     resultPrompt: "3 key points extracted",
   },
 ];
@@ -198,6 +198,7 @@ export function OnboardingShortcutsPhase({
   const [captureEnd, setCaptureEnd] = useState<Point>({ x: 0, y: 0 });
 
   const gestureModeRef = useRef<"idle" | "radial">("idle");
+  const triggerKeysHeld = useRef(false);
 
   const radialResultCard = useMemo(
     () => RADIAL_ACTIONS.find((action) => action.id === radialResult) ?? null,
@@ -207,8 +208,19 @@ export function OnboardingShortcutsPhase({
 
   const closeGesture = useCallback(() => {
     gestureModeRef.current = "idle";
+    triggerKeysHeld.current = false;
     setRadialOpen(false);
     setRadialSelected("dismiss");
+  }, []);
+
+  // Check if the chord keys (Option+Cmd / Alt+Win) are both held
+  const isTriggerChord = useCallback((event: KeyboardEvent) => {
+    const platform = window.electronAPI?.platform;
+    if (platform === "darwin") {
+      return event.altKey && event.metaKey;
+    }
+    // win32 / linux: Alt + Meta(Win)
+    return event.altKey && event.metaKey;
   }, []);
 
   useEffect(() => {
@@ -231,10 +243,34 @@ export function OnboardingShortcutsPhase({
       }
     };
 
-    const handleMouseUp = (event: MouseEvent) => {
-      if (event.button !== 2) {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeGesture();
         return;
       }
+
+      if (!triggerKeysHeld.current && isTriggerChord(event)) {
+        triggerKeysHeld.current = true;
+
+        // Open radial at center of the surface
+        const surface = radialSurfaceRef.current;
+        if (!surface) return;
+
+        const rect = surface.getBoundingClientRect();
+        const localX = rect.width / 2;
+        const localY = rect.height / 2;
+
+        gestureModeRef.current = "radial";
+        setRadialAnchor({ x: localX, y: localY });
+        setRadialSelected("dismiss");
+        setRadialResult(null);
+        setCapturePhase("idle");
+        setRadialOpen(true);
+      }
+    };
+
+    const handleKeyUp = () => {
+      if (!triggerKeysHeld.current) return;
 
       if (gestureModeRef.current === "radial") {
         if (radialSelected !== "dismiss") {
@@ -246,22 +282,16 @@ export function OnboardingShortcutsPhase({
       closeGesture();
     };
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeGesture();
-      }
-    };
-
     window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
     window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
 
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [closeGesture, radialAnchor.x, radialAnchor.y, radialSelected]);
+  }, [closeGesture, isTriggerChord, radialAnchor.x, radialAnchor.y, radialSelected]);
 
   const handleCaptureMouseDown = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     if (capturePhase !== "ready" || event.button !== 0) return;
@@ -309,38 +339,6 @@ export function OnboardingShortcutsPhase({
     };
   }, [capturePhase, captureStart, captureEnd]);
 
-  const handleRadialMouseDown = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-    if (event.button !== 2) {
-      return;
-    }
-
-    event.preventDefault();
-
-    const surface = radialSurfaceRef.current;
-    if (!surface) {
-      return;
-    }
-
-    const rect = surface.getBoundingClientRect();
-    const localX = clamp(
-      event.clientX - rect.left,
-      SURFACE_PADDING + RADIAL_CENTER,
-      rect.width - SURFACE_PADDING - RADIAL_CENTER,
-    );
-    const localY = clamp(
-      event.clientY - rect.top,
-      SURFACE_PADDING + RADIAL_CENTER,
-      rect.height - SURFACE_PADDING - RADIAL_CENTER,
-    );
-
-    gestureModeRef.current = "radial";
-    setRadialAnchor({ x: localX, y: localY });
-    setRadialSelected("dismiss");
-    setRadialResult(null);
-    setCapturePhase("idle");
-    setRadialOpen(true);
-  }, []);
-
   const handleMenuContextMenu = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     setMenuSidebarOpen((prev) => {
@@ -370,7 +368,7 @@ export function OnboardingShortcutsPhase({
             <h3 className="onboarding-shortcut-demo__title">{radialTriggerLabel} for the radial dial</h3>
             <p className="onboarding-step-subdesc">
               Hold the trigger key, drag through the wedge you want, then release.
-              This mirrors Stella&apos;s system-level quick gesture.
+              This mirrors my system-level quick gesture.
             </p>
           </div>
 
@@ -379,8 +377,6 @@ export function OnboardingShortcutsPhase({
             className="onboarding-shortcut-surface onboarding-shortcut-surface--radial"
             data-testid="shortcuts-radial-surface"
             data-result={radialResult ?? undefined}
-            onMouseDown={handleRadialMouseDown}
-            onContextMenu={(event) => event.preventDefault()}
           >
             <div className="onboarding-shortcut-scene onboarding-shortcut-scene--article">
               {/* Background window for depth */}
@@ -619,7 +615,7 @@ export function OnboardingShortcutsPhase({
             </div>
 
             <div className="onboarding-shortcut-hint">
-              Hold {radialTriggerLabel}, drag, release
+              Hold {radialTriggerLabel}, move to a wedge, release
             </div>
 
             {radialOpen ? (
