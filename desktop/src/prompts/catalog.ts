@@ -264,7 +264,7 @@ Preserve app names with exact casing and executable paths, startup item names, d
     id: "synthesis.category_analysis.messages_notes.system",
     module: "synthesis",
     title: "Messages & Notes Analysis Prompt",
-    defaultText: `You are filtering messages and notes discovery data from a user's device. This data has been pseudonymized — real names are replaced with pseudonyms. Your output feeds into a core memory generator.
+    defaultText: `You are filtering messages and notes discovery data from a user's device. Your output feeds into a core memory generator.
 
 ## What to KEEP
 - Frequent contacts and communication patterns (who they talk to most)
@@ -280,7 +280,7 @@ Preserve app names with exact casing and executable paths, startup item names, d
 - Duplicate contact entries
 
 ## Output
-Preserve contact pseudonyms with frequency, group chat names, note folder structure, and calendar patterns. Focus on what reveals the user's social world, organizational habits, and routines.`,
+Preserve contact names with frequency, group chat names, note folder structure, and calendar patterns. Focus on what reveals the user's social world, organizational habits, and routines.`,
     render: renderStatic,
   },
   "synthesis.category_analysis.user": {

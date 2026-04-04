@@ -188,6 +188,22 @@ const findAppleMusicDb = async (): Promise<string | null> => {
   return null;
 };
 
+const SQLITE_HEADER = "SQLite format 3\0";
+
+const isSqliteDatabaseFile = async (dbPath: string): Promise<boolean> => {
+  let handle: fs.FileHandle | null = null;
+  try {
+    handle = await fs.open(dbPath, "r");
+    const buffer = Buffer.alloc(SQLITE_HEADER.length);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    return bytesRead === buffer.length && buffer.toString("utf8") === SQLITE_HEADER;
+  } catch {
+    return false;
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+};
+
 const collectFromAppleMusicDb = async (dbPath: string): Promise<MusicLibrarySignals> => {
   const { Database } = await import("bun:sqlite");
   const db = new Database(dbPath, { readonly: true }) as SqliteDatabase;
@@ -238,12 +254,21 @@ export const collectMusicLibrary = async (): Promise<MusicLibrarySignals | null>
     const appleMusicDb = await findAppleMusicDb();
     if (appleMusicDb) {
       log(`Found Apple Music database at: ${appleMusicDb}`);
-      try {
-        const result = await collectFromAppleMusicDb(appleMusicDb);
-        log(`Collected from Apple Music: ${result.totalTracks} tracks, ${result.topArtists.length} artists, ${result.topGenres.length} genres`);
-        return result;
-      } catch (error) {
-        log("Failed to read Apple Music database:", error);
+      if (!(await isSqliteDatabaseFile(appleMusicDb))) {
+        log("Apple Music library exists but is not a SQLite database on this system");
+      } else {
+        try {
+          const result = await collectFromAppleMusicDb(appleMusicDb);
+          log(`Collected from Apple Music: ${result.totalTracks} tracks, ${result.topArtists.length} artists, ${result.topGenres.length} genres`);
+          return result;
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === "SQLITE_NOTADB") {
+            log("Apple Music database format is not readable on this system");
+          } else {
+            log("Failed to read Apple Music database:", error);
+          }
+        }
       }
     }
   }

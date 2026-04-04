@@ -132,83 +132,41 @@ const discoverRunningAppsMac = async (): Promise<DiscoveredApp[]> => {
   const seen = new Set<string>();
 
   try {
-    // Use lsappinfo instead of osascript+System Events to avoid Automation permission dialog
+    // Use lsappinfo instead of osascript+System Events to avoid Automation permission dialog.
+    // The output is a multi-line block format, not the older key/value format.
     const output = await execAsync(`lsappinfo list -apps`);
+    const blocks = output.split(/\n\s*\n/);
 
-    for (const line of output.split("\n")) {
-      const nameMatch = line.match(/"LSDisplayName"\s*=\s*"([^"]+)"/);
-      if (!nameMatch) continue;
-      const trimmed = nameMatch[1].trim();
-      if (!trimmed) continue;
+    for (const block of blocks) {
+      const headerMatch = block.match(/^\d+\)\s+"(.+?)"\s+ASN:/m);
+      const bundlePathMatch = block.match(/bundle path="([^"]+)"/);
+      const typeMatch = block.match(/pid\s*=.*type="([^"]+)"/);
 
-      const bundleMatch = line.match(/"CFBundleIdentifier"\s*=\s*"([^"]+)"/);
-      const pathMatch = line.match(/"LSBundlePath"\s*=\s*"([^"]+)"/);
-      const appPath = pathMatch?.[1] ?? "";
+      const rawName = headerMatch?.[1]?.trim() ?? "";
+      const bundlePath = bundlePathMatch?.[1]?.trim() ?? "";
+      const appType = typeMatch?.[1] ?? "";
 
-      let executablePath = appPath?.trim() || "";
+      if (!rawName || !bundlePath || !appType) continue;
+      if (appType !== "Foreground" && appType !== "UIElement") continue;
+      if (!bundlePath.endsWith(".app")) continue;
+      if (bundlePath.includes("/Contents/Frameworks/")) continue;
+      if (bundlePath.endsWith(".appex") || bundlePath.endsWith(".xpc")) continue;
+      if (bundlePath.startsWith("/System/Library/")) continue;
+      if (bundlePath.startsWith("/usr/")) continue;
 
-      // If we got a .app bundle, that's usable with `open` command
-      // For direct execution, we could resolve to Contents/MacOS/name
-      if (!executablePath) {
-        // Fallback: try standard locations
-        const standardPaths = [
-          `/Applications/${trimmed}.app`,
-          `/System/Applications/${trimmed}.app`,
-          path.join(os.homedir(), "Applications", `${trimmed}.app`),
-        ];
-
-        for (const p of standardPaths) {
-          try {
-            await fs.access(p);
-            executablePath = p;
-            break;
-          } catch {
-            // Try next
-          }
-        }
-      }
-
-      const key = trimmed.toLowerCase();
+      const cleanedName = cleanAppName(rawName);
+      const key = cleanedName.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
 
       apps.push({
-        name: trimmed,
-        executablePath: executablePath || `/Applications/${trimmed}.app`,
+        name: cleanedName,
+        executablePath: bundlePath,
         source: "running",
       });
     }
   } catch (error) {
     log("Failed to get running apps (macOS):", error);
-
-    // Fallback: use lsappinfo which lists GUI apps
-    try {
-      const output = await execAsync("lsappinfo list | grep 'bundlepath\\|name'");
-      const lines = output.split("\n");
-
-      let currentName = "";
-      for (const line of lines) {
-        const nameMatch = line.match(/"name"\s*=\s*"([^"]+)"/);
-        const pathMatch = line.match(/"bundlepath"\s*=\s*"([^"]+)"/);
-
-        if (nameMatch) {
-          currentName = nameMatch[1];
-        } else if (pathMatch && currentName) {
-          const key = currentName.toLowerCase();
-          if (!seen.has(key)) {
-            seen.add(key);
-            apps.push({
-              name: currentName,
-              executablePath: pathMatch[1],
-              source: "running",
-            });
-          }
-          currentName = "";
-        }
-      }
-    } catch {
-      // Give up
-    }
   }
 
   return apps;
