@@ -343,6 +343,7 @@ export type RuntimeVoiceTranscriptPayload = {
   conversationId: string;
   role: "user" | "assistant";
   text: string;
+  uiVisibility?: "visible" | "hidden";
 };
 
 export type RuntimeVoiceChatPayload = {
