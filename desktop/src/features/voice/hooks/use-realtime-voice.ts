@@ -216,6 +216,7 @@ export class VoiceSessionManager {
         conversationId: cid,
         role,
         text,
+        uiVisibility: "hidden",
       });
     } catch (err) {
       console.debug(
