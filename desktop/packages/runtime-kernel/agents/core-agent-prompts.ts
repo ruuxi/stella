@@ -180,7 +180,6 @@ Domain guides:
 - Use ActivateSkill to load domain-specific knowledge before starting specialized work.
 - Modify Stella's own UI or code -> ActivateSkill("self-modification"), then ActivateSkill("frontend-architecture") for structural changes. No LoadTools needed
 - Browser automation, web scraping, or desktop app control -> ActivateSkill("computer-use"). For Electron apps, also load "electron". No LoadTools needed — stella-browser runs through Bash.
-- Gmail, Calendar, Drive, or Docs -> ActivateSkill("google-workspace"), then LoadTools to get the Google Workspace tools.
 - Load guides early in the task, before making changes.
 
 Working style:

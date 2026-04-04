@@ -140,7 +140,6 @@ export const routeToolsForPrompt = async (args: {
   prompt: string;
   loadedTools: string[];
 }): Promise<string[]> => {
-  await args.context.ensureGoogleWorkspaceMcpLoaded().catch(() => undefined);
   const catalog = getLoadableToolCatalog(args.context, args.loadedTools);
   if (catalog.length === 0) {
     return [];

@@ -386,7 +386,11 @@ export const buildAgentContext = async (
     ? await context.state.loadedSkillsPromise
     : context.state.loadedSkills;
   const availableSkillIds = Array.from(
-    new Set(availableSkills.map((skill) => skill.id)),
+    new Set(
+      availableSkills
+        .map((skill) => skill.id)
+        .filter((id) => id !== "google-workspace"),
+    ),
   );
   const agent = resolveAgent(context, args.agentType);
   const model = getConfiguredModel(context, args.agentType, agent);
@@ -430,10 +434,6 @@ export const buildAgentContext = async (
           context.runtimeStore.listActiveThreads(args.conversationId),
         )
       : "";
-  const googleWorkspaceUnavailable =
-    args.agentType === AGENT_IDS.ORCHESTRATOR &&
-    context.state.googleWorkspaceMcpToolNames !== null &&
-    !context.state.googleWorkspaceMcpToolNames?.length;
   const isSelfModTask = Boolean(args.selfModMetadata);
 
   const dynamicContextSections = [
@@ -442,9 +442,6 @@ export const buildAgentContext = async (
       : "",
     isSelfModTask
       ? buildManagedMediaDocsPrompt(context.state.convexSiteUrl)
-      : "",
-    googleWorkspaceUnavailable
-      ? "Note: The Google Workspace integration is not installed, so related tools are currently unavailable."
       : "",
     activeThreadsPrompt,
   ].filter((section) => section.trim().length > 0);
