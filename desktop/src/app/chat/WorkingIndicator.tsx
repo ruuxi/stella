@@ -41,7 +41,8 @@ export function WorkingIndicator({
   } else if (tasks && tasks.length > 0) {
     const task = tasks[0];
     const label = getAgentLabel(task.agentType);
-    displayStatus = task.description ? `${label} \u00b7 ${task.description}` : label;
+    const taskText = task.statusText ?? task.description;
+    displayStatus = taskText ? `${label} \u00b7 ${taskText}` : label;
   } else {
     displayStatus = computeStatus({ toolName, isReasoning, isResponding });
   }

@@ -505,3 +505,28 @@ export function getRunningTasks(
   const tasks = extractTasksFromEvents(events, options);
   return tasks.filter((t) => t.status === "running");
 }
+
+export function mergeRunningTasks(
+  persistedTasks: TaskItem[],
+  liveTasks?: TaskItem[],
+): TaskItem[] {
+  if (!liveTasks || liveTasks.length === 0) {
+    return persistedTasks;
+  }
+
+  const mergedById = new Map<string, TaskItem>();
+
+  for (const task of persistedTasks) {
+    mergedById.set(task.id, task);
+  }
+
+  for (const task of liveTasks) {
+    if (task.status !== "running") {
+      continue;
+    }
+    const persistedTask = mergedById.get(task.id);
+    mergedById.set(task.id, persistedTask ? { ...persistedTask, ...task } : task);
+  }
+
+  return [...mergedById.values()].filter((task) => task.status === "running");
+}
