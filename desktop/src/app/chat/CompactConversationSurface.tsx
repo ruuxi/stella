@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/shared/lib/utils";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
+import { getCurrentRunningTool, getRunningTasks } from "./lib/event-transforms";
+import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import { ConversationEvents } from "./ConversationEvents";
+import { StickyThinkingFooter } from "./StickyThinkingFooter";
 import "./full-shell.chat.css";
 import "./compact-conversation.css";
 
@@ -68,6 +71,14 @@ export function CompactConversationSurface({
     }
   }, [trackEdges]);
 
+  const appSessionStartedAtMs = useAgentSessionStartedAt();
+  const runningTool = useMemo(() => getCurrentRunningTool(events), [events]);
+  const runningTasks = useMemo(
+    () => getRunningTasks(events, { appSessionStartedAtMs }),
+    [appSessionStartedAtMs, events],
+  );
+  const showThinkingFooter = runningTasks.length > 0 || Boolean(isStreaming);
+
   // Use a ResizeObserver for auto-scroll instead of tracking streamingText
   // in a blocking useLayoutEffect. Content resizes drive the scroll, avoiding
   // synchronous layout on every streaming chunk.
@@ -122,6 +133,15 @@ export function CompactConversationSurface({
             isLoadingOlder={isLoadingOlder}
             isLoadingHistory={isLoadingHistory}
           />
+          <div className="thinking-footer-overlay">
+            {showThinkingFooter && (
+              <StickyThinkingFooter
+                tasks={runningTasks}
+                runningTool={runningTool}
+                isStreaming={isStreaming}
+              />
+            )}
+          </div>
         </div>
       ) : null}
     </div>

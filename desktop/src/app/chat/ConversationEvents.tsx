@@ -8,7 +8,6 @@ import {
 } from "./MessageTurn";
 import { GoogleWorkspaceConnectCard } from "@/app/chat/GoogleWorkspaceConnectCard";
 import { GrowIn } from "@/app/chat/GrowIn";
-import { StickyThinkingFooter } from "@/app/chat/StickyThinkingFooter";
 import { useTurnViewModels } from "./use-turn-view-models";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 
@@ -116,8 +115,6 @@ export const ConversationEvents = memo(function ConversationEvents({
     showStandaloneStreaming,
     processedStreamingText,
     processedReasoningText,
-    runningTool,
-    runningTasks,
   } = useTurnViewModels({
     events,
     maxItems,
@@ -177,13 +174,6 @@ export const ConversationEvents = memo(function ConversationEvents({
         <GoogleWorkspaceConnectCard onConnected={handleGwsConnected} />
       </GrowIn>
 
-      <GrowIn animate={true} show={runningTasks.length > 0 || Boolean(isStreaming)}>
-        <StickyThinkingFooter
-          tasks={runningTasks}
-          runningTool={runningTool}
-          isStreaming={isStreaming}
-        />
-      </GrowIn>
     </div>
   );
 });
