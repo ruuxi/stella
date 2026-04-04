@@ -3,10 +3,12 @@ import {
 	useCallback,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { InstallerState, SetupStep } from "./types";
 import stellaLogo from "./stella-logo.svg";
 
@@ -30,6 +32,7 @@ function App() {
 	const [installPathDraft, setInstallPathDraft] = useState("");
 	const [locationBusy, setLocationBusy] = useState(false);
 	const [desktopRunning, setDesktopRunning] = useState(false);
+	const pendingAutoClose = useRef(false);
 
 	const applyState = useCallback((nextState: InstallerState) => {
 		startTransition(() => setState(nextState));
@@ -57,9 +60,17 @@ function App() {
 			invoke<boolean>("is_desktop_running").then(setDesktopRunning).catch(() => {});
 		};
 		poll();
-		const id = setInterval(poll, 3000);
+		const id = setInterval(poll, 1000);
 		return () => clearInterval(id);
 	}, [state?.phase]);
+
+	// Auto-close launcher when desktop is confirmed running after install
+	useEffect(() => {
+		if (desktopRunning && pendingAutoClose.current) {
+			pendingAutoClose.current = false;
+			getCurrentWindow().close();
+		}
+	}, [desktopRunning]);
 
 	const commitInstallPath = useCallback(async () => {
 		if (!state) return;
@@ -105,17 +116,15 @@ function App() {
 
 	const handleInstall = useCallback(async () => {
 		await commitInstallPath();
+		pendingAutoClose.current = true;
 		await invoke("start_install");
 	}, [commitInstallPath]);
 
 	const handleLaunch = useCallback(async () => {
-		await invoke("launch_desktop");
-		setDesktopRunning(true);
-	}, []);
-
-	const handleStop = useCallback(async () => {
-		await invoke("stop_desktop");
-		setDesktopRunning(false);
+		const result = await invoke<{ ok: boolean }>("launch_desktop");
+		if (result.ok) {
+			getCurrentWindow().close();
+		}
 	}, []);
 
 	const handleOpenFolder = useCallback(async () => {
@@ -375,24 +384,14 @@ function App() {
 
 				{isComplete && (
 					<>
-						{desktopRunning ? (
-							<button
-								type="button"
-								className="btn-stop"
-								onClick={() => void handleStop()}
-							>
-								Stop Stella
-							</button>
-						) : (
-							<button
-								type="button"
-								className="btn-primary"
-								disabled={!state.canLaunch}
-								onClick={() => void handleLaunch()}
-							>
-								Launch Stella
-							</button>
-						)}
+						<button
+							type="button"
+							className="btn-primary"
+							disabled={!state.canLaunch || desktopRunning}
+							onClick={() => void handleLaunch()}
+						>
+							{desktopRunning ? "Launching..." : "Launch Stella"}
+						</button>
 						<div className="footer-links">
 							<button
 								type="button"
