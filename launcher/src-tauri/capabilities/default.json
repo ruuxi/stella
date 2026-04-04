@@ -4,6 +4,7 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:window:allow-close",
     "dialog:allow-open",
     "opener:default"
   ]
