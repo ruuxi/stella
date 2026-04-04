@@ -3,11 +3,11 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
+  padding: 8px 14px;
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface-inset) 15%, transparent);
   border: none;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-base);
   animation: stream-fade-in 0.4s ease-out both;
 }
@@ -33,10 +33,27 @@
   color: var(--text-weak);
 }
 
+/* Footer wrapper — sits between the scroll viewport and the composer
+   in normal flow so it never shifts the chat content. */
+.thinking-footer-overlay {
+  flex-shrink: 0;
+  pointer-events: none;
+  max-width: min(50rem, 100%);
+  margin: 0 auto;
+  padding: 12px 24px;
+  width: 100%;
+  min-height: 52px;
+}
+
+/* Compact surfaces (sidebar, mini): left-align, tighter padding */
+.chat-conversation-surface .thinking-footer-overlay {
+  margin: 0;
+  padding: 8px 12px;
+  max-width: none;
+  text-align: left;
+}
+
 .sticky-thinking-footer {
-  position: sticky;
-  bottom: 12px;
-  z-index: 6;
   pointer-events: none;
 }
 

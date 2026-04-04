@@ -2,9 +2,12 @@
  * ChatColumn: column-reverse scroll viewport, message rendering, custom scrollbar, composer.
  */
 
-import { memo, useCallback, useRef } from "react";
+import { memo, useCallback, useMemo, useRef } from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
+import { StickyThinkingFooter } from "./StickyThinkingFooter";
+import { getCurrentRunningTool, getRunningTasks } from "./lib/event-transforms";
+import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
 import type { ChatColumnProps } from "./chat-column-types";
 import "./full-shell.chat.css";
 
@@ -58,6 +61,15 @@ export const ChatColumn = memo(function ChatColumn({
     scrollToBottom,
     thumbState,
   } = scroll;
+
+  // Compute thinking footer data from events (positioned outside content flow to avoid layout shifts)
+  const appSessionStartedAtMs = useAgentSessionStartedAt();
+  const runningTool = useMemo(() => getCurrentRunningTool(conversation.events), [conversation.events]);
+  const runningTasks = useMemo(
+    () => getRunningTasks(conversation.events, { appSessionStartedAtMs }),
+    [appSessionStartedAtMs, conversation.events],
+  );
+  const showThinkingFooter = runningTasks.length > 0 || Boolean(conversation.streaming.isStreaming);
 
   // Capture viewport ref for drag operations
   const assignViewport = useCallback(
@@ -125,6 +137,17 @@ export const ChatColumn = memo(function ChatColumn({
               <path d="M6 9l6 6 6-6" />
             </svg>
           </button>
+        )}
+      </div>
+
+      {/* Thinking footer — between chat and composer, always reserves space */}
+      <div className="thinking-footer-overlay">
+        {showThinkingFooter && (
+          <StickyThinkingFooter
+            tasks={runningTasks}
+            runningTool={runningTool}
+            isStreaming={conversation.streaming.isStreaming}
+          />
         )}
       </div>
 
