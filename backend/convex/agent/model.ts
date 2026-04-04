@@ -153,7 +153,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     maxOutputTokens: 16192,
     providerOptions: {
       openai: {
-        reasoningEffort: "medium",
+        reasoningEffort: "high",
       },
       ...gatewayOptions("fireworks"),
     },

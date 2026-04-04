@@ -63,6 +63,14 @@ type ChatRequestMessage = {
   name?: unknown;
 };
 
+type ChatCompletionReasoningField = "reasoning_content" | "reasoning" | "reasoning_text";
+
+type ChatCompletionReasoningDetail = {
+  type?: unknown;
+  id?: unknown;
+  data?: unknown;
+};
+
 function normalizeImageDetail(
   value: unknown,
 ): ImageContent["detail"] | undefined {
@@ -95,6 +103,32 @@ function normalizeReasoning(
     default:
       return undefined;
   }
+}
+
+function readReasoningText(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((entry) => readReasoningText(entry))
+      .filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+    return parts.length > 0 ? parts.join("\n") : undefined;
+  }
+
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const preferredKeys = ["text", "thinking", "summary", "content"];
+  const parts = preferredKeys
+    .map((key) => readReasoningText(record[key]))
+    .filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+
+  return parts.length > 0 ? parts.join("\n") : undefined;
 }
 
 function providerFromBaseUrl(baseUrl: string): string {
@@ -493,6 +527,26 @@ async function completeManagedOpenAICompletions(args: {
   const stopReason = mapStopReason(choice?.finish_reason ?? "stop");
 
   const content: AssistantMessage["content"] = [];
+  const reasoningMessage = message as Partial<Record<ChatCompletionReasoningField, unknown>> & {
+    reasoning_details?: unknown;
+  };
+  const reasoningFields: ChatCompletionReasoningField[] = [
+    "reasoning_content",
+    "reasoning",
+    "reasoning_text",
+  ];
+  for (const field of reasoningFields) {
+    const thinking = readReasoningText(reasoningMessage[field]);
+    if (!thinking) {
+      continue;
+    }
+    content.push({
+      type: "thinking",
+      thinking,
+      thinkingSignature: field,
+    });
+    break;
+  }
   if (typeof message?.content === "string" && message.content.length > 0) {
     content.push({ type: "text", text: message.content });
   }
@@ -513,6 +567,23 @@ async function completeManagedOpenAICompletions(args: {
         name: toolCall.function.name,
         arguments: parsedArguments,
       });
+    }
+  }
+  if (Array.isArray(reasoningMessage.reasoning_details)) {
+    for (const detail of reasoningMessage.reasoning_details as ChatCompletionReasoningDetail[]) {
+      if (
+        detail?.type !== "reasoning.encrypted"
+        || typeof detail.id !== "string"
+        || typeof detail.data !== "string"
+      ) {
+        continue;
+      }
+      const matchingToolCall = content.find(
+        (block) => block.type === "toolCall" && block.id === detail.id,
+      );
+      if (matchingToolCall?.type === "toolCall") {
+        matchingToolCall.thoughtSignature = JSON.stringify(detail);
+      }
     }
   }
 
