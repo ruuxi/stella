@@ -42,8 +42,8 @@ void main() {
   float fadeR = max(1.0 - u_strength * u_strength * 3.0, 0.02);
   col.a *= 1.0 - smoothstep(fadeR * 0.5, fadeR, nc);
 
-  // Darken core — center goes black
-  col.rgb *= max(1.0 - u_strength * u_strength * (1.0 - nc), 0.0);
+  // Darken core — center fades out
+  col *= max(1.0 - u_strength * u_strength * (1.0 - nc), 0.0);
 
   gl_FragColor = col;
 }`;
