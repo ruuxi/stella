@@ -108,7 +108,15 @@ class OverlayWindow {
     })
 
     this.window.setAlwaysOnTop(true, 'screen-saver')
-    if (process.platform !== 'darwin') {
+    if (process.platform === 'darwin') {
+      // Keep the overlay attached to the active Space on macOS. Without this,
+      // the hidden panel can remain associated with an older Space and the
+      // radial dial appears on a different virtual desktop than the cursor.
+      this.window.setVisibleOnAllWorkspaces(true, {
+        visibleOnFullScreen: true,
+        skipTransformProcessType: true,
+      })
+    } else {
       this.window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     }
     if (process.platform === 'darwin') {
