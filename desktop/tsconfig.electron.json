@@ -15,7 +15,7 @@
   },
   "include": [
     "electron/**/*",
-    "packages/**/*",
+    "runtime/**/*",
     "src/shared/contracts/**/*",
     "src/shared/ai/**/*",
     "src/shared/lib/convex-urls.ts",

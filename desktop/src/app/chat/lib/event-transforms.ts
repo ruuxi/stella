@@ -1,4 +1,4 @@
-import { sanitizeAssistantText } from "../../../../packages/runtime-kernel/internal-tool-transcript.js";
+import { sanitizeAssistantText } from "../../../../runtime/kernel/internal-tool-transcript.js";
 
 export interface StepItem {
   id: string;

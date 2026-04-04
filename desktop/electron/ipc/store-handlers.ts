@@ -24,7 +24,7 @@ type StoreHandlersOptions = {
 };
 
 const listInstalledThemes = async (stellaHomePath: string) => {
-  const themesDir = path.join(stellaHomePath, "themes");
+  const themesDir = path.join(stellaHomePath, "state", "themes");
   try {
     const files = await fs.readdir(themesDir);
     const themes = [];

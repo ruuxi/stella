@@ -11,7 +11,7 @@ const outdir = "dist-electron";
 const nodeTarget = `node${process.versions.node.split(".")[0]}`;
 const graphWatchRoots = [
   "electron",
-  "packages",
+  "runtime",
   "src/shared/contracts",
   "src/shared/ai",
   "src/shared",
@@ -20,7 +20,7 @@ const graphWatchRoots = [
 ];
 const mainEntryRoots = [
   "electron",
-  "packages",
+  "runtime",
   "src/shared/contracts",
   "src/shared/ai",
 ];

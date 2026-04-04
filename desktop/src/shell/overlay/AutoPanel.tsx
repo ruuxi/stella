@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage } from "@/infra/ai/llm";
-import { getDisplayGuidelines } from "../../../packages/runtime-kernel/tools/display-guidelines";
+import { getDisplayGuidelines } from "../../../runtime/kernel/tools/display-guidelines";
 import { applyMorphdomHtml } from "../apply-morphdom-html";
 import "./auto-panel.css";
 

@@ -8,7 +8,7 @@ import {
   STELLA_BROWSER_BRIDGE_SESSION,
   STELLA_BROWSER_BRIDGE_TOKEN,
   getStellaBrowserSocketDir,
-} from "../../packages/runtime-kernel/tools/stella-browser-bridge-config.js";
+} from "../../runtime/kernel/tools/stella-browser-bridge-config.js";
 import { registerStellaNativeMessagingHost } from "../utils/register-stella-native-messaging-host.js";
 import { stopChildProcessTree } from "../process-runtime.js";
 
