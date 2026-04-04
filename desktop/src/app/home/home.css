@@ -52,7 +52,7 @@
   border-color: var(--border-base);
 }
 
-/* Options reveal — grid-template-rows 0fr/1fr trick for smooth expand */
+/* Options reveal - grid-template-rows 0fr/1fr trick for smooth expand */
 .home-options-reveal {
   display: grid;
   grid-template-rows: 0fr;
@@ -124,7 +124,7 @@
   }
 }
 
-/* Bottom bar — sticky footer */
+/* Bottom bar - sticky footer */
 .home-bottom-bar {
   position: absolute;
   bottom: 16px;

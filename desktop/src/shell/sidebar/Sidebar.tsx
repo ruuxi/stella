@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GeneratedPage } from "@/app/registry";
-import { generatedPages, HOME_DESIGN_PAGE } from "@/app/registry";
+import { generatedPages, HOME_PAGE } from "@/app/registry";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { ThemePicker } from "@/global/settings/ThemePicker";
@@ -161,7 +161,7 @@ export const Sidebar = ({
 }: SidebarProps) => {
   const isMac = getPlatform() === "darwin";
   const handleAskStella = onNewAppAskStella ?? onNewApp;
-  const customPages = generatedPages.filter((page) => page.id !== HOME_DESIGN_PAGE.id);
+  const customPages = generatedPages.filter((page) => page.id !== HOME_PAGE.id);
   const getProjectMeta = (project: LocalDevProjectRecord) => {
     switch (project.runtime.status) {
       case "stopped":
@@ -187,7 +187,7 @@ export const Sidebar = ({
       <button
         type="button"
         className="sidebar-brand"
-        onClick={() => onPageSelect(HOME_DESIGN_PAGE)}
+        onClick={() => onPageSelect(HOME_PAGE)}
       >
         <div className="sidebar-brand-logo" aria-hidden="true">
           <img src="stella-logo.svg" alt="" className="sidebar-brand-logo-art" />
@@ -197,8 +197,8 @@ export const Sidebar = ({
       <nav className="sidebar-nav">
         <button
           type="button"
-          className={`sidebar-nav-item ${activePageId === HOME_DESIGN_PAGE.id ? "sidebar-nav-item--active" : ""}`}
-          onClick={() => onPageSelect(HOME_DESIGN_PAGE)}
+          className={`sidebar-nav-item ${activePageId === HOME_PAGE.id ? "sidebar-nav-item--active" : ""}`}
+          onClick={() => onPageSelect(HOME_PAGE)}
         >
           <span className="sidebar-nav-icon">
             <House size={18} />
