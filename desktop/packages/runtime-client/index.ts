@@ -1288,6 +1288,17 @@ const resolveDefaultWorkerEntryPath = (options: StellaRuntimeClientOptions) =>
 const classifyRuntimeReload = (
   normalizedFilename: string,
 ): "capabilities" | "worker" | null => {
+  const hostOwnedRuntimeKernelPrefixes = [
+    "packages/runtime-kernel/convex-urls",
+    "packages/runtime-kernel/dev-projects/",
+    "packages/runtime-kernel/home/",
+    "packages/runtime-kernel/local-scheduler-service",
+    "packages/runtime-kernel/preferences/local-preferences",
+    "packages/runtime-kernel/shared/",
+    "packages/runtime-kernel/storage/",
+    "packages/runtime-kernel/tools/network-guards",
+    "packages/runtime-kernel/tools/stella-browser-bridge-config",
+  ];
   if (
     normalizedFilename.startsWith("packages/runtime-capabilities/") ||
     normalizedFilename.startsWith("resources/bundled-commands/")
@@ -1295,9 +1306,23 @@ const classifyRuntimeReload = (
     return "capabilities";
   }
   if (
+    normalizedFilename.startsWith("packages/runtime-discovery/") &&
+    !normalizedFilename.startsWith("packages/runtime-discovery/browser-data")
+  ) {
+    return "worker";
+  }
+  if (
+    normalizedFilename.startsWith("packages/runtime-kernel/") &&
+    !hostOwnedRuntimeKernelPrefixes.some((prefix) =>
+      normalizedFilename.startsWith(prefix),
+    )
+  ) {
+    return "worker";
+  }
+  if (
+    normalizedFilename.startsWith("packages/ai/") ||
     normalizedFilename.startsWith("packages/runtime-worker/") ||
-    normalizedFilename.startsWith("packages/runtime-kernel/agent-core/") ||
-    normalizedFilename.startsWith("packages/runtime-kernel/cli/")
+    normalizedFilename.startsWith("packages/runtime-protocol/jsonl")
   ) {
     return "worker";
   }
