@@ -3,7 +3,7 @@ import { dispatchStellaSendMessage } from "@/shared/lib/stella-send-message"
 import { useUiState } from "@/context/ui-state"
 import { listLocalEvents } from "@/app/chat/services/local-chat-store"
 import type { OnboardingHomeSuggestion } from "@/shared/contracts/onboarding"
-import "./home-design.css"
+import "./home.css"
 
 type SuggestionOption = {
   label: string
@@ -17,7 +17,7 @@ type Category = {
 
 const DEFAULT_CATEGORIES: Category[] = [
   { label: "Stella", options: [
-    { label: "Add a music player to home", prompt: "Add the music player to my home page. The component already exists at src/app/home/MusicPlayer.tsx — integrate it into the home page layout, don't rebuild it." },
+    { label: "Add a music player to home", prompt: "Add the music player to my home page. The component is already built and ready - exists at src/app/home/MusicPlayer.tsx - integrate it into the Home.tsx page layout, don't rebuild it." },
     { label: "Change my theme to dark", prompt: "Change my theme to dark mode" },
     { label: "Build me a budget tracker app", prompt: "Build me a budget tracker app" },
     { label: "Create a habit tracker app", prompt: "Create a habit tracker app" },
@@ -93,7 +93,7 @@ function usePersonalizedCategories(conversationId: string | null): Category[] {
           )
         }
       } catch {
-        // fall through — defaults will be used
+        // fall through - defaults will be used
       }
     }
 
@@ -110,7 +110,7 @@ function usePersonalizedCategories(conversationId: string | null): Category[] {
   )
 }
 
-export default function HomeDesign() {
+export default function Home() {
   const { state } = useUiState()
   const categories = usePersonalizedCategories(state.conversationId)
   const [openCategory, setOpenCategory] = useState<string | null>(null)
@@ -176,7 +176,7 @@ export default function HomeDesign() {
         AGENT NOTE: When the user customizes their home page (adding widgets, etc.),
         the center-group above will likely be removed. When that happens:
         1. Remove the home-center-group section above
-        2. Uncomment the bottom bar below — it provides the same category navigation
+        2. Uncomment the bottom bar below - it provides the same category navigation
            as a sticky footer with drop-up menus
 
       <div className="home-bottom-bar">

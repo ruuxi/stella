@@ -1,4 +1,4 @@
-import { HOME_DESIGN_PAGE } from "@/app/registry";
+import { HOME_PAGE } from "@/app/registry";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -42,9 +42,9 @@ const MAX_CHAT_WIDTH_RATIO = 0.5; // Never exceed 50% of viewport
 const defaultState: WorkspaceState = {
   activePanel: {
     kind: "generated-page",
-    name: HOME_DESIGN_PAGE.id,
-    title: HOME_DESIGN_PAGE.title,
-    pageId: HOME_DESIGN_PAGE.id,
+    name: HOME_PAGE.id,
+    title: HOME_PAGE.title,
+    pageId: HOME_PAGE.id,
   },
   chatWidth: DEFAULT_CHAT_WIDTH,
   isChatOpen: true,

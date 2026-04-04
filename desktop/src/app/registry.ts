@@ -12,12 +12,12 @@ export const MEDIA_PAGE: GeneratedPage = {
   component: lazy(() => import("./media/MediaStudio")),
 };
 
-export const HOME_DESIGN_PAGE: GeneratedPage = {
-  id: "home-design",
+export const HOME_PAGE: GeneratedPage = {
+  id: "home",
   title: "Home",
-  component: lazy(() => import("./home-design/HomeDesign")),
+  component: lazy(() => import("./home/Home")),
 };
 
 export const generatedPages: GeneratedPage[] = [
-  HOME_DESIGN_PAGE,
+  HOME_PAGE,
 ];
