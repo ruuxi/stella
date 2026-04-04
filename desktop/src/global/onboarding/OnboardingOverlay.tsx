@@ -8,7 +8,6 @@ import { api } from "@/convex/api";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { OnboardingStep1 } from "@/global/onboarding/OnboardingStep1";
-import { TextShimmer } from "@/app/chat/TextShimmer";
 import {
   StellaAnimation,
   type StellaAnimationHandle,
@@ -92,7 +91,6 @@ export function useOnboardingOverlay() {
   const [splitMode, setSplitMode] = useState(false);
   const [hasDiscoverySelections, setHasDiscoverySelections] = useState(false);
   const [onboardingExiting, setOnboardingExiting] = useState(false);
-  const [awaitingCanvas, setAwaitingCanvas] = useState(false);
   const [onboardingKey, setOnboardingKey] = useState(0);
   const stellaAnimationRef = useRef<StellaAnimationHandle | null>(null);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -119,11 +117,6 @@ export function useOnboardingOverlay() {
 
   const handleCompleteOnboarding = useCallback(() => {
     setSplitMode(false);
-    setAwaitingCanvas(true);
-  }, []);
-
-  const finalizeOnboarding = useCallback(() => {
-    setAwaitingCanvas(false);
     markOpenOrbAfterOnboarding();
     completeOnboarding();
   }, [completeOnboarding]);
@@ -137,7 +130,6 @@ export function useOnboardingOverlay() {
     setHasStarted(false);
     setSplitMode(false);
     setOnboardingExiting(false);
-    setAwaitingCanvas(false);
     setOnboardingKey((k) => k + 1);
     stellaAnimationRef.current?.reset(CREATURE_INITIAL_SIZE);
     resetOnboarding();
@@ -166,9 +158,7 @@ export function useOnboardingOverlay() {
   return {
     onboardingDone,
     onboardingExiting,
-    awaitingCanvas,
     completeOnboarding: handleCompleteOnboarding,
-    finalizeOnboarding,
     isAuthenticated: hasConnectedAccount,
     isAuthLoading,
     hasExpanded,
@@ -190,9 +180,6 @@ export function OnboardingView({
   hasExpanded,
   onboardingDone,
   onboardingExiting,
-  awaitingCanvas,
-  canvasReady,
-  onCanvasReady,
   isAuthenticated,
   isAuthLoading,
   isPreparingRuntime = false,
@@ -217,9 +204,6 @@ export function OnboardingView({
   hasExpanded: boolean;
   onboardingDone: boolean;
   onboardingExiting?: boolean;
-  awaitingCanvas?: boolean;
-  canvasReady?: boolean;
-  onCanvasReady?: () => void;
   isAuthenticated: boolean;
   isAuthLoading: boolean;
   isPreparingRuntime?: boolean;
@@ -252,43 +236,39 @@ export function OnboardingView({
           onOpenChange={(open) => { if (!open) setActiveLegalDoc(null); }}
         />
       </Suspense>
-      {!awaitingCanvas && (
-        <>
-          <div
-            className="new-session-title"
-            data-expanded={hasExpanded ? "true" : "false"}
-          >
-            Stella
-          </div>
-          <div
-            onClick={() => {
-              if (hasExpanded) {
-                triggerFlash()
-                return
-              }
-              startBirthAnimation?.()
-              triggerFlash()
-            }}
-            className="onboarding-stella-animation"
-            data-expanded={hasExpanded ? "true" : "false"}
-            data-split={splitMode}
-            data-has-selections={hasDiscoverySelections || undefined}
-            data-demo-active={activeDemo || undefined}
-            title={hasExpanded ? undefined : "Click to awaken"}
-          >
-            <StellaAnimation
-              ref={stellaAnimationRef}
-              width={70}
-              height={39}
-              initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}
-            />
-          </div>
-        </>
-      )}
+      <div
+        className="new-session-title"
+        data-expanded={hasExpanded ? "true" : "false"}
+      >
+        Stella
+      </div>
+      <div
+        onClick={() => {
+          if (hasExpanded) {
+            triggerFlash()
+            return
+          }
+          startBirthAnimation?.()
+          triggerFlash()
+        }}
+        className="onboarding-stella-animation"
+        data-expanded={hasExpanded ? "true" : "false"}
+        data-split={splitMode}
+        data-has-selections={hasDiscoverySelections || undefined}
+        data-demo-active={activeDemo || undefined}
+        title={hasExpanded ? undefined : "Click to awaken"}
+      >
+        <StellaAnimation
+          ref={stellaAnimationRef}
+          width={70}
+          height={39}
+          initialBirthProgress={onboardingDone ? 1 : CREATURE_INITIAL_SIZE}
+        />
+      </div>
       {(showRuntimeGate || !onboardingDone) &&
         (isPreparingRuntime || isAuthLoading ? (
           <div className="onboarding-moment onboarding-moment--auth">
-            <div className="onboarding-text">Preparing Stella...</div>
+            <div className="onboarding-text">Getting ready...</div>
           </div>
         ) : runtimeError ? (
           <div className="onboarding-moment onboarding-moment--start">
@@ -300,24 +280,6 @@ export function OnboardingView({
             >
               Retry Stella Startup
             </button>
-          </div>
-        ) : awaitingCanvas ? (
-          <div className="onboarding-moment onboarding-moment--awaiting">
-            <p className="onboarding-awaiting-text">
-              Remember, Stella is made for you, and only you.
-            </p>
-            <div className="onboarding-awaiting-status">
-              {canvasReady ? (
-                <button
-                  className="onboarding-start-button"
-                  onClick={onCanvasReady}
-                >
-                  Ready
-                </button>
-              ) : (
-                <TextShimmer text="Stella is loading, please wait" />
-              )}
-            </div>
           </div>
         ) : hasStarted ? (
           <OnboardingStep1
