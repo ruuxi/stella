@@ -165,20 +165,24 @@ export const createConvexSession = (
 
   const setAuthToken = (value: string | null) => {
     if (process.env.STELLA_LLM_PROXY_TOKEN) return;
-    const hadToken = Boolean(context.state.authToken?.trim());
-    if (value === null && hadToken) {
-      void Promise.resolve(options.onBeforeAuthTokenClear?.()).finally(() => {
-        context.state.authToken = value;
-        refreshConvexAuth();
-        options.syncRemoteTurnBridge();
-      });
-      return;
-    }
-    context.state.authToken = value;
-    refreshConvexAuth();
-    options.syncRemoteTurnBridge();
-    if (value) {
-      options.onAuthTokenSet?.();
+    const prev = context.state.authToken?.trim() || null;
+    const next = value?.trim() || null;
+    if (next === prev) return;
+
+    const needsClear = Boolean(prev);
+    const applyNew = () => {
+      context.state.authToken = value;
+      refreshConvexAuth();
+      options.syncRemoteTurnBridge();
+      if (next) {
+        options.onAuthTokenSet?.();
+      }
+    };
+
+    if (needsClear) {
+      void Promise.resolve(options.onBeforeAuthTokenClear?.()).finally(applyNew);
+    } else {
+      applyNew();
     }
   };
 

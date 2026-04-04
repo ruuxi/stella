@@ -27,7 +27,7 @@ const OWNER_TABLES: Array<{
   { table: "secret_access_audit", index: "by_ownerId_and_createdAt" },
   { table: "user_integrations", index: "by_ownerId_and_updatedAt" },
   { table: "usage_logs", index: "by_ownerId_and_createdAt" },
-  { table: "channel_connections", index: "by_ownerId_and_provider" },
+  // channel_connections is migrated atomically with devices — see migrateDevicesForAccountLink
   { table: "transient_channel_events", index: "by_ownerId_and_createdAt" },
   { table: "transient_cleanup_failures", index: "by_ownerId_and_createdAt" },
   { table: "skills", index: "by_ownerId_and_updatedAt" },
@@ -157,9 +157,10 @@ export const migrateOwnership = internalAction({
 });
 
 /**
- * Move or merge `devices` rows when linking anonymous → real account.
- * One physical machine is one `(ownerId, deviceId)` row; if the target account
- * already has that machine, drop the anonymous duplicate instead of migrating.
+ * Atomically migrate `devices` and `channel_connections` when linking
+ * anonymous → real account.  Both tables must move in the same transaction
+ * so the pipeline never sees a connection pointing to the old ownerId while
+ * devices have already moved (or vice-versa).
  */
 export const migrateDevicesForAccountLink = internalMutation({
   args: {
@@ -167,12 +168,13 @@ export const migrateDevicesForAccountLink = internalMutation({
     toOwnerId: v.string(),
   },
   handler: async (ctx, args) => {
-    const rows = await ctx.db
+    // --- devices ---
+    const deviceRows = await ctx.db
       .query("devices")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", args.fromOwnerId))
       .collect();
 
-    for (const row of rows) {
+    for (const row of deviceRows) {
       const existing = await ctx.db
         .query("devices")
         .withIndex("by_ownerId_and_deviceId", (q) =>
@@ -185,6 +187,18 @@ export const migrateDevicesForAccountLink = internalMutation({
       } else {
         await ctx.db.patch(row._id, { ownerId: args.toOwnerId });
       }
+    }
+
+    // --- channel_connections ---
+    const connectionRows = await ctx.db
+      .query("channel_connections")
+      .withIndex("by_ownerId_and_provider", (q) =>
+        q.eq("ownerId", args.fromOwnerId),
+      )
+      .collect();
+
+    for (const row of connectionRows) {
+      await ctx.db.patch(row._id, { ownerId: args.toOwnerId });
     }
 
     return null;

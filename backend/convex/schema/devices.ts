@@ -5,7 +5,9 @@ export const devicesSchema = {
   devices: defineTable({
     ownerId: v.string(),
     deviceId: v.string(),
+    deviceName: v.optional(v.string()),
     devicePublicKey: v.optional(v.string()),
+    lastHeartbeatAt: v.optional(v.number()),
     lastSignedAtMs: v.optional(v.number()),
     online: v.boolean(),
     platform: v.optional(v.string()),

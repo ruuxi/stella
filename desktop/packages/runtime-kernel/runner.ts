@@ -1,3 +1,4 @@
+import os from "node:os";
 import { createRemoteTurnBridge } from "./remote-turn-bridge.js";
 import {
   buildAgentContext,
@@ -26,6 +27,8 @@ type GoogleWorkspaceAuthResult = {
   email?: string;
   name?: string;
 };
+
+const DEVICE_HEARTBEAT_INTERVAL_MS = 30_000;
 
 const getGoogleWorkspaceRecord = (
   value: unknown,
@@ -105,10 +108,60 @@ export const createStellaHostRunner = (
   options: StellaHostRunnerOptions,
 ): RunnerPublicApi => {
   const context = createRunnerContext(options);
+  const deviceName = (() => {
+    const hostname = os.hostname().trim();
+    if (hostname) return hostname;
+    return `${process.platform}-${context.deviceId.slice(0, 6)}`;
+  })();
 
   let syncRemoteTurnBridge = () => {};
   let deviceRegistered = false;
   let deviceRegistering = false;
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+  const stopHeartbeatLoop = () => {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+  };
+
+  const sendHeartbeat = async (): Promise<void> => {
+    if (!context.state.authToken || !context.signHeartbeatPayload) return;
+    const client = convexSession.ensureConvexClient();
+    if (!client) return;
+
+    try {
+      const signedAtMs = Date.now();
+      const { publicKey, signature } =
+        await context.signHeartbeatPayload(signedAtMs);
+      await (client as any).mutation(
+        (
+          context.convexApi as {
+            agent: { device_resolver: { heartbeat: unknown } };
+          }
+        ).agent.device_resolver.heartbeat,
+        {
+          deviceId: context.deviceId,
+          deviceName,
+          platform: process.platform,
+          signedAtMs,
+          signature,
+          publicKey,
+        },
+      );
+      deviceRegistered = true;
+    } catch (error) {
+      console.warn("[remote-turn] Heartbeat failed:", error);
+    }
+  };
+
+  const startHeartbeatLoop = () => {
+    if (heartbeatTimer || !context.signHeartbeatPayload) return;
+    heartbeatTimer = setInterval(() => {
+      void sendHeartbeat();
+    }, DEVICE_HEARTBEAT_INTERVAL_MS);
+  };
 
   const registerDevice = async (attempt = 0): Promise<void> => {
     if (deviceRegistered || deviceRegistering) return;
@@ -135,6 +188,7 @@ export const createStellaHostRunner = (
         ).agent.device_resolver.registerDevice,
         {
           deviceId: context.deviceId,
+          deviceName,
           platform: process.platform,
         },
       );
@@ -158,6 +212,7 @@ export const createStellaHostRunner = (
   });
 
   sendGoOffline = async () => {
+    stopHeartbeatLoop();
     if (!deviceRegistered) return;
     const client = convexSession.ensureConvexClient();
     if (!client) return;
@@ -298,16 +353,20 @@ export const createStellaHostRunner = (
 
   syncRemoteTurnBridge = () => {
     if (!context.state.isRunning || !context.state.isInitialized) {
+      stopHeartbeatLoop();
       remoteTurnBridge.stop();
       void sendGoOffline();
       return;
     }
     if (!context.state.authToken || !context.state.convexDeploymentUrl) {
+      stopHeartbeatLoop();
       remoteTurnBridge.stop();
       deviceRegistered = false;
       return;
     }
     void registerDevice();
+    startHeartbeatLoop();
+    void sendHeartbeat();
     remoteTurnBridge.start();
     remoteTurnBridge.kick();
   };

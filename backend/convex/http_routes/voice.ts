@@ -202,7 +202,7 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           try {
             const deviceResult = await ctx.runQuery(
               internal.agent.device_resolver.getDeviceStatus,
-              { ownerId },
+              { ownerId, nowMs: Date.now() },
             );
             const lines = ["# Device Status"];
             lines.push(
