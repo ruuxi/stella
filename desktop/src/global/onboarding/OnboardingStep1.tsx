@@ -875,10 +875,10 @@ export const OnboardingStep1 = ({
         >
           <div className="onboarding-ripple-content">
             <div className="onboarding-text onboarding-text--fade-in">
-              Stella is an AI that runs on your computer.
+              I'm an AI that runs on your computer.
             </div>
             <div className="onboarding-text onboarding-text--fade-in-delayed">
-              She's not made for everyone. She's made for you.
+              I'm not made for everyone. I'm made for you.
             </div>
           </div>
           <div
