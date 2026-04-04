@@ -4,13 +4,11 @@ import type { Dirent } from "fs";
 import { fileURLToPath } from "url";
 import type { App } from "electron";
 import { ensurePrivateDir } from "../shared/private-fs.js";
-import { buildBundledCoreAgents } from "../agents/core-agent-prompts.js";
 
 export type StellaHome = {
   desktopRoot: string;
   installRoot: string;
   homePath: string;
-  agentsPath: string;
   coreSkillsPath: string;
   skillsPath: string;
   extensionsPath: string;
@@ -28,76 +26,6 @@ const DEFAULTS_SEED_MARKER_FILE = ".bundled-defaults-seed.json";
 
 const ensureDir = async (dirPath: string) => {
   await ensurePrivateDir(dirPath);
-};
-
-const hasSeededAgentFiles = async (agentsPath: string): Promise<boolean> => {
-  try {
-    const entries = await fs.readdir(agentsPath, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      try {
-        const stat = await fs.stat(path.join(agentsPath, entry.name, "AGENT.md"));
-        if (stat.isFile()) return true;
-      } catch {
-        // Ignore incomplete agent dirs.
-      }
-    }
-  } catch {
-    return false;
-  }
-  return false;
-};
-
-const toYamlList = (values: readonly string[]): string[] =>
-  values.map((value) => `  - ${value}`);
-
-const serializeBundledAgentMarkdown = (agent: ReturnType<typeof buildBundledCoreAgents>[number]): string => {
-  const lines = [
-    "---",
-    `id: ${agent.id}`,
-    `name: ${agent.name}`,
-    `description: ${agent.description}`,
-    "agentTypes:",
-    ...toYamlList(agent.agentTypes),
-  ];
-
-  if (agent.toolsAllowlist?.length) {
-    lines.push("toolsAllowlist:", ...toYamlList(agent.toolsAllowlist));
-  }
-  if (agent.delegationAllowlist?.length) {
-    lines.push("delegationAllowlist:", ...toYamlList(agent.delegationAllowlist));
-  }
-  if (agent.defaultSkills?.length) {
-    lines.push("defaultSkills:", ...toYamlList(agent.defaultSkills));
-  }
-  if (agent.model) {
-    lines.push(`model: ${agent.model}`);
-  }
-  if (typeof agent.maxTaskDepth === "number") {
-    lines.push(`maxTaskDepth: ${agent.maxTaskDepth}`);
-  }
-
-  lines.push("---", "", agent.systemPrompt.trimEnd(), "");
-  return lines.join("\n");
-};
-
-const seedBundledAgentsIfEmpty = async (agentsPath: string) => {
-  if (await hasSeededAgentFiles(agentsPath)) {
-    return;
-  }
-
-  const bundledAgents = buildBundledCoreAgents();
-  await Promise.all(
-    bundledAgents.map(async (agent) => {
-      const agentDir = path.join(agentsPath, agent.id);
-      await ensureDir(agentDir);
-      await fs.writeFile(
-        path.join(agentDir, "AGENT.md"),
-        serializeBundledAgentMarkdown(agent),
-        "utf-8",
-      );
-    }),
-  );
 };
 
 export const resolveDesktopRoot = (app?: App): string =>
@@ -182,7 +110,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   const bundledDefaultsPath = resolveBundledDefaultsPath(app);
   const workspacePath = path.join(desktopRoot, "workspace");
 
-  const agentsPath = path.join(homePath, "agents");
   const coreSkillsPath = path.join(homePath, "core-skills");
   const skillsPath = path.join(homePath, "skills");
   const extensionsPath = path.join(homePath, "extensions");
@@ -196,7 +123,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   process.env.STELLA_HOME = homePath;
 
   await ensureDir(homePath);
-  await ensureDir(agentsPath);
   await ensureDir(coreSkillsPath);
   await ensureDir(skillsPath);
   await ensureDir(extensionsPath);
@@ -213,7 +139,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
       seedMissingEntries(path.join(bundledDefaultsPath, "skills"), skillsPath),
       seedMissingEntries(path.join(bundledDefaultsPath, "extensions"), extensionsPath),
     ]);
-    await seedBundledAgentsIfEmpty(agentsPath);
     await writeSeedVersion(
       defaultsSeedMarkerPath,
       BUNDLED_DEFAULTS_SEED_VERSION,
@@ -224,7 +149,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
     desktopRoot,
     installRoot,
     homePath,
-    agentsPath,
     coreSkillsPath,
     skillsPath,
     extensionsPath,

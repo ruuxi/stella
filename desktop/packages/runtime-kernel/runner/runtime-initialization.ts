@@ -1,4 +1,4 @@
-import { loadAgentsFromHome } from "../agents/agents.js";
+import { loadBundledAgents } from "../agents/agents.js";
 import { loadExtensions } from "../extensions/loader.js";
 import { loadGoogleWorkspaceTools } from "../google-workspace/load-google-workspace-tools.js";
 import { registerModel } from "../../ai/models.js";
@@ -86,7 +86,8 @@ export const createRuntimeInitialization = (
 
   const initializeRuntime = () => {
     const skillsLoad = deps.refreshLoadedSkills().then(() => undefined).catch(() => undefined);
-    const agentsLoad = loadAgentsFromHome(context.paths.agentsPath)
+    const agentsLoad = Promise.resolve()
+      .then(() => loadBundledAgents())
       .then((agents) => {
         context.state.loadedAgents = agents;
       })
