@@ -143,6 +143,24 @@ export class ChatStore {
     return rows.map((row) => this.deserializeEventRow(row));
   }
 
+  private getConversationEventHead(conversationId: string): {
+    latestEventId: string | null;
+    latestTimestamp: number | null;
+  } {
+    const row = this.db.prepare(`
+      SELECT _id, timestamp
+      FROM chat_events
+      WHERE conversation_id = ?
+      ORDER BY timestamp DESC, _id DESC
+      LIMIT 1
+    `).get(conversationId) as { _id?: unknown; timestamp?: unknown } | undefined;
+
+    return {
+      latestEventId: typeof row?._id === "string" ? row._id : null,
+      latestTimestamp: typeof row?.timestamp === "number" ? row.timestamp : null,
+    };
+  }
+
   private rebuildTranscript(conversationId: string): void {
     const rows = this.listAllEventsForConversation(conversationId).map((event) => ({
       conversationId,
@@ -186,11 +204,38 @@ export class ChatStore {
 
   appendEvent(args: LocalChatAppendEventArgs): LocalChatEventRecord {
     const { conversationId, event } = this.sanitizeAppendArgs(args);
+    const previousHead = this.getConversationEventHead(conversationId);
+    const existingRow = this.db.prepare("SELECT 1 FROM chat_events WHERE _id = ? LIMIT 1").get(
+      event._id,
+    );
     this.withTransaction(() => {
       this.upsertConversation(conversationId, event.timestamp);
       this.upsertEvent(conversationId, event);
     });
-    this.rebuildTranscript(conversationId);
+
+    const canAppendIncrementally =
+      !existingRow
+      && this.mirror.chatTranscriptMirrorExists(conversationId)
+      && previousHead.latestTimestamp !== null
+      && previousHead.latestEventId !== null
+      && event.timestamp >= previousHead.latestTimestamp
+      && (
+        event.timestamp > previousHead.latestTimestamp
+        || event._id.localeCompare(previousHead.latestEventId) > 0
+      );
+
+    try {
+      if (canAppendIncrementally) {
+        this.mirror.appendChatTranscript(conversationId, {
+          conversationId,
+          ...event,
+        });
+      } else {
+        this.rebuildTranscript(conversationId);
+      }
+    } catch {
+      this.rebuildTranscript(conversationId);
+    }
     return event;
   }
 

@@ -74,6 +74,14 @@ export class TranscriptMirror {
     writeJsonl(this.chatTranscriptFilePath(conversationId), rows);
   }
 
+  appendChatTranscript(conversationId: string, row: unknown): void {
+    appendJsonl(this.chatTranscriptFilePath(conversationId), row);
+  }
+
+  chatTranscriptMirrorExists(conversationId: string): boolean {
+    return fs.existsSync(this.chatTranscriptFilePath(conversationId));
+  }
+
   appendRuntimeThreadMessage(threadKey: string, row: RuntimeThreadMessage): void {
     appendJsonl(this.runtimeThreadFilePath(threadKey), row);
   }
