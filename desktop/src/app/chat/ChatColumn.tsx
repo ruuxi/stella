@@ -6,7 +6,11 @@ import { memo, useCallback, useMemo, useRef } from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { StickyThinkingFooter } from "./StickyThinkingFooter";
-import { getCurrentRunningTool, getRunningTasks } from "./lib/event-transforms";
+import {
+  getCurrentRunningTool,
+  getRunningTasks,
+  mergeRunningTasks,
+} from "./lib/event-transforms";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
 import type { ChatColumnProps } from "./chat-column-types";
 import "./full-shell.chat.css";
@@ -65,9 +69,13 @@ export const ChatColumn = memo(function ChatColumn({
   // Compute thinking footer data from events (positioned outside content flow to avoid layout shifts)
   const appSessionStartedAtMs = useAgentSessionStartedAt();
   const runningTool = useMemo(() => getCurrentRunningTool(conversation.events), [conversation.events]);
-  const runningTasks = useMemo(
+  const persistedRunningTasks = useMemo(
     () => getRunningTasks(conversation.events, { appSessionStartedAtMs }),
     [appSessionStartedAtMs, conversation.events],
+  );
+  const runningTasks = useMemo(
+    () => mergeRunningTasks(persistedRunningTasks, conversation.streaming.liveTasks),
+    [conversation.streaming.liveTasks, persistedRunningTasks],
   );
   const showThinkingFooter = runningTasks.length > 0 || Boolean(conversation.streaming.isStreaming);
 

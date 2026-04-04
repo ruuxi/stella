@@ -56,6 +56,7 @@ export function useFullShellChat({
   } = useConversationEventFeed(activeConversationId ?? undefined)
 
   const {
+    liveTasks,
     streamingText,
     reasoningText,
     isStreaming,
@@ -191,6 +192,7 @@ export function useFullShellChat({
         isStreaming,
         pendingUserMessageId,
         selfModMap,
+        liveTasks,
       },
       history: {
         hasOlderEvents,
@@ -205,6 +207,7 @@ export function useFullShellChat({
       isStreaming,
       pendingUserMessageId,
       selfModMap,
+      liveTasks,
       hasOlderEvents,
       isLoadingOlder,
       isInitialLoading,

@@ -27,6 +27,7 @@ export function useStreamingChat({
   } = useChatStore()
 
   const {
+    liveTasks,
     streamingText,
     reasoningText,
     isStreaming,
@@ -148,6 +149,7 @@ export function useStreamingChat({
   )
 
   return {
+    liveTasks,
     streamingText,
     reasoningText,
     isStreaming,
