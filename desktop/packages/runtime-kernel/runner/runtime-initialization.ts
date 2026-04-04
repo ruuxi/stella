@@ -55,9 +55,9 @@ export const createRuntimeInitialization = (
         context.state.googleWorkspaceMcpToolNames =
           tools.length > 0 ? tools.map((tool) => tool.name) : [];
 
-        if (tools.length > 0) {
-          context.toolHost.registerExtensionTools(tools);
-        }
+        // Google Workspace tools are not registered on the agent tool host: the
+        // orchestrator and General subagent must not see or load them via
+        // LoadTools. IPC (Settings connect card) still uses callTool above.
 
         // Seed auth state from stored credentials so the UI can show
         // "Connected" without making an MCP call that triggers OAuth.
