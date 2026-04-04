@@ -1,4 +1,4 @@
-/* GrowIn — height expansion with fade + deblur entrance */
+/* GrowIn — height expansion with fade entrance */
 
 .grow-in {
   position: relative;
@@ -6,22 +6,19 @@
 }
 
 .grow-in-inner {
-  /* Fade + deblur on first appearance */
   animation: grow-in-fade 0.4s cubic-bezier(0.34, 1.08, 0.64, 1) both;
 }
 
 @keyframes grow-in-fade {
   from {
     opacity: 0;
-    filter: blur(2px);
   }
   to {
     opacity: 1;
-    filter: blur(0px);
   }
 }
 
-/* Exit: reverse fade + blur */
+/* Exit: reverse fade */
 .grow-in-inner.grow-in-exiting {
   animation: grow-in-fade-out 0.3s cubic-bezier(0.34, 1.08, 0.64, 1) both;
 }
@@ -29,11 +26,9 @@
 @keyframes grow-in-fade-out {
   from {
     opacity: 1;
-    filter: blur(0px);
   }
   to {
     opacity: 0;
-    filter: blur(2px);
   }
 }
 

@@ -1,14 +1,14 @@
-﻿import { memo, useState, useEffect, useCallback } from "react";
+import { memo, useState, useEffect, useCallback } from "react";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
-import type { Attachment, TaskItem } from "@/app/chat/lib/event-transforms";
+import type { Attachment } from "@/app/chat/lib/event-transforms";
 import {
   TurnItem,
   StreamingIndicator,
   type TurnViewModel,
 } from "./MessageTurn";
-import { TaskIndicator } from "@/app/chat/TaskIndicator";
 import { GoogleWorkspaceConnectCard } from "@/app/chat/GoogleWorkspaceConnectCard";
 import { GrowIn } from "@/app/chat/GrowIn";
+import { StickyThinkingFooter } from "@/app/chat/StickyThinkingFooter";
 import { useTurnViewModels } from "./use-turn-view-models";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 
@@ -33,8 +33,6 @@ function MessageList({
   reasoningText,
   isStreaming,
   pendingUserMessageId,
-  runningTasks,
-  runningTool,
   onOpenAttachment,
   showStandaloneStreaming,
 }: {
@@ -44,8 +42,6 @@ function MessageList({
   reasoningText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
-  runningTasks: TaskItem[];
-  runningTool?: string;
   onOpenAttachment?: (attachment: Attachment) => void;
   showStandaloneStreaming: boolean;
 }) {
@@ -69,8 +65,6 @@ function MessageList({
                     reasoningText,
                     isStreaming,
                     pendingUserMessageId,
-                    runningTasks,
-                    runningTool,
                   }
                 : undefined
             }
@@ -84,8 +78,6 @@ function MessageList({
           reasoningText={reasoningText}
           isStreaming={isStreaming}
           pendingUserMessageId={pendingUserMessageId}
-          runningTasks={runningTasks}
-          runningTool={runningTool}
         />
       )}
     </>
@@ -178,20 +170,19 @@ export const ConversationEvents = memo(function ConversationEvents({
         reasoningText={processedReasoningText}
         isStreaming={isStreaming}
         pendingUserMessageId={pendingUserMessageId}
-        runningTasks={runningTasks}
-        runningTool={runningTool}
         onOpenAttachment={onOpenAttachment}
       />
 
-      {/* Persistent task progress — visible even when orchestrator is not streaming */}
-      {!showStreaming && (
-        <GrowIn animate={true} show={runningTasks.length > 0}>
-          <TaskIndicator tasks={runningTasks} />
-        </GrowIn>
-      )}
-
       <GrowIn animate={true} show={showGwsConnect}>
         <GoogleWorkspaceConnectCard onConnected={handleGwsConnected} />
+      </GrowIn>
+
+      <GrowIn animate={true} show={runningTasks.length > 0 || Boolean(isStreaming)}>
+        <StickyThinkingFooter
+          tasks={runningTasks}
+          runningTool={runningTool}
+          isStreaming={isStreaming}
+        />
       </GrowIn>
     </div>
   );

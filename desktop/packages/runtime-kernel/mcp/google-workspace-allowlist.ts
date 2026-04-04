@@ -55,10 +55,17 @@ export type GoogleWorkspaceMcpToolName =
 export const canonicalizeGoogleWorkspaceMcpToolName = (name: string): string =>
   name.replace(/_/g, ".");
 
+export const toGoogleWorkspaceMcpToolRegistrationName = (
+  name: string,
+): string => canonicalizeGoogleWorkspaceMcpToolName(name).replace(/\./g, "_");
+
 export const getGoogleWorkspaceMcpToolAliases = (name: string): string[] => {
   const canonicalName = canonicalizeGoogleWorkspaceMcpToolName(name);
   return Array.from(
-    new Set([canonicalName, canonicalName.replace(/\./g, "_")]),
+    new Set([
+      canonicalName,
+      toGoogleWorkspaceMcpToolRegistrationName(canonicalName),
+    ]),
   );
 };
 
