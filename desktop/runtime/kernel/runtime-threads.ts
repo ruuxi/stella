@@ -40,5 +40,5 @@ export const buildActiveThreadsPrompt = (
       : "";
     return `- ${thread.threadId} (${thread.agentType}, last used ${formatAge(thread.lastUsedAt, now)})${summary}`;
   });
-  return `# Active Threads\nEach thread_id is durable and can be reused later for continued work, even if it falls out of the active list.\n${lines.join("\n")}`;
+  return `# Active Threads\nEach thread_id is durable and can be reused later for continued work, even after cancellation or completion, and even if it falls out of the active list.\n${lines.join("\n")}`;
 };
