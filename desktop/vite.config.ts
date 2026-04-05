@@ -210,7 +210,9 @@ function selfModHmrControl(): Plugin {
         typeof persisted.updatedAtMs === 'number'
         && Date.now() - persisted.updatedAtMs < SELF_MOD_HMR_STALE_MS
       paused = Boolean(persisted.paused) && isFresh
-      requiresFullReload = Boolean(persisted.requiresFullReload)
+      // A persisted full-reload request is only meaningful while the pause is
+      // still active; otherwise it can spuriously trigger a morph on a later run.
+      requiresFullReload = paused && Boolean(persisted.requiresFullReload)
       writePersistedSelfModHmrState({ paused, requiresFullReload })
 
       const invalidateQueuedModules = () => {
