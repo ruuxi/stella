@@ -3,6 +3,7 @@ import { RADIAL_SIZE } from '../layout-constants.js'
 import type { SelfModHmrState } from '../../src/shared/contracts/boundary.js'
 import { loadWindow } from './window-load.js'
 import { createSharedWebPreferences } from './shared-window-preferences.js'
+import { getWindowInfoAtPoint } from '../window-capture.js'
 
 const getAllDisplaysBounds = () => {
   const displays = screen.getAllDisplays()
@@ -362,6 +363,8 @@ export class OverlayWindowController {
   private radialHideTimeout: ReturnType<typeof setTimeout> | null = null
   private static readonly CLOSE_ANIM_FALLBACK = 350
 
+  private radialWindowBoundsRequestId = 0
+
   showRadial() {
     if (!this.overlayWindow.getWindow()) return
 
@@ -393,10 +396,33 @@ export class OverlayWindowController {
       screenX: localX,
       screenY: localY,
     })
+
+    // Async-query the OS window under the cursor and send its bounds
+    // to the overlay so it can draw a highlight ring.
+    const requestId = ++this.radialWindowBoundsRequestId
+    void getWindowInfoAtPoint(cursorDip.x, cursorDip.y, {
+      excludePids: [process.pid],
+    }).then((info) => {
+      if (requestId !== this.radialWindowBoundsRequestId) return
+      if (!this.activeRadial) return
+      if (!info) {
+        this.overlayWindow.send('radial:windowBounds', null)
+        return
+      }
+      const o = this.overlayWindow.getOverlayOrigin()
+      this.overlayWindow.send('radial:windowBounds', {
+        x: info.bounds.x - o.x,
+        y: info.bounds.y - o.y,
+        width: info.bounds.width,
+        height: info.bounds.height,
+      })
+    })
   }
 
   hideRadial() {
     if (!this.overlayWindow.getWindow()) return
+    this.radialWindowBoundsRequestId++
+    this.overlayWindow.send('radial:windowBounds', null)
     this.overlayWindow.send('radial:hide')
     if (!this.isAnyActive) {
       this.overlayWindow.setIgnoreMouseEvents(true)
