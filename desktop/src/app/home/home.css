@@ -1,7 +1,7 @@
 .home-page {
   --home-scale-title: clamp(1.9rem, 4vw, 2.8rem);
   --home-scale-pill-text: 15px;
-  --home-scale-pill-padding-y: 10px;
+  --home-scale-pill-padding-y: 6px;
   --home-scale-pill-padding-x: 24px;
   --home-scale-option-text: 18px;
   --home-scale-option-gap: 10px;
@@ -41,8 +41,12 @@
 
 .home-category {
   padding: var(--home-scale-pill-padding-y) var(--home-scale-pill-padding-x);
-  background: var(--background);
-  border: 1px solid var(--border-weak);
+  min-width: 100px;
+  text-align: center;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
   color: var(--text-base);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
@@ -55,7 +59,6 @@
 .home-category:hover,
 .home-category.active {
   background: color-mix(in oklch, var(--foreground) 6%, var(--background));
-  border-color: var(--border-base);
 }
 
 /* Options reveal - grid-template-rows 0fr/1fr trick for smooth expand */
