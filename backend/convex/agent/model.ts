@@ -174,16 +174,15 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   reasoning: {
-    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
+    model: "openai/gpt-5.4-mini",
     fallbackMode: "smart",
-    managedGatewayProvider: "fireworks",
+    managedGatewayProvider: "openrouter",
     temperature: 1.0,
     maxOutputTokens: 16096,
     providerOptions: {
-      ...gatewayOptions("fireworks"),
+      ...gatewayOptions("openrouter"),
       openai: {
-        reasoningEffort: "high",
-        forceReasoning: true,
+        reasoningEffort: "medium",
       },
     },
   },
@@ -233,7 +232,7 @@ const AUDIENCE_MODE_OVERRIDES: Record<ManagedModelAudience, Partial<Record<Model
 
 export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: "smart",
-  [AGENT_IDS.ORCHESTRATOR]: "smart",
+  [AGENT_IDS.ORCHESTRATOR]: "reasoning",
   [AGENT_IDS.GENERAL]: "best",
   [AGENT_IDS.SELF_MOD]: "smart",
   [AGENT_IDS.EXPLORE]: "cheap",
