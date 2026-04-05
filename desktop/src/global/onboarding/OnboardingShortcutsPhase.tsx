@@ -215,6 +215,8 @@ export function OnboardingShortcutsPhase({
   const [captureStart, setCaptureStart] = useState<Point>({ x: 0, y: 0 });
   const [captureEnd, setCaptureEnd] = useState<Point>({ x: 0, y: 0 });
 
+  const platform = window.electronAPI?.platform;
+
   const gestureModeRef = useRef<"idle" | "radial">("idle");
   const triggerKeysHeld = useRef(false);
 

@@ -70,6 +70,7 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
         });
 
         if (!result || result.error || !result.formattedSections) return;
+        if (Object.keys(result.formattedSections).length === 0) return;
 
         void window.electronAPI?.projects?.list?.().catch(() => undefined);
 
