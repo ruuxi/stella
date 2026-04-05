@@ -9,7 +9,7 @@ type BuildCombinedPromptArgs = {
 }
 
 const buildWindowSnippet = (chatContext: ChatContext | null) => {
-  if (!chatContext?.window) return ''
+  if (!chatContext?.window || chatContext.windowContextEnabled === false) return ''
 
   return [chatContext.window.app, chatContext.window.title]
     .filter((part) => Boolean(part && part.trim()))
@@ -40,7 +40,7 @@ export const buildCombinedPrompt = ({
     )
   }
 
-  if (chatContext?.windowText) {
+  if (chatContext?.windowContextEnabled !== false && chatContext?.windowText) {
     contextParts.push(
       `<window-content context="Text content extracted from the user's active window. Summarize or help the user with what they're looking at.">${chatContext.windowText}</window-content>`,
     )

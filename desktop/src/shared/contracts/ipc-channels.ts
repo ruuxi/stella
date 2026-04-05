@@ -75,13 +75,6 @@ export const IPC_OVERLAY_MORPH_END = "overlay:morphEnd" as const;
 export const IPC_OVERLAY_MORPH_STATE = "overlay:morphState" as const;
 export const IPC_OVERLAY_MORPH_READY = "overlay:morphReady" as const;
 export const IPC_OVERLAY_MORPH_DONE = "overlay:morphDone" as const;
-export const IPC_OVERLAY_SHOW_AUTO_PANEL = "overlay:showAutoPanel" as const;
-export const IPC_OVERLAY_HIDE_AUTO_PANEL = "overlay:hideAutoPanel" as const;
-export const IPC_OVERLAY_AUTO_PANEL_START = "overlay:autoPanelStart" as const;
-export const IPC_OVERLAY_AUTO_PANEL_CANCEL = "overlay:autoPanelCancel" as const;
-export const IPC_OVERLAY_AUTO_PANEL_CHUNK = "overlay:autoPanelChunk" as const;
-export const IPC_OVERLAY_AUTO_PANEL_COMPLETE = "overlay:autoPanelComplete" as const;
-export const IPC_OVERLAY_AUTO_PANEL_ERROR = "overlay:autoPanelError" as const;
 
 // ── Mini ────────────────────────────────────────────────────────────────────
 

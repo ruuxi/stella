@@ -8,8 +8,6 @@ import type {
   RuntimeAgentEventPayload,
   RuntimeAutomationTurnRequest,
   RuntimeHealthSnapshot,
-  RuntimeOverlayAutoPanelEventPayload,
-  RuntimeOverlayAutoPanelStartPayload,
   RuntimeSocialSessionStatus,
   RuntimeVoiceChatPayload,
   SelfModFeatureSummary,
@@ -708,12 +706,6 @@ export class RuntimeClientAdapter {
     return this.client.on("projects-updated", listener);
   }
 
-  onOverlayAutoPanelEvent(
-    listener: (payload: RuntimeOverlayAutoPanelEventPayload) => void,
-  ) {
-    return this.client.on("overlay-auto-panel-event", listener);
-  }
-
   onGoogleWorkspaceAuthRequired(listener: () => void) {
     return this.client.on("google-workspace-auth-required", listener);
   }
@@ -756,14 +748,6 @@ export class RuntimeClientAdapter {
 
   stopProject(projectId: string) {
     return this.client.stopProject(projectId);
-  }
-
-  startOverlayAutoPanelStream(payload: RuntimeOverlayAutoPanelStartPayload) {
-    return this.client.startOverlayAutoPanelStream(payload);
-  }
-
-  cancelOverlayAutoPanelStream(requestId: string) {
-    return this.client.cancelOverlayAutoPanelStream(requestId);
   }
 
   revertSelfModFeature(payload: { featureId?: string; steps?: number }) {

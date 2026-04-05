@@ -10,9 +10,6 @@ import {
   type HostHeartbeatSignature,
   type RuntimeAgentEventPayload,
   type RuntimeChatPayload,
-  type RuntimeOverlayAutoPanelEventPayload,
-  type RuntimeOverlayAutoPanelStartPayload,
-  type RuntimeOverlayChatMessage,
   type StorePublishArgs,
   type RuntimeTaskRequest,
 } from "../protocol/index.js";
@@ -56,16 +53,6 @@ import type {
 import { SocialSessionService } from "./social-sessions/service.js";
 import { SocialSessionStore } from "./social-sessions/store.js";
 import { VoiceRuntimeService } from "./voice/service.js";
-import { readAssistantText, streamSimple } from "../ai/stream.js";
-import { resolveLlmRoute } from "../kernel/model-routing.js";
-import {
-  getDefaultModel,
-  getModelOverride,
-} from "../kernel/preferences/local-preferences.js";
-import {
-  buildStellaChatContext,
-  type ChatMessage,
-} from "../kernel/stella-provider.js";
 
 type WorkerInitializationState = {
   stellaHomePath: string;
@@ -114,7 +101,6 @@ type WorkerState = {
   voiceService: VoiceRuntimeService | null;
   runner: RuntimeRunner | null;
   deviceId: string | null;
-  overlayAutoPanelControllers: Map<string, AbortController>;
 };
 
 const resolveRuntimeCliPath = () =>
@@ -159,23 +145,7 @@ const buildStoreInstallPrompt = (args: {
 const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
-const isOverlayChatMessageArray = (
-  value: unknown,
-): value is RuntimeOverlayChatMessage[] => Array.isArray(value);
-
-const toOverlayChatMessages = (
-  value: RuntimeOverlayChatMessage[] | undefined,
-): ChatMessage[] =>
-  (Array.isArray(value) ? value : []).map((message) => ({
-    role: message.role,
-    content: message.content,
-  }));
-
 const stopWorkerServices = async (state: WorkerState) => {
-  for (const controller of state.overlayAutoPanelControllers.values()) {
-    controller.abort();
-  }
-  state.overlayAutoPanelControllers.clear();
   state.socialSessionService?.stop();
   state.socialSessionService = null;
   state.voiceService = null;
@@ -204,7 +174,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     voiceService: null,
     runner: null,
     deviceId: null,
-    overlayAutoPanelControllers: new Map(),
   };
 
   const emitRunEvent = (event: AgentEventPayload) => {
@@ -228,12 +197,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     state: unknown;
   }) => {
     peer.notify(NOTIFICATION_NAMES.VOICE_SELF_MOD_HMR_STATE, payload);
-  };
-
-  const emitOverlayAutoPanelEvent = (
-    payload: RuntimeOverlayAutoPanelEventPayload,
-  ) => {
-    peer.notify(NOTIFICATION_NAMES.OVERLAY_AUTO_PANEL_EVENT, payload);
   };
 
   const ensureRunner = () => {
@@ -1140,124 +1103,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       sessions: [],
     };
   });
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_OVERLAY_AUTO_PANEL_START,
-    async (params) => {
-      if (!state.init) {
-        throw new Error("Worker has not been initialized.");
-      }
-      const payload = params as RuntimeOverlayAutoPanelStartPayload;
-      const requestId = asTrimmedString(payload?.requestId);
-      if (!requestId) {
-        throw new Error("Missing auto panel request ID.");
-      }
-
-      const agentType = asTrimmedString(payload?.agentType) || "auto";
-      const messages = toOverlayChatMessages(
-        isOverlayChatMessageArray(payload?.messages) ? payload.messages : [],
-      );
-
-      state.overlayAutoPanelControllers.get(requestId)?.abort();
-      const abortController = new AbortController();
-      state.overlayAutoPanelControllers.set(requestId, abortController);
-
-      void (async () => {
-        try {
-          const stellaHomePath = state.init?.stellaHomePath;
-          if (!stellaHomePath) {
-            throw new Error("Local Stella home is unavailable.");
-          }
-
-          const authToken = state.init?.authToken ?? null;
-          const resolvedRoute = resolveLlmRoute({
-            stellaHomePath,
-            modelName:
-              getModelOverride(stellaHomePath, agentType) ??
-              getDefaultModel(stellaHomePath, agentType),
-            agentType,
-            site: {
-              baseUrl: state.init?.convexSiteUrl ?? null,
-              getAuthToken: () => authToken,
-            },
-          });
-
-          const stream = streamSimple(
-            resolvedRoute.model,
-            buildStellaChatContext(messages),
-            {
-              apiKey: resolvedRoute.getApiKey(),
-              signal: abortController.signal,
-            },
-          );
-
-          let fullText = "";
-          for await (const streamEvent of stream) {
-            if (streamEvent.type !== "text_delta") {
-              continue;
-            }
-            fullText += streamEvent.delta;
-            emitOverlayAutoPanelEvent({
-              requestId,
-              kind: "chunk",
-              chunk: streamEvent.delta,
-            });
-          }
-
-          const finalMessage = await stream.result();
-          if (
-            abortController.signal.aborted ||
-            finalMessage.stopReason === "aborted"
-          ) {
-            return;
-          }
-          if (finalMessage.stopReason === "error") {
-            throw new Error(
-              finalMessage.errorMessage || "Auto panel request failed",
-            );
-          }
-          emitOverlayAutoPanelEvent({
-            requestId,
-            kind: "complete",
-            text: fullText || readAssistantText(finalMessage),
-          });
-        } catch (error) {
-          if (abortController.signal.aborted) {
-            return;
-          }
-          emitOverlayAutoPanelEvent({
-            requestId,
-            kind: "error",
-            error: error instanceof Error ? error.message : String(error),
-          });
-        } finally {
-          if (state.overlayAutoPanelControllers.get(requestId) === abortController) {
-            state.overlayAutoPanelControllers.delete(requestId);
-          }
-        }
-      })();
-
-      return { ok: true };
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_OVERLAY_AUTO_PANEL_CANCEL,
-    async (params) => {
-      const requestId = asTrimmedString(
-        (params as { requestId?: string } | undefined)?.requestId,
-      );
-      if (!requestId) {
-        return { ok: true };
-      }
-      const controller = state.overlayAutoPanelControllers.get(requestId);
-      if (controller) {
-        state.overlayAutoPanelControllers.delete(requestId);
-        controller.abort();
-      }
-      return { ok: true };
-    },
-  );
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_REVERT, async (params) => {
     if (!state.init) {

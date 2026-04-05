@@ -239,10 +239,6 @@ export function generateShimScript(
       onShowVoice: noopSub, onHideVoice: noopSub, onDisplayChange: noopSub,
       onMorphForward: noopSub, onMorphReverse: noopSub, onMorphEnd: noopSub, onMorphState: noopSub,
       morphReady: noop, morphDone: noop,
-      onShowAutoPanel: noopSub, onHideAutoPanel: noopSub, hideAutoPanel: noop,
-      startAutoPanelStream: function() { return resolved({ ok: false }); },
-      cancelAutoPanelStream: noop,
-      onAutoPanelChunk: noopSub, onAutoPanelComplete: noopSub, onAutoPanelError: noopSub,
     },
 
     // ── Mini bridge ─────────────────────────────────────────────────────

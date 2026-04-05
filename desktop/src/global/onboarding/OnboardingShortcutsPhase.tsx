@@ -17,10 +17,6 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import {
-  DEFAULT_RADIAL_TRIGGER_CODE,
-  getRadialTriggerLabel,
-} from "@/shared/lib/radial-trigger";
 import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
 
 type ShortcutsPhaseProps = {
@@ -58,7 +54,7 @@ function TriggerKeyCaps({ platform }: { platform?: string }) {
   );
 }
 
-type RadialActionId = "capture" | "chat" | "full" | "voice" | "auto" | "dismiss";
+type RadialActionId = "capture" | "chat" | "close" | "voice" | "dismiss";
 type MenuActionId = "open-chat";
 
 type Point = {
@@ -72,21 +68,22 @@ const RADIAL_INNER_RADIUS = 40;
 const RADIAL_OUTER_RADIUS = 125;
 const RADIAL_DEAD_ZONE_RADIUS = 30;
 const RADIAL_CENTER_BG_RADIUS = RADIAL_INNER_RADIUS - 5;
-const RADIAL_WEDGE_ANGLE = 72;
-const SURFACE_PADDING = 28;
+const RADIAL_WEDGE_ANGLE = 90;
 
 const RADIAL_ACTIONS: {
   id: Exclude<RadialActionId, "dismiss">;
   label: string;
-  icon: LucideIcon;
-  resultTitle: string;
-  resultBody: string;
-  resultPrompt: string;
+  icon: LucideIcon | null;
+  enabled: boolean;
+  resultTitle?: string;
+  resultBody?: string;
+  resultPrompt?: string;
 }[] = [
   {
     id: "capture",
     label: "Capture",
     icon: Camera,
+    enabled: true,
     resultTitle: "Captured selection",
     resultBody: "I grab the area you marked and open it as context for the next question.",
     resultPrompt: "Ask about this screenshot...",
@@ -95,33 +92,28 @@ const RADIAL_ACTIONS: {
     id: "chat",
     label: "Chat",
     icon: MessageSquare,
+    enabled: true,
     resultTitle: "Quick chat opened",
     resultBody: "A lightweight chat with me opens over what you were already doing.",
     resultPrompt: "Ask Stella about this page...",
   },
   {
-    id: "full",
-    label: "Full",
-    icon: Maximize2,
-    resultTitle: "Full Stella opened",
-    resultBody: "Your full workspace comes forward when you want the bigger canvas.",
-    resultPrompt: "Continue in full workspace",
+    id: "close",
+    label: "Close",
+    icon: X,
+    enabled: true,
+    resultTitle: "Mini chat closed",
+    resultBody: "The floating chat gets out of the way while keeping the rest of your workspace unchanged.",
+    resultPrompt: "Mini chat dismissed",
   },
   {
     id: "voice",
     label: "Voice",
     icon: Mic,
+    enabled: true,
     resultTitle: "Voice mode listening",
     resultBody: "Talk naturally and I'll keep the current context while transcribing.",
     resultPrompt: "Listening...",
-  },
-  {
-    id: "auto",
-    label: "Auto",
-    icon: Sparkles,
-    resultTitle: "Auto summary ready",
-    resultBody: "I read the current surface and bring back a fast summary with key takeaways.",
-    resultPrompt: "3 key points extracted",
   },
 ];
 
@@ -197,7 +189,9 @@ const getRadialAction = (
   angle = (angle + 90) % 360;
 
   const wedgeIndex = Math.floor(angle / RADIAL_WEDGE_ANGLE);
-  return RADIAL_ACTIONS[wedgeIndex]?.id ?? "dismiss";
+  return RADIAL_ACTIONS[wedgeIndex]?.enabled
+    ? RADIAL_ACTIONS[wedgeIndex].id
+    : "dismiss";
 };
 
 export function OnboardingShortcutsPhase({
@@ -205,11 +199,6 @@ export function OnboardingShortcutsPhase({
   splitTransitionActive,
   onFinish,
 }: ShortcutsPhaseProps) {
-  const platform = window.electronAPI?.platform;
-  const radialTriggerLabel = getRadialTriggerLabel(
-    DEFAULT_RADIAL_TRIGGER_CODE,
-    platform,
-  );
   const radialSurfaceRef = useRef<HTMLDivElement | null>(null);
   const menuSurfaceRef = useRef<HTMLDivElement | null>(null);
 
@@ -567,31 +556,23 @@ export function OnboardingShortcutsPhase({
                 </div>
               </div>
 
-              {/* Full: realistic workspace */}
-              <div className="scene-effect scene-effect--full">
-                <div className="scene-effect__workspace">
-                  <div className="scene-effect__workspace-sidebar">
-                    <div className="scene-effect__workspace-logo">S</div>
-                    <div className="scene-effect__workspace-nav">
-                      <div data-active><MessageSquare size={12} /><span>Chat</span></div>
-                      <div><Search size={12} /><span>Browse</span></div>
-                      <div><Sparkles size={12} /><span>Store</span></div>
+              {/* Close: mini shell dismisses */}
+              <div className="scene-effect scene-effect--close">
+                <div className="scene-effect__mini-shell scene-effect__mini-shell--closing">
+                  <div className="scene-effect__mini-shell-bar">
+                    <span>Stella</span>
+                    <div className="scene-effect__mini-shell-actions">
+                      <Maximize2 size={11} />
+                      <X size={11} />
                     </div>
                   </div>
-                  <div className="scene-effect__workspace-content">
-                    <div className="scene-effect__workspace-chat">
-                      <div className="scene-effect__workspace-msg scene-effect__workspace-msg--user">
-                        Help me analyze this report
-                      </div>
-                      <div className="scene-effect__workspace-msg scene-effect__workspace-msg--assistant">
-                        <div className="onboarding-shortcut-text-line" />
-                        <div className="onboarding-shortcut-text-line" />
-                        <div className="onboarding-shortcut-text-line onboarding-shortcut-text-line--short" />
-                      </div>
+                  <div className="scene-effect__mini-shell-messages">
+                    <div className="scene-effect__mini-shell-msg scene-effect__mini-shell-msg--assistant">
+                      I can see your research report. What would you like to know?
                     </div>
-                    <div className="scene-effect__workspace-composer-bar">
-                      <span>Message Stella...</span>
-                    </div>
+                  </div>
+                  <div className="scene-effect__mini-shell-composer">
+                    <span>Ask a follow-up...</span>
                   </div>
                 </div>
               </div>
@@ -609,34 +590,6 @@ export function OnboardingShortcutsPhase({
                 <span className="scene-effect__voice-label">Listening...</span>
               </div>
 
-              {/* Auto: slide-in panel with summary */}
-              <div className="scene-effect scene-effect--auto">
-                <div className="scene-effect__auto-panel">
-                  <div className="scene-effect__auto-panel-header">
-                    <Sparkles size={12} />
-                    <span>Auto summary</span>
-                    <X size={12} className="scene-effect__auto-panel-close" />
-                  </div>
-                  <div className="scene-effect__auto-panel-body">
-                    <div className="scene-effect__auto-section">
-                      <div className="scene-effect__auto-section-title">Key findings</div>
-                      <p>Revenue grew <strong>23% YoY</strong> driven primarily by enterprise expansion. The top performing segment exceeded targets by 18%.</p>
-                    </div>
-                    <div className="scene-effect__auto-section">
-                      <div className="scene-effect__auto-section-title">Action items</div>
-                      <ul>
-                        <li>Expand Q3 pipeline capacity</li>
-                        <li>Review enterprise pricing tiers</li>
-                        <li>Schedule follow-up with sales</li>
-                      </ul>
-                    </div>
-                    <div className="scene-effect__auto-section">
-                      <div className="scene-effect__auto-section-title">Risk factors</div>
-                      <p>Market volatility in adjacent segments may impact projected growth in Q4.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
 
             <div className="onboarding-shortcut-hint">
@@ -695,8 +648,10 @@ export function OnboardingShortcutsPhase({
                               top: action.position.y,
                             }}
                           >
-                            <Icon width={16} height={16} />
-                            <span className="radial-wedge-label">{action.label}</span>
+                            {Icon ? <Icon width={16} height={16} /> : null}
+                            {action.label ? (
+                              <span className="radial-wedge-label">{action.label}</span>
+                            ) : null}
                           </div>
                         );
                       })}

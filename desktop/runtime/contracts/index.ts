@@ -4,7 +4,7 @@ export type DiscoveryCategory =
   | "apps_system"
   | "messages_notes";
 
-export type RadialWedge = "capture" | "chat" | "full" | "voice" | "auto" | "dismiss";
+export type RadialWedge = "capture" | "chat" | "close" | "voice" | "dismiss";
 
 export type WindowBounds = { x: number; y: number; width: number; height: number };
 
@@ -21,6 +21,7 @@ export type ChatContext = {
     app: string;
     bounds: WindowBounds;
   } | null;
+  windowContextEnabled?: boolean;
   browserUrl?: string | null;
   selectedText?: string | null;
   regionScreenshots?: {

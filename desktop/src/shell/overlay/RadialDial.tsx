@@ -6,7 +6,7 @@ import {
   type ComponentType,
   type SVGProps,
 } from 'react'
-import { Camera, Maximize2, MessageSquare, Mic, Sparkles } from 'lucide-react'
+import { Camera, MessageSquare, Mic, X } from 'lucide-react'
 import { StellaAnimation } from '@/shell/ascii-creature/StellaAnimation'
 import { cssToVec3 } from '@/shared/lib/color'
 import { RADIAL_SIZE } from '@/shared/lib/layout'
@@ -23,21 +23,30 @@ import {
   type BlobColors,
 } from './radial-blob'
 
-const WEDGES: { id: RadialWedge; label: string; icon: ComponentType<SVGProps<SVGSVGElement>> }[] = [
+const BASE_WEDGES: {
+  id: RadialWedge
+  label: string
+  icon: ComponentType<SVGProps<SVGSVGElement>> | null
+}[] = [
   { id: 'capture', label: 'Capture', icon: Camera },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
-  { id: 'full', label: 'Full', icon: Maximize2 },
+  { id: 'close', label: 'Close', icon: X },
   { id: 'voice', label: 'Voice', icon: Mic },
-  { id: 'auto', label: 'Auto', icon: Sparkles },
 ]
 
 const SIZE = RADIAL_SIZE
 const CENTER = SIZE / 2
 const INNER_RADIUS = 40
 const OUTER_RADIUS = 125
-const WEDGE_ANGLE = 72
+const WEDGE_ANGLE = 90
 const DEAD_ZONE_RADIUS = 30
 const CENTER_BG_RADIUS = INNER_RADIUS - 5
+
+const getWedges = (miniVisible: boolean) =>
+  BASE_WEDGES.map((wedge) => ({
+    ...wedge,
+    enabled: wedge.id === 'close' ? miniVisible : true,
+  }))
 
 const toRgba = (color: string, alpha: number): string => {
   const [r, g, b] = cssToVec3(color)
@@ -76,7 +85,13 @@ const getContentPosition = (index: number) => {
   }
 }
 
-const calculateWedge = (x: number, y: number, centerX: number, centerY: number): RadialWedge => {
+const calculateWedge = (
+  x: number,
+  y: number,
+  centerX: number,
+  centerY: number,
+  wedges: ReturnType<typeof getWedges>,
+): RadialWedge => {
   const dx = x - centerX
   const dy = y - centerY
   const distance = Math.sqrt(dx * dx + dy * dy)
@@ -88,14 +103,8 @@ const calculateWedge = (x: number, y: number, centerX: number, centerY: number):
   angle = (angle + 90) % 360
 
   const wedgeIndex = Math.floor(angle / WEDGE_ANGLE)
-  return WEDGES[wedgeIndex]?.id ?? 'dismiss'
+  return wedges[wedgeIndex]?.enabled ? wedges[wedgeIndex].id : 'dismiss'
 }
-
-const WEDGE_LAYOUT = WEDGES.map((wedge, index) => ({
-  ...wedge,
-  contentPos: getContentPosition(index),
-  path: createWedgePath(index * WEDGE_ANGLE, (index + 1) * WEDGE_ANGLE),
-}))
 
 type Phase = 'hidden' | 'opening' | 'open' | 'closing'
 
@@ -117,7 +126,7 @@ function getBlobColors(
   const interactiveVec = cssToVec3(interactive)
 
   return {
-    fills: WEDGES.map((_, i) => (i === selectedIdx ? interactiveVec : cardVec)),
+    fills: BASE_WEDGES.map((_, i) => (i === selectedIdx ? interactiveVec : cardVec)),
     selectedFill: interactiveVec,
     centerBg: cssToVec3(background),
     stroke: cssToVec3(border),
@@ -165,6 +174,7 @@ function useRadialBlob(
 
 function useRadialIPC(
   blob: BlobRefs,
+  wedges: ReturnType<typeof getWedges>,
   setSelectedWedge: React.Dispatch<React.SetStateAction<RadialWedge>>,
   setPhase: React.Dispatch<React.SetStateAction<Phase>>,
   setContentVisible: React.Dispatch<React.SetStateAction<boolean>>,
@@ -173,6 +183,11 @@ function useRadialIPC(
   const phaseRef = useRef<Phase>('hidden')
   const contentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const transitionIdRef = useRef(0)
+  const wedgesRef = useRef(wedges)
+
+  useEffect(() => {
+    wedgesRef.current = wedges
+  }, [wedges])
 
   useEffect(() => {
     if (!getElectronApi()) return
@@ -185,7 +200,9 @@ function useRadialIPC(
       visibleRef.current = true
 
       if (typeof data.x === 'number' && typeof data.y === 'number') {
-        setSelectedWedge(calculateWedge(data.x, data.y, data.centerX, data.centerY))
+        setSelectedWedge(
+          calculateWedge(data.x, data.y, data.centerX, data.centerY, wedgesRef.current),
+        )
       } else {
         setSelectedWedge('dismiss')
       }
@@ -269,7 +286,13 @@ function useRadialIPC(
       data: { x: number; y: number; centerX: number; centerY: number },
     ) => {
       if (!visibleRef.current) return
-      const wedge = calculateWedge(data.x, data.y, data.centerX, data.centerY)
+      const wedge = calculateWedge(
+        data.x,
+        data.y,
+        data.centerX,
+        data.centerY,
+        wedgesRef.current,
+      )
       setSelectedWedge((prev) => (prev === wedge ? prev : wedge))
     }
 
@@ -292,21 +315,30 @@ function useRadialIPC(
   }, [blob, setSelectedWedge, setPhase, setContentVisible])
 }
 
-export function RadialDial() {
+export function RadialDial({ miniVisible = false }: { miniVisible?: boolean }) {
   const [selectedWedge, setSelectedWedge] = useState<RadialWedge>('dismiss')
   const [phase, setPhase] = useState<Phase>('hidden')
   const [contentVisible, setContentVisible] = useState(false)
   const { colors } = useTheme()
+  const wedges = useMemo(() => getWedges(miniVisible), [miniVisible])
+  const wedgeLayout = useMemo(
+    () => wedges.map((wedge, index) => ({
+      ...wedge,
+      contentPos: getContentPosition(index),
+      path: createWedgePath(index * WEDGE_ANGLE, (index + 1) * WEDGE_ANGLE),
+    })),
+    [wedges],
+  )
 
   const selectedBlobIndex = useMemo(
     () =>
       phase === 'open' || phase === 'closing'
-        ? WEDGES.findIndex((w) => w.id === selectedWedge)
+        ? wedges.findIndex((w) => w.id === selectedWedge)
         : -1,
-    [phase, selectedWedge],
+    [phase, selectedWedge, wedges],
   )
   const blob = useRadialBlob(colors, selectedBlobIndex)
-  useRadialIPC(blob, setSelectedWedge, setPhase, setContentVisible)
+  useRadialIPC(blob, wedges, setSelectedWedge, setPhase, setContentVisible)
   const { canvasRef } = blob
   const palette = useMemo(() => {
     const interactive = toRgba(colors.interactive, 1)
@@ -355,10 +387,15 @@ export function RadialDial() {
           viewBox={`0 0 ${SIZE} ${SIZE}`}
           className="radial-dial"
         >
-          {WEDGE_LAYOUT.map((wedge) => {
+          {wedgeLayout.map((wedge) => {
             const isSelected = selectedWedge === wedge.id
-            const fillColor = isSelected ? palette.interactive : palette.card
-            const strokeColor = isSelected ? palette.interactiveStroke : palette.border
+            const treatAsEnabled = wedge.enabled || phase === 'closing'
+            const fillColor = treatAsEnabled
+              ? (isSelected ? palette.interactive : palette.card)
+              : toRgba(colors.card, 0.5)
+            const strokeColor = treatAsEnabled
+              ? (isSelected ? palette.interactiveStroke : palette.border)
+              : toRgba(colors.border, 0.3)
 
             return (
               <g key={wedge.id}>
@@ -388,12 +425,13 @@ export function RadialDial() {
           />
         </svg>
 
-        {WEDGE_LAYOUT.map((wedge) => {
+        {wedgeLayout.map((wedge) => {
           const Icon = wedge.icon
           const isSelected = selectedWedge === wedge.id
-          const iconColor = isSelected
-            ? colors.primaryForeground
-            : colors.mutedForeground
+          const treatIconEnabled = wedge.enabled || phase === 'closing'
+          const iconColor = treatIconEnabled
+            ? (isSelected ? colors.primaryForeground : colors.mutedForeground)
+            : toRgba(colors.mutedForeground, 0.45)
 
           return (
             <div
@@ -405,18 +443,22 @@ export function RadialDial() {
                 color: iconColor,
               }}
             >
-              <Icon
-                aria-hidden="true"
-                width={16}
-                height={16}
-                style={{ transition: 'color 0.1s' }}
-              />
-              <span
-                className="radial-wedge-label"
-                style={{ transition: 'color 0.1s' }}
-              >
-                {wedge.label}
-              </span>
+              {Icon ? (
+                <Icon
+                  aria-hidden="true"
+                  width={16}
+                  height={16}
+                  style={{ transition: 'color 0.1s' }}
+                />
+              ) : null}
+              {wedge.label ? (
+                <span
+                  className="radial-wedge-label"
+                  style={{ transition: 'color 0.1s' }}
+                >
+                  {wedge.label}
+                </span>
+              ) : null}
             </div>
           )
         })}

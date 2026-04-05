@@ -221,38 +221,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.send("overlay:morphReady", { transitionId }),
     morphDone: (transitionId: string) =>
       ipcRenderer.send("overlay:morphDone", { transitionId }),
-    onShowAutoPanel: onIpc<{
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-      windowText: string;
-      windowTitle: string | null;
-    }>("overlay:showAutoPanel"),
-    onHideAutoPanel: onIpcSignal("overlay:hideAutoPanel"),
-    hideAutoPanel: () => ipcRenderer.send("overlay:hideAutoPanel"),
-    startAutoPanelStream: (payload: {
-      requestId: string;
-      agentType?: string;
-      messages: Array<{
-        role: "system" | "user" | "assistant" | "developer";
-        content: string | Array<{ type?: string; text?: string }>;
-      }>;
-    }) =>
-      ipcRenderer.invoke("overlay:autoPanelStart", payload) as Promise<{
-        ok: boolean;
-      }>,
-    cancelAutoPanelStream: (requestId: string) =>
-      ipcRenderer.send("overlay:autoPanelCancel", { requestId }),
-    onAutoPanelChunk: onIpc<{ requestId: string; chunk: string }>(
-      "overlay:autoPanelChunk",
-    ),
-    onAutoPanelComplete: onIpc<{ requestId: string; text: string }>(
-      "overlay:autoPanelComplete",
-    ),
-    onAutoPanelError: onIpc<{ requestId: string; error: string }>(
-      "overlay:autoPanelError",
-    ),
   },
 
   mini: {

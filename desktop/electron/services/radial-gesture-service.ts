@@ -12,6 +12,7 @@ export type RadialCaptureBridge = {
   setPendingChatContext: (ctx: ChatContext | null) => void
   clearTransientContext: () => void
   setRadialContextShouldCommit: (commit: boolean) => void
+  setRadialWindowContextEnabled: (enabled: boolean) => void
   commitStagedRadialContext: (before: ChatContext | null) => void
   hasPendingRadialCapture: () => boolean
   captureRadialContext: (x: number, y: number, before: ChatContext | null) => void
@@ -19,7 +20,6 @@ export type RadialCaptureBridge = {
     screenshot: { dataUrl: string; width: number; height: number } | null
     window: ChatContext['window']
   } | null>
-  captureAutoWindowText: () => Promise<{ text: string; title: string; app: string } | null>
   emptyContext: () => ChatContext
   broadcastChatContext: () => void
 }
@@ -29,8 +29,6 @@ export type RadialOverlayBridge = {
   hideRadial: () => void
   updateRadialCursor: (x: number, y: number) => void
   getRadialBounds: () => { x: number; y: number } | null
-  showAutoPanel: (data: { x: number; y: number; width: number; height: number; windowText: string; windowTitle: string | null }) => void
-  hideAutoPanel: () => void
 }
 
 export type RadialWindowBridge = {
@@ -49,6 +47,7 @@ type RadialGestureDeps = {
   capture: RadialCaptureBridge
   overlay: RadialOverlayBridge
   window: RadialWindowBridge
+  activateVoiceRtc: () => void
   updateUiState: (partial: Record<string, unknown>) => void
 }
 
@@ -65,20 +64,27 @@ export class RadialGestureService {
     this.radialTriggerKey = deps.getRadialTriggerKey()
   }
 
+  private restoreOrClearTransientContext() {
+    const { capture } = this.deps
+    const pendingChatContext = capture.getChatContextSnapshot()
+    if (this.startedWithMiniVisible) {
+      if (pendingChatContext !== this.contextBeforeGesture) {
+        capture.setPendingChatContext(this.contextBeforeGesture)
+      }
+      return
+    }
+    if (pendingChatContext !== null) {
+      capture.clearTransientContext()
+    }
+  }
+
   private async handleSelection(wedge: RadialWedge) {
-    const { capture, overlay, window: win, updateUiState } = this.deps
+    const { capture, overlay, window: win, activateVoiceRtc, updateUiState } = this.deps
 
     switch (wedge) {
       case 'dismiss': {
         capture.cancelRadialContextCapture()
-        const pendingChatContext = capture.getChatContextSnapshot()
-        if (this.startedWithMiniVisible) {
-          if (pendingChatContext !== this.contextBeforeGesture) {
-            capture.setPendingChatContext(this.contextBeforeGesture)
-          }
-        } else if (pendingChatContext !== null) {
-          capture.clearTransientContext()
-        }
+        this.restoreOrClearTransientContext()
         break
       }
       case 'capture': {
@@ -115,69 +121,31 @@ export class RadialGestureService {
         break
       }
       case 'chat': {
+        capture.setRadialContextShouldCommit(true)
+        capture.setRadialWindowContextEnabled(false)
+        capture.commitStagedRadialContext(this.contextBeforeGesture)
+        updateUiState({ mode: 'chat' })
         if (win.isMiniShowing()) {
-          win.hideMiniWindow(true)
+          capture.broadcastChatContext()
         } else {
-          capture.setRadialContextShouldCommit(true)
-          capture.commitStagedRadialContext(this.contextBeforeGesture)
-          updateUiState({ mode: 'chat' })
           win.showWindow('mini')
         }
         break
       }
-      case 'auto': {
+      case 'voice': {
         capture.cancelRadialContextCapture()
-
-        // Start text extraction BEFORE showing the panel so FromPoint
-        // doesn't pick up our own overlay window.
-        const textPromise = capture.captureAutoWindowText()
-
-        // Position panel on the right side of the current display, 70% height, centered
-        const cursorPoint = screen.getCursorScreenPoint()
-        const display = screen.getDisplayNearestPoint(cursorPoint)
-        const workArea = display.workArea
-        const panelWidth = 520
-        const panelHeight = Math.round(workArea.height * 0.7)
-        const panelX = workArea.x + workArea.width - panelWidth - 16
-        const panelY = workArea.y + Math.round((workArea.height - panelHeight) / 2)
-
-        // Show panel immediately with skeleton loader
-        overlay.showAutoPanel({
-          x: panelX,
-          y: panelY,
-          width: panelWidth,
-          height: panelHeight,
-          windowText: '',
-          windowTitle: null,
-        })
-
-        // Wait for text extraction to complete
-        const windowTextResult = await textPromise
-        if (!windowTextResult?.text) {
-          overlay.hideAutoPanel()
-          break
-        }
-
-        const windowTitle = [windowTextResult.app, windowTextResult.title]
-          .filter(Boolean)
-          .join(' - ') || null
-
-        overlay.showAutoPanel({
-          x: panelX,
-          y: panelY,
-          width: panelWidth,
-          height: panelHeight,
-          windowText: windowTextResult.text,
-          windowTitle: windowTitle,
-        })
+        this.restoreOrClearTransientContext()
+        activateVoiceRtc()
         break
       }
-      case 'voice':
-        break
-      case 'full':
+      case 'close':
         capture.cancelRadialContextCapture()
-        capture.setPendingChatContext(null)
-        win.showWindow('full')
+        if (win.isMiniShowing()) {
+          capture.setPendingChatContext(null)
+          win.hideMiniWindow(true)
+        } else {
+          this.restoreOrClearTransientContext()
+        }
         break
     }
   }

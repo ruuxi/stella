@@ -31,10 +31,15 @@ export const resolveComposerContextState = (
   chatContext: ChatContext | null,
   selectedText: string | null,
 ): ComposerContextState => {
+  const windowContextEnabled = Boolean(
+    chatContext?.window && chatContext.windowContextEnabled !== false,
+  );
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasFileContext = Boolean(chatContext?.files?.length);
-  const hasWindowContext = Boolean(chatContext?.window);
-  const hasWindowTextContext = Boolean(chatContext?.windowText?.trim());
+  const hasWindowContext = windowContextEnabled;
+  const hasWindowTextContext = Boolean(
+    windowContextEnabled && chatContext?.windowText?.trim(),
+  );
   const hasSelectedTextContext = Boolean(selectedText);
   const hasPendingCaptureContext = Boolean(chatContext?.capturePending);
   const hasSubmittableContext = Boolean(
@@ -103,7 +108,19 @@ export const deriveComposerState = ({
 };
 
 export const clearComposerWindowContext = (setChatContext: SetChatContext) => {
-  setChatContext((prev) => (prev ? { ...prev, window: null, windowText: null } : prev));
+  setChatContext((prev) => (
+    prev ? { ...prev, window: null, windowText: null, windowContextEnabled: undefined } : prev
+  ));
+};
+
+export const toggleComposerWindowContext = (setChatContext: SetChatContext) => {
+  setChatContext((prev) => {
+    if (!prev?.window) return prev;
+    return {
+      ...prev,
+      windowContextEnabled: prev.windowContextEnabled === false,
+    };
+  });
 };
 
 export const clearComposerSelectedTextContext = (

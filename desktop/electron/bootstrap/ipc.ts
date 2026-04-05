@@ -6,7 +6,6 @@ import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
 import { registerMiniBridgeHandlers } from "../ipc/mini-bridge-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
-import { registerOverlayStreamHandlers } from "../ipc/overlay-stream-handlers.js";
 import { registerProjectHandlers } from "../ipc/project-handlers.js";
 import { registerScheduleHandlers } from "../ipc/schedule-handlers.js";
 import { registerStoreHandlers } from "../ipc/store-handlers.js";
@@ -139,13 +138,6 @@ export const registerBootstrapIpcHandlers = (
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
     getBroadcastToMobile: lazyMobileBroadcast,
-  });
-
-  registerOverlayStreamHandlers({
-    getStellaHostRunner: lifecycle.getRunner,
-    onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
-    assertPrivilegedSender: (event, channel) =>
-      services.externalLinkService.assertPrivilegedSender(event, channel),
   });
 
   registerMiniBridgeHandlers({

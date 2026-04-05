@@ -74,6 +74,13 @@
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
+.chat-composer-context-chip--window[data-included="false"],
+.composer-context-chip--window[data-included="false"],
+.mini-composer-window-badge[data-included="false"] {
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border-style: dashed;
+}
+
 .chat-composer-context-text,
 .composer-context-text,
 .mini-context-text,
@@ -99,6 +106,27 @@
 .composer-context-window,
 .mini-composer-window-text {
   color: var(--text-weak);
+}
+
+.composer-context-window-toggle,
+.mini-composer-window-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.chat-composer-context-chip--window[data-included="false"] .chat-composer-context-window,
+.composer-context-chip--window[data-included="false"] .composer-context-window,
+.mini-composer-window-badge[data-included="false"] .mini-composer-window-text {
+  color: var(--text-weaker);
 }
 
 .chat-composer-context-remove,

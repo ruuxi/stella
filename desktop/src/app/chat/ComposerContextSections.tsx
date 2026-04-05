@@ -107,8 +107,10 @@ export function ComposerWindowContextSection({
     return (
       <WindowContextChip
         chatWindow={chatContext.window}
+        included={chatContext.windowContextEnabled !== false}
         setChatContext={setChatContext}
         className="mini-composer-window-badge"
+        toggleClassName="mini-composer-window-toggle"
         textClassName="mini-composer-window-text"
         removeClassName="mini-composer-window-dismiss"
         textFormatter={(chatWindow) => chatWindow.title || chatWindow.app}
@@ -119,8 +121,10 @@ export function ComposerWindowContextSection({
   return (
     <WindowContextChip
       chatWindow={chatContext.window}
+      included={chatContext.windowContextEnabled !== false}
       setChatContext={setChatContext}
       className="chat-composer-context-chip chat-composer-context-chip--window composer-context-chip composer-context-chip--window"
+      toggleClassName="composer-context-window-toggle"
       textClassName="chat-composer-context-window composer-context-window"
       removeClassName="chat-composer-context-remove composer-context-remove"
     />
