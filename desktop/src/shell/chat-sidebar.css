@@ -15,7 +15,7 @@
 }
 
 .chat-sidebar--open {
-  width: clamp(320px, 28vw, 420px);
+  width: clamp(380px, 34vw, 520px);
   opacity: 1;
 }
 
@@ -29,7 +29,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-width: clamp(320px, 28vw, 420px);
+  min-width: clamp(380px, 34vw, 520px);
   background: transparent;
   border-left: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
 }
@@ -84,8 +84,11 @@
 .chat-sidebar-input {
   flex: 1;
   width: 100%;
+  box-sizing: border-box;
   field-sizing: content;
-  min-height: 30px;
+  min-height: 48px;
   max-height: 120px;
+  padding: 12px 14px;
   font-size: 15px;
+  line-height: 1.45;
 }
