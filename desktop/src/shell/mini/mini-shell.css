@@ -20,6 +20,15 @@
   justify-content: center;
   padding: 8px;
   background: transparent;
+  filter:
+    drop-shadow(0 8px 40px rgba(0, 0, 0, 0.12))
+    drop-shadow(0 2px 8px rgba(0, 0, 0, 0.08));
+}
+
+.dark .raycast-shell {
+  filter:
+    drop-shadow(0 8px 40px rgba(0, 0, 0, 0.35))
+    drop-shadow(0 2px 8px rgba(0, 0, 0, 0.2));
 }
 
 /* Panel - floating chat window */
@@ -32,12 +41,26 @@
   flex-direction: column;
   opacity: 0;
   will-change: opacity, transform, filter;
-  background: var(--background);
+  background: transparent;
   border-radius: 14px;
   border: none;
-  box-shadow:
-    0 8px 40px rgba(0, 0, 0, 0.12),
-    0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+/* Gradient inside panel — override position:fixed from app-components */
+.raycast-panel > .shifting-gradient.raycast-gradient,
+.raycast-panel > .shifting-gradient.raycast-gradient .gradient-base {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.raycast-panel > .shifting-gradient.raycast-gradient {
+  z-index: 0;
+  border-radius: inherit;
+  opacity: 1;
   overflow: hidden;
 }
 
@@ -87,10 +110,7 @@
 }
 
 .dark .raycast-panel {
-  background: var(--card);
-  box-shadow:
-    0 8px 40px rgba(0, 0, 0, 0.35),
-    0 2px 8px rgba(0, 0, 0, 0.2);
+  background: transparent;
 }
 
 /* ========= Title Bar ========= */

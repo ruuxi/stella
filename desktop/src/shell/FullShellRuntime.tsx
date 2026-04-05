@@ -1,9 +1,9 @@
 import { useEffect, useRef } from "react";
+import { ChatColumn } from "@/app/chat/ChatColumn";
 import { SocialView } from "@/app/social/SocialView";
 import type { ViewType } from "@/shared/contracts/ui";
 import { MiniBridgeRelay } from "@/shell/mini/MiniBridgeRelay";
 import {
-  consumeOpenOrbAfterOnboarding,
   STELLA_CLOSE_SIDEBAR_CHAT_EVENT,
   STELLA_OPEN_SIDEBAR_CHAT_EVENT,
   type StellaOpenSidebarChatDetail,
@@ -23,6 +23,7 @@ type PendingAskStellaRequest = {
 type FullShellRuntimeProps = {
   activeConversationId: string | null;
   activeView: ViewType;
+  composerEntering: boolean;
   conversationId: string | null;
   onSignIn: () => void;
   pendingAskStellaRequest: PendingAskStellaRequest | null;
@@ -33,6 +34,7 @@ type FullShellRuntimeProps = {
 export const FullShellRuntime = ({
   activeConversationId,
   activeView,
+  composerEntering,
   conversationId,
   onSignIn,
   pendingAskStellaRequest,
@@ -61,16 +63,20 @@ export const FullShellRuntime = ({
     onPendingAskStellaHandled(pendingAskStellaRequest.id);
   }, [onPendingAskStellaHandled, pendingAskStellaRequest]);
 
+  const activeViewRef = useRef(activeView);
+  activeViewRef.current = activeView;
+
+  // Close sidebar when navigating to chat/home
   useEffect(() => {
-    if (consumeOpenOrbAfterOnboarding()) {
-      queueMicrotask(() => {
-        sidebarRef.current?.open();
-      });
+    if (activeView === "chat") {
+      sidebarRef.current?.close();
     }
-  }, []);
+  }, [activeView]);
 
   useEffect(() => {
     const handleOpen = (event: Event) => {
+      if (activeViewRef.current === "chat") return;
+
       const detail = (event as CustomEvent<StellaOpenSidebarChatDetail>).detail;
       const chatContext = detail?.chatContext;
 
@@ -107,7 +113,17 @@ export const FullShellRuntime = ({
         cancelCurrentStream={chat.conversation.cancelCurrentStream}
       />
 
-      {activeView === "social" ? (
+      {activeView === "chat" ? (
+        <ChatColumn
+          conversation={chat.conversation}
+          composer={chat.composer}
+          scroll={chat.scroll}
+          composerEntering={composerEntering}
+          conversationId={conversationId}
+          showHomeContent={chat.showHomeContent}
+          onSuggestionClick={chat.onSuggestionClick}
+        />
+      ) : activeView === "social" ? (
         <SocialView onSignIn={onSignIn} />
       ) : null}
 

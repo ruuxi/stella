@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useUiState } from "@/context/ui-state";
 import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
+import { ShiftingGradient } from "@/shell/background/ShiftingGradient";
 import { useContextCapture } from "./use-context-capture";
 import { useMiniChat } from "./use-mini-chat";
 import { MiniInput } from "./MiniInput";
@@ -46,7 +47,7 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
   const [closing, setClosing] = useState(false);
   const prevVisibleRef = useRef(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (prevVisibleRef.current && !shellVisible) {
       setClosing(true);
     }
@@ -115,6 +116,7 @@ export const MiniShell = ({ onPreviewVisibilityChange }: MiniShellProps) => {
       onClick={handleShellClick}
     >
       <div className="raycast-panel">
+        <ShiftingGradient className="raycast-gradient" />
         <div className="mini-titlebar">
           <span className="mini-titlebar-title">
             {windowTitle ?? "Stella"}

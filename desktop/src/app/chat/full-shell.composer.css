@@ -1,0 +1,237 @@
+/* Composer — normal flow, centered within parent flex column */
+.composer {
+  --full-chat-composer-max-width: 52rem;
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 8px 24px 16px;
+}
+
+.composer-floating-context {
+  width: 100%;
+  max-width: min(var(--full-chat-composer-max-width), calc(100% - 48px));
+}
+
+/* === Shell: visual container with animated height + border-radius === */
+.composer-shell {
+  position: relative;
+  width: 100%;
+  max-width: min(var(--full-chat-composer-max-width), calc(100% - 48px));
+  background: var(--background);
+  border-radius: 999px; /* CSS fallback; overridden by motion inline style */
+  box-shadow: var(--shadow-md);
+  overflow: clip;
+  transition: box-shadow 200ms ease;
+}
+
+/* Focus glow — subtle ring when textarea is focused */
+.composer-shell:focus-within {
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
+}
+
+/* === Form: layout only, no visual decoration === */
+.composer-form {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 10px;
+}
+
+.composer-input {
+  flex: 1;
+  field-sizing: content;
+  min-height: 30px;
+  max-height: 200px;
+  padding: 4px 4px;
+}
+
+/* Toolbar hidden in pill mode â€” buttons sit inline */
+.composer-toolbar {
+  display: contents;
+}
+
+.composer-toolbar-left {
+  display: contents;
+}
+
+.composer-toolbar-right {
+  display: contents;
+}
+
+/* === Expanded: stacked rounded rectangle === */
+.composer-form.expanded {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  min-height: auto;
+}
+
+.composer-form.expanded .composer-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 14px 18px 4px;
+  order: -1;
+}
+
+/* In expanded mode, the top-level add button moves into the toolbar visually */
+.composer-form.expanded > .composer-add-button {
+  display: none;
+}
+
+.composer-form.expanded .composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 8px;
+}
+
+.composer-form.expanded .composer-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.composer-form.expanded .composer-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.composer-stop {
+  width: 30px;
+  height: 30px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
+  color: var(--text-strong);
+}
+
+.composer-stop:hover {
+  border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
+}
+
+.composer-context-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+}
+
+/* Add button - circular with border */
+.composer-add-button {
+  width: 30px;
+  height: 30px;
+  cursor: default;
+}
+
+/* Toolbar add button â€” hidden in pill mode, shown in expanded */
+.composer-add-button--toolbar {
+  display: none;
+}
+
+.composer-form.expanded .composer-add-button--toolbar {
+  display: inline-flex;
+}
+
+/* Submit button - circular, spring animation handled by motion */
+.composer-submit {
+  width: 30px;
+  height: 30px;
+}
+
+/* Reduced motion — motion library handles spring animations natively;
+   only disable the remaining box-shadow CSS transition here. */
+@media (prefers-reduced-motion: reduce) {
+  .composer-shell {
+    transition: none;
+  }
+}
+
+/* Image attachments area */
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 20px 0;
+}
+
+.composer-attachment {
+  position: relative;
+}
+
+.composer-attachment-image {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  border: 1px solid var(--border-weak);
+}
+
+.composer-attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-raised-stronger-non-alpha, var(--card));
+  border: 1px solid var(--border-weak);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  cursor: default;
+}
+
+.composer-attachment:hover .composer-attachment-remove {
+  opacity: 1;
+}
+
+.composer-attachment-remove:hover {
+  background: var(--surface-raised-hover);
+}
+
+/* Ambient Stella animation â€” left of composer */
+.composer-stella-ambient {
+  position: absolute;
+  bottom: 20px;
+  left: 24px;
+  width: 400px;
+  height: 280px;
+  transform: scale(0.55);
+  transform-origin: bottom left;
+  pointer-events: none;
+  opacity: 0.12;
+  z-index: 1;
+}
+
+.composer-stella-ambient .stella-animation-container {
+  animation: none;
+}
+
+.side-panel .screen-card {
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(27, 23, 18, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.screen-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.screen-placeholder {
+  font-size: 12px;
+  color: #5a5248;
+}

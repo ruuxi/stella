@@ -55,5 +55,7 @@ export type ChatColumnProps = {
   scroll: ChatColumnScroll
   composerEntering?: boolean
   conversationId: string | null
+  showHomeContent?: boolean
+  onSuggestionClick?: (prompt: string) => void
 }
 
