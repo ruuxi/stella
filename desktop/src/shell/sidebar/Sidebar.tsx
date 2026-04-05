@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GeneratedPage } from "@/app/registry";
-import { generatedPages, HOME_PAGE } from "@/app/registry";
+import { generatedPages } from "@/app/registry";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { ThemePicker } from "@/global/settings/ThemePicker";
@@ -38,6 +38,7 @@ interface SidebarProps {
   onSettings?: () => void;
   onStore?: () => void;
 
+  onChat?: () => void;
   onSocial?: () => void;
   onNewApp?: () => void;
   onNewAppAskStella?: () => void;
@@ -147,6 +148,7 @@ export const Sidebar = ({
   onConnect,
   onSettings,
   onStore,
+  onChat,
   onSocial,
   onNewApp,
   onNewAppAskStella,
@@ -159,7 +161,7 @@ export const Sidebar = ({
 }: SidebarProps) => {
   const isMac = getPlatform() === "darwin";
   const handleAskStella = onNewAppAskStella ?? onNewApp;
-  const customPages = generatedPages.filter((page) => page.id !== HOME_PAGE.id);
+  const customPages = generatedPages;
   const getProjectMeta = (project: LocalDevProjectRecord) => {
     switch (project.runtime.status) {
       case "stopped":
@@ -187,7 +189,7 @@ export const Sidebar = ({
       <button
         type="button"
         className="sidebar-brand"
-        onClick={() => onPageSelect(HOME_PAGE)}
+        onClick={onChat}
       >
         <div className="sidebar-brand-logo" aria-hidden="true">
           <img src="stella-logo.svg" alt="" className="sidebar-brand-logo-art" />
@@ -197,8 +199,8 @@ export const Sidebar = ({
       <nav className="sidebar-nav">
         <button
           type="button"
-          className={`sidebar-nav-item ${activePageId === HOME_PAGE.id ? "sidebar-nav-item--active" : ""}`}
-          onClick={() => onPageSelect(HOME_PAGE)}
+          className={`sidebar-nav-item ${activeView === "chat" ? "sidebar-nav-item--active" : ""}`}
+          onClick={onChat}
         >
           <span className="sidebar-nav-icon">
             <House size={18} />

@@ -1,4 +1,11 @@
-﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+﻿import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type {
   ChatColumnComposer,
   ChatColumnConversation,
@@ -6,7 +13,6 @@ import type {
 } from '@/app/chat/chat-column-types'
 import { deriveComposerState } from '@/app/chat/composer-context'
 import { useConversationEventFeed } from '@/app/chat/hooks/use-conversation-events'
-import { useReturnDetection, formatDuration } from '@/app/chat/hooks/use-return-detection'
 import { useStreamingChat } from '@/app/chat/hooks/use-streaming-chat'
 import { useTraceEventMonitor, useTraceIpcListener } from '@/debug/hooks/use-trace-listener'
 import type { MessageMetadata } from '@/app/chat/lib/event-transforms'
@@ -15,10 +21,14 @@ import {
   type StellaSendMessageDetail,
   toStellaMessageMetadata,
 } from '@/shared/lib/stella-send-message'
+import { useIdleHomeVisibility } from '@/app/chat/hooks/use-idle-home-visibility'
 import { useChatContextSync } from './use-chat-context-sync'
 import { useChatScrollManagement } from './use-chat-scroll-management'
 
 const NO_OP = () => {}
+
+/** Set when navigating away from chat; cleared on full app restart (new session). */
+const SESSION_LEFT_CHAT_KEY = 'stella_left_chat_once'
 
 const resetChatScroll = (
   resetScrollState: () => void,
@@ -44,6 +54,13 @@ export function useFullShellChat({
   isDev,
 }: UseFullShellChatOptions) {
   const [message, setMessage] = useState('')
+  const [leftChatOnce, setLeftChatOnce] = useState(() => {
+    if (typeof sessionStorage === 'undefined') return false
+    return sessionStorage.getItem(SESSION_LEFT_CHAT_KEY) === '1'
+  })
+  const [hasInteractedWithChatThisSession, setHasInteractedWithChatThisSession] =
+    useState(false)
+  const prevViewRef = useRef(activeView)
   const { chatContext, setChatContext, selectedText, setSelectedText } =
     useChatContextSync()
 
@@ -78,18 +95,27 @@ export function useFullShellChat({
     sendMessageRef.current = sendMessage
   }, [sendMessage])
 
-  const sendContextlessMessage = useCallback((text: string, metadata?: MessageMetadata) => {
-    void sendMessageRef.current({
-      text,
-      selectedText: null,
-      chatContext: null,
-      onClear: NO_OP,
-      metadata,
-    })
+  const markHomeSessionInteraction = useCallback(() => {
+    setHasInteractedWithChatThisSession(true)
   }, [])
+
+  const sendContextlessMessage = useCallback(
+    (text: string, metadata?: MessageMetadata) => {
+      markHomeSessionInteraction()
+      void sendMessageRef.current({
+        text,
+        selectedText: null,
+        chatContext: null,
+        onClear: NO_OP,
+        metadata,
+      })
+    },
+    [markHomeSessionInteraction],
+  )
 
   const sendMessageWithContext = useCallback(
     (text: string, chatCtx?: import('@/shared/types/electron').ChatContext | null) => {
+      markHomeSessionInteraction()
       void sendMessageRef.current({
         text,
         selectedText: null,
@@ -97,22 +123,37 @@ export function useFullShellChat({
         onClear: NO_OP,
       })
     },
-    [],
+    [markHomeSessionInteraction],
   )
 
-  const handleUserReturn = useCallback(
-    (awayMs: number) => {
-      sendContextlessMessage(
-        `[System: The user has returned after being away for ${formatDuration(awayMs)}.]`,
-      )
-    },
-    [sendContextlessMessage],
-  )
+  const hasMessages = events.length > 0
 
-  useReturnDetection({
-    enabled: Boolean(activeConversationId),
-    onReturn: handleUserReturn,
+  const { showHomeContent: idleBasedHome, resetIdleTimer } = useIdleHomeVisibility({
+    hasMessages,
+    isStreaming,
   })
+
+  const firstStintOnChat = !leftChatOnce && activeView === 'chat'
+  const showHomeContent = firstStintOnChat
+    ? !hasMessages ||
+      !hasInteractedWithChatThisSession ||
+      idleBasedHome
+    : idleBasedHome
+
+  useEffect(() => {
+    if (prevViewRef.current === 'chat' && activeView !== 'chat') {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(SESSION_LEFT_CHAT_KEY, '1')
+      }
+      setLeftChatOnce(true)
+    }
+    prevViewRef.current = activeView
+  }, [activeView])
+
+  const onSuggestionClick = useCallback((prompt: string) => {
+    resetIdleTimer()
+    sendContextlessMessage(prompt)
+  }, [resetIdleTimer, sendContextlessMessage])
 
   // Scroll management â€” ResizeObserver on content handles auto-scroll.
   // We pass `isWorking` so the settle timer keeps auto-follow briefly after streaming stops.
@@ -139,12 +180,18 @@ export function useFullShellChat({
     return resetChatScroll(resetScrollState, scrollToBottom)
   }, [activeConversationId, resetScrollState, scrollToBottom])
 
-  // (chat view removed — sidebar manages its own scroll)
+  // Reset scroll when switching to chat view
+  useLayoutEffect(() => {
+    if (activeView !== 'chat') return
+    return resetChatScroll(resetScrollState, scrollToBottom)
+  }, [activeView, resetScrollState, scrollToBottom])
 
   // Auto-scroll is now driven by the content ResizeObserver in useChatScrollManagement.
   // No need for individual effects on events.length, streamingText, reasoningText, etc.
 
   const handleSend = useCallback(() => {
+    markHomeSessionInteraction()
+    resetIdleTimer()
     void sendMessage({
       text: message,
       selectedText,
@@ -155,7 +202,16 @@ export function useFullShellChat({
         setChatContext(null)
       },
     })
-  }, [chatContext, message, selectedText, sendMessage, setChatContext, setSelectedText])
+  }, [
+    chatContext,
+    markHomeSessionInteraction,
+    message,
+    resetIdleTimer,
+    selectedText,
+    sendMessage,
+    setChatContext,
+    setSelectedText,
+  ])
 
   useEffect(() => {
     const handleSuggestionMessage = (event: Event) => {
@@ -282,5 +338,7 @@ export function useFullShellChat({
       hasScrollElement,
       setScrollContainerElement,
     },
+    showHomeContent,
+    onSuggestionClick,
   }
 }
