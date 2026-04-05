@@ -20,6 +20,7 @@ import Layout from "lucide-react/dist/esm/icons/layout-dashboard";
 import Link2 from "lucide-react/dist/esm/icons/link-2";
 import LogIn from "lucide-react/dist/esm/icons/log-in";
 import MessageSquare from "lucide-react/dist/esm/icons/message-square";
+import Palette from "lucide-react/dist/esm/icons/palette";
 import PlusSquare from "lucide-react/dist/esm/icons/square-plus";
 import Settings from "lucide-react/dist/esm/icons/settings";
 import Sparkles from "lucide-react/dist/esm/icons/sparkles";
@@ -294,13 +295,31 @@ export const Sidebar = ({
         )}
       </nav>
       <div className="sidebar-footer">
-        <div className="sidebar-footer-item">
+        <div className="sidebar-footer-row sidebar-footer-row--theme">
           <ThemePicker
             hideTrigger={hideThemePicker}
             open={themePickerOpen}
             onOpenChange={onThemePickerOpenChange}
             onThemeSelect={onThemeSelect}
+            trigger={
+              <button
+                type="button"
+                className="sidebar-icon-button"
+                aria-label="Theme"
+                title="Theme"
+              >
+                <Palette size={18} />
+              </button>
+            }
           />
+          <button
+            type="button"
+            className="sidebar-icon-button"
+            onClick={onSettings}
+            title="Settings"
+          >
+            <Settings size={18} />
+          </button>
         </div>
         <button
           type="button"
@@ -320,14 +339,6 @@ export const Sidebar = ({
         </button>
         <div className="sidebar-footer-row">
           <AuthButton onSignIn={onSignIn} />
-          <button
-            type="button"
-            className="sidebar-icon-button"
-            onClick={onSettings}
-            title="Settings"
-          >
-            <Settings size={18} />
-          </button>
         </div>
       </div>
     </aside>

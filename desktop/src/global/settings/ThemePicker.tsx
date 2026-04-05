@@ -1,8 +1,15 @@
-import { useState, useMemo } from "react";
+import {
+  useState,
+  useMemo,
+  cloneElement,
+  isValidElement,
+  type CSSProperties,
+  type ReactElement,
+} from "react";
 import { useTheme, useThemeControl } from "@/context/theme-context";
 import { Popover, PopoverContent, PopoverTrigger, PopoverBody } from "@/ui/popover";
 import { Button } from "@/ui/button";
-import { ChevronUp, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import "./ThemePicker.css";
 
 type ColorScheme = "light" | "dark" | "system";
@@ -18,13 +25,19 @@ interface ThemePickerProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   onThemeSelect?: () => void;
+  /** Custom trigger (e.g. icon button). Defaults to a text Button. */
+  trigger?: ReactElement;
+  /** Used only when `trigger` is omitted. */
+  triggerLabel?: string;
 }
 
-export function ThemePicker({ 
+export function ThemePicker({
   hideTrigger = false,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
   onThemeSelect,
+  trigger,
+  triggerLabel = "Theme",
 }: ThemePickerProps) {
   const { themeId, themes, colorMode, gradientMode, gradientColor } = useTheme();
   const {
@@ -47,6 +60,29 @@ export function ThemePicker({
     [themes]
   );
 
+  const popoverTrigger =
+    trigger && isValidElement(trigger)
+      ? cloneElement(trigger, {
+          "data-slot": "theme-picker-trigger",
+          ...(hideTrigger
+            ? {
+                style: {
+                  ...(typeof trigger.props.style === "object" &&
+                  trigger.props.style !== null &&
+                  !Array.isArray(trigger.props.style)
+                    ? (trigger.props.style as CSSProperties)
+                    : {}),
+                  opacity: 0,
+                  pointerEvents: "none",
+                  position: "absolute",
+                },
+                tabIndex: -1,
+                "aria-hidden": true,
+              }
+            : {}),
+        })
+      : null;
+
   return (
     <Popover
       open={open}
@@ -56,17 +92,22 @@ export function ThemePicker({
       }}
     >
       <PopoverTrigger asChild>
-        <Button 
-          variant="ghost" 
-          size="normal" 
-          data-slot="theme-picker-trigger"
-          style={hideTrigger ? { opacity: 0, pointerEvents: 'none', position: 'absolute' } : undefined}
-          tabIndex={hideTrigger ? -1 : undefined}
-          aria-hidden={hideTrigger}
-        >
-          theme
-          <ChevronUp size={12} />
-        </Button>
+        {popoverTrigger ?? (
+          <Button
+            variant="ghost"
+            size="normal"
+            data-slot="theme-picker-trigger"
+            style={
+              hideTrigger
+                ? { opacity: 0, pointerEvents: "none", position: "absolute" }
+                : undefined
+            }
+            tabIndex={hideTrigger ? -1 : undefined}
+            aria-hidden={hideTrigger}
+          >
+            {triggerLabel}
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent side="top" align="end" data-theme-picker="true">
         <PopoverBody>

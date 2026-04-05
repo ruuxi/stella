@@ -1,5 +1,6 @@
-﻿/* Composer — normal flow, centered within parent flex column */
+/* Composer — normal flow, centered within parent flex column */
 .composer {
+  --full-chat-composer-max-width: 52rem;
   position: relative;
   flex-shrink: 0;
   display: flex;
@@ -12,14 +13,14 @@
 
 .composer-floating-context {
   width: 100%;
-  max-width: min(40rem, calc(100% - 48px));
+  max-width: min(var(--full-chat-composer-max-width), calc(100% - 48px));
 }
 
 /* === Shell: visual container with animated height + border-radius === */
 .composer-shell {
   position: relative;
   width: 100%;
-  max-width: min(40rem, calc(100% - 48px));
+  max-width: min(var(--full-chat-composer-max-width), calc(100% - 48px));
   background: var(--background);
   border-radius: 999px; /* CSS fallback; overridden by motion inline style */
   box-shadow: var(--shadow-md);

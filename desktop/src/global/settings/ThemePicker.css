@@ -83,7 +83,6 @@
   font-size: 12px;
   font-weight: 400;
   color: var(--muted-foreground);
-  gap: 4px;
 }
 
 [data-slot="theme-picker-trigger"]:hover {
