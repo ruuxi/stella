@@ -4,7 +4,6 @@ import {
   useState,
   useRef,
   useCallback,
-  type CSSProperties,
 } from "react";
 import { useTheme } from "@/context/theme-context";
 import { cssToRgb } from "@/shared/lib/color";
@@ -16,16 +15,10 @@ type RGB = { r: number; g: number; b: number };
 interface Blob {
   x: number;
   y: number;
-  size: number;
-  scale: number;
-  blur: number;
+  radius: number;
   alpha: number;
   color: RGB;
 }
-
-// Grain texture as data URI
-const GRAIN_DATA_URI =
-  "data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27160%27%20height%3D%27160%27%20viewBox%3D%270%200%20160%20160%27%3E%3Cfilter%20id%3D%27n%27%3E%3CfeTurbulence%20type%3D%27fractalNoise%27%20baseFrequency%3D%270.8%27%20numOctaves%3D%274%27%20stitchTiles%3D%27stitch%27%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%27160%27%20height%3D%27160%27%20filter%3D%27url(%23n)%27%20opacity%3D%270.45%27%2F%3E%3C%2Fsvg%3E";
 
 export type GradientMode = "soft" | "crisp";
 export type GradientColor = "relative" | "strong";
@@ -40,11 +33,11 @@ interface ShiftingGradientProps {
 }
 
 const BASE_POSITIONS = [
-  { x: 16, y: 14 },
-  { x: 86, y: 16 },
-  { x: 18, y: 88 },
-  { x: 88, y: 88 },
-  { x: 52, y: 54 },
+  { x: 0.16, y: 0.14 },
+  { x: 0.86, y: 0.16 },
+  { x: 0.18, y: 0.88 },
+  { x: 0.88, y: 0.88 },
+  { x: 0.52, y: 0.54 },
 ];
 
 function rand(min: number, max: number): number {
@@ -70,42 +63,131 @@ function mixRgb(a: RGB, b: RGB, t: number): RGB {
   };
 }
 
-function generateBlobs(
-  colors: RGB[],
-  mode: GradientMode = "soft",
-  blurMultiplier = 1,
-): Blob[] {
-  const blurRange = mode === "crisp" ? { min: 20, max: 40 } : { min: 120, max: 200 };
-
-  return BASE_POSITIONS.map((base, index) => {
-    const baseBlur = rand(blurRange.min, blurRange.max);
-    return {
-      x: rand(base.x - 6, base.x + 6),
-      y: rand(base.y - 6, base.y + 6),
-      size: Math.round(rand(1020, 1280)),
-      scale: rand(0.9, 1.15),
-      blur: Math.round(baseBlur * blurMultiplier),
-      alpha: rand(0.88, 1.0),
-      color: colors[index % colors.length],
-    };
-  });
+// ─── Blue noise dithering ───────────────────────────────────────────────
+// 64x64 blue noise threshold map, generated from a void-and-cluster algorithm.
+// We only need a small tile — it repeats seamlessly.
+function generateBlueNoise(size: number): Float32Array {
+  // Use a deterministic hash-based approach that approximates blue noise properties.
+  // Each value is in [0, 1). The interleaved gradient noise (IGN) pattern
+  // has excellent blue-noise-like spectral properties.
+  const data = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      // Interleaved gradient noise (Jorge Jimenez, 2014)
+      data[y * size + x] = (52.9829189 * ((0.06711056 * x + 0.00583715 * y) % 1)) % 1;
+    }
+  }
+  return data;
 }
+
+const NOISE_SIZE = 64;
+const blueNoise = generateBlueNoise(NOISE_SIZE);
+
+// ─── Blob generation ────────────────────────────────────────────────────
+
+function generateBlobs(colors: RGB[], mode: GradientMode = "soft"): Blob[] {
+  const radiusMul = mode === "crisp" ? 0.5 : 0.65;
+
+  return BASE_POSITIONS.map((base, index) => ({
+    x: rand(base.x - 0.04, base.x + 0.04),
+    y: rand(base.y - 0.04, base.y + 0.04),
+    radius: rand(0.7, 0.95) * radiusMul,
+    alpha: rand(0.25, 0.4),
+    color: colors[index % colors.length],
+  }));
+}
+
+// ─── Canvas rendering ───────────────────────────────────────────────────
+// Renders at RENDER_SCALE for performance; the browser's bilinear upscale
+// provides additional free smoothing on top of the dithering.
+
+const RENDER_SCALE = 0.25;
+
+function renderGradient(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  bg: RGB,
+  blobs: Blob[],
+  overlayAlpha: number,
+) {
+  const w = Math.round(width * RENDER_SCALE);
+  const h = Math.round(height * RENDER_SCALE);
+
+  if (w === 0 || h === 0) return;
+
+  ctx.canvas.width = w;
+  ctx.canvas.height = h;
+
+  const imageData = ctx.createImageData(w, h);
+  const pixels = imageData.data;
+  const maxDim = Math.max(w, h);
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      // Start with background color
+      let r = bg.r;
+      let g = bg.g;
+      let b = bg.b;
+
+      // Additively blend each blob
+      for (let i = 0; i < blobs.length; i++) {
+        const blob = blobs[i];
+        const dx = x / w - blob.x;
+        const dy = y / h - blob.y;
+        // Use aspect-corrected distance
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const radius = blob.radius * (maxDim / w);
+
+        if (dist >= radius) continue;
+
+        // Smooth quintic falloff — no visible rings
+        const t = dist / radius;
+        const falloff = 1 - t * t * t * (t * (t * 6 - 15) + 10);
+        const strength = falloff * blob.alpha;
+
+        r = r + (blob.color.r - r) * strength;
+        g = g + (blob.color.g - g) * strength;
+        b = b + (blob.color.b - b) * strength;
+      }
+
+      // Semi-transparent overlay (matches the original's background wash)
+      r = r + (bg.r - r) * overlayAlpha;
+      g = g + (bg.g - g) * overlayAlpha;
+      b = b + (bg.b - b) * overlayAlpha;
+
+      // Blue noise dithering: ±0.5/255 jitter to break quantization bands
+      const noise = blueNoise[(y % NOISE_SIZE) * NOISE_SIZE + (x % NOISE_SIZE)];
+      const dither = (noise - 0.5) * (1.5 / 255);
+
+      const idx = (y * w + x) * 4;
+      pixels[idx] = Math.max(0, Math.min(255, Math.round(r + dither * 255)));
+      pixels[idx + 1] = Math.max(0, Math.min(255, Math.round(g + dither * 255)));
+      pixels[idx + 2] = Math.max(0, Math.min(255, Math.round(b + dither * 255)));
+      pixels[idx + 3] = 255;
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+}
+
+// ─── Component ──────────────────────────────────────────────────────────
 
 export const ShiftingGradient = memo(function ShiftingGradient({
   className,
   mode = "soft",
   colorMode = "relative",
-  blurMultiplier = 1,
   lightweight = false,
 }: ShiftingGradientProps) {
   const { resolvedColorMode, themeId, colors } = useTheme();
-  const [blobs, setBlobs] = useState<Blob[]>([]);
-  const [ready, setReady] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const blobsRef = useRef<Blob[]>([]);
   const prevKeyRef = useRef("");
+  const [ready, setReady] = useState(false);
 
   const getPalette = useCallback((): RGB[] => {
     const isDark = resolvedColorMode === "dark";
-    const bg = parseColor(colors.background) ?? { r: 248, g: 247, b: 247 };
     const fallback = { r: 120, g: 120, b: 120 };
 
     const tokens = generateGradientTokens(
@@ -119,6 +201,8 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       isDark,
     );
 
+    const bg = parseColor(colors.background) ?? { r: 248, g: 247, b: 247 };
+
     if (colorMode === "relative") {
       const tokenColors = [
         tokens.textInteractive,
@@ -127,7 +211,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
         tokens.surfaceWarningStrong,
         tokens.surfaceBrandBase,
       ];
-      const strength = isDark ? 0.35 : 0.4;
+      const strength = isDark ? 0.2 : 0.4;
       return tokenColors.map((token) => {
         const color = parseColor(token) ?? fallback;
         return mixRgb(bg, color, strength);
@@ -140,7 +224,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       parseColor(tokens.textInteractive) ??
       parseColor(colors.interactive) ??
       brandColor;
-    const strength = isDark ? 0.65 : 0.75;
+    const strength = isDark ? 0.35 : 0.75;
 
     return [
       mixRgb(bg, brandColor, strength),
@@ -151,6 +235,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
     ];
   }, [resolvedColorMode, colorMode, colors]);
 
+  // Render to canvas when settings change
   useEffect(() => {
     if (lightweight) {
       prevKeyRef.current = "";
@@ -165,96 +250,79 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       return;
     }
 
-    let cancelled = false;
-    const frameId = requestAnimationFrame(() => {
-      const palette = getPalette();
-      if (cancelled) return;
-      setBlobs(generateBlobs(palette, mode, blurMultiplier));
-      if (isFirstRender) {
-        requestAnimationFrame(() => {
-          if (!cancelled) {
-            setReady(true);
-          }
-        });
-      }
-    });
-
     prevKeyRef.current = key;
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(frameId);
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    if (!ctxRef.current) {
+      ctxRef.current = canvas.getContext("2d", { willReadFrequently: true });
+    }
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+
+    const palette = getPalette();
+    const blobs = generateBlobs(palette, mode);
+    blobsRef.current = blobs;
+
+    const bg = parseColor(colors.background) ?? { r: 248, g: 247, b: 247 };
+    const rect = canvas.parentElement?.getBoundingClientRect();
+    const w = rect?.width ?? window.innerWidth;
+    const h = rect?.height ?? window.innerHeight;
+
+    renderGradient(ctx, w, h, bg, blobs, 0.25);
+
+    if (isFirstRender) {
+      requestAnimationFrame(() => setReady(true));
+    }
+  }, [themeId, resolvedColorMode, mode, colorMode, getPalette, lightweight, colors]);
+
+  // Re-render on resize
+  useEffect(() => {
+    if (lightweight) return;
+
+    const handleResize = () => {
+      const canvas = canvasRef.current;
+      const ctx = ctxRef.current;
+      if (!canvas || !ctx || blobsRef.current.length === 0) return;
+
+      const bg = parseColor(colors.background) ?? { r: 248, g: 247, b: 247 };
+      const rect = canvas.parentElement?.getBoundingClientRect();
+      const w = rect?.width ?? window.innerWidth;
+      const h = rect?.height ?? window.innerHeight;
+
+      renderGradient(ctx, w, h, bg, blobsRef.current, 0.25);
     };
-  }, [
-    themeId,
-    resolvedColorMode,
-    mode,
-    colorMode,
-    getPalette,
-    blurMultiplier,
-    lightweight,
-  ]);
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [lightweight, colors]);
 
   return (
     <div aria-hidden="true" className={cn("shifting-gradient", className)}>
-      <div
-        className="gradient-base"
-        style={{
-          background: [
-            lightweight
-              ? `radial-gradient(circle at 18% 20%, color-mix(in srgb, ${colors.primary} 12%, transparent) 0%, transparent 30%)`
-              : "none",
-            lightweight
-              ? `radial-gradient(circle at 84% 18%, color-mix(in srgb, ${colors.interactive} 14%, transparent) 0%, transparent 32%)`
-              : "none",
-            lightweight
-              ? `radial-gradient(circle at 50% 84%, color-mix(in srgb, ${colors.success} 10%, transparent) 0%, transparent 40%)`
-              : "none",
-            "var(--background)",
-          ]
-            .filter((layer) => layer !== "none")
-            .join(", "),
-        }}
-      />
-
-      {!lightweight &&
-        blobs.map((blob, index) => (
-          <div
-            key={index}
-            className="gradient-blob"
-            style={{
-              width: `${blob.size}px`,
-              height: `${blob.size}px`,
-              left: `${blob.x}%`,
-              top: `${blob.y}%`,
-              transform: `translate3d(-50%, -50%, 0) scale(${blob.scale})`,
-              transition: ready
-                ? "left 1000ms cubic-bezier(0.22, 1, 0.36, 1), top 3200ms cubic-bezier(0.22, 1, 0.36, 1), transform 1000ms cubic-bezier(0.22, 1, 0.36, 1), filter 500ms ease"
-                : "none",
-              willChange: "left, top, transform",
-              filter: `blur(${blob.blur}px)`,
-              borderRadius: "9999px",
-              background: `radial-gradient(circle at center, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${blob.alpha}) 0%, rgba(${blob.color.r}, ${blob.color.g}, ${blob.color.b}, ${Math.max(0, blob.alpha - 0.18)}) 26%, transparent 72%)`,
-            } as CSSProperties}
-          />
-        ))}
-
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          zIndex: 10,
-          backgroundColor: lightweight
-            ? `color-mix(in srgb, ${colors.background} 22%, transparent)`
-            : `hsl(from var(--background) h s l / 0.25)`,
-        }}
-      >
+      {lightweight ? (
         <div
-          className="gradient-grain"
+          className="gradient-base"
           style={{
-            backgroundImage: `url("${GRAIN_DATA_URI}")`,
-            opacity: lightweight ? 0.14 : mode === "soft" ? 0.15 : 1,
+            background: [
+              `radial-gradient(circle at 18% 20%, color-mix(in srgb, ${colors.primary} 12%, transparent) 0%, transparent 30%)`,
+              `radial-gradient(circle at 84% 18%, color-mix(in srgb, ${colors.interactive} 14%, transparent) 0%, transparent 32%)`,
+              `radial-gradient(circle at 50% 84%, color-mix(in srgb, ${colors.success} 10%, transparent) 0%, transparent 40%)`,
+              "var(--background)",
+            ].join(", "),
           }}
         />
-      </div>
+      ) : (
+        <canvas
+          ref={canvasRef}
+          className="gradient-base"
+          style={{
+            imageRendering: "auto",
+            opacity: ready ? 1 : 0,
+            transition: ready ? "opacity 0.4s ease" : "none",
+          }}
+        />
+      )}
     </div>
   );
 });
