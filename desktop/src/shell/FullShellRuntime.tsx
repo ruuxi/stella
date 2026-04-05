@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { ChatColumn } from "@/app/chat/ChatColumn";
 import { SocialView } from "@/app/social/SocialView";
 import type { ViewType } from "@/shared/contracts/ui";
 import { MiniBridgeRelay } from "@/shell/mini/MiniBridgeRelay";
@@ -24,7 +23,6 @@ type PendingAskStellaRequest = {
 type FullShellRuntimeProps = {
   activeConversationId: string | null;
   activeView: ViewType;
-  composerEntering: boolean;
   conversationId: string | null;
   onSignIn: () => void;
   pendingAskStellaRequest: PendingAskStellaRequest | null;
@@ -35,7 +33,6 @@ type FullShellRuntimeProps = {
 export const FullShellRuntime = ({
   activeConversationId,
   activeView,
-  composerEntering,
   conversationId,
   onSignIn,
   pendingAskStellaRequest,
@@ -110,15 +107,7 @@ export const FullShellRuntime = ({
         cancelCurrentStream={chat.conversation.cancelCurrentStream}
       />
 
-      {activeView === "chat" ? (
-        <ChatColumn
-          conversation={chat.conversation}
-          composer={chat.composer}
-          scroll={chat.scroll}
-          composerEntering={composerEntering}
-          conversationId={conversationId}
-        />
-      ) : activeView === "social" ? (
+      {activeView === "social" ? (
         <SocialView onSignIn={onSignIn} />
       ) : null}
 
