@@ -237,7 +237,6 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   [AGENT_IDS.SELF_MOD]: "smart",
   [AGENT_IDS.EXPLORE]: "cheap",
   [AGENT_IDS.COMPUTER]: "smart",
-  [AGENT_IDS.AUTO]: "smart",
 
   schedule: "smart",
   "panel-generate": "reasoning",

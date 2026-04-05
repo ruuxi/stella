@@ -23,7 +23,7 @@ uniform float u_leadP;
 uniform float u_lagP;
 uniform float u_morph;
 uniform float u_time;
-uniform vec3 u_fills[5];
+uniform vec3 u_fills[4];
 uniform vec3 u_selFill;
 uniform vec3 u_centerBg;
 uniform vec3 u_stroke;
@@ -31,7 +31,7 @@ uniform float u_selIdx;
 
 const float PI = 3.14159265;
 const float TAU = 6.28318530;
-const float WEDGE_ANG = TAU / 5.0;
+const float WEDGE_ANG = TAU / 4.0;
 const float INNER_R = 40.0 / 280.0;
 const float OUTER_R = 125.0 / 280.0;
 const float CENTER_R = 35.0 / 280.0;
@@ -45,20 +45,8 @@ void main() {
     int wi = int(floor(topAngle / WEDGE_ANG));
     float wFrac = fract(topAngle / WEDGE_ANG);
 
-    // Organic edge wobble — multiple harmonics for fluid feel
-    float wobble = sin(angle * 3.0 + u_time * 1.5) * 0.012
-                 + sin(angle * 5.0 - u_time * 2.0) * 0.008
-                 + sin(angle * 2.0 + 0.5) * 0.018
-                 + sin(angle * 4.0 - 1.3) * 0.006;
-    wobble *= (1.0 - u_morph * 0.85);
-
-    // Non-uniform expansion — some lobes grow faster
-    float asym = sin(angle * 2.3 + 0.7) * 0.035
-               + sin(angle * 1.0 - 0.4) * 0.02;
-    asym *= (1.0 - u_morph * 0.9);
-
-    // Outer edge (lags)
-    float outerR = u_lagP * OUTER_R * (1.0 + asym) + wobble * u_lagP;
+    // Keep the opening expansion uniform so the dial grows evenly from center.
+    float outerR = u_lagP * OUTER_R;
 
     // Inner hole (delayed, forms after blob expands)
     float innerT = clamp((u_progress - 0.4) / 0.6, 0.0, 1.0);
@@ -82,8 +70,7 @@ void main() {
     if (wi == 0) wc = u_fills[0];
     else if (wi == 1) wc = u_fills[1];
     else if (wi == 2) wc = u_fills[2];
-    else if (wi == 3) wc = u_fills[3];
-    else wc = u_fills[4];
+    else wc = u_fills[3];
 
     // Selected wedge override
     if (u_selIdx >= 0.0 && abs(float(wi) - u_selIdx) < 0.5) {
@@ -91,7 +78,7 @@ void main() {
     }
 
     // Blend uniform blob color → distinct sector colors
-    vec3 avg = (u_fills[0] + u_fills[1] + u_fills[2] + u_fills[3] + u_fills[4]) * 0.2;
+    vec3 avg = (u_fills[0] + u_fills[1] + u_fills[2] + u_fills[3]) * 0.25;
     vec3 ringColor = mix(avg, wc, u_morph);
 
     // Subtle sector border lines
@@ -237,8 +224,8 @@ function draw(
   gl.uniform1f(locs.u_time!, time)
   gl.uniform1f(locs.u_selIdx!, selIdx)
 
-  const flat = new Float32Array(15)
-  for (let i = 0; i < 5; i++) {
+  const flat = new Float32Array(12)
+  for (let i = 0; i < 4; i++) {
     const c = colors.fills[i] ?? [0, 0, 0]
     flat[i * 3] = c[0]
     flat[i * 3 + 1] = c[1]
@@ -254,8 +241,9 @@ function draw(
 
 // ---- Animation loops ----
 
-const OPEN_SETTLE = 420 // ms
+const OPEN_SETTLE = 340 // ms
 const CLOSE_DURATION = 180 // ms
+const OPEN_SPEED_MULTIPLIER = 1 / 0.85
 
 export { CLOSE_DURATION }
 
@@ -270,10 +258,11 @@ export function startOpen(
   let hasFadedIn = false
 
   const tick = (now: number) => {
-    const s = (now - start) / 1000
+    const elapsedMs = now - start
+    const s = (elapsedMs / 1000) * OPEN_SPEED_MULTIPLIER
 
     // Trigger fade-in halfway through the animation precisely on the rAF thread
-    if (!hasFadedIn && s * 1000 >= 180) {
+    if (!hasFadedIn && elapsedMs >= 150) {
       hasFadedIn = true
       if (onFadeIn) onFadeIn()
     }
@@ -286,7 +275,7 @@ export function startOpen(
 
     draw(progress, leadP, lagP, morph, s, selIdxRef.current, colorsRef.current)
 
-    if (s * 1000 < OPEN_SETTLE) {
+    if (elapsedMs < OPEN_SETTLE) {
       animFrame = requestAnimationFrame(tick)
     } else {
       animFrame = null

@@ -102,13 +102,14 @@ export const createBootstrapServices = (
       clearTransientContext: () => captureService.clearTransientContext(),
       setRadialContextShouldCommit: (commit) =>
         captureService.setRadialContextShouldCommit(commit),
+      setRadialWindowContextEnabled: (enabled) =>
+        captureService.setRadialWindowContextEnabled(enabled),
       commitStagedRadialContext: (before) =>
         captureService.commitStagedRadialContext(before),
       hasPendingRadialCapture: () => captureService.hasPendingRadialCapture(),
       captureRadialContext: (x, y, before) =>
         captureService.captureRadialContext(x, y, before),
       startRegionCapture: () => captureService.startRegionCapture(),
-      captureAutoWindowText: () => captureService.captureAutoWindowText(),
       emptyContext: () => captureService.emptyContext(),
       broadcastChatContext: () => captureService.broadcastChatContext(),
     },
@@ -117,8 +118,6 @@ export const createBootstrapServices = (
       hideRadial: () => state.overlayController?.hideRadial(),
       updateRadialCursor: () => state.overlayController?.updateRadialCursor(),
       getRadialBounds: () => state.overlayController?.getRadialBounds() ?? null,
-      showAutoPanel: (data) => state.overlayController?.showAutoPanel(data),
-      hideAutoPanel: () => state.overlayController?.hideAutoPanel(),
     },
     window: {
       isMiniShowing: () => state.windowManager?.isMiniShowing() ?? false,
@@ -131,6 +130,16 @@ export const createBootstrapServices = (
         state.windowManager?.concealMiniWindowForCapture() ?? false,
       restoreMiniWindowAfterCapture: () =>
         state.windowManager?.restoreMiniWindowAfterCapture(),
+    },
+    activateVoiceRtc: () => {
+      uiStateService.activateVoiceRtc(uiStateService.state.conversationId);
+      const enabled = state.wakeWordController?.syncState() ?? false;
+      for (const window of options.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send("voice:wakeWordState", { enabled });
+        }
+      }
+      options.getMobileBroadcast()?.("voice:wakeWordState", { enabled });
     },
     updateUiState: (partial) => uiStateService.update(partial),
   });

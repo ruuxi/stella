@@ -2916,9 +2916,8 @@
 /* Activate per data-result */
 .onboarding-shortcut-surface[data-result="capture"] .scene-effect--capture,
 .onboarding-shortcut-surface[data-result="chat"] .scene-effect--chat,
-.onboarding-shortcut-surface[data-result="full"] .scene-effect--full,
-.onboarding-shortcut-surface[data-result="voice"] .scene-effect--voice,
-.onboarding-shortcut-surface[data-result="auto"] .scene-effect--auto {
+.onboarding-shortcut-surface[data-result="close"] .scene-effect--close,
+.onboarding-shortcut-surface[data-result="voice"] .scene-effect--voice {
   opacity: 1;
 }
 
@@ -3306,105 +3305,22 @@
   color: oklch(0.62 0.18 235);
 }
 
-/* ── Auto effect (slide-in panel) ── */
+/* ── Close effect ── */
 
-.scene-effect__auto-panel {
-  position: absolute;
-  top: 42px;
-  bottom: 94px;
-  right: 0;
-  width: min(240px, 45%);
-  display: flex;
-  flex-direction: column;
-  border-radius: 14px 0 0 14px;
-  overflow: hidden;
-  background: var(--background);
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  border-right: none;
-  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
-  animation: autoPanelSlide 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes autoPanelSlide {
-  from { opacity: 0; transform: translateX(80px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-.scene-effect__auto-panel-header {
+.scene-effect--close {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 12px;
-  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--foreground);
-  opacity: 0.7;
+  justify-content: flex-end;
+  padding-right: 28px;
 }
 
-.scene-effect__auto-panel-close {
-  margin-left: auto;
-  opacity: 0.4;
+.scene-effect__mini-shell--closing {
+  animation: miniShellClose 0.24s ease both;
 }
 
-.scene-effect__auto-panel-body {
-  flex: 1;
-  overflow: hidden;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  mask-image: linear-gradient(to bottom, black, black calc(100% - 24px), transparent);
-}
-
-.scene-effect__auto-section {
-  opacity: 0;
-  animation: autoSectionIn 0.4s ease forwards;
-}
-
-.scene-effect__auto-section:nth-child(1) { animation-delay: 0.25s; }
-.scene-effect__auto-section:nth-child(2) { animation-delay: 0.45s; }
-.scene-effect__auto-section:nth-child(3) { animation-delay: 0.65s; }
-
-@keyframes autoSectionIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.scene-effect__auto-section-title {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--foreground);
-  opacity: 0.6;
-  margin-bottom: 4px;
-  font-family: Georgia, serif;
-}
-
-.scene-effect__auto-section p {
-  margin: 0;
-  font-size: 10px;
-  line-height: 1.55;
-  color: var(--foreground);
-  opacity: 0.65;
-}
-
-.scene-effect__auto-section strong {
-  font-weight: 600;
-  opacity: 1;
-}
-
-.scene-effect__auto-section ul {
-  margin: 0;
-  padding-left: 14px;
-  font-size: 10px;
-  line-height: 1.6;
-  color: var(--foreground);
-  opacity: 0.65;
-}
-
-.scene-effect__auto-section li {
-  margin-bottom: 2px;
+@keyframes miniShellClose {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.82); }
 }
 
 .onboarding-shortcut-radial-backdrop {

@@ -6,14 +6,17 @@ import {
   clearComposerWindowContext,
   removeComposerFileContext,
   removeComposerScreenshotContext,
+  toggleComposerWindowContext,
 } from "./composer-context";
 
 type SetChatContext = Dispatch<SetStateAction<ChatContext | null>>;
 
 type WindowContextChipProps = {
   chatWindow: NonNullable<ChatContext["window"]>;
+  included?: boolean;
   setChatContext: SetChatContext;
   className?: string;
+  toggleClassName?: string;
   textClassName?: string;
   removeClassName?: string;
   textFormatter?: (chatWindow: NonNullable<ChatContext["window"]>) => string;
@@ -21,8 +24,10 @@ type WindowContextChipProps = {
 
 export function WindowContextChip({
   chatWindow,
+  included = true,
   setChatContext,
   className,
+  toggleClassName,
   textClassName,
   removeClassName,
   textFormatter,
@@ -30,10 +35,21 @@ export function WindowContextChip({
   const label = textFormatter
     ? textFormatter(chatWindow)
     : `${chatWindow.app}${chatWindow.title ? ` - ${chatWindow.title}` : ""}`;
+  const displayLabel = included ? label : `Include ${label}`;
 
   return (
-    <div className={cn(className)}>
-      <span className={cn(textClassName)}>{label}</span>
+    <div className={cn(className)} data-included={included ? "true" : "false"}>
+      <button
+        type="button"
+        className={cn(toggleClassName)}
+        aria-pressed={included}
+        title={included ? "Window context included" : "Click to include window context"}
+        onClick={() => {
+          toggleComposerWindowContext(setChatContext);
+        }}
+      >
+        <span className={cn(textClassName)}>{displayLabel}</span>
+      </button>
       <button
         type="button"
         className={cn(removeClassName)}

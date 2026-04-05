@@ -8,7 +8,6 @@ import {
 import { MINI_SHELL_SIZE } from "@/shared/lib/layout";
 import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
-import { AutoPanel } from "./AutoPanel";
 import { MiniShell } from "@/shell/mini/MiniShell";
 import { VoiceOverlay } from "@/shell/overlay/VoiceOverlay";
 import { MorphTransition } from "@/shell/overlay/MorphTransition";
@@ -26,15 +25,6 @@ import "./overlays.css";
  * notifies the main process to toggle `setIgnoreMouseEvents` accordingly.
  */
 
-type AutoPanelData = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  windowText: string;
-  windowTitle: string | null;
-};
-
 type WindowBounds = { x: number; y: number; width: number; height: number };
 
 type OverlayState = {
@@ -47,7 +37,6 @@ type OverlayState = {
   miniPosition: { x: number; y: number } | null;
   voiceVisible: boolean;
   voicePosition: { x: number; y: number } | null;
-  autoPanel: AutoPanelData | null;
 };
 
 type OverlayAction =
@@ -61,9 +50,7 @@ type OverlayAction =
   | { type: "mini:position"; position: { x: number; y: number } }
   | { type: "mini:preview"; visible: boolean }
   | { type: "voice:show"; position: { x: number; y: number } }
-  | { type: "voice:hide" }
-  | { type: "auto:show"; data: AutoPanelData }
-  | { type: "auto:hide" };
+  | { type: "voice:hide" };
 
 function isSamePosition(
   a: { x: number; y: number } | null,
@@ -82,7 +69,6 @@ const initialState: OverlayState = {
   miniPosition: null,
   voiceVisible: false,
   voicePosition: null,
-  autoPanel: null,
 };
 
 function overlayReducer(
@@ -140,10 +126,6 @@ function overlayReducer(
       return { ...state, voiceVisible: true, voicePosition: action.position };
     case "voice:hide":
       return state.voiceVisible ? { ...state, voiceVisible: false } : state;
-    case "auto:show":
-      return { ...state, autoPanel: action.data };
-    case "auto:hide":
-      return state.autoPanel ? { ...state, autoPanel: null } : state;
     default:
       return state;
   }
@@ -289,22 +271,6 @@ function useOverlayIPC(
     };
   }, [dispatch]);
 
-  // Auto panel visibility.
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanupShow = api.overlay.onShowAutoPanel?.((data) => {
-      dispatch({ type: "auto:show", data });
-    });
-    const cleanupHide = api.overlay.onHideAutoPanel?.(() => {
-      dispatch({ type: "auto:hide" });
-    });
-    return () => {
-      cleanupShow?.();
-      cleanupHide?.();
-    };
-  }, [dispatch]);
 }
 
 // ---------------------------------------------------------------------------
@@ -389,7 +355,6 @@ function useMiniDrag(
 function useOverlayHitTesting(
   state: OverlayState,
   miniRef: React.RefObject<HTMLDivElement | null>,
-  autoPanelRef: React.RefObject<HTMLDivElement | null>,
   updateInteractive: (shouldBeInteractive: boolean) => void,
 ) {
   const {
@@ -399,11 +364,9 @@ function useOverlayHitTesting(
     miniVisible,
     voiceVisible,
     voicePosition,
-    autoPanel,
   } = state;
   const voiceX = voicePosition?.x ?? null;
   const voiceY = voicePosition?.y ?? null;
-  const autoPanelActive = autoPanel !== null;
 
   useEffect(() => {
     // When region capture is active, the entire overlay must be interactive
@@ -423,9 +386,9 @@ function useOverlayHitTesting(
       return;
     }
 
-    // For mini shell, voice, and auto panel: only interactive when cursor
-    // is over an active interactive region.
-    if (!miniVisible && !voiceVisible && !autoPanelActive) {
+    // For mini shell and voice: only interactive when cursor is over an
+    // active interactive region.
+    if (!miniVisible && !voiceVisible) {
       updateInteractive(false);
       return;
     }
@@ -455,20 +418,7 @@ function useOverlayHitTesting(
           e.clientY <= top + VOICE_CREATURE_SIZE.height;
       }
 
-      let isOverAutoPanel = false;
-      if (autoPanelActive) {
-        const autoPanelEl = autoPanelRef.current;
-        if (autoPanelEl) {
-          const rect = autoPanelEl.getBoundingClientRect();
-          isOverAutoPanel =
-            e.clientX >= rect.left &&
-            e.clientX <= rect.right &&
-            e.clientY >= rect.top &&
-            e.clientY <= rect.bottom;
-        }
-      }
-
-      updateInteractive(isOverMini || isOverVoice || isOverAutoPanel);
+      updateInteractive(isOverMini || isOverVoice);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -481,9 +431,7 @@ function useOverlayHitTesting(
     voiceVisible,
     voiceX,
     voiceY,
-    autoPanelActive,
     miniRef,
-    autoPanelRef,
     updateInteractive,
   ]);
 
@@ -493,8 +441,7 @@ function useOverlayHitTesting(
       regionCaptureActive ||
       miniPreviewVisible ||
       miniVisible ||
-      voiceVisible ||
-      autoPanelActive;
+      voiceVisible;
 
     if (!anythingActive) {
       updateInteractive(false);
@@ -505,7 +452,6 @@ function useOverlayHitTesting(
     miniPreviewVisible,
     miniVisible,
     voiceVisible,
-    autoPanelActive,
     updateInteractive,
   ]);
 }
@@ -519,7 +465,6 @@ export function OverlayRoot() {
   const interactiveRef = useRef(false);
   const miniRef = useRef<HTMLDivElement>(null);
   const radialRef = useRef<HTMLDivElement>(null);
-  const autoPanelRef = useRef<HTMLDivElement>(null);
   const miniDisplayed = state.miniVisible && !state.regionCaptureActive;
 
   // Wire up all IPC subscriptions (radial, region, mini, voice)
@@ -541,7 +486,7 @@ export function OverlayRoot() {
     }
   }, []);
 
-  useOverlayHitTesting(state, miniRef, autoPanelRef, updateInteractive);
+  useOverlayHitTesting(state, miniRef, updateInteractive);
 
   const handleMiniPreviewVisibilityChange = useCallback((visible: boolean) => {
     dispatch({ type: "mini:preview", visible });
@@ -587,7 +532,7 @@ export function OverlayRoot() {
           pointerEvents: state.radialVisible ? "auto" : "none",
         }}
       >
-        <RadialDial />
+        <RadialDial miniVisible={state.miniVisible} />
       </div>
 
       {/* Region capture: mounted only when active. */}
@@ -631,30 +576,6 @@ export function OverlayRoot() {
             : undefined
         }
       />
-
-      {/* Auto panel: right-side response panel for Auto mode */}
-      {state.autoPanel && (
-        <div
-          ref={autoPanelRef}
-          style={{
-            position: "absolute",
-            left: state.autoPanel.x,
-            top: state.autoPanel.y,
-            width: state.autoPanel.width,
-            height: state.autoPanel.height,
-            pointerEvents: "auto",
-          }}
-        >
-          <AutoPanel
-            windowText={state.autoPanel.windowText}
-            windowTitle={state.autoPanel.windowTitle}
-            onClose={() => {
-              dispatch({ type: "auto:hide" });
-              window.electronAPI?.overlay.hideAutoPanel?.();
-            }}
-          />
-        </div>
-      )}
 
       <MorphTransition />
     </div>

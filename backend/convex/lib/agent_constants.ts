@@ -5,7 +5,6 @@ export const AGENT_IDS = {
   EXPLORE: "explore",
   COMPUTER: "computer",
   OFFLINE_RESPONDER: "offline_responder",
-  AUTO: "auto",
 } as const;
 
 export type AgentType = (typeof AGENT_IDS)[keyof typeof AGENT_IDS];
