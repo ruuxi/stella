@@ -292,6 +292,7 @@ export const createRunnerContext = ({
       convexDeploymentUrl: envConvexDeploymentUrl,
       convexClient: null,
       convexClientUrl: null,
+      hasConnectedAccount: false,
       cloudSyncEnabled: false,
       isRunning: false,
       isInitialized: false,

@@ -302,6 +302,7 @@ export type RuntimeConfigureParams = {
   convexUrl?: string | null;
   convexSiteUrl?: string | null;
   authToken?: string | null;
+  hasConnectedAccount?: boolean;
   cloudSyncEnabled?: boolean;
 };
 
@@ -512,6 +513,7 @@ export const runtimeConfigureParamsSchema = Type.Object({
   convexUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   convexSiteUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   authToken: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  hasConnectedAccount: Type.Optional(Type.Boolean()),
   cloudSyncEnabled: Type.Optional(Type.Boolean()),
 });
 
