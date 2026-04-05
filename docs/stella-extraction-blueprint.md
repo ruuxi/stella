@@ -339,9 +339,9 @@ This remains under Electron host paths such as:
 Recommended target:
 
 - worker-facing voice runtime module under
-  `desktop/packages/runtime-worker/voice/`
-  or
-  `desktop/packages/runtime-capabilities/voice/`
+`desktop/packages/runtime-worker/voice/`
+or
+`desktop/packages/runtime-capabilities/voice/`
 
 #### Keep In Renderer
 
@@ -490,13 +490,13 @@ Must stop resolving models and chat context via Electron-owned runtime imports.
 Preferred end state:
 
 - forward request to worker through daemon
-  or
+or
 - call an extracted package facade that is also used by the worker
 
 What must not remain:
 
 - direct imports from runtime model routing, provider, or preference internals
-  via `electron/core/...`
+via `electron/core/...`
 
 #### `browser-handlers.ts`
 
@@ -506,7 +506,7 @@ assumptions.
 End state:
 
 - move shared URL/network guard utilities into an extracted neutral package
-  inside `runtime-kernel` or a dedicated utility package
+inside `runtime-kernel` or a dedicated utility package
 
 #### `system-handlers.ts`
 
@@ -520,20 +520,20 @@ The dev pipeline must follow the real ownership model after extraction.
 ### Restart Tiers
 
 1. Renderer-only change
-   - Vite HMR
+  - Vite HMR
 2. Capability or worker-owned package change
-   - worker reload or worker generation swap
+  - worker reload or worker generation swap
 3. Daemon/protocol/client package change
-   - daemon restart, Electron stays up when possible
+  - daemon restart, Electron stays up when possible
 4. Host-kernel change
-   - Electron restart
+  - Electron restart
 
 ### Package Classification
 
 - `ai`, `runtime-kernel`, and `runtime-discovery` are worker/daemon-side code,
-  not Electron-restart code by default
+not Electron-restart code by default
 - `runtime-client` and `boundary-contracts` affect Electron main
-  and must trigger host reload when their built output changes
+and must trigger host reload when their built output changes
 
 ## Migration Phases
 
@@ -558,7 +558,7 @@ Deliver:
 - move `electron/core/ai/**` to `ai`
 - move `electron/core/agent/**` to `runtime-kernel/agent-core`
 - move `electron/core/runtime/**` and `dashboard-generation.ts` to
-  `runtime-kernel`
+`runtime-kernel`
 - update worker, capabilities, tests, and Electron callers
 
 Acceptance:
@@ -578,16 +578,16 @@ Deliver:
 Acceptance:
 
 - Electron no longer owns scheduler, discovery, dev-project, or runtime-home
-  logic
+logic
 
 ### Phase 4: Voice And Music Split
 
 Deliver:
 
 - split `voice-handlers.ts` into host-only handler code plus worker/runtime
-  voice modules
+voice modules
 - move voice transcript persistence, orchestration, and queueing out of
-  Electron
+Electron
 - move music library discovery with the discovery package
 
 Acceptance:
@@ -607,7 +607,7 @@ Deliver:
 Acceptance:
 
 - self-mod runtime edits require worker or daemon reload, not Electron restart,
-  unless the host kernel actually changed
+unless the host kernel actually changed
 
 ### Phase 6: Host Kernel Finalization
 
@@ -630,7 +630,7 @@ The extraction is not production-ready until all of the following are true:
 - `desktop/electron/core/**` does not exist
 - worker and daemon packages do not import runtime code from `desktop/electron/**`
 - Electron main does not own scheduler, discovery, dev-project, runtime-home,
-  or non-host self-mod logic
+or non-host self-mod logic
 - voice host control still works
 - voice runtime workflows no longer require Electron runtime code
 - music rendering/playback stays renderer-side
@@ -663,9 +663,9 @@ At completion, verify at minimum:
 When this blueprint is executed:
 
 - update `docs/stella-runtime-blueprint.md` to note that package extraction debt
-  is resolved
+is resolved
 - record each completed phase with concise evidence of moved paths and
-  verification results
+verification results
 - explicitly note any deviations from this package map before continuing
 
 ## Implementation Progress
@@ -675,42 +675,42 @@ When this blueprint is executed:
 Evidence:
 
 - Split runtime ownership into package-root boundaries under
-  `desktop/packages/**`.
+`desktop/packages/**`.
 - Switched current production callers off direct `packages/.../src/...` imports
-  for boundary/protocol/client usage in Electron host code and package tests.
+for boundary/protocol/client usage in Electron host code and package tests.
 - Updated `desktop/src/shared/contracts/boundary.ts` to consume the sanctioned
-  `boundary-contracts` package boundary instead of importing package internals.
+`boundary-contracts` package boundary instead of importing package internals.
 
 Verification:
 
 - Confirmed production imports resolve through package-root paths under
-  `desktop/packages/**`.
+`desktop/packages/**`.
 
 Deviation:
 
 - Instead of TypeScript path aliases like `@stella/...`, the extraction keeps
-  runtime-safe relative imports rooted at `desktop/packages/**`.
+runtime-safe relative imports rooted at `desktop/packages/**`.
 
 ### Phase 2 Completed: Core Extraction
 
 Evidence:
 
 - Moved the old `desktop/electron/core/ai/**` sources into
-  `desktop/packages/ai/**`.
+`desktop/packages/ai/**`.
 - Moved the old `desktop/electron/core/agent/**` sources into
-  `desktop/packages/runtime-kernel/agent-core/**`.
+`desktop/packages/runtime-kernel/agent-core/**`.
 - Moved the old `desktop/electron/core/runtime/**` sources plus dashboard
-  generation into `desktop/packages/runtime-kernel/**`.
+generation into `desktop/packages/runtime-kernel/**`.
 - Updated Electron host, runtime client/daemon/worker, capabilities, and tests
-  to import the new package facades or in-package `src/**` modules by true
-  ownership.
+to import the new package facades or in-package `src/**` modules by true
+ownership.
 - Removed the now-empty `desktop/electron/core/**` directories.
 
 Verification:
 
 - Confirmed no production imports remain for `desktop/electron/core/**`.
 - Confirmed no production imports reach into another package via
-  `packages/.../src/...`.
+`packages/.../src/...`.
 - `npm run electron:typecheck`
 - `npm run test:electron`
 
@@ -719,22 +719,22 @@ Verification:
 Evidence:
 
 - Moved scheduler ownership to
-  `desktop/packages/runtime-kernel/local-scheduler-service.ts`.
+`desktop/packages/runtime-kernel/local-scheduler-service.ts`.
 - Moved dev-project runtime ownership to
-  `desktop/packages/runtime-kernel/dev-projects/dev-project-service.ts`.
+`desktop/packages/runtime-kernel/dev-projects/dev-project-service.ts`.
 - Moved discovery collectors, including music-library discovery, into
-  `desktop/packages/runtime-discovery/**`.
+`desktop/packages/runtime-discovery/**`.
 - Moved runtime-home, private-fs, device, and identity helpers into
-  `desktop/packages/runtime-kernel/home/**`.
+`desktop/packages/runtime-kernel/home/**`.
 - Removed the now-empty `desktop/electron/system/**` and
-  `desktop/electron/storage/**` directories.
+`desktop/electron/storage/**` directories.
 
 Verification:
 
 - Confirmed Electron no longer contains runtime discovery/home/storage package
-  roots.
+roots.
 - Verified the discovery, scheduler, and runtime-home regression suites stay
-  green under the extracted paths.
+green under the extracted paths.
 - `npm run electron:typecheck`
 - `npm run test:electron`
 
@@ -743,23 +743,23 @@ Verification:
 Evidence:
 
 - Kept Electron voice ownership limited to host concerns in
-  `desktop/electron/ipc/voice-handlers.ts`:
-  shortcuts, wake-word/device coordination, renderer/mobile fanout, and UI
-  state sync.
+`desktop/electron/ipc/voice-handlers.ts`:
+shortcuts, wake-word/device coordination, renderer/mobile fanout, and UI
+state sync.
 - Moved runtime voice transcript persistence, orchestrator chat, and runtime
-  web-search delegation into
-  `desktop/packages/runtime-worker/voice/service.ts`.
+web-search delegation into
+`desktop/packages/runtime-worker/voice/service.ts`.
 - Added dedicated protocol/client/daemon/worker voice RPC methods and event
-  forwarding for transcript persistence, orchestrator chat, web search, agent
-  events, and self-mod HMR state.
+forwarding for transcript persistence, orchestrator chat, web search, agent
+events, and self-mod HMR state.
 - Kept music rendering/playback renderer-side and kept music-library discovery
-  in `desktop/packages/runtime-discovery/music-library.ts`.
+in `desktop/packages/runtime-discovery/music-library.ts`.
 
 Verification:
 
 - Verified voice IPC/worker flows via `desktop/tests/electron/ipc/voice-handlers.test.ts`.
 - Verified discovery continues to include music-library inputs via the extracted
-  discovery test coverage.
+discovery test coverage.
 - `npm run electron:typecheck`
 - `npm run test:electron`
 
@@ -768,18 +768,18 @@ Verification:
 Evidence:
 
 - Moved runtime self-mod logic into
-  `desktop/packages/runtime-kernel/self-mod/git.ts`,
-  `desktop/packages/runtime-kernel/self-mod/hmr.ts`, and
-  `desktop/packages/runtime-kernel/self-mod/store-mod-service.ts`.
+`desktop/packages/runtime-kernel/self-mod/git.ts`,
+`desktop/packages/runtime-kernel/self-mod/hmr.ts`, and
+`desktop/packages/runtime-kernel/self-mod/store-mod-service.ts`.
 - Kept Electron host ownership limited to UI/window morph choreography in
-  `desktop/electron/self-mod/hmr-morph.ts`.
+`desktop/electron/self-mod/hmr-morph.ts`.
 - Updated worker/runtime wiring so self-mod runtime changes stay on the sidecar
-  boundary instead of requiring Electron-host ownership.
+boundary instead of requiring Electron-host ownership.
 
 Verification:
 
 - Verified self-mod/store-mod regression coverage remains green under the new
-  ownership split.
+ownership split.
 - Confirmed Electron only retains host-facing self-mod code.
 - `npm run electron:typecheck`
 - `npm run test:electron`
@@ -789,69 +789,69 @@ Verification:
 Evidence:
 
 - Normalized dev reload classification so extracted worker-owned packages stay
-  on worker/daemon reloads while Electron restarts only for true host-owned
-  package changes.
+on worker/daemon reloads while Electron restarts only for true host-owned
+package changes.
 - Replaced same-package test mocks to target real `src/**` ownership paths,
-  which removed stale facade-based mocking from the extracted runtime suites.
+which removed stale facade-based mocking from the extracted runtime suites.
 - Hardened secret-mount recovery in
-  `desktop/packages/runtime-kernel/tools/utils.ts` so invalid
-  `readdir` results degrade safely instead of producing startup noise.
+`desktop/packages/runtime-kernel/tools/utils.ts` so invalid
+`readdir` results degrade safely instead of producing startup noise.
 - Removed the final empty legacy directories:
-  `desktop/electron/core/**`, `desktop/electron/system/**`, and
-  `desktop/electron/storage/**`.
+`desktop/electron/core/**`, `desktop/electron/system/**`, and
+`desktop/electron/storage/**`.
 
 Verification:
 
 - `npm run electron:typecheck`
 - `npm run test:electron` -> 77 files passed, 231 tests passed, 1 skipped
 - Confirmed `desktop/electron/**` now contains only host-kernel directories and
-  files.
+files.
 - Confirmed `rg -n "electron/core|electron/system|electron/storage|packages/.+/src/"`
-  across `desktop/electron`, `desktop/packages`, and `desktop/src` returns no
-  production-code matches.
+across `desktop/electron`, `desktop/packages`, and `desktop/src` returns no
+production-code matches.
 
 Additional Work Completed Outside Original Scope:
 
 - Tightened package test mocking so extracted runtime/kernel suites mock true
-  in-package dependency paths instead of relying on public facades for internal
-  module interception.
+in-package dependency paths instead of relying on public facades for internal
+module interception.
 - Removed a tools startup regression log by making stale secret-mount recovery
-  tolerate non-array `readdir` results in mocked or degraded environments.
+tolerate non-array `readdir` results in mocked or degraded environments.
 - Refined the Electron dev restart classifier to restart the host for
-  host-imported extracted package trees while keeping true sidecar-only
-  packages on worker/daemon reloads.
+host-imported extracted package trees while keeping true sidecar-only
+packages on worker/daemon reloads.
 - Restored voice self-mod HMR progress propagation across the worker bridge by
-  using the provided `reportState` callback during host HMR transitions, and
-  added a focused worker-side regression test for that path.
+using the provided `reportState` callback during host HMR transitions, and
+added a focused worker-side regression test for that path.
 - Stopped voice startup failures from rethrowing into an unobserved
-  `handleLocalChatPromise`, so rejected voice requests now fail cleanly without
-  leaving an unhandled rejection behind in the worker process.
+`handleLocalChatPromise`, so rejected voice requests now fail cleanly without
+leaving an unhandled rejection behind in the worker process.
 - Moved `overlay:autoPanelStart` LLM route selection and token streaming into
-  the runtime worker, added overlay stream RPC notifications through the
-  daemon/client boundary, and reduced Electron to request ownership plus
-  renderer event forwarding only.
+the runtime worker, added overlay stream RPC notifications through the
+daemon/client boundary, and reduced Electron to request ownership plus
+renderer event forwarding only.
 - Moved `DevProjectService` lifecycle ownership into the runtime worker so
-  Electron now only performs the native directory picker, proxies project
-  commands through the sidecar, and broadcasts worker-owned `projects:changed`
-  updates.
+Electron now only performs the native directory picker, proxies project
+commands through the sidecar, and broadcasts worker-owned `projects:changed`
+updates.
 - Routed dashboard generation and self-mod Git utility flows through the
-  sidecar boundary instead of executing runtime-kernel imports directly inside
-  Electron IPC handlers.
+sidecar boundary instead of executing runtime-kernel imports directly inside
+Electron IPC handlers.
 - Removed the temporary facade layer entirely by flattening package sources out
-  of `src/` and deleting the obsolete package-facade sync step, so the
-  final structure is now plain package-root source under `desktop/packages/**`.
+of `src/` and deleting the obsolete package-facade sync step, so the
+final structure is now plain package-root source under `desktop/packages/**`.
 - Kept the real package boundaries, but dropped the fake-package ceremony:
-  extracted packages now own code directly at their package roots instead of
-  `src/**` plus generated facade barrels.
+extracted packages now own code directly at their package roots instead of
+`src/**` plus generated facade barrels.
 - Added focused regression coverage for the new host-only seams in
-  `desktop/tests/electron/ipc/overlay-stream-handlers.test.ts`,
-  `desktop/tests/electron/ipc/project-handlers.test.ts`, and
-  `desktop/tests/electron/ipc/agent-handlers.test.ts`.
+`desktop/tests/electron/ipc/overlay-stream-handlers.test.ts`,
+`desktop/tests/electron/ipc/project-handlers.test.ts`, and
+`desktop/tests/electron/ipc/agent-handlers.test.ts`.
 
 ## Final Verification
 
 - `npm run electron:typecheck`
 - `npm run test:electron` -> 79 files passed, 236 tests passed, 1 skipped
 - Verified the remaining Electron tree is host-kernel only:
-  bootstrap, preload, IPC, host services, wake-word/input, windows, devtool,
-  and host-side self-mod morphing.
+bootstrap, preload, IPC, host services, wake-word/input, windows, devtool,
+and host-side self-mod morphing.
