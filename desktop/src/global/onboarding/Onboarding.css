@@ -2495,7 +2495,7 @@
   width: 100%;
   min-width: 0;
   margin-left: 0;
-  padding: 40px;
+  padding: 40px 40px 48px;
   align-items: center;
   justify-content: center;
 }
@@ -2506,6 +2506,7 @@
   min-height: 0;
   align-items: center;
   justify-content: center;
+  gap: 28px;
 }
 
 .onboarding-dialogue[data-phase="shortcuts-global"] .onboarding-split-title,
@@ -2517,6 +2518,7 @@
   width: 100%;
   max-width: none;
   align-items: center;
+  gap: 28px;
 }
 
 .onboarding-shortcuts-phase > .onboarding-step-desc {
@@ -2531,17 +2533,19 @@
 }
 
 .onboarding-shortcut-demo {
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) 2fr;
-  gap: 28px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 24px;
 }
 
 .onboarding-shortcut-demo__copy {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
   max-width: 34rem;
-  align-content: center;
 }
 
 .onboarding-shortcut-demo__copy .onboarding-step-label {
@@ -2551,7 +2555,7 @@
 
 .onboarding-shortcut-demo__title {
   margin: 0;
-  font-size: clamp(26px, 3vw, 36px);
+  font-size: clamp(22px, 2.5vw, 28px);
   font-weight: 300;
   letter-spacing: 0.04em;
   color: var(--foreground);
@@ -2560,14 +2564,56 @@
 }
 
 .onboarding-shortcut-demo__copy .onboarding-step-subdesc {
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.6;
+  opacity: 0.55;
+}
+
+/* ── Keyboard key cap visuals ── */
+
+.onboarding-keycaps {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: baseline;
+}
+
+.onboarding-keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 2px 8px;
+  font-family: inherit;
+  font-size: 0.75em;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--foreground);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--foreground) 8%, transparent) 0%,
+      color-mix(in oklch, var(--foreground) 4%, transparent) 100%
+    );
+  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  box-shadow:
+    0 1px 0 color-mix(in oklch, var(--foreground) 6%, transparent),
+    inset 0 1px 0 color-mix(in oklch, white 8%, transparent);
+}
+
+.onboarding-keycap-plus {
+  font-size: 0.7em;
+  opacity: 0.35;
+  font-weight: 400;
 }
 
 .onboarding-shortcut-surface {
   position: relative;
-  min-height: clamp(420px, 52vh, 720px);
-  height: 100%;
+  min-height: clamp(320px, 42vh, 560px);
+  width: 100%;
+  max-width: 800px;
   overflow: hidden;
   border-radius: 20px;
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
@@ -2581,24 +2627,41 @@
 }
 
 .onboarding-shortcut-surface--radial {
-  min-height: clamp(460px, 58vh, 780px);
+  min-height: clamp(360px, 48vh, 620px);
 }
 
 .onboarding-shortcut-hint {
+  display: none;
+}
+
+/* Pulsing border on the surface to draw attention */
+.onboarding-shortcut-surface::after {
+  content: "";
   position: absolute;
-  left: 18px;
-  bottom: 16px;
-  padding: 8px 11px;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--background) 76%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--foreground);
-  opacity: 0.5;
-  backdrop-filter: blur(14px);
+  inset: -1px;
+  border-radius: 21px;
+  border: 2px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  pointer-events: none;
+  animation: surfacePulse 2s ease-in-out 0.6s infinite;
+  z-index: 1;
+}
+
+/* Hide pulse once user has interacted */
+.onboarding-shortcut-surface[data-result]::after,
+.onboarding-shortcut-surface[data-menu-result]::after {
+  opacity: 0;
+  animation: none;
+  transition: opacity 0.3s ease;
+}
+
+@keyframes hintPulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+@keyframes surfacePulse {
+  0%, 100% { border-color: color-mix(in oklch, var(--foreground) 12%, transparent); }
+  50% { border-color: color-mix(in oklch, var(--foreground) 28%, transparent); }
 }
 
 .onboarding-shortcut-scene,
@@ -3470,7 +3533,7 @@
 }
 
 .onboarding-shortcut-result-description strong {
-  font-size: 13px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--foreground);
@@ -3478,7 +3541,7 @@
 }
 
 .onboarding-shortcut-result-description span {
-  font-size: 14px;
+  font-size: 20px;
   line-height: 1.55;
   font-weight: 300;
   color: var(--foreground);
