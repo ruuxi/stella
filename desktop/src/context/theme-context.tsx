@@ -149,9 +149,9 @@ function useThemePersistence(
   clearPreviews: () => void,
 ): PersistedThemeState {
   const [themeId, setThemeIdRaw] = useState(() => readStorage(THEME_STORAGE_KEY, defaultTheme.id));
-  const [colorMode, setColorModeRaw] = useState(() => readStorage<ColorMode>(COLOR_MODE_STORAGE_KEY, "light"));
+  const [colorMode, setColorModeRaw] = useState(() => readStorage<ColorMode>(COLOR_MODE_STORAGE_KEY, "system"));
   const [gradientMode, setGradientModeRaw] = useState(() => readStorage<GradientMode>(GRADIENT_MODE_STORAGE_KEY, "soft"));
-  const [gradientColor, setGradientColorRaw] = useState(() => readStorage<GradientColor>(GRADIENT_COLOR_STORAGE_KEY, "strong"));
+  const [gradientColor, setGradientColorRaw] = useState(() => readStorage<GradientColor>(GRADIENT_COLOR_STORAGE_KEY, "relative"));
   const [systemMode, setSystemMode] = useState<"light" | "dark">(getSystemColorMode);
 
   useEffect(() => {

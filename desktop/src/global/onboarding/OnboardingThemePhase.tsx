@@ -51,11 +51,15 @@ const renderThemeOptionRow = <T extends string>(
 
 export function OnboardingThemePhase({
   colorMode,
+  gradientColor,
+  gradientMode,
   sortedThemes,
   splitTransitionActive,
   themeId,
   onContinue,
   onSelectColorMode,
+  onSelectGradientColor,
+  onSelectGradientMode,
   onSelectTheme,
   onThemePreviewEnter,
   onThemePreviewLeave,
@@ -67,6 +71,20 @@ export function OnboardingThemePhase({
         ["light", "dark", "system"] as const,
         colorMode,
         onSelectColorMode,
+      )}
+
+      {renderThemeOptionRow(
+        "Gradient Style",
+        ["soft", "crisp"] as const,
+        gradientMode,
+        onSelectGradientMode,
+      )}
+
+      {renderThemeOptionRow(
+        "Gradient Color",
+        ["relative", "strong"] as const,
+        gradientColor,
+        onSelectGradientColor,
       )}
 
       <div className="onboarding-step-label">Theme</div>
