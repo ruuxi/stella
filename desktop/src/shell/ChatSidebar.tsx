@@ -6,6 +6,7 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
+import { animate } from "motion";
 import { createPortal } from "react-dom";
 import { CompactConversationSurface } from "@/app/chat/CompactConversationSurface";
 import {
@@ -72,6 +73,10 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     const [chatContext, setChatContext] = useState<ChatContext | null>(null);
     const [sidebarExpanded, setSidebarExpanded] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const formRef = useRef<HTMLFormElement | null>(null);
+    const shellRef = useRef<HTMLDivElement | null>(null);
+    const heightAnimRef = useRef<ReturnType<typeof animate> | null>(null);
+    const lastHeightRef = useRef(0);
 
     const { isDragOver, dropHandlers } = useFileDrop({
       setChatContext,
@@ -115,6 +120,62 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
 
       document.addEventListener("keydown", handleKeyDown);
       return () => document.removeEventListener("keydown", handleKeyDown);
+    }, [isOpen]);
+
+    /* Shell height + corner radius — same behavior as full chat Composer
+       (ResizeObserver + spring). Only attach while sidebar is open so layout
+       is valid after the panel width finishes expanding. */
+    useEffect(() => {
+      if (!isOpen) return;
+
+      const form = formRef.current;
+      const shell = shellRef.current;
+      if (!form || !shell || typeof ResizeObserver === "undefined") return;
+
+      const syncShellToForm = () => {
+        lastHeightRef.current = form.getBoundingClientRect().height;
+        shell.style.height = `${lastHeightRef.current}px`;
+        shell.style.borderRadius = form.classList.contains("expanded")
+          ? "20px"
+          : `${Math.min(999, lastHeightRef.current)}px`;
+      };
+
+      syncShellToForm();
+
+      const ro = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const newH =
+          entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+        if (Math.abs(newH - lastHeightRef.current) < 1) return;
+
+        lastHeightRef.current = newH;
+        const expanded = form.classList.contains("expanded");
+        const targetRadius = expanded ? 20 : Math.min(999, newH);
+
+        heightAnimRef.current?.stop();
+        heightAnimRef.current = animate(
+          shell,
+          { height: `${newH}px`, borderRadius: `${targetRadius}px` },
+          {
+            type: "spring",
+            duration: 0.35,
+            bounce: 0,
+          },
+        );
+      });
+
+      ro.observe(form);
+
+      const id = requestAnimationFrame(() => {
+        syncShellToForm();
+      });
+
+      return () => {
+        cancelAnimationFrame(id);
+        ro.disconnect();
+        heightAnimRef.current?.stop();
+      };
     }, [isOpen]);
 
     const handleSubmit = useCallback(
@@ -199,8 +260,9 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
               </div>
             )}
 
-            <div className="chat-sidebar-shell">
+            <div ref={shellRef} className="chat-sidebar-shell">
               <form
+                ref={formRef}
                 className={`chat-sidebar-form${sidebarExpanded ? " expanded" : ""}`}
                 onSubmit={handleSubmit}
               >
