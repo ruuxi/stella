@@ -167,6 +167,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       centerX: number;
       centerY: number;
     }>("radial:cursor"),
+    onWindowBounds: onIpc<{
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    } | null>("radial:windowBounds"),
   },
 
   overlay: {

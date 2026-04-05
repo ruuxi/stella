@@ -55,6 +55,7 @@ export const IPC_RADIAL_SHOW = "radial:show" as const;
 export const IPC_RADIAL_HIDE = "radial:hide" as const;
 export const IPC_RADIAL_ANIM_DONE = "radial:animDone" as const;
 export const IPC_RADIAL_CURSOR = "radial:cursor" as const;
+export const IPC_RADIAL_WINDOW_BOUNDS = "radial:windowBounds" as const;
 
 // ── Overlay ─────────────────────────────────────────────────────────────────
 
