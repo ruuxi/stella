@@ -67,9 +67,9 @@ export const FullShell = () => {
     }
 
     activeDemoRef.current = null;
-    setActiveDemo(null);
     setDemoClosing(true);
     demoCloseTimerRef.current = setTimeout(() => {
+      setActiveDemo(null);
       setDemoClosing(false);
       demoCloseTimerRef.current = null;
     }, 400);
@@ -97,7 +97,7 @@ export const FullShell = () => {
       <ShiftingGradient
         mode={gradientMode}
         colorMode={gradientColor}
-        lightweight={!appReady}
+        lightweight={!appReady && !onboarding.splitMode}
       />
 
       <div className="full-body">

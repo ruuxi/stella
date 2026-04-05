@@ -85,7 +85,7 @@ const INTRO_CONTINUE_DELAY_MS = 1100;
 
 const STEP_TITLES: Partial<Record<Phase, string>> = {
   browser: "Let me get to know you.",
-  creation: "I'm not just a desktop app.",
+  creation: "I can change myself.",
   voice: "Speak your mind.",
   theme: "How should I look?",
   personality: "How should I talk?",

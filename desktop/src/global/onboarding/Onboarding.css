@@ -74,6 +74,11 @@
   z-index: 6;
 }
 
+/* Initial Start Stella: nudge below vertical center so it sits under the creature */
+.onboarding-moment--start {
+  margin-top: min(14vh, 110px);
+}
+
 /* Preparing / auth loading: sit below the creature, smaller caption */
 .onboarding-moment--auth {
   margin-top: 44px;
@@ -110,19 +115,34 @@
 .onboarding-start-button {
   background: none;
   border: none;
-  padding: 14px 40px;
-  font-size: clamp(16px, 2.5vw, 20px);
+  padding: 18px 48px;
+  font-size: clamp(19px, 3.1vw, 26px);
   font-weight: 300;
   letter-spacing: 0.12em;
   color: var(--foreground);
-  opacity: 0.6;
+  opacity: 0.45;
   cursor: pointer;
-  transition: transform 0.15s ease;
+  transition: opacity 0.2s ease, transform 0.15s ease;
   font-family: inherit;
+  text-decoration: underline;
+  text-decoration-color: oklch(from var(--foreground) l c h / 0.2);
+  text-underline-offset: 6px;
+  text-decoration-thickness: 1px;
+  animation: startButtonFade 2.4s ease-in-out 1.5s infinite;
+}
+
+.onboarding-start-button:hover {
+  opacity: 0.7;
+  text-decoration-color: oklch(from var(--foreground) l c h / 0.5);
 }
 
 .onboarding-start-button:active {
   transform: scale(0.97);
+}
+
+@keyframes startButtonFade {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.65; }
 }
 
 .onboarding-legal-footer {
@@ -238,8 +258,8 @@
 .onboarding-choice {
   background: none;
   border: none;
-  padding: 8px 0;
-  font-size: 16px;
+  padding: 14px 0;
+  font-size: clamp(18px, 2.8vw, 22px);
   font-weight: 300;
   letter-spacing: 0.1em;
   color: var(--foreground);
@@ -367,41 +387,82 @@
   text-align: center;
 }
 
+/* Creation phase: full-width vertical layout (title → demo → options) */
 .onboarding-dialogue[data-phase="creation"] {
   pointer-events: none;
 }
 
 .onboarding-dialogue[data-phase="creation"] .onboarding-split-right {
-  width: 320px;
-  padding: clamp(48px, 7vh, 84px) 24px 40px;
+  width: 100%;
+  min-width: 100%;
+  margin-left: 0;
+  padding: clamp(48px, 7vh, 84px) 40px 40px;
   z-index: 5;
-  pointer-events: auto;
+  pointer-events: none;
   background: transparent;
   backdrop-filter: none;
+  align-items: center;
+}
+
+.onboarding-dialogue[data-phase="creation"] .onboarding-split-right::before {
+  display: none;
 }
 
 .onboarding-dialogue[data-phase="creation"] .onboarding-phase-nav {
   pointer-events: auto;
 }
 
-.onboarding-dialogue[data-phase="creation"] .onboarding-split-right::before {
-  content: "";
-  position: absolute;
-  top: 40px;
-  bottom: 32px;
-  left: 0;
-  width: 1px;
-  background:
-    linear-gradient(
-      to bottom,
-      transparent 0%,
-      color-mix(in oklch, var(--foreground) 12%, transparent) 12%,
-      color-mix(in oklch, var(--foreground) 18%, transparent) 50%,
-      color-mix(in oklch, var(--foreground) 12%, transparent) 88%,
-      transparent 100%
-    );
-  opacity: 0.9;
-  pointer-events: none;
+.onboarding-dialogue[data-phase="creation"] .onboarding-split-stage {
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  max-width: none;
+}
+
+.onboarding-dialogue[data-phase="creation"] .onboarding-split-title {
+  text-align: center;
+  pointer-events: auto;
+}
+
+.onboarding-dialogue[data-phase="creation"] .onboarding-step-content {
+  align-items: center;
+  pointer-events: auto;
+  max-width: none;
+}
+
+.onboarding-dialogue[data-phase="creation"] .onboarding-step-desc {
+  text-align: center;
+}
+
+/* Showcase grid: horizontal row for creation phase */
+.onboarding-dialogue[data-phase="creation"] .onboarding-showcase-grid {
+  flex-direction: row;
+  gap: 8px;
+  width: auto;
+  max-width: 100%;
+  justify-content: center;
+}
+
+/* Cards become compact horizontal chips */
+.onboarding-dialogue[data-phase="creation"] .onboarding-showcase-card {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+}
+
+.onboarding-dialogue[data-phase="creation"] .onboarding-showcase-card-category,
+.onboarding-dialogue[data-phase="creation"] .onboarding-showcase-card-desc,
+.onboarding-dialogue[data-phase="creation"] .onboarding-showcase-card-indicator {
+  display: none;
+}
+
+.onboarding-dialogue[data-phase="creation"] .onboarding-showcase-card-title {
+  white-space: nowrap;
+}
+
+.onboarding-dialogue[data-phase="creation"] .onboarding-showcase-card-header {
+  gap: 0;
 }
 
 .onboarding-split-stage {
