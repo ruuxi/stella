@@ -174,12 +174,14 @@
   pointer-events: none;
 }
 
-/* Full-screen demo: fill left side; padding-right keeps a clear gap before the showcase column */
+/* Full-screen demo: centered with room for title at top and options at bottom */
 .onboarding-layout[data-demo] .onboarding-demo-area[data-visible="true"] {
-  left: 0;
-  right: auto;
-  width: calc(100% - 320px);
-  padding-right: 32px;
+  left: 10%;
+  right: 10%;
+  top: 14%;
+  bottom: 22%;
+  width: auto;
+  padding-right: 0;
   box-sizing: border-box;
   transform: translateX(0);
 }
