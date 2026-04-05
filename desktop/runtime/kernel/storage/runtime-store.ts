@@ -552,7 +552,7 @@ export class RuntimeStore {
       }
     }
 
-    const prefix = `${args.agentType}-`;
+    const prefix = "task-";
     const rows = this.db.prepare(`
       SELECT thread_key AS threadId
       FROM runtime_threads
