@@ -179,7 +179,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
   colorMode = "relative",
   lightweight = false,
 }: ShiftingGradientProps) {
-  const { resolvedColorMode, themeId, colors } = useTheme();
+  const { resolvedColorMode, theme, colors } = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const blobsRef = useRef<Blob[]>([]);
@@ -242,7 +242,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       return;
     }
 
-    const key = `${themeId}-${resolvedColorMode}-${mode}-${colorMode}`;
+    const key = `${theme.id}-${resolvedColorMode}-${mode}-${colorMode}`;
     const isFirstRender = !prevKeyRef.current;
     const settingsChanged = prevKeyRef.current !== key;
 
@@ -275,7 +275,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
     if (isFirstRender) {
       requestAnimationFrame(() => setReady(true));
     }
-  }, [themeId, resolvedColorMode, mode, colorMode, getPalette, lightweight, colors]);
+  }, [theme.id, resolvedColorMode, mode, colorMode, getPalette, lightweight, colors]);
 
   // Re-render on resize
   useEffect(() => {

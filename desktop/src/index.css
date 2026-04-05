@@ -104,6 +104,10 @@
   --button-secondary-base: color-mix(in srgb, var(--muted) 40%, var(--background));
   --button-secondary-hover: var(--muted);
 
+  /* Frosted glass surface */
+  --glass-bg: color-mix(in srgb, var(--background) 40%, transparent);
+  --glass-blur: blur(40px) saturate(180%);
+
   /* Aura-style surface colors - semi-transparent to show gradient */
   --surface-inset: color-mix(in srgb, var(--card) 12%, transparent);
   --surface-raised: color-mix(in srgb, var(--card) 65%, transparent);
