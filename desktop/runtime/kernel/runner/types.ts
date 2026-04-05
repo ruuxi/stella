@@ -179,6 +179,7 @@ export type RunnerState = {
   convexDeploymentUrl: string | null;
   convexClient: ConvexClient | null;
   convexClientUrl: string | null;
+  hasConnectedAccount: boolean;
   cloudSyncEnabled: boolean;
   isRunning: boolean;
   isInitialized: boolean;

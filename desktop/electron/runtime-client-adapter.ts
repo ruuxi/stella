@@ -68,6 +68,7 @@ export class RuntimeClientAdapter {
     convexUrl?: string | null;
     convexSiteUrl?: string | null;
     authToken?: string | null;
+    hasConnectedAccount?: boolean;
     cloudSyncEnabled?: boolean;
   } = {};
   private readonly availabilityListeners = new Set<
@@ -203,12 +204,14 @@ export class RuntimeClientAdapter {
     convexUrl?: string | null;
     convexSiteUrl?: string | null;
     authToken?: string | null;
+    hasConnectedAccount?: boolean;
     cloudSyncEnabled?: boolean;
   }) {
     this.pendingConfig = {
       ...this.pendingConfig,
       ...patch,
     };
+
     if (!this.started) {
       return;
     }
@@ -263,6 +266,10 @@ export class RuntimeClientAdapter {
 
   setAuthToken(value: string | null) {
     this.queueRuntimeConfigPatch({ authToken: value });
+  }
+
+  setHasConnectedAccount(value: boolean) {
+    this.queueRuntimeConfigPatch({ hasConnectedAccount: value });
   }
 
   setCloudSyncEnabled(enabled: boolean) {

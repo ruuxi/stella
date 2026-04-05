@@ -149,13 +149,17 @@ const toUsagePercent = (usedUsd: number, limitUsd: number) => {
 export function BillingTab() {
   const { hasConnectedAccount } = useAuthSessionState();
   const [billingNowMs, setBillingNowMs] = useState(() => Date.now());
+  const billingQueryArgs = hasConnectedAccount
+    ? { now: billingNowMs }
+    : "skip";
   useEffect(() => {
     const id = window.setInterval(() => setBillingNowMs(Date.now()), 60_000);
     return () => window.clearInterval(id);
   }, []);
-  const billingStatus = useQuery(api.billing.getSubscriptionStatus, {
-    now: billingNowMs,
-  }) as BillingStatus | undefined;
+  const billingStatus = useQuery(
+    api.billing.getSubscriptionStatus,
+    billingQueryArgs,
+  ) as BillingStatus | undefined;
   const createEmbeddedCheckoutSession = useAction(
     api.billing.createEmbeddedCheckoutSession,
   );

@@ -382,6 +382,7 @@ export type ElectronSystemApi = {
   setAuthState: (payload: {
     authenticated: boolean;
     token?: string;
+    hasConnectedAccount?: boolean;
   }) => Promise<{ ok: boolean }>;
   setCloudSyncEnabled: (payload: {
     enabled: boolean;

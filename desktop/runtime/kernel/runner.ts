@@ -127,7 +127,13 @@ export const createStellaHostRunner = (
   };
 
   const sendHeartbeat = async (): Promise<void> => {
-    if (!context.state.authToken || !context.signHeartbeatPayload) return;
+    if (
+      !context.state.authToken
+      || !context.state.hasConnectedAccount
+      || !context.signHeartbeatPayload
+    ) {
+      return;
+    }
     const client = convexSession.ensureConvexClient();
     if (!client) return;
 
@@ -165,7 +171,7 @@ export const createStellaHostRunner = (
 
   const registerDevice = async (attempt = 0): Promise<void> => {
     if (deviceRegistered || deviceRegistering) return;
-    if (!context.state.authToken) return;
+    if (!context.state.authToken || !context.state.hasConnectedAccount) return;
     const client = convexSession.ensureConvexClient();
     if (!client) return;
 
@@ -207,13 +213,22 @@ export const createStellaHostRunner = (
 
   const convexSession = createConvexSession(context, {
     syncRemoteTurnBridge: () => syncRemoteTurnBridge(),
-    onAuthTokenSet: () => void registerDevice(),
+    onAuthTokenSet: () => {
+      if (!context.state.hasConnectedAccount) {
+        return;
+      }
+      void registerDevice();
+    },
     onBeforeAuthTokenClear: () => sendGoOffline(),
   });
 
   sendGoOffline = async () => {
     stopHeartbeatLoop();
     if (!deviceRegistered) return;
+    if (!context.state.authToken || !context.state.convexDeploymentUrl) {
+      deviceRegistered = false;
+      return;
+    }
     const client = convexSession.ensureConvexClient();
     if (!client) return;
 
@@ -364,6 +379,12 @@ export const createStellaHostRunner = (
       deviceRegistered = false;
       return;
     }
+    if (!context.state.hasConnectedAccount) {
+      stopHeartbeatLoop();
+      remoteTurnBridge.stop();
+      void sendGoOffline();
+      return;
+    }
     void registerDevice();
     startHeartbeatLoop();
     void sendHeartbeat();
@@ -387,6 +408,7 @@ export const createStellaHostRunner = (
     setConvexUrl: convexSession.setConvexUrl,
     setConvexSiteUrl: convexSession.setConvexSiteUrl,
     setAuthToken: convexSession.setAuthToken,
+    setHasConnectedAccount: convexSession.setHasConnectedAccount,
     setCloudSyncEnabled: convexSession.setCloudSyncEnabled,
     start: runtimeInitialization.start,
     stop: runtimeInitialization.stop,

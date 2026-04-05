@@ -127,6 +127,7 @@ type WorkerInitializationState = {
   authToken: string | null;
   convexUrl: string | null;
   convexSiteUrl: string | null;
+  hasConnectedAccount: boolean;
   cloudSyncEnabled: boolean;
 };
 
@@ -1079,6 +1080,7 @@ export class StellaRuntimeClient {
       authToken: this.configCache.authToken ?? null,
       convexUrl: this.configCache.convexUrl ?? null,
       convexSiteUrl: this.configCache.convexSiteUrl ?? null,
+      hasConnectedAccount: this.configCache.hasConnectedAccount ?? false,
       cloudSyncEnabled: this.configCache.cloudSyncEnabled ?? false,
     };
   }

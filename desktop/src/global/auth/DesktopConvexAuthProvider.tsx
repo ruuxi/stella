@@ -42,7 +42,11 @@ function useDesktopConvexAuth() {
 function DesktopAuthRuntimeEffects() {
   const session = authClient.useSession();
   const attemptedAnonAuthRef = useRef(false);
+  const sessionUser = (
+    session.data as { user?: { isAnonymous?: boolean | null } } | null | undefined
+  )?.user;
   const hasSession = Boolean(session.data);
+  const hasConnectedAccount = hasSession && sessionUser?.isAnonymous !== true;
   const isSessionPending = Boolean(session.isPending);
 
   useEffect(() => {
@@ -86,7 +90,10 @@ function DesktopAuthRuntimeEffects() {
     }
 
     if (!hasSession) {
-      void systemApi.setAuthState({ authenticated: false });
+      void systemApi.setAuthState({
+        authenticated: false,
+        hasConnectedAccount: false,
+      });
       return;
     }
 
@@ -114,7 +121,11 @@ function DesktopAuthRuntimeEffects() {
           clearTimeout(retryTimer);
           retryTimer = null;
         }
-        void systemApi.setAuthState({ authenticated: true, token });
+        void systemApi.setAuthState({
+          authenticated: true,
+          token,
+          hasConnectedAccount,
+        });
         if (!refreshInterval) {
           refreshInterval = setInterval(() => {
             void syncToken();
@@ -123,7 +134,10 @@ function DesktopAuthRuntimeEffects() {
         return;
       }
 
-      void systemApi.setAuthState({ authenticated: false });
+      void systemApi.setAuthState({
+        authenticated: false,
+        hasConnectedAccount: false,
+      });
       if (!retryTimer) {
         retryTimer = setTimeout(() => {
           retryTimer = null;
@@ -138,7 +152,7 @@ function DesktopAuthRuntimeEffects() {
       cancelled = true;
       clearTimers();
     };
-  }, [hasSession, isSessionPending]);
+  }, [hasConnectedAccount, hasSession, isSessionPending]);
 
   useEffect(() => {
     const systemApi = window.electronAPI?.system;
@@ -147,7 +161,10 @@ function DesktopAuthRuntimeEffects() {
     }
 
     return () => {
-      void systemApi.setAuthState({ authenticated: false });
+      void systemApi.setAuthState({
+        authenticated: false,
+        hasConnectedAccount: false,
+      });
     };
   }, []);
 

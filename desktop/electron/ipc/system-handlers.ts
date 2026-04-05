@@ -276,7 +276,14 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
 
   ipcMain.handle(
     "auth:setState",
-    (event, payload: { authenticated?: boolean; token?: string }) => {
+    (
+      event,
+      payload: {
+        authenticated?: boolean;
+        token?: string;
+        hasConnectedAccount?: boolean;
+      },
+    ) => {
       if (
         !options.externalLinkService.assertPrivilegedSender(
           event,
@@ -288,6 +295,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       options.authService.setHostAuthState(
         Boolean(payload?.authenticated),
         payload?.token,
+        payload?.hasConnectedAccount,
       );
       return { ok: true };
     },

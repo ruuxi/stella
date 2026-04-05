@@ -153,6 +153,9 @@ const connectHostRunner = async (context: BootstrapContext) => {
     runner.setConvexUrl(pendingConvexUrl);
   }
   runner.setConvexSiteUrl(services.authService.getConvexSiteUrl());
+  runner.setHasConnectedAccount(
+    services.authService.getHostHasConnectedAccount(),
+  );
   runner.setAuthToken(await services.authService.getAuthToken());
 
   state.localChatUpdateUnsubscribe = runner.onLocalChatUpdated(() => {

@@ -74,6 +74,7 @@ type WorkerInitializationState = {
   authToken: string | null;
   convexUrl: string | null;
   convexSiteUrl: string | null;
+  hasConnectedAccount: boolean;
   cloudSyncEnabled: boolean;
 };
 
@@ -416,6 +417,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     runner.setConvexUrl(init.convexUrl);
     runner.setConvexSiteUrl(init.convexSiteUrl);
     runner.setAuthToken(init.authToken);
+    runner.setHasConnectedAccount(init.hasConnectedAccount);
     runner.setCloudSyncEnabled(init.cloudSyncEnabled);
     runner.start();
     await runner.waitUntilInitialized();
@@ -483,6 +485,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       state.runner?.setAuthToken(patch.authToken);
       state.socialSessionService?.setAuthToken(patch.authToken);
     }
+    if (patch.hasConnectedAccount !== undefined) {
+      state.runner?.setHasConnectedAccount(patch.hasConnectedAccount);
+    }
     if (patch.cloudSyncEnabled !== undefined) {
       state.runner?.setCloudSyncEnabled(patch.cloudSyncEnabled);
     }
@@ -516,7 +521,11 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       deviceId: state.deviceId,
       voiceBusy: state.voiceService?.isBusy() ?? false,
       pendingVoiceRequestCount: state.voiceService?.getPendingRequestCount() ?? 0,
-      remoteBridgeActive: Boolean(state.init?.convexUrl && state.init?.authToken),
+      remoteBridgeActive: Boolean(
+        state.init?.convexUrl
+          && state.init?.authToken
+          && state.init?.hasConnectedAccount,
+      ),
       socialSessions,
     };
   });

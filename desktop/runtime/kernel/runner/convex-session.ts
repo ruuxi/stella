@@ -191,6 +191,11 @@ export const createConvexSession = (
     options.syncRemoteTurnBridge();
   };
 
+  const setHasConnectedAccount = (value: boolean) => {
+    context.state.hasConnectedAccount = Boolean(value);
+    options.syncRemoteTurnBridge();
+  };
+
   const subscribeQuery = (
     query: unknown,
     args: Record<string, unknown>,
@@ -220,6 +225,7 @@ export const createConvexSession = (
     setConvexUrl,
     setConvexSiteUrl,
     setAuthToken,
+    setHasConnectedAccount,
     setCloudSyncEnabled,
     subscribeQuery,
     getConvexUrl: () => context.state.convexDeploymentUrl,
