@@ -139,11 +139,7 @@ export function useFullShellChat({
     return resetChatScroll(resetScrollState, scrollToBottom)
   }, [activeConversationId, resetScrollState, scrollToBottom])
 
-  // Reset scroll when switching to chat view
-  useLayoutEffect(() => {
-    if (activeView !== 'chat') return
-    return resetChatScroll(resetScrollState, scrollToBottom)
-  }, [activeView, resetScrollState, scrollToBottom])
+  // (chat view removed — sidebar manages its own scroll)
 
   // Auto-scroll is now driven by the content ResizeObserver in useChatScrollManagement.
   // No need for individual effects on events.length, streamingText, reasoningText, etc.

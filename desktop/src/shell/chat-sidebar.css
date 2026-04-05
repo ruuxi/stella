@@ -32,6 +32,8 @@
   min-width: clamp(380px, 34vw, 520px);
   background: transparent;
   border-left: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  border-radius: 16px 0 0 16px;
+  overflow: hidden;
 }
 
 .chat-sidebar-messages {
@@ -54,11 +56,11 @@
 .chat-sidebar-composer {
   flex-shrink: 0;
   position: relative;
-  padding: 10px 12px 12px;
-  border-top: 1px solid color-mix(in oklch, var(--border) 35%, transparent);
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 8px;
+  padding: 8px 12px 12px;
 }
 
 .chat-sidebar-attachments {
@@ -67,28 +69,117 @@
   align-items: center;
   gap: 6px;
   width: 100%;
+  padding: 0 4px;
 }
 
-.chat-sidebar-input-row {
+/* Shell: visual container matching the full composer */
+.chat-sidebar-shell {
+  position: relative;
+  width: 100%;
+  background: var(--background);
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  overflow: clip;
+  transition: box-shadow 200ms ease;
+}
+
+.chat-sidebar-shell:focus-within {
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
+}
+
+/* Form: layout only, mirrors composer-form */
+.chat-sidebar-form {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px;
+}
+
+.chat-sidebar-input {
+  flex: 1;
+  field-sizing: content;
+  min-height: 30px;
+  max-height: 160px;
+  padding: 4px 4px;
+}
+
+/* Toolbar hidden in pill mode — buttons sit inline */
+.chat-sidebar-form .composer-toolbar {
+  display: contents;
+}
+
+.chat-sidebar-form .composer-toolbar-left {
+  display: contents;
+}
+
+.chat-sidebar-form .composer-toolbar-right {
+  display: contents;
+}
+
+/* === Expanded: stacked rounded rectangle === */
+.chat-sidebar-form.expanded {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  min-height: auto;
+  border-radius: 20px;
+}
+
+.chat-sidebar-form.expanded .chat-sidebar-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 14px 18px 4px;
+  order: -1;
+}
+
+.chat-sidebar-form.expanded > .composer-add-button {
+  display: none;
+}
+
+.chat-sidebar-form.expanded .composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 8px;
+}
+
+.chat-sidebar-form.expanded .composer-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-sidebar-form.expanded .composer-toolbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.chat-sidebar-add {
+.chat-sidebar-form .composer-stop {
   width: 30px;
   height: 30px;
-  flex-shrink: 0;
+  border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
+  color: var(--text-strong);
 }
 
-.chat-sidebar-input {
-  flex: 1;
-  width: 100%;
-  box-sizing: border-box;
-  field-sizing: content;
-  min-height: 48px;
-  max-height: 120px;
-  padding: 12px 14px;
-  font-size: 15px;
-  line-height: 1.45;
+.chat-sidebar-form .composer-submit {
+  width: 30px;
+  height: 30px;
+}
+
+.chat-sidebar-form .composer-add-button {
+  width: 30px;
+  height: 30px;
+}
+
+.chat-sidebar-form .composer-add-button--toolbar {
+  display: none;
+}
+
+.chat-sidebar-form.expanded .composer-add-button--toolbar {
+  display: inline-flex;
 }

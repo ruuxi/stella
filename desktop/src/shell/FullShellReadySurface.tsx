@@ -66,11 +66,6 @@ export const FullShellReadySurface = ({
     setView("store");
   }, [closePanel, setView]);
 
-  const showChatView = useCallback(() => {
-    closePanel();
-    setView("chat");
-  }, [closePanel, setView]);
-
   const showSocialView = useCallback(() => {
     closePanel();
     setView("social");
@@ -103,11 +98,7 @@ export const FullShellReadySurface = ({
       });
     });
 
-    if (state.view === "chat") {
-      closePanel();
-      setView("app");
-    }
-  }, [closePanel, setView, state.view]);
+  }, []);
 
   const handleProjectSelect = useCallback(
     (project: (typeof projects)[number]) => {
@@ -146,15 +137,11 @@ export const FullShellReadySurface = ({
     activePanel?.kind === "dev-project" ? activePanel.projectId : null;
   const activePageId =
     activePanel?.kind === "generated-page" ? activePanel.pageId : null;
-  const showChatSurface = state.view === "chat" || state.view === "social";
+  const showSocialSurface = state.view === "social";
 
   const handleContextMenuOpenSidebarChat = useCallback(() => {
-    if (state.view === "chat" || state.view === "social") {
-      setView("chat");
-    }
-
     dispatchOpenSidebarChat();
-  }, [setView, state.view]);
+  }, []);
 
   return (
     <>
@@ -164,7 +151,6 @@ export const FullShellReadySurface = ({
         onConnect={showConnectDialog}
         onSettings={showSettingsDialog}
         onStore={showStoreView}
-        onChat={showChatView}
         onSocial={showSocialView}
         onNewAppAskStella={handleNewAppAskStella}
         onNewAppLocalProject={handleNewAppLocalProject}
@@ -181,19 +167,17 @@ export const FullShellReadySurface = ({
         onCloseSidebarChat={dispatchCloseSidebarChat}
       >
         <div className="content-area">
-          {!showChatSurface && (
-            <WorkspaceArea
-              view={state.view}
-              activeDemo={null}
-              demoClosing={false}
-              conversationId={activeConversationId ?? undefined}
-            />
-          )}
+          <WorkspaceArea
+            view={state.view}
+            activeDemo={null}
+            demoClosing={false}
+            conversationId={activeConversationId ?? undefined}
+          />
           <Suspense
             fallback={
-              showChatSurface ? (
+              showSocialSurface ? (
                 <WorkspaceArea
-                  view="chat"
+                  view="app"
                   activeDemo={null}
                   demoClosing={false}
                 />
@@ -203,7 +187,6 @@ export const FullShellReadySurface = ({
             <FullShellRuntime
               activeConversationId={activeConversationId}
               activeView={state.view}
-              composerEntering={onboardingExiting}
               conversationId={activeConversationId}
               onSignIn={showAuthDialog}
               pendingAskStellaRequest={pendingAskStellaRequest}

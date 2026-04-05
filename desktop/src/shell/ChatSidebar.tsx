@@ -10,6 +10,8 @@ import { createPortal } from "react-dom";
 import { CompactConversationSurface } from "@/app/chat/CompactConversationSurface";
 import {
   ComposerAddButton,
+  ComposerSubmitButton,
+  ComposerStopButton,
   ComposerTextarea,
 } from "@/app/chat/ComposerPrimitives";
 import {
@@ -68,6 +70,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     const [isOpen, setIsOpen] = useState(false);
     const [inputText, setInputText] = useState("");
     const [chatContext, setChatContext] = useState<ChatContext | null>(null);
+    const [sidebarExpanded, setSidebarExpanded] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
     const { isDragOver, dropHandlers } = useFileDrop({
@@ -86,6 +89,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
         setIsOpen(false);
         setInputText("");
         setChatContext(null);
+        setSidebarExpanded(false);
       },
     }));
 
@@ -124,6 +128,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
         onSend(trimmedMessage, chatContext);
         setInputText("");
         setChatContext(null);
+        setSidebarExpanded(false);
       },
       [inputText, chatContext, onSend],
     );
@@ -164,11 +169,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
             isLoadingHistory={isInitialLoading}
           />
 
-          <form
-            className="chat-sidebar-composer"
-            onSubmit={handleSubmit}
-            {...dropHandlers}
-          >
+          <div className="chat-sidebar-composer" {...dropHandlers}>
             <DropOverlay visible={isDragOver} variant="orb" />
 
             {hasContextChips && (
@@ -198,29 +199,81 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
               </div>
             )}
 
-            <div className="chat-sidebar-input-row">
-              <ComposerAddButton
-                className="chat-sidebar-add"
-                title="Add"
-                onClick={onAdd}
-              />
-              <ComposerTextarea
-                ref={inputRef}
-                className="chat-sidebar-input"
-                tone="default"
-                value={inputText}
-                rows={1}
-                onChange={(event) => setInputText(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    handleSubmit(event);
-                  }
-                }}
-                placeholder={composerState.placeholder}
-              />
+            <div className="chat-sidebar-shell">
+              <form
+                className={`chat-sidebar-form${sidebarExpanded ? " expanded" : ""}`}
+                onSubmit={handleSubmit}
+              >
+                <ComposerAddButton
+                  className="composer-add-button"
+                  title="Add"
+                  onClick={onAdd}
+                />
+
+                <ComposerTextarea
+                  ref={inputRef}
+                  className="chat-sidebar-input"
+                  tone="default"
+                  value={inputText}
+                  rows={1}
+                  onChange={(event) => {
+                    setInputText(event.target.value);
+                    requestAnimationFrame(() => {
+                      const el = inputRef.current;
+                      if (!el) return;
+                      const form = el.closest(".chat-sidebar-form") as HTMLElement | null;
+                      if (!form) return;
+                      const isExp = form.classList.contains("expanded");
+
+                      if (!isExp) {
+                        if (el.scrollHeight > 44) setSidebarExpanded(true);
+                      } else {
+                        form.classList.remove("expanded");
+                        const pillSh = el.scrollHeight;
+                        form.classList.add("expanded");
+                        if (pillSh <= 44) setSidebarExpanded(false);
+                      }
+                    });
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      handleSubmit(event);
+                    }
+                  }}
+                  placeholder={composerState.placeholder}
+                />
+
+                <div className="composer-toolbar">
+                  <div className="composer-toolbar-left">
+                    <ComposerAddButton
+                      className="composer-add-button composer-add-button--toolbar"
+                      title="Add"
+                      onClick={onAdd}
+                    />
+                  </div>
+
+                  <div className="composer-toolbar-right">
+                    {isStreaming && (
+                      <ComposerStopButton
+                        className="composer-stop"
+                        onClick={() => {
+                          /* stop handled externally */
+                        }}
+                        title="Stop"
+                        aria-label="Stop"
+                      />
+                    )}
+                    <ComposerSubmitButton
+                      className="composer-submit"
+                      disabled={!composerState.canSubmit}
+                      animated
+                    />
+                  </div>
+                </div>
+              </form>
             </div>
-          </form>
+          </div>
         </div>
       </aside>,
       portalTarget,

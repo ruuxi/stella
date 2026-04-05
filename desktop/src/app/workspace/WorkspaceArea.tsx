@@ -80,10 +80,9 @@ export function WorkspaceArea({
           </div>
         </div>
       )
-    case "chat":
     case "social":
     case "app":
-      // Chat/social are handled by FullShellRuntime
+      // Social is handled by FullShellRuntime
       return null
     default: {
       const exhaustiveCheck: never = view
