@@ -211,7 +211,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
         tokens.surfaceWarningStrong,
         tokens.surfaceBrandBase,
       ];
-      const strength = isDark ? 0.2 : 0.4;
+      const strength = isDark ? 0.2 : 0.5;
       return tokenColors.map((token) => {
         const color = parseColor(token) ?? fallback;
         return mixRgb(bg, color, strength);
@@ -224,7 +224,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       parseColor(tokens.textInteractive) ??
       parseColor(colors.interactive) ??
       brandColor;
-    const strength = isDark ? 0.35 : 0.75;
+    const strength = isDark ? 0.35 : 0.85;
 
     return [
       mixRgb(bg, brandColor, strength),
