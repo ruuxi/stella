@@ -29,6 +29,35 @@ type ShortcutsPhaseProps = {
   onFinish: () => void;
 };
 
+const TRIGGER_KEYS_BY_PLATFORM: Record<string, { symbol: string; label: string }[]> = {
+  darwin: [
+    { symbol: "⌥", label: "Option" },
+    { symbol: "⌘", label: "Command" },
+  ],
+  win32: [
+    { symbol: "Alt", label: "Alt" },
+    { symbol: "⊞", label: "Win" },
+  ],
+  linux: [
+    { symbol: "Alt", label: "Alt" },
+    { symbol: "Super", label: "Super" },
+  ],
+};
+
+function TriggerKeyCaps({ platform }: { platform?: string }) {
+  const keys = TRIGGER_KEYS_BY_PLATFORM[platform ?? ""] ?? TRIGGER_KEYS_BY_PLATFORM.darwin;
+  return (
+    <span className="onboarding-keycaps">
+      {keys.map((key, i) => (
+        <span key={i}>
+          {i > 0 && <span className="onboarding-keycap-plus">+</span>}
+          <kbd className="onboarding-keycap" aria-label={key.label}>{key.symbol}</kbd>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 type RadialActionId = "capture" | "chat" | "full" | "voice" | "auto" | "dismiss";
 type MenuActionId = "open-chat";
 
@@ -365,11 +394,7 @@ export function OnboardingShortcutsPhase({
           <section className="onboarding-shortcut-demo">
           <div className="onboarding-shortcut-demo__copy">
             <span className="onboarding-step-label">How to use Stella on your computer</span>
-            <h3 className="onboarding-shortcut-demo__title">{radialTriggerLabel} for the radial dial</h3>
-            <p className="onboarding-step-subdesc">
-              Hold the trigger key, drag through the wedge you want, then release.
-              This mirrors my system-level quick gesture.
-            </p>
+            <h3 className="onboarding-shortcut-demo__title">Hold <TriggerKeyCaps platform={platform} />, drag to an option, release.</h3>
           </div>
 
           <div
@@ -615,7 +640,7 @@ export function OnboardingShortcutsPhase({
             </div>
 
             <div className="onboarding-shortcut-hint">
-              Hold {radialTriggerLabel}, move to a wedge, release
+              Try it here
             </div>
 
             {radialOpen ? (
@@ -698,11 +723,7 @@ export function OnboardingShortcutsPhase({
           <section className="onboarding-shortcut-demo">
           <div className="onboarding-shortcut-demo__copy">
             <span className="onboarding-step-label">How to use Stella inside the app</span>
-            <h3 className="onboarding-shortcut-demo__title">Right-click to open chat</h3>
-            <p className="onboarding-step-subdesc">
-              Right-click anywhere inside Stella to open the chat sidebar.
-              Right-click again to close it.
-            </p>
+            <h3 className="onboarding-shortcut-demo__title">Right-click anywhere to open chat.</h3>
           </div>
 
           <div
@@ -777,7 +798,7 @@ export function OnboardingShortcutsPhase({
             </div>
 
             <div className="onboarding-shortcut-hint onboarding-shortcut-hint--left">
-              Right-click to {menuSidebarOpen ? "close" : "open"} chat
+              Try it here
             </div>
           </div>
           </section>

@@ -536,10 +536,8 @@ export const OnboardingStep1 = ({
   useEffect(() => {
     if (phase === "complete") {
       clearTimeoutRef();
-      timeoutRef.current = setTimeout(() => {
-        setPhase("done");
-        onComplete();
-      }, 600);
+      setPhase("done");
+      onComplete();
     }
 
     return clearTimeoutRef;

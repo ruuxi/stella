@@ -304,9 +304,10 @@
   transition: opacity 0.6s ease-out;
 }
 
-/* Onboarding exit — morph transition handles the visual crossover */
+/* Onboarding exit — fade out before switching to main app */
 .new-session-view[data-exiting] {
   opacity: 0;
+  transition: opacity 0.5s ease-out;
 }
 
 /* Awaiting canvas — final onboarding moment before personalized app */
@@ -415,7 +416,7 @@
     height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
-/* Hide Stella during shortcuts phases (full-width layout, no left panel) */
+/* Hide Stella during shortcuts phases */
 .new-session-view:has(.onboarding-dialogue[data-phase="shortcuts-global"]) .onboarding-stella-animation,
 .new-session-view:has(.onboarding-dialogue[data-phase="shortcuts-local"]) .onboarding-stella-animation {
   opacity: 0;
@@ -427,6 +428,13 @@
     transform 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     max-width 1.6s cubic-bezier(0.25, 0.1, 0.25, 1),
     height 1.6s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+/* Instantly hide Stella during exit — no transition so it can't flash back */
+.new-session-view[data-exiting] .onboarding-stella-animation {
+  opacity: 0 !important;
+  pointer-events: none;
+  transition: none;
 }
 
 .onboarding-signin {

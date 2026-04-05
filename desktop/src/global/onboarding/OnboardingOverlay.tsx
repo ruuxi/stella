@@ -116,9 +116,12 @@ export function useOnboardingOverlay() {
   }, []);
 
   const handleCompleteOnboarding = useCallback(() => {
-    setSplitMode(false);
-    markOpenOrbAfterOnboarding();
-    completeOnboarding();
+    setOnboardingExiting(true);
+    exitTimerRef.current = setTimeout(() => {
+      setSplitMode(false);
+      markOpenOrbAfterOnboarding();
+      completeOnboarding();
+    }, 600);
   }, [completeOnboarding]);
 
   const handleResetOnboarding = useCallback(() => {

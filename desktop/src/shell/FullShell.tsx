@@ -97,7 +97,7 @@ export const FullShell = () => {
       <ShiftingGradient
         mode={gradientMode}
         colorMode={gradientColor}
-        lightweight={!appReady && !onboarding.splitMode}
+        lightweight={false}
       />
 
       <div className="full-body">
