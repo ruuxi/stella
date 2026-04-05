@@ -298,10 +298,6 @@ export class LocalTaskManager implements TaskToolApi {
     return task.restartRequested && task.status !== "canceled";
   }
 
-  private allocateFallbackThreadId(agentType: string): string {
-    return `${agentType}-${++this.nextId}`;
-  }
-
   private toPersistedStatus(
     status: LocalTaskManagerStatus,
   ): PersistedTaskRecord["status"] {
@@ -710,7 +706,7 @@ export class LocalTaskManager implements TaskToolApi {
     const id =
       resolvedThread?.threadId ??
       request.threadId ??
-      this.allocateFallbackThreadId(request.agentType);
+      `task-${++this.nextId}`;
 
     const task: RuntimeTaskRecord = {
       id,

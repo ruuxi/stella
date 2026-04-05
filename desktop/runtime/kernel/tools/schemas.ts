@@ -633,6 +633,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- description: short summary shown in the task list.\n" +
     "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, relevant file paths, and expected output.\n" +
     "- Starts background work and immediately returns a structured status object with a durable thread_id.\n" +
+    "- Use this only for genuinely new work. Do not use it to continue, resume, retry, or revise an existing thread.\n" +
     "- After calling it, do not create another task for the same work.\n" +
     "- Wait for the completion/failure event; in the meantime you may gently reply to the user or call NoResponse.\n" +
     "- Use the returned thread_id for TaskOutput, TaskUpdate, and TaskCancel.",
@@ -644,14 +645,17 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   TaskCancel:
     "Cancel a running task.\n\n" +
     "Usage:\n" +
-    "- thread_id: the durable thread ID to cancel.",
+    "- thread_id: the durable thread ID to cancel.\n" +
+    "- Cancel stops the current attempt only; the same thread can still be continued later with TaskUpdate.",
   TaskUpdate:
     "Continue or update a task thread.\n\n" +
     "Usage:\n" +
     "- thread_id: the durable thread ID to continue.\n" +
     "- message: the new instruction to deliver.\n" +
+    "- Use this for follow-ups that continue the same work, including resume, continue, retry, or revised instructions.\n" +
     "- If the task is currently running, interrupts the subagent and redelivers the update immediately on the next attempt.\n" +
     "- If the task is not running, starts a new attempt on the same persisted thread.\n" +
+    "- Prefer this over TaskCreate whenever the user is referring to an existing thread, even if that thread was canceled.\n" +
     "- Returns a small structured acknowledgment object when the update is accepted.",
   WebFetch:
     "Fetch and read content from a URL.\n\n" +
