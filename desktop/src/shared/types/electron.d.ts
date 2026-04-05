@@ -190,6 +190,11 @@ export type ElectronRadialApi = {
       data: { x: number; y: number; centerX: number; centerY: number },
     ) => void,
   ) => () => void;
+  onWindowBounds: (
+    callback: (
+      data: { x: number; y: number; width: number; height: number } | null,
+    ) => void,
+  ) => () => void;
 };
 
 export type ElectronOverlayApi = {

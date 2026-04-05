@@ -35,9 +35,12 @@ type AutoPanelData = {
   windowTitle: string | null;
 };
 
+type WindowBounds = { x: number; y: number; width: number; height: number };
+
 type OverlayState = {
   radialVisible: boolean;
   radialPosition: { x: number; y: number } | null;
+  radialWindowBounds: WindowBounds | null;
   regionCaptureActive: boolean;
   miniVisible: boolean;
   miniPreviewVisible: boolean;
@@ -50,6 +53,7 @@ type OverlayState = {
 type OverlayAction =
   | { type: "radial:show"; position?: { x: number; y: number } }
   | { type: "radial:hide" }
+  | { type: "radial:windowBounds"; bounds: WindowBounds | null }
   | { type: "region"; active: boolean }
   | { type: "mini:show"; position: { x: number; y: number } }
   | { type: "mini:hide" }
@@ -71,6 +75,7 @@ function isSamePosition(
 const initialState: OverlayState = {
   radialVisible: false,
   radialPosition: null,
+  radialWindowBounds: null,
   regionCaptureActive: false,
   miniVisible: false,
   miniPreviewVisible: false,
@@ -96,7 +101,11 @@ function overlayReducer(
       return { ...state, radialVisible: true, radialPosition: nextPosition };
     }
     case "radial:hide":
-      return state.radialVisible ? { ...state, radialVisible: false } : state;
+      return state.radialVisible
+        ? { ...state, radialVisible: false, radialWindowBounds: null }
+        : state;
+    case "radial:windowBounds":
+      return { ...state, radialWindowBounds: action.bounds };
     case "region":
       return state.regionCaptureActive === action.active
         ? state
@@ -205,6 +214,9 @@ function useOverlayIPC(
         dispatch({ type: "radial:hide" });
       }, 300);
     });
+    const cleanupWindowBounds = api.radial.onWindowBounds?.((bounds) => {
+      dispatch({ type: "radial:windowBounds", bounds });
+    });
 
     return () => {
       if (radialHideTimerRef.current) {
@@ -213,6 +225,7 @@ function useOverlayIPC(
       }
       cleanupShow();
       cleanupHide();
+      cleanupWindowBounds?.();
     };
   }, [dispatch]);
 
@@ -544,6 +557,20 @@ export function OverlayRoot() {
         overflow: "hidden",
       }}
     >
+      {/* Window highlight ring: shown around the OS window under the cursor
+          when the radial dial is open. */}
+      {state.radialWindowBounds && (
+        <div
+          className="radial-window-ring"
+          style={{
+            left: state.radialWindowBounds.x,
+            top: state.radialWindowBounds.y,
+            width: state.radialWindowBounds.width,
+            height: state.radialWindowBounds.height,
+          }}
+        />
+      )}
+
       {/* Radial Dial: always mounted; visibility is managed via IPC.
           When not visible, position off-screen so the compositor's stale
           backing-store frame doesn't flash at the old position when the
