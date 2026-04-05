@@ -181,7 +181,9 @@ export const Sidebar = ({
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
+      <div
+        className={`sidebar-header${isMac ? " sidebar-header--mac" : ""}`}
+      >
         {!isMac && <WindowControls />}
       </div>
       <button

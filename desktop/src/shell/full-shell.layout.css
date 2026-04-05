@@ -192,7 +192,7 @@
   flex-direction: column;
   position: relative;
   overflow: hidden;
-  background: var(--background);
+  background: transparent;
   border-left: 1px solid var(--border-weak);
   border-top: 1px solid var(--border-weak);
   border-top-left-radius: 12px;
