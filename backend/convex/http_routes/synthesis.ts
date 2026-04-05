@@ -54,8 +54,8 @@ type SynthesizeResponse = {
 
 const DEFAULT_WELCOME_MESSAGE =
   "Hey! I'm Stella, your AI assistant. What can I help you with today?";
-/** Local/testing: high anon allowance; re-tighten before production. */
-const MAX_ANON_SYNTHESIS_REQUESTS = 1_000_000;
+/** Local/testing: effectively unlimited; re-tighten before production. */
+const MAX_ANON_SYNTHESIS_REQUESTS = Number.MAX_SAFE_INTEGER;
 
 export const getHomeSuggestionsText = (
   result: { result: Parameters<typeof assistantText>[0] } | null | undefined,
