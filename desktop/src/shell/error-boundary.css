@@ -1,4 +1,5 @@
 .error-boundary {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6,78 +7,111 @@
   height: 100vh;
   background: var(--background);
   color: var(--text-strong);
-  font-family: var(--font-sans);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
 }
 
 .error-boundary-content {
-  max-width: 400px;
+  position: relative;
+  z-index: 1;
+  max-width: 480px;
   text-align: center;
-  padding: 32px;
+  padding: 48px 24px;
+  animation: errorBoundaryFadeIn 300ms ease both;
 }
 
-.error-boundary-comet-wrapper {
-  position: relative;
-  width: 88px;
-  height: 88px;
-  margin: 0 auto 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.error-boundary-comet {
-  position: absolute;
-  inset: 12px;
-  width: calc(100% - 24px);
-  height: calc(100% - 24px);
-}
-
-.error-boundary-logo {
-  position: relative;
-  width: 88px;
-  height: 88px;
+@keyframes errorBoundaryFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .error-boundary-content h2 {
-  margin: 0 0 8px;
-  font-size: 20px;
-  font-weight: 600;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: clamp(1.9rem, 4vw, 2.8rem);
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: var(--text-strong);
+  margin: 0 0 12px;
 }
 
 .error-boundary-content p {
-  margin: 0 0 24px;
-  font-size: 14px;
+  margin: 0 0 32px;
+  font-size: 15px;
   color: var(--text-weak);
   line-height: 1.5;
 }
 
 .error-boundary-status {
-  margin: -8px 0 16px;
-  font-size: 13px;
+  margin: -8px 0 20px;
+  font-size: 14px;
   color: var(--text-base);
 }
 
 .error-boundary-feature-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 0 0 16px;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 20px;
 }
 
-.error-boundary-feature-btn {
-  width: 100%;
+.error-boundary-btn {
+  padding: 6px 24px;
+  min-width: 100px;
+  text-align: center;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md, 10px);
+  color: var(--text-base);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: default;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.error-boundary-btn:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--foreground) 6%, var(--background));
+}
+
+.error-boundary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .error-boundary-btn--fix {
-  width: 100%;
-  margin-bottom: 16px;
   background: var(--accent);
+  border-color: var(--accent);
   color: var(--accent-foreground);
-  font-weight: 500;
+}
+
+.error-boundary-btn--fix:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--accent) 85%, var(--foreground));
+}
+
+.error-boundary-btn--primary {
+  background: var(--foreground);
+  border-color: var(--foreground);
+  color: var(--background);
+}
+
+.error-boundary-btn--primary:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--foreground) 85%, var(--background));
 }
 
 .error-boundary-actions {
   display: flex;
-  gap: 12px;
-  justify-content: center;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
 }

@@ -1,5 +1,6 @@
 import { Component, type ReactNode, type ErrorInfo, type MouseEvent } from "react";
 import type { SelfModFeatureSummary } from "@/shared/types/electron";
+import { ShiftingGradient } from "./background/ShiftingGradient";
 import "./error-boundary.css";
 
 type Props = { children: ReactNode };
@@ -168,53 +169,33 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return (
       <div className="error-boundary">
+        <ShiftingGradient className="error-boundary-gradient" />
         <div className="error-boundary-content">
           <h2>Something went wrong</h2>
           <p>
             An unexpected error occurred. You can try undoing recent changes or
             reloading.
           </p>
-          {this.state.repairStatus === "idle" && this.state.caughtError && (
-            <button
-              className="error-boundary-btn error-boundary-btn--fix"
-              onClick={this.handleRepair}
-            >
-              Fix with Stella
-            </button>
-          )}
           {this.state.repairStatus !== "idle" && (
             <p className="error-boundary-status">
               {this.state.repairMessage}
             </p>
           )}
-          {this.state.features.length > 0 && (
-            <div className="error-boundary-feature-list">
-              {this.state.features.map((feature) => {
-                const isReverting = this.state.revertingFeatureId === feature.featureId;
-                return (
-                  <button
-                    key={feature.featureId}
-                    className="error-boundary-btn"
-                    onClick={() => this.handleRevert(feature.featureId)}
-                    disabled={this.state.revertingFeatureId !== null}
-                  >
-                    {isReverting
-                      ? "Reverting..."
-                      : feature.tainted
-                        ? `Undo ${feature.name} (external edits)`
-                        : `Undo ${feature.name}`}
-                  </button>
-                );
-              })}
-            </div>
-          )}
           <div className="error-boundary-actions">
+            {this.state.repairStatus === "idle" && this.state.caughtError && (
+              <button
+                className="error-boundary-btn error-boundary-btn--fix"
+                onClick={this.handleRepair}
+              >
+                Ask Stella to fix
+              </button>
+            )}
             <button
-              className="error-boundary-btn error-boundary-btn--primary"
+              className="error-boundary-btn"
               onClick={() => this.handleRevert()}
               disabled={this.state.revertingFeatureId !== null}
             >
-              {this.state.revertingFeatureId === "__latest__" ? "Reverting..." : "Undo latest update"}
+              {this.state.revertingFeatureId ? "Reverting..." : "Undo"}
             </button>
             <button
               className="error-boundary-btn"
