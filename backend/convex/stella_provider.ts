@@ -45,8 +45,8 @@ import {
 } from "./stella_models";
 import { resolveManagedModelAccess } from "./lib/managed_billing";
 
-/** Anonymous identity rate limit (requests per rolling window). */
-const MAX_ANON_REQUESTS = 100;
+/** Local/testing: effectively unlimited; re-tighten before production. */
+const MAX_ANON_REQUESTS = Number.MAX_SAFE_INTEGER;
 const DEFAULT_RETRY_AFTER_MS = 60_000;
 const SSE_HEARTBEAT_INTERVAL_MS = 45_000;
 const SSE_STREAM_OPEN_COMMENT = new TextEncoder().encode(": stella-stream-open\n\n");
