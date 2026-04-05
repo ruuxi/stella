@@ -502,7 +502,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       convexUrl?: string;
       convexSiteUrl?: string;
     }) => ipcRenderer.invoke("host:configurePiRuntime", config),
-    setAuthState: (payload: { authenticated: boolean; token?: string }) =>
+    setAuthState: (payload: {
+      authenticated: boolean;
+      token?: string;
+      hasConnectedAccount?: boolean;
+    }) =>
       ipcRenderer.invoke("auth:setState", payload),
     setCloudSyncEnabled: (payload: { enabled: boolean }) =>
       ipcRenderer.invoke("host:setCloudSyncEnabled", payload),
