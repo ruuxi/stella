@@ -26,10 +26,12 @@ export function ThemePicker({
   onOpenChange: controlledOnOpenChange,
   onThemeSelect,
 }: ThemePickerProps) {
-  const { themeId, themes, colorMode } = useTheme();
+  const { themeId, themes, colorMode, gradientMode, gradientColor } = useTheme();
   const {
     setTheme,
     setColorMode,
+    setGradientMode,
+    setGradientColor,
     previewTheme,
     cancelThemePreview,
     cancelPreview,
@@ -81,6 +83,38 @@ export function ThemePicker({
                     onClick={() => setColorMode(scheme.id)}
                   >
                     {scheme.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div data-slot="theme-picker-section" data-bordered>
+              <div data-slot="theme-picker-label">Gradient Style</div>
+              <div data-slot="theme-picker-button-row">
+                {(["soft", "crisp"] as const).map((value) => (
+                  <Button
+                    key={value}
+                    size="small"
+                    variant={gradientMode === value ? "secondary" : "ghost"}
+                    data-slot="theme-picker-option-button"
+                    onClick={() => setGradientMode(value)}
+                  >
+                    {value === "soft" ? "Soft" : "Crisp"}
+                  </Button>
+                ))}
+              </div>
+
+              <div data-slot="theme-picker-label">Gradient Color</div>
+              <div data-slot="theme-picker-button-row">
+                {(["relative", "strong"] as const).map((value) => (
+                  <Button
+                    key={value}
+                    size="small"
+                    variant={gradientColor === value ? "secondary" : "ghost"}
+                    data-slot="theme-picker-option-button"
+                    onClick={() => setGradientColor(value)}
+                  >
+                    {value === "relative" ? "Relative" : "Strong"}
                   </Button>
                 ))}
               </div>
