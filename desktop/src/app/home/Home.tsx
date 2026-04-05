@@ -3,7 +3,6 @@ import { dispatchStellaSendMessage } from "@/shared/lib/stella-send-message"
 import { useUiState } from "@/context/ui-state"
 import { listLocalEvents } from "@/app/chat/services/local-chat-store"
 import type { OnboardingHomeSuggestion } from "@/shared/contracts/onboarding"
-import { MusicPlayer } from "@/app/home/MusicPlayer"
 import "./home.css"
 
 type SuggestionOption = {
@@ -170,10 +169,6 @@ export default function Home() {
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="home-music-player-wrapper">
-        <MusicPlayer />
       </div>
 
       {/*
