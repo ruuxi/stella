@@ -1,6 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
-import { dispatchStellaSendMessage } from "@/shared/lib/stella-send-message"
-import { useUiState } from "@/context/ui-state"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { listLocalEvents } from "@/app/chat/services/local-chat-store"
 import type { OnboardingHomeSuggestion } from "@/shared/contracts/onboarding"
 import "./home.css"
@@ -110,17 +108,24 @@ function usePersonalizedCategories(conversationId: string | null): Category[] {
   )
 }
 
-export default function Home() {
-  const { state } = useUiState()
-  const categories = usePersonalizedCategories(state.conversationId)
+type HomeContentProps = {
+  conversationId: string | null
+  onSuggestionClick: (prompt: string) => void
+  children?: ReactNode
+}
+
+export function HomeContent({ conversationId, onSuggestionClick, children }: HomeContentProps) {
+  const categories = usePersonalizedCategories(conversationId)
   const [openCategory, setOpenCategory] = useState<string | null>(null)
   const [hasOpened, setHasOpened] = useState(false)
 
   return (
-    <div className="home-page" onClick={() => setOpenCategory(null)}>
+    <div className="home-content" onClick={() => setOpenCategory(null)}>
       <h1 className="home-stella-title">
         What can I do for you today?
       </h1>
+
+      {children}
 
       <div className="home-center-group">
         <div className="home-categories">
@@ -158,7 +163,7 @@ export default function Home() {
                       style={{ "--stagger": i } as React.CSSProperties}
                       onClick={(e) => {
                         e.stopPropagation()
-                        dispatchStellaSendMessage({ text: opt.prompt })
+                        onSuggestionClick(opt.prompt)
                       }}
                     >
                       {opt.label}
@@ -170,50 +175,6 @@ export default function Home() {
           </div>
         </div>
       </div>
-
-      {/*
-        AGENT NOTE: When the user customizes their home page (adding widgets, etc.),
-        the center-group above will likely be removed. When that happens:
-        1. Remove the home-center-group section above
-        2. Uncomment the bottom bar below - it provides the same category navigation
-           as a sticky footer with drop-up menus
-
-      <div className="home-bottom-bar">
-        <div className="home-categories">
-          {categories.map((cat) => (
-            <div key={cat.label} className="home-bottom-wrapper">
-              {openCategory === cat.label && (
-                <div className="home-dropup" onClick={(e) => e.stopPropagation()}>
-                  {cat.options.map((opt) => (
-                    <button
-                      key={opt.label}
-                      className="home-dropup-item"
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        dispatchStellaSendMessage({ text: opt.prompt })
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <button
-                className={`home-category${openCategory === cat.label ? " active" : ""}`}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setOpenCategory(openCategory === cat.label ? null : cat.label)
-                }}
-              >
-                {cat.label}
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-      */}
     </div>
   )
 }
