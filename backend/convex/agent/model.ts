@@ -232,7 +232,7 @@ const AUDIENCE_MODE_OVERRIDES: Record<ManagedModelAudience, Partial<Record<Model
 
 export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: "smart",
-  [AGENT_IDS.ORCHESTRATOR]: "reasoning",
+  [AGENT_IDS.ORCHESTRATOR]: "best",
   [AGENT_IDS.GENERAL]: "best",
   [AGENT_IDS.SELF_MOD]: "smart",
   [AGENT_IDS.EXPLORE]: "cheap",
