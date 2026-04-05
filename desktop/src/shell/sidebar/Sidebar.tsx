@@ -19,7 +19,6 @@ import House from "lucide-react/dist/esm/icons/house";
 import Layout from "lucide-react/dist/esm/icons/layout-dashboard";
 import Link2 from "lucide-react/dist/esm/icons/link-2";
 import LogIn from "lucide-react/dist/esm/icons/log-in";
-import MessageSquare from "lucide-react/dist/esm/icons/message-square";
 import Palette from "lucide-react/dist/esm/icons/palette";
 import PlusSquare from "lucide-react/dist/esm/icons/square-plus";
 import Settings from "lucide-react/dist/esm/icons/settings";
@@ -39,7 +38,6 @@ interface SidebarProps {
   onSettings?: () => void;
   onStore?: () => void;
 
-  onChat?: () => void;
   onSocial?: () => void;
   onNewApp?: () => void;
   onNewAppAskStella?: () => void;
@@ -149,7 +147,6 @@ export const Sidebar = ({
   onConnect,
   onSettings,
   onStore,
-  onChat,
   onSocial,
   onNewApp,
   onNewAppAskStella,
@@ -207,16 +204,6 @@ export const Sidebar = ({
             <House size={18} />
           </span>
           <span className="sidebar-nav-label">Home</span>
-        </button>
-        <button
-          type="button"
-          className={`sidebar-nav-item ${activeView === "chat" ? "sidebar-nav-item--active" : ""}`}
-          onClick={onChat}
-        >
-          <span className="sidebar-nav-icon">
-            <MessageSquare size={18} />
-          </span>
-          <span className="sidebar-nav-label">Chat</span>
         </button>
         <button
           type="button"
