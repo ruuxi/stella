@@ -286,15 +286,10 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
-  private readonly handleHideAutoPanel = () => {
-    this.hideAutoPanel()
-  }
-
   constructor(options: OverlayWindowControllerOptions) {
     this.overlayWindow = new OverlayWindow(options)
     ipcMain.on('overlay:setInteractive', this.handleOverlaySetInteractive)
     ipcMain.on('radial:animDone', this.handleRadialAnimDone)
-    ipcMain.on('overlay:hideAutoPanel', this.handleHideAutoPanel)
   }
 
   getWindow() { return this.overlayWindow.getWindow() }
@@ -306,7 +301,7 @@ export class OverlayWindowController {
   }
 
   private get isAnyActive() {
-    return this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeAutoPanel || this.activeMorph
+    return this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeMorph
   }
 
   private hideOverlayIfIdle() {
@@ -532,43 +527,6 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
-  // ─── Auto Panel ──────────────────────────────────────────────────────
-
-  private activeAutoPanel = false
-
-  showAutoPanel(data: { x: number; y: number; width: number; height: number; windowText: string; windowTitle: string | null }) {
-    const origin = this.overlayWindow.getOverlayOrigin()
-    this.showSurface({
-      setActive: () => {
-        this.activeAutoPanel = true
-      },
-      channel: 'overlay:showAutoPanel',
-      payload: {
-        x: data.x - origin.x,
-        y: data.y - origin.y,
-        width: data.width,
-        height: data.height,
-        windowText: data.windowText,
-        windowTitle: data.windowTitle,
-      },
-      showOptions: { inactive: true },
-      interactive: true,
-      focusable: true,
-      sendBeforeShow: true,
-    })
-  }
-
-  hideAutoPanel() {
-    this.hideSurface({
-      setInactive: () => {
-        this.activeAutoPanel = false
-      },
-      channel: 'overlay:hideAutoPanel',
-      restoreIgnoreMouseEvents: true,
-      focusable: false,
-    })
-  }
-
   // ─── Morph Transition (HMR Resume) ───────────────────────────────────
 
   private activeMorph = false
@@ -688,7 +646,6 @@ export class OverlayWindowController {
     this.stopTrackingMorphWindow()
     ipcMain.removeListener('overlay:setInteractive', this.handleOverlaySetInteractive)
     ipcMain.removeListener('radial:animDone', this.handleRadialAnimDone)
-    ipcMain.removeListener('overlay:hideAutoPanel', this.handleHideAutoPanel)
     this.overlayWindow.destroy()
   }
 }

@@ -10,7 +10,6 @@ import type {
 } from '../types.js'
 import { toChatContextWindow } from '../types.js'
 import { captureWindowScreenshot } from '../window-capture.js'
-import { getWindowText } from '../window-text.js'
 import { hasMacPermission } from '../utils/macos-permissions.js'
 
 const CAPTURE_OVERLAY_HIDE_DELAY_MS = 80
@@ -52,6 +51,7 @@ export class CaptureService {
   private radialContextShouldCommit = false
   private pendingRegionCaptureResolve: ((value: RegionCaptureResult | null) => void) | null = null
   private pendingRegionCapturePromise: Promise<RegionCaptureResult | null> | null = null
+  private radialWindowContextEnabled = true
 
   constructor(private readonly options: CaptureServiceOptions) {}
 
@@ -176,10 +176,15 @@ export class CaptureService {
     this.pendingRadialCapturePromise = null
     this.stagedRadialChatContext = null
     this.radialContextShouldCommit = false
+    this.radialWindowContextEnabled = true
   }
 
   setRadialContextShouldCommit(value: boolean) {
     this.radialContextShouldCommit = value
+  }
+
+  setRadialWindowContextEnabled(value: boolean) {
+    this.radialWindowContextEnabled = value
   }
 
   commitStagedRadialContext(radialContextBeforeGesture: ChatContext | null) {
@@ -194,10 +199,14 @@ export class CaptureService {
 
     this.setPendingChatContext({
       ...this.stagedRadialChatContext,
+      windowContextEnabled: this.stagedRadialChatContext.window
+        ? this.radialWindowContextEnabled
+        : undefined,
       regionScreenshots: screenshots,
     })
     this.stagedRadialChatContext = null
     this.radialContextShouldCommit = false
+    this.radialWindowContextEnabled = true
 
     if (this.options.window.isMiniShowing()) {
       this.broadcastChatContext()
@@ -208,6 +217,7 @@ export class CaptureService {
     const requestId = ++this.radialCaptureRequestId
     this.lastRadialPoint = { x, y }
     this.stagedRadialChatContext = null
+    this.radialWindowContextEnabled = true
     const existingScreenshots =
       this.pendingChatContext?.regionScreenshots ??
       radialContextBeforeGesture?.regionScreenshots ??
@@ -495,15 +505,6 @@ export class CaptureService {
       window: toChatContextWindow(capture?.windowInfo),
     })
     this.resetRegionCapture()
-  }
-
-  async captureAutoWindowText(): Promise<{ text: string; title: string; app: string } | null> {
-    const point = this.lastRadialPoint
-    if (!point) return null
-
-    const capturePoint = this.toNativeScreenPoint(point)
-
-    return getWindowText(capturePoint.x, capturePoint.y, { excludePids: [process.pid] })
   }
 
   async captureScreenshot(point?: { x: number; y: number }) {

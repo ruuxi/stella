@@ -131,8 +131,6 @@ export const METHOD_NAMES = {
   PROJECTS_REGISTER_DIRECTORY: "projects.registerDirectory",
   PROJECTS_START: "projects.start",
   PROJECTS_STOP: "projects.stop",
-  OVERLAY_AUTO_PANEL_START: "overlay.autoPanel.start",
-  OVERLAY_AUTO_PANEL_CANCEL: "overlay.autoPanel.cancel",
   SELF_MOD_REVERT: "selfMod.revert",
   SELF_MOD_LAST_FEATURE: "selfMod.lastFeature",
   SELF_MOD_RECENT_FEATURES: "selfMod.recentFeatures",
@@ -226,10 +224,6 @@ export const METHOD_NAMES = {
     "internal.worker.projects.registerDirectory",
   INTERNAL_WORKER_PROJECTS_START: "internal.worker.projects.start",
   INTERNAL_WORKER_PROJECTS_STOP: "internal.worker.projects.stop",
-  INTERNAL_WORKER_OVERLAY_AUTO_PANEL_START:
-    "internal.worker.overlay.autoPanel.start",
-  INTERNAL_WORKER_OVERLAY_AUTO_PANEL_CANCEL:
-    "internal.worker.overlay.autoPanel.cancel",
   INTERNAL_WORKER_SELF_MOD_REVERT: "internal.worker.selfMod.revert",
   INTERNAL_WORKER_SELF_MOD_LAST_FEATURE: "internal.worker.selfMod.lastFeature",
   INTERNAL_WORKER_SELF_MOD_RECENT_FEATURES:
@@ -277,7 +271,6 @@ export const NOTIFICATION_NAMES = {
   LOCAL_CHAT_UPDATED: "localChat.updated",
   SCHEDULE_UPDATED: "schedule.updated",
   PROJECTS_UPDATED: "projects.updated",
-  OVERLAY_AUTO_PANEL_EVENT: "overlay.autoPanel.event",
   APPROVAL_REQUESTED: "approval.requested",
   GOOGLE_WORKSPACE_AUTH_REQUIRED: "googleWorkspace.authRequired",
 } as const;
@@ -347,34 +340,6 @@ export type RuntimeVoiceChatPayload = {
   conversationId: string;
   message: string;
 };
-
-export type RuntimeOverlayChatMessage = {
-  role: "system" | "user" | "assistant" | "developer";
-  content: string | Array<{ type?: string; text?: string }>;
-};
-
-export type RuntimeOverlayAutoPanelStartPayload = {
-  requestId: string;
-  agentType?: string;
-  messages?: RuntimeOverlayChatMessage[];
-};
-
-export type RuntimeOverlayAutoPanelEventPayload =
-  | {
-      requestId: string;
-      kind: "chunk";
-      chunk: string;
-    }
-  | {
-      requestId: string;
-      kind: "complete";
-      text: string;
-    }
-  | {
-      requestId: string;
-      kind: "error";
-      error: string;
-    };
 
 export type RuntimeActiveRun = {
   runId: string;

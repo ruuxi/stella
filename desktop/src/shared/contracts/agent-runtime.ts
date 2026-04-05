@@ -3,7 +3,6 @@ export const AGENT_IDS = {
   SCHEDULE: "schedule",
   GENERAL: "general",
   OFFLINE_RESPONDER: "offline_responder",
-  AUTO: "auto",
 } as const;
 
 export type AgentId = (typeof AGENT_IDS)[keyof typeof AGENT_IDS];
@@ -96,21 +95,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     name: "Offline Responder",
     description: "Handles offline fallback responses.",
     activityLabel: "Responding",
-    bundledCore: false,
-    taskSubagent: false,
-    usesLocalCliRuntime: false,
-    promptRole: "subagent",
-    includesStellaDocumentation: false,
-    controlsSelfModHmr: false,
-    localCliWorkingDirectory: null,
-    agentEnginePreference: null,
-    modelSettings: null,
-  },
-  {
-    id: AGENT_IDS.AUTO,
-    name: "Auto",
-    description: "Runs auto-panel requests and background automation flows.",
-    activityLabel: null,
     bundledCore: false,
     taskSubagent: false,
     usesLocalCliRuntime: false,

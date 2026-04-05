@@ -18,7 +18,6 @@ import type { SqliteDatabase } from "../kernel/storage/shared.js";
 import {
   METHOD_NAMES,
   NOTIFICATION_NAMES,
-  type AgentHealth,
   type HostDeviceIdentity,
   type HostDisplayUpdateParams,
   type HostHeartbeatSignature,
@@ -28,15 +27,12 @@ import {
   type LocalCronJobRecord,
   type LocalDevProjectRecord,
   type LocalHeartbeatConfigRecord,
-  type RuntimeActiveRun,
   type RuntimeAgentEventPayload,
   type RuntimeAutomationTurnRequest,
   type RuntimeAutomationTurnResult,
   type RuntimeChatPayload,
   type RuntimeConfigureParams,
   type RuntimeHealthSnapshot,
-  type RuntimeOverlayAutoPanelEventPayload,
-  type RuntimeOverlayAutoPanelStartPayload,
   type RuntimeProjectDirectoryRegistrationResult,
   type RuntimeSocialSessionStatus,
   type RuntimeSelfModRevertResult,
@@ -49,8 +45,6 @@ import {
   type RuntimeWebSearchResult,
   type RunResumeEventsResult,
   type ScheduledConversationEvent,
-  type SelfModBatchRecord,
-  type SelfModFeatureRecord,
   type SelfModFeatureSummary,
   type SelfModHmrState,
   type SocialSessionServiceSnapshot,
@@ -84,7 +78,6 @@ type RuntimeClientEvents = {
   "local-chat-updated": void;
   "schedule-updated": void;
   "projects-updated": LocalDevProjectRecord[];
-  "overlay-auto-panel-event": RuntimeOverlayAutoPanelEventPayload;
   "google-workspace-auth-required": void;
 };
 
@@ -835,25 +828,6 @@ export class StellaRuntimeClient {
     return await this.ensureProjectService().stopProject(projectId);
   }
 
-  async startOverlayAutoPanelStream(payload: RuntimeOverlayAutoPanelStartPayload) {
-    return await this.requestWorker<{ ok: true }>(
-      METHOD_NAMES.INTERNAL_WORKER_OVERLAY_AUTO_PANEL_START,
-      payload,
-      {
-        ensureWorker: true,
-        recordActivity: true,
-      },
-    );
-  }
-
-  async cancelOverlayAutoPanelStream(requestId: string) {
-    return await this.requestWorker<{ ok: true }>(
-      METHOD_NAMES.INTERNAL_WORKER_OVERLAY_AUTO_PANEL_CANCEL,
-      { requestId },
-      { ensureWorker: false, recordActivity: true },
-    );
-  }
-
   async revertSelfModFeature(payload: { featureId?: string; steps?: number }) {
     return await this.requestWorker<RuntimeSelfModRevertResult>(
       METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_REVERT,
@@ -1313,12 +1287,6 @@ export class StellaRuntimeClient {
     });
     peer.registerNotificationHandler(NOTIFICATION_NAMES.PROJECTS_UPDATED, (params) => {
       this.events.emit("projects-updated", params as LocalDevProjectRecord[]);
-    });
-    peer.registerNotificationHandler(NOTIFICATION_NAMES.OVERLAY_AUTO_PANEL_EVENT, (params) => {
-      this.events.emit(
-        "overlay-auto-panel-event",
-        params as RuntimeOverlayAutoPanelEventPayload,
-      );
     });
     peer.registerNotificationHandler(NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED, () => {
       this.events.emit("google-workspace-auth-required");
