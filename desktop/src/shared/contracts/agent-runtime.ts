@@ -75,7 +75,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     id: AGENT_IDS.GENERAL,
     name: "General",
     description:
-      "Executes delegated work with a fixed base tool pack and Stella's life environment.",
+      "Executes delegated work with a fixed base tool pack, Stella's life environment, and bundled native CLIs.",
     activityLabel: "Working",
     bundledCore: true,
     taskSubagent: true,

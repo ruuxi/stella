@@ -1,0 +1,126 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - rid: osx-arm64
+            name: officecli-mac-arm64
+            os: macos-latest
+          - rid: osx-x64
+            name: officecli-mac-x64
+            os: macos-latest
+          - rid: linux-x64
+            name: officecli-linux-x64
+            os: ubuntu-latest
+          - rid: linux-arm64
+            name: officecli-linux-arm64
+            os: ubuntu-latest
+          - rid: linux-musl-x64
+            name: officecli-linux-alpine-x64
+            os: ubuntu-latest
+          - rid: linux-musl-arm64
+            name: officecli-linux-alpine-arm64
+            os: ubuntu-latest
+          - rid: win-x64
+            name: officecli-win-x64.exe
+            os: ubuntu-latest
+          - rid: win-arm64
+            name: officecli-win-arm64.exe
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone wiki for embedded help
+        run: git clone "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.wiki.git" src/officecli/wiki || echo "Wiki clone failed, using fallback help"
+
+      - name: Verify wiki version matches csproj version
+        run: |
+          CSPROJ_VERSION=$(grep '<Version>' src/officecli/officecli.csproj | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
+          WIKI_VERSION=$(python3 -c "import json; print(json.load(open('src/officecli/wiki/version.json'))['version'])" 2>/dev/null || echo "unknown")
+          echo "csproj: $CSPROJ_VERSION, wiki: $WIKI_VERSION"
+          if [ "$WIKI_VERSION" != "$CSPROJ_VERSION" ]; then
+            echo "::error::Wiki version ($WIKI_VERSION) does not match csproj version ($CSPROJ_VERSION). Update wiki before building."
+            exit 1
+          fi
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: 'preview'
+
+      - name: Publish
+        run: dotnet publish src/officecli/officecli.csproj -c Release -r ${{ matrix.rid }} -o publish --nologo
+
+      - name: Rename output
+        run: |
+          if [ -f publish/officecli.exe ]; then
+            mv publish/officecli.exe publish/${{ matrix.name }}
+          else
+            mv publish/officecli publish/${{ matrix.name }}
+          fi
+
+      - name: Ad-hoc codesign (macOS)
+        if: startsWith(matrix.rid, 'osx-')
+        run: codesign -s - -f publish/${{ matrix.name }}
+
+      - name: Smoke test - create document
+        if: >-
+          (matrix.rid == 'osx-arm64' && runner.arch == 'ARM64') ||
+          (matrix.rid == 'osx-x64' && runner.arch == 'X64') ||
+          (matrix.rid == 'linux-x64' && runner.os == 'Linux')
+        run: |
+          chmod +x publish/${{ matrix.name }}
+          publish/${{ matrix.name }} create test_smoke.docx
+          publish/${{ matrix.name }} add test_smoke.docx /body --type paragraph --prop text="Hello from CI"
+          publish/${{ matrix.name }} get test_smoke.docx /body/p[1]
+          rm -f test_smoke.docx
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: publish/${{ matrix.name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts and generate checksums
+        run: |
+          mkdir -p flat
+          find artifacts -type f -exec mv {} flat/ \;
+          rm -rf artifacts
+          mv flat artifacts
+          cd artifacts
+          sha256sum officecli-* > SHA256SUMS
+          echo "=== SHA256SUMS ==="
+          cat SHA256SUMS
+
+      - name: Create Draft Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          draft: true

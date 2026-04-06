@@ -62,6 +62,7 @@ export const createToolHost = ({
   stellaHomePath,
   frontendRoot,
   stellaBrowserBinPath,
+  stellaOfficeBinPath,
   stellaUiCliPath,
   requestCredential,
   resolveSecret,
@@ -130,6 +131,7 @@ export const createToolHost = ({
   // Initialize shell and state contexts
   const shellState: ShellState = createShellState(resolveSecretValue, stateRoot, {
     stellaBrowserBinPath,
+    stellaOfficeBinPath,
     stellaUiCliPath,
   });
   const stateContext: StateContext = createStateContext(stateRoot, taskApi);
