@@ -244,12 +244,15 @@ export const buildSystemPrompt = (
     new Set(context.skillIds.filter((value) => value.trim().length > 0)),
   );
   if (defaultSkills.length > 0 || skillIds.length > 0) {
-    const lines = ["Skills available in this runtime:"];
+    const lines = [
+      "Installed capability metadata is available in this runtime.",
+      "Related manuals usually live under `life/knowledge/<id>/SKILL.md`.",
+    ];
     if (defaultSkills.length > 0) {
-      lines.push(`Default skills: ${defaultSkills.join(", ")}`);
+      lines.push(`Default capability IDs: ${defaultSkills.join(", ")}`);
     }
     if (skillIds.length > 0) {
-      lines.push(`Enabled installed skill IDs: ${skillIds.join(", ")}`);
+      lines.push(`Enabled installed capability IDs: ${skillIds.join(", ")}`);
     }
     sections.push(lines.join("\n"));
   }

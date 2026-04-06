@@ -75,7 +75,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     id: AGENT_IDS.GENERAL,
     name: "General",
     description:
-      "Executes all delegated work with a starter tool pack and dynamically loads more tools when needed.",
+      "Executes delegated work with a fixed base tool pack and Stella's life environment.",
     activityLabel: "Working",
     bundledCore: true,
     taskSubagent: true,
@@ -86,7 +86,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     localCliWorkingDirectory: "frontend",
     agentEnginePreference: "general",
     modelSettings: {
-      description: "Single execution agent with dynamic tool loading",
+      description: "Single execution agent that works from files, manuals, and tools",
       order: 1,
     },
   },
@@ -219,7 +219,6 @@ export const TOOL_IDS = {
   DISPLAY: "Display",
   WEB_SEARCH: "WebSearch",
   WEB_FETCH: "WebFetch",
-  ACTIVATE_SKILL: "ActivateSkill",
   NO_RESPONSE: "NoResponse",
   SAVE_MEMORY: "SaveMemory",
   RECALL_MEMORIES: "RecallMemories",

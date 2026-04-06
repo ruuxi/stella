@@ -4,12 +4,9 @@
  * These replace the backend passthrough (`callBackendTool`) for tools
  * that can execute entirely in the Electron process:
  * - WebFetch: direct fetch() + HTML-to-text
- * - ActivateSkill: read from repo-local `runtime/skills/` on disk
  * - NoResponse: immediate return
  */
 
-import path from "path";
-import { loadSkillsFromHome } from "../agents/skills.js";
 import { normalizeSafeExternalUrl } from "./network-guards.js";
 
 const MAX_FETCH_BODY_CHARS = 80_000;
@@ -124,45 +121,6 @@ export const localWebFetch = async (args: {
   } finally {
     clearTimeout(timeout);
   }
-};
-
-// ActivateSkill
-
-const formatMissingSkillMessage = (skillId: string, available: string[]) => {
-  const listing = available.length > 0
-    ? `Available skills: ${available.join(", ")}`
-    : "No skills are currently installed.";
-  return `Skill '${skillId}' not found. ${listing}`;
-};
-
-export const localActivateSkill = async (args: {
-  skillId: string;
-  stellaHome: string;
-  allowedSkillIds?: string[];
-}): Promise<string> => {
-  const { skillId, stellaHome, allowedSkillIds } = args;
-  if (!skillId) return "Error: skillId is required.";
-
-  if (/[/\\]|\.\./.test(skillId)) {
-    return "Error: invalid skillId.";
-  }
-
-  const allowed = Array.isArray(allowedSkillIds)
-    ? Array.from(new Set(allowedSkillIds.filter((value) => value.trim().length > 0)))
-    : null;
-  if (allowed && !allowed.includes(skillId)) {
-    return formatMissingSkillMessage(skillId, allowed);
-  }
-
-  const skills = await loadSkillsFromHome(
-    path.join(stellaHome, "runtime", "skills"),
-  );
-  const skill = skills.find((entry) => entry.id === skillId);
-  if (skill) {
-    return skill.markdown;
-  }
-
-  return formatMissingSkillMessage(skillId, allowed ?? skills.map((entry) => entry.id));
 };
 
 // NoResponse

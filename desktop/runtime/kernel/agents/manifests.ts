@@ -9,11 +9,8 @@ const isWithinDirectory = (rootPath: string, candidatePath: string) => {
 };
 
 type StellaYamlData = {
-  id?: string;
   name?: string;
   description?: string;
-  agentTypes?: string[];
-  version?: number;
   source?: string;
   importedAt?: number;
   enabled?: boolean;
@@ -55,9 +52,7 @@ export type ParsedSkill = {
   name: string;
   description: string;
   markdown: string;
-  agentTypes: string[];
   toolsAllowlist?: string[];
-  tags?: string[];
   execution?: "backend" | "device";
   requiresSecrets?: string[];
   publicIntegration?: boolean;
@@ -66,7 +61,6 @@ export type ParsedSkill = {
     files?: Record<string, { provider: string; label?: string; description?: string; placeholder?: string }>;
   };
   enabled?: boolean;
-  version: number;
   source: string;
   filePath: string;
 };
@@ -77,11 +71,6 @@ const readMarkdownFile = async (filePath: string) => {
   } catch {
     return null;
   }
-};
-
-const coerceVersion = (value: unknown) => {
-  const parsed = Number(value ?? 1);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
 };
 
 const deriveIdFromPath = (filePath: string) => {
@@ -219,10 +208,7 @@ export const parseSkillMarkdown = async (
   const stellaYaml = await readStellaYaml(skillDir);
 
   // Merge stella.yaml with frontmatter (stella.yaml wins)
-  const id =
-    (stellaYaml?.id && stellaYaml.id.trim()) ||
-    (typeof metadata.id === "string" && metadata.id.trim()) ||
-    deriveIdFromPath(filePath);
+  const id = deriveIdFromPath(filePath);
   const name =
     (stellaYaml?.name && stellaYaml.name.trim()) ||
     (typeof metadata.name === "string" && metadata.name.trim()) ||
@@ -232,13 +218,7 @@ export const parseSkillMarkdown = async (
     (typeof metadata.description === "string" && metadata.description.trim()) ||
     "Skill instructions.";
 
-  // Prefer stella.yaml agentTypes if present
-  const agentTypes =
-    stellaYaml?.agentTypes && stellaYaml.agentTypes.length > 0
-      ? stellaYaml.agentTypes
-      : normalizeStringArray(metadata.agentTypes);
   const toolsAllowlist = normalizeStringArray(metadata.toolsAllowlist);
-  const tags = normalizeStringArray(metadata.tags);
   const requiresSecrets = normalizeStringArray(metadata.requiresSecrets);
   const execution =
     metadata.execution === "backend" || metadata.execution === "device"
@@ -276,15 +256,12 @@ export const parseSkillMarkdown = async (
     name,
     description,
     markdown: body.trim() ? body : raw,
-    agentTypes,
     toolsAllowlist: toolsAllowlist.length > 0 ? toolsAllowlist : undefined,
-    tags: tags.length > 0 ? tags : undefined,
     execution,
     requiresSecrets: derivedRequires.length > 0 ? derivedRequires : undefined,
     publicIntegration,
     secretMounts,
     enabled,
-    version: coerceVersion(metadata.version),
     source,
     filePath,
   };

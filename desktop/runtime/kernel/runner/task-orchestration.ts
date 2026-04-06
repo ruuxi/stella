@@ -20,7 +20,6 @@ import type {
   QueuedOrchestratorTurn,
 } from "./types.js";
 import { buildTaskEventPrompt, createSelfModHmrState } from "./shared.js";
-import { routeToolsForPrompt } from "./tool-router.js";
 import type { SelfModHmrState } from "../../contracts/index.js";
 
 const WINDOWS_PATH_PATTERN = /^(?:[A-Za-z]:[\\/]|\\\\)/;
@@ -209,17 +208,6 @@ export const createTaskOrchestration = (
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaHomePath),
     getStarterTools: (agentType) =>
       agentType === AGENT_IDS.GENERAL ? [...GENERAL_STARTER_TOOLS] : [],
-    routeTools: async ({ agentType, description, prompt, loadedTools }) => {
-      if (agentType !== AGENT_IDS.GENERAL) {
-        return [];
-      }
-      return await routeToolsForPrompt({
-        context,
-        description,
-        prompt,
-        loadedTools,
-      });
-    },
     resolveTaskThread: ({ conversationId, agentType, threadId }) => {
       if (!isLocalCliAgentId(agentType)) {
         return null;
