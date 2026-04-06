@@ -155,6 +155,11 @@ export function useFullShellChat({
     sendContextlessMessage(prompt)
   }, [resetIdleTimer, sendContextlessMessage])
 
+  const dismissHome = useCallback(() => {
+    resetIdleTimer()
+    markHomeSessionInteraction()
+  }, [resetIdleTimer, markHomeSessionInteraction])
+
   // Scroll management â€” ResizeObserver on content handles auto-scroll.
   // We pass `isWorking` so the settle timer keeps auto-follow briefly after streaming stops.
   const {
@@ -340,5 +345,6 @@ export function useFullShellChat({
     },
     showHomeContent,
     onSuggestionClick,
+    dismissHome,
   }
 }

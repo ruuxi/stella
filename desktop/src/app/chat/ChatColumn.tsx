@@ -26,6 +26,7 @@ export const ChatColumn = memo(function ChatColumn({
   conversationId,
   showHomeContent,
   onSuggestionClick,
+  onDismissHome,
 }: ChatColumnProps) {
   // --- Custom scrollbar thumb drag ---
   const isDraggingRef = useRef(false);
@@ -89,18 +90,21 @@ export const ChatColumn = memo(function ChatColumn({
 
   const appSessionStartedAtMs = useAgentSessionStartedAt();
   const runningTool = useMemo(
-    () => homeVisible ? null : getCurrentRunningTool(conversation.events),
-    [conversation.events, homeVisible],
+    () => getCurrentRunningTool(conversation.events),
+    [conversation.events],
   );
   const persistedRunningTasks = useMemo(
-    () => homeVisible ? [] : getRunningTasks(conversation.events, { appSessionStartedAtMs }),
-    [appSessionStartedAtMs, conversation.events, homeVisible],
+    () => getRunningTasks(conversation.events, { appSessionStartedAtMs }),
+    [appSessionStartedAtMs, conversation.events],
   );
   const runningTasks = useMemo(
-    () => homeVisible ? [] : mergeRunningTasks(persistedRunningTasks, conversation.streaming.liveTasks),
-    [conversation.streaming.liveTasks, persistedRunningTasks, homeVisible],
+    () => mergeRunningTasks(persistedRunningTasks, conversation.streaming.liveTasks),
+    [conversation.streaming.liveTasks, persistedRunningTasks],
   );
-  const showThinkingFooter = runningTasks.length > 0 || Boolean(conversation.streaming.isStreaming);
+  const hasActiveWork =
+    runningTasks.length > 0 || Boolean(conversation.streaming.isStreaming);
+  const showThinkingFooter = hasActiveWork;
+  const shouldShowHomeContent = homeVisible && !hasActiveWork;
 
   // Capture viewport ref for drag operations
   const assignViewport = useCallback(
@@ -128,7 +132,8 @@ export const ChatColumn = memo(function ChatColumn({
     />
   );
 
-  if (homeVisible && onSuggestionClick) {
+  if (shouldShowHomeContent && onSuggestionClick) {
+    const hasMessages = conversation.events.length > 0;
     return (
       <div className={`full-body-main full-body-main--home${homeLeaving ? " full-body-main--home-leaving" : ""}`}>
         <HomeContent
@@ -139,6 +144,18 @@ export const ChatColumn = memo(function ChatColumn({
             {composerElement}
           </div>
         </HomeContent>
+        {hasMessages && onDismissHome && (
+          <button
+            className="home-view-messages"
+            type="button"
+            onClick={onDismissHome}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            View messages
+          </button>
+        )}
       </div>
     );
   }

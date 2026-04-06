@@ -122,6 +122,7 @@ export const FullShellRuntime = ({
           conversationId={conversationId}
           showHomeContent={chat.showHomeContent}
           onSuggestionClick={chat.onSuggestionClick}
+          onDismissHome={chat.dismissHome}
         />
       ) : activeView === "social" ? (
         <SocialView onSignIn={onSignIn} />
