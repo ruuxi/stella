@@ -189,6 +189,37 @@
 }
 
 
+/* View messages button — shown when home overlays existing chat */
+.home-view-messages {
+  position: absolute;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--border-weak);
+  border-radius: 999px;
+  color: var(--text-weak);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: default;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  animation: homeContentFadeIn 300ms ease both;
+  animation-delay: 200ms;
+  opacity: 0;
+}
+
+.home-view-messages:hover {
+  color: var(--text-base);
+  border-color: var(--border-base);
+}
+
+.full-body-main--home-leaving .home-view-messages {
+  animation: homeContentFadeOut 280ms ease both;
+}
+
 /* Music Player Widget */
 .home-music-player-wrapper {
   grid-row: 3;
