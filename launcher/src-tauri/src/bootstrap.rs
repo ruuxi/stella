@@ -70,9 +70,23 @@ pub fn ensure_installed() -> bool {
         return false;
     }
 
-    // macOS apps are .app bundles — copying just the binary breaks Tauri/WebKit.
-    // Users install by dragging .app to /Applications; skip self-install entirely.
+    // macOS: no self-install (bundles break if you copy just the binary), but
+    // redirect DMG / App-Translocation launches to the installed copy when it exists.
     if cfg!(target_os = "macos") {
+        if let Ok(exe) = std::env::current_exe() {
+            let resolved = std::fs::canonicalize(&exe).unwrap_or(exe);
+            let path_str = resolved.to_string_lossy();
+            let is_dmg = path_str.starts_with("/Volumes/");
+            let is_translocated = path_str.contains("/AppTranslocation/");
+
+            if is_dmg || is_translocated {
+                let installed = Path::new("/Applications/Stella.app");
+                if installed.exists() {
+                    let _ = Command::new("open").arg(installed).spawn();
+                    return true;
+                }
+            }
+        }
         return false;
     }
 
