@@ -31,7 +31,7 @@ export class MouseHookManager {
   start() {
     if (this.started) return
 
-    if (!hasMacPermission('accessibility', true)) {
+    if (!hasMacPermission('accessibility', false)) {
       console.warn('[mouse-hook] Accessibility permission not granted — input hooks disabled until approved')
       return
     }

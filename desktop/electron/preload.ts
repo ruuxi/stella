@@ -491,6 +491,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("host:setCloudSyncEnabled", payload),
     onAuthCallback: onIpc<{ url: string }>("auth:callback"),
     openFullDiskAccess: () => ipcRenderer.send("system:openFullDiskAccess"),
+    getPermissionStatus: () =>
+      ipcRenderer.invoke("permissions:getStatus") as Promise<{
+        accessibility: boolean;
+        screen: boolean;
+        microphone: boolean;
+      }>,
+    openPermissionSettings: (kind: string) =>
+      ipcRenderer.invoke("permissions:openSettings", { kind }),
     openExternal: (url: string) => ipcRenderer.send("shell:openExternal", url),
     showItemInFolder: (filePath: string) =>
       ipcRenderer.send("shell:showItemInFolder", filePath),

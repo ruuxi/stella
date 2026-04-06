@@ -35,6 +35,7 @@ import type {
 import "./Onboarding.css";
 import "@/global/onboarding/selfmod-demo.css";
 
+const loadPermissionsPhase = () => import("./OnboardingPermissions");
 const loadBrowserPhase = () => import("./OnboardingBrowserPhase");
 const loadCreationPhase = () => import("./OnboardingCreationPhase");
 const loadVoicePhase = () => import("./OnboardingVoicePhase");
@@ -43,6 +44,11 @@ const loadPersonalityPhase = () => import("./OnboardingPersonalityPhase");
 const loadShortcutsPhase = () => import("./OnboardingShortcutsPhase");
 const loadMockWindows = () => import("./OnboardingMockWindows");
 
+const OnboardingPermissions = lazy(() =>
+  loadPermissionsPhase().then((module) => ({
+    default: module.OnboardingPermissions,
+  })),
+);
 const OnboardingBrowserPhase = lazy(() =>
   loadBrowserPhase().then((module) => ({
     default: module.OnboardingBrowserPhase,
@@ -235,6 +241,8 @@ const getShowcaseDemo = (id: ShowcaseId | null): OnboardingDemo =>
 const getNextPhaseToPrefetch = (phase: Phase): Phase | null => {
   switch (phase) {
     case "intro":
+      return "permissions";
+    case "permissions":
       return "browser";
     case "browser":
       return "creation";
@@ -255,6 +263,9 @@ const getNextPhaseToPrefetch = (phase: Phase): Phase | null => {
 
 const prefetchPhaseModule = (phase: Phase | null) => {
   switch (phase) {
+    case "permissions":
+      void loadPermissionsPhase();
+      break;
     case "browser":
       void loadBrowserPhase();
       void loadMockWindows();
@@ -745,6 +756,15 @@ export const OnboardingStep1 = ({
 
   const renderActiveSplitPhase = (activePhase: Phase) => {
     switch (activePhase) {
+      case "permissions":
+        return (
+          <Suspense fallback={splitPhaseFallback}>
+            <OnboardingPermissions
+              splitTransitionActive={leaving}
+              onContinue={nextSplitStep}
+            />
+          </Suspense>
+        );
       case "browser":
         return (
           <Suspense fallback={splitPhaseFallback}>

@@ -367,6 +367,12 @@ export type ElectronSystemApi = {
   }) => Promise<{ ok: boolean }>;
   onAuthCallback: (callback: (data: { url: string }) => void) => () => void;
   openFullDiskAccess: () => void;
+  getPermissionStatus: () => Promise<{
+    accessibility: boolean;
+    screen: boolean;
+    microphone: boolean;
+  }>;
+  openPermissionSettings: (kind: string) => Promise<void>;
   openExternal: (url: string) => void;
   showItemInFolder: (filePath: string) => void;
   shellKillByPort: (port: number) => Promise<void>;

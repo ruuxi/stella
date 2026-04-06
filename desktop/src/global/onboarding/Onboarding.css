@@ -3896,4 +3896,100 @@
     transition: none;
     animation: none;
   }
+
+  .onboarding-permission-card {
+    animation: none;
+    transform: none;
+  }
+}
+
+/* ── Permissions phase ─────────────────────────────────────────────── */
+
+.onboarding-permissions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+  margin-bottom: 20px;
+}
+
+.onboarding-permission-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: 8px;
+  padding: 14px 18px;
+  transition:
+    opacity 0.25s ease,
+    background 0.25s ease,
+    border-color 0.25s ease;
+  opacity: 0.7;
+  animation: onboardingBrowserListIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.onboarding-permission-card:nth-child(1) { animation-delay: 0.1s; }
+.onboarding-permission-card:nth-child(2) { animation-delay: 0.2s; }
+.onboarding-permission-card:nth-child(3) { animation-delay: 0.3s; }
+
+.onboarding-permission-card[data-granted] {
+  opacity: 0.9;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+}
+
+.onboarding-permission-card:hover {
+  opacity: 0.85;
+  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+.onboarding-permission-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.onboarding-permission-card__title {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+}
+
+.onboarding-permission-card__desc {
+  font-size: 12px;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  color: var(--foreground);
+  opacity: 0.7;
+  line-height: 1.4;
+}
+
+.onboarding-permission-card__action {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid color-mix(in oklch, var(--foreground) 20%, transparent);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 400;
+  font-family: inherit;
+  color: var(--foreground);
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.onboarding-permission-card__action:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 30%, transparent);
+}
+
+.onboarding-permission-card__action:disabled {
+  cursor: default;
+  opacity: 0.6;
 }

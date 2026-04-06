@@ -1,5 +1,4 @@
 import { getSelectedText, initSelectedTextProcess } from "../selected-text.js";
-import { requestAllMacPermissions } from "../utils/macos-permissions.js";
 import { initializeWakeWord } from "../wake-word/initialize.js";
 import {
   type BootstrapContext,
@@ -38,19 +37,6 @@ const createDeferredStartupTasks = (
   const { config, services, state } = context;
 
   return [
-    {
-      label: "permissions",
-      run: async () => {
-        try {
-          await requestAllMacPermissions();
-        } catch (error) {
-          console.warn(
-            "[permissions] Failed to request permissions:",
-            (error as Error).message,
-          );
-        }
-      },
-    },
     {
       label: "overlay-window",
       run: () => {
