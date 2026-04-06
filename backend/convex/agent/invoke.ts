@@ -11,8 +11,6 @@ import { validateAgainstSchema } from "../lib/validator";
 import { scrubProviderTerms, scrubValue } from "../lib/provider_redaction";
 import { resolveModelConfig, resolveFallbackConfig } from "./model_resolver";
 import { streamTextWithFailover } from "./model_execution";
-import { PREFERRED_BROWSER_KEY } from "../data/preferences";
-import { COMPUTER_AGENT_SAFARI_DENIED_REASON } from "../lib/agent_constants";
 import {
   AGENT_INVOKE_SYSTEM_INSTRUCTIONS,
   buildAgentInvokeUserPrompt,
@@ -63,20 +61,6 @@ export const invoke = internalAction({
     if (args.conversationId) {
       const convo = await requireConversationOwnerAction(ctx, args.conversationId);
       ownerId = convo.ownerId;
-    }
-
-    if (args.agentType === "computer" && ownerId) {
-      const preferredBrowser = await ctx.runQuery(internal.data.preferences.getPreferenceForOwner, {
-        ownerId,
-        key: PREFERRED_BROWSER_KEY,
-      });
-      if (preferredBrowser?.trim().toLowerCase() === "safari") {
-        return {
-          ok: false,
-          reason: COMPUTER_AGENT_SAFARI_DENIED_REASON,
-          rawText: COMPUTER_AGENT_SAFARI_DENIED_REASON,
-        };
-      }
     }
 
     const promptBuild = await buildSystemPrompt(ctx, args.agentType, { ownerId });
