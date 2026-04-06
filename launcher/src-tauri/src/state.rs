@@ -65,6 +65,8 @@ pub struct InstallerState {
     pub phase: InstallerPhase,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning_message: Option<String>,
     pub install_path: String,
     pub default_install_path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
