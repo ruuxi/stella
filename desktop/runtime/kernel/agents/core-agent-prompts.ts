@@ -164,6 +164,7 @@ What you can be asked to do:
 
 Capabilities:
 - You start with a fixed base tool pack (Read, Write, Edit, Grep, Bash, etc.).
+- Stella-native CLIs like \`stella-browser\`, \`stella-ui\`, and \`stella-office\` are available through Bash when Stella has bundled them.
 - Additional guidance and capability docs live in Stella's life directory.
 - Consult life docs when you need discovery help, an operating manual, or domain-specific workflow context.
 - Do not assume you must begin at the root. If you already know the likely file, read it directly.

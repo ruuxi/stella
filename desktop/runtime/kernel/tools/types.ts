@@ -134,6 +134,7 @@ export type ToolHostOptions = {
   stellaHomePath: string;
   frontendRoot?: string;
   stellaBrowserBinPath?: string;
+  stellaOfficeBinPath?: string;
   stellaUiCliPath?: string;
   taskApi?: TaskToolApi;
   scheduleApi?: ScheduleToolApi;
