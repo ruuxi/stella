@@ -54,6 +54,7 @@ export type BootstrapState = {
   stellaBrowserBridgeService: StellaBrowserBridgeResource | null;
   wakeWordController: WakeWordController | null;
   mobileBridgeResource: MobileBridgeResource | null;
+  officePreviewBridgeStop: (() => void) | null;
   windowManager: WindowManager | null;
 };
 
@@ -195,6 +196,7 @@ export const createBootstrapContext = (
     stellaBrowserBridgeService: null,
     wakeWordController: null,
     mobileBridgeResource: null,
+    officePreviewBridgeStop: null,
     windowManager: null,
   };
 

@@ -29,6 +29,7 @@ export type ToolContext = {
 
 export type ToolResult = {
   result?: unknown;
+  details?: unknown;
   error?: string;
 };
 

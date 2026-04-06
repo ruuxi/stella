@@ -28,4 +28,8 @@ export const registerBootstrapProcessCleanups = (
   processRuntime.registerCleanup("before-quit", "mobile-bridge", async () => {
     await context.state.mobileBridgeResource?.stop();
   });
+  processRuntime.registerCleanup("before-quit", "office-preview-bridge", () => {
+    context.state.officePreviewBridgeStop?.();
+    context.state.officePreviewBridgeStop = null;
+  });
 };

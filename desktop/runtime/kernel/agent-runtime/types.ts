@@ -47,6 +47,7 @@ export type RuntimeToolEndEvent = {
   toolCallId: string;
   toolName: string;
   resultPreview: string;
+  details?: unknown;
 };
 
 export type RuntimeErrorEvent = {

@@ -23,6 +23,8 @@ export const IPC_WINDOW_SHOW = "window:show" as const;
 // ── Display ─────────────────────────────────────────────────────────────────
 
 export const IPC_DISPLAY_UPDATE = "display:update" as const;
+export const IPC_OFFICE_PREVIEW_LIST = "officePreview:list" as const;
+export const IPC_OFFICE_PREVIEW_UPDATE = "officePreview:update" as const;
 
 // ── UI State ────────────────────────────────────────────────────────────────
 

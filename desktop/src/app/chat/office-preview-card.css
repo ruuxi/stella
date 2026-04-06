@@ -1,0 +1,64 @@
+.office-preview-card {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+}
+
+.office-preview-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--background) 72%, var(--card) 28%);
+}
+
+.office-preview-card__title-group {
+  min-width: 0;
+}
+
+.office-preview-card__eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.office-preview-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.office-preview-card__timestamp {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.office-preview-card__frame {
+  display: block;
+  width: 100%;
+  min-height: 420px;
+  border: 0;
+  background: white;
+}
+
+.office-preview-card__placeholder {
+  padding: 18px 16px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+.office-preview-card__placeholder--error {
+  color: var(--destructive);
+}

@@ -76,6 +76,7 @@ type AgentEventPayload = {
   toolName?: string;
   args?: Record<string, unknown>;
   resultPreview?: string;
+  details?: unknown;
   error?: string;
   fatal?: boolean;
   finalText?: string;
@@ -554,14 +555,19 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.TOOL_START });
       },
       onToolEnd: (ev) => {
+        const details =
+          ev.details && typeof ev.details === "object"
+            ? (ev.details as Record<string, unknown>)
+            : undefined;
         ensureChatStore().appendEvent({
           conversationId: payload.conversationId,
           type: "tool_result",
           requestId: ev.toolCallId,
           payload: {
             toolName: ev.toolName,
-            result: ev.resultPreview,
+            result: details ?? ev.resultPreview,
             resultPreview: ev.resultPreview,
+            ...(details ? details : {}),
             ...(ev.agentType ? { agentType: ev.agentType } : {}),
           },
         });

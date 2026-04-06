@@ -113,8 +113,12 @@ export const createRunEventRecorder = ({
       toolCallId: string;
       toolName: string;
       result: unknown;
+      details?: unknown;
     }): RuntimeToolEndEvent {
-      const resultPreview = getToolResultPreview(args.toolName, args.result);
+      const resultPreview = getToolResultPreview(
+        args.toolName,
+        args.details ?? args.result,
+      );
       const seq = nextSeq();
       store.recordRunEvent({
         timestamp: now(),
@@ -134,6 +138,7 @@ export const createRunEventRecorder = ({
         toolCallId: args.toolCallId,
         toolName: args.toolName,
         resultPreview,
+        ...(args.details !== undefined ? { details: args.details } : {}),
       };
     },
 
@@ -274,6 +279,7 @@ export const subscribeRuntimeAgentEvents = ({
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         result: event.result,
+        details: event.result.details,
       });
       logger.debug("tool.end", {
         agentType,

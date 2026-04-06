@@ -1,4 +1,5 @@
 import { sanitizeAssistantText } from "../../../../runtime/kernel/internal-tool-transcript.js";
+import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
 
 export interface StepItem {
   id: string;
@@ -34,6 +35,7 @@ export type ToolResultPayload = {
   error?: string;
   requestId?: string;
   agentType?: string;
+  officePreviewRef?: OfficePreviewRef;
 };
 
 // Attachment structure

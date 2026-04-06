@@ -9,6 +9,11 @@ import type {
   SelfModHmrState,
 } from "../src/shared/contracts/boundary.js";
 import type { RadialTriggerCode } from "../src/shared/lib/radial-trigger.js";
+import type { OfficePreviewSnapshot } from "../src/shared/contracts/office-preview.js";
+import {
+  IPC_OFFICE_PREVIEW_LIST,
+  IPC_OFFICE_PREVIEW_UPDATE,
+} from "../src/shared/contracts/ipc-channels.js";
 import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
@@ -107,6 +112,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   display: {
     onUpdate: onIpc<string>("display:update"),
+  },
+
+  officePreview: {
+    list: () =>
+      ipcRenderer.invoke(IPC_OFFICE_PREVIEW_LIST) as Promise<OfficePreviewSnapshot[]>,
+    onUpdate: onIpc<OfficePreviewSnapshot>(IPC_OFFICE_PREVIEW_UPDATE),
   },
 
   ui: {

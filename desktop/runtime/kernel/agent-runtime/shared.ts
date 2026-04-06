@@ -63,10 +63,29 @@ export const textFromUnknown = (value: unknown): string => {
   }
 };
 
+const textFromToolLikeValue = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.text === "string") {
+      return record.text;
+    }
+    if (record.details && typeof record.details === "object") {
+      const details = record.details as Record<string, unknown>;
+      if (typeof details.text === "string") {
+        return details.text;
+      }
+    }
+  }
+  return textFromUnknown(value);
+};
+
 export const getToolResultPreview = (
   _toolName: string,
   result: unknown,
-): string => textFromUnknown(result).slice(0, MAX_RESULT_PREVIEW);
+): string => textFromToolLikeValue(result).slice(0, MAX_RESULT_PREVIEW);
 
 export const toAgentMessages = (
   history: Array<{ role: "user" | "assistant"; content: string }>,

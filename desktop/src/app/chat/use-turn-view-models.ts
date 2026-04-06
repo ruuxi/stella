@@ -1,6 +1,7 @@
 ﻿import { useMemo } from "react";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { MessagePayload } from "@/app/chat/lib/event-transforms";
+import { isOfficePreviewRef } from "@/shared/contracts/office-preview";
 import {
   groupEventsIntoTurns,
   getCurrentRunningTool,
@@ -53,6 +54,22 @@ const getWebSearchBadgeHtml = (events: EventRecord[]): string | undefined => {
 
     if (typeof payload.result === "string" && payload.result.trim()) {
       return payload.result;
+    }
+  }
+
+  return undefined;
+};
+
+const getOfficePreviewRef = (events: EventRecord[]) => {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.type !== "tool_result") {
+      continue;
+    }
+
+    const payload = event.payload as { officePreviewRef?: unknown } | undefined;
+    if (isOfficePreviewRef(payload?.officePreviewRef)) {
+      return payload.officePreviewRef;
     }
   }
 
@@ -147,6 +164,7 @@ export function useTurnViewModels(opts: {
         assistantMessageId,
         assistantEmotesEnabled,
         webSearchBadgeHtml: getWebSearchBadgeHtml(turn.toolEvents),
+        officePreviewRef: getOfficePreviewRef(turn.toolEvents),
       };
     });
   }, [slicedTurns]);

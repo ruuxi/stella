@@ -12,6 +12,7 @@ AI-friendly CLI for `.docx`, `.xlsx`, `.pptx`. Stella bundles this command direc
 - Use `stella-office` inside `Bash`.
 - Stella exposes it as a native bundled command, similar to `stella-browser`.
 - If the command is unexpectedly unavailable, the bundled binary for this platform may not be present yet.
+- For live chat previews inside Stella, use `stella-office preview <file>`.
 
 ---
 
@@ -47,6 +48,25 @@ stella-office set report.docx /body/p[1]/r[1] --prop bold=true
 stella-office set report.docx /body/p[2]/r[1] --prop color=FF0000
 stella-office close report.docx
 ```
+
+---
+
+## Inline Live Preview
+
+Use this when you want Stella to keep a document preview embedded in chat while you continue editing the underlying file.
+
+```bash
+stella-office preview slides.pptx
+stella-office preview report.docx
+stella-office preview budget.xlsx --interval-ms 1000
+```
+
+Notes:
+
+- `preview` is Stella-specific wrapper behavior. It is not an upstream OfficeCli subcommand.
+- The command starts a Stella-owned preview session and returns immediately.
+- Stella watches the document and refreshes the inline preview automatically as the file changes.
+- Use it before or during multi-step edit workflows when visual feedback matters.
 
 ---
 
