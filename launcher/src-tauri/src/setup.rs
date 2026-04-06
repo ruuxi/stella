@@ -1,6 +1,7 @@
 use crate::disk;
 use crate::shell::run;
 use crate::state::*;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
@@ -22,6 +23,11 @@ VITE_SITE_URL=https://stella.sh\n\
 VITE_TWITCH_EMOTE_TWITCH_ID=40934651\n";
 
 const GITHUB_REPO: &str = "ruuxi/stella";
+const DEFAULT_EMOTE_RELEASE_MANIFEST_URL: &str =
+    "https://pub-58708621bfa94e3bb92de37cde354c0d.r2.dev/emotes/current.json";
+const EMOTE_INSTALL_STATE_FILE: &str = "stella-emotes-install.json";
+const EMOTE_INSTALL_STATUS_INSTALLED: &str = "installed";
+const EMOTE_INSTALL_STATUS_SKIPPED: &str = "skipped";
 
 fn release_tarball_name() -> &'static str {
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
@@ -143,13 +149,29 @@ fn node_modules_of(d: &str) -> PathBuf {
     Path::new(d).join("node_modules")
 }
 fn launch_script_name() -> &'static str {
-    if cfg!(target_os = "windows") { LAUNCH_SCRIPT_WIN } else { LAUNCH_SCRIPT_UNIX }
+    if cfg!(target_os = "windows") {
+        LAUNCH_SCRIPT_WIN
+    } else {
+        LAUNCH_SCRIPT_UNIX
+    }
 }
 fn launch_script_of(d: &str) -> PathBuf {
     Path::new(d).join(launch_script_name())
 }
 fn env_file_of(d: &str) -> PathBuf {
     Path::new(d).join(ENV_FILE_NAME)
+}
+fn emote_install_state_of(d: &str) -> PathBuf {
+    Path::new(d).join(EMOTE_INSTALL_STATE_FILE)
+}
+fn emotes_dir_of(d: &str) -> PathBuf {
+    Path::new(d).join("public").join("emotes")
+}
+fn emotes_manifest_of(d: &str) -> PathBuf {
+    emotes_dir_of(d).join("manifest.json")
+}
+fn emote_staging_root_of(d: &str) -> PathBuf {
+    Path::new(d).join(".stella-emotes-staging")
 }
 fn dugite_git_root_of(d: &str) -> PathBuf {
     Path::new(d).join("node_modules").join("dugite").join("git")
@@ -205,7 +227,9 @@ fn dugite_launch_env(install_dir: &str) -> HashMap<String, String> {
     );
     env.insert(
         "GIT_EXEC_PATH".into(),
-        dugite_git_exec_path_of(install_dir).to_string_lossy().to_string(),
+        dugite_git_exec_path_of(install_dir)
+            .to_string_lossy()
+            .to_string(),
     );
 
     let existing_path = std::env::var("PATH").unwrap_or_default();
@@ -219,13 +243,19 @@ fn dugite_launch_env(install_dir: &str) -> HashMap<String, String> {
         env.insert("PATH".into(), format!("{path_prefix};{existing_path}"));
         env.insert(
             "STELLA_GIT_BASH".into(),
-            dugite_git_bash_of(install_dir).to_string_lossy().to_string(),
+            dugite_git_bash_of(install_dir)
+                .to_string_lossy()
+                .to_string(),
         );
     } else {
         env.insert("PATH".into(), format!("{git_root_str}/bin:{existing_path}"));
         env.insert(
             "GIT_CONFIG_SYSTEM".into(),
-            git_root.join("etc").join("gitconfig").to_string_lossy().to_string(),
+            git_root
+                .join("etc")
+                .join("gitconfig")
+                .to_string_lossy()
+                .to_string(),
         );
         env.insert(
             "GIT_TEMPLATE_DIR".into(),
@@ -263,6 +293,80 @@ async fn path_exists(p: &Path) -> bool {
 
 async fn path_exists_str(p: &str) -> bool {
     path_exists(Path::new(p)).await
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EmoteReleaseManifest {
+    version: String,
+    archive_url: String,
+    #[serde(default)]
+    sha256: Option<String>,
+    #[serde(default)]
+    sha256_url: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EmoteInstallState {
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+    updated_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    warning: Option<String>,
+}
+
+fn emote_release_manifest_url() -> String {
+    std::env::var("STELLA_EMOTE_RELEASE_MANIFEST_URL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_EMOTE_RELEASE_MANIFEST_URL.to_string())
+}
+
+fn build_emote_install_state(
+    status: &str,
+    version: Option<String>,
+    warning: Option<String>,
+) -> EmoteInstallState {
+    EmoteInstallState {
+        status: status.to_string(),
+        version,
+        updated_at: chrono_now(),
+        warning,
+    }
+}
+
+async fn read_emote_install_state(install_dir: &str) -> Option<EmoteInstallState> {
+    let raw = fs::read_to_string(emote_install_state_of(install_dir))
+        .await
+        .ok()?;
+    serde_json::from_str::<EmoteInstallState>(&raw).ok()
+}
+
+async fn write_emote_install_state(
+    install_dir: &str,
+    state: &EmoteInstallState,
+) -> Result<(), String> {
+    let path = emote_install_state_of(install_dir);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .await
+            .map_err(|e| format!("Failed to prepare emote install state path: {e}"))?;
+    }
+    let payload = serde_json::to_string_pretty(state)
+        .map_err(|e| format!("Failed to serialize emote install state: {e}"))?;
+    fs::write(path, format!("{payload}\n"))
+        .await
+        .map_err(|e| format!("Failed to persist emote install state: {e}"))
+}
+
+fn normalize_sha256(value: &str) -> Option<String> {
+    value
+        .split_whitespace()
+        .find(|part| part.len() == 64 && part.chars().all(|char| char.is_ascii_hexdigit()))
+        .map(|part| part.to_ascii_lowercase())
 }
 
 // ── Settings persistence ────────────────────────────────────────────
@@ -326,7 +430,9 @@ async fn write_launch_script(install_dir: &str) -> String {
             content.push_str(&format!("export GIT_EXEC_PATH=\"{git_exec_path}\"\n"));
         }
         if let Some(git_config_system) = launch_env.get("GIT_CONFIG_SYSTEM") {
-            content.push_str(&format!("export GIT_CONFIG_SYSTEM=\"{git_config_system}\"\n"));
+            content.push_str(&format!(
+                "export GIT_CONFIG_SYSTEM=\"{git_config_system}\"\n"
+            ));
         }
         if let Some(git_template_dir) = launch_env.get("GIT_TEMPLATE_DIR") {
             content.push_str(&format!("export GIT_TEMPLATE_DIR=\"{git_template_dir}\"\n"));
@@ -358,8 +464,7 @@ async fn write_default_env_file(install_dir: &str) -> Result<(), String> {
 
 // ── Windows registry ────────────────────────────────────────────────
 
-const REG_UNINSTALL: &str =
-    r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Stella";
+const REG_UNINSTALL: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Stella";
 
 async fn write_registry(manifest: &Manifest) {
     if !cfg!(target_os = "windows") {
@@ -381,7 +486,18 @@ async fn write_registry(manifest: &Manifest) {
 
     for (name, reg_type, data) in entries {
         run(
-            &["reg", "add", REG_UNINSTALL, "/v", name, "/t", reg_type, "/d", data, "/f"],
+            &[
+                "reg",
+                "add",
+                REG_UNINSTALL,
+                "/v",
+                name,
+                "/t",
+                reg_type,
+                "/d",
+                data,
+                "/f",
+            ],
             None,
         )
         .await;
@@ -411,7 +527,11 @@ async fn bun_on_path() -> bool {
     if path_exists(&bun_bin).await {
         if let Some(bin_dir) = bun_bin.parent() {
             let current_path = std::env::var("PATH").unwrap_or_default();
-            let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
+            let sep = if cfg!(target_os = "windows") {
+                ";"
+            } else {
+                ":"
+            };
             std::env::set_var(
                 "PATH",
                 format!("{}{sep}{current_path}", bin_dir.to_string_lossy()),
@@ -427,7 +547,10 @@ async fn install_bun_globally() -> bool {
     if cfg!(target_os = "windows") {
         let result = run(
             &[
-                "powershell", "-NoProfile", "-NonInteractive", "-Command",
+                "powershell",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
                 "irm https://bun.sh/install.ps1 | iex",
             ],
             None,
@@ -507,7 +630,11 @@ async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
         .await
         .map_err(|e| format!("Download failed: {e}"))?;
 
-    log_install(install_dir, &format!("Downloaded {} bytes, extracting...", bytes.len())).await;
+    log_install(
+        install_dir,
+        &format!("Downloaded {} bytes, extracting...", bytes.len()),
+    )
+    .await;
 
     // Decompress zstd then untar — do in blocking task to avoid blocking async runtime
     let install_path = install_dir.to_string();
@@ -516,8 +643,7 @@ async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
             .map_err(|e| format!("zstd decompress failed: {e}"))?;
         let mut archive = tar::Archive::new(decoder);
 
-        std::fs::create_dir_all(&install_path)
-            .map_err(|e| format!("mkdir failed: {e}"))?;
+        std::fs::create_dir_all(&install_path).map_err(|e| format!("mkdir failed: {e}"))?;
 
         archive
             .unpack(&install_path)
@@ -530,6 +656,188 @@ async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
 
     log_install(install_dir, "Extraction complete").await;
     Ok(())
+}
+
+async fn fetch_required_text(client: &reqwest::Client, url: &str) -> Result<String, String> {
+    let response = client
+        .get(url)
+        .header("User-Agent", "stella-launcher")
+        .send()
+        .await
+        .map_err(|e| format!("Request failed for {url}: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Request failed for {url}: HTTP {}",
+            response.status()
+        ));
+    }
+    response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response body from {url}: {e}"))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut digest = Sha256::new();
+    digest.update(bytes);
+    let hash = digest.finalize();
+    hash.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn verify_sha256(bytes: &[u8], expected: &str) -> Result<(), String> {
+    let normalized = normalize_sha256(expected)
+        .ok_or_else(|| "Emote bundle checksum metadata was invalid.".to_string())?;
+    let actual = sha256_hex(bytes);
+    if actual == normalized {
+        Ok(())
+    } else {
+        Err("Emote bundle checksum did not match the downloaded archive.".into())
+    }
+}
+
+async fn extract_emote_bundle(install_dir: &str, bytes: Vec<u8>) -> Result<(), String> {
+    let install_path = install_dir.to_string();
+    tokio::task::spawn_blocking(move || {
+        let staging_root = emote_staging_root_of(&install_path);
+        let staged_emotes_dir = staging_root.join("public").join("emotes");
+        let staged_manifest = staged_emotes_dir.join("manifest.json");
+        let final_emotes_dir = emotes_dir_of(&install_path);
+
+        let result = (|| -> Result<(), String> {
+            if staging_root.exists() {
+                std::fs::remove_dir_all(&staging_root)
+                    .map_err(|e| format!("Failed to clear emote staging directory: {e}"))?;
+            }
+            std::fs::create_dir_all(&staging_root)
+                .map_err(|e| format!("Failed to prepare emote staging directory: {e}"))?;
+
+            let decoder = zstd::Decoder::new(std::io::Cursor::new(&bytes))
+                .map_err(|e| format!("Emote bundle zstd decompress failed: {e}"))?;
+            let mut archive = tar::Archive::new(decoder);
+            archive
+                .unpack(&staging_root)
+                .map_err(|e| format!("Emote bundle extract failed: {e}"))?;
+
+            if !staged_manifest.exists() {
+                return Err("Emote bundle did not contain public/emotes/manifest.json.".into());
+            }
+
+            let final_parent = final_emotes_dir
+                .parent()
+                .ok_or_else(|| "Invalid emote install destination.".to_string())?;
+            std::fs::create_dir_all(final_parent)
+                .map_err(|e| format!("Failed to prepare emote destination: {e}"))?;
+
+            if final_emotes_dir.exists() {
+                std::fs::remove_dir_all(&final_emotes_dir)
+                    .map_err(|e| format!("Failed to replace existing emote files: {e}"))?;
+            }
+
+            std::fs::rename(&staged_emotes_dir, &final_emotes_dir)
+                .map_err(|e| format!("Failed to install emote bundle files: {e}"))?;
+
+            Ok(())
+        })();
+
+        let _ = std::fs::remove_dir_all(&staging_root);
+        result
+    })
+    .await
+    .map_err(|e| format!("Emote extract task failed: {e}"))?
+}
+
+async fn download_and_extract_emotes(install_dir: &str) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let manifest_url = emote_release_manifest_url();
+    log_install(
+        install_dir,
+        &format!("Resolving emote bundle manifest: {manifest_url}"),
+    )
+    .await;
+
+    let manifest_text = fetch_required_text(&client, &manifest_url).await?;
+    let manifest: EmoteReleaseManifest = serde_json::from_str(&manifest_text)
+        .map_err(|e| format!("Emote bundle manifest was invalid JSON: {e}"))?;
+    let version = manifest.version.trim();
+    if version.is_empty() {
+        return Err("Emote bundle manifest did not include a version.".into());
+    }
+    let checksum_source = manifest
+        .sha256_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .unwrap_or("embedded in manifest");
+    log_install(
+        install_dir,
+        &format!(
+            "Resolved emote bundle version {version}; archive: {}; checksum source: {checksum_source}",
+            manifest.archive_url
+        ),
+    )
+    .await;
+
+    log_install(
+        install_dir,
+        &format!("Downloading emote bundle archive: {}", manifest.archive_url),
+    )
+    .await;
+    let archive_response = client
+        .get(&manifest.archive_url)
+        .header("User-Agent", "stella-launcher")
+        .send()
+        .await
+        .map_err(|e| format!("Emote bundle download failed: {e}"))?;
+    if !archive_response.status().is_success() {
+        return Err(format!(
+            "Emote bundle download failed: HTTP {}",
+            archive_response.status()
+        ));
+    }
+    let archive_bytes = archive_response
+        .bytes()
+        .await
+        .map_err(|e| format!("Emote bundle download failed: {e}"))?;
+    log_install(
+        install_dir,
+        &format!(
+            "Downloaded emote bundle archive ({} bytes); verifying checksum",
+            archive_bytes.len()
+        ),
+    )
+    .await;
+
+    let checksum = if let Some(checksum) = manifest.sha256.as_deref().and_then(normalize_sha256) {
+        checksum
+    } else if let Some(checksum_url) = manifest
+        .sha256_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+    {
+        let checksum_text = fetch_required_text(&client, checksum_url).await?;
+        normalize_sha256(&checksum_text).ok_or_else(|| {
+            "Emote bundle checksum file did not contain a SHA-256 digest.".to_string()
+        })?
+    } else {
+        return Err("Emote bundle manifest did not include checksum metadata.".into());
+    };
+
+    verify_sha256(archive_bytes.as_ref(), &checksum)?;
+
+    log_install(
+        install_dir,
+        &format!("Extracting emote bundle version {version}"),
+    )
+    .await;
+    extract_emote_bundle(install_dir, archive_bytes.to_vec()).await?;
+    log_install(
+        install_dir,
+        &format!("Emote bundle {version} installed successfully"),
+    )
+    .await;
+
+    Ok(version.to_string())
 }
 
 // ── Git init for self-mod ───────────────────────────────────────────
@@ -549,7 +857,10 @@ async fn init_git_repo(install_dir: &str) {
     let cwd = PathBuf::from(install_dir);
 
     let mut version_command = Command::new(&git_bin);
-    version_command.args(["--version"]).current_dir(&cwd).envs(&env);
+    version_command
+        .args(["--version"])
+        .current_dir(&cwd)
+        .envs(&env);
     #[cfg(target_os = "windows")]
     version_command.creation_flags(0x08000000);
     let _ = version_command.output().await;
@@ -613,9 +924,22 @@ struct StepDef {
 
 fn build_step_defs() -> Vec<StepDef> {
     vec![
-        StepDef { id: SetupStepId::Runtime, label: "Setting up" },
-        StepDef { id: SetupStepId::Payload, label: "Downloading Stella" },
-        StepDef { id: SetupStepId::Finalize, label: "Finishing up" },
+        StepDef {
+            id: SetupStepId::Runtime,
+            label: "Setting up",
+        },
+        StepDef {
+            id: SetupStepId::Payload,
+            label: "Downloading Stella",
+        },
+        StepDef {
+            id: SetupStepId::Prepare,
+            label: "Downloading emotes",
+        },
+        StepDef {
+            id: SetupStepId::Finalize,
+            label: "Finishing up",
+        },
     ]
 }
 
@@ -624,16 +948,22 @@ async fn check_step(id: &SetupStepId, state: &InstallerState) -> bool {
     match id {
         SetupStepId::Runtime => bun_on_path().await,
         SetupStepId::Payload => {
-            path_exists(&package_json_of(dir)).await
-                && path_exists(&node_modules_of(dir)).await
+            path_exists(&package_json_of(dir)).await && path_exists(&node_modules_of(dir)).await
         }
+        SetupStepId::Prepare => match read_emote_install_state(dir).await {
+            Some(install_state) if install_state.status == EMOTE_INSTALL_STATUS_INSTALLED => {
+                path_exists(&emotes_manifest_of(dir)).await
+            }
+            Some(install_state) if install_state.status == EMOTE_INSTALL_STATUS_SKIPPED => true,
+            _ => false,
+        },
         SetupStepId::Finalize => path_exists(&manifest_of(dir)).await,
         _ => true,
     }
 }
 
-async fn install_step(id: &SetupStepId, state: &InstallerState) -> Result<(), String> {
-    let dir = &state.install_path;
+async fn install_step(id: &SetupStepId, state: &mut InstallerState) -> Result<(), String> {
+    let dir = state.install_path.clone();
     match id {
         SetupStepId::Runtime => {
             if bun_on_path().await {
@@ -646,15 +976,48 @@ async fn install_step(id: &SetupStepId, state: &InstallerState) -> Result<(), St
             }
         }
         SetupStepId::Payload => {
-            let _ = fs::create_dir_all(dir).await;
-            download_and_extract_release(dir).await?;
-            write_default_env_file(dir).await?;
-            log_install(dir, "Installing desktop dependencies with Bun").await;
-            install_payload_dependencies(dir).await?;
+            let _ = fs::create_dir_all(&dir).await;
+            download_and_extract_release(&dir).await?;
+            write_default_env_file(&dir).await?;
+            log_install(&dir, "Installing desktop dependencies with Bun").await;
+            install_payload_dependencies(&dir).await?;
+            Ok(())
+        }
+        SetupStepId::Prepare => {
+            match download_and_extract_emotes(&dir).await {
+                Ok(version) => {
+                    write_emote_install_state(
+                        &dir,
+                        &build_emote_install_state(
+                            EMOTE_INSTALL_STATUS_INSTALLED,
+                            Some(version),
+                            None,
+                        ),
+                    )
+                    .await?;
+                    state.warning_message = None;
+                }
+                Err(err) => {
+                    let warning = format!(
+                        "Stella installed, but the emote pack could not be downloaded. Emotes may be unavailable until the pack is installed again. ({err})"
+                    );
+                    log_install(&dir, &format!("Emote pack install warning: {warning}")).await;
+                    write_emote_install_state(
+                        &dir,
+                        &build_emote_install_state(
+                            EMOTE_INSTALL_STATUS_SKIPPED,
+                            None,
+                            Some(warning.clone()),
+                        ),
+                    )
+                    .await?;
+                    state.warning_message = Some(warning);
+                }
+            }
             Ok(())
         }
         SetupStepId::Finalize => {
-            let script_path = write_launch_script(dir).await;
+            let script_path = write_launch_script(&dir).await;
 
             // Init git repo for self-mod in the background so install completion
             // does not wait on indexing tens of thousands of extracted files.
@@ -670,7 +1033,7 @@ async fn install_step(id: &SetupStepId, state: &InstallerState) -> Result<(), St
             };
 
             let json = serde_json::to_string_pretty(&manifest).unwrap_or_default();
-            fs::write(manifest_of(dir), json)
+            fs::write(manifest_of(&dir), json)
                 .await
                 .map_err(|e| format!("Failed to write manifest: {e}"))?;
 
@@ -716,20 +1079,38 @@ async fn refresh_derived(state: &mut InstallerState, ctx: &InstallerContext) {
     let has_manifest = path_exists(&manifest_of(&state.install_path)).await;
     let has_pkg = path_exists(&package_json_of(&state.install_path)).await;
     state.can_launch = has_manifest && has_pkg;
+    state.warning_message = read_emote_install_state(&state.install_path)
+        .await
+        .and_then(|install_state| {
+            if install_state.status == EMOTE_INSTALL_STATUS_SKIPPED {
+                install_state.warning
+            } else {
+                None
+            }
+        });
 }
 
 fn emit_state_fast(state: &InstallerState, app: &AppHandle) {
-    let _ = app.emit("installer-state-update", serde_json::json!({ "state": state }));
+    let _ = app.emit(
+        "installer-state-update",
+        serde_json::json!({ "state": state }),
+    );
 }
 
 async fn emit_state_full(state: &mut InstallerState, ctx: &InstallerContext, app: &AppHandle) {
     refresh_derived(state, ctx).await;
-    let _ = app.emit("installer-state-update", serde_json::json!({ "state": &*state }));
+    let _ = app.emit(
+        "installer-state-update",
+        serde_json::json!({ "state": &*state }),
+    );
 }
 
 // ── Public API ──────────────────────────────────────────────────────
 
-pub fn create_context(default_install_path: String, settings_file_path: PathBuf) -> InstallerContext {
+pub fn create_context(
+    default_install_path: String,
+    settings_file_path: PathBuf,
+) -> InstallerContext {
     InstallerContext {
         default_install_path,
         settings_file_path,
@@ -750,6 +1131,7 @@ pub async fn create_initial_state(ctx: &InstallerContext) -> InstallerState {
         steps: vec![],
         phase: InstallerPhase::Checking,
         error_message: None,
+        warning_message: None,
         install_path,
         default_install_path: ctx.default_install_path.clone(),
         install_path_error: None,
@@ -776,6 +1158,7 @@ pub async fn set_install_path(
 ) {
     state.install_path = norm(install_path);
     state.error_message = None;
+    state.warning_message = None;
     write_settings(ctx, state).await;
 }
 
@@ -788,13 +1171,10 @@ pub async fn set_run_after_install(
     write_settings(ctx, state).await;
 }
 
-pub async fn check_all(
-    state: &mut InstallerState,
-    ctx: &InstallerContext,
-    app: &AppHandle,
-) {
+pub async fn check_all(state: &mut InstallerState, ctx: &InstallerContext, app: &AppHandle) {
     state.phase = InstallerPhase::Checking;
     state.error_message = None;
+    state.warning_message = None;
     sync_step_list(state);
     emit_state_fast(state, app);
 
@@ -852,6 +1232,7 @@ pub async fn install_all(
     sync_step_list(state);
     state.phase = InstallerPhase::Installing;
     state.error_message = None;
+    state.warning_message = None;
     emit_state_fast(state, app);
 
     let defs = build_step_defs();
@@ -878,7 +1259,11 @@ pub async fn install_all(
         let result = install_step(&def.id, state).await;
 
         if let Err(err) = result {
-            log_install(&state.install_path, &format!("Step '{}' failed: {}", def.label, err)).await;
+            log_install(
+                &state.install_path,
+                &format!("Step '{}' failed: {}", def.label, err),
+            )
+            .await;
             if let Some(step) = state.steps.iter_mut().find(|s| s.id == def.id) {
                 step.status = SetupStepStatus::Error;
                 step.detail = Some(err.clone());
@@ -928,6 +1313,7 @@ pub async fn uninstall(state: &mut InstallerState) -> Result<(), String> {
     state.installed = false;
     state.phase = InstallerPhase::Ready;
     state.steps.clear();
+    state.warning_message = None;
     sync_step_list(state);
 
     Ok(())
