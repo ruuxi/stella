@@ -393,6 +393,11 @@ function useOverlayHitTesting(
       return;
     }
 
+    // Mini/voice activation is driven by the main process, which temporarily
+    // leaves the fullscreen overlay fully interactive. Reset to click-through
+    // immediately, then let hover re-enable hit-testing over the active UI.
+    updateInteractive(false);
+
     const handleMouseMove = (e: MouseEvent) => {
       let isOverMini = false;
       if (miniVisible) {
@@ -462,7 +467,7 @@ function useOverlayHitTesting(
 // ---------------------------------------------------------------------------
 export function OverlayRoot() {
   const [state, dispatch] = useReducer(overlayReducer, initialState);
-  const interactiveRef = useRef(false);
+  const interactiveRef = useRef<boolean | null>(null);
   const miniRef = useRef<HTMLDivElement>(null);
   const radialRef = useRef<HTMLDivElement>(null);
   const miniDisplayed = state.miniVisible && !state.regionCaptureActive;
@@ -485,6 +490,19 @@ export function OverlayRoot() {
       window.electronAPI.overlay.setInteractive(shouldBeInteractive);
     }
   }, []);
+
+  useEffect(() => {
+    // The main process can toggle overlay interactivity directly when radial,
+    // mini, preview, capture, or voice surfaces open/close. Mark the renderer
+    // cache stale so the next renderer-side update always resynchronizes.
+    interactiveRef.current = null;
+  }, [
+    state.radialVisible,
+    state.regionCaptureActive,
+    state.miniPreviewVisible,
+    state.miniVisible,
+    state.voiceVisible,
+  ]);
 
   useOverlayHitTesting(state, miniRef, updateInteractive);
 
@@ -525,6 +543,7 @@ export function OverlayRoot() {
         className="radial-shell"
         style={{
           position: "absolute",
+          zIndex: 2,
           left: state.radialVisible ? (state.radialPosition?.x ?? 0) : -9999,
           top: state.radialVisible ? (state.radialPosition?.y ?? 0) : -9999,
           width: 280,
@@ -537,7 +556,14 @@ export function OverlayRoot() {
 
       {/* Region capture: mounted only when active. */}
       {state.regionCaptureActive && (
-        <div style={{ position: "absolute", inset: 0, pointerEvents: "auto" }}>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 3,
+            pointerEvents: "auto",
+          }}
+        >
           <RegionCapture />
         </div>
       )}
@@ -548,6 +574,7 @@ export function OverlayRoot() {
         onMouseDown={handleMiniTitlebarMouseDown}
         style={{
           position: "absolute",
+          zIndex: 1,
           left: state.miniPosition?.x ?? 0,
           top: state.miniPosition?.y ?? 0,
           width: MINI_SHELL_SIZE.width,
