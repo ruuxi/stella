@@ -1,0 +1,29 @@
+{
+  "name": "stella-office",
+  "version": "1.0.36",
+  "description": "Bundled Office document CLI wrapper for Stella",
+  "type": "module",
+  "files": [
+    "bin",
+    "scripts"
+  ],
+  "bin": {
+    "stella-office": "./bin/stella-office.js"
+  },
+  "scripts": {
+    "version:sync": "node scripts/sync-version.js",
+    "copy:native": "npm run version:sync && node scripts/copy-native.js",
+    "build:native": "npm run version:sync && node scripts/build-native.js && node scripts/copy-native.js",
+    "download:native": "npm run version:sync && node scripts/download-native.js"
+  },
+  "keywords": [
+    "office",
+    "docx",
+    "xlsx",
+    "pptx",
+    "cli",
+    "agent",
+    "stella"
+  ],
+  "license": "Apache-2.0"
+}

@@ -10,6 +10,7 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 ## Fast Paths
 
 - Browser automation: [stella-browser](abilities/stella-browser.md)
+- Office documents: [stella-office](abilities/stella-office.md)
 - Electron app control: [electron](abilities/electron.md)
 - Browser/desktop workflow: [computer-use](knowledge/computer-use/SKILL.md)
 - Feature packaging and sharing: [blueprint-management](knowledge/blueprint-management/SKILL.md)

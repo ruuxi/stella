@@ -5,6 +5,7 @@ Abilities are operational manuals for CLIs, APIs, and other executable surfaces.
 ## Entries
 
 - [stella-browser](stella-browser.md): browser automation CLI — navigation, forms, scraping, screenshots, sessions, auth.
+- [stella-office](stella-office.md): bundled Office document CLI for `.docx`, `.xlsx`, and `.pptx`.
 - [electron](electron.md): Electron desktop app automation via CDP.
 - [stella-browser references](references/): deep-dive docs for commands, refs, auth, sessions, recording, proxies.
 
