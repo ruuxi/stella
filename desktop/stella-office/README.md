@@ -7,7 +7,16 @@ Repo-local CLI wrapper, vendored OfficeCli source, and binary layout for Stella'
 - `bin/stella-office.js` — fixed wrapper path used by Stella runtime
 - `bin/stella-office-<platform>-<arch>` — native binary for the current or shipped platform
 - `scripts/` — maintainer helpers for syncing version and managing the native binary
-- `vendor/officecli/` — vendored upstream OfficeCli repository used for local version/build provenance
+- `vendor/officecli/` — trimmed upstream OfficeCli snapshot kept for local build/version provenance
+
+## Vendored Scope
+
+The vendored `OfficeCli` tree is intentionally trimmed to the parts Stella still needs:
+
+- keep `src/`, `build.sh`, `SKILL.md`, `skills/`, `README.md`, and `LICENSE`
+- remove large showcase/demo payloads like `assets/`, `examples/`, translated READMEs, installer scripts, and GitHub workflow metadata
+
+If the vendored source is refreshed from upstream later, re-apply this trimming unless Stella starts depending on those extra files again.
 
 ## Maintainer Commands
 

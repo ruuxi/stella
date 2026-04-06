@@ -12,6 +12,7 @@ import type { SecretFileMountHandle } from "./utils.js";
 import { removeSecretFile, truncate, writeSecretFile } from "./utils.js";
 import { isDangerousCommand } from "./command-safety.js";
 import { getStellaBrowserBridgeEnv } from "./stella-browser-bridge-config.js";
+import type { OfficePreviewRef } from "../../../src/shared/contracts/office-preview.js";
 
 export type ShellState = {
   shells: Map<string, ShellRecord>;
@@ -26,6 +27,47 @@ export type ShellState = {
     context?: ToolContext,
     toolName?: string,
   ) => Promise<string | null>;
+};
+
+const OFFICE_PREVIEW_REF_MARKER = "__STELLA_OFFICE_PREVIEW_REF__";
+
+export const extractOfficePreviewRef = (
+  output: string,
+): { cleanedOutput: string; officePreviewRef?: OfficePreviewRef } => {
+  let officePreviewRef: OfficePreviewRef | undefined;
+  const keptLines: string[] = [];
+
+  for (const line of output.split(/\r?\n/)) {
+    if (!line.startsWith(OFFICE_PREVIEW_REF_MARKER)) {
+      keptLines.push(line);
+      continue;
+    }
+
+    const rawPayload = line.slice(OFFICE_PREVIEW_REF_MARKER.length).trim();
+    if (!rawPayload) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(rawPayload) as OfficePreviewRef;
+      if (
+        typeof parsed.sessionId === "string" &&
+        typeof parsed.title === "string" &&
+        typeof parsed.sourcePath === "string"
+      ) {
+        officePreviewRef = parsed;
+      }
+    } catch {
+      keptLines.push(line);
+    }
+  }
+
+  const cleanedOutput = keptLines.join("\n").trim();
+  return {
+    cleanedOutput:
+      cleanedOutput || (officePreviewRef ? "Started inline office preview." : ""),
+    ...(officePreviewRef ? { officePreviewRef } : {}),
+  };
 };
 
 export const createShellState = (
@@ -446,15 +488,37 @@ export const handleBash = async (
 
   if (runInBackground) {
     const record = startShell(state, command, cwd, envOverrides);
+    const extracted = extractOfficePreviewRef(record.output || "");
     return {
       result: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(
-        record.output || "(no output yet)",
+        extracted.cleanedOutput || "(no output yet)",
       )}`,
+      ...(extracted.officePreviewRef
+        ? {
+            details: {
+              text: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(
+                extracted.cleanedOutput || "(no output yet)",
+              )}`,
+              officePreviewRef: extracted.officePreviewRef,
+            },
+          }
+        : {}),
     };
   }
 
   const output = await runShell(state, command, cwd, timeout, envOverrides);
-  return { result: truncate(output) };
+  const extracted = extractOfficePreviewRef(output);
+  return {
+    result: truncate(extracted.cleanedOutput),
+    ...(extracted.officePreviewRef
+      ? {
+          details: {
+            text: truncate(extracted.cleanedOutput),
+            officePreviewRef: extracted.officePreviewRef,
+          },
+        }
+      : {}),
+  };
 };
 
 export const handleSkillBash = async (
@@ -561,10 +625,21 @@ export const handleSkillBash = async (
           void removeSecretFile(mountedFile);
         }
       });
+      const extracted = extractOfficePreviewRef(record.output || "");
       return {
         result: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(
-          record.output || "(no output yet)",
+          extracted.cleanedOutput || "(no output yet)",
         )}`,
+        ...(extracted.officePreviewRef
+          ? {
+              details: {
+                text: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(
+                  extracted.cleanedOutput || "(no output yet)",
+                )}`,
+                officePreviewRef: extracted.officePreviewRef,
+              },
+            }
+          : {}),
       };
     } catch {
       await cleanupMountedSecretFiles();
@@ -574,7 +649,18 @@ export const handleSkillBash = async (
 
   try {
     const output = await runShell(state, command, cwd, timeout, envOverrides);
-    return { result: truncate(output) };
+    const extracted = extractOfficePreviewRef(output);
+    return {
+      result: truncate(extracted.cleanedOutput),
+      ...(extracted.officePreviewRef
+        ? {
+            details: {
+              text: truncate(extracted.cleanedOutput),
+              officePreviewRef: extracted.officePreviewRef,
+            },
+          }
+        : {}),
+    };
   } finally {
     await cleanupMountedSecretFiles();
   }

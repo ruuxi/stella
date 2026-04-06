@@ -39,7 +39,7 @@ const formatToolResult = (
 
   return {
     text: textFromUnknown(toolResult.result),
-    details: toolResult.result,
+    details: toolResult.details ?? toolResult.result,
   };
 };
 

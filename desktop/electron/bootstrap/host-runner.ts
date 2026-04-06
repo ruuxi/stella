@@ -17,6 +17,7 @@ import {
   broadcastScheduleUpdated,
   broadcastToWindows,
 } from "./context.js";
+import { startOfficePreviewBridge } from "./office-preview-bridge.js";
 
 const IDLE_HMR_STATE: SelfModHmrState = {
   phase: "idle",
@@ -195,6 +196,8 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
     await getOrCreateDeviceIdentity(path.join(stellaHomePath, "state"));
 
   clearHostRunnerSubscriptions(context);
+  context.state.officePreviewBridgeStop?.();
+  context.state.officePreviewBridgeStop = null;
   await lifecycle.getRunner()?.stop();
   lifecycle.setRunner(
     createStellaHostRunner({
@@ -212,4 +215,5 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   );
 
   await connectHostRunner(context);
+  context.state.officePreviewBridgeStop = startOfficePreviewBridge(context);
 };

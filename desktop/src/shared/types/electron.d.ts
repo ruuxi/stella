@@ -66,6 +66,10 @@ import type {
   OnboardingSynthesisResponse,
 } from "../contracts/onboarding";
 import type { RuntimeSocialSessionStatus } from "../../runtime/protocol/index";
+import type {
+  OfficePreviewRef as SharedOfficePreviewRef,
+  OfficePreviewSnapshot as SharedOfficePreviewSnapshot,
+} from "../contracts/office-preview";
 
 export type RadialWedge = SharedRadialWedge;
 export type ChatContext = SharedChatContext;
@@ -116,6 +120,8 @@ export type VoiceRuntimeSnapshot = SharedVoiceRuntimeSnapshot;
 export type SocialSessionRuntimeRecord = SharedSocialSessionRuntimeRecord;
 export type SocialSessionServiceSnapshot = SharedSocialSessionServiceSnapshot;
 export type RadialTriggerCode = SharedRadialTriggerCode;
+export type OfficePreviewRef = SharedOfficePreviewRef;
+export type OfficePreviewSnapshot = SharedOfficePreviewSnapshot;
 export type VoiceShortcutRegistrationResult = {
   ok: boolean;
   requestedShortcut: string;
@@ -605,9 +611,15 @@ export type ElectronDisplayApi = {
   onUpdate: (callback: (html: string) => void) => () => void;
 };
 
+export type ElectronOfficePreviewApi = {
+  list: () => Promise<OfficePreviewSnapshot[]>;
+  onUpdate: (callback: (snapshot: OfficePreviewSnapshot) => void) => () => void;
+};
+
 export type ElectronApi = {
   platform: string;
   display: ElectronDisplayApi;
+  officePreview: ElectronOfficePreviewApi;
   window: ElectronWindowApi;
   ui: ElectronUiApi;
   capture: ElectronCaptureApi;
