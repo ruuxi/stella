@@ -408,6 +408,7 @@ export type RuntimeAgentEventPayload = {
   toolName?: string;
   args?: Record<string, unknown>;
   resultPreview?: string;
+  details?: unknown;
   error?: string;
   fatal?: boolean;
   finalText?: string;

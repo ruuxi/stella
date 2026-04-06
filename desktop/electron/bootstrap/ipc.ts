@@ -6,6 +6,7 @@ import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
 import { registerMiniBridgeHandlers } from "../ipc/mini-bridge-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
+import { registerOfficePreviewHandlers } from "../ipc/office-preview-handlers.js";
 import { registerProjectHandlers } from "../ipc/project-handlers.js";
 import { registerScheduleHandlers } from "../ipc/schedule-handlers.js";
 import { registerStoreHandlers } from "../ipc/store-handlers.js";
@@ -116,6 +117,12 @@ export const registerBootstrapIpcHandlers = (
   registerProjectHandlers({
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
+  });
+
+  registerOfficePreviewHandlers({
+    getStellaHomePath: lifecycle.getStellaHomePath,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

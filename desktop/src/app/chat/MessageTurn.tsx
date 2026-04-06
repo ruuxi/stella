@@ -1,6 +1,7 @@
 import { memo } from "react";
 import type { Attachment, ChannelEnvelope } from "@/app/chat/lib/event-transforms";
 import { Markdown } from "@/app/chat/Markdown";
+import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ReasoningSection } from "@/app/chat/ReasoningSection";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
 import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
@@ -9,6 +10,7 @@ import {
   type EventRecord,
   type MessagePayload,
 } from "@/app/chat/lib/event-transforms";
+import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 
 export type TurnViewModel = {
@@ -20,6 +22,7 @@ export type TurnViewModel = {
   assistantMessageId: string | null;
   assistantEmotesEnabled: boolean;
   webSearchBadgeHtml?: string;
+  officePreviewRef?: OfficePreviewRef;
   selfModApplied?: SelfModApplied;
 };
 
@@ -234,6 +237,8 @@ const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean => (
   a.assistantMessageId === b.assistantMessageId &&
   a.assistantEmotesEnabled === b.assistantEmotesEnabled &&
   (a.webSearchBadgeHtml ?? null) === (b.webSearchBadgeHtml ?? null) &&
+  (a.officePreviewRef?.sessionId ?? null) ===
+    (b.officePreviewRef?.sessionId ?? null) &&
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied)
 );
 
@@ -269,8 +274,10 @@ export const TurnItem = memo(function TurnItem({
   const userChannelEnvelope = turn.userChannelEnvelope;
   const assistantText = turn.assistantText;
   const webSearchBadgeHtml = turn.webSearchBadgeHtml?.trim() ?? "";
+  const officePreviewRef = turn.officePreviewRef;
   const hasAssistantContent = assistantText.trim().length > 0;
   const hasWebSearchBadge = webSearchBadgeHtml.length > 0;
+  const hasOfficePreview = Boolean(officePreviewRef);
   const hasUserContent =
     userText.trim().length > 0 || userAttachments.length > 0;
   const hasChannelMeta = Boolean(userChannelEnvelope?.provider);
@@ -291,6 +298,7 @@ export const TurnItem = memo(function TurnItem({
   const shouldShowAssistantArea =
     hasAssistantContent ||
     hasWebSearchBadge ||
+    hasOfficePreview ||
     (shouldShowStreamingAssistant && (hasStreamingContent || hasReasoningContent));
   const assistantDisplayText = hasAssistantContent
     ? assistantText
@@ -415,6 +423,8 @@ export const TurnItem = memo(function TurnItem({
               enableEmotes={assistantEnableEmotes}
             />
           )}
+
+          {officePreviewRef && <OfficePreviewCard previewRef={officePreviewRef} />}
 
           {turn.selfModApplied && !shouldShowStreamingAssistant && (
             <SelfModUndoButton selfModApplied={turn.selfModApplied} />
