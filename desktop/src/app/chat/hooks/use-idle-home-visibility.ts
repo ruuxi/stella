@@ -21,6 +21,10 @@ export function useIdleHomeVisibility({
     setIsIdle(false)
   }, [])
 
+  const forceShowHome = useCallback(() => {
+    setIsIdle(true)
+  }, [])
+
   // Periodic idle check
   useEffect(() => {
     if (!hasMessages || isStreaming || isIdle) return
@@ -36,5 +40,5 @@ export function useIdleHomeVisibility({
 
   const showHomeContent = !hasMessages || (!isStreaming && isIdle)
 
-  return { showHomeContent, resetIdleTimer }
+  return { showHomeContent, resetIdleTimer, forceShowHome }
 }
