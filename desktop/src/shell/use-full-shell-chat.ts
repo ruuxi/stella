@@ -128,7 +128,7 @@ export function useFullShellChat({
 
   const hasMessages = events.length > 0
 
-  const { showHomeContent: idleBasedHome, resetIdleTimer } = useIdleHomeVisibility({
+  const { showHomeContent: idleBasedHome, resetIdleTimer, forceShowHome } = useIdleHomeVisibility({
     hasMessages,
     isStreaming,
   })
@@ -159,6 +159,10 @@ export function useFullShellChat({
     resetIdleTimer()
     markHomeSessionInteraction()
   }, [resetIdleTimer, markHomeSessionInteraction])
+
+  const showHome = useCallback(() => {
+    forceShowHome()
+  }, [forceShowHome])
 
   // Scroll management â€” ResizeObserver on content handles auto-scroll.
   // We pass `isWorking` so the settle timer keeps auto-follow briefly after streaming stops.
@@ -346,5 +350,6 @@ export function useFullShellChat({
     showHomeContent,
     onSuggestionClick,
     dismissHome,
+    showHome,
   }
 }

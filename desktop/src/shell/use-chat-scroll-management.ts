@@ -109,7 +109,8 @@ export function useChatScrollManagement({
     const maxScroll = scrollHeight - clientHeight
     const progress = Math.abs(scrollTop) / maxScroll
     const maxThumbTop = clientHeight - thumbHeight
-    const thumbTop = Math.max(0, Math.min(maxThumbTop, progress * maxThumbTop))
+    // Invert: scrollTop=0 (bottom/newest) → thumb at bottom of track
+    const thumbTop = Math.max(0, Math.min(maxThumbTop, (1 - progress) * maxThumbTop))
 
     setThumbState({ top: thumbTop, height: thumbHeight, visible: true })
 
