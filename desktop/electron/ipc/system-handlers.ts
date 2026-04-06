@@ -27,6 +27,8 @@ import {
 import {
   IPC_SOCIAL_SESSIONS_CREATE,
   IPC_SOCIAL_SESSIONS_GET_STATUS,
+  IPC_PERMISSIONS_GET_STATUS,
+  IPC_PERMISSIONS_OPEN_SETTINGS,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
@@ -35,6 +37,11 @@ import {
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
 } from "../../src/shared/contracts/ipc-channels.js";
+import {
+  hasMacPermission,
+  clearPermissionCache,
+  type MacPermissionKind,
+} from "../utils/macos-permissions.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
 
 type SystemHandlersOptions = {
@@ -655,6 +662,50 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         stellaHomePath,
         asTrimmedString(payload?.provider),
       );
+    },
+  );
+
+  ipcMain.handle(IPC_PERMISSIONS_GET_STATUS, () => {
+    if (process.platform !== "darwin") {
+      return { accessibility: true, screen: true, microphone: true };
+    }
+    clearPermissionCache();
+    return {
+      accessibility: hasMacPermission("accessibility", false),
+      screen: hasMacPermission("screen", false),
+      microphone: hasMacPermission("microphone", false),
+    };
+  });
+
+  ipcMain.handle(
+    IPC_PERMISSIONS_OPEN_SETTINGS,
+    (event, payload: { kind: string }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_PERMISSIONS_OPEN_SETTINGS,
+        )
+      ) {
+        throw new Error("Blocked untrusted permissions:openSettings request.");
+      }
+      if (process.platform !== "darwin") return;
+
+      const paneMap: Record<MacPermissionKind, string> = {
+        accessibility:
+          "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+        screen:
+          "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+        microphone:
+          "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+      };
+
+      const kind = asTrimmedString(payload?.kind) as MacPermissionKind;
+      const url = paneMap[kind];
+      if (!url) return;
+
+      import("child_process").then(({ exec: execCmd }) => {
+        execCmd(`open "${url}"`);
+      });
     },
   );
 };
