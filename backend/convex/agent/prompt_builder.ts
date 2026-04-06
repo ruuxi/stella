@@ -7,7 +7,6 @@ import { requireConversationOwnerAction, requireUserId } from "../auth";
 import {
   GENERAL_AGENT_ENGINE_KEY,
   MAX_AGENT_CONCURRENCY_KEY,
-  SELF_MOD_AGENT_ENGINE_KEY,
   normalizeGeneralAgentEngine,
   normalizeMaxAgentConcurrency,
 } from "../data/preferences";
@@ -203,14 +202,8 @@ const fetchAgentContextForOwner = async (
 
   let agentEngine: "default" | "codex_local" | "claude_code_local" | undefined;
   let maxAgentConcurrency: number | undefined;
-  if (
-    args.agentType === AGENT_IDS.GENERAL ||
-    args.agentType === AGENT_IDS.SELF_MOD
-  ) {
-    const engineKey =
-      args.agentType === AGENT_IDS.SELF_MOD
-        ? SELF_MOD_AGENT_ENGINE_KEY
-        : GENERAL_AGENT_ENGINE_KEY;
+  if (args.agentType === AGENT_IDS.GENERAL) {
+    const engineKey = GENERAL_AGENT_ENGINE_KEY;
     agentEngine = "default";
     maxAgentConcurrency = 24;
     const enginePreference = await ctx.runQuery(
@@ -334,14 +327,8 @@ export const fetchLocalAgentContextForRuntime = action({
       | "claude_code_local"
       | undefined;
     let maxAgentConcurrency: number | undefined;
-    if (
-      args.agentType === AGENT_IDS.GENERAL ||
-      args.agentType === AGENT_IDS.SELF_MOD
-    ) {
-      const engineKey =
-        args.agentType === AGENT_IDS.SELF_MOD
-          ? SELF_MOD_AGENT_ENGINE_KEY
-          : GENERAL_AGENT_ENGINE_KEY;
+    if (args.agentType === AGENT_IDS.GENERAL) {
+      const engineKey = GENERAL_AGENT_ENGINE_KEY;
       agentEngine = "default";
       maxAgentConcurrency = 24;
       try {
