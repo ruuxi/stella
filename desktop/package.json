@@ -29,6 +29,8 @@
     "emotes:emoji-index": "node scripts/build-emote-emoji-index.mjs",
     "emotes:prune-family": "node scripts/prune-emotes-by-emoji-family.mjs",
     "emotes:optimize": "node scripts/optimize-emotes.mjs",
+    "emotes:bundle": "node scripts/publish-emote-bundle.mjs",
+    "emotes:bundle:publish": "node scripts/publish-emote-bundle.mjs --publish",
     "postinstall": "npx @electron/rebuild -o better-sqlite3"
   },
   "dependencies": {
@@ -132,6 +134,7 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "jsdom": "^27.4.0",
+    "tar": "^7.5.10",
     "tw-animate-css": "^1.4.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
