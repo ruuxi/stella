@@ -27,6 +27,7 @@ export const ChatColumn = memo(function ChatColumn({
   showHomeContent,
   onSuggestionClick,
   onDismissHome,
+  onShowHome,
 }: ChatColumnProps) {
   // --- Custom scrollbar thumb drag ---
   const isDraggingRef = useRef(false);
@@ -50,8 +51,8 @@ export const ChatColumn = memo(function ChatColumn({
     const trackHeight = el.clientHeight;
     const scrollRange = el.scrollHeight - el.clientHeight;
     const dy = e.clientY - dragStartRef.current.y;
-    // In column-reverse, dragging thumb down means scrolling toward top.
-    const scrollDelta = -(dy / trackHeight) * scrollRange;
+    // Thumb is inverted to feel natural: dragging down → newer content (scrollTop → 0).
+    const scrollDelta = (dy / trackHeight) * scrollRange;
     el.scrollTop = dragStartRef.current.scrollTop + scrollDelta;
   }, []);
 
@@ -162,6 +163,19 @@ export const ChatColumn = memo(function ChatColumn({
 
   return (
     <div className="full-body-main">
+      {onShowHome && (
+        <button
+          className="chat-home-btn"
+          type="button"
+          onClick={onShowHome}
+          aria-label="Return to home"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z" />
+            <path d="M9 21V12h6v9" />
+          </svg>
+        </button>
+      )}
       {/* Viewport region: scroll container + overlays (scrollbar, scroll-to-bottom) */}
       <div className="chat-viewport-region">
         <div
