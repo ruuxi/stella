@@ -384,19 +384,7 @@ export class LocalTaskManager implements TaskToolApi {
       this.opts.getStarterTools?.(request.agentType),
       request.toolsAllowlistOverride,
     );
-    if (!this.opts.routeTools) {
-      return starterTools.length > 0 ? starterTools : undefined;
-    }
-    const routedTools = await this.opts
-      .routeTools({
-        agentType: request.agentType,
-        description: request.description,
-        prompt: request.prompt,
-        loadedTools: starterTools,
-      })
-      .catch(() => []);
-    const resolved = mergeToolNames(starterTools, routedTools);
-    return resolved.length > 0 ? resolved : undefined;
+    return starterTools.length > 0 ? starterTools : undefined;
   }
 
   private hydrateTaskFromRecord(

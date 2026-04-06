@@ -23,12 +23,12 @@ export const buildSkillsPromptSection = (
     if (skill.execution === "device") tags.push("device-only");
     if (skill.secretMounts) tags.push("has secret mounts");
     const suffix = tags.length > 0 ? ` [${tags.join(", ")}]` : "";
-    return `- **${skill.name}** (${skill.id}): ${skill.description}${suffix} Activate skill.`;
+    return `- **${skill.name}** (${skill.id}): ${skill.description}${suffix}`;
   });
 
   return [
-    "# Skills",
-    "Skills are listed by name and description only. Use ActivateSkill to load a skill's full instructions when needed.",
+    "# Life Entries",
+    "Installed capability entries are listed by name and description only. Their deeper manuals usually live under `life/knowledge/<id>/SKILL.md`.",
     "",
     ...lines,
   ].join("\n");

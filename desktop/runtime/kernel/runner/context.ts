@@ -283,7 +283,7 @@ export const createRunnerContext = ({
     appendLocalChatEvent,
     getDefaultConversationId,
     paths: {
-      skillsPath: path.join(stellaHomePath, "runtime", "skills"),
+      skillsPath: path.join(stellaHomePath, "life", "knowledge"),
       extensionsPath: path.join(stellaHomePath, "runtime", "extensions"),
     },
     state: {

@@ -1,6 +1,5 @@
 import type { AgentTool } from "../agent-core/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
-import { localActivateSkill } from "../tools/local-tool-overrides.js";
 import {
   DEVICE_TOOL_NAMES,
   TOOL_DESCRIPTIONS,
@@ -23,7 +22,6 @@ const STELLA_LOCAL_TOOLS = [
   "TaskCancel",
   "TaskOutput",
   TOOL_IDS.WEB_FETCH,
-  TOOL_IDS.ACTIVATE_SKILL,
   TOOL_IDS.NO_RESPONSE,
   TOOL_IDS.SAVE_MEMORY,
   TOOL_IDS.RECALL_MEMORIES,
@@ -137,48 +135,6 @@ export const createPiTools = (opts: {
       parameters: metadata.parameters as typeof AnyToolArgsSchema,
       execute: async (toolCallId, params, signal) => {
         const args = (params as Record<string, unknown>) ?? {};
-
-        if (toolName === TOOL_IDS.ACTIVATE_SKILL) {
-          const skillId =
-            (typeof args.skillId === "string" ? args.skillId : undefined) ??
-            (typeof args.skill_id === "string" ? args.skill_id : "");
-          const text = await localActivateSkill({
-            skillId,
-            stellaHome: opts.stellaHome,
-            allowedSkillIds: opts.skillIds,
-          });
-          return { content: [{ type: "text", text }], details: { text } };
-        }
-
-        if (toolName === "LoadTools") {
-          if (!opts.loadTools) {
-            return {
-              content: [{ type: "text", text: "LoadTools is not available." }],
-              details: { addedTools: [], currentTools: [...activeToolNames] },
-            };
-          }
-          const prompt =
-            (typeof args.prompt === "string" ? args.prompt : "") ||
-            (typeof args.request === "string" ? args.request : "");
-          const loaded = await opts.loadTools({
-            taskId: opts.taskId,
-            prompt,
-            loadedToolNames: [...activeToolNames],
-          });
-          for (const loadedToolName of loaded.currentTools) {
-            if (activeToolNames.has(loadedToolName)) continue;
-            activeToolNames.add(loadedToolName);
-            activeTools.push(registerTool(loadedToolName));
-          }
-          const text =
-            loaded.addedTools.length > 0
-              ? `Loaded tools: ${loaded.addedTools.join(", ")}`
-              : "No additional tools were loaded.";
-          return {
-            content: [{ type: "text", text }],
-            details: loaded,
-          };
-        }
 
         const localResult = await dispatchLocalTool(toolName, args, {
           conversationId: opts.conversationId,

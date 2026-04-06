@@ -31,7 +31,6 @@ export const DEVICE_TOOL_NAMES = [
   "CronUpdate",
   "CronRemove",
   "CronRun",
-  "LoadTools",
 ] as const;
 
 export type DeviceToolName = (typeof DEVICE_TOOL_NAMES)[number];
@@ -461,26 +460,6 @@ const RecallMemoriesJsonSchema = {
   required: ["query"],
 };
 
-const ActivateSkillJsonSchema = {
-  type: "object",
-  properties: {
-    skill_id: { type: "string", description: "ID of the skill to activate" },
-  },
-  required: ["skill_id"],
-};
-
-const LoadToolsJsonSchema = {
-  type: "object",
-  properties: {
-    prompt: {
-      type: "string",
-      description:
-        "Describe the capability you need in plain language. Do not name tools directly.",
-    },
-  },
-  required: ["prompt"],
-};
-
 const NoResponseJsonSchema = {
   type: "object",
   properties: {},
@@ -676,19 +655,6 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- query: search text to find relevant memories.\n" +
     "- limit: optional max number of results.\n" +
     "- Use when the user references past conversations, preferences, or you need prior context.",
-  ActivateSkill:
-    "Load an installed skill's full instructions into the current session.\n\n" +
-    "Usage:\n" +
-    "- skill_id: exact ID of an installed skill (e.g. 'electron').\n" +
-    "- Only use skill IDs listed in your agent config (defaultSkills) or that you have confirmed exist.\n" +
-    "- Do NOT guess or invent skill IDs — if the skill doesn't exist, it will fail.",
-  LoadTools:
-    "Load additional tools into the current run.\n\n" +
-    "Usage:\n" +
-    "- prompt: describe the capability you need in plain language.\n" +
-    "- Do NOT ask for tool names directly.\n" +
-    "- Use this when your current starter pack is insufficient.\n" +
-    "- Newly loaded tools become available in subsequent turns of the same run.",
   NoResponse:
     "Signal that you have nothing to say right now.\n\n" +
     "Call this instead of generating a message when a system event, task result, or heartbeat check " +
@@ -719,7 +685,5 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   WebFetch: WebFetchJsonSchema,
   SaveMemory: SaveMemoryJsonSchema,
   RecallMemories: RecallMemoriesJsonSchema,
-  ActivateSkill: ActivateSkillJsonSchema,
-  LoadTools: LoadToolsJsonSchema,
   NoResponse: NoResponseJsonSchema,
 };

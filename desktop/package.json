@@ -171,8 +171,8 @@
         ]
       },
       {
-        "from": "runtime/skills",
-        "to": "runtime/skills",
+        "from": "life",
+        "to": "life",
         "filter": [
           "**/*"
         ]
