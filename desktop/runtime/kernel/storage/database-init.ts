@@ -139,9 +139,15 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       status TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       last_used_at INTEGER NOT NULL,
-      summary TEXT
+      summary TEXT,
+      external_session_id TEXT
     );
   `);
+  try {
+    db.exec("ALTER TABLE runtime_threads ADD COLUMN external_session_id TEXT;");
+  } catch {
+    // Column already exists.
+  }
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_runtime_threads_conversation_status
     ON runtime_threads(conversation_id, status, last_used_at);

@@ -3,6 +3,7 @@ import type { ParsedSkill } from "../agents/manifests.js";
 import type {
   RuntimeEndEvent,
   RuntimeErrorEvent,
+  RuntimeStatusEvent,
   RuntimeStreamEvent,
   RuntimeToolEndEvent,
   RuntimeToolStartEvent,
@@ -138,6 +139,7 @@ export type AgentHealth = {
 export type AgentCallbacks = {
   onUserMessage?: (event: RuntimeUserMessageEvent) => void;
   onStream: (event: RuntimeStreamEvent) => void;
+  onStatus?: (event: RuntimeStatusEvent) => void;
   onToolStart: (event: RuntimeToolStartEvent) => void;
   onToolEnd: (event: RuntimeToolEndEvent) => void;
   onError: (event: RuntimeErrorEvent) => void;

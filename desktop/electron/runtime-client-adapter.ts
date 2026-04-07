@@ -24,6 +24,7 @@ import { readConfiguredStellaBaseUrl } from "../runtime/kernel/convex-urls.js";
 
 type AgentCallbacks = {
   onStream: (event: RuntimeAgentEventPayload) => void;
+  onStatus?: (event: RuntimeAgentEventPayload) => void;
   onToolStart: (event: RuntimeAgentEventPayload) => void;
   onToolEnd: (event: RuntimeAgentEventPayload) => void;
   onError: (event: RuntimeAgentEventPayload) => void;
@@ -358,6 +359,7 @@ export class RuntimeClientAdapter {
       }
       const isTaskLifecycleEvent =
         event.type !== AGENT_STREAM_EVENT_TYPES.STREAM &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.STATUS &&
         event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_START &&
         event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_END &&
         event.type !== AGENT_STREAM_EVENT_TYPES.ERROR &&
@@ -384,6 +386,9 @@ export class RuntimeClientAdapter {
       switch (event.type) {
         case AGENT_STREAM_EVENT_TYPES.STREAM:
           callbacks.onStream(event);
+          break;
+        case AGENT_STREAM_EVENT_TYPES.STATUS:
+          callbacks.onStatus?.(event);
           break;
         case AGENT_STREAM_EVENT_TYPES.TOOL_START:
           callbacks.onToolStart(event);
@@ -524,6 +529,7 @@ export class RuntimeClientAdapter {
     const dispatch = (event: RuntimeAgentEventPayload) => {
       const isTaskLifecycleEvent =
         event.type !== AGENT_STREAM_EVENT_TYPES.STREAM &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.STATUS &&
         event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_START &&
         event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_END &&
         event.type !== AGENT_STREAM_EVENT_TYPES.ERROR &&
@@ -550,6 +556,9 @@ export class RuntimeClientAdapter {
       switch (event.type) {
         case AGENT_STREAM_EVENT_TYPES.STREAM:
           callbacks.onStream(event);
+          break;
+        case AGENT_STREAM_EVENT_TYPES.STATUS:
+          callbacks.onStatus?.(event);
           break;
         case AGENT_STREAM_EVENT_TYPES.TOOL_START:
           callbacks.onToolStart(event);

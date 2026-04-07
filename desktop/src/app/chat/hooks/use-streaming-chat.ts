@@ -28,6 +28,7 @@ export function useStreamingChat({
 
   const {
     liveTasks,
+    runtimeStatusText,
     streamingText,
     reasoningText,
     isStreaming,
@@ -150,6 +151,7 @@ export function useStreamingChat({
 
   return {
     liveTasks,
+    runtimeStatusText,
     streamingText,
     reasoningText,
     isStreaming,

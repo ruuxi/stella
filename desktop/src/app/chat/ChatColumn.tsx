@@ -103,7 +103,9 @@ export const ChatColumn = memo(function ChatColumn({
     [conversation.streaming.liveTasks, persistedRunningTasks],
   );
   const hasActiveWork =
-    runningTasks.length > 0 || Boolean(conversation.streaming.isStreaming);
+    runningTasks.length > 0 ||
+    Boolean(conversation.streaming.isStreaming) ||
+    Boolean(conversation.streaming.runtimeStatusText);
   const showThinkingFooter = hasActiveWork;
   const shouldShowHomeContent = homeVisible && !hasActiveWork;
 
@@ -241,6 +243,7 @@ export const ChatColumn = memo(function ChatColumn({
             tasks={runningTasks}
             runningTool={runningTool}
             isStreaming={conversation.streaming.isStreaming}
+            status={conversation.streaming.runtimeStatusText}
           />
         )}
       </div>

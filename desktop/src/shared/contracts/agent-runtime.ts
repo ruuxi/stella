@@ -44,12 +44,12 @@ const BUILTIN_AGENT_DEFINITIONS = [
     activityLabel: "Coordinating",
     bundledCore: true,
     taskSubagent: false,
-    usesLocalCliRuntime: false,
+    usesLocalCliRuntime: true,
     promptRole: "orchestrator",
     includesStellaDocumentation: false,
     controlsSelfModHmr: false,
-    localCliWorkingDirectory: null,
-    agentEnginePreference: null,
+    localCliWorkingDirectory: "frontend",
+    agentEnginePreference: "general",
     modelSettings: {
       description: "Top-level agent that delegates tasks",
       order: 0,
@@ -189,6 +189,7 @@ export const shouldIncludeStellaDocumentation = (
 
 export const AGENT_STREAM_EVENT_TYPES = {
   STREAM: "stream",
+  STATUS: "status",
   TOOL_START: "tool-start",
   TOOL_END: "tool-end",
   ERROR: "error",

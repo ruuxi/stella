@@ -601,6 +601,34 @@ export class RuntimeStore {
     `).run(Date.now(), threadKey);
   }
 
+  getThreadExternalSessionId(threadKey: string): string | undefined {
+    const row = this.db.prepare(`
+      SELECT external_session_id AS externalSessionId
+      FROM runtime_threads
+      WHERE thread_key = ?
+      LIMIT 1
+    `).get(threadKey) as { externalSessionId?: unknown } | undefined;
+    return typeof row?.externalSessionId === "string" &&
+      row.externalSessionId.trim().length > 0
+      ? row.externalSessionId.trim()
+      : undefined;
+  }
+
+  setThreadExternalSessionId(
+    threadKey: string,
+    externalSessionId: string | null | undefined,
+  ): void {
+    const normalized =
+      typeof externalSessionId === "string" && externalSessionId.trim().length > 0
+        ? externalSessionId.trim()
+        : null;
+    this.db.prepare(`
+      UPDATE runtime_threads
+      SET external_session_id = ?, last_used_at = ?
+      WHERE thread_key = ?
+    `).run(normalized, Date.now(), threadKey);
+  }
+
   updateThreadSummary(threadKey: string, summary: string): void {
     const trimmed = summary.trim();
     if (!trimmed) return;

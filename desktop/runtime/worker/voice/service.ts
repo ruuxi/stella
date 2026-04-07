@@ -13,6 +13,7 @@ import type {
 import type {
   RuntimeEndEvent,
   RuntimeErrorEvent,
+  RuntimeStatusEvent,
   RuntimeStreamEvent,
   RuntimeToolEndEvent,
   RuntimeToolStartEvent,
@@ -33,6 +34,7 @@ type VoiceRunner = {
     },
     callbacks: {
       onStream: (event: RuntimeStreamEvent) => void;
+      onStatus?: (event: RuntimeStatusEvent) => void;
       onToolStart: (event: RuntimeToolStartEvent) => void;
       onToolEnd: (event: RuntimeToolEndEvent) => void;
       onError: (event: RuntimeErrorEvent) => void;
@@ -249,6 +251,8 @@ export class VoiceRuntimeService {
               }
               emitAgentEvent(event, AGENT_STREAM_EVENT_TYPES.STREAM);
             },
+            onStatus: (event) =>
+              emitAgentEvent(event, AGENT_STREAM_EVENT_TYPES.STATUS),
             onToolStart: (event) =>
               emitAgentEvent(event, AGENT_STREAM_EVENT_TYPES.TOOL_START),
             onToolEnd: (event) =>

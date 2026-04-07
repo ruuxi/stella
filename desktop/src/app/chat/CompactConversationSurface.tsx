@@ -24,6 +24,7 @@ type CompactConversationSurfaceProps = {
   streamingText: string;
   reasoningText: string;
   isStreaming: boolean;
+  runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
   selfModMap?: Record<string, SelfModAppliedData>;
   liveTasks?: TaskItem[];
@@ -43,6 +44,7 @@ export function CompactConversationSurface({
   streamingText,
   reasoningText,
   isStreaming,
+  runtimeStatusText,
   pendingUserMessageId,
   selfModMap,
   liveTasks,
@@ -87,7 +89,8 @@ export function CompactConversationSurface({
     () => mergeRunningTasks(persistedRunningTasks, liveTasks),
     [liveTasks, persistedRunningTasks],
   );
-  const showThinkingFooter = runningTasks.length > 0 || Boolean(isStreaming);
+  const showThinkingFooter =
+    runningTasks.length > 0 || Boolean(isStreaming) || Boolean(runtimeStatusText);
 
   // Use a ResizeObserver for auto-scroll instead of tracking streamingText
   // in a blocking useLayoutEffect. Content resizes drive the scroll, avoiding
@@ -149,6 +152,7 @@ export function CompactConversationSurface({
                 tasks={runningTasks}
                 runningTool={runningTool}
                 isStreaming={isStreaming}
+                status={runtimeStatusText}
               />
             )}
           </div>

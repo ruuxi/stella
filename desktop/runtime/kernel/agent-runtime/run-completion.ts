@@ -69,9 +69,13 @@ const detectSelfModApplied = async (
         .catch(() => null)
     : null;
 
+type CompactableAgentState = {
+  state: Pick<Agent["state"], "messages">;
+};
+
 const maybeCompactOrchestratorThread = async (args: {
   opts: OrchestratorRunOptions;
-  agent: Agent;
+  agent: CompactableAgentState;
   threadKey: string;
   finalText: string;
 }) => {
@@ -113,7 +117,7 @@ export const finalizeOrchestratorSuccess = async (args: {
   runId: string;
   threadKey: string;
   runEvents: RuntimeRunEventRecorder;
-  agent: Agent;
+  agent: CompactableAgentState;
   finalText: string;
   baselineHead: string | null;
 }): Promise<void> => {

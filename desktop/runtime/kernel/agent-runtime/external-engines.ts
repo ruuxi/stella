@@ -1,193 +1,314 @@
 import crypto from "crypto";
+import type { AssistantMessage, Usage } from "../../ai/types.js";
 import {
   isClaudeCodeModel,
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
 } from "../integrations/claude-code-session-runtime.js";
-import { now, resolveLocalCliCwd } from "./shared.js";
+import { createRunEventRecorder } from "./run-events.js";
+import { buildRuntimeSystemPrompt, buildSubagentSystemPrompt, createUserPromptMessage } from "./run-preparation.js";
+import { executeRuntimeToolCall, getRuntimeToolMetadata } from "./tool-adapters.js";
+import { finalizeOrchestratorError, finalizeOrchestratorSuccess, finalizeSubagentError, finalizeSubagentSuccess, markOrchestratorErrorReported } from "./run-completion.js";
+import { now, resolveLocalCliCwd, textFromUnknown } from "./shared.js";
 import {
-  appendThreadMessage,
   buildRunThreadKey,
-  buildSelfModDocumentationPrompt,
-  buildSystemPrompt,
   persistAssistantReply,
+  persistThreadPayloadMessage,
 } from "./thread-memory.js";
-import type { SubagentRunOptions, SubagentRunResult } from "./types.js";
+import type {
+  BaseRunOptions,
+  OrchestratorRunOptions,
+  RuntimeRunCallbacks,
+  SubagentRunOptions,
+  SubagentRunResult,
+} from "./types.js";
 import {
   isLocalCliAgentId,
-  shouldIncludeStellaDocumentation,
-  RUNTIME_RUN_EVENT_TYPES,
 } from "../../../src/shared/contracts/agent-runtime.js";
 
-const emitStreamChunk = (
-  opts: SubagentRunOptions,
-  runId: string,
-  nextSeq: () => number,
-  chunk: string,
-) => {
-  if (!chunk) {
-    return;
-  }
-  opts.onProgress?.(chunk);
-  const seq = nextSeq();
-  opts.store.recordRunEvent({
+const EMPTY_USAGE: Usage = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    total: 0,
+  },
+};
+
+const buildToolCallPayload = (args: {
+  toolCallId: string;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+}): AssistantMessage => ({
+  role: "assistant",
+  content: [
+    {
+      type: "toolCall",
+      id: args.toolCallId,
+      name: args.toolName,
+      arguments: args.toolArgs,
+    },
+  ],
+  api: "anthropic-messages",
+  provider: "anthropic",
+  model: "claude-code",
+  usage: EMPTY_USAGE,
+  stopReason: "toolUse",
+  timestamp: now(),
+});
+
+const buildToolResultText = (toolResult: { result?: unknown; error?: string }): string =>
+  toolResult.error ? `Error: ${toolResult.error}` : textFromUnknown(toolResult.result);
+
+const shouldUseClaudeCodeRuntime = (opts: BaseRunOptions): boolean => {
+  const primaryModelId = opts.agentContext.model ?? opts.resolvedLlm.model.id;
+  return (
+    isLocalCliAgentId(opts.agentType) &&
+    (opts.agentContext.agentEngine === "claude_code_local" ||
+      isClaudeCodeModel(primaryModelId))
+  );
+};
+
+const persistUserPrompt = (opts: BaseRunOptions, threadKey: string) => {
+  const payload = {
+    ...createUserPromptMessage(opts.userPrompt, opts.attachments),
     timestamp: now(),
-    runId,
-    conversationId: opts.conversationId,
-    agentType: opts.agentType,
-    seq,
-    type: RUNTIME_RUN_EVENT_TYPES.STREAM,
-    chunk,
+  };
+  persistThreadPayloadMessage(opts.store, {
+    threadKey,
+    payload,
   });
-  opts.callbacks?.onStream?.({
-    runId,
-    agentType: opts.agentType,
-    seq,
-    chunk,
+};
+
+const runClaudeHostedTurn = async (args: {
+  opts: BaseRunOptions;
+  runId: string;
+  systemPrompt: string;
+  callbacks?: Partial<RuntimeRunCallbacks>;
+}) => {
+  const threadKey = buildRunThreadKey({
+    conversationId: args.opts.conversationId,
+    agentType: args.opts.agentType,
+    runId: args.runId,
+    threadId: args.opts.agentContext.activeThreadId,
   });
+  const runEvents = createRunEventRecorder({
+    store: args.opts.store,
+    runId: args.runId,
+    conversationId: args.opts.conversationId,
+    agentType: args.opts.agentType,
+  });
+  runEvents.recordRunStart();
+  persistUserPrompt(args.opts, threadKey);
+
+  if (args.opts.abortSignal?.aborted) {
+    throw new Error("Aborted");
+  }
+
+  const localCliCwd = resolveLocalCliCwd({
+    agentType: args.opts.agentType,
+    frontendRoot: args.opts.frontendRoot,
+  });
+  const sessionKey = args.opts.agentContext.activeThreadId
+    ? `${args.opts.conversationId}:${args.opts.agentContext.activeThreadId}`
+    : `${args.opts.conversationId}:run:${args.runId}`;
+  const persistedSessionId =
+    args.opts.store.getThreadExternalSessionId(threadKey);
+  const toolMetadata = getRuntimeToolMetadata({
+    toolsAllowlist: args.opts.agentContext.toolsAllowlist,
+    toolCatalog: args.opts.toolCatalog,
+  });
+
+  const result = await runClaudeCodeTurn({
+    runId: args.runId,
+    sessionKey,
+    persistedSessionId,
+    modelId: args.opts.agentContext.model ?? args.opts.resolvedLlm.model.id,
+    prompt: args.opts.userPrompt,
+    systemPrompt: args.systemPrompt,
+    cwd: localCliCwd,
+    attachments: args.opts.attachments,
+    tools: toolMetadata,
+    abortSignal: args.opts.abortSignal,
+    onStatusChange: (status) => {
+      args.callbacks?.onStatus?.({
+        runId: args.runId,
+        agentType: args.opts.agentType,
+        seq: Date.now(),
+        statusState: status.state,
+        statusText: status.text,
+      });
+    },
+    executeTool: async (toolCallId, toolName, toolArgs, signal) => {
+      args.callbacks?.onToolStart?.(
+        runEvents.recordToolStart({
+          toolCallId,
+          toolName,
+          toolArgs,
+        }),
+      );
+      persistThreadPayloadMessage(args.opts.store, {
+        threadKey,
+        payload: buildToolCallPayload({
+          toolCallId,
+          toolName,
+          toolArgs,
+        }),
+      });
+      const toolResult = await executeRuntimeToolCall({
+        toolCallId,
+        toolName,
+        args: toolArgs,
+        runId: args.runId,
+        rootRunId: args.opts.rootRunId ?? args.runId,
+        taskId: args.opts.taskId,
+        conversationId: args.opts.conversationId,
+        agentType: args.opts.agentType,
+        deviceId: args.opts.deviceId,
+        frontendRoot: args.opts.frontendRoot,
+        taskDepth: args.opts.agentContext.taskDepth ?? 0,
+        maxTaskDepth: args.opts.agentContext.maxTaskDepth,
+        defaultSkills: args.opts.agentContext.defaultSkills,
+        skillIds: args.opts.agentContext.skillIds,
+        store: args.opts.store,
+        toolExecutor: args.opts.toolExecutor,
+        webSearch: args.opts.webSearch,
+        hookEmitter: args.opts.hookEmitter,
+        signal,
+      });
+      args.callbacks?.onToolEnd?.(
+        runEvents.recordToolEnd({
+          toolCallId,
+          toolName,
+          result: toolResult,
+          details: toolResult.details,
+        }),
+      );
+      persistThreadPayloadMessage(args.opts.store, {
+        threadKey,
+        payload: {
+          role: "toolResult",
+          toolCallId,
+          toolName,
+          content: [{ type: "text", text: buildToolResultText(toolResult) }],
+          isError: Boolean(toolResult.error),
+          timestamp: now(),
+        },
+      });
+      return toolResult;
+    },
+  });
+
+  await persistAssistantReply({
+    store: args.opts.store,
+    threadKey,
+    resolvedLlm: args.opts.resolvedLlm,
+    agentType: args.opts.agentType,
+    content: result.text,
+  });
+  args.opts.store.setThreadExternalSessionId(threadKey, result.sessionId);
+
+  return {
+    runId: args.runId,
+    threadKey,
+    runEvents,
+    finalText: result.text,
+    sessionId: result.sessionId,
+  };
+};
+
+export const runExternalOrchestratorTurn = async (
+  opts: OrchestratorRunOptions,
+): Promise<string | null> => {
+  if (!shouldUseClaudeCodeRuntime(opts)) {
+    return null;
+  }
+
+  const runId = opts.runId ?? `local:${crypto.randomUUID()}`;
+  const baselineHead =
+    opts.frontendRoot && opts.selfModMonitor
+      ? await opts.selfModMonitor
+          .getBaselineHead(opts.frontendRoot)
+          .catch(() => null)
+      : null;
+
+  try {
+    const systemPrompt = await buildRuntimeSystemPrompt(opts);
+    const result = await runClaudeHostedTurn({
+      opts,
+      runId,
+      systemPrompt,
+      callbacks: opts.callbacks,
+    });
+    await finalizeOrchestratorSuccess({
+      opts,
+      runId,
+      threadKey: result.threadKey,
+      runEvents: result.runEvents,
+      agent: { state: { messages: [] } },
+      finalText: result.finalText,
+      baselineHead,
+    });
+    return runId;
+  } catch (error) {
+    finalizeOrchestratorError({
+      opts,
+      runEvents: createRunEventRecorder({
+        store: opts.store,
+        runId,
+        conversationId: opts.conversationId,
+        agentType: opts.agentType,
+      }),
+      error,
+    });
+    throw markOrchestratorErrorReported(error);
+  }
 };
 
 export const runExternalSubagentTurn = async (
   opts: SubagentRunOptions,
 ): Promise<SubagentRunResult | null> => {
-  const primaryModelId = opts.agentContext.model;
-  if (!isLocalCliAgentId(opts.agentType)) {
-    return null;
-  }
-
-  const wantsClaudeRuntime =
-    opts.agentContext.agentEngine === "claude_code_local" ||
-    (primaryModelId && isClaudeCodeModel(primaryModelId));
-
-  if (!wantsClaudeRuntime) {
+  if (!shouldUseClaudeCodeRuntime(opts)) {
     return null;
   }
 
   const runId = opts.runId ?? `local:sub:${crypto.randomUUID()}`;
-  const prompt = opts.userPrompt.trim();
-  const effectiveSystemPrompt = [
-    buildSystemPrompt(opts.agentContext),
-    (shouldIncludeStellaDocumentation(opts.agentType) ||
-      Boolean(opts.selfModMetadata))
-      ? buildSelfModDocumentationPrompt(opts.frontendRoot)
-      : "",
-  ]
-    .filter((section) => section.trim().length > 0)
-    .join("\n\n");
-  const threadKey = buildRunThreadKey({
-    conversationId: opts.conversationId,
-    agentType: opts.agentType,
-    runId,
-    threadId: opts.agentContext.activeThreadId,
-  });
-  let seq = 0;
-  const nextSeq = () => ++seq;
-
-  opts.store.recordRunEvent({
-    timestamp: now(),
-    runId,
-    conversationId: opts.conversationId,
-    agentType: opts.agentType,
-    type: RUNTIME_RUN_EVENT_TYPES.RUN_START,
-  });
-
-  if (prompt) {
-    appendThreadMessage(opts.store, {
-      threadKey,
-      role: "user",
-      content: prompt,
-    });
-  }
-
-  if (opts.abortSignal?.aborted) {
-    const errSeq = nextSeq();
-    opts.store.recordRunEvent({
-      timestamp: now(),
-      runId,
-      conversationId: opts.conversationId,
-      agentType: opts.agentType,
-      seq: errSeq,
-      type: RUNTIME_RUN_EVENT_TYPES.ERROR,
-      error: "Aborted",
-      fatal: true,
-    });
-    return { runId, result: "", error: "Aborted" };
-  }
-
-  const localCliCwd = resolveLocalCliCwd({
-    agentType: opts.agentType,
-    frontendRoot: opts.frontendRoot,
-  });
-  const sessionKey = opts.agentContext.activeThreadId
-    ? `${opts.conversationId}:${opts.agentContext.activeThreadId}`
-    : `${opts.conversationId}:run:${runId}`;
 
   try {
-    const result = await runClaudeCodeTurn({
+    const result = await runClaudeHostedTurn({
+      opts,
       runId,
-      sessionKey,
-      modelId: primaryModelId!,
-      prompt,
-      systemPrompt: effectiveSystemPrompt,
-      cwd: localCliCwd,
-      abortSignal: opts.abortSignal,
-      onProgress: (chunk) => {
-        emitStreamChunk(opts, runId, nextSeq, chunk);
-      },
+      systemPrompt: buildSubagentSystemPrompt(opts),
+      callbacks: opts.callbacks,
     });
-    await persistAssistantReply({
-      store: opts.store,
-      threadKey,
-      resolvedLlm: opts.resolvedLlm,
-      agentType: opts.agentType,
-      content: result.text,
-    });
-    const endSeq = nextSeq();
-    opts.store.recordRunEvent({
-      timestamp: now(),
+    return await finalizeSubagentSuccess({
+      opts,
+      runEvents: result.runEvents,
       runId,
-      conversationId: opts.conversationId,
-      agentType: opts.agentType,
-      seq: endSeq,
-      type: RUNTIME_RUN_EVENT_TYPES.RUN_END,
-      finalText: result.text,
+      threadKey: result.threadKey,
+      result: result.finalText,
     });
-    opts.callbacks?.onEnd?.({
-      runId,
-      agentType: opts.agentType,
-      seq: endSeq,
-      finalText: result.text,
-      persisted: true,
-    });
-    return { runId, result: result.text };
   } catch (error) {
-    const errorMessage = `Claude Code execution failed: ${(error as Error).message || "Unknown error"}`;
-    const errSeq = nextSeq();
-    opts.store.recordRunEvent({
-      timestamp: now(),
+    return finalizeSubagentError({
+      opts,
+      runEvents: createRunEventRecorder({
+        store: opts.store,
+        runId,
+        conversationId: opts.conversationId,
+        agentType: opts.agentType,
+      }),
       runId,
-      conversationId: opts.conversationId,
-      agentType: opts.agentType,
-      seq: errSeq,
-      type: RUNTIME_RUN_EVENT_TYPES.ERROR,
-      error: errorMessage,
-      fatal: true,
+      error,
     });
-    opts.callbacks?.onError?.({
-      runId,
-      agentType: opts.agentType,
-      seq: errSeq,
-      error: errorMessage,
-      fatal: true,
-    });
-    return {
-      runId,
-      result: "",
-      error: errorMessage,
-    };
   }
 };
 
-export const shutdownSubagentEngineIntegrations = (): void => {
+export const shutdownExternalEngineIntegrations = (): void => {
   shutdownClaudeCodeRuntime();
 };

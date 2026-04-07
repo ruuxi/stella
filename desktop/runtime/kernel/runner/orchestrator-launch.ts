@@ -112,6 +112,7 @@ export const launchPreparedOrchestratorRun = (args: {
     attachments: prepared.attachments,
     agentContext: prepared.agentContext,
     callbacks: args.runtimeCallbacks,
+    toolCatalog: context.toolHost.getToolCatalog(),
     toolExecutor: (toolName, toolArgs, toolContext) =>
       context.toolHost.executeTool(toolName, toolArgs, toolContext),
     deviceId: context.deviceId,

@@ -58,6 +58,14 @@ export type RuntimeErrorEvent = {
   fatal: boolean;
 };
 
+export type RuntimeStatusEvent = {
+  runId: string;
+  agentType: string;
+  seq: number;
+  statusState: "running" | "compacting";
+  statusText: string;
+};
+
 export type RuntimeUserMessageEvent = {
   text: string;
   timestamp: number;
@@ -76,6 +84,7 @@ export type RuntimeEndEvent = {
 export type RuntimeRunCallbacks = {
   onUserMessage?: (event: RuntimeUserMessageEvent) => void;
   onStream: (event: RuntimeStreamEvent) => void;
+  onStatus?: (event: RuntimeStatusEvent) => void;
   onToolStart: (event: RuntimeToolStartEvent) => void;
   onToolEnd: (event: RuntimeToolEndEvent) => void;
   onError: (event: RuntimeErrorEvent) => void;

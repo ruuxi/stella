@@ -135,6 +135,7 @@ export const FullShellRuntime = ({
         streamingText={chat.conversation.streamingText}
         reasoningText={chat.conversation.reasoningText}
         isStreaming={chat.conversation.isStreaming}
+        runtimeStatusText={chat.conversation.streaming.runtimeStatusText}
         pendingUserMessageId={chat.conversation.pendingUserMessageId}
         selfModMap={chat.conversation.selfModMap}
         liveTasks={chat.conversation.streaming.liveTasks}

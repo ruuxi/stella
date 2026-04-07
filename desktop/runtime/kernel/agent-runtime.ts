@@ -1,5 +1,6 @@
 import {
-  shutdownSubagentEngineIntegrations,
+  shutdownExternalEngineIntegrations,
+  runExternalOrchestratorTurn,
   runExternalSubagentTurn,
 } from "./agent-runtime/external-engines.js";
 import {
@@ -16,6 +17,7 @@ export type {
   RuntimeToolStartEvent,
   RuntimeToolEndEvent,
   RuntimeErrorEvent,
+  RuntimeStatusEvent,
   RuntimeEndEvent,
   RuntimeUserMessageEvent,
   RuntimeRunCallbacks,
@@ -29,6 +31,10 @@ import type {
 export async function runOrchestratorTurn(
   opts: OrchestratorRunOptions,
 ): Promise<string> {
+  const integratedResult = await runExternalOrchestratorTurn(opts);
+  if (integratedResult) {
+    return integratedResult;
+  }
   return await runPiOrchestratorTurn(opts);
 }
 
@@ -43,7 +49,7 @@ export async function runSubagentTask(
 }
 
 export const shutdownSubagentRuntimes = (): void => {
-  shutdownSubagentEngineIntegrations();
+  shutdownExternalEngineIntegrations();
 };
 
 export const PI_RUNTIME_MAX_TURNS = DEFAULT_MAX_TURNS;
