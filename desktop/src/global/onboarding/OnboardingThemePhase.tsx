@@ -6,14 +6,14 @@ type ThemeSummary = {
 type ThemePhaseProps = {
   colorMode: "light" | "dark" | "system";
   gradientColor: "relative" | "strong";
-  gradientMode: "soft" | "crisp";
+  gradientMode: "soft" | "flat";
   sortedThemes: ThemeSummary[];
   splitTransitionActive: boolean;
   themeId: string;
   onContinue: () => void;
   onSelectColorMode: (mode: "light" | "dark" | "system") => void;
   onSelectGradientColor: (color: "relative" | "strong") => void;
-  onSelectGradientMode: (mode: "soft" | "crisp") => void;
+  onSelectGradientMode: (mode: "soft" | "flat") => void;
   onSelectTheme: (id: string) => void;
   onThemePreviewEnter: (id: string) => void;
   onThemePreviewLeave: () => void;
@@ -75,7 +75,7 @@ export function OnboardingThemePhase({
 
       {renderThemeOptionRow(
         "Gradient Style",
-        ["soft", "crisp"] as const,
+        ["soft", "flat"] as const,
         gradientMode,
         onSelectGradientMode,
       )}
