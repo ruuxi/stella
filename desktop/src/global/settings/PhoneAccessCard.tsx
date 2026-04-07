@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { Button } from "@/ui/button";
+import { showToast } from "@/ui/toast";
 
 type PairingSessionState = {
   pairingCode: string;
@@ -330,6 +331,195 @@ export function PhoneAccessCard() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+export function PhoneAccessConnectCard() {
+  const { hasConnectedAccount } = useAuthSessionState();
+  const [desktopDeviceId, setDesktopDeviceId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  const createPairingSession = useMutation(
+    api.mobile_access.createPairingSession,
+  );
+
+  const phoneAccessState = useQuery(
+    api.mobile_access.getPhoneAccessState,
+    hasConnectedAccount && desktopDeviceId ? { desktopDeviceId } : "skip",
+  ) as
+    | {
+        activePairing: PairingSessionState;
+        pairedDevices: PairedPhoneRecord[];
+      }
+    | undefined;
+
+  useEffect(() => {
+    if (!hasConnectedAccount) {
+      setDesktopDeviceId(null);
+      return;
+    }
+    let cancelled = false;
+    void window.electronAPI?.system
+      .getDeviceId()
+      .then((id) => {
+        if (!cancelled) setDesktopDeviceId(id ?? null);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled)
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to prepare phone access.",
+          );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasConnectedAccount]);
+
+  const hasActivePairing = Boolean(phoneAccessState?.activePairing);
+
+  useEffect(() => {
+    if (!hasActivePairing) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(id);
+  }, [hasActivePairing]);
+
+  const activePairing = useMemo(() => {
+    const p = phoneAccessState?.activePairing ?? null;
+    return p && p.expiresAt > now ? p : null;
+  }, [now, phoneAccessState?.activePairing]);
+
+  const handleCreate = useCallback(async () => {
+    if (!desktopDeviceId || isCreating) return;
+    setError(null);
+    setIsCreating(true);
+    try {
+      await createPairingSession({ desktopDeviceId });
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Unable to create a pairing code.",
+      );
+    } finally {
+      setIsCreating(false);
+    }
+  }, [createPairingSession, desktopDeviceId, isCreating]);
+
+  const pairingLink = activePairing
+    ? `stella-mobile://stella?code=${encodeURIComponent(activePairing.pairingCode)}`
+    : null;
+
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pairingLink) {
+      setQrDataUrl(null);
+      return;
+    }
+    let cancelled = false;
+    QRCode.toDataURL(pairingLink, {
+      width: 140,
+      margin: 2,
+      color: { dark: "#000000", light: "#ffffff" },
+    }).then((url) => {
+      if (!cancelled) setQrDataUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pairingLink]);
+
+  const handleCopy = useCallback(() => {
+    if (activePairing) {
+      void navigator.clipboard.writeText(activePairing.pairingCode);
+      showToast("Code copied to clipboard");
+    }
+  }, [activePairing]);
+
+  if (!hasConnectedAccount) {
+    return (
+      <div className="connect-detail-area">
+        <div className="connect-detail-header">
+          <span className="connect-grid-card-icon">
+            <svg viewBox="0 0 24 24">
+              <path fill="#007AFF" d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z" />
+            </svg>
+          </span>
+          <span className="connect-detail-name">Pair Phone</span>
+        </div>
+        <div className="connect-detail-body">
+          <p className="connect-instructions">
+            Sign in to pair your phone.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="connect-detail-area">
+      <div className="connect-detail-header">
+        <span className="connect-grid-card-icon">
+          <svg viewBox="0 0 24 24">
+            <path fill="#007AFF" d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z" />
+          </svg>
+        </span>
+        <span className="connect-detail-name">Pair Phone</span>
+      </div>
+      <div className="connect-detail-body">
+        <p className="connect-instructions">
+          Open the Stella app on your phone and enter the code below. You only
+          need to pair once per computer.
+        </p>
+        {error ? <div className="connect-error">{error}</div> : null}
+
+        {activePairing ? (
+          <>
+            <div className="connect-qr-code-row">
+              {qrDataUrl ? (
+                <img
+                  src={qrDataUrl}
+                  alt="Scan to pair your phone"
+                  className="connect-qr-code"
+                />
+              ) : (
+                <div className="connect-skeleton connect-skeleton-qr" />
+              )}
+              <div className="connect-qr-side">
+                <div className="connect-code-row">
+                  <span className="connect-code">
+                    {activePairing.pairingCode}
+                  </span>
+                  <Button variant="ghost" size="small" onClick={handleCopy}>
+                    Copy
+                  </Button>
+                </div>
+                <span className="connect-qr-meta">
+                  {formatCountdown(activePairing.expiresAt)}
+                </span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <Button
+            variant="ghost"
+            size="small"
+            onClick={() => void handleCreate()}
+            disabled={!desktopDeviceId || isCreating}
+          >
+            {isCreating ? "Preparing..." : "Generate Pairing Code"}
+          </Button>
+        )}
+
+        {phoneAccessState?.pairedDevices?.length ? (
+          <span className="connect-bot-link" style={{ cursor: "default", textDecoration: "none" }}>
+            {phoneAccessState.pairedDevices.length} phone{phoneAccessState.pairedDevices.length > 1 ? "s" : ""} paired
+          </span>
+        ) : null}
       </div>
     </div>
   );
