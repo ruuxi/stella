@@ -14,6 +14,13 @@ import "./ThemePicker.css";
 
 type ColorScheme = "light" | "dark" | "system";
 
+type ThemePickerTriggerProps = {
+  style?: CSSProperties;
+  tabIndex?: number;
+  "aria-hidden"?: boolean;
+  "data-slot"?: string;
+};
+
 const COLOR_SCHEMES: { id: ColorScheme; label: string }[] = [
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
@@ -60,17 +67,20 @@ export function ThemePicker({
     [themes]
   );
 
+  const triggerElement =
+    trigger && isValidElement<ThemePickerTriggerProps>(trigger) ? trigger : null;
+
   const popoverTrigger =
-    trigger && isValidElement(trigger)
-      ? cloneElement(trigger, {
+    triggerElement
+      ? cloneElement(triggerElement, {
           "data-slot": "theme-picker-trigger",
           ...(hideTrigger
             ? {
                 style: {
-                  ...(typeof trigger.props.style === "object" &&
-                  trigger.props.style !== null &&
-                  !Array.isArray(trigger.props.style)
-                    ? (trigger.props.style as CSSProperties)
+                  ...(typeof triggerElement.props.style === "object" &&
+                  triggerElement.props.style !== null &&
+                  !Array.isArray(triggerElement.props.style)
+                    ? triggerElement.props.style
                     : {}),
                   opacity: 0,
                   pointerEvents: "none",
