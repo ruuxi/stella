@@ -19,7 +19,7 @@ const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
   "TaskUpdate",
   "TaskCreate",
-  "TaskCancel",
+  "TaskPause",
   "TaskOutput",
   TOOL_IDS.WEB_FETCH,
   TOOL_IDS.NO_RESPONSE,

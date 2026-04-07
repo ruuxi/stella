@@ -539,6 +539,32 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       agentType: payload.agentType,
       storageMode: payload.storageMode,
     }, {
+      onUserMessage: (ev) => {
+        const hiddenTimestamp = Math.max(
+          0,
+          Math.min(ev.timestamp, userMessageTimestamp - 1),
+        );
+        ensureChatStore().appendEvent({
+          conversationId: payload.conversationId,
+          type: "user_message",
+          requestId: userMessageId,
+          timestamp: hiddenTimestamp,
+          payload: prepareStoredLocalChatPayload({
+            type: "user_message",
+            payload: {
+              text: ev.text,
+              metadata: {
+                ui: {
+                  visibility: ev.uiVisibility ?? "hidden",
+                },
+              },
+            },
+            timestamp: hiddenTimestamp,
+            timezone: payload.timezone,
+          }),
+        });
+        peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+      },
       onStream: (ev) => emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.STREAM }),
       onToolStart: (ev) => {
         ensureChatStore().appendEvent({

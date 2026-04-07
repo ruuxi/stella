@@ -397,10 +397,10 @@ const TaskOutputJsonSchema = {
   required: ["thread_id"],
 };
 
-const TaskCancelJsonSchema = {
+const TaskPauseJsonSchema = {
   type: "object",
   properties: {
-    thread_id: { type: "string", description: "Durable thread ID to cancel" },
+    thread_id: { type: "string", description: "Durable thread ID to pause" },
   },
   required: ["thread_id"],
 };
@@ -615,17 +615,17 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- Use this only for genuinely new work. Do not use it to continue, resume, retry, or revise an existing thread.\n" +
     "- After calling it, do not create another task for the same work.\n" +
     "- Wait for the completion/failure event; in the meantime you may gently reply to the user or call NoResponse.\n" +
-    "- Use the returned thread_id for TaskOutput, TaskUpdate, and TaskCancel.",
+    "- Use the returned thread_id for TaskOutput, TaskUpdate, and TaskPause.",
   TaskOutput:
     "Check the status and output of a task thread.\n\n" +
     "Usage:\n" +
     "- thread_id: the durable thread ID returned by TaskCreate.\n" +
     "- Returns a structured status object (running/completed/error/canceled) with timing and any available result or error text.",
-  TaskCancel:
-    "Cancel a running task.\n\n" +
+  TaskPause:
+    "Pause a running task.\n\n" +
     "Usage:\n" +
-    "- thread_id: the durable thread ID to cancel.\n" +
-    "- Cancel stops the current attempt only; the same thread can still be continued later with TaskUpdate.",
+    "- thread_id: the durable thread ID to pause.\n" +
+    "- Pause stops the current attempt only; the same thread can still be continued later with TaskUpdate.",
   TaskUpdate:
     "Continue or update a task thread.\n\n" +
     "Usage:\n" +
@@ -680,7 +680,7 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   DisplayGuidelines: DisplayGuidelinesJsonSchema,
   TaskCreate: TaskCreateJsonSchema,
   TaskOutput: TaskOutputJsonSchema,
-  TaskCancel: TaskCancelJsonSchema,
+  TaskPause: TaskPauseJsonSchema,
   TaskUpdate: TaskUpdateJsonSchema,
   WebFetch: WebFetchJsonSchema,
   SaveMemory: SaveMemoryJsonSchema,

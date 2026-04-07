@@ -10,7 +10,7 @@
  * - tools-search.ts   — Grep handler
  * - tools-shell.ts    — Bash, SkillBash handlers
  * - tools-web.ts      — WebFetch, WebSearch handlers
- * - tools-state.ts    — TaskCreate/TaskCancel, TaskUpdate, TaskOutput handlers
+ * - tools-state.ts    — TaskCreate/TaskPause, TaskUpdate, TaskOutput handlers
  * - tools-user.ts     — AskUserQuestion, RequestCredential handlers
  */
 

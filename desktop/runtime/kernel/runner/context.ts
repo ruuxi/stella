@@ -37,8 +37,6 @@ import {
 import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 import { getBundledCoreAgentFallback } from "../agents/agents.js";
 import {
-  buildManagedMediaDocsPrompt,
-  buildPanelInventory,
   defaultPromptForAgentType,
   DEFAULT_MAX_TASK_DEPTH,
   LOCAL_CONTEXT_EVENT_TYPES,
@@ -99,21 +97,42 @@ const trimDuplicatedTransitionUserEvent = (
   events: LocalContextEvent[],
   storedThreadMessages: ThreadHistoryEntry[],
 ): LocalContextEvent[] => {
-  const firstStoredUserPreview = getStoredMessagePreview(
-    storedThreadMessages.find((message) => message.role === "user"),
-  );
-  if (!firstStoredUserPreview || events.length === 0) {
+  const leadingStoredUserPreviews: string[] = [];
+  for (const message of storedThreadMessages) {
+    if (message.role !== "user") {
+      break;
+    }
+    const preview = getStoredMessagePreview(message);
+    if (!preview) {
+      break;
+    }
+    leadingStoredUserPreviews.push(preview);
+  }
+  if (leadingStoredUserPreviews.length === 0 || events.length === 0) {
     return events;
   }
   const nextEvents = [...events];
-  const lastEvent = nextEvents[nextEvents.length - 1];
-  if (!lastEvent || lastEvent.type !== "user_message") {
+  let storedIndex = leadingStoredUserPreviews.length - 1;
+  let eventIndex = nextEvents.length - 1;
+  let matchedCount = 0;
+
+  while (storedIndex >= 0 && eventIndex >= 0) {
+    const event = nextEvents[eventIndex];
+    if (!event || event.type !== "user_message") {
+      break;
+    }
+    if (getLocalEventText(event) !== leadingStoredUserPreviews[storedIndex]) {
+      break;
+    }
+    matchedCount += 1;
+    storedIndex -= 1;
+    eventIndex -= 1;
+  }
+
+  if (matchedCount === 0) {
     return events;
   }
-  if (getLocalEventText(lastEvent) !== firstStoredUserPreview) {
-    return events;
-  }
-  nextEvents.pop();
+  nextEvents.splice(nextEvents.length - matchedCount, matchedCount);
   return nextEvents;
 };
 
@@ -435,15 +454,7 @@ export const buildAgentContext = async (
       : "";
   const isSelfModTask = Boolean(args.selfModMetadata);
 
-  const dynamicContextSections = [
-    args.agentType === AGENT_IDS.ORCHESTRATOR && context.frontendRoot
-      ? buildPanelInventory(context.frontendRoot)
-      : "",
-    isSelfModTask
-      ? buildManagedMediaDocsPrompt(context.state.convexSiteUrl)
-      : "",
-    activeThreadsPrompt,
-  ].filter((section) => section.trim().length > 0);
+  const dynamicContextSections: string[] = [];
   const reminderState =
     args.agentType === AGENT_IDS.ORCHESTRATOR && activeThreadsPrompt
       ? context.runtimeStore.getOrchestratorReminderState(args.conversationId)
@@ -453,7 +464,7 @@ export const buildAgentContext = async (
         };
   const enginePref = getAgentEnginePreference(args.agentType);
 
-  let toolsAllowlist = agent?.toolsAllowlist;
+  const toolsAllowlist = agent?.toolsAllowlist;
 
   return {
     systemPrompt:
