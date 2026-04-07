@@ -32,6 +32,7 @@ import {
   streamManagedChat,
   usageSummaryFromAssistant,
 } from "../runtime_ai/managed";
+import { processIncomingMessage } from "../channels/message_pipeline";
 import { verifyPairedMobileSecret } from "../mobile_access";
 import type {
   AssistantMessage,
@@ -544,6 +545,7 @@ export const registerMobileRoutes = (http: HttpRouter) => {
   for (const path of [
     "/api/mobile/offline-chat",
     "/api/mobile/offline-chat/stream",
+    "/api/mobile/chat",
     "/api/mobile/pairing/complete",
     "/api/mobile/desktop-bridge/register",
     "/api/mobile/desktop-bridge/clear",
@@ -708,6 +710,157 @@ export const registerMobileRoutes = (http: HttpRouter) => {
           images,
           origin,
         });
+      }),
+    ),
+  });
+
+  http.route({
+    path: "/api/mobile/chat",
+    method: "POST",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const owner = await requireMobileAccountOwner(ctx, origin);
+        if ("response" in owner) {
+          return owner.response;
+        }
+
+        const rateLimit = await ctx.runMutation(
+          internal.rate_limits.consumeWebhookRateLimit,
+          {
+            scope: "mobile_offline_chat",
+            key: owner.ownerId,
+            limit: OFFLINE_CHAT_RATE_LIMIT,
+            windowMs: OFFLINE_CHAT_RATE_WINDOW_MS,
+            blockMs: OFFLINE_CHAT_RATE_WINDOW_MS,
+          },
+        );
+        if (!rateLimit.allowed) {
+          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+        }
+
+        let body: { message?: unknown; mobileDeviceId?: unknown };
+        try {
+          body = (await request.json()) as { message?: unknown; mobileDeviceId?: unknown };
+        } catch {
+          return errorResponse(400, "Invalid request body", origin);
+        }
+
+        const message =
+          typeof body.message === "string"
+            ? body.message.slice(0, MAX_OFFLINE_MESSAGE_CHARS).trim()
+            : "";
+        const mobileDeviceId = normalizeDeviceId(body.mobileDeviceId);
+
+        if (!message) {
+          return errorResponse(400, "Message required", origin);
+        }
+        if (!mobileDeviceId) {
+          return errorResponse(400, "mobileDeviceId required", origin);
+        }
+
+        const beforeSend = Date.now();
+
+        const conversationId = await ctx.runMutation(
+          internal.channels.utils.getOrCreateConversationForOwner,
+          { ownerId: owner.ownerId },
+        );
+
+        const result = await processIncomingMessage({
+          ctx,
+          ownerId: owner.ownerId,
+          provider: "stella_app",
+          externalUserId: mobileDeviceId,
+          text: message,
+          preEnsureOwnerConnection: true,
+          deliveryMeta: { mobileOwnerId: owner.ownerId },
+        });
+
+        if (!result) {
+          return errorResponse(500, "Could not process message", origin);
+        }
+
+        if (!result.deferred && result.text) {
+          const encoder = new TextEncoder();
+          const readable = new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ t: result.text })}\n\n`),
+              );
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+            },
+          });
+          const headers: Record<string, string> = {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          };
+          if (origin) {
+            headers["Access-Control-Allow-Origin"] = origin;
+            headers["Access-Control-Allow-Credentials"] = "true";
+          }
+          return new Response(readable, { status: 200, headers });
+        }
+
+        const POLL_INTERVAL_MS = 500;
+        const MAX_POLL_MS = 30_000;
+        const encoder = new TextEncoder();
+        const readable = new ReadableStream({
+          async start(controller) {
+            const deadline = beforeSend + MAX_POLL_MS;
+            let found = false;
+
+            while (Date.now() < deadline) {
+              await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+
+              const events = (await ctx.runQuery(
+                internal.events.listEventsSince,
+                {
+                  conversationId,
+                  afterTimestamp: beforeSend - 1000,
+                  limit: 20,
+                },
+              )) as Array<{ type: string; payload: Record<string, unknown> }> | null;
+
+              if (events) {
+                for (let i = events.length - 1; i >= 0; i--) {
+                  if (events[i].type === "assistant_message") {
+                    const text = (events[i].payload?.text as string) ?? "";
+                    if (text) {
+                      controller.enqueue(
+                        encoder.encode(`data: ${JSON.stringify({ t: text })}\n\n`),
+                      );
+                      found = true;
+                      break;
+                    }
+                  }
+                }
+              }
+              if (found) break;
+            }
+
+            if (!found) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ t: "Sorry, I couldn\u2019t reach your computer in time. Try again or send without desktop." })}\n\n`,
+                ),
+              );
+            }
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          },
+        });
+
+        const headers: Record<string, string> = {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        };
+        if (origin) {
+          headers["Access-Control-Allow-Origin"] = origin;
+          headers["Access-Control-Allow-Credentials"] = "true";
+        }
+        return new Response(readable, { status: 200, headers });
       }),
     ),
   });
