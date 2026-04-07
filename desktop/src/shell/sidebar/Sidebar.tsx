@@ -31,6 +31,7 @@ import {
 import "./sidebar.css";
 
 interface SidebarProps {
+  className?: string;
   activeView?: ViewType;
   isShowingHomeContent?: boolean;
   hideThemePicker?: boolean;
@@ -143,6 +144,7 @@ const AuthButton = ({
 };
 
 export const Sidebar = ({
+  className,
   activeView,
   isShowingHomeContent,
   hideThemePicker,
@@ -185,7 +187,7 @@ export const Sidebar = ({
   };
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${className ? ` ${className}` : ""}`}>
       <div
         className={`sidebar-header${isMac ? " sidebar-header--mac" : ""}`}
       >

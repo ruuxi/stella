@@ -6,7 +6,7 @@ import {
   type ComponentType,
   type SVGProps,
 } from 'react'
-import { Camera, MessageSquare, Mic, X } from 'lucide-react'
+import { Camera, Maximize2, MessageSquare, Mic, Minimize2 } from 'lucide-react'
 import { StellaAnimation } from '@/shell/ascii-creature/StellaAnimation'
 import { cssToVec3 } from '@/shared/lib/color'
 import { RADIAL_SIZE } from '@/shared/lib/layout'
@@ -30,7 +30,7 @@ const BASE_WEDGES: {
 }[] = [
   { id: 'capture', label: 'Capture', icon: Camera },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
-  { id: 'close', label: 'Close', icon: X },
+  { id: 'full', label: 'Full', icon: Maximize2 },
   { id: 'voice', label: 'Voice', icon: Mic },
 ]
 
@@ -42,11 +42,13 @@ const WEDGE_ANGLE = 90
 const DEAD_ZONE_RADIUS = 30
 const CENTER_BG_RADIUS = INNER_RADIUS - 5
 
-const getWedges = (miniVisible: boolean) =>
-  BASE_WEDGES.map((wedge) => ({
-    ...wedge,
-    enabled: wedge.id === 'close' ? miniVisible : true,
-  }))
+const getWedges = (compactAndFocused: boolean) =>
+  BASE_WEDGES.map((wedge) => {
+    if (wedge.id === 'chat' && compactAndFocused) {
+      return { ...wedge, label: 'Close', icon: Minimize2, enabled: true }
+    }
+    return { ...wedge, enabled: true }
+  })
 
 const toRgba = (color: string, alpha: number): string => {
   const [r, g, b] = cssToVec3(color)
@@ -389,9 +391,8 @@ export function RadialDial({ miniVisible = false }: { miniVisible?: boolean }) {
         >
           {wedgeLayout.map((wedge) => {
             const isSelected = selectedWedge === wedge.id
-            // Close keeps full card/border when unavailable; only label/icon show disabled.
             const paintAsEnabled =
-              wedge.enabled || phase === 'closing' || wedge.id === 'close'
+              wedge.enabled || phase === 'closing'
             const fillColor = paintAsEnabled
               ? (isSelected ? palette.interactive : palette.card)
               : toRgba(colors.card, 0.5)
