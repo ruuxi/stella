@@ -111,6 +111,8 @@ export const createBootstrapServices = (
     },
     window: {
       isCompactMode: () => state.windowManager?.isCompactMode() ?? false,
+      getLastActiveWindowMode: () =>
+        state.windowManager?.getLastActiveWindowMode() ?? "full",
       isWindowFocused: () => state.windowManager?.isWindowFocused() ?? false,
       showWindow: (target) => state.windowManager?.showWindow(target),
       restoreFullSize: () => state.windowManager?.restoreFullSize(),
@@ -126,6 +128,8 @@ export const createBootstrapServices = (
       }
       options.getMobileBroadcast()?.("voice:wakeWordState", { enabled });
     },
+    deactivateVoiceModes: () => uiStateService.deactivateVoiceModes(),
+    isVoiceActive: () => uiStateService.state.isVoiceRtcActive,
     updateUiState: (partial) => uiStateService.update(partial),
   });
 

@@ -273,9 +273,39 @@ export class OverlayWindowController {
   private activeRegionCapture = false
   private activeVoice = false
   private activeScreenGuide = false
+  private activeWindowHighlight = false
+  private windowHighlightRequestId = 0
 
   private readonly handleOverlaySetInteractive = (_event: unknown, interactive: boolean) => {
     this.overlayWindow.setIgnoreMouseEvents(!interactive)
+  }
+  private readonly handleOverlayShowWindowHighlight = (
+    _event: unknown,
+    bounds: { x: number; y: number; width: number; height: number } | null,
+  ) => {
+    this.windowHighlightRequestId += 1
+    this.setWindowHighlight(bounds)
+  }
+  private readonly handleOverlayHideWindowHighlight = () => {
+    this.windowHighlightRequestId += 1
+    this.clearWindowHighlight()
+  }
+  private readonly handleOverlayPreviewWindowHighlightAtPoint = (
+    _event: unknown,
+    point: { x: number; y: number },
+  ) => {
+    const requestId = ++this.windowHighlightRequestId
+    const origin = this.overlayWindow.getOverlayOrigin()
+    const screenPoint = {
+      x: Math.round(point.x + origin.x),
+      y: Math.round(point.y + origin.y),
+    }
+    void getWindowInfoAtPoint(screenPoint.x, screenPoint.y, {
+      excludePids: [process.pid],
+    }).then((info) => {
+      if (requestId !== this.windowHighlightRequestId) return
+      this.setWindowHighlight(info?.bounds ?? null)
+    })
   }
   private readonly handleRadialAnimDone = () => {
     if (this.radialHideTimeout) {
@@ -289,6 +319,12 @@ export class OverlayWindowController {
   constructor(options: OverlayWindowControllerOptions) {
     this.overlayWindow = new OverlayWindow(options)
     ipcMain.on('overlay:setInteractive', this.handleOverlaySetInteractive)
+    ipcMain.on('overlay:showWindowHighlight', this.handleOverlayShowWindowHighlight)
+    ipcMain.on('overlay:hideWindowHighlight', this.handleOverlayHideWindowHighlight)
+    ipcMain.on(
+      'overlay:previewWindowHighlightAtPoint',
+      this.handleOverlayPreviewWindowHighlightAtPoint,
+    )
     ipcMain.on('radial:animDone', this.handleRadialAnimDone)
   }
 
@@ -301,7 +337,40 @@ export class OverlayWindowController {
   }
 
   private get isAnyActive() {
-    return this.activeRadial || this.activeRegionCapture || this.activeVoice || this.activeScreenGuide || this.activeMorph
+    return this.activeRadial ||
+      this.activeRegionCapture ||
+      this.activeVoice ||
+      this.activeScreenGuide ||
+      this.activeWindowHighlight ||
+      this.activeMorph
+  }
+
+  private setWindowHighlight(bounds: { x: number; y: number; width: number; height: number } | null) {
+    if (!bounds) {
+      this.clearWindowHighlight()
+      return
+    }
+
+    this.activeWindowHighlight = true
+    this.overlayWindow.show({ inactive: true })
+    if (!this.activeRegionCapture) {
+      this.overlayWindow.setIgnoreMouseEvents(true)
+      this.overlayWindow.setFocusable(false)
+    }
+
+    const origin = this.overlayWindow.getOverlayOrigin()
+    this.overlayWindow.send('overlay:windowHighlight', {
+      x: bounds.x - origin.x,
+      y: bounds.y - origin.y,
+      width: bounds.width,
+      height: bounds.height,
+    })
+  }
+
+  private clearWindowHighlight() {
+    this.activeWindowHighlight = false
+    this.overlayWindow.send('overlay:windowHighlight', null)
+    this.hideOverlayIfIdle()
   }
 
   private hideOverlayIfIdle() {
@@ -358,9 +427,7 @@ export class OverlayWindowController {
   private radialHideTimeout: ReturnType<typeof setTimeout> | null = null
   private static readonly CLOSE_ANIM_FALLBACK = 350
 
-  private radialWindowBoundsRequestId = 0
-
-  showRadial(options?: { compactFocused?: boolean }) {
+  showRadial(options?: { compactFocused?: boolean; fullFocused?: boolean }) {
     if (!this.overlayWindow.getWindow()) return
 
     if (this.radialHideTimeout) {
@@ -391,34 +458,12 @@ export class OverlayWindowController {
       screenX: localX,
       screenY: localY,
       compactFocused: options?.compactFocused ?? false,
-    })
-
-    // Async-query the OS window under the cursor and send its bounds
-    // to the overlay so it can draw a highlight ring.
-    const requestId = ++this.radialWindowBoundsRequestId
-    void getWindowInfoAtPoint(cursorDip.x, cursorDip.y, {
-      excludePids: [process.pid],
-    }).then((info) => {
-      if (requestId !== this.radialWindowBoundsRequestId) return
-      if (!this.activeRadial) return
-      if (!info) {
-        this.overlayWindow.send('radial:windowBounds', null)
-        return
-      }
-      const o = this.overlayWindow.getOverlayOrigin()
-      this.overlayWindow.send('radial:windowBounds', {
-        x: info.bounds.x - o.x,
-        y: info.bounds.y - o.y,
-        width: info.bounds.width,
-        height: info.bounds.height,
-      })
+      fullFocused: options?.fullFocused ?? false,
     })
   }
 
   hideRadial() {
     if (!this.overlayWindow.getWindow()) return
-    this.radialWindowBoundsRequestId++
-    this.overlayWindow.send('radial:windowBounds', null)
     this.overlayWindow.send('radial:hide')
     if (!this.isAnyActive) {
       this.overlayWindow.setIgnoreMouseEvents(true)
@@ -637,6 +682,12 @@ export class OverlayWindowController {
   destroy() {
     this.stopTrackingMorphWindow()
     ipcMain.removeListener('overlay:setInteractive', this.handleOverlaySetInteractive)
+    ipcMain.removeListener('overlay:showWindowHighlight', this.handleOverlayShowWindowHighlight)
+    ipcMain.removeListener('overlay:hideWindowHighlight', this.handleOverlayHideWindowHighlight)
+    ipcMain.removeListener(
+      'overlay:previewWindowHighlightAtPoint',
+      this.handleOverlayPreviewWindowHighlightAtPoint,
+    )
     ipcMain.removeListener('radial:animDone', this.handleRadialAnimDone)
     this.overlayWindow.destroy()
   }

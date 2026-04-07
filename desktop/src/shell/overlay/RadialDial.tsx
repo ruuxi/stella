@@ -6,7 +6,7 @@ import {
   type ComponentType,
   type SVGProps,
 } from 'react'
-import { Camera, Maximize2, MessageSquare, Mic, Minimize2 } from 'lucide-react'
+import { Camera, Maximize2, MessageSquare, Mic, X } from 'lucide-react'
 import { StellaAnimation } from '@/shell/ascii-creature/StellaAnimation'
 import { cssToVec3 } from '@/shared/lib/color'
 import { RADIAL_SIZE } from '@/shared/lib/layout'
@@ -42,10 +42,13 @@ const WEDGE_ANGLE = 90
 const DEAD_ZONE_RADIUS = 30
 const CENTER_BG_RADIUS = INNER_RADIUS - 5
 
-const getWedges = (compactAndFocused: boolean) =>
+const getWedges = (compactAndFocused: boolean, fullAndFocused: boolean) =>
   BASE_WEDGES.map((wedge) => {
     if (wedge.id === 'chat' && compactAndFocused) {
-      return { ...wedge, label: 'Close', icon: Minimize2, enabled: true }
+      return { ...wedge, label: 'Close', icon: X, enabled: true }
+    }
+    if (wedge.id === 'full' && fullAndFocused) {
+      return { ...wedge, label: 'Close', icon: X, enabled: true }
     }
     return { ...wedge, enabled: true }
   })
@@ -317,12 +320,21 @@ function useRadialIPC(
   }, [blob, setSelectedWedge, setPhase, setContentVisible])
 }
 
-export function RadialDial({ miniVisible = false }: { miniVisible?: boolean }) {
+export function RadialDial({
+  miniVisible = false,
+  fullVisible = false,
+}: {
+  miniVisible?: boolean
+  fullVisible?: boolean
+}) {
   const [selectedWedge, setSelectedWedge] = useState<RadialWedge>('dismiss')
   const [phase, setPhase] = useState<Phase>('hidden')
   const [contentVisible, setContentVisible] = useState(false)
   const { colors } = useTheme()
-  const wedges = useMemo(() => getWedges(miniVisible), [miniVisible])
+  const wedges = useMemo(
+    () => getWedges(miniVisible, fullVisible),
+    [fullVisible, miniVisible],
+  )
   const wedgeLayout = useMemo(
     () => wedges.map((wedge, index) => ({
       ...wedge,

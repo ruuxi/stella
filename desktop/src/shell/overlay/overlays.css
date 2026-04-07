@@ -22,14 +22,14 @@
 .region-capture-dim {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.12);
 }
 
 .region-capture-selection {
   position: absolute;
   border: 1px solid rgba(255, 255, 255, 0.7);
   background: transparent;
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.12);
   pointer-events: none;
 }
 
@@ -56,13 +56,13 @@
   position: absolute;
   pointer-events: none;
   border-radius: 10px;
-  border: 3px solid rgba(80, 140, 255, 0.5);
+  border: 3px solid rgba(110, 165, 255, 0.82);
   box-shadow:
-    0 0 0 1px rgba(80, 140, 255, 0.15),
-    0 0 24px 4px rgba(80, 140, 255, 0.12),
-    0 0 48px 8px rgba(80, 140, 255, 0.06),
-    inset 0 0 40px 10px rgba(80, 140, 255, 0.15),
-    inset 0 0 80px 20px rgba(80, 140, 255, 0.1);
+    0 0 0 1px rgba(170, 205, 255, 0.45),
+    0 0 30px 6px rgba(110, 165, 255, 0.28),
+    0 0 64px 14px rgba(110, 165, 255, 0.16),
+    inset 0 0 52px 14px rgba(110, 165, 255, 0.22),
+    inset 0 0 96px 24px rgba(110, 165, 255, 0.12);
   animation: radial-ring-fade-in 0.25s ease-out both;
 }
 

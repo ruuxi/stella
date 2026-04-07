@@ -77,6 +77,11 @@ export const IPC_OVERLAY_MORPH_END = "overlay:morphEnd" as const;
 export const IPC_OVERLAY_MORPH_STATE = "overlay:morphState" as const;
 export const IPC_OVERLAY_MORPH_READY = "overlay:morphReady" as const;
 export const IPC_OVERLAY_MORPH_DONE = "overlay:morphDone" as const;
+export const IPC_OVERLAY_WINDOW_HIGHLIGHT = "overlay:windowHighlight" as const;
+export const IPC_OVERLAY_SHOW_WINDOW_HIGHLIGHT = "overlay:showWindowHighlight" as const;
+export const IPC_OVERLAY_HIDE_WINDOW_HIGHLIGHT = "overlay:hideWindowHighlight" as const;
+export const IPC_OVERLAY_PREVIEW_WINDOW_HIGHLIGHT_AT_POINT =
+  "overlay:previewWindowHighlightAtPoint" as const;
 
 // ── Mini ────────────────────────────────────────────────────────────────────
 

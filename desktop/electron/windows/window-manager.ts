@@ -31,6 +31,7 @@ export class WindowManager {
   private readonly fullWindowController: FullWindowController
 
   private compactMode = false
+  private lastActiveWindowMode: 'full' | 'mini' = 'full'
   private savedBounds: Bounds | null = null
   private fadeTimer: ReturnType<typeof setInterval> | null = null
 
@@ -75,6 +76,10 @@ export class WindowManager {
     return this.compactMode
   }
 
+  getLastActiveWindowMode() {
+    return this.lastActiveWindowMode
+  }
+
   isWindowFocused() {
     const fullWindow = this.getFullWindow()
     return fullWindow ? fullWindow.isFocused() : false
@@ -114,7 +119,7 @@ export class WindowManager {
     }
   }
 
-  private fadeTransition(win: Electron.BrowserWindow, to: Bounds) {
+  private fadeTransition(win: Electron.BrowserWindow, to: Bounds, onSnap?: () => void) {
     this.cancelFade()
     if (win.isDestroyed()) return
 
@@ -130,6 +135,7 @@ export class WindowManager {
       if (t >= 1) {
         this.cancelFade()
         win.setBounds(to)
+        onSnap?.()
 
         const fadeInStart = Date.now()
         this.fadeTimer = setInterval(() => {
@@ -166,6 +172,7 @@ export class WindowManager {
     if (!this.compactMode) return
 
     this.compactMode = false
+    this.lastActiveWindowMode = 'full'
     const fullWindow = this.getFullWindow()
     if (!fullWindow || fullWindow.isDestroyed()) return
 
@@ -222,10 +229,10 @@ export class WindowManager {
       }
 
       this.compactMode = true
-      this.focusAndRaise(fullWindow)
+      this.lastActiveWindowMode = 'mini'
 
       const pos = this.computeCompactPosition()
-      const target = {
+      const targetBounds = {
         x: pos.x,
         y: pos.y,
         width: compactSize.width,
@@ -233,9 +240,16 @@ export class WindowManager {
       }
 
       if (fullWindow.isVisible()) {
-        this.fadeTransition(fullWindow, target)
+        this.fadeTransition(fullWindow, targetBounds, () => {
+          this.focusAndRaise(fullWindow)
+        })
       } else {
-        fullWindow.setBounds(target)
+        fullWindow.setOpacity(0)
+        fullWindow.setBounds(targetBounds)
+        this.focusAndRaise(fullWindow)
+        setTimeout(() => {
+          if (!fullWindow.isDestroyed()) fullWindow.setOpacity(1)
+        }, 50)
       }
 
       this.options.onUpdateUiState({ window: 'mini', mode: 'chat' })
@@ -248,6 +262,7 @@ export class WindowManager {
     }
 
     const fullWindow = this.createFullWindow()
+    this.lastActiveWindowMode = 'full'
     if (fullWindow.isMinimized()) {
       fullWindow.restore()
     }

@@ -24,7 +24,7 @@ export type RadialCaptureBridge = {
 }
 
 export type RadialOverlayBridge = {
-  showRadial: (options?: { compactFocused?: boolean }) => void
+  showRadial: (options?: { compactFocused?: boolean; fullFocused?: boolean }) => void
   hideRadial: () => void
   updateRadialCursor: (x: number, y: number) => void
   getRadialBounds: () => { x: number; y: number } | null
@@ -32,6 +32,7 @@ export type RadialOverlayBridge = {
 
 export type RadialWindowBridge = {
   isCompactMode: () => boolean
+  getLastActiveWindowMode: () => 'full' | 'mini'
   isWindowFocused: () => boolean
   showWindow: (target: 'full' | 'mini') => void
   restoreFullSize: () => void
@@ -45,6 +46,8 @@ type RadialGestureDeps = {
   overlay: RadialOverlayBridge
   window: RadialWindowBridge
   activateVoiceRtc: () => void
+  deactivateVoiceModes: () => boolean
+  isVoiceActive: () => boolean
   updateUiState: (partial: Record<string, unknown>) => void
 }
 
@@ -90,6 +93,8 @@ export class RadialGestureService {
         capture.cancelRadialContextCapture()
         updateUiState({ mode: 'chat' })
         overlay.hideRadial()
+        const targetWindowMode = win.getLastActiveWindowMode()
+        win.minimizeWindow()
         const regionCapture = await capture.startRegionCapture()
         if (regionCapture && (regionCapture.screenshot || regionCapture.window)) {
           const ctx = capture.getChatContextSnapshot() ?? capture.emptyContext()
@@ -97,16 +102,16 @@ export class RadialGestureService {
           const nextScreenshots = regionCapture.screenshot
             ? [...existing, regionCapture.screenshot]
             : existing
+          const nextWindow = regionCapture.window ?? ctx.window
           capture.setPendingChatContext({
             ...ctx,
-            window: regionCapture.window ?? ctx.window,
+            window: nextWindow,
+            windowContextEnabled: regionCapture.window ? false : ctx.windowContextEnabled,
             regionScreenshots: nextScreenshots,
           })
           capture.broadcastChatContext()
-          if (!win.isCompactMode()) {
-            win.showWindow('mini')
-          }
         }
+        win.showWindow(targetWindowMode)
         break
       }
       case 'chat': {
@@ -125,13 +130,21 @@ export class RadialGestureService {
       case 'voice': {
         capture.cancelRadialContextCapture()
         this.restoreOrClearTransientContext()
-        activateVoiceRtc()
+        if (this.deps.isVoiceActive()) {
+          this.deps.deactivateVoiceModes()
+        } else {
+          activateVoiceRtc()
+        }
         break
       }
       case 'full':
         capture.cancelRadialContextCapture()
         this.restoreOrClearTransientContext()
-        win.showWindow('full')
+        if (!win.isCompactMode() && win.isWindowFocused()) {
+          win.minimizeWindow()
+        } else {
+          win.showWindow('full')
+        }
         break
     }
   }
@@ -153,8 +166,10 @@ export class RadialGestureService {
         }
 
         this.selectionCommitted = false
-        const compactFocused = win.isCompactMode() && win.isWindowFocused()
-        overlay.showRadial({ compactFocused })
+        const windowFocused = win.isWindowFocused()
+        const compactFocused = win.isCompactMode() && windowFocused
+        const fullFocused = !win.isCompactMode() && windowFocused
+        overlay.showRadial({ compactFocused, fullFocused })
         const cursorPoint = screen.getCursorScreenPoint()
         capture.captureRadialContext(cursorPoint.x, cursorPoint.y, this.contextBeforeGesture)
       },

@@ -29,8 +29,9 @@ type WindowBounds = { x: number; y: number; width: number; height: number };
 type OverlayState = {
   radialVisible: boolean;
   radialPosition: { x: number; y: number } | null;
-  radialWindowBounds: WindowBounds | null;
   radialCompactFocused: boolean;
+  radialFullFocused: boolean;
+  windowHighlightBounds: WindowBounds | null;
   regionCaptureActive: boolean;
   voiceVisible: boolean;
   voicePosition: { x: number; y: number } | null;
@@ -39,9 +40,14 @@ type OverlayState = {
 };
 
 type OverlayAction =
-  | { type: "radial:show"; position?: { x: number; y: number }; compactFocused?: boolean }
+  | {
+      type: "radial:show";
+      position?: { x: number; y: number };
+      compactFocused?: boolean;
+      fullFocused?: boolean;
+    }
   | { type: "radial:hide" }
-  | { type: "radial:windowBounds"; bounds: WindowBounds | null }
+  | { type: "overlay:windowHighlight"; bounds: WindowBounds | null }
   | { type: "region"; active: boolean }
   | { type: "voice:show"; position: { x: number; y: number } }
   | { type: "voice:hide" }
@@ -59,7 +65,8 @@ const initialState: OverlayState = {
   radialVisible: false,
   radialPosition: null,
   radialCompactFocused: false,
-  radialWindowBounds: null,
+  radialFullFocused: false,
+  windowHighlightBounds: null,
   regionCaptureActive: false,
   voiceVisible: false,
   voicePosition: null,
@@ -80,14 +87,20 @@ function overlayReducer(
       ) {
         return state;
       }
-      return { ...state, radialVisible: true, radialPosition: nextPosition, radialCompactFocused: action.compactFocused ?? false };
+      return {
+        ...state,
+        radialVisible: true,
+        radialPosition: nextPosition,
+        radialCompactFocused: action.compactFocused ?? false,
+        radialFullFocused: action.fullFocused ?? false,
+      };
     }
     case "radial:hide":
       return state.radialVisible
-        ? { ...state, radialVisible: false, radialWindowBounds: null }
+        ? { ...state, radialVisible: false, radialCompactFocused: false, radialFullFocused: false }
         : state;
-    case "radial:windowBounds":
-      return { ...state, radialWindowBounds: action.bounds };
+    case "overlay:windowHighlight":
+      return { ...state, windowHighlightBounds: action.bounds };
     case "region":
       return state.regionCaptureActive === action.active
         ? state
@@ -148,6 +161,7 @@ function useOverlayIPC(
           screenX?: number;
           screenY?: number;
           compactFocused?: boolean;
+          fullFocused?: boolean;
         },
       ) => {
         if (radialHideTimerRef.current) {
@@ -162,9 +176,14 @@ function useOverlayIPC(
             type: "radial:show",
             position: { x: data.screenX!, y: data.screenY! },
             compactFocused: data.compactFocused,
+            fullFocused: data.fullFocused,
           });
         } else {
-          dispatch({ type: "radial:show", compactFocused: data.compactFocused });
+          dispatch({
+            type: "radial:show",
+            compactFocused: data.compactFocused,
+            fullFocused: data.fullFocused,
+          });
         }
       },
     );
@@ -180,8 +199,8 @@ function useOverlayIPC(
         dispatch({ type: "radial:hide" });
       }, 300);
     });
-    const cleanupWindowBounds = api.radial.onWindowBounds?.((bounds) => {
-      dispatch({ type: "radial:windowBounds", bounds });
+    const cleanupWindowHighlight = api.overlay.onWindowHighlight?.((bounds) => {
+      dispatch({ type: "overlay:windowHighlight", bounds });
     });
 
     return () => {
@@ -191,7 +210,7 @@ function useOverlayIPC(
       }
       cleanupShow();
       cleanupHide();
-      cleanupWindowBounds?.();
+      cleanupWindowHighlight?.();
     };
   }, [dispatch]);
 
@@ -381,16 +400,16 @@ export function OverlayRoot() {
         overflow: "hidden",
       }}
     >
-      {/* Window highlight ring: shown around the OS window under the cursor
-          when the radial dial is open. */}
-      {state.radialWindowBounds && (
+      {/* Window highlight ring: shown when a surface explicitly requests it,
+          such as capture hover or the disabled Include badge hover. */}
+      {state.windowHighlightBounds && (
         <div
           className="radial-window-ring"
           style={{
-            left: state.radialWindowBounds.x,
-            top: state.radialWindowBounds.y,
-            width: state.radialWindowBounds.width,
-            height: state.radialWindowBounds.height,
+            left: state.windowHighlightBounds.x,
+            top: state.windowHighlightBounds.y,
+            width: state.windowHighlightBounds.width,
+            height: state.windowHighlightBounds.height,
           }}
         />
       )}
@@ -412,7 +431,10 @@ export function OverlayRoot() {
           pointerEvents: state.radialVisible ? "auto" : "none",
         }}
       >
-        <RadialDial miniVisible={state.radialCompactFocused} />
+        <RadialDial
+          miniVisible={state.radialCompactFocused}
+          fullVisible={state.radialFullFocused}
+        />
       </div>
 
       {/* Region capture: mounted only when active. */}
