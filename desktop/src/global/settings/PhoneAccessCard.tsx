@@ -341,10 +341,14 @@ export function PhoneAccessConnectCard() {
   const [desktopDeviceId, setDesktopDeviceId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const createPairingSession = useMutation(
     api.mobile_access.createPairingSession,
+  );
+  const revokePairedMobileDevice = useMutation(
+    api.mobile_access.revokePairedMobileDevice,
   );
 
   const phoneAccessState = useQuery(
@@ -440,6 +444,21 @@ export function PhoneAccessConnectCard() {
     }
   }, [activePairing]);
 
+  const handleRemovePhone = useCallback(async (mobileDeviceId: string) => {
+    if (!desktopDeviceId || removingId) return;
+    setRemovingId(mobileDeviceId);
+    try {
+      await revokePairedMobileDevice({ desktopDeviceId, mobileDeviceId });
+      showToast("Phone removed");
+    } catch {
+      showToast("Failed to remove phone");
+    } finally {
+      setRemovingId(null);
+    }
+  }, [desktopDeviceId, removingId, revokePairedMobileDevice]);
+
+  const pairedDevices = phoneAccessState?.pairedDevices ?? [];
+
   if (!hasConnectedAccount) {
     return (
       <div className="connect-detail-area">
@@ -507,11 +526,28 @@ export function PhoneAccessConnectCard() {
           </>
         )}
 
-        {phoneAccessState?.pairedDevices?.length ? (
-          <span className="connect-pair-meta">
-            {phoneAccessState.pairedDevices.length} phone{phoneAccessState.pairedDevices.length > 1 ? "s" : ""} paired
-          </span>
-        ) : null}
+        {pairedDevices.length > 0 && (
+          <div className="connect-paired-devices">
+            <span className="connect-pair-meta">
+              {pairedDevices.length} phone{pairedDevices.length > 1 ? "s" : ""} paired
+            </span>
+            {pairedDevices.map((device) => (
+              <div key={device.mobileDeviceId} className="connect-paired-device">
+                <span className="connect-paired-device-name">
+                  {device.displayName?.trim() || "Phone"}
+                </span>
+                <button
+                  type="button"
+                  className="connect-bot-link"
+                  onClick={() => void handleRemovePhone(device.mobileDeviceId)}
+                  disabled={removingId === device.mobileDeviceId}
+                >
+                  {removingId === device.mobileDeviceId ? "Removing..." : "Remove"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

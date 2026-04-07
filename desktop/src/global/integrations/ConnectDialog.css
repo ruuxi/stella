@@ -698,6 +698,27 @@
   margin-top: 4px;
 }
 
+.connect-paired-devices {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.connect-paired-device {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.connect-paired-device-name {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-base);
+}
+
 /* Upsize buttons and links inside the connect detail views */
 .connect-full-view [data-component="button"] {
   height: 40px;
