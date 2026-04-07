@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./screen-guide.css";
 
 export type ScreenGuideAnnotation = {
@@ -17,55 +17,66 @@ type ScreenGuideAnnotationsProps = {
 };
 
 const AUTO_DISMISS_MS = 10_000;
+const EXIT_DURATION_MS = 350;
 
 export function ScreenGuideAnnotations({
   annotations,
   visible,
   onDismiss,
 }: ScreenGuideAnnotationsProps) {
-  const [phase, setPhase] = useState<"hidden" | "entering" | "visible" | "exiting">("hidden");
+  const [showDom, setShowDom] = useState(false);
+  const [exiting, setExiting] = useState(false);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+
+  const clearTimers = useCallback(() => {
+    if (dismissTimerRef.current) {
+      clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+    }
+    if (exitTimerRef.current) {
+      clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (visible && annotations.length > 0) {
-      setPhase("entering");
-      const raf = requestAnimationFrame(() => {
-        setTimeout(() => setPhase("visible"), 300);
-      });
+      clearTimers();
+      setExiting(false);
+      setShowDom(true);
       dismissTimerRef.current = setTimeout(() => {
-        onDismiss?.();
+        onDismissRef.current?.();
       }, AUTO_DISMISS_MS);
-      return () => {
-        cancelAnimationFrame(raf);
-        if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-      };
+      return;
     }
 
-    if (!visible && phase !== "hidden") {
-      setPhase("exiting");
-      const timer = setTimeout(() => setPhase("hidden"), 350);
-      return () => clearTimeout(timer);
+    if (!visible && showDom) {
+      clearTimers();
+      setExiting(true);
+      exitTimerRef.current = setTimeout(() => {
+        setShowDom(false);
+        setExiting(false);
+      }, EXIT_DURATION_MS);
     }
-  }, [visible, annotations.length, onDismiss, phase]);
+  }, [visible, annotations.length, showDom, clearTimers]);
 
-  if (phase === "hidden") return null;
+  useEffect(() => clearTimers, [clearTimers]);
 
-  const rootClassName = [
-    "screen-guide-root",
-    phase === "entering" && "screen-guide-entering",
-    phase === "exiting" && "screen-guide-exiting",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  if (!showDom) return null;
 
   return (
-    <div className={rootClassName}>
+    <div
+      className={`screen-guide-root ${exiting ? "screen-guide-exiting" : "screen-guide-entering"}`}
+    >
       {annotations.map((ann) => (
         <div
           key={ann.id}
           className="screen-guide-pill"
           style={{
-            left: ann.x + ann.width / 2,
+            left: ann.x + ann.width + 12,
             top: ann.y + ann.height / 2,
           }}
         >
