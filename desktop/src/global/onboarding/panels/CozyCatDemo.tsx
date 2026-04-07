@@ -1,11 +1,11 @@
 /**
- * Cozy Cat Theme — Single-page cozy dashboard demo for Stella onboarding.
- * Card-based layout centered on warm cream background with dusty rose accents.
- * NO sidebar, NO rigid columns — content flows naturally.
+ * Cozy Cat Theme — A black & white cat-obsessed dashboard demo for Stella onboarding.
+ * High contrast palette with prominent animated cat illustrations and cat-themed content.
  */
 
+import React from 'react';
+
 const css = `
-  /* ── Reset & Root ── */
   .cozy-root {
     width: 100%;
     height: 100%;
@@ -13,102 +13,207 @@ const css = `
     flex-direction: column;
     position: relative;
     font-family: var(--font-family-sans, "Manrope", sans-serif);
-    background: oklch(0.97 0.01 80);
-    color: oklch(0.35 0.02 280);
+    background: #f8f9fa; /* Very light gray, almost white */
+    color: #1a1a1a; /* Almost black */
     overflow: hidden;
     user-select: none;
+    --cat-eye-color: #fff;
+    --cat-nose-color: #333;
+    --cat-line-color: #f8f9fa;
   }
   .cozy-root * { box-sizing: border-box; }
 
   @media (prefers-color-scheme: dark) {
     .cozy-root {
-      background: oklch(0.14 0.01 280);
-      color: oklch(0.85 0.02 280);
+      background: #121212; /* Very dark gray, almost black */
+      color: #f0f0f0; /* Off-white */
+      --cat-eye-color: #121212;
+      --cat-nose-color: #ccc;
+      --cat-line-color: #121212;
     }
+  }
+
+  /* ── Cat animations ── */
+  @keyframes catEarTwitchLeft {
+    0%, 90%, 100% { transform: rotate(0deg); }
+    92% { transform: rotate(-15deg); }
+    94% { transform: rotate(5deg); }
+    96% { transform: rotate(-10deg); }
+  }
+  @keyframes catEarTwitchRight {
+    0%, 80%, 100% { transform: rotate(0deg); }
+    82% { transform: rotate(15deg); }
+    84% { transform: rotate(-5deg); }
+    86% { transform: rotate(10deg); }
+  }
+  @keyframes catEyeBlink {
+    0%, 94%, 100% { transform: scaleY(1); }
+    97% { transform: scaleY(0.1); }
+  }
+  @keyframes catWhiskerTwitch {
+    0%, 85%, 100% { transform: translateY(0) rotate(0deg); }
+    88% { transform: translateY(1px) rotate(2deg); }
+    92% { transform: translateY(-1px) rotate(-2deg); }
+  }
+  @keyframes catBreathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02) translateY(-2px); }
+  }
+  @keyframes catTailWag {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(8deg); }
+  }
+  @keyframes catTailCurl {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(-15deg); }
+  }
+  @keyframes catZzz {
+    0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
+    30% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { transform: translate(-10px, -20px) scale(1.2); opacity: 0; }
+  }
+  @keyframes pawWalk {
+    0%, 100% { opacity: 0.15; transform: scale(0.9); }
+    50% { opacity: 0.6; transform: scale(1.1); color: #333; }
+  }
+  @media (prefers-color-scheme: dark) {
+     @keyframes pawWalk {
+      0%, 100% { opacity: 0.15; transform: scale(0.9); }
+      50% { opacity: 0.6; transform: scale(1.1); color: #ccc; }
+    }
+  }
+  @keyframes fishWiggle {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(5deg); }
+    75% { transform: rotate(-5deg); }
+  }
+  @keyframes catBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+
+  /* ── Applied Animations ── */
+  .cat-ear-left { transform-origin: 20px 50px; animation: catEarTwitchLeft 7s infinite; }
+  .cat-ear-right { transform-origin: 80px 50px; animation: catEarTwitchRight 6s infinite 1s; }
+  .cat-eyes { transform-origin: center 55px; animation: catEyeBlink 5s infinite; }
+  .cat-whiskers { transform-origin: 50px 65px; animation: catWhiskerTwitch 4s infinite; }
+  
+  .cat-body-breathe { transform-origin: center; animation: catBreathe 4s ease-in-out infinite; }
+  .cat-tail-curl { transform-origin: 150px 85px; animation: catTailCurl 6s ease-in-out infinite; }
+  .cat-zzz-1 { animation: catZzz 3s infinite 0s; }
+  .cat-zzz-2 { animation: catZzz 3s infinite 1s; }
+  .cat-zzz-3 { animation: catZzz 3s infinite 2s; }
+  
+  .fish-bone-wiggle { transform-origin: center; animation: fishWiggle 3s ease-in-out infinite; }
+
+  /* ── Big sleeping cat watermark ── */
+  .cozy-cat-watermark {
+    position: absolute;
+    bottom: -10px;
+    right: -20px;
+    opacity: 0.05;
+    pointer-events: none;
+    z-index: 0;
+    color: #000;
+  }
+  @media (prefers-color-scheme: dark) {
+    .cozy-cat-watermark { opacity: 0.04; color: #fff; }
   }
 
   /* ── Floating paw decorations ── */
   .cozy-paw-float {
     position: absolute;
-    opacity: 0.045;
     pointer-events: none;
-    animation: cozyFloat 14s ease-in-out infinite;
+    animation: cozyFloat 15s ease-in-out infinite;
     z-index: 0;
-    color: oklch(0.72 0.12 350);
+    color: #000;
+    opacity: 0.03;
   }
   @media (prefers-color-scheme: dark) {
-    .cozy-paw-float { opacity: 0.04; color: oklch(0.78 0.08 290); }
+    .cozy-paw-float { opacity: 0.03; color: #fff; }
   }
   @keyframes cozyFloat {
     0%, 100% { transform: translateY(0) rotate(0deg); }
-    33% { transform: translateY(-8px) rotate(5deg); }
-    66% { transform: translateY(4px) rotate(-3deg); }
-  }
-
-  /* ── Sleeping cat decoration ── */
-  .cozy-sleeping-cat {
-    position: absolute;
-    opacity: 0.04;
-    pointer-events: none;
-    z-index: 0;
-    color: oklch(0.72 0.12 350);
-  }
-  @media (prefers-color-scheme: dark) {
-    .cozy-sleeping-cat { opacity: 0.035; color: oklch(0.78 0.08 290); }
+    33% { transform: translateY(-15px) rotate(10deg); }
+    66% { transform: translateY(10px) rotate(-8deg); }
   }
 
   /* ── Top bar ── */
   .cozy-topbar {
     display: flex;
     align-items: center;
-    padding: 14px 24px;
+    padding: 16px 24px;
     flex-shrink: 0;
     z-index: 2;
     gap: 12px;
   }
 
   .cozy-avatar {
-    width: 34px;
-    height: 34px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
-    background: linear-gradient(135deg, oklch(0.78 0.08 290), oklch(0.72 0.12 350));
+    background: #000;
+    color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    box-shadow: 0 2px 10px oklch(0.72 0.12 350 / 0.2);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    animation: catBounce 5s ease-in-out infinite;
+    border: 2px solid #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+     .cozy-avatar {
+       background: #fff;
+       color: #000;
+       border: 2px solid #333;
+       box-shadow: 0 4px 12px rgba(255,255,255,0.1);
+     }
   }
 
   .cozy-greeting {
     flex: 1;
-    font-size: 15px;
-    font-weight: 500;
+    font-size: 16px;
+    font-weight: 600;
     letter-spacing: -0.01em;
   }
-  .cozy-greeting-heart {
-    color: oklch(0.72 0.12 350);
-    margin-left: 4px;
+  .cozy-greeting-paw {
+    display: inline-block;
+    opacity: 0.8;
+    margin-left: 6px;
+    animation: catTailWag 3s infinite ease-in-out;
+    transform-origin: bottom center;
   }
 
   .cozy-settings-btn {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     border-radius: 8px;
-    border: 1px solid oklch(0.9 0.02 340);
-    background: oklch(0.96 0.015 340 / 0.6);
+    border: 1px solid #e0e0e0;
+    background: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: oklch(0.5 0.04 280);
+    color: #333;
     flex-shrink: 0;
     padding: 0;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  }
+  .cozy-settings-btn:hover {
+    background: #f0f0f0;
+    transform: rotate(15deg);
   }
   @media (prefers-color-scheme: dark) {
     .cozy-settings-btn {
-      border-color: oklch(0.25 0.015 280);
-      background: oklch(0.18 0.015 280 / 0.6);
-      color: oklch(0.65 0.02 280);
+      border-color: #333;
+      background: #222;
+      color: #ccc;
+    }
+    .cozy-settings-btn:hover {
+      background: #2a2a2a;
     }
   }
 
@@ -117,354 +222,443 @@ const css = `
     flex: 1;
     overflow-y: auto;
     scrollbar-width: none;
-    padding: 0 24px 20px;
+    padding: 0 24px 24px;
     z-index: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 14px;
+    gap: 16px;
   }
   .cozy-content::-webkit-scrollbar { display: none; }
+
+  /* ── Cat banner ── */
+  .cozy-cat-banner {
+    width: 100%;
+    max-width: 600px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    border-radius: 16px;
+    background: #000;
+    color: #fff;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    border: 1px solid #333;
+  }
+  .cozy-cat-banner:hover {
+    transform: translateY(-4px) scale(1.01);
+  }
+  @media (prefers-color-scheme: dark) {
+    .cozy-cat-banner {
+      background: #fff;
+      color: #000;
+      border: 1px solid #e0e0e0;
+      box-shadow: 0 8px 20px rgba(255,255,255,0.1);
+    }
+  }
+  .cozy-cat-banner-illustration {
+    flex-shrink: 0;
+    color: inherit;
+  }
+  .cozy-cat-banner-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .cozy-cat-banner-title {
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .cozy-cat-banner-sub {
+    font-size: 12px;
+    font-weight: 400;
+    opacity: 0.8;
+  }
 
   /* ── Widget grid row ── */
   .cozy-card-row {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
+    gap: 12px;
     width: 100%;
     max-width: 600px;
   }
 
   /* ── Cards ── */
   .cozy-card {
-    padding: 14px 16px;
+    padding: 16px;
     border-radius: 14px;
-    border: 1px solid oklch(0.9 0.02 340);
-    background: oklch(0.96 0.015 340);
+    border: 1px solid #e5e5e5;
+    background: #fff;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    box-shadow: 0 1px 4px oklch(0.72 0.12 350 / 0.04);
-    transition: box-shadow 0.2s ease;
+    gap: 10px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s ease;
+  }
+  .cozy-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+    border-color: #ccc;
   }
   @media (prefers-color-scheme: dark) {
     .cozy-card {
-      border-color: oklch(0.25 0.015 280);
-      background: oklch(0.18 0.015 280);
-      box-shadow: 0 1px 4px oklch(0 0 0 / 0.12);
+      border-color: #333;
+      background: #1a1a1a;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    .cozy-card:hover {
+      box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+      border-color: #444;
     }
   }
 
   .cozy-card-icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    background: #f0f0f0;
+    color: #111;
   }
-  .cozy-card-icon--rose {
-    background: oklch(0.72 0.12 350 / 0.1);
-    color: oklch(0.72 0.12 350);
-  }
-  .cozy-card-icon--lavender {
-    background: oklch(0.78 0.08 290 / 0.12);
-    color: oklch(0.78 0.08 290);
+  .cozy-card:hover .cozy-card-icon {
+    transform: scale(1.15) rotate(-5deg);
+    background: #000;
+    color: #fff;
   }
   @media (prefers-color-scheme: dark) {
-    .cozy-card-icon--rose {
-      background: oklch(0.72 0.12 350 / 0.15);
+    .cozy-card-icon {
+      background: #2a2a2a;
+      color: #eee;
     }
-    .cozy-card-icon--lavender {
-      background: oklch(0.78 0.08 290 / 0.15);
+    .cozy-card:hover .cozy-card-icon {
+      background: #fff;
+      color: #000;
     }
   }
 
   .cozy-card-label {
-    font-size: 9.5px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: oklch(0.5 0.03 280);
+    color: #666;
   }
   @media (prefers-color-scheme: dark) {
-    .cozy-card-label { color: oklch(0.6 0.02 280); }
+    .cozy-card-label { color: #aaa; }
   }
 
   .cozy-card-value {
-    font-size: 18px;
-    font-weight: 300;
+    font-size: 20px;
+    font-weight: 600;
     letter-spacing: -0.02em;
-    line-height: 1.2;
+    line-height: 1.1;
   }
 
   .cozy-card-sub {
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 400;
-    color: oklch(0.5 0.03 280);
-    line-height: 1.35;
+    color: #777;
+    line-height: 1.4;
   }
   @media (prefers-color-scheme: dark) {
-    .cozy-card-sub { color: oklch(0.6 0.02 280); }
+    .cozy-card-sub { color: #999; }
   }
 
   .cozy-card-top {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
   }
 
-  /* ── Chat card (large, centered) ── */
+  /* ── Chat card ── */
   .cozy-chat-card {
     width: 100%;
     max-width: 600px;
     padding: 0;
     border-radius: 16px;
-    border: 1px solid oklch(0.9 0.02 340);
-    background: oklch(0.96 0.015 340);
+    border: 1px solid #e5e5e5;
+    background: #fff;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 2px 12px oklch(0.72 0.12 350 / 0.06);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.05);
   }
   @media (prefers-color-scheme: dark) {
     .cozy-chat-card {
-      border-color: oklch(0.25 0.015 280);
-      background: oklch(0.18 0.015 280);
-      box-shadow: 0 2px 12px oklch(0 0 0 / 0.15);
+      border-color: #333;
+      background: #1a1a1a;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.2);
     }
   }
 
   .cozy-chat-header {
-    padding: 12px 16px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    color: oklch(0.5 0.03 280);
-    border-bottom: 1px solid oklch(0.9 0.02 340);
+    padding: 14px 18px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #444;
+    border-bottom: 1px solid #f0f0f0;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
   }
   @media (prefers-color-scheme: dark) {
     .cozy-chat-header {
-      color: oklch(0.6 0.02 280);
-      border-bottom-color: oklch(0.25 0.015 280);
+      color: #bbb;
+      border-bottom-color: #2a2a2a;
     }
   }
 
   .cozy-chat-header-dot {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: oklch(0.72 0.12 350);
-    animation: cozyPulse 2.5s ease-in-out infinite;
+    background: #000;
+    animation: cozyPulse 2s ease-in-out infinite;
   }
+  @media (prefers-color-scheme: dark) {
+    .cozy-chat-header-dot { background: #fff; }
+  }
+  
   @keyframes cozyPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
   }
 
   .cozy-messages {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 16px;
+    gap: 12px;
+    padding: 18px;
   }
 
   .cozy-msg {
     display: flex;
-    max-width: 88%;
+    max-width: 85%;
   }
   .cozy-msg--stella { align-self: flex-start; }
   .cozy-msg--user { align-self: flex-end; }
 
   .cozy-msg-avatar {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
-    background: linear-gradient(135deg, oklch(0.78 0.08 290), oklch(0.72 0.12 350));
+    background: #000;
+    color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    margin-right: 8px;
+    margin-right: 10px;
     margin-top: 2px;
+    animation: catBounce 4s ease-in-out infinite reverse;
+  }
+  @media (prefers-color-scheme: dark) {
+    .cozy-msg-avatar {
+      background: #fff;
+      color: #000;
+    }
   }
 
   .cozy-bubble {
-    padding: 10px 14px;
-    font-size: 13px;
-    font-weight: 400;
-    line-height: 1.55;
-    letter-spacing: 0.005em;
+    padding: 12px 16px;
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1.5;
+    letter-spacing: 0.01em;
   }
 
   .cozy-msg--stella .cozy-bubble {
-    background: oklch(0.97 0.01 80);
-    border: 1px solid oklch(0.9 0.02 340);
-    border-radius: 14px 14px 14px 4px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 16px 16px 16px 4px;
+    color: #222;
   }
   @media (prefers-color-scheme: dark) {
     .cozy-msg--stella .cozy-bubble {
-      background: oklch(0.16 0.01 280);
-      border-color: oklch(0.25 0.015 280);
+      background: #222;
+      border-color: #333;
+      color: #eee;
     }
   }
 
   .cozy-msg--user .cozy-bubble {
-    background: oklch(0.72 0.12 350 / 0.1);
-    border: 1px solid oklch(0.72 0.12 350 / 0.15);
-    border-radius: 14px 14px 4px 14px;
-    color: oklch(0.35 0.02 280);
+    background: #000;
+    border: 1px solid #000;
+    border-radius: 16px 16px 4px 16px;
+    color: #fff;
   }
   @media (prefers-color-scheme: dark) {
     .cozy-msg--user .cozy-bubble {
-      background: oklch(0.72 0.12 350 / 0.12);
-      border-color: oklch(0.72 0.12 350 / 0.18);
-      color: oklch(0.85 0.02 280);
+      background: #fff;
+      border-color: #fff;
+      color: #000;
     }
   }
 
   .cozy-composer {
     display: flex;
     align-items: center;
-    margin: 0 12px 12px;
-    padding: 5px 5px 5px 14px;
-    border-radius: 20px;
-    background: oklch(0.97 0.01 80);
-    border: 1px solid oklch(0.9 0.02 340);
+    margin: 0 16px 16px;
+    padding: 6px 6px 6px 16px;
+    border-radius: 24px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
     flex-shrink: 0;
+    transition: border-color 0.2s ease;
+  }
+  .cozy-composer:hover {
+    border-color: #ccc;
   }
   @media (prefers-color-scheme: dark) {
     .cozy-composer {
-      background: oklch(0.16 0.01 280);
-      border-color: oklch(0.25 0.015 280);
+      background: #222;
+      border-color: #333;
+    }
+    .cozy-composer:hover {
+      border-color: #555;
     }
   }
 
   .cozy-composer-text {
     flex: 1;
-    font-size: 12.5px;
-    font-weight: 300;
-    color: oklch(0.5 0.03 280);
+    font-size: 13px;
+    font-weight: 400;
+    color: #888;
     letter-spacing: 0.02em;
   }
   @media (prefers-color-scheme: dark) {
-    .cozy-composer-text { color: oklch(0.55 0.02 280); }
+    .cozy-composer-text { color: #777; }
   }
 
   .cozy-send-btn {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     border: none;
-    background: linear-gradient(135deg, oklch(0.78 0.08 290), oklch(0.72 0.12 350));
-    color: white;
+    background: #000;
+    color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     flex-shrink: 0;
-    box-shadow: 0 2px 8px oklch(0.72 0.12 350 / 0.25);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     padding: 0;
+    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .cozy-send-btn:hover {
+    transform: scale(1.1) rotate(-10deg);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  @media (prefers-color-scheme: dark) {
+    .cozy-send-btn {
+      background: #fff;
+      color: #000;
+      box-shadow: 0 2px 8px rgba(255,255,255,0.2);
+    }
+    .cozy-send-btn:hover {
+      box-shadow: 0 4px 12px rgba(255,255,255,0.3);
+    }
   }
 
   /* ── Progress bar ── */
   .cozy-progress-track {
-    height: 4px;
-    border-radius: 2px;
-    background: oklch(0.9 0.02 340);
+    height: 8px;
+    border-radius: 4px;
+    background: #e0e0e0;
     overflow: hidden;
   }
   @media (prefers-color-scheme: dark) {
-    .cozy-progress-track { background: oklch(0.25 0.015 280); }
+    .cozy-progress-track { background: #333; }
   }
   .cozy-progress-fill {
     height: 100%;
-    border-radius: 2px;
-    background: linear-gradient(90deg, oklch(0.78 0.08 290), oklch(0.72 0.12 350));
+    border-radius: 4px;
+    background: #000;
+    position: relative;
+    overflow: hidden;
   }
-
-  /* ── Equalizer bars ── */
-  .cozy-eq {
-    display: flex;
-    align-items: flex-end;
-    gap: 2px;
-    height: 14px;
+  @media (prefers-color-scheme: dark) {
+    .cozy-progress-fill { background: #fff; }
   }
-  .cozy-eq-bar {
-    width: 2.5px;
-    background: oklch(0.72 0.12 350);
-    border-radius: 1px;
-    animation: cozyEq 0.75s ease-in-out infinite alternate;
+  .cozy-progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    animation: cozyProgressShine 2.5s infinite ease-in-out;
   }
-  .cozy-eq-bar:nth-child(1) { height: 5px; animation-delay: 0s; }
-  .cozy-eq-bar:nth-child(2) { height: 10px; animation-delay: 0.12s; }
-  .cozy-eq-bar:nth-child(3) { height: 6px; animation-delay: 0.24s; }
-  .cozy-eq-bar:nth-child(4) { height: 8px; animation-delay: 0.36s; }
-  @keyframes cozyEq {
-    0% { transform: scaleY(0.35); }
-    100% { transform: scaleY(1); }
+  @media (prefers-color-scheme: dark) {
+    .cozy-progress-fill::after {
+      background: linear-gradient(90deg, transparent, rgba(0,0,0,0.3), transparent);
+    }
+  }
+  @keyframes cozyProgressShine {
+    100% { left: 200%; }
   }
 
   /* ── Task items ── */
   .cozy-task {
     display: flex;
     align-items: center;
-    gap: 7px;
-    padding: 2px 0;
+    gap: 10px;
+    padding: 4px 0;
+    transition: transform 0.2s ease;
+  }
+  .cozy-task:hover {
+    transform: translateX(4px);
   }
   .cozy-task-check {
-    width: 14px;
-    height: 14px;
-    border-radius: 4px;
-    border: 1.5px solid oklch(0.9 0.02 340);
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 2px solid #ccc;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
     background: transparent;
+    transition: all 0.2s ease;
   }
   .cozy-task-check.checked {
-    background: oklch(0.72 0.12 350);
-    border-color: oklch(0.72 0.12 350);
+    background: #000;
+    border-color: #000;
   }
   @media (prefers-color-scheme: dark) {
-    .cozy-task-check { border-color: oklch(0.35 0.015 280); }
+    .cozy-task-check { border-color: #555; }
     .cozy-task-check.checked {
-      background: oklch(0.72 0.12 350);
-      border-color: oklch(0.72 0.12 350);
+      background: #fff;
+      border-color: #fff;
     }
   }
+  .cozy-task-check.checked svg {
+    stroke: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    .cozy-task-check.checked svg { stroke: #000; }
+  }
+
   .cozy-task-text {
-    font-size: 11.5px;
-    font-weight: 400;
-    line-height: 1.3;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
+    transition: color 0.2s ease, opacity 0.2s ease;
   }
   .cozy-task-text.done {
     text-decoration: line-through;
     opacity: 0.4;
-  }
-
-  /* ── Mood indicator ── */
-  .cozy-mood {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .cozy-mood-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: oklch(0.78 0.08 290);
-    box-shadow: 0 0 8px oklch(0.78 0.08 290 / 0.3);
-  }
-  .cozy-mood-text {
-    font-size: 14px;
-    font-weight: 300;
-    letter-spacing: -0.01em;
   }
 
   /* ── Fish bone divider ── */
@@ -472,26 +666,11 @@ const css = `
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    opacity: 0.1;
-    padding: 4px 0;
-    color: oklch(0.72 0.12 350);
+    padding: 8px 0;
+    color: #ccc;
   }
   @media (prefers-color-scheme: dark) {
-    .cozy-fishbone { opacity: 0.08; color: oklch(0.78 0.08 290); }
-  }
-
-  /* ── Whisker decoration on cards ── */
-  .cozy-whiskers {
-    position: absolute;
-    top: 8px;
-    right: 10px;
-    opacity: 0.06;
-    pointer-events: none;
-    color: oklch(0.72 0.12 350);
-  }
-  @media (prefers-color-scheme: dark) {
-    .cozy-whiskers { opacity: 0.05; color: oklch(0.78 0.08 290); }
+    .cozy-fishbone { color: #444; }
   }
 
   /* ── Paw trail footer ── */
@@ -499,102 +678,114 @@ const css = `
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 8px 0 4px;
-    opacity: 0.08;
-    color: oklch(0.72 0.12 350);
+    gap: 14px;
+    padding: 12px 0;
+    color: #000;
   }
   @media (prefers-color-scheme: dark) {
-    .cozy-paw-trail { opacity: 0.06; color: oklch(0.78 0.08 290); }
+    .cozy-paw-trail { color: #fff; }
   }
   .cozy-paw-trail-dot {
-    width: 2px;
-    height: 2px;
+    width: 4px;
+    height: 4px;
     border-radius: 50%;
     background: currentColor;
-  }
-
-  /* ── Cloud SVG ── */
-  .cozy-cloud {
-    color: oklch(0.5 0.03 280);
-  }
-  @media (prefers-color-scheme: dark) {
-    .cozy-cloud { color: oklch(0.6 0.02 280); }
+    opacity: 0.15;
   }
 `;
 
 /* ── Inline SVG Components ── */
 
-const SleepingCat = ({ size, style }: { size: number; style?: React.CSSProperties }) => (
-  <div className="cozy-sleeping-cat" style={{ ...style, width: size, height: size }}>
-    <svg viewBox="0 0 64 40" width={size} height={size * 0.625} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-      {/* Curled up sleeping cat silhouette */}
-      <path d="M48 28c0 6-8 10-18 10S10 34 10 28s4-10 10-10c2 0 3-1 4-3l2-4c1-2 3-3 5-3h2c2 0 4 1 5 3l2 4c1 2 2 3 4 3 6 0 4 4 4 10z" />
+const CatFaceSVG = ({ size }: { size: number }) => (
+  <svg viewBox="0 0 100 100" width={size} height={size} fill="none" xmlns="http://www.w3.org/2000/svg">
+    <g className="cat-head-group">
       {/* Ears */}
-      <path d="M22 12l-4-8c-.5-1 .5-2 1.5-1.5L24 6l-2 6z" />
-      <path d="M38 12l4-8c.5-1-.5-2-1.5-1.5L36 6l2 6z" />
-      {/* Tail curving around */}
-      <path d="M46 30c4-1 8-2 10-5s2-6 0-8-5-2-7 0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+      <path className="cat-ear cat-ear-left" d="M20 50 L10 10 L45 35 Z" fill="currentColor" />
+      <path className="cat-ear cat-ear-right" d="M80 50 L90 10 L55 35 Z" fill="currentColor" />
+      {/* Head */}
+      <path d="M20 50 Q 20 90, 50 90 Q 80 90, 80 50 Q 80 35, 50 35 Q 20 35, 20 50 Z" fill="currentColor" />
+      {/* Eyes */}
+      <g className="cat-eyes">
+        <circle cx="35" cy="55" r="8" fill="var(--cat-eye-color, #FFF)" />
+        <circle cx="65" cy="55" r="8" fill="var(--cat-eye-color, #FFF)" />
+        <ellipse className="cat-pupil" cx="35" cy="55" rx="2" ry="6" fill="currentColor" />
+        <ellipse className="cat-pupil" cx="65" cy="55" rx="2" ry="6" fill="currentColor" />
+      </g>
+      {/* Nose */}
+      <path d="M45 65 L55 65 L50 70 Z" fill="var(--cat-nose-color, #333)" />
+      {/* Mouth */}
+      <path d="M50 70 Q 45 75, 40 73 M50 70 Q 55 75, 60 73" stroke="var(--cat-line-color, #f8f9fa)" strokeWidth="2" fill="none" strokeLinecap="round" />
+      {/* Whiskers */}
+      <g className="cat-whiskers" stroke="var(--cat-line-color, #f8f9fa)" strokeWidth="1.5" strokeLinecap="round">
+        <path d="M30 65 L10 60" />
+        <path d="M30 68 L8 68" />
+        <path d="M30 71 L10 76" />
+        <path d="M70 65 L90 60" />
+        <path d="M70 68 L92 68" />
+        <path d="M70 71 L90 76" />
+      </g>
+    </g>
+  </svg>
+);
+
+const SleepingCatSVG = ({ size, style }: { size: number; style?: React.CSSProperties }) => (
+  <div className="cozy-cat-watermark" style={{ ...style, width: size, height: size * 0.6 }}>
+    <svg viewBox="0 0 200 120" width={size} height={size * 0.6} fill="none" xmlns="http://www.w3.org/2000/svg" style={{ overflow: "visible" }}>
+      <g className="sleeping-cat-group">
+        {/* Body */}
+        <path className="cat-body-breathe" d="M40 90 Q 40 40, 100 40 Q 160 40, 160 90 Z" fill="currentColor" />
+        {/* Tail */}
+        <path className="cat-tail-curl" d="M150 85 Q 180 85, 180 65 Q 180 40, 150 40" stroke="currentColor" strokeWidth="20" strokeLinecap="round" fill="none" />
+        {/* Head */}
+        <circle cx="60" cy="70" r="25" fill="currentColor" className="cat-body-breathe" style={{ animationDelay: '0.2s' }} />
+        {/* Ears */}
+        <path d="M45 52 L35 35 L60 48 Z" fill="currentColor" className="cat-body-breathe" style={{ animationDelay: '0.2s' }} />
+        <path d="M75 52 L85 35 L60 48 Z" fill="currentColor" className="cat-body-breathe" style={{ animationDelay: '0.2s' }} />
+        {/* Sleeping Eyes */}
+        <g className="cat-body-breathe" style={{ animationDelay: '0.2s' }}>
+          <path d="M50 68 Q 55 72, 60 68 M65 68 Q 70 72, 75 68" stroke="var(--cat-line-color, #f8f9fa)" strokeWidth="2" fill="none" strokeLinecap="round" />
+        </g>
+        {/* Zzz */}
+        <g className="cat-zzz-group" fill="currentColor">
+          <text className="cat-zzz-1" x="90" y="40" fontSize="16" fontWeight="bold" fontFamily="sans-serif">Z</text>
+          <text className="cat-zzz-2" x="110" y="25" fontSize="20" fontWeight="bold" fontFamily="sans-serif">z</text>
+          <text className="cat-zzz-3" x="135" y="10" fontSize="24" fontWeight="bold" fontFamily="sans-serif">z</text>
+        </g>
+      </g>
     </svg>
   </div>
 );
 
-const PawPrint = ({ size }: { size: number }) => (
-  <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <ellipse cx="12" cy="16.5" rx="4" ry="3.2" />
-    <circle cx="7.2" cy="10.5" r="2" />
-    <circle cx="16.8" cy="10.5" r="2" />
-    <circle cx="9.5" cy="6.5" r="1.7" />
-    <circle cx="14.5" cy="6.5" r="1.7" />
+const CatPawSVG = ({ size }: { size: number }) => (
+  <svg viewBox="0 0 100 100" width={size} height={size} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <g className="cat-paw-group">
+      <path d="M30 65 Q 30 90, 50 90 Q 70 90, 70 65 Q 70 50, 50 50 Q 30 50, 30 65 Z" />
+      <circle cx="30" cy="35" r="12" />
+      <circle cx="50" cy="20" r="14" />
+      <circle cx="70" cy="35" r="12" />
+    </g>
   </svg>
 );
 
 const PawDecoration = ({ size, style }: { size: number; style: React.CSSProperties }) => (
   <div className="cozy-paw-float" style={{ ...style, width: size, height: size }}>
-    <PawPrint size={size} />
+    <CatPawSVG size={size} />
   </div>
 );
 
-const CatAvatarSVG = () => (
-  <svg viewBox="0 0 24 24" width={18} height={18} fill="white" xmlns="http://www.w3.org/2000/svg">
-    {/* Simplified cat face */}
-    <path d="M4 13c0 4.4 3.6 8 8 8s8-3.6 8-8c0-3-1.6-5.6-4-7V3l-2.5 3h-3L8 3v3c-2.4 1.4-4 4-4 7z" />
-    <circle cx="9.5" cy="12" r="1" fill="oklch(0.72 0.12 350)" />
-    <circle cx="14.5" cy="12" r="1" fill="oklch(0.72 0.12 350)" />
-    <ellipse cx="12" cy="14.5" rx="1" ry="0.6" fill="oklch(0.72 0.12 350)" />
-  </svg>
-);
-
-const FishBone = () => (
-  <svg viewBox="0 0 48 12" width={48} height={12} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" xmlns="http://www.w3.org/2000/svg">
-    {/* Spine */}
-    <line x1="8" y1="6" x2="40" y2="6" />
-    {/* Head */}
-    <circle cx="6" cy="6" r="3" />
-    {/* Tail */}
-    <path d="M40 6l4-3M40 6l4 3" />
-    {/* Bones */}
-    <path d="M14 6l-2-3M14 6l-2 3" />
-    <path d="M20 6l-2-3M20 6l-2 3" />
-    <path d="M26 6l2-3M26 6l2 3" />
-    <path d="M32 6l2-3M32 6l2 3" />
-  </svg>
-);
-
-const WhiskerDecoration = () => (
-  <svg viewBox="0 0 32 20" width={32} height={20} fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" xmlns="http://www.w3.org/2000/svg">
-    <path d="M16 10c-6 0-12-2-15-4" />
-    <path d="M16 10c-6 1-13 0-15 0" />
-    <path d="M16 10c-5 2-11 4-14 5" />
-    <path d="M16 10c6 0 12-2 15-4" />
-    <path d="M16 10c6 1 13 0 15 0" />
-    <path d="M16 10c5 2 11 4 14 5" />
-  </svg>
-);
-
-const CloudSVG = () => (
-  <svg viewBox="0 0 24 16" width={20} height={14} fill="currentColor" className="cozy-cloud" xmlns="http://www.w3.org/2000/svg">
-    <path d="M19.5 10.5a4 4 0 0 0-3.8-5.4 5.5 5.5 0 0 0-10.4 1.2A3.5 3.5 0 0 0 5.5 13h13a3 3 0 0 0 1-5.5z" opacity="0.35" />
+const FishBoneSVG = () => (
+  <svg viewBox="0 0 100 30" width="60" height="18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
+    <g className="fish-bone-wiggle">
+      <line x1="20" y1="15" x2="80" y2="15" />
+      <path d="M80 15 L90 5 L90 25 Z" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="15" r="6" strokeWidth="3" />
+      <line x1="30" y1="15" x2="25" y2="5" />
+      <line x1="30" y1="15" x2="25" y2="25" />
+      <line x1="45" y1="15" x2="40" y2="5" />
+      <line x1="45" y1="15" x2="40" y2="25" />
+      <line x1="60" y1="15" x2="55" y2="5" />
+      <line x1="60" y1="15" x2="55" y2="25" />
+    </g>
   </svg>
 );
 
@@ -605,25 +796,27 @@ export function CozyCatDemo() {
       <div className="cozy-root">
 
         {/* ── Floating paw decorations ── */}
-        <PawDecoration size={24} style={{ top: "8%", left: "6%", animationDelay: "0s", transform: "rotate(-15deg)" }} />
-        <PawDecoration size={18} style={{ top: "22%", right: "8%", animationDelay: "-3s", transform: "rotate(20deg)" }} />
-        <PawDecoration size={20} style={{ bottom: "25%", left: "4%", animationDelay: "-7s", transform: "rotate(-25deg)" }} />
-        <PawDecoration size={16} style={{ bottom: "12%", right: "6%", animationDelay: "-10s", transform: "rotate(10deg)" }} />
+        <PawDecoration size={32} style={{ top: "6%", left: "5%", animationDelay: "0s", transform: "rotate(-15deg)" }} />
+        <PawDecoration size={24} style={{ top: "18%", right: "7%", animationDelay: "-3s", transform: "rotate(20deg)" }} />
+        <PawDecoration size={28} style={{ bottom: "28%", left: "3%", animationDelay: "-7s", transform: "rotate(-25deg)" }} />
+        <PawDecoration size={22} style={{ bottom: "14%", right: "5%", animationDelay: "-10s", transform: "rotate(10deg)" }} />
 
-        {/* ── Sleeping cat silhouette (background decoration) ── */}
-        <SleepingCat size={120} style={{ bottom: "3%", right: "4%", transform: "rotate(-5deg)" }} />
+        {/* ── Large sleeping cat watermark ── */}
+        <SleepingCatSVG size={280} />
 
-        {/* ── Slim top bar ── */}
+        {/* ── Top bar ── */}
         <div className="cozy-topbar">
           <div className="cozy-avatar">
-            <CatAvatarSVG />
+            <CatFaceSVG size={28} />
           </div>
           <div className="cozy-greeting">
             Good afternoon
-            <span className="cozy-greeting-heart"> &#9825;</span>
+            <span className="cozy-greeting-paw">
+              <CatPawSVG size={14} />
+            </span>
           </div>
           <button className="cozy-settings-btn" aria-label="Settings">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
               <circle cx="12" cy="12" r="3" />
             </svg>
@@ -633,71 +826,64 @@ export function CozyCatDemo() {
         {/* ── Main scrollable content ── */}
         <div className="cozy-content">
 
+          {/* ── Cat banner with illustration ── */}
+          <div className="cozy-cat-banner">
+            <div className="cozy-cat-banner-illustration">
+              <CatFaceSVG size={56} />
+            </div>
+            <div className="cozy-cat-banner-text">
+              <div className="cozy-cat-banner-title">Mochi is napping</div>
+              <div className="cozy-cat-banner-sub">Last fed 2h ago &middot; Next: 4:30 PM</div>
+            </div>
+          </div>
+
           {/* ── Top widget row ── */}
           <div className="cozy-card-row">
-            {/* Weather card */}
+            {/* Nap tracker */}
             <div className="cozy-card">
               <div className="cozy-card-top">
-                <div className="cozy-card-icon cozy-card-icon--lavender">
-                  <CloudSVG />
+                <div className="cozy-card-icon">
+                  <CatPawSVG size={18} />
                 </div>
-                <span className="cozy-card-label">Weather</span>
+                <span className="cozy-card-label">Naps</span>
               </div>
-              <div className="cozy-card-value">68&#176;</div>
-              <div className="cozy-card-sub">Cloudy &mdash; cozy day</div>
+              <div className="cozy-card-value">3</div>
+              <div className="cozy-card-sub">Total today &middot; 4.5h</div>
             </div>
 
-            {/* Reading card */}
-            <div className="cozy-card" style={{ position: "relative", overflow: "hidden" }}>
-              <div className="cozy-whiskers">
-                <WhiskerDecoration />
-              </div>
-              <div className="cozy-card-top">
-                <div className="cozy-card-icon cozy-card-icon--rose">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                  </svg>
-                </div>
-                <span className="cozy-card-label">Reading</span>
-              </div>
-              <div style={{ fontSize: "12px", fontWeight: 400, lineHeight: 1.3 }}>The Night Circus</div>
-              <div className="cozy-progress-track">
-                <div className="cozy-progress-fill" style={{ width: "34%" }} />
-              </div>
-              <div className="cozy-card-sub">34% &middot; Ch. 12</div>
-            </div>
-
-            {/* Music card */}
+            {/* Treats card */}
             <div className="cozy-card">
               <div className="cozy-card-top">
-                <div className="cozy-card-icon cozy-card-icon--rose">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M9 18V5l12-2v13" />
-                    <circle cx="6" cy="18" r="3" />
-                    <circle cx="18" cy="16" r="3" />
+                <div className="cozy-card-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" />
                   </svg>
                 </div>
-                <span className="cozy-card-label">Music</span>
+                <span className="cozy-card-label">Treats</span>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <div className="cozy-eq">
-                  <span className="cozy-eq-bar" />
-                  <span className="cozy-eq-bar" />
-                  <span className="cozy-eq-bar" />
-                  <span className="cozy-eq-bar" />
+              <div className="cozy-card-value">5/8</div>
+              <div className="cozy-card-sub">Daily limit</div>
+            </div>
+
+            {/* Mood card */}
+            <div className="cozy-card">
+              <div className="cozy-card-top">
+                <div className="cozy-card-icon">
+                  <CatFaceSVG size={18} />
                 </div>
-                <span style={{ fontSize: "12px", fontWeight: 400 }}>Rainy Jazz</span>
+                <span className="cozy-card-label">Mood</span>
               </div>
+              <div style={{ fontSize: "16px", fontWeight: 600 }}>Sleepy</div>
+              <div className="cozy-card-sub">Since 2:15 PM</div>
             </div>
           </div>
 
           {/* ── Fish bone divider ── */}
           <div className="cozy-fishbone">
-            <FishBone />
+            <FishBoneSVG />
           </div>
 
-          {/* ── Chat card (central, largest element) ── */}
+          {/* ── Chat card ── */}
           <div className="cozy-chat-card">
             <div className="cozy-chat-header">
               <span className="cozy-chat-header-dot" />
@@ -705,36 +891,29 @@ export function CozyCatDemo() {
             </div>
 
             <div className="cozy-messages">
-              {/* Stella message 1 */}
               <div className="cozy-msg cozy-msg--stella">
                 <div className="cozy-msg-avatar">
-                  <svg viewBox="0 0 24 24" width={11} height={11} fill="white" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M4 13c0 4.4 3.6 8 8 8s8-3.6 8-8c0-3-1.6-5.6-4-7V3l-2.5 3h-3L8 3v3c-2.4 1.4-4 4-4 7z" />
-                  </svg>
+                  <CatFaceSVG size={16} />
                 </div>
-                <span className="cozy-bubble">Good afternoon! Your schedule is clear &mdash; perfect day to curl up with that book you mentioned.</span>
+                <span className="cozy-bubble">Mochi just woke up from a 2-hour nap on the windowsill. Want me to log it?</span>
               </div>
 
-              {/* User message */}
               <div className="cozy-msg cozy-msg--user">
-                <span className="cozy-bubble">Sounds great. Any recommendations?</span>
+                <span className="cozy-bubble">Yes! Also remind me to refill her water bowl</span>
               </div>
 
-              {/* Stella message 2 */}
               <div className="cozy-msg cozy-msg--stella">
                 <div className="cozy-msg-avatar">
-                  <svg viewBox="0 0 24 24" width={11} height={11} fill="white" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M4 13c0 4.4 3.6 8 8 8s8-3.6 8-8c0-3-1.6-5.6-4-7V3l-2.5 3h-3L8 3v3c-2.4 1.4-4 4-4 7z" />
-                  </svg>
+                  <CatFaceSVG size={16} />
                 </div>
-                <span className="cozy-bubble">Based on your reading history, I think you'd love <em>The Night Circus</em>. Want me to find it?</span>
+                <span className="cozy-bubble">Done! Nap logged. I'll remind you about the water bowl in 30 minutes.</span>
               </div>
             </div>
 
             <div className="cozy-composer">
               <span className="cozy-composer-text">Say something...</span>
               <button className="cozy-send-btn" aria-label="Send">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 19V5M5 12l7-7 7 7" />
                 </svg>
               </button>
@@ -743,16 +922,16 @@ export function CozyCatDemo() {
 
           {/* ── Fish bone divider ── */}
           <div className="cozy-fishbone">
-            <FishBone />
+            <FishBoneSVG />
           </div>
 
           {/* ── Bottom widget row ── */}
           <div className="cozy-card-row">
-            {/* Tasks card */}
+            {/* Tasks */}
             <div className="cozy-card">
               <div className="cozy-card-top">
-                <div className="cozy-card-icon cozy-card-icon--rose">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                <div className="cozy-card-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                     <path d="M9 11l3 3L22 4" />
                     <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
                   </svg>
@@ -761,77 +940,69 @@ export function CozyCatDemo() {
               </div>
               <div className="cozy-task">
                 <div className="cozy-task-check checked">
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12l5 5L20 7" />
                   </svg>
                 </div>
-                <span className="cozy-task-text done">Water the plants</span>
+                <span className="cozy-task-text done">Feed Mochi</span>
               </div>
               <div className="cozy-task">
                 <div className="cozy-task-check checked">
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12l5 5L20 7" />
                   </svg>
                 </div>
-                <span className="cozy-task-text done">Call mom</span>
+                <span className="cozy-task-text done">Clean litter box</span>
               </div>
               <div className="cozy-task">
                 <div className="cozy-task-check" />
-                <span className="cozy-task-text">Finish chapter 12</span>
+                <span className="cozy-task-text">Vet appt Thursday</span>
               </div>
             </div>
 
-            {/* Mood card */}
-            <div className="cozy-card" style={{ position: "relative", overflow: "hidden" }}>
-              <div className="cozy-whiskers">
-                <WhiskerDecoration />
-              </div>
-              <div className="cozy-card-top">
-                <div className="cozy-card-icon cozy-card-icon--lavender">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-                    <line x1="9" y1="9" x2="9.01" y2="9" />
-                    <line x1="15" y1="9" x2="15.01" y2="9" />
-                  </svg>
-                </div>
-                <span className="cozy-card-label">Mood</span>
-              </div>
-              <div className="cozy-mood">
-                <span className="cozy-mood-dot" />
-                <span className="cozy-mood-text">Relaxed</span>
-              </div>
-              <div className="cozy-card-sub">Peaceful afternoon</div>
-            </div>
-
-            {/* Cozy Tips card */}
+            {/* Playtime */}
             <div className="cozy-card">
               <div className="cozy-card-top">
-                <div className="cozy-card-icon cozy-card-icon--lavender">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                <div className="cozy-card-icon">
+                  <CatPawSVG size={18} />
+                </div>
+                <span className="cozy-card-label">Playtime</span>
+              </div>
+              <div className="cozy-card-value">22m</div>
+              <div className="cozy-progress-track">
+                <div className="cozy-progress-fill" style={{ width: "73%" }} />
+              </div>
+              <div className="cozy-card-sub">Goal: 30m daily</div>
+            </div>
+
+            {/* Cat tip */}
+            <div className="cozy-card">
+              <div className="cozy-card-top">
+                <div className="cozy-card-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 2a7 7 0 0 0-7 7c0 3 2 5 4 6.5V18h6v-2.5c2-1.5 4-3.5 4-6.5a7 7 0 0 0-7-7z" />
                     <line x1="9" y1="21" x2="15" y2="21" />
                   </svg>
                 </div>
-                <span className="cozy-card-label">Cozy Tip</span>
+                <span className="cozy-card-label">Cat Tip</span>
               </div>
-              <div style={{ fontSize: "12px", fontWeight: 400, lineHeight: 1.45, fontStyle: "italic" }}>
-                Try dimming the lights and putting on rain sounds while you read.
+              <div style={{ fontSize: "13px", fontWeight: 500, lineHeight: 1.5, fontStyle: "italic" }}>
+                Cats knead when they feel safe. It's a sign of trust.
               </div>
             </div>
           </div>
 
           {/* ── Paw trail footer ── */}
           <div className="cozy-paw-trail">
-            <PawPrint size={10} />
+            <div style={{ animation: "pawWalk 3s infinite 0s" }}><CatPawSVG size={16} /></div>
             <span className="cozy-paw-trail-dot" />
             <span className="cozy-paw-trail-dot" />
             <span className="cozy-paw-trail-dot" />
-            <PawPrint size={10} />
+            <div style={{ animation: "pawWalk 3s infinite 0.6s" }}><CatPawSVG size={16} /></div>
             <span className="cozy-paw-trail-dot" />
             <span className="cozy-paw-trail-dot" />
             <span className="cozy-paw-trail-dot" />
-            <PawPrint size={10} />
+            <div style={{ animation: "pawWalk 3s infinite 1.2s" }}><CatPawSVG size={16} /></div>
           </div>
 
         </div>

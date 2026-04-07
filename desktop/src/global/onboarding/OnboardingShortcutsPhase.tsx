@@ -214,6 +214,7 @@ export function OnboardingShortcutsPhase({
   const [capturePhase, setCapturePhase] = useState<"idle" | "ready" | "dragging" | "done">("idle");
   const [captureStart, setCaptureStart] = useState<Point>({ x: 0, y: 0 });
   const [captureEnd, setCaptureEnd] = useState<Point>({ x: 0, y: 0 });
+  const selectionRef = useRef<HTMLDivElement | null>(null);
 
   const platform = window.electronAPI?.platform;
 
@@ -327,17 +328,42 @@ export function OnboardingShortcutsPhase({
   useEffect(() => {
     if (capturePhase !== "dragging") return;
 
+    let rafId = 0;
+    let pendingEnd: Point | null = null;
+
     const handleMove = (event: MouseEvent) => {
       const surface = radialSurfaceRef.current;
       if (!surface) return;
       const rect = surface.getBoundingClientRect();
-      setCaptureEnd({
+      const end = {
         x: clamp(event.clientX - rect.left, 0, rect.width),
         y: clamp(event.clientY - rect.top, 0, rect.height),
-      });
+      };
+      pendingEnd = end;
+
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          rafId = 0;
+          if (!pendingEnd) return;
+          const el = selectionRef.current;
+          if (el) {
+            const left = Math.min(captureStart.x, pendingEnd.x);
+            const top = Math.min(captureStart.y, pendingEnd.y);
+            const width = Math.abs(pendingEnd.x - captureStart.x);
+            const height = Math.abs(pendingEnd.y - captureStart.y);
+            el.style.left = `${left}px`;
+            el.style.top = `${top}px`;
+            el.style.width = `${width}px`;
+            el.style.height = `${height}px`;
+          }
+        });
+      }
     };
 
     const handleUp = () => {
+      if (pendingEnd) {
+        setCaptureEnd(pendingEnd);
+      }
       setCapturePhase("done");
     };
 
@@ -346,8 +372,9 @@ export function OnboardingShortcutsPhase({
     return () => {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
+      if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [capturePhase]);
+  }, [capturePhase, captureStart]);
 
   const captureRect = useMemo(() => {
     if (capturePhase !== "dragging" && capturePhase !== "done") return null;
@@ -385,7 +412,6 @@ export function OnboardingShortcutsPhase({
           <section className="onboarding-shortcut-demo">
           <div className="onboarding-shortcut-demo__copy">
             <span className="onboarding-step-label">How to use Stella on your computer</span>
-            <h3 className="onboarding-shortcut-demo__title">Hold <TriggerKeyCaps platform={platform} />, drag to an option, release.</h3>
           </div>
 
           <div
@@ -394,6 +420,11 @@ export function OnboardingShortcutsPhase({
             data-testid="shortcuts-radial-surface"
             data-result={radialResult ?? undefined}
           >
+            {!radialOpen && !radialResult && (
+              <div className="onboarding-shortcut-surface__instruction">
+                <h3 className="onboarding-shortcut-demo__title">Hold <TriggerKeyCaps platform={platform} />, drag to an option, release.</h3>
+              </div>
+            )}
             <div className="onboarding-shortcut-scene onboarding-shortcut-scene--article">
               {/* Background window for depth */}
               <div className="onboarding-shortcut-window onboarding-shortcut-window--bg">
@@ -473,7 +504,7 @@ export function OnboardingShortcutsPhase({
             >
               {/* Capture: interactive region selection → vacuum → mini chat */}
               <div className="scene-effect scene-effect--capture">
-                {(capturePhase === "ready" || capturePhase === "dragging") && (
+                {capturePhase === "ready" && (
                   <div className="scene-effect__capture-dim" />
                 )}
                 {capturePhase === "ready" && (
@@ -482,28 +513,14 @@ export function OnboardingShortcutsPhase({
                     <span>Click and drag to select a region</span>
                   </div>
                 )}
-                {captureRect && capturePhase === "dragging" && (
+                {capturePhase === "dragging" && (
                   <div
+                    ref={selectionRef}
                     className="scene-effect__capture-selection"
-                    style={{
-                      left: captureRect.left,
-                      top: captureRect.top,
-                      width: captureRect.width,
-                      height: captureRect.height,
-                    }}
                   />
                 )}
-                {capturePhase === "done" && captureRect && (
+                {capturePhase === "done" && (
                   <>
-                    <div
-                      className="scene-effect__capture-vacuum"
-                      style={{
-                        left: captureRect.left,
-                        top: captureRect.top,
-                        width: captureRect.width,
-                        height: captureRect.height,
-                      }}
-                    />
                     <div className="scene-effect__capture-chat">
                       <div className="scene-effect__mini-shell">
                         <div className="scene-effect__mini-shell-bar">
