@@ -29,6 +29,8 @@ type GoogleWorkspaceAuthResult = {
 };
 
 const DEVICE_HEARTBEAT_INTERVAL_MS = 30_000;
+const REMOTE_TURN_AUTH_GRACE_MS = 15_000;
+const REMOTE_TURN_MAX_TRANSIENT_UNAUTHENTICATED_ERRORS = 2;
 
 const getGoogleWorkspaceRecord = (
   value: unknown,
@@ -81,6 +83,43 @@ export const parseGoogleWorkspaceProfile = (
 
 const AUTH_PENDING_PATTERN = /\bauth\b|oauth|sign[._-]?in|login|consent|credential|unauthorized|unauthenticated|\b403\b|\b401\b/i;
 
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+
+export const getConvexErrorCode = (error: unknown): string | null => {
+  const directCode = asRecord(error)?.code;
+  if (typeof directCode === "string" && directCode.trim()) {
+    return directCode.trim();
+  }
+
+  const dataCode = asRecord(asRecord(error)?.data)?.code;
+  if (typeof dataCode === "string" && dataCode.trim()) {
+    return dataCode.trim();
+  }
+
+  return null;
+};
+
+export const isConvexUnauthenticatedError = (error: unknown): boolean =>
+  getConvexErrorCode(error) === "UNAUTHENTICATED";
+
+export const shouldStopRemoteTurnForAuthFailure = (args: {
+  authWindowStartedAt: number;
+  failureCount: number;
+  nowMs: number;
+}): boolean => {
+  const withinGraceWindow =
+    args.authWindowStartedAt > 0
+    && args.nowMs - args.authWindowStartedAt <= REMOTE_TURN_AUTH_GRACE_MS;
+
+  return !(
+    withinGraceWindow
+    && args.failureCount <= REMOTE_TURN_MAX_TRANSIENT_UNAUTHENTICATED_ERRORS
+  );
+};
+
 const parseGoogleProfileResult = (
   result: ToolResult,
 ): GoogleWorkspaceAuthResult => {
@@ -118,12 +157,54 @@ export const createStellaHostRunner = (
   let deviceRegistered = false;
   let deviceRegistering = false;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let remoteTurnAuthWindowStartedAt = 0;
+  let remoteTurnUnauthenticatedFailures = 0;
 
   const stopHeartbeatLoop = () => {
     if (heartbeatTimer) {
       clearInterval(heartbeatTimer);
       heartbeatTimer = null;
     }
+  };
+
+  const resetRemoteTurnAuthTracking = () => {
+    remoteTurnAuthWindowStartedAt = Date.now();
+    remoteTurnUnauthenticatedFailures = 0;
+  };
+
+  const noteRemoteTurnAuthHealthy = () => {
+    remoteTurnUnauthenticatedFailures = 0;
+  };
+
+  const stopRemoteTurnForPersistentAuthFailure = (
+    source: "heartbeat" | "subscription" | "register",
+    error: unknown,
+  ): boolean => {
+    if (!isConvexUnauthenticatedError(error)) {
+      return false;
+    }
+
+    remoteTurnUnauthenticatedFailures += 1;
+    if (
+      !shouldStopRemoteTurnForAuthFailure({
+        authWindowStartedAt: remoteTurnAuthWindowStartedAt,
+        failureCount: remoteTurnUnauthenticatedFailures,
+        nowMs: Date.now(),
+      })
+    ) {
+      return true;
+    }
+
+    stopHeartbeatLoop();
+    remoteTurnBridge.stop();
+    deviceRegistered = false;
+    deviceRegistering = false;
+    remoteTurnUnauthenticatedFailures = 0;
+    console.warn(
+      `[remote-turn] ${source} auth failed; stopping remote turn sync until auth changes.`,
+      error,
+    );
+    return true;
   };
 
   const sendHeartbeat = async (): Promise<void> => {
@@ -157,7 +238,11 @@ export const createStellaHostRunner = (
         },
       );
       deviceRegistered = true;
+      noteRemoteTurnAuthHealthy();
     } catch (error) {
+      if (stopRemoteTurnForPersistentAuthFailure("heartbeat", error)) {
+        return;
+      }
       console.warn("[remote-turn] Heartbeat failed:", error);
     }
   };
@@ -199,7 +284,12 @@ export const createStellaHostRunner = (
         },
       );
       deviceRegistered = true;
-    } catch {
+      noteRemoteTurnAuthHealthy();
+    } catch (error) {
+      if (stopRemoteTurnForPersistentAuthFailure("register", error)) {
+        deviceRegistering = false;
+        return;
+      }
       if (attempt < 3) {
         await new Promise((r) => setTimeout(r, 2000));
         deviceRegistering = false;
@@ -291,6 +381,7 @@ export const createStellaHostRunner = (
           limit: 20,
         },
         (events: unknown) => {
+          noteRemoteTurnAuthHealthy();
           onUpdate(
             events as Array<{
               _id: string;
@@ -301,7 +392,12 @@ export const createStellaHostRunner = (
             }>,
           );
         },
-        onError,
+        (error: Error) => {
+          if (stopRemoteTurnForPersistentAuthFailure("subscription", error)) {
+            return;
+          }
+          onError?.(error);
+        },
       );
 
       return () => {
@@ -385,6 +481,7 @@ export const createStellaHostRunner = (
       void sendGoOffline();
       return;
     }
+    resetRemoteTurnAuthTracking();
     void registerDevice();
     startHeartbeatLoop();
     void sendHeartbeat();
