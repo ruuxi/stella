@@ -21,7 +21,7 @@ import {
 import { generateGradientTokens } from "../shared/theme/color";
 
 type ColorMode = "light" | "dark" | "system";
-type GradientMode = "soft" | "crisp";
+type GradientMode = "soft" | "flat";
 type GradientColor = "relative" | "strong";
 
 // ─── Stable read-only context (rarely changes) ────────────────────────────

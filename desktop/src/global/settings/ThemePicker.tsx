@@ -132,7 +132,7 @@ export function ThemePicker({
             <div data-slot="theme-picker-section" data-bordered>
               <div data-slot="theme-picker-label">Gradient Style</div>
               <div data-slot="theme-picker-button-row">
-                {(["soft", "crisp"] as const).map((value) => (
+                {(["soft", "flat"] as const).map((value) => (
                   <Button
                     key={value}
                     size="small"
@@ -140,7 +140,7 @@ export function ThemePicker({
                     data-slot="theme-picker-option-button"
                     onClick={() => setGradientMode(value)}
                   >
-                    {value === "soft" ? "Soft" : "Crisp"}
+                    {value === "soft" ? "Soft" : "Flat"}
                   </Button>
                 ))}
               </div>
