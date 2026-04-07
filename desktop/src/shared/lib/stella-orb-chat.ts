@@ -41,3 +41,9 @@ export function dispatchOpenSidebarChat(detail: StellaOpenSidebarChatDetail = {}
 export function dispatchCloseSidebarChat() {
   window.dispatchEvent(new CustomEvent(STELLA_CLOSE_SIDEBAR_CHAT_EVENT));
 }
+
+export const STELLA_SHOW_HOME_EVENT = "stella:show-home";
+
+export function dispatchShowHome() {
+  window.dispatchEvent(new CustomEvent(STELLA_SHOW_HOME_EVENT));
+}

@@ -1,4 +1,4 @@
-﻿import {
+import {
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -21,6 +21,7 @@ import {
   type StellaSendMessageDetail,
   toStellaMessageMetadata,
 } from '@/shared/lib/stella-send-message'
+import { STELLA_SHOW_HOME_EVENT } from '@/shared/lib/stella-orb-chat'
 import { useIdleHomeVisibility } from '@/app/chat/hooks/use-idle-home-visibility'
 import { useChatContextSync } from './use-chat-context-sync'
 import { useChatScrollManagement } from './use-chat-scroll-management'
@@ -115,11 +116,15 @@ export function useFullShellChat({
   )
 
   const sendMessageWithContext = useCallback(
-    (text: string, chatCtx?: import('@/shared/types/electron').ChatContext | null) => {
+    (
+      text: string,
+      chatCtx?: import('@/shared/types/electron').ChatContext | null,
+      selectedTextCtx?: string | null,
+    ) => {
       markHomeSessionInteraction()
       void sendMessageRef.current({
         text,
-        selectedText: null,
+        selectedText: selectedTextCtx ?? null,
         chatContext: chatCtx ?? null,
         onClear: NO_OP,
       })
@@ -163,6 +168,12 @@ export function useFullShellChat({
 
   const showHome = useCallback(() => {
     forceShowHome()
+  }, [forceShowHome])
+
+  useEffect(() => {
+    const handler = () => forceShowHome()
+    window.addEventListener(STELLA_SHOW_HOME_EVENT, handler)
+    return () => window.removeEventListener(STELLA_SHOW_HOME_EVENT, handler)
   }, [forceShowHome])
 
   // Scroll management â€” ResizeObserver on content handles auto-scroll.

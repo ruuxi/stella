@@ -116,14 +116,6 @@
   border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
 }
 
-.composer-context-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 0;
-}
-
 /* Add button - circular with border */
 .composer-add-button {
   width: 30px;

@@ -358,3 +358,66 @@
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
+/* ============================================
+   Custom Icon Animations
+   ============================================ */
+
+.custom-icon {
+  overflow: visible;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.custom-icon * {
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: center;
+}
+
+button:hover .icon-house .house-roof {
+  transform: translateY(-2px);
+}
+button:hover .icon-users .users-p1 {
+  transform: translateX(-1.5px);
+}
+button:hover .icon-users .users-p2 {
+  transform: translateX(1.5px);
+}
+button:hover .icon-layout .layout-r1 {
+  transform: scale(0.85);
+}
+button:hover .icon-plus-square .plus-sq-p {
+  transform: rotate(90deg);
+}
+button:hover .icon-folder .folder-p {
+  transform: scale(1.05) translateY(-1px);
+}
+button:hover .icon-palette .pal-p {
+  transform: rotate(-10deg);
+}
+button:hover .icon-settings .set-p {
+  transform: rotate(45deg);
+}
+button:hover .icon-store .store-handle {
+  transform: translateY(-2px);
+}
+button:hover .icon-device .device-body-group {
+  transform: translateX(-1.5px);
+}
+button:hover .icon-device .device-wave-1 {
+  transform: translateX(1.5px);
+}
+button:hover .icon-device .device-wave-2 {
+  transform: translateX(3px);
+}
+button:hover .icon-login .li-p2 {
+  transform: translateX(3px);
+}
+button:hover .icon-user .usr-c1 {
+  transform: translateY(-2px) scale(1.05);
+}
+button:hover .icon-alert .al-c1 {
+  transform: scale(1.08);
+}
+button:hover .icon-arrow-left .arr-p1 {
+  transform: translateX(-3px);
+}
+

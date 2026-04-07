@@ -3,17 +3,19 @@ import { listLocalEvents } from "@/app/chat/services/local-chat-store"
 import type { OnboardingHomeSuggestion } from "@/shared/contracts/onboarding"
 import "./home.css"
 
-type SuggestionOption = {
+export type SuggestionOption = {
   label: string
   prompt: string
 }
 
-type Category = {
+export type SuggestionCategory = {
   label: string
   options: SuggestionOption[]
 }
 
-const DEFAULT_CATEGORIES: Category[] = [
+type Category = SuggestionCategory
+
+export const DEFAULT_CATEGORIES: Category[] = [
   { label: "Stella", options: [
     { label: "Add a music player to home", prompt: "Add the music player to my home page. The component is already built and ready - exists at src/app/home/MusicPlayer.tsx - integrate it into the Home.tsx page layout, don't rebuild it." },
     { label: "Change my theme to dark", prompt: "Change my theme to dark mode" },
