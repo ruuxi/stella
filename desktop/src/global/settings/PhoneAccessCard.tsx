@@ -422,7 +422,7 @@ export function PhoneAccessConnectCard() {
     }
     let cancelled = false;
     QRCode.toDataURL(pairingLink, {
-      width: 140,
+      width: 200,
       margin: 2,
       color: { dark: "#000000", light: "#ffffff" },
     }).then((url) => {
@@ -443,17 +443,10 @@ export function PhoneAccessConnectCard() {
   if (!hasConnectedAccount) {
     return (
       <div className="connect-detail-area">
-        <div className="connect-detail-header">
-          <span className="connect-grid-card-icon">
-            <svg viewBox="0 0 24 24">
-              <path fill="#007AFF" d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z" />
-            </svg>
-          </span>
-          <span className="connect-detail-name">Pair Phone</span>
-        </div>
-        <div className="connect-detail-body">
-          <p className="connect-instructions">
-            Sign in to pair your phone.
+        <div className="connect-detail-body connect-pair-centered">
+          <p className="connect-pair-headline">Sign in to get started</p>
+          <p className="connect-pair-sub">
+            Sign in to your Stella account to pair with the mobile app.
           </p>
         </div>
       </div>
@@ -462,61 +455,60 @@ export function PhoneAccessConnectCard() {
 
   return (
     <div className="connect-detail-area">
-      <div className="connect-detail-header">
-        <span className="connect-grid-card-icon">
-          <svg viewBox="0 0 24 24">
-            <path fill="#007AFF" d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z" />
-          </svg>
-        </span>
-        <span className="connect-detail-name">Pair Phone</span>
-      </div>
-      <div className="connect-detail-body">
-        <p className="connect-instructions">
-          Open the Stella app on your phone and enter the code below. You only
-          need to pair once per computer.
-        </p>
-        {error ? <div className="connect-error">{error}</div> : null}
-
+      <div className="connect-detail-body connect-pair-centered">
         {activePairing ? (
           <>
-            <div className="connect-qr-code-row">
+            <p className="connect-pair-headline">Scan or enter this code</p>
+            <p className="connect-pair-sub">
+              Open the Stella app on your phone and scan the QR code, or type in the code below. You only need to do this once.
+            </p>
+
+            {error && <div className="connect-error">{error}</div>}
+
+            <div className="connect-pair-qr-block">
               {qrDataUrl ? (
                 <img
                   src={qrDataUrl}
                   alt="Scan to pair your phone"
-                  className="connect-qr-code"
+                  className="connect-pair-qr"
                 />
               ) : (
-                <div className="connect-skeleton connect-skeleton-qr" />
+                <div className="connect-skeleton connect-pair-qr" />
               )}
-              <div className="connect-qr-side">
-                <div className="connect-code-row">
-                  <span className="connect-code">
-                    {activePairing.pairingCode}
-                  </span>
-                  <Button variant="ghost" size="small" onClick={handleCopy}>
-                    Copy
-                  </Button>
-                </div>
-                <span className="connect-qr-meta">
-                  {formatCountdown(activePairing.expiresAt)}
-                </span>
-              </div>
             </div>
+
+            <div className="connect-pair-code-group">
+              <span className="connect-pair-code">{activePairing.pairingCode}</span>
+              <Button variant="ghost" size="small" onClick={handleCopy}>
+                Copy
+              </Button>
+            </div>
+
+            <span className="connect-pair-timer">
+              {formatCountdown(activePairing.expiresAt)}
+            </span>
           </>
         ) : (
-          <Button
-            variant="ghost"
-            size="small"
-            onClick={() => void handleCreate()}
-            disabled={!desktopDeviceId || isCreating}
-          >
-            {isCreating ? "Preparing..." : "Generate Pairing Code"}
-          </Button>
+          <>
+            <p className="connect-pair-headline">Pair your phone</p>
+            <p className="connect-pair-sub">
+              Link the Stella mobile app to this computer so they work together. You only need to do this once.
+            </p>
+
+            {error && <div className="connect-error">{error}</div>}
+
+            <Button
+              variant="ghost"
+              onClick={() => void handleCreate()}
+              disabled={!desktopDeviceId || isCreating}
+            >
+              {isCreating ? "Preparing..." : "Get Code"}
+            </Button>
+          </>
         )}
 
         {phoneAccessState?.pairedDevices?.length ? (
-          <span className="connect-bot-link" style={{ cursor: "default", textDecoration: "none" }}>
+          <span className="connect-pair-meta">
             {phoneAccessState.pairedDevices.length} phone{phoneAccessState.pairedDevices.length > 1 ? "s" : ""} paired
           </span>
         ) : null}
