@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { IpcRendererEvent } from "electron";
 import type {
+  ChatContext,
   MiniBridgeRequest,
   MiniBridgeRequestEnvelope,
   MiniBridgeResponse,
@@ -148,6 +149,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   capture: {
     getContext: () => ipcRenderer.invoke("chatContext:get"),
+    setContext: (context: ChatContext | null) =>
+      ipcRenderer.send("chatContext:set", context),
     onContext: onIpc<Record<string, unknown> | null>("chatContext:updated"),
     ackContext: (payload: { version: number }) =>
       ipcRenderer.send("chatContext:ack", payload),

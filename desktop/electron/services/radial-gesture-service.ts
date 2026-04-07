@@ -141,7 +141,6 @@ export class RadialGestureService {
       case 'close':
         capture.cancelRadialContextCapture()
         if (win.isMiniShowing()) {
-          capture.setPendingChatContext(null)
           win.hideMiniWindow(true)
         } else {
           this.restoreOrClearTransientContext()
