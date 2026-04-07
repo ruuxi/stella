@@ -7,7 +7,6 @@ import {
   type FormEvent,
 } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
-import QRCode from "qrcode";
 import { api } from "@/convex/api";
 import { Button } from "@/ui/button";
 import { showToast } from "@/ui/toast";

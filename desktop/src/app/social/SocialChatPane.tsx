@@ -60,6 +60,7 @@ function getProfileForOwner(
 export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) {
   const roomData = useQuery(api.social.rooms.getRoom, { roomId }) as SocialRoomSummary | null;
   const { messages, sendMessage } = useSocialMessages(roomId);
+  const socialSessionsApi = window.electronAPI?.socialSessions;
   const [sessionLookupId, setSessionLookupId] = useState<string | null>(null);
   const { sessionSummary, turns } = useSocialSession(sessionLookupId);
   const [stellaPrompt, setStellaPrompt] = useState("");
@@ -119,9 +120,16 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
     if (!roomData) {
       return;
     }
+    if (!socialSessionsApi) {
+      showToast({
+        variant: "error",
+        description: "Shared Stella isn't available in this app session.",
+      });
+      return;
+    }
     setIsStartingSession(true);
     try {
-      await window.electronAPI.socialSessions.create({
+      await socialSessionsApi.create({
         roomId,
         workspaceLabel: displayName,
       });
@@ -136,16 +144,23 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
     } finally {
       setIsStartingSession(false);
     }
-  }, [displayName, roomData, roomId]);
+  }, [displayName, roomData, roomId, socialSessionsApi]);
 
   const handleUpdateSessionStatus = useCallback(
     async (status: SocialSessionStatus) => {
       if (!activeSession) {
         return;
       }
+      if (!socialSessionsApi) {
+        showToast({
+          variant: "error",
+          description: "Shared Stella isn't available in this app session.",
+        });
+        return;
+      }
       setIsUpdatingSession(true);
       try {
-        await window.electronAPI.socialSessions.updateStatus({
+        await socialSessionsApi.updateStatus({
           sessionId: activeSession._id,
           status,
         });
@@ -161,11 +176,18 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
         setIsUpdatingSession(false);
       }
     },
-    [activeSession],
+    [activeSession, socialSessionsApi],
   );
 
   const handleSendStellaTurn = useCallback(async () => {
     if (!activeSession) {
+      return;
+    }
+    if (!socialSessionsApi) {
+      showToast({
+        variant: "error",
+        description: "Shared Stella isn't available in this app session.",
+      });
       return;
     }
     const prompt = stellaPrompt.trim();
@@ -174,7 +196,7 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
     }
     setIsSendingTurn(true);
     try {
-      await window.electronAPI.socialSessions.queueTurn({
+      await socialSessionsApi.queueTurn({
         sessionId: activeSession._id,
         prompt,
         clientTurnId: `social-stella-${Date.now()}`,
@@ -191,7 +213,7 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
     } finally {
       setIsSendingTurn(false);
     }
-  }, [activeSession, stellaPrompt]);
+  }, [activeSession, socialSessionsApi, stellaPrompt]);
 
   if (!roomData) {
     return <div className="social-chat-pane" />;

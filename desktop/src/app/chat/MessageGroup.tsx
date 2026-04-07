@@ -21,7 +21,6 @@ export function MessageGroup({
   assistantMessage,
   isStreaming,
   streamingText,
-  currentToolName,
   onOpenAttachment,
 }: MessageGroupProps) {
   const turn = {
@@ -44,8 +43,6 @@ export function MessageGroup({
         <StreamingIndicator
           streamingText={streamingText}
           isStreaming={isStreaming}
-          runningTasks={[]}
-          runningTool={currentToolName}
         />
       ) : null}
     </div>
