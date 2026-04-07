@@ -18,6 +18,7 @@ import {
 } from "./composer-context";
 import { useFileDrop } from "./hooks/use-file-drop";
 import { DropOverlay } from "./DropOverlay";
+import { useScreenshotPreview, ScreenshotPreviewOverlay } from "./ScreenshotPreview";
 import "./full-shell.composer.css";
 
 type ComposerProps = {
@@ -55,6 +56,8 @@ export function Composer({
   const formRef = useRef<HTMLFormElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
+  const { screenshot: previewScreenshot, previewIndex: previewScreenshotIndex, setPreviewIndex: setPreviewScreenshotIndex } =
+    useScreenshotPreview(chatContext);
 
   const { isDragOver, dropHandlers } = useFileDrop({
     setChatContext,
@@ -140,6 +143,7 @@ export function Composer({
             selectedText={selectedText}
             setChatContext={setChatContext}
             setSelectedText={setSelectedText}
+            onPreviewScreenshot={setPreviewScreenshotIndex}
             onSuggestionSelect={showSuggestions ? handleSuggestionSelect : undefined}
           />
         </div>
@@ -223,6 +227,14 @@ export function Composer({
           </div>
         </form>
       </div>
+
+      {previewScreenshot && previewScreenshotIndex !== null && (
+        <ScreenshotPreviewOverlay
+          screenshot={previewScreenshot}
+          index={previewScreenshotIndex}
+          onClose={() => setPreviewScreenshotIndex(null)}
+        />
+      )}
     </div>
   );
 }
