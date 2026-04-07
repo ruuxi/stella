@@ -72,6 +72,7 @@ type AgentEventPayload = {
   runId: string;
   seq: number;
   chunk?: string;
+  statusState?: "running" | "compacting";
   toolCallId?: string;
   toolName?: string;
   args?: Record<string, unknown>;
@@ -568,6 +569,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
       },
       onStream: (ev) => emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.STREAM }),
+      onStatus: (ev) => emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.STATUS }),
       onToolStart: (ev) => {
         ensureChatStore().appendEvent({
           conversationId: payload.conversationId,

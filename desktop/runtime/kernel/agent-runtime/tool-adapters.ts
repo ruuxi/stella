@@ -15,7 +15,7 @@ import {
   getDynamicToolSchema,
 } from "../tools/dynamic-tool-metadata-registry.js";
 
-const STELLA_LOCAL_TOOLS = [
+export const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
   "TaskUpdate",
   "TaskCreate",
@@ -26,6 +26,50 @@ const STELLA_LOCAL_TOOLS = [
   TOOL_IDS.SAVE_MEMORY,
   TOOL_IDS.RECALL_MEMORIES,
 ] as const;
+
+const getToolMetadataIndex = (toolCatalog?: ToolMetadata[]) =>
+  new Map<string, ToolMetadata>(
+    (toolCatalog ?? []).map((tool) => [tool.name, tool]),
+  );
+
+const resolveToolMetadata = (
+  toolName: string,
+  toolMetadata: Map<string, ToolMetadata>,
+): ToolMetadata => ({
+  name: toolName,
+  description:
+    toolMetadata.get(toolName)?.description ??
+    TOOL_DESCRIPTIONS[toolName] ??
+    getDynamicToolDescription(toolName) ??
+    `${toolName} tool`,
+  parameters:
+    toolMetadata.get(toolName)?.parameters ??
+    ((TOOL_JSON_SCHEMAS[toolName] ??
+      getDynamicToolSchema(toolName) ??
+      AnyToolArgsSchema) as Record<string, unknown>),
+});
+
+export const getRequestedRuntimeToolNames = (
+  toolsAllowlist?: string[],
+): string[] =>
+  Array.isArray(toolsAllowlist) && toolsAllowlist.length > 0
+    ? toolsAllowlist
+    : [...STELLA_LOCAL_TOOLS];
+
+export const getRuntimeToolMetadata = (opts: {
+  toolsAllowlist?: string[];
+  toolCatalog?: ToolMetadata[];
+}): ToolMetadata[] => {
+  const toolMetadata = getToolMetadataIndex(opts.toolCatalog);
+  const resolved: ToolMetadata[] = [];
+  const seen = new Set<string>();
+  for (const toolName of getRequestedRuntimeToolNames(opts.toolsAllowlist)) {
+    if (seen.has(toolName)) continue;
+    seen.add(toolName);
+    resolved.push(resolveToolMetadata(toolName, toolMetadata));
+  }
+  return resolved;
+};
 
 const formatToolResult = (
   toolResult: ToolResult,
@@ -41,6 +85,123 @@ const formatToolResult = (
     text: textFromUnknown(toolResult.result),
     details: toolResult.details ?? toolResult.result,
   };
+};
+
+type RuntimeToolContextArgs = {
+  toolCallId: string;
+  runId: string;
+  rootRunId?: string;
+  taskId?: string;
+  conversationId: string;
+  agentType: string;
+  deviceId: string;
+  frontendRoot?: string;
+  taskDepth?: number;
+  maxTaskDepth?: number;
+  defaultSkills?: string[];
+  skillIds?: string[];
+};
+
+export const buildRuntimeToolContext = (
+  args: RuntimeToolContextArgs,
+): ToolContext => ({
+  conversationId: args.conversationId,
+  deviceId: args.deviceId,
+  requestId: args.toolCallId,
+  runId: args.runId,
+  ...(args.rootRunId ? { rootRunId: args.rootRunId } : {}),
+  agentType: args.agentType,
+  ...(args.frontendRoot ? { frontendRoot: args.frontendRoot } : {}),
+  storageMode: "local",
+  ...(args.taskId ? { taskId: args.taskId } : {}),
+  ...(typeof args.taskDepth === "number" ? { taskDepth: args.taskDepth } : {}),
+  ...(typeof args.maxTaskDepth === "number"
+    ? { maxTaskDepth: args.maxTaskDepth }
+    : {}),
+  ...(args.defaultSkills ? { defaultSkills: args.defaultSkills } : {}),
+  ...(args.skillIds ? { skillIds: args.skillIds } : {}),
+});
+
+type RuntimeToolExecutionArgs = RuntimeToolContextArgs & {
+  toolName: string;
+  args: Record<string, unknown>;
+  store: RuntimeStore;
+  toolExecutor: (
+    toolName: string,
+    args: Record<string, unknown>,
+    context: ToolContext,
+    signal?: AbortSignal,
+  ) => Promise<ToolResult>;
+  webSearch?: (
+    query: string,
+    options?: {
+      category?: string;
+    },
+  ) => Promise<{
+    text: string;
+    results: Array<{ title: string; url: string; snippet: string }>;
+  }>;
+  hookEmitter?: HookEmitter;
+  signal?: AbortSignal;
+};
+
+export const executeRuntimeToolCall = async (
+  args: RuntimeToolExecutionArgs,
+): Promise<ToolResult> => {
+  const localResult = await dispatchLocalTool(args.toolName, args.args, {
+    conversationId: args.conversationId,
+    webSearch: args.webSearch,
+    store: args.store,
+  });
+  if (localResult.handled) {
+    return {
+      result: localResult.text,
+      details: { text: localResult.text },
+    };
+  }
+
+  const context = buildRuntimeToolContext(args);
+  let effectiveArgs = args.args;
+  if (args.hookEmitter) {
+    const hookResult = await args.hookEmitter.emit(
+      "before_tool",
+      { tool: args.toolName, args: args.args, context },
+      { tool: args.toolName, agentType: args.agentType },
+    );
+    if (hookResult?.cancel) {
+      return {
+        error: `Tool blocked: ${hookResult.reason ?? "blocked by hook"}`,
+      };
+    }
+    if (hookResult?.args) {
+      effectiveArgs = hookResult.args;
+    }
+  }
+
+  let toolResult = await args.toolExecutor(
+    args.toolName,
+    effectiveArgs,
+    context,
+    args.signal,
+  );
+
+  if (args.hookEmitter) {
+    const hookResult = await args.hookEmitter.emit(
+      "after_tool",
+      {
+        tool: args.toolName,
+        args: effectiveArgs,
+        result: toolResult,
+        context,
+      },
+      { tool: args.toolName, agentType: args.agentType },
+    );
+    if (hookResult?.result) {
+      toolResult = hookResult.result;
+    }
+  }
+
+  return toolResult;
 };
 
 export const createPiTools = (opts: {
@@ -81,53 +242,13 @@ export const createPiTools = (opts: {
   }>;
   hookEmitter?: HookEmitter;
 }): AgentTool[] => {
-  const requested =
-    Array.isArray(opts.toolsAllowlist) && opts.toolsAllowlist.length > 0
-      ? opts.toolsAllowlist
-      : [...STELLA_LOCAL_TOOLS];
-
-  const toolMetadata = new Map<string, ToolMetadata>(
-    (opts.toolCatalog ?? []).map((tool) => [tool.name, tool]),
-  );
+  const requested = getRequestedRuntimeToolNames(opts.toolsAllowlist);
+  const toolMetadata = getToolMetadataIndex(opts.toolCatalog);
   const activeTools: AgentTool[] = [];
   const activeToolNames = new Set<string>();
 
-  const getToolMetadata = (toolName: string): ToolMetadata => ({
-    name: toolName,
-    description:
-      toolMetadata.get(toolName)?.description ??
-      TOOL_DESCRIPTIONS[toolName] ??
-      getDynamicToolDescription(toolName) ??
-      `${toolName} tool`,
-    parameters:
-      toolMetadata.get(toolName)?.parameters ??
-      ((TOOL_JSON_SCHEMAS[toolName] ??
-        getDynamicToolSchema(toolName) ??
-        AnyToolArgsSchema) as Record<string, unknown>),
-  });
-
-  const buildContext = (toolCallId: string): ToolContext => ({
-    conversationId: opts.conversationId,
-    deviceId: opts.deviceId,
-    requestId: toolCallId,
-    runId: opts.runId,
-    ...(opts.rootRunId ? { rootRunId: opts.rootRunId } : {}),
-    agentType: opts.agentType,
-    ...(opts.frontendRoot ? { frontendRoot: opts.frontendRoot } : {}),
-    storageMode: "local",
-    ...(opts.taskId ? { taskId: opts.taskId } : {}),
-    ...(typeof opts.taskDepth === "number"
-      ? { taskDepth: opts.taskDepth }
-      : {}),
-    ...(typeof opts.maxTaskDepth === "number"
-      ? { maxTaskDepth: opts.maxTaskDepth }
-      : {}),
-    ...(opts.defaultSkills ? { defaultSkills: opts.defaultSkills } : {}),
-    ...(opts.skillIds ? { skillIds: opts.skillIds } : {}),
-  });
-
   const registerTool = (toolName: string): AgentTool => {
-    const metadata = getToolMetadata(toolName);
+    const metadata = resolveToolMetadata(toolName, toolMetadata);
     const tool: AgentTool = {
       name: toolName,
       label: toolName,
@@ -135,61 +256,27 @@ export const createPiTools = (opts: {
       parameters: metadata.parameters as typeof AnyToolArgsSchema,
       execute: async (toolCallId, params, signal) => {
         const args = (params as Record<string, unknown>) ?? {};
-
-        const localResult = await dispatchLocalTool(toolName, args, {
-          conversationId: opts.conversationId,
-          webSearch: opts.webSearch,
-          store: opts.store,
-        });
-        if (localResult.handled) {
-          return {
-            content: [{ type: "text", text: localResult.text }],
-            details: { text: localResult.text },
-          };
-        }
-
-        const context = buildContext(toolCallId);
-        let effectiveArgs = args;
-        if (opts.hookEmitter) {
-          const hookResult = await opts.hookEmitter.emit(
-            "before_tool",
-            { tool: toolName, args, context },
-            { tool: toolName, agentType: opts.agentType },
-          );
-          if (hookResult?.cancel) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Tool blocked: ${hookResult.reason ?? "blocked by hook"}`,
-                },
-              ],
-              details: { blocked: true },
-            };
-          }
-          if (hookResult?.args) {
-            effectiveArgs = hookResult.args;
-          }
-        }
-
-        let toolResult = await opts.toolExecutor(
+        const toolResult = await executeRuntimeToolCall({
+          toolCallId,
           toolName,
-          effectiveArgs,
-          context,
+          args,
+          runId: opts.runId,
+          rootRunId: opts.rootRunId,
+          taskId: opts.taskId,
+          conversationId: opts.conversationId,
+          agentType: opts.agentType,
+          deviceId: opts.deviceId,
+          frontendRoot: opts.frontendRoot,
+          taskDepth: opts.taskDepth,
+          maxTaskDepth: opts.maxTaskDepth,
+          defaultSkills: opts.defaultSkills,
+          skillIds: opts.skillIds,
+          store: opts.store,
+          toolExecutor: opts.toolExecutor,
+          webSearch: opts.webSearch,
+          hookEmitter: opts.hookEmitter,
           signal,
-        );
-
-        if (opts.hookEmitter) {
-          const hookResult = await opts.hookEmitter.emit(
-            "after_tool",
-            { tool: toolName, args: effectiveArgs, result: toolResult, context },
-            { tool: toolName, agentType: opts.agentType },
-          );
-          if (hookResult?.result) {
-            toolResult = hookResult.result;
-          }
-        }
-
+        });
         const formatted = formatToolResult(toolResult);
         return {
           content: [{ type: "text", text: formatted.text }],

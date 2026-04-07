@@ -67,6 +67,7 @@ export function useLocalAgentStream({
   const [pendingUserMessageId, setPendingUserMessageId] = useState<
     string | null
   >(null);
+  const [runtimeStatusText, setRuntimeStatusText] = useState<string | null>(null);
   const [selfModMap, setSelfModMap] = useState<
     Record<string, SelfModAppliedData>
   >({});
@@ -128,6 +129,7 @@ export function useLocalAgentStream({
       resetStreamingText();
       resetReasoningText();
       setIsStreaming(false);
+      setRuntimeStatusText(null);
 
       requestAnimationFrame(() => {
         if (scheduledForRunId !== streamRunIdRef.current) {
@@ -191,6 +193,7 @@ export function useLocalAgentStream({
     localRunIdRef.current = null;
     clearLiveTasks();
     resetStreamingState();
+    setRuntimeStatusText(null);
 
     if (agentStreamCleanupRef.current) {
       agentStreamCleanupRef.current();
@@ -252,6 +255,15 @@ export function useLocalAgentStream({
         case AGENT_STREAM_EVENT_TYPES.STREAM:
           if (isPrimaryRun && isOrchestratorEvent && event.chunk) {
             appendStreamingDelta(event.chunk);
+          }
+          break;
+        case AGENT_STREAM_EVENT_TYPES.STATUS:
+          if (isPrimaryRun && isOrchestratorEvent) {
+            setRuntimeStatusText(
+              event.statusState === "compacting"
+                ? event.statusText || "Compacting context"
+                : null,
+            );
           }
           break;
         case AGENT_STREAM_EVENT_TYPES.TOOL_START:
@@ -334,6 +346,7 @@ export function useLocalAgentStream({
             if (localRunIdRef.current === event.runId) {
               localRunIdRef.current = null;
             }
+            setRuntimeStatusText(null);
             userMessageIdByRunIdRef.current.delete(event.runId);
             localRunSeqByRunIdRef.current.delete(event.runId);
             localTaskSeqByRunIdRef.current.delete(event.runId);
@@ -356,6 +369,7 @@ export function useLocalAgentStream({
             const linkedUserMessageId = userMessageIdByRunIdRef.current.get(
               event.runId,
             );
+            setRuntimeStatusText(null);
             console.log(
               `[stella:trace] end | finalText=${(event.finalText ?? streamingTextRef.current).slice(0, 200)}`,
             );
@@ -497,6 +511,7 @@ export function useLocalAgentStream({
       resetReasoningText();
       setIsStreaming(true);
       setPendingUserMessageId(null);
+      setRuntimeStatusText(null);
       clearLiveTasks();
 
       if (agentStreamCleanupRef.current) {
@@ -682,6 +697,7 @@ export function useLocalAgentStream({
     liveTasks: Object.values(liveTasksById).sort(
       (a, b) => a.startedAtMs - b.startedAtMs,
     ),
+    runtimeStatusText,
     streamingText,
     reasoningText,
     isStreaming,
