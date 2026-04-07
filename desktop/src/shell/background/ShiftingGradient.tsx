@@ -20,7 +20,7 @@ interface Blob {
   color: RGB;
 }
 
-export type GradientMode = "soft" | "crisp";
+export type GradientMode = "soft" | "flat";
 export type GradientColor = "relative" | "strong";
 
 interface ShiftingGradientProps {
@@ -86,12 +86,16 @@ const blueNoise = generateBlueNoise(NOISE_SIZE);
 // ─── Blob generation ────────────────────────────────────────────────────
 
 function generateBlobs(colors: RGB[], mode: GradientMode = "soft"): Blob[] {
-  const radiusMul = mode === "crisp" ? 0.5 : 0.65;
+  if (mode === "flat") {
+    // Single dominant color filling the entire canvas
+    const color = colors[0];
+    return [{ x: 0.5, y: 0.5, radius: 3, alpha: 0.5, color }];
+  }
 
   return BASE_POSITIONS.map((base, index) => ({
     x: rand(base.x - 0.04, base.x + 0.04),
     y: rand(base.y - 0.04, base.y + 0.04),
-    radius: rand(0.7, 0.95) * radiusMul,
+    radius: rand(0.7, 0.95) * 0.65,
     alpha: rand(0.25, 0.4),
     color: colors[index % colors.length],
   }));
@@ -211,7 +215,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
         tokens.surfaceWarningStrong,
         tokens.surfaceBrandBase,
       ];
-      const strength = isDark ? 0.2 : 0.5;
+      const strength = isDark ? 0.32 : 0.5;
       return tokenColors.map((token) => {
         const color = parseColor(token) ?? fallback;
         return mixRgb(bg, color, strength);
@@ -224,7 +228,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       parseColor(tokens.textInteractive) ??
       parseColor(colors.interactive) ??
       brandColor;
-    const strength = isDark ? 0.35 : 0.85;
+    const strength = isDark ? 0.55 : 0.85;
 
     return [
       mixRgb(bg, brandColor, strength),
