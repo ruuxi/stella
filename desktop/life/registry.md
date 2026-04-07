@@ -15,6 +15,7 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 - Managed media API docs: [managed-media-sdk](abilities/managed-media-sdk.md)
 - Browser/desktop workflow: [computer-use](knowledge/computer-use/SKILL.md)
 - Feature packaging and sharing: [blueprint-management](knowledge/blueprint-management/SKILL.md)
+- User profile and context: [user-profile](knowledge/user-profile/index.md)
 
 ## Reference Docs
 
