@@ -76,7 +76,7 @@ export function Composer({
   const isExpanded = composerExpanded;
 
   const handleSuggestionSelect = (prompt: string) => {
-    setMessage((prev) => (prev.trim() ? `${prev.trimEnd()}\n${prompt}` : prompt));
+    setMessage(prompt);
     requestAnimationFrame(() => {
       textareaRef.current?.focus();
     });
