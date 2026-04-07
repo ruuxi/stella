@@ -96,15 +96,36 @@ export default function LoginScreen() {
             sessionCookie?: string;
           };
 
-          if (data.status === "completed" && data.sessionCookie) {
+          if (data.status === "completed" && (data.sessionCookie || data.ott)) {
             if (cancelledRef.current) return;
             setSubmitState({ type: "verifying" });
-            // Parse the raw set-cookie header into the format expoClient expects
-            const prev = await SecureStore.getItemAsync("stella-mobile_cookie");
-            const parsed = getSetCookie(data.sessionCookie, prev ?? undefined);
-            await SecureStore.setItemAsync("stella-mobile_cookie", parsed);
-            // Trigger session refresh so useSession() picks it up
-            await authClient.getSession();
+            try {
+              // `/api/auth/link/verify` may have exchanged the OTT server-side; prefer Set-Cookie.
+              // If the server could not attach a cookie, exchange the OTT client-side (same as desktop).
+              if (data.sessionCookie) {
+                const prev = await SecureStore.getItemAsync("stella-mobile_cookie");
+                const parsed = getSetCookie(data.sessionCookie, prev ?? undefined);
+                await SecureStore.setItemAsync("stella-mobile_cookie", parsed);
+              } else {
+                await authClient.$fetch("/cross-domain/one-time-token/verify", {
+                  method: "POST",
+                  body: { token: data.ott as string },
+                });
+              }
+              const updateSession = (
+                authClient as unknown as { updateSession?: () => void }
+              ).updateSession;
+              if (typeof updateSession === "function") {
+                updateSession();
+              }
+              await authClient.getSession();
+              router.replace("/chat");
+            } catch {
+              setSubmitState({
+                type: "error",
+                message: "Could not finish sign-in. Please try again.",
+              });
+            }
             return;
           }
           if (data.status === "completed") {
