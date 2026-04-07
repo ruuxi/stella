@@ -6,7 +6,6 @@ import {
 } from "../tasks/local-task-manager.js";
 import { LOCAL_CONTEXT_EVENT_TYPES } from "../local-history.js";
 import {
-  managedMediaDocsUrlFromConvexSiteUrl as buildManagedMediaDocsUrl,
   readConfiguredConvexUrl as sanitizeConvexDeploymentUrl,
   readConfiguredStellaBaseUrl as sanitizeStellaBase,
 } from "../convex-urls.js";
@@ -28,7 +27,6 @@ export {
   LOCAL_CONTEXT_EVENT_TYPES,
   sanitizeConvexDeploymentUrl,
   sanitizeStellaBase,
-  buildManagedMediaDocsUrl,
 };
 export const QUEUED_TURN_INTERRUPT_ERROR =
   "Interrupted by queued orchestrator turn";
@@ -43,54 +41,6 @@ export const escapeHtml = (value: string) =>
 export const defaultPromptForAgentType = (agentType: string): string => {
   if (isOrchestratorAgentType(agentType)) return DEFAULT_ORCHESTRATOR_PROMPT;
   return DEFAULT_SUBAGENT_PROMPT;
-};
-
-export const buildManagedMediaDocsPrompt = (
-  convexDeploymentUrl: string | null | undefined,
-): string => {
-  const siteUrl = sanitizeConvexDeploymentUrl(convexDeploymentUrl ?? null);
-  const docsUrl = siteUrl ? buildManagedMediaDocsUrl(siteUrl) : null;
-  if (!docsUrl) return "";
-
-  return [
-    "Managed backend media SDK:",
-    `- Latest docs: ${docsUrl}`,
-    `- Before wiring media generation or media analysis features, fetch the live docs with \`curl -L "${docsUrl}"\` so you use the latest backend contract and examples.`,
-    "- Docs are public, but media generation and job polling still require Stella auth from the client.",
-  ].join("\n");
-};
-
-export const buildPanelInventory = (frontendRoot: string): string => {
-  const labelPattern = /data-stella-label="([^"]+)"/g;
-  const labels = new Set<string>();
-  const homeDir = path.join(frontendRoot, "src", "app", "home");
-  const pagesDir = path.join(frontendRoot, "src", "views", "home", "pages");
-
-  for (const dir of [homeDir, pagesDir]) {
-    try {
-      const entries = fs.readdirSync(dir);
-      for (const entry of entries) {
-        if (!/\.(tsx|jsx)$/.test(entry)) continue;
-        try {
-          const source = fs.readFileSync(path.join(dir, entry), "utf-8");
-          let match: RegExpExecArray | null;
-          while ((match = labelPattern.exec(source)) !== null) {
-            labels.add(match[1]);
-          }
-        } catch {
-          // Skip unreadable files.
-        }
-      }
-    } catch {
-      // Directory doesn't exist.
-    }
-  }
-
-  if (labels.size === 0) return "";
-  return (
-    "Current panels on the home view (visible to the user right now): " +
-    [...labels].join(", ")
-  );
 };
 
 export const readCoreMemory = (stellaHome: string): string | undefined => {

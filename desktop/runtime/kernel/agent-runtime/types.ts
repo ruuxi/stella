@@ -58,6 +58,12 @@ export type RuntimeErrorEvent = {
   fatal: boolean;
 };
 
+export type RuntimeUserMessageEvent = {
+  text: string;
+  timestamp: number;
+  uiVisibility?: "visible" | "hidden";
+};
+
 export type RuntimeEndEvent = {
   runId: string;
   agentType: string;
@@ -68,6 +74,7 @@ export type RuntimeEndEvent = {
 };
 
 export type RuntimeRunCallbacks = {
+  onUserMessage?: (event: RuntimeUserMessageEvent) => void;
   onStream: (event: RuntimeStreamEvent) => void;
   onToolStart: (event: RuntimeToolStartEvent) => void;
   onToolEnd: (event: RuntimeToolEndEvent) => void;

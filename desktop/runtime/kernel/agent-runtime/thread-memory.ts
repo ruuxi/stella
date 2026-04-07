@@ -5,7 +5,6 @@ import type {
   TextContent,
   ThinkingContent,
   ToolCall,
-  ToolResultMessage,
   UserMessage,
 } from "../../ai/types.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
@@ -19,7 +18,6 @@ import {
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { now } from "./shared.js";
 import { sanitizeAssistantText } from "../internal-tool-transcript.js";
-import { managedMediaDocsUrlFromConvexSiteUrl } from "../convex-urls.js";
 
 export const buildRunThreadKey = ({
   conversationId,
@@ -212,13 +210,6 @@ const hasShellToolGuidance = (
   );
 };
 
-const resolveMediaSdkDocsUrl = (): string | null => {
-  const configuredSiteUrl = process.env.STELLA_LLM_PROXY_URL?.trim() || null;
-  return configuredSiteUrl
-    ? managedMediaDocsUrlFromConvexSiteUrl(configuredSiteUrl)
-    : null;
-};
-
 export const buildSystemPrompt = (
   context: LocalTaskManagerAgentContext,
 ): string => {
@@ -237,26 +228,6 @@ export const buildSystemPrompt = (
     sections.push(platformShellPrompt);
   }
 
-  const defaultSkills = Array.from(
-    new Set(context.defaultSkills.filter((value) => value.trim().length > 0)),
-  );
-  const skillIds = Array.from(
-    new Set(context.skillIds.filter((value) => value.trim().length > 0)),
-  );
-  if (defaultSkills.length > 0 || skillIds.length > 0) {
-    const lines = [
-      "Installed capability metadata is available in this runtime.",
-      "Related manuals usually live under `life/knowledge/<id>/SKILL.md`.",
-    ];
-    if (defaultSkills.length > 0) {
-      lines.push(`Default capability IDs: ${defaultSkills.join(", ")}`);
-    }
-    if (skillIds.length > 0) {
-      lines.push(`Enabled installed capability IDs: ${skillIds.join(", ")}`);
-    }
-    sections.push(lines.join("\n"));
-  }
-
   return sections.filter(Boolean).join("\n\n");
 };
 
@@ -265,30 +236,32 @@ export const buildSelfModDocumentationPrompt = (
 ): string => {
   if (!frontendRoot?.trim()) return "";
 
-  const lines = [
+  return [
     "Documentation:",
     "- If you are working on renderer structure, file placement, or ownership boundaries, read `src/STELLA.md` first.",
-  ];
-
-  const mediaSdkDocsUrl = resolveMediaSdkDocsUrl();
-  if (mediaSdkDocsUrl) {
-    lines.push(
-      `- Media API docs are always available at \`${mediaSdkDocsUrl}\`. Fetch the latest version before building or changing media features: \`curl -L \"${mediaSdkDocsUrl}\"\`. Docs are public, but generation and job polling still require Stella auth.`,
-    );
-  }
-
-  return lines.join("\n");
+  ].join("\n");
 };
 
-export const buildOrchestratorUserPrompt = (
+export type OrchestratorPromptMessage = {
+  text: string;
+  uiVisibility?: "visible" | "hidden";
+};
+
+export const buildOrchestratorPromptMessages = (
   context: LocalTaskManagerAgentContext,
   userPrompt: string,
-): string => {
+): OrchestratorPromptMessage[] => {
   const reminder = context.orchestratorReminderText?.trim();
   if (!context.shouldInjectDynamicReminder || !reminder) {
-    return userPrompt;
+    return [{ text: userPrompt }];
   }
-  return `${userPrompt}\n\n<system-context>\n${reminder}\n</system-context>`;
+  return [
+    {
+      text: reminder,
+      uiVisibility: "hidden",
+    },
+    { text: userPrompt },
+  ];
 };
 
 export const updateOrchestratorReminderState = (

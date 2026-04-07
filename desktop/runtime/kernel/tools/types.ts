@@ -90,9 +90,7 @@ export type TaskToolRequest = {
   maxTaskDepth?: number;
   parentTaskId?: string;
   threadId?: string;
-  systemPromptOverride?: string;
   toolsAllowlistOverride?: string[];
-  omitCoreMemory?: boolean;
   storageMode: "cloud" | "local";
   selfModMetadata?: {
     featureId?: string;

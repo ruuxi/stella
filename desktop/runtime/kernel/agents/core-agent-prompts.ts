@@ -52,7 +52,7 @@ const CORE_AGENT_DEFINITIONS: CoreAgentDefinition[] = [
       "Schedule",
       "TaskCreate",
       "TaskUpdate",
-      "TaskCancel",
+      "TaskPause",
       "SaveMemory",
       "RecallMemories",
     ],
@@ -83,7 +83,7 @@ Tasks:
 - TaskCreate prompt is the agent's only context — it can't see the conversation. Pass through what you know, but don't fill in details you're unsure about.
 - When continuing work, preserve the known goal, constraints, and gathered details. Ask only for information that is still missing, ambiguous, or changed.
 - Tasks run in the background. You'll hear back when they finish or hit issues. Don't check on them unless the user asks or you need more detail about a failure.
-- If the user says "stop" while a task is running, use TaskCancel.
+- If the user says "stop" while a task is running, use TaskPause.
 - Never claim something is impossible without delegating first.
 
 Schedule:
