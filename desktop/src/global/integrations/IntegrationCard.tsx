@@ -41,20 +41,23 @@ type BotSetupState =
     };
 
 function SetupContent({
+  headline,
   instructions,
   error,
   children,
 }: {
+  headline: string;
   instructions: string;
   error: string | null;
   children: ReactNode;
 }) {
   return (
-    <>
-      <p className="connect-instructions">{instructions}</p>
+    <div className="connect-pair-centered">
+      <p className="connect-pair-headline">{headline}</p>
+      <p className="connect-pair-sub">{instructions}</p>
       {error ? <div className="connect-error">{error}</div> : null}
       {children}
-    </>
+    </div>
   );
 }
 
@@ -75,13 +78,11 @@ function ConnectedView({ integration }: { integration: Integration }) {
   };
 
   return (
-    <div className="connect-connected-view">
-      <div className="connect-connected-info">
-        <span className="connect-status">Connected</span>
-        <span className="connect-connected-desc">
-          Stella is receiving messages from {integration.displayName}.
-        </span>
-      </div>
+    <div className="connect-pair-centered">
+      <span className="connect-status">Connected</span>
+      <p className="connect-pair-sub">
+        Stella is listening on {integration.displayName}. Message her there anytime.
+      </p>
       <Button
         variant="ghost"
         onClick={handleDisconnect}
@@ -143,33 +144,37 @@ function LinqSetupView({ integration }: { integration: Integration }) {
   }, [code, verifying, verifyCode, phone]);
 
   return (
-    <>
-      <p className="connect-instructions">{integration.instructions}</p>
-      {error && <div className="connect-error">{error}</div>}
-
+    <div className="connect-pair-centered">
       {step === "phone" ? (
-        <form className="connect-phone-form" onSubmit={handleSendSms}>
-          <input
-            type="tel"
-            className="connect-phone-input"
-            placeholder="+1 (555) 123-4567"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            autoFocus
-          />
-          <Button
-            type="submit"
-            variant="ghost"
-            disabled={!phone.trim() || sending}
-          >
-            {sending ? "Sending..." : "Send Code"}
-          </Button>
-        </form>
+        <>
+          <p className="connect-pair-headline">Text Stella</p>
+          <p className="connect-pair-sub">{integration.instructions}</p>
+          {error && <div className="connect-error">{error}</div>}
+          <form className="connect-phone-form" onSubmit={handleSendSms}>
+            <input
+              type="tel"
+              className="connect-phone-input"
+              placeholder="+1 (555) 123-4567"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              autoFocus
+            />
+            <Button
+              type="submit"
+              variant="ghost"
+              disabled={!phone.trim() || sending}
+            >
+              {sending ? "Sending..." : "Send Code"}
+            </Button>
+          </form>
+        </>
       ) : (
-        <div className="connect-code-entry">
-          <p className="connect-instructions">
+        <>
+          <p className="connect-pair-headline">Enter your code</p>
+          <p className="connect-pair-sub">
             Check your phone — we sent a 6-digit code to {phone}.
           </p>
+          {error && <div className="connect-error">{error}</div>}
           <form className="connect-phone-form" onSubmit={handleVerify}>
             <input
               type="text"
@@ -196,9 +201,9 @@ function LinqSetupView({ integration }: { integration: Integration }) {
           >
             Use a different number
           </button>
-        </div>
+        </>
       )}
-    </>
+    </div>
   );
 }
 
@@ -308,32 +313,34 @@ function BotSetupView({
   }, [code]);
 
   return (
-    <SetupContent instructions={integration.instructions} error={error}>
-      <>
-        <div className="connect-code-row">
-          {code ? (
-            <>
-              <span className="connect-code">{code}</span>
-              <Button variant="ghost" size="small" onClick={handleCopy}>
-                Copy
-              </Button>
-            </>
-          ) : (
-            <div className="connect-skeleton connect-skeleton-code" />
-          )}
-        </div>
+    <SetupContent
+      headline={`Connect ${integration.displayName}`}
+      instructions={integration.instructions}
+      error={error}
+    >
+      <div className="connect-pair-code-group">
+        {code ? (
+          <>
+            <span className="connect-pair-code">{code}</span>
+            <Button variant="ghost" size="small" onClick={handleCopy}>
+              Copy
+            </Button>
+          </>
+        ) : (
+          <div className="connect-skeleton connect-skeleton-code" />
+        )}
+      </div>
 
-        {botLink ? (
-          <a
-            className="connect-bot-link"
-            href={botLink}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Find bot on {integration.displayName} &#8599;
-          </a>
-        ) : null}
-      </>
+      {botLink ? (
+        <a
+          className="connect-bot-link"
+          href={botLink}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open {integration.displayName} &#8599;
+        </a>
+      ) : null}
     </SetupContent>
   );
 }
@@ -381,9 +388,12 @@ export function IntegrationDetailArea({
   let detailContent;
   if (!hasConnectedAccount) {
     detailContent = (
-      <p className="connect-instructions">
-        Sign in to connect {integration.displayName}.
-      </p>
+      <div className="connect-pair-centered">
+        <p className="connect-pair-headline">Sign in to get started</p>
+        <p className="connect-pair-sub">
+          Sign in to your Stella account to connect {integration.displayName}.
+        </p>
+      </div>
     );
   } else if (isConnected) {
     detailContent = <ConnectedView integration={integration} />;
