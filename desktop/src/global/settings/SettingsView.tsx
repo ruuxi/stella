@@ -34,7 +34,6 @@ import { TextField } from "@/ui/text-field";
 import { NativeSelect } from "@/ui/native-select";
 import { BillingTab } from "@/global/settings/BillingTab";
 import { AudioTab } from "@/global/settings/AudioTab";
-import { PhoneAccessCard } from "@/global/settings/PhoneAccessCard";
 import { ConnectionsTab } from "@/global/settings/ConnectionsTab";
 import { hasBillingCheckoutCompletionMarker } from "@/global/settings/lib/billing-checkout";
 import {
@@ -209,7 +208,6 @@ function BasicTab({
 
   return (
     <div className="settings-tab-content">
-      <PhoneAccessCard />
       <div className="settings-card">
         <h3 className="settings-card-title">Shortcuts</h3>
         <p className="settings-card-desc">
