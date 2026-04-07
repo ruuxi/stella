@@ -11,6 +11,7 @@ import { RegionCapture } from "./RegionCapture";
 import { MiniShell } from "@/shell/mini/MiniShell";
 import { VoiceOverlay } from "@/shell/overlay/VoiceOverlay";
 import { MorphTransition } from "@/shell/overlay/MorphTransition";
+import { ScreenGuideAnnotations, type ScreenGuideAnnotation } from "@/shell/overlay/ScreenGuideAnnotations";
 import "./overlays.css";
 
 /**
@@ -37,6 +38,8 @@ type OverlayState = {
   miniPosition: { x: number; y: number } | null;
   voiceVisible: boolean;
   voicePosition: { x: number; y: number } | null;
+  screenGuideVisible: boolean;
+  screenGuideAnnotations: ScreenGuideAnnotation[];
 };
 
 type OverlayAction =
@@ -50,7 +53,9 @@ type OverlayAction =
   | { type: "mini:position"; position: { x: number; y: number } }
   | { type: "mini:preview"; visible: boolean }
   | { type: "voice:show"; position: { x: number; y: number } }
-  | { type: "voice:hide" };
+  | { type: "voice:hide" }
+  | { type: "screenGuide:show"; annotations: ScreenGuideAnnotation[] }
+  | { type: "screenGuide:hide" };
 
 function isSamePosition(
   a: { x: number; y: number } | null,
@@ -69,6 +74,8 @@ const initialState: OverlayState = {
   miniPosition: null,
   voiceVisible: false,
   voicePosition: null,
+  screenGuideVisible: false,
+  screenGuideAnnotations: [],
 };
 
 function overlayReducer(
@@ -126,6 +133,12 @@ function overlayReducer(
       return { ...state, voiceVisible: true, voicePosition: action.position };
     case "voice:hide":
       return state.voiceVisible ? { ...state, voiceVisible: false } : state;
+    case "screenGuide:show":
+      return { ...state, screenGuideVisible: true, screenGuideAnnotations: action.annotations };
+    case "screenGuide:hide":
+      return state.screenGuideVisible
+        ? { ...state, screenGuideVisible: false, screenGuideAnnotations: [] }
+        : state;
     default:
       return state;
   }
@@ -271,6 +284,26 @@ function useOverlayIPC(
     };
   }, [dispatch]);
 
+  // Screen guide annotations.
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const cleanupShow = api.overlay.onShowScreenGuide?.(
+      (data: { annotations: ScreenGuideAnnotation[] }) => {
+        dispatch({ type: "screenGuide:show", annotations: data.annotations });
+      },
+    );
+    const cleanupHide = api.overlay.onHideScreenGuide?.(() => {
+      dispatch({ type: "screenGuide:hide" });
+    });
+
+    return () => {
+      cleanupShow?.();
+      cleanupHide?.();
+    };
+  }, [dispatch]);
+
 }
 
 // ---------------------------------------------------------------------------
@@ -364,6 +397,7 @@ function useOverlayHitTesting(
     miniVisible,
     voiceVisible,
     voicePosition,
+    screenGuideVisible,
   } = state;
   const voiceX = voicePosition?.x ?? null;
   const voiceY = voicePosition?.y ?? null;
@@ -386,6 +420,7 @@ function useOverlayHitTesting(
       return;
     }
 
+    // Screen guide annotations are non-interactive (click-through).
     // For mini shell and voice: only interactive when cursor is over an
     // active interactive region.
     if (!miniVisible && !voiceVisible) {
@@ -446,7 +481,8 @@ function useOverlayHitTesting(
       regionCaptureActive ||
       miniPreviewVisible ||
       miniVisible ||
-      voiceVisible;
+      voiceVisible ||
+      screenGuideVisible;
 
     if (!anythingActive) {
       updateInteractive(false);
@@ -457,6 +493,7 @@ function useOverlayHitTesting(
     miniPreviewVisible,
     miniVisible,
     voiceVisible,
+    screenGuideVisible,
     updateInteractive,
   ]);
 }
@@ -493,8 +530,9 @@ export function OverlayRoot() {
 
   useEffect(() => {
     // The main process can toggle overlay interactivity directly when radial,
-    // mini, preview, capture, or voice surfaces open/close. Mark the renderer
-    // cache stale so the next renderer-side update always resynchronizes.
+    // mini, preview, capture, voice, or screen guide surfaces open/close.
+    // Mark the renderer cache stale so the next renderer-side update always
+    // resynchronizes.
     interactiveRef.current = null;
   }, [
     state.radialVisible,
@@ -502,6 +540,7 @@ export function OverlayRoot() {
     state.miniPreviewVisible,
     state.miniVisible,
     state.voiceVisible,
+    state.screenGuideVisible,
   ]);
 
   useOverlayHitTesting(state, miniRef, updateInteractive);
@@ -602,6 +641,15 @@ export function OverlayRoot() {
               }
             : undefined
         }
+      />
+
+      <ScreenGuideAnnotations
+        annotations={state.screenGuideAnnotations}
+        visible={state.screenGuideVisible}
+        onDismiss={() => {
+          dispatch({ type: "screenGuide:hide" });
+          window.electronAPI?.overlay?.setInteractive(false);
+        }}
       />
 
       <MorphTransition />

@@ -1,6 +1,7 @@
 import {
   BrowserWindow,
   ipcMain,
+  screen,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
@@ -73,6 +74,28 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
       return options.captureService.captureScreenshot(point);
     },
   );
+
+  ipcMain.handle(
+    "screenshot:captureVision",
+    async (event, point?: { x: number; y: number }) => {
+      if (!options.assertPrivilegedSender(event, "screenshot:captureVision")) {
+        throw new Error("Blocked untrusted request.");
+      }
+      return options.captureService.captureVisionScreenshot(point);
+    },
+  );
+
+  ipcMain.handle("capture:cursorDisplayInfo", () => {
+    const cursor = screen.getCursorScreenPoint();
+    const display = screen.getDisplayNearestPoint(cursor);
+    return {
+      x: display.bounds.x,
+      y: display.bounds.y,
+      width: display.bounds.width,
+      height: display.bounds.height,
+      scaleFactor: display.scaleFactor ?? 1,
+    };
+  });
 
   ipcMain.handle("capture:pageDataUrl", async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);

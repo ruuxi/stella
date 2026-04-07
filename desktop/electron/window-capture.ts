@@ -1,3 +1,4 @@
+import { nativeImage } from 'electron'
 import { randomBytes } from 'crypto'
 import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
@@ -102,14 +103,16 @@ export const captureWindowScreenshot = async (
       return null
     }
 
-    const dataUrl = `data:image/png;base64,${pngBuffer.toString('base64')}`
+    const image = nativeImage.createFromBuffer(pngBuffer)
+    const size = image.getSize()
+    const dataUrl = image.toDataURL()
 
     return {
       windowInfo: info,
       screenshot: {
         dataUrl,
-        width: info.bounds.width,
-        height: info.bounds.height,
+        width: size.width,
+        height: size.height,
       },
     }
   } catch {

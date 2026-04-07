@@ -1,0 +1,55 @@
+/* ─── Screen Guide Annotations ─────────────────────────────────────── */
+
+.screen-guide-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.screen-guide-root.screen-guide-entering {
+  animation: screen-guide-fade-in 0.3s ease-out both;
+}
+
+.screen-guide-root.screen-guide-exiting {
+  animation: screen-guide-fade-out 0.35s ease-in both;
+}
+
+@keyframes screen-guide-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes screen-guide-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.screen-guide-pill {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(80, 200, 120, 0.95);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+  animation: screen-guide-pill-enter 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes screen-guide-pill-enter {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
