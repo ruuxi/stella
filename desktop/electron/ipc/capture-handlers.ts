@@ -5,6 +5,7 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
+import type { ChatContext } from "../../src/shared/contracts/boundary.js";
 import type { CaptureService } from "../services/capture-service.js";
 import type { RegionSelection } from "../types.js";
 import type { WindowManager } from "../windows/window-manager.js";
@@ -37,6 +38,11 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
   ipcMain.handle("chatContext:get", () =>
     options.captureService.getChatContextSnapshot(),
   );
+
+  ipcMain.on("chatContext:set", (_event, context: ChatContext | null) => {
+    options.captureService.setPendingChatContext(context ?? null);
+    options.captureService.broadcastChatContext();
+  });
 
   ipcMain.on("chatContext:removeScreenshot", (_event, index: number) => {
     options.captureService.removeScreenshot(index);
