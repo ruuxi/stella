@@ -166,6 +166,21 @@ export type ElectronCaptureApi = {
     width: number;
     height: number;
   } | null>;
+  visionScreenshot: (point?: { x: number; y: number }) => Promise<{
+    dataUrl: string;
+    width: number;
+    height: number;
+    coordinateSpace: {
+      x: number;
+      y: number;
+      logicalWidth: number;
+      logicalHeight: number;
+      sourceWidth: number;
+      sourceHeight: number;
+      targetWidth: number;
+      targetHeight: number;
+    };
+  } | null>;
   removeScreenshot: (index: number) => void;
   submitRegionSelection: (payload: {
     x: number;
@@ -179,6 +194,13 @@ export type ElectronCaptureApi = {
     bounds: { x: number; y: number; width: number; height: number };
     thumbnail: string;
   } | null>;
+  cursorDisplayInfo: () => Promise<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    scaleFactor: number;
+  }>;
   cancelRegion: () => void;
   onRegionReset: (callback: () => void) => () => void;
 };
@@ -218,6 +240,19 @@ export type ElectronOverlayApi = {
     callback: (data: { x: number; y: number; mode: "realtime" }) => void,
   ) => () => void;
   onHideVoice: (callback: () => void) => () => void;
+  onShowScreenGuide: (
+    callback: (data: {
+      annotations: Array<{
+        id: string;
+        label: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      }>;
+    }) => void,
+  ) => () => void;
+  onHideScreenGuide: (callback: () => void) => () => void;
   onDisplayChange: (
     callback: (data: {
       origin: { x: number; y: number };
@@ -619,6 +654,18 @@ export type ElectronGoogleWorkspaceApi = {
   onAuthRequired: (callback: () => void) => () => void;
 };
 
+export type ElectronScreenGuideApi = {
+  show: (annotations: Array<{
+    id: string;
+    label: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }>) => void;
+  hide: () => void;
+};
+
 // ---------------------------------------------------------------------------
 // Main ElectronApi â€” composed from namespaced sub-types
 // ---------------------------------------------------------------------------
@@ -641,6 +688,7 @@ export type ElectronApi = {
   capture: ElectronCaptureApi;
   radial: ElectronRadialApi;
   overlay: ElectronOverlayApi;
+  screenGuide: ElectronScreenGuideApi;
   mini: ElectronMiniApi;
   theme: ElectronThemeApi;
   voice: ElectronVoiceApi;

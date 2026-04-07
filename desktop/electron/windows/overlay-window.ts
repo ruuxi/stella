@@ -273,6 +273,7 @@ export class OverlayWindowController {
   private activeRegionCapture = false
   private activeMini = false
   private activeVoice = false
+  private activeScreenGuide = false
 
   private readonly handleOverlaySetInteractive = (_event: unknown, interactive: boolean) => {
     this.overlayWindow.setIgnoreMouseEvents(!interactive)
@@ -301,7 +302,7 @@ export class OverlayWindowController {
   }
 
   private get isAnyActive() {
-    return this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeMorph
+    return this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeScreenGuide || this.activeMorph
   }
 
   private hideOverlayIfIdle() {
@@ -524,6 +525,33 @@ export class OverlayWindowController {
   hideVoice() {
     this.activeVoice = false
     this.overlayWindow.send('overlay:hideVoice')
+    this.hideOverlayIfIdle()
+  }
+
+  // ─── Screen Guide ────────────────────────────────────────────────────
+
+  showScreenGuide(annotations: Array<{
+    id: string
+    label: string
+    x: number
+    y: number
+    width: number
+    height: number
+  }>) {
+    this.activeScreenGuide = true
+    this.overlayWindow.show({ inactive: true })
+    const origin = this.overlayWindow.getOverlayOrigin()
+    const adjusted = annotations.map((a) => ({
+      ...a,
+      x: a.x - origin.x,
+      y: a.y - origin.y,
+    }))
+    this.overlayWindow.send('overlay:showScreenGuide', { annotations: adjusted })
+  }
+
+  hideScreenGuide() {
+    this.activeScreenGuide = false
+    this.overlayWindow.send('overlay:hideScreenGuide')
     this.hideOverlayIfIdle()
   }
 

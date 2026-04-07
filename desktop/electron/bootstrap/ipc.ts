@@ -191,6 +191,7 @@ export const registerBootstrapIpcHandlers = (
     pushWakeWordAudio: (pcm) => state.wakeWordController?.pushAudioChunk(pcm),
     getStellaHostRunner: lifecycle.getRunner,
     getBroadcastToMobile: lazyMobileBroadcast,
+    getOverlayController: () => state.overlayController ?? null,
   });
 
   stopCapturing();

@@ -153,6 +153,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.send("chatContext:ack", payload),
     screenshot: (point?: { x: number; y: number }) =>
       ipcRenderer.invoke("screenshot:capture", point),
+    visionScreenshot: (point?: { x: number; y: number }) =>
+      ipcRenderer.invoke("screenshot:captureVision", point) as Promise<{
+        dataUrl: string;
+        width: number;
+        height: number;
+        coordinateSpace: {
+          x: number;
+          y: number;
+          logicalWidth: number;
+          logicalHeight: number;
+          sourceWidth: number;
+          sourceHeight: number;
+          targetWidth: number;
+          targetHeight: number;
+        };
+      } | null>,
     removeScreenshot: (index: number) =>
       ipcRenderer.send("chatContext:removeScreenshot", index),
     submitRegionSelection: (payload: {
@@ -169,6 +185,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
         thumbnail: string;
       } | null>,
     cancelRegion: () => ipcRenderer.send("region:cancel"),
+    cursorDisplayInfo: () =>
+      ipcRenderer.invoke("capture:cursorDisplayInfo") as Promise<{
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        scaleFactor: number;
+      }>,
     pageDataUrl: () =>
       ipcRenderer.invoke("capture:pageDataUrl") as Promise<string | null>,
     onRegionReset: onIpcSignal("region:reset"),
@@ -209,6 +233,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "overlay:showVoice",
     ),
     onHideVoice: onIpcSignal("overlay:hideVoice"),
+    onShowScreenGuide: onIpc<{
+      annotations: Array<{
+        id: string;
+        label: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      }>;
+    }>("overlay:showScreenGuide"),
+    onHideScreenGuide: onIpcSignal("overlay:hideScreenGuide"),
     onDisplayChange: onIpc<{
       origin: { x: number; y: number };
       bounds: { x: number; y: number; width: number; height: number };
@@ -278,6 +313,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
     broadcast: (key: string, value: string) =>
       ipcRenderer.send("theme:broadcast", { key, value }),
     listInstalled: () => ipcRenderer.invoke("theme:listInstalled"),
+  },
+
+  screenGuide: {
+    show: (annotations: Array<{
+      id: string;
+      label: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }>) =>
+      ipcRenderer.send("screenGuide:show", { annotations }),
+    hide: () => ipcRenderer.send("screenGuide:hide"),
   },
 
   voice: {

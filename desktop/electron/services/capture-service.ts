@@ -1,4 +1,11 @@
-import { desktopCapturer, screen, type BrowserWindow, type Display } from 'electron'
+import {
+  desktopCapturer,
+  nativeImage,
+  screen,
+  type BrowserWindow,
+  type Display,
+  type NativeImage,
+} from 'electron'
 import { captureChatContext } from '../chat-context.js'
 import { globalShortcut } from 'electron'
 import type { ChatContext } from '../../src/shared/contracts/boundary.js'
@@ -7,10 +14,12 @@ import type {
   RegionSelection,
   ScreenshotCapture,
   UiState,
+  VisionScreenshotCapture,
 } from '../types.js'
 import { toChatContextWindow } from '../types.js'
 import { captureWindowScreenshot } from '../window-capture.js'
 import { hasMacPermission } from '../utils/macos-permissions.js'
+import { computeTargetDims } from '../vision-coordinate-space.js'
 
 const CAPTURE_OVERLAY_HIDE_DELAY_MS = 80
 
@@ -306,6 +315,47 @@ export class CaptureService {
     return { source, scaleFactor }
   }
 
+  private buildVisionScreenshotFromImage(
+    image: NativeImage,
+    logicalBounds: { x: number; y: number; width: number; height: number },
+  ): VisionScreenshotCapture {
+    const sourceSize = image.getSize()
+    const scaleFactorX =
+      logicalBounds.width > 0 ? sourceSize.width / logicalBounds.width : 1
+    const scaleFactorY =
+      logicalBounds.height > 0 ? sourceSize.height / logicalBounds.height : 1
+    const scaleFactor = Math.max(scaleFactorX, scaleFactorY, 1)
+    const [targetWidth, targetHeight] = computeTargetDims(
+      logicalBounds.width,
+      logicalBounds.height,
+      scaleFactor,
+    )
+    const resized =
+      sourceSize.width === targetWidth && sourceSize.height === targetHeight
+        ? image
+        : image.resize({
+            width: targetWidth,
+            height: targetHeight,
+            quality: 'good',
+          })
+
+    return {
+      dataUrl: resized.toDataURL(),
+      width: targetWidth,
+      height: targetHeight,
+      coordinateSpace: {
+        x: logicalBounds.x,
+        y: logicalBounds.y,
+        logicalWidth: logicalBounds.width,
+        logicalHeight: logicalBounds.height,
+        sourceWidth: sourceSize.width,
+        sourceHeight: sourceSize.height,
+        targetWidth,
+        targetHeight,
+      },
+    }
+  }
+
   private async captureDisplayScreenshot(display: Display): Promise<ScreenshotCapture | null> {
     const result = await this.getDisplaySource(display)
     if (!result) return null
@@ -522,6 +572,33 @@ export class CaptureService {
         return windowCapture.screenshot
       }
       return this.captureDisplayScreenshot(display)
+    })
+  }
+
+  async captureVisionScreenshot(point?: { x: number; y: number }) {
+    const display = this.getDisplayForPoint(point)
+    const cursorDip = point ?? screen.getCursorScreenPoint()
+    const capturePoint = this.toNativeScreenPoint(cursorDip)
+
+    return this.withCaptureContext(async () => {
+      const windowCapture = await captureWindowScreenshot(
+        capturePoint.x,
+        capturePoint.y,
+        { excludePids: [process.pid] },
+      )
+      if (windowCapture?.screenshot) {
+        const image = nativeImage.createFromDataURL(windowCapture.screenshot.dataUrl)
+        return this.buildVisionScreenshotFromImage(image, windowCapture.windowInfo.bounds)
+      }
+
+      const displaySource = await this.getDisplaySource(display)
+      if (!displaySource) {
+        return null
+      }
+      return this.buildVisionScreenshotFromImage(
+        displaySource.source.thumbnail,
+        display.bounds,
+      )
     })
   }
 }
