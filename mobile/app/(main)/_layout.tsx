@@ -26,6 +26,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
+import { ChatModePill } from "./ChatModePill";
 
 type TabId = "chat" | "stella" | "account";
 
@@ -199,28 +200,42 @@ export default function MainLayout() {
         <View style={styles.wideLayout}>
           <Sidebar activeTab={activeTab} onSelectTab={navigate} />
           <View style={styles.content}>
-            <Slot />
+            {activeTab === "chat" && (
+              <View style={styles.wideChatHeader}>
+                <ChatModePill />
+              </View>
+            )}
+            <View style={styles.contentSlot}>
+              <Slot />
+            </View>
           </View>
         </View>
       ) : (
         <View style={styles.narrowLayout}>
           <View style={styles.topBar}>
-            <Pressable
-              onPress={openSidebar}
-              hitSlop={8}
-              style={styles.hamburger}
-            >
-              <Feather name="menu" size={22} color={colors.text} />
-            </Pressable>
-            {activeTab === "stella" && (
+            <View style={styles.topBarSide}>
               <Pressable
-                onPress={triggerStellaRefresh}
+                onPress={openSidebar}
                 hitSlop={8}
-                style={styles.topBarAction}
+                style={styles.hamburger}
               >
-                <Feather name="refresh-cw" size={18} color={colors.textMuted} />
+                <Feather name="menu" size={22} color={colors.text} />
               </Pressable>
-            )}
+            </View>
+            <View style={styles.topBarCenter} pointerEvents="box-none">
+              {activeTab === "chat" ? <ChatModePill /> : null}
+            </View>
+            <View style={styles.topBarSide}>
+              {activeTab === "stella" ? (
+                <Pressable
+                  onPress={triggerStellaRefresh}
+                  hitSlop={8}
+                  style={styles.topBarAction}
+                >
+                  <Feather name="refresh-cw" size={18} color={colors.textMuted} />
+                </Pressable>
+              ) : null}
+            </View>
           </View>
 
           <View style={styles.content}>
@@ -292,13 +307,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // Top bar — phone only
+  // Top bar — phone only (hamburger | centered pill on Chat | action)
   topBar: {
     alignItems: "center",
     flexDirection: "row",
     height: 44,
-    justifyContent: "space-between",
     paddingHorizontal: 4,
+  },
+  topBarSide: {
+    alignItems: "center",
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
+  topBarCenter: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 44,
   },
   topBarAction: {
     alignItems: "center",
@@ -308,11 +334,18 @@ const styles = StyleSheet.create({
   },
   hamburger: {
     alignItems: "center",
+    height: 44,
     justifyContent: "center",
     width: 44,
-    height: 44,
   },
-
+  wideChatHeader: {
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  contentSlot: {
+    flex: 1,
+    minHeight: 0,
+  },
   // Sidebar
   sidebar: {
     backgroundColor: colors.background,
@@ -388,6 +421,7 @@ const styles = StyleSheet.create({
   // Shared content area
   content: {
     flex: 1,
+    minHeight: 0,
     paddingHorizontal: 20,
     paddingTop: 4,
   },
