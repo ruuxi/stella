@@ -16,6 +16,7 @@ import {
   maybeCompactRuntimeThread,
 } from "../thread-runtime.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
+import { wrapSystemReminder } from "../message-timestamp.js";
 import { now } from "./shared.js";
 import { sanitizeAssistantText } from "../internal-tool-transcript.js";
 
@@ -251,17 +252,23 @@ export const buildOrchestratorPromptMessages = (
   context: LocalTaskManagerAgentContext,
   userPrompt: string,
 ): OrchestratorPromptMessage[] => {
+  const staleUserReminder = context.staleUserReminderText?.trim();
   const reminder = context.orchestratorReminderText?.trim();
-  if (!context.shouldInjectDynamicReminder || !reminder) {
-    return [{ text: userPrompt }];
-  }
-  return [
-    {
-      text: reminder,
+  const messages: OrchestratorPromptMessage[] = [];
+  if (staleUserReminder) {
+    messages.push({
+      text: wrapSystemReminder(staleUserReminder),
       uiVisibility: "hidden",
-    },
-    { text: userPrompt },
-  ];
+    });
+  }
+  if (context.shouldInjectDynamicReminder && reminder) {
+    messages.push({
+      text: wrapSystemReminder(reminder),
+      uiVisibility: "hidden",
+    });
+  }
+  messages.push({ text: userPrompt });
+  return messages;
 };
 
 export const updateOrchestratorReminderState = (

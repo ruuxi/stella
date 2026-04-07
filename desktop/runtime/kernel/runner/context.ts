@@ -14,6 +14,10 @@ import {
   buildLocalHistoryFromEvents,
 } from "../local-history.js";
 import {
+  formatDateTimeReminder,
+  THIRTY_MINUTES_MS,
+} from "../message-timestamp.js";
+import {
   buildRuntimeThreadKey,
   parseThreadCheckpoint,
 } from "../thread-runtime.js";
@@ -91,6 +95,43 @@ const getLocalEventText = (event: LocalContextEvent): string => {
         ? payload.contextText
         : "";
   return rawText.trim();
+};
+
+const getLocalEventTimezone = (
+  event: LocalContextEvent | undefined,
+): string | undefined => {
+  if (!event?.payload || typeof event.payload !== "object") {
+    return undefined;
+  }
+  const payload = event.payload as Record<string, unknown>;
+  return typeof payload.timezone === "string" && payload.timezone.trim()
+    ? payload.timezone.trim()
+    : undefined;
+};
+
+const buildStaleUserReminder = (
+  events: LocalContextEvent[],
+): string | undefined => {
+  const latestEvent = events[events.length - 1];
+  if (!latestEvent || latestEvent.type !== "user_message") {
+    return undefined;
+  }
+  const userEvents = events.filter((event) => event.type === "user_message");
+  if (userEvents.length < 2) {
+    return undefined;
+  }
+  const latestUserEvent = userEvents[userEvents.length - 1];
+  const previousUserEvent = userEvents[userEvents.length - 2];
+  if (!latestUserEvent || !previousUserEvent) {
+    return undefined;
+  }
+  if (latestUserEvent.timestamp - previousUserEvent.timestamp < THIRTY_MINUTES_MS) {
+    return undefined;
+  }
+  const timezone =
+    getLocalEventTimezone(latestUserEvent) ??
+    getLocalEventTimezone(previousUserEvent);
+  return formatDateTimeReminder(latestUserEvent.timestamp, timezone);
 };
 
 const trimDuplicatedTransitionUserEvent = (
@@ -433,10 +474,12 @@ export const buildAgentContext = async (
       : 128_000;
 
   let threadHistory: ThreadHistoryEntry[] | undefined;
+  let staleUserReminderText: string | undefined;
   if (args.agentType === AGENT_IDS.ORCHESTRATOR && context.listLocalChatEvents) {
     const localEvents = context
       .listLocalChatEvents(args.conversationId, 800)
       .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
+    staleUserReminderText = buildStaleUserReminder(localEvents);
     threadHistory = buildOrchestratorThreadHistory({
       storedThreadMessages,
       localEvents,
@@ -472,6 +515,7 @@ export const buildAgentContext = async (
     dynamicContext: dynamicContextSections.join("\n\n"),
     orchestratorReminderText: activeThreadsPrompt || undefined,
     shouldInjectDynamicReminder: reminderState.shouldInjectDynamicReminder,
+    staleUserReminderText,
     toolsAllowlist,
     model,
     maxTaskDepth: agent?.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH,
