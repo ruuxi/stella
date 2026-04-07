@@ -8,14 +8,34 @@
 }
 
 .voice-overlay-creature {
+  position: relative;
   width: 120px;
   height: 120px;
-  border-radius: 50%;
-  overflow: hidden;
-  background: white;
   pointer-events: auto;
   cursor: pointer;
   animation: voice-overlay-in 0.3s ease-out forwards;
+}
+
+.voice-overlay-creature::before {
+  content: "";
+  position: absolute;
+  inset: -40px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    white 30%,
+    rgba(255, 255, 255, 0.97) 35%,
+    rgba(255, 255, 255, 0.88) 40%,
+    rgba(255, 255, 255, 0.72) 45%,
+    rgba(255, 255, 255, 0.52) 50%,
+    rgba(255, 255, 255, 0.33) 55%,
+    rgba(255, 255, 255, 0.18) 60%,
+    rgba(255, 255, 255, 0.07) 65%,
+    rgba(255, 255, 255, 0.02) 70%,
+    transparent 75%
+  );
+  z-index: -1;
+  pointer-events: none;
 }
 
 .voice-overlay-creature.voice-overlay-exiting {
