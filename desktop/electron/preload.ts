@@ -201,6 +201,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       centerY: number;
       x?: number;
       y?: number;
+      compactFocused?: boolean;
+      fullFocused?: boolean;
     }>("radial:show"),
     onHide: onIpcSignal("radial:hide"),
     animDone: () => ipcRenderer.send("radial:animDone"),
@@ -221,8 +223,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
   overlay: {
     setInteractive: (interactive: boolean) =>
       ipcRenderer.send("overlay:setInteractive", interactive),
+    showWindowHighlight: (bounds: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }) => ipcRenderer.send("overlay:showWindowHighlight", bounds),
+    hideWindowHighlight: () => ipcRenderer.send("overlay:hideWindowHighlight"),
+    previewWindowHighlightAtPoint: (point: { x: number; y: number }) =>
+      ipcRenderer.send("overlay:previewWindowHighlightAtPoint", point),
     onStartRegionCapture: onIpcSignal("overlay:startRegionCapture"),
     onEndRegionCapture: onIpcSignal("overlay:endRegionCapture"),
+    onWindowHighlight: onIpc<{
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    } | null>("overlay:windowHighlight"),
     onShowVoice: onIpc<{ x: number; y: number; mode: "realtime" }>(
       "overlay:showVoice",
     ),

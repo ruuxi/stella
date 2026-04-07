@@ -210,7 +210,14 @@ export type ElectronRadialApi = {
   onShow: (
     callback: (
       event: unknown,
-      data: { centerX: number; centerY: number; x?: number; y?: number },
+      data: {
+        centerX: number;
+        centerY: number;
+        x?: number;
+        y?: number;
+        compactFocused?: boolean;
+        fullFocused?: boolean;
+      },
     ) => void,
   ) => () => void;
   onHide: (callback: () => void) => () => void;
@@ -230,8 +237,21 @@ export type ElectronRadialApi = {
 
 export type ElectronOverlayApi = {
   setInteractive: (interactive: boolean) => void;
+  showWindowHighlight: (bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => void;
+  hideWindowHighlight: () => void;
+  previewWindowHighlightAtPoint: (point: { x: number; y: number }) => void;
   onStartRegionCapture: (callback: () => void) => () => void;
   onEndRegionCapture: (callback: () => void) => () => void;
+  onWindowHighlight: (
+    callback: (
+      data: { x: number; y: number; width: number; height: number } | null,
+    ) => void,
+  ) => () => void;
   onShowMini: (
     callback: (data: { x: number; y: number }) => void,
   ) => () => void;

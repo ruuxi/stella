@@ -36,6 +36,11 @@ export function WindowContextChip({
     ? textFormatter(chatWindow)
     : `${chatWindow.app}${chatWindow.title ? ` - ${chatWindow.title}` : ""}`;
   const displayLabel = included ? label : `Include ${label}`;
+  const showWindowHighlight = !included
+    ? () => window.electronAPI?.overlay?.showWindowHighlight?.(chatWindow.bounds)
+    : undefined;
+  const hideWindowHighlight = () =>
+    window.electronAPI?.overlay?.hideWindowHighlight?.();
 
   return (
     <div className={cn(className)} data-included={included ? "true" : "false"}>
@@ -44,7 +49,10 @@ export function WindowContextChip({
         className={cn(toggleClassName)}
         aria-pressed={included}
         title={included ? "Window context included" : "Click to include window context"}
+        onMouseEnter={showWindowHighlight}
+        onMouseLeave={hideWindowHighlight}
         onClick={() => {
+          hideWindowHighlight();
           toggleComposerWindowContext(setChatContext);
         }}
       >
@@ -56,6 +64,7 @@ export function WindowContextChip({
         aria-label="Remove window context"
         onClick={(event) => {
           event.stopPropagation();
+          hideWindowHighlight();
           clearComposerWindowContext(setChatContext);
         }}
       >
