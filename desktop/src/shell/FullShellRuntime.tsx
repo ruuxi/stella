@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { ChatColumn } from "@/app/chat/ChatColumn";
 import { SocialView } from "@/app/social/SocialView";
 import type { ViewType } from "@/shared/contracts/ui";
-import { MiniBridgeRelay } from "@/shell/mini/MiniBridgeRelay";
 import {
   STELLA_CLOSE_SIDEBAR_CHAT_EVENT,
   STELLA_OPEN_SIDEBAR_CHAT_EVENT,
@@ -108,17 +107,6 @@ export const FullShellRuntime = ({
 
   return (
     <>
-      <MiniBridgeRelay
-        conversationId={activeConversationId}
-        events={chat.conversation.events}
-        streamingText={chat.conversation.streamingText}
-        reasoningText={chat.conversation.reasoningText}
-        isStreaming={chat.conversation.isStreaming}
-        pendingUserMessageId={chat.conversation.pendingUserMessageId}
-        sendMessage={chat.conversation.sendMessage}
-        cancelCurrentStream={chat.conversation.cancelCurrentStream}
-      />
-
       {activeView === "chat" ? (
         <ChatColumn
           conversation={chat.conversation}

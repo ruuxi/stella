@@ -4,7 +4,6 @@ import { registerDiscoveryHandlers } from "../ipc/discovery-handlers.js";
 import { registerGoogleWorkspaceHandlers } from "../ipc/google-workspace-handlers.js";
 import { registerCaptureHandlers } from "../ipc/capture-handlers.js";
 import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
-import { registerMiniBridgeHandlers } from "../ipc/mini-bridge-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
 import { registerOfficePreviewHandlers } from "../ipc/office-preview-handlers.js";
@@ -153,10 +152,6 @@ export const registerBootstrapIpcHandlers = (
     getBroadcastToMobile: lazyMobileBroadcast,
   });
 
-  registerMiniBridgeHandlers({
-    miniBridgeService: services.miniBridgeService,
-    windowManager: state.windowManager!,
-  });
 
   registerMorphHandlers({
     windowManager: state.windowManager!,

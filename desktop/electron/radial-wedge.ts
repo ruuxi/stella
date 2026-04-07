@@ -2,7 +2,7 @@
  * Radial dial wedge calculation — shared between overlay controller and gesture service.
  */
 
-export const RADIAL_WEDGES = ['capture', 'chat', 'close', 'voice'] as const
+export const RADIAL_WEDGES = ['capture', 'chat', 'full', 'voice'] as const
 export type RadialWedge = (typeof RADIAL_WEDGES)[number] | 'dismiss'
 
 const DEAD_ZONE_RADIUS = 30 // Larger center zone for "dismiss"
@@ -35,6 +35,6 @@ export const calculateSelectedWedge = (
   // Determine wedge index
   const wedgeIndex = Math.floor(angle / 90)
 
-  // Map: 0=Capture (top), 1=Chat (right), 2=Close (bottom), 3=Voice (left)
+  // Map: 0=Capture (top), 1=Chat (right), 2=Full (bottom), 3=Voice (left)
   return RADIAL_WEDGES[wedgeIndex] ?? 'dismiss'
 }
