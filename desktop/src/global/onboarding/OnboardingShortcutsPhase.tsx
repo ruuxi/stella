@@ -213,7 +213,6 @@ export function OnboardingShortcutsPhase({
   // Capture region selection state
   const [capturePhase, setCapturePhase] = useState<"idle" | "ready" | "dragging" | "done">("idle");
   const [captureStart, setCaptureStart] = useState<Point>({ x: 0, y: 0 });
-  const [captureEnd, setCaptureEnd] = useState<Point>({ x: 0, y: 0 });
   const selectionRef = useRef<HTMLDivElement | null>(null);
 
   const platform = window.electronAPI?.platform;
@@ -321,7 +320,6 @@ export function OnboardingShortcutsPhase({
     const rect = surface.getBoundingClientRect();
     const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
     setCaptureStart(point);
-    setCaptureEnd(point);
     setCapturePhase("dragging");
   }, [capturePhase]);
 
@@ -361,9 +359,6 @@ export function OnboardingShortcutsPhase({
     };
 
     const handleUp = () => {
-      if (pendingEnd) {
-        setCaptureEnd(pendingEnd);
-      }
       setCapturePhase("done");
     };
 
@@ -375,16 +370,6 @@ export function OnboardingShortcutsPhase({
       if (rafId) cancelAnimationFrame(rafId);
     };
   }, [capturePhase, captureStart]);
-
-  const captureRect = useMemo(() => {
-    if (capturePhase !== "dragging" && capturePhase !== "done") return null;
-    return {
-      left: Math.min(captureStart.x, captureEnd.x),
-      top: Math.min(captureStart.y, captureEnd.y),
-      width: Math.abs(captureEnd.x - captureStart.x),
-      height: Math.abs(captureEnd.y - captureStart.y),
-    };
-  }, [capturePhase, captureStart, captureEnd]);
 
   const handleMenuContextMenu = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
