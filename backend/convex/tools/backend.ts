@@ -3,7 +3,7 @@ import { BACKEND_TOOL_IDS } from "../lib/agent_constants";
 import { normalizeSafeExternalUrl } from "../lib/url_security";
 import type { BackendToolSet, ToolOptions } from "./types";
 
-const MAX_WEB_SEARCH_RESULTS = 8;
+const MAX_WEB_SEARCH_RESULTS = 6;
 const MAX_WEB_SEARCH_HIGHLIGHT_CHARS = 400;
 const MAX_WEB_SEARCH_SNIPPET_CHARS = 300;
 const MAX_WEB_FETCH_REDIRECTS = 5;
@@ -74,7 +74,7 @@ export const executeWebSearch = async (
       },
       body: JSON.stringify({
         query,
-        type: "instant",
+        type: "auto",
         numResults: MAX_WEB_SEARCH_RESULTS,
         ...(options.category ? { category: options.category } : {}),
         contents: {
@@ -184,7 +184,7 @@ export const createBackendTools = (
       description:
         "Search the web via Exa for current information.\n\n" +
         "Use natural language queries, not keywords (e.g. 'Tesla current stock performance' not 'TSLA stock price').\n" +
-        "Returns up to 5 results with title, URL, and highlighted excerpts.\n\n" +
+        "Returns up to 6 results with title, URL, and highlighted excerpts.\n\n" +
         "CATEGORIES - use sparingly, most queries should omit:\n" +
         "- 'company': only for company research.\n" +
         "- 'people': only for non-public figures. Never for public figures or news about someone.\n" +
