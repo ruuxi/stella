@@ -208,7 +208,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     });
 
     const handleSuggestionSelect = useCallback((prompt: string) => {
-      setInputText((prev) => (prev.trim() ? `${prev.trimEnd()}\n${prompt}` : prompt));
+      setInputText(prompt);
       requestAnimationFrame(() => {
         inputRef.current?.focus();
       });

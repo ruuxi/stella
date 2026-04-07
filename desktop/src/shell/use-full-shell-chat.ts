@@ -158,8 +158,8 @@ export function useFullShellChat({
 
   const onSuggestionClick = useCallback((prompt: string) => {
     resetIdleTimer()
-    sendContextlessMessage(prompt)
-  }, [resetIdleTimer, sendContextlessMessage])
+    setMessage(prompt)
+  }, [resetIdleTimer])
 
   const dismissHome = useCallback(() => {
     resetIdleTimer()
