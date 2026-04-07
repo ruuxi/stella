@@ -389,11 +389,13 @@ export function RadialDial({ miniVisible = false }: { miniVisible?: boolean }) {
         >
           {wedgeLayout.map((wedge) => {
             const isSelected = selectedWedge === wedge.id
-            const treatAsEnabled = wedge.enabled || phase === 'closing'
-            const fillColor = treatAsEnabled
+            // Close keeps full card/border when unavailable; only label/icon show disabled.
+            const paintAsEnabled =
+              wedge.enabled || phase === 'closing' || wedge.id === 'close'
+            const fillColor = paintAsEnabled
               ? (isSelected ? palette.interactive : palette.card)
               : toRgba(colors.card, 0.5)
-            const strokeColor = treatAsEnabled
+            const strokeColor = paintAsEnabled
               ? (isSelected ? palette.interactiveStroke : palette.border)
               : toRgba(colors.border, 0.3)
 

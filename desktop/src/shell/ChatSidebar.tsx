@@ -9,23 +9,20 @@ import {
 import { animate } from "motion";
 import { createPortal } from "react-dom";
 import { CompactConversationSurface } from "@/app/chat/CompactConversationSurface";
+import { ComposerContextRow } from "@/app/chat/ComposerContextRow";
 import {
   ComposerAddButton,
   ComposerSubmitButton,
   ComposerStopButton,
   ComposerTextarea,
 } from "@/app/chat/ComposerPrimitives";
-import {
-  FileContextChips,
-  ScreenshotContextChips,
-} from "@/app/chat/ComposerContextChips";
-import { ComposerWindowContextSection } from "@/app/chat/ComposerContextSections";
 import { deriveComposerState } from "@/app/chat/composer-context";
 import { useFileDrop } from "@/app/chat/hooks/use-file-drop";
 import { DropOverlay } from "@/app/chat/DropOverlay";
 import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
+import { useChatContextSync } from "./use-chat-context-sync";
 import "./chat-sidebar.css";
 
 export interface ChatSidebarHandle {
@@ -45,7 +42,11 @@ interface ChatSidebarProps {
   hasOlderEvents: boolean;
   isLoadingOlder: boolean;
   isInitialLoading: boolean;
-  onSend: (text: string, chatContext?: ChatContext | null) => void;
+  onSend: (
+    text: string,
+    chatContext?: ChatContext | null,
+    selectedText?: string | null,
+  ) => void;
   onAdd?: () => void;
   onOpenChange?: (open: boolean) => void;
 }
@@ -72,9 +73,11 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
   ) {
     const [isOpen, setIsOpen] = useState(false);
     const [inputText, setInputText] = useState("");
-    const [chatContext, setChatContext] = useState<ChatContext | null>(null);
     const [sidebarExpanded, setSidebarExpanded] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const { chatContext, setChatContext, selectedText, setSelectedText } =
+      useChatContextSync();
+
     const formRef = useRef<HTMLFormElement | null>(null);
     const shellRef = useRef<HTMLDivElement | null>(null);
     const heightAnimRef = useRef<ReturnType<typeof animate> | null>(null);
@@ -96,9 +99,10 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
         setIsOpen(false);
         setInputText("");
         setChatContext(null);
+        setSelectedText(null);
         setSidebarExpanded(false);
       },
-    }));
+    }), [setChatContext, setSelectedText]);
 
     useEffect(() => {
       onOpenChange?.(isOpen);
@@ -188,24 +192,27 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
           chatContext,
         });
         if (!canSubmit) return;
-        onSend(trimmedMessage, chatContext);
+        onSend(trimmedMessage, chatContext, selectedText);
         setInputText("");
         setChatContext(null);
+        setSelectedText(null);
         setSidebarExpanded(false);
       },
-      [inputText, chatContext, onSend],
+      [inputText, chatContext, onSend, selectedText, setChatContext, setSelectedText],
     );
 
     const composerState = deriveComposerState({
       message: inputText,
       chatContext,
+      selectedText,
     });
 
-    const hasContextChips = Boolean(
-      chatContext?.window ||
-        chatContext?.regionScreenshots?.length ||
-        chatContext?.files?.length,
-    );
+    const handleSuggestionSelect = useCallback((prompt: string) => {
+      setInputText((prev) => (prev.trim() ? `${prev.trimEnd()}\n${prompt}` : prompt));
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
+    }, []);
 
     const portalTarget =
       document.querySelector(".full-body") ?? document.body;
@@ -236,32 +243,14 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
           <div className="chat-sidebar-composer" {...dropHandlers}>
             <DropOverlay visible={isDragOver} variant="orb" />
 
-            {hasContextChips && (
-              <div className="chat-sidebar-attachments">
-                <ComposerWindowContextSection
-                  variant="mini"
-                  chatContext={chatContext}
-                  setChatContext={setChatContext}
-                />
-                {(chatContext?.regionScreenshots?.length ?? 0) > 0 && (
-                  <ScreenshotContextChips
-                    screenshots={chatContext!.regionScreenshots!}
-                    setChatContext={setChatContext}
-                    chipClassName="chat-composer-context-chip chat-composer-context-chip--screenshot mini-context-chip mini-context-chip--screenshot"
-                    imageClassName="chat-composer-context-thumb mini-context-thumb"
-                    removeClassName="chat-composer-context-remove mini-context-remove"
-                  />
-                )}
-                {(chatContext?.files?.length ?? 0) > 0 && (
-                  <FileContextChips
-                    files={chatContext!.files!}
-                    setChatContext={setChatContext}
-                    chipClassName="mini-context-chip"
-                    removeClassName="chat-composer-context-remove mini-context-remove"
-                  />
-                )}
-              </div>
-            )}
+            <ComposerContextRow
+              variant="mini"
+              chatContext={chatContext}
+              selectedText={selectedText}
+              setChatContext={setChatContext}
+              setSelectedText={setSelectedText}
+              onSuggestionSelect={handleSuggestionSelect}
+            />
 
             <div ref={shellRef} className="chat-sidebar-shell">
               <form
