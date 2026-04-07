@@ -27,6 +27,18 @@ import {
   saveOfflineChatMessages,
 } from "../../src/lib/offline-chat-storage";
 import { postStream } from "../../src/lib/http";
+import { getOrCreateMobileDeviceId } from "../../src/lib/phone-access";
+import {
+  getChatScreenMode,
+  subscribeChatScreenMode,
+  type ChatScreenMode,
+} from "../../src/lib/chat-screen-mode";
+import {
+  checkDesktopConnection,
+  connectToDesktop,
+  getDesktopConnectionState,
+  subscribeDesktopConnection,
+} from "../../src/lib/desktop-connection";
 import { userFacingError } from "../../src/lib/user-facing-error";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
@@ -81,20 +93,20 @@ const createId = () =>
 
 function FadeInMessage({ children }: { children: React.ReactNode }) {
   const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(4)).current;
+  const translateY = useRef(new Animated.Value(5)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(opacity, {
         toValue: 1,
-        duration: 400,
+        duration: 450,
         useNativeDriver: true,
       }),
       Animated.spring(translateY, {
         toValue: 0,
-        damping: 18,
-        stiffness: 200,
-        mass: 1,
+        damping: 14,
+        stiffness: 180,
+        mass: 0.8,
         useNativeDriver: true,
       }),
     ]).start();
@@ -119,6 +131,35 @@ export default function ChatScreen() {
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [sending, setSending] = useState(false);
+
+  const [mode, setMode] = useState<ChatScreenMode>(() => getChatScreenMode());
+  const [mobileDeviceId, setMobileDeviceId] = useState<string | null>(null);
+  const [desktopState, setDesktopState] = useState(
+    () => getDesktopConnectionState(),
+  );
+
+  const [computerMessages, setComputerMessages] = useState<ChatMessage[]>([]);
+  const [computerDraft, setComputerDraft] = useState("");
+  const [computerSending, setComputerSending] = useState(false);
+  const computerListRef = useRef<FlatList<ChatMessage>>(null);
+
+  useEffect(() => {
+    void getOrCreateMobileDeviceId().then(setMobileDeviceId);
+  }, []);
+
+  useEffect(() => {
+    return subscribeChatScreenMode(setMode);
+  }, []);
+
+  useEffect(() => {
+    return subscribeDesktopConnection(setDesktopState);
+  }, []);
+
+  useEffect(() => {
+    void checkDesktopConnection();
+    const interval = setInterval(() => void checkDesktopConnection(), 15_000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Native-driven keyboard tracking (replaces KeyboardAvoidingView)
   const insets = useSafeAreaInsets();
@@ -230,17 +271,19 @@ export default function ChatScreen() {
     const replyId = createId();
     setMessages((m) => [...m, { id: replyId, role: "assistant", text: "" }]);
 
+    const onDelta = (delta: string) => {
+      setMessages((m) =>
+        m.map((msg) =>
+          msg.id === replyId ? { ...msg, text: msg.text + delta } : msg,
+        ),
+      );
+    };
+
     try {
       await postStream(
         "/api/mobile/offline-chat/stream",
         { message: text, history, images: imagesPayload },
-        (delta) => {
-          setMessages((m) =>
-            m.map((msg) =>
-              msg.id === replyId ? { ...msg, text: msg.text + delta } : msg,
-            ),
-          );
-        },
+        onDelta,
       );
       setMessages((m) =>
         m.map((msg) =>
@@ -259,6 +302,60 @@ export default function ChatScreen() {
       );
     } finally {
       setSending(false);
+    }
+  };
+
+  // --------------- Computer Send ---------------
+
+  const sendComputer = async () => {
+    const text = computerDraft.trim();
+    if (!text || computerSending || !mobileDeviceId) return;
+
+    const userMsg: ChatMessage = {
+      id: createId(),
+      role: "user",
+      text,
+    };
+
+    setComputerDraft("");
+    setComputerSending(true);
+    setComputerMessages((m) => [...m, userMsg]);
+    requestAnimationFrame(() =>
+      computerListRef.current?.scrollToEnd({ animated: true }),
+    );
+
+    const replyId = createId();
+    setComputerMessages((m) => [...m, { id: replyId, role: "assistant", text: "" }]);
+
+    try {
+      await postStream(
+        "/api/mobile/chat",
+        { message: text, mobileDeviceId },
+        (delta) => {
+          setComputerMessages((m) =>
+            m.map((msg) =>
+              msg.id === replyId ? { ...msg, text: msg.text + delta } : msg,
+            ),
+          );
+        },
+      );
+      setComputerMessages((m) =>
+        m.map((msg) =>
+          msg.id === replyId && !msg.text
+            ? { ...msg, text: "No reply came back. Try again." }
+            : msg,
+        ),
+      );
+    } catch (e) {
+      setComputerMessages((m) =>
+        m.map((msg) =>
+          msg.id === replyId
+            ? { ...msg, text: msg.text || userFacingError(e) }
+            : msg,
+        ),
+      );
+    } finally {
+      setComputerSending(false);
     }
   };
 
@@ -291,45 +388,50 @@ export default function ChatScreen() {
   // Render
   // =====================================================================
 
+  const computerEmpty = computerMessages.length === 0;
+  const canSubmitComputer = computerDraft.trim().length > 0 && !computerSending;
+
   return (
     <Reanimated.View style={[styles.screen, keyboardStyle]}>
-      {/* ---------- Conversation ---------- */}
-      <View style={styles.viewport}>
-        {empty ? (
-          <Pressable style={styles.emptyState} onPress={() => Keyboard.dismiss()}>
-            <Text style={styles.emptyText}>Ask Stella anything</Text>
-          </Pressable>
-        ) : (
-          <FlatList
-            ref={listRef}
-            contentContainerStyle={styles.list}
-            data={messages}
-            keyExtractor={(m) => m.id}
-            onContentSizeChange={scrollToEnd}
-            showsVerticalScrollIndicator={false}
-            keyboardDismissMode="on-drag"
-            fadingEdgeLength={EDGE_FADE}
-            renderItem={({ item }) => (
-              <FadeInMessage>
-                {item.role === "user" ? (
-                  <View style={styles.userRow}>
-                    <View style={styles.userBubble}>
-                      <Text style={styles.userText}>{item.text}</Text>
-                      {item.hasImage ? (
-                        <Text style={styles.userImageHint}>Includes a photo</Text>
-                      ) : null}
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.assistantRow}>
-                    <Text style={styles.assistantText}>{item.text}</Text>
-                  </View>
+      {mode === "chat" ? (
+        <>
+          {/* ---------- Chat Conversation ---------- */}
+          <View style={styles.viewport}>
+            {empty ? (
+              <Pressable style={styles.emptyState} onPress={() => Keyboard.dismiss()}>
+                <Text style={styles.emptyText}>Ask Stella anything</Text>
+              </Pressable>
+            ) : (
+              <FlatList
+                ref={listRef}
+                contentContainerStyle={styles.list}
+                data={messages}
+                keyExtractor={(m) => m.id}
+                onContentSizeChange={scrollToEnd}
+                showsVerticalScrollIndicator={false}
+                keyboardDismissMode="on-drag"
+                fadingEdgeLength={EDGE_FADE}
+                renderItem={({ item }) => (
+                  <FadeInMessage>
+                    {item.role === "user" ? (
+                      <View style={styles.userRow}>
+                        <View style={styles.userBubble}>
+                          <Text style={styles.userText}>{item.text}</Text>
+                          {item.hasImage ? (
+                            <Text style={styles.userImageHint}>Includes a photo</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.assistantRow}>
+                        <Text style={styles.assistantText}>{item.text}</Text>
+                      </View>
+                    )}
+                  </FadeInMessage>
                 )}
-              </FadeInMessage>
+              />
             )}
-          />
-        )}
-      </View>
+          </View>
 
       {/* ---------- Composer ---------- */}
       {/*
@@ -441,6 +543,116 @@ export default function ChatScreen() {
           )}
         </GlassView>
       </View>
+        </>
+      ) : (
+        <>
+          {/* ---------- Computer Pane ---------- */}
+          <View style={styles.viewport}>
+            {computerEmpty ? (
+              <Pressable style={styles.emptyState} onPress={() => Keyboard.dismiss()}>
+                {desktopState === "connected" ? (
+                  <>
+                    <Feather name="monitor" size={32} color={colors.textMuted} style={{ opacity: 0.4, marginBottom: 16 }} />
+                    <Text style={styles.emptyText}>Your computer, at your fingertips</Text>
+                    <Text style={styles.computerSubtext}>
+                      Ask Stella to do things on your computer — browse the web, manage files, run tasks, and more.
+                    </Text>
+                  </>
+                ) : desktopState === "connecting" ? (
+                  <>
+                    <Text style={styles.emptyText}>Connecting...</Text>
+                    <Text style={styles.computerSubtext}>
+                      Looking for your computer. Make sure Stella is running on your desktop.
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Feather name="monitor" size={32} color={colors.textMuted} style={{ opacity: 0.4, marginBottom: 16 }} />
+                    <Text style={styles.emptyText}>Your computer, at your fingertips</Text>
+                    <Text style={styles.computerSubtext}>
+                      Ask Stella to do things on your computer — browse the web, manage files, run tasks, and more.
+                    </Text>
+                    <Pressable
+                      style={styles.connectButton}
+                      onPress={() => void connectToDesktop()}
+                    >
+                      <Text style={styles.connectButtonText}>Connect</Text>
+                    </Pressable>
+                  </>
+                )}
+              </Pressable>
+            ) : (
+              <FlatList
+                ref={computerListRef}
+                contentContainerStyle={styles.list}
+                data={computerMessages}
+                keyExtractor={(m) => m.id}
+                onContentSizeChange={() =>
+                  requestAnimationFrame(() =>
+                    computerListRef.current?.scrollToEnd({ animated: true }),
+                  )
+                }
+                showsVerticalScrollIndicator={false}
+                keyboardDismissMode="on-drag"
+                fadingEdgeLength={EDGE_FADE}
+                renderItem={({ item }) => (
+                  <FadeInMessage>
+                    {item.role === "user" ? (
+                      <View style={styles.userRow}>
+                        <View style={styles.userBubble}>
+                          <Text style={styles.userText}>{item.text}</Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.assistantRow}>
+                        <Text style={styles.assistantText}>{item.text}</Text>
+                      </View>
+                    )}
+                  </FadeInMessage>
+                )}
+              />
+            )}
+          </View>
+
+          {/* Computer Composer — simple pill, no image attachments */}
+          <View style={styles.composerWrap}>
+            <GlassView style={[styles.shell, styles.shellPill]}>
+              <View style={styles.formPill}>
+                <TextInput
+                  scrollEnabled={false}
+                  onChangeText={setComputerDraft}
+                  blurOnSubmit
+                  onSubmitEditing={() => void sendComputer()}
+                  returnKeyType="send"
+                  placeholder={desktopState === "connected" ? "Ask Stella to do something" : "Connect to your computer first"}
+                  placeholderTextColor="rgba(82, 104, 134, 0.35)"
+                  selectionColor={colors.accent}
+                  underlineColorAndroid="transparent"
+                  style={styles.inputPill}
+                  value={computerDraft}
+                  editable={desktopState === "connected"}
+                />
+                <Pressable
+                  onPress={() => void sendComputer()}
+                  disabled={!canSubmitComputer || desktopState !== "connected"}
+                  style={[
+                    styles.submitButton,
+                    (!canSubmitComputer || desktopState !== "connected") && styles.submitDisabled,
+                  ]}
+                  hitSlop={4}
+                >
+                  <Feather
+                    name="arrow-up"
+                    size={14}
+                    color={colors.accentForeground}
+                    strokeWidth={2.5}
+                  />
+                </Pressable>
+              </View>
+            </GlassView>
+          </View>
+        </>
+      )}
     </Reanimated.View>
   );
 }
@@ -466,15 +678,39 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // Conversation
+  // Computer pane empty state extras
+  computerSubtext: {
+    fontFamily: fonts.sans.regular,
+    fontSize: 15,
+    color: colors.textMuted,
+    textAlign: "center",
+    lineHeight: 22,
+    maxWidth: 280,
+    marginTop: 8,
+  },
+  connectButton: {
+    marginTop: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 28,
+    borderRadius: 999,
+    backgroundColor: colors.accent,
+  },
+  connectButtonText: {
+    fontFamily: fonts.sans.medium,
+    fontSize: 15,
+    color: colors.accentForeground,
+    letterSpacing: -0.2,
+  },
+
+  // Conversation — desktop: .session-messages { gap: 24px; padding: 112px 24px 24px }
   viewport: {
     flex: 1,
     position: "relative",
   },
   list: {
-    gap: 8,
-    paddingHorizontal: 4,
-    paddingTop: EDGE_FADE,
+    gap: 24,
+    paddingHorizontal: 20,
+    paddingTop: 80,
     paddingBottom: EDGE_FADE,
   },
   emptyState: {
@@ -484,68 +720,74 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: colors.textMuted,
-    fontFamily: fonts.sans.regular,
-    fontSize: 17,
-    letterSpacing: -0.2,
-    opacity: 0.5,
+    fontFamily: fonts.display.regularItalic,
+    fontSize: 22,
+    letterSpacing: -0.5,
+    opacity: 0.45,
   },
 
-  // User bubble — desktop: color-mix(in oklch, var(--primary) 12%, transparent)
+  // User bubble — desktop: .event-item.user
+  //   border-radius: 18px / tail 4px, color-mix(primary 10%), border borderStrong, max-width 85%
   userRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
   },
   userBubble: {
-    backgroundColor: "rgba(29, 120, 242, 0.12)",
-    borderRadius: 12,
+    backgroundColor: "rgba(29, 120, 242, 0.10)",
+    borderColor: colors.borderStrong,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 18,
+    borderBottomRightRadius: 4,
     maxWidth: "85%",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   userText: {
     color: colors.text,
     fontFamily: fonts.sans.regular,
-    fontSize: 18,
-    letterSpacing: 0.54,
-    lineHeight: 26,
+    fontSize: 17,
+    letterSpacing: 0.03 * 17,
+    lineHeight: 17 * 1.45,
   },
   userImageHint: {
     color: colors.textMuted,
     fontFamily: fonts.sans.regular,
-    fontSize: 12,
-    marginTop: 4,
-    opacity: 0.75,
+    fontSize: 13,
+    marginTop: 6,
+    opacity: 0.7,
   },
 
-  // Assistant — desktop: transparent, no border, full width
+  // Assistant — desktop: .event-item.assistant
+  //   transparent bg, no border, full width, tail bottom-left 4px
   assistantRow: {
-    paddingHorizontal: 2,
-    paddingVertical: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
   },
   assistantText: {
     color: colors.text,
     fontFamily: fonts.sans.regular,
-    fontSize: 18,
-    letterSpacing: 0.54,
-    lineHeight: 26,
+    fontSize: 17,
+    fontWeight: "400",
+    letterSpacing: 0.03 * 17,
+    lineHeight: 17 * 1.45,
   },
 
   // ---- Composer ----
 
-  // Outer centering wrapper — desktop: .composer (padding 8 24 16, centered)
+  // Desktop: .composer { padding: 8px 24px 16px }
   composerWrap: {
     alignItems: "center",
     flexShrink: 0,
-    paddingBottom: Platform.OS === "ios" ? 4 : 10,
-    paddingHorizontal: 4,
+    paddingBottom: Platform.OS === "ios" ? 4 : 12,
+    paddingHorizontal: 16,
     paddingTop: 8,
   },
 
-  // Attachment preview strip — above the composer shell
+  // Attachment preview strip
   attachmentStrip: {
     flexDirection: "row",
     gap: 8,
-    paddingBottom: 8,
+    paddingBottom: 10,
     paddingHorizontal: 4,
   },
   attachmentThumb: {
@@ -572,72 +814,71 @@ const styles = StyleSheet.create({
     width: 20,
   },
 
-  // Shell — desktop: .composer-shell (pill radius, shadow, overflow clip)
+  // Shell — desktop: .composer-shell { background: var(--background); shadow-md; overflow: clip }
   shell: {
     overflow: "hidden",
     width: "100%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 8,
   },
-  // Pill capsule — desktop: border-radius: 999px (CSS fallback)
   shellPill: {
     borderRadius: 999,
   },
-  // Expanded rect — desktop: motion animates to 20px
   shellExpanded: {
     borderRadius: 20,
   },
 
-  // Pill form — desktop: .composer-form (row, min-h 48, padding 8, gap 8)
+  // Desktop: .composer-form { min-height: 56px; padding: 10px; gap: 8px }
   formPill: {
     alignItems: "center",
     flexDirection: "row",
     gap: 8,
-    height: 48,
-    paddingHorizontal: 8,
+    height: 56,
+    paddingHorizontal: 10,
   },
 
-  // Expanded form — desktop: .composer-form.expanded (column, no padding)
   formExpanded: {
     flexDirection: "column",
   },
 
-  // Input – pill — desktop: .composer-input (flex 1, padding 4 4)
+  // Desktop: .composer-input { font-size: 14px; line-height: 1.5 }
   inputPill: {
     color: colors.text,
     flex: 1,
     fontFamily: fonts.sans.regular,
-    fontSize: 14,
-    letterSpacing: -0.01,
-    lineHeight: 21,
-    maxHeight: 32,
-    paddingHorizontal: 4,
+    fontSize: 15,
+    letterSpacing: -0.2,
+    lineHeight: 22,
+    maxHeight: 34,
+    paddingHorizontal: 6,
     paddingVertical: 0,
-    // Remove default Android underline / iOS focus ring
     ...(Platform.OS === "android" ? { textAlignVertical: "center" as const } : {}),
   },
 
-  // Input – expanded — desktop: .composer-form.expanded .composer-input
-  //   (width 100%, padding 14 18 4, min-h 44, order -1)
+  // Desktop: .composer-form.expanded .composer-input { padding: 14px 18px 4px; min-height: 44px }
   inputExpanded: {
     color: colors.text,
     fontFamily: fonts.sans.regular,
-    fontSize: 14,
-    letterSpacing: -0.01,
-    lineHeight: 21,
+    fontSize: 15,
+    letterSpacing: -0.2,
+    lineHeight: 22,
     maxHeight: 200,
     minHeight: 44,
     paddingHorizontal: 18,
-    paddingTop: 14,
+    paddingTop: 16,
     paddingBottom: 4,
   },
 
-  // Toolbar — desktop: .composer-form.expanded .composer-toolbar
-  //   (flex row, space-between, padding 4 8 8)
+  // Desktop: .composer-toolbar { padding: 4px 8px 8px; justify-content: space-between }
   toolbar: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingBottom: 8,
-    paddingHorizontal: 8,
+    paddingBottom: 10,
+    paddingHorizontal: 10,
     paddingTop: 4,
   },
   toolbarLeft: {
@@ -651,8 +892,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
-  // Add button — desktop: .chat-composer-icon-button--add
-  //   (30x30, 1.5px dashed border, transparent bg)
+  // Desktop: .chat-composer-icon-button--add { 30x30, 1.5px dashed border }
   addButton: {
     alignItems: "center",
     borderColor: colors.textMuted,
@@ -665,8 +905,7 @@ const styles = StyleSheet.create({
     width: 30,
   },
 
-  // Submit — desktop: .chat-composer-icon-button--submit
-  //   (30x30, primary bg, primary-foreground color)
+  // Desktop: .chat-composer-icon-button--submit { 30x30, primary bg }
   submitButton: {
     alignItems: "center",
     backgroundColor: colors.accent,
