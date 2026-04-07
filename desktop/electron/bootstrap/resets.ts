@@ -65,7 +65,7 @@ export const createBootstrapResetFlows = (
     services.uiStateService.state.isVoiceRtcActive = false;
     services.uiStateService.syncVoiceOverlay();
     services.captureService.resetForHardReset();
-    state.windowManager?.hideMiniWindow(false);
+    state.windowManager?.restoreFullSize();
 
     services.securityPolicyService.clearAll();
     services.externalLinkService.clearSenderRateLimits();

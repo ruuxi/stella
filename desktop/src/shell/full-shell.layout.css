@@ -131,6 +131,43 @@
   min-height: 0;
 }
 
+/* Compact mode elements — hidden at normal widths */
+.compact-hamburger {
+  display: none;
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 60;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-weak);
+  cursor: default;
+  -webkit-app-region: no-drag;
+  transition: color 0.15s ease;
+}
+
+.compact-hamburger--mac {
+  left: 80px;
+}
+
+.compact-hamburger:hover {
+  color: var(--text-base);
+}
+
+.sidebar-drawer-scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: transparent;
+}
+
 .onboarding-layout {
   flex: 1;
   display: flex;
@@ -473,4 +510,44 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--text-weak);
+}
+
+/* ── Compact mode: window narrower than 600px ── */
+@media (max-width: 600px) {
+  .full-body > .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 100;
+    transform: translateX(-100%);
+    box-shadow: none;
+  }
+
+  .full-body > .sidebar.sidebar--drawer-open {
+    transform: translateX(0);
+    box-shadow: var(--shadow-lg);
+    transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .full-body > .sidebar-drawer-scrim {
+    display: block;
+  }
+
+  .content-area {
+    border-left: none;
+    border-top-left-radius: 0;
+  }
+
+  .content-area::before {
+    height: 40px;
+  }
+
+  .compact-hamburger {
+    display: flex;
+  }
+
+  .session-messages {
+    padding-top: 56px;
+  }
 }

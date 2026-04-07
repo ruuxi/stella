@@ -4,7 +4,6 @@ import { AuthService } from "../services/auth-service.js";
 import { CaptureService } from "../services/capture-service.js";
 import { CredentialService } from "../services/credential-service.js";
 import { ExternalLinkService } from "../services/external-link-service.js";
-import { MiniBridgeService } from "../services/mini-bridge-service.js";
 import { RadialGestureService } from "../services/radial-gesture-service.js";
 import { SecurityPolicyService } from "../services/security-policy-service.js";
 import { UiStateService } from "../services/ui-state-service.js";
@@ -37,8 +36,6 @@ export const createBootstrapServices = (
   if (config.isDev) {
     externalLinkService.trustDevServerBaseUrl(getDevServerUrl());
   }
-  const miniBridgeService = new MiniBridgeService();
-
   const securityPolicyService = new SecurityPolicyService({
     windowManagerTarget: lifecycle,
   });
@@ -51,14 +48,7 @@ export const createBootstrapServices = (
   const captureService = new CaptureService({
     window: {
       getAllWindows: () => options.getAllWindows(),
-      getMiniWindow: () => state.windowManager?.getMiniWindow() ?? null,
-      isMiniShowing: () => state.windowManager?.isMiniShowing() ?? false,
       showWindow: (target) => state.windowManager?.showWindow(target),
-      concealMiniWindowForCapture: () =>
-        state.windowManager?.concealMiniWindowForCapture() ?? false,
-      restoreMiniWindowAfterCapture: () => {
-        state.windowManager?.restoreMiniWindowAfterCapture();
-      },
     },
     overlay: {
       hideRadial: () => state.overlayController?.hideRadial(),
@@ -114,22 +104,17 @@ export const createBootstrapServices = (
       broadcastChatContext: () => captureService.broadcastChatContext(),
     },
     overlay: {
-      showRadial: () => state.overlayController?.showRadial(),
+      showRadial: (options) => state.overlayController?.showRadial(options),
       hideRadial: () => state.overlayController?.hideRadial(),
       updateRadialCursor: () => state.overlayController?.updateRadialCursor(),
       getRadialBounds: () => state.overlayController?.getRadialBounds() ?? null,
     },
     window: {
-      isMiniShowing: () => state.windowManager?.isMiniShowing() ?? false,
-      hasPendingMiniShow: () =>
-        state.windowManager?.hasPendingMiniShow() ?? false,
-      getMiniWindow: () => state.windowManager?.getMiniWindow() ?? null,
+      isCompactMode: () => state.windowManager?.isCompactMode() ?? false,
+      isWindowFocused: () => state.windowManager?.isWindowFocused() ?? false,
       showWindow: (target) => state.windowManager?.showWindow(target),
-      hideMiniWindow: (animate) => state.windowManager?.hideMiniWindow(animate),
-      concealMiniWindowForCapture: () =>
-        state.windowManager?.concealMiniWindowForCapture() ?? false,
-      restoreMiniWindowAfterCapture: () =>
-        state.windowManager?.restoreMiniWindowAfterCapture(),
+      restoreFullSize: () => state.windowManager?.restoreFullSize(),
+      minimizeWindow: () => state.windowManager?.minimizeWindow(),
     },
     activateVoiceRtc: () => {
       uiStateService.activateVoiceRtc(uiStateService.state.conversationId);
@@ -149,7 +134,6 @@ export const createBootstrapServices = (
     captureService,
     credentialService,
     externalLinkService,
-    miniBridgeService,
     radialGestureService,
     securityPolicyService,
     uiStateService,

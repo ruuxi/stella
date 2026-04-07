@@ -25,11 +25,7 @@ const CAPTURE_OVERLAY_HIDE_DELAY_MS = 80
 
 export type CaptureWindowBridge = {
   getAllWindows: () => BrowserWindow[]
-  getMiniWindow: () => BrowserWindow | null
-  isMiniShowing: () => boolean
   showWindow: (target: 'full' | 'mini') => void
-  concealMiniWindowForCapture: () => boolean
-  restoreMiniWindowAfterCapture: () => void
 }
 
 export type CaptureOverlayBridge = {
@@ -49,10 +45,6 @@ export class CaptureService {
   private pendingChatContext: ChatContext | null = null
   private chatContextVersion = 0
   private lastBroadcastChatContextVersion = -1
-  private lastMiniChatContextAckVersion = -1
-  private pendingMiniChatContextAck:
-    | { version: number; resolve: () => void; timeout: NodeJS.Timeout }
-    | null = null
   private lastRadialPoint: { x: number; y: number } | null = null
   private radialCaptureRequestId = 0
   private pendingRadialCapturePromise: Promise<void> | null = null
@@ -100,55 +92,6 @@ export class CaptureService {
     this.lastBroadcastChatContextVersion = this.chatContextVersion
   }
 
-  async waitForMiniChatContext(version: number, timeoutMs = 250) {
-    if (!this.options.window.getMiniWindow()) {
-      return
-    }
-    if (this.lastMiniChatContextAckVersion >= version) {
-      return
-    }
-
-    if (this.pendingMiniChatContextAck) {
-      clearTimeout(this.pendingMiniChatContextAck.timeout)
-      this.pendingMiniChatContextAck.resolve()
-      this.pendingMiniChatContextAck = null
-    }
-
-    await new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => {
-        if (this.pendingMiniChatContextAck?.version === version) {
-          this.pendingMiniChatContextAck = null
-        }
-        resolve()
-      }, timeoutMs)
-
-      this.pendingMiniChatContextAck = {
-        version,
-        timeout,
-        resolve: () => {
-          clearTimeout(timeout)
-          this.pendingMiniChatContextAck = null
-          resolve()
-        },
-      }
-    })
-  }
-
-  ackMiniChatContext(version: number) {
-    this.lastMiniChatContextAckVersion = Math.max(this.lastMiniChatContextAckVersion, version)
-    if (this.pendingMiniChatContextAck && this.pendingMiniChatContextAck.version === version) {
-      this.pendingMiniChatContextAck.resolve()
-    }
-  }
-
-  clearMiniChatContextAckWaiter() {
-    if (this.pendingMiniChatContextAck) {
-      clearTimeout(this.pendingMiniChatContextAck.timeout)
-      this.pendingMiniChatContextAck.resolve()
-      this.pendingMiniChatContextAck = null
-    }
-  }
-
   /** Preserves region screenshots but resets everything else to null. */
   clearTransientContext(): void {
     const current = this.pendingChatContext
@@ -163,10 +106,8 @@ export class CaptureService {
   }
 
   resetForHardReset() {
-    this.clearMiniChatContextAckWaiter()
     this.setPendingChatContext(null)
     this.lastBroadcastChatContextVersion = -1
-    this.lastMiniChatContextAckVersion = -1
     this.cancelRadialContextCapture()
     this.cancelRegionCapture()
   }
@@ -217,9 +158,7 @@ export class CaptureService {
     this.radialContextShouldCommit = false
     this.radialWindowContextEnabled = true
 
-    if (this.options.window.isMiniShowing()) {
-      this.broadcastChatContext()
-    }
+    this.broadcastChatContext()
   }
 
   captureRadialContext(x: number, y: number, radialContextBeforeGesture: ChatContext | null) {
@@ -413,15 +352,12 @@ export class CaptureService {
   private async withCaptureContext<T>(fn: () => Promise<T>): Promise<T> {
     this.options.overlay.hideRadial()
     this.options.overlay.endRegionCapture()
-    const miniWasConcealed = this.options.window.concealMiniWindowForCapture()
 
     try {
       await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
       return await fn()
     } finally {
-      if (miniWasConcealed) {
-        this.options.window.restoreMiniWindowAfterCapture()
-      }
+      // no-op: mini shell no longer needs concealing/restoring
     }
   }
 

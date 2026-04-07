@@ -20,21 +20,6 @@ type CaptureHandlersOptions = {
 };
 
 export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
-  ipcMain.on("chatContext:ack", (event, payload: { version?: unknown }) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    const miniWindow = options.windowManager.getMiniWindow();
-    if (!miniWindow || win !== miniWindow) {
-      return;
-    }
-
-    const version = payload?.version;
-    if (typeof version !== "number") {
-      return;
-    }
-
-    options.captureService.ackMiniChatContext(version);
-  });
-
   ipcMain.handle("chatContext:get", () =>
     options.captureService.getChatContextSnapshot(),
   );

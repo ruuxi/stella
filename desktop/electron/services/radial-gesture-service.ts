@@ -1,5 +1,4 @@
 import { screen } from 'electron'
-import type { BrowserWindow } from 'electron'
 import { RADIAL_SIZE } from '../layout-constants.js'
 import { MouseHookManager } from '../input/mouse-hook.js'
 import { calculateSelectedWedge, type RadialWedge } from '../radial-wedge.js'
@@ -25,20 +24,18 @@ export type RadialCaptureBridge = {
 }
 
 export type RadialOverlayBridge = {
-  showRadial: () => void
+  showRadial: (options?: { compactFocused?: boolean }) => void
   hideRadial: () => void
   updateRadialCursor: (x: number, y: number) => void
   getRadialBounds: () => { x: number; y: number } | null
 }
 
 export type RadialWindowBridge = {
-  isMiniShowing: () => boolean
-  hasPendingMiniShow: () => boolean
-  getMiniWindow: () => BrowserWindow | null
+  isCompactMode: () => boolean
+  isWindowFocused: () => boolean
   showWindow: (target: 'full' | 'mini') => void
-  hideMiniWindow: (animate: boolean) => void
-  concealMiniWindowForCapture: () => boolean
-  restoreMiniWindowAfterCapture: () => void
+  restoreFullSize: () => void
+  minimizeWindow: () => void
 }
 
 type RadialGestureDeps = {
@@ -54,7 +51,7 @@ type RadialGestureDeps = {
 export class RadialGestureService {
   private mouseHook: MouseHookManager | null = null
   private selectionCommitted = false
-  private startedWithMiniVisible = false
+  private startedInCompactMode = false
   private contextBeforeGesture: ChatContext | null = null
   private radialTriggerKey: RadialTriggerCode
   private readonly deps: RadialGestureDeps
@@ -67,7 +64,7 @@ export class RadialGestureService {
   private restoreOrClearTransientContext() {
     const { capture } = this.deps
     const pendingChatContext = capture.getChatContextSnapshot()
-    if (this.startedWithMiniVisible) {
+    if (this.startedInCompactMode) {
       if (pendingChatContext !== this.contextBeforeGesture) {
         capture.setPendingChatContext(this.contextBeforeGesture)
       }
@@ -93,7 +90,6 @@ export class RadialGestureService {
         capture.cancelRadialContextCapture()
         updateUiState({ mode: 'chat' })
         overlay.hideRadial()
-        const miniWasConcealed = win.concealMiniWindowForCapture()
         const regionCapture = await capture.startRegionCapture()
         if (regionCapture && (regionCapture.screenshot || regionCapture.window)) {
           const ctx = capture.getChatContextSnapshot() ?? capture.emptyContext()
@@ -106,16 +102,9 @@ export class RadialGestureService {
             window: regionCapture.window ?? ctx.window,
             regionScreenshots: nextScreenshots,
           })
-        }
-        if (miniWasConcealed) {
-          win.restoreMiniWindowAfterCapture()
-        }
-        // Only open mini shell if capture returned something (not cancelled)
-        if (regionCapture && (regionCapture.screenshot || regionCapture.window)) {
-          if (!win.isMiniShowing()) {
+          capture.broadcastChatContext()
+          if (!win.isCompactMode()) {
             win.showWindow('mini')
-          } else {
-            capture.broadcastChatContext()
           }
         }
         break
@@ -125,8 +114,9 @@ export class RadialGestureService {
         capture.setRadialWindowContextEnabled(false)
         capture.commitStagedRadialContext(this.contextBeforeGesture)
         updateUiState({ mode: 'chat' })
-        if (win.isMiniShowing()) {
-          capture.broadcastChatContext()
+        capture.broadcastChatContext()
+        if (win.isCompactMode() && win.isWindowFocused()) {
+          win.minimizeWindow()
         } else {
           win.showWindow('mini')
         }
@@ -138,13 +128,10 @@ export class RadialGestureService {
         activateVoiceRtc()
         break
       }
-      case 'close':
+      case 'full':
         capture.cancelRadialContextCapture()
-        if (win.isMiniShowing()) {
-          win.hideMiniWindow(true)
-        } else {
-          this.restoreOrClearTransientContext()
-        }
+        this.restoreOrClearTransientContext()
+        win.showWindow('full')
         break
     }
   }
@@ -157,21 +144,17 @@ export class RadialGestureService {
       onRadialShow: () => {
         if (!isAppReady()) return
 
-        this.startedWithMiniVisible = win.isMiniShowing()
+        this.startedInCompactMode = win.isCompactMode()
         this.contextBeforeGesture = capture.getChatContextSnapshot()
         capture.setRadialContextShouldCommit(false)
 
-        const miniWindow = win.getMiniWindow()
-        if (this.startedWithMiniVisible && miniWindow) {
-          miniWindow.webContents.send('mini:dismissPreview')
-        }
-
-        if (!this.startedWithMiniVisible && capture.getChatContextSnapshot()) {
+        if (!this.startedInCompactMode && capture.getChatContextSnapshot()) {
           capture.clearTransientContext()
         }
 
         this.selectionCommitted = false
-        overlay.showRadial()
+        const compactFocused = win.isCompactMode() && win.isWindowFocused()
+        overlay.showRadial({ compactFocused })
         const cursorPoint = screen.getCursorScreenPoint()
         capture.captureRadialContext(cursorPoint.x, cursorPoint.y, this.contextBeforeGesture)
       },
@@ -179,11 +162,11 @@ export class RadialGestureService {
         if (!this.selectionCommitted) {
           capture.cancelRadialContextCapture()
           const pendingChatContext = capture.getChatContextSnapshot()
-          if (this.startedWithMiniVisible) {
+          if (this.startedInCompactMode) {
             if (pendingChatContext !== this.contextBeforeGesture) {
               capture.setPendingChatContext(this.contextBeforeGesture)
             }
-          } else if (!win.hasPendingMiniShow() && pendingChatContext !== null) {
+          } else if (pendingChatContext !== null) {
             capture.clearTransientContext()
           }
         }
@@ -199,7 +182,6 @@ export class RadialGestureService {
           return
         }
 
-        // Use Electron's DIP cursor position (uiohook reports physical pixels on Windows)
         const cursorDip = screen.getCursorScreenPoint()
         const relativeX = cursorDip.x - radialBounds.x
         const relativeY = cursorDip.y - radialBounds.y

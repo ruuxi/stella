@@ -271,7 +271,6 @@ export class OverlayWindowController {
   // Active component tracking — overlay stays visible when any component is active.
   private activeRadial = false
   private activeRegionCapture = false
-  private activeMini = false
   private activeVoice = false
   private activeScreenGuide = false
 
@@ -302,7 +301,7 @@ export class OverlayWindowController {
   }
 
   private get isAnyActive() {
-    return this.activeRadial || this.activeRegionCapture || this.activeMini || this.activeVoice || this.activeScreenGuide || this.activeMorph
+    return this.activeRadial || this.activeRegionCapture || this.activeVoice || this.activeScreenGuide || this.activeMorph
   }
 
   private hideOverlayIfIdle() {
@@ -361,7 +360,7 @@ export class OverlayWindowController {
 
   private radialWindowBoundsRequestId = 0
 
-  showRadial() {
+  showRadial(options?: { compactFocused?: boolean }) {
     if (!this.overlayWindow.getWindow()) return
 
     if (this.radialHideTimeout) {
@@ -391,6 +390,7 @@ export class OverlayWindowController {
       centerY: RADIAL_SIZE / 2,
       screenX: localX,
       screenY: localY,
+      compactFocused: options?.compactFocused ?? false,
     })
 
     // Async-query the OS window under the cursor and send its bounds
@@ -475,42 +475,6 @@ export class OverlayWindowController {
       restoreIgnoreMouseEvents: true,
       focusable: false,
     })
-  }
-
-  // ─── Mini Shell ────────────────────────────────────────────────────────
-
-  showMini(screenX: number, screenY: number) {
-    const origin = this.overlayWindow.getOverlayOrigin()
-    this.showSurface({
-      setActive: () => {
-        this.activeMini = true
-      },
-      channel: 'overlay:showMini',
-      payload: { x: screenX - origin.x, y: screenY - origin.y },
-      showOptions: { focus: true },
-      interactive: true,
-      focusable: true,
-      sendBeforeShow: true,
-    })
-  }
-
-  hideMini() {
-    this.hideSurface({
-      setInactive: () => {
-        this.activeMini = false
-      },
-      channel: 'overlay:hideMini',
-      restoreIgnoreMouseEvents: true,
-      focusable: false,
-    })
-  }
-
-  concealMiniForCapture() {
-    this.overlayWindow.send('overlay:hideMini')
-  }
-
-  restoreMiniAfterCapture() {
-    this.overlayWindow.send('overlay:restoreMini')
   }
 
   // ─── Voice ─────────────────────────────────────────────────────────────

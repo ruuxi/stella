@@ -5,7 +5,6 @@ import type { AuthService } from "../services/auth-service.js";
 import type { CaptureService } from "../services/capture-service.js";
 import type { CredentialService } from "../services/credential-service.js";
 import type { ExternalLinkService } from "../services/external-link-service.js";
-import type { MiniBridgeService } from "../services/mini-bridge-service.js";
 import type { RadialGestureService } from "../services/radial-gesture-service.js";
 import type { SecurityPolicyService } from "../services/security-policy-service.js";
 import type { UiStateService } from "../services/ui-state-service.js";
@@ -63,7 +62,6 @@ export type BootstrapServices = {
   captureService: CaptureService;
   credentialService: CredentialService;
   externalLinkService: ExternalLinkService;
-  miniBridgeService: MiniBridgeService;
   radialGestureService: RadialGestureService;
   securityPolicyService: SecurityPolicyService;
   uiStateService: UiStateService;

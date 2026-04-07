@@ -140,6 +140,7 @@ export type ElectronWindowApi = {
   minimize: () => void;
   maximize: () => void;
   close: () => void;
+  restoreSize: () => void;
   isMaximized: () => Promise<boolean>;
   show: (target: WindowMode) => void;
 };
@@ -161,7 +162,6 @@ export type ElectronCaptureApi = {
   onContext: (
     callback: (payload: ChatContextUpdate | null) => void,
   ) => () => void;
-  ackContext: (payload: { version: number }) => void;
   screenshot: (point?: { x: number; y: number }) => Promise<{
     dataUrl: string;
     width: number;

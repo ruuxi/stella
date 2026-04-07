@@ -47,17 +47,6 @@ const initializeWindowShell = (context: BootstrapContext) => {
     isAppReady: () => state.appReady,
     isQuitting: () => state.isQuitting,
     externalLinkService: services.externalLinkService,
-    miniBridgeService: services.miniBridgeService,
-    chatContextSyncBridge: {
-      getChatContextVersion: () =>
-        services.captureService.getChatContextVersion(),
-      getLastBroadcastChatContextVersion: () =>
-        services.captureService.getLastBroadcastChatContextVersion(),
-      broadcastChatContext: () =>
-        services.captureService.broadcastChatContext(),
-      waitForMiniChatContext: (version: number) =>
-        services.captureService.waitForMiniChatContext(version),
-    },
     onDeactivateVoiceModes: () =>
       services.uiStateService.deactivateVoiceModes(),
     onUpdateUiState: (partial) => services.uiStateService.update(partial),

@@ -2,11 +2,6 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { IpcRendererEvent } from "electron";
 import type {
   ChatContext,
-  MiniBridgeRequest,
-  MiniBridgeRequestEnvelope,
-  MiniBridgeResponse,
-  MiniBridgeResponseEnvelope,
-  MiniBridgeUpdate,
   SelfModHmrState,
 } from "../src/shared/contracts/boundary.js";
 import type { RadialTriggerCode } from "../src/shared/lib/radial-trigger.js";
@@ -118,6 +113,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     minimize: () => ipcRenderer.send("window:minimize"),
     maximize: () => ipcRenderer.send("window:maximize"),
     close: () => ipcRenderer.send("window:close"),
+    restoreSize: () => ipcRenderer.send("window:restoreSize"),
     isMaximized: () => ipcRenderer.invoke("window:isMaximized"),
     show: (target: "mini" | "full") => ipcRenderer.send("window:show", target),
   },
@@ -152,8 +148,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setContext: (context: ChatContext | null) =>
       ipcRenderer.send("chatContext:set", context),
     onContext: onIpc<Record<string, unknown> | null>("chatContext:updated"),
-    ackContext: (payload: { version: number }) =>
-      ipcRenderer.send("chatContext:ack", payload),
     screenshot: (point?: { x: number; y: number }) =>
       ipcRenderer.invoke("screenshot:capture", point),
     visionScreenshot: (point?: { x: number; y: number }) =>
@@ -229,9 +223,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.send("overlay:setInteractive", interactive),
     onStartRegionCapture: onIpcSignal("overlay:startRegionCapture"),
     onEndRegionCapture: onIpcSignal("overlay:endRegionCapture"),
-    onShowMini: onIpc<{ x: number; y: number }>("overlay:showMini"),
-    onHideMini: onIpcSignal("overlay:hideMini"),
-    onRestoreMini: onIpcSignal("overlay:restoreMini"),
     onShowVoice: onIpc<{ x: number; y: number; mode: "realtime" }>(
       "overlay:showVoice",
     ),
@@ -283,33 +274,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.send("overlay:morphDone", { transitionId }),
   },
 
-  mini: {
-    onVisibility: (callback: (visible: boolean) => void) => {
-      const handler = (
-        _event: IpcRendererEvent,
-        data: { visible?: boolean },
-      ) => {
-        callback(Boolean(data?.visible));
-      };
-      ipcRenderer.on("mini:visibility", handler);
-      return () => {
-        ipcRenderer.removeListener("mini:visibility", handler);
-      };
-    },
-    onDismissPreview: onIpcSignal("mini:dismissPreview"),
-    request: (request: MiniBridgeRequest) =>
-      ipcRenderer.invoke(
-        "miniBridge:request",
-        request,
-      ) as Promise<MiniBridgeResponse>,
-    onUpdate: onIpc<MiniBridgeUpdate>("miniBridge:update"),
-    onRequest: onIpc<MiniBridgeRequestEnvelope>("miniBridge:request"),
-    respond: (envelope: MiniBridgeResponseEnvelope) =>
-      ipcRenderer.send("miniBridge:response", envelope),
-    ready: () => ipcRenderer.send("miniBridge:ready"),
-    pushUpdate: (update: MiniBridgeUpdate) =>
-      ipcRenderer.send("miniBridge:update", update),
-  },
+  mini: {},
 
   theme: {
     onChange: onIpcWithEvent<{ key: string; value: string }>("theme:change"),

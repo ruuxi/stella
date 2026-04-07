@@ -5,10 +5,8 @@ import {
   useRef,
   type Dispatch,
 } from "react";
-import { MINI_SHELL_SIZE } from "@/shared/lib/layout";
 import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
-import { MiniShell } from "@/shell/mini/MiniShell";
 import { VoiceOverlay } from "@/shell/overlay/VoiceOverlay";
 import { MorphTransition } from "@/shell/overlay/MorphTransition";
 import { ScreenGuideAnnotations, type ScreenGuideAnnotation } from "@/shell/overlay/ScreenGuideAnnotations";
@@ -32,10 +30,8 @@ type OverlayState = {
   radialVisible: boolean;
   radialPosition: { x: number; y: number } | null;
   radialWindowBounds: WindowBounds | null;
+  radialCompactFocused: boolean;
   regionCaptureActive: boolean;
-  miniVisible: boolean;
-  miniPreviewVisible: boolean;
-  miniPosition: { x: number; y: number } | null;
   voiceVisible: boolean;
   voicePosition: { x: number; y: number } | null;
   screenGuideVisible: boolean;
@@ -43,15 +39,10 @@ type OverlayState = {
 };
 
 type OverlayAction =
-  | { type: "radial:show"; position?: { x: number; y: number } }
+  | { type: "radial:show"; position?: { x: number; y: number }; compactFocused?: boolean }
   | { type: "radial:hide" }
   | { type: "radial:windowBounds"; bounds: WindowBounds | null }
   | { type: "region"; active: boolean }
-  | { type: "mini:show"; position: { x: number; y: number } }
-  | { type: "mini:hide" }
-  | { type: "mini:restore" }
-  | { type: "mini:position"; position: { x: number; y: number } }
-  | { type: "mini:preview"; visible: boolean }
   | { type: "voice:show"; position: { x: number; y: number } }
   | { type: "voice:hide" }
   | { type: "screenGuide:show"; annotations: ScreenGuideAnnotation[] }
@@ -67,11 +58,9 @@ function isSamePosition(
 const initialState: OverlayState = {
   radialVisible: false,
   radialPosition: null,
+  radialCompactFocused: false,
   radialWindowBounds: null,
   regionCaptureActive: false,
-  miniVisible: false,
-  miniPreviewVisible: false,
-  miniPosition: null,
   voiceVisible: false,
   voicePosition: null,
   screenGuideVisible: false,
@@ -91,7 +80,7 @@ function overlayReducer(
       ) {
         return state;
       }
-      return { ...state, radialVisible: true, radialPosition: nextPosition };
+      return { ...state, radialVisible: true, radialPosition: nextPosition, radialCompactFocused: action.compactFocused ?? false };
     }
     case "radial:hide":
       return state.radialVisible
@@ -103,26 +92,6 @@ function overlayReducer(
       return state.regionCaptureActive === action.active
         ? state
         : { ...state, regionCaptureActive: action.active };
-    case "mini:show":
-      if (
-        state.miniVisible &&
-        isSamePosition(state.miniPosition, action.position)
-      ) {
-        return state;
-      }
-      return { ...state, miniVisible: true, miniPosition: action.position };
-    case "mini:hide":
-      return state.miniVisible ? { ...state, miniVisible: false } : state;
-    case "mini:restore":
-      return state.miniVisible ? state : { ...state, miniVisible: true };
-    case "mini:position":
-      return isSamePosition(state.miniPosition, action.position)
-        ? state
-        : { ...state, miniPosition: action.position };
-    case "mini:preview":
-      return state.miniPreviewVisible === action.visible
-        ? state
-        : { ...state, miniPreviewVisible: action.visible };
     case "voice:show":
       if (
         state.voiceVisible &&
@@ -178,6 +147,7 @@ function useOverlayIPC(
           y?: number;
           screenX?: number;
           screenY?: number;
+          compactFocused?: boolean;
         },
       ) => {
         if (radialHideTimerRef.current) {
@@ -191,9 +161,10 @@ function useOverlayIPC(
           dispatch({
             type: "radial:show",
             position: { x: data.screenX!, y: data.screenY! },
+            compactFocused: data.compactFocused,
           });
         } else {
-          dispatch({ type: "radial:show" });
+          dispatch({ type: "radial:show", compactFocused: data.compactFocused });
         }
       },
     );
@@ -241,29 +212,6 @@ function useOverlayIPC(
     };
   }, [dispatch]);
 
-  // Mini shell visibility.
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const cleanup = api.overlay.onShowMini?.(
-      (data: { x: number; y: number }) => {
-        dispatch({ type: "mini:show", position: { x: data.x, y: data.y } });
-      },
-    );
-    const cleanupHide = api.overlay.onHideMini?.(() => {
-      dispatch({ type: "mini:hide" });
-    });
-    const cleanupRestore = api.overlay.onRestoreMini?.(() => {
-      dispatch({ type: "mini:restore" });
-    });
-    return () => {
-      cleanup?.();
-      cleanupHide?.();
-      cleanupRestore?.();
-    };
-  }, [dispatch]);
-
   // Standalone voice overlay visibility/position.
   useEffect(() => {
     const api = window.electronAPI;
@@ -307,79 +255,6 @@ function useOverlayIPC(
 }
 
 // ---------------------------------------------------------------------------
-// Hook: useMiniDrag
-// Extracts mini shell drag mechanics (mousedown handler + mousemove/mouseup
-// effect). The mini shell lives inside a fullscreen overlay, so
-// -webkit-app-region: drag would move the entire window. Instead we mutate
-// the DOM directly during drag and commit the final position on mouseup.
-// ---------------------------------------------------------------------------
-function useMiniDrag(
-  miniRef: React.RefObject<HTMLDivElement | null>,
-  dispatch: Dispatch<OverlayAction>,
-) {
-  const miniDragRef = useRef<{
-    startX: number;
-    startY: number;
-    origX: number;
-    origY: number;
-  } | null>(null);
-
-  const handleMiniTitlebarMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      // Only left button, only on the titlebar drag area (not buttons/inputs)
-      if (e.button !== 0) return;
-      const target = e.target as HTMLElement;
-      // Must be inside .mini-titlebar but not inside interactive child areas
-      if (!target.closest(".mini-titlebar")) return;
-      if (
-        target.closest(
-          ".mini-titlebar-left, .mini-titlebar-right, button, input, textarea",
-        )
-      )
-        return;
-      e.preventDefault();
-      const el = miniRef.current;
-      if (!el) return;
-      miniDragRef.current = {
-        startX: e.clientX,
-        startY: e.clientY,
-        origX: parseInt(el.style.left, 10) || 0,
-        origY: parseInt(el.style.top, 10) || 0,
-      };
-    },
-    [miniRef],
-  );
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!miniDragRef.current || !miniRef.current) return;
-      const dx = e.clientX - miniDragRef.current.startX;
-      const dy = e.clientY - miniDragRef.current.startY;
-      // Direct DOM mutation with no React re-render.
-      miniRef.current.style.left = `${miniDragRef.current.origX + dx}px`;
-      miniRef.current.style.top = `${miniDragRef.current.origY + dy}px`;
-    };
-    const handleMouseUp = () => {
-      if (miniDragRef.current && miniRef.current) {
-        // Commit final position to React state
-        const x = parseInt(miniRef.current.style.left, 10) || 0;
-        const y = parseInt(miniRef.current.style.top, 10) || 0;
-        dispatch({ type: "mini:position", position: { x, y } });
-      }
-      miniDragRef.current = null;
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [miniRef, dispatch]);
-
-  return { handleMiniTitlebarMouseDown };
-}
-
-// ---------------------------------------------------------------------------
 // Hook: useOverlayHitTesting
 // Manages the overlay's setIgnoreMouseEvents toggle based on which overlay
 // subsystems are currently active and whether the cursor is over an
@@ -387,14 +262,11 @@ function useMiniDrag(
 // ---------------------------------------------------------------------------
 function useOverlayHitTesting(
   state: OverlayState,
-  miniRef: React.RefObject<HTMLDivElement | null>,
   updateInteractive: (shouldBeInteractive: boolean) => void,
 ) {
   const {
     regionCaptureActive,
-    miniPreviewVisible,
     radialVisible,
-    miniVisible,
     voiceVisible,
     voicePosition,
     screenGuideVisible,
@@ -403,50 +275,23 @@ function useOverlayHitTesting(
   const voiceY = voicePosition?.y ?? null;
 
   useEffect(() => {
-    // When region capture is active, the entire overlay must be interactive
     if (regionCaptureActive) {
       updateInteractive(true);
       return;
     }
 
-    // Screenshot preview behaves like a modal over the overlay; keep full hit-test enabled.
-    if (miniPreviewVisible) {
-      updateInteractive(true);
-      return;
-    }
-
-    // When radial is visible, main process handles interactivity directly
     if (radialVisible) {
       return;
     }
 
-    // Screen guide annotations are non-interactive (click-through).
-    // For mini shell and voice: only interactive when cursor is over an
-    // active interactive region.
-    if (!miniVisible && !voiceVisible) {
+    if (!voiceVisible) {
       updateInteractive(false);
       return;
     }
 
-    // Mini/voice activation is driven by the main process, which temporarily
-    // leaves the fullscreen overlay fully interactive. Reset to click-through
-    // immediately, then let hover re-enable hit-testing over the active UI.
     updateInteractive(false);
 
     const handleMouseMove = (e: MouseEvent) => {
-      let isOverMini = false;
-      if (miniVisible) {
-        const miniEl = miniRef.current;
-        if (miniEl) {
-          const rect = miniEl.getBoundingClientRect();
-          isOverMini =
-            e.clientX >= rect.left &&
-            e.clientX <= rect.right &&
-            e.clientY >= rect.top &&
-            e.clientY <= rect.bottom;
-        }
-      }
-
       let isOverVoice = false;
       if (voiceVisible && voiceX !== null && voiceY !== null) {
         const left = voiceX - VOICE_CREATURE_SIZE.width / 2;
@@ -458,20 +303,17 @@ function useOverlayHitTesting(
           e.clientY <= top + VOICE_CREATURE_SIZE.height;
       }
 
-      updateInteractive(isOverMini || isOverVoice);
+      updateInteractive(isOverVoice);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [
     regionCaptureActive,
-    miniPreviewVisible,
     radialVisible,
-    miniVisible,
     voiceVisible,
     voiceX,
     voiceY,
-    miniRef,
     updateInteractive,
   ]);
 
@@ -479,8 +321,6 @@ function useOverlayHitTesting(
     const anythingActive =
       radialVisible ||
       regionCaptureActive ||
-      miniPreviewVisible ||
-      miniVisible ||
       voiceVisible ||
       screenGuideVisible;
 
@@ -490,8 +330,6 @@ function useOverlayHitTesting(
   }, [
     radialVisible,
     regionCaptureActive,
-    miniPreviewVisible,
-    miniVisible,
     voiceVisible,
     screenGuideVisible,
     updateInteractive,
@@ -505,15 +343,9 @@ function useOverlayHitTesting(
 export function OverlayRoot() {
   const [state, dispatch] = useReducer(overlayReducer, initialState);
   const interactiveRef = useRef<boolean | null>(null);
-  const miniRef = useRef<HTMLDivElement>(null);
   const radialRef = useRef<HTMLDivElement>(null);
-  const miniDisplayed = state.miniVisible && !state.regionCaptureActive;
 
-  // Wire up all IPC subscriptions (radial, region, mini, voice)
   useOverlayIPC(dispatch);
-
-  // Mini shell drag mechanics
-  const { handleMiniTitlebarMouseDown } = useMiniDrag(miniRef, dispatch);
 
   // Interactivity / hit-testing management
   const updateInteractive = useCallback((shouldBeInteractive: boolean) => {
@@ -529,25 +361,15 @@ export function OverlayRoot() {
   }, []);
 
   useEffect(() => {
-    // The main process can toggle overlay interactivity directly when radial,
-    // mini, preview, capture, voice, or screen guide surfaces open/close.
-    // Mark the renderer cache stale so the next renderer-side update always
-    // resynchronizes.
     interactiveRef.current = null;
   }, [
     state.radialVisible,
     state.regionCaptureActive,
-    state.miniPreviewVisible,
-    state.miniVisible,
     state.voiceVisible,
     state.screenGuideVisible,
   ]);
 
-  useOverlayHitTesting(state, miniRef, updateInteractive);
-
-  const handleMiniPreviewVisibilityChange = useCallback((visible: boolean) => {
-    dispatch({ type: "mini:preview", visible });
-  }, []);
+  useOverlayHitTesting(state, updateInteractive);
 
   return (
     <div
@@ -590,7 +412,7 @@ export function OverlayRoot() {
           pointerEvents: state.radialVisible ? "auto" : "none",
         }}
       >
-        <RadialDial miniVisible={state.miniVisible} />
+        <RadialDial miniVisible={state.radialCompactFocused} />
       </div>
 
       {/* Region capture: mounted only when active. */}
@@ -606,27 +428,6 @@ export function OverlayRoot() {
           <RegionCapture />
         </div>
       )}
-
-      {/* Mini shell: always mounted for context sync, visibility via CSS. */}
-      <div
-        ref={miniRef}
-        onMouseDown={handleMiniTitlebarMouseDown}
-        style={{
-          position: "absolute",
-          zIndex: 1,
-          left: state.miniPosition?.x ?? 0,
-          top: state.miniPosition?.y ?? 0,
-          width: MINI_SHELL_SIZE.width,
-          height: MINI_SHELL_SIZE.height,
-          pointerEvents: miniDisplayed ? "auto" : "none",
-          opacity: miniDisplayed ? 1 : 0,
-          visibility: miniDisplayed ? "visible" : "hidden",
-        }}
-      >
-        <MiniShell
-          onPreviewVisibilityChange={handleMiniPreviewVisibilityChange}
-        />
-      </div>
 
       <VoiceOverlay
         visible={state.voiceVisible && Boolean(state.voicePosition)}

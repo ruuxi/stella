@@ -3,6 +3,7 @@ import {
   Suspense,
   startTransition,
   useCallback,
+  useEffect,
   useState,
 } from "react";
 import type { GeneratedPage } from "@/app/registry";
@@ -12,6 +13,7 @@ import { useUiState } from "@/context/ui-state";
 import { useWorkspace } from "@/context/workspace-state";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { dispatchCloseSidebarChat, dispatchOpenSidebarChat, dispatchShowHome } from "@/shared/lib/stella-orb-chat";
+import { getPlatform } from "@/platform/electron/platform";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { DisplayOverlay } from "./DisplayOverlay";
@@ -48,7 +50,15 @@ export const FullShellReadySurface = ({
     useState<PendingAskStellaRequest | null>(null);
   const [isSidebarChatOpen, setIsSidebarChatOpen] = useState(false);
   const [isShowingHomeContent, setIsShowingHomeContent] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const { projects, pickProjectDirectory } = useDevProjects();
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 600px)");
+    const handler = () => { if (!mq.matches) setDrawerOpen(false); };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   const showAuthDialog = useCallback(() => {
     setActiveDialog("auth");
@@ -159,24 +169,31 @@ export const FullShellReadySurface = ({
     dispatchOpenSidebarChat();
   }, [state.view]);
 
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+
   return (
     <>
+      {drawerOpen && (
+        <div className="sidebar-drawer-scrim" onClick={closeDrawer} />
+      )}
+
       <Sidebar
+        className={drawerOpen ? "sidebar--drawer-open" : undefined}
         activeView={state.view}
         isShowingHomeContent={isShowingHomeContent}
         onSignIn={showAuthDialog}
         onConnect={showConnectDialog}
         onSettings={showSettingsDialog}
         onStore={showStoreView}
-        onChat={showChatView}
-        onSocial={showSocialView}
-        onNewAppAskStella={handleNewAppAskStella}
-        onNewAppLocalProject={handleNewAppLocalProject}
+        onChat={() => { closeDrawer(); showChatView(); }}
+        onSocial={() => { closeDrawer(); showSocialView(); }}
+        onNewAppAskStella={() => { closeDrawer(); handleNewAppAskStella(); }}
+        onNewAppLocalProject={() => { closeDrawer(); void handleNewAppLocalProject(); }}
         activePageId={activePageId}
-        onPageSelect={handlePageSelect}
+        onPageSelect={(page) => { closeDrawer(); handlePageSelect(page); }}
         projects={projects}
         activeProjectId={activeProjectId}
-        onProjectSelect={handleProjectSelect}
+        onProjectSelect={(project) => { closeDrawer(); handleProjectSelect(project); }}
       />
 
       <StellaContextMenu
@@ -185,6 +202,18 @@ export const FullShellReadySurface = ({
         onCloseSidebarChat={dispatchCloseSidebarChat}
       >
         <div className="content-area">
+          <button
+            type="button"
+            className={`compact-hamburger${getPlatform() === "darwin" ? " compact-hamburger--mac" : ""}`}
+            onClick={() => setDrawerOpen(true)}
+            aria-label="Open menu"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
           {!showChatSurface && (
             <WorkspaceArea
               view={state.view}
