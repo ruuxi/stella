@@ -1,147 +1,426 @@
 /* ============================================
-   ConnectDialog — card grid + detail area
+   Connect Dialog SVG Animation
    ============================================ */
 
-/* Opaque dialog background (matches settings dialog) */
+.connect-hero-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.connect-hero-tagline {
+  text-align: center;
+  max-width: 340px;
+  margin: 0;
+  padding: 12px 0 0;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.55;
+  color: var(--text-base);
+}
+
+.connect-hero-animation {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 140px;
+  flex-shrink: 0;
+}
+
+.connect-hero-svg {
+  width: 100%;
+  height: 100%;
+  max-width: 440px;
+  overflow: visible;
+}
+
+.anim-phone-group {
+  animation: connectFloatPhone 6s ease-in-out infinite;
+  transform-origin: 105px 75px;
+}
+
+.anim-monitor-group {
+  animation: connectFloatMonitor 7s ease-in-out infinite;
+  transform-origin: 295px 70px;
+}
+
+.anim-cursor {
+  animation: connectMoveCursor 4s ease-in-out infinite;
+}
+
+.anim-cursor-phone {
+  animation: connectMoveCursorPhone 4s ease-in-out infinite;
+}
+
+.anim-click-ripple {
+  animation: connectClickRipple 4s ease-in-out infinite;
+  transform-origin: 280px 50px;
+}
+
+.anim-click-ripple-phone {
+  animation: connectClickRipple 4s ease-in-out infinite;
+  animation-delay: 2s;
+  transform-origin: 105px 78px;
+}
+
+.anim-signal-line {
+  animation: connectSignalFlow 1.5s linear infinite;
+}
+
+.anim-pulse {
+  animation: connectPulseDot 2s ease-in-out infinite;
+  transform-origin: 105px 78px;
+}
+
+@keyframes connectFloatPhone {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-4px) rotate(1.5deg); }
+}
+
+@keyframes connectFloatMonitor {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes connectMoveCursor {
+  0% { transform: translate(15px, 20px); }
+  20% { transform: translate(0, 0); }
+  40% { transform: translate(0, 0); }
+  60% { transform: translate(10px, -5px); }
+  80% { transform: translate(10px, -5px); }
+  100% { transform: translate(15px, 20px); }
+}
+
+@keyframes connectMoveCursorPhone {
+  0% { transform: translate(10px, 25px); }
+  20% { transform: translate(10px, 25px); }
+  40% { transform: translate(10px, 25px); }
+  60% { transform: translate(0, 0); }
+  80% { transform: translate(0, 0); }
+  100% { transform: translate(10px, 25px); }
+}
+
+@keyframes connectClickRipple {
+  0%, 20% { opacity: 0; transform: scale(0.2); }
+  25% { opacity: 0.3; transform: scale(1); }
+  35%, 100% { opacity: 0; transform: scale(1.5); }
+}
+
+@keyframes connectSignalFlow {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -10; }
+}
+
+@keyframes connectPulseDot {
+  0%, 100% { transform: scale(1); opacity: 0.1; }
+  50% { transform: scale(1.5); opacity: 0.25; }
+}
+
+/* ============================================
+   ConnectDialog — card grid + detail area
+   Surfaces align with shell sidebar + home (glass, nav rows, dashboard cards)
+   ============================================ */
+
 [data-slot="dialog-content"].connect-dialog {
-  background: var(--background);
-  background-clip: border-box;
-  border-color: var(--border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-weak);
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
+  max-height: 100%;
 }
 
-/* Body edge padding */
+.connect-dialog [data-slot="dialog-header"] {
+  padding: 20px 20px 20px 28px;
+  border-bottom: 1px solid var(--border-weak);
+}
+
+/* Taller modal footprint; grid + detail share the same body box (overrides data-fit auto height) */
+[data-component="dialog"][data-fit]:has([data-slot="dialog-content"].connect-dialog)
+  [data-slot="dialog-container"] {
+  height: min(calc(100vh - 16px), 680px);
+  min-height: 620px;
+}
+
+/* Body fills space below header; main pane stays one size when switching views */
 .connect-dialog [data-slot="dialog-body"] {
-  padding: 0 24px 24px;
+  flex: 1;
+  min-height: 0;
+  padding: 8px 28px 32px;
 }
 
-/* Section title */
+.connect-dialog-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  width: 100%;
+}
+
+/* Section title — matches .sidebar-nav-section-label */
 .connect-section-title {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-weak);
-  margin: 0 0 8px 0;
+  margin: 0;
   padding: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-weaker);
+  opacity: 0.85;
 }
 
 .connect-section-title:not(:first-child) {
-  margin-top: 16px;
+  margin-top: 8px;
+}
+
+/* Featured row — home .dashboard-card family */
+.connect-grid-card--wide {
+  width: 100%;
+  margin-bottom: 0;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 24px 24px;
+  gap: 18px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card) 20%, transparent);
+  border: 1px solid var(--border-weak);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.connect-grid-card--wide:hover {
+  background: color-mix(in srgb, var(--card) 32%, transparent);
+  border-color: var(--border-base);
+}
+
+.connect-grid-card--wide.connect-grid-card-selected {
+  background: color-mix(in srgb, var(--card) 36%, transparent);
+  border-color: var(--border-base);
+}
+
+.connect-grid-card--wide .connect-grid-card-icon {
+  width: 40px;
+  height: 40px;
+  color: var(--interactive, var(--primary));
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  border-radius: var(--radius-md);
+  padding: 0;
+}
+
+.connect-grid-card--wide .connect-grid-card-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.connect-grid-card--wide .connect-grid-card-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: clamp(1.15rem, 2.5vw, 1.35rem);
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+  color: var(--text-strong);
+  white-space: normal;
 }
 
 /* 2-column card grid */
 .connect-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  gap: 14px;
 }
 
-/* Grid card */
+/* Grid card — sidebar .sidebar-nav-item family */
 .connect-grid-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  gap: 14px;
   cursor: pointer;
-  font: inherit;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
   text-align: left;
-  color: var(--foreground);
-  transition: border-color 0.15s, background 0.15s;
   position: relative;
+  border: none;
+  background: transparent;
+  color: var(--text-base);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.45;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.connect-grid-card:hover {
-  border-color: color-mix(in oklch, var(--foreground) 10%, transparent);
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+.connect-grid-card:not(.connect-grid-card--wide) {
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
 }
 
-.connect-grid-card-selected {
-  border-color: color-mix(in oklch, var(--foreground) 14%, transparent);
+.connect-grid-card:not(.connect-grid-card--wide):hover {
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
 }
 
-/* Card icon */
+.connect-grid-card:not(.connect-grid-card--wide):active {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.connect-grid-card-selected:not(.connect-grid-card--wide) {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+}
+
+/* Card icon — sidebar icon size */
 .connect-grid-card-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
   flex-shrink: 0;
   border-radius: 6px;
 }
 
-.connect-grid-card-icon svg {
-  width: 18px;
-  height: 18px;
+.connect-grid-card:not(.connect-grid-card--wide) .connect-grid-card-icon {
+  width: 24px;
+  height: 24px;
+  color: var(--text-weak);
+}
+
+.connect-grid-card:not(.connect-grid-card--wide):hover .connect-grid-card-icon,
+.connect-grid-card:not(.connect-grid-card--wide).connect-grid-card-selected
+  .connect-grid-card-icon {
+  color: var(--text-strong);
+}
+
+.connect-grid-card:not(.connect-grid-card--wide) .connect-grid-card-icon svg {
+  width: 20px;
+  height: 20px;
 }
 
 /* Card name */
-.connect-grid-card-name {
+.connect-grid-card:not(.connect-grid-card--wide) .connect-grid-card-name {
   flex: 1;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: inherit;
+  font-weight: inherit;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Connected badge dot on card */
+/* Connected indicator — vertical glow line on right edge */
 .connect-grid-card-badge {
+  position: absolute;
+  top: 6px;
+  right: 0;
+  bottom: 6px;
+  width: 3px;
   display: flex;
-  align-items: center;
-  flex-shrink: 0;
 }
 
 .connect-grid-card-badge-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
   background: #22c55e;
+  box-shadow: 0 0 8px 2px rgba(34, 197, 94, 0.4);
 }
 
-/* Detail area */
-.connect-detail-area {
-  margin-top: 16px;
-  padding: 16px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
-  animation: connect-detail-enter 0.2s ease-out;
+/* Back button — .sidebar-icon-button family */
+.connect-back-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-@keyframes connect-detail-enter {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.connect-back-button:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+}
+
+.connect-back-button:active {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+/* Full view — replaces grid when a provider is selected */
+.connect-full-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  animation: connect-view-enter 0.15s ease-out;
+}
+
+.connect-full-view .connect-detail-area {
+  border: none;
+  background: none;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.connect-full-view .connect-detail-header {
+  display: none;
+}
+
+.connect-full-view .connect-detail-body {
+  flex: 1;
+  min-height: 0;
+  padding: 28px 32px;
+  background: color-mix(in srgb, var(--card) 20%, transparent);
+  border: 1px solid var(--border-weak);
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+@keyframes connect-view-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .connect-detail-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 12px;
+  margin-bottom: 18px;
 }
 
 .connect-detail-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
 }
 
 .connect-detail-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 20px;
+  min-height: 140px;
 }
 
 /* ============================================
@@ -149,38 +428,53 @@
    ============================================ */
 
 .connect-instructions {
-  font-size: 13px;
-  color: var(--muted-foreground);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--text-weak);
   line-height: 1.5;
   margin: 0;
+}
+
+.connect-dialog .connect-instructions {
+  line-height: 1.65;
 }
 
 /* Link code display (bot-based) */
 .connect-code-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
+  min-height: 42px;
 }
 
 .connect-code {
-  font-family: var(--font-family-mono, "JetBrains Mono", monospace);
+  font-family: var(--font-family-mono, "IBM Plex Mono", monospace);
   font-size: 22px;
   font-weight: 600;
   letter-spacing: 0.15em;
-  color: var(--foreground);
-  padding: 6px 14px;
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  border-radius: var(--radius-md, 6px);
+  color: var(--text-strong);
+  padding: 10px 18px;
+  background: color-mix(in srgb, var(--background) 60%, transparent);
+  border-radius: var(--radius-md, 10px);
   border: 1px solid var(--border-weak);
   user-select: all;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 /* Bot link */
 .connect-bot-link {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
+  gap: 8px;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   color: var(--text-weak);
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -188,34 +482,45 @@
   background: none;
   border: none;
   padding: 0;
-  font-family: inherit;
 }
 
 .connect-bot-link:hover {
-  color: var(--foreground);
+  color: var(--text-base);
 }
 
-/* Status + disconnect row */
-.connect-status-row {
+/* Connected view — fills min-height, vertically centered */
+.connect-connected-view {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 22px;
+  flex: 1;
+  min-height: 120px;
+  text-align: center;
+}
+
+.connect-connected-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.connect-connected-desc {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--text-weak);
+  line-height: 1.45;
 }
 
 .connect-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 15px;
   font-weight: 500;
   color: #22c55e;
-}
-
-.connect-status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #22c55e;
 }
 
 /* Skeleton loading */
@@ -238,7 +543,42 @@
 
 .connect-skeleton-code {
   width: 140px;
-  height: 38px;
+  height: 42px;
+}
+
+/* QR code layout — QR on left, code + meta on right */
+.connect-qr-code-row {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.connect-qr-code {
+  width: 100px;
+  height: 100px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.connect-skeleton-qr {
+  width: 100px;
+  height: 100px;
+}
+
+.connect-qr-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.connect-qr-meta {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--text-weak);
+  line-height: 1.45;
 }
 
 /* Error state */
@@ -246,6 +586,56 @@
   font-size: 12px;
   color: #ff8f8f;
   background: rgba(255, 143, 143, 0.1);
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-radius: var(--radius-md, 6px);
+}
+
+/* Phone number + code entry forms */
+.connect-phone-form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.connect-phone-input,
+.connect-code-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--background) 60%, transparent);
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius-md, 10px);
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.connect-phone-input::placeholder,
+.connect-code-input::placeholder {
+  color: var(--text-weak);
+}
+
+.connect-phone-input:focus,
+.connect-code-input:focus {
+  border-color: var(--border-base);
+  background: color-mix(in srgb, var(--background) 80%, transparent);
+}
+
+.connect-code-input {
+  max-width: 140px;
+  font-family: var(--font-family-mono, "IBM Plex Mono", monospace);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.connect-code-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }

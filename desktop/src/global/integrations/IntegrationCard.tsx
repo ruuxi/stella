@@ -4,8 +4,10 @@ import {
   useEffect,
   useCallback,
   type ReactNode,
+  type FormEvent,
 } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
+import QRCode from "qrcode";
 import { api } from "@/convex/api";
 import { Button } from "@/ui/button";
 import { showToast } from "@/ui/toast";
@@ -73,20 +75,130 @@ function ConnectedView({ integration }: { integration: Integration }) {
   };
 
   return (
-    <div className="connect-status-row">
-      <span className="connect-status">
-        <span className="connect-status-dot" />
-        Connected
-      </span>
+    <div className="connect-connected-view">
+      <div className="connect-connected-info">
+        <span className="connect-status">Connected</span>
+        <span className="connect-connected-desc">
+          Stella is receiving messages from {integration.displayName}.
+        </span>
+      </div>
       <Button
         variant="ghost"
-        size="small"
         onClick={handleDisconnect}
         disabled={disconnecting}
       >
         {disconnecting ? "Disconnecting..." : "Disconnect"}
       </Button>
     </div>
+  );
+}
+
+function LinqSetupView({ integration }: { integration: Integration }) {
+  const sendSms = useAction(api.channels.linq.sendLinqLinkSms);
+  const verifyCode = useMutation(api.channels.link_codes.verifyLinqLinkCode);
+  const [phone, setPhone] = useState("");
+  const [step, setStep] = useState<"phone" | "code">("phone");
+  const [code, setCode] = useState("");
+  const [sending, setSending] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSendSms = useCallback(async (e: FormEvent) => {
+    e.preventDefault();
+    if (!phone.trim() || sending) return;
+    setError(null);
+    setSending(true);
+    try {
+      await sendSms({ phoneNumber: phone.trim() });
+      setStep("code");
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to send code. Check the number and try again."));
+    } finally {
+      setSending(false);
+    }
+  }, [phone, sending, sendSms]);
+
+  const handleVerify = useCallback(async (e: FormEvent) => {
+    e.preventDefault();
+    if (!code.trim() || verifying) return;
+    setError(null);
+    setVerifying(true);
+    try {
+      const { result } = await verifyCode({
+        code: code.trim(),
+        phoneNumber: phone.replace(/[\s\-().]/g, ""),
+      });
+      if (result === "linked") {
+        showToast("Connected! You can now text Stella.");
+      } else if (result === "invalid_code") {
+        setError("Invalid or expired code. Try sending a new one.");
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to verify code."));
+    } finally {
+      setVerifying(false);
+    }
+  }, [code, verifying, verifyCode, phone]);
+
+  return (
+    <>
+      <p className="connect-instructions">{integration.instructions}</p>
+      {error && <div className="connect-error">{error}</div>}
+
+      {step === "phone" ? (
+        <form className="connect-phone-form" onSubmit={handleSendSms}>
+          <input
+            type="tel"
+            className="connect-phone-input"
+            placeholder="+1 (555) 123-4567"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            autoFocus
+          />
+          <Button
+            type="submit"
+            variant="ghost"
+            disabled={!phone.trim() || sending}
+          >
+            {sending ? "Sending..." : "Send Code"}
+          </Button>
+        </form>
+      ) : (
+        <div className="connect-code-entry">
+          <p className="connect-instructions">
+            Check your phone — we sent a 6-digit code to {phone}.
+          </p>
+          <form className="connect-phone-form" onSubmit={handleVerify}>
+            <input
+              type="text"
+              className="connect-code-input"
+              placeholder="ABC123"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              maxLength={6}
+              autoFocus
+              autoComplete="one-time-code"
+            />
+            <Button
+              type="submit"
+              variant="ghost"
+              disabled={code.trim().length < 6 || verifying}
+            >
+              {verifying ? "Verifying..." : "Verify"}
+            </Button>
+          </form>
+          <button
+            type="button"
+            className="connect-bot-link"
+            onClick={() => { setStep("phone"); setCode(""); setError(null); }}
+          >
+            Use a different number
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -198,20 +310,18 @@ function BotSetupView({
   return (
     <SetupContent instructions={integration.instructions} error={error}>
       <>
-        {error ? null : (
-          <div className="connect-code-row">
-            {code ? (
-              <>
-                <span className="connect-code">{code}</span>
-                <Button variant="ghost" size="small" onClick={handleCopy}>
-                  Copy
-                </Button>
-              </>
-            ) : (
-              <div className="connect-skeleton connect-skeleton-code" />
-            )}
-          </div>
-        )}
+        <div className="connect-code-row">
+          {code ? (
+            <>
+              <span className="connect-code">{code}</span>
+              <Button variant="ghost" size="small" onClick={handleCopy}>
+                Copy
+              </Button>
+            </>
+          ) : (
+            <div className="connect-skeleton connect-skeleton-code" />
+          )}
+        </div>
 
         {botLink ? (
           <a
@@ -277,6 +387,8 @@ export function IntegrationDetailArea({
     );
   } else if (isConnected) {
     detailContent = <ConnectedView integration={integration} />;
+  } else if (integration.provider === "linq") {
+    detailContent = <LinqSetupView integration={integration} />;
   } else {
     detailContent = <BotSetupView integration={integration} isExpanded={true} />;
   }

@@ -46,6 +46,33 @@ registerVoiceRoutes(http);
 registerStripeRoutes(http);
 
 // ---------------------------------------------------------------------------
+// Static assets (vCard, etc.)
+// ---------------------------------------------------------------------------
+
+const STELLA_VCARD =
+  `BEGIN:VCARD\r\n` +
+  `VERSION:3.0\r\n` +
+  `FN:Stella\r\n` +
+  `TEL;TYPE=CELL:+12052490578\r\n` +
+  `NOTE:Your AI assistant — text me anytime.\r\n` +
+  `END:VCARD`;
+
+http.route({
+  path: "/stella.vcf",
+  method: "GET",
+  handler: httpAction(async () => {
+    return new Response(STELLA_VCARD, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/vcard; charset=utf-8",
+        "Content-Disposition": 'attachment; filename="Stella.vcf"',
+        "Cache-Control": "public, max-age=86400",
+      },
+    });
+  }),
+});
+
+// ---------------------------------------------------------------------------
 // Stella provider endpoints
 // ---------------------------------------------------------------------------
 

@@ -1,13 +1,15 @@
 import {
+  action,
   internalAction,
   internalMutation,
   internalQuery,
 } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { processIncomingMessage } from "./message_pipeline";
 import { processLinkCode } from "./link_codes";
+import { SIGN_IN_REQUIRED_ERROR } from "./routing_flow";
 import { retryFetch } from "../lib/retry_fetch";
 import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "../shared_validators";
 
@@ -44,17 +46,24 @@ const linqFetch = async (
   });
 };
 
+type LinqMessagePart =
+  | { type: "text"; value: string }
+  | { type: "media"; url: string };
+
 const linqCreateChat = async (
   from: string,
   to: string[],
   text: string,
+  extraParts?: LinqMessagePart[],
 ): Promise<string> => {
+  const parts: LinqMessagePart[] = [{ type: "text", value: text }];
+  if (extraParts) parts.push(...extraParts);
   const res = await linqFetch("/v3/chats", {
     method: "POST",
     body: JSON.stringify({
       from,
       to,
-      message: { parts: [{ type: "text", value: text }] },
+      message: { parts },
     }),
   });
 
@@ -63,20 +72,31 @@ const linqCreateChat = async (
     throw new Error(`Linq createChat failed: ${res.status} ${text}`);
   }
 
-  const data = (await res.json()) as { id?: string; chat_id?: string };
-  const chatId = data.id ?? data.chat_id;
-  if (!chatId) throw new Error("Linq createChat returned no chat ID");
+  const data = (await res.json()) as Record<string, unknown>;
+  const chatId =
+    (data.id as string | undefined) ??
+    (data.chat_id as string | undefined) ??
+    (data.chatId as string | undefined) ??
+    ((data.data as Record<string, unknown> | undefined)?.id as string | undefined) ??
+    ((data.data as Record<string, unknown> | undefined)?.chat_id as string | undefined);
+  if (!chatId) {
+    console.error("[linq] createChat response has no chat ID:", JSON.stringify(data));
+    throw new Error(`Linq createChat returned no chat ID: ${JSON.stringify(data)}`);
+  }
   return chatId;
 };
 
 const linqSendMessage = async (
   chatId: string,
   text: string,
+  extraParts?: LinqMessagePart[],
 ): Promise<void> => {
+  const parts: LinqMessagePart[] = [{ type: "text", value: text }];
+  if (extraParts) parts.push(...extraParts);
   const res = await linqFetch(`/v3/chats/${chatId}/messages`, {
     method: "POST",
     body: JSON.stringify({
-      message: { parts: [{ type: "text", value: text }] },
+      message: { parts },
     }),
   });
 
@@ -181,6 +201,7 @@ const sendLinqReply = async (
   phoneNumber: string,
   text: string,
   incomingChatId?: string,
+  extraParts?: LinqMessagePart[],
 ): Promise<void> => {
   const fromNumber = process.env.LINQ_FROM_NUMBER;
   if (!fromNumber) {
@@ -191,8 +212,7 @@ const sendLinqReply = async (
   // Try incoming chat ID first (most reliable — same conversation thread)
   if (incomingChatId) {
     try {
-      await linqSendMessage(incomingChatId, text);
-      // Cache it for future use
+      await linqSendMessage(incomingChatId, text, extraParts);
       await ctx.runMutation(internal.channels.linq.cacheChatId, {
         phoneNumber,
         linqChatId: incomingChatId,
@@ -210,7 +230,7 @@ const sendLinqReply = async (
 
   if (cachedChatId) {
     try {
-      await linqSendMessage(cachedChatId, text);
+      await linqSendMessage(cachedChatId, text, extraParts);
       return;
     } catch (error) {
       console.error("[linq] Cached chatId stale, creating new:", error);
@@ -218,7 +238,7 @@ const sendLinqReply = async (
   }
 
   // Create new chat (sends initial message as part of creation)
-  const newChatId = await linqCreateChat(fromNumber, [phoneNumber], text);
+  const newChatId = await linqCreateChat(fromNumber, [phoneNumber], text, extraParts);
   await ctx.runMutation(internal.channels.linq.cacheChatId, {
     phoneNumber,
     linqChatId: newChatId,
@@ -327,6 +347,62 @@ export const handleIncomingMessage = internalAction({
       );
     }
     return null;
+  },
+});
+
+export const sendWelcomeMessage = internalAction({
+  args: { phoneNumber: v.string() },
+  handler: async (ctx, args) => {
+    await sendLinqReply(
+      ctx,
+      args.phoneNumber,
+      "You\u2019re connected! Text me anytime and I\u2019ll respond right here. " +
+        "I can also take actions on your computer while we chat.",
+    );
+    return null;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Public Action — Desktop initiates SMS to the user's phone
+// ---------------------------------------------------------------------------
+
+const E164_REGEX = /^\+[1-9]\d{6,14}$/;
+const STELLA_VCARD_URL = "https://impartial-crab-34.convex.site/stella.vcf";
+
+export const sendLinqLinkSms = action({
+  args: { phoneNumber: v.string() },
+  returns: v.object({ success: v.boolean() }),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new ConvexError(SIGN_IN_REQUIRED_ERROR);
+    if ((identity as Record<string, unknown>).isAnonymous === true) {
+      throw new ConvexError(SIGN_IN_REQUIRED_ERROR);
+    }
+
+    const phone = args.phoneNumber.replace(/[\s\-().]/g, "");
+    if (!E164_REGEX.test(phone)) {
+      throw new ConvexError("Please enter a valid phone number with country code (e.g. +1…).");
+    }
+
+    const fromNumber = process.env.LINQ_FROM_NUMBER;
+    if (!fromNumber) throw new Error("Missing LINQ_FROM_NUMBER");
+
+    const { code } = await ctx.runMutation(
+      internal.channels.link_codes.generateAndStoreLinkCode,
+      { ownerId: identity.subject, provider: "linq" },
+    );
+
+    const message =
+      `Your Stella code is: ${code}\n\n` +
+      `Enter this code on your desktop to connect.\n\n` +
+      `Tap the contact card below to save Stella to your contacts.`;
+
+    await sendLinqReply(ctx, phone, message, undefined, [
+      { type: "media", url: STELLA_VCARD_URL },
+    ]);
+
+    return { success: true };
   },
 });
 
