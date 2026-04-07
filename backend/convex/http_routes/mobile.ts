@@ -1005,7 +1005,8 @@ export const registerMobileRoutes = (http: HttpRouter) => {
 
   // Browser landing after magic link verification.
   // The cross-domain plugin appends ?ott=... to this URL after verifying the token.
-  // Exchanges the OTT for a session token server-side, stores it, then redirects.
+  // Exchanges the OTT for a session cookie server-side and stores the raw
+  // Set-Cookie value so polling clients can apply it directly.
   http.route({
     path: "/api/auth/link/verify",
     method: "GET",
@@ -1015,8 +1016,6 @@ export const registerMobileRoutes = (http: HttpRouter) => {
       const ott = url.searchParams.get("ott") ?? "";
 
       if (requestId && ott) {
-        // Exchange OTT for session token server-side using better-auth API directly
-        // (bypasses CSRF / cookie issues that plague the client-side flow in RN)
         let sessionCookie = "";
         try {
           const auth = createAuth(ctx);
@@ -1025,7 +1024,6 @@ export const registerMobileRoutes = (http: HttpRouter) => {
             headers: new Headers(),
             returnHeaders: true,
           });
-          // better-auth returns headers in _headersList with custom header name
           const headersList = (verifyRes as Record<string, unknown>)
             ?.headers as { _headersList?: [string, string][] } | undefined;
           if (Array.isArray(headersList?._headersList)) {
