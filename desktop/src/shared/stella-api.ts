@@ -5,9 +5,13 @@ export const STELLA_DEFAULT_MODEL = "stella/default";
 export const normalizeStellaApiBaseUrl = (value: string): string =>
   value.trim().replace(/\/chat\/completions\/?$/i, "").replace(/\/+$/, "");
 
+export type ChatContentPart =
+  | { type?: string; text?: string }
+  | { type: "image_url"; image_url: { url: string; detail?: "auto" | "low" | "high" } };
+
 export type ChatMessage = {
   role: "system" | "user" | "assistant" | "developer";
-  content: string | Array<{ type?: string; text?: string }>;
+  content: string | ChatContentPart[];
 };
 
 export type ChatCompletionResponse = {

@@ -1047,6 +1047,150 @@ export class RealtimeVoiceSession {
       });
   }
 
+  private runLookAtScreenAsync(query: string): void {
+    const captureApi = window.electronAPI?.capture;
+    const screenGuideApi = window.electronAPI?.screenGuide;
+    if (!captureApi?.visionScreenshot || !screenGuideApi) {
+      console.warn("[realtime-voice] Cannot look at screen: missing IPC");
+      return;
+    }
+
+    (async () => {
+      try {
+        const screenshot = await captureApi.visionScreenshot();
+        if (!screenshot?.dataUrl) {
+          throw new Error("Screen capture returned no image");
+        }
+        const coordinateSpace = screenshot.coordinateSpace;
+
+        const { callChatCompletion } = await import("@/infra/ai/llm");
+
+        const response = await callChatCompletion({
+          agentType: "orchestrator",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a screen analysis assistant. The user is looking at their computer screen and asked a question. " +
+                "Analyze the screenshot and identify the relevant UI element(s). " +
+                "Return ONLY valid JSON with this exact structure:\n" +
+                '{"annotations":[{"label":"short label","x":number,"y":number,"width":number,"height":number}],"spoken":"brief description for voice"}\n' +
+                "- x,y are the top-left corner of the element in pixels relative to the screenshot\n" +
+                "- width,height are the element's approximate size in pixels\n" +
+                "- label is a short callout (2-4 words) like 'Found it!' or 'Click here'\n" +
+                "- spoken is a natural voice response (1-2 sentences) describing where the element is\n" +
+                "- If you can't find the element, return an empty annotations array and explain in spoken\n" +
+                "IMPORTANT: Return raw JSON only, no markdown fences.",
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image_url" as const,
+                  image_url: { url: screenshot.dataUrl },
+                },
+                {
+                  type: "text",
+                  text:
+                    `The uploaded screenshot is ${coordinateSpace.targetWidth}x${coordinateSpace.targetHeight} pixels. ` +
+                    `Return coordinates in that exact image space. ` +
+                    `The user asked: "${query}"`,
+                },
+              ],
+            },
+          ],
+          body: {
+            model: "stella/smart",
+            max_tokens: 1024,
+            temperature: 0.2,
+          },
+        });
+
+        const text =
+          typeof response.choices?.[0]?.message?.content === "string"
+            ? response.choices[0].message.content
+            : "";
+
+        let parsed: {
+          annotations: Array<{
+            label: string;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          }>;
+          spoken: string;
+        };
+
+        try {
+          const jsonStr = text.replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
+          parsed = JSON.parse(jsonStr);
+        } catch {
+          parsed = { annotations: [], spoken: text || "I couldn't parse the screen analysis." };
+        }
+
+        if (parsed.annotations?.length > 0) {
+          const scaleX =
+            coordinateSpace.logicalWidth / coordinateSpace.targetWidth;
+          const scaleY =
+            coordinateSpace.logicalHeight / coordinateSpace.targetHeight;
+          const withIds = parsed.annotations.map((a, i) => ({
+            id: `sg-${Date.now()}-${i}`,
+            label: a.label,
+            x: coordinateSpace.x + Math.round(a.x * scaleX),
+            y: coordinateSpace.y + Math.round(a.y * scaleY),
+            width: Math.round(a.width * scaleX),
+            height: Math.round(a.height * scaleY),
+          }));
+          screenGuideApi.show(withIds);
+
+          setTimeout(() => {
+            screenGuideApi.hide();
+          }, 10_000);
+        }
+
+        const spokenResult = parsed.spoken || "I looked at your screen but couldn't find what you're looking for.";
+        window.electronAPI?.voice.persistTranscript?.({
+          conversationId: this.conversationId ?? "voice-rtc",
+          role: "assistant",
+          text: `[SCREEN GUIDE] ${query} → ${parsed.annotations?.length ?? 0} annotations`,
+          uiVisibility: "hidden",
+        });
+
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `[System: Screen analysis complete. ${spokenResult}${parsed.annotations?.length ? " I've highlighted it on screen." : ""}]\n\nShare this with the user naturally and conversationally.`,
+              },
+            ],
+          },
+        });
+        this.sendEvent({ type: "response.create" });
+      } catch (err) {
+        console.error("[realtime-voice] Screen guide error:", err);
+        this.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: `[System: I tried to look at the screen but ran into an error: ${(err as Error).message}. Let the user know briefly.]`,
+              },
+            ],
+          },
+        });
+        this.sendEvent({ type: "response.create" });
+      }
+    })();
+  }
+
   private async handleFunctionCall(item: Record<string, unknown>) {
     const name = item.name as string;
     console.log("[realtime-voice] handleFunctionCall called with tool:", name);
@@ -1106,6 +1250,11 @@ export class RealtimeVoiceSession {
         const query = (args.query as string) || this.lastUserTranscript || "";
         result = "Searching now.";
         this.runWebSearchAsync(query, args.category as string | undefined);
+      } else if (name === "look_at_screen") {
+        const query =
+          (args.query as string) || this.lastUserTranscript || "";
+        result = "Let me take a look.";
+        this.runLookAtScreenAsync(query);
       } else if (name === "perform_action") {
         // Delegate to orchestrator. Use the user's actual transcript
         // instead of the model's paraphrase for better fidelity.
@@ -1133,9 +1282,9 @@ export class RealtimeVoiceSession {
       },
     });
 
-    // For async calls (perform_action, web_search), don't request a response here —
-    // the async handler will inject the real result and trigger response.create.
-    if (name !== "perform_action" && name !== "web_search") {
+    // For async calls, don't request a response here — the async handler
+    // will inject the real result and trigger response.create.
+    if (name !== "perform_action" && name !== "web_search" && name !== "look_at_screen") {
       this.sendEvent({ type: "response.create" });
     }
   }

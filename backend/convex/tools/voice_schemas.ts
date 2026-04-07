@@ -45,6 +45,25 @@ export function getVoiceToolSchemas(): VoiceToolSchema[] {
     },
     {
       type: "function",
+      name: "look_at_screen",
+      description:
+        "Look at the user's screen to find and point out UI elements, buttons, menus, or anything visible. " +
+        "Use when the user asks 'where is...', 'show me...', 'find the...', 'how do I...', 'what is this...', " +
+        "or any question about what's currently on their screen. " +
+        "This captures a screenshot, analyzes it, and highlights the relevant element with a visual callout on screen.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "What to look for on the screen, in the user's own words.",
+          },
+        },
+        required: ["query"],
+      },
+    },
+    {
+      type: "function",
       name: "no_response",
       description:
         "Stay silent and wait for the user to finish. Call this when the user is still thinking — filler sounds like \"hmm,\" \"um,\" \"uh,\" half-finished sentences, trailing off, or any indication they haven't completed their thought yet. Also use for ambient noise or unclear audio that isn't a real utterance. Examples: \"I want to...\" / \"So maybe we could\" / \"Hmm\" / \"Let me think\" / \"What if we—\"",
