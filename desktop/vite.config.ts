@@ -14,6 +14,7 @@ const STELLA_WORKSPACE_PANELS_DIR = path.resolve(
   'panels',
 )
 const STELLA_STATE_DIR = path.resolve(__dirname, 'state')
+const STELLA_LIFE_DIR = path.resolve(__dirname, 'life')
 const VITE_WORKSPACE_ROOT = searchForWorkspaceRoot(__dirname)
 const PACKAGE_MANIFEST_BASENAMES = new Set([
   'package.json',
@@ -399,6 +400,7 @@ export default defineConfig({
     watch: {
       ignored: [
         `${STELLA_STATE_DIR.replace(/\\/g, '/')}/**`,
+        `${STELLA_LIFE_DIR.replace(/\\/g, '/')}/**`,
       ],
     },
   },
