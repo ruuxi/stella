@@ -92,26 +92,17 @@ export const useMagicLinkAuth = (): UseMagicLinkAuthResult => {
             sessionCookie?: string;
           };
 
-          if (data.status === "completed" && (data.sessionCookie || data.ott)) {
+          if (data.status === "completed" && data.sessionCookie) {
             if (cancelledRef.current) return;
             setStatus("verifying");
             try {
-              // Browser `/api/auth/link/verify` already exchanges the OTT server-side; the token
-              // is single-use. Apply the returned Set-Cookie payload instead of verifying again.
-              if (data.sessionCookie) {
-                const prev = localStorage.getItem(BETTER_AUTH_COOKIE_STORAGE_KEY);
-                const merged = getSetCookie(data.sessionCookie, prev ?? undefined);
-                localStorage.setItem(BETTER_AUTH_COOKIE_STORAGE_KEY, merged);
-              } else {
-                await authClient.$fetch("/cross-domain/one-time-token/verify", {
-                  method: "POST",
-                  body: { token: data.ott as string },
-                });
-              }
-              // Don't check cancelledRef — once verifying, always finish.
-              const updateSession = (authClient as unknown as { updateSession?: () => void }).updateSession;
-              if (typeof updateSession === "function") {
-                updateSession();
+              const prev = localStorage.getItem(BETTER_AUTH_COOKIE_STORAGE_KEY);
+              const merged = getSetCookie(data.sessionCookie, prev ?? undefined);
+              localStorage.setItem(BETTER_AUTH_COOKIE_STORAGE_KEY, merged);
+              // Notify the session signal so useSession() re-fetches
+              const store = (authClient as unknown as { $store?: { notify: (s: string) => void } }).$store;
+              if (store) {
+                store.notify("$sessionSignal");
               } else {
                 await authClient.getSession();
               }

@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, usePathname, useRouter } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { loadAsync, useFonts } from "expo-font";
@@ -25,52 +25,40 @@ function RootStack() {
   );
 }
 
-function readRouteGroup(segment: string | undefined) {
-  if (segment === undefined) {
-    return "index" as const;
-  }
-
-  if (segment === "auth") {
-    return "callback" as const;
-  }
-
-  if (segment === "(auth)") {
-    return "auth" as const;
-  }
-
-  if (segment === "(main)") {
-    return "main" as const;
-  }
-
-  throw new Error(`Unknown root segment: ${segment}`);
-}
-
 function AuthenticatedLayout() {
   const session = authClient.useSession();
   const router = useRouter();
-  const routeGroup = readRouteGroup(useSegments()[0]);
+  const pathname = usePathname();
 
   useEffect(() => {
     if (session.isPending) {
       return;
     }
 
-    // Don't interfere while the callback route is verifying the OTT
-    if (routeGroup === "callback") {
+    const onAuthCallback =
+      pathname === "/auth" || pathname.startsWith("/auth/");
+    const onLogin = pathname === "/login";
+    const onIndex = pathname === "/" || pathname === "";
+    const onMain =
+      pathname.startsWith("/chat") ||
+      pathname.startsWith("/stella") ||
+      pathname.startsWith("/account");
+
+    if (onAuthCallback) {
       return;
     }
 
     if (session.data) {
-      if (routeGroup !== "main") {
+      if (onLogin || onIndex) {
         router.replace("/chat");
       }
       return;
     }
 
-    if (routeGroup !== "auth") {
+    if (onMain || onIndex) {
       router.replace("/login");
     }
-  }, [routeGroup, router, session.data, session.isPending]);
+  }, [pathname, router, session.data, session.isPending]);
 
   return <RootStack />;
 }
