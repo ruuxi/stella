@@ -1,0 +1,105 @@
+import { useEffect, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  checkDesktopConnection,
+  getDesktopConnectionState,
+  subscribeDesktopConnection,
+} from "../../src/lib/desktop-connection";
+import {
+  getChatScreenMode,
+  setChatScreenMode,
+  subscribeChatScreenMode,
+  type ChatScreenMode,
+} from "../../src/lib/chat-screen-mode";
+import { colors } from "../../src/theme/colors";
+import { fonts } from "../../src/theme/fonts";
+
+export function ChatModePill() {
+  const [mode, setMode] = useState<ChatScreenMode>(() => getChatScreenMode());
+  const [desktopState, setDesktopState] = useState(() =>
+    getDesktopConnectionState(),
+  );
+
+  useEffect(() => subscribeChatScreenMode(setMode), []);
+  useEffect(() => subscribeDesktopConnection(setDesktopState), []);
+  useEffect(() => {
+    void checkDesktopConnection();
+  }, []);
+
+  return (
+    <View style={styles.toggleRow}>
+      <Pressable
+        style={[styles.toggleTab, mode === "chat" && styles.toggleTabActive]}
+        onPress={() => setChatScreenMode("chat")}
+      >
+        <Text
+          style={[styles.toggleText, mode === "chat" && styles.toggleTextActive]}
+        >
+          Chat
+        </Text>
+      </Pressable>
+      <Pressable
+        style={[
+          styles.toggleTab,
+          mode === "computer" && styles.toggleTabActive,
+        ]}
+        onPress={() => setChatScreenMode("computer")}
+      >
+        <View style={styles.toggleWithDot}>
+          <Text
+            style={[
+              styles.toggleText,
+              mode === "computer" && styles.toggleTextActive,
+            ]}
+          >
+            Computer
+          </Text>
+          {desktopState === "connected" && <View style={styles.toggleDot} />}
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  toggleRow: {
+    alignSelf: "center",
+    backgroundColor: "rgba(82, 104, 134, 0.08)",
+    borderRadius: 999,
+    flexDirection: "row",
+    padding: 3,
+  },
+  toggleTab: {
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 7,
+  },
+  toggleTabActive: {
+    backgroundColor: colors.surface,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+  },
+  toggleText: {
+    color: colors.textMuted,
+    fontFamily: fonts.sans.medium,
+    fontSize: 14,
+    letterSpacing: -0.2,
+  },
+  toggleTextActive: {
+    color: colors.text,
+  },
+  toggleWithDot: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
+  toggleDot: {
+    backgroundColor: colors.ok,
+    borderRadius: 3,
+    height: 6,
+    width: 6,
+  },
+});
