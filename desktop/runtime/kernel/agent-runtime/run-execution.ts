@@ -34,7 +34,9 @@ type RuntimeExecutableAgent = {
   };
   subscribe: (listener: (event: AgentEvent) => void) => () => void;
   prompt: (
-    message: ReturnType<typeof createUserPromptMessage> & { timestamp: number },
+    message:
+      | (ReturnType<typeof createUserPromptMessage> & { timestamp: number })
+      | Array<ReturnType<typeof createUserPromptMessage> & { timestamp: number }>,
   ) => Promise<void>;
   followUp: (message: ReturnType<typeof createUserPromptMessage> & { timestamp: number }) => void;
   continue: () => Promise<void>;
@@ -43,8 +45,13 @@ type RuntimeExecutableAgent = {
 
 export const executeRuntimeAgentPrompt = async (args: {
   agent: RuntimeExecutableAgent;
-  promptText: string;
+  promptText?: string;
   attachments?: RuntimeAttachmentRef[];
+  promptMessages?: Array<{
+    text: string;
+    attachments?: RuntimeAttachmentRef[];
+    uiVisibility?: "visible" | "hidden";
+  }>;
   runId: string;
   agentType: string;
   recorder: RuntimeRunEventRecorder;
@@ -75,17 +82,35 @@ export const executeRuntimeAgentPrompt = async (args: {
   });
 
   try {
-    const promptMessage = {
-      ...createUserPromptMessage(args.promptText, args.attachments),
-      timestamp: now(),
-    };
-    if (args.threadStore && args.threadKey) {
-      persistThreadPayloadMessage(args.threadStore, {
-        threadKey: args.threadKey,
-        payload: promptMessage,
-      });
+    const promptInputs =
+      args.promptMessages && args.promptMessages.length > 0
+        ? args.promptMessages
+        : [{
+            text: args.promptText ?? "",
+            attachments: args.attachments,
+          }];
+    const promptTimestamp = now();
+    const promptMessages = promptInputs.map((message, index) => ({
+      ...createUserPromptMessage(message.text, message.attachments),
+      timestamp: promptTimestamp + index,
+    }));
+    for (const [index, promptMessage] of promptMessages.entries()) {
+      if (args.threadStore && args.threadKey) {
+        persistThreadPayloadMessage(args.threadStore, {
+          threadKey: args.threadKey,
+          payload: promptMessage,
+        });
+      }
+      const uiVisibility = promptInputs[index]?.uiVisibility;
+      if (uiVisibility) {
+        args.callbacks?.onUserMessage?.({
+          text: promptInputs[index]!.text,
+          timestamp: promptMessage.timestamp,
+          uiVisibility,
+        });
+      }
     }
-    await args.agent.prompt(promptMessage);
+    await args.agent.prompt(promptMessages);
     await args.onAfterPrompt?.();
     let completion = getAgentCompletion(args.agent);
     let recoveryAttempts = 0;

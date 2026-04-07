@@ -6,6 +6,7 @@ import type {
   RuntimeStreamEvent,
   RuntimeToolEndEvent,
   RuntimeToolStartEvent,
+  RuntimeUserMessageEvent,
   SelfModMonitor,
 } from "../agent-runtime.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
@@ -135,6 +136,7 @@ export type AgentHealth = {
 };
 
 export type AgentCallbacks = {
+  onUserMessage?: (event: RuntimeUserMessageEvent) => void;
   onStream: (event: RuntimeStreamEvent) => void;
   onToolStart: (event: RuntimeToolStartEvent) => void;
   onToolEnd: (event: RuntimeToolEndEvent) => void;

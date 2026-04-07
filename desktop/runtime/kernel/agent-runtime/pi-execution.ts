@@ -17,7 +17,7 @@ import {
   createSubagentExecutionSession,
 } from "./run-session.js";
 import {
-  buildOrchestratorUserPrompt,
+  buildOrchestratorPromptMessages,
 } from "./thread-memory.js";
 import type {
   OrchestratorRunOptions,
@@ -74,15 +74,19 @@ export const runPiOrchestratorTurn = async (
   const displayStream = createDisplayStreamController(opts.displayHtml);
 
   try {
-    const promptText = buildOrchestratorUserPrompt(
+    const promptMessages = buildOrchestratorPromptMessages(
       opts.agentContext,
       opts.userPrompt,
     );
 
     const { finalText, errorMessage } = await executeRuntimeAgentPrompt({
       agent,
-      promptText,
-      attachments: opts.attachments,
+      promptMessages: promptMessages.map((message, index) => ({
+        ...message,
+        ...(index === promptMessages.length - 1 && opts.attachments?.length
+          ? { attachments: opts.attachments }
+          : {}),
+      })),
       runId,
       agentType: opts.agentType,
       recorder: runEvents,

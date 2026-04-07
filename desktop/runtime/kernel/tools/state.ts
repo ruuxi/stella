@@ -1,5 +1,5 @@
 /**
- * State tools: TaskCreate/TaskCancel, TaskUpdate, and TaskOutput handlers.
+ * State tools: TaskCreate/TaskPause, TaskUpdate, and TaskOutput handlers.
  */
 
 import type {
@@ -162,9 +162,6 @@ export const handleTask = async (
     toOptionalString(args.parentTaskId ?? args.parent_task_id) ??
     toOptionalString(context.cloudTaskId) ??
     toOptionalString(context.taskId);
-  const systemPromptOverride = toOptionalString(
-    args.systemPromptOverride ?? args.system_prompt_override,
-  );
   const storageMode = context.storageMode ?? "local";
   const parentTaskDepth = Math.max(0, context.taskDepth ?? 0);
   const nextTaskDepth = parentTaskDepth + 1;
@@ -192,7 +189,6 @@ export const handleTask = async (
       taskDepth: nextTaskDepth,
       ...(typeof maxTaskDepth === "number" ? { maxTaskDepth } : {}),
       parentTaskId,
-      systemPromptOverride,
       storageMode,
     });
     return {

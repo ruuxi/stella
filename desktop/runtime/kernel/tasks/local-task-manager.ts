@@ -57,9 +57,7 @@ type RuntimeTaskRecord = {
   cloudCreatePromise?: Promise<void>;
   parentTaskId?: string;
   threadId?: string;
-  systemPromptOverride?: string;
   toolsAllowlistOverride?: string[];
-  omitCoreMemory?: boolean;
   selfModMetadata?: TaskToolRequest["selfModMetadata"];
   recentActivity: string[];
   progressBuffer: string;
@@ -315,13 +313,9 @@ export class LocalTaskManager implements TaskToolApi {
         ? { maxTaskDepth: task.maxTaskDepth }
         : {}),
       ...(task.parentTaskId ? { parentTaskId: task.parentTaskId } : {}),
-      ...(task.systemPromptOverride
-        ? { systemPromptOverride: task.systemPromptOverride }
-        : {}),
       ...(task.toolsAllowlistOverride
         ? { toolsAllowlistOverride: task.toolsAllowlistOverride }
         : {}),
-      omitCoreMemory: task.omitCoreMemory === true,
       ...(task.selfModMetadata ? { selfModMetadata: task.selfModMetadata } : {}),
       status: this.toPersistedStatus(task.status),
       startedAt: task.startedAt,
@@ -406,9 +400,7 @@ export class LocalTaskManager implements TaskToolApi {
       storageMode: "local",
       parentTaskId: record.parentTaskId,
       threadId: record.threadId,
-      systemPromptOverride: record.systemPromptOverride,
       toolsAllowlistOverride: record.toolsAllowlistOverride,
-      omitCoreMemory: record.omitCoreMemory,
       selfModMetadata: record.selfModMetadata,
       recentActivity: [`Continuing thread: ${truncate(prompt, 200)}`],
       progressBuffer: "",
@@ -520,14 +512,8 @@ export class LocalTaskManager implements TaskToolApi {
           : context.maxTaskDepth;
       context.taskDepth = task.taskDepth;
 
-      if (task.systemPromptOverride) {
-        context.systemPrompt = task.systemPromptOverride;
-      }
       if (task.toolsAllowlistOverride) {
         context.toolsAllowlist = task.toolsAllowlistOverride;
-      }
-      if (task.omitCoreMemory) {
-        context.coreMemory = undefined;
       }
 
       const taskPrompt = this.buildTaskPrompt(task);
@@ -715,9 +701,7 @@ export class LocalTaskManager implements TaskToolApi {
       storageMode: request.storageMode,
       parentTaskId: request.parentTaskId,
       threadId: id,
-      systemPromptOverride: request.systemPromptOverride,
       toolsAllowlistOverride: initialToolsAllowlist,
-      omitCoreMemory: request.omitCoreMemory === true,
       selfModMetadata: request.selfModMetadata,
       recentActivity: [],
       progressBuffer: "",

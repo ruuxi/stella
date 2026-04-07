@@ -1,7 +1,4 @@
-import type {
-  ToolContext,
-  ToolHandler,
-} from "./types.js";
+import type { ToolHandler } from "./types.js";
 import {
   handleRead,
   handleWrite,
@@ -69,7 +66,7 @@ export const createTaskToolHandlers = (
   TaskUpdate: (args, context) => handleTaskUpdate(stateContext, args, context),
   TaskCreate: (args, context) =>
     handleTask(stateContext, { ...args, action: "create" }, context),
-  TaskCancel: (args, context) =>
+  TaskPause: (args, context) =>
     handleTask(stateContext, { ...args, action: "cancel" }, context),
   TaskOutput: (args, context) => handleTaskOutput(stateContext, args, context),
 });

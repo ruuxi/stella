@@ -30,9 +30,7 @@ export type PersistedTaskRecord = {
   taskDepth: number;
   maxTaskDepth?: number;
   parentTaskId?: string;
-  systemPromptOverride?: string;
   toolsAllowlistOverride?: string[];
-  omitCoreMemory: boolean;
   selfModMetadata?: {
     featureId?: string;
     packageId?: string;
@@ -642,9 +640,7 @@ export class RuntimeStore {
         task_depth,
         max_task_depth,
         parent_task_id,
-        system_prompt_override,
         tools_allowlist_override_json,
-        omit_core_memory,
         self_mod_metadata_json,
         status,
         started_at,
@@ -653,7 +649,7 @@ export class RuntimeStore {
         error,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(thread_id) DO UPDATE SET
         conversation_id = excluded.conversation_id,
         agent_type = excluded.agent_type,
@@ -661,9 +657,7 @@ export class RuntimeStore {
         task_depth = excluded.task_depth,
         max_task_depth = excluded.max_task_depth,
         parent_task_id = excluded.parent_task_id,
-        system_prompt_override = excluded.system_prompt_override,
         tools_allowlist_override_json = excluded.tools_allowlist_override_json,
-        omit_core_memory = excluded.omit_core_memory,
         self_mod_metadata_json = excluded.self_mod_metadata_json,
         status = excluded.status,
         started_at = excluded.started_at,
@@ -679,9 +673,7 @@ export class RuntimeStore {
       record.taskDepth,
       record.maxTaskDepth ?? null,
       record.parentTaskId ?? null,
-      record.systemPromptOverride ?? null,
       toJsonString(record.toolsAllowlistOverride) ?? null,
-      record.omitCoreMemory ? 1 : 0,
       toJsonString(record.selfModMetadata) ?? null,
       record.status,
       record.startedAt,
@@ -702,9 +694,7 @@ export class RuntimeStore {
         task_depth AS taskDepth,
         max_task_depth AS maxTaskDepth,
         parent_task_id AS parentTaskId,
-        system_prompt_override AS systemPromptOverride,
         tools_allowlist_override_json AS toolsAllowlistOverrideJson,
-        omit_core_memory AS omitCoreMemory,
         self_mod_metadata_json AS selfModMetadataJson,
         status,
         started_at AS startedAt,
@@ -724,9 +714,7 @@ export class RuntimeStore {
           taskDepth: number;
           maxTaskDepth: number | null;
           parentTaskId: string | null;
-          systemPromptOverride: string | null;
           toolsAllowlistOverrideJson: string | null;
-          omitCoreMemory: number;
           selfModMetadataJson: string | null;
           status: PersistedTaskRecord["status"];
           startedAt: number;
@@ -768,9 +756,7 @@ export class RuntimeStore {
       taskDepth: row.taskDepth,
       ...(row.maxTaskDepth == null ? {} : { maxTaskDepth: row.maxTaskDepth }),
       ...(row.parentTaskId ? { parentTaskId: row.parentTaskId } : {}),
-      ...(row.systemPromptOverride ? { systemPromptOverride: row.systemPromptOverride } : {}),
       ...(toolsAllowlistOverride ? { toolsAllowlistOverride } : {}),
-      omitCoreMemory: row.omitCoreMemory === 1,
       ...(selfModMetadata ? { selfModMetadata } : {}),
       status: row.status,
       startedAt: row.startedAt,
