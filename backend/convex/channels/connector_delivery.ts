@@ -170,6 +170,8 @@ async function deliverToConnectorCore(
       case "linq":
         await deliverLinq(meta, args.text);
         break;
+      case "stella_app":
+        break;
       default:
         throw new ConvexError({
           code: "INVALID_ARGUMENT",
