@@ -488,39 +488,13 @@
   color: var(--text-base);
 }
 
-/* Connected view — fills min-height, vertically centered */
-.connect-connected-view {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 22px;
-  flex: 1;
-  min-height: 120px;
-  text-align: center;
-}
-
-.connect-connected-info {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
-.connect-connected-desc {
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  color: var(--text-weak);
-  line-height: 1.45;
-}
-
 .connect-status {
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 15px;
-  font-weight: 500;
-  color: #22c55e;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: clamp(1.5rem, 3.5vw, 1.9rem);
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  color: #6ee7b7;
 }
 
 /* Skeleton loading */
@@ -542,8 +516,9 @@
 }
 
 .connect-skeleton-code {
-  width: 140px;
-  height: 42px;
+  width: 180px;
+  height: 52px;
+  border-radius: var(--radius-md, 10px);
 }
 
 /* QR code layout — QR on left, code + meta on right */
@@ -601,9 +576,9 @@
 .connect-code-input {
   flex: 1;
   min-width: 0;
-  padding: 10px 14px;
+  padding: 12px 16px;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 400;
   color: var(--text-strong);
   background: color-mix(in srgb, var(--background) 60%, transparent);
@@ -625,9 +600,9 @@
 }
 
 .connect-code-input {
-  max-width: 140px;
+  max-width: 160px;
   font-family: var(--font-family-mono, "IBM Plex Mono", monospace);
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -638,4 +613,110 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* Phone pairing — centered layout filling the detail card */
+.connect-pair-centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  flex: 1;
+  gap: 16px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.connect-pair-headline {
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: clamp(1.5rem, 3.5vw, 1.9rem);
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+  color: var(--text-strong);
+  margin: 0;
+}
+
+.connect-pair-sub {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.55;
+  color: var(--text-base);
+  margin: 0;
+  max-width: 360px;
+}
+
+.connect-pair-qr-block {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.connect-pair-qr {
+  width: 160px;
+  height: 160px;
+  border-radius: 14px;
+  flex-shrink: 0;
+}
+
+.connect-pair-code-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.connect-pair-code {
+  font-family: var(--font-family-mono, "IBM Plex Mono", monospace);
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--text-strong);
+  padding: 12px 24px;
+  background: color-mix(in srgb, var(--background) 60%, transparent);
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-weak);
+  user-select: all;
+}
+
+.connect-pair-timer {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 14px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-weak);
+}
+
+.connect-pair-meta {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-weak);
+  margin-top: 4px;
+}
+
+/* Upsize buttons and links inside the connect detail views */
+.connect-full-view [data-component="button"] {
+  height: 40px;
+  padding: 0 20px;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: var(--radius-md, 10px);
+}
+
+.connect-full-view [data-component="button"][data-size="small"] {
+  height: 32px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+.connect-full-view .connect-bot-link {
+  font-size: 15px;
+}
+
+.connect-full-view .connect-error {
+  font-size: 14px;
 }
