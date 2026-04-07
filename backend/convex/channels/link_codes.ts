@@ -179,6 +179,44 @@ export const consumeLinkCode = internalMutation({
   },
 });
 
+export const generateAndStoreLinkCode = internalMutation({
+  args: {
+    ownerId: v.string(),
+    provider: v.string(),
+  },
+  returns: v.object({ code: v.string() }),
+  handler: async (ctx, args) => {
+    const key = `${args.provider}_link_code`;
+    const now = Date.now();
+    const code = generateSecureLinkCode(6);
+    const salt = linkCodeSalt();
+    const codeHash = await hashLinkCode(code, salt);
+    const value = JSON.stringify({
+      codeHash,
+      codeSalt: salt,
+      expiresAt: now + 5 * 60 * 1000,
+    });
+
+    const existing = await ctx.db
+      .query("user_preferences")
+      .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", args.ownerId).eq("key", key))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, { value, updatedAt: now });
+    } else {
+      await ctx.db.insert("user_preferences", {
+        ownerId: args.ownerId,
+        key,
+        value,
+        updatedAt: now,
+      });
+    }
+
+    return { code };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Public Mutations (for frontend)
 // ---------------------------------------------------------------------------
@@ -205,6 +243,56 @@ export const generateLinkCode = mutation({
     });
 
     return { code };
+  },
+});
+
+export const verifyLinqLinkCode = mutation({
+  args: {
+    code: v.string(),
+    phoneNumber: v.string(),
+  },
+  returns: v.object({
+    result: v.union(
+      v.literal("linked"),
+      v.literal("invalid_code"),
+      v.literal("owner_mismatch"),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new ConvexError(SIGN_IN_REQUIRED_ERROR);
+    if ((identity as Record<string, unknown>).isAnonymous === true) {
+      throw new ConvexError(SIGN_IN_REQUIRED_ERROR);
+    }
+    const ownerId = identity.subject;
+    const code = args.code.toUpperCase();
+
+    const codeOwner = await ctx.runQuery(
+      internal.channels.link_codes.peekLinkCodeOwner,
+      { provider: "linq", code },
+    );
+    if (!codeOwner) return { result: "invalid_code" as const };
+    if (codeOwner !== ownerId) return { result: "owner_mismatch" as const };
+
+    const consumedOwner = await ctx.runMutation(
+      internal.channels.link_codes.consumeLinkCode,
+      { provider: "linq", code },
+    );
+    if (!consumedOwner || consumedOwner !== ownerId) {
+      return { result: "invalid_code" as const };
+    }
+
+    await ctx.runMutation(internal.channels.utils.createConnection, {
+      ownerId,
+      provider: "linq",
+      externalUserId: args.phoneNumber,
+    });
+
+    await ctx.scheduler.runAfter(0, internal.channels.linq.sendWelcomeMessage, {
+      phoneNumber: args.phoneNumber,
+    });
+
+    return { result: "linked" as const };
   },
 });
 
