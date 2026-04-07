@@ -14,5 +14,6 @@ export type OnboardingSynthesisResponse = {
   coreMemory: string;
   welcomeMessage: string;
   suggestions?: OnboardingHomeSuggestion[];
+  categoryAnalyses?: Record<string, string>;
 };
 

@@ -1,4 +1,5 @@
 import type { SelfModHmrState } from "../src/shared/contracts/boundary.js";
+import type { DiscoveryKnowledgeSeedPayload } from "../src/shared/contracts/discovery.js";
 import {
   AGENT_STREAM_EVENT_TYPES,
 } from "../src/shared/contracts/agent-runtime.js";
@@ -786,8 +787,16 @@ export class RuntimeClientAdapter {
     return this.client.coreMemoryExists();
   }
 
+  discoveryKnowledgeExists() {
+    return this.client.discoveryKnowledgeExists();
+  }
+
   writeCoreMemory(content: string) {
     return this.client.writeCoreMemory(content);
+  }
+
+  writeDiscoveryKnowledge(payload: DiscoveryKnowledgeSeedPayload) {
+    return this.client.writeDiscoveryKnowledge(payload);
   }
 
   detectPreferredBrowserProfile() {

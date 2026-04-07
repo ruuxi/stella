@@ -51,9 +51,12 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
     const run = async () => {
       let completed = false;
       try {
-        const exists =
-          await window.electronAPI?.browser.checkCoreMemoryExists?.();
-        if (exists) {
+        const [coreMemoryExists, discoveryKnowledgeExists] = await Promise.all([
+          window.electronAPI?.discovery.checkCoreMemoryExists?.() ?? Promise.resolve(false),
+          window.electronAPI?.discovery.checkKnowledgeExists?.() ??
+            Promise.resolve(false),
+        ]);
+        if (coreMemoryExists && discoveryKnowledgeExists) {
           completed = true;
           synthesizedRef.current = true;
           return;
@@ -63,7 +66,7 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
           localStorage.getItem(BROWSER_SELECTION_KEY) ?? undefined;
         const selectedProfile =
           localStorage.getItem(BROWSER_PROFILE_KEY) ?? undefined;
-        const result = await window.electronAPI?.browser.collectAllSignals?.({
+        const result = await window.electronAPI?.discovery.collectAllSignals?.({
           categories: discoveryCategories,
           selectedBrowser,
           selectedProfile,
@@ -82,12 +85,18 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
         );
         if (!synthesisResult.coreMemory) return;
 
-        const writeCoreMemoryPromise =
-          window.electronAPI?.browser.writeCoreMemory?.(
+        await Promise.all([
+          window.electronAPI?.discovery.writeCoreMemory?.(
             synthesisResult.coreMemory,
-          ) ?? Promise.resolve();
-
-        await writeCoreMemoryPromise;
+          ) ?? Promise.resolve(),
+          window.electronAPI?.discovery.writeKnowledge?.({
+            coreMemory: synthesisResult.coreMemory,
+            formattedSections: result.formattedSections,
+            ...(synthesisResult.categoryAnalyses
+              ? { categoryAnalyses: synthesisResult.categoryAnalyses as Partial<Record<DiscoveryCategory, string>> }
+              : {}),
+          }) ?? Promise.resolve(),
+        ]);
 
         if (synthesisResult.welcomeMessage) {
           await window.electronAPI?.localChat.persistDiscoveryWelcome?.({

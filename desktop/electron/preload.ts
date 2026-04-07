@@ -11,6 +11,16 @@ import type {
 import type { RadialTriggerCode } from "../src/shared/lib/radial-trigger.js";
 import type { OfficePreviewSnapshot } from "../src/shared/contracts/office-preview.js";
 import {
+  IPC_BROWSER_FETCH_JSON,
+  IPC_BROWSER_FETCH_TEXT,
+  IPC_DISCOVERY_COLLECT_ALL_SIGNALS,
+  IPC_DISCOVERY_COLLECT_BROWSER_DATA,
+  IPC_DISCOVERY_CORE_MEMORY_EXISTS,
+  IPC_DISCOVERY_DETECT_PREFERRED_BROWSER,
+  IPC_DISCOVERY_KNOWLEDGE_EXISTS,
+  IPC_DISCOVERY_LIST_BROWSER_PROFILES,
+  IPC_DISCOVERY_WRITE_CORE_MEMORY,
+  IPC_DISCOVERY_WRITE_KNOWLEDGE,
   IPC_OFFICE_PREVIEW_LIST,
   IPC_OFFICE_PREVIEW_UPDATE,
 } from "../src/shared/contracts/ipc-channels.js";
@@ -18,6 +28,7 @@ import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
 } from "../src/shared/contracts/onboarding.js";
+import type { DiscoveryKnowledgeSeedPayload } from "../src/shared/contracts/discovery.js";
 import {
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_SYNC_MODE,
@@ -578,8 +589,30 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ) as Promise<OnboardingSynthesisResponse>,
   },
 
+  discovery: {
+    checkCoreMemoryExists: () =>
+      ipcRenderer.invoke(IPC_DISCOVERY_CORE_MEMORY_EXISTS),
+    checkKnowledgeExists: () => ipcRenderer.invoke(IPC_DISCOVERY_KNOWLEDGE_EXISTS),
+    collectData: (options?: {
+      selectedBrowser?: string;
+      selectedProfile?: string;
+    }) => ipcRenderer.invoke(IPC_DISCOVERY_COLLECT_BROWSER_DATA, options),
+    detectPreferred: () =>
+      ipcRenderer.invoke(IPC_DISCOVERY_DETECT_PREFERRED_BROWSER),
+    listProfiles: (browserType: string) =>
+      ipcRenderer.invoke(IPC_DISCOVERY_LIST_BROWSER_PROFILES, browserType),
+    writeCoreMemory: (content: string) =>
+      ipcRenderer.invoke(IPC_DISCOVERY_WRITE_CORE_MEMORY, content),
+    writeKnowledge: (payload: DiscoveryKnowledgeSeedPayload) =>
+      ipcRenderer.invoke(IPC_DISCOVERY_WRITE_KNOWLEDGE, payload),
+    collectAllSignals: (options?: {
+      categories?: string[];
+      selectedBrowser?: string;
+      selectedProfile?: string;
+    }) => ipcRenderer.invoke(IPC_DISCOVERY_COLLECT_ALL_SIGNALS, options),
+  },
+
   browser: {
-    checkCoreMemoryExists: () => ipcRenderer.invoke("browserData:exists"),
     fetchJson: (
       url: string,
       init?: {
@@ -587,7 +620,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         headers?: Record<string, string>;
         body?: string;
       },
-    ) => invokeBrowserFetch("browser:fetchJson", { url, init }),
+    ) => invokeBrowserFetch(IPC_BROWSER_FETCH_JSON, { url, init }),
     fetchText: (
       url: string,
       init?: {
@@ -595,22 +628,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         headers?: Record<string, string>;
         body?: string;
       },
-    ) => invokeBrowserFetch("browser:fetchText", { url, init }),
-    collectData: (options?: {
-      selectedBrowser?: string;
-      selectedProfile?: string;
-    }) => ipcRenderer.invoke("browserData:collect", options),
-    detectPreferred: () =>
-      ipcRenderer.invoke("browserData:detectPreferredBrowser"),
-    listProfiles: (browserType: string) =>
-      ipcRenderer.invoke("browserData:listProfiles", browserType),
-    writeCoreMemory: (content: string) =>
-      ipcRenderer.invoke("browserData:writeCoreMemory", content),
-    collectAllSignals: (options?: {
-      categories?: string[];
-      selectedBrowser?: string;
-      selectedProfile?: string;
-    }) => ipcRenderer.invoke("signals:collectAll", options),
+    ) => invokeBrowserFetch(IPC_BROWSER_FETCH_TEXT, { url, init }),
     onBridgeStatus: onIpc<{
       state:
         | "connecting"

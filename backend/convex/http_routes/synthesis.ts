@@ -50,6 +50,7 @@ type SynthesizeResponse = {
   coreMemory: string;
   welcomeMessage: string;
   suggestions: HomeSuggestion[];
+  categoryAnalyses?: Record<string, string>;
 };
 
 const DEFAULT_WELCOME_MESSAGE =
@@ -161,6 +162,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
           });
 
           let synthesisInput: string;
+          const categoryAnalysesMap: Record<string, string> = {};
 
           if (
             hasFormattedSections &&
@@ -240,10 +242,16 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
               );
             }
 
-            synthesisInput = analysisResults
-              .filter((result) => result.analysis.length > 0)
+            const filteredResults = analysisResults
+              .filter((result) => result.analysis.length > 0);
+
+            synthesisInput = filteredResults
               .map((result) => result.analysis)
               .join("\n\n");
+
+            for (const result of filteredResults) {
+              categoryAnalysesMap[result.category] = result.analysis;
+            }
 
             console.log(
               `[synthesize] Category analyses complete. Combined length: ${synthesisInput.length} chars`,
@@ -378,6 +386,9 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             coreMemory,
             welcomeMessage: assistantText(welcomeResult.result) || DEFAULT_WELCOME_MESSAGE,
             suggestions,
+            ...(Object.keys(categoryAnalysesMap).length > 0
+              ? { categoryAnalyses: categoryAnalysesMap }
+              : {}),
           };
 
           return jsonResponse(response, 200, origin);

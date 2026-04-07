@@ -2,13 +2,15 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
-import type { BrowserData, BrowserType } from "../../runtime/discovery/browser-data.js";
 import { getStellaBrowserBridgeEnv } from "../../runtime/kernel/tools/stella-browser-bridge-config.js";
 import {
   normalizeUrlForPrivilegedRendererFetch,
   PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
 } from "./renderer-safe-url.js";
-import type { AllUserSignalsResult } from "../../runtime/discovery/types.js";
+import {
+  IPC_BROWSER_FETCH_JSON,
+  IPC_BROWSER_FETCH_TEXT,
+} from "../../src/shared/contracts/ipc-channels.js";
 
 type BrowserFetchInit = {
   method?: "GET" | "POST";
@@ -30,7 +32,6 @@ type BrowserCookie = {
 type BrowserHandlersOptions = {
   getStellaHomePath: () => string | null;
   getFrontendRoot: () => string | null;
-  getStellaHostRunner: () => import("../runtime-client-adapter.js").RuntimeClientAdapter | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -159,97 +160,11 @@ const getFrontendRootOrThrow = (options: BrowserHandlersOptions) => {
   return frontendRoot;
 };
 
-const collectWithRunnerEnvelope = async <T extends { data: unknown; formatted: string | null }>(
-  options: BrowserHandlersOptions,
-  event: IpcMainEvent | IpcMainInvokeEvent,
-  channel: string,
-  action: (
-    runner: NonNullable<ReturnType<BrowserHandlersOptions["getStellaHostRunner"]>>,
-  ) => Promise<T>,
-): Promise<{ data: T["data"] | null; formatted: string | null; error?: string }> => {
-  if (!options.assertPrivilegedSender(event, channel)) {
-    throw new Error("Blocked untrusted request.");
-  }
-  const runner = options.getStellaHostRunner();
-  if (!runner) {
-    return { data: null, formatted: null, error: "Runtime not available" };
-  }
-  try {
-    return await action(runner);
-  } catch (error) {
-    return {
-      data: null,
-      formatted: null,
-      error: (error as Error).message,
-    };
-  }
-};
-
 export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
-  ipcMain.handle("browserData:exists", async () => {
-    const runner = options.getStellaHostRunner();
-    if (!runner) return false;
-    try {
-      return await runner.coreMemoryExists();
-    } catch {
-      return false;
-    }
-  });
-
   ipcMain.handle(
-    "browserData:collect",
-    async (
-      event,
-      collectOptions?: { selectedBrowser?: BrowserType; selectedProfile?: string },
-    ): Promise<{
-      data: BrowserData | null;
-      formatted: string | null;
-      error?: string;
-    }> =>
-      await collectWithRunnerEnvelope(options, event, "browserData:collect", async (runner) => {
-        const result = await runner.collectBrowserData(collectOptions);
-        return {
-          data: result.data as BrowserData | null,
-          formatted: result.formatted,
-        };
-      }),
-  );
-
-  ipcMain.handle(
-    "browserData:writeCoreMemory",
-    async (event, content: string) => {
-      if (
-        !options.assertPrivilegedSender(event, "browserData:writeCoreMemory")
-      ) {
-        throw new Error("Blocked untrusted request.");
-      }
-      const runner = options.getStellaHostRunner();
-      if (!runner) {
-        return { ok: false, error: "Runtime not available" };
-      }
-      try {
-        await runner.writeCoreMemory(content);
-        return { ok: true };
-      } catch (error) {
-        return { ok: false, error: (error as Error).message };
-      }
-    },
-  );
-
-  ipcMain.handle("browserData:detectPreferredBrowser", async () => {
-    const runner = options.getStellaHostRunner();
-    if (!runner) return null;
-    try {
-      return await runner.detectPreferredBrowserProfile();
-    } catch {
-      return null;
-    }
-  });
-
-  ipcMain.handle(
-    "browser:fetchJson",
+    IPC_BROWSER_FETCH_JSON,
     async (event, payload: { url: string; init?: BrowserFetchInit }) => {
-      if (!options.assertPrivilegedSender(event, "browser:fetchJson")) {
+      if (!options.assertPrivilegedSender(event, IPC_BROWSER_FETCH_JSON)) {
         throw new Error("Blocked untrusted request.");
       }
       const frontendRoot = getFrontendRootOrThrow(options);
@@ -262,9 +177,9 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
   );
 
   ipcMain.handle(
-    "browser:fetchText",
+    IPC_BROWSER_FETCH_TEXT,
     async (event, payload: { url: string; init?: BrowserFetchInit }) => {
-      if (!options.assertPrivilegedSender(event, "browser:fetchText")) {
+      if (!options.assertPrivilegedSender(event, IPC_BROWSER_FETCH_TEXT)) {
         throw new Error("Blocked untrusted request.");
       }
       const frontendRoot = getFrontendRootOrThrow(options);
@@ -274,33 +189,6 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         init: payload.init,
       });
     },
-  );
-
-  ipcMain.handle(
-    "browserData:listProfiles",
-    async (_event, browserType: string) => {
-      const runner = options.getStellaHostRunner();
-      if (!runner) return [];
-      try {
-        return await runner.listBrowserProfiles(browserType);
-      } catch {
-        return [];
-      }
-    },
-  );
-
-  ipcMain.handle(
-    "signals:collectAll",
-    async (
-      event,
-      ipcOptions?: {
-        categories?: string[];
-        selectedBrowser?: string;
-        selectedProfile?: string;
-      },
-    ): Promise<AllUserSignalsResult> =>
-      await collectWithRunnerEnvelope(options, event, "signals:collectAll", async (runner) =>
-        await runner.collectAllSignals(ipcOptions) as AllUserSignalsResult),
   );
 
   // ── Media file operations ──
