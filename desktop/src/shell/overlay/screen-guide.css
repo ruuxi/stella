@@ -27,10 +27,10 @@
 
 .screen-guide-pill {
   position: absolute;
-  transform: translate(-50%, -50%);
+  transform: translateY(-50%);
   padding: 8px 18px;
   border-radius: 999px;
-  background: rgba(80, 200, 120, 0.95);
+  background: rgba(60, 130, 246, 0.95);
   color: #fff;
   font-size: 14px;
   font-weight: 600;
@@ -46,10 +46,10 @@
 @keyframes screen-guide-pill-enter {
   from {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.6);
+    transform: translateY(-50%) scale(0.6);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    transform: translateY(-50%) scale(1);
   }
 }
