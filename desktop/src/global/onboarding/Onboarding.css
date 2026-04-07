@@ -2117,7 +2117,9 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  position: relative;
 }
+
 
 /*
  * Onboarding-only CSS fallback when native morph IPC is unavailable.
@@ -2630,6 +2632,26 @@
   min-height: clamp(360px, 48vh, 620px);
 }
 
+.onboarding-shortcut-surface__instruction {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  pointer-events: none;
+  background: color-mix(in oklch, var(--background) 80%, transparent);
+  backdrop-filter: blur(8px);
+  border-radius: 20px;
+}
+
+.onboarding-shortcut-surface__instruction .onboarding-shortcut-demo__title {
+  font-size: clamp(18px, 2.2vw, 24px);
+  opacity: 0.7;
+}
+
 .onboarding-shortcut-hint {
   display: none;
 }
@@ -2964,6 +2986,7 @@
   background: transparent;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
   pointer-events: none;
+  will-change: left, top, width, height;
 }
 
 /* Hide the dim layer when selection is active (selection's box-shadow handles dimming) */
@@ -2980,21 +3003,19 @@
   pointer-events: none;
   animation: captureVacuum 0.65s cubic-bezier(0.42, 0, 1, 1) forwards;
   transform-origin: center center;
+  will-change: transform, opacity;
 }
 
 @keyframes captureVacuum {
   0% {
     transform: scale(1);
-    filter: blur(0px) brightness(1);
     opacity: 1;
   }
   12% {
     transform: scale(1.015);
-    filter: blur(0px) brightness(1.05);
   }
   100% {
     transform: scale(0.05);
-    filter: blur(16px) brightness(0.2);
     opacity: 0;
     border-color: transparent;
   }
@@ -3440,7 +3461,7 @@
   opacity: 0;
   transform: translateY(6px);
   transition: opacity 0.35s ease, transform 0.35s ease;
-  min-height: 42px;
+  min-height: 5.5em;
 }
 
 .onboarding-shortcut-result-description[data-visible="true"] {
