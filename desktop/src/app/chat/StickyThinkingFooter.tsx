@@ -9,12 +9,14 @@ type StickyThinkingFooterProps = {
   tasks: TaskItem[];
   runningTool?: string;
   isStreaming?: boolean;
+  status?: string | null;
 };
 
 export function StickyThinkingFooter({
   tasks,
   runningTool,
   isStreaming,
+  status,
 }: StickyThinkingFooterProps) {
   const runningTasks = useMemo(
     () => tasks.filter((task) => task.status === "running"),
@@ -55,6 +57,7 @@ export function StickyThinkingFooter({
       >
         <WorkingIndicator
           className="sticky-thinking-footer__indicator"
+          status={status ?? undefined}
           tasks={activeTask ? [activeTask] : undefined}
           toolName={runningTool}
           isReasoning={!activeTask}

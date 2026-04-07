@@ -38,6 +38,7 @@ interface ChatSidebarProps {
   streamingText: string;
   reasoningText: string;
   isStreaming: boolean;
+  runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
   selfModMap: Record<string, SelfModAppliedData>;
   liveTasks?: TaskItem[];
@@ -56,6 +57,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
       streamingText,
       reasoningText,
       isStreaming,
+      runtimeStatusText,
       pendingUserMessageId,
       selfModMap,
       liveTasks,
@@ -222,6 +224,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
             streamingText={streamingText}
             reasoningText={reasoningText}
             isStreaming={isStreaming}
+            runtimeStatusText={runtimeStatusText}
             pendingUserMessageId={pendingUserMessageId}
             selfModMap={selfModMap}
             liveTasks={liveTasks}

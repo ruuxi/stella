@@ -388,6 +388,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("agent:resume", payload) as Promise<{
         events: Array<{
           type:
+            | "status"
             | "stream"
             | "tool-start"
             | "tool-end"
@@ -402,6 +403,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           agentType?: string;
           seq: number;
           chunk?: string;
+          statusState?: "running" | "compacting";
           toolCallId?: string;
           toolName?: string;
           args?: Record<string, unknown>;
@@ -425,6 +427,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>,
     onStream: onIpc<{
       type:
+        | "status"
         | "stream"
         | "tool-start"
         | "tool-end"
@@ -439,6 +442,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       agentType?: string;
       seq: number;
       chunk?: string;
+      statusState?: "running" | "compacting";
       toolCallId?: string;
       toolName?: string;
       args?: Record<string, unknown>;

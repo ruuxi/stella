@@ -701,7 +701,7 @@ function ModelConfigSection() {
       <div className="settings-card">
         <h3 className="settings-card-title">Agent Runtime</h3>
         <p className="settings-card-desc">
-          Choose how the General and Self Mod agents run on this device.
+          Choose how the Orchestrator, General, and Self Mod agents run on this device.
         </p>
         {!hasConnectedAccount ? (
           <p className="settings-card-desc">
@@ -720,7 +720,7 @@ function ModelConfigSection() {
           <div className="settings-row-info">
             <div className="settings-row-label">Engine</div>
             <div className="settings-row-sublabel">
-              General agent. Local CLI mode requires the corresponding{" "}
+              Orchestrator and General agents. Local CLI mode requires the corresponding{" "}
               <code>claude</code> CLI.
             </div>
           </div>

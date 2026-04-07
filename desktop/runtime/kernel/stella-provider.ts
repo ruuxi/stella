@@ -67,7 +67,13 @@ const toTextBlocks = (content: ChatMessage["content"]): TextContent[] => {
     return text ? [{ type: "text", text }] : [];
   }
   return content
-    .filter((part): part is { type?: string; text: string } => typeof part?.text === "string")
+    .filter(
+      (
+        part,
+      ): part is Extract<ChatMessage["content"], readonly unknown[]>[number] & {
+        text: string;
+      } => typeof part === "object" && part !== null && "text" in part && typeof part.text === "string",
+    )
     .map((part) => ({ type: "text" as const, text: part.text.trim() }))
     .filter((part) => part.text.length > 0);
 };

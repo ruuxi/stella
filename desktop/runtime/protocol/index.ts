@@ -404,6 +404,7 @@ export type RuntimeAgentEventPayload = {
   runId: string;
   seq: number;
   chunk?: string;
+  statusState?: "running" | "compacting";
   toolCallId?: string;
   toolName?: string;
   args?: Record<string, unknown>;

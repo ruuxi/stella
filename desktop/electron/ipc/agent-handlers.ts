@@ -34,6 +34,7 @@ type AgentEventPayload = {
   runId: string;
   seq: number;
   chunk?: string;
+  statusState?: "running" | "compacting";
   toolCallId?: string;
   toolName?: string;
   args?: Record<string, unknown>;
@@ -244,6 +245,12 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
           emitAgentEvent(
             ev.runId,
             { ...ev, type: AGENT_STREAM_EVENT_TYPES.STREAM },
+            senderWebContentsId,
+          ),
+        onStatus: (ev) =>
+          emitAgentEvent(
+            ev.runId,
+            { ...ev, type: AGENT_STREAM_EVENT_TYPES.STATUS },
             senderWebContentsId,
           ),
         onToolStart: (ev) =>
