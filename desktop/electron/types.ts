@@ -15,6 +15,21 @@ export type ScreenshotCapture = {
   height: number
 }
 
+export type VisionCoordinateSpace = {
+  x: number
+  y: number
+  logicalWidth: number
+  logicalHeight: number
+  sourceWidth: number
+  sourceHeight: number
+  targetWidth: number
+  targetHeight: number
+}
+
+export type VisionScreenshotCapture = ScreenshotCapture & {
+  coordinateSpace: VisionCoordinateSpace
+}
+
 export type RegionSelection = {
   x: number
   y: number

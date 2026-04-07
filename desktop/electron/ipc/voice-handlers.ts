@@ -2,6 +2,7 @@ import { globalShortcut, ipcMain } from "electron";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { UiState } from "../types.js";
 import type { WindowManager } from "../windows/window-manager.js";
+import type { OverlayWindowController } from "../windows/overlay-window.js";
 import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
 
 type VoiceHandlersOptions = {
@@ -16,6 +17,7 @@ type VoiceHandlersOptions = {
   pushWakeWordAudio: (pcm: Int16Array) => void;
   getStellaHostRunner: () => StellaHostRunner | null;
   getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
+  getOverlayController?: () => OverlayWindowController | null;
 };
 
 type VoiceRuntimeSnapshot = {
@@ -313,5 +315,33 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
 
   ipcMain.on("app:setReady", () => {
     options.syncWakeWordState();
+  });
+
+  // ─── Screen Guide ────────────────────────────────────────────────────
+
+  ipcMain.on(
+    "screenGuide:show",
+    (
+      _event,
+      payload: {
+        annotations: Array<{
+          id: string;
+          label: string;
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+        }>;
+      },
+    ) => {
+      const overlay = options.getOverlayController?.();
+      if (!overlay || !payload?.annotations?.length) return;
+      overlay.showScreenGuide(payload.annotations);
+    },
+  );
+
+  ipcMain.on("screenGuide:hide", () => {
+    const overlay = options.getOverlayController?.();
+    overlay?.hideScreenGuide();
   });
 };
