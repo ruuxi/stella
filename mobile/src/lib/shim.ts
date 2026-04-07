@@ -210,6 +210,8 @@ export function generateShimScript(
       setAppReady: function(ready) { fire('app:setReady', ready); },
       reload: noop,
       hardReset: function() { return invoke('app:hardResetLocalState'); },
+      morphStart: function() { return resolved({ ok: false }); },
+      morphComplete: function() { return resolved({ ok: false }); },
     },
 
     // ── Screen capture (mostly no-ops on mobile) ────────────────────────
@@ -228,7 +230,7 @@ export function generateShimScript(
 
     // ── Radial menu overlay (no-ops) ────────────────────────────────────
 
-    radial: { onShow: noopSub, onHide: noopSub, animDone: noop, onCursor: noopSub },
+    radial: { onShow: noopSub, onHide: noopSub, animDone: noop, onCursor: noopSub, onWindowBounds: noopSub },
 
     // ── Overlay system (no-ops) ─────────────────────────────────────────
 
@@ -237,7 +239,8 @@ export function generateShimScript(
       onStartRegionCapture: noopSub, onEndRegionCapture: noopSub,
       onShowMini: noopSub, onHideMini: noopSub, onRestoreMini: noopSub,
       onShowVoice: noopSub, onHideVoice: noopSub, onDisplayChange: noopSub,
-      onMorphForward: noopSub, onMorphReverse: noopSub, onMorphEnd: noopSub, onMorphState: noopSub,
+      onMorphForward: noopSub, onMorphReverse: noopSub, onMorphEnd: noopSub,       onMorphBounds: noopSub,
+      onMorphState: noopSub,
       morphReady: noop, morphDone: noop,
     },
 
@@ -270,6 +273,7 @@ export function generateShimScript(
       onRuntimeState: function(cb) { return subscribe('voice:runtimeState', cb); },
       getWakeWordState: function() { return resolved({ enabled: false }); },
       onWakeWordState: noopSub,
+      onWakeWordDetected: noopSub,
       pushWakeWordAudio: noop,
       pushRuntimeState: function(s) { fire('voice:runtimeState', s); },
       setRtcShortcut: function() { return resolved({ ok: false, requestedShortcut: '', activeShortcut: '', error: 'Not supported on mobile' }); },
@@ -297,17 +301,24 @@ export function generateShimScript(
 
     system: {
       getDeviceId: function() { return invoke('device:getId'); },
+      startPhoneAccessSession: function() { return invoke('phoneAccess:startSession'); },
+      stopPhoneAccessSession: function() { return invoke('phoneAccess:stopSession'); },
       configurePiRuntime: function(c) { return invoke('host:configurePiRuntime', c); },
       setAuthState: function() { return resolved(); },
       setCloudSyncEnabled: function() { return resolved(); },
       onAuthCallback: noopSub,
       openFullDiskAccess: noop,
+      getPermissionStatus: function() { return resolved({ accessibility: false, screen: false, microphone: false }); },
+      openPermissionSettings: function() { return resolved(); },
       openExternal: function(url) {
         postNativeMessage({ type: 'openExternal', url: url });
       },
+      showItemInFolder: noop,
       shellKillByPort: function() { return resolved(); },
       getLocalSyncMode: function() { return invoke('preferences:getSyncMode'); },
       setLocalSyncMode: function(m) { return invoke('preferences:setSyncMode', m); },
+      getRadialTriggerKey: function() { return resolved('option'); },
+      setRadialTriggerKey: function(k) { return resolved({ triggerKey: k }); },
       syncLocalModelPreferences: function(p) { return invoke('preferences:syncLocalModelPreferences', p); },
       listLlmCredentials: function() { return invoke('llmCredentials:list'); },
       saveLlmCredential: function(p) { return invoke('llmCredentials:save', p); },
@@ -320,15 +331,54 @@ export function generateShimScript(
       cancelCredential: function(p) { return invoke('credential:cancel', p); },
     },
 
+    // ── Onboarding ──────────────────────────────────────────────────────
+
+    onboarding: {
+      synthesizeCoreMemory: function(p) { return invoke('onboarding:synthesizeCoreMemory', p); },
+    },
+
+    // ── Discovery ────────────────────────────────────────────────────────
+
+    discovery: {
+      checkCoreMemoryExists: function() { return invoke('discovery:coreMemoryExists'); },
+      checkKnowledgeExists: function() { return invoke('discovery:knowledgeExists'); },
+      collectData: function(o) { return invoke('discovery:collectBrowserData', o); },
+      detectPreferred: function() { return invoke('discovery:detectPreferredBrowser'); },
+      listProfiles: function(b) { return invoke('discovery:listBrowserProfiles', b); },
+      writeCoreMemory: function(c) { return invoke('discovery:writeCoreMemory', c); },
+      writeKnowledge: function(p) { return invoke('discovery:writeKnowledge', p); },
+      collectAllSignals: function(o) { return invoke('discovery:collectAllSignals', o); },
+    },
+
     // ── Browser data ────────────────────────────────────────────────────
 
     browser: {
-      checkCoreMemoryExists: function() { return invoke('browserData:exists'); },
-      collectData: function(o) { return invoke('browserData:collect', o); },
-      detectPreferred: function() { return invoke('browserData:detectPreferredBrowser'); },
-      listProfiles: function(b) { return invoke('browserData:listProfiles', b); },
-      writeCoreMemory: function(c) { return invoke('browserData:writeCoreMemory', c); },
-      collectAllSignals: function(o) { return invoke('signals:collectAll', o); },
+      onBridgeStatus: function(cb) { return subscribe('browser:bridgeStatus', cb); },
+      fetchJson: function(url, init) { return invoke('browser:fetchJson', url, init); },
+      fetchText: function(url, init) { return invoke('browser:fetchText', url, init); },
+    },
+
+    // ── Office preview ──────────────────────────────────────────────────
+
+    officePreview: {
+      list: function() { return invoke('officePreview:list'); },
+      onUpdate: function(cb) { return subscribe('officePreview:update', cb); },
+    },
+
+    // ── Media ────────────────────────────────────────────────────────────
+
+    media: {
+      saveOutput: function(url, fn) { return invoke('media:saveOutput', url, fn); },
+      getStellaMediaDir: function() { return invoke('media:getStellaMediaDir'); },
+    },
+
+    // ── Google Workspace ─────────────────────────────────────────────────
+
+    googleWorkspace: {
+      getAuthStatus: function() { return invoke('googleWorkspace:authStatus'); },
+      connect: function() { return invoke('googleWorkspace:connect'); },
+      disconnect: function() { return invoke('googleWorkspace:disconnect'); },
+      onAuthRequired: function(cb) { return subscribe('googleWorkspace:authRequired', cb); },
     },
 
     // ── Projects ────────────────────────────────────────────────────────
@@ -374,6 +424,7 @@ export function generateShimScript(
       listEvents: function(p) { return invoke('localChat:listEvents', p); },
       getEventCount: function(p) { return invoke('localChat:getEventCount', p); },
       appendEvent: function(p) { return invoke('localChat:appendEvent', p); },
+      persistDiscoveryWelcome: function(p) { return invoke('localChat:persistDiscoveryWelcome', p); },
       listSyncMessages: function(p) { return invoke('localChat:listSyncMessages', p); },
       getSyncCheckpoint: function(p) { return invoke('localChat:getSyncCheckpoint', p); },
       setSyncCheckpoint: function(p) { return invoke('localChat:setSyncCheckpoint', p); },
@@ -383,6 +434,9 @@ export function generateShimScript(
     // ── Social sessions ─────────────────────────────────────────────────
 
     socialSessions: {
+      create: function(p) { return invoke('socialSessions:create', p); },
+      updateStatus: function(p) { return invoke('socialSessions:updateStatus', p); },
+      queueTurn: function(p) { return invoke('socialSessions:queueTurn', p); },
       getStatus: function() { return invoke('socialSessions:getStatus'); },
     },
   };

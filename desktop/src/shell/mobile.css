@@ -58,6 +58,16 @@
   max-width: 100%;
 }
 
+/* ── Prevent iOS auto-zoom on focused inputs (requires >= 16px) ── */
+
+[data-platform="mobile"] .chat-composer-field,
+[data-platform="mobile"] .composer-input,
+[data-platform="mobile"] input,
+[data-platform="mobile"] textarea,
+[data-platform="mobile"] select {
+  font-size: 16px;
+}
+
 /* ── Hamburger toggle (injected by shim) ──────────────────────── */
 
 .mobile-sidebar-toggle {

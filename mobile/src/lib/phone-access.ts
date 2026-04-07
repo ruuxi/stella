@@ -4,12 +4,12 @@ import { assert, assertObject } from "./assert";
 import { getJson, postJson } from "./http";
 import type { DesktopBridgeStatus } from "../types";
 
-const MOBILE_DEVICE_ID_KEY = "stella-mobile_phone-access/mobile-device-id";
+const MOBILE_DEVICE_ID_KEY = "stella-mobile_phone-access.mobile-device-id";
 const PREFERRED_DESKTOP_DEVICE_ID_KEY =
-  "stella-mobile_phone-access/preferred-desktop-device-id";
+  "stella-mobile_phone-access.preferred-desktop-device-id";
 /** JSON string array of desktop device ids (multiple computers per account). */
-const PAIRED_DESKTOP_IDS_KEY = "stella-mobile_phone-access/paired-desktop-ids";
-const DESKTOP_ACCESS_KEY_PREFIX = "stella-mobile_phone-access/desktop/";
+const PAIRED_DESKTOP_IDS_KEY = "stella-mobile_phone-access.paired-desktop-ids";
+const DESKTOP_ACCESS_KEY_PREFIX = "stella-mobile_phone-access.desktop.";
 
 export type StoredPhoneAccess = {
   desktopDeviceId: string;

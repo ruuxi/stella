@@ -13,7 +13,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { getSetCookie } from "@better-auth/expo/client";
 import { authClient } from "../../src/lib/auth-client";
@@ -40,7 +39,6 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>({ type: "idle" });
   const [activeLegal, setActiveLegal] = useState<LegalDoc>(null);
-  const router = useRouter();
   const cancelledRef = useRef(false);
 
   const sendMagicLink = async () => {
@@ -96,30 +94,18 @@ export default function LoginScreen() {
             sessionCookie?: string;
           };
 
-          if (data.status === "completed" && (data.sessionCookie || data.ott)) {
+          if (data.status === "completed" && data.sessionCookie) {
             if (cancelledRef.current) return;
             setSubmitState({ type: "verifying" });
             try {
-              // `/api/auth/link/verify` may have exchanged the OTT server-side; prefer Set-Cookie.
-              // If the server could not attach a cookie, exchange the OTT client-side (same as desktop).
-              if (data.sessionCookie) {
-                const prev = await SecureStore.getItemAsync("stella-mobile_cookie");
-                const parsed = getSetCookie(data.sessionCookie, prev ?? undefined);
-                await SecureStore.setItemAsync("stella-mobile_cookie", parsed);
-              } else {
-                await authClient.$fetch("/cross-domain/one-time-token/verify", {
-                  method: "POST",
-                  body: { token: data.ott as string },
-                });
-              }
-              const updateSession = (
-                authClient as unknown as { updateSession?: () => void }
-              ).updateSession;
-              if (typeof updateSession === "function") {
-                updateSession();
-              }
-              await authClient.getSession();
-              router.replace("/chat");
+              const prev = await SecureStore.getItemAsync("stella-mobile_cookie");
+              const parsed = getSetCookie(data.sessionCookie, prev ?? undefined);
+              await SecureStore.setItemAsync("stella-mobile_cookie", parsed);
+              // Notify the session signal so useSession() re-fetches with the
+              // newly-stored cookie. The expo plugin's init hook attaches it to
+              // the request, and the server returns valid session data.
+              const store = (authClient as unknown as { $store?: { notify: (s: string) => void } }).$store;
+              store?.notify("$sessionSignal");
             } catch {
               setSubmitState({
                 type: "error",
@@ -155,7 +141,7 @@ export default function LoginScreen() {
     return () => {
       cancelledRef.current = true;
     };
-  }, [submitState, router]);
+  }, [submitState]);
 
   return (
     <SafeAreaView style={styles.screen}>
