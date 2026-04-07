@@ -195,14 +195,14 @@
   bottom: 20px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  gap: 8px;
+  padding: 10px 20px;
   background: transparent;
-  border: 1px solid var(--border-weak);
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
-  color: var(--text-weak);
+  color: var(--text-base);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
   cursor: default;
   transition: color 0.15s ease, border-color 0.15s ease;
@@ -212,7 +212,7 @@
 }
 
 .home-view-messages:hover {
-  color: var(--text-base);
+  color: var(--text-strong);
   border-color: var(--border-base);
 }
 
