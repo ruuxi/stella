@@ -479,7 +479,7 @@ export const OnboardingStep1 = ({
 
     const detectBrowser = async () => {
       try {
-        const detected = await window.electronAPI?.browser.detectPreferred?.();
+        const detected = await window.electronAPI?.discovery.detectPreferred?.();
         if (cancelled || !detected?.browser) {
           return;
         }
@@ -516,7 +516,7 @@ export const OnboardingStep1 = ({
     const loadProfiles = async () => {
       try {
         const profiles =
-          await window.electronAPI?.browser.listProfiles?.(selectedBrowser);
+          await window.electronAPI?.discovery.listProfiles?.(selectedBrowser);
         if (!cancelled && profiles) {
           setAvailableProfiles(profiles);
           setSelectedProfile((currentProfile) => {

@@ -15,6 +15,9 @@ import { StoreModStore } from "../kernel/storage/store-mod-store.js";
 import { TranscriptMirror } from "../kernel/storage/transcript-mirror.js";
 import { prepareStoredLocalChatPayload } from "../kernel/storage/local-chat-payload.js";
 import type { SqliteDatabase } from "../kernel/storage/shared.js";
+import type {
+  DiscoveryKnowledgeSeedPayload,
+} from "../../src/shared/contracts/discovery.js";
 import {
   METHOD_NAMES,
   NOTIFICATION_NAMES,
@@ -899,9 +902,23 @@ export class StellaRuntimeClient {
     return await coreMemoryExists(this.options.initializeParams.stellaHomePath);
   }
 
+  async discoveryKnowledgeExists() {
+    const { discoveryKnowledgeExists } = await import(
+      "../discovery/life-knowledge.js"
+    );
+    return await discoveryKnowledgeExists(this.options.initializeParams.stellaHomePath);
+  }
+
   async writeCoreMemory(content: string) {
     const { writeCoreMemory } = await import("../discovery/browser-data.js");
     await writeCoreMemory(this.options.initializeParams.stellaHomePath, content);
+  }
+
+  async writeDiscoveryKnowledge(payload: DiscoveryKnowledgeSeedPayload) {
+    const { writeDiscoveryKnowledge } = await import(
+      "../discovery/life-knowledge.js"
+    );
+    await writeDiscoveryKnowledge(this.options.initializeParams.stellaHomePath, payload);
   }
 
   async detectPreferredBrowserProfile() {

@@ -59,7 +59,10 @@ import type {
   SocialSessionRuntimeRecord as SharedSocialSessionRuntimeRecord,
   SocialSessionServiceSnapshot as SharedSocialSessionServiceSnapshot,
 } from "../contracts/boundary";
-import type { DiscoveryCategory } from "@/shared/contracts/discovery";
+import type {
+  DiscoveryCategory,
+  DiscoveryKnowledgeSeedPayload,
+} from "@/shared/contracts/discovery";
 import type { RadialTriggerCode as SharedRadialTriggerCode } from "@/shared/lib/radial-trigger";
 import type {
   OnboardingSynthesisRequest,
@@ -427,6 +430,28 @@ export type ElectronOnboardingApi = {
   ) => Promise<OnboardingSynthesisResponse>;
 };
 
+export type ElectronDiscoveryApi = {
+  checkCoreMemoryExists: () => Promise<boolean>;
+  checkKnowledgeExists: () => Promise<boolean>;
+  collectData: (options?: {
+    selectedBrowser?: string;
+    selectedProfile?: string;
+  }) => Promise<BrowserDataResult>;
+  detectPreferred: () => Promise<PreferredBrowserProfile>;
+  listProfiles: (browserType: string) => Promise<BrowserProfile[]>;
+  writeCoreMemory: (
+    content: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  writeKnowledge: (
+    payload: DiscoveryKnowledgeSeedPayload,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  collectAllSignals: (options?: {
+    categories?: DiscoveryCategory[];
+    selectedBrowser?: string;
+    selectedProfile?: string;
+  }) => Promise<AllUserSignalsResult>;
+};
+
 export type ElectronBrowserApi = {
   onBridgeStatus: (
     callback: (status: {
@@ -441,7 +466,6 @@ export type ElectronBrowserApi = {
       notifyUser?: boolean;
     }) => void,
   ) => () => void;
-  checkCoreMemoryExists: () => Promise<boolean>;
   fetchJson: (
     url: string,
     init?: {
@@ -458,20 +482,6 @@ export type ElectronBrowserApi = {
       body?: string;
     },
   ) => Promise<string>;
-  collectData: (options?: {
-    selectedBrowser?: string;
-    selectedProfile?: string;
-  }) => Promise<BrowserDataResult>;
-  detectPreferred: () => Promise<PreferredBrowserProfile>;
-  listProfiles: (browserType: string) => Promise<BrowserProfile[]>;
-  writeCoreMemory: (
-    content: string,
-  ) => Promise<{ ok: boolean; error?: string }>;
-  collectAllSignals: (options?: {
-    categories?: DiscoveryCategory[];
-    selectedBrowser?: string;
-    selectedProfile?: string;
-  }) => Promise<AllUserSignalsResult>;
 };
 
 export type ElectronProjectsApi = {
@@ -637,6 +647,7 @@ export type ElectronApi = {
   agent: ElectronAgentApi;
   system: ElectronSystemApi;
   onboarding: ElectronOnboardingApi;
+  discovery: ElectronDiscoveryApi;
   browser: ElectronBrowserApi;
   media: {
     saveOutput: (

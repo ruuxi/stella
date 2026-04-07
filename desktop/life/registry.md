@@ -27,3 +27,4 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 - Prefer a direct read when you already know the likely document.
 - `abilities/` contains operational manuals for CLIs, APIs, and executable surfaces.
 - `knowledge/` contains workflows, habits, and domain-specific guidance.
+- `raw/` contains unprocessed data dumps (discovery signals, ingested documents, etc.). Knowledge pages link into `raw/` when the full source material is relevant. Prefer reading the curated knowledge page first and only drop into `raw/` when you need higher detail.

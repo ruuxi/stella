@@ -1,5 +1,6 @@
 import { registerAgentHandlers } from "../ipc/agent-handlers.js";
 import { registerBrowserHandlers } from "../ipc/browser-handlers.js";
+import { registerDiscoveryHandlers } from "../ipc/discovery-handlers.js";
 import { registerGoogleWorkspaceHandlers } from "../ipc/google-workspace-handlers.js";
 import { registerCaptureHandlers } from "../ipc/capture-handlers.js";
 import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
@@ -102,6 +103,11 @@ export const registerBootstrapIpcHandlers = (
   registerBrowserHandlers({
     getStellaHomePath: lifecycle.getStellaHomePath,
     getFrontendRoot: () => config.frontendRoot,
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
+  });
+
+  registerDiscoveryHandlers({
     getStellaHostRunner: lifecycle.getRunner,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
