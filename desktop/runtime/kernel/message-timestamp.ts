@@ -16,6 +16,27 @@ export const TRAILING_TIME_TAG_RE = new RegExp(
 );
 
 export const TEN_MINUTES_MS = 10 * 60 * 1000;
+export const THIRTY_MINUTES_MS = 30 * 60 * 1000;
+
+export const wrapSystemReminder = (text: string): string =>
+  `<system-reminder>${text.trim()}</system-reminder>`;
+
+export const formatDateTimeReminder = (
+  timestamp: number,
+  timezone?: string,
+): string => {
+  const tz = timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+  const value = new Date(timestamp).toLocaleString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: tz,
+  });
+  return `Current date and time: ${value}.`;
+};
 
 /**
  * Format a timestamp tag for appending to a user message.

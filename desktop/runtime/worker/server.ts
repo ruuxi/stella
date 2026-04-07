@@ -531,6 +531,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     const userMessageId = userMessageEvent._id;
     let activeRunId = "";
     let syntheticSeq = 1;
+    let hiddenUserMessageCount = 0;
     const result = await ensureRunner().handleLocalChat({
       conversationId: payload.conversationId,
       userMessageId,
@@ -542,8 +543,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       onUserMessage: (ev) => {
         const hiddenTimestamp = Math.max(
           0,
-          Math.min(ev.timestamp, userMessageTimestamp - 1),
+          userMessageTimestamp - 1000 + hiddenUserMessageCount,
         );
+        hiddenUserMessageCount += 1;
         ensureChatStore().appendEvent({
           conversationId: payload.conversationId,
           type: "user_message",

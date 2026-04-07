@@ -8,6 +8,7 @@ export type LocalTaskManagerAgentContext = {
   systemPrompt: string;
   dynamicContext: string;
   orchestratorReminderText?: string;
+  staleUserReminderText?: string;
   shouldInjectDynamicReminder?: boolean;
   toolsAllowlist?: string[];
   model?: string;
