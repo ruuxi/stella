@@ -19,6 +19,7 @@ import {
 import { deriveComposerState } from "@/app/chat/composer-context";
 import { useFileDrop } from "@/app/chat/hooks/use-file-drop";
 import { DropOverlay } from "@/app/chat/DropOverlay";
+import { useScreenshotPreview, ScreenshotPreviewOverlay } from "@/app/chat/ScreenshotPreview";
 import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
@@ -77,6 +78,8 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const { chatContext, setChatContext, selectedText, setSelectedText } =
       useChatContextSync();
+    const { screenshot: previewScreenshot, previewIndex: previewScreenshotIndex, setPreviewIndex: setPreviewScreenshotIndex } =
+      useScreenshotPreview(chatContext);
 
     const formRef = useRef<HTMLFormElement | null>(null);
     const shellRef = useRef<HTMLDivElement | null>(null);
@@ -249,6 +252,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
               selectedText={selectedText}
               setChatContext={setChatContext}
               setSelectedText={setSelectedText}
+              onPreviewScreenshot={setPreviewScreenshotIndex}
               onSuggestionSelect={handleSuggestionSelect}
             />
 
@@ -329,6 +333,13 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
             </div>
           </div>
         </div>
+        {previewScreenshot && previewScreenshotIndex !== null && (
+          <ScreenshotPreviewOverlay
+            screenshot={previewScreenshot}
+            index={previewScreenshotIndex}
+            onClose={() => setPreviewScreenshotIndex(null)}
+          />
+        )}
       </aside>,
       portalTarget,
     );
