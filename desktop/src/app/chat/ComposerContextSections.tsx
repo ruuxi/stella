@@ -46,7 +46,7 @@ const captureVariantClassNames = {
       "chat-composer-context-pending-inner composer-context-pending-inner",
   },
   mini: {
-    containerClassName: "mini-composer-screenshots",
+    containerClassName: null,
     chipClassName:
       "chat-composer-context-chip chat-composer-context-chip--screenshot mini-context-chip mini-context-chip--screenshot",
     imageClassName:
@@ -67,7 +67,7 @@ const fileVariantClassNames = {
     removeClassName: "chat-composer-context-remove composer-context-remove",
   },
   mini: {
-    containerClassName: "mini-composer-screenshots",
+    containerClassName: null,
     chipClassName: "mini-context-chip",
     removeClassName: "chat-composer-context-remove mini-context-remove",
   },
@@ -84,7 +84,7 @@ const selectedTextVariantClassNames = {
       "chat-composer-context-remove composer-context-remove",
   },
   mini: {
-    containerClassName: "mini-composer-context",
+    containerClassName: null,
     chipClassName:
       "chat-composer-context-chip chat-composer-context-chip--text mini-context-chip mini-context-chip--text",
     textClassName:
@@ -109,10 +109,10 @@ export function ComposerWindowContextSection({
         chatWindow={chatContext.window}
         included={chatContext.windowContextEnabled !== false}
         setChatContext={setChatContext}
-        className="mini-composer-window-badge"
-        toggleClassName="mini-composer-window-toggle"
-        textClassName="mini-composer-window-text"
-        removeClassName="mini-composer-window-dismiss"
+        className="chat-composer-context-chip chat-composer-context-chip--window composer-context-chip composer-context-chip--window"
+        toggleClassName="composer-context-window-toggle"
+        textClassName="chat-composer-context-window composer-context-window"
+        removeClassName="chat-composer-context-remove composer-context-remove"
         textFormatter={(chatWindow) => chatWindow.title || chatWindow.app}
       />
     );

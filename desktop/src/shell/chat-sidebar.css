@@ -64,15 +64,6 @@
   padding: 8px 12px 12px;
 }
 
-.chat-sidebar-attachments {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 0 4px;
-}
-
 /* Shell: animated height + border-radius (motion inline; same pattern as .composer-shell) */
 .chat-sidebar-shell {
   position: relative;

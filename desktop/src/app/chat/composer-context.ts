@@ -5,6 +5,7 @@ export type ComposerContextState = {
   hasScreenshotContext: boolean;
   hasFileContext: boolean;
   hasWindowContext: boolean;
+  hasVisibleWindowContext: boolean;
   hasWindowTextContext: boolean;
   hasSelectedTextContext: boolean;
   hasPendingCaptureContext: boolean;
@@ -31,6 +32,7 @@ export const resolveComposerContextState = (
   chatContext: ChatContext | null,
   selectedText: string | null,
 ): ComposerContextState => {
+  const hasVisibleWindowContext = Boolean(chatContext?.window);
   const windowContextEnabled = Boolean(
     chatContext?.window && chatContext.windowContextEnabled !== false,
   );
@@ -54,11 +56,14 @@ export const resolveComposerContextState = (
     hasScreenshotContext,
     hasFileContext,
     hasWindowContext,
+    hasVisibleWindowContext,
     hasWindowTextContext,
     hasSelectedTextContext,
     hasPendingCaptureContext,
     hasSubmittableContext,
-    hasComposerContext: Boolean(hasSubmittableContext || hasPendingCaptureContext),
+    hasComposerContext: Boolean(
+      hasSubmittableContext || hasPendingCaptureContext || hasVisibleWindowContext,
+    ),
   };
 };
 

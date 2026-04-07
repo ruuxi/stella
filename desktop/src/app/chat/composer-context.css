@@ -1,3 +1,11 @@
+.composer-context-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
 .chat-composer-context-chip,
 .composer-context-chip,
 .mini-context-chip,

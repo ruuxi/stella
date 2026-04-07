@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
+import { ChatSuggestions } from "./ChatSuggestions";
 import {
   ComposerCaptureContextSection,
   ComposerFileContextSection,
@@ -8,38 +9,51 @@ import {
 } from "./ComposerContextSections";
 
 type ComposerContextRowProps = {
+  variant?: "full" | "mini";
   chatContext: ChatContext | null;
   selectedText: string | null;
   setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
   setSelectedText: Dispatch<SetStateAction<string | null>>;
+  onPreviewScreenshot?: (index: number) => void;
+  onSuggestionSelect?: (prompt: string) => void;
 };
 
 export function ComposerContextRow({
+  variant = "full",
   chatContext,
   selectedText,
   setChatContext,
   setSelectedText,
+  onPreviewScreenshot,
+  onSuggestionSelect,
 }: ComposerContextRowProps) {
   return (
     <div className="composer-context-row">
+      {onSuggestionSelect ? (
+        <ChatSuggestions
+          variant={variant}
+          onSelect={onSuggestionSelect}
+        />
+      ) : null}
       <ComposerCaptureContextSection
-        variant="full"
+        variant={variant}
         chatContext={chatContext}
         setChatContext={setChatContext}
+        onPreviewScreenshot={onPreviewScreenshot}
       />
       <ComposerFileContextSection
-        variant="full"
+        variant={variant}
         chatContext={chatContext}
         setChatContext={setChatContext}
       />
       <ComposerSelectedTextContextSection
-        variant="full"
+        variant={variant}
         selectedText={selectedText}
         setSelectedText={setSelectedText}
         setChatContext={setChatContext}
       />
       <ComposerWindowContextSection
-        variant="full"
+        variant={variant}
         chatContext={chatContext}
         setChatContext={setChatContext}
       />

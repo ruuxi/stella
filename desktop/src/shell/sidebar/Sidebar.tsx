@@ -13,22 +13,26 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
-import AlertCircle from "lucide-react/dist/esm/icons/circle-alert";
-import Folder from "lucide-react/dist/esm/icons/folder";
-import House from "lucide-react/dist/esm/icons/house";
-import Layout from "lucide-react/dist/esm/icons/layout-dashboard";
-import Link2 from "lucide-react/dist/esm/icons/link-2";
-import LogIn from "lucide-react/dist/esm/icons/log-in";
-import Palette from "lucide-react/dist/esm/icons/palette";
-import PlusSquare from "lucide-react/dist/esm/icons/square-plus";
-import Settings from "lucide-react/dist/esm/icons/settings";
-import Sparkles from "lucide-react/dist/esm/icons/sparkles";
-import User from "lucide-react/dist/esm/icons/user";
-import Users from "lucide-react/dist/esm/icons/users";
+import {
+  CustomAlertCircle as AlertCircle,
+  CustomFolder as Folder,
+  CustomArrowLeft as ArrowLeft,
+  CustomHouse as House,
+  CustomLayout as Layout,
+  CustomDevice as Device,
+  CustomLogIn as LogIn,
+  CustomPalette as Palette,
+  CustomPlusSquare as PlusSquare,
+  CustomSettings as Settings,
+  CustomStore as Store,
+  CustomUser as User,
+  CustomUsers as Users,
+} from "./SidebarIcons";
 import "./sidebar.css";
 
 interface SidebarProps {
   activeView?: ViewType;
+  isShowingHomeContent?: boolean;
   hideThemePicker?: boolean;
   themePickerOpen?: boolean;
   onThemePickerOpenChange?: (open: boolean) => void;
@@ -140,6 +144,7 @@ const AuthButton = ({
 
 export const Sidebar = ({
   activeView,
+  isShowingHomeContent,
   hideThemePicker,
   themePickerOpen,
   onThemePickerOpenChange,
@@ -203,9 +208,9 @@ export const Sidebar = ({
           onClick={onChat}
         >
           <span className="sidebar-nav-icon">
-            <House size={18} />
+            {activeView === "chat" && !isShowingHomeContent ? <ArrowLeft size={18} /> : <House size={18} />}
           </span>
-          <span className="sidebar-nav-label">Home</span>
+          <span className="sidebar-nav-label">{activeView === "chat" && !isShowingHomeContent ? "Back" : "Home"}</span>
         </button>
         <button
           type="button"
@@ -316,13 +321,13 @@ export const Sidebar = ({
           onClick={onStore}
         >
           <span className="sidebar-nav-icon">
-            <Sparkles size={18} />
+            <Store size={18} />
           </span>
           <span className="sidebar-nav-label">Store</span>
         </button>
         <button type="button" className="sidebar-nav-item" onClick={onConnect}>
           <span className="sidebar-nav-icon">
-            <Link2 size={18} />
+            <Device size={18} />
           </span>
           <span className="sidebar-nav-label">Connect</span>
         </button>

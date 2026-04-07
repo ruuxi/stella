@@ -29,6 +29,7 @@ type FullShellRuntimeProps = {
   pendingAskStellaRequest: PendingAskStellaRequest | null;
   onPendingAskStellaHandled: (requestId: number) => void;
   onSidebarChatOpenChange?: (open: boolean) => void;
+  onHomeContentChange?: (showing: boolean) => void;
 };
 
 export const FullShellRuntime = ({
@@ -40,6 +41,7 @@ export const FullShellRuntime = ({
   pendingAskStellaRequest,
   onPendingAskStellaHandled,
   onSidebarChatOpenChange,
+  onHomeContentChange,
 }: FullShellRuntimeProps) => {
   const sidebarRef = useRef<ChatSidebarHandle>(null);
   const chat = useFullShellChat({
@@ -62,6 +64,10 @@ export const FullShellRuntime = ({
     sidebarRef.current?.open();
     onPendingAskStellaHandled(pendingAskStellaRequest.id);
   }, [onPendingAskStellaHandled, pendingAskStellaRequest]);
+
+  useEffect(() => {
+    onHomeContentChange?.(chat.showHomeContent);
+  }, [chat.showHomeContent, onHomeContentChange]);
 
   const activeViewRef = useRef(activeView);
   activeViewRef.current = activeView;
@@ -123,7 +129,6 @@ export const FullShellRuntime = ({
           showHomeContent={chat.showHomeContent}
           onSuggestionClick={chat.onSuggestionClick}
           onDismissHome={chat.dismissHome}
-          onShowHome={chat.showHome}
         />
       ) : activeView === "social" ? (
         <SocialView onSignIn={onSignIn} />

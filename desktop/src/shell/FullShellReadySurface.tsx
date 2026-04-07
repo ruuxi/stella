@@ -11,7 +11,7 @@ import { useDevProjects } from "@/context/dev-projects-state";
 import { useUiState } from "@/context/ui-state";
 import { useWorkspace } from "@/context/workspace-state";
 import { secureSignOut } from "@/global/auth/services/auth";
-import { dispatchCloseSidebarChat, dispatchOpenSidebarChat } from "@/shared/lib/stella-orb-chat";
+import { dispatchCloseSidebarChat, dispatchOpenSidebarChat, dispatchShowHome } from "@/shared/lib/stella-orb-chat";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { DisplayOverlay } from "./DisplayOverlay";
@@ -47,6 +47,7 @@ export const FullShellReadySurface = ({
   const [pendingAskStellaRequest, setPendingAskStellaRequest] =
     useState<PendingAskStellaRequest | null>(null);
   const [isSidebarChatOpen, setIsSidebarChatOpen] = useState(false);
+  const [isShowingHomeContent, setIsShowingHomeContent] = useState(true);
   const { projects, pickProjectDirectory } = useDevProjects();
 
   const showAuthDialog = useCallback(() => {
@@ -67,9 +68,13 @@ export const FullShellReadySurface = ({
   }, [closePanel, setView]);
 
   const showChatView = useCallback(() => {
+    if (state.view === "chat") {
+      dispatchShowHome();
+      return;
+    }
     closePanel();
     setView("chat");
-  }, [closePanel, setView]);
+  }, [closePanel, setView, state.view]);
 
   const showSocialView = useCallback(() => {
     closePanel();
@@ -158,6 +163,7 @@ export const FullShellReadySurface = ({
     <>
       <Sidebar
         activeView={state.view}
+        isShowingHomeContent={isShowingHomeContent}
         onSignIn={showAuthDialog}
         onConnect={showConnectDialog}
         onSettings={showSettingsDialog}
@@ -207,6 +213,7 @@ export const FullShellReadySurface = ({
               pendingAskStellaRequest={pendingAskStellaRequest}
               onPendingAskStellaHandled={handlePendingAskStellaHandled}
               onSidebarChatOpenChange={setIsSidebarChatOpen}
+              onHomeContentChange={setIsShowingHomeContent}
             />
           </Suspense>
         </div>

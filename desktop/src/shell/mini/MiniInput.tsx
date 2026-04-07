@@ -4,12 +4,7 @@ import {
   clearComposerSelectedTextContext,
   deriveComposerState,
 } from "@/app/chat/composer-context";
-import {
-  ComposerCaptureContextSection,
-  ComposerFileContextSection,
-  ComposerSelectedTextContextSection,
-  ComposerWindowContextSection,
-} from "@/app/chat/ComposerContextSections";
+import { ComposerContextRow } from "@/app/chat/ComposerContextRow";
 import {
   ComposerAddButton,
   ComposerStopButton,
@@ -21,7 +16,7 @@ import { DropOverlay } from "@/app/chat/DropOverlay";
 
 type Props = {
   message: string;
-  setMessage: (value: string) => void;
+  setMessage: React.Dispatch<React.SetStateAction<string>>;
   chatContext: ChatContext | null;
   setChatContext: React.Dispatch<React.SetStateAction<ChatContext | null>>;
   selectedText: string | null;
@@ -112,36 +107,30 @@ export const MiniInput = ({
     ],
   );
 
+  const handleSuggestionSelect = useCallback(
+    (prompt: string) => {
+      setMessage((prev) => (prev.trim() ? `${prev.trimEnd()}\n${prompt}` : prompt));
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
+    },
+    [setMessage],
+  );
+
   return (
     <div className="mini-composer" {...dropHandlers}>
       <DropOverlay visible={isDragOver} variant="mini" />
-      <ComposerWindowContextSection
+      <ComposerContextRow
         variant="mini"
         chatContext={chatContext}
+        selectedText={selectedText}
         setChatContext={setChatContext}
-      />
-
-      <ComposerCaptureContextSection
-        variant="mini"
-        chatContext={chatContext}
-        setChatContext={setChatContext}
+        setSelectedText={setSelectedText}
         onPreviewScreenshot={setPreviewIndex}
-      />
-
-      <ComposerFileContextSection
-        variant="mini"
-        chatContext={chatContext}
-        setChatContext={setChatContext}
+        onSuggestionSelect={handleSuggestionSelect}
       />
 
       <div className="mini-composer-inner">
-        <ComposerSelectedTextContextSection
-          variant="mini"
-          selectedText={selectedText}
-          setSelectedText={setSelectedText}
-          setChatContext={setChatContext}
-        />
-
         <ComposerTextarea
           ref={inputRef}
           className="mini-composer-input"

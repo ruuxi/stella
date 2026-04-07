@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ChatColumn: column-reverse scroll viewport, message rendering, custom scrollbar, composer.
  */
 
@@ -27,7 +27,6 @@ export const ChatColumn = memo(function ChatColumn({
   showHomeContent,
   onSuggestionClick,
   onDismissHome,
-  onShowHome,
 }: ChatColumnProps) {
   // --- Custom scrollbar thumb drag ---
   const isDraggingRef = useRef(false);
@@ -118,7 +117,7 @@ export const ChatColumn = memo(function ChatColumn({
     [setViewportElement],
   );
 
-  const composerElement = (
+  const homeComposerElement = (
     <Composer
       message={composer.message}
       setMessage={composer.setMessage}
@@ -135,6 +134,24 @@ export const ChatColumn = memo(function ChatColumn({
     />
   );
 
+  const chatComposerElement = (
+    <Composer
+      message={composer.message}
+      setMessage={composer.setMessage}
+      chatContext={composer.chatContext}
+      setChatContext={composer.setChatContext}
+      selectedText={composer.selectedText}
+      setSelectedText={composer.setSelectedText}
+      isStreaming={conversation.streaming.isStreaming}
+      canSubmit={composer.canSubmit}
+      conversationId={conversationId}
+      onAdd={composer.onAdd}
+      onSend={composer.onSend}
+      onStop={composer.onStop}
+      showSuggestions
+    />
+  );
+
   if (shouldShowHomeContent && onSuggestionClick) {
     const hasMessages = conversation.events.length > 0;
     return (
@@ -144,7 +161,7 @@ export const ChatColumn = memo(function ChatColumn({
           onSuggestionClick={onSuggestionClick}
         >
           <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
-            {composerElement}
+            {homeComposerElement}
           </div>
         </HomeContent>
         {hasMessages && onDismissHome && (
@@ -235,25 +252,9 @@ export const ChatColumn = memo(function ChatColumn({
         )}
       </div>
 
-      {/* Composer row: home button (left) + composer */}
-      <div className="composer-row">
-        {onShowHome && (
-          <button
-            className="chat-home-btn"
-            type="button"
-            onClick={onShowHome}
-            aria-label="Return to home"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 12H5" />
-              <path d="M12 19l-7-7 7-7" />
-            </svg>
-            Home
-          </button>
-        )}
-        <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
-          {composerElement}
-        </div>
+      {/* Composer: normal flow below the scroll viewport */}
+      <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
+        {chatComposerElement}
       </div>
     </div>
   );

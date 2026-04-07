@@ -268,24 +268,12 @@
   padding: 16px 12px 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
-/* Floating window badge above composer */
+/* Window badge inside context row */
 .mini-composer-window-badge {
-  gap: 6px;
-  align-self: flex-start;
-  margin-left: 4px;
-}
-
-.mini-composer-window-text {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-weak);
-  max-width: 300px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  gap: 5px;
 }
 
 .mini-composer-window-dismiss {
@@ -309,15 +297,6 @@
   color: var(--text-strong);
 }
 
-/* Floating screenshot thumbnails above composer */
-.mini-composer-screenshots {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-left: 4px;
-}
-
 .mini-composer-inner {
   border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
   border-radius: 14px;
@@ -332,15 +311,6 @@
 
 .dark .mini-composer-inner {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
-}
-
-/* Context chips inside composer */
-.mini-composer-context {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px 0;
 }
 
 /* Input field */
