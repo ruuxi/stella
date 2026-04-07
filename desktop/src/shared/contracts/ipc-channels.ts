@@ -154,16 +154,29 @@ export const IPC_CREDENTIAL_CANCEL = "credential:cancel" as const;
 
 export const IPC_ONBOARDING_SYNTHESIZE = "onboarding:synthesizeCoreMemory" as const;
 
+// ── Discovery ───────────────────────────────────────────────────────────────
+
+export const IPC_DISCOVERY_CORE_MEMORY_EXISTS =
+  "discovery:coreMemoryExists" as const;
+export const IPC_DISCOVERY_KNOWLEDGE_EXISTS =
+  "discovery:knowledgeExists" as const;
+export const IPC_DISCOVERY_COLLECT_BROWSER_DATA =
+  "discovery:collectBrowserData" as const;
+export const IPC_DISCOVERY_DETECT_PREFERRED_BROWSER =
+  "discovery:detectPreferredBrowser" as const;
+export const IPC_DISCOVERY_LIST_BROWSER_PROFILES =
+  "discovery:listBrowserProfiles" as const;
+export const IPC_DISCOVERY_WRITE_CORE_MEMORY =
+  "discovery:writeCoreMemory" as const;
+export const IPC_DISCOVERY_WRITE_KNOWLEDGE =
+  "discovery:writeKnowledge" as const;
+export const IPC_DISCOVERY_COLLECT_ALL_SIGNALS =
+  "discovery:collectAllSignals" as const;
+
 // ── Browser ─────────────────────────────────────────────────────────────────
 
-export const IPC_BROWSER_DATA_EXISTS = "browserData:exists" as const;
 export const IPC_BROWSER_FETCH_JSON = "browser:fetchJson" as const;
 export const IPC_BROWSER_FETCH_TEXT = "browser:fetchText" as const;
-export const IPC_BROWSER_DATA_COLLECT = "browserData:collect" as const;
-export const IPC_BROWSER_DETECT_PREFERRED = "browserData:detectPreferredBrowser" as const;
-export const IPC_BROWSER_LIST_PROFILES = "browserData:listProfiles" as const;
-export const IPC_BROWSER_WRITE_CORE_MEMORY = "browserData:writeCoreMemory" as const;
-export const IPC_SIGNALS_COLLECT_ALL = "signals:collectAll" as const;
 export const IPC_BROWSER_BRIDGE_STATUS = "browser:bridgeStatus" as const;
 
 // ── Media ───────────────────────────────────────────────────────────────────
