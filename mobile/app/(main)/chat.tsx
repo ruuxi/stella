@@ -14,7 +14,6 @@ import {
   UIManager,
   View,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { GlassView } from "expo-glass-effect";
 import * as ImagePicker from "expo-image-picker";
 import Reanimated, {
@@ -27,7 +26,7 @@ import {
   loadOfflineChatMessages,
   saveOfflineChatMessages,
 } from "../../src/lib/offline-chat-storage";
-import { postJson } from "../../src/lib/http";
+import { postStream } from "../../src/lib/http";
 import { userFacingError } from "../../src/lib/user-facing-error";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
@@ -76,17 +75,6 @@ const LAYOUT_SPRING = {
 const createId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-function readOfflineChatText(value: unknown): string {
-  if (
-    value
-    && typeof value === "object"
-    && typeof (value as { text?: unknown }).text === "string"
-  ) {
-    return (value as { text: string }).text;
-  }
-  return "";
-}
-
 // ---------------------------------------------------------------------------
 // Animated message wrapper — mirrors desktop stream-fade-blur-in
 // ---------------------------------------------------------------------------
@@ -131,8 +119,6 @@ export default function ChatScreen() {
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [sending, setSending] = useState(false);
-  const [atTop, setAtTop] = useState(true);
-  const [atBottom, setAtBottom] = useState(true);
 
   // Native-driven keyboard tracking (replaces KeyboardAvoidingView)
   const insets = useSafeAreaInsets();
@@ -241,26 +227,36 @@ export default function ChatScreen() {
       });
     }
 
+    const replyId = createId();
+    setMessages((m) => [...m, { id: replyId, role: "assistant", text: "" }]);
+
     try {
-      const res = await postJson("/api/mobile/offline-chat", {
-        message: text,
-        history,
-        images: imagesPayload,
-      });
-      const reply = readOfflineChatText(res);
-      setMessages((m) => [
-        ...m,
-        {
-          id: createId(),
-          role: "assistant",
-          text: reply || "No reply came back. Try again.",
+      await postStream(
+        "/api/mobile/offline-chat/stream",
+        { message: text, history, images: imagesPayload },
+        (delta) => {
+          setMessages((m) =>
+            m.map((msg) =>
+              msg.id === replyId ? { ...msg, text: msg.text + delta } : msg,
+            ),
+          );
         },
-      ]);
+      );
+      setMessages((m) =>
+        m.map((msg) =>
+          msg.id === replyId && !msg.text
+            ? { ...msg, text: "No reply came back. Try again." }
+            : msg,
+        ),
+      );
     } catch (e) {
-      setMessages((m) => [
-        ...m,
-        { id: createId(), role: "assistant", text: userFacingError(e) },
-      ]);
+      setMessages((m) =>
+        m.map((msg) =>
+          msg.id === replyId
+            ? { ...msg, text: msg.text || userFacingError(e) }
+            : msg,
+        ),
+      );
     } finally {
       setSending(false);
     }
@@ -289,25 +285,6 @@ export default function ChatScreen() {
     [expanded],
   );
 
-  // --------------- Scroll edge tracking ---------------
-
-  const handleScroll = useCallback(
-    (e: {
-      nativeEvent: {
-        contentOffset: { y: number };
-        contentSize: { height: number };
-        layoutMeasurement: { height: number };
-      };
-    }) => {
-      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-      setAtTop(contentOffset.y <= 2);
-      setAtBottom(
-        contentOffset.y + layoutMeasurement.height >= contentSize.height - 2,
-      );
-    },
-    [],
-  );
-
   const empty = messages.length === 0;
 
   // =====================================================================
@@ -329,10 +306,9 @@ export default function ChatScreen() {
             data={messages}
             keyExtractor={(m) => m.id}
             onContentSizeChange={scrollToEnd}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
             showsVerticalScrollIndicator={false}
             keyboardDismissMode="on-drag"
+            fadingEdgeLength={EDGE_FADE}
             renderItem={({ item }) => (
               <FadeInMessage>
                 {item.role === "user" ? (
@@ -351,22 +327,6 @@ export default function ChatScreen() {
                 )}
               </FadeInMessage>
             )}
-          />
-        )}
-
-        {/* Gradient edge masks */}
-        {!atTop && !empty && (
-          <LinearGradient
-            colors={[colors.background, "transparent"]}
-            style={styles.edgeTop}
-            pointerEvents="none"
-          />
-        )}
-        {!atBottom && !empty && (
-          <LinearGradient
-            colors={["transparent", colors.background]}
-            style={styles.edgeBottom}
-            pointerEvents="none"
           />
         )}
       </View>
@@ -514,22 +474,8 @@ const styles = StyleSheet.create({
   list: {
     gap: 8,
     paddingHorizontal: 4,
-    paddingTop: 8,
-    paddingBottom: 12,
-  },
-  edgeTop: {
-    height: EDGE_FADE,
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: 0,
-  },
-  edgeBottom: {
-    bottom: 0,
-    height: EDGE_FADE,
-    left: 0,
-    position: "absolute",
-    right: 0,
+    paddingTop: EDGE_FADE,
+    paddingBottom: EDGE_FADE,
   },
   emptyState: {
     alignItems: "center",
