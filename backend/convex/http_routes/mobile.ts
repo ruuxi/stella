@@ -29,6 +29,7 @@ import {
 import {
   assistantText,
   completeManagedChat,
+  streamManagedChat,
   usageSummaryFromAssistant,
 } from "../runtime_ai/managed";
 import { verifyPairedMobileSecret } from "../mobile_access";
@@ -442,9 +443,107 @@ const generateOfflineReply = async (args: {
   return text || "I'm here, but I couldn't generate a reply right now.";
 };
 
+const streamOfflineReply = async (args: {
+  ctx: ActionCtx;
+  ownerId: string;
+  userName?: string;
+  message: string;
+  isAnonymous: boolean;
+  history: Array<{ role: "user" | "assistant"; text: string }>;
+  images: Array<{ base64: string; mimeType: string }>;
+  origin: string | null;
+}): Promise<Response> => {
+  const modelAccess = await resolveManagedModelAccess(args.ctx, args.ownerId, {
+    isAnonymous: args.isAnonymous,
+  });
+
+  if (!modelAccess.allowed) {
+    return errorResponse(429, modelAccess.message, args.origin);
+  }
+
+  const config = await resolveModelConfig(
+    args.ctx,
+    AGENT_IDS.OFFLINE_RESPONDER,
+    args.ownerId,
+    { access: modelAccess },
+  );
+
+  const systemPrompt = [
+    OFFLINE_RESPONDER_SYSTEM_PROMPT,
+    "You are replying inside Stella's mobile offline chat.",
+    "Answer in plain text and keep the response practical and concise.",
+    "Use prior messages in this conversation for context when relevant.",
+    args.userName ? `The user's name is ${args.userName}.` : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join("\n\n");
+
+  const context = buildOfflineChatContext({
+    systemPrompt,
+    history: args.history,
+    message: args.message,
+    images: args.images,
+  });
+
+  const startedAt = Date.now();
+  const eventStream = streamManagedChat({ config, context });
+
+  const encoder = new TextEncoder();
+  const readable = new ReadableStream({
+    async start(controller) {
+      try {
+        let finalMessage: AssistantMessage | null = null;
+        for await (const event of eventStream) {
+          if (event.type === "text_delta") {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ t: event.delta })}\n\n`),
+            );
+          } else if (event.type === "done") {
+            finalMessage = event.message;
+          } else if (event.type === "error") {
+            finalMessage = event.error;
+          }
+        }
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+
+        void scheduleManagedUsage(args.ctx, {
+          ownerId: args.ownerId,
+          agentType: "service:offline_chat",
+          model: config.model,
+          durationMs: Date.now() - startedAt,
+          success: true,
+          usage: usageSummaryFromAssistant(finalMessage),
+        });
+      } catch (error) {
+        console.error("[mobile/offline-chat-stream] Error:", error);
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ error: "Stream failed" })}\n\n`,
+          ),
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      }
+    },
+  });
+
+  const headers: Record<string, string> = {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  };
+  if (args.origin) {
+    headers["Access-Control-Allow-Origin"] = args.origin;
+    headers["Access-Control-Allow-Credentials"] = "true";
+  }
+  return new Response(readable, { status: 200, headers });
+};
+
 export const registerMobileRoutes = (http: HttpRouter) => {
   for (const path of [
     "/api/mobile/offline-chat",
+    "/api/mobile/offline-chat/stream",
     "/api/mobile/pairing/complete",
     "/api/mobile/desktop-bridge/register",
     "/api/mobile/desktop-bridge/clear",
@@ -540,6 +639,75 @@ export const registerMobileRoutes = (http: HttpRouter) => {
             origin,
           );
         }
+      }),
+    ),
+  });
+
+  http.route({
+    path: "/api/mobile/offline-chat/stream",
+    method: "POST",
+    handler: httpAction(async (ctx, request) =>
+      handleCorsRequest(request, async (origin) => {
+        const owner = await requireMobileAccountOwner(ctx, origin);
+        if ("response" in owner) {
+          return owner.response;
+        }
+
+        const apiKey = process.env[MANAGED_GATEWAY.apiKeyEnvVar];
+        if (!apiKey) {
+          return errorResponse(500, "Server configuration error", origin);
+        }
+
+        const rateLimit = await ctx.runMutation(
+          internal.rate_limits.consumeWebhookRateLimit,
+          {
+            scope: "mobile_offline_chat",
+            key: owner.ownerId,
+            limit: OFFLINE_CHAT_RATE_LIMIT,
+            windowMs: OFFLINE_CHAT_RATE_WINDOW_MS,
+            blockMs: OFFLINE_CHAT_RATE_WINDOW_MS,
+          },
+        );
+        if (!rateLimit.allowed) {
+          return withCors(rateLimitResponse(rateLimit.retryAfterMs), origin);
+        }
+
+        let body: {
+          message?: unknown;
+          history?: unknown;
+          images?: unknown;
+        };
+        try {
+          body = (await request.json()) as {
+            message?: unknown;
+            history?: unknown;
+            images?: unknown;
+          };
+        } catch {
+          return errorResponse(400, "Invalid request body", origin);
+        }
+
+        const message =
+          typeof body.message === "string"
+            ? body.message.slice(0, MAX_OFFLINE_MESSAGE_CHARS).trim()
+            : "";
+        const history = parseOfflineHistory(body.history);
+        const images = parseOfflineImages(body.images);
+
+        if (!message && images.length === 0) {
+          return errorResponse(400, "Message or image required", origin);
+        }
+
+        return streamOfflineReply({
+          ctx,
+          ownerId: owner.ownerId,
+          userName: owner.name,
+          message,
+          isAnonymous: owner.isAnonymous,
+          history,
+          images,
+          origin,
+        });
       }),
     ),
   });
