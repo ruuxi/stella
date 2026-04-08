@@ -14,6 +14,7 @@ import type {
   RegionSelection,
   ScreenshotCapture,
   UiState,
+  VisionDisplayCapture,
   VisionScreenshotCapture,
 } from '../types.js'
 import { toChatContextWindow } from '../types.js'
@@ -511,18 +512,44 @@ export class CaptureService {
     })
   }
 
-  async captureVisionScreenshot(point?: { x: number; y: number }) {
-    const display = this.getDisplayForPoint(point)
+  async captureVisionScreenshots(point?: { x: number; y: number }) {
+    const focusPoint = point ?? screen.getCursorScreenPoint()
+    const primaryDisplay = screen.getDisplayNearestPoint(focusPoint)
+    const displays = screen
+      .getAllDisplays()
+      .sort((a, b) => Number(b.id === primaryDisplay.id) - Number(a.id === primaryDisplay.id))
 
     return this.withCaptureContext(async () => {
-      const displaySource = await this.getDisplaySource(display)
-      if (!displaySource) {
-        return null
+      const captures: VisionDisplayCapture[] = []
+
+      for (const [index, display] of displays.entries()) {
+        const displaySource = await this.getDisplaySource(display)
+        if (!displaySource) {
+          continue
+        }
+
+        const isPrimaryFocus = display.id === primaryDisplay.id
+        const displayCount = displays.length
+        const label =
+          displayCount === 1
+            ? "screen 1 of 1 - primary focus"
+            : isPrimaryFocus
+              ? `screen ${index + 1} of ${displayCount} - primary focus (cursor is on this screen)`
+              : `screen ${index + 1} of ${displayCount} - secondary screen`
+
+        captures.push({
+          ...this.buildVisionScreenshotFromImage(
+            displaySource.source.thumbnail,
+            display.bounds,
+          ),
+          displayId: Number(display.id),
+          screenNumber: index + 1,
+          label,
+          isPrimaryFocus,
+        })
       }
-      return this.buildVisionScreenshotFromImage(
-        displaySource.source.thumbnail,
-        display.bounds,
-      )
+
+      return captures
     })
   }
 }
