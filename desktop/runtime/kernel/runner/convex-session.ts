@@ -172,7 +172,8 @@ export const createConvexSession = (
     const needsClear = Boolean(prev);
     const applyNew = () => {
       context.state.authToken = value;
-      refreshConvexAuth();
+      // Recreate the client so background subscriptions reconnect with fresh auth.
+      disposeConvexClient();
       options.syncRemoteTurnBridge();
       if (next) {
         options.onAuthTokenSet?.();

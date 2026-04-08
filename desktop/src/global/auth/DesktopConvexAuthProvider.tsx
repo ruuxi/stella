@@ -5,8 +5,25 @@ import { authClient } from "@/global/auth/lib/auth-client";
 import { getConvexToken, clearCachedToken } from "@/global/auth/services/auth-token";
 import { convexClient } from "@/infra/convex-client";
 
-const TOKEN_REFRESH_MS = 3 * 60 * 1000;
 const TOKEN_BOOTSTRAP_RETRY_MS = 3_000;
+const TOKEN_REFRESH_FALLBACK_MS = 3 * 60 * 1000;
+const TOKEN_REFRESH_MARGIN_MS = 45_000;
+const TOKEN_MIN_REFRESH_MS = 15_000;
+
+export const getHostTokenRefreshDelayMs = (token: string): number => {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1] ?? ""));
+    if (typeof payload.exp !== "number") {
+      throw new Error("Missing exp claim");
+    }
+    return Math.max(
+      TOKEN_MIN_REFRESH_MS,
+      payload.exp * 1000 - Date.now() - TOKEN_REFRESH_MARGIN_MS,
+    );
+  } catch {
+    return TOKEN_REFRESH_FALLBACK_MS;
+  }
+};
 
 function useDesktopConvexAuth() {
   const session = authClient.useSession();
@@ -98,13 +115,13 @@ function DesktopAuthRuntimeEffects() {
     }
 
     let cancelled = false;
-    let refreshInterval: ReturnType<typeof setInterval> | null = null;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     const clearTimers = () => {
-      if (refreshInterval) {
-        clearInterval(refreshInterval);
-        refreshInterval = null;
+      if (refreshTimer) {
+        clearTimeout(refreshTimer);
+        refreshTimer = null;
       }
       if (retryTimer) {
         clearTimeout(retryTimer);
@@ -112,8 +129,25 @@ function DesktopAuthRuntimeEffects() {
       }
     };
 
-    const syncToken = async () => {
-      const token = (await getConvexToken()) ?? undefined;
+    const scheduleRefresh = (token: string) => {
+      if (cancelled) {
+        return;
+      }
+      if (refreshTimer) {
+        clearTimeout(refreshTimer);
+      }
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        void syncToken({ forceRefreshToken: true });
+      }, getHostTokenRefreshDelayMs(token));
+    };
+
+    const syncToken = async (
+      { forceRefreshToken = false }: { forceRefreshToken?: boolean } = {},
+    ) => {
+      const token = (await getConvexToken({
+        forceRefresh: forceRefreshToken,
+      })) ?? undefined;
       if (cancelled) return;
 
       if (token) {
@@ -126,11 +160,7 @@ function DesktopAuthRuntimeEffects() {
           token,
           hasConnectedAccount,
         });
-        if (!refreshInterval) {
-          refreshInterval = setInterval(() => {
-            void syncToken();
-          }, TOKEN_REFRESH_MS);
-        }
+        scheduleRefresh(token);
         return;
       }
 
