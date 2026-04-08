@@ -544,8 +544,6 @@ export class OverlayWindowController {
     label: string
     x: number
     y: number
-    width: number
-    height: number
   }>) {
     this.activeScreenGuide = true
     this.overlayWindow.show({ inactive: true })

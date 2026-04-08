@@ -268,8 +268,6 @@ export type ElectronOverlayApi = {
         label: string;
         x: number;
         y: number;
-        width: number;
-        height: number;
       }>;
     }) => void,
   ) => () => void;
@@ -681,8 +679,6 @@ export type ElectronScreenGuideApi = {
     label: string;
     x: number;
     y: number;
-    width: number;
-    height: number;
   }>) => void;
   hide: () => void;
 };

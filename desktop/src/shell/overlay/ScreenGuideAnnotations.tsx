@@ -6,8 +6,6 @@ export type ScreenGuideAnnotation = {
   label: string;
   x: number;
   y: number;
-  width: number;
-  height: number;
 };
 
 type ScreenGuideAnnotationsProps = {
@@ -76,8 +74,8 @@ export function ScreenGuideAnnotations({
           key={ann.id}
           className="screen-guide-pill"
           style={{
-            left: ann.x + ann.width + 12,
-            top: ann.y + ann.height / 2,
+            left: ann.x + 24,
+            top: ann.y,
           }}
         >
           {ann.label}
