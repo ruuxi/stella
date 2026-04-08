@@ -1,5 +1,5 @@
 /* ============================================
-   Connect Dialog SVG Animation
+   Connect dialog — hero copy + tagline
    ============================================ */
 
 .connect-hero-section {
@@ -21,104 +21,6 @@
   letter-spacing: -0.01em;
   line-height: 1.55;
   color: var(--text-base);
-}
-
-.connect-hero-animation {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 140px;
-  flex-shrink: 0;
-}
-
-.connect-hero-svg {
-  width: 100%;
-  height: 100%;
-  max-width: 440px;
-  overflow: visible;
-}
-
-.anim-phone-group {
-  animation: connectFloatPhone 6s ease-in-out infinite;
-  transform-origin: 105px 75px;
-}
-
-.anim-monitor-group {
-  animation: connectFloatMonitor 7s ease-in-out infinite;
-  transform-origin: 295px 70px;
-}
-
-.anim-cursor {
-  animation: connectMoveCursor 4s ease-in-out infinite;
-}
-
-.anim-cursor-phone {
-  animation: connectMoveCursorPhone 4s ease-in-out infinite;
-}
-
-.anim-click-ripple {
-  animation: connectClickRipple 4s ease-in-out infinite;
-  transform-origin: 280px 50px;
-}
-
-.anim-click-ripple-phone {
-  animation: connectClickRipple 4s ease-in-out infinite;
-  animation-delay: 2s;
-  transform-origin: 105px 78px;
-}
-
-.anim-signal-line {
-  animation: connectSignalFlow 1.5s linear infinite;
-}
-
-.anim-pulse {
-  animation: connectPulseDot 2s ease-in-out infinite;
-  transform-origin: 105px 78px;
-}
-
-@keyframes connectFloatPhone {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-4px) rotate(1.5deg); }
-}
-
-@keyframes connectFloatMonitor {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
-}
-
-@keyframes connectMoveCursor {
-  0% { transform: translate(15px, 20px); }
-  20% { transform: translate(0, 0); }
-  40% { transform: translate(0, 0); }
-  60% { transform: translate(10px, -5px); }
-  80% { transform: translate(10px, -5px); }
-  100% { transform: translate(15px, 20px); }
-}
-
-@keyframes connectMoveCursorPhone {
-  0% { transform: translate(10px, 25px); }
-  20% { transform: translate(10px, 25px); }
-  40% { transform: translate(10px, 25px); }
-  60% { transform: translate(0, 0); }
-  80% { transform: translate(0, 0); }
-  100% { transform: translate(10px, 25px); }
-}
-
-@keyframes connectClickRipple {
-  0%, 20% { opacity: 0; transform: scale(0.2); }
-  25% { opacity: 0.3; transform: scale(1); }
-  35%, 100% { opacity: 0; transform: scale(1.5); }
-}
-
-@keyframes connectSignalFlow {
-  from { stroke-dashoffset: 0; }
-  to { stroke-dashoffset: -10; }
-}
-
-@keyframes connectPulseDot {
-  0%, 100% { transform: scale(1); opacity: 0.1; }
-  50% { transform: scale(1.5); opacity: 0.25; }
 }
 
 /* ============================================
