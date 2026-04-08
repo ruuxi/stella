@@ -146,7 +146,7 @@
     "axios": "^1.13.5",
     "cross-spawn": "^7.0.6",
     "qs": "^6.15.0",
-    "tar": "^7.5.9"
+    "tar": "^7.5.10"
   },
   "build": {
     "appId": "com.stella.app",
