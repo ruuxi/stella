@@ -18,13 +18,3 @@ export const getSynthesisPromptConfig = () => ({
   homeSuggestionsPromptTemplate: getPromptTemplateText("synthesis.home_suggestions.user").trim(),
 })
 
-export const getSkillMetadataPromptConfig = () => ({
-  systemPrompt: getPromptTemplateText("skill_metadata.system").trim(),
-  userPromptTemplate: getPromptTemplateText("skill_metadata.user").trim(),
-})
-
-export const getSkillSelectionPromptConfig = () => ({
-  systemPrompt: getPromptTemplateText("skill_selection.system").trim(),
-  userPromptTemplate: getPromptTemplateText("skill_selection.user").trim(),
-})
-

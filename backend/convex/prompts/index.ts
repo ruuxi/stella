@@ -6,8 +6,6 @@ export {
   buildHomeSuggestionsPrompt,
 } from "./synthesis";
 export type { HomeSuggestion } from "./synthesis";
-export { buildSkillMetadataUserMessage } from "./skill_metadata";
-export { buildSkillSelectionUserMessage } from "./skill_selection";
 export {
   THREAD_COMPACTION_SYSTEM_PROMPT,
   THREAD_COMPACTION_PROMPT,
