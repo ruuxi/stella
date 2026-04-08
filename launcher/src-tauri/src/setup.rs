@@ -29,6 +29,9 @@ const EMOTE_INSTALL_STATE_FILE: &str = "stella-emotes-install.json";
 const EMOTE_INSTALL_STATUS_INSTALLED: &str = "installed";
 const EMOTE_INSTALL_STATUS_SKIPPED: &str = "skipped";
 
+/// Written by desktop release CI (`npm ci`) inside `node_modules/`; tells the launcher to skip `bun install`.
+const VENDORED_NODE_MODULES_MARKER: &str = ".stella-vendored-deps";
+
 fn release_tarball_name() -> &'static str {
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
         "stella-desktop-win-x64.tar.zst"
@@ -147,6 +150,10 @@ fn package_json_of(d: &str) -> PathBuf {
 }
 fn node_modules_of(d: &str) -> PathBuf {
     Path::new(d).join("node_modules")
+}
+
+fn vendored_node_modules_marker_of(d: &str) -> PathBuf {
+    node_modules_of(d).join(VENDORED_NODE_MODULES_MARKER)
 }
 fn launch_script_name() -> &'static str {
     if cfg!(target_os = "windows") {
@@ -585,6 +592,10 @@ async fn install_payload_dependencies(install_dir: &str) -> Result<(), String> {
     }
 }
 
+async fn payload_has_ci_vendored_node_modules(install_dir: &str) -> bool {
+    path_exists(&vendored_node_modules_marker_of(install_dir)).await
+}
+
 // ── Tarball download + extract ──────────────────────────────────────
 
 async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
@@ -979,8 +990,16 @@ async fn install_step(id: &SetupStepId, state: &mut InstallerState) -> Result<()
             let _ = fs::create_dir_all(&dir).await;
             download_and_extract_release(&dir).await?;
             write_default_env_file(&dir).await?;
-            log_install(&dir, "Installing desktop dependencies with Bun").await;
-            install_payload_dependencies(&dir).await?;
+            if payload_has_ci_vendored_node_modules(&dir).await {
+                log_install(
+                    &dir,
+                    "Desktop dependencies are pre-installed for this platform; skipping Bun install",
+                )
+                .await;
+            } else {
+                log_install(&dir, "Installing desktop dependencies with Bun").await;
+                install_payload_dependencies(&dir).await?;
+            }
             Ok(())
         }
         SetupStepId::Prepare => {
