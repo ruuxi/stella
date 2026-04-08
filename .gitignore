@@ -1,5 +1,6 @@
 .stella/
 .agents/
+skills-lock.json
 CLAUDE.md
 AGENTS.md
 AGENT.md
