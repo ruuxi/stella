@@ -82,10 +82,6 @@ export default function AccountScreen() {
 
       <View style={styles.separator} />
 
-      <Text style={styles.caption}>
-        Uses the same session as your desktop.
-      </Text>
-
       <View style={styles.legalBlock}>
         <Pressable
           onPress={() => void Linking.openURL("https://stella.sh/terms")}
@@ -103,6 +99,20 @@ export default function AccountScreen() {
         </Pressable>
       </View>
 
+      <Pressable
+        onPress={() => void signOut()}
+        disabled={isSigningOut || isDeletingAccount}
+        style={({ pressed }) => [
+          styles.signOut,
+          pressed && styles.signOutPressed,
+          (isSigningOut || isDeletingAccount) && styles.signOutDisabled,
+        ]}
+      >
+        <Text style={styles.signOutText}>
+          {isSigningOut ? "Signing out\u2026" : "Sign out"}
+        </Text>
+      </Pressable>
+
       <View style={styles.spacer} />
 
       <Pressable
@@ -116,20 +126,6 @@ export default function AccountScreen() {
       >
         <Text style={styles.deleteAccountText}>
           {isDeletingAccount ? "Deleting account\u2026" : "Delete account"}
-        </Text>
-      </Pressable>
-
-      <Pressable
-        onPress={() => void signOut()}
-        disabled={isSigningOut || isDeletingAccount}
-        style={({ pressed }) => [
-          styles.signOut,
-          pressed && styles.signOutPressed,
-          (isSigningOut || isDeletingAccount) && styles.signOutDisabled,
-        ]}
-      >
-        <Text style={styles.signOutText}>
-          {isSigningOut ? "Signing out\u2026" : "Sign out"}
         </Text>
       </Pressable>
     </View>
@@ -159,15 +155,9 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     marginVertical: 20,
   },
-  caption: {
-    color: colors.textMuted,
-    fontFamily: fonts.sans.regular,
-    fontSize: 14,
-    letterSpacing: -0.1,
-    lineHeight: 20,
-  },
   legalBlock: {
     gap: 4,
+    marginBottom: 12,
     marginTop: 8,
   },
   legalRow: {
@@ -225,7 +215,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(220, 38, 38, 0.2)",
     borderRadius: 22,
     borderWidth: 1,
-    marginBottom: 24,
+    marginBottom: 0,
     paddingHorizontal: 24,
     paddingVertical: 12,
   },

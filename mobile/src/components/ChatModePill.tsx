@@ -4,15 +4,15 @@ import {
   checkDesktopConnection,
   getDesktopConnectionState,
   subscribeDesktopConnection,
-} from "../../src/lib/desktop-connection";
+} from "../lib/desktop-connection";
 import {
   getChatScreenMode,
   setChatScreenMode,
   subscribeChatScreenMode,
   type ChatScreenMode,
-} from "../../src/lib/chat-screen-mode";
-import { colors } from "../../src/theme/colors";
-import { fonts } from "../../src/theme/fonts";
+} from "../lib/chat-screen-mode";
+import { colors } from "../theme/colors";
+import { fonts } from "../theme/fonts";
 
 export function ChatModePill() {
   const [mode, setMode] = useState<ChatScreenMode>(() => getChatScreenMode());

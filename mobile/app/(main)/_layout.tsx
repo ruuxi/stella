@@ -26,7 +26,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
-import { ChatModePill } from "./ChatModePill";
+import { ChatModePill } from "../../src/components/ChatModePill";
 
 type TabId = "chat" | "stella" | "account";
 

@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import QRCode from "qrcode";
 import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import { ConnectHeroAnimation } from "@/global/integrations/ConnectHeroAnimation";
 import { Button } from "@/ui/button";
 import { showToast } from "@/ui/toast";
 
@@ -463,6 +464,7 @@ export function PhoneAccessConnectCard() {
     return (
       <div className="connect-detail-area">
         <div className="connect-detail-body connect-pair-centered">
+          <ConnectHeroAnimation />
           <p className="connect-pair-headline">Sign in to get started</p>
           <p className="connect-pair-sub">
             Sign in to your Stella account to pair with the mobile app.
@@ -475,6 +477,7 @@ export function PhoneAccessConnectCard() {
   return (
     <div className="connect-detail-area">
       <div className="connect-detail-body connect-pair-centered">
+        <ConnectHeroAnimation />
         {activePairing ? (
           <>
             <p className="connect-pair-headline">Scan or enter this code</p>

@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Animated,
-  FlatList,
-  Image,
   Keyboard,
   LayoutAnimation,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
   Pressable,
   StyleSheet,
@@ -14,6 +14,8 @@ import {
   UIManager,
   View,
 } from "react-native";
+import { FlashList, type FlashListRef, type ListRenderItemInfo } from "@shopify/flash-list";
+import { Image } from "expo-image";
 import { GlassView } from "expo-glass-effect";
 import * as ImagePicker from "expo-image-picker";
 import Reanimated, {
@@ -43,6 +45,7 @@ import { userFacingError } from "../../src/lib/user-facing-error";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
 import type { ChatMessage } from "../../src/types";
+import { ConnectHeroAnimation } from "../../src/components/ConnectHeroAnimation";
 
 // Required for LayoutAnimation on Android
 if (
@@ -87,6 +90,22 @@ const LAYOUT_SPRING = {
 const createId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+/** Pixels from the bottom of the content past which we show “scroll to bottom”. */
+const SCROLL_AWAY_FROM_BOTTOM_THRESHOLD = 96;
+
+function isScrolledAwayFromBottom(
+  e: NativeSyntheticEvent<NativeScrollEvent>,
+  thresholdPx: number,
+): boolean {
+  const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+  if (contentSize.height <= layoutMeasurement.height + 2) {
+    return false;
+  }
+  const distanceFromBottom =
+    contentSize.height - contentOffset.y - layoutMeasurement.height;
+  return distanceFromBottom > thresholdPx;
+}
+
 // ---------------------------------------------------------------------------
 // Animated message wrapper — mirrors desktop stream-fade-blur-in
 // ---------------------------------------------------------------------------
@@ -94,6 +113,11 @@ const createId = () =>
 function FadeInMessage({ children }: { children: React.ReactNode }) {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(5)).current;
+
+  const animatedStyle = useMemo(
+    () => ({ opacity, transform: [{ translateY }] }),
+    [opacity, translateY],
+  );
 
   useEffect(() => {
     Animated.parallel([
@@ -112,10 +136,61 @@ function FadeInMessage({ children }: { children: React.ReactNode }) {
     ]).start();
   }, [opacity, translateY]);
 
+  return <Animated.View style={animatedStyle}>{children}</Animated.View>;
+}
+
+type ChatMessageRowProps = {
+  item: ChatMessage;
+  /** When true, user bubbles may show the "Includes a photo" hint. */
+  showImageHint?: boolean;
+};
+
+const ChatMessageRow = memo(function ChatMessageRow({
+  item,
+  showImageHint = false,
+}: ChatMessageRowProps) {
+  if (item.role === "user") {
+    return (
+      <View style={styles.userRow}>
+        <View style={styles.userBubble}>
+          <Text style={styles.userText}>{item.text}</Text>
+          {showImageHint && item.hasImage ? (
+            <Text style={styles.userImageHint}>Includes a photo</Text>
+          ) : null}
+        </View>
+      </View>
+    );
+  }
   return (
-    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
-      {children}
-    </Animated.View>
+    <View style={styles.assistantRow}>
+      <Text style={styles.assistantText}>{item.text}</Text>
+    </View>
+  );
+});
+
+function ScrollToBottomFab({
+  visible,
+  onPress,
+}: {
+  visible: boolean;
+  onPress: () => void;
+}) {
+  if (!visible) {
+    return null;
+  }
+  return (
+    <Pressable
+      accessibilityLabel="Scroll to latest messages"
+      accessibilityRole="button"
+      hitSlop={6}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.scrollToBottomFab,
+        pressed && styles.scrollToBottomFabPressed,
+      ]}
+    >
+      <Feather name="chevron-down" size={20} color={colors.accent} strokeWidth={2.2} />
+    </Pressable>
   );
 }
 
@@ -124,7 +199,7 @@ function FadeInMessage({ children }: { children: React.ReactNode }) {
 // ---------------------------------------------------------------------------
 
 export default function ChatScreen() {
-  const listRef = useRef<FlatList<ChatMessage>>(null);
+  const listRef = useRef<FlashListRef<ChatMessage>>(null);
   const inputRef = useRef<TextInput>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [storageLoaded, setStorageLoaded] = useState(false);
@@ -141,7 +216,64 @@ export default function ChatScreen() {
   const [computerMessages, setComputerMessages] = useState<ChatMessage[]>([]);
   const [computerDraft, setComputerDraft] = useState("");
   const [computerSending, setComputerSending] = useState(false);
-  const computerListRef = useRef<FlatList<ChatMessage>>(null);
+  const computerListRef = useRef<FlashListRef<ChatMessage>>(null);
+
+  const [chatAwayFromBottom, setChatAwayFromBottom] = useState(false);
+  const [computerAwayFromBottom, setComputerAwayFromBottom] = useState(false);
+
+  const onChatScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      setChatAwayFromBottom(
+        isScrolledAwayFromBottom(e, SCROLL_AWAY_FROM_BOTTOM_THRESHOLD),
+      );
+    },
+    [],
+  );
+
+  const onComputerScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      setComputerAwayFromBottom(
+        isScrolledAwayFromBottom(e, SCROLL_AWAY_FROM_BOTTOM_THRESHOLD),
+      );
+    },
+    [],
+  );
+
+  const scrollComputerToEnd = useCallback(() => {
+    requestAnimationFrame(() =>
+      computerListRef.current?.scrollToEnd({ animated: true }),
+    );
+  }, []);
+
+  const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
+
+  const renderChatItem = useCallback(
+    ({ item }: ListRenderItemInfo<ChatMessage>) => (
+      <FadeInMessage key={item.id}>
+        <ChatMessageRow item={item} showImageHint />
+      </FadeInMessage>
+    ),
+    [],
+  );
+
+  const renderComputerItem = useCallback(
+    ({ item }: ListRenderItemInfo<ChatMessage>) => (
+      <FadeInMessage key={item.id}>
+        <ChatMessageRow item={item} />
+      </FadeInMessage>
+    ),
+    [],
+  );
+
+  const renderMessageSeparator = useCallback(
+    () => <View style={styles.itemSeparator} />,
+    [],
+  );
+
+  const getMessageItemType = useCallback(
+    (item: ChatMessage) => item.role,
+    [],
+  );
 
   useEffect(() => {
     void getOrCreateMobileDeviceId().then(setMobileDeviceId);
@@ -183,6 +315,18 @@ export default function ChatScreen() {
     if (!storageLoaded) return;
     void saveOfflineChatMessages(messages);
   }, [messages, storageLoaded]);
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      setChatAwayFromBottom(false);
+    }
+  }, [messages.length]);
+
+  useEffect(() => {
+    if (computerMessages.length === 0) {
+      setComputerAwayFromBottom(false);
+    }
+  }, [computerMessages.length]);
 
   const canSubmit = (draft.trim().length > 0 || attachments.length > 0) && !sending;
 
@@ -402,34 +546,27 @@ export default function ChatScreen() {
                 <Text style={styles.emptyText}>Ask Stella anything</Text>
               </Pressable>
             ) : (
-              <FlatList
-                ref={listRef}
-                contentContainerStyle={styles.list}
-                data={messages}
-                keyExtractor={(m) => m.id}
-                onContentSizeChange={scrollToEnd}
-                showsVerticalScrollIndicator={false}
-                keyboardDismissMode="on-drag"
-                fadingEdgeLength={EDGE_FADE}
-                renderItem={({ item }) => (
-                  <FadeInMessage>
-                    {item.role === "user" ? (
-                      <View style={styles.userRow}>
-                        <View style={styles.userBubble}>
-                          <Text style={styles.userText}>{item.text}</Text>
-                          {item.hasImage ? (
-                            <Text style={styles.userImageHint}>Includes a photo</Text>
-                          ) : null}
-                        </View>
-                      </View>
-                    ) : (
-                      <View style={styles.assistantRow}>
-                        <Text style={styles.assistantText}>{item.text}</Text>
-                      </View>
-                    )}
-                  </FadeInMessage>
-                )}
-              />
+              <>
+                <FlashList
+                  ref={listRef}
+                  contentContainerStyle={styles.list}
+                  data={messages}
+                  renderItem={renderChatItem}
+                  keyExtractor={keyExtractor}
+                  getItemType={getMessageItemType}
+                  ItemSeparatorComponent={renderMessageSeparator}
+                  onContentSizeChange={scrollToEnd}
+                  onScroll={onChatScroll}
+                  scrollEventThrottle={16}
+                  showsVerticalScrollIndicator={false}
+                  keyboardDismissMode="on-drag"
+                  fadingEdgeLength={EDGE_FADE}
+                />
+                <ScrollToBottomFab
+                  visible={chatAwayFromBottom}
+                  onPress={scrollToEnd}
+                />
+              </>
             )}
           </View>
 
@@ -446,7 +583,11 @@ export default function ChatScreen() {
           <View style={styles.attachmentStrip}>
             {attachments.map((asset) => (
               <View key={asset.uri} style={styles.attachmentThumb}>
-                <Image source={{ uri: asset.uri }} style={styles.attachmentImage} />
+                <Image
+                  source={{ uri: asset.uri }}
+                  style={styles.attachmentImage}
+                  contentFit="cover"
+                />
                 <Pressable
                   style={styles.attachmentRemove}
                   onPress={() => removeAttachment(asset.uri)}
@@ -552,7 +693,7 @@ export default function ChatScreen() {
               <Pressable style={styles.emptyState} onPress={() => Keyboard.dismiss()}>
                 {desktopState === "connected" ? (
                   <>
-                    <Feather name="monitor" size={32} color={colors.textMuted} style={{ opacity: 0.4, marginBottom: 16 }} />
+                    <ConnectHeroAnimation />
                     <Text style={styles.emptyText}>Your computer, at your fingertips</Text>
                     <Text style={styles.computerSubtext}>
                       Ask Stella to do things on your computer — browse the web, manage files, run tasks, and more.
@@ -560,6 +701,7 @@ export default function ChatScreen() {
                   </>
                 ) : desktopState === "connecting" ? (
                   <>
+                    <ConnectHeroAnimation />
                     <Text style={styles.emptyText}>Connecting...</Text>
                     <Text style={styles.computerSubtext}>
                       Looking for your computer. Make sure Stella is running on your desktop.
@@ -567,7 +709,7 @@ export default function ChatScreen() {
                   </>
                 ) : (
                   <>
-                    <Feather name="monitor" size={32} color={colors.textMuted} style={{ opacity: 0.4, marginBottom: 16 }} />
+                    <ConnectHeroAnimation />
                     <Text style={styles.emptyText}>Your computer, at your fingertips</Text>
                     <Text style={styles.computerSubtext}>
                       Ask Stella to do things on your computer — browse the web, manage files, run tasks, and more.
@@ -582,35 +724,31 @@ export default function ChatScreen() {
                 )}
               </Pressable>
             ) : (
-              <FlatList
-                ref={computerListRef}
-                contentContainerStyle={styles.list}
-                data={computerMessages}
-                keyExtractor={(m) => m.id}
-                onContentSizeChange={() =>
-                  requestAnimationFrame(() =>
-                    computerListRef.current?.scrollToEnd({ animated: true }),
-                  )
-                }
-                showsVerticalScrollIndicator={false}
-                keyboardDismissMode="on-drag"
-                fadingEdgeLength={EDGE_FADE}
-                renderItem={({ item }) => (
-                  <FadeInMessage>
-                    {item.role === "user" ? (
-                      <View style={styles.userRow}>
-                        <View style={styles.userBubble}>
-                          <Text style={styles.userText}>{item.text}</Text>
-                        </View>
-                      </View>
-                    ) : (
-                      <View style={styles.assistantRow}>
-                        <Text style={styles.assistantText}>{item.text}</Text>
-                      </View>
-                    )}
-                  </FadeInMessage>
-                )}
-              />
+              <>
+                <FlashList
+                  ref={computerListRef}
+                  contentContainerStyle={styles.list}
+                  data={computerMessages}
+                  renderItem={renderComputerItem}
+                  keyExtractor={keyExtractor}
+                  getItemType={getMessageItemType}
+                  ItemSeparatorComponent={renderMessageSeparator}
+                  onContentSizeChange={() =>
+                    requestAnimationFrame(() =>
+                      computerListRef.current?.scrollToEnd({ animated: true }),
+                    )
+                  }
+                  onScroll={onComputerScroll}
+                  scrollEventThrottle={16}
+                  showsVerticalScrollIndicator={false}
+                  keyboardDismissMode="on-drag"
+                  fadingEdgeLength={EDGE_FADE}
+                />
+                <ScrollToBottomFab
+                  visible={computerAwayFromBottom}
+                  onPress={scrollComputerToEnd}
+                />
+              </>
             )}
           </View>
 
@@ -672,6 +810,7 @@ export default function ChatScreen() {
 // ---------------------------------------------------------------------------
 
 const EDGE_FADE = 48;
+const MESSAGE_LIST_GAP = 24;
 
 const styles = StyleSheet.create({
   screen: {
@@ -707,11 +846,34 @@ const styles = StyleSheet.create({
     flex: 1,
     position: "relative",
   },
+  scrollToBottomFab: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: colors.borderStrong,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    bottom: 8,
+    height: 44,
+    justifyContent: "center",
+    position: "absolute",
+    right: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
+    width: 44,
+  },
+  scrollToBottomFabPressed: {
+    opacity: 0.88,
+  },
   list: {
-    gap: 24,
     paddingHorizontal: 20,
     paddingTop: 80,
     paddingBottom: EDGE_FADE,
+  },
+  itemSeparator: {
+    height: MESSAGE_LIST_GAP,
   },
   emptyState: {
     alignItems: "center",
