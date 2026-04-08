@@ -52,11 +52,13 @@ export const MANAGED_MODEL_AUDIENCES = [
 export type ManagedModelAudience = (typeof MANAGED_MODEL_AUDIENCES)[number];
 
 export const MODEL_MODES = [
-  "cheap",
+  "standard",
+  "free",
   "compact",
   "fast",
   "smart",
   "best",
+  "sota",
   "reasoning",
   "synthesis",
   "media",
@@ -103,7 +105,7 @@ const gatewayOptions = (
 });
 
 const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
-  cheap: {
+  standard: {
     model: "accounts/fireworks/routers/kimi-k2p5-turbo",
     fallbackMode: "fast",
     managedGatewayProvider: "fireworks",
@@ -114,6 +116,20 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
         reasoningEffort: "medium",
       },
       ...gatewayOptions("fireworks"),
+    },
+  },
+
+  free: {
+    model: "minimax/minimax-m2.7",
+    fallbackMode: "standard",
+    managedGatewayProvider: "openrouter",
+    temperature: 1.0,
+    maxOutputTokens: 4096,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      ...gatewayOptions("openrouter"),
     },
   },
 
@@ -132,30 +148,32 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   fast: {
-    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
-    fallbackMode: "cheap",
-    managedGatewayProvider: "fireworks",
+    model: "inception/mercury-2",
+    fallbackMode: "standard",
+    managedGatewayProvider: "openrouter",
     temperature: 1.0,
     maxOutputTokens: 8192,
     providerOptions: {
       openai: {
         reasoningEffort: "medium",
       },
-      ...gatewayOptions("fireworks"),
+      ...gatewayOptions("openrouter"),
     },
   },
 
   smart: {
-    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
+    model: "z-ai/glm-5.1",
     fallbackMode: "smart",
-    managedGatewayProvider: "fireworks",
+    managedGatewayProvider: "openrouter",
     temperature: 1.0,
     maxOutputTokens: 16192,
     providerOptions: {
       openai: {
         reasoningEffort: "high",
       },
-      ...gatewayOptions("fireworks"),
+      gateway: {
+        order: ["friendli", "fireworks"],
+      },
     },
   },
 
@@ -165,6 +183,20 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     managedGatewayProvider: "openrouter",
     temperature: 1.0,
     maxOutputTokens: 16192,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      ...gatewayOptions("openrouter"),
+    },
+  },
+
+  sota: {
+    model: "openai/gpt-5.4",
+    fallbackMode: "best",
+    managedGatewayProvider: "openrouter",
+    temperature: 1.0,
+    maxOutputTokens: 32768,
     providerOptions: {
       openai: {
         reasoningEffort: "medium",
@@ -189,21 +221,21 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
 
   synthesis: {
     model: "openai/gpt-5.4-mini",
-    fallbackMode: "cheap",
+    fallbackMode: "standard",
     managedGatewayProvider: "openrouter",
     temperature: 1.0,
     maxOutputTokens: 9500,
     providerOptions: {
       ...gatewayOptions("openrouter"),
       openai: {
-        reasoningEffort: "low",
+        reasoningEffort: "medium",
         forceReasoning: true,
       },
     },
   },
 
   media: {
-    model: "google/gemini-3-flash-preview",
+    model: "anthropic/claude-opus-4.6",
     fallbackMode: "smart",
     managedGatewayProvider: "openrouter",
     temperature: 1.0,
@@ -231,20 +263,17 @@ const AUDIENCE_MODE_OVERRIDES: Record<ManagedModelAudience, Partial<Record<Model
 };
 
 export const TASK_MODEL_MODES: Record<string, ModelMode> = {
-  [AGENT_IDS.OFFLINE_RESPONDER]: "cheap",
-  [AGENT_IDS.ORCHESTRATOR]: "cheap",
-  [AGENT_IDS.GENERAL]: "cheap",
+  [AGENT_IDS.OFFLINE_RESPONDER]: "standard",
+  [AGENT_IDS.ORCHESTRATOR]: "standard",
+  [AGENT_IDS.GENERAL]: "standard",
 
-  schedule: "smart",
-  "panel-generate": "reasoning",
+  schedule: "standard",
   synthesis: "synthesis",
   session_compaction_summary: "compact",
   thread_compaction_summary: "compact",
-  welcome: "smart",
+  welcome: "standard",
   mercury: "fast",
   music_prompt: "media",
-  skill_metadata: "fast",
-  skill_selection: "fast",
   search_html: "fast",
   store_security_review: "best",
   store_image_safety_review: "media",
