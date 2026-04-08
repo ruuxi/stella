@@ -16,6 +16,7 @@ import { dispatchCloseSidebarChat, dispatchOpenSidebarChat, dispatchShowHome } f
 import { getPlatform } from "@/platform/electron/platform";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
+import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
 import { DisplayOverlay } from "./DisplayOverlay";
 import { FullShellDialogs } from "./full-shell-dialogs";
 import type { DialogType } from "./full-shell-dialogs";
@@ -252,6 +253,11 @@ export const FullShellReadySurface = ({
         activeDialog={activeDialog}
         onDialogOpenChange={handleDialogOpenChange}
         onSignOut={handleSettingsSignOut}
+      />
+
+      <WelcomeDialog
+        conversationId={activeConversationId}
+        onConnect={showConnectDialog}
       />
 
       <DisplayOverlay />
