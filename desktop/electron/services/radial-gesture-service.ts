@@ -111,7 +111,10 @@ export class RadialGestureService {
           })
           capture.broadcastChatContext()
         }
-        win.showWindow(targetWindowMode)
+        // Cancel (Escape / exit without capturing) resolves null; leave the window minimized.
+        if (regionCapture !== null) {
+          win.showWindow(targetWindowMode)
+        }
         break
       }
       case 'chat': {
