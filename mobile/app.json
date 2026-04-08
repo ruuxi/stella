@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "scheme": "stella-mobile",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -45,7 +45,15 @@
         }
       ],
       "expo-font",
-      "expo-image"
+      "expo-image",
+      "expo-notifications",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Stella needs access to your microphone for voice input.",
+          "speechRecognitionPermission": "Stella needs speech recognition to convert your voice to text."
+        }
+      ]
     ],
     "extra": {
       "router": {},

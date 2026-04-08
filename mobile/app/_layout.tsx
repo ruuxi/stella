@@ -7,10 +7,12 @@ import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { authClient } from "../src/lib/auth-client";
 import { hasMobileConfig } from "../src/config/env";
+import { registerForPushNotifications } from "../src/lib/notifications";
 import {
   criticalStellaFontAssets,
   deferredStellaFontAssets,
 } from "../src/theme/fonts";
+import { ThemeProvider } from "../src/theme/theme-context";
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -49,6 +51,7 @@ function AuthenticatedLayout() {
     }
 
     if (session.data) {
+      void registerForPushNotifications();
       if (onLogin || onIndex) {
         router.replace("/chat");
       }
@@ -95,7 +98,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider onLayout={onLayoutRootView}>
-        <AppLayout />
+        <ThemeProvider>
+          <AppLayout />
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -1,10 +1,14 @@
+import { useMemo } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StyleSheet, Text } from "react-native";
 import { hasMobileConfig } from "../src/config/env";
-import { colors } from "../src/theme/colors";
+import { type Colors } from "../src/theme/colors";
+import { useColors } from "../src/theme/theme-context";
 import { fonts } from "../src/theme/fonts";
 
 export default function Index() {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   if (!hasMobileConfig) {
     return (
       <SafeAreaView style={styles.screen}>
@@ -25,7 +29,7 @@ export default function Index() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -47,4 +51,4 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     lineHeight: 24,
   },
-});
+} as const);

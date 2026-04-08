@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Pressable, StyleSheet, Text } from "react-native";
 import { authClient } from "../src/lib/auth-client";
-import { colors } from "../src/theme/colors";
+import { type Colors } from "../src/theme/colors";
+import { useColors } from "../src/theme/theme-context";
 import { fonts } from "../src/theme/fonts";
 
 type CallbackError = {
@@ -32,6 +33,8 @@ const readCallbackError = (error: unknown): CallbackError => {
 };
 
 export default function AuthCallbackScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const params = useLocalSearchParams<{ ott?: string }>();
   const [attempt, setAttempt] = useState(0);
@@ -110,7 +113,7 @@ export default function AuthCallbackScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -150,4 +153,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     letterSpacing: -0.3,
   },
-});
+} as const);
