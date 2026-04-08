@@ -1,10 +1,6 @@
 /**
- * Phone ↔ desktop bridge hero — same SVG layout as desktop ConnectHeroAnimation,
- * with matching animations driven by Reanimated.
- *
- * Transform props (translateX/Y, rotation) on react-native-svg G elements are NOT
- * natively settable, so useAnimatedProps silently ignores them. Instead we animate
- * only true native SVG props: d, cx, cy, r, opacity, strokeDashoffset.
+ * Desktop Tab hero animation — shows the phone screen mirroring the desktop app.
+ * Reverses the visual flow compared to ConnectHeroAnimation.
  */
 import { useEffect, useId } from "react";
 import { View, useWindowDimensions } from "react-native";
@@ -32,34 +28,27 @@ const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 const VB_W = 400;
 const VB_H = 140;
-// Derived per-theme in each component that uses it
+// cardFill derived per-theme inside the component
 
-export function ConnectHeroAnimation() {
+export function DesktopTabAnimation() {
   const colors = useColors();
   const cardFill = colors.surface;
   const uid = useId().replace(/:/g, "");
-  const gradId = `signal-grad-${uid}`;
+  const gradId = `signal-grad-dt-${uid}`;
   const { width: windowWidth } = useWindowDimensions();
   const maxW = Math.min(windowWidth - 32, 440);
   const scale = maxW / VB_W;
 
   /* ── animation drivers ── */
   const signalOffset = useSharedValue(0);
-  const pulseVal = useSharedValue(0);
   const cursorVal = useSharedValue(0);
 
   useEffect(() => {
-    // Signal dashes flow: 1.5s linear
+    // Signal dashes flow: 1.5s linear (moving leftward, from Monitor to Phone)
     signalOffset.value = withRepeat(
       withTiming(-10, { duration: 1500, easing: Easing.linear }),
       -1,
       false,
-    );
-    // Pulse circle: 2s (1s each way)
-    pulseVal.value = withRepeat(
-      withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
     );
     // Cursor + ripple: 4s linear cycle
     cursorVal.value = withRepeat(
@@ -74,12 +63,6 @@ export function ConnectHeroAnimation() {
   // Signal line: flowing dashes
   const signalLineProps = useAnimatedProps(() => ({
     strokeDashoffset: signalOffset.value,
-  }));
-
-  // Pulse circle: breathing r + opacity
-  const pulseCircleProps = useAnimatedProps(() => ({
-    r: interpolate(pulseVal.value, [0, 1], [14, 21]),
-    opacity: interpolate(pulseVal.value, [0, 1], [0.1, 0.25]),
   }));
 
   // Monitor cursor: animate path d (all absolute coords)
@@ -100,7 +83,7 @@ export function ConnectHeroAnimation() {
     };
   });
 
-  // Monitor click ripple (fires at 20-35%)
+  // Monitor click ripple
   const monitorRippleProps = useAnimatedProps(() => {
     const p = cursorVal.value;
     const tx = interpolate(
@@ -121,43 +104,46 @@ export function ConnectHeroAnimation() {
     };
   });
 
-  // Phone cursor (finger): animate path d (M is absolute, rest relative)
+  // Phone mirrored cursor (scaled to fit letterboxed display)
   const phoneCursorProps = useAnimatedProps(() => {
     const p = cursorVal.value;
     const tx = interpolate(
       p,
       [0, 0.2, 0.4, 0.6, 0.8, 1],
-      [10, 10, 10, 0, 0, 10],
+      [15, 0, 0, 10, 10, 15],
     );
     const ty = interpolate(
       p,
       [0, 0.2, 0.4, 0.6, 0.8, 1],
-      [25, 25, 25, 0, 0, 25],
+      [20, 0, 0, -5, -5, 20],
     );
+    const tx2 = tx * 0.41;
+    const ty2 = ty * 0.41;
     return {
-      d: `M${106 + tx} ${71 + ty}v-6a2 2 0 0 0-4 0v10.5l-1.5-1.5a2 2 0 0 0-2.8 2.8l4.8 4.8a5 5 0 0 0 7 0l1.5-1.5a2 2 0 0 0 0-2.8z`,
+      d: `M${99 + tx2} ${71 + ty2} L${104 + tx2} ${76 + ty2} L${101.5 + tx2} ${76.5 + ty2} L${102.5 + tx2} ${79 + ty2} L${101 + tx2} ${79.5 + ty2} L${100 + tx2} ${76.5 + ty2} L${97.5 + tx2} ${78.5 + ty2} Z`,
     };
   });
 
-  // Phone click ripple (offset by 50% = 2s delay in 4s cycle)
+  // Phone mirrored ripple
   const phoneRippleProps = useAnimatedProps(() => {
     const p = cursorVal.value;
     const tx = interpolate(
       p,
       [0, 0.2, 0.4, 0.6, 0.8, 1],
-      [10, 10, 10, 0, 0, 10],
+      [15, 0, 0, 10, 10, 15],
     );
     const ty = interpolate(
       p,
       [0, 0.2, 0.4, 0.6, 0.8, 1],
-      [25, 25, 25, 0, 0, 25],
+      [20, 0, 0, -5, -5, 20],
     );
-    const sp = (p + 0.5) % 1;
+    const tx2 = tx * 0.41;
+    const ty2 = ty * 0.41;
     return {
-      cx: 105 + tx,
-      cy: 78 + ty,
-      r: interpolate(sp, [0, 0.2, 0.25, 0.35, 1], [2, 2, 10, 15, 15]),
-      opacity: interpolate(sp, [0, 0.2, 0.25, 0.35, 1], [0, 0, 0.3, 0, 0]),
+      cx: 99 + tx2,
+      cy: 71 + ty2,
+      r: interpolate(p, [0, 0.2, 0.25, 0.35, 1], [0.8, 0.8, 4, 6, 6]),
+      opacity: interpolate(p, [0, 0.2, 0.25, 0.35, 1], [0, 0, 0.3, 0, 0]),
     };
   });
 
@@ -186,6 +172,16 @@ export function ConnectHeroAnimation() {
           </LinearGradient>
         </Defs>
 
+        {/* ── Signal line (flowing from Monitor to Phone) ── */}
+        <AnimatedPath
+          d="M 235 65 Q 190 50 145 78"
+          fill="none"
+          stroke={`url(#${gradId})`}
+          strokeWidth="2.5"
+          strokeDasharray="4 6"
+          animatedProps={signalLineProps}
+        />
+
         {/* ── Phone ── */}
         <G>
           <Rect
@@ -204,39 +200,67 @@ export function ConnectHeroAnimation() {
             width="42"
             height="82"
             rx="4"
-            fill={cardFill}
+            fill={colors.background}
             stroke={colors.border}
             strokeWidth="1"
           />
+
+          {/* Desktop App UI on Phone (scaled and letterboxed) */}
           <Rect
-            x="94"
-            y="44"
-            width="22"
-            height="4"
-            rx="2"
+            x="84"
+            y="62"
+            width="42"
+            height="26"
+            fill={cardFill}
+            stroke={colors.borderStrong}
+            strokeWidth="0.5"
+          />
+          <Rect
+            x="84"
+            y="62"
+            width="10"
+            height="26"
+            fill={colors.border}
+          />
+          <Rect
+            x="97"
+            y="65"
+            width="26"
+            height="2"
+            rx="1"
             fill={colors.borderStrong}
           />
           <Rect
-            x="94"
-            y="54"
-            width="16"
-            height="4"
-            rx="2"
+            x="97"
+            y="69"
+            width="18"
+            height="1.5"
+            rx="0.75"
+            fill={colors.border}
+          />
+          <Rect
+            x="97"
+            y="73"
+            width="22"
+            height="1.5"
+            rx="0.75"
             fill={colors.border}
           />
 
-          <AnimatedCircle
-            cx="105"
-            cy="78"
-            fill={colors.accent}
-            animatedProps={pulseCircleProps}
+          {/* Phone header speaker hole */}
+          <Rect
+            x="94"
+            y="38"
+            width="22"
+            height="3"
+            rx="1.5"
+            fill={colors.borderStrong}
           />
-          <Circle cx="105" cy="78" r="5" fill={colors.accent} />
 
           <AnimatedPath
             fill={colors.text}
             stroke={colors.background}
-            strokeWidth="1.5"
+            strokeWidth="0.6"
             strokeLinejoin="round"
             animatedProps={phoneCursorProps}
           />
@@ -245,16 +269,6 @@ export function ConnectHeroAnimation() {
             animatedProps={phoneRippleProps}
           />
         </G>
-
-        {/* ── Signal line ── */}
-        <AnimatedPath
-          d="M 145 78 Q 190 50 235 65"
-          fill="none"
-          stroke={`url(#${gradId})`}
-          strokeWidth="2.5"
-          strokeDasharray="4 6"
-          animatedProps={signalLineProps}
-        />
 
         {/* ── Monitor ── */}
         <G>
@@ -291,26 +305,35 @@ export function ConnectHeroAnimation() {
             stroke={colors.border}
             strokeWidth="1"
           />
+          
+          {/* Desktop App UI on Monitor */}
           <Rect
-            x="254"
-            y="38"
-            width="40"
+            x="244"
+            y="29"
+            width="25"
+            height="62"
+            fill={colors.border}
+          />
+          <Rect
+            x="275"
+            y="36"
+            width="65"
             height="5"
             rx="2.5"
             fill={colors.borderStrong}
           />
           <Rect
-            x="254"
-            y="50"
-            width="30"
+            x="275"
+            y="46"
+            width="45"
             height="4"
             rx="2"
             fill={colors.border}
           />
           <Rect
-            x="254"
-            y="60"
-            width="60"
+            x="275"
+            y="56"
+            width="55"
             height="4"
             rx="2"
             fill={colors.border}

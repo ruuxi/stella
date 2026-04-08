@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { Slot, usePathname, useRouter } from "expo-router";
 import {
@@ -24,7 +24,9 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { colors } from "../../src/theme/colors";
+import { type Colors } from "../../src/theme/colors";
+import { useColors, useTheme } from "../../src/theme/theme-context";
+import { soften } from "../../src/theme/oklch";
 import { fonts } from "../../src/theme/fonts";
 import { ChatModePill } from "../../src/components/ChatModePill";
 
@@ -52,9 +54,13 @@ function readActiveTab(pathname: string): TabId {
 function Sidebar({
   activeTab,
   onSelectTab,
+  colors,
+  styles,
 }: {
   activeTab: TabId;
   onSelectTab: (tab: TabId) => void;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
 }) {
   const insets = useSafeAreaInsets();
   return (
@@ -99,6 +105,9 @@ export default function MainLayout() {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const colors = useColors();
+  const { isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   // Reanimated shared value: 0 = closed, 1 = fully open
   const drawerProgress = useSharedValue(0);
@@ -183,12 +192,12 @@ export default function MainLayout() {
 
   return (
     <SafeAreaView style={styles.shell}>
-      <StatusBar style="dark" />
+      <StatusBar style={isDark ? "light" : "dark"} />
       <LinearGradient
         colors={[
-          "rgba(99, 212, 255, 0.09)",
+          soften(colors.accent, colors.background, isDark ? 0.06 : 0.09),
           colors.background,
-          "rgba(123, 245, 219, 0.06)",
+          soften(colors.ok, colors.background, isDark ? 0.04 : 0.06),
         ]}
         locations={[0, 0.5, 1]}
         start={{ x: 0, y: 0 }}
@@ -198,7 +207,7 @@ export default function MainLayout() {
 
       {wide ? (
         <View style={styles.wideLayout}>
-          <Sidebar activeTab={activeTab} onSelectTab={navigate} />
+          <Sidebar activeTab={activeTab} onSelectTab={navigate} colors={colors} styles={styles} />
           <View style={styles.content}>
             {activeTab === "chat" && (
               <View style={styles.wideChatHeader}>
@@ -269,7 +278,7 @@ export default function MainLayout() {
                 drawerStyle,
               ]}
             >
-              <Sidebar activeTab={activeTab} onSelectTab={navigate} />
+              <Sidebar activeTab={activeTab} onSelectTab={navigate} colors={colors} styles={styles} />
             </Animated.View>
           </GestureDetector>
 
@@ -290,7 +299,7 @@ export default function MainLayout() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   shell: {
     flex: 1,
     backgroundColor: colors.background,
@@ -376,7 +385,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   navItemActive: {
-    backgroundColor: "rgba(15, 23, 40, 0.05)",
+    backgroundColor: colors.accentSoft,
   },
   navItemPressed: {
     opacity: 0.7,
@@ -425,4 +434,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 4,
   },
-});
+} as const);
