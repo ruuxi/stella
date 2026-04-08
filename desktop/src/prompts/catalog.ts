@@ -3,7 +3,6 @@ import type {
   PromptDefinition,
   PromptId,
   PromptTemplateValues,
-  SkillCatalogItem,
 } from "./types";
 
 const renderStatic = (template: string): string => template;
@@ -36,38 +35,6 @@ const renderHomeSuggestionsUser = (
   template: string,
   values: PromptTemplateValues["synthesis.home_suggestions.user"],
 ): string => interpolateTemplate(template, values);
-
-const renderSkillMetadataUser = (
-  template: string,
-  values: PromptTemplateValues["skill_metadata.user"],
-): string => {
-  const truncated =
-    values.markdown.length > 4000
-      ? `${values.markdown.slice(0, 4000)}\n...`
-      : values.markdown;
-
-  return interpolateTemplate(template, {
-    skillDirName: values.skillDirName,
-    markdown: truncated,
-  });
-};
-
-const formatSkillSelectionCatalog = (catalog: SkillCatalogItem[]): string =>
-  catalog
-    .map((skill) => {
-      const tagsText = skill.tags?.length ? ` [${skill.tags.join(", ")}]` : "";
-      return `- ${skill.id}: ${skill.name} - ${skill.description}${tagsText}`;
-    })
-    .join("\n");
-
-const renderSkillSelectionUser = (
-  template: string,
-  values: PromptTemplateValues["skill_selection.user"],
-): string =>
-  interpolateTemplate(template, {
-    userProfile: values.userProfile,
-    catalogText: formatSkillSelectionCatalog(values.catalog),
-  });
 
 const renderSuggestionsUser = (
   template: string,
@@ -441,68 +408,6 @@ Rules:
 
 Output ONLY valid JSON for that object. No markdown fences, no commentary.`,
     render: renderHomeSuggestionsUser,
-  },
-  "skill_metadata.system": {
-    id: "skill_metadata.system",
-    module: "skill_metadata",
-    title: "Skill Metadata System Prompt",
-    defaultText: `You generate metadata for AI skill files.
-
-Given a skill's markdown content and directory name, output ONLY valid JSON with these fields:
-
-{"id": "<directory name>", "name": "<Human readable title>", "description": "<1-2 sentence summary>", "agentTypes": ["general-purpose"]}
-
-Rules:
-- id: Use the directory name exactly as given (it's already kebab-case)
-- name: Convert the id to Title Case (e.g., "code-review" becomes "Code Review")
-- description: Summarize what the skill does in 1-2 sentences, focusing on what it enables
-- agentTypes: Always use ["general-purpose"] unless the content clearly targets a specific type
-
-Output ONLY the JSON object. No markdown code fences. No explanation.`,
-    render: renderStatic,
-  },
-  "skill_metadata.user": {
-    id: "skill_metadata.user",
-    module: "skill_metadata",
-    title: "Skill Metadata User Prompt",
-    defaultText: `Directory name: {{skillDirName}}
-
-Skill content:
-{{markdown}}`,
-    render: renderSkillMetadataUser,
-  },
-  "skill_selection.system": {
-    id: "skill_selection.system",
-    module: "skill_selection",
-    title: "Skill Selection System Prompt",
-    defaultText: `You select the most relevant skills for a user based on their profile.
-
-Given a user's profile and a catalog of available skills, select the skills that would be most useful for this user.
-
-Selection criteria:
-- Match skills to the user's work domain, tools, and interests
-- Developers: prioritize coding, documentation, and technical skills
-- Designers: prioritize design, frontend, and visual skills
-- Writers: prioritize document creation, communication, and content skills
-- Always include broadly useful skills (document creation, web search, etc.)
-- Select 6-10 skills as defaults - not too few, not overwhelming
-
-Output ONLY a JSON array of skill IDs. No explanation. No markdown fences.
-
-Example output:
-["google-workspace", "computer-use", "browser-api-discovery", "self-modification"]`,
-    render: renderStatic,
-  },
-  "skill_selection.user": {
-    id: "skill_selection.user",
-    module: "skill_selection",
-    title: "Skill Selection User Prompt",
-    defaultText: `User profile:
-{{userProfile}}
-
-Available skills:
-{{catalogText}}`,
-    render: renderSkillSelectionUser,
   },
   "suggestions.user": {
     id: "suggestions.user",

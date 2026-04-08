@@ -9,7 +9,6 @@ import { registerMediaRoutes } from "./http_routes/media";
 import { registerMobileRoutes } from "./http_routes/mobile";
 
 import { registerMusicRoutes } from "./http_routes/music";
-import { registerSkillRoutes } from "./http_routes/skills";
 import { registerStripeRoutes } from "./http_routes/stripe";
 import { registerSynthesisRoutes } from "./http_routes/synthesis";
 import { registerVoiceRoutes } from "./http_routes/voice";
@@ -36,7 +35,6 @@ authComponent.registerRoutes(http, createAuth, { cors: true });
 // ---------------------------------------------------------------------------
 
 registerSynthesisRoutes(http);
-registerSkillRoutes(http);
 registerConnectorWebhookRoutes(http);
 registerMusicRoutes(http);
 registerMediaRoutes(http);

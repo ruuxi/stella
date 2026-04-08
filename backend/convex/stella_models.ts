@@ -10,10 +10,12 @@ import {
 
 export const STELLA_PROVIDER = "stella";
 export const STELLA_DEFAULT_MODEL = `${STELLA_PROVIDER}/default`;
-export const STELLA_CHEAP_MODEL = `${STELLA_PROVIDER}/cheap`;
+export const STELLA_STANDARD_MODEL = `${STELLA_PROVIDER}/standard`;
+export const STELLA_FREE_MODEL = `${STELLA_PROVIDER}/free`;
 export const STELLA_FAST_MODEL = `${STELLA_PROVIDER}/fast`;
 export const STELLA_SMART_MODEL = `${STELLA_PROVIDER}/smart`;
 export const STELLA_BEST_MODEL = `${STELLA_PROVIDER}/best`;
+export const STELLA_SOTA_MODEL = `${STELLA_PROVIDER}/sota`;
 export const STELLA_MEDIA_MODEL = `${STELLA_PROVIDER}/media`;
 
 export type StellaCatalogModel = {
@@ -65,9 +67,15 @@ const deriveDisplayName = (upstreamModel: string): string => {
 
 const STELLA_ALIAS_MODES = [
   {
-    id: STELLA_CHEAP_MODEL,
-    name: "Stella Cheap",
-    mode: "cheap",
+    id: STELLA_STANDARD_MODEL,
+    name: "Stella Standard",
+    mode: "standard",
+    type: "language" as const,
+  },
+  {
+    id: STELLA_FREE_MODEL,
+    name: "Stella Free",
+    mode: "free",
     type: "language" as const,
   },
   {
@@ -86,6 +94,12 @@ const STELLA_ALIAS_MODES = [
     id: STELLA_BEST_MODEL,
     name: "Stella Best",
     mode: "best",
+    type: "language" as const,
+  },
+  {
+    id: STELLA_SOTA_MODEL,
+    name: "Stella SOTA",
+    mode: "sota",
     type: "language" as const,
   },
   {
@@ -138,8 +152,12 @@ export const resolveStellaModelSelection = (
     return getModelConfig(agentType, audience).model;
   }
 
-  if (isModelMode(aliasOrUpstreamModel)) {
-    return getModeConfig(aliasOrUpstreamModel, audience).model;
+  // Legacy alias before mode rename `cheap` → `standard`
+  const modeKey =
+    aliasOrUpstreamModel === "cheap" ? "standard" : aliasOrUpstreamModel;
+
+  if (isModelMode(modeKey)) {
+    return getModeConfig(modeKey, audience).model;
   }
 
   return aliasOrUpstreamModel;

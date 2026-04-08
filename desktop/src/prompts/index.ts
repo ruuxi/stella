@@ -10,8 +10,6 @@ export {
 } from "./storage"
 export { getPromptTemplateText, resolvePrompt, resolvePromptText } from "./resolve"
 export {
-  getSkillMetadataPromptConfig,
-  getSkillSelectionPromptConfig,
   getSynthesisPromptConfig,
   getVoiceSessionPromptConfig,
 } from "./transport"
@@ -21,7 +19,6 @@ export type {
   PromptOverrideMap,
   PromptTemplateValues,
   ResolvedPrompt,
-  SkillCatalogItem,
   HomeSuggestion,
 } from "./types"
 export {
@@ -42,11 +39,6 @@ export {
   getCategoryAnalysisPrompt,
   getCoreMemorySynthesisPrompt,
 } from "./synthesis"
-export {
-  SKILL_METADATA_PROMPT,
-  buildSkillMetadataUserMessage,
-  getSkillMetadataPrompt,
-} from "./skill_metadata"
 export {
   MUSIC_SYSTEM_PROMPT,
   generateMusicPrompt,

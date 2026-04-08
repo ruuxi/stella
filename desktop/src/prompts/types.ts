@@ -1,10 +1,3 @@
-export type SkillCatalogItem = {
-  id: string
-  name: string
-  description: string
-  tags?: string[]
-}
-
 export type HomeSuggestion = {
   category: "stella" | "task" | "explore" | "schedule"
   label: string
@@ -31,16 +24,6 @@ export type PromptTemplateValues = {
   }
   "synthesis.home_suggestions.user": {
     coreMemory: string
-  }
-  "skill_metadata.system": undefined
-  "skill_metadata.user": {
-    skillDirName: string
-    markdown: string
-  }
-  "skill_selection.system": undefined
-  "skill_selection.user": {
-    userProfile: string
-    catalog: SkillCatalogItem[]
   }
   "suggestions.user": {
     catalogText: string
