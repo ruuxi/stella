@@ -33,6 +33,7 @@ import {
   usageSummaryFromAssistant,
 } from "../runtime_ai/managed";
 import { processIncomingMessage } from "../channels/message_pipeline";
+import { MOBILE_BRIDGE_LEASE_MS } from "../mobile_bridge";
 import { verifyPairedMobileSecret } from "../mobile_access";
 import type {
   AssistantMessage,
@@ -1025,15 +1026,24 @@ export const registerMobileRoutes = (http: HttpRouter) => {
           );
         }
 
+        const updatedAt = Date.now();
         await ctx.runMutation(internal.mobile_bridge.upsertRegistration, {
           ownerId: owner.ownerId,
           deviceId,
           baseUrls,
-          updatedAt: Date.now(),
+          updatedAt,
           ...(platform ? { platform } : {}),
         });
 
-        return jsonResponse({ ok: true }, 200, origin);
+        return jsonResponse(
+          {
+            ok: true,
+            leaseDurationMs: MOBILE_BRIDGE_LEASE_MS,
+            leaseExpiresAt: updatedAt + MOBILE_BRIDGE_LEASE_MS,
+          },
+          200,
+          origin,
+        );
       }),
     ),
   });

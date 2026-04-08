@@ -48,6 +48,13 @@ type BridgeSessionRecord = {
   expiresAt: number;
 };
 
+type BridgeRegistrationState =
+  | "inactive"
+  | "healthy"
+  | "degraded"
+  | "expired"
+  | "revoked";
+
 export type MobileBroadcastFn = (channel: string, data: unknown) => void;
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
@@ -190,8 +197,10 @@ export class MobileBridgeService {
   private server: http.Server | null = null;
   private wss: WebSocketServer | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private registrationLeaseTimer: ReturnType<typeof setTimeout> | null = null;
   private port: number | null = null;
-  private registered = false;
+  private registrationLeaseExpiresAt: number | null = null;
+  private registrationState: BridgeRegistrationState = "inactive";
   private deviceId: string | null = null;
   private hostAuthToken: string | null = null;
   private convexSiteUrl: string | null = null;
@@ -341,6 +350,7 @@ export class MobileBridgeService {
       clearInterval(this.refreshTimer);
       this.refreshTimer = null;
     }
+    this.clearRegistrationLeaseTimer();
     for (const [ws, client] of this.wsClients) {
       for (const unsub of client.subscriptions.values()) unsub();
       ws.close(1001, "Server shutting down");
@@ -361,6 +371,12 @@ export class MobileBridgeService {
     if (!isMobileBridgeEventChannel(channel)) {
       return;
     }
+    if (!this.isBridgeAccessEnabled()) {
+      if (this.wsClients.size > 0 || this.sessions.size > 0) {
+        this.expireBridgeAccess("Desktop bridge unavailable");
+      }
+      return;
+    }
     const message = JSON.stringify({ type: "event", channel, data });
     for (const [ws, client] of this.wsClients) {
       if (
@@ -373,10 +389,15 @@ export class MobileBridgeService {
     }
   };
 
-  private invalidateBridgeAccess(reason: string) {
-    this.registered = false;
-    this.sessions.clear();
+  private clearRegistrationLeaseTimer() {
+    if (this.registrationLeaseTimer) {
+      clearTimeout(this.registrationLeaseTimer);
+      this.registrationLeaseTimer = null;
+    }
+  }
 
+  private closeBridgeClients(reason: string) {
+    this.sessions.clear();
     for (const [ws, client] of this.wsClients) {
       for (const unsub of client.subscriptions.values()) {
         unsub();
@@ -386,9 +407,40 @@ export class MobileBridgeService {
     this.wsClients.clear();
   }
 
+  private setRegistrationLease(expiresAt: number) {
+    this.clearRegistrationLeaseTimer();
+    this.registrationLeaseExpiresAt = expiresAt;
+    this.registrationLeaseTimer = setTimeout(() => {
+      if (!this.hasActiveRegistrationLease()) {
+        this.expireBridgeAccess("Desktop bridge lease expired");
+      }
+    }, Math.max(0, expiresAt - Date.now()));
+  }
+
+  private expireBridgeAccess(reason: string) {
+    this.clearRegistrationLeaseTimer();
+    this.registrationLeaseExpiresAt = null;
+    this.registrationState = "expired";
+    this.closeBridgeClients(reason);
+  }
+
+  private invalidateBridgeAccess(reason: string) {
+    this.clearRegistrationLeaseTimer();
+    this.registrationLeaseExpiresAt = null;
+    this.registrationState = "revoked";
+    this.closeBridgeClients(reason);
+  }
+
+  private hasActiveRegistrationLease(nowMs = Date.now()) {
+    return Boolean(
+      typeof this.registrationLeaseExpiresAt === "number" &&
+        this.registrationLeaseExpiresAt > nowMs,
+    );
+  }
+
   private isBridgeAccessEnabled() {
     return Boolean(
-      this.registered &&
+      this.hasActiveRegistrationLease() &&
         this.hostAuthToken &&
         this.convexSiteUrl &&
         this.deviceId,
@@ -576,6 +628,10 @@ export class MobileBridgeService {
 
     ws.on("message", (data) => {
       this.markClientActivity();
+      if (!this.isBridgeAccessEnabled()) {
+        ws.close(4001, "Desktop bridge unavailable");
+        return;
+      }
       try {
         const msg = JSON.parse(data.toString()) as {
           type: string;
@@ -908,23 +964,71 @@ export class MobileBridgeService {
           platform: getDesktopPlatformLabel(),
         },
       );
-      this.registered = Boolean(response?.ok);
+      if (response.ok) {
+        const body = (await response.json()) as {
+          leaseExpiresAt?: unknown;
+          leaseDurationMs?: unknown;
+        };
+        const expiresAt =
+          typeof body.leaseExpiresAt === "number" &&
+          Number.isFinite(body.leaseExpiresAt) &&
+          body.leaseExpiresAt > Date.now()
+            ? body.leaseExpiresAt
+            : typeof body.leaseDurationMs === "number" &&
+                Number.isFinite(body.leaseDurationMs) &&
+                body.leaseDurationMs > 0
+              ? Date.now() + body.leaseDurationMs
+              : null;
+        if (expiresAt === null) {
+          throw new Error("Registration response missing a valid lease expiry");
+        }
+        this.setRegistrationLease(expiresAt);
+        this.registrationState = "healthy";
+        return;
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        this.invalidateBridgeAccess("Desktop bridge authorization expired");
+        return;
+      }
+
+      if (this.hasActiveRegistrationLease()) {
+        this.registrationState = "degraded";
+      } else {
+        this.expireBridgeAccess("Desktop bridge unavailable");
+      }
+      console.warn("[mobile-bridge] registration rejected:", response.status);
     } catch (error) {
+      if (this.hasActiveRegistrationLease()) {
+        this.registrationState = "degraded";
+      } else {
+        this.expireBridgeAccess("Desktop bridge unavailable");
+      }
       console.warn("[mobile-bridge] registration failed:", error);
     }
   }
 
   private async clearRegistration() {
-    if (!this.registered || !this.hostAuthToken) {
-      this.registered = false;
+    if (this.registrationLeaseExpiresAt === null || !this.hostAuthToken) {
+      this.clearRegistrationLeaseTimer();
+      this.registrationLeaseExpiresAt = null;
+      this.registrationState = "inactive";
+      this.closeBridgeClients("Desktop bridge unavailable");
       return;
     }
     await this.clearRegistrationWithToken(this.hostAuthToken);
   }
 
   private async clearRegistrationWithToken(token: string) {
-    if (!this.registered || !this.convexSiteUrl || !this.deviceId) {
-      this.registered = false;
+    if (
+      this.registrationLeaseExpiresAt === null ||
+      !this.convexSiteUrl ||
+      !this.deviceId
+    ) {
+      this.clearRegistrationLeaseTimer();
+      this.registrationLeaseExpiresAt = null;
+      this.registrationState = "inactive";
+      this.closeBridgeClients("Desktop bridge unavailable");
       return;
     }
 
@@ -939,6 +1043,9 @@ export class MobileBridgeService {
       // Ignore
     }
 
-    this.registered = false;
+    this.clearRegistrationLeaseTimer();
+    this.registrationLeaseExpiresAt = null;
+    this.registrationState = "inactive";
+    this.closeBridgeClients("Desktop bridge unavailable");
   }
 }
