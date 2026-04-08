@@ -61,6 +61,7 @@ export const registerBootstrapIpcHandlers = (
   registerSystemHandlers({
     getDeviceId: () => state.deviceId,
     authService: services.authService,
+    backupService: services.backupService,
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     getStellaHomePath: lifecycle.getStellaHomePath,
@@ -74,6 +75,8 @@ export const registerBootstrapIpcHandlers = (
       ),
     hardResetLocalState: resetFlows.hardResetLocalState,
     resetLocalMessages: resetFlows.resetLocalMessages,
+    shutdownRuntime: resetFlows.shutdownRuntime,
+    restartRuntime: resetFlows.restartRuntime,
     submitCredential: (payload) =>
       services.credentialService.submitCredential(payload),
     cancelCredential: (payload) =>
@@ -151,7 +154,6 @@ export const registerBootstrapIpcHandlers = (
       services.externalLinkService.assertPrivilegedSender(event, channel),
     getBroadcastToMobile: lazyMobileBroadcast,
   });
-
 
   registerMorphHandlers({
     windowManager: state.windowManager!,

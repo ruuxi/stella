@@ -19,7 +19,12 @@ import {
   normalizeModelOverrides,
   type ModelDefaultEntry,
 } from "@/global/settings/lib/model-defaults";
-import type { LocalLlmCredentialSummary } from "@/shared/types/electron";
+import { showToast } from "@/ui/toast";
+import type {
+  BackupStatusSnapshot,
+  BackupSummary,
+  LocalLlmCredentialSummary,
+} from "@/shared/types/electron";
 import type { LegalDocument } from "@/global/legal/legal-text";
 import {
   Dialog,
@@ -104,6 +109,13 @@ function getSettingsErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+function formatBackupTimestamp(timestamp?: number) {
+  if (!timestamp) {
+    return "Never";
+  }
+  return new Date(timestamp).toLocaleString();
+}
+
 // ---------------------------------------------------------------------------
 // Basic Tab
 // ---------------------------------------------------------------------------
@@ -115,6 +127,7 @@ function BasicTab({
   onSignOut?: () => void;
   onOpenLegal?: (doc: LegalDocument) => void;
 }) {
+  const { hasConnectedAccount } = useAuthSessionState();
   const platform = window.electronAPI?.platform;
   const radialTriggerOptions = useMemo(
     () => getRadialTriggerOptions(platform),
@@ -128,6 +141,18 @@ function BasicTab({
     null,
   );
   const [isSavingRadialTrigger, setIsSavingRadialTrigger] = useState(false);
+  const [syncMode, setSyncMode] = useState<"on" | "off">("off");
+  const [backupStatus, setBackupStatus] = useState<BackupStatusSnapshot | null>(
+    null,
+  );
+  const [remoteBackups, setRemoteBackups] = useState<BackupSummary[]>([]);
+  const [backupLoaded, setBackupLoaded] = useState(false);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const [isSavingSyncMode, setIsSavingSyncMode] = useState(false);
+  const [isRunningBackup, setIsRunningBackup] = useState(false);
+  const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -168,6 +193,56 @@ function BasicTab({
     };
   }, []);
 
+  const loadBackupState = useCallback(async () => {
+    const systemApi = window.electronAPI?.system;
+    if (
+      !systemApi?.getLocalSyncMode ||
+      !systemApi.getBackupStatus ||
+      !systemApi.listBackups
+    ) {
+      setBackupLoaded(true);
+      setBackupStatus(null);
+      setRemoteBackups([]);
+      return;
+    }
+    const nextSyncMode = (await systemApi.getLocalSyncMode()) === "on" ? "on" : "off";
+    const nextStatus = await systemApi.getBackupStatus();
+    const nextBackups = hasConnectedAccount
+      ? await systemApi.listBackups(10)
+      : [];
+    setSyncMode(nextSyncMode);
+    setBackupStatus(nextStatus);
+    setRemoteBackups(nextBackups);
+  }, [hasConnectedAccount]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await loadBackupState();
+        if (!cancelled) {
+          setBackupError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setBackupError(
+            getSettingsErrorMessage(error, "Failed to load backup settings."),
+          );
+          setRemoteBackups([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setBackupLoaded(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadBackupState]);
+
   const handleRadialTriggerChange = useCallback(
     async (value: string) => {
       if (isSavingRadialTrigger) {
@@ -204,6 +279,101 @@ function BasicTab({
       }
     },
     [isSavingRadialTrigger, radialTriggerKey],
+  );
+
+  const handleSyncModeChange = useCallback(
+    async (value: string) => {
+      const nextMode = value === "on" ? "on" : "off";
+      if (isSavingSyncMode) {
+        return;
+      }
+      const previousMode = syncMode;
+      const systemApi = window.electronAPI?.system;
+      if (!systemApi?.setLocalSyncMode) {
+        setBackupError("Backup settings are unavailable in this window.");
+        return;
+      }
+      setBackupError(null);
+      setSyncMode(nextMode);
+      setIsSavingSyncMode(true);
+      try {
+        await systemApi.setLocalSyncMode(nextMode);
+        await loadBackupState();
+      } catch (error) {
+        setSyncMode(previousMode);
+        setBackupError(
+          getSettingsErrorMessage(error, "Failed to update backup mode."),
+        );
+      } finally {
+        setIsSavingSyncMode(false);
+      }
+    },
+    [isSavingSyncMode, loadBackupState, syncMode],
+  );
+
+  const handleBackupNow = useCallback(async () => {
+    const systemApi = window.electronAPI?.system;
+    if (!systemApi?.backUpNow) {
+      setBackupError("Backup is unavailable in this window.");
+      return;
+    }
+    setBackupError(null);
+    setIsRunningBackup(true);
+    try {
+      const result = await systemApi.backUpNow();
+      await loadBackupState();
+      showToast({
+        title:
+          result.status === "completed"
+            ? "Backup completed"
+            : result.status === "queued"
+              ? "Backup queued"
+              : result.status === "deferred"
+                ? "Backup deferred"
+                : "No backup needed",
+        description: result.message,
+      });
+    } catch (error) {
+      const message = getSettingsErrorMessage(error, "Failed to start backup.");
+      setBackupError(message);
+      showToast({
+        title: "Backup failed",
+        description: message,
+        variant: "error",
+      });
+    } finally {
+      setIsRunningBackup(false);
+    }
+  }, [loadBackupState]);
+
+  const handleRestoreBackup = useCallback(
+    async (snapshotId: string) => {
+      const systemApi = window.electronAPI?.system;
+      if (!systemApi?.restoreBackup) {
+        setBackupError("Restore is unavailable in this window.");
+        return;
+      }
+      setBackupError(null);
+      setRestoringSnapshotId(snapshotId);
+      try {
+        await systemApi.restoreBackup(snapshotId);
+        showToast({
+          title: "Restore prepared",
+          description: "Stella will restart to finish applying this backup.",
+        });
+      } catch (error) {
+        const message = getSettingsErrorMessage(error, "Failed to restore backup.");
+        setBackupError(message);
+        showToast({
+          title: "Restore failed",
+          description: message,
+          variant: "error",
+        });
+      } finally {
+        setRestoringSnapshotId(null);
+      }
+    },
+    [],
   );
 
   return (
@@ -255,15 +425,116 @@ function BasicTab({
       <div className="settings-card">
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Storage</div>
+            <div className="settings-row-label">Backups</div>
             <div className="settings-row-sublabel">
-              Local only. Conversations stay on this device.
+              Backups are encrypted on this device before upload.
             </div>
             <div className="settings-row-sublabel">
-              Cloud sync is not available in the app right now.
+              Restore replaces local Stella files from the selected backup and restarts the app.
+            </div>
+            {backupError ? (
+              <div
+                className="settings-row-sublabel settings-card-desc--error"
+                role="alert"
+              >
+                {backupError}
+              </div>
+            ) : null}
+            <div className="settings-row-sublabel">
+              Local backups: {formatBackupTimestamp(backupStatus?.lastSuccessAt)}
+            </div>
+            <div className="settings-row-sublabel">
+              Remote backups: {formatBackupTimestamp(backupStatus?.lastRemoteSuccessAt)}
+            </div>
+            {backupStatus?.lastRemoteError ? (
+              <div className="settings-row-sublabel">
+                Remote backup issue: {backupStatus.lastRemoteError}
+              </div>
+            ) : null}
+          </div>
+          <div className="settings-row-control">
+            <NativeSelect
+              className="settings-runtime-select"
+              value={syncMode}
+              onChange={(event) => void handleSyncModeChange(event.target.value)}
+              disabled={!backupLoaded || isSavingSyncMode}
+            >
+              <option value="off">Off</option>
+              <option value="on">Automatic hourly backups</option>
+            </NativeSelect>
+          </div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Back Up Now</div>
+            <div className="settings-row-sublabel">
+              Creates a fresh local snapshot and uploads it when your account is connected.
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <Button
+              type="button"
+              variant="ghost"
+              className="settings-btn"
+              onClick={() => void handleBackupNow()}
+              disabled={!backupLoaded || isRunningBackup || Boolean(restoringSnapshotId)}
+            >
+              {isRunningBackup ? "Backing Up..." : "Back Up Now"}
+            </Button>
+          </div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Remote Backups</div>
+            <div className="settings-row-sublabel">
+              {hasConnectedAccount
+                ? "Choose a backup to restore on this device."
+                : "Sign in to upload and restore remote backups."}
             </div>
           </div>
         </div>
+        {hasConnectedAccount && remoteBackups.length === 0 ? (
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-sublabel">
+                No remote backups yet.
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {hasConnectedAccount
+          ? remoteBackups.map((backup) => (
+              <div key={backup.snapshotId} className="settings-row">
+                <div className="settings-row-info">
+                  <div className="settings-row-label">
+                    {formatBackupTimestamp(backup.createdAt)}
+                    {backup.isLatest ? " (Latest)" : ""}
+                  </div>
+                  <div className="settings-row-sublabel">
+                    {backup.objectCount} objects, {backup.entryCount} files
+                  </div>
+                  <div className="settings-row-sublabel">
+                    Source device: {backup.sourceHostname || backup.sourceDeviceId}
+                  </div>
+                </div>
+                <div className="settings-row-control">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="settings-btn"
+                    onClick={() => void handleRestoreBackup(backup.snapshotId)}
+                    disabled={
+                      isRunningBackup || restoringSnapshotId === backup.snapshotId
+                    }
+                  >
+                    {restoringSnapshotId === backup.snapshotId
+                      ? "Restoring..."
+                      : "Restore"}
+                  </Button>
+                </div>
+              </div>
+            ))
+          : null}
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-label">Sign Out</div>

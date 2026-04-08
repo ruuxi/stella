@@ -101,8 +101,8 @@
   top: 50%;
   left: 50%;
   transform: translate(calc(-50% - 42px), -50%);
-  width: 108px;
-  height: 108px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;

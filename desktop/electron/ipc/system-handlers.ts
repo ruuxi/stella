@@ -1,4 +1,5 @@
 import {
+  app,
   ipcMain,
   shell,
   type IpcMainEvent,
@@ -11,6 +12,7 @@ import {
 } from "../../runtime/kernel/preferences/local-preferences.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { AuthService } from "../services/auth-service.js";
+import type { BackupService } from "../services/backup-service.js";
 import type { ExternalLinkService } from "../services/external-link-service.js";
 import {
   deleteLocalLlmCredential,
@@ -25,6 +27,10 @@ import {
   type RadialTriggerCode,
 } from "../../src/shared/lib/radial-trigger.js";
 import {
+  IPC_BACKUP_GET_STATUS,
+  IPC_BACKUP_LIST,
+  IPC_BACKUP_RESTORE,
+  IPC_BACKUP_RUN_NOW,
   IPC_SOCIAL_SESSIONS_CREATE,
   IPC_SOCIAL_SESSIONS_GET_STATUS,
   IPC_PERMISSIONS_GET_STATUS,
@@ -47,6 +53,7 @@ import { waitForConnectedRunner } from "./runtime-availability.js";
 type SystemHandlersOptions = {
   getDeviceId: () => string | null;
   authService: AuthService;
+  backupService: BackupService;
   getStellaHostRunner: () => StellaHostRunner | null;
   onStellaHostRunnerChanged?: (
     listener: (runner: StellaHostRunner | null) => void,
@@ -61,6 +68,8 @@ type SystemHandlersOptions = {
   ) => Promise<boolean>;
   hardResetLocalState: () => Promise<{ ok: true }>;
   resetLocalMessages: () => Promise<{ ok: true }>;
+  shutdownRuntime: () => Promise<void>;
+  restartRuntime: () => Promise<void>;
   submitCredential: (payload: {
     requestId: string;
     secretId: string;
@@ -126,9 +135,7 @@ const sanitizeOptionalHttpUrl = (value: unknown, fieldName: string) => {
   return parsed.toString();
 };
 
-const asSocialSessionStatus = (
-  value: unknown,
-): RuntimeSocialSessionStatus => {
+const asSocialSessionStatus = (value: unknown): RuntimeSocialSessionStatus => {
   if (value === "active" || value === "paused" || value === "ended") {
     return value;
   }
@@ -162,75 +169,95 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     return await options.stopPhoneAccessSession();
   });
 
-  ipcMain.handle(IPC_SOCIAL_SESSIONS_CREATE, async (event, payload: {
-    roomId?: string;
-    workspaceLabel?: string;
-  }) => {
-    if (
-      !options.externalLinkService.assertPrivilegedSender(
-        event,
-        IPC_SOCIAL_SESSIONS_CREATE,
-      )
-    ) {
-      throw new Error("Blocked untrusted socialSessions:create request.");
-    }
-    const runner = await waitForConnectedRunner(options.getStellaHostRunner, {
-      timeoutMs: 2_000,
-      onRunnerChanged: options.onStellaHostRunnerChanged,
-    });
-    return await runner.createSocialSession({
-      roomId: asTrimmedString(payload?.roomId),
-      workspaceLabel: asTrimmedString(payload?.workspaceLabel) || undefined,
-    });
-  });
+  ipcMain.handle(
+    IPC_SOCIAL_SESSIONS_CREATE,
+    async (
+      event,
+      payload: {
+        roomId?: string;
+        workspaceLabel?: string;
+      },
+    ) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_SOCIAL_SESSIONS_CREATE,
+        )
+      ) {
+        throw new Error("Blocked untrusted socialSessions:create request.");
+      }
+      const runner = await waitForConnectedRunner(options.getStellaHostRunner, {
+        timeoutMs: 2_000,
+        onRunnerChanged: options.onStellaHostRunnerChanged,
+      });
+      return await runner.createSocialSession({
+        roomId: asTrimmedString(payload?.roomId),
+        workspaceLabel: asTrimmedString(payload?.workspaceLabel) || undefined,
+      });
+    },
+  );
 
-  ipcMain.handle(IPC_SOCIAL_SESSIONS_UPDATE_STATUS, async (event, payload: {
-    sessionId?: string;
-    status?: RuntimeSocialSessionStatus;
-  }) => {
-    if (
-      !options.externalLinkService.assertPrivilegedSender(
-        event,
-        IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
-      )
-    ) {
-      throw new Error("Blocked untrusted socialSessions:updateStatus request.");
-    }
-    const runner = await waitForConnectedRunner(options.getStellaHostRunner, {
-      timeoutMs: 2_000,
-      onRunnerChanged: options.onStellaHostRunnerChanged,
-    });
-    return await runner.updateSocialSessionStatus({
-      sessionId: asTrimmedString(payload?.sessionId),
-      status: asSocialSessionStatus(payload?.status),
-    });
-  });
+  ipcMain.handle(
+    IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
+    async (
+      event,
+      payload: {
+        sessionId?: string;
+        status?: RuntimeSocialSessionStatus;
+      },
+    ) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted socialSessions:updateStatus request.",
+        );
+      }
+      const runner = await waitForConnectedRunner(options.getStellaHostRunner, {
+        timeoutMs: 2_000,
+        onRunnerChanged: options.onStellaHostRunnerChanged,
+      });
+      return await runner.updateSocialSessionStatus({
+        sessionId: asTrimmedString(payload?.sessionId),
+        status: asSocialSessionStatus(payload?.status),
+      });
+    },
+  );
 
-  ipcMain.handle(IPC_SOCIAL_SESSIONS_QUEUE_TURN, async (event, payload: {
-    sessionId?: string;
-    prompt?: string;
-    agentType?: string;
-    clientTurnId?: string;
-  }) => {
-    if (
-      !options.externalLinkService.assertPrivilegedSender(
-        event,
-        IPC_SOCIAL_SESSIONS_QUEUE_TURN,
-      )
-    ) {
-      throw new Error("Blocked untrusted socialSessions:queueTurn request.");
-    }
-    const runner = await waitForConnectedRunner(options.getStellaHostRunner, {
-      timeoutMs: 2_000,
-      onRunnerChanged: options.onStellaHostRunnerChanged,
-    });
-    return await runner.queueSocialSessionTurn({
-      sessionId: asTrimmedString(payload?.sessionId),
-      prompt: asTrimmedString(payload?.prompt),
-      agentType: asTrimmedString(payload?.agentType) || undefined,
-      clientTurnId: asTrimmedString(payload?.clientTurnId) || undefined,
-    });
-  });
+  ipcMain.handle(
+    IPC_SOCIAL_SESSIONS_QUEUE_TURN,
+    async (
+      event,
+      payload: {
+        sessionId?: string;
+        prompt?: string;
+        agentType?: string;
+        clientTurnId?: string;
+      },
+    ) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_SOCIAL_SESSIONS_QUEUE_TURN,
+        )
+      ) {
+        throw new Error("Blocked untrusted socialSessions:queueTurn request.");
+      }
+      const runner = await waitForConnectedRunner(options.getStellaHostRunner, {
+        timeoutMs: 2_000,
+        onRunnerChanged: options.onStellaHostRunnerChanged,
+      });
+      return await runner.queueSocialSessionTurn({
+        sessionId: asTrimmedString(payload?.sessionId),
+        prompt: asTrimmedString(payload?.prompt),
+        agentType: asTrimmedString(payload?.agentType) || undefined,
+        clientTurnId: asTrimmedString(payload?.clientTurnId) || undefined,
+      });
+    },
+  );
 
   ipcMain.handle(IPC_SOCIAL_SESSIONS_GET_STATUS, async (event) => {
     if (
@@ -472,6 +499,86 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     },
   );
 
+  ipcMain.handle(IPC_BACKUP_GET_STATUS, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_BACKUP_GET_STATUS,
+      )
+    ) {
+      throw new Error("Blocked untrusted backup:getStatus request.");
+    }
+    return await options.backupService.getStatus();
+  });
+
+  ipcMain.handle(IPC_BACKUP_RUN_NOW, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_BACKUP_RUN_NOW,
+      )
+    ) {
+      throw new Error("Blocked untrusted backup:runNow request.");
+    }
+    return await options.backupService.backupNow();
+  });
+
+  ipcMain.handle(
+    IPC_BACKUP_LIST,
+    async (event, payload: { limit?: number } | undefined) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_BACKUP_LIST,
+        )
+      ) {
+        throw new Error("Blocked untrusted backup:list request.");
+      }
+      const rawLimit = Number(payload?.limit);
+      const limit =
+        Number.isFinite(rawLimit) && rawLimit > 0
+          ? Math.min(50, Math.floor(rawLimit))
+          : 25;
+      return await options.backupService.listBackups(limit);
+    },
+  );
+
+  ipcMain.handle(
+    IPC_BACKUP_RESTORE,
+    async (event, payload: { snapshotId?: string } | undefined) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_BACKUP_RESTORE,
+        )
+      ) {
+        throw new Error("Blocked untrusted backup:restore request.");
+      }
+      const snapshotId = asTrimmedString(payload?.snapshotId);
+      if (!snapshotId) {
+        throw new Error("Missing backup snapshot ID.");
+      }
+      const approved = await options.ensurePrivilegedActionApproval(
+        "backup.restore_remote",
+        "Restore this backup and restart Stella?",
+        "This replaces your current local Stella files with the selected backup, preserves this device's identity and local credentials, and then restarts the app.",
+        event,
+      );
+      if (!approved) {
+        throw new Error("Backup restore was cancelled.");
+      }
+      const result = await options.backupService.restoreBackup(snapshotId, {
+        shutdownRuntime: options.shutdownRuntime,
+        restartRuntime: options.restartRuntime,
+      });
+      setTimeout(() => {
+        app.relaunch();
+        app.exit(0);
+      }, 500);
+      return result;
+    },
+  );
+
   ipcMain.handle(IPC_PREFERENCES_GET_SYNC_MODE, (event) => {
     if (
       !options.externalLinkService.assertPrivilegedSender(
@@ -500,6 +607,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     const prefs = loadLocalPreferences(stellaHomePath);
     prefs.syncMode = mode === "off" ? "off" : "on";
     saveLocalPreferences(stellaHomePath, prefs);
+    return options.backupService.setMode(prefs.syncMode);
   });
 
   ipcMain.handle(IPC_PREFERENCES_GET_RADIAL_TRIGGER, (event) => {
@@ -509,7 +617,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         IPC_PREFERENCES_GET_RADIAL_TRIGGER,
       )
     ) {
-      throw new Error("Blocked untrusted preferences:getRadialTrigger request.");
+      throw new Error(
+        "Blocked untrusted preferences:getRadialTrigger request.",
+      );
     }
     const stellaHomePath = options.getStellaHomePath();
     if (!stellaHomePath) return DEFAULT_RADIAL_TRIGGER_CODE;
@@ -525,7 +635,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           IPC_PREFERENCES_SET_RADIAL_TRIGGER,
         )
       ) {
-        throw new Error("Blocked untrusted preferences:setRadialTrigger request.");
+        throw new Error(
+          "Blocked untrusted preferences:setRadialTrigger request.",
+        );
       }
       const nextTriggerKey = normalizeRadialTriggerCode(triggerKey);
       const stellaHomePath = options.getStellaHomePath();
