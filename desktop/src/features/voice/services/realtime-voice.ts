@@ -18,6 +18,39 @@ import {
 } from "@/features/voice/services/shared-microphone";
 
 // ---------------------------------------------------------------------------
+// Screen guide vision prompt
+// ---------------------------------------------------------------------------
+
+const SCREEN_GUIDE_SYSTEM_PROMPT = [
+  "You are a visual screen guide. The user is looking at their computer screen and asked a question.",
+  "Your job is to find the exact UI element(s) they should click, look at, or interact with and annotate them.",
+  "",
+  "ALWAYS ANNOTATE. Even if the question is general (\"how do I...\", \"where can I...\", \"what does this do\"),",
+  "find the specific button, menu, icon, tab, or control on screen that answers their question and annotate it.",
+  "The only time you return zero annotations is when the element genuinely does not exist on screen.",
+  "",
+  "Strategy — scan the screenshot methodically:",
+  "- Menu bar (top of screen): app menus, status icons",
+  "- Toolbars and tab bars: buttons, tabs, the + icon for new tabs, navigation controls",
+  "- Sidebars: panels, tree views, nav items",
+  "- Main content area: the active document, page, or canvas",
+  "- Dock / taskbar: app icons",
+  "- Dialogs and popovers: any floating UI on top",
+  "",
+  "Return ONLY valid JSON (no markdown fences) with this exact structure:",
+  '{',
+  '  "annotations": [{"label": "short label", "cx": number, "cy": number}],',
+  '  "spoken": "brief natural description for voice"',
+  '}',
+  "",
+  "Field rules:",
+  "- cx, cy: center point of the element in pixels, relative to the screenshot",
+  "- label: 2-4 word callout like \"Click here\", \"This button\", \"Right here\", \"Found it!\"",
+  "- spoken: 1-2 sentence natural voice response telling the user where the element is and what to do",
+  "- Multiple annotations are fine when the answer involves several elements (e.g. a multi-step flow)",
+].join("\n");
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -1070,17 +1103,7 @@ export class RealtimeVoiceSession {
           messages: [
             {
               role: "system",
-              content:
-                "You are a screen analysis assistant. The user is looking at their computer screen and asked a question. " +
-                "Analyze the screenshot and identify the relevant UI element(s). " +
-                "Return ONLY valid JSON with this exact structure:\n" +
-                '{"annotations":[{"label":"short label","x":number,"y":number,"width":number,"height":number}],"spoken":"brief description for voice"}\n' +
-                "- x,y are the top-left corner of the element in pixels relative to the screenshot\n" +
-                "- width,height are the element's approximate size in pixels\n" +
-                "- label is a short callout (2-4 words) like 'Found it!' or 'Click here'\n" +
-                "- spoken is a natural voice response (1-2 sentences) describing where the element is\n" +
-                "- If you can't find the element, return an empty annotations array and explain in spoken\n" +
-                "IMPORTANT: Return raw JSON only, no markdown fences.",
+              content: SCREEN_GUIDE_SYSTEM_PROMPT,
             },
             {
               role: "user",
@@ -1100,7 +1123,7 @@ export class RealtimeVoiceSession {
             },
           ],
           body: {
-            model: "stella/smart",
+            model: "stella/standard",
             max_tokens: 1024,
             temperature: 0.2,
           },
@@ -1114,10 +1137,8 @@ export class RealtimeVoiceSession {
         let parsed: {
           annotations: Array<{
             label: string;
-            x: number;
-            y: number;
-            width: number;
-            height: number;
+            cx: number;
+            cy: number;
           }>;
           spoken: string;
         };
@@ -1137,10 +1158,8 @@ export class RealtimeVoiceSession {
           const withIds = parsed.annotations.map((a, i) => ({
             id: `sg-${Date.now()}-${i}`,
             label: a.label,
-            x: coordinateSpace.x + Math.round(a.x * scaleX),
-            y: coordinateSpace.y + Math.round(a.y * scaleY),
-            width: Math.round(a.width * scaleX),
-            height: Math.round(a.height * scaleY),
+            x: coordinateSpace.x + Math.round(a.cx * scaleX),
+            y: coordinateSpace.y + Math.round(a.cy * scaleY),
           }));
           screenGuideApi.show(withIds);
 
