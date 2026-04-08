@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
@@ -29,8 +29,11 @@ import {
 import { generateShimScript } from "../../src/lib/shim";
 import { registerStellaRefresh } from "../../src/lib/stella-refresh";
 import { userFacingError } from "../../src/lib/user-facing-error";
-import { ConnectHeroAnimation } from "../../src/components/ConnectHeroAnimation";
-import { colors } from "../../src/theme/colors";
+import { DesktopTabAnimation } from "../../src/components/DesktopTabAnimation";
+import { notifyError, notifySuccess } from "../../src/lib/haptics";
+import { type Colors } from "../../src/theme/colors";
+import { useColors } from "../../src/theme/theme-context";
+import { fadeHex } from "../../src/theme/oklch";
 import { fonts } from "../../src/theme/fonts";
 
 type MobileBridgeBootstrap = {
@@ -124,6 +127,8 @@ function readUnavailableState(
 }
 
 export default function StellaScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const webViewRef = useRef<WebView>(null);
   const preferredAccessRef = useRef<StoredPhoneAccess | null>(null);
   const screenStateRef = useRef<ScreenState["type"]>("loading");
@@ -232,6 +237,7 @@ export default function StellaScreen() {
           // Best-effort: proceed without desktop state.
         }
 
+        notifySuccess();
         setBridgeConnected(true);
         setScreenState({
           type: "ready",
@@ -290,6 +296,7 @@ export default function StellaScreen() {
         updatePreferredAccess(access);
         await refreshBridge(access);
       } catch (error) {
+        notifyError();
         setScreenState(
           readUnavailableState("Pair your phone", userFacingError(error)),
         );
@@ -372,7 +379,7 @@ export default function StellaScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.statusBlock}>
-          <ConnectHeroAnimation />
+          <DesktopTabAnimation />
           <Text style={styles.title}>{screenState.title}</Text>
           <Text style={styles.body}>
             {preferredAccess
@@ -428,7 +435,7 @@ export default function StellaScreen() {
               setPairingCode(normalizePairingCode(value))
             }
             placeholder="ABCDEFGH"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={fadeHex(colors.textMuted, 0.3)}
             style={styles.input}
             textContentType="oneTimeCode"
             value={pairingCode}
@@ -524,7 +531,7 @@ export default function StellaScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   screen: {
     flex: 1,
   },
@@ -549,6 +556,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.display.regular,
     fontSize: 28,
     letterSpacing: -1.2,
+    textAlign: "center",
   },
   body: {
     color: colors.textMuted,
@@ -608,35 +616,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   pairingCard: {
-    backgroundColor: colors.panel,
-    borderColor: colors.border,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
     gap: 10,
-    padding: 14,
+    marginTop: 28,
   },
   inputLabel: {
     color: colors.textMuted,
     fontFamily: fonts.sans.medium,
     fontSize: 13,
     letterSpacing: 0.2,
+    textAlign: "center",
   },
   input: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.panel,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     color: colors.text,
     fontFamily: fonts.sans.semiBold,
-    fontSize: 18,
-    letterSpacing: 3,
+    fontSize: 22,
+    letterSpacing: 6,
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: 16,
+    textAlign: "center",
   },
   actionRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
+    justifyContent: "center",
+    marginTop: "auto",
   },
   actionButton: {
     alignItems: "center",
@@ -703,4 +711,4 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.surface,
   },
-});
+} as const);

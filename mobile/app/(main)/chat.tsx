@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -42,7 +42,11 @@ import {
   subscribeDesktopConnection,
 } from "../../src/lib/desktop-connection";
 import { userFacingError } from "../../src/lib/user-facing-error";
-import { colors } from "../../src/theme/colors";
+import { SpeechModule, speechAvailable, useSpeechRecognitionEvent } from "../../src/lib/speech";
+import { tapMedium, tapLight } from "../../src/lib/haptics";
+import { type Colors } from "../../src/theme/colors";
+import { useColors } from "../../src/theme/theme-context";
+import { fadeHex } from "../../src/theme/oklch";
 import { fonts } from "../../src/theme/fonts";
 import type { ChatMessage } from "../../src/types";
 import { ConnectHeroAnimation } from "../../src/components/ConnectHeroAnimation";
@@ -143,11 +147,13 @@ type ChatMessageRowProps = {
   item: ChatMessage;
   /** When true, user bubbles may show the "Includes a photo" hint. */
   showImageHint?: boolean;
+  styles: ReturnType<typeof makeStyles>;
 };
 
 const ChatMessageRow = memo(function ChatMessageRow({
   item,
   showImageHint = false,
+  styles,
 }: ChatMessageRowProps) {
   if (item.role === "user") {
     return (
@@ -171,9 +177,13 @@ const ChatMessageRow = memo(function ChatMessageRow({
 function ScrollToBottomFab({
   visible,
   onPress,
+  styles,
+  colors,
 }: {
   visible: boolean;
   onPress: () => void;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
 }) {
   if (!visible) {
     return null;
@@ -199,6 +209,8 @@ function ScrollToBottomFab({
 // ---------------------------------------------------------------------------
 
 export default function ChatScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const listRef = useRef<FlashListRef<ChatMessage>>(null);
   const inputRef = useRef<TextInput>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -250,24 +262,24 @@ export default function ChatScreen() {
   const renderChatItem = useCallback(
     ({ item }: ListRenderItemInfo<ChatMessage>) => (
       <FadeInMessage key={item.id}>
-        <ChatMessageRow item={item} showImageHint />
+        <ChatMessageRow item={item} showImageHint styles={styles} />
       </FadeInMessage>
     ),
-    [],
+    [styles],
   );
 
   const renderComputerItem = useCallback(
     ({ item }: ListRenderItemInfo<ChatMessage>) => (
       <FadeInMessage key={item.id}>
-        <ChatMessageRow item={item} />
+        <ChatMessageRow item={item} styles={styles} />
       </FadeInMessage>
     ),
-    [],
+    [styles],
   );
 
   const renderMessageSeparator = useCallback(
     () => <View style={styles.itemSeparator} />,
-    [],
+    [styles],
   );
 
   const getMessageItemType = useCallback(
@@ -367,6 +379,7 @@ export default function ChatScreen() {
   const send = async () => {
     const text = draft.trim();
     if ((!text && attachments.length === 0) || sending) return;
+    tapMedium();
 
     const prior = messages;
     const history = prior.map((m) => ({ role: m.role, text: m.text }));
@@ -454,6 +467,7 @@ export default function ChatScreen() {
   const sendComputer = async () => {
     const text = computerDraft.trim();
     if (!text || computerSending || !mobileDeviceId) return;
+    tapMedium();
 
     const userMsg: ChatMessage = {
       id: createId(),
@@ -526,6 +540,62 @@ export default function ChatScreen() {
     [expanded],
   );
 
+  // --------------- Voice input ---------------
+
+  const [isListening, setIsListening] = useState(false);
+
+  useSpeechRecognitionEvent("result", (event) => {
+    const transcript = event.results[0]?.transcript;
+    if (transcript) {
+      if (mode === "chat") {
+        setDraft(transcript);
+      } else {
+        setComputerDraft(transcript);
+      }
+    }
+    if (event.isFinal) {
+      setIsListening(false);
+    }
+  });
+
+  useSpeechRecognitionEvent("end", () => {
+    setIsListening(false);
+  });
+
+  useSpeechRecognitionEvent("error", () => {
+    setIsListening(false);
+  });
+
+  const toggleVoice = async () => {
+    if (!SpeechModule) {
+      Alert.alert("Voice Input", "Voice input requires a development build and is not available in Expo Go.");
+      return;
+    }
+
+    if (isListening) {
+      SpeechModule.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const { granted } = await SpeechModule.requestPermissionsAsync();
+    if (!granted) {
+      Alert.alert(
+        "Microphone",
+        "Allow Stella to access your microphone in Settings so you can use voice input.",
+      );
+      return;
+    }
+
+    tapLight();
+    setIsListening(true);
+    SpeechModule.start({
+      lang: "en-US",
+      interimResults: true,
+      addsPunctuation: true,
+    });
+  };
+
   const empty = messages.length === 0;
 
   // =====================================================================
@@ -565,6 +635,8 @@ export default function ChatScreen() {
                 <ScrollToBottomFab
                   visible={chatAwayFromBottom}
                   onPress={scrollToEnd}
+                  styles={styles}
+                  colors={colors}
                 />
               </>
             )}
@@ -611,7 +683,7 @@ export default function ChatScreen() {
                 onContentSizeChange={handleContentSizeChange}
                 blurOnSubmit={false}
                 placeholder="Message Stella"
-                placeholderTextColor="rgba(82, 104, 134, 0.35)"
+                placeholderTextColor={fadeHex(colors.textMuted, 0.35)}
                 selectionColor={colors.accent}
                 underlineColorAndroid="transparent"
                 style={styles.inputExpanded}
@@ -624,6 +696,17 @@ export default function ChatScreen() {
                   </Pressable>
                 </View>
                 <View style={styles.toolbarRight}>
+                  <Pressable
+                    onPress={() => void toggleVoice()}
+                    style={[styles.micButton, isListening && styles.micButtonActive]}
+                    hitSlop={4}
+                  >
+                    <Feather
+                      name={isListening ? "mic-off" : "mic"}
+                      size={16}
+                      color={isListening ? colors.accentForeground : colors.textMuted}
+                    />
+                  </Pressable>
                   <Pressable
                     onPress={() => void send()}
                     disabled={!canSubmit}
@@ -657,29 +740,39 @@ export default function ChatScreen() {
                 blurOnSubmit
                 onSubmitEditing={() => void send()}
                 returnKeyType="send"
-                placeholder="Message Stella"
-                placeholderTextColor="rgba(82, 104, 134, 0.35)"
+                placeholder={isListening ? "Listening..." : "Message Stella"}
+                placeholderTextColor={isListening ? colors.accent : fadeHex(colors.textMuted, 0.35)}
                 selectionColor={colors.accent}
                 underlineColorAndroid="transparent"
                 style={styles.inputPill}
                 value={draft}
               />
-              <Pressable
-                onPress={() => void send()}
-                disabled={!canSubmit}
-                style={[
-                  styles.submitButton,
-                  !canSubmit && styles.submitDisabled,
-                ]}
-                hitSlop={4}
-              >
-                <Feather
-                  name="arrow-up"
-                  size={14}
-                  color={colors.accentForeground}
-                  strokeWidth={2.5}
-                />
-              </Pressable>
+              {canSubmit ? (
+                <Pressable
+                  onPress={() => void send()}
+                  style={styles.submitButton}
+                  hitSlop={4}
+                >
+                  <Feather
+                    name="arrow-up"
+                    size={14}
+                    color={colors.accentForeground}
+                    strokeWidth={2.5}
+                  />
+                </Pressable>
+              ) : (
+                <Pressable
+                  onPress={() => void toggleVoice()}
+                  style={[styles.micButton, isListening && styles.micButtonActive]}
+                  hitSlop={4}
+                >
+                  <Feather
+                    name={isListening ? "mic-off" : "mic"}
+                    size={16}
+                    color={isListening ? colors.accentForeground : colors.textMuted}
+                  />
+                </Pressable>
+              )}
             </View>
           )}
         </GlassView>
@@ -747,6 +840,8 @@ export default function ChatScreen() {
                 <ScrollToBottomFab
                   visible={computerAwayFromBottom}
                   onPress={scrollComputerToEnd}
+                  styles={styles}
+                  colors={colors}
                 />
               </>
             )}
@@ -763,7 +858,7 @@ export default function ChatScreen() {
                   onSubmitEditing={() => void sendComputer()}
                   returnKeyType="send"
                   placeholder={desktopState === "connected" ? "Ask Stella to do something" : "Connect to your computer first"}
-                  placeholderTextColor="rgba(82, 104, 134, 0.35)"
+                  placeholderTextColor={fadeHex(colors.textMuted, 0.35)}
                   selectionColor={colors.accent}
                   underlineColorAndroid="transparent"
                   style={styles.inputPill}
@@ -812,7 +907,7 @@ export default function ChatScreen() {
 const EDGE_FADE = 48;
 const MESSAGE_LIST_GAP = 24;
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   screen: {
     flex: 1,
   },
@@ -895,7 +990,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   userBubble: {
-    backgroundColor: "rgba(29, 120, 242, 0.10)",
+    backgroundColor: colors.accentSoft,
     borderColor: colors.borderStrong,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 18,
@@ -1079,4 +1174,16 @@ const styles = StyleSheet.create({
   submitDisabled: {
     opacity: 0.4,
   },
-});
+  micButton: {
+    alignItems: "center",
+    borderRadius: 15,
+    height: 30,
+    justifyContent: "center",
+    opacity: 0.55,
+    width: 30,
+  },
+  micButtonActive: {
+    backgroundColor: colors.accent,
+    opacity: 1,
+  },
+} as const);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -18,7 +18,9 @@ import { getSetCookie } from "@better-auth/expo/client";
 import { authClient } from "../../src/lib/auth-client";
 import { env } from "../../src/config/env";
 import { userFacingError } from "../../src/lib/user-facing-error";
-import { colors } from "../../src/theme/colors";
+import { type Colors } from "../../src/theme/colors";
+import { useColors, useTheme } from "../../src/theme/theme-context";
+import { fadeHex } from "../../src/theme/oklch";
 import { fonts } from "../../src/theme/fonts";
 import { TERMS_OF_SERVICE, PRIVACY_POLICY } from "../../src/lib/legal-text";
 
@@ -36,6 +38,9 @@ type SubmitState =
   | { type: "error"; message: string };
 
 export default function LoginScreen() {
+  const colors = useColors();
+  const { isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [email, setEmail] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>({ type: "idle" });
   const [activeLegal, setActiveLegal] = useState<LegalDoc>(null);
@@ -145,7 +150,7 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <StatusBar style="dark" />
+      <StatusBar style={isDark ? "light" : "dark"} />
       <KeyboardAvoidingView
         style={styles.keyboardAvoid}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -167,7 +172,7 @@ export default function LoginScreen() {
           keyboardType="email-address"
           onChangeText={setEmail}
           placeholder="Email"
-          placeholderTextColor="rgba(82, 104, 134, 0.4)"
+          placeholderTextColor={fadeHex(colors.textMuted, 0.4)}
           style={styles.input}
           value={email}
         />
@@ -260,7 +265,7 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -302,7 +307,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   input: {
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: 14,
     borderWidth: 1,
@@ -345,7 +350,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   legalFooter: {
-    color: "rgba(82, 104, 134, 0.5)",
+    color: colors.textMuted,
     fontFamily: fonts.sans.regular,
     fontSize: 12,
     lineHeight: 17,
@@ -397,4 +402,4 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     opacity: 0.8,
   },
-});
+} as const);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   checkDesktopConnection,
@@ -11,10 +11,14 @@ import {
   subscribeChatScreenMode,
   type ChatScreenMode,
 } from "../lib/chat-screen-mode";
-import { colors } from "../theme/colors";
+import { tapLight } from "../lib/haptics";
+import { type Colors } from "../theme/colors";
+import { useColors } from "../theme/theme-context";
 import { fonts } from "../theme/fonts";
 
 export function ChatModePill() {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [mode, setMode] = useState<ChatScreenMode>(() => getChatScreenMode());
   const [desktopState, setDesktopState] = useState(() =>
     getDesktopConnectionState(),
@@ -30,7 +34,7 @@ export function ChatModePill() {
     <View style={styles.toggleRow}>
       <Pressable
         style={[styles.toggleTab, mode === "chat" && styles.toggleTabActive]}
-        onPress={() => setChatScreenMode("chat")}
+        onPress={() => { tapLight(); setChatScreenMode("chat"); }}
       >
         <Text
           style={[styles.toggleText, mode === "chat" && styles.toggleTextActive]}
@@ -43,7 +47,7 @@ export function ChatModePill() {
           styles.toggleTab,
           mode === "computer" && styles.toggleTabActive,
         ]}
-        onPress={() => setChatScreenMode("computer")}
+        onPress={() => { tapLight(); setChatScreenMode("computer"); }}
       >
         <View style={styles.toggleWithDot}>
           <Text
@@ -61,10 +65,10 @@ export function ChatModePill() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   toggleRow: {
     alignSelf: "center",
-    backgroundColor: "rgba(82, 104, 134, 0.08)",
+    backgroundColor: colors.muted,
     borderRadius: 999,
     flexDirection: "row",
     padding: 3,
@@ -102,4 +106,4 @@ const styles = StyleSheet.create({
     height: 6,
     width: 6,
   },
-});
+} as const);
