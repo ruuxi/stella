@@ -228,8 +228,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     providerOptions: {
       ...gatewayOptions("openrouter"),
       openai: {
-        reasoningEffort: "medium",
-        forceReasoning: true,
+        reasoningEffort: "low",
       },
     },
   },
