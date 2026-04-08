@@ -123,6 +123,9 @@ export class AuthService {
     token?: string,
     hasConnectedAccount?: boolean,
   ) {
+    const runner = this.options.runnerTarget.getRunner()
+    const previousAuthToken = this.hostAuthToken
+    const previousHasConnectedAccount = this.hostHasConnectedAccount
     this.hostAuthAuthenticated = authenticated
     this.hostHasConnectedAccount = authenticated
       ? (hasConnectedAccount ?? this.hostHasConnectedAccount)
@@ -134,19 +137,18 @@ export class AuthService {
       return
     }
 
-    this.options.runnerTarget
-      .getRunner()
-      ?.setHasConnectedAccount(this.hostHasConnectedAccount)
-
-    if (!normalizedToken) {
-      if (!this.hostAuthToken) {
-        this.options.runnerTarget.getRunner()?.setAuthToken(null)
+    if (normalizedToken) {
+      this.hostAuthToken = normalizedToken
+      if (normalizedToken !== previousAuthToken) {
+        runner?.setAuthToken(normalizedToken)
       }
-      return
+    } else if (!this.hostAuthToken) {
+      runner?.setAuthToken(null)
     }
 
-    this.hostAuthToken = normalizedToken
-    this.options.runnerTarget.getRunner()?.setAuthToken(normalizedToken)
+    if (this.hostHasConnectedAccount !== previousHasConnectedAccount) {
+      runner?.setHasConnectedAccount(this.hostHasConnectedAccount)
+    }
   }
 
   getHostAuthAuthenticated() {
@@ -160,14 +162,13 @@ export class AuthService {
   configurePiRuntime(config: { convexUrl: string; convexSiteUrl?: string }) {
     this.pendingConvexUrl = config.convexUrl
     this.pendingConvexSiteUrl = readConfiguredConvexSiteUrl(config.convexSiteUrl)
-    this.options.runnerTarget.getRunner()?.setConvexUrl(config.convexUrl)
-    this.options.runnerTarget.getRunner()?.setConvexSiteUrl(this.getConvexSiteUrl())
-    this.options.runnerTarget
-      .getRunner()
-      ?.setHasConnectedAccount(this.hostHasConnectedAccount)
+    const runner = this.options.runnerTarget.getRunner()
+    runner?.setConvexUrl(config.convexUrl)
+    runner?.setConvexSiteUrl(this.getConvexSiteUrl())
     if (this.hostAuthToken) {
-      this.options.runnerTarget.getRunner()?.setAuthToken(this.hostAuthToken)
+      runner?.setAuthToken(this.hostAuthToken)
     }
+    runner?.setHasConnectedAccount(this.hostHasConnectedAccount)
   }
 
   getPendingConvexUrl() {

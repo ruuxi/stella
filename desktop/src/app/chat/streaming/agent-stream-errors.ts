@@ -52,7 +52,7 @@ export const trySyncHostToken = async (): Promise<boolean> => {
 
   try {
     const { getConvexToken } = await import('@/global/auth/services/auth-token')
-    const token = await getConvexToken()
+    const token = await getConvexToken({ forceRefresh: true })
     if (!token) return false
 
     await window.electronAPI.system.setAuthState({
