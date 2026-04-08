@@ -5,6 +5,7 @@ import { corsPreflightHandler } from "./http_shared/cors";
 
 // Route modules
 import { registerConnectorWebhookRoutes } from "./http_routes/connectors";
+import { registerBackupRoutes } from "./http_routes/backups";
 import { registerMediaRoutes } from "./http_routes/media";
 import { registerMobileRoutes } from "./http_routes/mobile";
 
@@ -36,6 +37,7 @@ authComponent.registerRoutes(http, createAuth, { cors: true });
 
 registerSynthesisRoutes(http);
 registerConnectorWebhookRoutes(http);
+registerBackupRoutes(http);
 registerMusicRoutes(http);
 registerMediaRoutes(http);
 registerMobileRoutes(http);
