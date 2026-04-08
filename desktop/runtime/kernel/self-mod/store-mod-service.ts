@@ -89,26 +89,12 @@ const sortBatchesByOrdinal = (batches: SelfModBatchRecord[]) =>
   [...batches].sort((a, b) => a.ordinal - b.ordinal || a.createdAt - b.createdAt);
 
 const isPublishableBatch = (batch: SelfModBatchRecord): boolean =>
-  batch.state === "committed" && typeof batch.commitHash === "string" && batch.commitHash.length > 0;
+  (batch.state === "committed" || batch.state === "published")
+  && typeof batch.commitHash === "string"
+  && batch.commitHash.length > 0;
 
-const selectDefaultBatchIds = (batches: SelfModBatchRecord[]): string[] => {
-  const ordered = sortBatchesByOrdinal(batches);
-  const lastPublishedOrdinal = ordered.reduce(
-    (max, batch) => (batch.state === "published" ? Math.max(max, batch.ordinal) : max),
-    0,
-  );
-  const selection: string[] = [];
-  for (const batch of ordered) {
-    if (batch.ordinal <= lastPublishedOrdinal) {
-      continue;
-    }
-    if (!isPublishableBatch(batch)) {
-      break;
-    }
-    selection.push(batch.batchId);
-  }
-  return selection;
-};
+const hasPendingPublishableBatches = (batches: SelfModBatchRecord[]): boolean =>
+  batches.some((batch) => batch.state === "committed" && isPublishableBatch(batch));
 
 const DEFAULT_BLUEPRINT_APPLY_GUIDANCE =
   "Treat this release blueprint as the reference implementation for the feature. " +
@@ -170,9 +156,14 @@ export class StoreModService {
   }): Promise<SelfModFeatureRecord> {
     const taskDescription = args.taskDescription.trim() || "Self mod update";
     const featureId = trimOrUndefined(args.featureId) ?? deriveFeatureId(taskDescription);
+    const existingFeature = this.store.getFeature(featureId);
     const name = trimOrUndefined(args.displayName)
+      ?? existingFeature?.name
+      ?? trimOrUndefined(taskDescription)
       ?? humanize(featureId.replace(/-[a-z0-9]{1,6}$/, ""));
-    const description = trimOrUndefined(args.description) ?? taskDescription;
+    const description = trimOrUndefined(args.description)
+      ?? existingFeature?.description
+      ?? taskDescription;
     const baselineDirtyFiles = new Set(await listGitDirtyFiles(this.repoRoot));
     const packageId = trimOrUndefined(args.packageId);
     const releaseNumber = normalizeReleaseNumber(args.releaseNumber);
@@ -310,21 +301,16 @@ export class StoreModService {
     const allBatches = this.listFeatureBatches(args.featureId);
     const publishable = allBatches.filter(isPublishableBatch);
     if (publishable.length === 0) {
-      throw new Error(`Feature "${args.featureId}" has no unpublished committed batches.`);
+      throw new Error(`Feature "${args.featureId}" has no committed history to publish.`);
     }
-
-    const selectedBatchIds = args.batchIds && args.batchIds.length > 0
-      ? this.validateExplicitBatchSelection(publishable, args.batchIds)
-      : selectDefaultBatchIds(allBatches);
-    const batches = publishable.filter((batch) => selectedBatchIds.includes(batch.batchId));
-    if (batches.length === 0) {
-      throw new Error(`Feature "${args.featureId}" has no publishable batch selection.`);
+    if (!hasPendingPublishableBatches(allBatches)) {
+      throw new Error(`Feature "${args.featureId}" has no new commits to publish.`);
     }
 
     return {
       feature,
-      batches,
-      selectedBatchIds,
+      batches: publishable,
+      selectedBatchIds: publishable.map((batch) => batch.batchId),
       packageId: feature.packageId,
       displayName: feature.name,
       description: feature.description,
@@ -378,7 +364,9 @@ export class StoreModService {
     });
     this.store.markBatchesPublished({
       featureId: draft.feature.featureId,
-      batchIds: draft.selectedBatchIds,
+      batchIds: draft.batches
+        .filter((batch) => batch.state === "committed")
+        .map((batch) => batch.batchId),
       packageId,
       releaseNumber: release.releaseNumber,
     });
@@ -422,22 +410,6 @@ export class StoreModService {
 
   markInstallUninstalled(installId: string): void {
     this.store.markInstallUninstalled(installId);
-  }
-
-  private validateExplicitBatchSelection(
-    pending: SelfModBatchRecord[],
-    requestedBatchIds: string[],
-  ): string[] {
-    const uniqueRequested = Array.from(new Set(requestedBatchIds));
-    const byId = new Map(pending.map((batch) => [batch.batchId, batch]));
-    const selected = uniqueRequested.map((batchId) => {
-      const batch = byId.get(batchId);
-      if (!batch) {
-        throw new Error(`Batch "${batchId}" is not publishable.`);
-      }
-      return batch;
-    });
-    return sortBatchesByOrdinal(selected).map((batch) => batch.batchId);
   }
 
   private async buildReleaseArtifact(args: {

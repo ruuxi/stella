@@ -6,7 +6,7 @@ import { resolveRuntimeStatePath } from "../home/stella-home.js";
 
 const LOG_ENTRY_SEPARATOR = "\x1e";
 const LOG_FIELD_SEPARATOR = "\x1f";
-const FEATURE_TAG_REGEX = /\[feature:([a-zA-Z0-9_-]+)\]/g;
+const FEATURE_TAG_REGEX = /\[feature:([a-zA-Z0-9_-]+)(?:,\s*\+\d+)?\]/g;
 const DEFAULT_LOG_SCAN_LIMIT = 500;
 const DEFAULT_RECENT_FEATURE_LIMIT = 8;
 
@@ -93,6 +93,11 @@ const humanizeFeatureId = (featureId: string): string =>
 
 const normalizeGitPath = (value: string): string =>
   value.trim().replace(/\\/g, "/");
+
+const buildFeatureTag = (featureId: string, ordinal?: number): string =>
+  typeof ordinal === "number" && Number.isFinite(ordinal)
+    ? `[feature:${featureId}, +${Math.max(1, Math.floor(ordinal))}]`
+    : `[feature:${featureId}]`;
 
 const extractFeatureIds = (text: string): string[] => {
   FEATURE_TAG_REGEX.lastIndex = 0;
@@ -396,12 +401,11 @@ export const listFeatureCommitHashes = async (
   repoRoot: string,
   featureId: string,
 ): Promise<string[]> => {
-  const tag = `[feature:${featureId}]`;
   const output = await runGit(repoRoot, [
     "log",
     "--pretty=format:%H",
     "--fixed-strings",
-    `--grep=${tag}`,
+    `--grep=Stella-Feature-Id: ${featureId}`,
   ]);
   return output
     .split("\n")
@@ -510,8 +514,9 @@ export const commitGitFeatureBatch = async (
       ? "Store install"
       : args.source === "update"
         ? "Store update"
-        : "Self-mod batch";
-  const subject = `${subjectPrefix} ${args.ordinal} [feature:${args.featureId}]`;
+        : "";
+  const featureTag = buildFeatureTag(args.featureId, args.ordinal);
+  const subject = subjectPrefix ? `${subjectPrefix} ${featureTag}` : featureTag;
   const bodyLines = [
     `Stella-Batch-Id: ${args.batchId}`,
     `Stella-Feature-Id: ${args.featureId}`,

@@ -41,6 +41,41 @@ const normalizeString = (value: unknown): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+const shortHash = (value: string): string =>
+  crypto
+    .createHash("sha1")
+    .update(value)
+    .digest("hex")
+    .slice(0, 10);
+
+const deriveConversationFeatureId = (conversationId: string): string => {
+  const normalizedConversationId = normalizeString(conversationId);
+  if (!normalizedConversationId) {
+    return `feature-${shortHash(crypto.randomUUID())}`;
+  }
+  return `feature-${shortHash(normalizedConversationId)}`;
+};
+
+const resolveSelfModMetadata = (args: {
+  conversationId: string;
+  agentType: string;
+  selfModMetadata?: TaskToolRequest["selfModMetadata"];
+}): TaskToolRequest["selfModMetadata"] | undefined => {
+  if (args.selfModMetadata) {
+    return {
+      ...args.selfModMetadata,
+      mode: args.selfModMetadata.mode ?? "author",
+    };
+  }
+  if (args.agentType !== AGENT_IDS.GENERAL) {
+    return undefined;
+  }
+  return {
+    featureId: deriveConversationFeatureId(args.conversationId),
+    mode: "author",
+  };
+};
+
 const getPathApi = (...values: Array<string | undefined>) =>
   values.some((value) => value && WINDOWS_PATH_PATTERN.test(value))
     ? path.win32
@@ -267,8 +302,13 @@ export const createTaskOrchestration = (
       toolExecutor,
     }) => {
       const runId = `local:sub:${crypto.randomUUID()}`;
+      const effectiveSelfModMetadata = resolveSelfModMetadata({
+        conversationId,
+        agentType,
+        selfModMetadata,
+      });
       const shouldAttachSelfModLifecycle =
-        Boolean(selfModMetadata) && Boolean(context.selfModLifecycle);
+        Boolean(effectiveSelfModMetadata) && Boolean(context.selfModLifecycle);
 
       const resolvedLlm = resolveLlmRoute({
         stellaHomePath: context.stellaHomePath,
@@ -323,7 +363,7 @@ export const createTaskOrchestration = (
             taskDescription,
             taskPrompt,
             conversationId,
-            ...(selfModMetadata ?? {}),
+            ...(effectiveSelfModMetadata ?? {}),
           }),
         );
       }
@@ -337,7 +377,7 @@ export const createTaskOrchestration = (
           rootRunId,
           agentType,
           userPrompt: `${taskDescription}\n\n${taskPrompt}`,
-          selfModMetadata,
+          selfModMetadata: effectiveSelfModMetadata,
           agentContext,
           toolCatalog: context.toolHost.getToolCatalog(),
           loadTools: async ({ taskId, prompt }) => {
@@ -379,7 +419,7 @@ export const createTaskOrchestration = (
                 taskPrompt,
                 conversationId,
                 succeeded: true,
-                ...(selfModMetadata ?? {}),
+                ...(effectiveSelfModMetadata ?? {}),
               }),
             );
           } else if (typeof context.selfModLifecycle!.cancelRun === "function") {
