@@ -3,6 +3,7 @@ import { OverlayWindowController } from "../windows/overlay-window.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { AuthService } from "../services/auth-service.js";
 import type { CaptureService } from "../services/capture-service.js";
+import type { BackupService } from "../services/backup-service.js";
 import type { CredentialService } from "../services/credential-service.js";
 import type { ExternalLinkService } from "../services/external-link-service.js";
 import type { RadialGestureService } from "../services/radial-gesture-service.js";
@@ -39,7 +40,9 @@ export type BootstrapState = {
   appSessionStartedAt: number;
   deferredStartupSequence: Promise<void> | null;
   deviceId: string | null;
-  hmrTransitionController: ReturnType<typeof createHmrTransitionController> | null;
+  hmrTransitionController: ReturnType<
+    typeof createHmrTransitionController
+  > | null;
   isQuitting: boolean;
   devProjectsUpdateUnsubscribe: (() => void) | null;
   localChatUpdateUnsubscribe: (() => void) | null;
@@ -59,6 +62,7 @@ export type BootstrapState = {
 
 export type BootstrapServices = {
   authService: AuthService;
+  backupService: BackupService;
   captureService: CaptureService;
   credentialService: CredentialService;
   externalLinkService: ExternalLinkService;

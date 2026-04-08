@@ -26,6 +26,10 @@ import type {
 } from "../src/shared/contracts/onboarding.js";
 import type { DiscoveryKnowledgeSeedPayload } from "../src/shared/contracts/discovery.js";
 import {
+  IPC_BACKUP_GET_STATUS,
+  IPC_BACKUP_LIST,
+  IPC_BACKUP_RESTORE,
+  IPC_BACKUP_RUN_NOW,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
@@ -556,6 +560,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke(IPC_PREFERENCES_GET_SYNC_MODE) as Promise<string>,
     setLocalSyncMode: (mode: string) =>
       ipcRenderer.invoke(IPC_PREFERENCES_SET_SYNC_MODE, mode),
+    getBackupStatus: () =>
+      ipcRenderer.invoke(IPC_BACKUP_GET_STATUS),
+    backUpNow: () =>
+      ipcRenderer.invoke(IPC_BACKUP_RUN_NOW),
+    listBackups: (limit?: number) =>
+      ipcRenderer.invoke(IPC_BACKUP_LIST, { limit }),
+    restoreBackup: (snapshotId: string) =>
+      ipcRenderer.invoke(IPC_BACKUP_RESTORE, { snapshotId }),
     syncLocalModelPreferences: (payload: {
       defaultModels: Record<string, string>;
       resolvedDefaultModels: Record<string, string>;

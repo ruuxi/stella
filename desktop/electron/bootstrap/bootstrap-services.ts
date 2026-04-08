@@ -1,6 +1,7 @@
 import type { BrowserWindow } from "electron";
 import path from "path";
 import { AuthService } from "../services/auth-service.js";
+import { BackupService } from "../services/backup-service.js";
 import { CaptureService } from "../services/capture-service.js";
 import { CredentialService } from "../services/credential-service.js";
 import { ExternalLinkService } from "../services/external-link-service.js";
@@ -18,16 +19,14 @@ import type {
 } from "./context.js";
 import type { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
 
-export const createBootstrapServices = (
-  options: {
-    config: BootstrapConfig;
-    lifecycle: BootstrapLifecycleBindings;
-    state: BootstrapState;
-    getAllWindows: () => BrowserWindow[];
-    getMobileBroadcast: () => MobileBroadcastFn | null;
-    onAuthCallback: (url: string) => void;
-  },
-): BootstrapServices => {
+export const createBootstrapServices = (options: {
+  config: BootstrapConfig;
+  lifecycle: BootstrapLifecycleBindings;
+  state: BootstrapState;
+  getAllWindows: () => BrowserWindow[];
+  getMobileBroadcast: () => MobileBroadcastFn | null;
+  onAuthCallback: (url: string) => void;
+}): BootstrapServices => {
   const { config, lifecycle, state } = options;
 
   const uiStateService = new UiStateService();
@@ -73,6 +72,16 @@ export const createBootstrapServices = (
     onSecondInstanceFocus: () => {
       state.windowManager?.getFullWindow()?.focus();
     },
+  });
+
+  const backupService = new BackupService({
+    frontendRoot: config.frontendRoot,
+    getStellaHomePath: () => state.stellaHomePath,
+    getRunner: () => lifecycle.getRunner(),
+    getAuthToken: () => authService.getAuthToken(),
+    getConvexSiteUrl: () => authService.getConvexSiteUrl(),
+    getDeviceId: () => state.deviceId,
+    processRuntime: state.processRuntime,
   });
 
   const radialGestureService = new RadialGestureService({
@@ -135,6 +144,7 @@ export const createBootstrapServices = (
 
   return {
     authService,
+    backupService,
     captureService,
     credentialService,
     externalLinkService,
