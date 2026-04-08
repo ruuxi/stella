@@ -35,6 +35,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#edf3fb"
+        }
+      ],
       "expo-secure-store",
       "expo-router",
       "expo-web-browser",
