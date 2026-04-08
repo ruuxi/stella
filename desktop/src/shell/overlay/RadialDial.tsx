@@ -404,7 +404,7 @@ export function RadialDial({
           {wedgeLayout.map((wedge) => {
             const isSelected = selectedWedge === wedge.id
             const paintAsEnabled =
-              wedge.enabled || phase === 'closing' || wedge.id === 'close'
+              wedge.enabled || phase === 'closing'
             const fillColor = paintAsEnabled
               ? (isSelected ? palette.interactive : palette.card)
               : toRgba(colors.card, 0.5)
