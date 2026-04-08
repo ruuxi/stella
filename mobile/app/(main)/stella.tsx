@@ -6,6 +6,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -28,6 +29,7 @@ import {
 import { generateShimScript } from "../../src/lib/shim";
 import { registerStellaRefresh } from "../../src/lib/stella-refresh";
 import { userFacingError } from "../../src/lib/user-facing-error";
+import { ConnectHeroAnimation } from "../../src/components/ConnectHeroAnimation";
 import { colors } from "../../src/theme/colors";
 import { fonts } from "../../src/theme/fonts";
 
@@ -364,13 +366,18 @@ export default function StellaScreen() {
   if (screenState.type === "unavailable") {
     const showRetry = Boolean(preferredAccess);
     return (
-      <View style={styles.screen}>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.unavailableScroll}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.statusBlock}>
+          <ConnectHeroAnimation />
           <Text style={styles.title}>{screenState.title}</Text>
           <Text style={styles.body}>
             {preferredAccess
-              ? "Open Stella on your computer and keep it connected to the internet."
-              : "Enter the code shown in Stella on your computer. After that, this phone can reconnect on its own."}
+              ? "Make sure Stella is open on your computer and connected to the internet. Once connected, your desktop app will appear right here on your phone."
+              : "See your Stella desktop app right on your phone. Enter the pairing code shown in Stella on your computer to get started — after that, your phone will reconnect automatically."}
           </Text>
           {screenState.error && (
             <Text style={styles.errorText}>{screenState.error}</Text>
@@ -458,13 +465,13 @@ export default function StellaScreen() {
             </Pressable>
           )}
         </View>
-      </View>
+      </ScrollView>
     );
   }
 
   const bridgeOrigin = getBridgeOrigin(screenState.bridge.bridgeUrl);
   return (
-    <View style={styles.screen}>
+    <View style={styles.screenReady}>
       {!bridgeConnected && (
         <View style={styles.reconnectBanner}>
           <ActivityIndicator size="small" color={colors.textMuted} />
@@ -520,7 +527,16 @@ export default function StellaScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+  },
+  /** Main layout when WebView is shown (banner + frame). */
+  screenReady: {
+    flex: 1,
     gap: 12,
+  },
+  unavailableScroll: {
+    flexGrow: 1,
+    gap: 12,
+    paddingBottom: 28,
   },
   centered: {
     alignItems: "center",
