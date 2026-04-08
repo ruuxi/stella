@@ -72,7 +72,7 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, "screenshot:captureVision")) {
         throw new Error("Blocked untrusted request.");
       }
-      return options.captureService.captureVisionScreenshot(point);
+      return options.captureService.captureVisionScreenshots(point);
     },
   );
 
