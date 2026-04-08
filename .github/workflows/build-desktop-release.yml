@@ -53,7 +53,12 @@ jobs:
         working-directory: desktop
         shell: bash
         run: |
-          npm ci
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo "package-lock.json missing in CI checkout; falling back to npm install"
+            npm install
+          fi
           printf '%s\n' "${{ matrix.platform }}" > node_modules/.stella-vendored-deps
 
       - name: Package release tarball
