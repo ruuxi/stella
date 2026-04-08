@@ -6,15 +6,19 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 
-const MOBILE_BRIDGE_STALE_MS = 150_000;
+export const MOBILE_BRIDGE_LEASE_MS = 150_000;
 
 const bridgeRegistrationValidator = v.object({
   deviceId: v.string(),
   baseUrls: v.array(v.string()),
   updatedAt: v.number(),
+  leaseExpiresAt: v.number(),
   platform: v.optional(v.string()),
   available: v.boolean(),
 });
+
+const getLeaseExpiresAt = (updatedAt: number) =>
+  updatedAt + MOBILE_BRIDGE_LEASE_MS;
 
 const loadLatestRegistration = async (ctx: QueryCtx, ownerId: string) => {
   const [registration] = await ctx.db
@@ -121,8 +125,9 @@ export const getLatestRegistrationForOwner = internalQuery({
       deviceId: registration.deviceId,
       baseUrls: registration.baseUrls,
       updatedAt: registration.updatedAt,
+      leaseExpiresAt: getLeaseExpiresAt(registration.updatedAt),
       ...(platform ? { platform } : {}),
-      available: registration.updatedAt + MOBILE_BRIDGE_STALE_MS > args.nowMs,
+      available: getLeaseExpiresAt(registration.updatedAt) > args.nowMs,
     };
   },
 });
@@ -155,8 +160,9 @@ export const getRegistrationForOwnerDevice = internalQuery({
       deviceId: registration.deviceId,
       baseUrls: registration.baseUrls,
       updatedAt: registration.updatedAt,
+      leaseExpiresAt: getLeaseExpiresAt(registration.updatedAt),
       ...(platform ? { platform } : {}),
-      available: registration.updatedAt + MOBILE_BRIDGE_STALE_MS > args.nowMs,
+      available: getLeaseExpiresAt(registration.updatedAt) > args.nowMs,
     };
   },
 });
