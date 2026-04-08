@@ -73,6 +73,12 @@ import type {
   OfficePreviewRef as SharedOfficePreviewRef,
   OfficePreviewSnapshot as SharedOfficePreviewSnapshot,
 } from "../contracts/office-preview";
+import type {
+  BackupNowResult as SharedBackupNowResult,
+  BackupStatusSnapshot as SharedBackupStatusSnapshot,
+  BackupSummary as SharedBackupSummary,
+  RestoreBackupResult as SharedRestoreBackupResult,
+} from "../contracts/backup";
 
 export type RadialWedge = SharedRadialWedge;
 export type ChatContext = SharedChatContext;
@@ -125,6 +131,10 @@ export type SocialSessionServiceSnapshot = SharedSocialSessionServiceSnapshot;
 export type RadialTriggerCode = SharedRadialTriggerCode;
 export type OfficePreviewRef = SharedOfficePreviewRef;
 export type OfficePreviewSnapshot = SharedOfficePreviewSnapshot;
+export type BackupNowResult = SharedBackupNowResult;
+export type BackupStatusSnapshot = SharedBackupStatusSnapshot;
+export type BackupSummary = SharedBackupSummary;
+export type RestoreBackupResult = SharedRestoreBackupResult;
 export type VoiceShortcutRegistrationResult = {
   ok: boolean;
   requestedShortcut: string;
@@ -439,6 +449,10 @@ export type ElectronSystemApi = {
   shellKillByPort: (port: number) => Promise<void>;
   getLocalSyncMode: () => Promise<string>;
   setLocalSyncMode: (mode: string) => Promise<void>;
+  getBackupStatus: () => Promise<BackupStatusSnapshot>;
+  backUpNow: () => Promise<BackupNowResult>;
+  listBackups: (limit?: number) => Promise<BackupSummary[]>;
+  restoreBackup: (snapshotId: string) => Promise<RestoreBackupResult>;
   getRadialTriggerKey: () => Promise<RadialTriggerCode>;
   setRadialTriggerKey: (
     triggerKey: RadialTriggerCode,

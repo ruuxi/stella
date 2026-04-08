@@ -8,6 +8,8 @@ import { type BootstrapContext, broadcastLocalChatUpdated } from "./context.js";
 export type BootstrapResetFlows = {
   hardResetLocalState: () => Promise<{ ok: true }>;
   resetLocalMessages: () => Promise<{ ok: true }>;
+  shutdownRuntime: () => Promise<void>;
+  restartRuntime: () => Promise<void>;
 };
 
 export const scheduleBootstrapRuntimeShutdown = (
@@ -106,5 +108,12 @@ export const createBootstrapResetFlows = (
 
     broadcastLocalChatUpdated(context);
     return { ok: true };
+  },
+  shutdownRuntime: async () => {
+    await shutdownBootstrapRuntime(context, { stopScheduler: true });
+  },
+  restartRuntime: async () => {
+    await shutdownBootstrapRuntime(context, { stopScheduler: true });
+    await options.initializeStellaHostRunner();
   },
 });

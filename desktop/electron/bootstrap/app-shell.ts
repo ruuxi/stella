@@ -20,6 +20,7 @@ const initializeBootstrapLocalState = async (context: BootstrapContext) => {
   lifecycle.setStellaHomePath(stellaHome.homePath);
   state.stellaHomePath = stellaHome.homePath;
   state.stellaWorkspacePath = stellaHome.workspacePath;
+  services.backupService.start();
 
   services.securityPolicyService.setSecurityPolicyPath(
     path.join(stellaHome.statePath, "security_policy.json"),
@@ -38,20 +39,22 @@ const initializeWindowShell = (context: BootstrapContext) => {
     getDevServerUrl,
   });
 
-  lifecycle.setWindowManager(new WindowManager({
-    electronDir: config.electronDir,
-    preloadPath,
-    sessionPartition: config.sessionPartition,
-    isDev: config.isDev,
-    getDevServerUrl,
-    isAppReady: () => state.appReady,
-    isQuitting: () => state.isQuitting,
-    externalLinkService: services.externalLinkService,
-    onDeactivateVoiceModes: () =>
-      services.uiStateService.deactivateVoiceModes(),
-    onUpdateUiState: (partial) => services.uiStateService.update(partial),
-    getOverlayController: () => state.overlayController,
-  }));
+  lifecycle.setWindowManager(
+    new WindowManager({
+      electronDir: config.electronDir,
+      preloadPath,
+      sessionPartition: config.sessionPartition,
+      isDev: config.isDev,
+      getDevServerUrl,
+      isAppReady: () => state.appReady,
+      isQuitting: () => state.isQuitting,
+      externalLinkService: services.externalLinkService,
+      onDeactivateVoiceModes: () =>
+        services.uiStateService.deactivateVoiceModes(),
+      onUpdateUiState: (partial) => services.uiStateService.update(partial),
+      getOverlayController: () => state.overlayController,
+    }),
+  );
 
   services.uiStateService.bind({
     broadcastTarget: {
