@@ -27,6 +27,7 @@ import type * as auth from "../auth.js";
 import type * as auth_migration from "../auth_migration.js";
 import type * as automation_index from "../automation/index.js";
 import type * as automation_runner from "../automation/runner.js";
+import type * as backups from "../backups.js";
 import type * as billing from "../billing.js";
 import type * as channels_connector_auth from "../channels/connector_auth.js";
 import type * as channels_connector_constants from "../channels/connector_constants.js";
@@ -59,6 +60,7 @@ import type * as data_thread_compaction_format from "../data/thread_compaction_f
 import type * as data_threads from "../data/threads.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
+import type * as http_routes_backups from "../http_routes/backups.js";
 import type * as http_routes_connectors from "../http_routes/connectors.js";
 import type * as http_routes_media from "../http_routes/media.js";
 import type * as http_routes_mobile from "../http_routes/mobile.js";
@@ -120,6 +122,7 @@ import type * as prompts_synthesis from "../prompts/synthesis.js";
 import type * as prompts_system_assembly from "../prompts/system_assembly.js";
 import type * as prompts_thread_compaction from "../prompts/thread_compaction.js";
 import type * as prompts_voice_orchestrator from "../prompts/voice_orchestrator.js";
+import type * as r2_files from "../r2_files.js";
 import type * as rate_limits from "../rate_limits.js";
 import type * as reset from "../reset.js";
 import type * as runtime_ai_event_stream from "../runtime_ai/event_stream.js";
@@ -138,6 +141,7 @@ import type * as scheduling_cron_jobs from "../scheduling/cron_jobs.js";
 import type * as scheduling_desktop_handoff_policy from "../scheduling/desktop_handoff_policy.js";
 import type * as schema_agents from "../schema/agents.js";
 import type * as schema_auth from "../schema/auth.js";
+import type * as schema_backups from "../schema/backups.js";
 import type * as schema_billing from "../schema/billing.js";
 import type * as schema_conversations from "../schema/conversations.js";
 import type * as schema_devices from "../schema/devices.js";
@@ -188,6 +192,7 @@ declare const fullApi: ApiFromModules<{
   auth_migration: typeof auth_migration;
   "automation/index": typeof automation_index;
   "automation/runner": typeof automation_runner;
+  backups: typeof backups;
   billing: typeof billing;
   "channels/connector_auth": typeof channels_connector_auth;
   "channels/connector_constants": typeof channels_connector_constants;
@@ -220,6 +225,7 @@ declare const fullApi: ApiFromModules<{
   "data/threads": typeof data_threads;
   events: typeof events;
   http: typeof http;
+  "http_routes/backups": typeof http_routes_backups;
   "http_routes/connectors": typeof http_routes_connectors;
   "http_routes/media": typeof http_routes_media;
   "http_routes/mobile": typeof http_routes_mobile;
@@ -281,6 +287,7 @@ declare const fullApi: ApiFromModules<{
   "prompts/system_assembly": typeof prompts_system_assembly;
   "prompts/thread_compaction": typeof prompts_thread_compaction;
   "prompts/voice_orchestrator": typeof prompts_voice_orchestrator;
+  r2_files: typeof r2_files;
   rate_limits: typeof rate_limits;
   reset: typeof reset;
   "runtime_ai/event_stream": typeof runtime_ai_event_stream;
@@ -299,6 +306,7 @@ declare const fullApi: ApiFromModules<{
   "scheduling/desktop_handoff_policy": typeof scheduling_desktop_handoff_policy;
   "schema/agents": typeof schema_agents;
   "schema/auth": typeof schema_auth;
+  "schema/backups": typeof schema_backups;
   "schema/billing": typeof schema_billing;
   "schema/conversations": typeof schema_conversations;
   "schema/devices": typeof schema_devices;
@@ -2456,6 +2464,130 @@ export declare const components: {
     };
     time: {
       getServerTime: FunctionReference<"mutation", "internal", {}, number>;
+    };
+  };
+  r2: {
+    lib: {
+      deleteMetadata: FunctionReference<
+        "mutation",
+        "internal",
+        { bucket: string; key: string },
+        null
+      >;
+      deleteObject: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          accessKeyId: string;
+          bucket: string;
+          endpoint: string;
+          key: string;
+          secretAccessKey: string;
+        },
+        null
+      >;
+      deleteR2Object: FunctionReference<
+        "action",
+        "internal",
+        {
+          accessKeyId: string;
+          bucket: string;
+          endpoint: string;
+          key: string;
+          secretAccessKey: string;
+        },
+        null
+      >;
+      getMetadata: FunctionReference<
+        "query",
+        "internal",
+        {
+          accessKeyId: string;
+          bucket: string;
+          endpoint: string;
+          key: string;
+          secretAccessKey: string;
+        },
+        {
+          bucket: string;
+          bucketLink: string;
+          contentType?: string;
+          key: string;
+          lastModified: string;
+          link: string;
+          sha256?: string;
+          size?: number;
+          url: string;
+        } | null
+      >;
+      listMetadata: FunctionReference<
+        "query",
+        "internal",
+        {
+          accessKeyId: string;
+          bucket: string;
+          cursor?: string;
+          endpoint: string;
+          limit?: number;
+          secretAccessKey: string;
+        },
+        {
+          continueCursor: string;
+          isDone: boolean;
+          page: Array<{
+            bucket: string;
+            bucketLink: string;
+            contentType?: string;
+            key: string;
+            lastModified: string;
+            link: string;
+            sha256?: string;
+            size?: number;
+            url: string;
+          }>;
+          pageStatus?: null | "SplitRecommended" | "SplitRequired";
+          splitCursor?: null | string;
+        }
+      >;
+      store: FunctionReference<
+        "action",
+        "internal",
+        {
+          accessKeyId: string;
+          bucket: string;
+          endpoint: string;
+          secretAccessKey: string;
+          url: string;
+        },
+        any
+      >;
+      syncMetadata: FunctionReference<
+        "action",
+        "internal",
+        {
+          accessKeyId: string;
+          bucket: string;
+          endpoint: string;
+          key: string;
+          onComplete?: string;
+          secretAccessKey: string;
+        },
+        null
+      >;
+      upsertMetadata: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          bucket: string;
+          contentType?: string;
+          key: string;
+          lastModified: string;
+          link: string;
+          sha256?: string;
+          size?: number;
+        },
+        { isNew: boolean }
+      >;
     };
   };
   resend: {
