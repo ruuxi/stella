@@ -513,20 +513,8 @@ export class CaptureService {
 
   async captureVisionScreenshot(point?: { x: number; y: number }) {
     const display = this.getDisplayForPoint(point)
-    const cursorDip = point ?? screen.getCursorScreenPoint()
-    const capturePoint = this.toNativeScreenPoint(cursorDip)
 
     return this.withCaptureContext(async () => {
-      const windowCapture = await captureWindowScreenshot(
-        capturePoint.x,
-        capturePoint.y,
-        { excludePids: [process.pid] },
-      )
-      if (windowCapture?.screenshot) {
-        const image = nativeImage.createFromDataURL(windowCapture.screenshot.dataUrl)
-        return this.buildVisionScreenshotFromImage(image, windowCapture.windowInfo.bounds)
-      }
-
       const displaySource = await this.getDisplaySource(display)
       if (!displaySource) {
         return null
