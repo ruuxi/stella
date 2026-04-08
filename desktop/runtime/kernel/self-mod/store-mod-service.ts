@@ -96,6 +96,8 @@ const isPublishableBatch = (batch: SelfModBatchRecord): boolean =>
 const hasPendingPublishableBatches = (batches: SelfModBatchRecord[]): boolean =>
   batches.some((batch) => batch.state === "committed" && isPublishableBatch(batch));
 
+const AUTHOR_SELF_MOD_AUTO_COMMIT_ENABLED = false;
+
 const DEFAULT_BLUEPRINT_APPLY_GUIDANCE =
   "Treat this release blueprint as the reference implementation for the feature. " +
   "Stella installations can differ, so adapt the changes to the current local codebase instead of blindly copying text. " +
@@ -210,6 +212,13 @@ export class StoreModService {
     const ordinal = this.store.getNextFeatureOrdinal(activeRun.featureId);
     const batchState: SelfModBatchRecord["state"] =
       activeRun.applyMode === "author" ? "committed" : "published";
+
+    if (
+      activeRun.applyMode === "author" &&
+      !AUTHOR_SELF_MOD_AUTO_COMMIT_ENABLED
+    ) {
+      return null;
+    }
 
     if (safeFiles.length === 0) {
       return this.store.createBatch({
