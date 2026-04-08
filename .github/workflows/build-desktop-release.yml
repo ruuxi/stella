@@ -54,10 +54,10 @@ jobs:
         shell: bash
         run: |
           if [ -f package-lock.json ]; then
-            npm ci
+            npm ci --legacy-peer-deps
           else
             echo "package-lock.json missing in CI checkout; falling back to npm install"
-            npm install
+            npm install --legacy-peer-deps
           fi
           printf '%s\n' "${{ matrix.platform }}" > node_modules/.stella-vendored-deps
 
