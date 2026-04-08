@@ -71,6 +71,14 @@ export class RuntimeClientAdapter {
     hasConnectedAccount?: boolean;
     cloudSyncEnabled?: boolean;
   } = {};
+  private queuedConfigPatch: {
+    convexUrl?: string | null;
+    convexSiteUrl?: string | null;
+    authToken?: string | null;
+    hasConnectedAccount?: boolean;
+    cloudSyncEnabled?: boolean;
+  } = {};
+  private configFlushQueued = false;
   private readonly availabilityListeners = new Set<
     (snapshot: RuntimeAvailabilitySnapshot) => void
   >();
@@ -211,23 +219,44 @@ export class RuntimeClientAdapter {
       ...this.pendingConfig,
       ...patch,
     };
+    this.queuedConfigPatch = {
+      ...this.queuedConfigPatch,
+      ...patch,
+    };
 
     if (!this.started) {
       return;
     }
-    void this.client.configure(patch).then(
-      () => {
-        this.lastConfigureError = null;
-      },
-      (error) => {
-        this.lastConfigureError =
-          error instanceof Error ? error.message : String(error ?? "Runtime configure failed.");
-        console.warn("[stella-runtime-adapter] Failed to apply runtime config patch:", {
-          patch,
-          error: this.lastConfigureError,
-        });
-      },
-    );
+    if (this.configFlushQueued) {
+      return;
+    }
+    this.configFlushQueued = true;
+    queueMicrotask(() => {
+      this.configFlushQueued = false;
+      if (!this.started) {
+        return;
+      }
+
+      const nextPatch = this.queuedConfigPatch;
+      this.queuedConfigPatch = {};
+      if (Object.keys(nextPatch).length === 0) {
+        return;
+      }
+
+      void this.client.configure(nextPatch).then(
+        () => {
+          this.lastConfigureError = null;
+        },
+        (error) => {
+          this.lastConfigureError =
+            error instanceof Error ? error.message : String(error ?? "Runtime configure failed.");
+          console.warn("[stella-runtime-adapter] Failed to apply runtime config patch:", {
+            patch: nextPatch,
+            error: this.lastConfigureError,
+          });
+        },
+      );
+    });
   }
 
   async waitUntilReady(timeoutMs = 10_000) {
