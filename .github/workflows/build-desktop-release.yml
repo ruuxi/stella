@@ -41,26 +41,6 @@ jobs:
             echo "version=${GITHUB_REF_NAME#desktop-v}" >> "$GITHUB_OUTPUT"
           fi
 
-      # Install and rebuild native deps (e.g. better-sqlite3) on the target OS so end users
-      # do not need Python/toolchains. Bun is avoided here because native modules are flaky under Bun.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
-
-      - name: Install desktop dependencies (npm ci)
-        working-directory: desktop
-        shell: bash
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci --legacy-peer-deps
-          else
-            echo "package-lock.json missing in CI checkout; falling back to npm install"
-            npm install --legacy-peer-deps
-          fi
-          printf '%s\n' "${{ matrix.platform }}" > node_modules/.stella-vendored-deps
-
       - name: Package release tarball
         working-directory: desktop
         shell: bash
@@ -69,6 +49,7 @@ jobs:
             --exclude=".git" \
             --exclude=".github" \
             --exclude="coverage" \
+            --exclude="node_modules" \
             --exclude="dist" \
             --exclude="dist-electron" \
             --exclude="dist-ssr" \
