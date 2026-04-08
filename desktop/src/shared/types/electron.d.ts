@@ -167,10 +167,14 @@ export type ElectronCaptureApi = {
     width: number;
     height: number;
   } | null>;
-  visionScreenshot: (point?: { x: number; y: number }) => Promise<{
+  visionScreenshots: (point?: { x: number; y: number }) => Promise<Array<{
     dataUrl: string;
     width: number;
     height: number;
+    displayId: number;
+    screenNumber: number;
+    label: string;
+    isPrimaryFocus: boolean;
     coordinateSpace: {
       x: number;
       y: number;
@@ -181,7 +185,7 @@ export type ElectronCaptureApi = {
       targetWidth: number;
       targetHeight: number;
     };
-  } | null>;
+  }>>;
   removeScreenshot: (index: number) => void;
   submitRegionSelection: (payload: {
     x: number;

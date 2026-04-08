@@ -150,11 +150,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onContext: onIpc<Record<string, unknown> | null>("chatContext:updated"),
     screenshot: (point?: { x: number; y: number }) =>
       ipcRenderer.invoke("screenshot:capture", point),
-    visionScreenshot: (point?: { x: number; y: number }) =>
-      ipcRenderer.invoke("screenshot:captureVision", point) as Promise<{
+    visionScreenshots: (point?: { x: number; y: number }) =>
+      ipcRenderer.invoke("screenshot:captureVision", point) as Promise<Array<{
         dataUrl: string;
         width: number;
         height: number;
+        displayId: number;
+        screenNumber: number;
+        label: string;
+        isPrimaryFocus: boolean;
         coordinateSpace: {
           x: number;
           y: number;
@@ -165,7 +169,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           targetWidth: number;
           targetHeight: number;
         };
-      } | null>,
+      }>>,
     removeScreenshot: (index: number) =>
       ipcRenderer.send("chatContext:removeScreenshot", index),
     submitRegionSelection: (payload: {
@@ -250,8 +254,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         label: string;
         x: number;
         y: number;
-        width: number;
-        height: number;
       }>;
     }>("overlay:showScreenGuide"),
     onHideScreenGuide: onIpcSignal("overlay:hideScreenGuide"),
@@ -306,8 +308,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       label: string;
       x: number;
       y: number;
-      width: number;
-      height: number;
     }>) =>
       ipcRenderer.send("screenGuide:show", { annotations }),
     hide: () => ipcRenderer.send("screenGuide:hide"),

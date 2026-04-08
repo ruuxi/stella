@@ -30,6 +30,13 @@ export type VisionScreenshotCapture = ScreenshotCapture & {
   coordinateSpace: VisionCoordinateSpace
 }
 
+export type VisionDisplayCapture = VisionScreenshotCapture & {
+  displayId: number
+  screenNumber: number
+  label: string
+  isPrimaryFocus: boolean
+}
+
 export type RegionSelection = {
   x: number
   y: number
