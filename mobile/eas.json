@@ -12,14 +12,14 @@
       "distribution": "store",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_CONVEX_URL": "https://impartial-crab-34.convex.cloud/",
+        "EXPO_PUBLIC_CONVEX_URL": "https://benevolent-minnow-586.convex.cloud/",
         "EXPO_PUBLIC_CONVEX_SITE_URL": "https://cloud.stella.sh"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_CONVEX_URL": "https://impartial-crab-34.convex.cloud/",
+        "EXPO_PUBLIC_CONVEX_URL": "https://benevolent-minnow-586.convex.cloud/",
         "EXPO_PUBLIC_CONVEX_SITE_URL": "https://cloud.stella.sh"
       }
     }
