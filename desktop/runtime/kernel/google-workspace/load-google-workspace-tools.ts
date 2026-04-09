@@ -13,10 +13,6 @@ import {
   GOOGLE_WORKSPACE_TOOL_ALLOWLIST,
   toGoogleWorkspaceToolRegistrationName,
 } from "./tool-allowlist.js";
-import {
-  clearDynamicToolMetadata,
-  registerDynamicToolMetadata,
-} from "../tools/dynamic-tool-metadata-registry.js";
 import type { ToolDefinition } from "../extensions/types.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import { setGoogleWorkspaceProjectRoot } from "./paths.js";
@@ -280,12 +276,6 @@ export const loadGoogleWorkspaceTools = async (options: {
       continue;
     }
 
-    registerDynamicToolMetadata(
-      registrationToolName,
-      meta.description,
-      meta.parameters,
-    );
-
     const execute = async (
       executeArgs: Record<string, unknown>,
       _context: ToolContext,
@@ -305,9 +295,7 @@ export const loadGoogleWorkspaceTools = async (options: {
     dataRoot: root,
   });
 
-  const disconnect = async () => {
-    clearDynamicToolMetadata();
-  };
+  const disconnect = async () => {};
 
   const hasStoredCredentials = hasStoredCredentialsFile();
 

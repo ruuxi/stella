@@ -19,9 +19,7 @@ type SessionOptions = Pick<
   | "agentType"
   | "agentContext"
   | "toolCatalog"
-  | "loadTools"
   | "deviceId"
-  | "stellaHome"
   | "frontendRoot"
   | "store"
   | "toolExecutor"
@@ -66,7 +64,6 @@ export const createRuntimeExecutionSession = (
     conversationId: opts.conversationId,
     agentType: opts.agentType,
     deviceId: opts.deviceId,
-    stellaHome: opts.stellaHome,
     frontendRoot: opts.frontendRoot,
     taskDepth: opts.agentContext.taskDepth ?? 0,
     maxTaskDepth: opts.agentContext.maxTaskDepth,
@@ -74,7 +71,6 @@ export const createRuntimeExecutionSession = (
     toolCatalog: opts.toolCatalog,
     store: opts.store,
     toolExecutor: opts.toolExecutor,
-    loadTools: opts.loadTools,
     webSearch: opts.webSearch,
     hookEmitter: opts.hookEmitter,
   });
