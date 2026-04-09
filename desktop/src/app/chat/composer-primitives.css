@@ -47,15 +47,13 @@
 }
 
 .chat-composer-icon-button--add {
-  background: transparent;
-  border: 1.5px solid var(--text-weaker);
-  color: var(--text-weak);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  border: 1.5px solid var(--text-base);
+  color: var(--text-strong);
 }
 
 .chat-composer-icon-button--add:hover {
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  color: var(--text-strong);
-  border-color: var(--text-base);
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
 .chat-composer-icon-button--add:disabled {

@@ -24,8 +24,8 @@
 .mini-context-chip--pending {
   padding: 2px;
   border-radius: 999px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 15%, transparent);
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 20%, transparent);
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
 }
 
 .chat-composer-context-chip--pending,
@@ -67,19 +67,20 @@
 .mini-composer-window-badge {
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 20%, transparent);
 }
 
 .chat-composer-context-chip--text,
 .composer-context-chip--text,
 .mini-context-chip--text {
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  background: color-mix(in oklch, var(--foreground) 16%, transparent);
 }
 
 .chat-composer-context-chip--window,
 .composer-context-chip--window,
 .mini-composer-window-badge {
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--primary, var(--foreground)) 10%, transparent);
+  border-color: color-mix(in oklch, var(--primary, var(--foreground)) 22%, transparent);
 }
 
 .chat-composer-context-chip--window[data-included="false"],
@@ -294,7 +295,7 @@
   padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
   max-width: min(220px, 45vw);
   cursor: default;
   transition: background 0.15s ease;
