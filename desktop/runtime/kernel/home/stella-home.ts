@@ -6,7 +6,6 @@ import { ensurePrivateDir } from "../shared/private-fs.js";
 export type StellaHome = {
   desktopRoot: string;
   homePath: string;
-  skillsPath: string;
   extensionsPath: string;
   statePath: string;
   logsPath: string;
@@ -37,7 +36,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   const runtimeRoot = path.join(desktopRoot, "runtime");
   const workspacePath = path.join(desktopRoot, "workspace");
 
-  const skillsPath = path.join(runtimeRoot, "skills");
   const extensionsPath = path.join(runtimeRoot, "extensions");
   const statePath = path.join(homePath, "state");
   const logsPath = path.join(statePath, "logs");
@@ -57,7 +55,6 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   return {
     desktopRoot,
     homePath,
-    skillsPath,
     extensionsPath,
     statePath,
     logsPath,

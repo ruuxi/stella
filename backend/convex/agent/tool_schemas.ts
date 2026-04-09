@@ -18,7 +18,6 @@ export const DEVICE_TOOL_NAMES = [
   "ShellStatus",
   "AskUserQuestion",
   "RequestCredential",
-  "SkillBash",
 ] as const;
 
 export type DeviceToolName = (typeof DEVICE_TOOL_NAMES)[number];
@@ -116,15 +115,6 @@ export const RequestCredentialSchema = z.object({
   placeholder: z.string().optional().describe("Input placeholder text"),
 });
 
-export const SkillBashSchema = z.object({
-  skill_id: z.string().min(1).describe("ID of the skill whose secrets to mount"),
-  command: z.string().min(1).describe("Shell command to execute"),
-  description: z.string().optional().describe("Human-readable description of what this command does"),
-  timeout: z.number().optional().describe("Timeout in milliseconds (default 120000, max 600000)"),
-  working_directory: z.string().optional().describe("Working directory for the command"),
-  run_in_background: z.boolean().optional().describe("Run in background and return a shell_id"),
-});
-
 // ─── Tool Descriptions ──────────────────────────────────────────────────────
 
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
@@ -185,16 +175,9 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Request an API key or secret from the user via a secure UI prompt.\n\n" +
     "Usage:\n" +
     "- Displays a secure input dialog where the user enters a credential.\n" +
-    "- Returns a secretId handle (not the raw value) for use with IntegrationRequest or SkillBash.\n" +
+    "- Returns a secretId handle (not the raw value) for use with other Stella tools or integrations.\n" +
     "- The secret is stored encrypted in the user's vault.\n" +
     "- Use provider as a unique key (e.g. \"openweather_api_key\"). Same provider reuses existing secret.",
-  SkillBash:
-    "Execute a shell command with a skill's secrets automatically mounted as environment variables or files.\n\n" +
-    "Usage:\n" +
-    "- Like Bash, but injects secrets defined in the skill's secretMounts config.\n" +
-    "- skill_id must match a skill that has secretMounts configured.\n" +
-    "- If the required secret doesn't exist, the user will be prompted via RequestCredential automatically.\n" +
-    "- Use this instead of Bash when running commands that need API keys or tokens from a skill.",
 };
 
 // ─── Schema Map ─────────────────────────────────────────────────────────────
@@ -208,6 +191,5 @@ export const TOOL_SCHEMAS = {
   ShellStatus: ShellStatusSchema,
   AskUserQuestion: AskUserQuestionSchema,
   RequestCredential: RequestCredentialSchema,
-  SkillBash: SkillBashSchema,
 } as const;
 

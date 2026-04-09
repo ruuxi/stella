@@ -125,7 +125,6 @@ export type TaskStartedPayload = {
   parentTaskId?: string;
   taskDepth?: number;
   maxTaskDepth?: number;
-  skillIds?: string[];
 };
 
 export type TaskCompletedPayload = {
@@ -512,7 +511,7 @@ export function getRunningTasks(
   return tasks.filter((t) => t.status === "running");
 }
 
-export function mergeRunningTasks(
+export function mergeFooterTasks(
   persistedTasks: TaskItem[],
   liveTasks?: TaskItem[],
 ): TaskItem[] {
@@ -527,12 +526,16 @@ export function mergeRunningTasks(
   }
 
   for (const task of liveTasks) {
-    if (task.status !== "running") {
-      continue;
-    }
     const persistedTask = mergedById.get(task.id);
     mergedById.set(task.id, persistedTask ? { ...persistedTask, ...task } : task);
   }
 
-  return [...mergedById.values()].filter((task) => task.status === "running");
+  return [...mergedById.values()].sort((a, b) => {
+    const aCompleted = a.status === "completed";
+    const bCompleted = b.status === "completed";
+    if (aCompleted !== bCompleted) {
+      return aCompleted ? 1 : -1;
+    }
+    return a.startedAtMs - b.startedAtMs;
+  });
 }

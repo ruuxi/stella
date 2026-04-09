@@ -23,8 +23,6 @@ export type ToolContext = {
   cloudTaskId?: string;
   taskDepth?: number;
   maxTaskDepth?: number;
-  defaultSkills?: string[];
-  skillIds?: string[];
 };
 
 export type ToolResult = {
@@ -37,25 +35,6 @@ export type ToolMetadata = {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
-};
-
-export type SecretMountSpec = {
-  provider: string;
-  label?: string;
-  description?: string;
-  placeholder?: string;
-};
-
-export type SecretMounts = {
-  env?: Record<string, SecretMountSpec>;
-  files?: Record<string, SecretMountSpec>;
-};
-
-export type ResolvedSecret = {
-  secretId: string;
-  provider: string;
-  label: string;
-  plaintext: string;
 };
 
 export type ShellRecord = {
@@ -145,30 +124,6 @@ export type ToolHostOptions = {
     description?: string;
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
-  resolveSecret?: (payload: {
-    provider: string;
-    secretId?: string;
-    requestId?: string;
-    toolName?: string;
-    deviceId?: string;
-  }) => Promise<ResolvedSecret | null>;
-};
-
-export type SkillRecord = {
-  id: string;
-  name: string;
-  description: string;
-  markdown: string;
-  agentTypes: string[];
-  toolsAllowlist?: string[];
-  tags?: string[];
-  execution?: "backend" | "device";
-  requiresSecrets?: string[];
-  publicIntegration?: boolean;
-  secretMounts?: SecretMounts;
-  version: number;
-  source: string;
-  filePath: string;
 };
 
 export type ScheduleToolApi = {

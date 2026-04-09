@@ -8,7 +8,7 @@
  * - tools-utils.ts    — Shared utilities (logging, path expansion, truncation, etc.)
  * - tools-file.ts     — Read, Edit handlers
  * - tools-search.ts   — Grep handler
- * - tools-shell.ts    — Bash, SkillBash handlers
+ * - tools-shell.ts    — Bash handlers
  * - tools-web.ts      — WebFetch, WebSearch handlers
  * - tools-state.ts    — TaskCreate/TaskPause, TaskUpdate, TaskOutput handlers
  * - tools-user.ts     — AskUserQuestion, RequestCredential handlers
@@ -21,8 +21,6 @@ import type {
   ToolContext,
   ToolResult,
   ToolHostOptions,
-  SkillRecord,
-  SecretMountSpec,
   ToolMetadata,
 } from "./types.js";
 
@@ -65,7 +63,6 @@ export const createToolHost = ({
   stellaOfficeBinPath,
   stellaUiCliPath,
   requestCredential,
-  resolveSecret,
   taskApi,
   scheduleApi,
   extensionTools,
@@ -89,47 +86,8 @@ export const createToolHost = ({
   // User tools config
   const userConfig: UserToolsConfig = { requestCredential };
 
-  // Secret resolution helper for shell tools
-  const resolveSecretValue = async (
-    spec: SecretMountSpec,
-    cache: Map<string, string>,
-    context?: ToolContext,
-    toolName?: string,
-  ): Promise<string | null> => {
-    if (cache.has(spec.provider)) {
-      return cache.get(spec.provider) ?? null;
-    }
-    if (!resolveSecret) return null;
-
-    let resolved = await resolveSecret({
-      provider: spec.provider,
-      requestId: context?.requestId,
-      toolName,
-      deviceId: context?.deviceId,
-    });
-    if (!resolved && requestCredential) {
-      const response = await requestCredential({
-        provider: spec.provider,
-        label: spec.label ?? spec.provider,
-        description: spec.description,
-        placeholder: spec.placeholder,
-      });
-      resolved = await resolveSecret({
-        provider: spec.provider,
-        secretId: response.secretId,
-        requestId: context?.requestId,
-        toolName,
-        deviceId: context?.deviceId,
-      });
-    }
-
-    if (!resolved) return null;
-    cache.set(spec.provider, resolved.plaintext);
-    return resolved.plaintext;
-  };
-
   // Initialize shell and state contexts
-  const shellState: ShellState = createShellState(resolveSecretValue, stateRoot, {
+  const shellState: ShellState = createShellState(stateRoot, {
     stellaBrowserBinPath,
     stellaOfficeBinPath,
     stellaUiCliPath,
@@ -145,10 +103,6 @@ export const createToolHost = ({
     .catch((error) => {
       logError("Failed to recover stale secret mounts", error);
     });
-
-  const setSkills = (skills: SkillRecord[]) => {
-    shellState.skillCache = skills;
-  };
 
   const handlers = mergeToolHandlers(
     createFileToolHandlers(),
@@ -233,7 +187,6 @@ export const createToolHost = ({
     getShells: () => Array.from(shellState.shells.values()),
     killAllShells,
     killShellsByPort,
-    setSkills,
     registerExtensionTools: (tools: ToolDefinition[]) => {
       registerExtensionToolHandlers(handlers, tools);
       for (const tool of tools) {

@@ -1,39 +1,3 @@
-type SkillPromptSummary = {
-  id: string;
-  name: string;
-  description: string;
-  execution?: string;
-  requiresSecrets?: string[];
-  publicIntegration?: boolean;
-  secretMounts?: Record<string, unknown>;
-};
-
-export const buildSkillsPromptSection = (
-  skills: SkillPromptSummary[],
-): string => {
-  if (skills.length === 0) return "";
-
-  const lines = skills.map((skill) => {
-    const tags: string[] = [];
-    if (skill.publicIntegration) tags.push("public");
-    if (skill.requiresSecrets && skill.requiresSecrets.length > 0) {
-      tags.push("requires credentials");
-    }
-    if (skill.execution === "backend") tags.push("backend-only");
-    if (skill.execution === "device") tags.push("device-only");
-    if (skill.secretMounts) tags.push("has secret mounts");
-    const suffix = tags.length > 0 ? ` [${tags.join(", ")}]` : "";
-    return `- **${skill.name}** (${skill.id}): ${skill.description}${suffix}`;
-  });
-
-  return [
-    "# Life Entries",
-    "Installed capability entries are listed by name and description only. Their deeper manuals usually live under `life/knowledge/<id>/SKILL.md`.",
-    "",
-    ...lines,
-  ].join("\n");
-};
-
 export const getPlatformSystemGuidance = (platform: string): string => {
   if (platform === "win32") {
     return `

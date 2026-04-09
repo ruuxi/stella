@@ -110,7 +110,7 @@ export const resolveHmrToolTargetPath = (
     );
     return rawPath ? resolvePath(rawPath, workingDirectory) : null;
   }
-  if (toolName === "Bash" || toolName === "SkillBash") {
+  if (toolName === "Bash") {
     const command = normalizeString(args.command);
     if (!command) return null;
     const rawPath = extractShellPath(command);
@@ -224,6 +224,10 @@ export const createTaskOrchestration = (
       startArgs: {
         conversationId: string;
         userPrompt: string;
+        promptMessages?: Array<{
+          text: string;
+          uiVisibility?: "visible" | "hidden";
+        }>;
         agentType: string;
         userMessageId: string;
       },
@@ -272,13 +276,15 @@ export const createTaskOrchestration = (
           if (!callbacks) {
             return;
           }
+          const userMessageId = `system:${crypto.randomUUID()}`;
           await deps.startStreamingOrchestratorTurn(
             queuedTurn,
             {
               conversationId: event.conversationId,
-              userPrompt,
+              userPrompt: "",
+              promptMessages: [{ text: userPrompt, uiVisibility: "hidden" }],
               agentType: AGENT_IDS.ORCHESTRATOR,
-              userMessageId: `system:${crypto.randomUUID()}`,
+              userMessageId,
             },
             callbacks,
           );

@@ -1,5 +1,4 @@
 import type { ConvexClient } from "convex/browser";
-import type { ParsedSkill } from "../agents/manifests.js";
 import type {
   RuntimeEndEvent,
   RuntimeErrorEvent,
@@ -172,13 +171,11 @@ export type ParsedAgentLike = {
   systemPrompt: string;
   agentTypes: string[];
   toolsAllowlist?: string[];
-  defaultSkills?: string[];
   model?: string;
   maxTaskDepth?: number;
 };
 
 export type RunnerPaths = {
-  skillsPath: string;
   extensionsPath: string;
 };
 
@@ -204,8 +201,6 @@ export type RunnerState = {
   interruptAfterTool: boolean;
   activeInterruptedReplayTurn: QueuedOrchestratorTurn | null;
   loadedAgents: ParsedAgentLike[];
-  loadedSkills: ParsedSkill[];
-  loadedSkillsPromise: Promise<ParsedSkill[]> | null;
   /** `null` before lazy load, `[]` when loaded but unavailable, otherwise registered tool names. */
   googleWorkspaceToolNames: string[] | null;
   googleWorkspaceDisconnect: (() => Promise<void>) | null;
@@ -239,7 +234,6 @@ export type RunnerContext = {
   ensureGoogleWorkspaceToolsLoaded: () => Promise<void>;
   hookEmitter: HookEmitter;
   toolHost: {
-    setSkills: (skills: ParsedSkill[]) => void;
     getToolCatalog: () => ToolMetadata[];
     executeTool: (
       toolName: string,
