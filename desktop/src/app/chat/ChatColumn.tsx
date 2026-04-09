@@ -10,7 +10,7 @@ import { StickyThinkingFooter } from "./StickyThinkingFooter";
 import {
   getCurrentRunningTool,
   getRunningTasks,
-  mergeRunningTasks,
+  mergeFooterTasks,
 } from "./lib/event-transforms";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
 import type { ChatColumnProps } from "./chat-column-types";
@@ -97,12 +97,12 @@ export const ChatColumn = memo(function ChatColumn({
     () => getRunningTasks(conversation.events, { appSessionStartedAtMs }),
     [appSessionStartedAtMs, conversation.events],
   );
-  const runningTasks = useMemo(
-    () => mergeRunningTasks(persistedRunningTasks, conversation.streaming.liveTasks),
+  const footerTasks = useMemo(
+    () => mergeFooterTasks(persistedRunningTasks, conversation.streaming.liveTasks),
     [conversation.streaming.liveTasks, persistedRunningTasks],
   );
   const hasActiveWork =
-    runningTasks.length > 0 ||
+    footerTasks.length > 0 ||
     Boolean(conversation.streaming.isStreaming) ||
     Boolean(conversation.streaming.runtimeStatusText);
   const showThinkingFooter = hasActiveWork;
@@ -244,7 +244,7 @@ export const ChatColumn = memo(function ChatColumn({
       <div className="thinking-footer-overlay">
         {showThinkingFooter && (
           <StickyThinkingFooter
-            tasks={runningTasks}
+            tasks={footerTasks}
             runningTool={runningTool}
             isStreaming={conversation.streaming.isStreaming}
             status={conversation.streaming.runtimeStatusText}

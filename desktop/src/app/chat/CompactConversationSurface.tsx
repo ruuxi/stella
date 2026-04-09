@@ -4,7 +4,7 @@ import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
 import {
   getCurrentRunningTool,
   getRunningTasks,
-  mergeRunningTasks,
+  mergeFooterTasks,
 } from "./lib/event-transforms";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
@@ -85,12 +85,12 @@ export function CompactConversationSurface({
     () => getRunningTasks(events, { appSessionStartedAtMs }),
     [appSessionStartedAtMs, events],
   );
-  const runningTasks = useMemo(
-    () => mergeRunningTasks(persistedRunningTasks, liveTasks),
+  const footerTasks = useMemo(
+    () => mergeFooterTasks(persistedRunningTasks, liveTasks),
     [liveTasks, persistedRunningTasks],
   );
   const showThinkingFooter =
-    runningTasks.length > 0 || Boolean(isStreaming) || Boolean(runtimeStatusText);
+    footerTasks.length > 0 || Boolean(isStreaming) || Boolean(runtimeStatusText);
 
   // Use a ResizeObserver for auto-scroll instead of tracking streamingText
   // in a blocking useLayoutEffect. Content resizes drive the scroll, avoiding
@@ -149,7 +149,7 @@ export function CompactConversationSurface({
           <div className="thinking-footer-overlay">
             {showThinkingFooter && (
               <StickyThinkingFooter
-                tasks={runningTasks}
+                tasks={footerTasks}
                 runningTool={runningTool}
                 isStreaming={isStreaming}
                 status={runtimeStatusText}
