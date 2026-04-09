@@ -4,29 +4,35 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 
 ## Entry Points
 
-- [Abilities Index](abilities/index.md)
-- [Knowledge Index](knowledge/index.md)
+- [Knowledge Index](knowledge/index.md) — all operational manuals, workflows, and domain knowledge
+- [Notes](notes/) — daily task summaries (append-only)
+- [Outputs](outputs/) — reusable generated artifacts
+- [Raw](raw/) — unprocessed source material
 
 ## Fast Paths
 
-- Browser automation: [stella-browser](abilities/stella-browser.md)
-- Office documents: [stella-office](abilities/stella-office.md)
-- Electron app control: [electron](abilities/electron.md)
-- Managed media API docs: [managed-media-sdk](abilities/managed-media-sdk.md)
-- Browser/desktop workflow: [computer-use](knowledge/computer-use/SKILL.md)
-- Feature packaging and sharing: [blueprint-management](knowledge/blueprint-management/SKILL.md)
+- Browser automation: [stella-browser](knowledge/stella-browser.md)
+- Office documents: [stella-office](knowledge/stella-office.md)
+- Electron app control: [electron](knowledge/electron.md)
+- Managed media API docs: [managed-media-sdk](knowledge/managed-media-sdk.md)
+- Browser/desktop workflow: [computer-use](knowledge/computer-use.md)
+- Feature packaging and sharing: [blueprint-management](knowledge/blueprint-management.md)
 - User profile and context: [user-profile](knowledge/user-profile/index.md)
 
 ## Reference Docs
 
-- [stella-browser command reference](abilities/references/commands.md)
-- [Snapshot and refs](abilities/references/snapshot-refs.md)
-- [Authentication patterns](abilities/references/authentication.md)
-- [Session management](abilities/references/session-management.md)
+- [stella-browser command reference](knowledge/references/commands.md)
+- [Snapshot and refs](knowledge/references/snapshot-refs.md)
+- [Authentication patterns](knowledge/references/authentication.md)
+- [Session management](knowledge/references/session-management.md)
 
-## Notes
+## Memory Structure
 
-- Prefer a direct read when you already know the likely document.
-- `abilities/` contains operational manuals for CLIs, APIs, and executable surfaces.
-- `knowledge/` contains workflows, habits, and domain-specific guidance.
-- `raw/` contains unprocessed data dumps (discovery signals, ingested documents, etc.). Knowledge pages link into `raw/` when the full source material is relevant. Prefer reading the curated knowledge page first and only drop into `raw/` when you need higher detail.
+- `knowledge/` — how things work, how to do things. Mutable. Update when reality changes.
+- `notes/` — what happened, what was tried, what's open. Append-only. Never modify a past day's entry.
+- `raw/` — unprocessed source material. Immutable after capture. Synthesize into `knowledge/`.
+- `outputs/` — generated artifacts worth keeping. Only file if likely to matter again.
+
+## Dream
+
+Run the [consolidation protocol](DREAM.md) periodically to promote durable insights from notes into knowledge and prune stale entries.

@@ -24,5 +24,5 @@ Use this entry when the user wants to package, export, publish, or share a featu
 
 ## Backlinks
 
-- [Life Registry](../../registry.md)
-- [Knowledge Index](../index.md)
+- [Life Registry](../registry.md)
+- [Knowledge Index](index.md)
