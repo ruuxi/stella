@@ -97,11 +97,6 @@ export type RuntimeRunCallbacks = {
   onEnd: (event: RuntimeEndEvent) => void;
 };
 
-export type RuntimeToolLoadResult = {
-  addedTools: string[];
-  currentTools: string[];
-};
-
 export type BaseRunOptions = {
   runId?: string;
   rootRunId?: string;
@@ -115,11 +110,6 @@ export type BaseRunOptions = {
   selfModMetadata?: TaskToolRequest["selfModMetadata"];
   agentContext: LocalTaskManagerAgentContext;
   toolCatalog?: ToolMetadata[];
-  loadTools?: (args: {
-    taskId?: string;
-    prompt: string;
-    loadedToolNames: string[];
-  }) => Promise<RuntimeToolLoadResult>;
   toolExecutor: (
     toolName: string,
     args: Record<string, unknown>,

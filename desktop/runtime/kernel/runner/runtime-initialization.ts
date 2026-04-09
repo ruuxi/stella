@@ -23,7 +23,7 @@ export const createRuntimeInitialization = (
   const ensureGoogleWorkspaceToolsLoaded = async () => {
     if (
       context.state.googleWorkspaceCallTool ||
-      context.state.googleWorkspaceToolNames !== null
+      context.state.googleWorkspaceToolsLoaded
     ) {
       return;
     }
@@ -40,7 +40,7 @@ export const createRuntimeInitialization = (
         context.state.googleWorkspaceAuthenticated = authenticated;
       },
     })
-      .then(async ({ tools, disconnect, callTool, hasStoredCredentials }) => {
+      .then(async ({ disconnect, callTool, hasStoredCredentials }) => {
         if (
           loadGeneration !== googleWorkspaceToolsLoadGeneration ||
           !context.state.isRunning
@@ -51,8 +51,7 @@ export const createRuntimeInitialization = (
 
         context.state.googleWorkspaceDisconnect = disconnect;
         context.state.googleWorkspaceCallTool = callTool;
-        context.state.googleWorkspaceToolNames =
-          tools.length > 0 ? tools.map((tool) => tool.name) : [];
+        context.state.googleWorkspaceToolsLoaded = true;
 
         // Google Workspace tools are not registered on the agent tool host.
         // IPC (Settings connect card) still uses callTool above.
@@ -69,7 +68,7 @@ export const createRuntimeInitialization = (
           (error as Error).message,
         );
         if (loadGeneration === googleWorkspaceToolsLoadGeneration) {
-          context.state.googleWorkspaceToolNames = [];
+          context.state.googleWorkspaceToolsLoaded = true;
         }
       })
       .finally(() => {
@@ -189,7 +188,7 @@ export const createRuntimeInitialization = (
     const disconnectGoogleWorkspace = context.state.googleWorkspaceDisconnect;
     context.state.googleWorkspaceDisconnect = null;
     context.state.googleWorkspaceCallTool = null;
-    context.state.googleWorkspaceToolNames = null;
+    context.state.googleWorkspaceToolsLoaded = false;
     context.state.googleWorkspaceAuthenticated = null;
     if (disconnectGoogleWorkspace) {
       void disconnectGoogleWorkspace().catch(() => undefined);

@@ -96,12 +96,6 @@ type LocalTaskManagerOpts = {
   maxConcurrent?: number;
   getMaxConcurrent?: () => number;
   getStarterTools?: (agentType: string) => string[];
-  routeTools?: (args: {
-    agentType: string;
-    description: string;
-    prompt: string;
-    loadedTools: string[];
-  }) => Promise<string[]>;
   resolveTaskThread?: (args: {
     conversationId: string;
     agentType: string;
@@ -737,43 +731,6 @@ export class LocalTaskManager implements TaskToolApi {
     return {
       threadId: task.id,
     };
-  }
-
-  async loadTools(
-    taskId: string,
-    prompt: string,
-  ): Promise<{ addedTools: string[]; currentTools: string[] }> {
-    const task = this.tasks.get(taskId);
-    if (!task) {
-      return { addedTools: [], currentTools: [] };
-    }
-    const requestPrompt = prompt.trim();
-    if (!requestPrompt || !this.opts.routeTools) {
-      return {
-        addedTools: [],
-        currentTools: task.toolsAllowlistOverride ?? [],
-      };
-    }
-    const currentTools = mergeToolNames(
-      this.opts.getStarterTools?.(task.agentType),
-      task.toolsAllowlistOverride,
-    );
-    const routedTools = await this.opts
-      .routeTools({
-        agentType: task.agentType,
-        description: task.description,
-        prompt: requestPrompt,
-        loadedTools: currentTools,
-      })
-      .catch(() => []);
-    const mergedTools = mergeToolNames(currentTools, routedTools);
-    const addedTools = mergedTools.filter((tool) => !currentTools.includes(tool));
-    if (addedTools.length === 0) {
-      return { addedTools: [], currentTools };
-    }
-    task.toolsAllowlistOverride = mergedTools;
-    this.persistTask(task);
-    return { addedTools, currentTools: mergedTools };
   }
 
   async getTask(taskId: string): Promise<TaskToolSnapshot | null> {

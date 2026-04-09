@@ -201,8 +201,7 @@ export type RunnerState = {
   interruptAfterTool: boolean;
   activeInterruptedReplayTurn: QueuedOrchestratorTurn | null;
   loadedAgents: ParsedAgentLike[];
-  /** `null` before lazy load, `[]` when loaded but unavailable, otherwise registered tool names. */
-  googleWorkspaceToolNames: string[] | null;
+  googleWorkspaceToolsLoaded: boolean;
   googleWorkspaceDisconnect: (() => Promise<void>) | null;
   googleWorkspaceCallTool: ((name: string, args: Record<string, unknown>) => Promise<ToolResult>) | null;
   /** Cached Google Workspace auth state. null = unknown, true/false = last observed state. */

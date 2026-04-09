@@ -10,10 +10,6 @@ import type { RuntimeStore } from "../storage/runtime-store.js";
 import { TOOL_IDS } from "../../../src/shared/contracts/agent-runtime.js";
 import { AnyToolArgsSchema, textFromUnknown } from "./shared.js";
 import { dispatchLocalTool } from "../tools/local-tool-dispatch.js";
-import {
-  getDynamicToolDescription,
-  getDynamicToolSchema,
-} from "../tools/dynamic-tool-metadata-registry.js";
 
 export const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
@@ -40,13 +36,10 @@ const resolveToolMetadata = (
   description:
     toolMetadata.get(toolName)?.description ??
     TOOL_DESCRIPTIONS[toolName] ??
-    getDynamicToolDescription(toolName) ??
     `${toolName} tool`,
   parameters:
     toolMetadata.get(toolName)?.parameters ??
-    ((TOOL_JSON_SCHEMAS[toolName] ??
-      getDynamicToolSchema(toolName) ??
-      AnyToolArgsSchema) as Record<string, unknown>),
+    ((TOOL_JSON_SCHEMAS[toolName] ?? AnyToolArgsSchema) as Record<string, unknown>),
 });
 
 export const getRequestedRuntimeToolNames = (
@@ -207,18 +200,12 @@ export const createPiTools = (opts: {
   conversationId: string;
   agentType: string;
   deviceId: string;
-  stellaHome: string;
   frontendRoot?: string;
   taskDepth?: number;
   maxTaskDepth?: number;
   toolsAllowlist?: string[];
   toolCatalog?: ToolMetadata[];
   store: RuntimeStore;
-  loadTools?: (args: {
-    taskId?: string;
-    prompt: string;
-    loadedToolNames: string[];
-  }) => Promise<{ addedTools: string[]; currentTools: string[] }>;
   toolExecutor: (
     toolName: string,
     args: Record<string, unknown>,
