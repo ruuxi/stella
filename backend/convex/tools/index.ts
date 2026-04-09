@@ -18,7 +18,6 @@ const filterTools = (tools: BackendToolSet, allowlist?: string[]): BackendToolSe
 const TRANSIENT_ALLOWED_TOOLS = new Set<string>([
   "WebSearch",
   "WebFetch",
-  "NoResponse",
 ]);
 
 const sanitizeToolName = (name: string): string => name.replace(/\./g, "_");
