@@ -28,7 +28,7 @@ export function ComposerContextRow({
   onSuggestionSelect,
 }: ComposerContextRowProps) {
   return (
-    <div className="composer-context-row">
+    <div className="composer-context-actions">
       {onSuggestionSelect ? (
         <ChatSuggestions
           variant={variant}

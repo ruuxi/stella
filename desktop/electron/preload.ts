@@ -231,12 +231,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   overlay: {
     setInteractive: (interactive: boolean) =>
       ipcRenderer.send("overlay:setInteractive", interactive),
-    showWindowHighlight: (bounds: {
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    }) => ipcRenderer.send("overlay:showWindowHighlight", bounds),
+    showWindowHighlight: (payload: {
+      bounds: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      };
+      tone?: "default" | "subtle";
+    }) => ipcRenderer.send("overlay:showWindowHighlight", payload),
     hideWindowHighlight: () => ipcRenderer.send("overlay:hideWindowHighlight"),
     previewWindowHighlightAtPoint: (point: { x: number; y: number }) =>
       ipcRenderer.send("overlay:previewWindowHighlightAtPoint", point),
@@ -247,6 +250,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       y: number;
       width: number;
       height: number;
+      tone?: "default" | "subtle";
     } | null>("overlay:windowHighlight"),
     onShowVoice: onIpc<{ x: number; y: number; mode: "realtime" }>(
       "overlay:showVoice",
@@ -404,6 +408,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     startChat: (payload: {
       conversationId: string;
       userPrompt: string;
+      selectedText?: string | null;
+      chatContext?: import("../runtime/contracts/index.js").ChatContext | null;
       deviceId?: string;
       platform?: string;
       timezone?: string;

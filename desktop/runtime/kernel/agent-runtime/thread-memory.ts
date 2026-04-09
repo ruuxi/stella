@@ -251,7 +251,9 @@ export type OrchestratorPromptMessage = {
 export const buildOrchestratorPromptMessages = (
   context: LocalTaskManagerAgentContext,
   userPrompt: string,
+  promptMessages?: OrchestratorPromptMessage[],
 ): OrchestratorPromptMessage[] => {
+  const trimmedUserPrompt = userPrompt.trim();
   const staleUserReminder = context.staleUserReminderText?.trim();
   const reminder = context.orchestratorReminderText?.trim();
   const messages: OrchestratorPromptMessage[] = [];
@@ -267,7 +269,12 @@ export const buildOrchestratorPromptMessages = (
       uiVisibility: "hidden",
     });
   }
-  messages.push({ text: userPrompt });
+  if (promptMessages?.length) {
+    messages.push(...promptMessages);
+  }
+  if (trimmedUserPrompt.length > 0 || messages.length === 0) {
+    messages.push({ text: userPrompt });
+  }
   return messages;
 };
 

@@ -16,6 +16,8 @@ import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 export type TurnViewModel = {
   id: string;
   userText: string;
+  userWindowLabel?: string;
+  userWindowPreviewImageUrl?: string;
   userAttachments: Attachment[];
   userChannelEnvelope?: ChannelEnvelope;
   assistantText: string;
@@ -231,6 +233,8 @@ const streamingPropsEqual = (
 const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean => (
   a.id === b.id &&
   a.userText === b.userText &&
+  (a.userWindowLabel ?? null) === (b.userWindowLabel ?? null) &&
+  (a.userWindowPreviewImageUrl ?? null) === (b.userWindowPreviewImageUrl ?? null) &&
   attachmentsEqual(a.userAttachments, b.userAttachments) &&
   channelEnvelopeEqual(a.userChannelEnvelope, b.userChannelEnvelope) &&
   a.assistantText === b.assistantText &&
@@ -270,6 +274,10 @@ export const TurnItem = memo(function TurnItem({
   streaming?: StreamingTurnProps;
 }) {
   const userText = turn.userText;
+  const userWindowLabel = turn.userWindowLabel;
+  const userWindowPreviewImageUrl = sanitizeAttachmentImageUrl(
+    turn.userWindowPreviewImageUrl,
+  );
   const userAttachments = turn.userAttachments;
   const userChannelEnvelope = turn.userChannelEnvelope;
   const assistantText = turn.assistantText;
@@ -279,7 +287,7 @@ export const TurnItem = memo(function TurnItem({
   const hasWebSearchBadge = webSearchBadgeHtml.length > 0;
   const hasOfficePreview = Boolean(officePreviewRef);
   const hasUserContent =
-    userText.trim().length > 0 || userAttachments.length > 0;
+    userText.trim().length > 0 || userAttachments.length > 0 || Boolean(userWindowLabel);
   const hasChannelMeta = Boolean(userChannelEnvelope?.provider);
   const reactionSummary = userChannelEnvelope
     ? summarizeReactions(userChannelEnvelope)
@@ -316,44 +324,49 @@ export const TurnItem = memo(function TurnItem({
       {/* User message (skip if empty, e.g., for standalone assistant messages) */}
       {hasUserContent && (
         <div className="event-item user">
-          {(() => {
-            const windowMatch = userText.match(
-              /^<active-window[^>]*>(.+?)<\/active-window>\s*/,
-            );
-            const windowContext = windowMatch ? windowMatch[1] : null;
-            const displayText = windowMatch
-              ? userText.slice(windowMatch[0].length)
-              : userText;
-            return (
-              <>
-                {windowContext && (
-                  <span className="event-window-badge">{windowContext}</span>
-                )}
-                {hasChannelMeta && (
-                  <div className="event-channel-meta">
-                    {userChannelEnvelope?.provider && (
-                      <span className="event-channel-badge provider">
-                        {formatProvider(userChannelEnvelope.provider)}
-                      </span>
-                    )}
-                    {userChannelEnvelope && userChannelEnvelope.kind !== "message" && (
-                      <span className="event-channel-badge kind">
-                        {formatChannelKind(userChannelEnvelope.kind)}
-                      </span>
-                    )}
-                    {userChannelEnvelope && reactionSummary && (
-                      <span className="event-channel-badge reaction">
-                        {reactionSummary}
-                      </span>
-                    )}
+          <>
+            {userWindowLabel && (
+              <span className="event-window-badge-hovercard">
+                <span
+                  className="event-window-badge"
+                  tabIndex={userWindowPreviewImageUrl ? 0 : undefined}
+                >
+                  {userWindowLabel}
+                </span>
+                {userWindowPreviewImageUrl && (
+                  <div className="event-window-preview" role="tooltip">
+                    <img
+                      src={userWindowPreviewImageUrl}
+                      alt="Window content preview"
+                      className="event-window-preview-img"
+                    />
                   </div>
                 )}
-                {displayText.trim() && (
-                  <div className="event-body">{displayText}</div>
+              </span>
+            )}
+            {hasChannelMeta && (
+              <div className="event-channel-meta">
+                {userChannelEnvelope?.provider && (
+                  <span className="event-channel-badge provider">
+                    {formatProvider(userChannelEnvelope.provider)}
+                  </span>
                 )}
-              </>
-            );
-          })()}
+                {userChannelEnvelope && userChannelEnvelope.kind !== "message" && (
+                  <span className="event-channel-badge kind">
+                    {formatChannelKind(userChannelEnvelope.kind)}
+                  </span>
+                )}
+                {userChannelEnvelope && reactionSummary && (
+                  <span className="event-channel-badge reaction">
+                    {reactionSummary}
+                  </span>
+                )}
+              </div>
+            )}
+            {userText.trim() && (
+              <div className="event-body">{userText}</div>
+            )}
+          </>
           {userAttachments.length > 0 && (
             <div className="event-attachments">
               {userAttachments.map((attachment, index) => {

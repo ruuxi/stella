@@ -31,7 +31,11 @@ export type ChatContext = {
   }[];
   files?: ChatContextFile[];
   capturePending?: boolean;
-  windowText?: string | null;
+  windowScreenshot?: {
+    dataUrl: string;
+    width: number;
+    height: number;
+  } | null;
 };
 
 export type ChatContextUpdate = {

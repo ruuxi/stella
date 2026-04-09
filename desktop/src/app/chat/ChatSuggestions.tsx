@@ -15,7 +15,7 @@ export const ChatSuggestions = memo(function ChatSuggestions({
 }: ChatSuggestionsProps) {
   const [open, setOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const rootRef = useRef<HTMLButtonElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const toggle = useCallback(() => {
     setOpen((prev) => {
@@ -50,21 +50,22 @@ export const ChatSuggestions = memo(function ChatSuggestions({
     : [];
 
   return (
-    <button
-      ref={rootRef}
-      className={`chat-suggestions-trigger${open ? " chat-suggestions-trigger--active" : ""}${variant === "mini" ? " chat-suggestions-trigger--mini" : ""}`}
-      type="button"
-      onClick={toggle}
-      aria-label="Suggestions"
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
-        <path d="M9 18h6" />
-        <path d="M10 22h4" />
-      </svg>
-      Suggestions
+    <div className="chat-suggestions" ref={rootRef}>
+      <button
+        className={`chat-suggestions-trigger${open ? " chat-suggestions-trigger--active" : ""}${variant === "mini" ? " chat-suggestions-trigger--mini" : ""}`}
+        type="button"
+        onClick={toggle}
+        aria-label="Suggestions"
+        aria-expanded={open}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
+          <path d="M9 18h6" />
+          <path d="M10 22h4" />
+        </svg>
+      </button>
       {open && (
-        <div className="chat-suggestions-menu" onClick={(e) => e.stopPropagation()}>
+        <div className="chat-suggestions-menu">
           {activeCategory === null ? (
             <div className="chat-suggestions-categories">
               {categories.map((cat) => (
@@ -108,6 +109,6 @@ export const ChatSuggestions = memo(function ChatSuggestions({
           )}
         </div>
       )}
-    </button>
+    </div>
   );
 });

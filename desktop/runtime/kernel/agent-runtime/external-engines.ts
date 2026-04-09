@@ -226,7 +226,7 @@ const runClaudeHostedTurn = async (args: {
 export const runExternalOrchestratorTurn = async (
   opts: OrchestratorRunOptions,
 ): Promise<string | null> => {
-  if (!shouldUseClaudeCodeRuntime(opts)) {
+  if (!shouldUseClaudeCodeRuntime(opts) || opts.promptMessages?.length) {
     return null;
   }
 

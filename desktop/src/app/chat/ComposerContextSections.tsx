@@ -107,6 +107,7 @@ export function ComposerWindowContextSection({
     return (
       <WindowContextChip
         chatWindow={chatContext.window}
+        chatWindowScreenshot={chatContext.windowScreenshot}
         included={chatContext.windowContextEnabled !== false}
         setChatContext={setChatContext}
         className="chat-composer-context-chip chat-composer-context-chip--window composer-context-chip composer-context-chip--window"
@@ -121,6 +122,7 @@ export function ComposerWindowContextSection({
   return (
     <WindowContextChip
       chatWindow={chatContext.window}
+      chatWindowScreenshot={chatContext.windowScreenshot}
       included={chatContext.windowContextEnabled !== false}
       setChatContext={setChatContext}
       className="chat-composer-context-chip chat-composer-context-chip--window composer-context-chip composer-context-chip--window"

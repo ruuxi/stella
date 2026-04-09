@@ -1,4 +1,4 @@
-.composer-context-row {
+.composer-context-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -23,7 +23,7 @@
 .composer-context-chip--pending,
 .mini-context-chip--pending {
   padding: 2px;
-  border-radius: 8px;
+  border-radius: 999px;
   border: 1px solid color-mix(in oklch, var(--foreground) 15%, transparent);
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
 }
@@ -56,7 +56,7 @@
 .composer-context-thumb,
 .mini-context-thumb {
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: 999px;
 }
 
 .chat-composer-context-chip--text,
@@ -65,8 +65,8 @@
 .chat-composer-context-chip--window,
 .composer-context-chip--window,
 .mini-composer-window-badge {
-  padding: 4px 8px;
-  border-radius: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
   border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
 }
 
@@ -86,7 +86,23 @@
 .composer-context-chip--window[data-included="false"],
 .mini-composer-window-badge[data-included="false"] {
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  border-style: dashed;
+  border-color: color-mix(in oklch, var(--foreground) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--foreground) 6%, transparent);
+  animation: context-chip-nudge 1.8s ease-in-out 0.3s 1;
+}
+
+@keyframes context-chip-nudge {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  30% { box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary, var(--foreground)) 15%, transparent); }
+  70% { box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary, var(--foreground)) 15%, transparent); }
+}
+
+.chat-composer-context-chip--window[data-included="false"]:hover,
+.composer-context-chip--window[data-included="false"]:hover,
+.mini-composer-window-badge[data-included="false"]:hover {
+  background: color-mix(in oklch, var(--primary, var(--foreground)) 10%, transparent);
+  border-color: color-mix(in oklch, var(--primary, var(--foreground)) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary, var(--foreground)) 10%, transparent);
 }
 
 .chat-composer-context-text,
@@ -166,6 +182,77 @@
   opacity: 1;
 }
 
+.chat-composer-context-chip:hover .composer-context-preview,
+.chat-composer-context-chip:focus-within .composer-context-preview,
+.composer-context-chip:hover .composer-context-preview,
+.composer-context-chip:focus-within .composer-context-preview,
+.mini-context-chip:hover .composer-context-preview,
+.mini-context-chip:focus-within .composer-context-preview,
+.mini-composer-window-badge:hover .composer-context-preview,
+.mini-composer-window-badge:focus-within .composer-context-preview {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.composer-context-preview {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  z-index: 20;
+  width: min(460px, calc(100vw - 64px));
+  max-height: 180px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 75%, transparent);
+  background: var(--surface-raised-stronger-non-alpha, var(--card));
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.22),
+    0 4px 12px rgba(0, 0, 0, 0.14);
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  white-space: pre-wrap;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.composer-context-preview > div:first-child {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.composer-context-preview-more {
+  flex-shrink: 0;
+  padding-top: 8px;
+  margin-top: auto;
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 40%, transparent);
+  color: var(--text-weak);
+  font-size: 12px;
+}
+
+.composer-context-preview:has(.composer-context-preview-img) {
+  width: fit-content;
+  max-height: none;
+  padding: 6px;
+}
+
+.composer-context-preview-img {
+  display: block;
+  max-width: min(432px, calc(100vw - 80px));
+  max-height: 280px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
 .composer-context-pending-inner {
   width: 56px;
   height: 42px;
@@ -204,8 +291,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
-  border-radius: 10px;
+  padding: 6px 12px;
+  border-radius: 999px;
   border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   max-width: min(220px, 45vw);

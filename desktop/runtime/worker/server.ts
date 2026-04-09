@@ -29,6 +29,7 @@ import {
   createStellaHostRunner,
   type StellaHostRunnerOptions,
 } from "../kernel/runner.js";
+import { buildChatPromptMessages } from "../kernel/chat-prompt-context.js";
 import { getDevServerUrl } from "../../electron/dev-url.js";
 import {
   detectSelfModAppliedSince,
@@ -53,6 +54,7 @@ import type {
 import { SocialSessionService } from "./social-sessions/service.js";
 import { SocialSessionStore } from "./social-sessions/store.js";
 import { VoiceRuntimeService } from "./voice/service.js";
+import { createRuntimeLogger } from "../kernel/debug.js";
 
 type WorkerInitializationState = {
   stellaHomePath: string;
@@ -64,6 +66,8 @@ type WorkerInitializationState = {
   hasConnectedAccount: boolean;
   cloudSyncEnabled: boolean;
 };
+
+const logger = createRuntimeLogger("worker.server");
 
 type RuntimeRunner = ReturnType<typeof createStellaHostRunner>;
 
@@ -507,7 +511,18 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_START_CHAT, async (params) => {
     const payload = params as RuntimeChatPayload;
+    const {
+      visibleUserPrompt,
+      windowContextLabel,
+      promptMessages,
+      windowScreenshotAttachment,
+    } = buildChatPromptMessages({
+      userPrompt: payload.userPrompt,
+      selectedText: payload.selectedText ?? payload.chatContext?.selectedText ?? null,
+      chatContext: payload.chatContext ?? null,
+    });
     const userMessageTimestamp = Date.now();
+    const windowPreviewImageUrl = windowScreenshotAttachment?.url;
     const userMessageEvent = ensureChatStore().appendEvent({
       conversationId: payload.conversationId,
       type: "user_message",
@@ -516,11 +531,34 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       payload: prepareStoredLocalChatPayload({
         type: "user_message",
         payload: {
-          text: payload.userPrompt,
+          text: visibleUserPrompt,
           ...(payload.attachments?.length ? { attachments: payload.attachments } : {}),
           ...(payload.platform ? { platform: payload.platform } : {}),
           ...(payload.timezone ? { timezone: payload.timezone } : {}),
-          ...(payload.messageMetadata ? { metadata: payload.messageMetadata } : {}),
+          ...((payload.messageMetadata || windowContextLabel || windowPreviewImageUrl)
+            ? {
+                metadata: {
+                  ...(payload.messageMetadata ?? {}),
+                  ...((windowContextLabel || windowPreviewImageUrl)
+                    ? {
+                        context: {
+                          ...(payload.messageMetadata?.context ?? {}),
+                          ...(windowContextLabel
+                            ? {
+                                windowLabel: windowContextLabel,
+                              }
+                            : {}),
+                          ...(windowPreviewImageUrl
+                            ? {
+                                windowPreviewImageUrl,
+                              }
+                            : {}),
+                        },
+                      }
+                    : {}),
+                },
+              }
+            : {}),
           ...(payload.mode ? { mode: payload.mode } : {}),
         },
         timestamp: userMessageTimestamp,
@@ -533,11 +571,28 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     let activeRunId = "";
     let syntheticSeq = 1;
     let hiddenUserMessageCount = 0;
+    const mergedAttachments = [
+      ...(payload.attachments ?? []),
+      ...(windowScreenshotAttachment ? [windowScreenshotAttachment] : []),
+    ];
+    logger.info("startChat.prompt-shape", {
+      conversationId: payload.conversationId,
+      visibleUserPrompt,
+      windowContextLabel,
+      promptMessages: (promptMessages ?? []).map((message, index) => ({
+        index,
+        uiVisibility: message.uiVisibility ?? "visible",
+        textPreview: message.text.slice(0, 200),
+      })),
+      mergedAttachmentCount: mergedAttachments.length,
+      hasWindowScreenshotAttachment: Boolean(windowScreenshotAttachment),
+    });
     const result = await ensureRunner().handleLocalChat({
       conversationId: payload.conversationId,
       userMessageId,
-      userPrompt: payload.userPrompt,
-      attachments: payload.attachments,
+      userPrompt: visibleUserPrompt,
+      ...(promptMessages?.length ? { promptMessages } : {}),
+      attachments: mergedAttachments.length > 0 ? mergedAttachments : undefined,
       agentType: payload.agentType,
       storageMode: payload.storageMode,
     }, {

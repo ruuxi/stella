@@ -1,4 +1,4 @@
-﻿import { useMemo } from "react";
+import { useMemo } from "react";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { MessagePayload } from "@/app/chat/lib/event-transforms";
 import { isOfficePreviewRef } from "@/shared/contracts/office-preview";
@@ -145,6 +145,9 @@ export function useTurnViewModels(opts: {
   const baseTurns = useMemo(() => {
     return slicedTurns.map((turn): BaseTurnViewModel => {
       const userText = getDisplayUserText(turn.userMessage);
+      const contextMetadata = getMessagePayload(turn.userMessage)?.metadata?.context;
+      const userWindowLabel = contextMetadata?.windowLabel;
+      const userWindowPreviewImageUrl = contextMetadata?.windowPreviewImageUrl;
       const userAttachments = getAttachments(turn.userMessage);
       const userChannelEnvelope = getChannelEnvelope(turn.userMessage);
       const assistantText = turn.assistantMessage
@@ -158,6 +161,12 @@ export function useTurnViewModels(opts: {
       return {
         id: turn.id,
         userText,
+        ...(typeof userWindowLabel === "string" && userWindowLabel.trim()
+          ? { userWindowLabel: userWindowLabel.trim() }
+          : {}),
+        ...(typeof userWindowPreviewImageUrl === "string" && userWindowPreviewImageUrl.trim()
+          ? { userWindowPreviewImageUrl: userWindowPreviewImageUrl.trim() }
+          : {}),
         userAttachments,
         userChannelEnvelope,
         assistantText,

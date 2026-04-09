@@ -125,6 +125,10 @@ export type ChatPayload = {
   conversationId: string;
   userMessageId: string;
   userPrompt: string;
+  promptMessages?: Array<{
+    text: string;
+    uiVisibility?: "visible" | "hidden";
+  }>;
   attachments?: RuntimeAttachmentRef[];
   agentType?: string;
   storageMode?: "cloud" | "local";
