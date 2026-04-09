@@ -10,11 +10,8 @@ import {
   normalizeGeneralAgentEngine,
   normalizeMaxAgentConcurrency,
 } from "../data/preferences";
-import { AGENT_IDS, SKILLS_DISABLED_AGENT_TYPES } from "../lib/agent_constants";
-import {
-  buildSkillsPromptSection,
-  getPlatformSystemGuidance,
-} from "../prompts/index";
+import { AGENT_IDS } from "../lib/agent_constants";
+import { getPlatformSystemGuidance } from "../prompts/index";
 import { STELLA_DEFAULT_MODEL } from "../stella_models";
 
 export type PromptBuildResult = {
@@ -22,8 +19,6 @@ export type PromptBuildResult = {
   dynamicContext: string;
   toolsAllowlist?: string[];
   maxTaskDepth: number;
-  defaultSkills: string[];
-  skillIds: string[];
   timezone: string;
 };
 
@@ -56,39 +51,7 @@ export const buildSystemPrompt = async (
     },
   );
 
-  const skills = SKILLS_DISABLED_AGENT_TYPES.has(agentType)
-    ? []
-    : await ctx.runQuery(internal.data.skills.listEnabledSkillsInternal, {
-        agentType,
-        ownerId: options?.ownerId,
-      });
-
-  const skillsSection = buildSkillsPromptSection(
-    skills.map(
-      (skill: {
-        id: string;
-        name: string;
-        description: string;
-        execution?: string;
-        requiresSecrets?: string[];
-        publicIntegration?: boolean;
-        secretMounts?: Record<string, unknown>;
-      }) => ({
-        id: skill.id,
-        name: skill.name,
-        description: skill.description,
-        execution: skill.execution,
-        requiresSecrets: skill.requiresSecrets,
-        publicIntegration: skill.publicIntegration,
-        secretMounts: skill.secretMounts,
-      }),
-    ),
-  );
-
   const systemParts = [agent.systemPrompt];
-  if (skillsSection) {
-    systemParts.push(skillsSection);
-  }
 
   if (options?.platform) {
     const guidance = getPlatformSystemGuidance(options.platform);
@@ -110,15 +73,13 @@ export const buildSystemPrompt = async (
     dynamicContext: dynamicParts.join("\n\n").trim(),
     toolsAllowlist: agent.toolsAllowlist,
     maxTaskDepth,
-    defaultSkills: agent.defaultSkills ?? [],
-    skillIds: skills.map((skill: { id: string }) => skill.id),
     timezone: options?.timezone ?? "UTC",
   };
 };
 
 // fetchAgentContext
 // Returns everything the local agent runtime needs in a single round-trip:
-// system prompt, dynamic context, tool allowlist, skills,
+// system prompt, dynamic context, tool allowlist,
 // thread history, and managed auth context for LLM access.
 
 const agentContextResultValidator = v.object({
@@ -127,8 +88,6 @@ const agentContextResultValidator = v.object({
   toolsAllowlist: v.optional(v.array(v.string())),
   model: v.string(),
   maxTaskDepth: v.number(),
-  defaultSkills: v.array(v.string()),
-  skillIds: v.array(v.string()),
   threadHistory: v.optional(
     v.array(
       v.object({
@@ -260,8 +219,6 @@ const fetchAgentContextForOwner = async (
     toolsAllowlist: promptBuild.toolsAllowlist,
     model,
     maxTaskDepth: promptBuild.maxTaskDepth,
-    defaultSkills: promptBuild.defaultSkills,
-    skillIds: promptBuild.skillIds,
     threadHistory,
     activeThreadId,
     agentEngine,
@@ -359,8 +316,6 @@ export const fetchLocalAgentContextForRuntime = action({
       toolsAllowlist: promptBuild.toolsAllowlist,
       model,
       maxTaskDepth: promptBuild.maxTaskDepth,
-      defaultSkills: promptBuild.defaultSkills,
-      skillIds: promptBuild.skillIds,
       threadHistory: undefined,
       activeThreadId: undefined,
       agentEngine,

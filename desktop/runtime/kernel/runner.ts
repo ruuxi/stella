@@ -4,7 +4,6 @@ import {
   buildAgentContext,
   createRunnerContext,
   getConfiguredModel,
-  refreshLoadedSkills,
   resolveAgent,
 } from "./runner/context.js";
 import { createConvexSession } from "./runner/convex-session.js";
@@ -490,7 +489,6 @@ export const createStellaHostRunner = (
   };
 
   const runtimeInitialization = createRuntimeInitialization(context, {
-    refreshLoadedSkills: () => refreshLoadedSkills(context),
     disposeConvexClient: convexSession.disposeConvexClient,
     syncRemoteTurnBridge,
     shutdownTasks: taskOrchestration.shutdown,

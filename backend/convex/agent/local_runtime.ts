@@ -1,7 +1,6 @@
 import { ConvexError } from "convex/values";
 import { action } from "../_generated/server";
 import { v } from "convex/values";
-import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { requireConversationOwnerAction, requireUserId } from "../auth";
 import {
@@ -139,24 +138,3 @@ export const webFetch = action({
   },
 });
 
-export const activateSkill = action({
-  args: {
-    skillId: v.string(),
-  },
-  returns: v.string(),
-  handler: async (ctx, args): Promise<string> => {
-    const ownerId = await requireUserId(ctx);
-    const skill = await ctx.runQuery(
-      internal.data.skills.getSkillByIdInternal,
-      {
-        skillId: args.skillId,
-        ownerId,
-      },
-    );
-
-    if (!skill || !skill.markdown) {
-      return `Skill '${args.skillId}' not found or has no content.`;
-    }
-    return skill.markdown;
-  },
-});

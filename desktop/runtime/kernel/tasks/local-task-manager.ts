@@ -14,8 +14,6 @@ export type LocalTaskManagerAgentContext = {
   model?: string;
   taskDepth?: number;
   maxTaskDepth: number;
-  defaultSkills: string[];
-  skillIds: string[];
   coreMemory?: string;
   threadHistory?: Array<{
     timestamp?: number;
@@ -223,7 +221,7 @@ const getFsLockKey = (
       normalizeString(args.working_directory ?? args.cwd ?? context?.frontendRoot),
     );
   }
-  if (toolName === "Bash" || toolName === "SkillBash") {
+  if (toolName === "Bash") {
     const command = normalizeString(args.command);
     if (!command) return "*";
     const pathFromCommand = extractBashPath(command);

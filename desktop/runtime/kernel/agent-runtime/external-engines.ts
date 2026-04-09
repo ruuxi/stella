@@ -103,6 +103,7 @@ const runClaudeHostedTurn = async (args: {
     runId: args.runId,
     conversationId: args.opts.conversationId,
     agentType: args.opts.agentType,
+    userMessageId: args.opts.userMessageId,
   });
   runEvents.recordRunStart();
   persistUserPrompt(args.opts, threadKey);
@@ -174,8 +175,6 @@ const runClaudeHostedTurn = async (args: {
         frontendRoot: args.opts.frontendRoot,
         taskDepth: args.opts.agentContext.taskDepth ?? 0,
         maxTaskDepth: args.opts.agentContext.maxTaskDepth,
-        defaultSkills: args.opts.agentContext.defaultSkills,
-        skillIds: args.opts.agentContext.skillIds,
         store: args.opts.store,
         toolExecutor: args.opts.toolExecutor,
         webSearch: args.opts.webSearch,
@@ -264,6 +263,7 @@ export const runExternalOrchestratorTurn = async (
         runId,
         conversationId: opts.conversationId,
         agentType: opts.agentType,
+        userMessageId: opts.userMessageId,
       }),
       error,
     });
@@ -302,6 +302,7 @@ export const runExternalSubagentTurn = async (
         runId,
         conversationId: opts.conversationId,
         agentType: opts.agentType,
+        userMessageId: opts.userMessageId,
       }),
       runId,
       error,

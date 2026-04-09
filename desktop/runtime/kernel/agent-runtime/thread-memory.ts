@@ -206,9 +206,7 @@ const hasShellToolGuidance = (
   if (!Array.isArray(toolsAllowlist) || toolsAllowlist.length === 0) {
     return true;
   }
-  return (
-    toolsAllowlist.includes("Bash") || toolsAllowlist.includes("SkillBash")
-  );
+  return toolsAllowlist.includes("Bash");
 };
 
 export const buildSystemPrompt = (

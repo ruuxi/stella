@@ -25,7 +25,6 @@ const agentClientValidator = v.object({
   systemPrompt: v.string(),
   agentTypes: v.array(v.string()),
   toolsAllowlist: v.optional(v.array(v.string())),
-  defaultSkills: v.optional(v.array(v.string())),
   maxTaskDepth: v.optional(v.number()),
   version: v.number(),
   source: v.string(),
@@ -40,7 +39,6 @@ const agentConfigValidator = v.object({
   systemPrompt: v.string(),
   agentTypes: v.array(v.string()),
   toolsAllowlist: v.optional(v.array(v.string())),
-  defaultSkills: v.optional(v.array(v.string())),
   maxTaskDepth: v.optional(v.number()),
   version: v.number(),
   source: v.string(),
@@ -54,7 +52,6 @@ const agentImportValidator = v.object({
   systemPrompt: v.optional(v.string()),
   agentTypes: v.optional(v.union(v.array(v.string()), v.string())),
   toolsAllowlist: v.optional(v.union(v.array(v.string()), v.string())),
-  defaultSkills: v.optional(v.union(v.array(v.string()), v.string())),
   maxTaskDepth: v.optional(v.number()),
   version: v.optional(v.number()),
   source: v.optional(v.string()),
@@ -72,7 +69,6 @@ type AgentRecord = {
   systemPrompt: string;
   agentTypes: string[];
   toolsAllowlist?: string[];
-  defaultSkills?: string[];
   maxTaskDepth?: number;
   version: number;
   source: string;
@@ -94,7 +90,6 @@ const BUILTIN_AGENT_DEFS: AgentRecord[] = [
       BACKEND_TOOL_IDS.WEB_FETCH,
       BACKEND_TOOL_IDS.NO_RESPONSE,
     ],
-    defaultSkills: [],
     maxTaskDepth: 0,
     version: 1,
     source: "builtin",
@@ -124,7 +119,6 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
 
   const agentTypes = coerceStringArray(record.agentTypes);
   const toolsAllowlist = coerceStringArray(record.toolsAllowlist);
-  const defaultSkills = coerceStringArray(record.defaultSkills);
 
   const versionNumber = Number(record.version);
   const version =
@@ -146,7 +140,6 @@ const normalizeAgent = (value: unknown): AgentRecord | null => {
     systemPrompt,
     agentTypes,
     toolsAllowlist: toolsAllowlist.length > 0 ? toolsAllowlist : undefined,
-    defaultSkills: defaultSkills.length > 0 ? defaultSkills : undefined,
     maxTaskDepth,
     version,
     source: typeof record.source === "string" ? record.source : "local",

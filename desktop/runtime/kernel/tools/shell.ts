@@ -1,5 +1,5 @@
 /**
- * Shell tools: Bash, SkillBash, KillShell handlers.
+ * Shell tools: Bash, KillShell handlers.
  */
 
 import { spawn } from "child_process";
@@ -7,26 +7,18 @@ import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { resolveGitDir, setupEnvironment } from "dugite";
-import type { ToolContext, ToolResult, ShellRecord, SecretMountSpec, SkillRecord } from "./types.js";
-import type { SecretFileMountHandle } from "./utils.js";
-import { removeSecretFile, truncate, writeSecretFile } from "./utils.js";
+import type { ToolContext, ToolResult, ShellRecord } from "./types.js";
+import { truncate } from "./utils.js";
 import { isDangerousCommand } from "./command-safety.js";
 import { getStellaBrowserBridgeEnv } from "./stella-browser-bridge-config.js";
 import type { OfficePreviewRef } from "../../../src/shared/contracts/office-preview.js";
 
 export type ShellState = {
   shells: Map<string, ShellRecord>;
-  skillCache: SkillRecord[];
   secretStateRoot: string;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaUiCliPath?: string;
-  resolveSecretValue: (
-    spec: SecretMountSpec,
-    cache: Map<string, string>,
-    context?: ToolContext,
-    toolName?: string,
-  ) => Promise<string | null>;
 };
 
 const OFFICE_PREVIEW_REF_MARKER = "__STELLA_OFFICE_PREVIEW_REF__";
@@ -71,7 +63,6 @@ export const extractOfficePreviewRef = (
 };
 
 export const createShellState = (
-  resolveSecretValue: ShellState["resolveSecretValue"],
   secretStateRoot: string,
   options?: {
     stellaBrowserBinPath?: string;
@@ -80,12 +71,10 @@ export const createShellState = (
   },
 ): ShellState => ({
   shells: new Map(),
-  skillCache: [],
   secretStateRoot,
   stellaBrowserBinPath: options?.stellaBrowserBinPath,
   stellaOfficeBinPath: options?.stellaOfficeBinPath,
   stellaUiCliPath: options?.stellaUiCliPath,
-  resolveSecretValue,
 });
 
 const deferredDeleteHelperPath = (() => {
@@ -519,151 +508,6 @@ export const handleBash = async (
         }
       : {}),
   };
-};
-
-export const handleSkillBash = async (
-  state: ShellState,
-  args: Record<string, unknown>,
-  context?: ToolContext,
-): Promise<ToolResult> => {
-  const skillId = String(args.skill_id ?? "").trim();
-  if (!skillId) {
-    return { error: "skill_id is required." };
-  }
-
-  if (Array.isArray(context?.skillIds) && !context.skillIds.includes(skillId)) {
-    const available = context.skillIds.length > 0 ? context.skillIds.join(", ") : "none";
-    return { error: `Skill '${skillId}' is not enabled. Available skills: ${available}.` };
-  }
-
-  // Safety check: reject dangerous commands
-  const commandStr = String(args.command ?? "");
-  const dangerReason = isDangerousCommand(commandStr);
-  if (dangerReason) {
-    return {
-      error: `Command blocked: this operation is potentially destructive and has been denied for safety. (${dangerReason})`,
-    };
-  }
-
-  const skill = state.skillCache.find((s) => s.id === skillId);
-  if (!skill || !skill.secretMounts) {
-    // Even without secretMounts, default cwd to skill directory for script path resolution
-    if (skill?.filePath && !args.working_directory) {
-      args = { ...args, working_directory: path.dirname(skill.filePath) };
-    } else if (context?.frontendRoot && !args.working_directory) {
-      args = { ...args, working_directory: context.frontendRoot };
-    }
-    return handleBash(state, args);
-  }
-
-  const command = String(args.command ?? "");
-  const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
-  // Default cwd to skill directory so relative script paths (e.g. scripts/...) resolve correctly
-  const skillDir = skill.filePath ? path.dirname(skill.filePath) : undefined;
-  const cwd = String(
-    args.working_directory ?? skillDir ?? context?.frontendRoot ?? process.cwd(),
-  );
-  const runInBackground = Boolean(args.run_in_background ?? false);
-
-  const envOverrides: Record<string, string> = {};
-  const providerCache = new Map<string, string>();
-  const mountedSecretFiles: SecretFileMountHandle[] = [];
-  const cleanupMountedSecretFiles = async () => {
-    for (const mountedFile of mountedSecretFiles) {
-      await removeSecretFile(mountedFile);
-    }
-  };
-
-  if (skill.secretMounts.env) {
-    for (const [envName, spec] of Object.entries(skill.secretMounts.env)) {
-      if (!envName.trim()) continue;
-      const value = await state.resolveSecretValue(
-        spec,
-        providerCache,
-        context,
-        "SkillBash",
-      );
-      if (!value) {
-        await cleanupMountedSecretFiles();
-        return {
-          error: `Missing secret for ${spec.provider}.`,
-        };
-      }
-      envOverrides[envName] = value;
-    }
-  }
-
-  if (skill.secretMounts.files) {
-    for (const [filePath, spec] of Object.entries(skill.secretMounts.files)) {
-      if (!filePath.trim()) continue;
-      const value = await state.resolveSecretValue(
-        spec,
-        providerCache,
-        context,
-        "SkillBash",
-      );
-      if (!value) {
-        await cleanupMountedSecretFiles();
-        return {
-          error: `Missing secret for ${spec.provider}.`,
-        };
-      }
-      const mountedFile = await writeSecretFile(
-        filePath,
-        value,
-        cwd,
-        state.secretStateRoot,
-      );
-      mountedSecretFiles.push(mountedFile);
-    }
-  }
-
-  if (runInBackground) {
-    try {
-      const record = startShell(state, command, cwd, envOverrides, () => {
-        for (const mountedFile of mountedSecretFiles) {
-          void removeSecretFile(mountedFile);
-        }
-      });
-      const extracted = extractOfficePreviewRef(record.output || "");
-      return {
-        result: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(
-          extracted.cleanedOutput || "(no output yet)",
-        )}`,
-        ...(extracted.officePreviewRef
-          ? {
-              details: {
-                text: `Command running in background.\nShell ID: ${record.id}\n\n${truncate(
-                  extracted.cleanedOutput || "(no output yet)",
-                )}`,
-                officePreviewRef: extracted.officePreviewRef,
-              },
-            }
-          : {}),
-      };
-    } catch {
-      await cleanupMountedSecretFiles();
-      throw new Error("Failed to start background shell");
-    }
-  }
-
-  try {
-    const output = await runShell(state, command, cwd, timeout, envOverrides);
-    const extracted = extractOfficePreviewRef(output);
-    return {
-      result: truncate(extracted.cleanedOutput),
-      ...(extracted.officePreviewRef
-        ? {
-            details: {
-              text: truncate(extracted.cleanedOutput),
-              officePreviewRef: extracted.officePreviewRef,
-            },
-          }
-        : {}),
-    };
-  } finally {
-    await cleanupMountedSecretFiles();
-  }
 };
 
 export const handleShellStatus = async (

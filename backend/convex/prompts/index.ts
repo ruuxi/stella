@@ -21,7 +21,6 @@ export {
   buildBackendJobModeSystemPrompt,
 } from "./execution";
 export {
-  buildSkillsPromptSection,
   getPlatformSystemGuidance,
   buildCurrentDateDynamicPrompt,
   buildActiveThreadsDynamicPrompt,
