@@ -42,13 +42,20 @@ const WEDGE_ANGLE = 90
 const DEAD_ZONE_RADIUS = 30
 const CENTER_BG_RADIUS = INNER_RADIUS - 5
 
-const getWedges = (compactAndFocused: boolean, fullAndFocused: boolean) =>
+const getWedges = (
+  compactAndFocused: boolean,
+  fullAndFocused: boolean,
+  fullEnabled: boolean,
+) =>
   BASE_WEDGES.map((wedge) => {
     if (wedge.id === 'chat' && compactAndFocused) {
       return { ...wedge, label: 'Close', icon: X, enabled: true }
     }
-    if (wedge.id === 'full' && fullAndFocused) {
+    if (wedge.id === 'full' && fullAndFocused && fullEnabled) {
       return { ...wedge, label: 'Close', icon: X, enabled: true }
+    }
+    if (wedge.id === 'full' && !fullEnabled) {
+      return { ...wedge, enabled: false }
     }
     return { ...wedge, enabled: true }
   })
@@ -323,17 +330,19 @@ function useRadialIPC(
 export function RadialDial({
   miniVisible = false,
   fullVisible = false,
+  fullEnabled = true,
 }: {
   miniVisible?: boolean
   fullVisible?: boolean
+  fullEnabled?: boolean
 }) {
   const [selectedWedge, setSelectedWedge] = useState<RadialWedge>('dismiss')
   const [phase, setPhase] = useState<Phase>('hidden')
   const [contentVisible, setContentVisible] = useState(false)
   const { colors } = useTheme()
   const wedges = useMemo(
-    () => getWedges(miniVisible, fullVisible),
-    [fullVisible, miniVisible],
+    () => getWedges(miniVisible, fullVisible, fullEnabled),
+    [fullEnabled, fullVisible, miniVisible],
   )
   const wedgeLayout = useMemo(
     () => wedges.map((wedge, index) => ({

@@ -209,8 +209,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       centerY: number;
       x?: number;
       y?: number;
+      screenX?: number;
+      screenY?: number;
       compactFocused?: boolean;
       fullFocused?: boolean;
+      fullEnabled?: boolean;
     }>("radial:show"),
     onHide: onIpcSignal("radial:hide"),
     animDone: () => ipcRenderer.send("radial:animDone"),
