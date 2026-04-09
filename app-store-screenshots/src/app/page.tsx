@@ -69,14 +69,13 @@ type SlideDefinition = {
   render: (context: SlideRenderContext) => ReactNode;
 };
 
-const IPHONE_CANVAS = { w: 1320, h: 2868 } as const;
+const IPHONE_CANVAS = { w: 1290, h: 2796 } as const;
 const IPAD_CANVAS = { w: 2064, h: 2752 } as const;
 
 const IPHONE_SIZES: readonly ExportSize[] = [
-  { label: '6.9"', w: 1320, h: 2868 },
-  { label: '6.5"', w: 1284, h: 2778 },
-  { label: '6.3"', w: 1206, h: 2622 },
-  { label: '6.1"', w: 1125, h: 2436 },
+  { label: '6.7" (iPhone 15/16 Pro Max)', w: 1290, h: 2796 },
+  { label: '6.5" (iPhone 11/XS Max)', w: 1242, h: 2688 },
+  { label: '5.5" (iPhone 8 Plus)', w: 1242, h: 2208 },
 ];
 
 const IPAD_SIZES: readonly ExportSize[] = [
