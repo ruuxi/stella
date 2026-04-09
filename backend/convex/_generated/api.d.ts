@@ -72,6 +72,7 @@ import type * as http_shared_anon_device from "../http_shared/anon_device.js";
 import type * as http_shared_cors from "../http_shared/cors.js";
 import type * as http_shared_webhook_controls from "../http_shared/webhook_controls.js";
 import type * as lib_agent_constants from "../lib/agent_constants.js";
+import type * as lib_app_review_auth from "../lib/app_review_auth.js";
 import type * as lib_async from "../lib/async.js";
 import type * as lib_billing_date from "../lib/billing_date.js";
 import type * as lib_billing_money from "../lib/billing_money.js";
@@ -237,6 +238,7 @@ declare const fullApi: ApiFromModules<{
   "http_shared/cors": typeof http_shared_cors;
   "http_shared/webhook_controls": typeof http_shared_webhook_controls;
   "lib/agent_constants": typeof lib_agent_constants;
+  "lib/app_review_auth": typeof lib_app_review_auth;
   "lib/async": typeof lib_async;
   "lib/billing_date": typeof lib_billing_date;
   "lib/billing_money": typeof lib_billing_money;

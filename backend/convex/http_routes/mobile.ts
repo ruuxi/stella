@@ -7,6 +7,7 @@ import {
   createAuth,
   isAnonymousIdentity,
 } from "../auth";
+import { getAppReviewEmail } from "../lib/app_review_auth";
 import { AGENT_IDS } from "../lib/agent_constants";
 import { MANAGED_GATEWAY } from "../agent/model";
 import {
@@ -1276,6 +1277,7 @@ export const registerMobileRoutes = (http: HttpRouter) => {
 
         const requestId = crypto.randomUUID();
         const now = Date.now();
+        const appReviewEmail = getAppReviewEmail();
 
         await ctx.runMutation(internal.mobile_auth.createPendingLinkRequest, {
           email,
@@ -1284,14 +1286,50 @@ export const registerMobileRoutes = (http: HttpRouter) => {
           createdAt: now,
         });
 
-        const callbackURL = `${convexSiteUrl}/api/auth/link/verify?requestId=${encodeURIComponent(requestId)}`;
-
         try {
           const auth = createAuth(ctx);
-          await auth.api.signInMagicLink({
-            body: { email, callbackURL },
-            headers: new Headers({ origin: convexSiteUrl }),
-          });
+          if (appReviewEmail && email === appReviewEmail) {
+            const signInAppReview = ((auth.api as unknown) as {
+              signInAppReview(args: {
+                body: { email: string };
+                headers: Headers;
+                returnHeaders: true;
+              }): Promise<unknown>;
+            }).signInAppReview;
+            const signInResult = await signInAppReview({
+              body: { email },
+              headers: new Headers({ origin: convexSiteUrl }),
+              returnHeaders: true,
+            });
+
+            let sessionCookie = "";
+            const headersList = (signInResult as Record<string, unknown>)
+              ?.headers as { _headersList?: [string, string][] } | undefined;
+            if (Array.isArray(headersList?._headersList)) {
+              for (const [name, value] of headersList._headersList) {
+                if (name === "set-better-auth-cookie" || name === "set-cookie") {
+                  sessionCookie = value;
+                  break;
+                }
+              }
+            }
+
+            if (!sessionCookie) {
+              throw new Error("Missing session cookie");
+            }
+
+            await ctx.runMutation(internal.mobile_auth.completeLinkRequest, {
+              requestId,
+              ott: "app-review",
+              sessionCookie,
+            });
+          } else {
+            const callbackURL = `${convexSiteUrl}/api/auth/link/verify?requestId=${encodeURIComponent(requestId)}`;
+            await auth.api.signInMagicLink({
+              body: { email, callbackURL },
+              headers: new Headers({ origin: convexSiteUrl }),
+            });
+          }
         } catch (error) {
           console.error("[mobile/auth] Failed to send magic link:", error);
           return errorResponse(500, "Failed to send sign-in email.", origin);
