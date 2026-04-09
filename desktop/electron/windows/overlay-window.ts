@@ -109,15 +109,7 @@ class OverlayWindow {
     })
 
     this.window.setAlwaysOnTop(true, 'screen-saver')
-    if (process.platform === 'darwin') {
-      // Keep the overlay attached to the active Space on macOS. Without this,
-      // the hidden panel can remain associated with an older Space and the
-      // radial dial appears on a different virtual desktop than the cursor.
-      this.window.setVisibleOnAllWorkspaces(true, {
-        visibleOnFullScreen: true,
-        skipTransformProcessType: true,
-      })
-    } else {
+    if (process.platform !== 'darwin') {
       this.window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     }
     if (process.platform === 'darwin') {
@@ -264,6 +256,7 @@ export class OverlayWindowController {
   private morphTrackedWindow: BrowserWindow | null = null
   private activeMorphTransitionId: string | null = null
   private morphFlavor: MorphTransitionFlavor = 'hmr'
+  private radialHostWindow: BrowserWindow | null = null
   private readonly handleMorphWindowBoundsChanged = () => {
     this.syncMorphBounds()
   }
@@ -445,16 +438,27 @@ export class OverlayWindowController {
   private radialHideTimeout: ReturnType<typeof setTimeout> | null = null
   private static readonly CLOSE_ANIM_FALLBACK = 350
 
-  showRadial(options?: { compactFocused?: boolean; fullFocused?: boolean }) {
-    if (!this.overlayWindow.getWindow()) return
-
+  showRadial(options?: {
+    compactFocused?: boolean
+    fullFocused?: boolean
+    fullEnabled?: boolean
+    hostWindow?: BrowserWindow | null
+  }) {
     if (this.radialHideTimeout) {
       clearTimeout(this.radialHideTimeout)
       this.radialHideTimeout = null
     }
 
     this.activeRadial = true
-    this.overlayWindow.show({ inactive: true })
+    this.radialHostWindow =
+      options?.hostWindow && !options.hostWindow.isDestroyed()
+        ? options.hostWindow
+        : null
+
+    if (!this.radialHostWindow) {
+      if (!this.overlayWindow.getWindow()) return
+      this.overlayWindow.show({ inactive: true })
+    }
 
     const cursorDip = screen.getCursorScreenPoint()
     const screenDipX = Math.round(cursorDip.x - RADIAL_SIZE / 2)
@@ -463,12 +467,19 @@ export class OverlayWindowController {
 
     const relativeX = cursorDip.x - screenDipX
     const relativeY = cursorDip.y - screenDipY
-    const origin = this.overlayWindow.getOverlayOrigin()
+    const origin = this.radialHostWindow
+      ? (() => {
+          const bounds = this.radialHostWindow!.getContentBounds()
+          return { x: bounds.x, y: bounds.y }
+        })()
+      : this.overlayWindow.getOverlayOrigin()
     const localX = screenDipX - origin.x
     const localY = screenDipY - origin.y
 
-    this.overlayWindow.setIgnoreMouseEvents(false)
-    this.overlayWindow.send('radial:show', {
+    if (!this.radialHostWindow) {
+      this.overlayWindow.setIgnoreMouseEvents(false)
+    }
+    const payload = {
       x: relativeX,
       y: relativeY,
       centerX: RADIAL_SIZE / 2,
@@ -477,13 +488,31 @@ export class OverlayWindowController {
       screenY: localY,
       compactFocused: options?.compactFocused ?? false,
       fullFocused: options?.fullFocused ?? false,
-    })
+      fullEnabled: options?.fullEnabled ?? true,
+    }
+
+    if (this.radialHostWindow) {
+      this.radialHostWindow.webContents.send('radial:show', payload)
+      return
+    }
+
+    this.overlayWindow.send('radial:show', payload)
   }
 
   hideRadial() {
-    if (!this.overlayWindow.getWindow()) return
-    this.overlayWindow.send('radial:hide')
-    if (!this.isAnyActive) {
+    const radialHostWindow =
+      this.radialHostWindow && !this.radialHostWindow.isDestroyed()
+        ? this.radialHostWindow
+        : null
+    if (!radialHostWindow && !this.overlayWindow.getWindow()) return
+
+    if (radialHostWindow) {
+      radialHostWindow.webContents.send('radial:hide')
+    } else {
+      this.overlayWindow.send('radial:hide')
+    }
+
+    if (!radialHostWindow && !this.isAnyActive) {
       this.overlayWindow.setIgnoreMouseEvents(true)
     }
     this.radialBounds = null
@@ -492,21 +521,30 @@ export class OverlayWindowController {
     this.radialHideTimeout = setTimeout(() => {
       this.radialHideTimeout = null
       this.activeRadial = false
+      this.radialHostWindow = null
       this.hideOverlayIfIdle()
     }, OverlayWindowController.CLOSE_ANIM_FALLBACK)
   }
 
   updateRadialCursor() {
-    if (!this.overlayWindow.getWindow() || !this.radialBounds) return
+    if (!this.radialBounds) return
 
     const cursorDip = screen.getCursorScreenPoint()
     const bounds = this.radialBounds
-    this.overlayWindow.send('radial:cursor', {
+    const payload = {
       x: cursorDip.x - bounds.x,
       y: cursorDip.y - bounds.y,
       centerX: RADIAL_SIZE / 2,
       centerY: RADIAL_SIZE / 2,
-    })
+    }
+
+    if (this.radialHostWindow && !this.radialHostWindow.isDestroyed()) {
+      this.radialHostWindow.webContents.send('radial:cursor', payload)
+      return
+    }
+
+    if (!this.overlayWindow.getWindow()) return
+    this.overlayWindow.send('radial:cursor', payload)
   }
 
   getRadialBounds() { return this.radialBounds }

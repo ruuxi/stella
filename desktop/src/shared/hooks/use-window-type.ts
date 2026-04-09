@@ -12,6 +12,11 @@ const resolveWindowType = (): "mini" | "full" | "overlay" => {
     return "overlay";
   }
 
+  const windowParam = new URLSearchParams(window.location.search).get("window");
+  if (windowParam === "mini") {
+    return "mini";
+  }
+
   return "full";
 };
 

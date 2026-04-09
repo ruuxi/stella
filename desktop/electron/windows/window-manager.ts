@@ -1,6 +1,7 @@
 import { app, BrowserWindow, screen } from 'electron'
 import { MINI_SHELL_SIZE } from '../layout-constants.js'
 import { FullWindowController } from './full-window.js'
+import { MiniWindowController } from './mini-window.js'
 import type { UiState } from '../types.js'
 import type { ExternalLinkService } from '../services/external-link-service.js'
 import type { OverlayWindowController } from './overlay-window.js'
@@ -21,19 +22,17 @@ type WindowManagerOptions = {
 
 const compactSize = MINI_SHELL_SIZE
 
-const FADE_OUT_MS = 120
-const FADE_IN_MS = 150
-const FADE_STEP_MS = 10
-
 type Bounds = { x: number; y: number; width: number; height: number }
+type ShellWindowMode = 'full' | 'mini'
+type ShellWindowRef = { mode: ShellWindowMode; window: BrowserWindow }
 
 export class WindowManager {
   private readonly fullWindowController: FullWindowController
-
-  private compactMode = false
-  private lastActiveWindowMode: 'full' | 'mini' = 'full'
-  private savedBounds: Bounds | null = null
-  private fadeTimer: ReturnType<typeof setInterval> | null = null
+  private readonly miniWindowController: MiniWindowController
+  private readonly observedWindows = new WeakSet<BrowserWindow>()
+  private lastActiveWindowMode: ShellWindowMode = 'full'
+  private miniWindowBounds: Bounds | null = null
+  private miniShouldRestoreExternalApp = false
 
   constructor(private readonly options: WindowManagerOptions) {
     this.fullWindowController = new FullWindowController({
@@ -42,22 +41,50 @@ export class WindowManager {
       sessionPartition: options.sessionPartition,
       isDev: options.isDev,
       getDevServerUrl: options.getDevServerUrl,
-      setupExternalLinkHandlers: (window) => options.externalLinkService.setupExternalLinkHandlers(window),
+      setupExternalLinkHandlers: (window) =>
+        options.externalLinkService.setupExternalLinkHandlers(window),
       onDidStartLoading: () => {},
       onRenderProcessGone: (details) => {
         console.error('Renderer process gone:', details.reason)
         this.fullWindowController.loadRecoveryPage()
       },
-      onClosed: () => {},
+      onClosed: () => {
+        this.syncLastActiveWindowMode()
+      },
+    })
+    this.miniWindowController = new MiniWindowController({
+      electronDir: options.electronDir,
+      preloadPath: options.preloadPath,
+      sessionPartition: options.sessionPartition,
+      isDev: options.isDev,
+      getDevServerUrl: options.getDevServerUrl,
+      setupExternalLinkHandlers: (window) =>
+        options.externalLinkService.setupExternalLinkHandlers(window),
+      onDidStartLoading: () => {},
+      onRenderProcessGone: (details) => {
+        console.error('Mini renderer process gone:', details.reason)
+      },
+      onClosed: () => {
+        this.syncLastActiveWindowMode()
+      },
     })
   }
 
   createFullWindow() {
-    return this.fullWindowController.create()
+    const window = this.fullWindowController.create()
+    this.observeShellWindow(window, 'full')
+    return window
+  }
+
+  private createMiniWindow() {
+    const window = this.miniWindowController.create()
+    this.observeShellWindow(window, 'mini')
+    return window
   }
 
   createInitialWindows() {
     this.createFullWindow()
+    this.createMiniWindow()
   }
 
   getFullWindow() {
@@ -65,7 +92,7 @@ export class WindowManager {
   }
 
   getMiniWindow(): BrowserWindow | null {
-    return null
+    return this.miniWindowController.getWindow()
   }
 
   getAllWindows() {
@@ -73,7 +100,7 @@ export class WindowManager {
   }
 
   isCompactMode() {
-    return this.compactMode
+    return this.lastActiveWindowMode === 'mini'
   }
 
   getLastActiveWindowMode() {
@@ -81,19 +108,35 @@ export class WindowManager {
   }
 
   isWindowFocused() {
+    return this.getFocusedShellWindow() !== null
+  }
+
+  isFullWindowMacFullscreen() {
+    if (process.platform !== 'darwin') {
+      return false
+    }
+
     const fullWindow = this.getFullWindow()
-    return fullWindow ? fullWindow.isFocused() : false
+    return Boolean(fullWindow && !fullWindow.isDestroyed() && fullWindow.isFullScreen())
   }
 
   minimizeWindow() {
-    const fullWindow = this.getFullWindow()
-    if (fullWindow && !fullWindow.isDestroyed()) {
-      fullWindow.hide()
+    const target =
+      this.getFocusedShellWindow() ??
+      this.getVisibleShellWindow(this.lastActiveWindowMode) ??
+      this.getVisibleShellWindow(this.getOtherWindowMode(this.lastActiveWindowMode))
+
+    if (target && !target.window.isDestroyed()) {
+      this.hideWindow(target.window, {
+        preserveExternalFocus: target.mode === 'mini',
+      })
+      this.syncLastActiveWindowMode()
     }
   }
 
   isMiniShowing() {
-    return this.compactMode
+    const miniWindow = this.getMiniWindow()
+    return Boolean(miniWindow && !miniWindow.isDestroyed() && miniWindow.isVisible())
   }
 
   hasPendingMiniShow() {
@@ -101,7 +144,14 @@ export class WindowManager {
   }
 
   hideMiniWindow(_animate: boolean) {
-    this.restoreFullSize()
+    const miniWindow = this.getMiniWindow()
+    if (!miniWindow || miniWindow.isDestroyed()) return
+    this.hideWindow(miniWindow, { preserveExternalFocus: true })
+    this.syncLastActiveWindowMode()
+    if (process.platform === 'darwin' && this.miniShouldRestoreExternalApp) {
+      this.miniShouldRestoreExternalApp = false
+      app.hide()
+    }
   }
 
   cancelPendingShow() {}
@@ -112,41 +162,91 @@ export class WindowManager {
 
   restoreMiniWindowAfterCapture() {}
 
-  private cancelFade() {
-    if (this.fadeTimer) {
-      clearInterval(this.fadeTimer)
-      this.fadeTimer = null
+  private observeShellWindow(window: BrowserWindow, mode: ShellWindowMode) {
+    if (this.observedWindows.has(window)) {
+      return
+    }
+
+    this.observedWindows.add(window)
+    window.on('focus', () => {
+      this.setLastActiveWindowMode(mode)
+    })
+    window.on('show', () => {
+      this.lastActiveWindowMode = mode
+    })
+    window.on('hide', () => {
+      this.syncLastActiveWindowMode()
+    })
+
+    if (mode === 'mini') {
+      const rememberBounds = () => {
+        if (window.isDestroyed()) return
+        const { x, y, width, height } = window.getBounds()
+        this.miniWindowBounds = { x, y, width, height }
+      }
+
+      window.on('move', rememberBounds)
+      window.on('resize', rememberBounds)
     }
   }
 
-  private fadeTransition(win: Electron.BrowserWindow, to: Bounds, onSnap?: () => void) {
-    this.cancelFade()
-    if (win.isDestroyed()) return
+  private getOtherWindowMode(mode: ShellWindowMode): ShellWindowMode {
+    return mode === 'mini' ? 'full' : 'mini'
+  }
 
-    const start = Date.now()
-    win.setOpacity(1)
+  private getShellWindow(mode: ShellWindowMode): BrowserWindow | null {
+    return mode === 'mini' ? this.getMiniWindow() : this.getFullWindow()
+  }
 
-    this.fadeTimer = setInterval(() => {
-      if (win.isDestroyed()) { this.cancelFade(); return }
-      const elapsed = Date.now() - start
-      const t = Math.min(elapsed / FADE_OUT_MS, 1)
-      win.setOpacity(1 - t)
+  private getFocusedShellWindow(): ShellWindowRef | null {
+    const miniWindow = this.getMiniWindow()
+    if (miniWindow && !miniWindow.isDestroyed() && miniWindow.isFocused()) {
+      return { mode: 'mini', window: miniWindow }
+    }
 
-      if (t >= 1) {
-        this.cancelFade()
-        win.setBounds(to)
-        onSnap?.()
+    const fullWindow = this.getFullWindow()
+    if (fullWindow && !fullWindow.isDestroyed() && fullWindow.isFocused()) {
+      return { mode: 'full', window: fullWindow }
+    }
 
-        const fadeInStart = Date.now()
-        this.fadeTimer = setInterval(() => {
-          if (win.isDestroyed()) { this.cancelFade(); return }
-          const fadeElapsed = Date.now() - fadeInStart
-          const ft = Math.min(fadeElapsed / FADE_IN_MS, 1)
-          win.setOpacity(ft)
-          if (ft >= 1) { this.cancelFade() }
-        }, FADE_STEP_MS)
-      }
-    }, FADE_STEP_MS)
+    return null
+  }
+
+  private getVisibleShellWindow(mode: ShellWindowMode): ShellWindowRef | null {
+    const window = this.getShellWindow(mode)
+    if (!window || window.isDestroyed() || !window.isVisible()) {
+      return null
+    }
+    return { mode, window }
+  }
+
+  private setLastActiveWindowMode(mode: ShellWindowMode) {
+    this.lastActiveWindowMode = mode
+    this.options.onUpdateUiState({ window: mode })
+  }
+
+  private syncLastActiveWindowMode() {
+    const focused = this.getFocusedShellWindow()
+    if (focused) {
+      this.setLastActiveWindowMode(focused.mode)
+      return
+    }
+
+    if (this.getVisibleShellWindow(this.lastActiveWindowMode)) {
+      return
+    }
+
+    const fallback = this.getVisibleShellWindow(
+      this.getOtherWindowMode(this.lastActiveWindowMode),
+    )
+    if (fallback) {
+      this.setLastActiveWindowMode(fallback.mode)
+      return
+    }
+
+    if (this.lastActiveWindowMode === 'mini') {
+      this.setLastActiveWindowMode('full')
+    }
   }
 
   private computeCompactPosition(): { x: number; y: number } {
@@ -155,129 +255,142 @@ export class WindowManager {
     const wa = display.workArea
     const gap = 16
 
-    let targetX = cursor.x + gap
-    let targetY = cursor.y - Math.round(compactSize.height / 3)
+    let targetX = wa.x + wa.width - compactSize.width - gap
+    let targetY = wa.y + Math.round((wa.height - compactSize.height) / 2)
 
-    if (targetX + compactSize.width > wa.x + wa.width) {
-      targetX = cursor.x - compactSize.width - gap
-    }
-
-    targetX = Math.max(wa.x, Math.min(targetX, wa.x + wa.width - compactSize.width))
-    targetY = Math.max(wa.y, Math.min(targetY, wa.y + wa.height - compactSize.height))
+    targetX = Math.max(
+      wa.x,
+      Math.min(targetX, wa.x + wa.width - compactSize.width),
+    )
+    targetY = Math.max(
+      wa.y,
+      Math.min(targetY, wa.y + wa.height - compactSize.height),
+    )
 
     return { x: targetX, y: targetY }
   }
 
+  private getPreferredMiniBounds(): Bounds {
+    if (this.miniWindowBounds) {
+      return this.miniWindowBounds
+    }
+
+    const pos = this.computeCompactPosition()
+    return {
+      x: pos.x,
+      y: pos.y,
+      width: compactSize.width,
+      height: compactSize.height,
+    }
+  }
+
+  private hideWindow(
+    window: BrowserWindow,
+    options?: { preserveExternalFocus?: boolean },
+  ) {
+    const preserveExternalFocus = options?.preserveExternalFocus ?? false
+    const wasFocused = preserveExternalFocus && window.isFocused()
+
+    if (wasFocused) {
+      window.blur()
+      window.setFocusable(false)
+    }
+
+    window.hide()
+
+    if (wasFocused && !window.isDestroyed()) {
+      window.setFocusable(true)
+    }
+  }
+
   restoreFullSize() {
-    if (!this.compactMode) return
-
-    this.compactMode = false
-    this.lastActiveWindowMode = 'full'
-    const fullWindow = this.getFullWindow()
-    if (!fullWindow || fullWindow.isDestroyed()) return
-
-    if (this.savedBounds) {
-      const target = this.savedBounds
-      this.savedBounds = null
-      if (fullWindow.isVisible()) {
-        this.fadeTransition(fullWindow, target)
-      } else {
-        fullWindow.setBounds(target)
-      }
-    }
-
-    this.options.onUpdateUiState({ window: 'full' })
+    this.showWindow('full')
   }
 
-  private focusAndRaise(fullWindow: Electron.BrowserWindow) {
-    if (process.platform === 'win32') {
-      app.focus({ steal: true })
-      fullWindow.show()
-      fullWindow.moveTop()
-      fullWindow.setAlwaysOnTop(true, 'screen-saver')
-      fullWindow.focus()
-      setTimeout(() => {
-        if (!fullWindow.isDestroyed()) {
-          fullWindow.setAlwaysOnTop(false)
+  private focusAndRaise(window: BrowserWindow, mode: ShellWindowMode) {
+    if (mode === 'mini') {
+      if (process.platform === 'darwin') {
+        if (app.isHidden()) {
+          app.show()
         }
-      }, 75)
-    } else {
-      app.show()
-      app.focus({ steal: true })
-      fullWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-      fullWindow.show()
-      fullWindow.moveTop()
-      fullWindow.setAlwaysOnTop(true, 'screen-saver')
-      fullWindow.focus()
-      setTimeout(() => {
-        if (!fullWindow.isDestroyed()) {
-          fullWindow.setAlwaysOnTop(false)
-          fullWindow.setVisibleOnAllWorkspaces(false)
-        }
-      }, 75)
-    }
-  }
-
-  showWindow(target: 'full' | 'mini') {
-    if (target === 'mini') {
-      if (!this.options.isAppReady()) return
-
-      const fullWindow = this.createFullWindow()
-
-      if (!this.compactMode) {
-        this.savedBounds = fullWindow.getBounds()
-      }
-
-      this.compactMode = true
-      this.lastActiveWindowMode = 'mini'
-
-      const pos = this.computeCompactPosition()
-      const targetBounds = {
-        x: pos.x,
-        y: pos.y,
-        width: compactSize.width,
-        height: compactSize.height,
-      }
-
-      if (fullWindow.isVisible()) {
-        this.fadeTransition(fullWindow, targetBounds, () => {
-          this.focusAndRaise(fullWindow)
-        })
-      } else {
-        fullWindow.setOpacity(0)
-        fullWindow.setBounds(targetBounds)
-        this.focusAndRaise(fullWindow)
+        app.focus({ steal: true })
+        window.show()
+        window.moveTop()
+        window.setAlwaysOnTop(true, 'screen-saver')
+        window.focus()
         setTimeout(() => {
-          if (!fullWindow.isDestroyed()) fullWindow.setOpacity(1)
-        }, 50)
+          if (!window.isDestroyed()) {
+            window.setAlwaysOnTop(false)
+          }
+        }, 75)
+        return
       }
 
-      this.options.onUpdateUiState({ window: 'mini', mode: 'chat' })
+      app.focus({ steal: true })
+      window.show()
+      window.moveTop()
+      window.focus()
       return
     }
 
-    // target === 'full'
-    if (this.compactMode) {
-      this.restoreFullSize()
+    if (process.platform === 'win32') {
+      app.focus({ steal: true })
+      window.show()
+      window.moveTop()
+      window.setAlwaysOnTop(true, 'screen-saver')
+      window.focus()
+      setTimeout(() => {
+        if (!window.isDestroyed()) {
+          window.setAlwaysOnTop(false)
+        }
+      }, 75)
+    } else {
+      app.focus({ steal: true })
+      window.show()
+      window.moveTop()
+      window.focus()
+    }
+  }
+
+  showWindow(target: ShellWindowMode) {
+    if (target === 'mini') {
+      if (!this.options.isAppReady()) return
+
+      const miniWindow = this.createMiniWindow()
+      const targetBounds = this.getPreferredMiniBounds()
+      this.miniShouldRestoreExternalApp =
+        process.platform === 'darwin' && this.getFocusedShellWindow() === null
+
+      if (miniWindow.isMinimized()) {
+        miniWindow.restore()
+      }
+      miniWindow.setBounds(targetBounds)
+      this.focusAndRaise(miniWindow, 'mini')
+      this.setLastActiveWindowMode('mini')
+      return
     }
 
     const fullWindow = this.createFullWindow()
-    this.lastActiveWindowMode = 'full'
+    if (this.isMiniShowing()) {
+      this.miniShouldRestoreExternalApp = false
+      this.hideMiniWindow(false)
+    }
     if (fullWindow.isMinimized()) {
       fullWindow.restore()
     }
-    this.focusAndRaise(fullWindow)
-    this.options.onUpdateUiState({ window: 'full', mode: 'chat' })
+    this.focusAndRaise(fullWindow, 'full')
+    this.setLastActiveWindowMode('full')
   }
 
   reloadFullWindow() {
     this.fullWindowController.reloadMainWindow()
+    this.miniWindowController.reloadMainWindow()
   }
 
   onActivate() {
     if (BrowserWindow.getAllWindows().length === 0) {
       this.createInitialWindows()
     }
-    this.showWindow('full')
+    this.showWindow(this.lastActiveWindowMode)
   }
 }

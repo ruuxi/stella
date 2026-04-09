@@ -113,7 +113,15 @@ export const createBootstrapServices = (options: {
       broadcastChatContext: () => captureService.broadcastChatContext(),
     },
     overlay: {
-      showRadial: (options) => state.overlayController?.showRadial(options),
+      showRadial: (options) =>
+        state.overlayController?.showRadial({
+          ...options,
+          hostWindow:
+            state.windowManager?.isFullWindowMacFullscreen() &&
+            state.windowManager?.getFullWindow()?.isFocused()
+              ? state.windowManager.getFullWindow()
+              : null,
+        }),
       hideRadial: () => state.overlayController?.hideRadial(),
       updateRadialCursor: () => state.overlayController?.updateRadialCursor(),
       getRadialBounds: () => state.overlayController?.getRadialBounds() ?? null,
@@ -123,6 +131,8 @@ export const createBootstrapServices = (options: {
       getLastActiveWindowMode: () =>
         state.windowManager?.getLastActiveWindowMode() ?? "full",
       isWindowFocused: () => state.windowManager?.isWindowFocused() ?? false,
+      isFullWindowMacFullscreen: () =>
+        state.windowManager?.isFullWindowMacFullscreen() ?? false,
       showWindow: (target) => state.windowManager?.showWindow(target),
       restoreFullSize: () => state.windowManager?.restoreFullSize(),
       minimizeWindow: () => state.windowManager?.minimizeWindow(),

@@ -49,17 +49,15 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
   ipcMain.on("window:close", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
-
-    if (options.windowManager.isCompactMode()) {
-      options.windowManager.restoreFullSize();
+    if (win === options.windowManager.getMiniWindow()) {
+      options.windowManager.hideMiniWindow(true);
       return;
     }
-
     win.close();
   });
 
   ipcMain.on("window:restoreSize", () => {
-    options.windowManager.restoreFullSize();
+    options.windowManager.showWindow("full");
   });
 
   ipcMain.handle("window:isMaximized", (event) => {
