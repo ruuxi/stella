@@ -1,3 +1,7 @@
+import { appendFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+
+import { AGENT_IDS } from "../../../src/shared/contracts/agent-runtime.js";
 import type { Agent } from "../agent-core/agent.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { RuntimeRunEventRecorder } from "./run-events.js";
@@ -55,6 +59,30 @@ const emitAgentEndHook = async (
     )
     .catch(() => undefined);
 };
+
+const appendLifeNote = async (
+  stellaHome: string,
+  runId: string,
+  finalText: string,
+): Promise<void> => {
+  if (!finalText.trim()) return;
+
+  const notesDir = join(stellaHome, "life", "notes");
+  const today = new Date().toISOString().slice(0, 10);
+  const notesFile = join(notesDir, `${today}.md`);
+  const timestamp = new Date().toISOString().slice(11, 19);
+  const entry = `\n## ${timestamp}\n\nrun: \`${runId}\`\n\n${finalText.trim()}\n`;
+
+  try {
+    await mkdir(notesDir, { recursive: true });
+    await appendFile(notesFile, entry, "utf-8");
+  } catch {
+    logger.debug("life-notes.append-failed", { notesFile });
+  }
+};
+
+const shouldAppendLifeNote = (agentType: string): boolean =>
+  agentType === AGENT_IDS.GENERAL;
 
 const detectSelfModApplied = async (
   opts: OrchestratorRunOptions,
@@ -168,6 +196,9 @@ export const finalizeSubagentSuccess = async (args: {
   threadKey: string;
   result: string;
 }): Promise<SubagentRunResult> => {
+  if (shouldAppendLifeNote(args.opts.agentType)) {
+    await appendLifeNote(args.opts.stellaHome, args.runId, args.result);
+  }
   if (args.result.trim()) {
     await compactRuntimeThreadHistory({
       store: args.opts.store,

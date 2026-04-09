@@ -54,6 +54,7 @@ export const executeRuntimeAgentPrompt = async (args: {
   }>;
   runId: string;
   agentType: string;
+  userMessageId: string;
   recorder: RuntimeRunEventRecorder;
   abortSignal?: AbortSignal;
   callbacks?: Partial<RuntimeRunCallbacks>;
@@ -104,6 +105,7 @@ export const executeRuntimeAgentPrompt = async (args: {
       const uiVisibility = promptInputs[index]?.uiVisibility;
       if (uiVisibility) {
         args.callbacks?.onUserMessage?.({
+          userMessageId: args.userMessageId,
           text: promptInputs[index]!.text,
           timestamp: promptMessage.timestamp,
           uiVisibility,

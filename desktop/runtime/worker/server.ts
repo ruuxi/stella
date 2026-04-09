@@ -605,7 +605,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         ensureChatStore().appendEvent({
           conversationId: payload.conversationId,
           type: "user_message",
-          requestId: userMessageId,
+          requestId: ev.userMessageId,
           timestamp: hiddenTimestamp,
           payload: prepareStoredLocalChatPayload({
             type: "user_message",
@@ -690,12 +690,12 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           ensureChatStore().appendEvent({
             conversationId: payload.conversationId,
             type: "assistant_message",
-            requestId: userMessageId,
+            requestId: ev.userMessageId,
             payload: prepareStoredLocalChatPayload({
               type: "assistant_message",
               payload: {
                 text: ev.finalText,
-                userMessageId,
+                userMessageId: ev.userMessageId,
               },
               timestamp: Date.now(),
               timezone: payload.timezone,

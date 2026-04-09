@@ -22,27 +22,32 @@ export function StickyThinkingFooter({
     () => tasks.filter((task) => task.status === "running"),
     [tasks],
   );
+  const completedTasks = useMemo(
+    () => tasks.filter((task) => task.status === "completed"),
+    [tasks],
+  );
+  const displayTasks = runningTasks.length > 0 ? runningTasks : completedTasks;
   const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
     setActiveIndex(0);
-  }, [runningTasks.length]);
+  }, [displayTasks.length]);
 
   useEffect(() => {
-    if (runningTasks.length <= 1) {
+    if (displayTasks.length <= 1) {
       return;
     }
 
     const intervalId = window.setInterval(() => {
-      setActiveIndex((current) => (current + 1) % runningTasks.length);
+      setActiveIndex((current) => (current + 1) % displayTasks.length);
     }, TASK_ROTATE_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [runningTasks]);
+  }, [displayTasks]);
 
   const activeTask =
-    runningTasks.length > 0
-      ? runningTasks[activeIndex % runningTasks.length]
+    displayTasks.length > 0
+      ? displayTasks[activeIndex % displayTasks.length]
       : null;
 
   if (!activeTask && !isStreaming) {

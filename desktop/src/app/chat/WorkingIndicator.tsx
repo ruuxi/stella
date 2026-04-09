@@ -35,14 +35,20 @@ export function WorkingIndicator({
   }, []);
 
   let displayStatus: string;
+  const activeTask = tasks?.[0];
+  const shimmerActive = !activeTask || activeTask.status === "running";
 
   if (status) {
     displayStatus = status;
   } else if (tasks && tasks.length > 0) {
     const task = tasks[0];
-    const label = getAgentLabel(task.agentType);
     const taskText = task.statusText ?? task.description;
-    displayStatus = taskText ? `${label} \u00b7 ${taskText}` : label;
+    if (task.status === "completed") {
+      displayStatus = taskText ? `Task complete \u00b7 ${taskText}` : "Task complete";
+    } else {
+      const label = getAgentLabel(task.agentType);
+      displayStatus = taskText ? `${label} \u00b7 ${taskText}` : label;
+    }
   } else {
     displayStatus = computeStatus({ toolName, isReasoning, isResponding });
   }
@@ -54,7 +60,11 @@ export function WorkingIndicator({
           {animReady && <StellaAnimation width={20} height={20} maxDpr={1} frameSkip={2} />}
         </div>
       </div>
-      <TextShimmer text={displayStatus} active={true} className="working-status" />
+      <TextShimmer
+        text={displayStatus}
+        active={shimmerActive}
+        className="working-status"
+      />
       {duration && (
         <>
           <span className="working-separator">{"\u00b7"}</span>

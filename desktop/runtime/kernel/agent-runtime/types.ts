@@ -32,6 +32,7 @@ export type RuntimeStreamEvent = {
   agentType: string;
   seq: number;
   chunk: string;
+  userMessageId: string;
 };
 
 export type RuntimeToolStartEvent = {
@@ -70,6 +71,7 @@ export type RuntimeStatusEvent = {
 };
 
 export type RuntimeUserMessageEvent = {
+  userMessageId: string;
   text: string;
   timestamp: number;
   uiVisibility?: "visible" | "hidden";
@@ -79,6 +81,7 @@ export type RuntimeEndEvent = {
   runId: string;
   agentType: string;
   seq: number;
+  userMessageId: string;
   finalText: string;
   persisted: boolean;
   selfModApplied?: SelfModAppliedPayload;

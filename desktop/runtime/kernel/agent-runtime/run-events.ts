@@ -40,6 +40,7 @@ type RunRecorderArgs = {
   runId: string;
   conversationId: string;
   agentType: string;
+  userMessageId: string;
 };
 
 export type RuntimeRunEventRecorder = ReturnType<typeof createRunEventRecorder>;
@@ -49,6 +50,7 @@ export const createRunEventRecorder = ({
   runId,
   conversationId,
   agentType,
+  userMessageId,
 }: RunRecorderArgs) => {
   let seq = 0;
   const nextSeq = () => ++seq;
@@ -80,6 +82,7 @@ export const createRunEventRecorder = ({
         agentType,
         seq,
         chunk,
+        userMessageId,
       };
     },
 
@@ -161,6 +164,7 @@ export const createRunEventRecorder = ({
         runId,
         agentType,
         seq,
+        userMessageId,
         finalText: args.finalText,
         persisted: true,
         ...(args.selfModApplied ? { selfModApplied: args.selfModApplied } : {}),
