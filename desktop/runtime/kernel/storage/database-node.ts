@@ -1,4 +1,4 @@
-import BetterSqliteDatabase from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 import {
   getDesktopDatabasePath,
   initializeDesktopDatabase,
@@ -6,7 +6,7 @@ import {
 import type { SqliteDatabase } from "./shared.js";
 
 const openDatabase = (dbPath: string): SqliteDatabase =>
-  new BetterSqliteDatabase(dbPath) as unknown as SqliteDatabase;
+  new DatabaseSync(dbPath, { timeout: 5000 }) as unknown as SqliteDatabase;
 
 export const createDesktopDatabase = (stellaHome: string): SqliteDatabase => {
   const db = openDatabase(getDesktopDatabasePath(stellaHome));
