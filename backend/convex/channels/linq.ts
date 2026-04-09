@@ -368,7 +368,7 @@ export const sendWelcomeMessage = internalAction({
 // ---------------------------------------------------------------------------
 
 const E164_REGEX = /^\+[1-9]\d{6,14}$/;
-const STELLA_VCARD_URL = "https://impartial-crab-34.convex.site/stella.vcf";
+const STELLA_VCARD_URL = "https://benevolent-minnow-586.convex.site/stella.vcf";
 
 export const sendLinqLinkSms = action({
   args: { phoneNumber: v.string() },
