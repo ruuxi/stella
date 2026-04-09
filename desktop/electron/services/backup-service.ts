@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import type { RuntimeHealthSnapshot } from "../../runtime/protocol/index.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
@@ -1055,11 +1056,9 @@ export class BackupService {
     }
     const snapshotPath = path.join(args.tempRoot, "stella.snapshot.sqlite");
     await fs.rm(snapshotPath, { force: true }).catch(() => undefined);
-    const BetterSqliteDatabase = (await import("better-sqlite3")).default;
-    const db = new BetterSqliteDatabase(sqlitePath);
+    const db = new DatabaseSync(sqlitePath, { timeout: 5000 });
     try {
-      db.pragma("busy_timeout = 5000");
-      db.pragma("wal_checkpoint(PASSIVE)");
+      db.exec("PRAGMA wal_checkpoint(PASSIVE);");
       db.exec(`VACUUM INTO ${quoteSqlString(snapshotPath)}`);
     } finally {
       db.close();
