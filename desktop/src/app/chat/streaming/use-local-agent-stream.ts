@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import { showToast } from "@/ui/toast";
 import {
@@ -53,6 +53,8 @@ function attachmentsForStartChat(
 const isTokenSyncIssue = (reason: string | null) =>
   Boolean(reason && reason.toLowerCase().match(/token|auth/));
 
+const TASK_COMPLETION_INDICATOR_MS = 3000;
+
 export function useLocalAgentStream({
   activeConversationId,
   storageMode,
@@ -90,12 +92,48 @@ export function useLocalAgentStream({
   >([]);
   const pendingQueuedStartCountRef = useRef(0);
   const agentStreamCleanupRef = useRef<(() => void) | null>(null);
+  const liveTaskRemovalTimeoutsRef = useRef(new Map<string, number>());
+
+  const clearScheduledTaskRemoval = useCallback((taskId: string) => {
+    const timeoutId = liveTaskRemovalTimeoutsRef.current.get(taskId);
+    if (typeof timeoutId === "number") {
+      window.clearTimeout(timeoutId);
+      liveTaskRemovalTimeoutsRef.current.delete(taskId);
+    }
+  }, []);
+
+  const scheduleTaskRemoval = useCallback(
+    (taskId: string, delayMs: number) => {
+      clearScheduledTaskRemoval(taskId);
+      const timeoutId = window.setTimeout(() => {
+        liveTaskRemovalTimeoutsRef.current.delete(taskId);
+        setLiveTasksById((current) => {
+          if (!(taskId in current)) {
+            return current;
+          }
+          const next = { ...current };
+          delete next[taskId];
+          return next;
+        });
+      }, delayMs);
+      liveTaskRemovalTimeoutsRef.current.set(taskId, timeoutId);
+    },
+    [clearScheduledTaskRemoval],
+  );
+
+  const clearAllScheduledTaskRemovals = useCallback(() => {
+    for (const timeoutId of liveTaskRemovalTimeoutsRef.current.values()) {
+      window.clearTimeout(timeoutId);
+    }
+    liveTaskRemovalTimeoutsRef.current.clear();
+  }, []);
 
   const upsertLiveTask = useCallback(
     (
       taskId: string,
       updater: (current?: TaskItem) => TaskItem,
     ) => {
+      clearScheduledTaskRemoval(taskId);
       setLiveTasksById((current) => {
         const nextTask = updater(current[taskId]);
         return {
@@ -104,10 +142,11 @@ export function useLocalAgentStream({
         };
       });
     },
-    [],
+    [clearScheduledTaskRemoval],
   );
 
   const removeLiveTask = useCallback((taskId: string) => {
+    clearScheduledTaskRemoval(taskId);
     setLiveTasksById((current) => {
       if (!(taskId in current)) {
         return current;
@@ -116,11 +155,12 @@ export function useLocalAgentStream({
       delete next[taskId];
       return next;
     });
-  }, []);
+  }, [clearScheduledTaskRemoval]);
 
   const clearLiveTasks = useCallback(() => {
+    clearAllScheduledTaskRemovals();
     setLiveTasksById({});
-  }, []);
+  }, [clearAllScheduledTaskRemovals]);
 
   const resetStreamingState = useCallback(
     (runId?: number) => {
@@ -177,6 +217,15 @@ export function useLocalAgentStream({
     setPendingUserMessageId(nextRun.userMessageId);
   }, [resetReasoningText, resetStreamingText]);
 
+  const adoptUserMessageForRun = useCallback((runId: string, userMessageId?: string) => {
+    if (!userMessageId) {
+      return;
+    }
+    userMessageIdByRunIdRef.current.set(runId, userMessageId);
+    latestUserMessageIdRef.current = userMessageId;
+    setPendingUserMessageId(userMessageId);
+  }, []);
+
   const cancelCurrentStream = useCallback(() => {
     const runIdCounter = streamRunIdRef.current;
     if (runIdCounter > 0) {
@@ -203,6 +252,13 @@ export function useLocalAgentStream({
       agentStreamCleanupRef.current = null;
     }
   }, [clearLiveTasks, resetStreamingState]);
+
+  useEffect(
+    () => () => {
+      clearAllScheduledTaskRemovals();
+    },
+    [clearAllScheduledTaskRemovals],
+  );
 
   const handleAgentEvent = useCallback(
     (event: AgentStreamEvent, runIdCounter: number) => {
@@ -233,8 +289,7 @@ export function useLocalAgentStream({
         );
         if (queuedIndex !== -1) {
           const entry = queuedRunStartsRef.current.splice(queuedIndex, 1)[0];
-          userMessageIdByRunIdRef.current.set(entry.runId, entry.userMessageId);
-          setPendingUserMessageId(entry.userMessageId);
+          adoptUserMessageForRun(entry.runId, entry.userMessageId);
         }
       }
 
@@ -253,6 +308,10 @@ export function useLocalAgentStream({
       seqMap.set(event.runId, event.seq);
       const isPrimaryRun =
         !localRunIdRef.current || event.runId === localRunIdRef.current;
+
+      if (isPrimaryRun && isOrchestratorEvent) {
+        adoptUserMessageForRun(event.runId, event.userMessageId);
+      }
 
       switch (event.type) {
         case AGENT_STREAM_EVENT_TYPES.STREAM:
@@ -319,7 +378,20 @@ export function useLocalAgentStream({
           break;
         case AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED:
           if (event.taskId) {
-            removeLiveTask(event.taskId);
+            const completedAtMs = Date.now();
+            upsertLiveTask(event.taskId, (current) => ({
+              id: event.taskId!,
+              description: event.description ?? current?.description ?? "Task",
+              agentType: event.agentType ?? current?.agentType ?? "task",
+              status: "completed",
+              parentTaskId: event.parentTaskId ?? current?.parentTaskId,
+              statusText: event.statusText ?? current?.statusText,
+              startedAtMs: current?.startedAtMs ?? completedAtMs,
+              completedAtMs,
+              lastUpdatedAtMs: completedAtMs,
+              outputPreview: event.result ?? current?.outputPreview,
+            }));
+            scheduleTaskRemoval(event.taskId, TASK_COMPLETION_INDICATOR_MS);
           }
           console.log(
             `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ""}`.trim(),
@@ -369,9 +441,9 @@ export function useLocalAgentStream({
             break;
           }
           {
-            const linkedUserMessageId = userMessageIdByRunIdRef.current.get(
-              event.runId,
-            );
+            const linkedUserMessageId =
+              userMessageIdByRunIdRef.current.get(event.runId) ??
+              event.userMessageId;
             setRuntimeStatusText(null);
             console.log(
               `[stella:trace] end | finalText=${(event.finalText ?? streamingTextRef.current).slice(0, 200)}`,
@@ -402,10 +474,13 @@ export function useLocalAgentStream({
     [
       activateNextQueuedRun,
       appendStreamingDelta,
+      adoptUserMessageForRun,
       resetReasoningText,
       resetStreamingState,
       resetStreamingText,
+      scheduleTaskRemoval,
       streamingTextRef,
+      upsertLiveTask,
     ],
   );
 

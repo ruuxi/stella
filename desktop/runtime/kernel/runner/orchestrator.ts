@@ -66,6 +66,7 @@ export const createOrchestratorController = (
     startArgs: {
       conversationId: string;
       userPrompt: string;
+      promptMessages?: ChatPayload["promptMessages"];
       agentType: string;
       userMessageId: string;
     },
@@ -79,7 +80,11 @@ export const createOrchestratorController = (
     const conversationId = startArgs.conversationId;
     const agentType = startArgs.agentType;
     const userPrompt = startArgs.userPrompt.trim();
-    if (!userPrompt) {
+    const promptMessages = startArgs.promptMessages;
+    const hasPromptMessages = Boolean(
+      promptMessages?.some((message) => message.text.trim().length > 0),
+    );
+    if (!userPrompt && !hasPromptMessages) {
       throw new Error("Missing user prompt");
     }
 
@@ -91,6 +96,7 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
+      ...(promptMessages?.length ? { promptMessages } : {}),
       attachments: [],
       replayTurn: payload.requeueOnInterrupt ? payload : null,
       userMessageId: startArgs.userMessageId,
