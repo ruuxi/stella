@@ -19,6 +19,7 @@ import authConfig from "./auth.config";
 import { ConvexError, v } from "convex/values";
 import betterAuthSchema from "./betterAuth/schema";
 import { buildMagicLinkEmail } from "./lib/email_templates";
+import { appReviewAuth } from "./lib/app_review_auth";
 
 const getRequiredEnv = (name: string) => {
   const value = process.env[name];
@@ -278,6 +279,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
           });
         },
       }),
+      appReviewAuth(),
       jwt({
         jwks: {
           keyPairConfig: {
