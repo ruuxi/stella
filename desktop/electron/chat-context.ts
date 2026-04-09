@@ -1,5 +1,6 @@
 import { getSelectedText } from './selected-text.js'
 import { getWindowInfoAtPoint } from './window-capture.js'
+import { captureWindowContent } from './window-content-capture.js'
 import type { ChatContext } from '../src/shared/contracts/boundary.js'
 
 type CaptureChatContextOptions = {
@@ -12,17 +13,26 @@ export const captureChatContext = async (
 ): Promise<ChatContext> => {
   const excludePids = options?.excludeCurrentProcessWindows ? [process.pid] : undefined
 
-  // Capture selected text and window metadata in parallel.
   const [selectedText, windowInfo] = await Promise.all([
     getSelectedText(),
     getWindowInfoAtPoint(point.x, point.y, { excludePids }),
   ])
 
-  const window = windowInfo && (windowInfo.title || windowInfo.process)
+  let windowScreenshot: ChatContext['windowScreenshot'] = null
+  let capturedWindowInfo = windowInfo
+  if (windowInfo) {
+    const capture = await captureWindowContent(point.x, point.y, { excludePids, windowInfo })
+    if (capture) {
+      capturedWindowInfo = capture.windowInfo
+      windowScreenshot = capture.screenshot
+    }
+  }
+
+  const window = capturedWindowInfo && (capturedWindowInfo.title || capturedWindowInfo.process)
     ? {
-        title: windowInfo.title,
-        app: windowInfo.process,
-        bounds: windowInfo.bounds,
+        title: capturedWindowInfo.title,
+        app: capturedWindowInfo.process,
+        bounds: capturedWindowInfo.bounds,
       }
     : null
 
@@ -31,5 +41,6 @@ export const captureChatContext = async (
     browserUrl: null,
     selectedText,
     regionScreenshots: [],
+    windowScreenshot,
   }
 }

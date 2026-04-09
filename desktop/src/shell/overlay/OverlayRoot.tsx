@@ -25,6 +25,7 @@ import "./overlays.css";
  */
 
 type WindowBounds = { x: number; y: number; width: number; height: number };
+type WindowHighlightTone = "default" | "subtle";
 
 type OverlayState = {
   radialVisible: boolean;
@@ -32,6 +33,7 @@ type OverlayState = {
   radialCompactFocused: boolean;
   radialFullFocused: boolean;
   windowHighlightBounds: WindowBounds | null;
+  windowHighlightTone: WindowHighlightTone;
   regionCaptureActive: boolean;
   voiceVisible: boolean;
   voicePosition: { x: number; y: number } | null;
@@ -47,7 +49,11 @@ type OverlayAction =
       fullFocused?: boolean;
     }
   | { type: "radial:hide" }
-  | { type: "overlay:windowHighlight"; bounds: WindowBounds | null }
+  | {
+      type: "overlay:windowHighlight";
+      bounds: WindowBounds | null;
+      tone?: WindowHighlightTone;
+    }
   | { type: "region"; active: boolean }
   | { type: "voice:show"; position: { x: number; y: number } }
   | { type: "voice:hide" }
@@ -67,6 +73,7 @@ const initialState: OverlayState = {
   radialCompactFocused: false,
   radialFullFocused: false,
   windowHighlightBounds: null,
+  windowHighlightTone: "default",
   regionCaptureActive: false,
   voiceVisible: false,
   voicePosition: null,
@@ -100,7 +107,11 @@ function overlayReducer(
         ? { ...state, radialVisible: false, radialCompactFocused: false, radialFullFocused: false }
         : state;
     case "overlay:windowHighlight":
-      return { ...state, windowHighlightBounds: action.bounds };
+      return {
+        ...state,
+        windowHighlightBounds: action.bounds,
+        windowHighlightTone: action.bounds ? (action.tone ?? "default") : "default",
+      };
     case "region":
       return state.regionCaptureActive === action.active
         ? state
@@ -199,8 +210,19 @@ function useOverlayIPC(
         dispatch({ type: "radial:hide" });
       }, 300);
     });
-    const cleanupWindowHighlight = api.overlay.onWindowHighlight?.((bounds) => {
-      dispatch({ type: "overlay:windowHighlight", bounds });
+    const cleanupWindowHighlight = api.overlay.onWindowHighlight?.((payload) => {
+      dispatch({
+        type: "overlay:windowHighlight",
+        bounds: payload
+          ? {
+              x: payload.x,
+              y: payload.y,
+              width: payload.width,
+              height: payload.height,
+            }
+          : null,
+        tone: payload?.tone,
+      });
     });
 
     return () => {
@@ -404,7 +426,11 @@ export function OverlayRoot() {
           such as capture hover or the disabled Include badge hover. */}
       {state.windowHighlightBounds && (
         <div
-          className="radial-window-ring"
+          className={
+            state.windowHighlightTone === "subtle"
+              ? "radial-window-ring radial-window-ring--subtle"
+              : "radial-window-ring"
+          }
           style={{
             left: state.windowHighlightBounds.x,
             top: state.windowHighlightBounds.y,

@@ -28,6 +28,10 @@ export type PreparedOrchestratorRun = {
   conversationId: string;
   agentType: string;
   userPrompt: string;
+  promptMessages?: Array<{
+    text: string;
+    uiVisibility?: "visible" | "hidden";
+  }>;
   attachments: RuntimeAttachmentRef[];
   agentContext: LocalTaskManagerAgentContext;
   resolvedLlm: ReturnType<typeof resolveRunnerLlmRoute>;
@@ -43,6 +47,10 @@ export const prepareOrchestratorRun = async (args: {
   conversationId: string;
   agentType: string;
   userPrompt: string;
+  promptMessages?: Array<{
+    text: string;
+    uiVisibility?: "visible" | "hidden";
+  }>;
   attachments: RuntimeAttachmentRef[];
   replayTurn?: QueuedOrchestratorTurn | null;
 }): Promise<PreparedOrchestratorRun> => {
@@ -76,6 +84,7 @@ export const prepareOrchestratorRun = async (args: {
     conversationId: args.conversationId,
     agentType: args.agentType,
     userPrompt: args.userPrompt,
+    promptMessages: args.promptMessages,
     attachments: args.attachments,
     agentContext,
     resolvedLlm,
@@ -109,6 +118,9 @@ export const launchPreparedOrchestratorRun = (args: {
     userMessageId: args.userMessageId,
     agentType: prepared.agentType,
     userPrompt: prepared.userPrompt,
+    ...(prepared.promptMessages?.length
+      ? { promptMessages: prepared.promptMessages }
+      : {}),
     attachments: prepared.attachments,
     agentContext: prepared.agentContext,
     callbacks: args.runtimeCallbacks,
@@ -154,6 +166,10 @@ export const startPreparedOrchestratorRun = async (args: {
   conversationId: string;
   agentType: string;
   userPrompt: string;
+  promptMessages?: Array<{
+    text: string;
+    uiVisibility?: "visible" | "hidden";
+  }>;
   attachments: RuntimeAttachmentRef[];
   userMessageId: string;
   webSearch: WebSearch;
@@ -175,6 +191,7 @@ export const startPreparedOrchestratorRun = async (args: {
     conversationId: args.conversationId,
     agentType: args.agentType,
     userPrompt: args.userPrompt,
+    promptMessages: args.promptMessages,
     attachments: args.attachments,
     replayTurn: args.replayTurn,
   });

@@ -22,6 +22,8 @@ type WindowCapture = {
   }
 }
 
+export type { WindowCapture }
+
 type QueryWindowInfoOptions = {
   excludePids?: number[]
 }

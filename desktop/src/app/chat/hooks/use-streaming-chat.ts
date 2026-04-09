@@ -4,9 +4,9 @@ import { useChatStore } from '@/context/chat-store'
 import { getOrCreateDeviceId } from '@/platform/electron/device'
 import type { SendMessageArgs } from '../streaming/chat-types'
 import type { EventRecord } from '@/app/chat/lib/event-transforms'
+import { resolveComposerContextState } from '../composer-context'
 import {
   buildAllLocalAttachments,
-  buildCombinedPrompt,
 } from '../streaming/message-context'
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
 
@@ -67,13 +67,17 @@ export function useStreamingChat({
   const sendMessage = useCallback(
     async (options: SendMessageArgs) => {
       const resolvedConversationId = activeConversationId
-      const { combinedText, hasAttachments } = buildCombinedPrompt({
-        text: options.text,
-        selectedText: options.selectedText,
-        chatContext: options.chatContext,
-      })
+      const cleanedText = options.text.trim()
+      const contextState = resolveComposerContextState(
+        options.chatContext,
+        options.selectedText,
+      )
+      const hasAttachments = Boolean(
+        options.chatContext?.regionScreenshots?.length
+          || options.chatContext?.files?.length,
+      )
 
-      if (!resolvedConversationId || (!combinedText && !hasAttachments)) {
+      if (!resolvedConversationId || (!cleanedText && !contextState.hasSubmittableContext)) {
         return
       }
 
@@ -114,7 +118,9 @@ export function useStreamingChat({
           `[stella:trace] sendMessage (follow_up queued) | convId=${resolvedConversationId}`,
         )
         queueStream({
-          userPrompt: combinedText,
+          userPrompt: cleanedText,
+          selectedText: options.selectedText,
+          chatContext: options.chatContext,
           deviceId,
           platform,
           timezone,
@@ -126,10 +132,12 @@ export function useStreamingChat({
       }
 
       console.log(
-        `[stella:trace] sendMessage | convId=${resolvedConversationId} | text=${combinedText.slice(0, 200)}`,
+        `[stella:trace] sendMessage | convId=${resolvedConversationId} | text=${cleanedText.slice(0, 200)}`,
       )
       startStream({
-        userPrompt: combinedText,
+        userPrompt: cleanedText,
+        selectedText: options.selectedText,
+        chatContext: options.chatContext,
         deviceId,
         platform,
         timezone,

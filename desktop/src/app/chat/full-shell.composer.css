@@ -14,6 +14,7 @@
 .composer-floating-context {
   width: 100%;
   max-width: min(var(--full-chat-composer-max-width), calc(100% - 48px));
+  padding-left: 10px;
 }
 
 /* === Shell: visual container with animated height + border-radius === */

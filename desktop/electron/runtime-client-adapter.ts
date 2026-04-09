@@ -350,6 +350,8 @@ export class RuntimeClientAdapter {
     payload: {
       conversationId: string;
       userPrompt: string;
+      selectedText?: string | null;
+      chatContext?: import("../runtime/contracts/index.js").ChatContext | null;
       deviceId?: string;
       platform?: string;
       timezone?: string;
