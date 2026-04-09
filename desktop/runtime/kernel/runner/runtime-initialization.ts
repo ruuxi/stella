@@ -11,7 +11,6 @@ const logger = createRuntimeLogger("runtime-init");
 export const createRuntimeInitialization = (
   context: RunnerContext,
   deps: {
-    refreshLoadedSkills: () => Promise<unknown>;
     disposeConvexClient: () => void;
     syncRemoteTurnBridge: () => void;
     shutdownTasks: () => void;
@@ -84,7 +83,6 @@ export const createRuntimeInitialization = (
   };
 
   const initializeRuntime = () => {
-    const skillsLoad = deps.refreshLoadedSkills().then(() => undefined).catch(() => undefined);
     const agentsLoad = Promise.resolve()
       .then(() => loadBundledAgents())
       .then((agents) => {
@@ -142,7 +140,6 @@ export const createRuntimeInitialization = (
       });
 
     context.state.initializationPromise = Promise.all([
-      skillsLoad,
       agentsLoad,
       extensionsLoad,
     ]).then(() => {

@@ -9,7 +9,6 @@ import {
   handleBash,
   handleKillShell,
   handleShellStatus,
-  handleSkillBash,
   type ShellState,
 } from "./shell.js";
 import {
@@ -57,7 +56,6 @@ export const createShellToolHandlers = (
   Bash: (args, context) => handleBash(shellState, args, context),
   KillShell: (args, _context) => handleKillShell(shellState, args),
   ShellStatus: (args, _context) => handleShellStatus(shellState, args),
-  SkillBash: (args, context) => handleSkillBash(shellState, args, context),
 });
 
 export const createTaskToolHandlers = (

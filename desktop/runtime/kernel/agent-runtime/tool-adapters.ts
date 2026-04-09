@@ -98,8 +98,6 @@ type RuntimeToolContextArgs = {
   frontendRoot?: string;
   taskDepth?: number;
   maxTaskDepth?: number;
-  defaultSkills?: string[];
-  skillIds?: string[];
 };
 
 export const buildRuntimeToolContext = (
@@ -118,8 +116,6 @@ export const buildRuntimeToolContext = (
   ...(typeof args.maxTaskDepth === "number"
     ? { maxTaskDepth: args.maxTaskDepth }
     : {}),
-  ...(args.defaultSkills ? { defaultSkills: args.defaultSkills } : {}),
-  ...(args.skillIds ? { skillIds: args.skillIds } : {}),
 });
 
 type RuntimeToolExecutionArgs = RuntimeToolContextArgs & {
@@ -217,8 +213,6 @@ export const createPiTools = (opts: {
   maxTaskDepth?: number;
   toolsAllowlist?: string[];
   toolCatalog?: ToolMetadata[];
-  defaultSkills?: string[];
-  skillIds?: string[];
   store: RuntimeStore;
   loadTools?: (args: {
     taskId?: string;
@@ -269,8 +263,6 @@ export const createPiTools = (opts: {
           frontendRoot: opts.frontendRoot,
           taskDepth: opts.taskDepth,
           maxTaskDepth: opts.maxTaskDepth,
-          defaultSkills: opts.defaultSkills,
-          skillIds: opts.skillIds,
           store: opts.store,
           toolExecutor: opts.toolExecutor,
           webSearch: opts.webSearch,

@@ -1,6 +1,5 @@
 import path from "path";
 import { createToolHost } from "../tools/host.js";
-import { loadSkillsFromHome } from "../agents/skills.js";
 import { HookEmitter } from "../extensions/hook-emitter.js";
 import {
   getDefaultModel,
@@ -27,7 +26,6 @@ import {
 } from "../runtime-threads.js";
 import { anyApi } from "convex/server";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
-import type { ParsedSkill } from "../agents/manifests.js";
 import type {
   RunnerContext,
   ParsedAgentLike,
@@ -346,7 +344,6 @@ export const createRunnerContext = ({
     appendLocalChatEvent,
     getDefaultConversationId,
     paths: {
-      skillsPath: path.join(stellaHomePath, "life", "knowledge"),
       extensionsPath: path.join(stellaHomePath, "runtime", "extensions"),
     },
     state: {
@@ -371,8 +368,6 @@ export const createRunnerContext = ({
       interruptAfterTool: false,
       activeInterruptedReplayTurn: null,
       loadedAgents: [],
-      loadedSkills: [],
-      loadedSkillsPromise: null,
       googleWorkspaceToolNames: null,
       googleWorkspaceDisconnect: null,
       googleWorkspaceCallTool: null,
@@ -384,24 +379,6 @@ export const createRunnerContext = ({
   });
 
   return context;
-};
-
-export const refreshLoadedSkills = (
-  context: RunnerContext,
-): Promise<ParsedSkill[]> => {
-  const loadPromise = loadSkillsFromHome(context.paths.skillsPath)
-    .then((skills) => {
-      context.state.loadedSkills = skills;
-      context.toolHost.setSkills(skills);
-      return skills;
-    })
-    .catch(() => {
-      context.state.loadedSkills = [];
-      context.toolHost.setSkills([]);
-      return [];
-    });
-  context.state.loadedSkillsPromise = loadPromise;
-  return loadPromise;
 };
 
 export const resolveAgent = (
@@ -441,16 +418,6 @@ export const buildAgentContext = async (
     };
   },
 ): Promise<LocalTaskManagerAgentContext> => {
-  const availableSkills = context.state.loadedSkillsPromise
-    ? await context.state.loadedSkillsPromise
-    : context.state.loadedSkills;
-  const availableSkillIds = Array.from(
-    new Set(
-      availableSkills
-        .map((skill) => skill.id)
-        .filter((id) => id !== "google-workspace"),
-    ),
-  );
   const agent = resolveAgent(context, args.agentType);
   const model = getConfiguredModel(context, args.agentType, agent);
   const resolvedLlm = resolveRunnerLlmRoute(
@@ -519,10 +486,6 @@ export const buildAgentContext = async (
     toolsAllowlist,
     model,
     maxTaskDepth: agent?.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH,
-    defaultSkills: (agent?.defaultSkills ?? []).filter((skillId) =>
-      availableSkillIds.includes(skillId),
-    ),
-    skillIds: availableSkillIds,
     coreMemory: readCoreMemory(context.stellaHomePath),
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,

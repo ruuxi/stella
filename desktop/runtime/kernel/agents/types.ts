@@ -5,7 +5,6 @@ export type ParsedAgent = {
   systemPrompt: string;
   agentTypes: string[];
   toolsAllowlist?: string[];
-  defaultSkills?: string[];
   model?: string;
   maxTaskDepth?: number;
 };

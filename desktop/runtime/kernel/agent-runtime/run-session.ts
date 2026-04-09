@@ -15,6 +15,7 @@ type SessionOptions = Pick<
   | "rootRunId"
   | "taskId"
   | "conversationId"
+  | "userMessageId"
   | "agentType"
   | "agentContext"
   | "toolCatalog"
@@ -55,6 +56,7 @@ export const createRuntimeExecutionSession = (
     runId,
     conversationId: opts.conversationId,
     agentType: opts.agentType,
+    userMessageId: opts.userMessageId,
   });
 
   const tools = createPiTools({
@@ -70,8 +72,6 @@ export const createRuntimeExecutionSession = (
     maxTaskDepth: opts.agentContext.maxTaskDepth,
     toolsAllowlist: opts.agentContext.toolsAllowlist,
     toolCatalog: opts.toolCatalog,
-    defaultSkills: opts.agentContext.defaultSkills,
-    skillIds: opts.agentContext.skillIds,
     store: opts.store,
     toolExecutor: opts.toolExecutor,
     loadTools: opts.loadTools,
