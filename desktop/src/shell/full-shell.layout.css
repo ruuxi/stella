@@ -16,11 +16,6 @@
   padding: 0;
 }
 
-.window-shell.mini {
-  padding: 12px;
-  gap: 8px;
-}
-
 /* Header - minimal, positioned at top */
 .window-header {
   position: absolute;
@@ -150,10 +145,6 @@
   cursor: default;
   -webkit-app-region: no-drag;
   transition: color 0.15s ease;
-}
-
-.compact-hamburger--mac {
-  left: 80px;
 }
 
 .compact-hamburger:hover {

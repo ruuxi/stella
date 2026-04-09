@@ -13,10 +13,10 @@ import { useUiState } from "@/context/ui-state";
 import { useWorkspace } from "@/context/workspace-state";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { dispatchCloseSidebarChat, dispatchOpenSidebarChat, dispatchShowHome } from "@/shared/lib/stella-orb-chat";
-import { getPlatform } from "@/platform/electron/platform";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
+import { WindowRadialOverlay } from "./WindowRadialOverlay";
 import { DisplayOverlay } from "./DisplayOverlay";
 import { FullShellDialogs } from "./full-shell-dialogs";
 import type { DialogType } from "./full-shell-dialogs";
@@ -205,7 +205,7 @@ export const FullShellReadySurface = ({
         <div className="content-area">
           <button
             type="button"
-            className={`compact-hamburger${getPlatform() === "darwin" ? " compact-hamburger--mac" : ""}`}
+            className="compact-hamburger"
             onClick={() => setDrawerOpen(true)}
             aria-label="Open menu"
           >
@@ -260,6 +260,7 @@ export const FullShellReadySurface = ({
         onConnect={showConnectDialog}
       />
 
+      <WindowRadialOverlay />
       <DisplayOverlay />
     </>
   );

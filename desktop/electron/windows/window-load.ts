@@ -1,20 +1,37 @@
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow, LoadFileOptions } from 'electron'
 import path from 'path'
 
-export type WindowLoadMode = 'full' | 'overlay'
+export type WindowLoadMode = 'full' | 'mini' | 'overlay'
 
 const getWindowEntryFile = (windowMode: WindowLoadMode) => {
   switch (windowMode) {
     case 'overlay':
       return 'overlay.html'
+    case 'mini':
     case 'full':
     default:
       return 'index.html'
   }
 }
 
+const getWindowQuery = (
+  windowMode: WindowLoadMode,
+): LoadFileOptions['query'] | undefined => {
+  if (windowMode === 'mini') {
+    return { window: 'mini' }
+  }
+  return undefined
+}
+
 export const getDevUrl = (windowMode: WindowLoadMode, getDevServerUrl: () => string) => {
-  return new URL(getWindowEntryFile(windowMode), `${getDevServerUrl()}/`).toString()
+  const url = new URL(getWindowEntryFile(windowMode), `${getDevServerUrl()}/`)
+  const query = getWindowQuery(windowMode)
+  if (query) {
+    for (const [key, value] of Object.entries(query)) {
+      url.searchParams.set(key, value)
+    }
+  }
+  return url.toString()
 }
 
 const getFileTarget = (electronDir: string, windowMode: WindowLoadMode) => {
@@ -36,5 +53,10 @@ export const loadWindow = (
   }
 
   const target = getFileTarget(options.electronDir, options.mode)
+  const query = getWindowQuery(options.mode)
+  if (query) {
+    window.loadFile(target.filePath, { query })
+    return
+  }
   window.loadFile(target.filePath)
 }

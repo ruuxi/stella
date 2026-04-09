@@ -12,7 +12,9 @@ import { initStellaUiHandler } from "./platform/electron/stella-ui-handler";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
 initStellaUiHandler()
 
-document.documentElement.dataset.stellaWindow = "full";
+const requestedWindow = new URLSearchParams(window.location.search).get("window");
+document.documentElement.dataset.stellaWindow =
+  requestedWindow === "mini" ? "mini" : "full";
 
 const appTree = (
   <AppProviders>

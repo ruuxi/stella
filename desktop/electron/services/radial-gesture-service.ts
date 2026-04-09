@@ -26,7 +26,11 @@ export type RadialCaptureBridge = {
 }
 
 export type RadialOverlayBridge = {
-  showRadial: (options?: { compactFocused?: boolean; fullFocused?: boolean }) => void
+  showRadial: (options?: {
+    compactFocused?: boolean
+    fullFocused?: boolean
+    fullEnabled?: boolean
+  }) => void
   hideRadial: () => void
   updateRadialCursor: (x: number, y: number) => void
   getRadialBounds: () => { x: number; y: number } | null
@@ -36,6 +40,7 @@ export type RadialWindowBridge = {
   isCompactMode: () => boolean
   getLastActiveWindowMode: () => 'full' | 'mini'
   isWindowFocused: () => boolean
+  isFullWindowMacFullscreen: () => boolean
   showWindow: (target: 'full' | 'mini') => void
   restoreFullSize: () => void
   minimizeWindow: () => void
@@ -169,6 +174,10 @@ export class RadialGestureService {
         this.clearScheduledRadialCapture()
         capture.cancelRadialContextCapture()
         this.restoreOrClearTransientContext()
+        if (win.isFullWindowMacFullscreen()) {
+          break
+        }
+        updateUiState({ mode: 'chat' })
         if (!win.isCompactMode() && win.isWindowFocused()) {
           win.minimizeWindow()
         } else {
@@ -197,8 +206,14 @@ export class RadialGestureService {
         this.selectionCommitted = false
         const windowFocused = win.isWindowFocused()
         const compactFocused = win.isCompactMode() && windowFocused
-        const fullFocused = !win.isCompactMode() && windowFocused
-        overlay.showRadial({ compactFocused, fullFocused })
+        const fullWindowMacFullscreen = win.isFullWindowMacFullscreen()
+        const fullFocused =
+          !fullWindowMacFullscreen && !win.isCompactMode() && windowFocused
+        overlay.showRadial({
+          compactFocused,
+          fullFocused,
+          fullEnabled: !fullWindowMacFullscreen,
+        })
         const cursorPoint = screen.getCursorScreenPoint()
         this.scheduleRadialContextCapture(cursorPoint)
       },
