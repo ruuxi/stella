@@ -386,12 +386,6 @@ export const createTaskOrchestration = (
           selfModMetadata: effectiveSelfModMetadata,
           agentContext,
           toolCatalog: context.toolHost.getToolCatalog(),
-          loadTools: async ({ taskId, prompt }) => {
-            if (!taskId || !context.state.localTaskManager) {
-              return { addedTools: [], currentTools: agentContext.toolsAllowlist ?? [] };
-            }
-            return await context.state.localTaskManager.loadTools(taskId, prompt);
-          },
           toolExecutor: hmrAwareToolExecutor,
           deviceId: context.deviceId,
           stellaHome: context.stellaHomePath,

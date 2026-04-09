@@ -368,7 +368,7 @@ export const createRunnerContext = ({
       interruptAfterTool: false,
       activeInterruptedReplayTurn: null,
       loadedAgents: [],
-      googleWorkspaceToolNames: null,
+      googleWorkspaceToolsLoaded: false,
       googleWorkspaceDisconnect: null,
       googleWorkspaceCallTool: null,
       googleWorkspaceAuthenticated: null,
