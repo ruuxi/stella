@@ -17,6 +17,34 @@
   padding-left: 10px;
 }
 
+.composer-floating-context--empty {
+  display: none;
+}
+
+.full-body-main--home .composer {
+  gap: 0;
+}
+
+.full-body-main--home .composer-floating-context {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 200ms ease;
+}
+
+.full-body-main--home .composer-floating-context--empty {
+  display: grid;
+  grid-template-rows: 0fr;
+}
+
+.full-body-main--home .composer-floating-context > * {
+  min-height: 0;
+  padding-bottom: 10px;
+}
+
+.full-body-main--home .composer-floating-context--empty > * {
+  overflow: hidden;
+}
+
 /* === Shell: visual container with animated height + border-radius === */
 .composer-shell {
   position: relative;

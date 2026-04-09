@@ -136,18 +136,16 @@ export function Composer({
 
   return (
     <div className="composer">
-      {(hasComposerContext || showSuggestions) && (
-        <div className="composer-floating-context">
-          <ComposerContextRow
-            chatContext={chatContext}
-            selectedText={selectedText}
-            setChatContext={setChatContext}
-            setSelectedText={setSelectedText}
-            onPreviewScreenshot={setPreviewScreenshotIndex}
-            onSuggestionSelect={showSuggestions ? handleSuggestionSelect : undefined}
-          />
-        </div>
-      )}
+      <div className={`composer-floating-context${hasComposerContext || showSuggestions ? "" : " composer-floating-context--empty"}`}>
+        <ComposerContextRow
+          chatContext={chatContext}
+          selectedText={selectedText}
+          setChatContext={setChatContext}
+          setSelectedText={setSelectedText}
+          onPreviewScreenshot={setPreviewScreenshotIndex}
+          onSuggestionSelect={showSuggestions ? handleSuggestionSelect : undefined}
+        />
+      </div>
 
       <div ref={shellRef} className="composer-shell" {...dropHandlers}>
         <DropOverlay visible={isDragOver} variant="full" />
