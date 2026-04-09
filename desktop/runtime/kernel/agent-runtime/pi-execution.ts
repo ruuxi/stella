@@ -77,7 +77,22 @@ export const runPiOrchestratorTurn = async (
     const promptMessages = buildOrchestratorPromptMessages(
       opts.agentContext,
       opts.userPrompt,
+      opts.promptMessages,
     );
+    logger.info("orchestrator.prompt-shape", {
+      runId,
+      conversationId: opts.conversationId,
+      userPrompt: opts.userPrompt,
+      promptMessages: promptMessages.map((message, index) => ({
+        index,
+        uiVisibility: message.uiVisibility ?? "visible",
+        textPreview: message.text.slice(0, 200),
+        attachmentCount:
+          index === promptMessages.length - 1
+            ? (opts.attachments?.length ?? 0)
+            : 0,
+      })),
+    });
 
     const { finalText, errorMessage } = await executeRuntimeAgentPrompt({
       agent,

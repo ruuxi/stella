@@ -5,6 +5,8 @@ import { calculateSelectedWedge, type RadialWedge } from '../radial-wedge.js'
 import type { ChatContext } from '../../src/shared/contracts/boundary.js'
 import type { RadialTriggerCode } from '../../src/shared/lib/radial-trigger.js'
 
+const RADIAL_CONTEXT_CAPTURE_DELAY_MS = 180
+
 export type RadialCaptureBridge = {
   cancelRadialContextCapture: () => void
   getChatContextSnapshot: () => ChatContext | null
@@ -58,10 +60,30 @@ export class RadialGestureService {
   private contextBeforeGesture: ChatContext | null = null
   private radialTriggerKey: RadialTriggerCode
   private readonly deps: RadialGestureDeps
+  private scheduledRadialCaptureTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(deps: RadialGestureDeps) {
     this.deps = deps
     this.radialTriggerKey = deps.getRadialTriggerKey()
+  }
+
+  private clearScheduledRadialCapture() {
+    if (this.scheduledRadialCaptureTimer) {
+      clearTimeout(this.scheduledRadialCaptureTimer)
+      this.scheduledRadialCaptureTimer = null
+    }
+  }
+
+  private scheduleRadialContextCapture(point: { x: number; y: number }) {
+    this.clearScheduledRadialCapture()
+    this.scheduledRadialCaptureTimer = setTimeout(() => {
+      this.scheduledRadialCaptureTimer = null
+      this.deps.capture.captureRadialContext(
+        point.x,
+        point.y,
+        this.contextBeforeGesture,
+      )
+    }, RADIAL_CONTEXT_CAPTURE_DELAY_MS)
   }
 
   private restoreOrClearTransientContext() {
@@ -83,11 +105,13 @@ export class RadialGestureService {
 
     switch (wedge) {
       case 'dismiss': {
+        this.clearScheduledRadialCapture()
         capture.cancelRadialContextCapture()
         this.restoreOrClearTransientContext()
         break
       }
       case 'capture': {
+        this.clearScheduledRadialCapture()
         capture.setRadialContextShouldCommit(true)
         capture.commitStagedRadialContext(this.contextBeforeGesture)
         capture.cancelRadialContextCapture()
@@ -131,6 +155,7 @@ export class RadialGestureService {
         break
       }
       case 'voice': {
+        this.clearScheduledRadialCapture()
         capture.cancelRadialContextCapture()
         this.restoreOrClearTransientContext()
         if (this.deps.isVoiceActive()) {
@@ -141,6 +166,7 @@ export class RadialGestureService {
         break
       }
       case 'full':
+        this.clearScheduledRadialCapture()
         capture.cancelRadialContextCapture()
         this.restoreOrClearTransientContext()
         if (!win.isCompactMode() && win.isWindowFocused()) {
@@ -174,10 +200,11 @@ export class RadialGestureService {
         const fullFocused = !win.isCompactMode() && windowFocused
         overlay.showRadial({ compactFocused, fullFocused })
         const cursorPoint = screen.getCursorScreenPoint()
-        capture.captureRadialContext(cursorPoint.x, cursorPoint.y, this.contextBeforeGesture)
+        this.scheduleRadialContextCapture(cursorPoint)
       },
       onRadialHide: () => {
         if (!this.selectionCommitted) {
+          this.clearScheduledRadialCapture()
           capture.cancelRadialContextCapture()
           const pendingChatContext = capture.getChatContextSnapshot()
           if (this.startedInCompactMode) {
@@ -218,6 +245,7 @@ export class RadialGestureService {
   }
 
   stop() {
+    this.clearScheduledRadialCapture()
     if (this.mouseHook) {
       this.mouseHook.stop()
       this.mouseHook = null

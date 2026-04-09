@@ -13,6 +13,7 @@ type SetChatContext = Dispatch<SetStateAction<ChatContext | null>>;
 
 type WindowContextChipProps = {
   chatWindow: NonNullable<ChatContext["window"]>;
+  chatWindowScreenshot?: ChatContext["windowScreenshot"];
   included?: boolean;
   setChatContext: SetChatContext;
   className?: string;
@@ -24,6 +25,7 @@ type WindowContextChipProps = {
 
 export function WindowContextChip({
   chatWindow,
+  chatWindowScreenshot,
   included = true,
   setChatContext,
   className,
@@ -32,15 +34,11 @@ export function WindowContextChip({
   removeClassName,
   textFormatter,
 }: WindowContextChipProps) {
-  const label = textFormatter
+  const baseLabel = textFormatter
     ? textFormatter(chatWindow)
     : `${chatWindow.app}${chatWindow.title ? ` - ${chatWindow.title}` : ""}`;
-  const displayLabel = included ? label : `Include ${label}`;
-  const showWindowHighlight = !included
-    ? () => window.electronAPI?.overlay?.showWindowHighlight?.(chatWindow.bounds)
-    : undefined;
-  const hideWindowHighlight = () =>
-    window.electronAPI?.overlay?.hideWindowHighlight?.();
+  const hasScreenshot = Boolean(chatWindowScreenshot?.dataUrl);
+  const displayLabel = included ? baseLabel : `+ Add: ${baseLabel}`;
 
   return (
     <div className={cn(className)} data-included={included ? "true" : "false"}>
@@ -48,12 +46,10 @@ export function WindowContextChip({
         type="button"
         className={cn(toggleClassName)}
         aria-pressed={included}
-        title={included ? "Window context included" : "Click to include window context"}
-        onMouseEnter={showWindowHighlight}
-        onMouseLeave={hideWindowHighlight}
-        onClick={() => {
-          hideWindowHighlight();
+        title={included ? "Window context included" : "Window context not included. Click to include it."}
+        onClick={(event) => {
           toggleComposerWindowContext(setChatContext);
+          event.currentTarget.blur();
         }}
       >
         <span className={cn(textClassName)}>{displayLabel}</span>
@@ -64,12 +60,21 @@ export function WindowContextChip({
         aria-label="Remove window context"
         onClick={(event) => {
           event.stopPropagation();
-          hideWindowHighlight();
           clearComposerWindowContext(setChatContext);
+          event.currentTarget.blur();
         }}
       >
         &times;
       </button>
+      {hasScreenshot && (
+        <div className="composer-context-preview" role="tooltip">
+          <img
+            src={chatWindowScreenshot!.dataUrl}
+            alt="Window content preview"
+            className="composer-context-preview-img"
+          />
+        </div>
+      )}
     </div>
   );
 }

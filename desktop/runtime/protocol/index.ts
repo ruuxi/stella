@@ -299,6 +299,8 @@ export type RuntimeConfigureParams = {
   cloudSyncEnabled?: boolean;
 };
 
+import type { ChatContext } from "../contracts/index.js";
+
 export type RuntimeHealthSnapshot = {
   ready: boolean;
   hostPid: number;
@@ -315,9 +317,17 @@ export type RuntimeAttachmentRef = {
   mimeType?: string;
 };
 
+export type RuntimePromptMessage = {
+  text: string;
+  uiVisibility?: "visible" | "hidden";
+};
+
 export type RuntimeChatPayload = {
   conversationId: string;
   userPrompt: string;
+  promptMessages?: RuntimePromptMessage[];
+  selectedText?: string | null;
+  chatContext?: ChatContext | null;
   deviceId?: string;
   platform?: string;
   timezone?: string;

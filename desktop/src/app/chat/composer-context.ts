@@ -6,7 +6,6 @@ export type ComposerContextState = {
   hasFileContext: boolean;
   hasWindowContext: boolean;
   hasVisibleWindowContext: boolean;
-  hasWindowTextContext: boolean;
   hasSelectedTextContext: boolean;
   hasPendingCaptureContext: boolean;
   hasSubmittableContext: boolean;
@@ -39,16 +38,12 @@ export const resolveComposerContextState = (
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasFileContext = Boolean(chatContext?.files?.length);
   const hasWindowContext = windowContextEnabled;
-  const hasWindowTextContext = Boolean(
-    windowContextEnabled && chatContext?.windowText?.trim(),
-  );
   const hasSelectedTextContext = Boolean(selectedText);
   const hasPendingCaptureContext = Boolean(chatContext?.capturePending);
   const hasSubmittableContext = Boolean(
     hasScreenshotContext
       || hasFileContext
       || hasWindowContext
-      || hasWindowTextContext
       || hasSelectedTextContext,
   );
 
@@ -57,7 +52,6 @@ export const resolveComposerContextState = (
     hasFileContext,
     hasWindowContext,
     hasVisibleWindowContext,
-    hasWindowTextContext,
     hasSelectedTextContext,
     hasPendingCaptureContext,
     hasSubmittableContext,
@@ -79,7 +73,7 @@ export const resolveComposerPlaceholder = ({
   if (contextState.hasFileContext) {
     return "Ask about the file...";
   }
-  if (contextState.hasWindowContext || contextState.hasWindowTextContext) {
+  if (contextState.hasWindowContext) {
     return "Ask about this window...";
   }
   if (contextState.hasSelectedTextContext) {
@@ -114,7 +108,7 @@ export const deriveComposerState = ({
 
 export const clearComposerWindowContext = (setChatContext: SetChatContext) => {
   setChatContext((prev) => (
-    prev ? { ...prev, window: null, windowText: null, windowContextEnabled: undefined } : prev
+    prev ? { ...prev, window: null, windowScreenshot: null, windowContextEnabled: undefined } : prev
   ));
 };
 

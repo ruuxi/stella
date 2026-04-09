@@ -8,7 +8,10 @@ import type {
   ToolResult,
 } from "../tools/types.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
-import type { RuntimeAttachmentRef } from "../../protocol/index.js";
+import type {
+  RuntimeAttachmentRef,
+  RuntimePromptMessage,
+} from "../../protocol/index.js";
 
 export type SelfModAppliedPayload = {
   featureId: string;
@@ -104,6 +107,7 @@ export type BaseRunOptions = {
   userMessageId: string;
   agentType: string;
   userPrompt: string;
+  promptMessages?: RuntimePromptMessage[];
   attachments?: RuntimeAttachmentRef[];
   selfModMetadata?: TaskToolRequest["selfModMetadata"];
   agentContext: LocalTaskManagerAgentContext;

@@ -9,6 +9,7 @@ import { useRafStringAccumulator, useStreamBuffer } from "@/shared/hooks/use-raf
 import { useResumeAgentRun } from "../hooks/use-resume-agent-run";
 import type { AgentStreamEvent, SelfModAppliedData } from "./streaming-types";
 import type { AttachmentRef } from "./chat-types";
+import type { ChatContext } from "@/shared/types/electron";
 import {
   getAgentHealthReason,
   resolveAgentNotReadyToast,
@@ -22,6 +23,8 @@ type UseLocalAgentStreamOptions = {
 
 type StartStreamArgs = {
   userPrompt: string;
+  selectedText?: string | null;
+  chatContext?: ChatContext | null;
   deviceId?: string;
   platform?: string;
   timezone?: string;
@@ -438,6 +441,12 @@ export function useLocalAgentStream({
         .startChat({
           conversationId: activeConversationId,
           userPrompt: args.userPrompt,
+          ...(typeof args.selectedText !== "undefined"
+            ? { selectedText: args.selectedText }
+            : {}),
+          ...(typeof args.chatContext !== "undefined"
+            ? { chatContext: args.chatContext }
+            : {}),
           deviceId: args.deviceId,
           platform: args.platform,
           timezone: args.timezone,
@@ -611,6 +620,12 @@ export function useLocalAgentStream({
         .startChat({
           conversationId: activeConversationId,
           userPrompt: args.userPrompt,
+          ...(typeof args.selectedText !== "undefined"
+            ? { selectedText: args.selectedText }
+            : {}),
+          ...(typeof args.chatContext !== "undefined"
+            ? { chatContext: args.chatContext }
+            : {}),
           deviceId: args.deviceId,
           platform: args.platform,
           timezone: args.timezone,

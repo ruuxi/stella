@@ -19,6 +19,10 @@ export type OrchestratorRuntimeDeps = {
 export type NormalizedOrchestratorRunInput = {
   conversationId: string;
   userPrompt: string;
+  promptMessages?: Array<{
+    text: string;
+    uiVisibility?: "visible" | "hidden";
+  }>;
   attachments: RuntimeAttachmentRef[];
   agentType: string;
 };
@@ -78,6 +82,21 @@ export const normalizeChatRunInput = (
 ): NormalizedOrchestratorRunInput => ({
   conversationId: payload.conversationId,
   userPrompt: payload.userPrompt.trim(),
+  promptMessages: Array.isArray(payload.promptMessages)
+    ? payload.promptMessages
+        .filter(
+          (message): message is NonNullable<ChatPayload["promptMessages"]>[number] =>
+            Boolean(
+              message &&
+                typeof message.text === "string" &&
+                message.text.trim().length > 0,
+            ),
+        )
+        .map((message) => ({
+          text: message.text.trim(),
+          ...(message.uiVisibility ? { uiVisibility: message.uiVisibility } : {}),
+        }))
+    : undefined,
   attachments: normalizeAttachments(payload.attachments),
   agentType: payload.agentType ?? AGENT_IDS.ORCHESTRATOR,
 });

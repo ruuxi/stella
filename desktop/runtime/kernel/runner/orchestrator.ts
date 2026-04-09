@@ -127,10 +127,12 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
+      promptMessages,
       attachments,
     } = normalizeChatRunInput(payload);
     const runId = `local:${crypto.randomUUID()}`;
-    if (!userPrompt) {
+    const hasPromptMessages = Boolean(promptMessages?.some((message) => message.text.trim().length > 0));
+    if (!userPrompt && attachments.length === 0 && !hasPromptMessages) {
       throw new Error("Missing user prompt");
     }
 
@@ -142,6 +144,7 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
+      ...(promptMessages?.length ? { promptMessages } : {}),
       attachments,
       userMessageId: payload.userMessageId,
       webSearch: deps.webSearch,

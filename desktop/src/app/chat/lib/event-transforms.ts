@@ -91,6 +91,10 @@ export type MessageMetadata = {
   ui?: {
     visibility?: "visible" | "hidden";
   };
+  context?: {
+    windowLabel?: string;
+    windowPreviewImageUrl?: string;
+  };
   trigger?: {
     kind?: string;
     source?: string;

@@ -251,11 +251,14 @@ export type ElectronRadialApi = {
 
 export type ElectronOverlayApi = {
   setInteractive: (interactive: boolean) => void;
-  showWindowHighlight: (bounds: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
+  showWindowHighlight: (payload: {
+    bounds: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+    tone?: "default" | "subtle";
   }) => void;
   hideWindowHighlight: () => void;
   previewWindowHighlightAtPoint: (point: { x: number; y: number }) => void;
@@ -263,7 +266,13 @@ export type ElectronOverlayApi = {
   onEndRegionCapture: (callback: () => void) => () => void;
   onWindowHighlight: (
     callback: (
-      data: { x: number; y: number; width: number; height: number } | null,
+      data: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        tone?: "default" | "subtle";
+      } | null,
     ) => void,
   ) => () => void;
   onShowMini: (
@@ -394,6 +403,8 @@ export type ElectronAgentApi = {
   startChat: (payload: {
     conversationId: string;
     userPrompt: string;
+    selectedText?: string | null;
+    chatContext?: SharedChatContext | null;
     deviceId?: string;
     platform?: string;
     timezone?: string;

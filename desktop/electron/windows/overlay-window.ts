@@ -281,10 +281,24 @@ export class OverlayWindowController {
   }
   private readonly handleOverlayShowWindowHighlight = (
     _event: unknown,
-    bounds: { x: number; y: number; width: number; height: number } | null,
+    payload:
+      | {
+          bounds: { x: number; y: number; width: number; height: number }
+          tone?: 'default' | 'subtle'
+        }
+      | { x: number; y: number; width: number; height: number }
+      | null,
   ) => {
     this.windowHighlightRequestId += 1
-    this.setWindowHighlight(bounds)
+    if (!payload) {
+      this.setWindowHighlight(null)
+      return
+    }
+    if ('bounds' in payload) {
+      this.setWindowHighlight(payload.bounds, payload.tone ?? 'default')
+      return
+    }
+    this.setWindowHighlight(payload, 'default')
   }
   private readonly handleOverlayHideWindowHighlight = () => {
     this.windowHighlightRequestId += 1
@@ -304,7 +318,7 @@ export class OverlayWindowController {
       excludePids: [process.pid],
     }).then((info) => {
       if (requestId !== this.windowHighlightRequestId) return
-      this.setWindowHighlight(info?.bounds ?? null)
+      this.setWindowHighlight(info?.bounds ?? null, 'default')
     })
   }
   private readonly handleRadialAnimDone = () => {
@@ -345,7 +359,10 @@ export class OverlayWindowController {
       this.activeMorph
   }
 
-  private setWindowHighlight(bounds: { x: number; y: number; width: number; height: number } | null) {
+  private setWindowHighlight(
+    bounds: { x: number; y: number; width: number; height: number } | null,
+    tone: 'default' | 'subtle' = 'default',
+  ) {
     if (!bounds) {
       this.clearWindowHighlight()
       return
@@ -364,6 +381,7 @@ export class OverlayWindowController {
       y: bounds.y - origin.y,
       width: bounds.width,
       height: bounds.height,
+      tone,
     })
   }
 

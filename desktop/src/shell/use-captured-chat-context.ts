@@ -17,7 +17,7 @@ function normalizeChatContext(context: ChatContext | null): ChatContext | null {
   const hasScreenshots = Boolean(context.regionScreenshots?.length)
   const hasFiles = Boolean(context.files?.length)
   const hasPendingCapture = Boolean(context.capturePending)
-  const hasWindowText = Boolean(context.windowText)
+  const hasWindowScreenshot = Boolean(context.windowScreenshot)
 
   if (
     !hasWindow &&
@@ -26,7 +26,7 @@ function normalizeChatContext(context: ChatContext | null): ChatContext | null {
     !hasScreenshots &&
     !hasFiles &&
     !hasPendingCapture &&
-    !hasWindowText
+    !hasWindowScreenshot
   ) {
     return null
   }
