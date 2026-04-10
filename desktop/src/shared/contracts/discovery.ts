@@ -1,8 +1,6 @@
-export type DiscoveryCategory =
-  | 'browsing_bookmarks'
-  | 'dev_environment'
-  | 'apps_system'
-  | 'messages_notes'
+import type { DiscoveryCategory as RuntimeDiscoveryCategory } from '../../../runtime/contracts/index.js'
+
+export type DiscoveryCategory = RuntimeDiscoveryCategory
 
 export type DiscoveryKnowledgeSeedPayload = {
   coreMemory: string;

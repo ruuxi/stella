@@ -473,3 +473,10 @@ export type SocialSessionServiceSnapshot = {
   lastSyncAt?: number;
   processingTurnId?: string;
 };
+
+export const createEmptySocialSessionServiceSnapshot = (): SocialSessionServiceSnapshot => ({
+  enabled: false,
+  status: "stopped",
+  sessionCount: 0,
+  sessions: [],
+});

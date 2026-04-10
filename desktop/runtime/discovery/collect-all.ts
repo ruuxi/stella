@@ -237,25 +237,8 @@ export const collectAllUserSignals = async (
 // Formatting for LLM Synthesis
 // ---------------------------------------------------------------------------
 
-/**
- * Format all collected data for LLM synthesis into CORE_MEMORY.
- */
-export const formatAllSignalsForSynthesis = async (
-  data: ExtendedUserSignals,
-  StellaHome: string,
-  categories: DiscoveryCategory[] = DEFAULT_CATEGORIES,
-): Promise<string> => {
-  const { formatted } = await formatSignalsForSynthesisWithSections(
-    data,
-    StellaHome,
-    categories,
-  );
-  return formatted;
-};
-
 const formatSignalsForSynthesisWithSections = async (
   data: ExtendedUserSignals,
-  StellaHome: string,
   categories: DiscoveryCategory[] = DEFAULT_CATEGORIES,
 ): Promise<{ formatted: string; formattedSections: FormattedCategorySections }> => {
   const formattedSections: FormattedCategorySections = {};
@@ -389,11 +372,7 @@ export const collectAllSignals = async (
       selectedBrowser,
       selectedProfile,
     );
-    const { formatted, formattedSections } = await formatSignalsForSynthesisWithSections(
-      data,
-      StellaHome,
-      cats,
-    );
+    const { formatted, formattedSections } = await formatSignalsForSynthesisWithSections(data, cats);
 
     return {
       data,

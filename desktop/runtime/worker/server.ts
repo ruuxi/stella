@@ -48,10 +48,11 @@ import { RuntimeStore } from "../kernel/storage/runtime-store.js";
 import { StoreModStore } from "../kernel/storage/store-mod-store.js";
 import type { SqliteDatabase } from "../kernel/storage/shared.js";
 import { TranscriptMirror } from "../kernel/storage/transcript-mirror.js";
-import type {
-  StorePackageRecord,
-  StorePackageReleaseRecord,
-  StoreReleaseArtifact,
+import {
+  createEmptySocialSessionServiceSnapshot,
+  type StorePackageRecord,
+  type StorePackageReleaseRecord,
+  type StoreReleaseArtifact,
 } from "../contracts/index.js";
 import { SocialSessionService } from "./social-sessions/service.js";
 import { SocialSessionStore } from "./social-sessions/store.js";
@@ -491,12 +492,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_HEALTH, async () => {
     const health = state.runner?.agentHealthCheck() ?? ({ ready: false } satisfies AgentHealth);
     const socialSessions =
-      state.socialSessionService?.getSnapshot() ?? {
-        enabled: false,
-        status: "stopped",
-        sessionCount: 0,
-        sessions: [],
-      };
+      state.socialSessionService?.getSnapshot() ?? createEmptySocialSessionServiceSnapshot();
     return {
       health,
       activeRun: state.runner?.getActiveOrchestratorRun() ?? null,
@@ -1265,12 +1261,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   });
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_GET_STATUS, async () => {
-    return state.socialSessionService?.getSnapshot() ?? {
-      enabled: false,
-      status: "stopped",
-      sessionCount: 0,
-      sessions: [],
-    };
+    return state.socialSessionService?.getSnapshot() ?? createEmptySocialSessionServiceSnapshot();
   });
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_REVERT, async (params) => {
