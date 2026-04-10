@@ -1,4 +1,9 @@
-import { BrowserWindow, ipcMain, screen } from 'electron'
+import {
+  BrowserWindow,
+  ipcMain,
+  screen,
+  type RenderProcessGoneDetails,
+} from 'electron'
 import { RADIAL_SIZE } from '../layout-constants.js'
 import type { SelfModHmrState } from '../../src/shared/contracts/boundary.js'
 import { loadWindow } from './window-load.js'
@@ -34,6 +39,7 @@ class OverlayWindow {
   private respanHandler: (() => void) | null = null
   private ready = false
   private overlayOrigin = { x: 0, y: 0 }
+  private reloadTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(private readonly options: OverlayWindowControllerOptions) {}
 
@@ -131,6 +137,30 @@ class OverlayWindow {
     this.window.webContents.once('did-finish-load', () => {
       this.ready = true
     })
+    this.window.webContents.on('render-process-gone', (_event, details) => {
+      this.handleRenderProcessGone(details)
+    })
+    this.window.webContents.on(
+      'did-fail-load',
+      (
+        _event,
+        errorCode,
+        errorDescription,
+        validatedURL,
+        isMainFrame,
+      ) => {
+        if (!isMainFrame || errorCode === -3) {
+          return
+        }
+        console.error(
+          'Overlay failed to load:',
+          errorCode,
+          errorDescription,
+          validatedURL,
+        )
+        this.scheduleReload()
+      },
+    )
 
     loadWindow(this.window, {
       electronDir: this.options.electronDir,
@@ -142,6 +172,7 @@ class OverlayWindow {
     this.window.on('closed', () => {
       this.window = null
       this.ready = false
+      this.clearReloadTimer()
     })
 
     this.window.on('close', (e) => {
@@ -225,7 +256,41 @@ class OverlayWindow {
     this.window?.webContents.send(channel, ...args)
   }
 
+  private handleRenderProcessGone(details: RenderProcessGoneDetails) {
+    console.error('Overlay renderer process gone:', details.reason)
+    this.scheduleReload()
+  }
+
+  private scheduleReload(delayMs = 250) {
+    if (this.reloadTimer) {
+      return
+    }
+    this.ready = false
+    this.reloadTimer = setTimeout(() => {
+      this.reloadTimer = null
+      if (!this.window || this.window.isDestroyed()) {
+        return
+      }
+      loadWindow(this.window, {
+        electronDir: this.options.electronDir,
+        isDev: this.options.isDev,
+        mode: 'overlay',
+        getDevServerUrl: this.options.getDevServerUrl,
+      })
+    }, delayMs)
+  }
+
+  private clearReloadTimer() {
+    if (!this.reloadTimer) {
+      return
+    }
+    clearTimeout(this.reloadTimer)
+    this.reloadTimer = null
+  }
+
   destroy() {
+    this.clearReloadTimer()
+
     if (this.respanHandler) {
       screen.removeListener('display-added', this.respanHandler)
       screen.removeListener('display-removed', this.respanHandler)

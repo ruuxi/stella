@@ -13,6 +13,15 @@ type FullWindowControllerOptions = {
   setupExternalLinkHandlers: (window: BrowserWindow) => void
   onDidStartLoading?: () => void
   onRenderProcessGone?: (details: RenderProcessGoneDetails, window: BrowserWindow) => void
+  onDidFailLoad?: (
+    details: {
+      errorCode: number
+      errorDescription: string
+      validatedURL: string
+      isMainFrame: boolean
+    },
+    window: BrowserWindow,
+  ) => void
   onClosed?: () => void
 }
 
@@ -66,12 +75,6 @@ export class FullWindowController {
     })
 
     this.options.setupExternalLinkHandlers(window)
-    loadWindow(window, {
-      electronDir: this.options.electronDir,
-      isDev: this.options.isDev,
-      mode: 'full',
-      getDevServerUrl: this.options.getDevServerUrl,
-    })
 
     if (this.options.isDev && this.shouldOpenDevTools) {
       window.webContents.openDevTools()
@@ -85,9 +88,37 @@ export class FullWindowController {
       this.options.onRenderProcessGone?.(details, window)
     })
 
+    window.webContents.on(
+      'did-fail-load',
+      (
+        _event,
+        errorCode,
+        errorDescription,
+        validatedURL,
+        isMainFrame,
+      ) => {
+        this.options.onDidFailLoad?.(
+          {
+            errorCode,
+            errorDescription,
+            validatedURL,
+            isMainFrame,
+          },
+          window,
+        )
+      },
+    )
+
     window.on('closed', () => {
       this.window = null
       this.options.onClosed?.()
+    })
+
+    loadWindow(window, {
+      electronDir: this.options.electronDir,
+      isDev: this.options.isDev,
+      mode: 'full',
+      getDevServerUrl: this.options.getDevServerUrl,
     })
 
     return window

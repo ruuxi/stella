@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import { existsSync, promises as fs } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,6 +111,15 @@ const stopExistingDevRunner = async () => {
   }
 };
 
+const resetMacPermissions = () => {
+  if (process.platform !== 'darwin') return;
+  try {
+    execSync('tccutil reset All com.stella.app', { stdio: 'ignore' });
+  } catch {
+    // No-op if no permissions were set
+  }
+};
+
 const clearPaths = async (paths) => {
   await Promise.allSettled(
     paths.map((targetPath) =>
@@ -120,21 +129,6 @@ const clearPaths = async (paths) => {
       }),
     ),
   );
-};
-
-const startDevRunner = () => {
-  const child = spawn(process.execPath, [runnerScriptPath], {
-    cwd: desktopDir,
-    env: {
-      ...process.env,
-      NODE_ENV: 'development',
-    },
-    detached: process.platform !== 'win32',
-    stdio: 'ignore',
-    windowsHide: true,
-  });
-
-  child.unref();
 };
 
 const main = async () => {
@@ -149,16 +143,15 @@ const main = async () => {
     ...desktopGeneratedPaths,
   ]);
 
-  startDevRunner();
+  resetMacPermissions();
 
   console.log(
     [
-      '[reset] Fresh Stella desktop dev session started.',
+      '[reset] Stella desktop dev environment reset.',
       `Cleared ${stellaStatePath}`,
-      stoppedRunner
-        ? 'Stopped and restarted the existing dev runner.'
-        : 'Started a new dev runner.',
-    ].join('\n'),
+      'Reset macOS TCC permissions for com.stella.app',
+      stoppedRunner ? 'Stopped the existing dev runner.' : '',
+    ].filter(Boolean).join('\n'),
   );
 };
 
