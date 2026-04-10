@@ -21,6 +21,7 @@ import type {
 } from "./types.js";
 import { buildTaskEventPrompt, createSelfModHmrState } from "./shared.js";
 import type { SelfModHmrState } from "../../contracts/index.js";
+import { shouldRunSelfModHmrTransition } from "../self-mod/flush-mode.js";
 
 const WINDOWS_PATH_PATTERN = /^(?:[A-Za-z]:[\\/]|\\\\)/;
 const SHELL_PATH_SOURCE = String.raw`(?:[A-Za-z]:[\\/]|\\\\|\/|\.\.?[\\/])`;
@@ -431,9 +432,7 @@ export const createTaskOrchestration = (
             .getStatus()
             .catch(() => null);
           const requiresFullReload = Boolean(status?.requiresFullReload);
-          const shouldMorph = Boolean(
-            status && (status.queuedFiles > 0 || status.requiresFullReload),
-          );
+          const shouldMorph = shouldRunSelfModHmrTransition(status);
           const resumeHmr = async () => {
             const resumeApplied =
               await context.selfModHmrController?.resume(runId);
