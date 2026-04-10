@@ -1,4 +1,5 @@
-/* Message list — normal column layout, messages flow top to bottom. */
+/* Message list — column-reverse viewport handles bottom-anchoring,
+   so no justify-content: flex-end or min-height: 100% needed. */
 .event-list {
   display: flex;
   flex-direction: column;
@@ -19,6 +20,15 @@
   flex-direction: column;
   gap: 16px;
   overflow-anchor: none;
+}
+
+/*
+ * Latest turn: stretch to fill the scroll viewport so the user bubble
+ * can sit at the top with the assistant reply below, regardless of window size.
+ * 100cqh = 100% of .chat-viewport-region's height (the nearest size container).
+ */
+.session-turn--last-turn {
+  min-height: 100cqh;
 }
 
 .session-turn-header {
@@ -56,6 +66,7 @@
   max-width: 85%;
   width: fit-content;
   border-bottom-right-radius: 4px;
+  scroll-margin-top: 2px;
 }
 
 

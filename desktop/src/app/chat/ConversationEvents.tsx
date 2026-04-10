@@ -49,7 +49,7 @@ function MessageList({
 }) {
   return (
     <>
-      {turns.map((turn) => {
+      {turns.map((turn, index) => {
         const shouldAttachStreaming =
           showStreaming &&
           Boolean(pendingUserMessageId) &&
@@ -59,6 +59,7 @@ function MessageList({
           <TurnItem
             key={turn.id}
             turn={turn}
+            isLastTurn={index === turns.length - 1}
             onOpenAttachment={onOpenAttachment}
             streaming={
               shouldAttachStreaming

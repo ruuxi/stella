@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
 import type { Attachment, ChannelEnvelope } from "@/app/chat/lib/event-transforms";
 import { Markdown } from "@/app/chat/Markdown";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
@@ -251,16 +251,19 @@ const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean => (
 const areTurnItemPropsEqual = (
   prev: {
     turn: TurnViewModel;
+    isLastTurn?: boolean;
     onOpenAttachment?: (attachment: Attachment) => void;
     streaming?: StreamingTurnProps;
   },
   next: {
     turn: TurnViewModel;
+    isLastTurn?: boolean;
     onOpenAttachment?: (attachment: Attachment) => void;
     streaming?: StreamingTurnProps;
   },
 ): boolean => (
   prev.onOpenAttachment === next.onOpenAttachment &&
+  prev.isLastTurn === next.isLastTurn &&
   turnViewModelEqual(prev.turn, next.turn) &&
   streamingPropsEqual(prev.streaming, next.streaming)
 );
@@ -268,10 +271,13 @@ const areTurnItemPropsEqual = (
 /** Memoized turn renderer to prevent unnecessary re-renders */
 export const TurnItem = memo(function TurnItem({
   turn,
+  isLastTurn = false,
   onOpenAttachment,
   streaming,
 }: {
   turn: TurnViewModel;
+  /** Latest turn in the thread: keeps expanded reply region after streaming ends. */
+  isLastTurn?: boolean;
   onOpenAttachment?: (attachment: Attachment) => void;
   streaming?: StreamingTurnProps;
 }) {
@@ -309,7 +315,7 @@ export const TurnItem = memo(function TurnItem({
     hasAssistantContent ||
     hasWebSearchBadge ||
     hasOfficePreview ||
-    (shouldShowStreamingAssistant && (hasStreamingContent || hasReasoningContent));
+    shouldShowStreamingAssistant;
   const assistantDisplayText = hasAssistantContent
     ? assistantText
     : (streaming?.streamingText ?? "");
@@ -318,11 +324,16 @@ export const TurnItem = memo(function TurnItem({
     : shouldShowStreamingAssistant;
   const assistantCacheKey = `assistant-${turn.id}`;
 
-  // Apply entrance animation when the turn is freshly added (no assistant reply yet)
-  const isNewTurn = !hasAssistantContent && !shouldShowStreamingAssistant;
+  const hasEverHadContent = useRef(hasAssistantContent);
+  if (hasAssistantContent) hasEverHadContent.current = true;
+
+  const showEntrance = !hasEverHadContent.current;
 
   return (
-    <div className={`session-turn${isNewTurn ? " fade-up-turn" : ""}`} data-turn-id={turn.id}>
+    <div
+      className={`session-turn${showEntrance ? " fade-up-turn" : ""}${isLastTurn ? " session-turn--last-turn" : ""}`}
+      data-turn-id={turn.id}
+    >
       {/* User message (skip if empty, e.g., for standalone assistant messages) */}
       {hasUserContent && (
         <div className="event-item user">

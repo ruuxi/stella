@@ -1,9 +1,8 @@
 /**
- * ChatColumn: scroll viewport, message rendering, custom scrollbar, composer.
- * User messages pin to top on send; assistant response streams below without auto-scroll.
+ * ChatColumn: column-reverse scroll viewport, message rendering, custom scrollbar, composer.
  */
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { HomeContent } from "@/app/home/HomeContent";
@@ -29,6 +28,44 @@ export const ChatColumn = memo(function ChatColumn({
   onSuggestionClick,
   onDismissHome,
 }: ChatColumnProps) {
+  const pinnedTurnIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    pinnedTurnIdRef.current = null;
+  }, [conversationId]);
+
+  const pendingUserMessageId = conversation.streaming.pendingUserMessageId;
+  const { scrollTurnToPinTop, hasScrollElement } = scroll;
+
+  useLayoutEffect(() => {
+    if (!pendingUserMessageId) {
+      pinnedTurnIdRef.current = null;
+      return;
+    }
+    if (pinnedTurnIdRef.current === pendingUserMessageId) return;
+
+    let attempts = 0;
+    const maxAttempts = 36;
+    const tick = () => {
+      const ok = scrollTurnToPinTop(pendingUserMessageId);
+      if (ok) {
+        pinnedTurnIdRef.current = pendingUserMessageId;
+        return;
+      }
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        requestAnimationFrame(tick);
+      }
+    };
+    tick();
+  }, [
+    pendingUserMessageId,
+    conversation.events.length,
+    showHomeContent,
+    hasScrollElement,
+    scrollTurnToPinTop,
+  ]);
+
   // --- Custom scrollbar thumb drag ---
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<{ y: number; scrollTop: number } | null>(null);
@@ -51,6 +88,7 @@ export const ChatColumn = memo(function ChatColumn({
     const trackHeight = el.clientHeight;
     const scrollRange = el.scrollHeight - el.clientHeight;
     const dy = e.clientY - dragStartRef.current.y;
+    // Thumb is inverted to feel natural: dragging down → newer content (scrollTop → 0).
     const scrollDelta = (dy / trackHeight) * scrollRange;
     el.scrollTop = dragStartRef.current.scrollTop + scrollDelta;
   }, []);
@@ -62,6 +100,7 @@ export const ChatColumn = memo(function ChatColumn({
 
   const {
     onScroll,
+    overflowAnchor,
     setContentElement,
     setViewportElement,
     showScrollButton,
@@ -186,6 +225,7 @@ export const ChatColumn = memo(function ChatColumn({
           className="session-content"
           ref={assignViewport}
           onScroll={onScroll}
+          style={{ overflowAnchor }}
         >
           <div className="session-messages" ref={setContentElement}>
             <ConversationEvents
