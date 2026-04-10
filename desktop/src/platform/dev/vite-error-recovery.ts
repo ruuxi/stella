@@ -29,6 +29,9 @@ const loadRecentFeatures = async (): Promise<SelfModFeatureSummary[]> => {
   }
 };
 
+const toErrorMessage = (error: unknown, fallback: string): string =>
+  error instanceof Error && error.message ? error.message : fallback;
+
 async function injectRevertButton(overlay: Element) {
   if (overlay.querySelector("[data-selfmod-revert]")) return;
 
@@ -54,10 +57,19 @@ async function injectRevertButton(overlay: Element) {
     disableButtons(true);
     status.textContent = "Reverting...";
     try {
-      await window.electronAPI?.agent.selfModRevert(featureId, 1);
+      const selfModRevert = window.electronAPI?.agent.selfModRevert;
+      if (!selfModRevert) {
+        throw new Error("Revert is unavailable in this renderer context.");
+      }
+      await selfModRevert(featureId, 1);
+      status.textContent = "Revert complete. Reloading...";
       window.location.reload();
-    } catch {
-      window.location.reload();
+    } catch (error) {
+      status.textContent = `Revert failed: ${toErrorMessage(
+        error,
+        "Unknown error.",
+      )}`;
+      disableButtons(false);
     }
   };
 
