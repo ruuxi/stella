@@ -26,6 +26,21 @@ type Bounds = { x: number; y: number; width: number; height: number }
 type ShellWindowMode = 'full' | 'mini'
 type ShellWindowRef = { mode: ShellWindowMode; window: BrowserWindow }
 
+const shouldRecoverFromDidFailLoad = (
+  details: {
+    errorCode: number
+    validatedURL: string
+    isMainFrame: boolean
+  },
+) => {
+  if (!details.isMainFrame) return false
+  // Ignore intentional navigation cancellation.
+  if (details.errorCode === -3) return false
+  // Avoid recovery loops if recovery.html itself fails to load.
+  if (details.validatedURL.includes('recovery.html')) return false
+  return true
+}
+
 export class WindowManager {
   private readonly fullWindowController: FullWindowController
   private readonly miniWindowController: MiniWindowController
@@ -48,6 +63,18 @@ export class WindowManager {
         console.error('Renderer process gone:', details.reason)
         this.fullWindowController.loadRecoveryPage()
       },
+      onDidFailLoad: (details) => {
+        if (!shouldRecoverFromDidFailLoad(details)) {
+          return
+        }
+        console.error(
+          'Full renderer failed to load:',
+          details.errorCode,
+          details.errorDescription,
+          details.validatedURL,
+        )
+        this.fullWindowController.loadRecoveryPage()
+      },
       onClosed: () => {
         this.syncLastActiveWindowMode()
       },
@@ -63,6 +90,19 @@ export class WindowManager {
       onDidStartLoading: () => {},
       onRenderProcessGone: (details) => {
         console.error('Mini renderer process gone:', details.reason)
+        this.miniWindowController.loadRecoveryPage()
+      },
+      onDidFailLoad: (details) => {
+        if (!shouldRecoverFromDidFailLoad(details)) {
+          return
+        }
+        console.error(
+          'Mini renderer failed to load:',
+          details.errorCode,
+          details.errorDescription,
+          details.validatedURL,
+        )
+        this.miniWindowController.loadRecoveryPage()
       },
       onClosed: () => {
         this.syncLastActiveWindowMode()

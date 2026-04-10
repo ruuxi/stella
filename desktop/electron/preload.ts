@@ -448,6 +448,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           runId: string;
           agentType?: string;
           seq: number;
+          userMessageId?: string;
           chunk?: string;
           statusState?: "running" | "compacting";
           toolCallId?: string;
@@ -487,6 +488,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       runId: string;
       agentType?: string;
       seq: number;
+      userMessageId?: string;
       chunk?: string;
       statusState?: "running" | "compacting";
       toolCallId?: string;
