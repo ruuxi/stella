@@ -4,7 +4,6 @@ import { FullWindowController } from './full-window.js'
 import { MiniWindowController } from './mini-window.js'
 import type { UiState } from '../types.js'
 import type { ExternalLinkService } from '../services/external-link-service.js'
-import type { OverlayWindowController } from './overlay-window.js'
 
 type WindowManagerOptions = {
   electronDir: string
@@ -13,11 +12,8 @@ type WindowManagerOptions = {
   isDev: boolean
   getDevServerUrl: () => string
   isAppReady: () => boolean
-  isQuitting: () => boolean
   externalLinkService: ExternalLinkService
-  onDeactivateVoiceModes: () => void
   onUpdateUiState: (partial: Partial<UiState>) => void
-  getOverlayController: () => OverlayWindowController | null
 }
 
 const compactSize = MINI_SHELL_SIZE
@@ -179,10 +175,6 @@ export class WindowManager {
     return Boolean(miniWindow && !miniWindow.isDestroyed() && miniWindow.isVisible())
   }
 
-  hasPendingMiniShow() {
-    return false
-  }
-
   hideMiniWindow(_animate: boolean) {
     const miniWindow = this.getMiniWindow()
     if (!miniWindow || miniWindow.isDestroyed()) return
@@ -193,14 +185,6 @@ export class WindowManager {
       app.hide()
     }
   }
-
-  cancelPendingShow() {}
-
-  concealMiniWindowForCapture() {
-    return false
-  }
-
-  restoreMiniWindowAfterCapture() {}
 
   private observeShellWindow(window: BrowserWindow, mode: ShellWindowMode) {
     if (this.observedWindows.has(window)) {
