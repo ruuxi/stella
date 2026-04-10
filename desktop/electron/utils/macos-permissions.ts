@@ -47,6 +47,52 @@ export const clearPermissionCache = (kind?: MacPermissionKind) => {
   }
 }
 
+export type PermissionRequestResult = {
+  granted: boolean
+  alreadyGranted: boolean
+}
+
+/**
+ * Trigger the native macOS permission prompt for a single permission kind.
+ * Returns whether the permission is now granted.
+ */
+export const requestMacPermission = async (kind: MacPermissionKind): Promise<PermissionRequestResult> => {
+  if (process.platform !== 'darwin') return { granted: true, alreadyGranted: true }
+
+  clearPermissionCache(kind)
+
+  switch (kind) {
+    case 'accessibility': {
+      if (checkAccessibility(false)) return { granted: true, alreadyGranted: true }
+      checkAccessibility(true)
+      await delay(300)
+      const granted = checkAccessibility(false)
+      if (granted) permissionCache.set('accessibility', true)
+      return { granted, alreadyGranted: false }
+    }
+    case 'screen': {
+      if (checkScreenRecording()) return { granted: true, alreadyGranted: true }
+      try {
+        await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
+      } catch {}
+      await delay(300)
+      const granted = checkScreenRecording()
+      if (granted) permissionCache.set('screen', true)
+      return { granted, alreadyGranted: false }
+    }
+    case 'microphone': {
+      if (checkMicrophone()) return { granted: true, alreadyGranted: true }
+      try {
+        const granted = await systemPreferences.askForMediaAccess('microphone')
+        permissionCache.set('microphone', granted)
+        return { granted, alreadyGranted: false }
+      } catch {
+        return { granted: false, alreadyGranted: false }
+      }
+    }
+  }
+}
+
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 /**

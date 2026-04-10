@@ -93,6 +93,11 @@ export const registerBootstrapIpcHandlers = (
     setRadialTriggerKey: (triggerKey) => {
       services.radialGestureService.setRadialTriggerKey(triggerKey);
     },
+    onPermissionGranted: (kind) => {
+      if (kind === "accessibility") {
+        services.radialGestureService.start();
+      }
+    },
   });
 
   registerScheduleHandlers({

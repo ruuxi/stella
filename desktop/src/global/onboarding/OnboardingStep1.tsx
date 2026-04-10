@@ -579,7 +579,7 @@ export const OnboardingStep1 = ({
   const handleIntroContinue = useCallback(() => {
     onInteract?.();
     onEnterSplit?.();
-    transitionTo("browser");
+    transitionTo("permissions");
   }, [onEnterSplit, onInteract, transitionTo]);
 
   const handleShowcaseSelect = useCallback(

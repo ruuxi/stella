@@ -38,8 +38,9 @@ export function AiConsentModal({ visible, onAccept, onDecline }: Props) {
         >
           <Text style={styles.title}>Before you start</Text>
           <Text style={styles.subtitle}>
-            Stella uses third-party AI services to respond to your messages.
-            Here's what that means for your data:
+            Stella uses third-party AI services to respond to your messages. By
+            continuing, you allow Stella to share the data described below with
+            the named providers when needed to generate a response.
           </Text>
 
           <View style={styles.section}>
@@ -54,12 +55,14 @@ export function AiConsentModal({ visible, onAccept, onDecline }: Props) {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Who receives it</Text>
             <Text style={styles.body}>
-              Your data is routed through the Stella Provider service to one of
-              the following third-party AI model providers:{" "}
+              Your data may be routed through the Stella Provider service to{" "}
+              <Text style={styles.bold}>OpenRouter</Text> or{" "}
+              <Text style={styles.bold}>Fireworks</Text> as managed AI
+              gateways, and then to upstream AI model providers such as{" "}
               <Text style={styles.bold}>Anthropic</Text>,{" "}
               <Text style={styles.bold}>OpenAI</Text>, or{" "}
-              <Text style={styles.bold}>Google</Text>. The specific provider
-              depends on model availability.
+              <Text style={styles.bold}>Google</Text>. The exact provider path
+              depends on the model used for your request.
             </Text>
           </View>
 
@@ -67,9 +70,9 @@ export function AiConsentModal({ visible, onAccept, onDecline }: Props) {
             <Text style={styles.sectionTitle}>How it's handled</Text>
             <Text style={styles.body}>
               Stella does not permanently store your messages on its servers.
-              Your data passes through in transit to generate a response.
-              Third-party AI providers process your data under their own privacy
-              policies.
+              Your data passes through in transit to generate a response, and
+              the third-party AI services listed above process that data under
+              their own privacy policies.
             </Text>
           </View>
 

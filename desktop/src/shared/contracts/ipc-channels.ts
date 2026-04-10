@@ -139,6 +139,7 @@ export const IPC_AUTH_CALLBACK = "auth:callback" as const;
 export const IPC_SYSTEM_OPEN_FDA = "system:openFullDiskAccess" as const;
 export const IPC_PERMISSIONS_GET_STATUS = "permissions:getStatus" as const;
 export const IPC_PERMISSIONS_OPEN_SETTINGS = "permissions:openSettings" as const;
+export const IPC_PERMISSIONS_REQUEST = "permissions:request" as const;
 export const IPC_SHELL_OPEN_EXTERNAL = "shell:openExternal" as const;
 export const IPC_SHELL_SHOW_IN_FOLDER = "shell:showItemInFolder" as const;
 export const IPC_SHELL_KILL_BY_PORT = "shell:killByPort" as const;

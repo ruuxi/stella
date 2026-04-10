@@ -560,6 +560,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>,
     openPermissionSettings: (kind: string) =>
       ipcRenderer.invoke("permissions:openSettings", { kind }),
+    requestPermission: (kind: string) =>
+      ipcRenderer.invoke("permissions:request", { kind }) as Promise<{
+        granted: boolean;
+        alreadyGranted: boolean;
+      }>,
     openExternal: (url: string) => ipcRenderer.send("shell:openExternal", url),
     showItemInFolder: (filePath: string) =>
       ipcRenderer.send("shell:showItemInFolder", filePath),

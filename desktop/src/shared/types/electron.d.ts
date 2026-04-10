@@ -458,6 +458,10 @@ export type ElectronSystemApi = {
     microphone: boolean;
   }>;
   openPermissionSettings: (kind: string) => Promise<void>;
+  requestPermission: (kind: string) => Promise<{
+    granted: boolean;
+    alreadyGranted: boolean;
+  }>;
   openExternal: (url: string) => void;
   showItemInFolder: (filePath: string) => void;
   shellKillByPort: (port: number) => Promise<void>;
