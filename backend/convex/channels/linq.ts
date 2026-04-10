@@ -18,6 +18,8 @@ import { channelAttachmentValidator, optionalChannelEnvelopeValidator } from "..
 // ---------------------------------------------------------------------------
 
 const LINQ_API_BASE = "https://api.linqapp.com/api/partner";
+const PRIMARY_LINQ_CONVEX_URL = "https://benevolent-minnow-586.convex.cloud";
+const LINQ_NON_PRIMARY_OVERRIDE_ENV = "LINQ_ALLOW_NON_PRIMARY_DEPLOYMENT";
 type LinkCodeResult = Awaited<ReturnType<typeof processLinkCode>>;
 
 const LINK_RESULT_MESSAGE: Record<LinkCodeResult, string> = {
@@ -44,6 +46,13 @@ const linqFetch = async (
     ...init,
     headers,
   });
+};
+
+export const isLinqLiveDeployment = (): boolean => {
+  if (process.env[LINQ_NON_PRIMARY_OVERRIDE_ENV]?.trim() === "1") {
+    return true;
+  }
+  return process.env.CONVEX_URL?.trim() === PRIMARY_LINQ_CONVEX_URL;
 };
 
 type LinqMessagePart =
@@ -203,6 +212,13 @@ const sendLinqReply = async (
   incomingChatId?: string,
   extraParts?: LinqMessagePart[],
 ): Promise<void> => {
+  if (!isLinqLiveDeployment()) {
+    console.log(
+      `[linq] Skipping outbound Linq send on non-primary deployment (${process.env.CONVEX_URL ?? "unknown"}).`,
+    );
+    return;
+  }
+
   const fromNumber = process.env.LINQ_FROM_NUMBER;
   if (!fromNumber) {
     console.error("[linq] Missing LINQ_FROM_NUMBER — cannot send reply!");
@@ -374,6 +390,12 @@ export const sendLinqLinkSms = action({
   args: { phoneNumber: v.string() },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
+    if (!isLinqLiveDeployment()) {
+      throw new ConvexError(
+        "Text Stella is only enabled on the primary Stella deployment.",
+      );
+    }
+
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError(SIGN_IN_REQUIRED_ERROR);
     if ((identity as Record<string, unknown>).isAnonymous === true) {
@@ -405,4 +427,3 @@ export const sendLinqLinkSms = action({
     return { success: true };
   },
 });
-

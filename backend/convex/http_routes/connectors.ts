@@ -5,7 +5,7 @@ import { verifyDiscordSignature } from "../channels/discord";
 import { verifySlackSignature } from "../channels/slack";
 import { verifyGoogleChatJwt } from "../channels/google_chat";
 import { verifyTeamsToken } from "../channels/teams";
-import { verifyLinqSignature } from "../channels/linq";
+import { isLinqLiveDeployment, verifyLinqSignature } from "../channels/linq";
 import { consumeWebhookDedup, rateLimitResponse } from "../http_shared/webhook_controls";
 import { jsonResponse } from "../http_shared/cors";
 import { constantTimeEqual } from "../lib/crypto_utils";
@@ -1586,6 +1586,13 @@ export const registerConnectorWebhookRoutes = (http: HttpRouter) => {
     path: "/api/webhooks/linq",
     method: "POST",
     handler: httpAction(async (ctx, request) => {
+      if (!isLinqLiveDeployment()) {
+        console.log(
+          `[linq] Ignoring inbound webhook on non-primary deployment (${process.env.CONVEX_URL ?? "unknown"}).`,
+        );
+        return new Response("OK", { status: 200 });
+      }
+
       const webhookSecret = process.env.LINQ_WEBHOOK_SECRET;
       if (!webhookSecret) {
         console.error("[linq] Missing LINQ_WEBHOOK_SECRET");
