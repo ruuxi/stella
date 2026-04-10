@@ -12,7 +12,7 @@ export function getDevServerUrl(): string {
     const url = fs.readFileSync(DEV_URL_FILE, 'utf-8').trim()
     if (url) return url
   } catch {
-    return `http://localhost:${FALLBACK_PORT}`
+    // Fall back when the dev URL file is missing during startup.
   }
 
   return `http://localhost:${FALLBACK_PORT}`

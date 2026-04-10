@@ -47,12 +47,8 @@ const initializeWindowShell = (context: BootstrapContext) => {
       isDev: config.isDev,
       getDevServerUrl,
       isAppReady: () => state.appReady,
-      isQuitting: () => state.isQuitting,
       externalLinkService: services.externalLinkService,
-      onDeactivateVoiceModes: () =>
-        services.uiStateService.deactivateVoiceModes(),
       onUpdateUiState: (partial) => services.uiStateService.update(partial),
-      getOverlayController: () => state.overlayController,
     }),
   );
 
