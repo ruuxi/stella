@@ -1,5 +1,6 @@
 import type {
   AgentIdLike,
+  AgentRunFinishOutcome,
   AgentStreamEventType,
 } from "@/shared/contracts/agent-runtime";
 
@@ -19,7 +20,10 @@ export type AgentStreamEvent = {
   type: AgentStreamEventType;
   runId: string;
   seq: number;
+  conversationId?: string;
+  requestId?: string;
   userMessageId?: string;
+  rootRunId?: string;
   chunk?: string;
   statusState?: "running" | "compacting";
   toolCallId?: string;
@@ -38,4 +42,7 @@ export type AgentStreamEvent = {
   parentTaskId?: string;
   result?: string;
   statusText?: string;
+  outcome?: AgentRunFinishOutcome;
+  reason?: string;
+  replacedByRunId?: string;
 };

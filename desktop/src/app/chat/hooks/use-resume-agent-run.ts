@@ -4,154 +4,106 @@ import type { AgentStreamEvent } from "../streaming/streaming-types";
 type ActiveRunSnapshot = {
   runId: string;
   conversationId: string;
+  requestId?: string;
+  userMessageId?: string;
 } | null;
 
-/** Mutable refs shared with the streaming chat hook. */
-export interface StreamingRefs {
-  streamRunIdRef: MutableRefObject<number>;
-  localRunIdRef: MutableRefObject<string | null>;
-  localRunSeqByRunIdRef: MutableRefObject<Map<string, number>>;
-  localTaskSeqByRunIdRef: MutableRefObject<Map<string, number>>;
-  agentStreamCleanupRef: MutableRefObject<(() => void) | null>;
+type TaskSnapshot = {
+  runId: string;
+  taskId: string;
+  agentType?: string;
+  description?: string;
+  parentTaskId?: string;
+  status: "running" | "completed" | "error" | "canceled";
+  statusText?: string;
+  result?: string;
+  error?: string;
+};
+
+export interface ResumeRefs {
+  lastSeqByConversationRef: MutableRefObject<Map<string, number>>;
 }
 
-/** Callbacks / setters used to drive streaming state transitions. */
-export interface StreamingActions {
-  resetStreamingText: () => void;
-  resetReasoningText: () => void;
-  resetStreamingState: (runId: number) => void;
-  setIsStreaming: (v: boolean) => void;
-  setPendingUserMessageId: (v: string | null) => void;
-  handleAgentEvent: (event: AgentStreamEvent, runId: number) => void;
+export interface ResumeActions {
+  ensureAgentStreamSubscription: () => void;
+  applyResumeSnapshot: (args: {
+    conversationId: string;
+    activeRun: ActiveRunSnapshot;
+    tasks: TaskSnapshot[];
+  }) => void;
+  handleAgentEvent: (event: AgentStreamEvent) => void;
 }
 
 interface UseResumeAgentRunOptions {
   activeConversationId: string | null;
-  isStreaming: boolean;
-  refs: StreamingRefs;
-  actions: StreamingActions;
-}
-
-export function shouldRetainResumedStreamingState(args: {
-  resumedRunId: string;
-  resumedConversationId: string;
-  replayEventCount: number;
-  replayExhausted: boolean;
-  currentActiveRun: ActiveRunSnapshot;
-}) {
-  if (args.replayEventCount > 0) {
-    return true;
-  }
-
-  if (!args.replayExhausted) {
-    return true;
-  }
-
-  return (
-    args.currentActiveRun?.runId === args.resumedRunId &&
-    args.currentActiveRun?.conversationId === args.resumedConversationId
-  );
+  refs: ResumeRefs;
+  actions: ResumeActions;
 }
 
 /**
- * Resumes an in-progress local agent run on mount / dependency change.
- * Gates on Convex auth so no IPC calls fire before the runner is ready.
+ * Hydrates renderer state from runtime-owned execution state.
+ * The renderer never infers lifecycle here — it only applies runtime snapshots/events.
  */
 export function useResumeAgentRun({
   activeConversationId,
-  isStreaming,
   refs,
   actions,
 }: UseResumeAgentRunOptions) {
+  const { lastSeqByConversationRef } = refs;
   const {
-    streamRunIdRef,
-    localRunIdRef,
-    localRunSeqByRunIdRef,
-    localTaskSeqByRunIdRef,
-    agentStreamCleanupRef,
-  } = refs;
-
-  const {
-    resetStreamingText,
-    resetReasoningText,
-    resetStreamingState,
-    setIsStreaming,
-    setPendingUserMessageId,
+    ensureAgentStreamSubscription,
+    applyResumeSnapshot,
     handleAgentEvent,
   } = actions;
 
   useEffect(() => {
-    if (isStreaming || !activeConversationId || !window.electronAPI) {
+    if (!activeConversationId || !window.electronAPI) {
       return;
     }
     if (
-      !window.electronAPI.agent.healthCheck ||
-      !window.electronAPI.agent.getActiveRun ||
-      !window.electronAPI.agent.resumeStream
+      !window.electronAPI.agent.healthCheck
+      || !window.electronAPI.agent.resumeConversationExecution
     ) {
       return;
     }
 
     let cancelled = false;
-    const runIdCounter = streamRunIdRef.current + 1;
 
     void (async () => {
       const health = await window.electronAPI!.agent.healthCheck();
-      if (!health?.ready || cancelled) return;
-
-      const activeRun = await window.electronAPI!.agent.getActiveRun();
-      if (!activeRun || cancelled) return;
-      if (activeRun.conversationId !== activeConversationId) return;
-
-      streamRunIdRef.current = runIdCounter;
-      resetStreamingText();
-      resetReasoningText();
-      setPendingUserMessageId(null);
-      localRunIdRef.current = activeRun.runId;
-      localRunSeqByRunIdRef.current.clear();
-      localTaskSeqByRunIdRef.current.clear();
-
-      if (agentStreamCleanupRef.current) {
-        agentStreamCleanupRef.current();
-      }
-
-      const cleanup = window.electronAPI!.agent.onStream((event) => {
-        handleAgentEvent(event, runIdCounter);
-      });
-      agentStreamCleanupRef.current = cleanup;
-
-      const replay = await window.electronAPI!.agent.resumeStream({
-        runId: activeRun.runId,
-        lastSeq: 0,
-      });
-      if (cancelled || runIdCounter !== streamRunIdRef.current) return;
-
-      const currentActiveRun =
-        replay.exhausted && replay.events.length === 0
-          ? await window.electronAPI!.agent.getActiveRun().catch(() => null)
-          : null;
-      if (cancelled || runIdCounter !== streamRunIdRef.current) return;
-
-      if (!shouldRetainResumedStreamingState({
-        resumedRunId: activeRun.runId,
-        resumedConversationId: activeConversationId,
-        replayEventCount: replay.events.length,
-        replayExhausted: replay.exhausted,
-        currentActiveRun,
-      })) {
-        localRunIdRef.current = null;
-        resetStreamingState(runIdCounter);
+      if (!health?.ready || cancelled) {
         return;
       }
 
-      setIsStreaming(true);
+      ensureAgentStreamSubscription();
+
+      const lastSeq =
+        lastSeqByConversationRef.current.get(activeConversationId) ?? 0;
+      const replay = await window.electronAPI!.agent.resumeConversationExecution({
+        conversationId: activeConversationId,
+        lastSeq,
+      });
+      if (cancelled) {
+        return;
+      }
+
+      applyResumeSnapshot({
+        conversationId: activeConversationId,
+        activeRun: replay.activeRun,
+        tasks: replay.tasks,
+      });
+
       for (const replayEvent of replay.events) {
-        handleAgentEvent(replayEvent, runIdCounter);
+        if (cancelled) {
+          return;
+        }
+        handleAgentEvent(replayEvent);
       }
     })().catch((error) => {
-      if (cancelled) return;
-      console.error("Failed to resume active local agent run:", error);
-      resetStreamingState(runIdCounter);
+      if (cancelled) {
+        return;
+      }
+      console.error("Failed to resume conversation execution:", error);
     });
 
     return () => {
@@ -159,17 +111,9 @@ export function useResumeAgentRun({
     };
   }, [
     activeConversationId,
-    agentStreamCleanupRef,
+    applyResumeSnapshot,
+    ensureAgentStreamSubscription,
     handleAgentEvent,
-    isStreaming,
-    localRunIdRef,
-    localRunSeqByRunIdRef,
-    localTaskSeqByRunIdRef,
-    resetReasoningText,
-    resetStreamingState,
-    resetStreamingText,
-    setIsStreaming,
-    setPendingUserMessageId,
-    streamRunIdRef,
+    lastSeqByConversationRef,
   ]);
 }

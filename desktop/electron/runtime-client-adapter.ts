@@ -23,6 +23,8 @@ import type { TaskLifecycleEvent } from "../runtime/kernel/tasks/local-task-mana
 import { readConfiguredStellaBaseUrl } from "../runtime/kernel/convex-urls.js";
 
 type AgentCallbacks = {
+  onRunStarted?: (event: RuntimeAgentEventPayload) => void;
+  onRunFinished?: (event: RuntimeAgentEventPayload) => void;
   onStream: (event: RuntimeAgentEventPayload) => void;
   onStatus?: (event: RuntimeAgentEventPayload) => void;
   onToolStart: (event: RuntimeAgentEventPayload) => void;
@@ -48,7 +50,9 @@ export type RuntimeAvailabilitySnapshot = {
 };
 
 const isTerminalEvent = (type: string) =>
-  type === AGENT_STREAM_EVENT_TYPES.END || type === AGENT_STREAM_EVENT_TYPES.ERROR;
+  type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED
+  || type === AGENT_STREAM_EVENT_TYPES.END
+  || type === AGENT_STREAM_EVENT_TYPES.ERROR;
 
 const isTerminalTaskLifecycleEvent = (type: string) =>
   type === "task-completed" || type === "task-failed" || type === "task-canceled";
@@ -108,7 +112,11 @@ export class RuntimeClientAdapter {
       this.emitAvailabilityChange();
     });
     this.client.on("run-event", (event) => {
-      if (event.type === AGENT_STREAM_EVENT_TYPES.ERROR || event.type === AGENT_STREAM_EVENT_TYPES.END) {
+      if (
+        event.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED
+        || event.type === AGENT_STREAM_EVENT_TYPES.ERROR
+        || event.type === AGENT_STREAM_EVENT_TYPES.END
+      ) {
         if (this.activeRun?.runId === event.runId) {
           this.activeRun = null;
         }
@@ -363,6 +371,7 @@ export class RuntimeClientAdapter {
       }>;
       agentType?: string;
       storageMode?: "cloud" | "local";
+      requestId?: string;
     },
     callbacks: AgentCallbacks,
   ) {
@@ -371,6 +380,14 @@ export class RuntimeClientAdapter {
       runId: result.runId,
       conversationId: payload.conversationId,
     };
+    callbacks.onRunStarted?.({
+      type: AGENT_STREAM_EVENT_TYPES.RUN_STARTED,
+      runId: result.runId,
+      seq: 0,
+      conversationId: payload.conversationId,
+      ...(payload.requestId ? { requestId: payload.requestId } : {}),
+      ...(result.userMessageId ? { userMessageId: result.userMessageId } : {}),
+    });
     let lastRunEventSeq = 0;
     let lastTaskEventSeq = 0;
     const activeTaskIds = new Set<string>();
@@ -393,6 +410,8 @@ export class RuntimeClientAdapter {
         event.type !== AGENT_STREAM_EVENT_TYPES.STATUS &&
         event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_START &&
         event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_END &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.RUN_STARTED &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.RUN_FINISHED &&
         event.type !== AGENT_STREAM_EVENT_TYPES.ERROR &&
         event.type !== AGENT_STREAM_EVENT_TYPES.END;
 
@@ -415,6 +434,9 @@ export class RuntimeClientAdapter {
       }
 
       switch (event.type) {
+        case AGENT_STREAM_EVENT_TYPES.RUN_STARTED:
+          callbacks.onRunStarted?.(event);
+          break;
         case AGENT_STREAM_EVENT_TYPES.STREAM:
           callbacks.onStream(event);
           break;
@@ -427,25 +449,53 @@ export class RuntimeClientAdapter {
         case AGENT_STREAM_EVENT_TYPES.TOOL_END:
           callbacks.onToolEnd(event);
           break;
+        case AGENT_STREAM_EVENT_TYPES.RUN_FINISHED:
+          callbacks.onRunFinished?.(event);
+          break;
         case AGENT_STREAM_EVENT_TYPES.ERROR:
-          callbacks.onError(event);
+          if (callbacks.onRunFinished) {
+            callbacks.onRunFinished({
+              ...event,
+              type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+              outcome: "error",
+              reason: event.error,
+            });
+          } else {
+            callbacks.onError(event);
+          }
           break;
         case AGENT_STREAM_EVENT_TYPES.END:
-          callbacks.onEnd(event);
+          if (callbacks.onRunFinished) {
+            callbacks.onRunFinished({
+              ...event,
+              type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+              outcome: "completed",
+            });
+          } else {
+            callbacks.onEnd(event);
+          }
           break;
         default:
-          callbacks.onTaskEvent?.({
-            type: event.type as TaskLifecycleEvent["type"],
-            conversationId: payload.conversationId,
-            rootRunId: event.runId,
-            taskId: event.taskId ?? "",
-            agentType: event.agentType ?? "",
-            ...(event.description ? { description: event.description } : {}),
-            ...(event.parentTaskId ? { parentTaskId: event.parentTaskId } : {}),
-            ...(event.result ? { result: event.result } : {}),
-            ...(event.error ? { error: event.error } : {}),
-            ...(event.statusText ? { statusText: event.statusText } : {}),
-          });
+          if (
+            event.type === AGENT_STREAM_EVENT_TYPES.TASK_STARTED
+            || event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
+            || event.type === AGENT_STREAM_EVENT_TYPES.TASK_FAILED
+            || event.type === AGENT_STREAM_EVENT_TYPES.TASK_CANCELED
+            || event.type === AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS
+          ) {
+            callbacks.onTaskEvent?.({
+              type: event.type as TaskLifecycleEvent["type"],
+              conversationId: payload.conversationId,
+              rootRunId: event.rootRunId ?? event.runId,
+              taskId: event.taskId ?? "",
+              agentType: event.agentType ?? "",
+              ...(event.description ? { description: event.description } : {}),
+              ...(event.parentTaskId ? { parentTaskId: event.parentTaskId } : {}),
+              ...(event.result ? { result: event.result } : {}),
+              ...(event.error ? { error: event.error } : {}),
+              ...(event.statusText ? { statusText: event.statusText } : {}),
+            });
+          }
           break;
       }
       if (isTerminalEvent(event.type)) {
@@ -563,6 +613,8 @@ export class RuntimeClientAdapter {
         event.type !== AGENT_STREAM_EVENT_TYPES.STATUS &&
         event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_START &&
         event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_END &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.RUN_STARTED &&
+        event.type !== AGENT_STREAM_EVENT_TYPES.RUN_FINISHED &&
         event.type !== AGENT_STREAM_EVENT_TYPES.ERROR &&
         event.type !== AGENT_STREAM_EVENT_TYPES.END;
 

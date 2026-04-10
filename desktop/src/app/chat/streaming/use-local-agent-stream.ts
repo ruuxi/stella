@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
   TASK_COMPLETION_INDICATOR_MS,
   type TaskItem,
@@ -6,14 +6,17 @@ import {
 import { showToast } from "@/ui/toast";
 import {
   AGENT_IDS,
+  AGENT_RUN_FINISH_OUTCOMES,
   AGENT_STREAM_EVENT_TYPES,
 } from "@/shared/contracts/agent-runtime";
-import { useRafStringAccumulator, useStreamBuffer } from "@/shared/hooks/use-raf-state";
+import {
+  useRafStringAccumulator,
+  useStreamBuffer,
+} from "@/shared/hooks/use-raf-state";
 import { useResumeAgentRun } from "../hooks/use-resume-agent-run";
 import type { AgentStreamEvent, SelfModAppliedData } from "./streaming-types";
 import type { AttachmentRef } from "./chat-types";
 import type { ChatContext } from "@/shared/types/electron";
-import { resolveQueuedRunActivation } from "./queued-run-activation";
 import {
   getAgentHealthReason,
   resolveAgentNotReadyToast,
@@ -37,6 +40,260 @@ type StartStreamArgs = {
   attachments?: AttachmentRef[];
 };
 
+type RunRecord = {
+  runId: string;
+  conversationId: string;
+  requestId?: string;
+  userMessageId?: string;
+  terminal: boolean;
+  outcome?: "completed" | "error" | "canceled";
+  statusText: string | null;
+};
+
+type StreamStoreState = {
+  runsById: Record<string, RunRecord>;
+  activeRunIdByConversation: Record<string, string | null>;
+  tasksByRunId: Record<string, Record<string, TaskItem>>;
+  requestToRunId: Record<string, string>;
+};
+
+type ActiveRunSnapshot = {
+  runId: string;
+  conversationId: string;
+  requestId?: string;
+  userMessageId?: string;
+} | null;
+
+type ResumeTaskSnapshot = {
+  runId: string;
+  taskId: string;
+  agentType?: string;
+  description?: string;
+  parentTaskId?: string;
+  status: "running" | "completed" | "error" | "canceled";
+  statusText?: string;
+  result?: string;
+  error?: string;
+};
+
+type StreamStoreAction =
+  | {
+      type: "run-started";
+      runId: string;
+      conversationId: string;
+      requestId?: string;
+      userMessageId?: string;
+    }
+  | {
+      type: "run-status";
+      runId: string;
+      statusText: string | null;
+    }
+  | {
+      type: "run-finished";
+      runId: string;
+      conversationId: string;
+      outcome: "completed" | "error" | "canceled";
+    }
+  | {
+      type: "task-upsert";
+      runId: string;
+      task: TaskItem;
+    }
+  | {
+      type: "task-remove";
+      runId: string;
+      taskId: string;
+    }
+  | {
+      type: "clear-run-tasks";
+      runId: string;
+    }
+  | {
+      type: "hydrate-conversation";
+      conversationId: string;
+      activeRun: ActiveRunSnapshot;
+      tasks: TaskItem[];
+    };
+
+const initialStoreState: StreamStoreState = {
+  runsById: {},
+  activeRunIdByConversation: {},
+  tasksByRunId: {},
+  requestToRunId: {},
+};
+
+function streamStoreReducer(
+  state: StreamStoreState,
+  action: StreamStoreAction,
+): StreamStoreState {
+  switch (action.type) {
+    case "run-started": {
+      const current = state.runsById[action.runId];
+      const nextRun: RunRecord = {
+        runId: action.runId,
+        conversationId: action.conversationId,
+        requestId: action.requestId ?? current?.requestId,
+        userMessageId: action.userMessageId ?? current?.userMessageId,
+        terminal: false,
+        statusText: null,
+      };
+      return {
+        ...state,
+        runsById: {
+          ...state.runsById,
+          [action.runId]: nextRun,
+        },
+        activeRunIdByConversation: {
+          ...state.activeRunIdByConversation,
+          [action.conversationId]: action.runId,
+        },
+        requestToRunId: action.requestId
+          ? {
+              ...state.requestToRunId,
+              [action.requestId]: action.runId,
+            }
+          : state.requestToRunId,
+      };
+    }
+    case "run-status": {
+      const current = state.runsById[action.runId];
+      if (!current || current.terminal) {
+        return state;
+      }
+      return {
+        ...state,
+        runsById: {
+          ...state.runsById,
+          [action.runId]: {
+            ...current,
+            statusText: action.statusText,
+          },
+        },
+      };
+    }
+    case "run-finished": {
+      const current = state.runsById[action.runId];
+      const nextRun: RunRecord = {
+        runId: action.runId,
+        conversationId: action.conversationId,
+        requestId: current?.requestId,
+        userMessageId: current?.userMessageId,
+        terminal: true,
+        outcome: action.outcome,
+        statusText: null,
+      };
+      const activeRunId =
+        state.activeRunIdByConversation[action.conversationId] ?? null;
+      return {
+        ...state,
+        runsById: {
+          ...state.runsById,
+          [action.runId]: nextRun,
+        },
+        activeRunIdByConversation:
+          activeRunId === action.runId
+            ? {
+                ...state.activeRunIdByConversation,
+                [action.conversationId]: null,
+              }
+            : state.activeRunIdByConversation,
+      };
+    }
+    case "task-upsert": {
+      const runTasks = state.tasksByRunId[action.runId] ?? {};
+      const existing = runTasks[action.task.id];
+      const nextTask: TaskItem = {
+        ...action.task,
+        startedAtMs: existing?.startedAtMs ?? action.task.startedAtMs,
+        statusText: action.task.statusText ?? existing?.statusText,
+        outputPreview: action.task.outputPreview ?? existing?.outputPreview,
+      };
+      return {
+        ...state,
+        tasksByRunId: {
+          ...state.tasksByRunId,
+          [action.runId]: {
+            ...runTasks,
+            [action.task.id]: nextTask,
+          },
+        },
+      };
+    }
+    case "task-remove": {
+      const runTasks = state.tasksByRunId[action.runId];
+      if (!runTasks || !(action.taskId in runTasks)) {
+        return state;
+      }
+      const nextRunTasks = { ...runTasks };
+      delete nextRunTasks[action.taskId];
+      return {
+        ...state,
+        tasksByRunId: {
+          ...state.tasksByRunId,
+          [action.runId]: nextRunTasks,
+        },
+      };
+    }
+    case "clear-run-tasks": {
+      if (!(action.runId in state.tasksByRunId)) {
+        return state;
+      }
+      const nextTasksByRunId = { ...state.tasksByRunId };
+      delete nextTasksByRunId[action.runId];
+      return {
+        ...state,
+        tasksByRunId: nextTasksByRunId,
+      };
+    }
+    case "hydrate-conversation": {
+      if (!action.activeRun) {
+        return {
+          ...state,
+          activeRunIdByConversation: {
+            ...state.activeRunIdByConversation,
+            [action.conversationId]: null,
+          },
+        };
+      }
+      const runId = action.activeRun.runId;
+      const taskMap = Object.fromEntries(
+        action.tasks.map((task) => [task.id, task]),
+      );
+      return {
+        ...state,
+        runsById: {
+          ...state.runsById,
+          [runId]: {
+            runId,
+            conversationId: action.conversationId,
+            requestId: action.activeRun.requestId,
+            userMessageId: action.activeRun.userMessageId,
+            terminal: false,
+            statusText: null,
+          },
+        },
+        activeRunIdByConversation: {
+          ...state.activeRunIdByConversation,
+          [action.conversationId]: runId,
+        },
+        requestToRunId: action.activeRun.requestId
+          ? {
+              ...state.requestToRunId,
+              [action.activeRun.requestId]: runId,
+            }
+          : state.requestToRunId,
+        tasksByRunId: {
+          ...state.tasksByRunId,
+          [runId]: taskMap,
+        },
+      };
+    }
+    default:
+      return state;
+  }
+}
+
 function attachmentsForStartChat(
   attachments: AttachmentRef[] | undefined,
 ): { url: string; mimeType?: string }[] | undefined {
@@ -54,74 +311,106 @@ function attachmentsForStartChat(
   return mapped.length ? mapped : undefined;
 }
 
+const toRunTaskId = (runId: string, taskId: string) => `${runId}:${taskId}`;
+
 const isTokenSyncIssue = (reason: string | null) =>
   Boolean(reason && reason.toLowerCase().match(/token|auth/));
+
+const toTaskFromResumeSnapshot = (
+  snapshot: ResumeTaskSnapshot,
+  nowMs: number,
+): TaskItem => ({
+  id: snapshot.taskId,
+  description: snapshot.description ?? "Task",
+  agentType: snapshot.agentType ?? "task",
+  status:
+    snapshot.status === "completed"
+      ? "completed"
+      : snapshot.status === "error"
+        ? "error"
+        : snapshot.status === "canceled"
+          ? "canceled"
+          : "running",
+  parentTaskId: snapshot.parentTaskId,
+  statusText: snapshot.statusText,
+  startedAtMs: nowMs,
+  completedAtMs:
+    snapshot.status === "completed" || snapshot.status === "error" || snapshot.status === "canceled"
+      ? nowMs
+      : undefined,
+  lastUpdatedAtMs: nowMs,
+  outputPreview: snapshot.result ?? snapshot.error,
+});
 
 export function useLocalAgentStream({
   activeConversationId,
   storageMode,
 }: UseLocalAgentStreamOptions) {
-  const [
-    rawStreamingText,
-    appendStreamingDelta,
-    resetStreamingText,
-    streamingTextRef,
-  ] = useRafStringAccumulator();
+  const [storeState, dispatch] = useReducer(streamStoreReducer, initialStoreState);
+  const [rawStreamingText, appendStreamingDelta, resetStreamingText] =
+    useRafStringAccumulator();
   const [rawReasoningText, , resetReasoningText] = useRafStringAccumulator();
-  const [isStreaming, setIsStreaming] = useState(false);
-  const streamingText = useStreamBuffer(rawStreamingText, isStreaming);
-  const reasoningText = useStreamBuffer(rawReasoningText, isStreaming);
-  const [pendingUserMessageId, setPendingUserMessageId] = useState<
-    string | null
-  >(null);
-  const [runtimeStatusText, setRuntimeStatusText] = useState<string | null>(null);
+  const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(
+    null,
+  );
   const [subagentPreviewText, setSubagentPreviewText] = useState<string | null>(null);
-  const subagentPreviewBufferRef = useRef("");
-  const [selfModMap, setSelfModMap] = useState<
-    Record<string, SelfModAppliedData>
-  >({});
-  const [liveTasksById, setLiveTasksById] = useState<Record<string, TaskItem>>(
+  const [selfModMap, setSelfModMap] = useState<Record<string, SelfModAppliedData>>(
     {},
   );
 
-  const streamRunIdRef = useRef(0);
-  const localRunIdRef = useRef<string | null>(null);
-  const localRunSeqByRunIdRef = useRef(new Map<string, number>());
-  const localTaskSeqByRunIdRef = useRef(new Map<string, number>());
-  const userMessageIdByRunIdRef = useRef(new Map<string, string>());
+  const activeConversationIdRef = useRef<string | null>(activeConversationId);
+  const activeRunIdByConversationRef = useRef<Record<string, string | null>>(
+    storeState.activeRunIdByConversation,
+  );
+  const lastSeqByConversationRef = useRef(new Map<string, number>());
   const terminalRunIdsRef = useRef(new Set<string>());
-  const latestUserMessageIdRef = useRef<string | null>(null);
-  const cancelledStreamRunIdsRef = useRef(new Set<number>());
-  const queuedRunStartsRef = useRef<
-    Array<{ runId: string; userMessageId: string }>
-  >([]);
-  const pendingQueuedStartCountRef = useRef(0);
+  const pendingRequestIdsRef = useRef(new Set<string>());
+  const startAttemptRef = useRef(0);
+  const subagentPreviewBufferRef = useRef("");
   const agentStreamCleanupRef = useRef<(() => void) | null>(null);
   const liveTaskRemovalTimeoutsRef = useRef(new Map<string, number>());
 
-  const clearScheduledTaskRemoval = useCallback((taskId: string) => {
-    const timeoutId = liveTaskRemovalTimeoutsRef.current.get(taskId);
+  const activeRunId =
+    activeConversationId
+      ? storeState.activeRunIdByConversation[activeConversationId] ?? null
+      : null;
+  const activeRun = activeRunId ? storeState.runsById[activeRunId] ?? null : null;
+  const isStreaming = Boolean(activeRun && !activeRun.terminal);
+  const runtimeStatusText = activeRun?.statusText ?? null;
+
+  const streamingText = useStreamBuffer(rawStreamingText, isStreaming);
+  const reasoningText = useStreamBuffer(rawReasoningText, isStreaming);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    activeRunIdByConversationRef.current = storeState.activeRunIdByConversation;
+  }, [storeState.activeRunIdByConversation]);
+
+  const clearScheduledTaskRemoval = useCallback((runId: string, taskId: string) => {
+    const key = toRunTaskId(runId, taskId);
+    const timeoutId = liveTaskRemovalTimeoutsRef.current.get(key);
     if (typeof timeoutId === "number") {
       window.clearTimeout(timeoutId);
-      liveTaskRemovalTimeoutsRef.current.delete(taskId);
+      liveTaskRemovalTimeoutsRef.current.delete(key);
     }
   }, []);
 
   const scheduleTaskRemoval = useCallback(
-    (taskId: string, delayMs: number) => {
-      clearScheduledTaskRemoval(taskId);
+    (runId: string, taskId: string, delayMs: number) => {
+      clearScheduledTaskRemoval(runId, taskId);
+      const key = toRunTaskId(runId, taskId);
       const timeoutId = window.setTimeout(() => {
-        liveTaskRemovalTimeoutsRef.current.delete(taskId);
-        setLiveTasksById((current) => {
-          if (!(taskId in current)) {
-            return current;
-          }
-          const next = { ...current };
-          delete next[taskId];
-          return next;
+        liveTaskRemovalTimeoutsRef.current.delete(key);
+        dispatch({
+          type: "task-remove",
+          runId,
+          taskId,
         });
       }, delayMs);
-      liveTaskRemovalTimeoutsRef.current.set(taskId, timeoutId);
+      liveTaskRemovalTimeoutsRef.current.set(key, timeoutId);
     },
     [clearScheduledTaskRemoval],
   );
@@ -133,153 +422,6 @@ export function useLocalAgentStream({
     liveTaskRemovalTimeoutsRef.current.clear();
   }, []);
 
-  const upsertLiveTask = useCallback(
-    (
-      taskId: string,
-      updater: (current?: TaskItem) => TaskItem,
-    ) => {
-      clearScheduledTaskRemoval(taskId);
-      setLiveTasksById((current) => {
-        const nextTask = updater(current[taskId]);
-        return {
-          ...current,
-          [taskId]: nextTask,
-        };
-      });
-    },
-    [clearScheduledTaskRemoval],
-  );
-
-  const removeLiveTask = useCallback((taskId: string) => {
-    clearScheduledTaskRemoval(taskId);
-    setLiveTasksById((current) => {
-      if (!(taskId in current)) {
-        return current;
-      }
-      const next = { ...current };
-      delete next[taskId];
-      return next;
-    });
-  }, [clearScheduledTaskRemoval]);
-
-  const clearLiveTasks = useCallback(() => {
-    clearAllScheduledTaskRemovals();
-    setLiveTasksById({});
-  }, [clearAllScheduledTaskRemovals]);
-
-  const resetStreamingState = useCallback(
-    (runId?: number) => {
-      if (typeof runId === "number" && runId !== streamRunIdRef.current) {
-        return;
-      }
-
-      const scheduledForRunId = streamRunIdRef.current;
-      resetStreamingText();
-      resetReasoningText();
-      setIsStreaming(false);
-      setRuntimeStatusText(null);
-      setSubagentPreviewText(null);
-      subagentPreviewBufferRef.current = "";
-
-      requestAnimationFrame(() => {
-        if (scheduledForRunId !== streamRunIdRef.current) {
-          return;
-        }
-        if (localRunIdRef.current) {
-          return;
-        }
-
-        setPendingUserMessageId(null);
-      });
-    },
-    [resetReasoningText, resetStreamingText],
-  );
-
-  const activateNextQueuedRun = useCallback(() => {
-    while (true) {
-      const nextRun = queuedRunStartsRef.current[0];
-      if (!nextRun) {
-        return;
-      }
-
-      const activation = resolveQueuedRunActivation({
-        queuedRunId: nextRun.runId,
-        activeRunId: localRunIdRef.current,
-        terminalRunIds: terminalRunIdsRef.current,
-      });
-
-      if (activation.action === "drop") {
-        queuedRunStartsRef.current.shift();
-        continue;
-      }
-
-      // The run may have already been adopted by the event handler (the
-      // runtime swallows END/ERROR for interrupted runs, so the renderer
-      // discovers the replacement run when its first event arrives). In
-      // that case localRunIdRef already points at the new run — just
-      // backfill the user-message mapping and pendingUserMessageId that
-      // the adoption path cannot set (the IPC hadn't resolved yet).
-      if (activation.action === "backfill") {
-        queuedRunStartsRef.current.shift();
-        userMessageIdByRunIdRef.current.set(nextRun.runId, nextRun.userMessageId);
-        setPendingUserMessageId(nextRun.userMessageId);
-        return;
-      }
-
-      if (activation.action === "wait") {
-        return;
-      }
-
-      queuedRunStartsRef.current.shift();
-      localRunIdRef.current = nextRun.runId;
-      userMessageIdByRunIdRef.current.set(nextRun.runId, nextRun.userMessageId);
-      resetStreamingText();
-      resetReasoningText();
-      setIsStreaming(true);
-      setPendingUserMessageId(nextRun.userMessageId);
-      return;
-    }
-  }, [resetReasoningText, resetStreamingText]);
-
-  const adoptUserMessageForRun = useCallback((runId: string, userMessageId?: string) => {
-    if (!userMessageId) {
-      return;
-    }
-    userMessageIdByRunIdRef.current.set(runId, userMessageId);
-    latestUserMessageIdRef.current = userMessageId;
-    setPendingUserMessageId(userMessageId);
-  }, []);
-
-  const cancelCurrentStream = useCallback(() => {
-    const runIdCounter = streamRunIdRef.current;
-    if (runIdCounter > 0) {
-      cancelledStreamRunIdsRef.current.add(runIdCounter);
-      streamRunIdRef.current = runIdCounter + 1;
-    }
-
-    if (localRunIdRef.current && window.electronAPI?.agent.cancelChat) {
-      window.electronAPI.agent.cancelChat(localRunIdRef.current);
-    }
-
-    userMessageIdByRunIdRef.current.clear();
-    terminalRunIdsRef.current.clear();
-    localRunSeqByRunIdRef.current.clear();
-    localTaskSeqByRunIdRef.current.clear();
-    queuedRunStartsRef.current = [];
-    pendingQueuedStartCountRef.current = 0;
-    localRunIdRef.current = null;
-    clearLiveTasks();
-    resetStreamingState();
-    setRuntimeStatusText(null);
-    setSubagentPreviewText(null);
-    subagentPreviewBufferRef.current = "";
-
-    if (agentStreamCleanupRef.current) {
-      agentStreamCleanupRef.current();
-      agentStreamCleanupRef.current = null;
-    }
-  }, [clearLiveTasks, resetStreamingState]);
-
   useEffect(
     () => () => {
       clearAllScheduledTaskRemovals();
@@ -287,61 +429,118 @@ export function useLocalAgentStream({
     [clearAllScheduledTaskRemovals],
   );
 
+  useEffect(
+    () => () => {
+      if (agentStreamCleanupRef.current) {
+        agentStreamCleanupRef.current();
+        agentStreamCleanupRef.current = null;
+      }
+    },
+    [],
+  );
+
+  const resetStreamingState = useCallback(() => {
+    resetStreamingText();
+    resetReasoningText();
+    setPendingUserMessageId(null);
+    setSubagentPreviewText(null);
+    subagentPreviewBufferRef.current = "";
+    if (activeRunId) {
+      dispatch({
+        type: "clear-run-tasks",
+        runId: activeRunId,
+      });
+    }
+  }, [activeRunId, resetReasoningText, resetStreamingText]);
+
   const handleAgentEvent = useCallback(
-    (event: AgentStreamEvent, runIdCounter: number) => {
-      if (runIdCounter !== streamRunIdRef.current) return;
+    (event: AgentStreamEvent) => {
+      const conversationId =
+        event.conversationId ?? activeConversationIdRef.current ?? null;
+      if (!conversationId) {
+        return;
+      }
+
+      const seq = Number.isFinite(event.seq) ? event.seq : 0;
+      if (seq > 0) {
+        const previousSeq =
+          lastSeqByConversationRef.current.get(conversationId) ?? 0;
+        if (seq <= previousSeq) {
+          return;
+        }
+        lastSeqByConversationRef.current.set(conversationId, seq);
+      }
+
+      if (event.requestId) {
+        pendingRequestIdsRef.current.delete(event.requestId);
+      }
+
       const isOrchestratorEvent =
         (event.agentType ?? AGENT_IDS.ORCHESTRATOR) === AGENT_IDS.ORCHESTRATOR;
-      const hasSeenRun = localRunSeqByRunIdRef.current.has(event.runId);
-      const isAdoptingNewOrchestratorRun =
-        isOrchestratorEvent &&
-        localRunIdRef.current !== event.runId &&
-        !hasSeenRun;
-
-      // Queued/system turns start inside the runtime, so the renderer may never
-      // receive a terminal event for the interrupted run it was tracking.
-      // Orchestrator runs are serialized, so when a new orchestrator run ID
-      // appears we can safely adopt it as the current visible run.
-      if (isAdoptingNewOrchestratorRun) {
-        localRunIdRef.current = event.runId;
-        resetStreamingText();
-        resetReasoningText();
-        setIsStreaming(true);
-
-        // If the queued startChat IPC already resolved (pushed to
-        // queuedRunStartsRef) before this event arrived, consume the
-        // entry and backfill pendingUserMessageId + user-message map.
-        const queuedIndex = queuedRunStartsRef.current.findIndex(
-          (entry) => entry.runId === event.runId,
-        );
-        if (queuedIndex !== -1) {
-          const entry = queuedRunStartsRef.current.splice(queuedIndex, 1)[0];
-          adoptUserMessageForRun(entry.runId, entry.userMessageId);
-        }
-      }
-
-      const isTaskLifecycleEvent =
-        event.type === AGENT_STREAM_EVENT_TYPES.TASK_STARTED ||
-        event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED ||
-        event.type === AGENT_STREAM_EVENT_TYPES.TASK_FAILED ||
-        event.type === AGENT_STREAM_EVENT_TYPES.TASK_CANCELED ||
-        event.type === AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS;
-      const seqMap = isTaskLifecycleEvent
-        ? localTaskSeqByRunIdRef.current
-        : localRunSeqByRunIdRef.current;
-      const currentSeq = seqMap.get(event.runId) ?? 0;
-      if (event.seq <= currentSeq) return;
-
-      seqMap.set(event.runId, event.seq);
+      const activeRunForConversation =
+        activeRunIdByConversationRef.current[conversationId] ?? null;
       const isPrimaryRun =
-        !localRunIdRef.current || event.runId === localRunIdRef.current;
+        Boolean(activeRunForConversation) && activeRunForConversation === event.runId;
 
-      if (isPrimaryRun && isOrchestratorEvent) {
-        adoptUserMessageForRun(event.runId, event.userMessageId);
-      }
+      const applyRunFinished = (args: {
+        outcome: "completed" | "error" | "canceled";
+        reason?: string;
+      }) => {
+        if (terminalRunIdsRef.current.has(event.runId)) {
+          return;
+        }
+        terminalRunIdsRef.current.add(event.runId);
+        dispatch({
+          type: "run-finished",
+          runId: event.runId,
+          conversationId,
+          outcome: args.outcome,
+        });
+        if (
+          conversationId === activeConversationIdRef.current
+          && args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR
+        ) {
+          showToast({
+            title: "Something went wrong",
+            description: args.reason || event.error || undefined,
+            variant: "error",
+          });
+        }
+        if (args.outcome !== AGENT_RUN_FINISH_OUTCOMES.COMPLETED) {
+          resetStreamingText();
+          resetReasoningText();
+          setPendingUserMessageId(null);
+          setSubagentPreviewText(null);
+          subagentPreviewBufferRef.current = "";
+        }
+        if (event.selfModApplied && event.userMessageId) {
+          setSelfModMap((previous) => ({
+            ...previous,
+            [event.userMessageId!]: event.selfModApplied!,
+          }));
+        }
+      };
 
       switch (event.type) {
-        case AGENT_STREAM_EVENT_TYPES.STREAM:
+        case AGENT_STREAM_EVENT_TYPES.RUN_STARTED: {
+          terminalRunIdsRef.current.delete(event.runId);
+          dispatch({
+            type: "run-started",
+            runId: event.runId,
+            conversationId,
+            requestId: event.requestId,
+            userMessageId: event.userMessageId,
+          });
+          if (conversationId === activeConversationIdRef.current) {
+            resetStreamingText();
+            resetReasoningText();
+            setSubagentPreviewText(null);
+            subagentPreviewBufferRef.current = "";
+            setPendingUserMessageId(event.userMessageId ?? null);
+          }
+          break;
+        }
+        case AGENT_STREAM_EVENT_TYPES.STREAM: {
           if (isPrimaryRun && isOrchestratorEvent && event.chunk) {
             appendStreamingDelta(event.chunk);
           } else if (event.chunk && !isOrchestratorEvent) {
@@ -349,491 +548,281 @@ export function useLocalAgentStream({
             if (subagentPreviewBufferRef.current.length > 2_000) {
               subagentPreviewBufferRef.current = subagentPreviewBufferRef.current.slice(-2_000);
             }
-            const compact = subagentPreviewBufferRef.current.replace(/\s+/g, " ").trim();
+            const compact = subagentPreviewBufferRef.current
+              .replace(/\s+/g, " ")
+              .trim();
             if (compact) {
-              setSubagentPreviewText(compact.length > 200 ? compact.slice(-200) : compact);
+              setSubagentPreviewText(
+                compact.length > 200 ? compact.slice(-200) : compact,
+              );
             }
           }
           break;
-        case AGENT_STREAM_EVENT_TYPES.STATUS:
-          if (isPrimaryRun && isOrchestratorEvent) {
-            setRuntimeStatusText(
+        }
+        case AGENT_STREAM_EVENT_TYPES.STATUS: {
+          dispatch({
+            type: "run-status",
+            runId: event.runId,
+            statusText:
               event.statusState === "compacting"
                 ? event.statusText || "Compacting context"
                 : null,
-            );
-          }
+          });
           break;
-        case AGENT_STREAM_EVENT_TYPES.TOOL_START:
-          console.log(
-            `[stella:trace] tool-start | ${event.toolName} | callId=${event.toolCallId}`,
-          );
-          break;
-        case AGENT_STREAM_EVENT_TYPES.TOOL_END:
-          console.log(
-            `[stella:trace] tool-end   | ${event.toolName} | callId=${event.toolCallId} | preview=${event.resultPreview?.slice(0, 120)}`,
-          );
-          break;
+        }
         case AGENT_STREAM_EVENT_TYPES.TASK_STARTED:
-          if (event.taskId) {
-            const lastUpdatedAtMs = Date.now();
-            upsertLiveTask(event.taskId, (current) => ({
-              id: event.taskId!,
-              description: event.description ?? current?.description ?? "Task",
-              agentType: event.agentType ?? current?.agentType ?? "task",
-              status: "running",
-              parentTaskId: event.parentTaskId ?? current?.parentTaskId,
-              statusText: current?.statusText,
-              startedAtMs: current?.startedAtMs ?? lastUpdatedAtMs,
-              lastUpdatedAtMs,
-              outputPreview: current?.outputPreview,
-            }));
-          }
-          console.log(
-            `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ""}`.trim(),
-          );
-          break;
         case AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS:
-          if (event.taskId) {
-            const lastUpdatedAtMs = Date.now();
-            upsertLiveTask(event.taskId, (current) => ({
-              id: event.taskId!,
-              description: event.description ?? current?.description ?? "Task",
-              agentType: event.agentType ?? current?.agentType ?? "task",
-              status: "running",
-              parentTaskId: event.parentTaskId ?? current?.parentTaskId,
-              statusText: event.statusText ?? current?.statusText,
-              startedAtMs: current?.startedAtMs ?? lastUpdatedAtMs,
-              lastUpdatedAtMs,
-              outputPreview: current?.outputPreview,
-            }));
-          }
-          console.log(
-            `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ""}`.trim(),
-          );
-          break;
         case AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED:
-          if (event.taskId) {
-            const completedAtMs = Date.now();
-            upsertLiveTask(event.taskId, (current) => ({
-              id: event.taskId!,
-              description: event.description ?? current?.description ?? "Task",
-              agentType: event.agentType ?? current?.agentType ?? "task",
-              status: "completed",
-              parentTaskId: event.parentTaskId ?? current?.parentTaskId,
-              statusText: event.statusText ?? current?.statusText,
-              startedAtMs: current?.startedAtMs ?? completedAtMs,
-              completedAtMs,
-              lastUpdatedAtMs: completedAtMs,
-              outputPreview: event.result ?? current?.outputPreview,
-            }));
-            scheduleTaskRemoval(event.taskId, TASK_COMPLETION_INDICATOR_MS);
-          }
-          console.log(
-            `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ""}`.trim(),
-          );
-          break;
         case AGENT_STREAM_EVENT_TYPES.TASK_FAILED:
-          if (event.taskId) {
-            removeLiveTask(event.taskId);
+        case AGENT_STREAM_EVENT_TYPES.TASK_CANCELED: {
+          const runId = event.rootRunId ?? event.runId;
+          if (!runId || !event.taskId) {
+            return;
           }
-          console.log(
-            `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ""}`.trim(),
-          );
-          break;
-        case AGENT_STREAM_EVENT_TYPES.TASK_CANCELED:
-          if (event.taskId) {
-            removeLiveTask(event.taskId);
-          }
-          console.log(
-            `[stella:trace] ${event.type} | taskId=${event.taskId} | agent=${event.agentType} | status=${event.statusText ?? event.result ?? event.error ?? event.description ?? ""}`.trim(),
-          );
-          break;
-        case AGENT_STREAM_EVENT_TYPES.ERROR:
-          console.error(
-            `[stella:trace] error | fatal=${event.fatal} | ${event.error}`,
-          );
-          if (event.fatal && isPrimaryRun && isOrchestratorEvent) {
-            terminalRunIdsRef.current.add(event.runId);
-            if (localRunIdRef.current === event.runId) {
-              localRunIdRef.current = null;
-            }
-            setRuntimeStatusText(null);
-            userMessageIdByRunIdRef.current.delete(event.runId);
-            localRunSeqByRunIdRef.current.delete(event.runId);
-            localTaskSeqByRunIdRef.current.delete(event.runId);
-            showToast({
-              title: "Something went wrong",
-              description: event.error || undefined,
-              variant: "error",
+          clearScheduledTaskRemoval(runId, event.taskId);
+          const nowMs = Date.now();
+          if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_FAILED) {
+            dispatch({
+              type: "task-remove",
+              runId,
+              taskId: event.taskId,
             });
-            if (queuedRunStartsRef.current.length === 0) {
-              resetStreamingState(runIdCounter);
-            }
-            activateNextQueuedRun();
+            return;
+          }
+          if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_CANCELED) {
+            dispatch({
+              type: "task-remove",
+              runId,
+              taskId: event.taskId,
+            });
+            return;
+          }
+
+          dispatch({
+            type: "task-upsert",
+            runId,
+            task: {
+              id: event.taskId,
+              description: event.description ?? "Task",
+              agentType: event.agentType ?? "task",
+              status:
+                event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
+                  ? "completed"
+                  : "running",
+              parentTaskId: event.parentTaskId,
+              statusText: event.statusText,
+              startedAtMs: nowMs,
+              completedAtMs:
+                event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
+                  ? nowMs
+                  : undefined,
+              lastUpdatedAtMs: nowMs,
+              outputPreview: event.result,
+            },
+          });
+
+          if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED) {
+            scheduleTaskRemoval(runId, event.taskId, TASK_COMPLETION_INDICATOR_MS);
           }
           break;
-        case AGENT_STREAM_EVENT_TYPES.END:
-          if (!isPrimaryRun || !isOrchestratorEvent) {
-            break;
-          }
-          {
-            terminalRunIdsRef.current.add(event.runId);
-            const linkedUserMessageId =
-              userMessageIdByRunIdRef.current.get(event.runId) ??
-              event.userMessageId;
-            setRuntimeStatusText(null);
-            console.log(
-              `[stella:trace] end | finalText=${(event.finalText ?? streamingTextRef.current).slice(0, 200)}`,
-            );
-            userMessageIdByRunIdRef.current.delete(event.runId);
-            if (queuedRunStartsRef.current.length === 0) {
-              resetStreamingState(runIdCounter);
-            }
-            if (localRunIdRef.current === event.runId) {
-              localRunIdRef.current = null;
-            }
-            localRunSeqByRunIdRef.current.delete(event.runId);
-            localTaskSeqByRunIdRef.current.delete(event.runId);
-            activateNextQueuedRun();
-
-            if (event.selfModApplied && linkedUserMessageId) {
-              const userMessageId = linkedUserMessageId;
-              const selfModApplied = event.selfModApplied;
-              setSelfModMap((previous) => ({
-                ...previous,
-                [userMessageId]: selfModApplied,
-              }));
-            }
-          }
+        }
+        case AGENT_STREAM_EVENT_TYPES.RUN_FINISHED: {
+          applyRunFinished({
+            outcome: event.outcome ?? AGENT_RUN_FINISH_OUTCOMES.ERROR,
+            reason: event.reason ?? event.error,
+          });
+          break;
+        }
+        case AGENT_STREAM_EVENT_TYPES.ERROR: {
+          applyRunFinished({
+            outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
+            reason: event.error,
+          });
+          break;
+        }
+        case AGENT_STREAM_EVENT_TYPES.END: {
+          applyRunFinished({
+            outcome: AGENT_RUN_FINISH_OUTCOMES.COMPLETED,
+          });
+          break;
+        }
+        case AGENT_STREAM_EVENT_TYPES.TOOL_START:
+        case AGENT_STREAM_EVENT_TYPES.TOOL_END:
+        default:
           break;
       }
     },
     [
-      activateNextQueuedRun,
       appendStreamingDelta,
-      adoptUserMessageForRun,
+      clearScheduledTaskRemoval,
       resetReasoningText,
-      resetStreamingState,
       resetStreamingText,
       scheduleTaskRemoval,
-      streamingTextRef,
-      upsertLiveTask,
     ],
   );
 
-  const ensureAgentStreamSubscription = useCallback(
-    (runIdCounter: number) => {
-      if (
-        !window.electronAPI?.agent.onStream ||
-        agentStreamCleanupRef.current
-      ) {
-        return;
-      }
+  const ensureAgentStreamSubscription = useCallback(() => {
+    if (!window.electronAPI?.agent.onStream || agentStreamCleanupRef.current) {
+      return;
+    }
+    agentStreamCleanupRef.current = window.electronAPI.agent.onStream((event) => {
+      handleAgentEvent(event);
+    });
+  }, [handleAgentEvent]);
 
-      agentStreamCleanupRef.current = window.electronAPI.agent.onStream(
-        (event) => {
-          handleAgentEvent(event, runIdCounter);
-        },
-      );
+  const applyResumeSnapshot = useCallback(
+    (args: {
+      conversationId: string;
+      activeRun: ActiveRunSnapshot;
+      tasks: ResumeTaskSnapshot[];
+    }) => {
+      const nowMs = Date.now();
+      const taskItems = args.tasks.map((task) => toTaskFromResumeSnapshot(task, nowMs));
+      dispatch({
+        type: "hydrate-conversation",
+        conversationId: args.conversationId,
+        activeRun: args.activeRun,
+        tasks: taskItems,
+      });
+      if (args.conversationId === activeConversationIdRef.current) {
+        setPendingUserMessageId(args.activeRun?.userMessageId ?? null);
+      }
+      for (const task of args.tasks) {
+        if (task.status === "completed") {
+          scheduleTaskRemoval(
+            task.runId,
+            task.taskId,
+            TASK_COMPLETION_INDICATOR_MS,
+          );
+        }
+      }
     },
-    [handleAgentEvent],
+    [scheduleTaskRemoval],
   );
 
-  const startLocalStream = useCallback(
-    (args: StartStreamArgs, runIdCounter: number) => {
+  useResumeAgentRun({
+    activeConversationId,
+    refs: {
+      lastSeqByConversationRef,
+    },
+    actions: {
+      ensureAgentStreamSubscription,
+      applyResumeSnapshot,
+      handleAgentEvent,
+    },
+  });
+
+  useEffect(() => {
+    resetStreamingText();
+    resetReasoningText();
+    setSubagentPreviewText(null);
+    subagentPreviewBufferRef.current = "";
+    setPendingUserMessageId(null);
+  }, [activeConversationId, resetReasoningText, resetStreamingText]);
+
+  const startStream = useCallback(
+    (args: StartStreamArgs) => {
       if (!activeConversationId || !window.electronAPI) {
         return;
       }
 
-      ensureAgentStreamSubscription(runIdCounter);
+      ensureAgentStreamSubscription();
 
-      const startChatAttachments = attachmentsForStartChat(args.attachments);
-
-      window.electronAPI.agent
-        .startChat({
-          conversationId: activeConversationId,
-          userPrompt: args.userPrompt,
-          ...(typeof args.selectedText !== "undefined"
-            ? { selectedText: args.selectedText }
-            : {}),
-          ...(typeof args.chatContext !== "undefined"
-            ? { chatContext: args.chatContext }
-            : {}),
-          deviceId: args.deviceId,
-          platform: args.platform,
-          timezone: args.timezone,
-          mode: args.mode,
-          ...(args.messageMetadata
-            ? { messageMetadata: args.messageMetadata }
-            : {}),
-          ...(startChatAttachments?.length
-            ? { attachments: startChatAttachments }
-            : {}),
-          storageMode,
-        })
-        .then(({ runId: agentRunId, userMessageId }) => {
-          const wasCancelled =
-            cancelledStreamRunIdsRef.current.has(runIdCounter);
-          if (runIdCounter !== streamRunIdRef.current) {
-            if (wasCancelled && window.electronAPI?.agent.cancelChat) {
-              window.electronAPI.agent.cancelChat(agentRunId);
-              cancelledStreamRunIdsRef.current.delete(runIdCounter);
-            }
-            return;
-          }
-
-          cancelledStreamRunIdsRef.current.delete(runIdCounter);
-          if (terminalRunIdsRef.current.has(agentRunId)) {
-            latestUserMessageIdRef.current = userMessageId;
-            userMessageIdByRunIdRef.current.set(agentRunId, userMessageId);
-            setPendingUserMessageId(userMessageId);
-            return;
-          }
-          localRunIdRef.current = agentRunId;
-          latestUserMessageIdRef.current = userMessageId;
-          userMessageIdByRunIdRef.current.set(agentRunId, userMessageId);
-          setPendingUserMessageId(userMessageId);
-        })
-        .catch((error) => {
-          cancelledStreamRunIdsRef.current.delete(runIdCounter);
-          if (runIdCounter !== streamRunIdRef.current) return;
-
-          console.error(
-            "Failed to start local agent chat:",
-            (error as Error).message,
-          );
-
-          showToast({
-            title: "Stella couldn't start this reply",
-            description: (error as Error).message || "Please try again.",
-            variant: "error",
-          });
-          resetStreamingState(runIdCounter);
-        });
-    },
-    [
-      activeConversationId,
-      ensureAgentStreamSubscription,
-      resetStreamingState,
-      storageMode,
-    ],
-  );
-
-  const startStream = useCallback(
-    (args: StartStreamArgs) => {
-      if (!activeConversationId) {
-        return;
-      }
-
-      const runId = streamRunIdRef.current + 1;
-      streamRunIdRef.current = runId;
-      latestUserMessageIdRef.current = null;
-      localRunIdRef.current = null;
-      terminalRunIdsRef.current.clear();
-      localRunSeqByRunIdRef.current.clear();
-      localTaskSeqByRunIdRef.current.clear();
-      userMessageIdByRunIdRef.current.clear();
-      queuedRunStartsRef.current = [];
-      pendingQueuedStartCountRef.current = 0;
-      resetStreamingText();
-      resetReasoningText();
-      setIsStreaming(true);
-      setPendingUserMessageId(null);
-      setRuntimeStatusText(null);
-      setSubagentPreviewText(null);
-      subagentPreviewBufferRef.current = "";
-      clearLiveTasks();
-
-      if (agentStreamCleanupRef.current) {
-        agentStreamCleanupRef.current();
-        agentStreamCleanupRef.current = null;
-      }
-
-      if (!window.electronAPI?.agent.healthCheck) {
-        console.error("[chat] Local agent not available (no electronAPI)");
+      if (!window.electronAPI.agent.healthCheck) {
         showToast({ title: "Stella agent is not running", variant: "error" });
-        resetStreamingState(runId);
         return;
       }
+
+      const attemptId = ++startAttemptRef.current;
+      const startChatAttachments = attachmentsForStartChat(args.attachments);
 
       void window.electronAPI.agent
         .healthCheck()
         .then(async (health) => {
-          if (runId !== streamRunIdRef.current) return;
+          if (attemptId !== startAttemptRef.current) return;
 
           let nextHealth = health;
           let reason = getAgentHealthReason(nextHealth);
 
           if (!nextHealth?.ready && isTokenSyncIssue(reason)) {
             const synced = await trySyncHostToken();
-            if (runId !== streamRunIdRef.current) return;
+            if (attemptId !== startAttemptRef.current) return;
 
             if (synced && window.electronAPI?.agent.healthCheck) {
               nextHealth = await window.electronAPI.agent.healthCheck();
-              if (runId !== streamRunIdRef.current) return;
+              if (attemptId !== startAttemptRef.current) return;
               reason = getAgentHealthReason(nextHealth);
             }
           }
 
           if (!nextHealth?.ready && isTokenSyncIssue(reason)) {
-            console.error(
-              "[chat] Local agent health check failed:",
-              nextHealth,
-            );
             const toast = resolveAgentNotReadyToast(reason);
             showToast({
               title: toast.title,
               description: toast.description,
               variant: "error",
             });
-            resetStreamingState(runId);
             return;
           }
 
-          startLocalStream(args, runId);
+          const { requestId } = await window.electronAPI!.agent.startChat({
+            conversationId: activeConversationId,
+            userPrompt: args.userPrompt,
+            ...(typeof args.selectedText !== "undefined"
+              ? { selectedText: args.selectedText }
+              : {}),
+            ...(typeof args.chatContext !== "undefined"
+              ? { chatContext: args.chatContext }
+              : {}),
+            deviceId: args.deviceId,
+            platform: args.platform,
+            timezone: args.timezone,
+            mode: args.mode,
+            ...(args.messageMetadata
+              ? { messageMetadata: args.messageMetadata }
+              : {}),
+            ...(startChatAttachments?.length
+              ? { attachments: startChatAttachments }
+              : {}),
+            storageMode,
+          });
+          pendingRequestIdsRef.current.add(requestId);
         })
         .catch((error) => {
-          if (runId !== streamRunIdRef.current) return;
-
-          console.error(
-            "[chat] Local agent health check error:",
-            (error as Error).message,
-          );
+          console.error("Failed to start local agent chat:", (error as Error).message);
           showToast({
-            title: "Stella agent is not responding",
+            title: "Stella couldn't start this reply",
+            description: (error as Error).message || "Please try again.",
             variant: "error",
           });
-          resetStreamingState(runId);
         });
     },
-    [
-      activeConversationId,
-      resetReasoningText,
-      resetStreamingState,
-      resetStreamingText,
-      clearLiveTasks,
-      startLocalStream,
-    ],
+    [activeConversationId, ensureAgentStreamSubscription, storageMode],
   );
 
   const queueStream = useCallback(
     (args: StartStreamArgs) => {
-      if (!activeConversationId || !window.electronAPI) {
-        return;
-      }
-
-      const runIdCounter = streamRunIdRef.current;
-      if (!runIdCounter) {
-        startStream(args);
-        return;
-      }
-
-      latestUserMessageIdRef.current = null;
-
-      pendingQueuedStartCountRef.current += 1;
-      ensureAgentStreamSubscription(runIdCounter);
-
-      const queuedStartChatAttachments = attachmentsForStartChat(
-        args.attachments,
-      );
-
-      window.electronAPI.agent
-        .startChat({
-          conversationId: activeConversationId,
-          userPrompt: args.userPrompt,
-          ...(typeof args.selectedText !== "undefined"
-            ? { selectedText: args.selectedText }
-            : {}),
-          ...(typeof args.chatContext !== "undefined"
-            ? { chatContext: args.chatContext }
-            : {}),
-          deviceId: args.deviceId,
-          platform: args.platform,
-          timezone: args.timezone,
-          mode: args.mode,
-          ...(args.messageMetadata
-            ? { messageMetadata: args.messageMetadata }
-            : {}),
-          ...(queuedStartChatAttachments?.length
-            ? { attachments: queuedStartChatAttachments }
-            : {}),
-          storageMode,
-        })
-        .then(({ runId: agentRunId, userMessageId }) => {
-          const wasCancelled =
-            cancelledStreamRunIdsRef.current.has(runIdCounter);
-          if (runIdCounter !== streamRunIdRef.current) {
-            if (wasCancelled && window.electronAPI?.agent.cancelChat) {
-              window.electronAPI.agent.cancelChat(agentRunId);
-              cancelledStreamRunIdsRef.current.delete(runIdCounter);
-            }
-            return;
-          }
-
-          cancelledStreamRunIdsRef.current.delete(runIdCounter);
-          queuedRunStartsRef.current.push({
-            runId: agentRunId,
-            userMessageId,
-          });
-          activateNextQueuedRun();
-        })
-        .catch((error) => {
-          cancelledStreamRunIdsRef.current.delete(runIdCounter);
-          if (runIdCounter !== streamRunIdRef.current) {
-            return;
-          }
-
-          console.error(
-            "Failed to queue local agent chat:",
-            (error as Error).message,
-          );
-          showToast({
-            title: "Stella couldn't queue this reply",
-            description: (error as Error).message || "Please try again.",
-            variant: "error",
-          });
-        })
-        .finally(() => {
-          pendingQueuedStartCountRef.current = Math.max(
-            0,
-            pendingQueuedStartCountRef.current - 1,
-          );
-        });
+      startStream(args);
     },
-    [
-      activateNextQueuedRun,
-      activeConversationId,
-      ensureAgentStreamSubscription,
-      startStream,
-      storageMode,
-    ],
+    [startStream],
   );
 
-  useResumeAgentRun({
-    activeConversationId,
-    isStreaming,
-    refs: {
-      streamRunIdRef,
-      localRunIdRef,
-      localRunSeqByRunIdRef,
-      localTaskSeqByRunIdRef,
-      agentStreamCleanupRef,
-    },
-    actions: {
-      resetStreamingText,
-      resetReasoningText,
-      resetStreamingState,
-      setIsStreaming,
-      setPendingUserMessageId,
-      handleAgentEvent,
-    },
-  });
+  const cancelCurrentStream = useCallback(() => {
+    if (!activeRunId || !window.electronAPI?.agent.cancelChat) {
+      return;
+    }
+    window.electronAPI.agent.cancelChat(activeRunId);
+  }, [activeRunId]);
+
+  const activeRunTasks = activeRunId
+    ? storeState.tasksByRunId[activeRunId] ?? {}
+    : {};
+  const liveTasks = Object.values(activeRunTasks).sort(
+    (a, b) => a.startedAtMs - b.startedAtMs,
+  );
 
   return {
-    liveTasks: Object.values(liveTasksById).sort(
-      (a, b) => a.startedAtMs - b.startedAtMs,
-    ),
+    liveTasks,
     runtimeStatusText,
     subagentPreviewText,
     streamingText,
