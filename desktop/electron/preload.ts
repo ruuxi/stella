@@ -426,14 +426,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
       storageMode?: "cloud" | "local";
     }) =>
       ipcRenderer.invoke("agent:startChat", payload) as Promise<{
-        runId: string;
-        userMessageId: string;
+        requestId: string;
       }>,
     cancelChat: (runId: string) => ipcRenderer.send("agent:cancelChat", runId),
-    resumeStream: (payload: { runId: string; lastSeq: number }) =>
+    resumeConversationExecution: (payload: {
+      conversationId: string;
+      lastSeq: number;
+    }) =>
       ipcRenderer.invoke("agent:resume", payload) as Promise<{
+        activeRun: {
+          runId: string;
+          conversationId: string;
+          requestId?: string;
+          userMessageId?: string;
+        } | null;
         events: Array<{
           type:
+            | "run-started"
+            | "run-finished"
             | "status"
             | "stream"
             | "tool-start"
@@ -446,9 +456,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
             | "task-canceled"
             | "task-progress";
           runId: string;
+          conversationId?: string;
+          requestId?: string;
           agentType?: string;
           seq: number;
           userMessageId?: string;
+          rootRunId?: string;
           chunk?: string;
           statusState?: "running" | "compacting";
           toolCallId?: string;
@@ -459,6 +472,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
           fatal?: boolean;
           finalText?: string;
           persisted?: boolean;
+          outcome?: "completed" | "error" | "canceled";
+          reason?: string;
+          replacedByRunId?: string;
           selfModApplied?: {
             featureId: string;
             files: string[];
@@ -470,10 +486,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
           result?: string;
           statusText?: string;
         }>;
-        exhausted: boolean;
+        tasks: Array<{
+          runId: string;
+          taskId: string;
+          agentType?: string;
+          description?: string;
+          parentTaskId?: string;
+          status: "running" | "completed" | "error" | "canceled";
+          statusText?: string;
+          result?: string;
+          error?: string;
+        }>;
       }>,
     onStream: onIpc<{
       type:
+        | "run-started"
+        | "run-finished"
         | "status"
         | "stream"
         | "tool-start"
@@ -486,9 +514,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
         | "task-canceled"
         | "task-progress";
       runId: string;
+      conversationId?: string;
+      requestId?: string;
       agentType?: string;
       seq: number;
       userMessageId?: string;
+      rootRunId?: string;
       chunk?: string;
       statusState?: "running" | "compacting";
       toolCallId?: string;
@@ -500,6 +531,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       fatal?: boolean;
       finalText?: string;
       persisted?: boolean;
+      outcome?: "completed" | "error" | "canceled";
+      reason?: string;
+      replacedByRunId?: string;
       selfModApplied?: {
         featureId: string;
         files: string[];

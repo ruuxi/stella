@@ -419,11 +419,30 @@ export type ElectronAgentApi = {
     }>;
     agentType?: string;
     storageMode?: "cloud" | "local";
-  }) => Promise<{ runId: string; userMessageId: string }>;
+  }) => Promise<{ requestId: string }>;
   cancelChat: (runId: string) => void;
-  resumeStream: (payload: { runId: string; lastSeq: number }) => Promise<{
+  resumeConversationExecution: (payload: {
+    conversationId: string;
+    lastSeq: number;
+  }) => Promise<{
+    activeRun: {
+      runId: string;
+      conversationId: string;
+      requestId?: string;
+      userMessageId?: string;
+    } | null;
     events: AgentStreamIpcEvent[];
-    exhausted: boolean;
+    tasks: Array<{
+      runId: string;
+      taskId: string;
+      agentType?: string;
+      description?: string;
+      parentTaskId?: string;
+      status: "running" | "completed" | "error" | "canceled";
+      statusText?: string;
+      result?: string;
+      error?: string;
+    }>;
   }>;
   onStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void;
   onSelfModHmrState: (callback: (event: SelfModHmrState) => void) => () => void;

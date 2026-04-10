@@ -157,6 +157,11 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
           onCleanup: options?.onCleanup,
         })
       ) {
+        callbacks.onInterrupted?.({
+          runId,
+          agentType: event.agentType,
+          reason: QUEUED_TURN_INTERRUPT_ERROR,
+        });
         return;
       }
       callbacks.onError(event);
@@ -172,6 +177,12 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
           onCleanup: options?.onCleanup,
         })
       ) {
+        callbacks.onInterrupted?.({
+          runId,
+          agentType: event.agentType,
+          userMessageId: event.userMessageId,
+          reason: QUEUED_TURN_INTERRUPT_ERROR,
+        });
         return;
       }
       cleanupRun(runId, options?.onCleanup);

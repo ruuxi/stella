@@ -15,8 +15,10 @@ import {
 } from "../protocol/index.js";
 import {
   AGENT_IDS,
+  AGENT_RUN_FINISH_OUTCOMES,
   AGENT_STREAM_EVENT_TYPES,
   type AgentIdLike,
+  type AgentRunFinishOutcome,
   type AgentStreamEventType,
 } from "../../src/shared/contracts/agent-runtime.js";
 import { prepareStoredLocalChatPayload } from "../kernel/storage/local-chat-payload.js";
@@ -75,6 +77,9 @@ type AgentEventPayload = {
   type: AgentStreamEventType;
   runId: string;
   seq: number;
+  conversationId?: string;
+  requestId?: string;
+  userMessageId?: string;
   chunk?: string;
   statusState?: "running" | "compacting";
   toolCallId?: string;
@@ -89,10 +94,14 @@ type AgentEventPayload = {
   selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
   taskId?: string;
   agentType?: AgentIdLike;
+  rootRunId?: string;
   description?: string;
   parentTaskId?: string;
   result?: string;
   statusText?: string;
+  outcome?: AgentRunFinishOutcome;
+  reason?: string;
+  replacedByRunId?: string;
 };
 
 type WorkerState = {
@@ -511,6 +520,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_START_CHAT, async (params) => {
     const payload = params as RuntimeChatPayload;
+    const requestId =
+      asTrimmedString((payload as RuntimeChatPayload & { requestId?: string }).requestId)
+      || undefined;
     const {
       visibleUserPrompt,
       windowContextLabel,
@@ -620,8 +632,20 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         });
         peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
       },
-      onStream: (ev) => emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.STREAM }),
-      onStatus: (ev) => emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.STATUS }),
+      onStream: (ev) =>
+        emitRunEvent({
+          ...ev,
+          type: AGENT_STREAM_EVENT_TYPES.STREAM,
+          conversationId: payload.conversationId,
+          ...(requestId ? { requestId } : {}),
+        }),
+      onStatus: (ev) =>
+        emitRunEvent({
+          ...ev,
+          type: AGENT_STREAM_EVENT_TYPES.STATUS,
+          conversationId: payload.conversationId,
+          ...(requestId ? { requestId } : {}),
+        }),
       onToolStart: (ev) => {
         ensureChatStore().appendEvent({
           conversationId: payload.conversationId,
@@ -634,7 +658,12 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           },
         });
         peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
-        emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.TOOL_START });
+        emitRunEvent({
+          ...ev,
+          type: AGENT_STREAM_EVENT_TYPES.TOOL_START,
+          conversationId: payload.conversationId,
+          ...(requestId ? { requestId } : {}),
+        });
       },
       onToolEnd: (ev) => {
         const details =
@@ -654,15 +683,40 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           },
         });
         peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
-        emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.TOOL_END });
+        emitRunEvent({
+          ...ev,
+          type: AGENT_STREAM_EVENT_TYPES.TOOL_END,
+          conversationId: payload.conversationId,
+          ...(requestId ? { requestId } : {}),
+        });
       },
-      onError: (ev) => emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.ERROR }),
+      onError: (ev) =>
+        emitRunEvent({
+          ...ev,
+          type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+          outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
+          reason: ev.error,
+          conversationId: payload.conversationId,
+          ...(requestId ? { requestId } : {}),
+          ...(ev.runId ? { rootRunId: ev.runId } : {}),
+        }),
       onTaskEvent: (ev) => {
+        if (!ev.rootRunId) {
+          logger.warn("task-event-missing-root-run-id", {
+            conversationId: ev.conversationId,
+            taskId: ev.taskId,
+            type: ev.type,
+          });
+          return;
+        }
         emitRunEvent({
           type: ev.type,
-          runId: ev.rootRunId ?? activeRunId ?? payload.conversationId,
+          runId: ev.rootRunId,
           seq: syntheticSeq++,
+          conversationId: payload.conversationId,
+          ...(requestId ? { requestId } : {}),
           taskId: ev.taskId,
+          rootRunId: ev.rootRunId,
           agentType: ev.agentType,
           description: ev.description,
           parentTaskId: ev.parentTaskId,
@@ -700,7 +754,28 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           });
           peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
         }
-        emitRunEvent({ ...ev, type: AGENT_STREAM_EVENT_TYPES.END });
+        emitRunEvent({
+          ...ev,
+          type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+          outcome: AGENT_RUN_FINISH_OUTCOMES.COMPLETED,
+          conversationId: payload.conversationId,
+          ...(requestId ? { requestId } : {}),
+          ...(ev.runId ? { rootRunId: ev.runId } : {}),
+        });
+      },
+      onInterrupted: (ev) => {
+        emitRunEvent({
+          type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+          runId: ev.runId,
+          seq: Number.MAX_SAFE_INTEGER,
+          conversationId: payload.conversationId,
+          ...(requestId ? { requestId } : {}),
+          agentType: ev.agentType,
+          userMessageId: ev.userMessageId,
+          outcome: AGENT_RUN_FINISH_OUTCOMES.CANCELED,
+          reason: ev.reason,
+          rootRunId: ev.runId,
+        });
       },
       onSelfModHmrState: (statePayload) =>
         emitSelfModHmrState({ runId: activeRunId || undefined, state: statePayload }),
