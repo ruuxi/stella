@@ -277,32 +277,30 @@ const findTailStartIndexByTokenBudget = (
   messages: StoredThreadMessage[],
   keepRecentTokens = THREAD_COMPACTION_KEEP_RECENT_TOKENS,
 ): number => {
-  const cutPoints: number[] = [];
-  for (let index = 0; index < messages.length; index += 1) {
-    if (isCutPointMessage(messages[index]!)) {
-      cutPoints.push(index);
-    }
-  }
-  if (cutPoints.length === 0) {
-    return 0;
-  }
-
+  let earliestCutPoint: number | null = null;
+  let nearestCutPoint: number | null = null;
+  let thresholdReached = false;
   let accumulatedTokens = 0;
-  let cutIndex = cutPoints[0]!;
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (isCutPointMessage(messages[index]!)) {
+      nearestCutPoint = index;
+      earliestCutPoint = index;
+      if (thresholdReached) {
+        return index;
+      }
+    }
+
     accumulatedTokens += estimateStoredMessageTokens(messages[index]!);
-    if (accumulatedTokens < keepRecentTokens) {
-      continue;
+    if (!thresholdReached && accumulatedTokens >= keepRecentTokens) {
+      thresholdReached = true;
+      if (nearestCutPoint !== null) {
+        return nearestCutPoint;
+      }
     }
-    const nextCutPoint = cutPoints.find((entryIndex) => entryIndex >= index);
-    if (typeof nextCutPoint === "number") {
-      cutIndex = nextCutPoint;
-    }
-    break;
   }
 
-  return cutIndex;
+  return earliestCutPoint ?? 0;
 };
 
 export const splitThreadMessagesForCompaction = (

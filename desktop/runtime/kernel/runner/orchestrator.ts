@@ -61,6 +61,55 @@ export const createOrchestratorController = (
     finishInterruptedRun,
   } = coordinator;
 
+  type StartPreparedRunArgs = Parameters<typeof startPreparedOrchestratorRun>[0];
+  const launchOrchestratorRun = async (args: {
+    alreadyRunningError: string;
+    conversationId: string;
+    agentType: string;
+    userPrompt: string;
+    promptMessages?: ChatPayload["promptMessages"];
+    attachments: StartPreparedRunArgs["attachments"];
+    userMessageId: string;
+    callbacks: AgentCallbacks;
+    replayTurn?: QueuedOrchestratorTurn | null;
+    createRunCallbacks: StartPreparedRunArgs["createRuntimeCallbacks"];
+    onPrepared?: StartPreparedRunArgs["onPrepared"];
+  }): Promise<{ runId: string }> => {
+    if (context.state.activeOrchestratorRunId) {
+      throw new Error(args.alreadyRunningError);
+    }
+
+    const runId = `local:${crypto.randomUUID()}`;
+
+    await startPreparedOrchestratorRun({
+      context,
+      buildAgentContext: deps.buildAgentContext,
+      queueOrchestratorTurn,
+      runId,
+      conversationId: args.conversationId,
+      agentType: args.agentType,
+      userPrompt: args.userPrompt,
+      ...(args.promptMessages?.length
+        ? { promptMessages: args.promptMessages }
+        : {}),
+      attachments: args.attachments,
+      userMessageId: args.userMessageId,
+      replayTurn: args.replayTurn ?? null,
+      createRuntimeCallbacks: args.createRunCallbacks,
+      webSearch: deps.webSearch,
+      finishInterruptedRun,
+      cleanupRun,
+      ...(args.onPrepared ? { onPrepared: args.onPrepared } : {}),
+      onFatalError: createOrchestratorFatalErrorHandler({
+        runId,
+        agentType: args.agentType,
+        callbacks: args.callbacks,
+      }),
+    });
+
+    return { runId };
+  };
+
   const startStreamingOrchestratorTurn = async (
     payload: QueuedOrchestratorTurn,
     startArgs: {
@@ -72,11 +121,6 @@ export const createOrchestratorController = (
     },
     callbacks: AgentCallbacks,
   ): Promise<{ runId: string }> => {
-    if (context.state.activeOrchestratorRunId) {
-      throw new Error("The orchestrator is already running.");
-    }
-
-    const runId = `local:${crypto.randomUUID()}`;
     const conversationId = startArgs.conversationId;
     const agentType = startArgs.agentType;
     const userPrompt = startArgs.userPrompt.trim();
@@ -88,33 +132,21 @@ export const createOrchestratorController = (
       throw new Error("Missing user prompt");
     }
 
-    await startPreparedOrchestratorRun({
-      context,
-      buildAgentContext: deps.buildAgentContext,
-      queueOrchestratorTurn,
-      runId,
+    return await launchOrchestratorRun({
+      alreadyRunningError: "The orchestrator is already running.",
       conversationId,
       agentType,
       userPrompt,
       ...(promptMessages?.length ? { promptMessages } : {}),
       attachments: [],
-      replayTurn: payload.requeueOnInterrupt ? payload : null,
       userMessageId: startArgs.userMessageId,
-      createRuntimeCallbacks: ({ runId, prepared }) =>
+      callbacks,
+      replayTurn: payload.requeueOnInterrupt ? payload : null,
+      createRunCallbacks: ({ runId, prepared }) =>
         createRuntimeCallbacks(runId, callbacks, {
           onInterrupted: prepared.replayInterruptedTurn,
         }),
-      webSearch: deps.webSearch,
-      finishInterruptedRun,
-      cleanupRun,
-      onFatalError: createOrchestratorFatalErrorHandler({
-        runId,
-        agentType,
-        callbacks,
-      }),
     });
-
-    return { runId };
   };
 
   const agentHealthCheck = () => getOrchestratorHealth(context, deps);
@@ -123,12 +155,6 @@ export const createOrchestratorController = (
     payload: ChatPayload,
     callbacks: AgentCallbacks,
   ): Promise<{ runId: string }> => {
-    if (context.state.activeOrchestratorRunId) {
-      throw new Error(
-        "The orchestrator is already running. Wait for it to finish before starting another run.",
-      );
-    }
-
     const {
       conversationId,
       agentType,
@@ -136,28 +162,24 @@ export const createOrchestratorController = (
       promptMessages,
       attachments,
     } = normalizeChatRunInput(payload);
-    const runId = `local:${crypto.randomUUID()}`;
     const hasPromptMessages = Boolean(promptMessages?.some((message) => message.text.trim().length > 0));
     if (!userPrompt && attachments.length === 0 && !hasPromptMessages) {
       throw new Error("Missing user prompt");
     }
 
-    await startPreparedOrchestratorRun({
-      context,
-      buildAgentContext: deps.buildAgentContext,
-      queueOrchestratorTurn,
-      runId,
+    return await launchOrchestratorRun({
+      alreadyRunningError:
+        "The orchestrator is already running. Wait for it to finish before starting another run.",
       conversationId,
       agentType,
       userPrompt,
       ...(promptMessages?.length ? { promptMessages } : {}),
       attachments,
       userMessageId: payload.userMessageId,
-      webSearch: deps.webSearch,
-      createRuntimeCallbacks: ({ runId }) => createRuntimeCallbacks(runId, callbacks),
-      finishInterruptedRun,
-      cleanupRun,
+      callbacks,
+      createRunCallbacks: ({ runId }) => createRuntimeCallbacks(runId, callbacks),
       onPrepared: (prepared) => {
+        const runId = prepared.runId;
         logger.debug("handleLocalChat", {
           runId,
           agentType,
@@ -168,14 +190,7 @@ export const createOrchestratorController = (
           threadHistoryCount: prepared.agentContext.threadHistory?.length ?? 0,
         });
       },
-      onFatalError: createOrchestratorFatalErrorHandler({
-        runId,
-        agentType,
-        callbacks,
-      }),
     });
-
-    return { runId };
   };
 
   const handleLocalChat = async (
