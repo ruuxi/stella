@@ -14,6 +14,10 @@ import {
   runAgentTurnWithBackendFallback,
 } from "../scheduling/desktop_handoff_policy";
 import { AGENT_IDS } from "../lib/agent_constants";
+import {
+  EXECUTION_NOT_AVAILABLE_MESSAGE,
+  shouldUseOfflineResponderForProvider,
+} from "./execution_policy";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,8 +77,6 @@ type PendingDeviceSelectionState = {
 
 export const DM_POLICY_DEFAULT = "pairing" as const;
 export const SYNC_MODE_OFF: SyncMode = "off";
-export const EXECUTION_NOT_AVAILABLE_MESSAGE =
-  "Your desktop is offline right now. Open Stella on your desktop and try again.";
 export const TRANSIENT_CLEANUP_MAX_ATTEMPTS = 4;
 export const TRANSIENT_CLEANUP_BACKOFF_BASE_MS = 100;
 export const TRANSIENT_CLEANUP_BACKOFF_MAX_MS = 2_000;
@@ -606,6 +608,7 @@ export async function processIncomingMessage(
     console.log(
       `[pipeline:trace] candidates: ${JSON.stringify(candidates.map((c) => c.mode))}, deliveryMeta=${!!args.deliveryMeta}, userMessageId=${!!userMessageId}, transient=${transient}`,
     );
+    const allowOfflineResponder = shouldUseOfflineResponderForProvider(args.provider);
 
     // ─── Inverted Execution: defer to local device ──────────────────────
     // When the local device is online and delivery metadata is provided,
@@ -637,25 +640,38 @@ export async function processIncomingMessage(
         payload: turnPayload,
       });
 
-      // Schedule a fast fallback — if the desktop doesn't claim this
-      // request within a few seconds, run the offline responder.
-      await args.ctx.runMutation(
-        internal.channels.connector_delivery.scheduleRescue,
-        {
-          requestId,
-          conversationId,
-          ownerId: connection.ownerId,
-          prompt: promptText,
-          provider: args.provider,
-          deliveryMeta: clonedDeliveryMeta,
-          ...(userMessageId ? { userMessageId: String(userMessageId) } : {}),
-        },
-      );
+      // Schedule a fast rescue only for the mobile app's backend offline
+      // responder. For desktop-routed connectors, a delayed claim should not
+      // be treated as "desktop offline"; the orphan watchdog handles true
+      // failures later if the request never completes.
+      if (allowOfflineResponder) {
+        await args.ctx.runMutation(
+          internal.channels.connector_delivery.scheduleRescue,
+          {
+            requestId,
+            conversationId,
+            ownerId: connection.ownerId,
+            prompt: promptText,
+            provider: args.provider,
+            deliveryMeta: clonedDeliveryMeta,
+            ...(userMessageId ? { userMessageId: String(userMessageId) } : {}),
+          },
+        );
+      }
 
       console.log(
         `[channels] Deferred to local device (inverted execution): ${requestId}`,
       );
       return { text: "", deferred: true };
+    }
+
+    if (!allowOfflineResponder) {
+      const failureMessage = EXECUTION_NOT_AVAILABLE_MESSAGE;
+      await persistAssistant({
+        text: failureMessage,
+        fallback: "none",
+      });
+      return { text: failureMessage };
     }
 
     let result: RunAgentTurnResult | null = null;

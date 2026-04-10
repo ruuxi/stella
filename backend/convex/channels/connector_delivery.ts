@@ -31,6 +31,10 @@ import {
   truncateForConnector,
 } from "./connector_constants";
 import { getGoogleAccessToken, getTeamsBotToken } from "./connector_auth";
+import {
+  EXECUTION_NOT_AVAILABLE_MESSAGE,
+  shouldUseOfflineResponderForProvider,
+} from "./execution_policy";
 
 const BACKEND_FALLBACK_AGENT_TYPE = "offline_responder";
 const EMPTY_RESPONSE_TEXT = "(Stella had nothing to say.)";
@@ -219,14 +223,11 @@ async function runFallbackAndDeliver(
   });
 
   if (result.text.trim() && !result.silent) {
-    await ctx.runMutation(internal.events.appendInternalEvent, {
+    await persistConnectorAssistantMessage(ctx, {
       conversationId: args.conversationId,
-      type: "assistant_message",
-      payload: {
-        text: result.text,
-        source: `channel:${args.provider}`,
-        ...(result.usage ? { usage: result.usage } : {}),
-      },
+      provider: args.provider,
+      text: result.text,
+      usage: result.usage,
     });
   }
 
@@ -240,9 +241,55 @@ async function runFallbackAndDeliver(
   });
 }
 
+async function persistConnectorAssistantMessage(
+  ctx: Pick<ActionCtx, "runMutation">,
+  args: {
+    conversationId: Id<"conversations">;
+    provider: string;
+    text: string;
+    usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  },
+): Promise<void> {
+  await ctx.runMutation(internal.events.appendInternalEvent, {
+    conversationId: args.conversationId,
+    type: "assistant_message",
+    payload: {
+      text: args.text,
+      source: `channel:${args.provider}`,
+      ...(args.usage ? { usage: args.usage } : {}),
+    },
+  });
+}
+
+async function deliverExecutionUnavailable(
+  ctx: ActionCtx,
+  args: {
+    requestId: string;
+    conversationId: Id<"conversations">;
+    provider: string;
+    deliveryMeta: Record<string, unknown>;
+  },
+): Promise<void> {
+  await persistConnectorAssistantMessage(ctx, {
+    conversationId: args.conversationId,
+    provider: args.provider,
+    text: EXECUTION_NOT_AVAILABLE_MESSAGE,
+  });
+
+  await deliverToConnectorCore(ctx, {
+    requestId: args.requestId,
+    conversationId: args.conversationId,
+    provider: args.provider,
+    deliveryMeta: args.deliveryMeta,
+    text: EXECUTION_NOT_AVAILABLE_MESSAGE,
+  });
+}
+
 // ─── Per-request fallback (scheduled by message_pipeline) ───────────────────
-// Runs a few seconds after a remote_turn_request is inserted. If the desktop
-// hasn't claimed the request yet, runs the offline responder and delivers.
+// Runs a few seconds after a remote_turn_request is inserted. This fast rescue
+// exists only for the mobile app's backend offline responder. Other connectors
+// must wait for the normal desktop flow or the slower orphan watchdog; an
+// unclaimed request after a few seconds does not mean the desktop is offline.
 export const rescueSingleTurn = internalAction({
   args: {
     requestId: v.string(),
@@ -269,6 +316,13 @@ export const rescueSingleTurn = internalAction({
       `[rescue:trace] requestId=${args.requestId}, fulfilled=${fulfilled}, claimed=${!!claimedEvent}`,
     );
     if (fulfilled || claimedEvent) return null;
+
+    if (!shouldUseOfflineResponderForProvider(args.provider)) {
+      console.log(
+        `[rescue:trace] Skipping fast rescue for provider=${args.provider}; waiting for desktop claim or orphan watchdog.`,
+      );
+      return null;
+    }
 
     console.log(
       `[rescue:trace] Desktop did not claim ${args.requestId}, running offline responder`,
@@ -834,7 +888,22 @@ export const rescueOrphanedTurns = internalAction({
           });
         } else {
           // Case 2: Not claimed — device went offline before picking up the
-          // request. Run the full turn through backend fallback + deliver.
+          // request. Non-mobile connectors should never use the offline
+          // responder; return the execution-unavailable message instead.
+          if (!shouldUseOfflineResponderForProvider(provider)) {
+            await deliverExecutionUnavailable(ctx, {
+              requestId: orphan.requestId,
+              conversationId,
+              provider,
+              deliveryMeta,
+            });
+            console.log(
+              `[watchdog] Rescued orphan ${orphan.requestId} (execution unavailable) → ${provider}`,
+            );
+            continue;
+          }
+
+          // Mobile app can still use the backend offline responder.
           const conversation = await ctx.runQuery(
             internal.conversations.getById,
             { id: conversationId },
@@ -906,4 +975,3 @@ export const rescueOrphanedTurns = internalAction({
     return null;
   },
 });
-
