@@ -413,6 +413,7 @@ export type RuntimeAgentEventPayload = {
   type: string;
   runId: string;
   seq: number;
+  userMessageId?: string;
   chunk?: string;
   statusState?: "running" | "compacting";
   toolCallId?: string;

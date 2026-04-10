@@ -307,6 +307,79 @@ const resolveShellLaunch = (
   return { shell: bashPath, args: ["-lc", command] };
 };
 
+type SpawnedShell = ReturnType<typeof spawn>;
+
+const spawnShellProcess = (
+  shell: string,
+  args: string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+) =>
+  spawn(shell, args, {
+    cwd,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+    // On Unix, make the shell the leader of its own process group so timeouts
+    // and manual kills can terminate the entire command tree.
+    detached: process.platform !== "win32",
+  });
+
+const killShellProcess = (child: SpawnedShell, signal: NodeJS.Signals = "SIGTERM") => {
+  const pid = child.pid;
+
+  if (!pid) {
+    return;
+  }
+
+  if (process.platform === "win32") {
+    const taskkillArgs = ["/pid", String(pid), "/t"];
+    if (signal === "SIGKILL") {
+      taskkillArgs.push("/f");
+    }
+
+    const killer = spawn("taskkill", taskkillArgs, {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+
+    killer.on("error", () => {
+      try {
+        child.kill(signal);
+      } catch {
+        // Ignore cleanup errors on fallback kill.
+      }
+    });
+    return;
+  }
+
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {
+      // Ignore cleanup errors when the child already exited.
+    }
+  }
+};
+
+const terminateShellProcess = (child: SpawnedShell) => {
+  if (child.exitCode !== null) {
+    return;
+  }
+
+  killShellProcess(child, "SIGTERM");
+
+  const forceKillTimer = setTimeout(() => {
+    if (child.exitCode !== null) {
+      return;
+    }
+    killShellProcess(child, "SIGKILL");
+  }, 1_000);
+  forceKillTimer.unref?.();
+};
+
 export const normalizeComputerAgentShellCommand = (command: string) =>
   command
     .replace(
@@ -347,12 +420,7 @@ export const startShell = (
     return record;
   }
 
-  const child = spawn(launch.shell, launch.args, {
-    cwd,
-    env: buildShellEnv(envOverrides, state),
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
-  });
+  const child = spawnShellProcess(launch.shell, launch.args, cwd, buildShellEnv(envOverrides, state));
 
   const record: ShellRecord = {
     id,
@@ -364,7 +432,7 @@ export const startShell = (
     startedAt: Date.now(),
     completedAt: null,
     kill: () => {
-      child.kill();
+      terminateShellProcess(child);
     },
   };
 
@@ -402,12 +470,7 @@ export const runShell = async (
   }
 
   return new Promise<string>((resolve) => {
-    const child = spawn(launch.shell, launch.args, {
-      cwd,
-      env: buildShellEnv(envOverrides, state),
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
+    const child = spawnShellProcess(launch.shell, launch.args, cwd, buildShellEnv(envOverrides, state));
 
     let output = "";
     let finished = false;
@@ -415,7 +478,7 @@ export const runShell = async (
     const timer = setTimeout(() => {
       if (finished) return;
       finished = true;
-      child.kill();
+      terminateShellProcess(child);
       resolve(`Command timed out after ${timeoutMs}ms.\n\n${truncate(output)}`);
     }, timeoutMs);
 
@@ -467,12 +530,16 @@ export const handleBash = async (
   const cwd = String(args.working_directory ?? context?.frontendRoot ?? process.cwd());
   const runInBackground = Boolean(args.run_in_background ?? false);
   const envOverrides: Record<string, string> = {};
+  const browserOwnerId = context?.taskId ?? context?.runId ?? context?.rootRunId;
 
   if (shouldUseStellaBrowserBridge(command)) {
     // Browser automation uses one shared Stella browser bridge.
     // Runs should not fork ad-hoc sessions that bypass the app-owned bridge lifecycle.
     command = normalizeComputerAgentShellCommand(command);
     Object.assign(envOverrides, getStellaBrowserBridgeEnv());
+    if (browserOwnerId) {
+      envOverrides.STELLA_BROWSER_OWNER_ID = browserOwnerId;
+    }
   }
 
   if (runInBackground) {
