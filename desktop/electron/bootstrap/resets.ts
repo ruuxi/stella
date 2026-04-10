@@ -34,8 +34,6 @@ export const shutdownBootstrapRuntime = async (
   state.localChatUpdateUnsubscribe = null;
   state.scheduleUpdateUnsubscribe?.();
   state.scheduleUpdateUnsubscribe = null;
-  state.devProjectsUpdateUnsubscribe?.();
-  state.devProjectsUpdateUnsubscribe = null;
 
   if (state.stellaHostRunner) {
     const runner = state.stellaHostRunner;

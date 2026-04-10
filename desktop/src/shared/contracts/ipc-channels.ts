@@ -194,14 +194,6 @@ export const IPC_BROWSER_BRIDGE_STATUS = "browser:bridgeStatus" as const;
 export const IPC_MEDIA_SAVE_OUTPUT = "media:saveOutput" as const;
 export const IPC_MEDIA_GET_DIR = "media:getStellaMediaDir" as const;
 
-// ── Projects ────────────────────────────────────────────────────────────────
-
-export const IPC_PROJECTS_LIST = "projects:list" as const;
-export const IPC_PROJECTS_PICK_DIRECTORY = "projects:pickDirectory" as const;
-export const IPC_PROJECTS_START = "projects:start" as const;
-export const IPC_PROJECTS_STOP = "projects:stop" as const;
-export const IPC_PROJECTS_CHANGED = "projects:changed" as const;
-
 // ── Schedule ────────────────────────────────────────────────────────────────
 
 export const IPC_SCHEDULE_LIST_CRON_JOBS = "schedule:listCronJobs" as const;

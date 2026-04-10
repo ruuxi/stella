@@ -29,8 +29,6 @@ import type {
   BrowserDataResult as SharedBrowserDataResult,
   PreferredBrowserProfile as SharedPreferredBrowserProfile,
   BrowserProfile as SharedBrowserProfile,
-  DevProject as SharedDevProject,
-  LocalDevProjectRecord as SharedLocalDevProjectRecord,
   CommandFrequency as SharedCommandFrequency,
   ShellAnalysis as SharedShellAnalysis,
   DiscoveredApp as SharedDiscoveredApp,
@@ -98,8 +96,6 @@ export type BrowserData = SharedBrowserData;
 export type BrowserDataResult = SharedBrowserDataResult;
 export type PreferredBrowserProfile = SharedPreferredBrowserProfile;
 export type BrowserProfile = SharedBrowserProfile;
-export type DevProject = SharedDevProject;
-export type LocalDevProjectRecord = SharedLocalDevProjectRecord;
 export type CommandFrequency = SharedCommandFrequency;
 export type ShellAnalysis = SharedShellAnalysis;
 export type DiscoveredApp = SharedDiscoveredApp;
@@ -593,20 +589,6 @@ export type ElectronBrowserApi = {
   ) => Promise<string>;
 };
 
-export type ElectronProjectsApi = {
-  list: () => Promise<LocalDevProjectRecord[]>;
-  pickDirectory: () => Promise<{
-    canceled: boolean;
-    projects: LocalDevProjectRecord[];
-    selectedProjectId?: string;
-  }>;
-  start: (projectId: string) => Promise<LocalDevProjectRecord[]>;
-  stop: (projectId: string) => Promise<LocalDevProjectRecord[]>;
-  onChanged: (
-    callback: (projects: LocalDevProjectRecord[]) => void,
-  ) => () => void;
-};
-
 export type ElectronScheduleApi = {
   listCronJobs: () => Promise<LocalCronJobRecord[]>;
   listHeartbeats: () => Promise<LocalHeartbeatConfigRecord[]>;
@@ -776,7 +758,6 @@ export type ElectronApi = {
     ) => Promise<{ ok: boolean; path?: string; error?: string }>;
     getStellaMediaDir: () => Promise<string | null>;
   };
-  projects: ElectronProjectsApi;
   schedule: ElectronScheduleApi;
   store: ElectronStoreApi;
   socialSessions: ElectronSocialSessionsApi;

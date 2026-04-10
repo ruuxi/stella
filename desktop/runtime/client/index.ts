@@ -2,7 +2,6 @@ import { EventEmitter } from "node:events";
 import { promises as fs, watch, type FSWatcher } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DevProjectService } from "../kernel/dev-projects/dev-project-service.js";
 import { LocalSchedulerService } from "../kernel/local-scheduler-service.js";
 import type {
   LocalCronJobCreateInput,
@@ -29,7 +28,6 @@ import {
   type HostWindowTarget,
   type InstalledStoreModRecord,
   type LocalCronJobRecord,
-  type LocalDevProjectRecord,
   type LocalHeartbeatConfigRecord,
   type RuntimeAgentEventPayload,
   type RuntimeAutomationTurnRequest,
@@ -37,7 +35,6 @@ import {
   type RuntimeChatPayload,
   type RuntimeConfigureParams,
   type RuntimeHealthSnapshot,
-  type RuntimeProjectDirectoryRegistrationResult,
   type RuntimeSocialSessionStatus,
   type RuntimeSelfModRevertResult,
   type RuntimeTaskRequest,
@@ -80,7 +77,6 @@ type RuntimeClientEvents = {
   "voice-self-mod-hmr-state": RuntimeVoiceHmrStatePayload;
   "local-chat-updated": void;
   "schedule-updated": void;
-  "projects-updated": LocalDevProjectRecord[];
   "google-workspace-auth-required": void;
 };
 
@@ -191,8 +187,6 @@ export class StellaRuntimeClient {
   private hostStoreModStore: StoreModStore | null = null;
   private schedulerService: LocalSchedulerService | null = null;
   private schedulerSubscription: (() => void) | null = null;
-  private projectService: DevProjectService | null = null;
-  private projectSubscription: (() => void) | null = null;
   private watcher: FSWatcher | null = null;
   private reloadTimer: NodeJS.Timeout | null = null;
   private scheduledRuntimeReloadAction: RuntimeReloadAction | null = null;
@@ -806,24 +800,6 @@ export class StellaRuntimeClient {
     return health?.socialSessions ?? createEmptySocialSessionServiceSnapshot();
   }
 
-  async listProjects() {
-    return await this.ensureProjectService().listProjects();
-  }
-
-  async registerProjectDirectory(
-    projectPath: string,
-  ): Promise<RuntimeProjectDirectoryRegistrationResult> {
-    return await this.ensureProjectService().pickProjectDirectory(projectPath);
-  }
-
-  async startProject(projectId: string) {
-    return await this.ensureProjectService().startProject(projectId);
-  }
-
-  async stopProject(projectId: string) {
-    return await this.ensureProjectService().stopProject(projectId);
-  }
-
   async revertSelfModFeature(payload: { featureId?: string; steps?: number }) {
     return await this.requestWorker<RuntimeSelfModRevertResult>(
       METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_REVERT,
@@ -937,13 +913,6 @@ export class StellaRuntimeClient {
     return this.schedulerService;
   }
 
-  private ensureProjectService() {
-    if (!this.projectService) {
-      throw createRuntimeUnavailableError("Dev project service is not available.");
-    }
-    return this.projectService;
-  }
-
   private ensureHostChatStore() {
     if (!this.hostChatStore) {
       throw createRuntimeUnavailableError("Host chat store is not available.");
@@ -992,22 +961,10 @@ export class StellaRuntimeClient {
       this.events.emit("schedule-updated", undefined);
     });
 
-    const projects = new DevProjectService({
-      getStellaHomePath: () => this.options.initializeParams.stellaHomePath,
-    });
-    this.projectService = projects;
-    this.projectSubscription = projects.subscribe(() => {
-      void this.emitProjectsUpdated();
-    });
-
     this.hostReady = true;
   }
 
   private async stopHostServices() {
-    this.projectSubscription?.();
-    this.projectSubscription = null;
-    await this.projectService?.stopAll();
-    this.projectService = null;
     this.schedulerSubscription?.();
     this.schedulerSubscription = null;
     this.schedulerService?.stop();
@@ -1049,11 +1006,6 @@ export class StellaRuntimeClient {
       undefined,
       { ensureWorker: true, recordActivity: true },
     );
-  }
-
-  private async emitProjectsUpdated() {
-    if (!this.projectService) return;
-    this.events.emit("projects-updated", await this.projectService.listProjects());
   }
 
   private buildWorkerInitializationState(): WorkerInitializationState {
@@ -1294,9 +1246,6 @@ export class StellaRuntimeClient {
     });
     peer.registerNotificationHandler(NOTIFICATION_NAMES.SCHEDULE_UPDATED, () => {
       this.events.emit("schedule-updated", undefined);
-    });
-    peer.registerNotificationHandler(NOTIFICATION_NAMES.PROJECTS_UPDATED, (params) => {
-      this.events.emit("projects-updated", params as LocalDevProjectRecord[]);
     });
     peer.registerNotificationHandler(NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED, () => {
       this.events.emit("google-workspace-auth-required");
