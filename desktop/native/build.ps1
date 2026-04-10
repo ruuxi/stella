@@ -37,14 +37,6 @@ function Build-WithClang($srcFile, $outFile) {
     return ($LASTEXITCODE -eq 0 -and (Test-Path $outFile))
 }
 
-function Build-WithCSharp($cscPath, $srcFile, $outFile) {
-    if (Test-Path $outFile) {
-        Remove-Item $outFile -Force
-    }
-    & $cscPath /nologo /optimize+ /target:exe /out:$outFile $srcFile
-    return ($LASTEXITCODE -eq 0 -and (Test-Path $outFile))
-}
-
 # Detect compiler
 $vcvars = $null
 $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -55,29 +47,12 @@ if (Test-Path $vsWhere) {
 }
 $hasGpp = [bool](Get-Command g++ -ErrorAction SilentlyContinue)
 $hasClang = [bool](Get-Command clang++ -ErrorAction SilentlyContinue)
-$cscPath = $null
-$cscCandidates = @()
-if ($vsPath) {
-    $cscCandidates += (Join-Path $vsPath "MSBuild\Current\Bin\Roslyn\csc.exe")
-    $cscCandidates += (Join-Path $vsPath "MSBuild\Current\Bin\csc.exe")
-}
-$commandCsc = Get-Command csc.exe -ErrorAction SilentlyContinue
-if ($commandCsc) {
-    $cscCandidates += $commandCsc.Source
-}
-foreach ($candidate in $cscCandidates | Select-Object -Unique) {
-    if ($candidate -and (Test-Path $candidate)) {
-        $cscPath = $candidate
-        break
-    }
-}
 
-if (-not $vcvars -and -not $hasGpp -and -not $hasClang -and -not $cscPath) {
+if (-not $vcvars -and -not $hasGpp -and -not $hasClang) {
     Write-Host "ERROR: No C++ compiler found. Install one of:"
     Write-Host "  - Visual Studio with C++ workload"
     Write-Host "  - MinGW-w64 (g++)"
     Write-Host "  - LLVM/Clang"
-    Write-Host "  - Visual Studio / Roslyn (csc.exe)"
     exit 1
 }
 
@@ -86,24 +61,17 @@ foreach ($t in $targets) {
     Write-Host "Building $(Split-Path $t.out -Leaf)..."
     $built = $false
 
-    if ($t.kind -eq "csharp") {
-        if ($cscPath -and -not $built) {
-            Write-Host "  Using C# compiler..."
-            $built = Build-WithCSharp $cscPath $t.src $t.out
-        }
-    } else {
-        if ($vcvars -and -not $built) {
-            Write-Host "  Using MSVC..."
-            $built = Build-WithMSVC $vcvars $t.src $t.out
-        }
-        if ($hasGpp -and -not $built) {
-            Write-Host "  Using MinGW g++..."
-            $built = Build-WithGpp $t.src $t.out
-        }
-        if ($hasClang -and -not $built) {
-            Write-Host "  Using clang++..."
-            $built = Build-WithClang $t.src $t.out
-        }
+    if ($vcvars -and -not $built) {
+        Write-Host "  Using MSVC..."
+        $built = Build-WithMSVC $vcvars $t.src $t.out
+    }
+    if ($hasGpp -and -not $built) {
+        Write-Host "  Using MinGW g++..."
+        $built = Build-WithGpp $t.src $t.out
+    }
+    if ($hasClang -and -not $built) {
+        Write-Host "  Using clang++..."
+        $built = Build-WithClang $t.src $t.out
     }
 
     if ($built) {

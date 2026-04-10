@@ -98,8 +98,6 @@ const requiredFiles = [
 const restartDebounceMs = 150
 const forcedShutdownTimeoutMs = 1_500
 const startupWatchDelayMs = 2_500
-const maxRapidCrashes = 5
-const rapidCrashWindowMs = 10_000
 
 let shuttingDown = false
 let currentApp = null

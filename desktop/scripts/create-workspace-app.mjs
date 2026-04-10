@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join, resolve, sep } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -42,6 +42,16 @@ if (!resolvedDest.startsWith(`${resolvedAppsDir}${sep}`)) {
   process.exit(1)
 }
 
+if (!existsSync(src)) {
+  console.error(`Template not found: ${templateName}`)
+  process.exit(1)
+}
+
+if (existsSync(dest)) {
+  console.error(`Destination already exists: ${dest}`)
+  process.exit(1)
+}
+
 cpSync(src, dest, { recursive: true })
 
 // Files that may contain placeholders
@@ -53,8 +63,13 @@ for (const file of placeholderFiles) {
     const content = readFileSync(filePath, 'utf-8')
     const updated = content.replaceAll('{{name}}', rawName)
     writeFileSync(filePath, updated, 'utf-8')
-  } catch {
-    // File may not exist in this template — skip
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      continue
+    }
+
+    console.error(`Failed to rewrite placeholders in ${filePath}: ${error?.message ?? error}`)
+    process.exit(1)
   }
 }
 
