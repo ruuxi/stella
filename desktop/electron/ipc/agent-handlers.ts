@@ -4,10 +4,13 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
+import crypto from "node:crypto";
 import { promises as fs } from "fs";
 import path from "path";
 import {
+  AGENT_RUN_FINISH_OUTCOMES,
   AGENT_STREAM_EVENT_TYPES,
+  type AgentRunFinishOutcome,
   type AgentIdLike,
   type AgentStreamEventType,
 } from "../../src/shared/contracts/agent-runtime.js";
@@ -33,6 +36,9 @@ type AgentEventPayload = {
   type: AgentStreamEventType;
   runId: string;
   seq: number;
+  conversationId: string;
+  requestId?: string;
+  userMessageId?: string;
   chunk?: string;
   statusState?: "running" | "compacting";
   toolCallId?: string;
@@ -46,10 +52,33 @@ type AgentEventPayload = {
   selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
   taskId?: string;
   agentType?: AgentIdLike;
+  rootRunId?: string;
   description?: string;
   parentTaskId?: string;
   result?: string;
   statusText?: string;
+  outcome?: AgentRunFinishOutcome;
+  reason?: string;
+  replacedByRunId?: string;
+};
+
+type ActiveRunSnapshot = {
+  runId: string;
+  conversationId: string;
+  requestId?: string;
+  userMessageId?: string;
+};
+
+type ConversationTaskSnapshot = {
+  runId: string;
+  taskId: string;
+  agentType?: string;
+  description?: string;
+  parentTaskId?: string;
+  status: "running" | "completed" | "error" | "canceled";
+  statusText?: string;
+  result?: string;
+  error?: string;
 };
 
 type SelfModHmrStatePayload = SelfModHmrState;
@@ -67,9 +96,16 @@ const AGENT_EVENT_BUFFER_LIMIT = 1000;
 const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1000;
 
 export const registerAgentHandlers = (options: AgentHandlersOptions) => {
-  const agentRunOwners = new Map<string, number>();
-  const nextTaskEventSeq = createMonotonicSeqGenerator();
-  const agentEventBuffers = new Map<
+  const runOwners = new Map<string, number>();
+  const requestOwners = new Map<string, number>();
+  const runToConversationId = new Map<string, string>();
+  const runToRequestId = new Map<string, string>();
+  const requestToRunId = new Map<string, string>();
+  const terminalRunIds = new Set<string>();
+  const activeRunByConversation = new Map<string, ActiveRunSnapshot>();
+  const tasksByRunId = new Map<string, Map<string, ConversationTaskSnapshot>>();
+  const nextAgentEventSeq = createMonotonicSeqGenerator();
+  const conversationEventBuffers = new Map<
     string,
     {
       events: AgentEventPayload[];
@@ -77,18 +113,21 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     }
   >();
 
-  const pruneAgentEventBuffers = () => {
+  const pruneConversationEventBuffers = () => {
     const now = Date.now();
-    for (const [runId, buffer] of agentEventBuffers.entries()) {
-      if (agentRunOwners.has(runId)) continue;
+    for (const [conversationId, buffer] of conversationEventBuffers.entries()) {
+      if (activeRunByConversation.has(conversationId)) continue;
       if (now - buffer.updatedAt > AGENT_EVENT_BUFFER_TTL_MS) {
-        agentEventBuffers.delete(runId);
+        conversationEventBuffers.delete(conversationId);
       }
     }
   };
 
-  const bufferAgentEvent = (runId: string, event: AgentEventPayload) => {
-    const existing = agentEventBuffers.get(runId);
+  const bufferConversationEvent = (
+    conversationId: string,
+    event: AgentEventPayload,
+  ) => {
+    const existing = conversationEventBuffers.get(conversationId);
     if (existing) {
       existing.events.push(event);
       if (existing.events.length > AGENT_EVENT_BUFFER_LIMIT) {
@@ -101,28 +140,119 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       return;
     }
 
-    agentEventBuffers.set(runId, {
+    conversationEventBuffers.set(conversationId, {
       events: [event],
       updatedAt: Date.now(),
     });
   };
 
+  const resolveReceiverId = (
+    event: Pick<AgentEventPayload, "runId" | "requestId">,
+    targetWebContentsId?: number,
+  ): number | undefined => {
+    if (typeof targetWebContentsId === "number") {
+      return targetWebContentsId;
+    }
+    if (event.requestId) {
+      const requestOwner = requestOwners.get(event.requestId);
+      if (typeof requestOwner === "number") {
+        return requestOwner;
+      }
+    }
+    const runOwner = runOwners.get(event.runId);
+    return typeof runOwner === "number" ? runOwner : undefined;
+  };
+
+  const upsertTaskSnapshot = (event: AgentEventPayload) => {
+    if (
+      !event.taskId
+      || (event.type !== AGENT_STREAM_EVENT_TYPES.TASK_STARTED
+        && event.type !== AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS
+        && event.type !== AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
+        && event.type !== AGENT_STREAM_EVENT_TYPES.TASK_FAILED
+        && event.type !== AGENT_STREAM_EVENT_TYPES.TASK_CANCELED)
+    ) {
+      return;
+    }
+
+    const runId = event.rootRunId ?? event.runId;
+    const runTasks = tasksByRunId.get(runId) ?? new Map<string, ConversationTaskSnapshot>();
+    const current = runTasks.get(event.taskId);
+    const base: ConversationTaskSnapshot = {
+      runId,
+      taskId: event.taskId,
+      agentType: event.agentType ?? current?.agentType,
+      description: event.description ?? current?.description,
+      parentTaskId: event.parentTaskId ?? current?.parentTaskId,
+      status: current?.status ?? "running",
+      statusText: event.statusText ?? current?.statusText,
+      result: event.result ?? current?.result,
+      error: event.error ?? current?.error,
+    };
+
+    if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_STARTED) {
+      base.status = "running";
+    } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS) {
+      base.status = "running";
+    } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED) {
+      base.status = "completed";
+    } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_FAILED) {
+      base.status = "error";
+    } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_CANCELED) {
+      base.status = "canceled";
+    }
+
+    runTasks.set(event.taskId, base);
+    tasksByRunId.set(runId, runTasks);
+  };
+
   const emitAgentEvent = (
-    runId: string,
-    event: AgentEventPayload,
+    event: Omit<AgentEventPayload, "seq"> & { seq?: number },
     targetWebContentsId?: number,
   ) => {
-    bufferAgentEvent(runId, event);
-    pruneAgentEventBuffers();
-    options.getBroadcastToMobile?.()?.("agent:event", event);
-    const receiverId = targetWebContentsId ?? agentRunOwners.get(runId);
+    const normalizedEvent: AgentEventPayload = {
+      ...event,
+      seq: nextAgentEventSeq(),
+    };
+
+    if (normalizedEvent.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED) {
+      const activeRun = activeRunByConversation.get(normalizedEvent.conversationId);
+      if (activeRun?.runId === normalizedEvent.runId) {
+        activeRunByConversation.delete(normalizedEvent.conversationId);
+      }
+      tasksByRunId.delete(normalizedEvent.runId);
+    } else {
+      upsertTaskSnapshot(normalizedEvent);
+    }
+
+    bufferConversationEvent(normalizedEvent.conversationId, normalizedEvent);
+    pruneConversationEventBuffers();
+
+    options.getBroadcastToMobile?.()?.("agent:event", normalizedEvent);
+    const receiverId = resolveReceiverId(normalizedEvent, targetWebContentsId);
     if (receiverId == null) {
       return;
     }
     const receiver = webContents.fromId(receiverId);
     if (receiver && !receiver.isDestroyed()) {
-      receiver.send("agent:event", event);
+      receiver.send("agent:event", normalizedEvent);
     }
+  };
+
+  const scheduleRunCleanup = (runId: string, requestId?: string) => {
+    setTimeout(() => {
+      runOwners.delete(runId);
+      runToConversationId.delete(runId);
+      tasksByRunId.delete(runId);
+      terminalRunIds.delete(runId);
+      const linkedRequestId = requestId ?? runToRequestId.get(runId);
+      if (linkedRequestId) {
+        requestOwners.delete(linkedRequestId);
+        requestToRunId.delete(linkedRequestId);
+        runToRequestId.delete(runId);
+      }
+      pruneConversationEventBuffers();
+    }, 60_000);
   };
 
   const emitSelfModHmrState = (
@@ -170,22 +300,31 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
   ipcMain.handle(
     "agent:resume",
-    async (_event, payload: { runId: string; lastSeq: number }) => {
-      pruneAgentEventBuffers();
-      const runId = typeof payload.runId === "string" ? payload.runId : "";
+    async (_event, payload: { conversationId: string; lastSeq: number }) => {
+      pruneConversationEventBuffers();
+      const conversationId =
+        typeof payload.conversationId === "string"
+          ? payload.conversationId.trim()
+          : "";
       const lastSeq = Number.isFinite(payload.lastSeq) ? payload.lastSeq : 0;
-      if (!runId) {
-        return { events: [] as AgentEventPayload[], exhausted: true };
+      if (!conversationId) {
+        return {
+          activeRun: null,
+          events: [] as AgentEventPayload[],
+          tasks: [] as ConversationTaskSnapshot[],
+        };
       }
-      const buffer = agentEventBuffers.get(runId);
-      if (!buffer) {
-        return { events: [] as AgentEventPayload[], exhausted: true };
-      }
-      const oldestSeq = buffer.events[0]?.seq ?? null;
-      const exhausted = oldestSeq !== null && lastSeq < oldestSeq - 1;
+      const buffer = conversationEventBuffers.get(conversationId);
+      const activeRun = activeRunByConversation.get(conversationId) ?? null;
+      const tasks = activeRun
+        ? Array.from(tasksByRunId.get(activeRun.runId)?.values() ?? [])
+        : [];
       return {
-        events: buffer.events.filter((event) => event.seq > lastSeq),
-        exhausted,
+        activeRun,
+        events: buffer
+          ? buffer.events.filter((agentEvent) => agentEvent.seq > lastSeq)
+          : [],
+        tasks,
       };
     },
   );
@@ -242,86 +381,221 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         `[stella:trace] IPC agent:startChat | convId=${payload.conversationId} | prompt=${redactSensitiveLogText(payload.userPrompt.slice(0, 200))}`,
       );
       const senderWebContentsId = event.sender.id;
-      const result = await stellaHostRunner.handleLocalChat(payload, {
-        onStream: (ev) =>
+      const requestId = `req:${crypto.randomUUID()}`;
+      requestOwners.set(requestId, senderWebContentsId);
+
+      const emitRunFinished = (args: {
+        runId: string;
+        outcome: AgentRunFinishOutcome;
+        agentType?: AgentIdLike;
+        userMessageId?: string;
+        finalText?: string;
+        persisted?: boolean;
+        selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
+        error?: string;
+        reason?: string;
+      }) => {
+        if (terminalRunIds.has(args.runId)) {
+          return;
+        }
+        terminalRunIds.add(args.runId);
+        emitAgentEvent(
+          {
+            type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+            runId: args.runId,
+            conversationId: payload.conversationId,
+            requestId,
+            agentType: args.agentType,
+            userMessageId: args.userMessageId,
+            finalText: args.finalText,
+            persisted: args.persisted,
+            selfModApplied: args.selfModApplied,
+            error: args.error,
+            outcome: args.outcome,
+            reason: args.reason ?? args.error,
+          },
+          senderWebContentsId,
+        );
+        scheduleRunCleanup(args.runId, requestId);
+      };
+
+      void stellaHostRunner
+        .handleLocalChat(
+          {
+            ...payload,
+            requestId,
+          },
+          {
+            onRunStarted: (ev) => {
+              terminalRunIds.delete(ev.runId);
+              runOwners.set(ev.runId, senderWebContentsId);
+              runToConversationId.set(ev.runId, payload.conversationId);
+              runToRequestId.set(ev.runId, requestId);
+              requestToRunId.set(requestId, ev.runId);
+              activeRunByConversation.set(payload.conversationId, {
+                runId: ev.runId,
+                conversationId: payload.conversationId,
+                requestId,
+                userMessageId: ev.userMessageId,
+              });
+              emitAgentEvent(
+                {
+                  type: AGENT_STREAM_EVENT_TYPES.RUN_STARTED,
+                  runId: ev.runId,
+                  conversationId: payload.conversationId,
+                  requestId,
+                  ...(ev.userMessageId ? { userMessageId: ev.userMessageId } : {}),
+                  ...(ev.agentType ? { agentType: ev.agentType } : {}),
+                },
+                senderWebContentsId,
+              );
+            },
+            onStream: (ev) =>
+              emitAgentEvent(
+                {
+                  ...ev,
+                  type: AGENT_STREAM_EVENT_TYPES.STREAM,
+                  conversationId: payload.conversationId,
+                  requestId,
+                },
+                senderWebContentsId,
+              ),
+            onStatus: (ev) =>
+              emitAgentEvent(
+                {
+                  ...ev,
+                  type: AGENT_STREAM_EVENT_TYPES.STATUS,
+                  conversationId: payload.conversationId,
+                  requestId,
+                },
+                senderWebContentsId,
+              ),
+            onToolStart: (ev) =>
+              emitAgentEvent(
+                {
+                  ...ev,
+                  type: AGENT_STREAM_EVENT_TYPES.TOOL_START,
+                  conversationId: payload.conversationId,
+                  requestId,
+                },
+                senderWebContentsId,
+              ),
+            onToolEnd: (ev) =>
+              emitAgentEvent(
+                {
+                  ...ev,
+                  type: AGENT_STREAM_EVENT_TYPES.TOOL_END,
+                  conversationId: payload.conversationId,
+                  requestId,
+                },
+                senderWebContentsId,
+              ),
+            onRunFinished: (ev) => {
+              const outcome =
+                ev.outcome
+                ?? (ev.type === AGENT_STREAM_EVENT_TYPES.END
+                  ? AGENT_RUN_FINISH_OUTCOMES.COMPLETED
+                  : AGENT_RUN_FINISH_OUTCOMES.ERROR);
+              emitRunFinished({
+                runId: ev.runId,
+                outcome,
+                agentType: ev.agentType,
+                userMessageId: ev.userMessageId,
+                finalText: ev.finalText,
+                persisted: ev.persisted,
+                selfModApplied: ev.selfModApplied,
+                error: ev.error,
+                reason: ev.reason,
+              });
+            },
+            onError: (ev) =>
+              emitRunFinished({
+                runId: ev.runId,
+                outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
+                agentType: ev.agentType,
+                error: ev.error,
+                reason: ev.error,
+              }),
+            onEnd: (ev) =>
+              emitRunFinished({
+                runId: ev.runId,
+                outcome: AGENT_RUN_FINISH_OUTCOMES.COMPLETED,
+                agentType: ev.agentType,
+                userMessageId: ev.userMessageId,
+                finalText: ev.finalText,
+                persisted: ev.persisted,
+                selfModApplied: ev.selfModApplied,
+              }),
+            onTaskEvent: (ev) => {
+              if (!ev.rootRunId) {
+                console.warn(
+                  "[chat] Dropping task event without rootRunId:",
+                  ev.type,
+                  ev.taskId,
+                );
+                return;
+              }
+              emitAgentEvent(
+                {
+                  type: ev.type,
+                  runId: ev.rootRunId,
+                  rootRunId: ev.rootRunId,
+                  conversationId: payload.conversationId,
+                  requestId,
+                  taskId: ev.taskId,
+                  agentType: ev.agentType,
+                  description: ev.description,
+                  parentTaskId: ev.parentTaskId,
+                  result: ev.result,
+                  error: ev.error,
+                  statusText: ev.statusText,
+                },
+                senderWebContentsId,
+              );
+            },
+            onSelfModHmrState: (ev) => emitSelfModHmrState(ev, senderWebContentsId),
+            onHmrResume: options.hmrTransitionController
+              ? ({ runId, resumeHmr, reportState, requiresFullReload }) =>
+                  options.hmrTransitionController!.runTransition({
+                    runId,
+                    resumeHmr,
+                    reportState,
+                    requiresFullReload,
+                  })
+              : undefined,
+          },
+        )
+        .catch((error) => {
+          const message =
+            error instanceof Error ? error.message : "Stella runtime failed";
+          const startedRunId = requestToRunId.get(requestId);
+          if (startedRunId) {
+            emitRunFinished({
+              runId: startedRunId,
+              outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
+              error: message,
+              reason: message,
+            });
+            return;
+          }
+
+          const syntheticRunId = `request:${requestId}`;
           emitAgentEvent(
-            ev.runId,
-            { ...ev, type: AGENT_STREAM_EVENT_TYPES.STREAM },
-            senderWebContentsId,
-          ),
-        onStatus: (ev) =>
-          emitAgentEvent(
-            ev.runId,
-            { ...ev, type: AGENT_STREAM_EVENT_TYPES.STATUS },
-            senderWebContentsId,
-          ),
-        onToolStart: (ev) =>
-          emitAgentEvent(
-            ev.runId,
-            { ...ev, type: AGENT_STREAM_EVENT_TYPES.TOOL_START },
-            senderWebContentsId,
-          ),
-        onToolEnd: (ev) =>
-          emitAgentEvent(
-            ev.runId,
-            { ...ev, type: AGENT_STREAM_EVENT_TYPES.TOOL_END },
-            senderWebContentsId,
-          ),
-        onError: (ev) =>
-          emitAgentEvent(
-            ev.runId,
-            { ...ev, type: AGENT_STREAM_EVENT_TYPES.ERROR },
-            senderWebContentsId,
-          ),
-        onTaskEvent: (ev) => {
-          const runId =
-            ev.rootRunId ??
-            [...agentRunOwners.keys()].find(
-              (id) => agentRunOwners.get(id) === senderWebContentsId,
-            ) ??
-            "unknown";
-          emitAgentEvent(
-            runId,
             {
-              type: ev.type,
-              runId,
-              seq: nextTaskEventSeq(),
-              taskId: ev.taskId,
-              agentType: ev.agentType,
-              description: ev.description,
-              parentTaskId: ev.parentTaskId,
-              result: ev.result,
-              error: ev.error,
-              statusText: ev.statusText,
+              type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+              runId: syntheticRunId,
+              conversationId: payload.conversationId,
+              requestId,
+              outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
+              error: message,
+              reason: message,
             },
             senderWebContentsId,
           );
-        },
-        onEnd: (ev) => {
-          emitAgentEvent(
-            ev.runId,
-            { ...ev, type: AGENT_STREAM_EVENT_TYPES.END },
-            senderWebContentsId,
-          );
-          setTimeout(() => {
-            agentRunOwners.delete(ev.runId);
-            pruneAgentEventBuffers();
-          }, 60_000);
-        },
-        onSelfModHmrState: (ev) => emitSelfModHmrState(ev, senderWebContentsId),
-        onHmrResume: options.hmrTransitionController
-          ? ({ runId, resumeHmr, reportState, requiresFullReload }) =>
-              options.hmrTransitionController!.runTransition({
-                runId,
-                resumeHmr,
-                reportState,
-                requiresFullReload,
-              })
-          : undefined,
-      });
+          scheduleRunCleanup(syntheticRunId, requestId);
+        });
 
-      agentRunOwners.set(result.runId, senderWebContentsId);
-      return result;
+      return { requestId };
     },
   );
 
@@ -332,7 +606,6 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     const stellaHostRunner = options.getStellaHostRunner();
     if (stellaHostRunner && typeof runId === "string") {
       stellaHostRunner.cancelLocalChat(runId);
-      agentRunOwners.delete(runId);
     }
   });
 

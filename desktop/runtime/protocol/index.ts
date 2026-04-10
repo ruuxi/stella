@@ -17,6 +17,7 @@ import type {
   StoreReleaseArtifact,
   StoreReleaseDraft,
 } from "../contracts/index.js";
+import type { AgentRunFinishOutcome } from "../../src/shared/contracts/agent-runtime.js";
 
 export type {
   AgentHealth,
@@ -325,6 +326,7 @@ export type RuntimePromptMessage = {
 export type RuntimeChatPayload = {
   conversationId: string;
   userPrompt: string;
+  requestId?: string;
   promptMessages?: RuntimePromptMessage[];
   selectedText?: string | null;
   chatContext?: ChatContext | null;
@@ -413,7 +415,10 @@ export type RuntimeAgentEventPayload = {
   type: string;
   runId: string;
   seq: number;
+  conversationId?: string;
+  requestId?: string;
   userMessageId?: string;
+  rootRunId?: string;
   chunk?: string;
   statusState?: "running" | "compacting";
   toolCallId?: string;
@@ -432,6 +437,9 @@ export type RuntimeAgentEventPayload = {
   parentTaskId?: string;
   result?: string;
   statusText?: string;
+  outcome?: AgentRunFinishOutcome;
+  reason?: string;
+  replacedByRunId?: string;
 };
 
 export type RuntimeVoiceAgentEventPayload = {
@@ -448,6 +456,31 @@ export type RuntimeVoiceHmrStatePayload = {
 export type RunResumeEventsResult = {
   events: RuntimeAgentEventPayload[];
   exhausted: boolean;
+};
+
+export type RuntimeConversationActiveRunSnapshot = {
+  runId: string;
+  conversationId: string;
+  requestId?: string;
+  userMessageId?: string;
+};
+
+export type RuntimeConversationTaskSnapshot = {
+  runId: string;
+  taskId: string;
+  agentType?: string;
+  description?: string;
+  parentTaskId?: string;
+  status: "running" | "completed" | "error" | "canceled";
+  statusText?: string;
+  result?: string;
+  error?: string;
+};
+
+export type RuntimeConversationResumeResult = {
+  activeRun: RuntimeConversationActiveRunSnapshot | null;
+  events: RuntimeAgentEventPayload[];
+  tasks: RuntimeConversationTaskSnapshot[];
 };
 
 export type RuntimeWebSearchResult = {

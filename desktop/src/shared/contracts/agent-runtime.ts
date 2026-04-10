@@ -188,12 +188,16 @@ export const shouldIncludeStellaDocumentation = (
 ): boolean => getAgentDefinition(agentType)?.includesStellaDocumentation ?? false;
 
 export const AGENT_STREAM_EVENT_TYPES = {
+  RUN_STARTED: "run-started",
   STREAM: "stream",
   STATUS: "status",
   TOOL_START: "tool-start",
   TOOL_END: "tool-end",
+  /** Legacy terminal event — prefer RUN_FINISHED. */
   ERROR: "error",
+  /** Legacy terminal event — prefer RUN_FINISHED. */
   END: "end",
+  RUN_FINISHED: "run-finished",
   TASK_STARTED: "task-started",
   TASK_COMPLETED: "task-completed",
   TASK_FAILED: "task-failed",
@@ -203,6 +207,15 @@ export const AGENT_STREAM_EVENT_TYPES = {
 
 export type AgentStreamEventType =
   (typeof AGENT_STREAM_EVENT_TYPES)[keyof typeof AGENT_STREAM_EVENT_TYPES];
+
+export const AGENT_RUN_FINISH_OUTCOMES = {
+  COMPLETED: "completed",
+  ERROR: "error",
+  CANCELED: "canceled",
+} as const;
+
+export type AgentRunFinishOutcome =
+  (typeof AGENT_RUN_FINISH_OUTCOMES)[keyof typeof AGENT_RUN_FINISH_OUTCOMES];
 
 export const RUNTIME_RUN_EVENT_TYPES = {
   RUN_START: "run_start",

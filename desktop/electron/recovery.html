@@ -130,24 +130,33 @@ Please perform an automatic self-repair now:
 
 After fixing, return a concise summary of what you changed.`;
 
-        const { runId } = await api.agent.startChat({
+        const { requestId } = await api.agent.startChat({
           conversationId,
           userPrompt: prompt,
           agentType: 'orchestrator',
           storageMode: 'local',
         });
 
+        let startedRunId = null;
         const unsubscribe = api.agent.onStream((event) => {
-          if (event.runId !== runId) return;
-          if (event.type === 'end') {
+          if (event.type === 'run-started' && event.requestId === requestId) {
+            startedRunId = event.runId;
+            return;
+          }
+          if (
+            event.type !== 'run-finished'
+            || (event.requestId !== requestId && event.runId !== startedRunId)
+          ) {
+            return;
+          }
+          if (event.outcome === 'completed') {
             unsubscribe();
             window.location.reload();
+            return;
           }
-          if (event.type === 'error' && event.fatal) {
-            unsubscribe();
-            status.textContent = 'Repair could not complete. Try undoing instead.';
-            setBusy(false);
-          }
+          unsubscribe();
+          status.textContent = 'Repair could not complete. Try undoing instead.';
+          setBusy(false);
         });
       } catch {
         status.textContent = 'Repair could not start. Try undoing instead.';

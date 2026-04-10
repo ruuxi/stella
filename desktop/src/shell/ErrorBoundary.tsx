@@ -126,29 +126,38 @@ export class ErrorBoundary extends Component<Props, State> {
 
       const prompt = buildAutoRepairPrompt(caughtError, caughtErrorInfo?.componentStack ?? "");
 
-      const { runId } = await api.agent.startChat({
+      const { requestId } = await api.agent.startChat({
         conversationId,
         userPrompt: prompt,
         agentType: "orchestrator",
         storageMode: "local",
       });
 
+      let startedRunId: string | null = null;
       const unsubscribe = api.agent.onStream((event) => {
-        if (event.runId !== runId) return;
+        if (event.type === "run-started" && event.requestId === requestId) {
+          startedRunId = event.runId;
+          return;
+        }
 
-        if (event.type === "end") {
+        if (
+          event.type !== "run-finished"
+          || (event.requestId !== requestId && event.runId !== startedRunId)
+        ) {
+          return;
+        }
+
+        if (event.outcome === "completed") {
           unsubscribe();
           window.location.reload();
           return;
         }
 
-        if (event.type === "error" && event.fatal) {
-          unsubscribe();
-          this.setState({
-            repairStatus: "failed",
-            repairMessage: "Repair could not complete. You can undo recent updates below.",
-          });
-        }
+        unsubscribe();
+        this.setState({
+          repairStatus: "failed",
+          repairMessage: "Repair could not complete. You can undo recent updates below.",
+        });
       });
     } catch (repairError) {
       console.error("ErrorBoundary repair failed:", repairError);

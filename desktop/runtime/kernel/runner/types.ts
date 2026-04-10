@@ -147,6 +147,12 @@ export type AgentCallbacks = {
   onToolEnd: (event: RuntimeToolEndEvent) => void;
   onError: (event: RuntimeErrorEvent) => void;
   onEnd: (event: RuntimeEndEvent) => void;
+  onInterrupted?: (event: {
+    runId: string;
+    agentType: string;
+    userMessageId?: string;
+    reason: string;
+  }) => void;
   onTaskEvent?: (event: TaskLifecycleEvent) => void;
   onSelfModHmrState?: (event: SelfModHmrState) => void;
   onHmrResume?: (args: {

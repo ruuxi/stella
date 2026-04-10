@@ -70,6 +70,20 @@ export function useTraceIpcListener(enabled: boolean) {
             event.runId,
           );
           break;
+        case AGENT_STREAM_EVENT_TYPES.RUN_FINISHED:
+          if (event.outcome === "error") {
+            traceAgentError(
+              event.error ?? event.reason ?? "unknown error",
+              true,
+              event.runId,
+            );
+          } else {
+            traceStreamEnd(
+              event.runId,
+              `${event.outcome ?? "completed"} ${(event.finalText ?? "").slice(0, 160)}`.trim(),
+            );
+          }
+          break;
         case AGENT_STREAM_EVENT_TYPES.ERROR:
           traceAgentError(
             event.error ?? "unknown error",
