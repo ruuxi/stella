@@ -93,6 +93,7 @@ export function useFullShellChat({
   useTraceEventMonitor(isDev, events)
 
   const sendMessageRef = useRef(sendMessage)
+  const scrollToLastTurnRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     sendMessageRef.current = sendMessage
@@ -105,6 +106,7 @@ export function useFullShellChat({
   const sendContextlessMessage = useCallback(
     (text: string, metadata?: MessageMetadata) => {
       markHomeSessionInteraction()
+      scrollToLastTurnRef.current()
       void sendMessageRef.current({
         text,
         selectedText: null,
@@ -123,6 +125,7 @@ export function useFullShellChat({
       selectedTextCtx?: string | null,
     ) => {
       markHomeSessionInteraction()
+      scrollToLastTurnRef.current()
       void sendMessageRef.current({
         text,
         selectedText: selectedTextCtx ?? null,
@@ -177,25 +180,26 @@ export function useFullShellChat({
     return () => window.removeEventListener(STELLA_SHOW_HOME_EVENT, handler)
   }, [forceShowHome])
 
-  // Scroll management â€” ResizeObserver on content handles auto-scroll.
-  // We pass `isWorking` so the settle timer keeps auto-follow briefly after streaming stops.
+  // Scroll management — no auto-scroll. User message pins to top on send.
   const {
     setScrollContainerElement,
     setContentElement,
     hasScrollElement,
     showScrollButton,
     scrollToBottom,
+    scrollToLastTurn,
     handleScroll,
     resetScrollState,
-    overflowAnchor,
     thumbState,
   } = useChatScrollManagement({
     itemCount: events.length,
     hasOlderEvents,
     isLoadingOlder,
     onLoadOlder: loadOlder,
-    isWorking: isStreaming,
   })
+
+  // Keep ref in sync so callbacks declared before useChatScrollManagement can use it
+  scrollToLastTurnRef.current = scrollToLastTurn
 
   // Reset scroll on conversation change
   useLayoutEffect(() => {
@@ -214,6 +218,7 @@ export function useFullShellChat({
   const handleSend = useCallback(() => {
     markHomeSessionInteraction()
     resetIdleTimer()
+    scrollToLastTurnRef.current()
     void sendMessage({
       text: message,
       selectedText,
@@ -324,7 +329,6 @@ export function useFullShellChat({
       onScroll: handleScroll,
       showScrollButton,
       scrollToBottom,
-      overflowAnchor,
       thumbState,
     }),
     [
@@ -333,7 +337,6 @@ export function useFullShellChat({
       handleScroll,
       showScrollButton,
       scrollToBottom,
-      overflowAnchor,
       thumbState,
     ],
   )

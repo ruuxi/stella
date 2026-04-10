@@ -1,13 +1,13 @@
 /**
- * Column-reverse scroll management for the chat viewport.
+ * Normal-column scroll management for the chat viewport.
  *
- * The scroll container uses `flex-direction: column-reverse`, so:
- *   - scrollTop = 0 -> at bottom (newest content)
- *   - Math.abs(scrollTop) -> distance from bottom
- *   - Content growth at bottom is auto-anchored by the browser
+ * The scroll container uses `flex-direction: column`, so:
+ *   - scrollTop = 0 -> at top (oldest content)
+ *   - scrollTop = scrollHeight - clientHeight -> at bottom (newest content)
  *
- * A ResizeObserver on the content element drives auto-scroll.
- * Programmatic scrolls are distinguished from user scrolls via a grace period.
+ * No auto-scroll: when a message is sent, the user's message is scrolled
+ * to the top of the viewport. The assistant response streams in below
+ * without moving the viewport (ChatGPT/Claude-style).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -21,10 +21,10 @@ export type ThumbState = {
 
 const AT_BOTTOM_THRESHOLD = 2
 const PROGRAMMATIC_GRACE_MS = 120
-const SETTLE_MS = 500
 const LOAD_OLDER_THRESHOLD = 200
 const THUMB_MIN_HEIGHT = 24
 const THUMB_FADE_MS = 1200
+const SCROLL_TO_TURN_PADDING = 16
 
 type ChatScrollManagementOptions = {
   itemCount?: number
@@ -38,7 +38,6 @@ export function useChatScrollManagement({
   hasOlderEvents = false,
   isLoadingOlder = false,
   onLoadOlder,
-  isWorking = false,
 }: ChatScrollManagementOptions = {}) {
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const [hasViewport, setHasViewport] = useState(false)
@@ -50,7 +49,6 @@ export function useChatScrollManagement({
 
   const springRef = useRef<ReturnType<typeof animate> | null>(null)
   const lastProgrammaticRef = useRef(0)
-  const settleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const rafRef = useRef<number | null>(null)
 
   const [thumbState, setThumbState] = useState<ThumbState>({
@@ -60,13 +58,12 @@ export function useChatScrollManagement({
   })
   const thumbFadeRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const isNearBottom = !userScrolled
-  const isNearBottomRef = useRef(true)
+  const pendingScrollToLastTurnRef = useRef(false)
+
   const showScrollButton = userScrolled
 
   const setUserScrolled = useCallback((scrolled: boolean) => {
     userScrolledRef.current = scrolled
-    isNearBottomRef.current = !scrolled
     setUserScrolledState(scrolled)
   }, [])
 
@@ -107,10 +104,9 @@ export function useChatScrollManagement({
     const ratio = clientHeight / scrollHeight
     const thumbHeight = Math.max(THUMB_MIN_HEIGHT, ratio * clientHeight)
     const maxScroll = scrollHeight - clientHeight
-    const progress = Math.abs(scrollTop) / maxScroll
+    const progress = scrollTop / maxScroll
     const maxThumbTop = clientHeight - thumbHeight
-    // Invert: scrollTop=0 (bottom/newest) → thumb at bottom of track
-    const thumbTop = Math.max(0, Math.min(maxThumbTop, (1 - progress) * maxThumbTop))
+    const thumbTop = Math.max(0, Math.min(maxThumbTop, progress * maxThumbTop))
 
     setThumbState({ top: thumbTop, height: thumbHeight, visible: true })
 
@@ -129,14 +125,16 @@ export function useChatScrollManagement({
       markProgrammatic()
       setUserScrolled(false)
 
+      const target = el.scrollHeight - el.clientHeight
+
       if (behavior === 'instant') {
-        el.scrollTop = 0
+        el.scrollTop = target
         return
       }
 
-      if (Math.abs(el.scrollTop) < 1) return
+      if (Math.abs(el.scrollTop - target) < 1) return
 
-      springRef.current = animate(el.scrollTop, 0, {
+      springRef.current = animate(el.scrollTop, target, {
         type: 'spring',
         duration: 0.35,
         bounce: 0,
@@ -152,13 +150,32 @@ export function useChatScrollManagement({
     [stopSpring, markProgrammatic, setUserScrolled],
   )
 
+  const performScrollToLastTurn = useCallback(() => {
+    const viewport = viewportRef.current
+    const content = contentRef.current
+    if (!viewport || !content) return
+
+    const lastTurn = content.querySelector('.session-turn:last-child')
+    if (!lastTurn) return
+
+    markProgrammatic()
+    setUserScrolled(false)
+
+    const viewportRect = viewport.getBoundingClientRect()
+    const turnRect = (lastTurn as HTMLElement).getBoundingClientRect()
+    const scrollDelta = turnRect.top - viewportRect.top - SCROLL_TO_TURN_PADDING
+    viewport.scrollTop = Math.max(0, viewport.scrollTop + scrollDelta)
+  }, [markProgrammatic, setUserScrolled])
+
+  /** Request scroll to pin the last turn at the top of the viewport on next content resize. */
+  const scrollToLastTurn = useCallback(() => {
+    pendingScrollToLastTurnRef.current = true
+  }, [])
+
   const resetScrollState = useCallback(() => {
     stopSpring()
     setUserScrolled(false)
-    if (settleRef.current) {
-      clearTimeout(settleRef.current)
-      settleRef.current = null
-    }
+    pendingScrollToLastTurnRef.current = false
   }, [stopSpring, setUserScrolled])
 
   const handleScroll = useCallback(() => {
@@ -174,7 +191,7 @@ export function useChatScrollManagement({
       const el = viewportRef.current
       if (!el) return
 
-      const atBottom = Math.abs(el.scrollTop) < AT_BOTTOM_THRESHOLD
+      const atBottom = el.scrollHeight - el.clientHeight - el.scrollTop < AT_BOTTOM_THRESHOLD
 
       if (atBottom && userScrolledRef.current) {
         setUserScrolled(false)
@@ -183,10 +200,9 @@ export function useChatScrollManagement({
         stopSpring()
       }
 
+      // Load older when near the top
       if (hasOlderEvents && !isLoadingOlder && onLoadOlder) {
-        const maxScroll = el.scrollHeight - el.clientHeight
-        const distFromTop = maxScroll - Math.abs(el.scrollTop)
-        if (distFromTop < LOAD_OLDER_THRESHOLD) {
+        if (el.scrollTop < LOAD_OLDER_THRESHOLD) {
           onLoadOlder()
         }
       }
@@ -203,25 +219,16 @@ export function useChatScrollManagement({
     onLoadOlder,
   ])
 
+  // Content resize observer — executes pending scrollToLastTurn
   useEffect(() => {
     const content = contentRef.current
     const viewport = viewportRef.current
     if (!content || !viewport) return
 
-    let lastHeight = content.getBoundingClientRect().height
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      const newHeight = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height
-      if (Math.abs(newHeight - lastHeight) < 1) return
-
-      const grew = newHeight > lastHeight
-      lastHeight = newHeight
-
-      if (grew && !userScrolledRef.current) {
-        viewport.scrollTop = 0
-        markProgrammatic()
+    const resizeObserver = new ResizeObserver(() => {
+      if (pendingScrollToLastTurnRef.current) {
+        pendingScrollToLastTurnRef.current = false
+        performScrollToLastTurn()
       }
 
       updateThumb()
@@ -229,21 +236,9 @@ export function useChatScrollManagement({
 
     resizeObserver.observe(content)
     return () => resizeObserver.disconnect()
-  }, [hasViewport, hasContent, markProgrammatic, updateThumb])
+  }, [hasViewport, hasContent, performScrollToLastTurn, updateThumb])
 
-  useEffect(() => {
-    if (isWorking) {
-      if (settleRef.current) {
-        clearTimeout(settleRef.current)
-        settleRef.current = null
-      }
-    } else if (!userScrolledRef.current) {
-      settleRef.current = setTimeout(() => {
-        settleRef.current = null
-      }, SETTLE_MS)
-    }
-  }, [isWorking])
-
+  // Stop spring on user interaction
   useEffect(() => {
     const el = viewportRef.current
     if (!el) return
@@ -258,6 +253,7 @@ export function useChatScrollManagement({
     }
   }, [hasViewport, stopSpring])
 
+  // Keyboard navigation
   useEffect(() => {
     const el = viewportRef.current
     if (!el) return
@@ -279,7 +275,7 @@ export function useChatScrollManagement({
         case 'Home':
           event.preventDefault()
           stopSpring()
-          springRef.current = animate(el.scrollTop, -(el.scrollHeight - el.clientHeight), {
+          springRef.current = animate(el.scrollTop, 0, {
             type: 'spring',
             duration: 0.35,
             bounce: 0,
@@ -310,10 +306,10 @@ export function useChatScrollManagement({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [hasViewport, stopSpring, scrollToBottom])
 
+  // Cleanup
   useEffect(() => {
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
-      if (settleRef.current) clearTimeout(settleRef.current)
       if (thumbFadeRef.current) clearTimeout(thumbFadeRef.current)
       springRef.current?.stop()
     }
@@ -324,13 +320,11 @@ export function useChatScrollManagement({
     setScrollContainerElement,
     setContentElement,
     hasScrollElement: hasViewport,
-    isNearBottom,
-    isNearBottomRef,
     showScrollButton,
     scrollToBottom,
+    scrollToLastTurn,
     handleScroll,
     resetScrollState,
-    overflowAnchor: (userScrolled ? 'auto' : 'none') as 'auto' | 'none',
     thumbState,
   }
 }

@@ -281,13 +281,13 @@
   overflow: hidden;
 }
 
-/* Session content — column-reverse scroll viewport.
-   scrollTop=0 is at the bottom (newest content).
-   Native bottom-anchoring: new content stays visible without JS. */
+/* Session content — normal column scroll viewport.
+   scrollTop=0 is at the top (oldest content).
+   No auto-scroll: user message pins to top, response streams below. */
 .session-content {
   height: 100%;
   display: flex;
-  flex-direction: column-reverse;
+  flex-direction: column;
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -296,9 +296,8 @@
   display: none;
 }
 
-/* Message container — centered, padding reserves space for title bar + composer.
-   min-height: 100% ensures short conversations fill the viewport so content
-   doesn't sit behind the absolutely-positioned composer at the bottom. */
+/* Message container — centered, padding reserves space for title bar.
+   min-height: 100% ensures short conversations fill the viewport. */
 .session-messages {
   width: 100%;
   max-width: min(50rem, 100%);
@@ -307,7 +306,6 @@
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
   gap: 24px;
 }
 

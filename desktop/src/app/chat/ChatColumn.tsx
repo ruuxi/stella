@@ -1,5 +1,6 @@
 /**
- * ChatColumn: column-reverse scroll viewport, message rendering, custom scrollbar, composer.
+ * ChatColumn: scroll viewport, message rendering, custom scrollbar, composer.
+ * User messages pin to top on send; assistant response streams below without auto-scroll.
  */
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -50,7 +51,6 @@ export const ChatColumn = memo(function ChatColumn({
     const trackHeight = el.clientHeight;
     const scrollRange = el.scrollHeight - el.clientHeight;
     const dy = e.clientY - dragStartRef.current.y;
-    // Thumb is inverted to feel natural: dragging down → newer content (scrollTop → 0).
     const scrollDelta = (dy / trackHeight) * scrollRange;
     el.scrollTop = dragStartRef.current.scrollTop + scrollDelta;
   }, []);
@@ -62,7 +62,6 @@ export const ChatColumn = memo(function ChatColumn({
 
   const {
     onScroll,
-    overflowAnchor,
     setContentElement,
     setViewportElement,
     showScrollButton,
@@ -187,7 +186,6 @@ export const ChatColumn = memo(function ChatColumn({
           className="session-content"
           ref={assignViewport}
           onScroll={onScroll}
-          style={{ overflowAnchor }}
         >
           <div className="session-messages" ref={setContentElement}>
             <ConversationEvents
