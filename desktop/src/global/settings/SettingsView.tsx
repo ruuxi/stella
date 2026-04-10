@@ -11,6 +11,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
+import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
 import {
   buildModelDefaultsMap,
   buildResolvedModelDefaultsMap,
@@ -107,6 +108,10 @@ const TABS: { key: SettingsTab; label: string }[] = [
 
 function getSettingsErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function isStellaSelection(value: string | undefined) {
+  return Boolean(value) && value!.startsWith("stella/");
 }
 
 function formatBackupTimestamp(timestamp?: number) {
@@ -668,19 +673,17 @@ function ModelConfigSection() {
   const setMaxAgentConcurrency = useMutation(
     api.data.preferences.setMaxAgentConcurrency,
   );
-  const { groups } = useModelCatalog();
+  const { models: stellaModels } = useModelCatalog();
   const modelNamesById = useMemo(() => {
     const next = new Map<string, string>();
-    for (const group of groups) {
-      for (const model of group.models) {
-        next.set(model.id, model.name);
-        if (model.upstreamModel) {
-          next.set(model.upstreamModel, model.name);
-        }
+    for (const model of stellaModels) {
+      next.set(model.id, model.name);
+      if (model.upstreamModel) {
+        next.set(model.upstreamModel, model.name);
       }
     }
     return next;
-  }, [groups]);
+  }, [stellaModels]);
   const defaultModelMap = useMemo(
     () => buildModelDefaultsMap(modelDefaults),
     [modelDefaults],
@@ -710,6 +713,9 @@ function ModelConfigSection() {
   }, [defaultModelMap, overridesJson]);
   const [localOverrides, setLocalOverrides] = useState<
     Record<string, string | null>
+  >({});
+  const [customModelDrafts, setCustomModelDrafts] = useState<
+    Record<string, string>
   >({});
   const [localGeneralAgentEngine, setLocalGeneralAgentEngine] = useState<
     "default" | "claude_code_local" | null
@@ -839,6 +845,36 @@ function ModelConfigSection() {
     [clearOverride, isSavingModelPreferences, localOverrides, setOverride],
   );
 
+  const handleCustomDraftChange = useCallback(
+    (agentType: string, value: string) => {
+      setCustomModelDrafts((prev) => ({ ...prev, [agentType]: value }));
+    },
+    [],
+  );
+
+  const commitCustomModel = useCallback(
+    async (agentType: string, currentValue: string, nextValue: string) => {
+      const trimmed = nextValue.trim();
+      if (trimmed === currentValue) {
+        return;
+      }
+
+      if (!trimmed) {
+        await handleChange(agentType, "");
+        setCustomModelDrafts((prev) => {
+          const next = { ...prev };
+          delete next[agentType];
+          return next;
+        });
+        return;
+      }
+
+      await handleChange(agentType, trimmed);
+      setCustomModelDrafts((prev) => ({ ...prev, [agentType]: trimmed }));
+    },
+    [handleChange],
+  );
+
   const handleResetAll = useCallback(async () => {
     if (isSavingModelPreferences || !hasAnyOverride) {
       return;
@@ -852,6 +888,7 @@ function ModelConfigSection() {
       cleared[key] = null;
     }
     setLocalOverrides((prev) => ({ ...prev, ...cleared }));
+    setCustomModelDrafts({});
 
     const keys = Object.keys(overrides);
     const previousLocalOverrides = localOverrides;
@@ -1103,6 +1140,27 @@ function ModelConfigSection() {
         {modelPreferencesLoaded &&
           configurableAgents.map((agent) => {
             const current = overrides[agent.key] ?? "";
+            const isDirectOverride = Boolean(current) && !isStellaSelection(current);
+            const isCustomEditing = Object.prototype.hasOwnProperty.call(
+              customModelDrafts,
+              agent.key,
+            );
+            const selectValue =
+              isDirectOverride || isCustomEditing ? "__custom__" : current;
+            const customDraft = customModelDrafts[agent.key] ??
+              (isDirectOverride ? current : "");
+            const selectedStellaModel =
+              isStellaSelection(current) &&
+              current !== STELLA_DEFAULT_MODEL &&
+              !stellaModels.some((model) => model.id === current)
+                ? current
+                : null;
+            const defaultLabel = getDefaultModelOptionLabel(
+              agent.key,
+              defaultModelMap,
+              resolvedDefaultModelMap,
+              modelNamesById,
+            );
             return (
               <div key={agent.key} className="settings-row">
                 <div className="settings-row-info">
@@ -1113,7 +1171,14 @@ function ModelConfigSection() {
                   {current && (
                     <button
                       className="settings-model-reset-icon"
-                      onClick={() => void handleChange(agent.key, "")}
+                      onClick={() => {
+                        setCustomModelDrafts((prev) => {
+                          const next = { ...prev };
+                          delete next[agent.key];
+                          return next;
+                        });
+                        void handleChange(agent.key, "");
+                      }}
                       title="Reset to default"
                       disabled={isSavingModelPreferences}
                     >
@@ -1134,30 +1199,74 @@ function ModelConfigSection() {
                   )}
                   <NativeSelect
                     className="settings-model-select"
-                    value={current}
-                    onChange={(e) =>
-                      void handleChange(agent.key, e.target.value)
-                    }
+                    value={selectValue}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === "__custom__") {
+                        setCustomModelDrafts((prev) => ({
+                          ...prev,
+                          [agent.key]: current,
+                        }));
+                        return;
+                      }
+                      setCustomModelDrafts((prev) => {
+                        const next = { ...prev };
+                        delete next[agent.key];
+                        return next;
+                      });
+                      void handleChange(agent.key, value);
+                    }}
                     disabled={isSavingModelPreferences}
                   >
                     <option value="">
-                      {getDefaultModelOptionLabel(
-                        agent.key,
-                        defaultModelMap,
-                        resolvedDefaultModelMap,
-                        modelNamesById,
-                      )}
+                      {defaultLabel}
                     </option>
-                    {groups.map((group) => (
-                      <optgroup key={group.provider} label={group.provider}>
-                        {group.models.map((model) => (
-                          <option key={model.id} value={model.id}>
-                            {model.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
+                    {selectedStellaModel ? (
+                      <option value={selectedStellaModel}>
+                        {modelNamesById.get(selectedStellaModel) ?? selectedStellaModel}
+                      </option>
+                    ) : null}
+                    {stellaModels
+                      .filter((model) => model.id !== STELLA_DEFAULT_MODEL)
+                      .map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name}
+                        </option>
+                      ))}
+                    <option value="__custom__">Custom model ID…</option>
                   </NativeSelect>
+                  {selectValue === "__custom__" ? (
+                    <div className="settings-model-input">
+                      <TextField
+                        label={`${agent.label} custom model`}
+                        hideLabel={true}
+                        placeholder="anthropic/claude-opus-4.6"
+                        value={customDraft}
+                        onChange={(e) =>
+                          handleCustomDraftChange(agent.key, e.target.value)
+                        }
+                        onBlur={(e) =>
+                          void commitCustomModel(
+                            agent.key,
+                            current,
+                            e.currentTarget.value,
+                          )
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.currentTarget.blur();
+                          }
+                          if (e.key === "Escape") {
+                            setCustomModelDrafts((prev) => ({
+                              ...prev,
+                              [agent.key]: isDirectOverride ? current : "",
+                            }));
+                            e.currentTarget.blur();
+                          }
+                        }}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );
