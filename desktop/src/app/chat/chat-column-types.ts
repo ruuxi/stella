@@ -47,7 +47,6 @@ export type ChatColumnScroll = {
   onScroll: () => void
   showScrollButton: boolean
   scrollToBottom: (behavior?: ScrollBehavior) => void
-  overflowAnchor: 'auto' | 'none'
   thumbState: ChatColumnThumbState
 }
 
