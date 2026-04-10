@@ -9,8 +9,12 @@ import type { ActionCtx } from "./_generated/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import {
+  getModeConfig,
   getModelConfig,
+  isModelMode,
   type ManagedModelAudience,
+  type ModelConfig,
+  type ModelMode,
 } from "./agent/model";
 import {
   resolveManagedGatewayConfig,
@@ -184,11 +188,37 @@ async function parseRequestJson(request: Request): Promise<StellaRequestBody | n
   }
 }
 
+function getRequestedStellaMode(selection: string): ModelMode | "default" | null {
+  const trimmed = selection.trim();
+  if (!trimmed || trimmed === STELLA_DEFAULT_MODEL) {
+    return "default";
+  }
+  if (!trimmed.startsWith("stella/")) {
+    return null;
+  }
+
+  const aliasOrUpstreamModel = trimmed.slice("stella/".length).trim();
+  if (!aliasOrUpstreamModel || aliasOrUpstreamModel === "default") {
+    return "default";
+  }
+
+  const modeKey = aliasOrUpstreamModel === "cheap"
+    ? "standard"
+    : aliasOrUpstreamModel;
+  return isModelMode(modeKey) ? modeKey : null;
+}
+
+type ResolvedStellaModelSelection = {
+  requestedModel: string;
+  resolvedModel: string;
+  config: ModelConfig;
+};
+
 function resolveRequestedStellaModel(
   agentType: string,
   requestBody: StellaRequestBody,
   audience: ManagedModelAudience,
-): string {
+): ResolvedStellaModelSelection {
   const requestedModel =
     typeof requestBody.model === "string" && requestBody.model.trim().length > 0
       ? requestBody.model.trim()
@@ -198,7 +228,24 @@ function resolveRequestedStellaModel(
     throw new Error(`Unsupported Stella model selection: ${requestedModel}`);
   }
 
-  return resolveStellaModelSelection(agentType, requestedModel, audience);
+  const requestedMode = getRequestedStellaMode(requestedModel);
+  if (requestedMode) {
+    const config = requestedMode === "default"
+      ? getModelConfig(agentType, audience)
+      : getModeConfig(requestedMode, audience);
+    return {
+      requestedModel,
+      resolvedModel: config.model,
+      config,
+    };
+  }
+
+  const config = getModelConfig(agentType, audience);
+  return {
+    requestedModel,
+    resolvedModel: resolveStellaModelSelection(agentType, requestedModel, audience),
+    config,
+  };
 }
 
 function estimateRequestTokens(requestBody: StellaRequestBody): TokenEstimate {
@@ -820,9 +867,9 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
       : undefined;
   const agentType = headerAgentType || bodyAgentType || "general";
 
-  let resolvedModel: string;
+  let selection: ResolvedStellaModelSelection;
   try {
-    resolvedModel = resolveRequestedStellaModel(agentType, requestJson, modelAudience);
+    selection = resolveRequestedStellaModel(agentType, requestJson, modelAudience);
   } catch (error) {
     return stellaProviderErrorResponse(
       400,
@@ -831,14 +878,14 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
     );
   }
 
-  const defaults = getModelConfig(agentType, modelAudience);
+  const { requestedModel, resolvedModel, config } = selection;
   const managedGatewayProvider: ManagedGatewayProvider = resolveManagedGatewayProvider({
     model: resolvedModel,
-    configuredProvider: defaults.managedGatewayProvider,
+    configuredProvider: config.managedGatewayProvider,
   });
   const managedGateway = resolveManagedGatewayConfig({
     model: resolvedModel,
-    configuredProvider: defaults.managedGatewayProvider,
+    configuredProvider: config.managedGatewayProvider,
   });
   if (!process.env[managedGateway.apiKeyEnvVar]?.trim()) {
     return stellaProviderErrorResponse(
@@ -850,14 +897,16 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
   const serverModelConfig = {
     model: resolvedModel,
     managedGatewayProvider,
-    temperature: defaults.temperature,
-    maxOutputTokens: defaults.maxOutputTokens,
-    providerOptions: defaults.providerOptions as Record<string, Record<string, unknown>> | undefined,
+    temperature: config.temperature,
+    maxOutputTokens: config.maxOutputTokens,
+    providerOptions: config.providerOptions as Record<string, Record<string, unknown>> | undefined,
   };
   const tokenEstimate = estimateRequestTokens(requestJson);
   const isStreaming = requestJson.stream === true;
 
-  console.log(`[stella-provider] agent=${agentType} | resolvedModel=${resolvedModel}`);
+  console.log(
+    `[stella-provider] agent=${agentType} | requestedModel=${requestedModel} | resolvedModel=${resolvedModel}`,
+  );
 
   if (isStreaming) {
     return await createStreamingRuntimeResponse({
