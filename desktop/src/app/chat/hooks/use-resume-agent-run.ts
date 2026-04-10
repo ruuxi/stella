@@ -1,6 +1,11 @@
 import { useEffect, type MutableRefObject } from "react";
 import type { AgentStreamEvent } from "../streaming/streaming-types";
 
+type ActiveRunSnapshot = {
+  runId: string;
+  conversationId: string;
+} | null;
+
 /** Mutable refs shared with the streaming chat hook. */
 export interface StreamingRefs {
   streamRunIdRef: MutableRefObject<number>;
@@ -25,6 +30,27 @@ interface UseResumeAgentRunOptions {
   isStreaming: boolean;
   refs: StreamingRefs;
   actions: StreamingActions;
+}
+
+export function shouldRetainResumedStreamingState(args: {
+  resumedRunId: string;
+  resumedConversationId: string;
+  replayEventCount: number;
+  replayExhausted: boolean;
+  currentActiveRun: ActiveRunSnapshot;
+}) {
+  if (args.replayEventCount > 0) {
+    return true;
+  }
+
+  if (!args.replayExhausted) {
+    return true;
+  }
+
+  return (
+    args.currentActiveRun?.runId === args.resumedRunId &&
+    args.currentActiveRun?.conversationId === args.resumedConversationId
+  );
 }
 
 /**
@@ -80,7 +106,6 @@ export function useResumeAgentRun({
       streamRunIdRef.current = runIdCounter;
       resetStreamingText();
       resetReasoningText();
-      setIsStreaming(true);
       setPendingUserMessageId(null);
       localRunIdRef.current = activeRun.runId;
       localRunSeqByRunIdRef.current.clear();
@@ -100,6 +125,26 @@ export function useResumeAgentRun({
         lastSeq: 0,
       });
       if (cancelled || runIdCounter !== streamRunIdRef.current) return;
+
+      const currentActiveRun =
+        replay.exhausted && replay.events.length === 0
+          ? await window.electronAPI!.agent.getActiveRun().catch(() => null)
+          : null;
+      if (cancelled || runIdCounter !== streamRunIdRef.current) return;
+
+      if (!shouldRetainResumedStreamingState({
+        resumedRunId: activeRun.runId,
+        resumedConversationId: activeConversationId,
+        replayEventCount: replay.events.length,
+        replayExhausted: replay.exhausted,
+        currentActiveRun,
+      })) {
+        localRunIdRef.current = null;
+        resetStreamingState(runIdCounter);
+        return;
+      }
+
+      setIsStreaming(true);
       for (const replayEvent of replay.events) {
         handleAgentEvent(replayEvent, runIdCounter);
       }
