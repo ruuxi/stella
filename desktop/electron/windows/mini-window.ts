@@ -1,4 +1,5 @@
 import { BrowserWindow, type RenderProcessGoneDetails } from 'electron'
+import path from 'path'
 import { resolveAppIconPath } from '../app-icon.js'
 import { MINI_SHELL_SIZE } from '../layout-constants.js'
 import { loadWindow } from './window-load.js'
@@ -18,6 +19,15 @@ type MiniWindowControllerOptions = {
   setupExternalLinkHandlers: (window: BrowserWindow) => void
   onDidStartLoading?: () => void
   onRenderProcessGone?: (details: RenderProcessGoneDetails, window: BrowserWindow) => void
+  onDidFailLoad?: (
+    details: {
+      errorCode: number
+      errorDescription: string
+      validatedURL: string
+      isMainFrame: boolean
+    },
+    window: BrowserWindow,
+  ) => void
   onClosed?: () => void
 }
 
@@ -58,12 +68,6 @@ export class MiniWindowController {
     this.window = window
 
     this.options.setupExternalLinkHandlers(window)
-    loadWindow(window, {
-      electronDir: this.options.electronDir,
-      isDev: this.options.isDev,
-      mode: 'mini',
-      getDevServerUrl: this.options.getDevServerUrl,
-    })
 
     if (this.options.isDev && this.shouldOpenDevTools) {
       window.webContents.openDevTools()
@@ -77,9 +81,37 @@ export class MiniWindowController {
       this.options.onRenderProcessGone?.(details, window)
     })
 
+    window.webContents.on(
+      'did-fail-load',
+      (
+        _event,
+        errorCode,
+        errorDescription,
+        validatedURL,
+        isMainFrame,
+      ) => {
+        this.options.onDidFailLoad?.(
+          {
+            errorCode,
+            errorDescription,
+            validatedURL,
+            isMainFrame,
+          },
+          window,
+        )
+      },
+    )
+
     window.on('closed', () => {
       this.window = null
       this.options.onClosed?.()
+    })
+
+    loadWindow(window, {
+      electronDir: this.options.electronDir,
+      isDev: this.options.isDev,
+      mode: 'mini',
+      getDevServerUrl: this.options.getDevServerUrl,
     })
 
     return window
@@ -95,5 +127,12 @@ export class MiniWindowController {
       mode: 'mini',
       getDevServerUrl: this.options.getDevServerUrl,
     })
+  }
+
+  loadRecoveryPage() {
+    if (!this.window || this.window.isDestroyed()) {
+      return
+    }
+    this.window.loadFile(path.join(this.options.electronDir, 'recovery.html'))
   }
 }
