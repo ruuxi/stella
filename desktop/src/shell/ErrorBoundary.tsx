@@ -1,6 +1,5 @@
 import { Component, type ReactNode, type ErrorInfo, type MouseEvent } from "react";
 import type { SelfModFeatureSummary } from "@/shared/types/electron";
-import { ShiftingGradient } from "./background/ShiftingGradient";
 import "./error-boundary.css";
 
 type Props = { children: ReactNode };
@@ -169,7 +168,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return (
       <div className="error-boundary">
-        <ShiftingGradient className="error-boundary-gradient" />
+        <div className="error-boundary-gradient" />
         <div className="error-boundary-content">
           <h2>Something went wrong</h2>
           <p>

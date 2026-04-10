@@ -16,6 +16,7 @@ export type ChatColumnConversation = {
     reasoningText: string
     isStreaming: boolean
     runtimeStatusText?: string | null
+    subagentPreviewText?: string | null
     pendingUserMessageId: string | null
     selfModMap: Record<string, SelfModAppliedData>
     liveTasks?: TaskItem[]

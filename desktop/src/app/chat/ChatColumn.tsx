@@ -9,7 +9,7 @@ import { HomeContent } from "@/app/home/HomeContent";
 import { StickyThinkingFooter } from "./StickyThinkingFooter";
 import {
   getCurrentRunningTool,
-  getRunningTasks,
+  getFooterTasksFromEvents,
   mergeFooterTasks,
 } from "./lib/event-transforms";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
@@ -93,13 +93,13 @@ export const ChatColumn = memo(function ChatColumn({
     () => getCurrentRunningTool(conversation.events),
     [conversation.events],
   );
-  const persistedRunningTasks = useMemo(
-    () => getRunningTasks(conversation.events, { appSessionStartedAtMs }),
+  const persistedFooterTasks = useMemo(
+    () => getFooterTasksFromEvents(conversation.events, { appSessionStartedAtMs }),
     [appSessionStartedAtMs, conversation.events],
   );
   const footerTasks = useMemo(
-    () => mergeFooterTasks(persistedRunningTasks, conversation.streaming.liveTasks),
-    [conversation.streaming.liveTasks, persistedRunningTasks],
+    () => mergeFooterTasks(persistedFooterTasks, conversation.streaming.liveTasks),
+    [conversation.streaming.liveTasks, persistedFooterTasks],
   );
   const hasActiveWork =
     footerTasks.length > 0 ||
@@ -195,6 +195,7 @@ export const ChatColumn = memo(function ChatColumn({
               streamingText={conversation.streaming.text}
               reasoningText={conversation.streaming.reasoningText}
               isStreaming={conversation.streaming.isStreaming}
+              subagentPreviewText={conversation.streaming.subagentPreviewText}
               pendingUserMessageId={conversation.streaming.pendingUserMessageId}
               selfModMap={conversation.streaming.selfModMap}
               hasOlderEvents={conversation.history.hasOlderEvents}
@@ -258,4 +259,3 @@ export const ChatColumn = memo(function ChatColumn({
     </div>
   );
 });
-
