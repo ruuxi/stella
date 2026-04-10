@@ -178,25 +178,12 @@ function spawnProcess(spec) {
   child.on('error', (error) => {
     activeChildren.delete(spec.name);
     const detail = `failed to start: ${error instanceof Error ? error.message : String(error)}`;
-    if (spec.optional) {
-      logError(`${spec.name} ${detail}; continuing without it.`);
-      return;
-    }
     handleRequiredFailure(spec, detail);
   });
 
   child.on('exit', (code, signal) => {
     activeChildren.delete(spec.name);
     if (shuttingDown) {
-      return;
-    }
-
-    if (spec.optional) {
-      if ((code ?? 0) !== 0 || signal) {
-        logError(
-          `${spec.name} exited ${signal ? `via ${signal}` : `with code ${code}`}; continuing without it.`,
-        );
-      }
       return;
     }
 
