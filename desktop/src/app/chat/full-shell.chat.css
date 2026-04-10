@@ -1,5 +1,4 @@
-/* Message list — column-reverse viewport handles bottom-anchoring,
-   so no justify-content: flex-end or min-height: 100% needed. */
+/* Message list — normal column layout, messages flow top to bottom. */
 .event-list {
   display: flex;
   flex-direction: column;
