@@ -38,7 +38,7 @@ export function MessageGroup({
 
   return (
     <div className="message-group">
-      <TurnItem turn={turn} onOpenAttachment={onOpenAttachment} />
+      <TurnItem turn={turn} isLastTurn onOpenAttachment={onOpenAttachment} />
       {isStreaming && !assistantMessage ? (
         <StreamingIndicator
           streamingText={streamingText}
