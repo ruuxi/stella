@@ -265,6 +265,56 @@ const requireMobileAccountOwner = async (
   };
 };
 
+const ANONYMOUS_OWNER_PREFIX = "anon:mobile:";
+
+/**
+ * For offline-chat endpoints: authenticate if possible, fall back to
+ * anonymous guest access keyed by a stable mobile device id when available,
+ * with IP fallback for older clients.
+ */
+const resolveMobileOwnerOrGuest = async (
+  ctx: ActionCtx,
+  request: Request,
+  origin: string | null,
+): Promise<AuthenticatedOwnerResult> => {
+  const anonymousMobileDeviceId = normalizeDeviceId(
+    request.headers.get("X-Stella-Mobile-Device-Id"),
+  );
+  const forwarded = request.headers.get("x-forwarded-for");
+  const ip = forwarded?.split(",")[0]?.trim() || "unknown";
+  const anonymousOwner = {
+    ownerId: anonymousMobileDeviceId
+      ? `${ANONYMOUS_OWNER_PREFIX}device:${anonymousMobileDeviceId}`
+      : `${ANONYMOUS_OWNER_PREFIX}ip:${ip}`,
+    isAnonymous: true,
+  } as const;
+
+  const identity = await ctx.auth.getUserIdentity();
+  if (identity && !isAnonymousIdentity(identity)) {
+    try {
+      await assertSensitiveSessionPolicyAction(ctx, identity);
+    } catch (error) {
+      // Offline mobile chat is available without an account, so stale or revoked
+      // auth should not block guest access for these endpoints.
+      console.warn(
+        "[mobile/offline-chat] Falling back to anonymous access after auth check failed:",
+        readConvexErrorMessage(error, "Unauthorized"),
+      );
+      return anonymousOwner;
+    }
+    return {
+      ownerId: identity.subject,
+      name:
+        typeof identity.name === "string" && identity.name.trim().length > 0
+          ? identity.name.trim()
+          : undefined,
+      isAnonymous: false,
+    };
+  }
+
+  return anonymousOwner;
+};
+
 const normalizeDeviceId = (value: unknown) => {
   if (typeof value !== "string") {
     return "";
@@ -569,7 +619,7 @@ export const registerMobileRoutes = (http: HttpRouter) => {
     method: "POST",
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
-        const owner = await requireMobileAccountOwner(ctx, origin);
+        const owner = await resolveMobileOwnerOrGuest(ctx, request, origin);
         if ("response" in owner) {
           return owner.response;
         }
@@ -652,7 +702,7 @@ export const registerMobileRoutes = (http: HttpRouter) => {
     method: "POST",
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
-        const owner = await requireMobileAccountOwner(ctx, origin);
+        const owner = await resolveMobileOwnerOrGuest(ctx, request, origin);
         if ("response" in owner) {
           return owner.response;
         }

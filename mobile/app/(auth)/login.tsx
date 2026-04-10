@@ -15,9 +15,12 @@ import {
 } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { getSetCookie } from "@better-auth/expo/client";
+import { useRouter } from "expo-router";
 import { authClient } from "../../src/lib/auth-client";
+import { clearCachedToken } from "../../src/lib/auth-token";
 import { env } from "../../src/config/env";
 import { userFacingError } from "../../src/lib/user-facing-error";
+import { setGuestMode } from "../../src/lib/guest-mode";
 import { type Colors } from "../../src/theme/colors";
 import { useColors, useTheme } from "../../src/theme/theme-context";
 import { fadeHex } from "../../src/theme/oklch";
@@ -40,11 +43,23 @@ type SubmitState =
 export default function LoginScreen() {
   const colors = useColors();
   const { isDark } = useTheme();
+  const router = useRouter();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [email, setEmail] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>({ type: "idle" });
   const [activeLegal, setActiveLegal] = useState<LegalDoc>(null);
   const cancelledRef = useRef(false);
+
+  const continueAsGuest = async () => {
+    await SecureStore.deleteItemAsync("stella-mobile_cookie");
+    clearCachedToken();
+    const store = (authClient as unknown as {
+      $store?: { notify: (signal: string) => void };
+    }).$store;
+    store?.notify("$sessionSignal");
+    await setGuestMode(true);
+    router.replace("/chat");
+  };
 
   const sendMagicLink = async () => {
     const trimmed = email.trim();
@@ -226,6 +241,16 @@ export default function LoginScreen() {
           </Text>
           .
         </Text>
+
+        <Pressable
+          onPress={() => void continueAsGuest()}
+          style={({ pressed }) => [
+            styles.guestButton,
+            pressed && styles.guestButtonPressed,
+          ]}
+        >
+          <Text style={styles.guestButtonText}>Continue without signing in</Text>
+        </Pressable>
         </View>
       </KeyboardAvoidingView>
 
@@ -359,6 +384,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   legalLink: {
     textDecorationLine: "underline",
+  },
+  guestButton: {
+    alignItems: "center",
+    paddingVertical: 14,
+  },
+  guestButtonPressed: {
+    opacity: 0.6,
+  },
+  guestButtonText: {
+    color: colors.textMuted,
+    fontFamily: fonts.sans.medium,
+    fontSize: 15,
+    letterSpacing: -0.2,
   },
   legalModal: {
     flex: 1,

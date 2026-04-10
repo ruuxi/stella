@@ -56,18 +56,20 @@ function Sidebar({
   onSelectTab,
   colors,
   styles,
+  tabs,
 }: {
   activeTab: TabId;
   onSelectTab: (tab: TabId) => void;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
+  tabs: typeof TABS;
 }) {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.sidebar, { paddingTop: insets.top + 12, paddingBottom: insets.bottom }]}>
       <Text style={styles.brand}>Stella</Text>
       <View style={styles.nav}>
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const active = activeTab === tab.id;
           return (
             <Pressable
@@ -207,7 +209,7 @@ export default function MainLayout() {
 
       {wide ? (
         <View style={styles.wideLayout}>
-          <Sidebar activeTab={activeTab} onSelectTab={navigate} colors={colors} styles={styles} />
+          <Sidebar activeTab={activeTab} onSelectTab={navigate} colors={colors} styles={styles} tabs={TABS} />
           <View style={styles.content}>
             {activeTab === "chat" && (
               <View style={styles.wideChatHeader}>
@@ -278,7 +280,7 @@ export default function MainLayout() {
                 drawerStyle,
               ]}
             >
-              <Sidebar activeTab={activeTab} onSelectTab={navigate} colors={colors} styles={styles} />
+              <Sidebar activeTab={activeTab} onSelectTab={navigate} colors={colors} styles={styles} tabs={TABS} />
             </Animated.View>
           </GestureDetector>
 

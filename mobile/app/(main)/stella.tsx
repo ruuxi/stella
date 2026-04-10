@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { assert, assertObject } from "../../src/lib/assert";
+import { isGuest } from "../../src/lib/guest-mode";
 import { getConvexToken } from "../../src/lib/auth-token";
 import {
   buildPhoneAccessHeaders,
@@ -30,6 +31,7 @@ import { generateShimScript } from "../../src/lib/shim";
 import { registerStellaRefresh } from "../../src/lib/stella-refresh";
 import { userFacingError } from "../../src/lib/user-facing-error";
 import { DesktopTabAnimation } from "../../src/components/DesktopTabAnimation";
+import { SignInPrompt } from "../../src/components/SignInPrompt";
 import { notifyError, notifySuccess } from "../../src/lib/haptics";
 import { type Colors } from "../../src/theme/colors";
 import { useColors } from "../../src/theme/theme-context";
@@ -126,7 +128,30 @@ function readUnavailableState(
   };
 }
 
+function GuestDesktopScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <View style={styles.centered}>
+      <DesktopTabAnimation />
+      <Text style={styles.title}>Pair your phone</Text>
+      <Text style={styles.body}>
+        See your Stella desktop app right on your phone. After pairing, your phone will reconnect automatically.
+      </Text>
+      <SignInPrompt message="Sign in to get started." />
+    </View>
+  );
+}
+
 export default function StellaScreen() {
+  if (isGuest()) {
+    return <GuestDesktopScreen />;
+  }
+
+  return <AuthenticatedStellaScreen />;
+}
+
+function AuthenticatedStellaScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const webViewRef = useRef<WebView>(null);
