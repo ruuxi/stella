@@ -11,6 +11,7 @@ import type { ResolvedLlmRoute } from "../model-routing.js";
 import { estimateRuntimeTokens } from "../runtime-threads.js";
 import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
+import { createRuntimeLogger } from "../debug.js";
 import {
   buildRuntimeThreadKey,
   maybeCompactRuntimeThread,
@@ -19,6 +20,8 @@ import type { RuntimeStore } from "../storage/runtime-store.js";
 import { wrapSystemReminder } from "../message-timestamp.js";
 import { now } from "./shared.js";
 import { sanitizeAssistantText } from "../internal-tool-transcript.js";
+
+const logger = createRuntimeLogger("agent-runtime.thread-memory");
 
 export const buildRunThreadKey = ({
   conversationId,
@@ -343,7 +346,13 @@ export const compactRuntimeThreadHistory = async (args: {
     threadKey: args.threadKey,
     resolvedLlm: args.resolvedLlm,
     agentType: args.agentType,
-  }).catch(() => undefined);
+  }).catch((error) => {
+    logger.warn("thread.compaction.failed", {
+      threadKey: args.threadKey,
+      agentType: args.agentType,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 };
 
 export const persistAssistantReply = async (args: {

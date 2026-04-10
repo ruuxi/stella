@@ -123,19 +123,25 @@ const parseGoogleProfileResult = (
   result: ToolResult,
 ): GoogleWorkspaceAuthResult => {
   if ("error" in result) return { connected: false };
-  try {
-    const text =
-      typeof result.result === "string"
-        ? result.result
-        : JSON.stringify(result.result);
-    const data = JSON.parse(text);
-    return {
-      connected: true,
-      ...parseGoogleWorkspaceProfile(data),
-    };
-  } catch {
-    return { connected: true };
+  const response = result.result;
+  if (typeof response === "string") {
+    try {
+      const data = JSON.parse(response);
+      return {
+        connected: true,
+        ...parseGoogleWorkspaceProfile(data),
+      };
+    } catch {
+      return { connected: false };
+    }
   }
+  if (!response || typeof response !== "object") {
+    return { connected: false };
+  }
+  return {
+    connected: true,
+    ...parseGoogleWorkspaceProfile(response),
+  };
 };
 
 /** True when a tool error looks like a missing/expired credential (polling should continue). */
@@ -545,7 +551,6 @@ export const createStellaHostRunner = (
       runId: string,
       options?: { suppressClientFullReload?: boolean },
     ) => Boolean(await context.selfModHmrController?.resume(runId, options)),
-    recoverCrashedRuns: runtimeInitialization.recoverCrashedRuns,
     appendThreadMessage: (args) => {
       context.runtimeStore.appendThreadMessage({
         ...args,

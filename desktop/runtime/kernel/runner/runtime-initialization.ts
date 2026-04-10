@@ -195,15 +195,10 @@ export const createRuntimeInitialization = (
     }
   };
 
-  const recoverCrashedRuns = async () => {
-    // JSONL runtime is append-only and local-first; no crash recovery migration needed.
-  };
-
   return {
     ensureGoogleWorkspaceToolsLoaded,
     initializeRuntime,
     start,
     stop,
-    recoverCrashedRuns,
   };
 };
