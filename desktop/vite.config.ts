@@ -3,9 +3,11 @@ import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig, searchForWorkspaceRoot, type ModuleNode, type Plugin } from "vite"
+import { getSelfModHmrFlushMode } from "./runtime/kernel/self-mod/flush-mode.js"
 
 const DEV_URL_FILE = path.resolve(__dirname, '.vite-dev-url')
 const SELF_MOD_HMR_STATE_FILE = path.resolve(__dirname, '.stella-hmr-state.json')
+const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = path.resolve(__dirname, '.stella-runtime-reload-state.json')
 const SELF_MOD_HMR_ENDPOINT_BASE = '/__stella/self-mod/hmr'
 const SELF_MOD_HMR_STALE_MS = 30_000
 const STELLA_WORKSPACE_PANELS_DIR = path.resolve(
@@ -25,6 +27,15 @@ const PACKAGE_MANIFEST_BASENAMES = new Set([
   'yarn.lock',
   'npm-shrinkwrap.json',
 ])
+
+const normalizeWatchedFilePath = (filePath: string) =>
+  path.resolve(filePath).replace(/\\/g, '/')
+
+const IGNORED_SELF_MOD_WATCH_FILES = new Set(
+  [DEV_URL_FILE, SELF_MOD_HMR_STATE_FILE, SELF_MOD_RUNTIME_RELOAD_STATE_FILE].map(
+    normalizeWatchedFilePath,
+  ),
+)
 
 /** Writes the resolved dev server URL to .vite-dev-url so Electron can discover it. */
 function devServerUrl(): Plugin {
@@ -162,24 +173,6 @@ const writePersistedSelfModHmrState = (state: PersistedSelfModHmrState) => {
 const isDependencyManifestFile = (filePath: string) =>
   PACKAGE_MANIFEST_BASENAMES.has(path.basename(filePath))
 
-type SelfModHmrFlushMode = 'none' | 'module-reload' | 'full-reload'
-
-export const getSelfModHmrFlushMode = (args: {
-  queuedModuleCount: number
-  queuedFileCount: number
-  requiresFullReload: boolean
-}): SelfModHmrFlushMode => {
-  if (args.requiresFullReload) {
-    return 'full-reload'
-  }
-
-  if (args.queuedModuleCount > 0) {
-    return 'module-reload'
-  }
-
-  return 'none'
-}
-
 /**
  * Pauses visible HMR during agent self-mod turns, then resumes updates in one flush.
  * During pause we suppress client propagation (`handleHotUpdate -> []`) while Vite
@@ -251,7 +244,6 @@ function selfModHmrControl(): Plugin {
       const flushQueuedUpdates = async (options?: SelfModHmrResumePayload) => {
         const flushMode = getSelfModHmrFlushMode({
           queuedModuleCount: queuedModules.size,
-          queuedFileCount: queuedFiles.size,
           requiresFullReload,
         })
 
@@ -307,6 +299,7 @@ function selfModHmrControl(): Plugin {
             ok: true,
             paused,
             queuedFiles: queuedFiles.size,
+            queuedModules: queuedModules.size,
             requiresFullReload,
           })
           return
@@ -333,6 +326,10 @@ function selfModHmrControl(): Plugin {
     },
     async handleHotUpdate(ctx) {
       if (!paused) {
+        return
+      }
+
+      if (IGNORED_SELF_MOD_WATCH_FILES.has(normalizeWatchedFilePath(ctx.file))) {
         return
       }
 
@@ -401,6 +398,9 @@ export default defineConfig({
       ignored: [
         `${STELLA_STATE_DIR.replace(/\\/g, '/')}/**`,
         `${STELLA_LIFE_DIR.replace(/\\/g, '/')}/**`,
+        normalizeWatchedFilePath(DEV_URL_FILE),
+        normalizeWatchedFilePath(SELF_MOD_HMR_STATE_FILE),
+        normalizeWatchedFilePath(SELF_MOD_RUNTIME_RELOAD_STATE_FILE),
       ],
     },
   },

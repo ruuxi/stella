@@ -10,9 +10,10 @@ type HmrControllerOptions = {
   enabled: boolean;
 };
 
-type HmrStatus = {
+export type HmrStatus = {
   paused: boolean;
   queuedFiles: number;
+  queuedModules: number;
   requiresFullReload: boolean;
 };
 
@@ -80,6 +81,7 @@ export const createSelfModHmrController = (options: HmrControllerOptions) => {
       return {
         paused: activeRuns.size > 0,
         queuedFiles: 0,
+        queuedModules: 0,
         requiresFullReload: false,
       };
     }
@@ -102,6 +104,7 @@ export const createSelfModHmrController = (options: HmrControllerOptions) => {
       return {
         paused: Boolean(payload.paused),
         queuedFiles: Number(payload.queuedFiles ?? 0),
+        queuedModules: Number(payload.queuedModules ?? 0),
         requiresFullReload: Boolean(payload.requiresFullReload),
       };
     } catch {
