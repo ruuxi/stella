@@ -6,7 +6,6 @@ import {
   useEffect,
   useState,
 } from "react";
-import type { GeneratedPage } from "@/app/registry";
 import { WorkspaceArea } from "@/app/workspace/WorkspaceArea";
 import { useDevProjects } from "@/context/dev-projects-state";
 import { useUiState } from "@/context/ui-state";
@@ -92,19 +91,6 @@ export const FullShellReadySurface = ({
     setView("social");
   }, [closePanel, setView]);
 
-  const handlePageSelect = useCallback(
-    (page: GeneratedPage) => {
-      openPanel({
-        kind: "generated-page",
-        name: page.id,
-        title: page.title,
-        pageId: page.id,
-      });
-      setView("app");
-    },
-    [openPanel, setView],
-  );
-
   const handlePendingAskStellaHandled = useCallback((requestId: number) => {
     setPendingAskStellaRequest((current) =>
       current?.id === requestId ? null : current,
@@ -160,8 +146,6 @@ export const FullShellReadySurface = ({
 
   const activeProjectId =
     activePanel?.kind === "dev-project" ? activePanel.projectId : null;
-  const activePageId =
-    activePanel?.kind === "generated-page" ? activePanel.pageId : null;
   const showChatSurface = state.view === "chat" || state.view === "social";
 
   const handleContextMenuOpenSidebarChat = useCallback(() => {
@@ -190,8 +174,6 @@ export const FullShellReadySurface = ({
         onSocial={() => { closeDrawer(); showSocialView(); }}
         onNewAppAskStella={() => { closeDrawer(); handleNewAppAskStella(); }}
         onNewAppLocalProject={() => { closeDrawer(); void handleNewAppLocalProject(); }}
-        activePageId={activePageId}
-        onPageSelect={(page) => { closeDrawer(); handlePageSelect(page); }}
         projects={projects}
         activeProjectId={activeProjectId}
         onProjectSelect={(project) => { closeDrawer(); handleProjectSelect(project); }}
@@ -220,7 +202,6 @@ export const FullShellReadySurface = ({
               view={state.view}
               activeDemo={null}
               demoClosing={false}
-              conversationId={activeConversationId ?? undefined}
             />
           )}
           <Suspense

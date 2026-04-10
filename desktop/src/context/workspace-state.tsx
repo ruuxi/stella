@@ -11,37 +11,20 @@ export type DevProjectWorkspacePanel = WorkspacePanelBase & {
   projectId: string;
 };
 
-export type GeneratedPageWorkspacePanel = WorkspacePanelBase & {
-  kind: "generated-page";
-  pageId: string;
-};
-
-export type WorkspacePanel =
-  | DevProjectWorkspacePanel
-  | GeneratedPageWorkspacePanel;
+export type WorkspacePanel = DevProjectWorkspacePanel;
 
 export type WorkspaceState = {
   activePanel: WorkspacePanel | null;
-  chatWidth: number;
-  isChatOpen: boolean;
 };
 
 type WorkspaceContextValue = {
   state: WorkspaceState;
   openPanel: (panel: WorkspacePanel) => void;
   closePanel: () => void;
-  setChatWidth: (width: number) => void;
-  setChatOpen: (open: boolean) => void;
 };
-
-const DEFAULT_CHAT_WIDTH = 480;
-const MIN_CHAT_WIDTH = 320;
-const MAX_CHAT_WIDTH_RATIO = 0.5; // Never exceed 50% of viewport
 
 const defaultState: WorkspaceState = {
   activePanel: null,
-  chatWidth: DEFAULT_CHAT_WIDTH,
-  isChatOpen: true,
 };
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -57,27 +40,13 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     setState((prev) => ({ ...prev, activePanel: null }));
   }, []);
 
-  const setChatWidth = useCallback((width: number) => {
-    const maxWidth = window.innerWidth * MAX_CHAT_WIDTH_RATIO;
-    setState((prev) => ({
-      ...prev,
-      chatWidth: Math.max(MIN_CHAT_WIDTH, Math.min(width, maxWidth)),
-    }));
-  }, []);
-
-  const setChatOpen = useCallback((open: boolean) => {
-    setState((prev) => ({ ...prev, isChatOpen: open }));
-  }, []);
-
   const value = useMemo<WorkspaceContextValue>(
     () => ({
       state,
       openPanel,
       closePanel,
-      setChatWidth,
-      setChatOpen,
     }),
-    [state, openPanel, closePanel, setChatWidth, setChatOpen],
+    [state, openPanel, closePanel],
   );
 
   return (
@@ -95,5 +64,3 @@ export const useWorkspace = () => {
   }
   return context;
 };
-
-export { MIN_CHAT_WIDTH, MAX_CHAT_WIDTH_RATIO, DEFAULT_CHAT_WIDTH };

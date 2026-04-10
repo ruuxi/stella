@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import type { GeneratedPage } from "@/app/registry";
-import { generatedPages } from "@/app/registry";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { ThemePicker } from "@/global/settings/ThemePicker";
@@ -18,7 +16,6 @@ import {
   CustomFolder as Folder,
   CustomArrowLeft as ArrowLeft,
   CustomHouse as House,
-  CustomLayout as Layout,
   CustomDevice as Device,
   CustomLogIn as LogIn,
   CustomPalette as Palette,
@@ -48,8 +45,6 @@ interface SidebarProps {
   onNewApp?: () => void;
   onNewAppAskStella?: () => void;
   onNewAppLocalProject?: () => void;
-  activePageId: string | null;
-  onPageSelect: (page: GeneratedPage) => void;
   projects?: LocalDevProjectRecord[];
   activeProjectId?: string | null;
   onProjectSelect?: (project: LocalDevProjectRecord) => void;
@@ -160,15 +155,12 @@ export const Sidebar = ({
   onNewApp,
   onNewAppAskStella,
   onNewAppLocalProject,
-  activePageId,
-  onPageSelect,
   projects = [],
   activeProjectId,
   onProjectSelect,
 }: SidebarProps) => {
   const isMac = getPlatform() === "darwin";
   const handleAskStella = onNewAppAskStella ?? onNewApp;
-  const customPages = generatedPages;
   const getProjectMeta = (project: LocalDevProjectRecord) => {
     switch (project.runtime.status) {
       case "stopped":
@@ -224,24 +216,6 @@ export const Sidebar = ({
           </span>
           <span className="sidebar-nav-label">Social</span>
         </button>
-        {customPages.length > 0 && (
-          <>
-            {customPages.map((page) => (
-              <button
-                key={page.id}
-                type="button"
-                className={`sidebar-nav-item ${activePageId === page.id ? "sidebar-nav-item--active" : ""}`}
-                onClick={() => onPageSelect(page)}
-                title={page.title}
-              >
-                <span className="sidebar-nav-icon">
-                  <Layout size={18} />
-                </span>
-                <span className="sidebar-nav-label">{page.title}</span>
-              </button>
-            ))}
-          </>
-        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className="sidebar-nav-item">
