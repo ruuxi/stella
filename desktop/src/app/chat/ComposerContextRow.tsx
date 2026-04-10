@@ -1,6 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
-import { ChatSuggestions } from "./ChatSuggestions";
 import {
   ComposerCaptureContextSection,
   ComposerFileContextSection,
@@ -15,7 +14,6 @@ type ComposerContextRowProps = {
   setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
   setSelectedText: Dispatch<SetStateAction<string | null>>;
   onPreviewScreenshot?: (index: number) => void;
-  onSuggestionSelect?: (prompt: string) => void;
 };
 
 export function ComposerContextRow({
@@ -25,16 +23,9 @@ export function ComposerContextRow({
   setChatContext,
   setSelectedText,
   onPreviewScreenshot,
-  onSuggestionSelect,
 }: ComposerContextRowProps) {
   return (
     <div className="composer-context-actions">
-      {onSuggestionSelect ? (
-        <ChatSuggestions
-          variant={variant}
-          onSelect={onSuggestionSelect}
-        />
-      ) : null}
       <ComposerCaptureContextSection
         variant={variant}
         chatContext={chatContext}

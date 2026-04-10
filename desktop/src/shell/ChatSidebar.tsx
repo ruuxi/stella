@@ -210,13 +210,6 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
       selectedText,
     });
 
-    const handleSuggestionSelect = useCallback((prompt: string) => {
-      setInputText(prompt);
-      requestAnimationFrame(() => {
-        inputRef.current?.focus();
-      });
-    }, []);
-
     const portalTarget =
       document.querySelector(".full-body") ?? document.body;
 
@@ -253,7 +246,6 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
               setChatContext={setChatContext}
               setSelectedText={setSelectedText}
               onPreviewScreenshot={setPreviewScreenshotIndex}
-              onSuggestionSelect={handleSuggestionSelect}
             />
 
             <div ref={shellRef} className="chat-sidebar-shell">
