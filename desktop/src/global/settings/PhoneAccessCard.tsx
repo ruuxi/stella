@@ -1,25 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import QRCode from "qrcode";
-import { api } from "@/convex/api";
-import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import { useCallback, useEffect, useState } from "react";
 import { ConnectHeroAnimation } from "@/global/integrations/ConnectHeroAnimation";
+import { usePhoneAccessController } from "@/global/settings/hooks/use-phone-access-controller";
 import { Button } from "@/ui/button";
 import { showToast } from "@/ui/toast";
 
-type PairingSessionState = {
-  pairingCode: string;
-  expiresAt: number;
-  createdAt: number;
-} | null;
-
-type PairedPhoneRecord = {
-  mobileDeviceId: string;
-  displayName?: string;
-  platform?: string;
-  approvedAt: number;
-  lastSeenAt: number;
-};
+const toErrorMessage = (error: unknown, fallback: string): string =>
+  error instanceof Error ? error.message : fallback;
 
 const formatTimestamp = (value: number) =>
   new Intl.DateTimeFormat(undefined, {
@@ -39,61 +25,22 @@ const formatCountdown = (expiresAt: number) => {
 };
 
 export function PhoneAccessCard() {
-  const { hasConnectedAccount } = useAuthSessionState();
-  const [desktopDeviceId, setDesktopDeviceId] = useState<string | null>(null);
+  const {
+    hasConnectedAccount,
+    desktopDeviceId,
+    deviceLoadError,
+    activePairing,
+    pairingLink,
+    qrDataUrl,
+    pairedDevices,
+    isCreating,
+    removingMobileDeviceId,
+    createPairing,
+    removePhone,
+  } = usePhoneAccessController();
   const [error, setError] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [removingMobileDeviceId, setRemovingMobileDeviceId] = useState<
-    string | null
-  >(null);
   const [copiedValue, setCopiedValue] = useState<"code" | "link" | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-
-  const createPairingSession = useMutation(
-    api.mobile_access.createPairingSession,
-  );
-  const revokePairedMobileDevice = useMutation(
-    api.mobile_access.revokePairedMobileDevice,
-  );
-
-  const phoneAccessState = useQuery(
-    api.mobile_access.getPhoneAccessState,
-    hasConnectedAccount && desktopDeviceId ? { desktopDeviceId } : "skip",
-  ) as
-    | {
-        activePairing: PairingSessionState;
-        pairedDevices: PairedPhoneRecord[];
-      }
-    | undefined;
-
-  useEffect(() => {
-    if (!hasConnectedAccount) {
-      setDesktopDeviceId(null);
-      return;
-    }
-
-    let cancelled = false;
-    const loadDeviceId = async () => {
-      try {
-        const nextDeviceId = await window.electronAPI?.system.getDeviceId();
-        if (!cancelled) {
-          setDesktopDeviceId(nextDeviceId ?? null);
-        }
-      } catch (nextError) {
-        if (!cancelled) {
-          setError(
-            nextError instanceof Error
-              ? nextError.message
-              : "Unable to prepare phone access on this desktop.",
-          );
-        }
-      }
-    };
-    void loadDeviceId();
-    return () => {
-      cancelled = true;
-    };
-  }, [hasConnectedAccount]);
+  const visibleError = error ?? deviceLoadError;
 
   useEffect(() => {
     if (!copiedValue) {
@@ -107,96 +54,32 @@ export function PhoneAccessCard() {
     };
   }, [copiedValue]);
 
-  const hasActivePairing = Boolean(phoneAccessState?.activePairing);
-
-  useEffect(() => {
-    if (!hasActivePairing) {
-      return;
-    }
-    const intervalId = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1_000);
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [hasActivePairing]);
-
-  const activePairing = useMemo(() => {
-    const pairing = phoneAccessState?.activePairing ?? null;
-    if (!pairing || pairing.expiresAt <= now) {
-      return null;
-    }
-    return pairing;
-  }, [now, phoneAccessState?.activePairing]);
-
-  const pairingLink = activePairing
-    ? `stella-mobile://stella?code=${encodeURIComponent(activePairing.pairingCode)}`
-    : null;
-
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!pairingLink) {
-      setQrDataUrl(null);
-      return;
-    }
-    let cancelled = false;
-    QRCode.toDataURL(pairingLink, {
-      width: 160,
-      margin: 2,
-      color: { dark: "#000000", light: "#ffffff" },
-    }).then((url) => {
-      if (!cancelled) setQrDataUrl(url);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [pairingLink]);
-
   const copyText = useCallback(async (value: string, kind: "code" | "link") => {
     await navigator.clipboard.writeText(value);
     setCopiedValue(kind);
   }, []);
 
   const handleCreatePairing = useCallback(async () => {
-    if (!desktopDeviceId || isCreating) {
-      return;
-    }
     setError(null);
-    setIsCreating(true);
     try {
-      await createPairingSession({ desktopDeviceId });
+      await createPairing();
     } catch (nextError) {
       setError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Unable to create a pairing code right now.",
+        toErrorMessage(nextError, "Unable to create a pairing code right now."),
       );
-    } finally {
-      setIsCreating(false);
     }
-  }, [createPairingSession, desktopDeviceId, isCreating]);
+  }, [createPairing]);
 
   const handleRemovePhone = useCallback(
     async (mobileDeviceId: string) => {
-      if (!desktopDeviceId || removingMobileDeviceId) {
-        return;
-      }
       setError(null);
-      setRemovingMobileDeviceId(mobileDeviceId);
       try {
-        await revokePairedMobileDevice({ desktopDeviceId, mobileDeviceId });
+        await removePhone(mobileDeviceId);
       } catch (nextError) {
-        setError(
-          nextError instanceof Error
-            ? nextError.message
-            : "Unable to remove this phone right now.",
-        );
-      } finally {
-        setRemovingMobileDeviceId(null);
+        setError(toErrorMessage(nextError, "Unable to remove this phone right now."));
       }
     },
-    [desktopDeviceId, removingMobileDeviceId, revokePairedMobileDevice],
+    [removePhone],
   );
 
   return (
@@ -225,12 +108,12 @@ export function PhoneAccessCard() {
       {!hasConnectedAccount ? (
         <p className="settings-card-desc">Sign in to pair your phone.</p>
       ) : null}
-      {error ? (
+      {visibleError ? (
         <p
           className="settings-card-desc settings-card-desc--error"
           role="alert"
         >
-          {error}
+          {visibleError}
         </p>
       ) : null}
 
@@ -291,8 +174,8 @@ export function PhoneAccessCard() {
       )}
 
       <div className="settings-phone-list">
-        {phoneAccessState?.pairedDevices?.length ? (
-          phoneAccessState.pairedDevices.map((phone) => (
+        {pairedDevices.length ? (
+          pairedDevices.map((phone) => (
             <div key={phone.mobileDeviceId} className="settings-row">
               <div className="settings-row-info">
                 <div className="settings-row-label">
@@ -338,105 +221,29 @@ export function PhoneAccessCard() {
 }
 
 export function PhoneAccessConnectCard() {
-  const { hasConnectedAccount } = useAuthSessionState();
-  const [desktopDeviceId, setDesktopDeviceId] = useState<string | null>(null);
+  const {
+    hasConnectedAccount,
+    desktopDeviceId,
+    deviceLoadError,
+    activePairing,
+    qrDataUrl,
+    pairedDevices,
+    isCreating,
+    removingMobileDeviceId,
+    createPairing,
+    removePhone,
+  } = usePhoneAccessController({ qrCodeWidth: 200 });
   const [error, setError] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [removingId, setRemovingId] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-
-  const createPairingSession = useMutation(
-    api.mobile_access.createPairingSession,
-  );
-  const revokePairedMobileDevice = useMutation(
-    api.mobile_access.revokePairedMobileDevice,
-  );
-
-  const phoneAccessState = useQuery(
-    api.mobile_access.getPhoneAccessState,
-    hasConnectedAccount && desktopDeviceId ? { desktopDeviceId } : "skip",
-  ) as
-    | {
-        activePairing: PairingSessionState;
-        pairedDevices: PairedPhoneRecord[];
-      }
-    | undefined;
-
-  useEffect(() => {
-    if (!hasConnectedAccount) {
-      setDesktopDeviceId(null);
-      return;
-    }
-    let cancelled = false;
-    void window.electronAPI?.system
-      .getDeviceId()
-      .then((id) => {
-        if (!cancelled) setDesktopDeviceId(id ?? null);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled)
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Unable to prepare phone access.",
-          );
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [hasConnectedAccount]);
-
-  const hasActivePairing = Boolean(phoneAccessState?.activePairing);
-
-  useEffect(() => {
-    if (!hasActivePairing) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1_000);
-    return () => window.clearInterval(id);
-  }, [hasActivePairing]);
-
-  const activePairing = useMemo(() => {
-    const p = phoneAccessState?.activePairing ?? null;
-    return p && p.expiresAt > now ? p : null;
-  }, [now, phoneAccessState?.activePairing]);
+  const visibleError = error ?? deviceLoadError;
 
   const handleCreate = useCallback(async () => {
-    if (!desktopDeviceId || isCreating) return;
     setError(null);
-    setIsCreating(true);
     try {
-      await createPairingSession({ desktopDeviceId });
+      await createPairing();
     } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Unable to create a pairing code.",
-      );
-    } finally {
-      setIsCreating(false);
+      setError(toErrorMessage(e, "Unable to create a pairing code."));
     }
-  }, [createPairingSession, desktopDeviceId, isCreating]);
-
-  const pairingLink = activePairing
-    ? `stella-mobile://stella?code=${encodeURIComponent(activePairing.pairingCode)}`
-    : null;
-
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!pairingLink) {
-      setQrDataUrl(null);
-      return;
-    }
-    let cancelled = false;
-    QRCode.toDataURL(pairingLink, {
-      width: 200,
-      margin: 2,
-      color: { dark: "#000000", light: "#ffffff" },
-    }).then((url) => {
-      if (!cancelled) setQrDataUrl(url);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [pairingLink]);
+  }, [createPairing]);
 
   const handleCopy = useCallback(() => {
     if (activePairing) {
@@ -446,19 +253,15 @@ export function PhoneAccessConnectCard() {
   }, [activePairing]);
 
   const handleRemovePhone = useCallback(async (mobileDeviceId: string) => {
-    if (!desktopDeviceId || removingId) return;
-    setRemovingId(mobileDeviceId);
     try {
-      await revokePairedMobileDevice({ desktopDeviceId, mobileDeviceId });
-      showToast("Phone removed");
+      const didRemove = await removePhone(mobileDeviceId);
+      if (didRemove) {
+        showToast("Phone removed");
+      }
     } catch {
       showToast("Failed to remove phone");
-    } finally {
-      setRemovingId(null);
     }
-  }, [desktopDeviceId, removingId, revokePairedMobileDevice]);
-
-  const pairedDevices = phoneAccessState?.pairedDevices ?? [];
+  }, [removePhone]);
 
   if (!hasConnectedAccount) {
     return (
@@ -485,7 +288,7 @@ export function PhoneAccessConnectCard() {
               Open the Stella app on your phone and scan the QR code, or type in the code below. You only need to do this once.
             </p>
 
-            {error && <div className="connect-error">{error}</div>}
+            {visibleError && <div className="connect-error">{visibleError}</div>}
 
             <div className="connect-pair-qr-block">
               {qrDataUrl ? (
@@ -517,7 +320,7 @@ export function PhoneAccessConnectCard() {
               Link the Stella mobile app to this computer so they work together. You only need to do this once.
             </p>
 
-            {error && <div className="connect-error">{error}</div>}
+            {visibleError && <div className="connect-error">{visibleError}</div>}
 
             <Button
               variant="ghost"
@@ -543,9 +346,9 @@ export function PhoneAccessConnectCard() {
                   type="button"
                   className="connect-bot-link"
                   onClick={() => void handleRemovePhone(device.mobileDeviceId)}
-                  disabled={removingId === device.mobileDeviceId}
+                  disabled={removingMobileDeviceId === device.mobileDeviceId}
                 >
-                  {removingId === device.mobileDeviceId ? "Removing..." : "Remove"}
+                  {removingMobileDeviceId === device.mobileDeviceId ? "Removing..." : "Remove"}
                 </button>
               </div>
             ))}
