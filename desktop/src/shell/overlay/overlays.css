@@ -98,6 +98,7 @@
   width: 280px;
   height: 280px;
   contain: layout paint;
+  isolation: isolate;
 }
 
 .radial-blob-canvas {
@@ -107,6 +108,7 @@
   width: 280px;
   height: 280px;
   pointer-events: none;
+  z-index: 0;
 }
 
 .radial-dial-frame {
@@ -119,6 +121,7 @@
   contain: paint;
   transform: translateZ(0);
   backface-visibility: hidden;
+  z-index: 2;
 }
 
 .radial-dial {
@@ -160,6 +163,7 @@
   height: 70px;
   pointer-events: none;
   overflow: hidden;
+  z-index: 1;
 }
 
 .radial-center-stella-animation .ascii-canvas {

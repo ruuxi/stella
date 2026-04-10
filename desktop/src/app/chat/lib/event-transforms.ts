@@ -161,6 +161,8 @@ export type TaskItem = {
   outputPreview?: string;
 };
 
+export const TASK_COMPLETION_INDICATOR_MS = 3000;
+
 // Generic type guard factory — reduces per-event-type boilerplate.
 function createEventGuard<T extends Record<string, unknown>>(
   type: string,
@@ -349,10 +351,14 @@ export function groupEventsIntoTurns(events: EventRecord[]): MessageTurn[] {
         steps: [],
       };
     } else if (isAssistantMessage(event)) {
-      if (currentTurn) {
+      if (currentTurn && !currentTurn.assistantMessage) {
         // Attach to existing turn
         currentTurn.assistantMessage = event;
       } else {
+        if (currentTurn) {
+          turns.push(currentTurn);
+          currentTurn = null;
+        }
         // Standalone assistant message (e.g., welcome message)
         // Create a synthetic turn with an empty user message
         turns.push({
@@ -511,12 +517,52 @@ export function getRunningTasks(
   return tasks.filter((t) => t.status === "running");
 }
 
+const sortFooterTasks = (tasks: TaskItem[]): TaskItem[] =>
+  [...tasks].sort((a, b) => {
+    const aCompleted = a.status === "completed";
+    const bCompleted = b.status === "completed";
+    if (aCompleted !== bCompleted) {
+      return aCompleted ? 1 : -1;
+    }
+    return a.startedAtMs - b.startedAtMs;
+  });
+
+export function getFooterTasksFromEvents(
+  events: EventRecord[],
+  options?: {
+    appSessionStartedAtMs?: number | null;
+    nowMs?: number;
+    completionIndicatorMs?: number;
+  },
+): TaskItem[] {
+  const tasks = extractTasksFromEvents(events, {
+    appSessionStartedAtMs: options?.appSessionStartedAtMs,
+  });
+  const nowMs = options?.nowMs ?? Date.now();
+  const completionIndicatorMs =
+    options?.completionIndicatorMs ?? TASK_COMPLETION_INDICATOR_MS;
+  return sortFooterTasks(
+    tasks.filter((task) => {
+      if (task.status === "running") {
+        return true;
+      }
+      if (task.status !== "completed") {
+        return false;
+      }
+      if (typeof task.completedAtMs !== "number") {
+        return false;
+      }
+      return nowMs - task.completedAtMs <= completionIndicatorMs;
+    }),
+  );
+}
+
 export function mergeFooterTasks(
   persistedTasks: TaskItem[],
   liveTasks?: TaskItem[],
 ): TaskItem[] {
   if (!liveTasks || liveTasks.length === 0) {
-    return persistedTasks;
+    return sortFooterTasks(persistedTasks);
   }
 
   const mergedById = new Map<string, TaskItem>();
@@ -530,12 +576,5 @@ export function mergeFooterTasks(
     mergedById.set(task.id, persistedTask ? { ...persistedTask, ...task } : task);
   }
 
-  return [...mergedById.values()].sort((a, b) => {
-    const aCompleted = a.status === "completed";
-    const bCompleted = b.status === "completed";
-    if (aCompleted !== bCompleted) {
-      return aCompleted ? 1 : -1;
-    }
-    return a.startedAtMs - b.startedAtMs;
-  });
+  return sortFooterTasks([...mergedById.values()]);
 }
