@@ -162,18 +162,16 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   smart: {
-    model: "z-ai/glm-5.1",
-    fallbackMode: "smart",
-    managedGatewayProvider: "openrouter",
+    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
+    fallbackMode: "fast",
+    managedGatewayProvider: "fireworks",
     temperature: 1.0,
-    maxOutputTokens: 16192,
+    maxOutputTokens: 12096,
     providerOptions: {
       openai: {
-        reasoningEffort: "high",
+        reasoningEffort: "medium",
       },
-      gateway: {
-        order: ["friendli", "fireworks"],
-      },
+      ...gatewayOptions("fireworks"),
     },
   },
 
@@ -263,8 +261,8 @@ const AUDIENCE_MODE_OVERRIDES: Record<ManagedModelAudience, Partial<Record<Model
 
 export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: "standard",
-  [AGENT_IDS.ORCHESTRATOR]: "standard",
-  [AGENT_IDS.GENERAL]: "standard",
+  [AGENT_IDS.ORCHESTRATOR]: "best",
+  [AGENT_IDS.GENERAL]: "best",
 
   schedule: "standard",
   synthesis: "synthesis",
