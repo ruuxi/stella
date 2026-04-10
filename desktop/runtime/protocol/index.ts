@@ -3,7 +3,6 @@ import type {
   AgentHealth,
   InstalledStoreModRecord,
   LocalCronJobRecord,
-  LocalDevProjectRecord,
   LocalHeartbeatConfigRecord,
   ScheduledConversationEvent,
   SelfModFeatureSummary,
@@ -23,7 +22,6 @@ export type {
   AgentHealth,
   InstalledStoreModRecord,
   LocalCronJobRecord,
-  LocalDevProjectRecord,
   LocalHeartbeatConfigRecord,
   ScheduledConversationEvent,
   SelfModFeatureSummary,
@@ -271,7 +269,6 @@ export const NOTIFICATION_NAMES = {
   VOICE_SELF_MOD_HMR_STATE: "voice.selfModHmrState",
   LOCAL_CHAT_UPDATED: "localChat.updated",
   SCHEDULE_UPDATED: "schedule.updated",
-  PROJECTS_UPDATED: "projects.updated",
   APPROVAL_REQUESTED: "approval.requested",
   GOOGLE_WORKSPACE_AUTH_REQUIRED: "googleWorkspace.authRequired",
 } as const;
@@ -368,11 +365,6 @@ export type RuntimeAutomationTurnResult =
   | { status: "ok"; finalText: string }
   | { status: "busy"; finalText: ""; error: string }
   | { status: "error"; finalText: ""; error: string };
-
-export type RuntimeProjectDirectoryRegistrationResult = {
-  projects: LocalDevProjectRecord[];
-  selectedProjectId: string;
-};
 
 export type RuntimeSelfModRevertResult = {
   featureId: string;

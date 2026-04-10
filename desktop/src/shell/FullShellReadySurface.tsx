@@ -7,9 +7,7 @@ import {
   useState,
 } from "react";
 import { WorkspaceArea } from "@/app/workspace/WorkspaceArea";
-import { useDevProjects } from "@/context/dev-projects-state";
 import { useUiState } from "@/context/ui-state";
-import { useWorkspace } from "@/context/workspace-state";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { dispatchCloseSidebarChat, dispatchOpenSidebarChat, dispatchShowHome } from "@/shared/lib/stella-orb-chat";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
@@ -43,15 +41,12 @@ export const FullShellReadySurface = ({
 }: FullShellReadySurfaceProps) => {
   const { state, setView } = useUiState();
   const activeConversationId = state.conversationId;
-  const { state: workspaceState, openPanel, closePanel } = useWorkspace();
-  const activePanel = workspaceState.activePanel;
   const [activeDialog, setActiveDialog] = useState<DialogType>(null);
   const [pendingAskStellaRequest, setPendingAskStellaRequest] =
     useState<PendingAskStellaRequest | null>(null);
   const [isSidebarChatOpen, setIsSidebarChatOpen] = useState(false);
   const [isShowingHomeContent, setIsShowingHomeContent] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { projects, pickProjectDirectory } = useDevProjects();
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 600px)");
@@ -73,23 +68,20 @@ export const FullShellReadySurface = ({
   }, []);
 
   const showStoreView = useCallback(() => {
-    closePanel();
     setView("store");
-  }, [closePanel, setView]);
+  }, [setView]);
 
   const showChatView = useCallback(() => {
     if (state.view === "chat") {
       dispatchShowHome();
       return;
     }
-    closePanel();
     setView("chat");
-  }, [closePanel, setView, state.view]);
+  }, [setView, state.view]);
 
   const showSocialView = useCallback(() => {
-    closePanel();
     setView("social");
-  }, [closePanel, setView]);
+  }, [setView]);
 
   const handlePendingAskStellaHandled = useCallback((requestId: number) => {
     setPendingAskStellaRequest((current) =>
@@ -106,32 +98,9 @@ export const FullShellReadySurface = ({
     });
 
     if (state.view === "chat") {
-      closePanel();
       setView("app");
     }
-  }, [closePanel, setView, state.view]);
-
-  const handleProjectSelect = useCallback(
-    (project: (typeof projects)[number]) => {
-      openPanel({
-        name: `dev-project:${project.id}`,
-        title: project.name,
-        kind: "dev-project",
-        projectId: project.id,
-      });
-      setView("app");
-    },
-    [openPanel, setView],
-  );
-
-  const handleNewAppLocalProject = useCallback(async () => {
-    const project = await pickProjectDirectory();
-    if (!project) {
-      return;
-    }
-
-    handleProjectSelect(project);
-  }, [handleProjectSelect, pickProjectDirectory]);
+  }, [setView, state.view]);
 
   const handleDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {
@@ -144,8 +113,6 @@ export const FullShellReadySurface = ({
     void secureSignOut();
   }, []);
 
-  const activeProjectId =
-    activePanel?.kind === "dev-project" ? activePanel.projectId : null;
   const showChatSurface = state.view === "chat" || state.view === "social";
 
   const handleContextMenuOpenSidebarChat = useCallback(() => {
@@ -173,10 +140,6 @@ export const FullShellReadySurface = ({
         onChat={() => { closeDrawer(); showChatView(); }}
         onSocial={() => { closeDrawer(); showSocialView(); }}
         onNewAppAskStella={() => { closeDrawer(); handleNewAppAskStella(); }}
-        onNewAppLocalProject={() => { closeDrawer(); void handleNewAppLocalProject(); }}
-        projects={projects}
-        activeProjectId={activeProjectId}
-        onProjectSelect={(project) => { closeDrawer(); handleProjectSelect(project); }}
       />
 
       <StellaContextMenu

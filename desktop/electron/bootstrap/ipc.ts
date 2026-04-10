@@ -7,7 +7,6 @@ import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
 import { registerOfficePreviewHandlers } from "../ipc/office-preview-handlers.js";
-import { registerProjectHandlers } from "../ipc/project-handlers.js";
 import { registerScheduleHandlers } from "../ipc/schedule-handlers.js";
 import { registerStoreHandlers } from "../ipc/store-handlers.js";
 import { registerSystemHandlers } from "../ipc/system-handlers.js";
@@ -123,13 +122,6 @@ export const registerBootstrapIpcHandlers = (
   registerOnboardingHandlers({
     authService: services.authService,
     getDeviceId: () => state.deviceId,
-    assertPrivilegedSender: (event, channel) =>
-      services.externalLinkService.assertPrivilegedSender(event, channel),
-  });
-
-  registerProjectHandlers({
-    getStellaHostRunner: lifecycle.getRunner,
-    onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

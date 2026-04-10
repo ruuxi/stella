@@ -11,7 +11,6 @@ import {
 } from "../stella-host-runner.js";
 import {
   type BootstrapContext,
-  broadcastDevProjectsChanged,
   broadcastGoogleWorkspaceAuthRequired,
   broadcastLocalChatUpdated,
   broadcastScheduleUpdated,
@@ -135,8 +134,6 @@ const clearHostRunnerSubscriptions = (context: BootstrapContext) => {
   state.localChatUpdateUnsubscribe = null;
   state.scheduleUpdateUnsubscribe?.();
   state.scheduleUpdateUnsubscribe = null;
-  state.devProjectsUpdateUnsubscribe?.();
-  state.devProjectsUpdateUnsubscribe = null;
   state.googleWorkspaceAuthRequiredUnsubscribe?.();
   state.googleWorkspaceAuthRequiredUnsubscribe = null;
 };
@@ -165,9 +162,6 @@ const connectHostRunner = async (context: BootstrapContext) => {
   state.scheduleUpdateUnsubscribe = runner.onScheduleUpdated(() => {
     broadcastScheduleUpdated(context);
   });
-  state.devProjectsUpdateUnsubscribe = runner.onProjectsUpdated((projects) => {
-    broadcastDevProjectsChanged(context, projects);
-  });
   state.googleWorkspaceAuthRequiredUnsubscribe = runner.onGoogleWorkspaceAuthRequired(() => {
     broadcastGoogleWorkspaceAuthRequired(context);
   });
@@ -175,12 +169,6 @@ const connectHostRunner = async (context: BootstrapContext) => {
   await runner.start();
   const health = await runner.client.health();
   state.deviceId = health.deviceId;
-
-  try {
-    broadcastDevProjectsChanged(context, await runner.listProjects());
-  } catch (error) {
-    console.debug("[dev-projects] Failed to load initial runtime projects:", error);
-  }
 };
 
 export const initializeStellaHostRunner = async (context: BootstrapContext) => {

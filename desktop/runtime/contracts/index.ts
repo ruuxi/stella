@@ -163,39 +163,6 @@ export type DevProject = {
   lastActivity: number;
 };
 
-export type LocalDevProjectSource = "discovered" | "manual";
-
-export type LocalDevProjectFramework =
-  | "next"
-  | "vite"
-  | "create-react-app"
-  | "angular"
-  | "unknown";
-
-export type LocalDevProjectPackageManager = "npm" | "pnpm" | "yarn" | "bun";
-
-export type LocalDevProjectStatus = "stopped" | "starting" | "running" | "error";
-
-export type LocalDevProjectRuntime = {
-  status: LocalDevProjectStatus;
-  port?: number;
-  url?: string;
-  error?: string;
-};
-
-export type LocalDevProjectRecord = {
-  id: string;
-  name: string;
-  path: string;
-  source: LocalDevProjectSource;
-  framework: LocalDevProjectFramework;
-  packageManager: LocalDevProjectPackageManager;
-  createdAt: number;
-  updatedAt: number;
-  lastDetectedAt?: number;
-  runtime: LocalDevProjectRuntime;
-};
-
 export type CommandFrequency = {
   command: string;
   count: number;

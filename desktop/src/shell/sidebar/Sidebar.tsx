@@ -4,7 +4,6 @@ import { secureSignOut } from "@/global/auth/services/auth";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import { getPlatform } from "@/platform/electron/platform";
 import type { ViewType } from "@/shared/contracts/ui";
-import type { LocalDevProjectRecord } from "@/shared/types/electron";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,8 +11,6 @@ import {
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
 import {
-  CustomAlertCircle as AlertCircle,
-  CustomFolder as Folder,
   CustomArrowLeft as ArrowLeft,
   CustomHouse as House,
   CustomDevice as Device,
@@ -44,10 +41,6 @@ interface SidebarProps {
   onSocial?: () => void;
   onNewApp?: () => void;
   onNewAppAskStella?: () => void;
-  onNewAppLocalProject?: () => void;
-  projects?: LocalDevProjectRecord[];
-  activeProjectId?: string | null;
-  onProjectSelect?: (project: LocalDevProjectRecord) => void;
 }
 
 const MAXIMIZE_STATE_SYNC_DELAY_MS = 50;
@@ -154,29 +147,9 @@ export const Sidebar = ({
   onSocial,
   onNewApp,
   onNewAppAskStella,
-  onNewAppLocalProject,
-  projects = [],
-  activeProjectId,
-  onProjectSelect,
 }: SidebarProps) => {
   const isMac = getPlatform() === "darwin";
   const handleAskStella = onNewAppAskStella ?? onNewApp;
-  const getProjectMeta = (project: LocalDevProjectRecord) => {
-    switch (project.runtime.status) {
-      case "stopped":
-        return "Ready to start";
-      case "running":
-        return "Live preview open";
-      case "starting":
-        return "Starting now";
-      case "error":
-        return "Needs attention";
-      default: {
-        const exhaustiveCheck: never = project.runtime.status;
-        return exhaustiveCheck;
-      }
-    }
-  };
 
   return (
     <aside className={`sidebar${className ? ` ${className}` : ""}`}>
@@ -227,42 +200,8 @@ export const Sidebar = ({
           </DropdownMenuTrigger>
           <DropdownMenuContent side="right" align="start">
             <DropdownMenuItem onClick={handleAskStella}>Ask Stella</DropdownMenuItem>
-            <DropdownMenuItem onClick={onNewAppLocalProject}>Local Project</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        {projects.length > 0 && (
-          <>
-            <div className="sidebar-nav-section-label">Projects</div>
-            {projects.map((project) => (
-              <button
-                key={project.id}
-                type="button"
-                className={`sidebar-nav-item sidebar-nav-item--project ${activeProjectId === project.id ? "sidebar-nav-item--active" : ""}`}
-                onClick={() => onProjectSelect?.(project)}
-                title={project.name}
-              >
-                <span className="sidebar-nav-icon">
-                  <Folder size={18} />
-                </span>
-                <span className="sidebar-project-copy">
-                  <span className="sidebar-project-label">{project.name}</span>
-                  <span className="sidebar-project-meta">{getProjectMeta(project)}</span>
-                </span>
-                {project.runtime.status === "running" && (
-                  <span className="sidebar-page-status sidebar-page-status--ready" aria-label="Running" />
-                )}
-                {project.runtime.status === "starting" && (
-                  <span className="sidebar-page-status sidebar-page-status--running" aria-label="Starting" />
-                )}
-                {project.runtime.status === "error" && (
-                  <span className="sidebar-page-status sidebar-page-status--failed" aria-label="Error">
-                    <AlertCircle size={12} />
-                  </span>
-                )}
-              </button>
-            ))}
-          </>
-        )}
       </nav>
       <div className="sidebar-footer">
         <div className="sidebar-footer-row sidebar-footer-row--theme">
