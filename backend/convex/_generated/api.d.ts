@@ -33,6 +33,7 @@ import type * as channels_connector_auth from "../channels/connector_auth.js";
 import type * as channels_connector_constants from "../channels/connector_constants.js";
 import type * as channels_connector_delivery from "../channels/connector_delivery.js";
 import type * as channels_discord from "../channels/discord.js";
+import type * as channels_execution_policy from "../channels/execution_policy.js";
 import type * as channels_google_chat from "../channels/google_chat.js";
 import type * as channels_link_codes from "../channels/link_codes.js";
 import type * as channels_linq from "../channels/linq.js";
@@ -198,6 +199,7 @@ declare const fullApi: ApiFromModules<{
   "channels/connector_constants": typeof channels_connector_constants;
   "channels/connector_delivery": typeof channels_connector_delivery;
   "channels/discord": typeof channels_discord;
+  "channels/execution_policy": typeof channels_execution_policy;
   "channels/google_chat": typeof channels_google_chat;
   "channels/link_codes": typeof channels_link_codes;
   "channels/linq": typeof channels_linq;
