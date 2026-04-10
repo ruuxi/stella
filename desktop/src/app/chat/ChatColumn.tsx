@@ -148,7 +148,6 @@ export const ChatColumn = memo(function ChatColumn({
       onAdd={composer.onAdd}
       onSend={composer.onSend}
       onStop={composer.onStop}
-      showSuggestions
     />
   );
 

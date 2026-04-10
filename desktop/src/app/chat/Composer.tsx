@@ -34,7 +34,6 @@ type ComposerProps = {
   onSend: () => void;
   onStop: () => void;
   onAdd?: () => void;
-  showSuggestions?: boolean;
 };
 
 export function Composer({
@@ -50,7 +49,6 @@ export function Composer({
   onSend,
   onStop,
   onAdd,
-  showSuggestions = false,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -77,13 +75,6 @@ export function Composer({
   const { contextState: composerContextState, placeholder } = composerState;
   const { hasComposerContext } = composerContextState;
   const isExpanded = composerExpanded;
-
-  const handleSuggestionSelect = (prompt: string) => {
-    setMessage(prompt);
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-    });
-  };
 
   /* Shell/inner height animation.
      The form renders at full natural size (no constraints on children).
@@ -136,14 +127,13 @@ export function Composer({
 
   return (
     <div className="composer">
-      <div className={`composer-floating-context${hasComposerContext || showSuggestions ? "" : " composer-floating-context--empty"}`}>
+      <div className={`composer-floating-context${hasComposerContext ? "" : " composer-floating-context--empty"}`}>
         <ComposerContextRow
           chatContext={chatContext}
           selectedText={selectedText}
           setChatContext={setChatContext}
           setSelectedText={setSelectedText}
           onPreviewScreenshot={setPreviewScreenshotIndex}
-          onSuggestionSelect={showSuggestions ? handleSuggestionSelect : undefined}
         />
       </div>
 
