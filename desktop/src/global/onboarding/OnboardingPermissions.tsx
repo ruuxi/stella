@@ -63,8 +63,23 @@ export function OnboardingPermissions({
     };
   }, [fetchStatus]);
 
-  const openSettings = useCallback((kind: PermissionKind) => {
-    window.electronAPI?.system.openPermissionSettings?.(kind);
+  const [requesting, setRequesting] = useState<PermissionKind | null>(null);
+
+  const handleEnable = useCallback(async (kind: PermissionKind) => {
+    setRequesting(kind);
+    try {
+      const result =
+        await window.electronAPI?.system.requestPermission?.(kind);
+      if (result?.granted) {
+        setStatus((prev) => ({ ...prev, [kind]: true }));
+        return;
+      }
+      window.electronAPI?.system.openPermissionSettings?.(kind);
+    } catch {
+      window.electronAPI?.system.openPermissionSettings?.(kind);
+    } finally {
+      setRequesting(null);
+    }
   }, []);
 
   const allGranted = status.accessibility && status.screen && status.microphone;
@@ -96,10 +111,14 @@ export function OnboardingPermissions({
               </div>
               <button
                 className="onboarding-permission-card__action"
-                onClick={() => openSettings(card.kind)}
-                disabled={granted}
+                onClick={() => void handleEnable(card.kind)}
+                disabled={granted || requesting === card.kind}
               >
-                {granted ? "Granted \u2713" : "Enable"}
+                {granted
+                  ? "Granted \u2713"
+                  : requesting === card.kind
+                    ? "Requesting\u2026"
+                    : "Enable"}
               </button>
             </div>
           );
