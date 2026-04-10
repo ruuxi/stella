@@ -879,7 +879,15 @@ async fn init_git_repo(install_dir: &str) {
 
     let mut commit_command = Command::new(&git_bin);
     commit_command
-        .args(["commit", "-m", "initial stella install"])
+        .args([
+            "-c",
+            "user.name=Stella",
+            "-c",
+            "user.email=install@stella.local",
+            "commit",
+            "-m",
+            "start",
+        ])
         .current_dir(&cwd)
         .envs(&env);
     #[cfg(target_os = "windows")]
