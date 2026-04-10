@@ -30,7 +30,7 @@ function waitForLoad(tabId, timeout = 30000) {
 }
 
 export async function handleNavigate(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const url = command.url;
 
   if (!url) throw new Error('URL is required for navigate');
@@ -56,7 +56,7 @@ export async function handleNavigate(command) {
 }
 
 export async function handleBack(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   await chrome.tabs.goBack(tab.id);
   // Small delay for navigation to start
   await new Promise(r => setTimeout(r, 500));
@@ -69,7 +69,7 @@ export async function handleBack(command) {
 }
 
 export async function handleForward(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   await chrome.tabs.goForward(tab.id);
   await new Promise(r => setTimeout(r, 500));
   const updated = await chrome.tabs.get(tab.id);
@@ -81,7 +81,7 @@ export async function handleForward(command) {
 }
 
 export async function handleReload(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   await chrome.tabs.reload(tab.id);
   await waitForLoad(tab.id, command.timeout || 30000);
   const updated = await chrome.tabs.get(tab.id);
@@ -97,7 +97,7 @@ export async function handleReload(command) {
 }
 
 export async function handleUrl(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   return {
     id: command.id,
     success: true,
@@ -106,7 +106,7 @@ export async function handleUrl(command) {
 }
 
 export async function handleTitle(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   return {
     id: command.id,
     success: true,

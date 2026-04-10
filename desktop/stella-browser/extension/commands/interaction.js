@@ -50,11 +50,11 @@ async function injectScript(tabId, resolved, actionScript) {
 // --- Command Handlers ---
 
 export async function handleClick(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for click');
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
   await injectScript(tab.id, resolved, `
     el.scrollIntoView({ block: 'center', behavior: 'instant' });
     el.click();
@@ -65,12 +65,12 @@ export async function handleClick(command) {
 }
 
 export async function handleFill(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   const value = command.value ?? '';
   if (!selector) throw new Error('Selector is required for fill');
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
   await injectScript(tab.id, resolved, `
     el.focus();
     el.value = ${JSON.stringify(value)};
@@ -83,12 +83,12 @@ export async function handleFill(command) {
 }
 
 export async function handleType(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const text = command.text || '';
 
   // If there's a selector, focus that element first
   if (command.selector || command.ref) {
-    const resolved = resolveSelector(command.selector || command.ref);
+    const resolved = resolveSelector(command.selector || command.ref, command.ownerId, tab.id);
     await injectScript(tab.id, resolved, `
       el.focus();
       return true;
@@ -115,11 +115,11 @@ export async function handleType(command) {
 }
 
 export async function handleHover(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for hover');
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
   await injectScript(tab.id, resolved, `
     el.scrollIntoView({ block: 'center', behavior: 'instant' });
     el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
@@ -132,12 +132,12 @@ export async function handleHover(command) {
 }
 
 export async function handleSelect(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   const values = command.values || [command.value];
   if (!selector) throw new Error('Selector is required for select');
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
   await injectScript(tab.id, resolved, `
     const values = ${JSON.stringify(values)};
     for (const option of el.options) {
@@ -151,13 +151,13 @@ export async function handleSelect(command) {
 }
 
 export async function handlePress(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const key = command.key;
   if (!key) throw new Error('Key is required for press');
 
   // If there's a selector, focus that element first
   if (command.selector || command.ref) {
-    const resolved = resolveSelector(command.selector || command.ref);
+    const resolved = resolveSelector(command.selector || command.ref, command.ownerId, tab.id);
     await injectScript(tab.id, resolved, 'el.focus(); return true;');
   }
 
@@ -207,12 +207,12 @@ export async function handlePress(command) {
 }
 
 export async function handleScroll(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const x = command.x ?? 0;
   const y = command.y ?? 0;
 
   if (command.selector || command.ref) {
-    const resolved = resolveSelector(command.selector || command.ref);
+    const resolved = resolveSelector(command.selector || command.ref, command.ownerId, tab.id);
     await injectScript(tab.id, resolved, `
       el.scrollBy(${x}, ${y});
       return { scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
@@ -232,11 +232,11 @@ export async function handleScroll(command) {
 }
 
 export async function handleClear(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for clear');
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
   await injectScript(tab.id, resolved, `
     el.focus();
     el.value = '';
@@ -249,11 +249,11 @@ export async function handleClear(command) {
 }
 
 export async function handleCheck(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for check');
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
   await injectScript(tab.id, resolved, `
     if (!el.checked) el.click();
     return el.checked;
@@ -263,11 +263,11 @@ export async function handleCheck(command) {
 }
 
 export async function handleUncheck(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for uncheck');
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
   await injectScript(tab.id, resolved, `
     if (el.checked) el.click();
     return !el.checked;
@@ -277,11 +277,11 @@ export async function handleUncheck(command) {
 }
 
 export async function handleFocus(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for focus');
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
   await injectScript(tab.id, resolved, `
     el.focus();
     return true;
@@ -291,11 +291,11 @@ export async function handleFocus(command) {
 }
 
 export async function handleDblclick(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for dblclick');
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
   await injectScript(tab.id, resolved, `
     el.scrollIntoView({ block: 'center', behavior: 'instant' });
     el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
@@ -306,7 +306,7 @@ export async function handleDblclick(command) {
 }
 
 export async function handleWait(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   const timeout = command.timeout || 30000;
 
@@ -316,7 +316,7 @@ export async function handleWait(command) {
     return { id: command.id, success: true, data: { waited: true } };
   }
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
 
   // Poll until element appears or timeout
   const startTime = Date.now();
@@ -357,7 +357,7 @@ export async function handleWait(command) {
 // --- Clipboard ---
 
 export async function handleClipboard(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const operation = command.operation;
   if (!operation) throw new Error('Operation is required for clipboard (copy/paste/read)');
   const platformInfo = await chrome.runtime.getPlatformInfo();
@@ -422,7 +422,7 @@ export async function handleClipboard(command) {
 // --- Advanced Mouse Input (CDP) ---
 
 export async function handleMouseMove(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const x = command.x ?? 0;
   const y = command.y ?? 0;
 
@@ -436,7 +436,7 @@ export async function handleMouseMove(command) {
 }
 
 export async function handleMouseDown(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const x = command.x ?? 0;
   const y = command.y ?? 0;
   const button = command.button || 'left';
@@ -453,7 +453,7 @@ export async function handleMouseDown(command) {
 }
 
 export async function handleMouseUp(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const x = command.x ?? 0;
   const y = command.y ?? 0;
   const button = command.button || 'left';
@@ -470,7 +470,7 @@ export async function handleMouseUp(command) {
 }
 
 export async function handleDrag(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const { startX, startY, endX, endY } = command;
   if (startX == null || startY == null || endX == null || endY == null) {
     throw new Error('startX, startY, endX, endY are required for drag');
@@ -504,7 +504,7 @@ export async function handleDrag(command) {
 // --- Advanced Keyboard Input (CDP) ---
 
 export async function handleKeyDown(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const key = command.key;
   if (!key) throw new Error('Key is required for keydown');
 
@@ -518,7 +518,7 @@ export async function handleKeyDown(command) {
 }
 
 export async function handleKeyUp(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const key = command.key;
   if (!key) throw new Error('Key is required for keyup');
 
@@ -532,7 +532,7 @@ export async function handleKeyUp(command) {
 }
 
 export async function handleInsertText(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const text = command.text;
   if (text == null) throw new Error('Text is required for inserttext');
 

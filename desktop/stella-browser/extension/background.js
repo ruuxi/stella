@@ -6,7 +6,7 @@
  */
 
 import { connect, disconnect, isConnected, onCommand, onStatus } from './lib/connection.js';
-import { handleTabNew, handleTabList, handleTabSwitch, handleTabClose, closeAgentWindow, cleanupStaleGroups } from './commands/tabs.js';
+import { handleTabNew, handleTabList, handleTabSwitch, handleTabClose, closeAgentWindow, closeOwnerTabs, cleanupStaleGroups } from './commands/tabs.js';
 import { handleNavigate, handleBack, handleForward, handleReload, handleUrl, handleTitle } from './commands/navigation.js';
 import {
   handleClick, handleFill, handleType, handleHover, handleSelect,
@@ -161,6 +161,11 @@ async function handleCommand(message) {
 
   // Handle 'close' command - close agent window, then acknowledge
   if (action === 'close') {
+    if (typeof message.ownerId === 'string' && message.ownerId.trim()) {
+      const result = await closeOwnerTabs(message.ownerId);
+      return { type: 'response', id, success: true, data: result };
+    }
+
     await closeAgentWindow();
     return { type: 'response', id, success: true, data: { closed: true } };
   }
