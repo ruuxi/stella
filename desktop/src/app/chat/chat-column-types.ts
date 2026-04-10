@@ -47,7 +47,11 @@ export type ChatColumnScroll = {
   onScroll: () => void
   showScrollButton: boolean
   scrollToBottom: (behavior?: ScrollBehavior) => void
+  /** Scroll so the turn's top aligns with the reading area (column-reverse viewport). */
+  scrollTurnToPinTop: (turnId: string) => boolean
+  overflowAnchor: 'auto' | 'none'
   thumbState: ChatColumnThumbState
+  hasScrollElement?: boolean
 }
 
 export type ChatColumnProps = {
