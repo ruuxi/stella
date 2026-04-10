@@ -15,7 +15,6 @@ type WorkspaceAreaProps = {
   view: ViewType
   activeDemo: OnboardingDemo
   demoClosing: boolean
-  conversationId?: string
 }
 
 export function WorkspaceArea({
@@ -43,51 +42,47 @@ export function WorkspaceArea({
     )
   }
 
-  if (view === "app") {
-    if (activePanel) {
-      return (
-        <div className="workspace-area">
-          <div className="workspace-content workspace-content--full">
-            <Suspense
-              fallback={
-                <div className="workspace-placeholder">
-                  <Spinner size="md" />
-                </div>
-              }
-            >
-              <PanelRenderer panel={activePanel} />
-            </Suspense>
-          </div>
+  if (view === "app" && activePanel) {
+    return (
+      <div className="workspace-area">
+        <div className="workspace-content workspace-content--full">
+          <Suspense
+            fallback={
+              <div className="workspace-placeholder">
+                <Spinner size="md" />
+              </div>
+            }
+          >
+            <PanelRenderer panel={activePanel} />
+          </Suspense>
         </div>
-      )
-    }
+      </div>
+    )
   }
 
-  switch (view) {
-    case "store":
-      return (
-        <div className="workspace-area">
-          <div className="workspace-content workspace-content--full">
-            <Suspense
-              fallback={
-                <div className="workspace-placeholder">
-                  <Spinner size="md" />
-                </div>
-              }
-            >
-              <StoreView />
-            </Suspense>
-          </div>
+  if (view === "store") {
+    return (
+      <div className="workspace-area">
+        <div className="workspace-content workspace-content--full">
+          <Suspense
+            fallback={
+              <div className="workspace-placeholder">
+                <Spinner size="md" />
+              </div>
+            }
+          >
+            <StoreView />
+          </Suspense>
         </div>
-      )
-    case "chat":
-    case "social":
-    case "app":
-      // Chat/social are handled by FullShellRuntime
-      return null
-    default: {
-      const exhaustiveCheck: never = view
-      return exhaustiveCheck
-    }
+      </div>
+    )
   }
+
+  if (view === "chat" || view === "social" || view === "app") {
+    // Chat/social are handled by FullShellRuntime.
+    return null
+  }
+
+  const exhaustiveCheck: never = view
+  return exhaustiveCheck
 }

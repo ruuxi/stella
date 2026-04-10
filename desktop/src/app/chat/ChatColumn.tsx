@@ -155,24 +155,7 @@ export const ChatColumn = memo(function ChatColumn({
     [setViewportElement],
   );
 
-  const homeComposerElement = (
-    <Composer
-      message={composer.message}
-      setMessage={composer.setMessage}
-      chatContext={composer.chatContext}
-      setChatContext={composer.setChatContext}
-      selectedText={composer.selectedText}
-      setSelectedText={composer.setSelectedText}
-      isStreaming={conversation.streaming.isStreaming}
-      canSubmit={composer.canSubmit}
-      conversationId={conversationId}
-      onAdd={composer.onAdd}
-      onSend={composer.onSend}
-      onStop={composer.onStop}
-    />
-  );
-
-  const chatComposerElement = (
+  const composerElement = (
     <Composer
       message={composer.message}
       setMessage={composer.setMessage}
@@ -198,7 +181,7 @@ export const ChatColumn = memo(function ChatColumn({
           onSuggestionClick={onSuggestionClick}
         >
           <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
-            {homeComposerElement}
+            {composerElement}
           </div>
         </HomeContent>
         {hasMessages && onDismissHome && (
@@ -292,7 +275,7 @@ export const ChatColumn = memo(function ChatColumn({
 
       {/* Composer: normal flow below the scroll viewport */}
       <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
-        {chatComposerElement}
+        {composerElement}
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { Avatar } from "@/ui/avatar";
 import { showToast } from "@/ui/toast";
 import { getSocialActionErrorMessage } from "./social-errors";
 import { useSocialMessages } from "./hooks/use-social-messages";
+import { getSocialRoomDisplayName } from "./room-display";
 import {
   useSocialSession,
   type SocialSessionStatus,
@@ -30,23 +31,6 @@ type MessageDoc = {
 function formatMessageTime(timestamp: number) {
   const date = new Date(timestamp);
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
-
-function getRoomDisplayName(roomData: SocialRoomSummary, currentOwnerId: string): string {
-  if (roomData.room.title) return roomData.room.title;
-
-  switch (roomData.room.kind) {
-    case "dm": {
-      const other = roomData.memberProfiles.find((member) => member.ownerId !== currentOwnerId);
-      return other?.nickname ?? "Someone";
-    }
-    case "group":
-      return "Group";
-    default: {
-      const exhaustiveCheck: never = roomData.room.kind;
-      return exhaustiveCheck;
-    }
-  }
 }
 
 function getProfileForOwner(
@@ -112,7 +96,9 @@ export function SocialChatPane({ roomId, currentOwnerId }: SocialChatPaneProps) 
     return groups;
   }, [messages]);
 
-  const displayName = roomData ? getRoomDisplayName(roomData, currentOwnerId) : "";
+  const displayName = roomData
+    ? getSocialRoomDisplayName(roomData, currentOwnerId)
+    : "";
   const activeSession = sessionSummary?.session ?? null;
   const isHost = sessionSummary?.isHost === true;
 

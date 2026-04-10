@@ -1,10 +1,6 @@
-import { Suspense } from 'react'
-import { generatedPages, MEDIA_PAGE } from '@/app/registry'
-import { Spinner } from '@/ui/spinner'
 import { WorkspaceErrorBoundary } from '../WorkspaceErrorBoundary'
 import {
   type DevProjectWorkspacePanel,
-  type GeneratedPageWorkspacePanel,
   type WorkspacePanel,
 } from '@/context/workspace-state'
 import { DevProjectPanel } from './dev-project-panel'
@@ -24,43 +20,8 @@ const DevProjectPanelRenderer = ({
   </div>
 )
 
-const GeneratedPagePanelRenderer = ({
-  panel,
-}: {
-  panel: GeneratedPageWorkspacePanel
-}) => {
-  const page = [MEDIA_PAGE, ...generatedPages].find((candidate) => candidate.id === panel.pageId)
-
-  if (!page) {
-    throw new Error(`Unknown generated page: ${panel.pageId}`)
-  }
-
-  const Page = page.component
-
-  return (
-    <div className="workspace-panel-wrap">
-      <WorkspaceErrorBoundary>
-        <div className="workspace-panel-content">
-          <Suspense fallback={<div className="workspace-placeholder"><Spinner size="md" /></div>}>
-            <Page />
-          </Suspense>
-        </div>
-      </WorkspaceErrorBoundary>
-    </div>
-  )
-}
-
-const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => {
-  switch (panel.kind) {
-    case 'dev-project':
-      return <DevProjectPanelRenderer panel={panel} />
-    case 'generated-page':
-      return <GeneratedPagePanelRenderer panel={panel} />
-    default: {
-      const exhaustiveCheck: never = panel
-      return exhaustiveCheck
-    }
-  }
-}
+const PanelRenderer = ({ panel }: { panel: WorkspacePanel }) => (
+  <DevProjectPanelRenderer panel={panel} />
+)
 
 export default PanelRenderer
