@@ -75,9 +75,16 @@ export function useChatScrollManagement({
   const pauseResizeFollowRef = useRef(pauseResizeFollow)
   pauseResizeFollowRef.current = pauseResizeFollow
 
+  const [pinnedToTurn, setPinnedToTurnState] = useState(false)
+  const pinnedToTurnRef = useRef(false)
+  const setPinnedToTurn = useCallback((pinned: boolean) => {
+    pinnedToTurnRef.current = pinned
+    setPinnedToTurnState(pinned)
+  }, [])
+
   const isNearBottom = !userScrolled
   const isNearBottomRef = useRef(true)
-  const showScrollButton = userScrolled
+  const showScrollButton = userScrolled && !pinnedToTurn
 
   const setUserScrolled = useCallback((scrolled: boolean) => {
     userScrolledRef.current = scrolled
@@ -188,6 +195,7 @@ export function useChatScrollManagement({
       const maxScroll = viewport.scrollHeight - viewport.clientHeight
 
       setUserScrolled(true)
+      setPinnedToTurn(true)
       markProgrammatic()
       stopSpring()
 
@@ -225,17 +233,18 @@ export function useChatScrollManagement({
       updateThumb()
       return true
     },
-    [markProgrammatic, setUserScrolled, stopSpring, updateThumb],
+    [markProgrammatic, setPinnedToTurn, setUserScrolled, stopSpring, updateThumb],
   )
 
   const resetScrollState = useCallback(() => {
     stopSpring()
     setUserScrolled(false)
+    setPinnedToTurn(false)
     if (settleRef.current) {
       clearTimeout(settleRef.current)
       settleRef.current = null
     }
-  }, [stopSpring, setUserScrolled])
+  }, [stopSpring, setUserScrolled, setPinnedToTurn])
 
   const handleScroll = useCallback(() => {
     if (rafRef.current !== null) return
@@ -245,6 +254,10 @@ export function useChatScrollManagement({
       if (isWithinGrace() || springRef.current) {
         updateThumb()
         return
+      }
+
+      if (pinnedToTurnRef.current) {
+        setPinnedToTurn(false)
       }
 
       const el = viewportRef.current
