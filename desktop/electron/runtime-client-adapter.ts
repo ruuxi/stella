@@ -4,7 +4,6 @@ import {
   AGENT_STREAM_EVENT_TYPES,
 } from "../src/shared/contracts/agent-runtime.js";
 import type {
-  LocalDevProjectRecord,
   RuntimeActiveRun,
   RuntimeAgentEventPayload,
   RuntimeAutomationTurnRequest,
@@ -795,10 +794,6 @@ export class RuntimeClientAdapter {
     return this.client.on("local-chat-updated", listener);
   }
 
-  onProjectsUpdated(listener: (projects: LocalDevProjectRecord[]) => void) {
-    return this.client.on("projects-updated", listener);
-  }
-
   onGoogleWorkspaceAuthRequired(listener: () => void) {
     return this.client.on("google-workspace-auth-required", listener);
   }
@@ -825,22 +820,6 @@ export class RuntimeClientAdapter {
 
   getSocialSessionStatus() {
     return this.client.getSocialSessionStatus();
-  }
-
-  listProjects() {
-    return this.client.listProjects();
-  }
-
-  registerProjectDirectory(projectPath: string) {
-    return this.client.registerProjectDirectory(projectPath);
-  }
-
-  startProject(projectId: string) {
-    return this.client.startProject(projectId);
-  }
-
-  stopProject(projectId: string) {
-    return this.client.stopProject(projectId);
   }
 
   revertSelfModFeature(payload: { featureId?: string; steps?: number }) {

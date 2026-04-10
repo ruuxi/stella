@@ -19,7 +19,6 @@ import type {
 import type { MobileBridgeResource } from "../process-resources/mobile-bridge-resource.js";
 import { BootstrapLifecycleBindings } from "./lifecycle-bindings.js";
 import { ProcessRuntime } from "../process-runtime.js";
-import type { LocalDevProjectRecord } from "../../runtime/contracts/index.js";
 import { createBootstrapServices } from "./bootstrap-services.js";
 import { registerBootstrapProcessCleanups } from "./cleanup.js";
 
@@ -44,7 +43,6 @@ export type BootstrapState = {
     typeof createHmrTransitionController
   > | null;
   isQuitting: boolean;
-  devProjectsUpdateUnsubscribe: (() => void) | null;
   localChatUpdateUnsubscribe: (() => void) | null;
   overlayController: OverlayWindowController | null;
   processRuntime: ProcessRuntime;
@@ -162,13 +160,6 @@ export const broadcastStellaBrowserBridgeStatus = (
   broadcastToWindows(context, "browser:bridgeStatus", status);
 };
 
-export const broadcastDevProjectsChanged = (
-  context: BootstrapContext,
-  projects: LocalDevProjectRecord[],
-) => {
-  broadcastToWindowsAndMobile(context, "projects:changed", projects);
-};
-
 export const syncWakeWordState = (context: BootstrapContext) => {
   const enabled = context.state.wakeWordController?.syncState() ?? false;
   broadcastToWindows(context, "voice:wakeWordState", { enabled });
@@ -184,7 +175,6 @@ export const createBootstrapContext = (
     appSessionStartedAt: Date.now(),
     deferredStartupSequence: null,
     deviceId: null,
-    devProjectsUpdateUnsubscribe: null,
     hmrTransitionController: null,
     isQuitting: false,
     localChatUpdateUnsubscribe: null,

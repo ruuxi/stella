@@ -35,9 +35,6 @@ export const MOBILE_BRIDGE_REQUEST_CHANNELS = [
   "discovery:writeCoreMemory",
   "discovery:writeKnowledge",
   "discovery:collectAllSignals",
-  "projects:list",
-  "projects:start",
-  "projects:stop",
   "schedule:listCronJobs",
   "schedule:listHeartbeats",
   "schedule:listConversationEvents",
@@ -80,7 +77,6 @@ export const MOBILE_BRIDGE_EVENT_CHANNELS = [
   "agent:event",
   "agent:selfModHmrState",
   "credential:request",
-  "projects:changed",
   "schedule:updated",
   "localChat:updated",
 ] as const;

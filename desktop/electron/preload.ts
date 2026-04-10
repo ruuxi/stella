@@ -752,16 +752,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("media:getStellaMediaDir") as Promise<string | null>,
   },
 
-  projects: {
-    list: () => ipcRenderer.invoke("projects:list"),
-    pickDirectory: () => ipcRenderer.invoke("projects:pickDirectory"),
-    start: (projectId: string) =>
-      ipcRenderer.invoke("projects:start", { projectId }),
-    stop: (projectId: string) =>
-      ipcRenderer.invoke("projects:stop", { projectId }),
-    onChanged: onIpc("projects:changed"),
-  },
-
   schedule: {
     listCronJobs: () => ipcRenderer.invoke("schedule:listCronJobs"),
     listHeartbeats: () => ipcRenderer.invoke("schedule:listHeartbeats"),
