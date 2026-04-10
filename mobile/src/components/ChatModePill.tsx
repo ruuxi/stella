@@ -11,6 +11,7 @@ import {
   subscribeChatScreenMode,
   type ChatScreenMode,
 } from "../lib/chat-screen-mode";
+import { isGuest } from "../lib/guest-mode";
 import { tapLight } from "../lib/haptics";
 import { type Colors } from "../theme/colors";
 import { useColors } from "../theme/theme-context";
@@ -19,16 +20,26 @@ import { fonts } from "../theme/fonts";
 export function ChatModePill() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const guest = isGuest();
   const [mode, setMode] = useState<ChatScreenMode>(() => getChatScreenMode());
   const [desktopState, setDesktopState] = useState(() =>
     getDesktopConnectionState(),
   );
 
   useEffect(() => subscribeChatScreenMode(setMode), []);
-  useEffect(() => subscribeDesktopConnection(setDesktopState), []);
   useEffect(() => {
+    if (guest) {
+      setDesktopState("disconnected");
+      return;
+    }
+    return subscribeDesktopConnection(setDesktopState);
+  }, [guest]);
+  useEffect(() => {
+    if (guest) {
+      return;
+    }
     void checkDesktopConnection();
-  }, []);
+  }, [guest]);
 
   return (
     <View style={styles.toggleRow}>

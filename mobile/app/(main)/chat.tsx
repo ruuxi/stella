@@ -28,7 +28,11 @@ import {
   loadOfflineChatMessages,
   saveOfflineChatMessages,
 } from "../../src/lib/offline-chat-storage";
-import { postStream } from "../../src/lib/http";
+import { postStream, postStreamAnonymous } from "../../src/lib/http";
+import { hasAiConsent, grantAiConsent } from "../../src/lib/ai-consent";
+import { isGuest } from "../../src/lib/guest-mode";
+import { AiConsentModal } from "../../src/components/AiConsentModal";
+import { SignInPrompt } from "../../src/components/SignInPrompt";
 import { getOrCreateMobileDeviceId } from "../../src/lib/phone-access";
 import {
   getChatScreenMode,
@@ -211,6 +215,7 @@ function ScrollToBottomFab({
 export default function ChatScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const guest = isGuest();
   const listRef = useRef<FlashListRef<ChatMessage>>(null);
   const inputRef = useRef<TextInput>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -232,6 +237,9 @@ export default function ChatScreen() {
 
   const [chatAwayFromBottom, setChatAwayFromBottom] = useState(false);
   const [computerAwayFromBottom, setComputerAwayFromBottom] = useState(false);
+
+  const [showConsentModal, setShowConsentModal] = useState(false);
+  const pendingSendRef = useRef<(() => void) | null>(null);
 
   const onChatScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -288,22 +296,33 @@ export default function ChatScreen() {
   );
 
   useEffect(() => {
+    if (guest || mode !== "computer") {
+      setMobileDeviceId(null);
+      return;
+    }
     void getOrCreateMobileDeviceId().then(setMobileDeviceId);
-  }, []);
+  }, [guest, mode]);
 
   useEffect(() => {
     return subscribeChatScreenMode(setMode);
   }, []);
 
   useEffect(() => {
+    if (guest || mode !== "computer") {
+      setDesktopState("disconnected");
+      return;
+    }
     return subscribeDesktopConnection(setDesktopState);
-  }, []);
+  }, [guest, mode]);
 
   useEffect(() => {
+    if (guest || mode !== "computer") {
+      return;
+    }
     void checkDesktopConnection();
     const interval = setInterval(() => void checkDesktopConnection(), 15_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [guest, mode]);
 
   // Native-driven keyboard tracking (replaces KeyboardAvoidingView)
   const insets = useSafeAreaInsets();
@@ -379,6 +398,13 @@ export default function ChatScreen() {
   const send = async () => {
     const text = draft.trim();
     if ((!text && attachments.length === 0) || sending) return;
+
+    if (!hasAiConsent()) {
+      pendingSendRef.current = () => void send();
+      setShowConsentModal(true);
+      return;
+    }
+
     tapMedium();
 
     const prior = messages;
@@ -436,11 +462,20 @@ export default function ChatScreen() {
       );
     };
 
+    const streamFn = guest ? postStreamAnonymous : postStream;
+    const streamOptions = guest
+      ? {
+          headers: {
+            "X-Stella-Mobile-Device-Id": await getOrCreateMobileDeviceId(),
+          },
+        }
+      : undefined;
     try {
-      await postStream(
+      await streamFn(
         "/api/mobile/offline-chat/stream",
         { message: text, history, images: imagesPayload },
         onDelta,
+        streamOptions,
       );
       setMessages((m) =>
         m.map((msg) =>
@@ -594,6 +629,20 @@ export default function ChatScreen() {
       interimResults: true,
       addsPunctuation: true,
     });
+  };
+
+  const onConsentAccept = () => {
+    void grantAiConsent().then(() => {
+      setShowConsentModal(false);
+      const pending = pendingSendRef.current;
+      pendingSendRef.current = null;
+      if (pending) pending();
+    });
+  };
+
+  const onConsentDecline = () => {
+    pendingSendRef.current = null;
+    setShowConsentModal(false);
   };
 
   const empty = messages.length === 0;
@@ -778,6 +827,17 @@ export default function ChatScreen() {
         </GlassView>
       </View>
         </>
+      ) : guest ? (
+        <View style={styles.viewport}>
+          <Pressable style={styles.emptyState} onPress={() => Keyboard.dismiss()}>
+            <ConnectHeroAnimation />
+            <Text style={styles.emptyText}>Your computer, at your fingertips</Text>
+            <Text style={styles.computerSubtext}>
+              Ask Stella to do things on your computer — browse the web, manage files, run tasks, and more.
+            </Text>
+            <SignInPrompt message="Sign in to get started." />
+          </Pressable>
+        </View>
       ) : (
         <>
           {/* ---------- Computer Pane ---------- */}
@@ -886,6 +946,12 @@ export default function ChatScreen() {
           </View>
         </>
       )}
+
+      <AiConsentModal
+        visible={showConsentModal}
+        onAccept={onConsentAccept}
+        onDecline={onConsentDecline}
+      />
     </Reanimated.View>
   );
 }

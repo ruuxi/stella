@@ -10,8 +10,10 @@ import {
 } from "react-native";
 import { authClient } from "../../src/lib/auth-client";
 import { clearCachedToken } from "../../src/lib/auth-token";
+import { isGuest } from "../../src/lib/guest-mode";
 import { userFacingError } from "../../src/lib/user-facing-error";
 import { tapLight } from "../../src/lib/haptics";
+import { SignInPrompt } from "../../src/components/SignInPrompt";
 import { type Colors } from "../../src/theme/colors";
 import { useColors, useTheme, type ThemePreference } from "../../src/theme/theme-context";
 import { fonts } from "../../src/theme/fonts";
@@ -75,6 +77,14 @@ export default function AccountScreen() {
       ],
     );
   };
+
+  if (isGuest()) {
+    return (
+      <View style={styles.screen}>
+        <SignInPrompt message="Sign in to manage your account, subscription, and preferences." />
+      </View>
+    );
+  }
 
   if (!user) {
     return (

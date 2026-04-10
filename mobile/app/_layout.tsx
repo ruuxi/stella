@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -8,6 +8,8 @@ import { useEffect } from "react";
 import { authClient } from "../src/lib/auth-client";
 import { hasMobileConfig } from "../src/config/env";
 import { registerForPushNotifications } from "../src/lib/notifications";
+import { loadGuestMode, isGuest, setGuestMode } from "../src/lib/guest-mode";
+import { loadAiConsent } from "../src/lib/ai-consent";
 import {
   criticalStellaFontAssets,
   deferredStellaFontAssets,
@@ -31,9 +33,16 @@ function AuthenticatedLayout() {
   const session = authClient.useSession();
   const router = useRouter();
   const pathname = usePathname();
+  const [guestReady, setGuestReady] = useState(false);
 
   useEffect(() => {
-    if (session.isPending) {
+    void Promise.all([loadGuestMode(), loadAiConsent()]).then(() =>
+      setGuestReady(true),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (session.isPending || !guestReady) {
       return;
     }
 
@@ -51,8 +60,16 @@ function AuthenticatedLayout() {
     }
 
     if (session.data) {
+      if (isGuest()) void setGuestMode(false);
       void registerForPushNotifications();
       if (onLogin || onIndex) {
+        router.replace("/chat");
+      }
+      return;
+    }
+
+    if (isGuest()) {
+      if (onIndex || onLogin) {
         router.replace("/chat");
       }
       return;
@@ -61,7 +78,7 @@ function AuthenticatedLayout() {
     if (onMain || onIndex) {
       router.replace("/login");
     }
-  }, [pathname, router, session.data, session.isPending]);
+  }, [pathname, router, session.data, session.isPending, guestReady]);
 
   return <RootStack />;
 }
