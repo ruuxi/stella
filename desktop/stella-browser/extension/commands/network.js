@@ -93,7 +93,7 @@ async function waitForTrackedResponse(tabId, url, timeout = 30000) {
 }
 
 export async function handleRequests(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
 
   if (command.clear) {
     trackedRequests.delete(tab.id);
@@ -134,7 +134,7 @@ export async function handleRequests(command) {
 // --- Response Body ---
 
 export async function handleResponseBody(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   if (!command.url) throw new Error('url is required for responsebody');
 
   await ensureNetworkTracking(tab.id);
@@ -179,7 +179,7 @@ function urlMatchesPattern(url, pattern) {
 }
 
 export async function handleRoute(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const pattern = command.url;
   if (!pattern) throw new Error('URL pattern is required for route');
 
@@ -257,7 +257,7 @@ export async function handleRoute(command) {
 }
 
 export async function handleUnroute(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const pattern = command.url;
   const routes = activeRoutes.get(tab.id);
 
@@ -292,7 +292,7 @@ export async function handleUnroute(command) {
 // --- HAR Recording ---
 
 export async function handleHarStart(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
 
   // Ensure network tracking is on
   if (!trackedRequests.has(tab.id)) {
@@ -311,7 +311,7 @@ export async function handleHarStart(command) {
 }
 
 export async function handleHarStop(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const state = trackedRequests.get(tab.id);
   const harState = harRecording.get(tab.id);
 
@@ -352,3 +352,9 @@ export async function handleHarStop(command) {
     },
   };
 }
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  trackedRequests.delete(tabId);
+  activeRoutes.delete(tabId);
+  harRecording.delete(tabId);
+});

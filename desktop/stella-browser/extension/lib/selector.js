@@ -3,22 +3,65 @@
  * Supports ref-based selectors (@e1, e1) and CSS selectors.
  */
 
-// Current ref map, updated after each snapshot
-let refMap = {};
+// Snapshot refs are scoped to the logical command owner and tab.
+const refMaps = new Map();
+
+function normalizeOwnerId(ownerId) {
+  if (typeof ownerId !== 'string') return 'default';
+  const trimmed = ownerId.trim();
+  return trimmed || 'default';
+}
+
+function getOwnerRefMap(ownerId, createIfMissing = false) {
+  const normalized = normalizeOwnerId(ownerId);
+  if (!refMaps.has(normalized) && createIfMissing) {
+    refMaps.set(normalized, new Map());
+  }
+  return refMaps.get(normalized);
+}
 
 /**
  * Update the ref map (called after snapshot).
+ * @param {string} ownerId
+ * @param {number} tabId
  * @param {Record<string, {selector: string, role: string, name?: string, nth?: number}>} refs
  */
-export function setRefMap(refs) {
-  refMap = refs;
+export function setRefMap(ownerId, tabId, refs) {
+  if (!Number.isInteger(tabId)) return;
+  const ownerMap = getOwnerRefMap(ownerId, true);
+  ownerMap.set(tabId, refs || {});
 }
 
 /**
  * Get the current ref map.
  */
-export function getRefMap() {
-  return refMap;
+export function getRefMap(ownerId, tabId) {
+  if (!Number.isInteger(tabId)) return {};
+  return getOwnerRefMap(ownerId)?.get(tabId) || {};
+}
+
+/**
+ * Clear refs for a single owner.
+ */
+export function clearOwnerRefMaps(ownerId) {
+  if (ownerId === undefined) {
+    refMaps.clear();
+    return;
+  }
+  refMaps.delete(normalizeOwnerId(ownerId));
+}
+
+/**
+ * Clear refs for a single owner/tab pair.
+ */
+export function clearTabRefMap(ownerId, tabId) {
+  if (!Number.isInteger(tabId)) return;
+  const ownerMap = getOwnerRefMap(ownerId);
+  if (!ownerMap) return;
+  ownerMap.delete(tabId);
+  if (ownerMap.size === 0) {
+    refMaps.delete(normalizeOwnerId(ownerId));
+  }
 }
 
 /**
@@ -50,11 +93,14 @@ export function parseRef(selector) {
  * For refs, also returns role/name info for getByRole-style matching.
  *
  * @param {string} selector
+ * @param {string} ownerId
+ * @param {number} tabId
  * @returns {{ css: string|null, role?: string, name?: string, nth?: number, isRef: boolean }}
  */
-export function resolveSelector(selector) {
+export function resolveSelector(selector, ownerId, tabId) {
   const ref = parseRef(selector);
   if (ref) {
+    const refMap = getRefMap(ownerId, tabId);
     const data = refMap[ref];
     if (!data) {
       throw new Error(`Unknown ref: ${ref}. Run 'snapshot' first to generate refs.`);

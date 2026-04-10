@@ -52,6 +52,19 @@ fn print_json_error_with_type(message: impl AsRef<str>, error_type: &str) {
     }));
 }
 
+fn inject_owner_id(cmd: &mut serde_json::Value) {
+    let owner_id = env::var("STELLA_BROWSER_OWNER_ID")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    if let Some(owner_id) = owner_id {
+        if cmd.get("ownerId").is_none() {
+            cmd["ownerId"] = json!(owner_id);
+        }
+    }
+}
+
 fn parse_proxy(proxy_str: &str) -> serde_json::Value {
     let Some(protocol_end) = proxy_str.find("://") else {
         return json!({ "server": proxy_str });
@@ -259,6 +272,7 @@ fn main() {
             exit(1);
         }
     };
+    inject_owner_id(&mut cmd);
 
     // Handle --password-stdin for auth save
     if cmd.get("action").and_then(|v| v.as_str()) == Some("auth_save") {
@@ -878,7 +892,7 @@ fn run_batch(flags: &Flags, bail: bool) {
             continue;
         }
 
-        let parsed = match parse_command(cmd_args, flags) {
+        let mut parsed = match parse_command(cmd_args, flags) {
             Ok(c) => c,
             Err(e) => {
                 had_error = true;
@@ -905,6 +919,7 @@ fn run_batch(flags: &Flags, bail: bool) {
                 continue;
             }
         };
+        inject_owner_id(&mut parsed);
 
         let action = parsed
             .get("action")

@@ -6,8 +6,8 @@ import { setRefMap, resolveSelector, buildRoleMatcherScript } from '../lib/selec
 import { executeSnapshot } from '../lib/snapshot.js';
 import { ensureDebugger } from '../lib/debugger.js';
 
-function buildElementExpression(selector, onFoundSource) {
-  const resolved = resolveSelector(selector);
+function buildElementExpression(selector, ownerId, tabId, onFoundSource) {
+  const resolved = resolveSelector(selector, ownerId, tabId);
   if (resolved.isRef) {
     const finder = buildRoleMatcherScript(resolved.role, resolved.name, resolved.nth);
     return `(() => { const el = ${finder.trim()}; ${onFoundSource} })()`;
@@ -31,11 +31,13 @@ async function evaluateExpression(tabId, expression) {
   return result.result?.value;
 }
 
-async function getSelectorClip(tabId, selector) {
+async function getSelectorClip(tabId, selector, ownerId) {
   const clip = await evaluateExpression(
     tabId,
     buildElementExpression(
       selector,
+      ownerId,
+      tabId,
       `
         if (!el) return null;
         const rect = el.getBoundingClientRect();
@@ -59,7 +61,7 @@ async function getSelectorClip(tabId, selector) {
 }
 
 export async function handleScreenshot(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   if (command.path) {
     throw new Error('Custom screenshot paths are not supported in extension mode');
   }
@@ -88,7 +90,7 @@ export async function handleScreenshot(command) {
       scale: 1,
     };
   } else if (command.selector) {
-    params.clip = await getSelectorClip(tab.id, command.selector);
+    params.clip = await getSelectorClip(tab.id, command.selector, command.ownerId);
   }
 
   const result = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.captureScreenshot', params);
@@ -105,7 +107,7 @@ export async function handleScreenshot(command) {
 }
 
 export async function handleSnapshot(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
 
   const options = {
     interactive: command.interactive ?? false,
@@ -128,7 +130,7 @@ export async function handleSnapshot(command) {
   if (!snapshot) throw new Error('Snapshot generation failed');
 
   // Update the ref map for subsequent commands
-  setRefMap(snapshot.refs || {});
+  setRefMap(command.ownerId, tab.id, snapshot.refs || {});
 
   return {
     id: command.id,
@@ -141,14 +143,19 @@ export async function handleSnapshot(command) {
 }
 
 export async function handleContent(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   let html = '';
 
   if (command.selector) {
     html =
       (await evaluateExpression(
         tab.id,
-        buildElementExpression(command.selector, 'return el ? el.innerHTML : null;')
+        buildElementExpression(
+          command.selector,
+          command.ownerId,
+          tab.id,
+          'return el ? el.innerHTML : null;'
+        )
       )) || '';
   } else {
     html =
@@ -166,7 +173,7 @@ export async function handleContent(command) {
 }
 
 export async function handleEvaluate(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const expression = command.expression || command.script;
 
   if (!expression) throw new Error('Expression is required for evaluate');
@@ -180,11 +187,11 @@ export async function handleEvaluate(command) {
 }
 
 export async function handleGetText(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for gettext');
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
 
   let script;
   if (resolved.isRef) {
@@ -202,13 +209,13 @@ export async function handleGetText(command) {
 }
 
 export async function handleGetAttribute(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   const attribute = command.attribute || command.name;
   if (!selector) throw new Error('Selector is required');
   if (!attribute) throw new Error('Attribute name is required');
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
 
   let script;
   if (resolved.isRef) {
@@ -226,7 +233,7 @@ export async function handleGetAttribute(command) {
 }
 
 export async function handlePdf(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   await ensureDebugger(tab.id);
 
   const result = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.printToPDF', {

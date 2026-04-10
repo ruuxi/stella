@@ -963,6 +963,13 @@ async fn connect_auto_with_fresh_tab() -> Result<BrowserManager, String> {
     Ok(mgr)
 }
 
+fn requested_provider(cmd: Option<&Value>) -> Option<String> {
+    cmd.and_then(|value| value.get("provider").and_then(|v| v.as_str()).map(str::to_string))
+        .or_else(|| env::var("STELLA_BROWSER_PROVIDER").ok())
+        .map(|provider| provider.trim().to_string())
+        .filter(|provider| !provider.is_empty())
+}
+
 async fn auto_launch(state: &mut DaemonState) -> Result<(), String> {
     let options = launch_options_from_env();
     let engine = env::var("STELLA_BROWSER_ENGINE").ok();
@@ -981,6 +988,19 @@ async fn auto_launch(state: &mut DaemonState) -> Result<(), String> {
         state.subscribe_to_browser_events();
         state.update_stream_client().await;
         try_auto_restore_state(state).await;
+        return Ok(());
+    }
+
+    if let Some(provider) = requested_provider(None) {
+        handle_launch(
+            &json!({
+                "action": "launch",
+                "id": "_auto_launch",
+                "provider": provider,
+            }),
+            state,
+        )
+        .await?;
         return Ok(());
     }
 
@@ -1147,7 +1167,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
         return Ok(json!({ "launched": true }));
     }
 
-    if let Some(provider) = cmd.get("provider").and_then(|v| v.as_str()) {
+    if let Some(provider) = requested_provider(Some(cmd)) {
         match provider.to_lowercase().as_str() {
             "extension" => {
                 // Reuse existing extension bridge if it's still connected
@@ -1195,7 +1215,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
                 return launch_safari(cmd, state).await;
             }
             _ => {
-                let (ws_url, provider_session) = providers::connect_provider(provider).await?;
+                let (ws_url, provider_session) = providers::connect_provider(&provider).await?;
                 match BrowserManager::connect_cdp(&ws_url).await {
                     Ok(mgr) => {
                         state.browser = Some(mgr);
@@ -5901,6 +5921,21 @@ mod tests {
             !opts.headless,
             "STELLA_BROWSER_HEADED=1 should set headless=false"
         );
+    }
+
+    #[test]
+    fn test_requested_provider_uses_env_when_command_missing() {
+        let _guard = EnvGuard::new(&["STELLA_BROWSER_PROVIDER"]);
+        _guard.set("STELLA_BROWSER_PROVIDER", "extension");
+        assert_eq!(requested_provider(None).as_deref(), Some("extension"));
+    }
+
+    #[test]
+    fn test_requested_provider_prefers_command_over_env() {
+        let _guard = EnvGuard::new(&["STELLA_BROWSER_PROVIDER"]);
+        _guard.set("STELLA_BROWSER_PROVIDER", "extension");
+        let cmd = json!({ "provider": "ios" });
+        assert_eq!(requested_provider(Some(&cmd)).as_deref(), Some("ios"));
     }
 
     #[tokio::test]
