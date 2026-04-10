@@ -22,16 +22,16 @@ function randomDelay(min = 300, max = 1200) {
  * Wait for a selector to appear in the DOM via polling.
  * Returns true if found within timeout, false otherwise.
  */
-async function waitForStepSelector(selector, timeout = 10000) {
+async function waitForStepSelector(command, selector, timeout = 10000) {
   if (!selector) return true;
 
-  const resolved = resolveSelector(selector);
   const startTime = Date.now();
   const pollInterval = 200;
 
   while (Date.now() - startTime < timeout) {
     try {
-      const tab = await getActiveTab();
+      const tab = await getActiveTab(command);
+      const resolved = resolveSelector(selector, command.ownerId, tab.id);
       if (resolved.isRef) {
         const finder = buildRoleMatcherScript(resolved.role, resolved.name, resolved.nth);
         await ensureDebugger(tab.id);
@@ -79,7 +79,11 @@ export async function handleChain(command, handlers) {
     // 1. Implicit wait: if step has a selector/ref, wait for it to appear
     const selector = step.selector || step.ref;
     if (shouldWait && selector) {
-      const found = await waitForStepSelector(selector, waitTimeout);
+      const found = await waitForStepSelector(
+        { ...step, ownerId: command.ownerId },
+        selector,
+        waitTimeout,
+      );
       if (!found) {
         results.push({
           step: i,
@@ -108,7 +112,7 @@ export async function handleChain(command, handlers) {
     }
 
     try {
-      const stepCommand = { ...step, id: `${command.id}_s${i}` };
+      const stepCommand = { ...step, id: `${command.id}_s${i}`, ownerId: command.ownerId };
       const response = await handler(stepCommand);
 
       results.push({
@@ -153,6 +157,7 @@ export async function handleChain(command, handlers) {
         action: 'snapshot',
         interactive: true,
         compact: true,
+        ownerId: command.ownerId,
       });
       responseData.snapshot = snap.data?.snapshot;
     } catch { /* non-fatal */ }
@@ -164,6 +169,7 @@ export async function handleChain(command, handlers) {
       const shot = await handlers.screenshot({
         id: `${command.id}_shot`,
         action: 'screenshot',
+        ownerId: command.ownerId,
       });
       responseData.screenshot = shot.data?.base64;
     } catch { /* non-fatal */ }

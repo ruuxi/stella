@@ -11,8 +11,8 @@ import { ensureDebugger } from '../lib/debugger.js';
  * Inject a script that finds an element and runs code on it.
  * Uses CDP Runtime.evaluate to bypass CSP restrictions.
  */
-async function queryElement(tabId, selector, scriptBody) {
-  const resolved = resolveSelector(selector);
+async function queryElement(tabId, ownerId, selector, scriptBody) {
+  const resolved = resolveSelector(selector, ownerId, tabId);
   let script;
 
   if (resolved.isRef) {
@@ -38,38 +38,38 @@ async function queryElement(tabId, selector, scriptBody) {
 }
 
 export async function handleInnerText(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for innertext');
 
-  const text = await queryElement(tab.id, selector, 'return el.innerText;');
+  const text = await queryElement(tab.id, command.ownerId, selector, 'return el.innerText;');
   return { id: command.id, success: true, data: { text } };
 }
 
 export async function handleInnerHtml(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for innerhtml');
 
-  const html = await queryElement(tab.id, selector, 'return el.innerHTML;');
+  const html = await queryElement(tab.id, command.ownerId, selector, 'return el.innerHTML;');
   return { id: command.id, success: true, data: { html } };
 }
 
 export async function handleInputValue(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for inputvalue');
 
-  const value = await queryElement(tab.id, selector, 'return el.value ?? "";');
+  const value = await queryElement(tab.id, command.ownerId, selector, 'return el.value ?? "";');
   return { id: command.id, success: true, data: { value } };
 }
 
 export async function handleBoundingBox(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for boundingbox');
 
-  const box = await queryElement(tab.id, selector, `
+  const box = await queryElement(tab.id, command.ownerId, selector, `
     const r = el.getBoundingClientRect();
     return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
   `);
@@ -77,11 +77,11 @@ export async function handleBoundingBox(command) {
 }
 
 export async function handleScrollIntoView(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for scrollintoview');
 
-  await queryElement(tab.id, selector, `
+  await queryElement(tab.id, command.ownerId, selector, `
     el.scrollIntoView({ block: 'center', behavior: 'instant' });
     return true;
   `);
@@ -89,11 +89,11 @@ export async function handleScrollIntoView(command) {
 }
 
 export async function handleIsVisible(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for isvisible');
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
   let script;
 
   const visibilityCheck = `
@@ -121,25 +121,25 @@ export async function handleIsVisible(command) {
 }
 
 export async function handleIsEnabled(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for isenabled');
 
-  const enabled = await queryElement(tab.id, selector, 'return !el.disabled;');
+  const enabled = await queryElement(tab.id, command.ownerId, selector, 'return !el.disabled;');
   return { id: command.id, success: true, data: { enabled } };
 }
 
 export async function handleIsChecked(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for ischecked');
 
-  const checked = await queryElement(tab.id, selector, 'return !!el.checked;');
+  const checked = await queryElement(tab.id, command.ownerId, selector, 'return !!el.checked;');
   return { id: command.id, success: true, data: { checked } };
 }
 
 export async function handleCount(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector;
   if (!selector) throw new Error('Selector is required for count');
 
@@ -154,11 +154,11 @@ export async function handleCount(command) {
 }
 
 export async function handleStyles(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const selector = command.selector || command.ref;
   if (!selector) throw new Error('Selector is required for styles');
 
-  const resolved = resolveSelector(selector);
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
   const extractScript = `
     const s = getComputedStyle(el);
     const r = el.getBoundingClientRect();
@@ -210,7 +210,7 @@ export async function handleStyles(command) {
   }
 
   // For refs, single element
-  const element = await queryElement(tab.id, selector, extractScript);
+  const element = await queryElement(tab.id, command.ownerId, selector, extractScript);
   return { id: command.id, success: true, data: { elements: [element] } };
 }
 
@@ -230,7 +230,7 @@ function urlMatches(url, pattern) {
 }
 
 export async function handleWaitForUrl(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   const pattern = command.url;
   const timeout = command.timeout || 30000;
 
@@ -248,7 +248,7 @@ export async function handleWaitForUrl(command) {
 }
 
 export async function handleBringToFront(command) {
-  const tab = await getActiveTab();
+  const tab = await getActiveTab(command);
   await chrome.tabs.update(tab.id, { active: true });
   await chrome.windows.update(tab.windowId, { focused: true });
   return { id: command.id, success: true, data: { focused: true } };
