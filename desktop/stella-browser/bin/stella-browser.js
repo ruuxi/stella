@@ -3,9 +3,7 @@
 /**
  * Cross-platform CLI wrapper for stella-browser
  * 
- * This wrapper enables npx support on Windows where shell scripts don't work.
- * For global installs, postinstall.js patches the shims to invoke the native
- * binary directly (zero overhead).
+ * This wrapper enables consistent invocation across install modes and platforms.
  */
 
 import { spawn } from 'child_process';

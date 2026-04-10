@@ -88,6 +88,13 @@ function getOwnedTabIds() {
   return tabIds;
 }
 
+function resetAgentState() {
+  agentWindowId = null;
+  stellaGroupId = null;
+  ownerTabState = {};
+  clearOwnerRefMaps();
+}
+
 /**
  * Load persisted window/group/owner state from session storage.
  */
@@ -158,10 +165,7 @@ async function ensureAgentWindow() {
     try {
       await chrome.windows.get(agentWindowId);
     } catch {
-      agentWindowId = null;
-      stellaGroupId = null;
-      ownerTabState = {};
-      clearOwnerRefMaps();
+      resetAgentState();
     }
   }
 
@@ -179,8 +183,7 @@ async function ensureAgentWindow() {
         await chrome.windows.get(agentWindowId);
         return agentWindowId;
       } catch {
-        agentWindowId = null;
-        stellaGroupId = null;
+        resetAgentState();
       }
     }
   }
@@ -392,10 +395,7 @@ async function validateAgentWindowAfterClose() {
   try {
     await chrome.windows.get(agentWindowId);
   } catch {
-    agentWindowId = null;
-    stellaGroupId = null;
-    ownerTabState = {};
-    clearOwnerRefMaps();
+    resetAgentState();
     await saveState();
   }
 }
@@ -443,10 +443,7 @@ export async function closeAgentWindow() {
     } catch {}
   }
 
-  agentWindowId = null;
-  stellaGroupId = null;
-  ownerTabState = {};
-  clearOwnerRefMaps();
+  resetAgentState();
   await saveState();
 }
 
@@ -590,10 +587,7 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
     }
 
     if (removeInfo.windowId === agentWindowId && removeInfo.isWindowClosing) {
-      agentWindowId = null;
-      stellaGroupId = null;
-      ownerTabState = {};
-      clearOwnerRefMaps();
+      resetAgentState();
       changed = true;
     }
 
@@ -606,9 +600,6 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
 chrome.windows.onRemoved.addListener((windowId) => {
   if (windowId !== agentWindowId) return;
 
-  agentWindowId = null;
-  stellaGroupId = null;
-  ownerTabState = {};
-  clearOwnerRefMaps();
+  resetAgentState();
   void saveState();
 });
