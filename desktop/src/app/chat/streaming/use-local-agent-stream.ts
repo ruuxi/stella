@@ -13,6 +13,7 @@ import { useResumeAgentRun } from "../hooks/use-resume-agent-run";
 import type { AgentStreamEvent, SelfModAppliedData } from "./streaming-types";
 import type { AttachmentRef } from "./chat-types";
 import type { ChatContext } from "@/shared/types/electron";
+import { resolveQueuedRunActivation } from "./queued-run-activation";
 import {
   getAgentHealthReason,
   resolveAgentNotReadyToast,
@@ -88,6 +89,7 @@ export function useLocalAgentStream({
   const localRunSeqByRunIdRef = useRef(new Map<string, number>());
   const localTaskSeqByRunIdRef = useRef(new Map<string, number>());
   const userMessageIdByRunIdRef = useRef(new Map<string, string>());
+  const terminalRunIdsRef = useRef(new Set<string>());
   const latestUserMessageIdRef = useRef<string | null>(null);
   const cancelledStreamRunIdsRef = useRef(new Set<number>());
   const queuedRunStartsRef = useRef<
@@ -194,35 +196,49 @@ export function useLocalAgentStream({
   );
 
   const activateNextQueuedRun = useCallback(() => {
-    const nextRun = queuedRunStartsRef.current[0];
-    if (!nextRun) {
-      return;
-    }
+    while (true) {
+      const nextRun = queuedRunStartsRef.current[0];
+      if (!nextRun) {
+        return;
+      }
 
-    // The run may have already been adopted by the event handler (the
-    // runtime swallows END/ERROR for interrupted runs, so the renderer
-    // discovers the replacement run when its first event arrives). In
-    // that case localRunIdRef already points at the new run — just
-    // backfill the user-message mapping and pendingUserMessageId that
-    // the adoption path cannot set (the IPC hadn't resolved yet).
-    if (localRunIdRef.current === nextRun.runId) {
+      const activation = resolveQueuedRunActivation({
+        queuedRunId: nextRun.runId,
+        activeRunId: localRunIdRef.current,
+        terminalRunIds: terminalRunIdsRef.current,
+      });
+
+      if (activation.action === "drop") {
+        queuedRunStartsRef.current.shift();
+        continue;
+      }
+
+      // The run may have already been adopted by the event handler (the
+      // runtime swallows END/ERROR for interrupted runs, so the renderer
+      // discovers the replacement run when its first event arrives). In
+      // that case localRunIdRef already points at the new run — just
+      // backfill the user-message mapping and pendingUserMessageId that
+      // the adoption path cannot set (the IPC hadn't resolved yet).
+      if (activation.action === "backfill") {
+        queuedRunStartsRef.current.shift();
+        userMessageIdByRunIdRef.current.set(nextRun.runId, nextRun.userMessageId);
+        setPendingUserMessageId(nextRun.userMessageId);
+        return;
+      }
+
+      if (activation.action === "wait") {
+        return;
+      }
+
       queuedRunStartsRef.current.shift();
+      localRunIdRef.current = nextRun.runId;
       userMessageIdByRunIdRef.current.set(nextRun.runId, nextRun.userMessageId);
+      resetStreamingText();
+      resetReasoningText();
+      setIsStreaming(true);
       setPendingUserMessageId(nextRun.userMessageId);
       return;
     }
-
-    if (localRunIdRef.current) {
-      return;
-    }
-
-    queuedRunStartsRef.current.shift();
-    localRunIdRef.current = nextRun.runId;
-    userMessageIdByRunIdRef.current.set(nextRun.runId, nextRun.userMessageId);
-    resetStreamingText();
-    resetReasoningText();
-    setIsStreaming(true);
-    setPendingUserMessageId(nextRun.userMessageId);
   }, [resetReasoningText, resetStreamingText]);
 
   const adoptUserMessageForRun = useCallback((runId: string, userMessageId?: string) => {
@@ -246,6 +262,7 @@ export function useLocalAgentStream({
     }
 
     userMessageIdByRunIdRef.current.clear();
+    terminalRunIdsRef.current.clear();
     localRunSeqByRunIdRef.current.clear();
     localTaskSeqByRunIdRef.current.clear();
     queuedRunStartsRef.current = [];
@@ -437,6 +454,7 @@ export function useLocalAgentStream({
             `[stella:trace] error | fatal=${event.fatal} | ${event.error}`,
           );
           if (event.fatal && isPrimaryRun && isOrchestratorEvent) {
+            terminalRunIdsRef.current.add(event.runId);
             if (localRunIdRef.current === event.runId) {
               localRunIdRef.current = null;
             }
@@ -460,6 +478,7 @@ export function useLocalAgentStream({
             break;
           }
           {
+            terminalRunIdsRef.current.add(event.runId);
             const linkedUserMessageId =
               userMessageIdByRunIdRef.current.get(event.runId) ??
               event.userMessageId;
@@ -565,6 +584,12 @@ export function useLocalAgentStream({
           }
 
           cancelledStreamRunIdsRef.current.delete(runIdCounter);
+          if (terminalRunIdsRef.current.has(agentRunId)) {
+            latestUserMessageIdRef.current = userMessageId;
+            userMessageIdByRunIdRef.current.set(agentRunId, userMessageId);
+            setPendingUserMessageId(userMessageId);
+            return;
+          }
           localRunIdRef.current = agentRunId;
           latestUserMessageIdRef.current = userMessageId;
           userMessageIdByRunIdRef.current.set(agentRunId, userMessageId);
@@ -605,6 +630,7 @@ export function useLocalAgentStream({
       streamRunIdRef.current = runId;
       latestUserMessageIdRef.current = null;
       localRunIdRef.current = null;
+      terminalRunIdsRef.current.clear();
       localRunSeqByRunIdRef.current.clear();
       localTaskSeqByRunIdRef.current.clear();
       userMessageIdByRunIdRef.current.clear();
