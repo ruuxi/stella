@@ -8,6 +8,7 @@ import { showToast } from "@/ui/toast";
 import { getSocialActionErrorMessage } from "./social-errors";
 import { useSocialProfile } from "./hooks/use-social-profile";
 import { useSocialRooms, type SocialRoomSummary } from "./hooks/use-social-rooms";
+import { getSocialRoomDisplayName } from "./room-display";
 import { SocialChatPane } from "./SocialChatPane";
 import { FriendsDialog } from "./FriendsDialog";
 import { NewChatDialog } from "./NewChatDialog";
@@ -32,28 +33,6 @@ function formatRoomTime(timestamp?: number): string {
     month: "short",
     day: "numeric",
   });
-}
-
-function getRoomName(room: SocialRoomSummary, currentOwnerId: string): string {
-  if (room.room.title) return room.room.title;
-
-  switch (room.room.kind) {
-    case "dm": {
-      const other = room.memberProfiles.find((member) => member.ownerId !== currentOwnerId);
-      return other?.nickname ?? "Someone";
-    }
-    case "group":
-      return (
-        room.memberProfiles
-          .filter((member) => member.ownerId !== currentOwnerId)
-          .map((member) => member.nickname)
-          .join(", ") || "Group"
-      );
-    default: {
-      const exhaustiveCheck: never = room.room.kind;
-      return exhaustiveCheck;
-    }
-  }
 }
 
 function getRoomAvatar(
@@ -222,7 +201,7 @@ export function SocialView({ onSignIn }: SocialViewProps) {
             </div>
           ) : (
             rooms.map((room) => {
-              const name = getRoomName(room, currentOwnerId);
+              const name = getSocialRoomDisplayName(room, currentOwnerId);
               const avatar = getRoomAvatar(room, currentOwnerId);
               const isActive = activeRoomId === room.room._id;
               const unread = hasUnread(room);
