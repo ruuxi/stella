@@ -35,6 +35,7 @@ import {
   IPC_SOCIAL_SESSIONS_GET_STATUS,
   IPC_PERMISSIONS_GET_STATUS,
   IPC_PERMISSIONS_OPEN_SETTINGS,
+  IPC_PERMISSIONS_REQUEST,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
@@ -46,6 +47,7 @@ import {
 import {
   hasMacPermission,
   clearPermissionCache,
+  requestMacPermission,
   type MacPermissionKind,
 } from "../utils/macos-permissions.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
@@ -86,6 +88,7 @@ type SystemHandlersOptions = {
   startPhoneAccessSession: () => { ok: boolean };
   stopPhoneAccessSession: () => Promise<{ ok: boolean }>;
   setRadialTriggerKey: (triggerKey: RadialTriggerCode) => void;
+  onPermissionGranted?: (kind: MacPermissionKind) => void;
 };
 
 const asTrimmedString = (value: unknown) =>
@@ -777,13 +780,20 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     },
   );
 
+  let lastAccessibilityStatus = false;
+
   ipcMain.handle(IPC_PERMISSIONS_GET_STATUS, () => {
     if (process.platform !== "darwin") {
       return { accessibility: true, screen: true, microphone: true };
     }
     clearPermissionCache();
+    const accessibility = hasMacPermission("accessibility", false);
+    if (accessibility && !lastAccessibilityStatus) {
+      options.onPermissionGranted?.("accessibility");
+    }
+    lastAccessibilityStatus = accessibility;
     return {
-      accessibility: hasMacPermission("accessibility", false),
+      accessibility,
       screen: hasMacPermission("screen", false),
       microphone: hasMacPermission("microphone", false),
     };
@@ -818,6 +828,34 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       import("child_process").then(({ exec: execCmd }) => {
         execCmd(`open "${url}"`);
       });
+    },
+  );
+
+  ipcMain.handle(
+    IPC_PERMISSIONS_REQUEST,
+    async (event, payload: { kind: string }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_PERMISSIONS_REQUEST,
+        )
+      ) {
+        throw new Error("Blocked untrusted permissions:request request.");
+      }
+      if (process.platform !== "darwin") {
+        return { granted: true, alreadyGranted: true };
+      }
+
+      const kind = asTrimmedString(payload?.kind) as MacPermissionKind;
+      if (!["accessibility", "screen", "microphone"].includes(kind)) {
+        return { granted: false, alreadyGranted: false };
+      }
+
+      const result = await requestMacPermission(kind);
+      if (result.granted && !result.alreadyGranted) {
+        options.onPermissionGranted?.(kind);
+      }
+      return result;
     },
   );
 };

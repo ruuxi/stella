@@ -5,7 +5,7 @@ export const LEGAL_TITLES: Record<LegalDocument, string> = {
   privacy: "Privacy Policy",
 };
 
-export const LEGAL_LAST_UPDATED = "March 22, 2026";
+export const LEGAL_LAST_UPDATED = "April 10, 2026";
 
 export const TERMS_OF_SERVICE = `Stella — FromYou LLC
 Last updated: ${LEGAL_LAST_UPDATED}
@@ -69,11 +69,11 @@ Safety Mechanisms — Stella includes certain safety mechanisms (e.g., command s
 
 7. AI Services and the Stella Provider
 
-Managed LLM Inference (Stella Provider) — The Stella Provider is a managed LLM inference service. When you do not supply your own API keys, Stella routes AI model requests through our backend to upstream AI model providers. We resolve the underlying model on the server side. Your prompts and responses pass through our infrastructure in transit but are not stored by us beyond what is necessary for real-time processing and usage metering. The Stella Provider is the only paid component of the Service.
+Managed LLM Inference (Stella Provider) — The Stella Provider is a managed LLM inference service. When you do not supply your own API keys, Stella routes AI model requests through our backend to named third parties that provide AI infrastructure and model access. Depending on the model and routing path, this can include OpenRouter or Fireworks as managed AI gateways, and upstream AI model providers such as Anthropic, OpenAI, and Google. Your prompts and responses pass through our infrastructure in transit but are not stored by us beyond what is necessary for real-time processing and usage metering. The Stella Provider is the only paid component of the Service.
 
 Bring Your Own Keys (BYOK) — You may configure your own API keys for supported AI providers (Anthropic, OpenAI, Google, etc.). When using BYOK, requests are sent directly from your device to the provider, and our backend is not involved in those AI calls. Your API keys are stored locally on your device in encrypted form. Using BYOK means you can use Stella entirely for free.
 
-Third-Party AI Providers — Whether using the Stella Provider or BYOK, your prompts and data are processed by third-party AI model providers. These providers have their own terms of service and privacy policies. We do not control how third-party providers handle your data once it reaches their systems. FromYou is not responsible for the outputs, accuracy, or behavior of any third-party AI model.
+Third-Party AI Providers — Whether using the Stella Provider or BYOK, your prompts and other model inputs you choose to send, including text, images, and related model context, are processed by third-party AI services. These providers have their own terms of service and privacy policies. We do not control how third-party providers handle your data once it reaches their systems. FromYou is not responsible for the outputs, accuracy, or behavior of any third-party AI model.
 
 Media Generation — Stella may offer media generation features (image, audio, video) through third-party providers. Media generation requests are processed by those providers and subject to their terms.
 
@@ -243,7 +243,7 @@ You have full control over this data. You can delete it at any time by removing 
 
 In limited circumstances, data transits our backend infrastructure:
 
-Stella Provider (Managed LLM Inference) — The Stella Provider is our managed LLM inference service — the only paid component of Stella. When you use the Stella Provider (i.e., you have not configured your own API keys), your prompts are routed through our backend to a third-party AI model provider. During this process: your prompt and the AI response pass through our servers in transit to reach the upstream AI provider; we do not persistently store the content of your prompts or responses; we do log usage metadata for billing and rate-limiting purposes (timestamp, model used, token count, duration, success/failure status, and your owner ID if signed in or an anonymous device identifier). When using BYOK (your own API keys), requests go directly from your device to the AI provider and do not pass through our servers at all. In this case, the Stella platform is entirely free and we have zero visibility into your AI usage.
+Stella Provider (Managed LLM Inference) — The Stella Provider is our managed LLM inference service — the only paid component of Stella. When you use the Stella Provider (i.e., you have not configured your own API keys), your prompts are routed through our backend to named third parties that provide AI infrastructure and model access. Depending on the model and routing path, this can include OpenRouter or Fireworks as managed AI gateways, and upstream AI model providers such as Anthropic, OpenAI, and Google. During this process: your prompt, any images you attach, relevant conversation context, and the AI response pass through our servers in transit to reach the third-party AI service used for that request; we do not persistently store the content of your prompts or responses; we do log usage metadata for billing and rate-limiting purposes (timestamp, model used, token count, duration, success/failure status, and your owner ID if signed in or an anonymous device identifier). When using BYOK (your own API keys), requests go directly from your device to the AI provider and do not pass through our servers at all. In this case, the Stella platform is entirely free and we have zero visibility into your AI usage.
 
 Offline Responder — When your desktop is offline and you interact with Stella via the mobile app or a connected channel (Slack, Discord, etc.), your message is sent to our backend and processed by a minimal fallback AI agent. The interaction is transient — it is processed in memory and not persistently stored beyond what is needed to deliver the response and record usage metadata.
 
@@ -299,7 +299,7 @@ If you publish a mod to the Stella Mod Store, we store the mod package, metadata
 
 12. Third-Party Services
 
-Stella integrates with third-party services. When your data reaches these services, it is subject to their respective privacy policies. This includes AI model providers (Anthropic, OpenAI, Google, etc.) when processing AI requests, Stripe when subscribing to a paid plan, fal.ai when using media generation features, messaging platforms (Slack, Discord, Telegram, etc.) when using connector integrations, and Convex for backend infrastructure. When using BYOK (your own API keys), AI requests go directly from your device to the provider — our servers are not involved.
+Stella integrates with third-party services. When your data reaches these services, it is subject to their respective privacy policies. This includes AI gateways and model providers (OpenRouter, Fireworks, Anthropic, OpenAI, and Google) when processing AI requests, Stripe when subscribing to a paid plan, fal.ai when using media generation features, messaging platforms (Slack, Discord, Telegram, etc.) when using connector integrations, and Convex for backend infrastructure. When using BYOK (your own API keys), AI requests go directly from your device to the provider — our servers are not involved.
 
 
 13. Data Retention
