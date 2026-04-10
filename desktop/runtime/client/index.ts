@@ -18,6 +18,7 @@ import type { SqliteDatabase } from "../kernel/storage/shared.js";
 import type {
   DiscoveryKnowledgeSeedPayload,
 } from "../../src/shared/contracts/discovery.js";
+import { createEmptySocialSessionServiceSnapshot } from "../contracts/index.js";
 import {
   METHOD_NAMES,
   NOTIFICATION_NAMES,
@@ -50,7 +51,6 @@ import {
   type ScheduledConversationEvent,
   type SelfModFeatureSummary,
   type SelfModHmrState,
-  type SocialSessionServiceSnapshot,
   type StorePackageRecord,
   type StorePackageReleaseRecord,
   type StorePublishArgs,
@@ -150,13 +150,6 @@ const parseDisplayUpdateParams = (params: unknown): string => {
   }
   throw new Error("Invalid host display update payload.");
 };
-
-const buildDefaultSocialSessionSnapshot = (): SocialSessionServiceSnapshot => ({
-  enabled: false,
-  status: "stopped",
-  sessionCount: 0,
-  sessions: [],
-});
 
 const pruneAgentEventBuffers = (
   buffers: Map<string, { events: RuntimeAgentEventPayload[]; updatedAt: number }>,
@@ -810,7 +803,7 @@ export class StellaRuntimeClient {
 
   async getSocialSessionStatus() {
     const health = await this.getWorkerHealth({ ensureWorker: false });
-    return health?.socialSessions ?? buildDefaultSocialSessionSnapshot();
+    return health?.socialSessions ?? createEmptySocialSessionServiceSnapshot();
   }
 
   async listProjects() {

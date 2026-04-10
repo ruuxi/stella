@@ -5,6 +5,7 @@ import {
   createRuntimeUnavailableError,
   type JsonRpcPeer,
 } from "../protocol/rpc-peer.js";
+import { createEmptySocialSessionServiceSnapshot } from "../contracts/index.js";
 import type {
   AgentHealth,
   RuntimeActiveRun,
@@ -105,12 +106,7 @@ export type RuntimeWorkerLifecycleControllerOptions = {
 };
 
 const shouldKeepWorkerAlive = (health: WorkerHealthSnapshot) => {
-  const social = health.socialSessions ?? {
-    enabled: false,
-    status: "stopped" as const,
-    sessionCount: 0,
-    sessions: [],
-  };
+  const social = health.socialSessions ?? createEmptySocialSessionServiceSnapshot();
   const socialPinned = social.sessionCount > 0 || Boolean(social.processingTurnId);
   const voicePinned =
     Boolean(health.voiceBusy) || (health.pendingVoiceRequestCount ?? 0) > 0;
