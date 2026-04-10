@@ -329,7 +329,6 @@ export type RunnerPublicApi = {
     runId: string,
     options?: { suppressClientFullReload?: boolean },
   ) => Promise<boolean>;
-  recoverCrashedRuns: () => Promise<void>;
   appendThreadMessage: (args: {
     threadKey: string;
     role: "user" | "assistant";

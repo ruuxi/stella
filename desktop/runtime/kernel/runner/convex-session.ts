@@ -51,15 +51,6 @@ export const createConvexSession = (
     return client;
   };
 
-  const refreshConvexAuth = () => {
-    if (!context.state.convexClient) {
-      return;
-    }
-    context.state.convexClient.setAuth(
-      async () => context.state.authToken?.trim() || null,
-    );
-  };
-
   const ensureStellaSiteReady = (): { baseUrl: string; authToken: string } => {
     const baseUrl = sanitizeStellaBase(context.state.convexSiteUrl);
     const nextAuthToken = context.state.authToken?.trim();
