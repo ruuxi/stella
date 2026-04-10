@@ -28,7 +28,7 @@
  * 100cqh = 100% of .chat-viewport-region's height (the nearest size container).
  */
 .session-turn--last-turn {
-  min-height: 100cqh;
+  min-height: calc(100cqh - 48px);
 }
 
 .session-turn-header {
