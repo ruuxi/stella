@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { TaskItem } from "@/app/chat/lib/event-transforms";
+import {
+  TASK_COMPLETION_INDICATOR_MS,
+  type TaskItem,
+} from "@/app/chat/lib/event-transforms";
 import { showToast } from "@/ui/toast";
 import {
   AGENT_IDS,
@@ -53,8 +56,6 @@ function attachmentsForStartChat(
 const isTokenSyncIssue = (reason: string | null) =>
   Boolean(reason && reason.toLowerCase().match(/token|auth/));
 
-const TASK_COMPLETION_INDICATOR_MS = 3000;
-
 export function useLocalAgentStream({
   activeConversationId,
   storageMode,
@@ -73,6 +74,8 @@ export function useLocalAgentStream({
     string | null
   >(null);
   const [runtimeStatusText, setRuntimeStatusText] = useState<string | null>(null);
+  const [subagentPreviewText, setSubagentPreviewText] = useState<string | null>(null);
+  const subagentPreviewBufferRef = useRef("");
   const [selfModMap, setSelfModMap] = useState<
     Record<string, SelfModAppliedData>
   >({});
@@ -173,9 +176,14 @@ export function useLocalAgentStream({
       resetReasoningText();
       setIsStreaming(false);
       setRuntimeStatusText(null);
+      setSubagentPreviewText(null);
+      subagentPreviewBufferRef.current = "";
 
       requestAnimationFrame(() => {
         if (scheduledForRunId !== streamRunIdRef.current) {
+          return;
+        }
+        if (localRunIdRef.current) {
           return;
         }
 
@@ -246,6 +254,8 @@ export function useLocalAgentStream({
     clearLiveTasks();
     resetStreamingState();
     setRuntimeStatusText(null);
+    setSubagentPreviewText(null);
+    subagentPreviewBufferRef.current = "";
 
     if (agentStreamCleanupRef.current) {
       agentStreamCleanupRef.current();
@@ -317,6 +327,15 @@ export function useLocalAgentStream({
         case AGENT_STREAM_EVENT_TYPES.STREAM:
           if (isPrimaryRun && isOrchestratorEvent && event.chunk) {
             appendStreamingDelta(event.chunk);
+          } else if (event.chunk && !isOrchestratorEvent) {
+            subagentPreviewBufferRef.current += event.chunk;
+            if (subagentPreviewBufferRef.current.length > 2_000) {
+              subagentPreviewBufferRef.current = subagentPreviewBufferRef.current.slice(-2_000);
+            }
+            const compact = subagentPreviewBufferRef.current.replace(/\s+/g, " ").trim();
+            if (compact) {
+              setSubagentPreviewText(compact.length > 200 ? compact.slice(-200) : compact);
+            }
           }
           break;
         case AGENT_STREAM_EVENT_TYPES.STATUS:
@@ -449,7 +468,7 @@ export function useLocalAgentStream({
               `[stella:trace] end | finalText=${(event.finalText ?? streamingTextRef.current).slice(0, 200)}`,
             );
             userMessageIdByRunIdRef.current.delete(event.runId);
-            if (!linkedUserMessageId && queuedRunStartsRef.current.length === 0) {
+            if (queuedRunStartsRef.current.length === 0) {
               resetStreamingState(runIdCounter);
             }
             if (localRunIdRef.current === event.runId) {
@@ -596,6 +615,8 @@ export function useLocalAgentStream({
       setIsStreaming(true);
       setPendingUserMessageId(null);
       setRuntimeStatusText(null);
+      setSubagentPreviewText(null);
+      subagentPreviewBufferRef.current = "";
       clearLiveTasks();
 
       if (agentStreamCleanupRef.current) {
@@ -788,6 +809,7 @@ export function useLocalAgentStream({
       (a, b) => a.startedAtMs - b.startedAtMs,
     ),
     runtimeStatusText,
+    subagentPreviewText,
     streamingText,
     reasoningText,
     isStreaming,

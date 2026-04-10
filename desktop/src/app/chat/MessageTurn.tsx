@@ -32,6 +32,7 @@ export type StreamingTurnProps = {
   streamingText?: string;
   reasoningText?: string;
   isStreaming?: boolean;
+  subagentPreviewText?: string | null;
   pendingUserMessageId?: string | null;
 };
 
@@ -226,6 +227,7 @@ const streamingPropsEqual = (
     a.streamingText === b.streamingText &&
     a.reasoningText === b.reasoningText &&
     Boolean(a.isStreaming) === Boolean(b.isStreaming) &&
+    (a.subagentPreviewText ?? null) === (b.subagentPreviewText ?? null) &&
     (a.pendingUserMessageId ?? null) === (b.pendingUserMessageId ?? null)
   );
 };
@@ -442,6 +444,12 @@ export const TurnItem = memo(function TurnItem({
           {turn.selfModApplied && !shouldShowStreamingAssistant && (
             <SelfModUndoButton selfModApplied={turn.selfModApplied} />
           )}
+        </div>
+      )}
+
+      {shouldShowStreamingAssistant && streaming?.subagentPreviewText && (
+        <div className="subagent-preview-bubble">
+          <span className="subagent-preview-text">{streaming.subagentPreviewText}</span>
         </div>
       )}
     </div>

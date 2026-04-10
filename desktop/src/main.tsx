@@ -17,13 +17,13 @@ document.documentElement.dataset.stellaWindow =
   requestedWindow === "mini" ? "mini" : "full";
 
 const appTree = (
-  <AppProviders>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </AppProviders>
+  <ErrorBoundary>
+    <DesktopConvexAuthProvider>
+      <AppProviders>
+        <App />
+      </AppProviders>
+    </DesktopConvexAuthProvider>
+  </ErrorBoundary>
 );
 
-createRoot(document.getElementById("root")!).render(
-  <DesktopConvexAuthProvider>{appTree}</DesktopConvexAuthProvider>,
-);
+createRoot(document.getElementById("root")!).render(appTree);

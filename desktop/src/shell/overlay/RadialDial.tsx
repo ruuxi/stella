@@ -394,6 +394,18 @@ export function RadialDial({
       />
 
       <div
+        className="radial-center-stella-animation"
+        style={{
+          opacity: contentVisible ? 1 : 0,
+          transition: phase === 'closing'
+            ? 'opacity 0.1s ease-in'
+            : 'opacity 0.15s ease-out',
+        }}
+      >
+        <StellaAnimation width={20} height={20} initialBirthProgress={1} maxDpr={1} frameSkip={1} />
+      </div>
+
+      <div
         className={`radial-dial-frame${contentVisible ? ' radial-dial-frame--visible' : ''}`}
         style={{
           opacity: contentVisible ? 1 : 0,
@@ -486,10 +498,6 @@ export function RadialDial({
             </div>
           )
         })}
-
-        <div className="radial-center-stella-animation">
-          <StellaAnimation width={20} height={20} initialBirthProgress={1} maxDpr={1} frameSkip={1} />
-        </div>
       </div>
     </div>
   )

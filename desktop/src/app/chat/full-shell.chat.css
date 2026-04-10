@@ -378,6 +378,42 @@
 }
 
 
+/* Subagent preview — single-line headline streamed from a general agent */
+.subagent-preview-bubble {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-inset) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-base) 60%, transparent);
+  overflow: hidden;
+  max-width: 100%;
+  animation: subagent-preview-enter 200ms ease-out;
+}
+
+.subagent-preview-text {
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--text-weak);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+@keyframes subagent-preview-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Scroll to bottom button */
 .scroll-to-bottom {
   position: absolute;

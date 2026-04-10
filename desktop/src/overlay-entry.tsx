@@ -12,16 +12,15 @@ import { ToastProvider } from "./ui/toast";
 document.documentElement.dataset.stellaWindow = "overlay";
 
 createRoot(document.getElementById("root")!).render(
-  <ThemeProvider>
-    <ToastProvider>
-      <UiStateProvider>
-        <ErrorBoundary>
+  <ErrorBoundary>
+    <ThemeProvider>
+      <ToastProvider>
+        <UiStateProvider>
           <DeferredVoiceRuntime />
           <WakeWordCaptureRoot />
           <OverlayRoot />
-        </ErrorBoundary>
-      </UiStateProvider>
-    </ToastProvider>
-  </ThemeProvider>,
+        </UiStateProvider>
+      </ToastProvider>
+    </ThemeProvider>
+  </ErrorBoundary>,
 );
-
