@@ -119,7 +119,7 @@ export function ThemePicker({
           </Button>
         )}
       </PopoverTrigger>
-      <PopoverContent side="top" align="end" data-theme-picker="true">
+      <PopoverContent side="top" align="end" collisionPadding={8} data-theme-picker="true">
         <PopoverBody>
           <div data-slot="theme-picker-sections" onMouseLeave={() => cancelPreview()}>
             <div data-slot="theme-picker-section" data-bordered>

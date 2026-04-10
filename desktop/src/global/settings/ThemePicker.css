@@ -13,6 +13,8 @@
   flex-direction: column;
   gap: 4px;
   padding: 12px;
+  max-height: calc(var(--radix-popover-content-available-height, 80vh) - 16px);
+  overflow-y: auto;
 }
 
 [data-slot="theme-picker-section"] {
@@ -53,11 +55,19 @@
   padding: 0 8px;
 }
 
-/* Theme list - no scrolling, show all items like Aura */
 [data-slot="theme-picker-theme-list"] {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: clamp(120px, 40vh, 400px);
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 2px;
+  margin: -2px;
+}
+
+[data-slot="theme-picker-theme-list"]::-webkit-scrollbar {
+  display: none;
 }
 
 [data-slot="theme-picker-theme-button"] {
