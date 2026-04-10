@@ -132,6 +132,16 @@ const buildStaleUserReminder = (
   return formatDateTimeReminder(latestUserEvent.timestamp, timezone);
 };
 
+const shouldIncludeInOrchestratorLocalHistory = (
+  event: LocalContextEvent,
+): boolean =>
+  // Terminal task events are delivered back to the orchestrator as hidden
+  // follow-up prompts. Keeping them in local-history context as well doubles
+  // the same completion signal.
+  event.type !== "task_completed" &&
+  event.type !== "task_failed" &&
+  event.type !== "task_canceled";
+
 const trimDuplicatedTransitionUserEvent = (
   events: LocalContextEvent[],
   storedThreadMessages: ThreadHistoryEntry[],
@@ -446,10 +456,13 @@ export const buildAgentContext = async (
     const localEvents = context
       .listLocalChatEvents(args.conversationId, 800)
       .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
+    const localHistoryEvents = localEvents.filter(
+      shouldIncludeInOrchestratorLocalHistory,
+    );
     staleUserReminderText = buildStaleUserReminder(localEvents);
     threadHistory = buildOrchestratorThreadHistory({
       storedThreadMessages,
-      localEvents,
+      localEvents: localHistoryEvents,
       contextWindow,
     });
   } else {

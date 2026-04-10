@@ -570,7 +570,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     const userMessageId = userMessageEvent._id;
     let activeRunId = "";
     let syntheticSeq = 1;
-    let hiddenUserMessageCount = 0;
     const mergedAttachments = [
       ...(payload.attachments ?? []),
       ...(windowScreenshotAttachment ? [windowScreenshotAttachment] : []),
@@ -597,27 +596,25 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       storageMode: payload.storageMode,
     }, {
       onUserMessage: (ev) => {
-        const hiddenTimestamp = Math.max(
-          0,
-          userMessageTimestamp - 1000 + hiddenUserMessageCount,
-        );
-        hiddenUserMessageCount += 1;
+        if (ev.uiVisibility === "hidden") {
+          return;
+        }
         ensureChatStore().appendEvent({
           conversationId: payload.conversationId,
           type: "user_message",
           requestId: ev.userMessageId,
-          timestamp: hiddenTimestamp,
+          timestamp: ev.timestamp,
           payload: prepareStoredLocalChatPayload({
             type: "user_message",
             payload: {
               text: ev.text,
               metadata: {
                 ui: {
-                  visibility: ev.uiVisibility ?? "hidden",
+                  visibility: ev.uiVisibility ?? "visible",
                 },
               },
             },
-            timestamp: hiddenTimestamp,
+            timestamp: ev.timestamp,
             timezone: payload.timezone,
           }),
         });
