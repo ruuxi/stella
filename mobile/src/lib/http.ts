@@ -13,6 +13,10 @@ type JsonRequest =
       headers?: Record<string, string>;
     };
 
+type StreamRequestOptions = {
+  headers?: Record<string, string>;
+};
+
 const readErrorMessage = async (response: Response) => {
   const text = await response.text();
   let parsed: unknown;
@@ -70,64 +74,89 @@ export const postJson = (
     headers: options?.headers,
   });
 
-export function postStream(
+function executeStream(
   path: string,
   body: unknown,
   onDelta: (text: string) => void,
+  authHeader: string | null,
+  options?: StreamRequestOptions,
 ): Promise<void> {
   assert(env.convexSiteUrl, "EXPO_PUBLIC_CONVEX_SITE_URL is not configured.");
 
   return new Promise((resolve, reject) => {
-    void getConvexToken().then((token) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `${env.convexSiteUrl}${path}`);
-      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-      xhr.setRequestHeader("Content-Type", "application/json");
-      xhr.responseType = "text";
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${env.convexSiteUrl}${path}`);
+    if (authHeader) {
+      xhr.setRequestHeader("Authorization", authHeader);
+    }
+    xhr.setRequestHeader("Content-Type", "application/json");
+    for (const [name, value] of Object.entries(options?.headers ?? {})) {
+      xhr.setRequestHeader(name, value);
+    }
+    xhr.responseType = "text";
 
-      let processed = 0;
+    let processed = 0;
 
-      xhr.onprogress = () => {
-        const chunk = xhr.responseText.slice(processed);
-        processed = xhr.responseText.length;
+    xhr.onprogress = () => {
+      const chunk = xhr.responseText.slice(processed);
+      processed = xhr.responseText.length;
 
-        const lines = chunk.split("\n");
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const payload = line.slice(6);
-          if (payload === "[DONE]") return;
-          try {
-            const parsed = JSON.parse(payload) as { t?: string; error?: string };
-            if (parsed.error) {
-              reject(new Error(parsed.error));
-              xhr.abort();
-              return;
-            }
-            if (parsed.t) onDelta(parsed.t);
-          } catch {
-            // skip malformed lines
+      const lines = chunk.split("\n");
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const payload = line.slice(6);
+        if (payload === "[DONE]") return;
+        try {
+          const parsed = JSON.parse(payload) as { t?: string; error?: string };
+          if (parsed.error) {
+            reject(new Error(parsed.error));
+            xhr.abort();
+            return;
           }
+          if (parsed.t) onDelta(parsed.t);
+        } catch {
+          // skip malformed lines
         }
-      };
+      }
+    };
 
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve();
-        } else {
-          let msg = "Could not complete that request. Try again.";
-          try {
-            const parsed = JSON.parse(xhr.responseText) as Record<string, unknown>;
-            if (typeof parsed.error === "string") msg = parsed.error;
-            else if (typeof parsed.message === "string") msg = parsed.message;
-          } catch { /* use default */ }
-          reject(new Error(msg));
-        }
-      };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        let msg = "Could not complete that request. Try again.";
+        try {
+          const parsed = JSON.parse(xhr.responseText) as Record<string, unknown>;
+          if (typeof parsed.error === "string") msg = parsed.error;
+          else if (typeof parsed.message === "string") msg = parsed.message;
+        } catch { /* use default */ }
+        reject(new Error(msg));
+      }
+    };
 
-      xhr.onerror = () => reject(new Error("Network error"));
-      xhr.ontimeout = () => reject(new Error("Request timed out"));
+    xhr.onerror = () => reject(new Error("Network error"));
+    xhr.ontimeout = () => reject(new Error("Request timed out"));
 
-      xhr.send(JSON.stringify(body));
-    }).catch(reject);
+    xhr.send(JSON.stringify(body));
   });
+}
+
+export function postStream(
+  path: string,
+  body: unknown,
+  onDelta: (text: string) => void,
+  options?: StreamRequestOptions,
+): Promise<void> {
+  return getConvexToken().then((token) =>
+    executeStream(path, body, onDelta, `Bearer ${token}`, options),
+  );
+}
+
+export function postStreamAnonymous(
+  path: string,
+  body: unknown,
+  onDelta: (text: string) => void,
+  options?: StreamRequestOptions,
+): Promise<void> {
+  return executeStream(path, body, onDelta, null, options);
 }
