@@ -2,7 +2,6 @@ import {
   app,
   ipcMain,
   shell,
-  systemPreferences,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
@@ -80,6 +79,55 @@ const getScreenCapturePermissions =
     }
     return _screenCapturePermissions;
   };
+
+const screenCapturePermissionsHasPrompted = (
+  mod: ScreenCapturePermissionsModule | null,
+) => {
+  if (!mod) {
+    return false;
+  }
+
+  try {
+    return mod.hasPromptedForPermission();
+  } catch {
+    return false;
+  }
+};
+
+const openScreenCaptureSystemPreferences = async (
+  mod: ScreenCapturePermissionsModule | null,
+) => {
+  if (!mod) {
+    return false;
+  }
+
+  try {
+    await mod.openSystemPreferences();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const permissionSettingsUrlByKind: Record<MacPermissionSettingsKind, string> = {
+  accessibility:
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+  screen:
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+  "full-disk-access":
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
+  microphone:
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+};
+
+const openMacPermissionSettings = async (kind: MacPermissionSettingsKind) => {
+  const url = permissionSettingsUrlByKind[kind];
+  if (!url) {
+    return { opened: false, url: null as string | null };
+  }
+  await shell.openExternal(url);
+  return { opened: true, url };
+};
 
 type SystemHandlersOptions = {
   getDeviceId: () => string | null;
@@ -883,6 +931,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
   ipcMain.handle(
     IPC_PERMISSIONS_OPEN_SETTINGS,
     async (event, payload: { kind: string }) => {
+      const kind = asTrimmedString(payload?.kind) as MacPermissionSettingsKind;
       if (
         !options.externalLinkService.assertPrivilegedSender(
           event,
@@ -891,38 +940,24 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted permissions:openSettings request.");
       }
-      const kind = asTrimmedString(payload?.kind) as MacPermissionSettingsKind;
 
       if (kind === "microphone" && process.platform === "win32") {
         await shell.openExternal("ms-settings:privacy-microphone");
         return;
       }
 
-      if (process.platform !== "darwin") return;
+      if (process.platform !== "darwin") {
+        return;
+      }
 
-      const paneMap: Record<MacPermissionSettingsKind, string> = {
-        accessibility:
-          "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-        screen:
-          "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
-        "full-disk-access":
-          "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
-        microphone:
-          "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
-      };
-
-      const url = paneMap[kind];
-      if (!url) return;
-
-      import("child_process").then(({ exec: execCmd }) => {
-        execCmd(`open "${url}"`);
-      });
+      await openMacPermissionSettings(kind);
     },
   );
 
   ipcMain.handle(
     IPC_PERMISSIONS_REQUEST,
     async (event, payload: { kind: string }) => {
+      const kind = asTrimmedString(payload?.kind);
       if (
         !options.externalLinkService.assertPrivilegedSender(
           event,
@@ -932,9 +967,6 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         throw new Error("Blocked untrusted permissions:request request.");
       }
 
-      const kind = asTrimmedString(payload?.kind);
-
-      // Microphone TCC is requested via renderer getUserMedia (Chromium), not main process.
       if (kind === "microphone") {
         return { granted: true, alreadyGranted: true };
       }
@@ -949,11 +981,21 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       }
 
       const result = await requestMacPermission(macKind);
+      let openedSettings = false;
       if (macKind === "screen" && !result.granted) {
         try {
           const scp = getScreenCapturePermissions();
-          if (scp?.hasPromptedForPermission()) {
-            await scp.openSystemPreferences();
+          if (screenCapturePermissionsHasPrompted(scp)) {
+            const openedViaModule = await openScreenCaptureSystemPreferences(scp);
+            if (openedViaModule) {
+              openedSettings = true;
+            } else {
+              const fallback = await openMacPermissionSettings("screen");
+              openedSettings = fallback.opened;
+            }
+          } else {
+            const fallback = await openMacPermissionSettings("screen");
+            openedSettings = fallback.opened;
           }
         } catch {
           // Best effort only; the renderer can still expose manual settings access.
@@ -962,7 +1004,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       if (result.granted && !result.alreadyGranted) {
         options.onPermissionGranted?.(macKind);
       }
-      return result;
+      return { ...result, openedSettings };
     },
   );
 };

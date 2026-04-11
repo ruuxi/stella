@@ -483,6 +483,7 @@ export type ElectronSystemApi = {
   requestPermission: (kind: string) => Promise<{
     granted: boolean;
     alreadyGranted: boolean;
+    openedSettings?: boolean;
   }>;
   resetMicrophonePermission: () => Promise<{ ok: boolean }>;
   openExternal: (url: string) => void;

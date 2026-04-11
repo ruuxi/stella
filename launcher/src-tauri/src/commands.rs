@@ -12,6 +12,8 @@ use std::os::windows::process::CommandExt;
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 const PID_FILE_NAME: &str = ".electron-dev-runner.pid";
+#[cfg(target_os = "macos")]
+const LAUNCHER_BUNDLE_ID: &str = "com.stella.launcher";
 
 fn read_pid_file(install_path: &str) -> Option<u32> {
     let path = Path::new(install_path).join(PID_FILE_NAME);
@@ -87,10 +89,27 @@ fn spawn_detached(info: &LaunchInfo) -> bool {
 }
 
 pub fn show_main_window(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.show();
+    }
+
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = StdCommand::new("osascript")
+            .args([
+                "-e",
+                &format!("tell application id \"{LAUNCHER_BUNDLE_ID}\" to activate"),
+            ])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
     }
 }
 

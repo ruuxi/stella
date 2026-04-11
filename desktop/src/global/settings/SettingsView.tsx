@@ -489,7 +489,7 @@ function BasicTab({
       try {
         const result = await systemApi.requestPermission(kind);
         const nextStatus = await fetchPermissionStatus();
-        if (!nextStatus[kind] && !result.granted) {
+        if (!nextStatus[kind] && !result.granted && !result.openedSettings) {
           await systemApi.openPermissionSettings(kind);
         }
       } catch (error) {

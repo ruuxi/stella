@@ -147,6 +147,15 @@ fn package_json_of(d: &str) -> PathBuf {
 fn node_modules_of(d: &str) -> PathBuf {
     Path::new(d).join("node_modules")
 }
+fn mac_screen_capture_permissions_dir_of(d: &str) -> PathBuf {
+    node_modules_of(d).join("mac-screen-capture-permissions")
+}
+fn mac_screen_capture_permissions_binary_of(d: &str) -> PathBuf {
+    mac_screen_capture_permissions_dir_of(d)
+        .join("build")
+        .join("Release")
+        .join("screencapturepermissions.node")
+}
 fn launch_script_name() -> &'static str {
     if cfg!(target_os = "windows") {
         LAUNCH_SCRIPT_WIN
@@ -576,6 +585,7 @@ async fn install_payload_dependencies(install_dir: &str) -> Result<(), String> {
     let dir = Some(Path::new(install_dir));
     let result = run(&["bun", "install", "--frozen-lockfile"], dir).await;
     if result.ok {
+        ensure_mac_screen_capture_permissions_built(install_dir).await?;
         Ok(())
     } else if result.stderr.is_empty() {
         Err("bun install failed.".into())
@@ -584,13 +594,37 @@ async fn install_payload_dependencies(install_dir: &str) -> Result<(), String> {
     }
 }
 
-async fn clear_mac_quarantine(path: &str) -> bool {
+async fn ensure_mac_screen_capture_permissions_built(install_dir: &str) -> Result<(), String> {
     if !cfg!(target_os = "macos") {
-        return false;
+        return Ok(());
     }
-    run(&["xattr", "-dr", "com.apple.quarantine", path], None)
-        .await
-        .ok
+
+    let module_dir = mac_screen_capture_permissions_dir_of(install_dir);
+    if !path_exists(&module_dir).await {
+        return Ok(());
+    }
+
+    let native_binary = mac_screen_capture_permissions_binary_of(install_dir);
+    if path_exists(&native_binary).await {
+        return Ok(());
+    }
+
+    let result = run(&["bun", "run", "native_build"], Some(module_dir.as_path())).await;
+    if !result.ok {
+        if result.stderr.is_empty() {
+            return Err("mac-screen-capture-permissions native build failed.".into());
+        }
+        return Err(format!(
+            "mac-screen-capture-permissions native build failed: {}",
+            result.stderr
+        ));
+    }
+
+    if path_exists(&native_binary).await {
+        Ok(())
+    } else {
+        Err("mac-screen-capture-permissions native binary is still missing after build.".into())
+    }
 }
 
 // ── Tarball download + extract ──────────────────────────────────────
@@ -663,9 +697,6 @@ async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
     .map_err(|e| format!("Extract task failed: {e}"))??;
 
     log_install(install_dir, "Extraction complete").await;
-    if clear_mac_quarantine(install_dir).await {
-        log_install(install_dir, "Cleared macOS quarantine attributes after extraction").await;
-    }
     Ok(())
 }
 
@@ -1012,10 +1043,6 @@ async fn install_step(id: &SetupStepId, state: &mut InstallerState) -> Result<()
             write_default_env_file(&dir).await?;
             log_install(&dir, "Installing desktop dependencies with Bun").await;
             install_payload_dependencies(&dir).await?;
-            if clear_mac_quarantine(&dir).await {
-                log_install(&dir, "Cleared macOS quarantine attributes after dependency install")
-                    .await;
-            }
             Ok(())
         }
         SetupStepId::Prepare => {
