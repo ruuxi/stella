@@ -308,7 +308,7 @@ export function generateShimScript(
       setCloudSyncEnabled: function() { return resolved(); },
       onAuthCallback: noopSub,
       openFullDiskAccess: noop,
-      getPermissionStatus: function() { return resolved({ accessibility: false, screen: false, microphone: false }); },
+      getPermissionStatus: function() { return resolved({ accessibility: false, screen: false }); },
       openPermissionSettings: function() { return resolved(); },
       openExternal: function(url) {
         postNativeMessage({ type: 'openExternal', url: url });
