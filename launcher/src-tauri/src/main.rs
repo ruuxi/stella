@@ -13,10 +13,12 @@ use std::path::PathBuf;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    ActivationPolicy,
     Manager,
 };
 use tokio::sync::Mutex;
+
+#[cfg(target_os = "macos")]
+use tauri::ActivationPolicy;
 
 fn cli_dev_path_override() -> Option<String> {
     let mut args = std::env::args().skip(1);
