@@ -2,10 +2,13 @@ import { createRuntimeLogger } from "../debug.js";
 import { createDisplayStreamController } from "./display-stream.js";
 import {
   finalizeOrchestratorError,
+  finalizeOrchestratorInterrupted,
   finalizeOrchestratorSuccess,
   finalizeSubagentError,
+  finalizeSubagentInterrupted,
   finalizeSubagentSuccess,
   markOrchestratorErrorReported,
+  resolveInterruptionReason,
 } from "./run-completion.js";
 import { executeRuntimeAgentPrompt } from "./run-execution.js";
 import {
@@ -68,7 +71,12 @@ export const runPiOrchestratorTurn = async (
   });
 
   if (opts.abortSignal?.aborted) {
-    throw new Error("Aborted");
+    finalizeOrchestratorInterrupted({
+      opts,
+      runEvents,
+      reason: resolveInterruptionReason({ abortSignal: opts.abortSignal }) ?? "Canceled",
+    });
+    return runId;
   }
 
   const displayStream = createDisplayStreamController(opts.displayHtml);
@@ -119,6 +127,18 @@ export const runPiOrchestratorTurn = async (
         displayStream.dispose();
       },
     });
+    const interruptedReason = resolveInterruptionReason({
+      abortSignal: opts.abortSignal,
+      error: errorMessage,
+    });
+    if (interruptedReason) {
+      finalizeOrchestratorInterrupted({
+        opts,
+        runEvents,
+        reason: interruptedReason,
+      });
+      return runId;
+    }
     if (errorMessage) {
       throw new Error(errorMessage);
     }
@@ -134,6 +154,18 @@ export const runPiOrchestratorTurn = async (
 
     return runId;
   } catch (error) {
+    const interruptedReason = resolveInterruptionReason({
+      abortSignal: opts.abortSignal,
+      error,
+    });
+    if (interruptedReason) {
+      finalizeOrchestratorInterrupted({
+        opts,
+        runEvents,
+        reason: interruptedReason,
+      });
+      return runId;
+    }
     finalizeOrchestratorError({
       opts,
       runEvents,
@@ -182,7 +214,8 @@ export const runPiSubagentTask = async (
   }
 
   if (opts.abortSignal?.aborted) {
-    runEvents.recordError("Aborted");
+    const interruptedReason =
+      resolveInterruptionReason({ abortSignal: opts.abortSignal }) ?? "Canceled";
     if (isDashboardGeneration) {
       logger.warn("dashboard.run.aborted-before-execute", {
         runId,
@@ -190,7 +223,12 @@ export const runPiSubagentTask = async (
         label: dashboardLabel,
       });
     }
-    return { runId, result: "", error: "Aborted" };
+    return finalizeSubagentInterrupted({
+      opts,
+      runEvents,
+      runId,
+      reason: interruptedReason,
+    });
   }
 
   try {
@@ -207,6 +245,18 @@ export const runPiSubagentTask = async (
       threadStore: opts.store,
       threadKey,
     });
+    const interruptedReason = resolveInterruptionReason({
+      abortSignal: opts.abortSignal,
+      error: errorMessage,
+    });
+    if (interruptedReason) {
+      return finalizeSubagentInterrupted({
+        opts,
+        runEvents,
+        runId,
+        reason: interruptedReason,
+      });
+    }
     if (errorMessage) {
       throw new Error(errorMessage);
     }
@@ -232,6 +282,18 @@ export const runPiSubagentTask = async (
         conversationId: opts.conversationId,
         label: dashboardLabel,
         error,
+      });
+    }
+    const interruptedReason = resolveInterruptionReason({
+      abortSignal: opts.abortSignal,
+      error,
+    });
+    if (interruptedReason) {
+      return finalizeSubagentInterrupted({
+        opts,
+        runEvents,
+        runId,
+        reason: interruptedReason,
       });
     }
     return finalizeSubagentError({

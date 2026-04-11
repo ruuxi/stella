@@ -18,9 +18,49 @@ import type {
 
 const logger = createRuntimeLogger("agent-runtime.completion");
 const REPORTED_ORCHESTRATOR_ERROR = Symbol("reportedOrchestratorError");
+const INTERRUPT_MESSAGE_RE =
+  /^(?:aborted|request was aborted\.?|request aborted by user|interrupted by .+|canceled(?: because .*)?|this operation was aborted|claude code run aborted\.?)$/i;
 
 const safeErrorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error ? error.message || fallback : fallback;
+
+const normalizeInterruptionReason = (value: string | undefined): string | null => {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.toLowerCase() === "this operation was aborted") {
+    return "Canceled";
+  }
+  if (/^(?:aborted|request was aborted\.?|request aborted by user|claude code run aborted\.?)$/i.test(trimmed)) {
+    return "Canceled";
+  }
+  return trimmed;
+};
+
+export const resolveInterruptionReason = (args: {
+  abortSignal?: AbortSignal;
+  error?: unknown;
+}): string | null => {
+  const signalReason = args.abortSignal?.aborted
+    ? normalizeInterruptionReason(
+        args.abortSignal.reason instanceof Error
+          ? args.abortSignal.reason.message
+          : typeof args.abortSignal.reason === "string"
+            ? args.abortSignal.reason
+            : undefined,
+      ) ?? "Canceled"
+    : null;
+  if (signalReason) {
+    return signalReason;
+  }
+
+  const message = safeErrorMessage(args.error, "").trim();
+  if (!message || !INTERRUPT_MESSAGE_RE.test(message)) {
+    return null;
+  }
+  return normalizeInterruptionReason(message) ?? "Canceled";
+};
 
 export const markOrchestratorErrorReported = (error: unknown): Error => {
   const normalized =
@@ -189,6 +229,17 @@ export const finalizeOrchestratorError = (args: {
   return errorMessage;
 };
 
+export const finalizeOrchestratorInterrupted = (args: {
+  opts: OrchestratorRunOptions;
+  runEvents: RuntimeRunEventRecorder;
+  reason: string;
+}): string => {
+  args.opts.callbacks.onInterrupted?.(
+    args.runEvents.recordInterrupted(args.reason),
+  );
+  return args.reason;
+};
+
 export const finalizeSubagentSuccess = async (args: {
   opts: SubagentRunOptions;
   runEvents: RuntimeRunEventRecorder;
@@ -229,5 +280,20 @@ export const finalizeSubagentError = (args: {
     runId: args.runId,
     result: "",
     error: errorMessage,
+  };
+};
+
+export const finalizeSubagentInterrupted = (args: {
+  opts: SubagentRunOptions;
+  runEvents: RuntimeRunEventRecorder;
+  runId: string;
+  reason: string;
+}): SubagentRunResult => {
+  args.opts.callbacks?.onInterrupted?.(
+    args.runEvents.recordInterrupted(args.reason),
+  );
+  return {
+    runId: args.runId,
+    result: "",
   };
 };

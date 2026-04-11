@@ -15,6 +15,7 @@ import { persistThreadPayloadMessage } from "./thread-memory.js";
 import type {
   RuntimeEndEvent,
   RuntimeErrorEvent,
+  RuntimeInterruptedEvent,
   RuntimeRunCallbacks,
   RuntimeStreamEvent,
   RuntimeToolEndEvent,
@@ -189,6 +190,27 @@ export const createRunEventRecorder = ({
         seq,
         error,
         fatal: true,
+      };
+    },
+
+    recordInterrupted(reason: string): RuntimeInterruptedEvent {
+      const seq = nextSeq();
+      store.recordRunEvent({
+        timestamp: now(),
+        runId,
+        conversationId,
+        agentType,
+        seq,
+        type: "interrupted",
+        error: reason,
+        fatal: false,
+      });
+      return {
+        runId,
+        agentType,
+        seq,
+        userMessageId,
+        reason,
       };
     },
   };

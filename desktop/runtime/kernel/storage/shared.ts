@@ -61,7 +61,14 @@ export type RuntimeRunEvent = {
   conversationId: string;
   agentType: string;
   seq?: number;
-  type: "run_start" | "stream" | "tool_start" | "tool_end" | "error" | "run_end";
+  type:
+    | "run_start"
+    | "stream"
+    | "tool_start"
+    | "tool_end"
+    | "error"
+    | "interrupted"
+    | "run_end";
   chunk?: string;
   toolCallId?: string;
   toolName?: string;

@@ -169,6 +169,30 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
         cleanupRun(runId, options?.onCleanup);
       }
     },
+    onInterrupted: (event) => {
+      if (
+        finishInterruptedRun({
+          runId,
+          onInterrupted: options?.onInterrupted,
+          onCleanup: options?.onCleanup,
+        })
+      ) {
+        callbacks.onInterrupted?.({
+          runId,
+          agentType: event.agentType,
+          userMessageId: event.userMessageId,
+          reason: event.reason,
+        });
+        return;
+      }
+      cleanupRun(runId, options?.onCleanup);
+      callbacks.onInterrupted?.({
+        runId,
+        agentType: event.agentType,
+        userMessageId: event.userMessageId,
+        reason: event.reason,
+      });
+    },
     onEnd: (event) => {
       if (
         finishInterruptedRun({
