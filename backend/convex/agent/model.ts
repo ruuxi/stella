@@ -162,7 +162,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   smart: {
-    model: "accounts/fireworks/routers/kimi-k2p5-turbo",
+    model: "accounts/fireworks/models/glm-5p1",
     fallbackMode: "fast",
     managedGatewayProvider: "fireworks",
     temperature: 1.0,
@@ -261,8 +261,8 @@ const AUDIENCE_MODE_OVERRIDES: Record<ManagedModelAudience, Partial<Record<Model
 
 export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: "standard",
-  [AGENT_IDS.ORCHESTRATOR]: "best",
-  [AGENT_IDS.GENERAL]: "best",
+  [AGENT_IDS.ORCHESTRATOR]: "standard",
+  [AGENT_IDS.GENERAL]: "smart",
 
   schedule: "standard",
   synthesis: "synthesis",
