@@ -6,7 +6,6 @@ export type WakeWordDeps = {
   isDev: boolean;
   electronDir: string;
   uiStateService: UiStateService;
-  isAppReady: () => boolean;
   onDetection?: () => void;
   onEnabledChange?: (enabled: boolean) => void;
 };
@@ -34,7 +33,6 @@ export const initializeWakeWord = async (
   let syncRequestId = 0;
 
   const shouldEnableWakeWord = () =>
-    deps.isAppReady() &&
     !deps.uiStateService.state.isVoiceRtcActive;
 
   const publishEnabledState = (enabled: boolean) => {
@@ -85,8 +83,6 @@ export const initializeWakeWord = async (
   };
 
   feed.onDetection(() => {
-    if (!deps.isAppReady()) return;
-
     deps.onDetection?.();
     const convId = deps.uiStateService.state.conversationId ?? "voice-rtc";
     deps.uiStateService.activateVoiceRtc(
@@ -96,11 +92,9 @@ export const initializeWakeWord = async (
     publishEnabledState(false);
   });
 
-  if (deps.isAppReady()) {
-    setTimeout(() => {
-      syncState();
-    }, 150);
-  }
+  setTimeout(() => {
+    syncState();
+  }, 150);
   ipcMain.on("app:setReady", () => {
     setTimeout(() => {
       syncState();

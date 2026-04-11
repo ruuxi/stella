@@ -1,5 +1,4 @@
 import { uIOhook, UiohookMouseEvent, UiohookKeyboardEvent } from 'uiohook-napi'
-import { hasMacPermission } from '../utils/macos-permissions.js'
 import {
   DEFAULT_RADIAL_TRIGGER_CODE,
   isRadialTriggerPressed,
@@ -17,6 +16,7 @@ export class MouseHookManager {
   private events: MouseHookEvents
   private radialActive = false
   private started = false
+  private listenersAttached = false
   private pressedKeycodes = new Set<number>()
   private radialTriggerKey: RadialTriggerCode
 
@@ -30,39 +30,11 @@ export class MouseHookManager {
 
   start() {
     if (this.started) return
-
-    if (!hasMacPermission('accessibility', false)) {
-      console.warn('[mouse-hook] Accessibility permission not granted — input hooks disabled until approved')
-      return
-    }
-
-    this.started = true
-    uIOhook.on('keydown', (event: UiohookKeyboardEvent) => {
-      this.pressedKeycodes.add(event.keycode)
-      if (this.matchesTriggerKey() && !this.radialActive) {
-        this.radialActive = true
-        this.events.onRadialShow()
-      }
-    })
-
-    uIOhook.on('keyup', (event: UiohookKeyboardEvent) => {
-      const wasTriggerHeld = this.matchesTriggerKey()
-      this.pressedKeycodes.delete(event.keycode)
-      if (wasTriggerHeld && !this.matchesTriggerKey() && this.radialActive) {
-        this.events.onTriggerUp()
-        this.events.onRadialHide()
-        this.radialActive = false
-      }
-    })
-
-    uIOhook.on('mousemove', (event: UiohookMouseEvent) => {
-      if (this.radialActive) {
-        this.events.onMouseMove(event.x, event.y)
-      }
-    })
+    this.attachListeners()
 
     try {
       uIOhook.start()
+      this.started = true
     } catch (error) {
       console.error('[mouse-hook] Failed to start input hook:', (error as Error).message)
       this.started = false
@@ -87,5 +59,38 @@ export class MouseHookManager {
 
   private matchesTriggerKey(): boolean {
     return isRadialTriggerPressed(this.radialTriggerKey, this.pressedKeycodes, process.platform)
+  }
+
+  private attachListeners() {
+    if (this.listenersAttached) return
+    this.listenersAttached = true
+
+    uIOhook.on('keydown', this.handleKeydown)
+    uIOhook.on('keyup', this.handleKeyup)
+    uIOhook.on('mousemove', this.handleMousemove)
+  }
+
+  private readonly handleKeydown = (event: UiohookKeyboardEvent) => {
+    this.pressedKeycodes.add(event.keycode)
+    if (this.matchesTriggerKey() && !this.radialActive) {
+      this.radialActive = true
+      this.events.onRadialShow()
+    }
+  }
+
+  private readonly handleKeyup = (event: UiohookKeyboardEvent) => {
+    const wasTriggerHeld = this.matchesTriggerKey()
+    this.pressedKeycodes.delete(event.keycode)
+    if (wasTriggerHeld && !this.matchesTriggerKey() && this.radialActive) {
+      this.events.onTriggerUp()
+      this.events.onRadialHide()
+      this.radialActive = false
+    }
+  }
+
+  private readonly handleMousemove = (event: UiohookMouseEvent) => {
+    if (this.radialActive) {
+      this.events.onMouseMove(event.x, event.y)
+    }
   }
 }

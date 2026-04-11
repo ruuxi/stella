@@ -2,6 +2,7 @@ import {
   app,
   ipcMain,
   shell,
+  systemPreferences,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
@@ -49,8 +50,17 @@ import {
   clearPermissionCache,
   requestMacPermission,
   type MacPermissionKind,
+  type MacPermissionSettingsKind,
 } from "../utils/macos-permissions.js";
+import { createRequire } from "node:module";
 import { waitForConnectedRunner } from "./runtime-availability.js";
+
+const require = createRequire(import.meta.url);
+type ScreenCapturePermissionsModule = {
+  hasPromptedForPermission: () => boolean;
+  openSystemPreferences: () => Promise<void>;
+};
+const screenCapturePermissions = require("mac-screen-capture-permissions") as ScreenCapturePermissionsModule;
 
 type SystemHandlersOptions = {
   getDeviceId: () => string | null;
@@ -89,6 +99,8 @@ type SystemHandlersOptions = {
   stopPhoneAccessSession: () => Promise<{ ok: boolean }>;
   setRadialTriggerKey: (triggerKey: RadialTriggerCode) => void;
   onPermissionGranted?: (kind: MacPermissionKind) => void;
+  /** When Accessibility is granted (e.g. user enabled it in System Settings), ensure hooks are running. */
+  ensureRadialGestureOnMac?: () => void;
 };
 
 const asTrimmedString = (value: unknown) =>
@@ -783,8 +795,17 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
   let lastAccessibilityStatus = false;
 
   ipcMain.handle(IPC_PERMISSIONS_GET_STATUS, () => {
+    const microphoneGranted =
+      process.platform === "darwin"
+        ? systemPreferences.getMediaAccessStatus("microphone") === "granted"
+        : false;
+
     if (process.platform !== "darwin") {
-      return { accessibility: true, screen: true, microphone: true };
+      return {
+        accessibility: true,
+        screen: true,
+        microphone: microphoneGranted,
+      };
     }
     clearPermissionCache();
     const accessibility = hasMacPermission("accessibility", false);
@@ -792,16 +813,23 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       options.onPermissionGranted?.("accessibility");
     }
     lastAccessibilityStatus = accessibility;
+    if (accessibility) {
+      try {
+        options.ensureRadialGestureOnMac?.();
+      } catch {
+        // Best-effort; hooks may still be starting.
+      }
+    }
     return {
       accessibility,
       screen: hasMacPermission("screen", false),
-      microphone: hasMacPermission("microphone", false),
+      microphone: microphoneGranted,
     };
   });
 
   ipcMain.handle(
     IPC_PERMISSIONS_OPEN_SETTINGS,
-    (event, payload: { kind: string }) => {
+    async (event, payload: { kind: string }) => {
       if (
         !options.externalLinkService.assertPrivilegedSender(
           event,
@@ -810,18 +838,26 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted permissions:openSettings request.");
       }
+      const kind = asTrimmedString(payload?.kind) as MacPermissionSettingsKind;
+
+      if (kind === "microphone" && process.platform === "win32") {
+        await shell.openExternal("ms-settings:privacy-microphone");
+        return;
+      }
+
       if (process.platform !== "darwin") return;
 
-      const paneMap: Record<MacPermissionKind, string> = {
+      const paneMap: Record<MacPermissionSettingsKind, string> = {
         accessibility:
           "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
         screen:
           "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+        "full-disk-access":
+          "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
         microphone:
           "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
       };
 
-      const kind = asTrimmedString(payload?.kind) as MacPermissionKind;
       const url = paneMap[kind];
       if (!url) return;
 
@@ -842,18 +878,35 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted permissions:request request.");
       }
+
+      const kind = asTrimmedString(payload?.kind);
+
+      // Microphone TCC is requested via renderer getUserMedia (Chromium), not main process.
+      if (kind === "microphone") {
+        return { granted: true, alreadyGranted: true };
+      }
+
       if (process.platform !== "darwin") {
         return { granted: true, alreadyGranted: true };
       }
 
-      const kind = asTrimmedString(payload?.kind) as MacPermissionKind;
-      if (!["accessibility", "screen", "microphone"].includes(kind)) {
+      const macKind = kind as MacPermissionKind;
+      if (!["accessibility", "screen"].includes(macKind)) {
         return { granted: false, alreadyGranted: false };
       }
 
-      const result = await requestMacPermission(kind);
+      const result = await requestMacPermission(macKind);
+      if (macKind === "screen" && !result.granted) {
+        try {
+          if (screenCapturePermissions.hasPromptedForPermission()) {
+            await screenCapturePermissions.openSystemPreferences();
+          }
+        } catch {
+          // Best effort only; the renderer can still expose manual settings access.
+        }
+      }
       if (result.granted && !result.alreadyGranted) {
-        options.onPermissionGranted?.(kind);
+        options.onPermissionGranted?.(macKind);
       }
       return result;
     },

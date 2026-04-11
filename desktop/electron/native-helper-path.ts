@@ -14,12 +14,12 @@ export const resolveNativeHelperPath = (baseName: string): string | null => {
   const ext = process.platform === 'win32' ? '.exe' : ''
   const fileName = `${baseName}${ext}`
   const candidates = [
+    // App bundle resources (preferred when running via dev wrapper or packaged app)
+    path.join(process.resourcesPath, 'native', 'out', platformDir, fileName),
     // From source: electron/ → .. → native/out/
     path.join(__dirname, '..', 'native', 'out', platformDir, fileName),
     // From compiled: dist-electron/electron/ → ../.. → native/out/
     path.join(__dirname, '..', '..', 'native', 'out', platformDir, fileName),
-    // Packaged app
-    path.join(process.resourcesPath, 'native', 'out', platformDir, fileName),
   ]
 
   for (const candidate of candidates) {
