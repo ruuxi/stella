@@ -76,7 +76,6 @@ export function useFullShellChat({
   const {
     liveTasks,
     runtimeStatusText,
-    subagentPreviewText,
     streamingText,
     reasoningText,
     isStreaming,
@@ -263,7 +262,6 @@ export function useFullShellChat({
         reasoningText,
         isStreaming,
         runtimeStatusText,
-        subagentPreviewText,
         pendingUserMessageId,
         selfModMap,
         liveTasks,
@@ -280,7 +278,6 @@ export function useFullShellChat({
       reasoningText,
       isStreaming,
       runtimeStatusText,
-      subagentPreviewText,
       pendingUserMessageId,
       selfModMap,
       liveTasks,

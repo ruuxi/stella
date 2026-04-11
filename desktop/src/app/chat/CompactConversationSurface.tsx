@@ -3,10 +3,9 @@ import { cn } from "@/shared/lib/utils";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
 import {
   getCurrentRunningTool,
-  getFooterTasksFromEvents,
-  mergeFooterTasks,
 } from "./lib/event-transforms";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
+import { useFooterTasks } from "./hooks/use-footer-tasks";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import { ConversationEvents } from "./ConversationEvents";
 import { StickyThinkingFooter } from "./StickyThinkingFooter";
@@ -25,7 +24,6 @@ type CompactConversationSurfaceProps = {
   reasoningText: string;
   isStreaming: boolean;
   runtimeStatusText?: string | null;
-  subagentPreviewText?: string | null;
   pendingUserMessageId: string | null;
   selfModMap?: Record<string, SelfModAppliedData>;
   liveTasks?: TaskItem[];
@@ -46,7 +44,6 @@ export function CompactConversationSurface({
   reasoningText,
   isStreaming,
   runtimeStatusText,
-  subagentPreviewText,
   pendingUserMessageId,
   selfModMap,
   liveTasks,
@@ -83,14 +80,11 @@ export function CompactConversationSurface({
 
   const appSessionStartedAtMs = useAgentSessionStartedAt();
   const runningTool = useMemo(() => getCurrentRunningTool(events), [events]);
-  const persistedFooterTasks = useMemo(
-    () => getFooterTasksFromEvents(events, { appSessionStartedAtMs }),
-    [appSessionStartedAtMs, events],
-  );
-  const footerTasks = useMemo(
-    () => mergeFooterTasks(persistedFooterTasks, liveTasks),
-    [liveTasks, persistedFooterTasks],
-  );
+  const footerTasks = useFooterTasks({
+    events,
+    liveTasks,
+    appSessionStartedAtMs,
+  });
   const showThinkingFooter =
     footerTasks.length > 0 || Boolean(isStreaming) || Boolean(runtimeStatusText);
 
@@ -142,7 +136,6 @@ export function CompactConversationSurface({
             streamingText={streamingText}
             reasoningText={reasoningText}
             isStreaming={isStreaming}
-            subagentPreviewText={subagentPreviewText}
             pendingUserMessageId={pendingUserMessageId}
             selfModMap={selfModMap}
             hasOlderEvents={hasOlderEvents}

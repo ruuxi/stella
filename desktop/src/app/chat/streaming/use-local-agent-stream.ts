@@ -353,7 +353,6 @@ export function useLocalAgentStream({
   const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(
     null,
   );
-  const [subagentPreviewText, setSubagentPreviewText] = useState<string | null>(null);
   const [selfModMap, setSelfModMap] = useState<Record<string, SelfModAppliedData>>(
     {},
   );
@@ -366,7 +365,6 @@ export function useLocalAgentStream({
   const terminalRunIdsRef = useRef(new Set<string>());
   const pendingRequestIdsRef = useRef(new Set<string>());
   const startAttemptRef = useRef(0);
-  const subagentPreviewBufferRef = useRef("");
   const agentStreamCleanupRef = useRef<(() => void) | null>(null);
   const liveTaskRemovalTimeoutsRef = useRef(new Map<string, number>());
 
@@ -443,8 +441,6 @@ export function useLocalAgentStream({
     resetStreamingText();
     resetReasoningText();
     setPendingUserMessageId(null);
-    setSubagentPreviewText(null);
-    subagentPreviewBufferRef.current = "";
     if (activeRunId) {
       dispatch({
         type: "clear-run-tasks",
@@ -510,8 +506,6 @@ export function useLocalAgentStream({
           resetStreamingText();
           resetReasoningText();
           setPendingUserMessageId(null);
-          setSubagentPreviewText(null);
-          subagentPreviewBufferRef.current = "";
         }
         if (event.selfModApplied && event.userMessageId) {
           setSelfModMap((previous) => ({
@@ -534,8 +528,6 @@ export function useLocalAgentStream({
           if (conversationId === activeConversationIdRef.current) {
             resetStreamingText();
             resetReasoningText();
-            setSubagentPreviewText(null);
-            subagentPreviewBufferRef.current = "";
             setPendingUserMessageId(event.userMessageId ?? null);
           }
           break;
@@ -543,19 +535,6 @@ export function useLocalAgentStream({
         case AGENT_STREAM_EVENT_TYPES.STREAM: {
           if (isPrimaryRun && isOrchestratorEvent && event.chunk) {
             appendStreamingDelta(event.chunk);
-          } else if (event.chunk && !isOrchestratorEvent) {
-            subagentPreviewBufferRef.current += event.chunk;
-            if (subagentPreviewBufferRef.current.length > 2_000) {
-              subagentPreviewBufferRef.current = subagentPreviewBufferRef.current.slice(-2_000);
-            }
-            const compact = subagentPreviewBufferRef.current
-              .replace(/\s+/g, " ")
-              .trim();
-            if (compact) {
-              setSubagentPreviewText(
-                compact.length > 200 ? compact.slice(-200) : compact,
-              );
-            }
           }
           break;
         }
@@ -715,8 +694,6 @@ export function useLocalAgentStream({
   useEffect(() => {
     resetStreamingText();
     resetReasoningText();
-    setSubagentPreviewText(null);
-    subagentPreviewBufferRef.current = "";
     setPendingUserMessageId(null);
   }, [activeConversationId, resetReasoningText, resetStreamingText]);
 
@@ -824,7 +801,6 @@ export function useLocalAgentStream({
   return {
     liveTasks,
     runtimeStatusText,
-    subagentPreviewText,
     streamingText,
     reasoningText,
     isStreaming,

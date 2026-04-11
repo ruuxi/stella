@@ -13,6 +13,7 @@ import type { SubagentRunResult } from "./agent-runtime/types.js";
 export type {
   SelfModAppliedPayload,
   SelfModMonitor,
+  RuntimeRunStartedEvent,
   RuntimeStreamEvent,
   RuntimeToolStartEvent,
   RuntimeToolEndEvent,
