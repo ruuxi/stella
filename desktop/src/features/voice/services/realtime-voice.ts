@@ -1143,9 +1143,9 @@ export class RealtimeVoiceSession {
             },
           ],
           body: {
-            model: "stella/smart",
-            max_tokens: 1024,
-            temperature: 0.2,
+            model: "stella/standard",
+            max_tokens: 12000,
+            temperature: 1.0,
           },
         });
 
