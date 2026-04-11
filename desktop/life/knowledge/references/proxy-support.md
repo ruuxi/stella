@@ -186,3 +186,4 @@ export NO_PROXY="*.cdn.com,*.static.com"  # Direct CDN access
 3. **Test proxy before automation** - Verify connectivity with simple requests
 4. **Handle proxy failures gracefully** - Implement retry logic for unstable proxies
 5. **Rotate proxies for large scraping jobs** - Distribute load and avoid bans
+

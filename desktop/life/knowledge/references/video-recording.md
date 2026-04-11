@@ -171,3 +171,4 @@ stella-browser record stop
 - Recording adds slight overhead to automation
 - Large recordings can consume significant disk space
 - Some headless environments may have codec limitations
+

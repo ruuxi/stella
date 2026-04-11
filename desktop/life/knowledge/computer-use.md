@@ -1,7 +1,8 @@
 ---
-name: Computer Use
+
+## name: Computer Use
+
 description: Control web browsers and desktop apps. Read when doing browser automation, scraping, form filling, screenshots, or Electron app control.
----
 
 # Computer Use
 
