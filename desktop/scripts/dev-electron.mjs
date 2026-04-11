@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process'
 import {
+  appendFileSync,
   copyFileSync,
   cpSync,
   existsSync,
@@ -21,14 +22,24 @@ const DEV_MACOS_APP_NAME = 'Stella'
 const DEV_MACOS_BUNDLE_ID = 'com.stella.app'
 const DEV_MACOS_RUNTIME_DIR_NAME = '.stella-dev-runtime'
 const DEV_MACOS_RUNTIME_APP_NAME = 'Stella.app'
-const DEV_MACOS_RUNTIME_FORMAT_VERSION = 2
+const DEV_MACOS_RUNTIME_FORMAT_VERSION = 3
 const projectDir = process.cwd()
 let electronBinary = require('electron')
 const watchedDir = path.join(projectDir, 'dist-electron')
 const runtimeReloadStateFile = path.join(projectDir, '.stella-runtime-reload-state.json')
 const devRuntimeRoot = path.join(projectDir, DEV_MACOS_RUNTIME_DIR_NAME)
+const devRuntimeSourceRoot = path.join(devRuntimeRoot, 'source')
+const devRuntimeSourceAppBundle = path.join(
+  devRuntimeSourceRoot,
+  DEV_MACOS_RUNTIME_APP_NAME,
+)
+const devRuntimeSourceManifestPath = path.join(
+  devRuntimeRoot,
+  'source-manifest.json',
+)
 const devRuntimeAppBundle = path.join(devRuntimeRoot, DEV_MACOS_RUNTIME_APP_NAME)
 const devRuntimeManifestPath = path.join(devRuntimeRoot, 'manifest.json')
+const runtimeDiagnosticsPath = path.join(devRuntimeRoot, 'runtime-diagnostics.log')
 const requiredFiles = [
   path.join(projectDir, '.vite-dev-url'),
   path.join(watchedDir, 'electron', 'main.js'),
@@ -57,6 +68,13 @@ const getAppBundlePath = (binaryPath) =>
 const getAppExecutablePath = (appBundlePath) =>
   path.join(appBundlePath, 'Contents', 'MacOS', 'Electron')
 
+const electronPackageDir = path.dirname(require.resolve('electron/package.json'))
+const stockElectronAppBundlePath = path.join(
+  electronPackageDir,
+  'dist',
+  'Electron.app',
+)
+
 const readHash = (filePath) => {
   if (!existsSync(filePath)) {
     return null
@@ -64,20 +82,18 @@ const readHash = (filePath) => {
   return createHash('md5').update(readFileSync(filePath)).digest('hex')
 }
 
-const readManifest = () => {
-  if (!existsSync(devRuntimeManifestPath)) {
+const readJsonFile = (filePath) => {
+  if (!existsSync(filePath)) {
     return null
   }
   try {
-    return JSON.parse(readFileSync(devRuntimeManifestPath, 'utf8'))
+    return JSON.parse(readFileSync(filePath, 'utf8'))
   } catch {
     return null
   }
 }
 
-const sourceAppBundlePath = getAppBundlePath(electronBinary)
-
-const buildRuntimeManifest = () => {
+const buildAppManifest = (sourceAppBundlePath) => {
   let electronVersion = 'unknown'
   try {
     electronVersion = require('electron/package.json').version
@@ -98,6 +114,54 @@ const buildRuntimeManifest = () => {
     appName: DEV_MACOS_APP_NAME,
     bundleId: DEV_MACOS_BUNDLE_ID,
     iconHash: readHash(path.join(projectDir, 'build', 'icon.icns')),
+  }
+}
+
+const appendRuntimeDiagnostic = (message, details = null) => {
+  try {
+    mkdirSync(devRuntimeRoot, { recursive: true })
+    const detailText = details
+      ? ` ${JSON.stringify(details, null, 2)}`
+      : ''
+    appendFileSync(
+      runtimeDiagnosticsPath,
+      `[${new Date().toISOString()}] ${message}${detailText}\n`,
+      'utf8',
+    )
+  } catch {
+    // Best-effort diagnostics only.
+  }
+}
+
+const readQuarantineStatus = (targetPath) => {
+  if (!existsSync(targetPath)) {
+    return 'missing'
+  }
+  try {
+    const value = execFileSync(
+      'xattr',
+      ['-p', 'com.apple.quarantine', targetPath],
+      { encoding: 'utf8' },
+    ).trim()
+    return value || 'set'
+  } catch {
+    return 'absent'
+  }
+}
+
+const clearQuarantineAttribute = (targetPath) => {
+  if (!existsSync(targetPath)) {
+    return false
+  }
+  try {
+    execFileSync(
+      'xattr',
+      ['-dr', 'com.apple.quarantine', targetPath],
+      { stdio: 'ignore' },
+    )
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -218,8 +282,75 @@ const verifyRuntimeAppBundle = (appBundlePath) => {
 }
 
 if (process.platform === 'darwin') {
-  const expectedManifest = buildRuntimeManifest()
-  const currentManifest = readManifest()
+  // Always seed from the stock Electron.app in the package rather than
+  // electron/path.txt, which can drift between worktrees and installed copies.
+  const sourceAppBundlePath = existsSync(stockElectronAppBundlePath)
+    ? stockElectronAppBundlePath
+    : getAppBundlePath(electronBinary)
+  const expectedSourceManifest = buildAppManifest(sourceAppBundlePath)
+  const currentSourceManifest = readJsonFile(devRuntimeSourceManifestPath)
+  const sourceManifestMatches =
+    currentSourceManifest
+    && JSON.stringify(currentSourceManifest) === JSON.stringify(expectedSourceManifest)
+
+  const sourceQuarantineBefore = readQuarantineStatus(sourceAppBundlePath)
+  const clearedSourceQuarantine = clearQuarantineAttribute(sourceAppBundlePath)
+
+  let didCopySource = false
+  if (!existsSync(devRuntimeSourceAppBundle) || !sourceManifestMatches) {
+    rmSync(devRuntimeSourceAppBundle, { recursive: true, force: true })
+    mkdirSync(devRuntimeSourceRoot, { recursive: true })
+    cpSync(sourceAppBundlePath, devRuntimeSourceAppBundle, {
+      recursive: true,
+      verbatimSymlinks: true,
+    })
+    didCopySource = true
+  }
+
+  const sourceSeedQuarantineBefore = readQuarantineStatus(devRuntimeSourceAppBundle)
+  const clearedSourceSeedQuarantine = clearQuarantineAttribute(
+    devRuntimeSourceAppBundle,
+  )
+  const didPatchSourceIcon = patchRuntimeIcon(devRuntimeSourceAppBundle)
+  const didPatchSourcePlist = patchRuntimeInfoPlist(devRuntimeSourceAppBundle)
+  const didPatchSource = didPatchSourceIcon || didPatchSourcePlist
+  const sourceVerifiedBeforeSign = verifyRuntimeAppBundle(devRuntimeSourceAppBundle)
+  const needsSourceSigning =
+    didCopySource || didPatchSource || !sourceVerifiedBeforeSign
+  const sourceSignSucceeded =
+    !needsSourceSigning || signRuntimeAppBundle(devRuntimeSourceAppBundle)
+  const sourceVerifiedAfterSign = verifyRuntimeAppBundle(devRuntimeSourceAppBundle)
+
+  appendRuntimeDiagnostic('Prepared macOS source app seed', {
+    sourceAppBundlePath,
+    devRuntimeSourceAppBundle,
+    sourceManifestMatches,
+    usedStockElectronSource: sourceAppBundlePath === stockElectronAppBundlePath,
+    didCopySource,
+    didPatchSourceIcon,
+    didPatchSourcePlist,
+    clearedSourceQuarantine,
+    clearedSourceSeedQuarantine,
+    sourceQuarantineBefore,
+    sourceSeedQuarantineBefore,
+    sourceVerifiedBeforeSign,
+    needsSourceSigning,
+    sourceSignSucceeded,
+    sourceVerifiedAfterSign,
+  })
+
+  if (needsSourceSigning && !sourceSignSucceeded) {
+    console.warn('[electron-main] Failed to ad-hoc sign stable source Stella.app; macOS permissions may not persist across restarts.')
+  }
+
+  writeFileSync(
+    devRuntimeSourceManifestPath,
+    `${JSON.stringify(expectedSourceManifest, null, 2)}\n`,
+    'utf8',
+  )
+
+  const expectedManifest = buildAppManifest(devRuntimeSourceAppBundle)
+  const currentManifest = readJsonFile(devRuntimeManifestPath)
   const manifestMatches =
     currentManifest
     && JSON.stringify(currentManifest) === JSON.stringify(expectedManifest)
@@ -228,19 +359,41 @@ if (process.platform === 'darwin') {
   if (!existsSync(devRuntimeAppBundle) || !manifestMatches) {
     rmSync(devRuntimeAppBundle, { recursive: true, force: true })
     mkdirSync(devRuntimeRoot, { recursive: true })
-    cpSync(sourceAppBundlePath, devRuntimeAppBundle, {
+    cpSync(devRuntimeSourceAppBundle, devRuntimeAppBundle, {
       recursive: true,
       verbatimSymlinks: true,
     })
     didCopy = true
   }
 
+  const runtimeQuarantineBefore = readQuarantineStatus(devRuntimeAppBundle)
+  const clearedRuntimeQuarantine = clearQuarantineAttribute(devRuntimeAppBundle)
   const didPatchIcon = patchRuntimeIcon(devRuntimeAppBundle)
   const didPatchPlist = patchRuntimeInfoPlist(devRuntimeAppBundle)
   const didPatch = didPatchIcon || didPatchPlist
-  const needsSigning = didCopy || didPatch || !verifyRuntimeAppBundle(devRuntimeAppBundle)
+  const verifiedBeforeSign = verifyRuntimeAppBundle(devRuntimeAppBundle)
+  const needsSigning = didCopy || didPatch || !verifiedBeforeSign
+  const signSucceeded = !needsSigning || signRuntimeAppBundle(devRuntimeAppBundle)
+  const verifiedAfterSign = verifyRuntimeAppBundle(devRuntimeAppBundle)
 
-  if (needsSigning && !signRuntimeAppBundle(devRuntimeAppBundle)) {
+  appendRuntimeDiagnostic('Prepared macOS dev runtime app', {
+    sourceAppBundlePath: devRuntimeSourceAppBundle,
+    devRuntimeAppBundle,
+    manifestMatches,
+    didCopy,
+    didPatchIcon,
+    didPatchPlist,
+    clearedSourceQuarantine,
+    clearedRuntimeQuarantine,
+    sourceQuarantineBefore,
+    runtimeQuarantineBefore,
+    verifiedBeforeSign,
+    needsSigning,
+    signSucceeded,
+    verifiedAfterSign,
+  })
+
+  if (needsSigning && !signSucceeded) {
     console.warn('[electron-main] Failed to ad-hoc sign stable dev Stella.app; macOS permissions may not persist across restarts.')
   }
 

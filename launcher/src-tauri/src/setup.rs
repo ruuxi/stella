@@ -584,6 +584,15 @@ async fn install_payload_dependencies(install_dir: &str) -> Result<(), String> {
     }
 }
 
+async fn clear_mac_quarantine(path: &str) -> bool {
+    if !cfg!(target_os = "macos") {
+        return false;
+    }
+    run(&["xattr", "-dr", "com.apple.quarantine", path], None)
+        .await
+        .ok
+}
+
 // ── Tarball download + extract ──────────────────────────────────────
 
 async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
@@ -654,6 +663,9 @@ async fn download_and_extract_release(install_dir: &str) -> Result<(), String> {
     .map_err(|e| format!("Extract task failed: {e}"))??;
 
     log_install(install_dir, "Extraction complete").await;
+    if clear_mac_quarantine(install_dir).await {
+        log_install(install_dir, "Cleared macOS quarantine attributes after extraction").await;
+    }
     Ok(())
 }
 
@@ -1000,6 +1012,10 @@ async fn install_step(id: &SetupStepId, state: &mut InstallerState) -> Result<()
             write_default_env_file(&dir).await?;
             log_install(&dir, "Installing desktop dependencies with Bun").await;
             install_payload_dependencies(&dir).await?;
+            if clear_mac_quarantine(&dir).await {
+                log_install(&dir, "Cleared macOS quarantine attributes after dependency install")
+                    .await;
+            }
             Ok(())
         }
         SetupStepId::Prepare => {
