@@ -1,4 +1,5 @@
-import { app } from "electron";
+import { app, session } from "electron";
+import { hasMacPermission } from "../utils/macos-permissions.js";
 import path from "path";
 import { resolveStellaHome } from "../../runtime/kernel/home/stella-home.js";
 import { getDevServerUrl } from "../dev-url.js";
@@ -30,6 +31,18 @@ const initializeBootstrapLocalState = async (context: BootstrapContext) => {
 const initializeWindowShell = (context: BootstrapContext) => {
   const { config, lifecycle, services, state } = context;
   const preloadPath = path.join(config.electronDir, "preload.js");
+  const appSession = session.fromPartition(config.sessionPartition);
+
+  appSession.setPermissionRequestHandler(
+    (_webContents, permission, callback) => {
+      if (permission === "media" || permission === "display-capture") {
+        callback(true);
+        return;
+      }
+
+      callback(false);
+    },
+  );
 
   state.overlayController = new OverlayWindowController({
     preloadPath,
@@ -97,6 +110,17 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
   context.state.processRuntime.setManagedTimeout(() => {
     void startDeferredStartup(context);
   }, config.startupStageDelayMs);
+
+  // If Accessibility was off at startup, deferred startup skips the hook; when
+  // the user enables it in System Settings and returns to Stella, retry start.
+  if (process.platform === "darwin") {
+    app.on("browser-window-focus", () => {
+      if (!hasMacPermission("accessibility", false)) {
+        return;
+      }
+      services.radialGestureService.start();
+    });
+  }
 };
 
 export const initializeBootstrapAppShell = async (

@@ -1,4 +1,5 @@
 import { getSelectedText, initSelectedTextProcess } from "../selected-text.js";
+import { hasMacPermission } from "../utils/macos-permissions.js";
 import { initializeWakeWord } from "../wake-word/initialize.js";
 import {
   type BootstrapContext,
@@ -59,6 +60,9 @@ const createDeferredStartupTasks = (
       label: "global-input-hooks",
       delayMs: config.startupStageDelayMs,
       run: () => {
+        if (process.platform === "darwin" && !hasMacPermission("accessibility", false)) {
+          return;
+        }
         services.radialGestureService.start();
       },
     },
@@ -72,7 +76,6 @@ const createDeferredStartupTasks = (
             isDev: config.isDev,
             electronDir: config.electronDir,
             uiStateService: services.uiStateService,
-            isAppReady: () => state.appReady,
             onDetection: () => {
               broadcastWakeWordDetected(context);
             },

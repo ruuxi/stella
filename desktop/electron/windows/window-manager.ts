@@ -418,3 +418,4 @@ export class WindowManager {
     this.showWindow(this.lastActiveWindowMode)
   }
 }
+

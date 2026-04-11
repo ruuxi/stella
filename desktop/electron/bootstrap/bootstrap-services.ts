@@ -85,7 +85,6 @@ export const createBootstrapServices = (options: {
   });
 
   const radialGestureService = new RadialGestureService({
-    isAppReady: () => state.appReady,
     getRadialTriggerKey: () => {
       const stellaHomePath = state.stellaHomePath;
       if (!stellaHomePath) {

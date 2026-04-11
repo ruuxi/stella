@@ -85,6 +85,7 @@
     "googleapis": "^146.0.0",
     "hera-browser": "^0.0.57",
     "lucide-react": "^0.563.0",
+    "mac-screen-capture-permissions": "^2.1.0",
     "marked": "^17.0.1",
     "morphdom": "^2.7.8",
     "motion": "^12.35.0",
@@ -199,11 +200,17 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "build/icon.icns"
+      "icon": "build/icon.icns",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Stella uses your microphone for voice conversations and wake-word listening."
+      }
     },
     "linux": {
       "target": "AppImage",
       "icon": "build/icon.png"
     }
-  }
+  },
+  "trustedDependencies": [
+    "mac-screen-capture-permissions"
+  ]
 }

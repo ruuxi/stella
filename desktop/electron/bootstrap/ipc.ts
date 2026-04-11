@@ -97,6 +97,9 @@ export const registerBootstrapIpcHandlers = (
         services.radialGestureService.start();
       }
     },
+    ensureRadialGestureOnMac: () => {
+      services.radialGestureService.start();
+    },
   });
 
   registerScheduleHandlers({

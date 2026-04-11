@@ -9,6 +9,29 @@ import { shouldRestartElectronForBuildPath } from './dev-electron-restart-filter
 const require = createRequire(import.meta.url)
 const projectDir = process.cwd()
 let electronBinary = require('electron')
+const watchedDir = path.join(projectDir, 'dist-electron')
+const runtimeReloadStateFile = path.join(projectDir, '.stella-runtime-reload-state.json')
+const requiredFiles = [
+  path.join(projectDir, '.vite-dev-url'),
+  path.join(watchedDir, 'electron', 'main.js'),
+  path.join(watchedDir, 'electron', 'preload.js'),
+]
+const restartDebounceMs = 150
+const forcedShutdownTimeoutMs = 1_500
+const startupWatchDelayMs = 2_500
+
+let shuttingDown = false
+let currentApp = null
+let restartTimer = null
+let watcher = null
+let restartQueue = Promise.resolve()
+let watchReady = false
+let watchReadyTimer = null
+let restartRequestedByWatcher = false
+let exitCode = 0
+let rootWatcher = null
+let pendingRestartWhilePaused = false
+const expectedExits = new WeakSet()
 
 const patchDevIcon = () => {
   const appIcon = path.join(projectDir, 'build', 'icon.icns')
@@ -84,33 +107,51 @@ const patchDevAppName = () => {
   }
 }
 
+/**
+ * Packaged apps get NSMicrophoneUsageDescription from electron-builder extendInfo.
+ * The stock Electron.app in node_modules does not, so macOS never shows the mic
+ * prompt for getUserMedia in dev — inject the same string we ship in production.
+ */
+const MIC_USAGE_DESCRIPTION =
+  'Stella uses your microphone for voice conversations and wake-word listening.'
+
+const patchDevMicrophoneUsageDescription = () => {
+  if (process.platform !== 'darwin') {
+    return
+  }
+
+  const contentsDir = path.resolve(path.dirname(electronBinary), '..')
+  const infoPlist = path.join(contentsDir, 'Info.plist')
+  if (!existsSync(infoPlist)) {
+    return
+  }
+
+  try {
+    execSync(
+      `plutil -replace NSMicrophoneUsageDescription -string ${JSON.stringify(MIC_USAGE_DESCRIPTION)} "${infoPlist}"`,
+      { stdio: 'ignore' },
+    )
+  } catch {
+    try {
+      execSync(
+        `plutil -insert NSMicrophoneUsageDescription -string ${JSON.stringify(MIC_USAGE_DESCRIPTION)} "${infoPlist}"`,
+        { stdio: 'ignore' },
+      )
+    } catch {
+      // Best-effort; read-only node_modules or unexpected plist shape.
+    }
+  }
+}
+
 if (process.platform === 'darwin') {
   patchDevIcon()
   patchDevAppName()
+  patchDevMicrophoneUsageDescription()
 }
-const watchedDir = path.join(projectDir, 'dist-electron')
-const runtimeReloadStateFile = path.join(projectDir, '.stella-runtime-reload-state.json')
-const requiredFiles = [
-  path.join(projectDir, '.vite-dev-url'),
-  path.join(watchedDir, 'electron', 'main.js'),
-  path.join(watchedDir, 'electron', 'preload.js'),
-]
-const restartDebounceMs = 150
-const forcedShutdownTimeoutMs = 1_500
-const startupWatchDelayMs = 2_500
 
-let shuttingDown = false
-let currentApp = null
-let restartTimer = null
-let watcher = null
-let restartQueue = Promise.resolve()
-let watchReady = false
-let watchReadyTimer = null
-let restartRequestedByWatcher = false
-let exitCode = 0
-let rootWatcher = null
-let pendingRestartWhilePaused = false
-const expectedExits = new WeakSet()
+const logError = (message) => {
+  console.error(`[electron-main] ${message}`)
+}
 
 const isPidAlive = (pid) => {
   if (!Number.isInteger(pid) || pid <= 0) {
@@ -155,6 +196,7 @@ const startApp = () => {
     env: {
       ...process.env,
       NODE_ENV: 'development',
+      STELLA_DEV_INSECURE_PROTECTED_STORAGE: '1',
     },
     stdio: 'inherit',
     windowsHide: true,
