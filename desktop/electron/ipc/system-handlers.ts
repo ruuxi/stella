@@ -38,6 +38,7 @@ import {
   IPC_PERMISSIONS_GET_STATUS,
   IPC_PERMISSIONS_OPEN_SETTINGS,
   IPC_PERMISSIONS_REQUEST,
+  IPC_PERMISSIONS_RESET_MICROPHONE,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
@@ -49,7 +50,9 @@ import {
 import {
   hasMacPermission,
   clearPermissionCache,
+  getMicrophonePermissionStatus,
   requestMacPermission,
+  resetMacMicrophonePermissions,
   type MacPermissionKind,
   type MacPermissionSettingsKind,
 } from "../utils/macos-permissions.js";
@@ -826,16 +829,15 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
   let lastAccessibilityStatus = false;
 
   ipcMain.handle(IPC_PERMISSIONS_GET_STATUS, () => {
-    const microphoneGranted =
-      process.platform === "darwin"
-        ? systemPreferences.getMediaAccessStatus("microphone") === "granted"
-        : false;
+    const microphoneStatus = getMicrophonePermissionStatus();
+    const microphoneGranted = microphoneStatus === "granted";
 
     if (process.platform !== "darwin") {
       return {
         accessibility: true,
         screen: true,
         microphone: microphoneGranted,
+        microphoneStatus,
       };
     }
     clearPermissionCache();
@@ -855,7 +857,27 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       accessibility,
       screen: hasMacPermission("screen", false),
       microphone: microphoneGranted,
+      microphoneStatus,
     };
+  });
+
+  ipcMain.handle(IPC_PERMISSIONS_RESET_MICROPHONE, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PERMISSIONS_RESET_MICROPHONE,
+      )
+    ) {
+      throw new Error(
+        "Blocked untrusted permissions:resetMicrophone request.",
+      );
+    }
+
+    if (process.platform !== "darwin") {
+      return { ok: false };
+    }
+
+    return { ok: await resetMacMicrophonePermissions() };
   });
 
   ipcMain.handle(

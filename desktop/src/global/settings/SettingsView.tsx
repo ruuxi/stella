@@ -62,6 +62,18 @@ const LegalDialog = lazy(() =>
 
 type SettingsTab = "basic" | "models" | "audio" | "billing" | "connections";
 
+type BasicTabPermissionStatus = {
+  accessibility: boolean;
+  screen: boolean;
+  microphone: boolean;
+  microphoneStatus:
+    | "not-determined"
+    | "granted"
+    | "denied"
+    | "restricted"
+    | "unknown";
+};
+
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -158,6 +170,22 @@ function BasicTab({
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(
     null,
   );
+  const [permissionStatus, setPermissionStatus] =
+    useState<BasicTabPermissionStatus>({
+      accessibility: platform === "darwin" ? false : true,
+      screen: platform === "darwin" ? false : true,
+      microphone: platform === "darwin" ? false : true,
+      microphoneStatus: platform === "darwin" ? "unknown" : "granted",
+    });
+  const lastPermissionStatusRef = useRef<BasicTabPermissionStatus | null>(null);
+  const [permissionsLoaded, setPermissionsLoaded] = useState(platform !== "darwin");
+  const [permissionsError, setPermissionsError] = useState<string | null>(null);
+  const [activePermissionAction, setActivePermissionAction] = useState<
+    "accessibility" | "screen" | null
+  >(null);
+  const [isRestartingAfterPermissions, setIsRestartingAfterPermissions] =
+    useState(false);
+  const [screenRestartRecommended, setScreenRestartRecommended] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -247,6 +275,69 @@ function BasicTab({
       cancelled = true;
     };
   }, [loadBackupState]);
+
+  const fetchPermissionStatus = useCallback(async () => {
+    const systemApi = window.electronAPI?.system;
+    if (!systemApi?.getPermissionStatus) {
+      const fallbackStatus: BasicTabPermissionStatus = {
+        accessibility: true,
+        screen: true,
+        microphone: true,
+        microphoneStatus: "granted",
+      };
+      setPermissionStatus(fallbackStatus);
+      return fallbackStatus;
+    }
+
+    const nextStatus = await systemApi.getPermissionStatus();
+    const previousStatus = lastPermissionStatusRef.current;
+    if (previousStatus && !previousStatus.screen && nextStatus.screen) {
+      setScreenRestartRecommended(true);
+    }
+    lastPermissionStatusRef.current = nextStatus;
+    setPermissionStatus(nextStatus);
+    return nextStatus;
+  }, []);
+
+  useEffect(() => {
+    if (platform !== "darwin") {
+      return;
+    }
+
+    let cancelled = false;
+    const loadPermissions = async () => {
+      try {
+        const nextStatus = await fetchPermissionStatus();
+        if (!cancelled) {
+          setPermissionsError(null);
+          setPermissionStatus(nextStatus);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPermissionsError(
+            getSettingsErrorMessage(
+              error,
+              "Failed to load desktop permission status.",
+            ),
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setPermissionsLoaded(true);
+        }
+      }
+    };
+
+    void loadPermissions();
+    const intervalId = window.setInterval(() => {
+      void loadPermissions();
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [fetchPermissionStatus, platform]);
 
   const handleRadialTriggerChange = useCallback(
     async (value: string) => {
@@ -381,6 +472,59 @@ function BasicTab({
     [],
   );
 
+  const handlePermissionEnable = useCallback(
+    async (kind: "accessibility" | "screen") => {
+      const systemApi = window.electronAPI?.system;
+      if (
+        !systemApi?.requestPermission
+        || !systemApi.openPermissionSettings
+        || !systemApi.getPermissionStatus
+      ) {
+        setPermissionsError("Desktop permissions are unavailable in this window.");
+        return;
+      }
+
+      setPermissionsError(null);
+      setActivePermissionAction(kind);
+      try {
+        const result = await systemApi.requestPermission(kind);
+        const nextStatus = await fetchPermissionStatus();
+        if (!nextStatus[kind] && !result.granted) {
+          await systemApi.openPermissionSettings(kind);
+        }
+      } catch (error) {
+        setPermissionsError(
+          getSettingsErrorMessage(error, `Failed to update ${kind} permission.`),
+        );
+      } finally {
+        setActivePermissionAction(null);
+      }
+    },
+    [fetchPermissionStatus],
+  );
+
+  const handlePermissionRestart = useCallback(async () => {
+    const systemApi = window.electronAPI?.system;
+    if (!systemApi?.quitForRestart) {
+      setPermissionsError("Restart is unavailable in this window.");
+      return;
+    }
+
+    setPermissionsError(null);
+    setIsRestartingAfterPermissions(true);
+    try {
+      const result = await systemApi.quitForRestart();
+      if (!result?.ok) {
+        setIsRestartingAfterPermissions(false);
+      }
+    } catch (error) {
+      setIsRestartingAfterPermissions(false);
+      setPermissionsError(
+        getSettingsErrorMessage(error, "Failed to restart Stella."),
+      );
+    }
+  }, []);
+
   return (
     <div className="settings-tab-content">
       <div className="settings-card">
@@ -427,6 +571,102 @@ function BasicTab({
           </div>
         </div>
       </div>
+      {platform === "darwin" ? (
+        <div className="settings-card">
+          <h3 className="settings-card-title">Permissions</h3>
+          <p className="settings-card-desc">
+            Stella can prompt for permissions when you use a feature, and you
+            can also fix them here anytime.
+          </p>
+          {permissionsError ? (
+            <p
+              className="settings-card-desc settings-card-desc--error"
+              role="alert"
+            >
+              {permissionsError}
+            </p>
+          ) : null}
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">Accessibility</div>
+              <div className="settings-row-sublabel">
+                Required for the global radial shortcut and selected text.
+              </div>
+            </div>
+            <div className="settings-row-control">
+              <Button
+                type="button"
+                variant="ghost"
+                className="settings-btn"
+                disabled={
+                  !permissionsLoaded
+                  || permissionStatus.accessibility
+                  || activePermissionAction === "accessibility"
+                }
+                onClick={() => void handlePermissionEnable("accessibility")}
+              >
+                {permissionStatus.accessibility
+                  ? "Granted"
+                  : activePermissionAction === "accessibility"
+                    ? "Opening..."
+                    : "Enable"}
+              </Button>
+            </div>
+          </div>
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">Screen Capture</div>
+              <div className="settings-row-sublabel">
+                Required for screenshot capture and vision features.
+              </div>
+              <div className="settings-row-sublabel">
+                macOS may require Stella to close and reopen after you allow it.
+              </div>
+            </div>
+            <div className="settings-row-control">
+              <Button
+                type="button"
+                variant="ghost"
+                className="settings-btn"
+                disabled={
+                  !permissionsLoaded
+                  || permissionStatus.screen
+                  || activePermissionAction === "screen"
+                }
+                onClick={() => void handlePermissionEnable("screen")}
+              >
+                {permissionStatus.screen
+                  ? "Granted"
+                  : activePermissionAction === "screen"
+                    ? "Opening..."
+                    : "Enable"}
+              </Button>
+            </div>
+          </div>
+          {screenRestartRecommended ? (
+            <div className="settings-row">
+              <div className="settings-row-info">
+                <div className="settings-row-label">Restart Stella</div>
+                <div className="settings-row-sublabel">
+                  Screen Capture was enabled while Stella was running. Reopen it
+                  from the launcher to apply the change.
+                </div>
+              </div>
+              <div className="settings-row-control">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="settings-btn settings-btn--danger"
+                  disabled={isRestartingAfterPermissions}
+                  onClick={() => void handlePermissionRestart()}
+                >
+                  {isRestartingAfterPermissions ? "Closing..." : "Restart"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="settings-card">
         <div className="settings-row">
           <div className="settings-row-info">

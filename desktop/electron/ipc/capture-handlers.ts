@@ -2,12 +2,17 @@ import {
   BrowserWindow,
   ipcMain,
   screen,
+  shell,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
 import type { ChatContext } from "../../src/shared/contracts/boundary.js";
 import type { CaptureService } from "../services/capture-service.js";
 import type { RegionSelection } from "../types.js";
+import {
+  hasMacPermission,
+  requestMacPermission,
+} from "../utils/macos-permissions.js";
 import type { WindowManager } from "../windows/window-manager.js";
 
 type CaptureHandlersOptions = {
@@ -20,6 +25,23 @@ type CaptureHandlersOptions = {
 };
 
 export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
+  const ensureScreenCapturePermission = async () => {
+    if (process.platform !== "darwin") {
+      return true;
+    }
+    if (hasMacPermission("screen", false)) {
+      return true;
+    }
+    const result = await requestMacPermission("screen");
+    if (result.granted) {
+      return true;
+    }
+    await shell.openExternal(
+      "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+    );
+    return false;
+  };
+
   ipcMain.handle("chatContext:get", () =>
     options.captureService.getChatContextSnapshot(),
   );
@@ -45,6 +67,9 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
   ipcMain.handle(
     "region:getWindowCapture",
     async (_event, point: { x: number; y: number }) => {
+      if (!(await ensureScreenCapturePermission())) {
+        return null;
+      }
       return options.captureService.getRegionWindowCapture(point);
     },
   );
@@ -62,6 +87,9 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, "screenshot:capture")) {
         throw new Error("Blocked untrusted request.");
       }
+      if (!(await ensureScreenCapturePermission())) {
+        return null;
+      }
       return options.captureService.captureScreenshot(point);
     },
   );
@@ -71,6 +99,9 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
     async (event, point?: { x: number; y: number }) => {
       if (!options.assertPrivilegedSender(event, "screenshot:captureVision")) {
         throw new Error("Blocked untrusted request.");
+      }
+      if (!(await ensureScreenCapturePermission())) {
+        return [];
       }
       return options.captureService.captureVisionScreenshots(point);
     },

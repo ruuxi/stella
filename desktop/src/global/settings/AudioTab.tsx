@@ -8,7 +8,15 @@ import {
   isMicrophoneEnabled,
 } from "@/features/voice/services/shared-microphone";
 
+type MicrophonePermissionStatus =
+  | "not-determined"
+  | "granted"
+  | "denied"
+  | "restricted"
+  | "unknown";
+
 export function AudioTab() {
+  const platform = window.electronAPI?.platform;
   const [micEnabled, setMicEnabled] = useState(() => isMicrophoneEnabled());
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>(
     [],
@@ -23,6 +31,17 @@ export function AudioTab() {
     () => localStorage.getItem(PREFERRED_SPEAKER_KEY) ?? "",
   );
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [microphoneStatus, setMicrophoneStatus] =
+    useState<MicrophonePermissionStatus>("unknown");
+  const [isResettingMicrophone, setIsResettingMicrophone] = useState(false);
+
+  const syncPermissionStatus = useCallback(async () => {
+    const result = await window.electronAPI?.system.getPermissionStatus?.();
+    if (result) {
+      setMicrophoneStatus(result.microphoneStatus);
+    }
+    return result ?? null;
+  }, []);
 
   const loadDevices = useCallback(async () => {
     try {
@@ -42,6 +61,10 @@ export function AudioTab() {
   }, []);
 
   useEffect(() => {
+    void syncPermissionStatus();
+  }, [syncPermissionStatus]);
+
+  useEffect(() => {
     if (!micEnabled) {
       return;
     }
@@ -55,10 +78,12 @@ export function AudioTab() {
         });
         stream.getTracks().forEach((t) => t.stop());
         if (!cancelled) {
+          await syncPermissionStatus();
           await loadDevices();
         }
       } catch {
         if (!cancelled) {
+          await syncPermissionStatus();
           // Permission denied or no devices — still try enumerateDevices
           await loadDevices();
         }
@@ -71,20 +96,36 @@ export function AudioTab() {
 
   const handleMicToggle = useCallback(
     (checked: boolean) => {
+      const microphoneDenied =
+        platform === "darwin" && microphoneStatus === "denied";
+
       setMicEnabled(checked);
       localStorage.setItem(MIC_ENABLED_KEY, checked ? "true" : "false");
 
       if (checked) {
         void (async () => {
+          if (microphoneDenied) {
+            setPermissionError(
+              "Microphone access was denied earlier. Reset it and restart Stella, or open System Settings.",
+            );
+            setMicEnabled(false);
+            localStorage.setItem(MIC_ENABLED_KEY, "false");
+            return;
+          }
+
           try {
             const stream = await navigator.mediaDevices.getUserMedia({
               audio: true,
             });
             stream.getTracks().forEach((t) => t.stop());
+            await syncPermissionStatus();
             await loadDevices();
           } catch {
+            const permissionStatus = await syncPermissionStatus();
             setPermissionError(
-              "Microphone access was denied. Please allow it in your system settings.",
+              permissionStatus?.microphoneStatus === "denied"
+                ? "Microphone access was denied earlier. Reset it and restart Stella, or open System Settings."
+                : "Microphone access was denied. Please allow it in your system settings.",
             );
             setMicEnabled(false);
             localStorage.setItem(MIC_ENABLED_KEY, "false");
@@ -92,7 +133,7 @@ export function AudioTab() {
         })();
       }
     },
-    [loadDevices],
+    [loadDevices, microphoneStatus, platform, syncPermissionStatus],
   );
 
   const handleMicChange = useCallback((deviceId: string) => {
@@ -112,6 +153,27 @@ export function AudioTab() {
       localStorage.removeItem(PREFERRED_SPEAKER_KEY);
     }
   }, []);
+
+  const handleResetMicrophoneAndRestart = useCallback(async () => {
+    setIsResettingMicrophone(true);
+    try {
+      const resetResult =
+        await window.electronAPI?.system.resetMicrophonePermission?.();
+      if (!resetResult?.ok) {
+        setIsResettingMicrophone(false);
+        return;
+      }
+      const quitResult = await window.electronAPI?.system.quitForRestart?.();
+      if (!quitResult?.ok) {
+        setIsResettingMicrophone(false);
+      }
+    } catch {
+      setIsResettingMicrophone(false);
+    }
+  }, []);
+
+  const microphoneDenied =
+    platform === "darwin" && microphoneStatus === "denied";
 
   return (
     <div className="settings-tab-content">
@@ -140,6 +202,40 @@ export function AudioTab() {
             />
           </div>
         </div>
+        {microphoneDenied ? (
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">Recover microphone access</div>
+              <div className="settings-row-sublabel">
+                macOS will not prompt Stella again automatically after a prior
+                denial. Reset the permission, then reopen Stella from the
+                launcher.
+              </div>
+            </div>
+            <div className="settings-row-control settings-row-control--stacked">
+              <button
+                type="button"
+                className="settings-btn"
+                disabled={isResettingMicrophone}
+                onClick={() =>
+                  void window.electronAPI?.system.openPermissionSettings?.(
+                    "microphone",
+                  )
+                }
+              >
+                Open Settings
+              </button>
+              <button
+                type="button"
+                className="settings-btn settings-btn--danger"
+                disabled={isResettingMicrophone}
+                onClick={() => void handleResetMicrophoneAndRestart()}
+              >
+                {isResettingMicrophone ? "Closing..." : "Reset & Restart"}
+              </button>
+            </div>
+          </div>
+        ) : null}
         {micEnabled && audioInputDevices.length > 0 ? (
           <div className="settings-row">
             <div className="settings-row-info">

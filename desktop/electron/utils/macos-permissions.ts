@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module'
+import { execFile } from 'node:child_process'
 import { systemPreferences } from 'electron'
 import { runNativeHelper } from '../native-helper.js'
 
@@ -25,8 +26,15 @@ export type MacPermissionSettingsKind =
   | MacPermissionKind
   | 'full-disk-access'
   | 'microphone'
+export type MicrophonePermissionStatus =
+  | 'not-determined'
+  | 'granted'
+  | 'denied'
+  | 'restricted'
+  | 'unknown'
 
 const permissionCache = new Map<MacPermissionKind, boolean>()
+const MIC_PERMISSION_BUNDLE_IDS = ['com.stella.app', 'com.github.Electron'] as const
 
 const checkAccessibility = (prompt: boolean): boolean =>
   systemPreferences.isTrustedAccessibilityClient(prompt)
@@ -54,6 +62,57 @@ const requestScreenRecording = async (): Promise<boolean> => {
 
   await delay(300)
   return checkScreenRecording()
+}
+
+const normalizeMicrophonePermissionStatus = (
+  value: string,
+): MicrophonePermissionStatus => {
+  switch (value) {
+    case 'not-determined':
+    case 'granted':
+    case 'denied':
+    case 'restricted':
+    case 'unknown':
+      return value
+    default:
+      return 'unknown'
+  }
+}
+
+const runExecFile = (file: string, args: string[]) =>
+  new Promise<boolean>((resolve) => {
+    execFile(
+      file,
+      args,
+      {
+        timeout: 5000,
+        windowsHide: true,
+      },
+      (error) => {
+        resolve(!error)
+      },
+    )
+  })
+
+export const getMicrophonePermissionStatus = (): MicrophonePermissionStatus => {
+  try {
+    return normalizeMicrophonePermissionStatus(
+      systemPreferences.getMediaAccessStatus('microphone'),
+    )
+  } catch {
+    return 'unknown'
+  }
+}
+
+export const resetMacMicrophonePermissions = async (): Promise<boolean> => {
+  if (process.platform !== 'darwin') return false
+
+  const results = await Promise.all(
+    MIC_PERMISSION_BUNDLE_IDS.map((bundleId) =>
+      runExecFile('tccutil', ['reset', 'Microphone', bundleId]),
+    ),
+  )
+  return results.some(Boolean)
 }
 
 export const hasMacPermission = (kind: MacPermissionKind, prompt = false): boolean => {

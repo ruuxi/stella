@@ -167,6 +167,11 @@
   gap: 8px;
 }
 
+.settings-row-control--stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
 /* ---- Model Controls ---- */
 
 [data-component="native-select"] {

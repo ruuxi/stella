@@ -5,7 +5,16 @@ type PermissionKind =
   | "screen"
   | "microphone";
 
-type PermissionStatus = Record<PermissionKind, boolean>;
+type MicrophonePermissionStatus =
+  | "not-determined"
+  | "granted"
+  | "denied"
+  | "restricted"
+  | "unknown";
+
+type PermissionStatus = Record<PermissionKind, boolean> & {
+  microphoneStatus: MicrophonePermissionStatus;
+};
 
 type PermissionCard = {
   kind: PermissionKind;
@@ -71,6 +80,7 @@ export function OnboardingPermissions({
     accessibility: false,
     screen: false,
     microphone: false,
+    microphoneStatus: "unknown",
   });
 
   /** Windows/Linux: main process cannot read mic TCC; set after successful getUserMedia. */
@@ -88,6 +98,7 @@ export function OnboardingPermissions({
         accessibility: result.accessibility,
         screen: result.screen,
         microphone: result.microphone || micSessionGrantedRef.current,
+        microphoneStatus: result.microphoneStatus,
       };
       const previousStatus = lastStatusRef.current;
       if (
@@ -103,7 +114,9 @@ export function OnboardingPermissions({
       }
       lastStatusRef.current = nextStatus;
       setStatus(nextStatus);
+      return nextStatus;
     }
+    return null;
   }, []);
 
   useEffect(() => {
@@ -115,6 +128,9 @@ export function OnboardingPermissions({
   }, [fetchStatus]);
 
   const [requesting, setRequesting] = useState<PermissionKind | null>(null);
+  const platform = window.electronAPI?.platform;
+  const microphoneDenied =
+    platform === "darwin" && status.microphoneStatus === "denied";
 
   const handleEnable = useCallback(
     async (card: PermissionCard) => {
@@ -127,13 +143,23 @@ export function OnboardingPermissions({
         }
 
         if (card.kind === "microphone") {
+          if (microphoneDenied) {
+            await window.electronAPI?.system.openPermissionSettings?.(
+              "microphone",
+            );
+            await fetchStatus();
+            return;
+          }
           try {
             await requestMicrophoneForOnboarding();
             micSessionGrantedRef.current = true;
           } catch {
-            await window.electronAPI?.system.openPermissionSettings?.(
-              "microphone",
-            );
+            const latestStatus = await fetchStatus();
+            if (latestStatus?.microphoneStatus !== "denied") {
+              await window.electronAPI?.system.openPermissionSettings?.(
+                "microphone",
+              );
+            }
           }
           await fetchStatus();
           return;
@@ -147,7 +173,7 @@ export function OnboardingPermissions({
         setRequesting(null);
       }
     },
-    [fetchStatus],
+    [fetchStatus, microphoneDenied],
   );
 
   const allMeasuredGranted =
@@ -156,12 +182,32 @@ export function OnboardingPermissions({
     && PERMISSION_CARDS.some(
       (card) => card.requiresRelaunch && status[card.kind],
     );
+  const showMicrophoneRecovery =
+    platform === "darwin" && status.microphoneStatus === "denied";
 
   const handleRestart = useCallback(async () => {
     setIsRestarting(true);
     try {
       const result = await window.electronAPI?.system.quitForRestart?.();
       if (!result?.ok) {
+        setIsRestarting(false);
+      }
+    } catch {
+      setIsRestarting(false);
+    }
+  }, []);
+
+  const handleResetMicrophoneAndRestart = useCallback(async () => {
+    setIsRestarting(true);
+    try {
+      const resetResult =
+        await window.electronAPI?.system.resetMicrophonePermission?.();
+      if (!resetResult?.ok) {
+        setIsRestarting(false);
+        return;
+      }
+      const quitResult = await window.electronAPI?.system.quitForRestart?.();
+      if (!quitResult?.ok) {
         setIsRestarting(false);
       }
     } catch {
@@ -186,6 +232,8 @@ export function OnboardingPermissions({
           let actionLabel = card.actionLabel;
           if (granted) {
             actionLabel = "Granted \u2713";
+          } else if (card.kind === "microphone" && microphoneDenied) {
+            actionLabel = "Open Settings";
           } else if (requesting === card.kind) {
             actionLabel = "Opening\u2026";
           }
@@ -193,6 +241,9 @@ export function OnboardingPermissions({
           const detailParts = [
             card.requiresRelaunch
               ? "You may need to reopen Stella after enabling it"
+              : null,
+            card.kind === "microphone" && microphoneDenied
+              ? "Previously denied on this Mac"
               : null,
           ].filter(Boolean);
 
@@ -226,6 +277,37 @@ export function OnboardingPermissions({
           );
         })}
       </div>
+
+      {showMicrophoneRecovery ? (
+        <div className="onboarding-permissions-restart">
+          <span className="onboarding-permission-card__meta">
+            Microphone access was denied earlier, so macOS will not prompt
+            Stella again automatically. Reset it, then reopen Stella from the
+            launcher.
+          </span>
+          <div className="onboarding-permissions-actions">
+            <button
+              className="onboarding-permission-card__action"
+              disabled={isRestarting}
+              onClick={() =>
+                void window.electronAPI?.system.openPermissionSettings?.(
+                  "microphone",
+                )
+              }
+            >
+              Open Settings
+            </button>
+            <button
+              className="onboarding-confirm"
+              data-visible={true}
+              disabled={isRestarting}
+              onClick={() => void handleResetMicrophoneAndRestart()}
+            >
+              {isRestarting ? "Closing..." : "Reset & Restart"}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {showRestartButton ? (
         <div className="onboarding-permissions-restart">
