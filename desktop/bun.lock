@@ -115,6 +115,17 @@
   },
   "trustedDependencies": [
     "mac-screen-capture-permissions",
+    "protobufjs",
+    "dugite",
+    "msgpackr-extract",
+    "cloudflared",
+    "esbuild",
+    "sharp",
+    "electron-winstaller",
+    "electron",
+    "onnxruntime-node",
+    "better-sqlite3",
+    "uiohook-napi",
   ],
   "overrides": {
     "axios": "^1.13.5",
