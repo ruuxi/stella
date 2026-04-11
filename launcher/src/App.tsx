@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -30,6 +31,7 @@ function App() {
   const [installPathDraft, setInstallPathDraft] = useState("");
   const [locationBusy, setLocationBusy] = useState(false);
   const [desktopRunning, setDesktopRunning] = useState(false);
+  const desktopWasRunningRef = useRef(false);
 
   const applyState = useCallback((nextState: InstallerState) => {
     startTransition(() => setState(nextState));
@@ -53,12 +55,19 @@ function App() {
   // Poll desktop running state
   useEffect(() => {
     if (!state || state.phase !== "complete") return;
-    const poll = () => {
-      invoke<boolean>("is_desktop_running")
-        .then(setDesktopRunning)
-        .catch(() => {});
+    const poll = async () => {
+      try {
+        const running = await invoke<boolean>("is_desktop_running");
+        const wasRunning = desktopWasRunningRef.current;
+        desktopWasRunningRef.current = running;
+        setDesktopRunning(running);
+
+        if (wasRunning && !running) {
+          await invoke("show_launcher_window");
+        }
+      } catch {}
     };
-    poll();
+    void poll();
     const id = setInterval(poll, 1000);
     return () => clearInterval(id);
   }, [state?.phase]);
