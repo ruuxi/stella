@@ -25,7 +25,6 @@ uniform float u_morph;
 uniform float u_time;
 uniform vec3 u_fills[4];
 uniform vec3 u_selFill;
-uniform vec3 u_centerBg;
 uniform vec3 u_stroke;
 uniform float u_selIdx;
 
@@ -34,7 +33,6 @@ const float TAU = 6.28318530;
 const float WEDGE_ANG = TAU / 4.0;
 const float INNER_R = 40.0 / 280.0;
 const float OUTER_R = 125.0 / 280.0;
-const float CENTER_R = 35.0 / 280.0;
 
 void main() {
     vec2 p = v_uv - 0.5;
@@ -52,16 +50,11 @@ void main() {
     float innerT = clamp((u_progress - 0.4) / 0.6, 0.0, 1.0);
     float innerR = innerT * INNER_R;
 
-    // Center circle (leads)
-    float centerT = clamp((u_leadP - 0.25) / 0.75, 0.0, 1.0);
-    float centerR = centerT * CENTER_R;
-
     // Edge softness — blurry when small, crisp when settled
     float soft = mix(0.022, 0.004, u_morph);
 
     float outerMask = smoothstep(outerR + soft, outerR - soft, dist);
     float innerMask = smoothstep(innerR - soft * 0.5, innerR + soft * 0.5, dist);
-    float centerMask = smoothstep(centerR + soft * 0.4, centerR - soft * 0.4, dist);
 
     float ring = outerMask * innerMask;
 
@@ -87,13 +80,8 @@ void main() {
     float bLine = smoothstep(0.0, bWidth, bDist);
     ringColor = mix(u_stroke, ringColor, mix(1.0, bLine, u_morph * 0.6));
 
-    // Composite: center on top of ring
-    vec3 color = ringColor;
-    float alpha = ring;
-    color = mix(color, u_centerBg, centerMask);
-    alpha = max(alpha, centerMask);
-
-    gl_FragColor = vec4(color, alpha);
+    // Ring only — center stays transparent so the Stella animation shows through.
+    gl_FragColor = vec4(ringColor, ring);
 }
 `
 
@@ -104,7 +92,6 @@ type Vec3 = [number, number, number]
 export interface BlobColors {
   fills: Vec3[]
   selectedFill: Vec3
-  centerBg: Vec3
   stroke: Vec3
 }
 
@@ -173,7 +160,6 @@ export function initBlob(canvas: HTMLCanvasElement): boolean {
       u_time: loc('u_time'),
       u_fills: loc('u_fills'),
       u_selFill: loc('u_selFill'),
-      u_centerBg: loc('u_centerBg'),
       u_stroke: loc('u_stroke'),
       u_selIdx: loc('u_selIdx'),
     },
@@ -233,7 +219,6 @@ function draw(
   }
   gl.uniform3fv(locs.u_fills!, flat)
   gl.uniform3fv(locs.u_selFill!, new Float32Array(colors.selectedFill))
-  gl.uniform3fv(locs.u_centerBg!, new Float32Array(colors.centerBg))
   gl.uniform3fv(locs.u_stroke!, new Float32Array(colors.stroke))
 
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
