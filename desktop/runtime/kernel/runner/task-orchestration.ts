@@ -402,6 +402,7 @@ export const createTaskOrchestration = (
                 onToolStart: (event) => taskCallbacks.onToolStart(event),
                 onToolEnd: (event) => taskCallbacks.onToolEnd(event),
                 onError: (event) => taskCallbacks.onError(event),
+                onInterrupted: (event) => taskCallbacks.onInterrupted?.(event),
                 onEnd: (event) => taskCallbacks.onEnd(event),
               }
             : undefined,

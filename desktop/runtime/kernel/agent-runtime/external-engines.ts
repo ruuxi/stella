@@ -8,7 +8,16 @@ import {
 import { createRunEventRecorder } from "./run-events.js";
 import { buildRuntimeSystemPrompt, buildSubagentSystemPrompt, createUserPromptMessage } from "./run-preparation.js";
 import { executeRuntimeToolCall, getRuntimeToolMetadata } from "./tool-adapters.js";
-import { finalizeOrchestratorError, finalizeOrchestratorSuccess, finalizeSubagentError, finalizeSubagentSuccess, markOrchestratorErrorReported } from "./run-completion.js";
+import {
+  finalizeOrchestratorError,
+  finalizeOrchestratorInterrupted,
+  finalizeOrchestratorSuccess,
+  finalizeSubagentError,
+  finalizeSubagentInterrupted,
+  finalizeSubagentSuccess,
+  markOrchestratorErrorReported,
+  resolveInterruptionReason,
+} from "./run-completion.js";
 import { now, resolveLocalCliCwd, textFromUnknown } from "./shared.js";
 import {
   buildRunThreadKey,
@@ -256,6 +265,24 @@ export const runExternalOrchestratorTurn = async (
     });
     return runId;
   } catch (error) {
+    const interruptedReason = resolveInterruptionReason({
+      abortSignal: opts.abortSignal,
+      error,
+    });
+    if (interruptedReason) {
+      finalizeOrchestratorInterrupted({
+        opts,
+        runEvents: createRunEventRecorder({
+          store: opts.store,
+          runId,
+          conversationId: opts.conversationId,
+          agentType: opts.agentType,
+          userMessageId: opts.userMessageId,
+        }),
+        reason: interruptedReason,
+      });
+      return runId;
+    }
     finalizeOrchestratorError({
       opts,
       runEvents: createRunEventRecorder({
@@ -295,6 +322,24 @@ export const runExternalSubagentTurn = async (
       result: result.finalText,
     });
   } catch (error) {
+    const interruptedReason = resolveInterruptionReason({
+      abortSignal: opts.abortSignal,
+      error,
+    });
+    if (interruptedReason) {
+      return finalizeSubagentInterrupted({
+        opts,
+        runEvents: createRunEventRecorder({
+          store: opts.store,
+          runId,
+          conversationId: opts.conversationId,
+          agentType: opts.agentType,
+          userMessageId: opts.userMessageId,
+        }),
+        runId,
+        reason: interruptedReason,
+      });
+    }
     return finalizeSubagentError({
       opts,
       runEvents: createRunEventRecorder({

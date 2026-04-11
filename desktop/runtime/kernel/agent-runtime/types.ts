@@ -94,6 +94,14 @@ export type RuntimeEndEvent = {
   selfModApplied?: SelfModAppliedPayload;
 };
 
+export type RuntimeInterruptedEvent = {
+  runId: string;
+  agentType: string;
+  seq: number;
+  userMessageId: string;
+  reason: string;
+};
+
 export type RuntimeRunCallbacks = {
   onRunStarted?: (event: RuntimeRunStartedEvent) => void;
   onUserMessage?: (event: RuntimeUserMessageEvent) => void;
@@ -103,6 +111,7 @@ export type RuntimeRunCallbacks = {
   onToolEnd: (event: RuntimeToolEndEvent) => void;
   onError: (event: RuntimeErrorEvent) => void;
   onEnd: (event: RuntimeEndEvent) => void;
+  onInterrupted?: (event: RuntimeInterruptedEvent) => void;
 };
 
 export type BaseRunOptions = {
