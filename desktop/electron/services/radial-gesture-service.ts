@@ -192,6 +192,10 @@ export class RadialGestureService {
 
     if (this.mouseHook) {
       this.mouseHook.setRadialTriggerKey(this.radialTriggerKey)
+      // Retry hook startup after macOS Accessibility changes land. uIOhook can
+      // fail once while TCC is still updating, and we do not want to require a
+      // full app restart before the radial works again.
+      this.mouseHook.start()
       return
     }
 
