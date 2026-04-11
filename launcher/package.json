@@ -5,6 +5,7 @@
 	"scripts": {
 		"dev": "tauri dev",
 		"dev:app": "node scripts/open-dev-app.mjs",
+		"stamp:version": "node scripts/stamp-version.mjs",
 		"build": "tauri build",
 		"dev:frontend": "vite",
 		"build:frontend": "vite build"

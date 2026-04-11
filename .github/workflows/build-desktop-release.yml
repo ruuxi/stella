@@ -102,6 +102,20 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#desktop-v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stamp launcher version
+        working-directory: launcher
+        run: node scripts/stamp-version.mjs "${{ steps.version.outputs.version }}"
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 

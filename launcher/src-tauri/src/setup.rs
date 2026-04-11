@@ -15,7 +15,6 @@ const LAUNCH_SCRIPT_WIN: &str = "launch.cmd";
 const LAUNCH_SCRIPT_UNIX: &str = "launch.sh";
 const ENV_FILE_NAME: &str = ".env.local";
 const ESTIMATED_INSTALL_BYTES: u64 = 512 * 1024 * 1024; // 512 MB
-const APP_VERSION: &str = "0.0.1";
 const DEFAULT_ENV_FILE_CONTENTS: &str = "\
 VITE_CONVEX_URL=https://benevolent-minnow-586.convex.cloud\n\
 VITE_CONVEX_SITE_URL=https://cloud.stella.sh\n\
@@ -1044,7 +1043,7 @@ async fn install_step(id: &SetupStepId, state: &mut InstallerState) -> Result<()
             schedule_git_repo_init(dir.clone());
 
             let manifest = Manifest {
-                version: APP_VERSION.into(),
+                version: env!("CARGO_PKG_VERSION").into(),
                 platform: std::env::consts::OS.into(),
                 installed_at: chrono_now(),
                 install_path: dir.clone(),
