@@ -47,7 +47,6 @@ export type RadialWindowBridge = {
 }
 
 type RadialGestureDeps = {
-  isAppReady: () => boolean
   getRadialTriggerKey: () => RadialTriggerCode
   capture: RadialCaptureBridge
   overlay: RadialOverlayBridge
@@ -188,13 +187,18 @@ export class RadialGestureService {
   }
 
   start() {
-    const { isAppReady, capture, overlay, window: win } = this.deps
+    const { capture, overlay, window: win } = this.deps
     this.radialTriggerKey = this.deps.getRadialTriggerKey()
+
+    if (this.mouseHook) {
+      this.mouseHook.setRadialTriggerKey(this.radialTriggerKey)
+      return
+    }
 
     this.mouseHook = new MouseHookManager({
       onRadialShow: () => {
-        if (!isAppReady()) return
-
+        // Do not gate on renderer "app ready" (onboarding/kernel). The radial is a
+        // system-level overlay; hooks must work even if setAppReady never fired.
         this.startedInCompactMode = win.isCompactMode()
         this.contextBeforeGesture = capture.getChatContextSnapshot()
         capture.setRadialContextShouldCommit(false)

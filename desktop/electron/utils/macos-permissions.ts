@@ -1,6 +1,20 @@
-import { desktopCapturer, systemPreferences } from 'electron'
+import { createRequire } from 'node:module'
+import { systemPreferences } from 'electron'
+import { runNativeHelper } from '../native-helper.js'
 
-export type MacPermissionKind = 'accessibility' | 'screen' | 'microphone'
+const require = createRequire(import.meta.url)
+type ScreenCapturePermissionsModule = {
+  hasScreenCapturePermission: () => boolean
+  hasPromptedForPermission: () => boolean
+  openSystemPreferences: () => Promise<void>
+}
+const screenCapturePermissions = require('mac-screen-capture-permissions') as ScreenCapturePermissionsModule
+
+export type MacPermissionKind = 'accessibility' | 'screen'
+export type MacPermissionSettingsKind =
+  | MacPermissionKind
+  | 'full-disk-access'
+  | 'microphone'
 
 const permissionCache = new Map<MacPermissionKind, boolean>()
 
@@ -8,10 +22,24 @@ const checkAccessibility = (prompt: boolean): boolean =>
   systemPreferences.isTrustedAccessibilityClient(prompt)
 
 const checkScreenRecording = (): boolean =>
-  systemPreferences.getMediaAccessStatus('screen') === 'granted'
+  process.platform === 'darwin'
+    ? screenCapturePermissions.hasScreenCapturePermission()
+    : systemPreferences.getMediaAccessStatus('screen') === 'granted'
 
-const checkMicrophone = (): boolean =>
-  systemPreferences.getMediaAccessStatus('microphone') === 'granted'
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+const requestScreenRecording = async (): Promise<boolean> => {
+  const result = await runNativeHelper('screen_permission', ['request'], {
+    timeout: 10_000,
+  })
+
+  if (result === 'granted') {
+    return true
+  }
+
+  await delay(300)
+  return checkScreenRecording()
+}
 
 export const hasMacPermission = (kind: MacPermissionKind, prompt = false): boolean => {
   if (process.platform !== 'darwin') return true
@@ -26,9 +54,6 @@ export const hasMacPermission = (kind: MacPermissionKind, prompt = false): boole
       break
     case 'screen':
       granted = checkScreenRecording()
-      break
-    case 'microphone':
-      granted = checkMicrophone()
       break
   }
 
@@ -72,61 +97,9 @@ export const requestMacPermission = async (kind: MacPermissionKind): Promise<Per
     }
     case 'screen': {
       if (checkScreenRecording()) return { granted: true, alreadyGranted: true }
-      try {
-        await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
-      } catch {}
-      await delay(300)
-      const granted = checkScreenRecording()
+      const granted = await requestScreenRecording()
       if (granted) permissionCache.set('screen', true)
       return { granted, alreadyGranted: false }
     }
-    case 'microphone': {
-      if (checkMicrophone()) return { granted: true, alreadyGranted: true }
-      try {
-        const granted = await systemPreferences.askForMediaAccess('microphone')
-        permissionCache.set('microphone', granted)
-        return { granted, alreadyGranted: false }
-      } catch {
-        return { granted: false, alreadyGranted: false }
-      }
-    }
-  }
-}
-
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-
-/**
- * Request all macOS permissions upfront so the user sees all dialogs at once
- * instead of progressively as features activate.
- */
-export const requestAllMacPermissions = async (): Promise<void> => {
-  if (process.platform !== 'darwin') return
-
-  // 1. Accessibility — opens System Preferences prompt
-  if (!checkAccessibility(false)) {
-    checkAccessibility(true)
-    await delay(500)
-  }
-  permissionCache.set('accessibility', checkAccessibility(false))
-
-  // 2. Screen Recording — no direct prompt API; trigger via desktopCapturer
-  if (!checkScreenRecording()) {
-    try {
-      await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
-    } catch {}
-    await delay(500)
-  }
-  permissionCache.set('screen', checkScreenRecording())
-
-  // 3. Microphone — shows native permission dialog
-  if (!checkMicrophone()) {
-    try {
-      const granted = await systemPreferences.askForMediaAccess('microphone')
-      permissionCache.set('microphone', granted)
-    } catch {
-      permissionCache.set('microphone', false)
-    }
-  } else {
-    permissionCache.set('microphone', true)
   }
 }
