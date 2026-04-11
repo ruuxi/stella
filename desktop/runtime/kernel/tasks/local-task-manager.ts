@@ -610,7 +610,7 @@ export class LocalTaskManager implements TaskToolApi {
           rootRunId: task.rootRunId,
           taskId: task.id,
           agentType: task.agentType,
-          result: task.result ? truncate(task.result, 500) : undefined,
+          result: task.result,
         });
       } else if (task.status === "error") {
         this.opts.onTaskEvent?.({

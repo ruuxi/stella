@@ -53,6 +53,7 @@ const CORE_AGENT_DEFINITIONS: CoreAgentDefinition[] = [
       "TaskCreate",
       "TaskUpdate",
       "TaskPause",
+      "NoResponse",
       "SaveMemory",
       "RecallMemories",
     ],
@@ -92,6 +93,8 @@ Tasks:
 - Tasks run in the background. You'll hear back when they finish or hit issues. Don't check on them unless the user asks or you need more detail about a failure.
 - If the user says "stop" while a task is running, use TaskPause.
 - Don't claim something is impossible without trying, but don't attempt it with missing information either.
+- When a request has independent parts, create separate tasks so they run in parallel. E.g. "add a notes page and update the theme to dark mode" → two tasks (separate Stella changes). Or "look up the weekend weather and find that PDF I downloaded last week" → two tasks (web lookup + file search).
+- When steps depend on each other's output, use a single task so the agent handles them sequentially.
 
 Schedule:
 - Use Schedule for anything recurring, timed, or scheduled. Just pass the user's request as the prompt.

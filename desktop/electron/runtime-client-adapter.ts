@@ -56,6 +56,29 @@ const isTerminalEvent = (type: string) =>
 const isTerminalTaskLifecycleEvent = (type: string) =>
   type === "task-completed" || type === "task-failed" || type === "task-canceled";
 
+const isTaskLifecycleEvent = (type: string) =>
+  type !== AGENT_STREAM_EVENT_TYPES.STREAM &&
+  type !== AGENT_STREAM_EVENT_TYPES.STATUS &&
+  type !== AGENT_STREAM_EVENT_TYPES.TOOL_START &&
+  type !== AGENT_STREAM_EVENT_TYPES.TOOL_END &&
+  type !== AGENT_STREAM_EVENT_TYPES.RUN_STARTED &&
+  type !== AGENT_STREAM_EVENT_TYPES.RUN_FINISHED &&
+  type !== AGENT_STREAM_EVENT_TYPES.ERROR &&
+  type !== AGENT_STREAM_EVENT_TYPES.END;
+
+const LOCAL_CHAT_SESSION_IDLE_CLEANUP_MS = 30_000;
+
+type LocalChatSession = {
+  requestId: string;
+  conversationId: string;
+  callbacks: AgentCallbacks;
+  knownRunIds: Set<string>;
+  activeRunIds: Set<string>;
+  activeTaskIds: Set<string>;
+  lastSeqByScope: Map<string, number>;
+  cleanupTimer: ReturnType<typeof setTimeout> | null;
+};
+
 export class RuntimeClientAdapter {
   readonly client: StellaRuntimeClient;
   private lastHealth:
@@ -82,6 +105,7 @@ export class RuntimeClientAdapter {
     cloudSyncEnabled?: boolean;
   } = {};
   private configFlushQueued = false;
+  private readonly localChatSessions = new Map<string, LocalChatSession>();
   private readonly availabilityListeners = new Set<
     (snapshot: RuntimeAvailabilitySnapshot) => void
   >();
@@ -104,6 +128,7 @@ export class RuntimeClientAdapter {
       this.lastRuntimeHealth = null;
       this.lastHealth = { ready: false, reason };
       this.activeRun = null;
+      this.clearLocalChatSessions();
       this.emitAvailabilityChange();
     });
     this.client.on("runtime-ready", (snapshot) => {
@@ -111,6 +136,15 @@ export class RuntimeClientAdapter {
       this.emitAvailabilityChange();
     });
     this.client.on("run-event", (event) => {
+      if (
+        event.type === AGENT_STREAM_EVENT_TYPES.RUN_STARTED &&
+        event.conversationId
+      ) {
+        this.activeRun = {
+          runId: event.runId,
+          conversationId: event.conversationId,
+        };
+      }
       if (
         event.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED
         || event.type === AGENT_STREAM_EVENT_TYPES.ERROR
@@ -120,7 +154,192 @@ export class RuntimeClientAdapter {
           this.activeRun = null;
         }
       }
+      if (event.requestId) {
+        this.dispatchLocalChatSessionEvent(event.requestId, event);
+      }
     });
+    this.client.on("run-self-mod-hmr-state", (payload) => {
+      this.dispatchLocalChatSessionHmrState(payload);
+    });
+  }
+
+  private clearLocalChatSessionCleanup(requestId: string) {
+    const session = this.localChatSessions.get(requestId);
+    if (!session?.cleanupTimer) {
+      return;
+    }
+    clearTimeout(session.cleanupTimer);
+    session.cleanupTimer = null;
+  }
+
+  private clearLocalChatSession(requestId: string) {
+    this.clearLocalChatSessionCleanup(requestId);
+    this.localChatSessions.delete(requestId);
+  }
+
+  private clearLocalChatSessions() {
+    for (const requestId of [...this.localChatSessions.keys()]) {
+      this.clearLocalChatSession(requestId);
+    }
+  }
+
+  private scheduleLocalChatSessionCleanup(requestId: string) {
+    const session = this.localChatSessions.get(requestId);
+    if (!session) {
+      return;
+    }
+    if (session.activeRunIds.size > 0 || session.activeTaskIds.size > 0) {
+      this.clearLocalChatSessionCleanup(requestId);
+      return;
+    }
+    this.clearLocalChatSessionCleanup(requestId);
+    session.cleanupTimer = setTimeout(() => {
+      const current = this.localChatSessions.get(requestId);
+      if (!current) {
+        return;
+      }
+      if (current.activeRunIds.size > 0 || current.activeTaskIds.size > 0) {
+        return;
+      }
+      this.clearLocalChatSession(requestId);
+    }, LOCAL_CHAT_SESSION_IDLE_CLEANUP_MS);
+  }
+
+  private shouldIgnoreLocalChatSessionEvent(
+    session: LocalChatSession,
+    event: RuntimeAgentEventPayload,
+  ) {
+    if (
+      typeof event.conversationId === "string" &&
+      event.conversationId !== session.conversationId
+    ) {
+      return true;
+    }
+
+    const scopeKey = `${isTaskLifecycleEvent(event.type) ? "task" : "run"}:${event.rootRunId ?? event.runId}`;
+    const previousSeq = session.lastSeqByScope.get(scopeKey);
+    if (typeof previousSeq === "number" && event.seq <= previousSeq) {
+      return true;
+    }
+    session.lastSeqByScope.set(scopeKey, event.seq);
+    return false;
+  }
+
+  private dispatchLocalChatSessionEvent(
+    requestId: string,
+    event: RuntimeAgentEventPayload,
+  ) {
+    const session = this.localChatSessions.get(requestId);
+    if (!session) {
+      return;
+    }
+    if (this.shouldIgnoreLocalChatSessionEvent(session, event)) {
+      return;
+    }
+
+    this.clearLocalChatSessionCleanup(requestId);
+    session.knownRunIds.add(event.runId);
+
+    const taskKey =
+      event.taskId && (event.rootRunId ?? event.runId)
+        ? `${event.rootRunId ?? event.runId}:${event.taskId}`
+        : null;
+
+    if (event.type === AGENT_STREAM_EVENT_TYPES.RUN_STARTED) {
+      session.activeRunIds.add(event.runId);
+    } else if (isTerminalEvent(event.type)) {
+      session.activeRunIds.delete(event.runId);
+    }
+
+    if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_STARTED && taskKey) {
+      session.activeTaskIds.add(taskKey);
+    } else if (isTerminalTaskLifecycleEvent(event.type) && taskKey) {
+      session.activeTaskIds.delete(taskKey);
+    }
+
+    switch (event.type) {
+      case AGENT_STREAM_EVENT_TYPES.RUN_STARTED:
+        session.callbacks.onRunStarted?.(event);
+        break;
+      case AGENT_STREAM_EVENT_TYPES.STREAM:
+        session.callbacks.onStream(event);
+        break;
+      case AGENT_STREAM_EVENT_TYPES.STATUS:
+        session.callbacks.onStatus?.(event);
+        break;
+      case AGENT_STREAM_EVENT_TYPES.TOOL_START:
+        session.callbacks.onToolStart(event);
+        break;
+      case AGENT_STREAM_EVENT_TYPES.TOOL_END:
+        session.callbacks.onToolEnd(event);
+        break;
+      case AGENT_STREAM_EVENT_TYPES.RUN_FINISHED:
+        session.callbacks.onRunFinished?.(event);
+        break;
+      case AGENT_STREAM_EVENT_TYPES.ERROR:
+        if (session.callbacks.onRunFinished) {
+          session.callbacks.onRunFinished({
+            ...event,
+            type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+            outcome: "error",
+            reason: event.error,
+          });
+        } else {
+          session.callbacks.onError(event);
+        }
+        break;
+      case AGENT_STREAM_EVENT_TYPES.END:
+        if (session.callbacks.onRunFinished) {
+          session.callbacks.onRunFinished({
+            ...event,
+            type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+            outcome: "completed",
+          });
+        } else {
+          session.callbacks.onEnd(event);
+        }
+        break;
+      default:
+        if (isTaskLifecycleEvent(event.type)) {
+          session.callbacks.onTaskEvent?.({
+            type: event.type as TaskLifecycleEvent["type"],
+            conversationId: session.conversationId,
+            rootRunId: event.rootRunId ?? event.runId,
+            taskId: event.taskId ?? "",
+            agentType: event.agentType ?? "",
+            ...(event.description ? { description: event.description } : {}),
+            ...(event.parentTaskId ? { parentTaskId: event.parentTaskId } : {}),
+            ...(event.result ? { result: event.result } : {}),
+            ...(event.error ? { error: event.error } : {}),
+            ...(event.statusText ? { statusText: event.statusText } : {}),
+          });
+        }
+        break;
+    }
+
+    this.scheduleLocalChatSessionCleanup(requestId);
+  }
+
+  private dispatchLocalChatSessionHmrState(payload: {
+    runId?: string;
+    state: SelfModHmrState;
+  }) {
+    if (payload.runId) {
+      for (const session of this.localChatSessions.values()) {
+        if (!session.knownRunIds.has(payload.runId)) {
+          continue;
+        }
+        session.callbacks.onSelfModHmrState?.(payload.state);
+      }
+      return;
+    }
+
+    for (const session of this.localChatSessions.values()) {
+      if (session.activeRunIds.size === 0) {
+        continue;
+      }
+      session.callbacks.onSelfModHmrState?.(payload.state);
+    }
   }
 
   private emitAvailabilityChange() {
@@ -212,6 +431,7 @@ export class RuntimeClientAdapter {
 
   async stop() {
     this.started = false;
+    this.clearLocalChatSessions();
     await this.client.stop();
   }
 
@@ -374,155 +594,38 @@ export class RuntimeClientAdapter {
     },
     callbacks: AgentCallbacks,
   ) {
-    const result = await this.client.startChat(payload);
-    this.activeRun = {
-      runId: result.runId,
+    const requestId =
+      typeof payload.requestId === "string" && payload.requestId.trim().length > 0
+        ? payload.requestId
+        : `local:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+
+    this.clearLocalChatSession(requestId);
+    this.localChatSessions.set(requestId, {
+      requestId,
       conversationId: payload.conversationId,
-    };
-    callbacks.onRunStarted?.({
-      type: AGENT_STREAM_EVENT_TYPES.RUN_STARTED,
-      runId: result.runId,
-      seq: 0,
-      conversationId: payload.conversationId,
-      ...(payload.requestId ? { requestId: payload.requestId } : {}),
-      ...(result.userMessageId ? { userMessageId: result.userMessageId } : {}),
+      callbacks,
+      knownRunIds: new Set<string>(),
+      activeRunIds: new Set<string>(),
+      activeTaskIds: new Set<string>(),
+      lastSeqByScope: new Map<string, number>(),
+      cleanupTimer: null,
     });
-    let lastRunEventSeq = 0;
-    let lastTaskEventSeq = 0;
-    const activeTaskIds = new Set<string>();
-    let runTerminated = false;
 
-    let unsubscribe = () => {};
-    const maybeUnsubscribe = () => {
-      if (!runTerminated || activeTaskIds.size > 0) {
-        return;
-      }
-      unsubscribe();
-    };
-
-    const dispatch = (event: RuntimeAgentEventPayload) => {
-      if (event.runId !== result.runId) {
-        return;
-      }
-      const isTaskLifecycleEvent =
-        event.type !== AGENT_STREAM_EVENT_TYPES.STREAM &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.STATUS &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_START &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_END &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.RUN_STARTED &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.RUN_FINISHED &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.ERROR &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.END;
-
-      if (isTaskLifecycleEvent) {
-        if (event.seq <= lastTaskEventSeq) {
-          return;
-        }
-        lastTaskEventSeq = event.seq;
-      } else {
-        if (event.seq <= lastRunEventSeq) {
-          return;
-        }
-        lastRunEventSeq = event.seq;
-      }
-
-      if (event.type === "task-started" && event.taskId) {
-        activeTaskIds.add(event.taskId);
-      } else if (isTerminalTaskLifecycleEvent(event.type) && event.taskId) {
-        activeTaskIds.delete(event.taskId);
-      }
-
-      switch (event.type) {
-        case AGENT_STREAM_EVENT_TYPES.RUN_STARTED:
-          callbacks.onRunStarted?.(event);
-          break;
-        case AGENT_STREAM_EVENT_TYPES.STREAM:
-          callbacks.onStream(event);
-          break;
-        case AGENT_STREAM_EVENT_TYPES.STATUS:
-          callbacks.onStatus?.(event);
-          break;
-        case AGENT_STREAM_EVENT_TYPES.TOOL_START:
-          callbacks.onToolStart(event);
-          break;
-        case AGENT_STREAM_EVENT_TYPES.TOOL_END:
-          callbacks.onToolEnd(event);
-          break;
-        case AGENT_STREAM_EVENT_TYPES.RUN_FINISHED:
-          callbacks.onRunFinished?.(event);
-          break;
-        case AGENT_STREAM_EVENT_TYPES.ERROR:
-          if (callbacks.onRunFinished) {
-            callbacks.onRunFinished({
-              ...event,
-              type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
-              outcome: "error",
-              reason: event.error,
-            });
-          } else {
-            callbacks.onError(event);
-          }
-          break;
-        case AGENT_STREAM_EVENT_TYPES.END:
-          if (callbacks.onRunFinished) {
-            callbacks.onRunFinished({
-              ...event,
-              type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
-              outcome: "completed",
-            });
-          } else {
-            callbacks.onEnd(event);
-          }
-          break;
-        default:
-          if (
-            event.type === AGENT_STREAM_EVENT_TYPES.TASK_STARTED
-            || event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
-            || event.type === AGENT_STREAM_EVENT_TYPES.TASK_FAILED
-            || event.type === AGENT_STREAM_EVENT_TYPES.TASK_CANCELED
-            || event.type === AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS
-          ) {
-            callbacks.onTaskEvent?.({
-              type: event.type as TaskLifecycleEvent["type"],
-              conversationId: payload.conversationId,
-              rootRunId: event.rootRunId ?? event.runId,
-              taskId: event.taskId ?? "",
-              agentType: event.agentType ?? "",
-              ...(event.description ? { description: event.description } : {}),
-              ...(event.parentTaskId ? { parentTaskId: event.parentTaskId } : {}),
-              ...(event.result ? { result: event.result } : {}),
-              ...(event.error ? { error: event.error } : {}),
-              ...(event.statusText ? { statusText: event.statusText } : {}),
-            });
-          }
-          break;
-      }
-      if (isTerminalEvent(event.type)) {
-        runTerminated = true;
-      }
-      maybeUnsubscribe();
-    };
-
-    const offEvent = this.client.on("run-event", dispatch);
-    const offHmr = this.client.on("run-self-mod-hmr-state", (payload) => {
-      if (!payload.runId || payload.runId === result.runId) {
-        callbacks.onSelfModHmrState?.(payload.state);
-      }
-    });
-    unsubscribe = () => {
-      offEvent();
-      offHmr();
-    };
-
-    const buffered = await this.client.resumeRunEvents({
-      runId: result.runId,
-      lastSeq: 0,
-    });
-    for (const event of buffered.events) {
-      dispatch(event);
+    try {
+      const result = await this.client.startChat({
+        ...payload,
+        requestId,
+      });
+      this.activeRun = {
+        runId: result.runId,
+        conversationId: payload.conversationId,
+      };
+      this.localChatSessions.get(requestId)?.knownRunIds.add(result.runId);
+      return result;
+    } catch (error) {
+      this.clearLocalChatSession(requestId);
+      throw error;
     }
-
-    return result;
   }
 
   runAutomationTurn(payload: RuntimeAutomationTurnRequest) {
@@ -607,17 +710,9 @@ export class RuntimeClientAdapter {
     };
 
     const dispatch = (event: RuntimeAgentEventPayload) => {
-      const isTaskLifecycleEvent =
-        event.type !== AGENT_STREAM_EVENT_TYPES.STREAM &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.STATUS &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_START &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.TOOL_END &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.RUN_STARTED &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.RUN_FINISHED &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.ERROR &&
-        event.type !== AGENT_STREAM_EVENT_TYPES.END;
+      const taskLifecycleEvent = isTaskLifecycleEvent(event.type);
 
-      if (isTaskLifecycleEvent) {
+      if (taskLifecycleEvent) {
         if (event.seq <= lastTaskEventSeq) {
           return;
         }
