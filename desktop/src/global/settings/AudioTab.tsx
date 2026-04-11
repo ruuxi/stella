@@ -174,6 +174,13 @@ export function AudioTab() {
 
   const microphoneDenied =
     platform === "darwin" && microphoneStatus === "denied";
+  const showMicrophoneRecovery = platform === "darwin";
+  const microphoneRecoveryLabel = microphoneDenied
+    ? "Recover microphone access"
+    : "Manage microphone access";
+  const microphoneRecoveryDescription = microphoneDenied
+    ? "macOS will not prompt Stella again automatically after a prior denial. Reset the permission, then reopen Stella from the launcher."
+    : "If microphone permission ever gets stuck or you want macOS to ask again, you can reset it and reopen Stella from the launcher.";
 
   return (
     <div className="settings-tab-content">
@@ -202,14 +209,12 @@ export function AudioTab() {
             />
           </div>
         </div>
-        {microphoneDenied ? (
+        {showMicrophoneRecovery ? (
           <div className="settings-row">
             <div className="settings-row-info">
-              <div className="settings-row-label">Recover microphone access</div>
+              <div className="settings-row-label">{microphoneRecoveryLabel}</div>
               <div className="settings-row-sublabel">
-                macOS will not prompt Stella again automatically after a prior
-                denial. Reset the permission, then reopen Stella from the
-                launcher.
+                {microphoneRecoveryDescription}
               </div>
             </div>
             <div className="settings-row-control settings-row-control--stacked">
