@@ -350,8 +350,6 @@ export function useLocalAgentStream({
   const [rawStreamingText, appendStreamingDelta, resetStreamingText] =
     useRafStringAccumulator();
   const [rawReasoningText, , resetReasoningText] = useRafStringAccumulator();
-  const [subagentStreamingText, appendSubagentDelta, resetSubagentText] =
-    useRafStringAccumulator();
   const [pendingUserMessageId, setPendingUserMessageId] = useState<string | null>(
     null,
   );
@@ -364,7 +362,6 @@ export function useLocalAgentStream({
     storeState.activeRunIdByConversation,
   );
   const lastSeqByConversationRef = useRef(new Map<string, number>());
-  const lastSeqByEventScopeRef = useRef(new Map<string, number>());
   const terminalRunIdsRef = useRef(new Set<string>());
   const pendingRequestIdsRef = useRef(new Set<string>());
   const startAttemptRef = useRef(0);
@@ -443,7 +440,6 @@ export function useLocalAgentStream({
   const resetStreamingState = useCallback(() => {
     resetStreamingText();
     resetReasoningText();
-    resetSubagentText();
     setPendingUserMessageId(null);
     if (activeRunId) {
       dispatch({
@@ -451,7 +447,7 @@ export function useLocalAgentStream({
         runId: activeRunId,
       });
     }
-  }, [activeRunId, resetReasoningText, resetStreamingText, resetSubagentText]);
+  }, [activeRunId, resetReasoningText, resetStreamingText]);
 
   const handleAgentEvent = useCallback(
     (event: AgentStreamEvent) => {
@@ -463,18 +459,12 @@ export function useLocalAgentStream({
 
       const seq = Number.isFinite(event.seq) ? event.seq : 0;
       if (seq > 0) {
-        const scopeKey = `${conversationId}:${event.runId || "conversation"}`;
         const previousSeq =
-          lastSeqByEventScopeRef.current.get(scopeKey) ?? 0;
+          lastSeqByConversationRef.current.get(conversationId) ?? 0;
         if (seq <= previousSeq) {
           return;
         }
-        lastSeqByEventScopeRef.current.set(scopeKey, seq);
-        const previousConversationSeq =
-          lastSeqByConversationRef.current.get(conversationId) ?? 0;
-        if (seq > previousConversationSeq) {
-          lastSeqByConversationRef.current.set(conversationId, seq);
-        }
+        lastSeqByConversationRef.current.set(conversationId, seq);
       }
 
       if (event.requestId) {
@@ -515,7 +505,6 @@ export function useLocalAgentStream({
         if (args.outcome !== AGENT_RUN_FINISH_OUTCOMES.COMPLETED) {
           resetStreamingText();
           resetReasoningText();
-          resetSubagentText();
           setPendingUserMessageId(null);
         }
         if (event.selfModApplied && event.userMessageId) {
@@ -539,17 +528,13 @@ export function useLocalAgentStream({
           if (conversationId === activeConversationIdRef.current) {
             resetStreamingText();
             resetReasoningText();
-            resetSubagentText();
             setPendingUserMessageId(event.userMessageId ?? null);
           }
           break;
         }
         case AGENT_STREAM_EVENT_TYPES.STREAM: {
-          if (isPrimaryRun && isOrchestratorEvent && event.chunk && event.kind !== "reasoning") {
+          if (isPrimaryRun && isOrchestratorEvent && event.chunk) {
             appendStreamingDelta(event.chunk);
-          }
-          if (!isOrchestratorEvent && event.chunk && event.kind === "reasoning") {
-            appendSubagentDelta(event.chunk);
           }
           break;
         }
@@ -648,11 +633,9 @@ export function useLocalAgentStream({
     },
     [
       appendStreamingDelta,
-      appendSubagentDelta,
       clearScheduledTaskRemoval,
       resetReasoningText,
       resetStreamingText,
-      resetSubagentText,
       scheduleTaskRemoval,
     ],
   );
@@ -820,7 +803,6 @@ export function useLocalAgentStream({
     runtimeStatusText,
     streamingText,
     reasoningText,
-    subagentStreamingText,
     isStreaming,
     pendingUserMessageId,
     selfModMap,
