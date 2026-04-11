@@ -4037,3 +4037,11 @@
   max-width: 420px;
   text-align: center;
 }
+
+.onboarding-permissions-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}

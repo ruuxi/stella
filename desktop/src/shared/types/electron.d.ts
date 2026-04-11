@@ -472,12 +472,19 @@ export type ElectronSystemApi = {
     accessibility: boolean;
     screen: boolean;
     microphone: boolean;
+    microphoneStatus:
+      | "not-determined"
+      | "granted"
+      | "denied"
+      | "restricted"
+      | "unknown";
   }>;
   openPermissionSettings: (kind: string) => Promise<void>;
   requestPermission: (kind: string) => Promise<{
     granted: boolean;
     alreadyGranted: boolean;
   }>;
+  resetMicrophonePermission: () => Promise<{ ok: boolean }>;
   openExternal: (url: string) => void;
   showItemInFolder: (filePath: string) => void;
   shellKillByPort: (port: number) => Promise<void>;

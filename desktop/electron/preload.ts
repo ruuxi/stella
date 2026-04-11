@@ -31,6 +31,7 @@ import {
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
+  IPC_PERMISSIONS_RESET_MICROPHONE,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
@@ -596,6 +597,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
         accessibility: boolean;
         screen: boolean;
         microphone: boolean;
+        microphoneStatus:
+          | "not-determined"
+          | "granted"
+          | "denied"
+          | "restricted"
+          | "unknown";
       }>,
     openPermissionSettings: (kind: string) =>
       ipcRenderer.invoke("permissions:openSettings", { kind }),
@@ -603,6 +610,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("permissions:request", { kind }) as Promise<{
         granted: boolean;
         alreadyGranted: boolean;
+      }>,
+    resetMicrophonePermission: () =>
+      ipcRenderer.invoke(IPC_PERMISSIONS_RESET_MICROPHONE) as Promise<{
+        ok: boolean;
       }>,
     openExternal: (url: string) => ipcRenderer.send("shell:openExternal", url),
     showItemInFolder: (filePath: string) =>
