@@ -16,6 +16,7 @@ type Props = {
   maxItems?: number;
   streamingText?: string;
   reasoningText?: string;
+  subagentStreamingText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
   selfModMap?: Record<string, SelfModAppliedData>;
@@ -30,6 +31,7 @@ function MessageList({
   showStreaming,
   streamingText,
   reasoningText,
+  subagentStreamingText,
   isStreaming,
   pendingUserMessageId,
   onOpenAttachment,
@@ -39,6 +41,7 @@ function MessageList({
   showStreaming: boolean;
   streamingText?: string;
   reasoningText?: string;
+  subagentStreamingText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
   onOpenAttachment?: (attachment: Attachment) => void;
@@ -63,6 +66,7 @@ function MessageList({
                 ? {
                     streamingText,
                     reasoningText,
+                    subagentStreamingText,
                     isStreaming,
                     pendingUserMessageId,
                   }
@@ -89,6 +93,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   maxItems,
   streamingText,
   reasoningText,
+  subagentStreamingText,
   isStreaming,
   pendingUserMessageId,
   selfModMap,
@@ -166,6 +171,7 @@ export const ConversationEvents = memo(function ConversationEvents({
         showStandaloneStreaming={showStandaloneStreaming}
         streamingText={processedStreamingText}
         reasoningText={processedReasoningText}
+        subagentStreamingText={subagentStreamingText}
         isStreaming={isStreaming}
         pendingUserMessageId={pendingUserMessageId}
         onOpenAttachment={onOpenAttachment}

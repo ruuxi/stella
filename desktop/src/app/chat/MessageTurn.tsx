@@ -12,6 +12,7 @@ import {
 } from "@/app/chat/lib/event-transforms";
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
+import { SubagentTicker } from "./SubagentTicker";
 
 export type TurnViewModel = {
   id: string;
@@ -31,6 +32,7 @@ export type TurnViewModel = {
 export type StreamingTurnProps = {
   streamingText?: string;
   reasoningText?: string;
+  subagentStreamingText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
 };
@@ -225,6 +227,7 @@ const streamingPropsEqual = (
   return (
     a.streamingText === b.streamingText &&
     a.reasoningText === b.reasoningText &&
+    (a.subagentStreamingText ?? "") === (b.subagentStreamingText ?? "") &&
     Boolean(a.isStreaming) === Boolean(b.isStreaming) &&
     (a.pendingUserMessageId ?? null) === (b.pendingUserMessageId ?? null)
   );
@@ -454,6 +457,10 @@ export const TurnItem = memo(function TurnItem({
             <SelfModUndoButton selfModApplied={turn.selfModApplied} />
           )}
         </div>
+      )}
+
+      {streaming?.subagentStreamingText && (
+        <SubagentTicker text={streaming.subagentStreamingText} />
       )}
     </div>
   );

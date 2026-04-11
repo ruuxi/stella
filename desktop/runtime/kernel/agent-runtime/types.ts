@@ -33,6 +33,7 @@ export type RuntimeStreamEvent = {
   seq: number;
   chunk: string;
   userMessageId: string;
+  kind?: "text" | "reasoning";
 };
 
 export type RuntimeRunStartedEvent = {

@@ -14,6 +14,7 @@ export type ChatColumnConversation = {
   streaming: {
     text: string
     reasoningText: string
+    subagentStreamingText?: string
     isStreaming: boolean
     runtimeStatusText?: string | null
     pendingUserMessageId: string | null

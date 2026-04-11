@@ -211,6 +211,7 @@ export const ChatColumn = memo(function ChatColumn({
               events={conversation.events}
               streamingText={conversation.streaming.text}
               reasoningText={conversation.streaming.reasoningText}
+              subagentStreamingText={conversation.streaming.subagentStreamingText}
               isStreaming={conversation.streaming.isStreaming}
               pendingUserMessageId={conversation.streaming.pendingUserMessageId}
               selfModMap={conversation.streaming.selfModMap}

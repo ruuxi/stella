@@ -321,6 +321,30 @@
   }
 }
 
+/* Subagent ticker — news-headline banner pinned to bottom of the active turn */
+.subagent-ticker {
+  position: sticky;
+  bottom: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-inset) 15%, transparent);
+  font-size: 13px;
+  color: var(--text-weak);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, black 40px, black 100%);
+  mask-image: linear-gradient(to right, transparent 0, black 40px, black 100%);
+  pointer-events: none;
+  z-index: 5;
+  animation: stream-fade-in 0.3s ease-out both;
+}
+
+.subagent-ticker__text {
+  display: inline-block;
+  transition: transform 60ms linear;
+  will-change: transform;
+}
+
 /* Assistant working container - Aura-style card */
 .assistant-working {
   width: 100%;
