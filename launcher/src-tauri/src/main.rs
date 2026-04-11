@@ -134,10 +134,7 @@ fn main() {
                 .on_menu_event(move |app, event| {
                     match event.id().as_ref() {
                         "open" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
+                            commands::show_main_window(app);
                         }
                         "quit" => {
                             app.exit(0);
@@ -156,6 +153,7 @@ fn main() {
             commands::set_run_after_install,
             commands::start_install,
             commands::launch_desktop,
+            commands::show_launcher_window,
             commands::stop_desktop,
             commands::is_desktop_running,
             commands::open_install_location,

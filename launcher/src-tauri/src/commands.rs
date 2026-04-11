@@ -3,7 +3,7 @@ use crate::state::*;
 use serde::Serialize;
 use std::path::Path;
 use std::process::{Command as StdCommand, Stdio};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -84,6 +84,20 @@ fn spawn_detached(info: &LaunchInfo) -> bool {
     }
 
     cmd.spawn().is_ok()
+}
+
+pub fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn hide_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
 }
 
 #[derive(Serialize)]
@@ -213,7 +227,10 @@ pub async fn start_install(
 }
 
 #[tauri::command]
-pub async fn launch_desktop(state: State<'_, AppState>) -> Result<OkResult, String> {
+pub async fn launch_desktop(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<OkResult, String> {
     let installer = state.installer.lock().await;
 
     if is_desktop_alive(&installer.install_path) {
@@ -221,10 +238,20 @@ pub async fn launch_desktop(state: State<'_, AppState>) -> Result<OkResult, Stri
     }
 
     if let Some(info) = setup::get_launch_info(&installer).await {
-        Ok(OkResult { ok: spawn_detached(&info) })
+        let ok = spawn_detached(&info);
+        if ok {
+            hide_main_window(&app);
+        }
+        Ok(OkResult { ok })
     } else {
         Ok(OkResult { ok: false })
     }
+}
+
+#[tauri::command]
+pub async fn show_launcher_window(app: AppHandle) -> Result<OkResult, String> {
+    show_main_window(&app);
+    Ok(OkResult { ok: true })
 }
 
 #[tauri::command]
