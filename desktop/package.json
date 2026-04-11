@@ -211,6 +211,17 @@
     }
   },
   "trustedDependencies": [
-    "mac-screen-capture-permissions"
+    "better-sqlite3",
+    "cloudflared",
+    "dugite",
+    "electron",
+    "electron-winstaller",
+    "esbuild",
+    "mac-screen-capture-permissions",
+    "msgpackr-extract",
+    "onnxruntime-node",
+    "protobufjs",
+    "sharp",
+    "uiohook-napi"
   ]
 }
