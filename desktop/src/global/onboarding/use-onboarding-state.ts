@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { DiscoveryCategory } from "@/shared/contracts/discovery";
 
 export const ONBOARDING_COMPLETE_KEY = "stella-onboarding-complete";
@@ -84,6 +84,17 @@ export function useOnboardingState() {
   const [completed, setCompleted] = useState(() => {
     return readOnboardingCompleted();
   });
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.storageArea !== localStorage) return;
+      if (event.key !== ONBOARDING_COMPLETE_KEY) return;
+      setCompleted(event.newValue === "true");
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   const complete = useCallback(() => {
     localStorage.setItem(ONBOARDING_COMPLETE_KEY, "true");
