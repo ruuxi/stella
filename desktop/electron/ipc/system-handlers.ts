@@ -52,15 +52,30 @@ import {
   type MacPermissionKind,
   type MacPermissionSettingsKind,
 } from "../utils/macos-permissions.js";
-import { createRequire } from "node:module";
 import { waitForConnectedRunner } from "./runtime-availability.js";
 
-const require = createRequire(import.meta.url);
+import { createRequire } from "node:module";
+
 type ScreenCapturePermissionsModule = {
   hasPromptedForPermission: () => boolean;
   openSystemPreferences: () => Promise<void>;
 };
-const screenCapturePermissions = require("mac-screen-capture-permissions") as ScreenCapturePermissionsModule;
+
+let _screenCapturePermissions: ScreenCapturePermissionsModule | null | undefined;
+const getScreenCapturePermissions =
+  (): ScreenCapturePermissionsModule | null => {
+    if (_screenCapturePermissions !== undefined)
+      return _screenCapturePermissions;
+    try {
+      const req = createRequire(import.meta.url);
+      _screenCapturePermissions = req(
+        "mac-screen-capture-permissions",
+      ) as ScreenCapturePermissionsModule;
+    } catch {
+      _screenCapturePermissions = null;
+    }
+    return _screenCapturePermissions;
+  };
 
 type SystemHandlersOptions = {
   getDeviceId: () => string | null;
@@ -898,8 +913,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       const result = await requestMacPermission(macKind);
       if (macKind === "screen" && !result.granted) {
         try {
-          if (screenCapturePermissions.hasPromptedForPermission()) {
-            await screenCapturePermissions.openSystemPreferences();
+          const scp = getScreenCapturePermissions();
+          if (scp?.hasPromptedForPermission()) {
+            await scp.openSystemPreferences();
           }
         } catch {
           // Best effort only; the renderer can still expose manual settings access.

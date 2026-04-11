@@ -2,13 +2,23 @@ import { createRequire } from 'node:module'
 import { systemPreferences } from 'electron'
 import { runNativeHelper } from '../native-helper.js'
 
-const require = createRequire(import.meta.url)
 type ScreenCapturePermissionsModule = {
   hasScreenCapturePermission: () => boolean
   hasPromptedForPermission: () => boolean
   openSystemPreferences: () => Promise<void>
 }
-const screenCapturePermissions = require('mac-screen-capture-permissions') as ScreenCapturePermissionsModule
+
+let _screenCapturePermissions: ScreenCapturePermissionsModule | null = null
+const getScreenCapturePermissions = (): ScreenCapturePermissionsModule | null => {
+  if (_screenCapturePermissions) return _screenCapturePermissions
+  try {
+    const require = createRequire(import.meta.url)
+    _screenCapturePermissions = require('mac-screen-capture-permissions') as ScreenCapturePermissionsModule
+  } catch {
+    // Native module not available; fall back to Electron APIs.
+  }
+  return _screenCapturePermissions
+}
 
 export type MacPermissionKind = 'accessibility' | 'screen'
 export type MacPermissionSettingsKind =
@@ -21,10 +31,15 @@ const permissionCache = new Map<MacPermissionKind, boolean>()
 const checkAccessibility = (prompt: boolean): boolean =>
   systemPreferences.isTrustedAccessibilityClient(prompt)
 
-const checkScreenRecording = (): boolean =>
-  process.platform === 'darwin'
-    ? screenCapturePermissions.hasScreenCapturePermission()
+const checkScreenRecording = (): boolean => {
+  if (process.platform !== 'darwin') {
+    return systemPreferences.getMediaAccessStatus('screen') === 'granted'
+  }
+  const mod = getScreenCapturePermissions()
+  return mod
+    ? mod.hasScreenCapturePermission()
     : systemPreferences.getMediaAccessStatus('screen') === 'granted'
+}
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
