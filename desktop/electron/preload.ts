@@ -26,6 +26,7 @@ import type {
 } from "../src/shared/contracts/onboarding.js";
 import type { DiscoveryKnowledgeSeedPayload } from "../src/shared/contracts/discovery.js";
 import {
+  IPC_APP_QUIT_FOR_RESTART,
   IPC_BACKUP_GET_STATUS,
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
@@ -587,6 +588,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setCloudSyncEnabled: (payload: { enabled: boolean }) =>
       ipcRenderer.invoke("host:setCloudSyncEnabled", payload),
     onAuthCallback: onIpc<{ url: string }>("auth:callback"),
+    quitForRestart: () =>
+      ipcRenderer.invoke(IPC_APP_QUIT_FOR_RESTART) as Promise<{ ok: boolean }>,
     openFullDiskAccess: () => ipcRenderer.send("system:openFullDiskAccess"),
     getPermissionStatus: () =>
       ipcRenderer.invoke("permissions:getStatus") as Promise<{

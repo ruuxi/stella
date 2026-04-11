@@ -28,6 +28,7 @@ import {
   type RadialTriggerCode,
 } from "../../src/shared/lib/radial-trigger.js";
 import {
+  IPC_APP_QUIT_FOR_RESTART,
   IPC_BACKUP_GET_STATUS,
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
@@ -174,6 +175,21 @@ const asSocialSessionStatus = (value: unknown): RuntimeSocialSessionStatus => {
 
 export const registerSystemHandlers = (options: SystemHandlersOptions) => {
   ipcMain.handle("device:getId", () => options.getDeviceId());
+
+  ipcMain.handle(IPC_APP_QUIT_FOR_RESTART, (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_APP_QUIT_FOR_RESTART,
+      )
+    ) {
+      throw new Error("Blocked untrusted app:quitForRestart request.");
+    }
+    setTimeout(() => {
+      app.quit();
+    }, 50);
+    return { ok: true };
+  });
 
   ipcMain.handle("phoneAccess:startSession", (event) => {
     if (

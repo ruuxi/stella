@@ -7,6 +7,8 @@ import waitOn from 'wait-on'
 import { shouldRestartElectronForBuildPath } from './dev-electron-restart-filter.mjs'
 
 const require = createRequire(import.meta.url)
+const DEV_MACOS_APP_NAME = 'Stella'
+const DEV_MACOS_BUNDLE_ID = 'com.stella.app'
 const projectDir = process.cwd()
 let electronBinary = require('electron')
 const watchedDir = path.join(projectDir, 'dist-electron')
@@ -63,18 +65,25 @@ const patchDevAppName = () => {
   const oldBundle = path.join(distDir, 'Electron.app')
   const newBundle = path.join(distDir, 'Stella.app')
   const pathTxtFile = path.resolve(distDir, '..', 'path.txt')
+  const hasOldBundle = existsSync(oldBundle)
+  const hasNewBundle = existsSync(newBundle)
 
-  if (!existsSync(oldBundle)) {
+  if (!hasOldBundle && !hasNewBundle) {
     return
   }
 
   try {
-    renameSync(oldBundle, newBundle)
+    if (hasOldBundle && !hasNewBundle) {
+      renameSync(oldBundle, newBundle)
+    }
     electronBinary = electronBinary.replace('Electron.app', 'Stella.app')
 
     if (existsSync(pathTxtFile)) {
       const pathTxt = readFileSync(pathTxtFile, 'utf8')
-      writeFileSync(pathTxtFile, pathTxt.replace('Electron.app', 'Stella.app'))
+      const nextPathTxt = pathTxt.replace('Electron.app', 'Stella.app')
+      if (nextPathTxt !== pathTxt) {
+        writeFileSync(pathTxtFile, nextPathTxt)
+      }
     }
 
     const infoPlist = path.join(newBundle, 'Contents', 'Info.plist')
@@ -82,19 +91,22 @@ const patchDevAppName = () => {
       let plist = readFileSync(infoPlist, 'utf8')
       let changed = false
 
-      const replaceName = (key) => {
+      const replaceStringValue = (key, nextValue) => {
         const pattern = new RegExp(
           `(<key>${key}</key>\\s*<string>)([^<]+)(<\\/string>)`,
         )
         const match = plist.match(pattern)
-        if (match && match[2] !== 'Stella') {
-          plist = plist.replace(pattern, `$1Stella$3`)
+        if (match && match[2] !== nextValue) {
+          plist = plist.replace(pattern, `$1${nextValue}$3`)
           changed = true
         }
       }
 
-      replaceName('CFBundleName')
-      replaceName('CFBundleDisplayName')
+      // Keep the dev Electron bundle identity aligned with Stella so macOS TCC
+      // permissions target the desktop app instead of the generic Electron app.
+      replaceStringValue('CFBundleName', DEV_MACOS_APP_NAME)
+      replaceStringValue('CFBundleDisplayName', DEV_MACOS_APP_NAME)
+      replaceStringValue('CFBundleIdentifier', DEV_MACOS_BUNDLE_ID)
 
       if (changed) {
         writeFileSync(infoPlist, plist)

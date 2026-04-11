@@ -75,17 +75,34 @@ export function OnboardingPermissions({
 
   /** Windows/Linux: main process cannot read mic TCC; set after successful getUserMedia. */
   const micSessionGrantedRef = useRef(false);
+  const lastStatusRef = useRef<PermissionStatus | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [restartRecommended, setRestartRecommended] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     const result = await window.electronAPI?.system.getPermissionStatus?.();
     if (result) {
-      setStatus({
+      const nextStatus = {
         accessibility: result.accessibility,
         screen: result.screen,
         microphone: result.microphone || micSessionGrantedRef.current,
-      });
+      };
+      const previousStatus = lastStatusRef.current;
+      if (
+        previousStatus &&
+        PERMISSION_CARDS.some(
+          (card) =>
+            card.requiresRelaunch
+            && !previousStatus[card.kind]
+            && nextStatus[card.kind],
+        )
+      ) {
+        setRestartRecommended(true);
+      }
+      lastStatusRef.current = nextStatus;
+      setStatus(nextStatus);
     }
   }, []);
 
@@ -135,6 +152,22 @@ export function OnboardingPermissions({
 
   const allMeasuredGranted =
     status.accessibility && status.screen && status.microphone;
+  const showRestartButton = restartRecommended
+    && PERMISSION_CARDS.some(
+      (card) => card.requiresRelaunch && status[card.kind],
+    );
+
+  const handleRestart = useCallback(async () => {
+    setIsRestarting(true);
+    try {
+      const result = await window.electronAPI?.system.quitForRestart?.();
+      if (!result?.ok) {
+        setIsRestarting(false);
+      }
+    } catch {
+      setIsRestarting(false);
+    }
+  }, []);
 
   return (
     <div className="onboarding-step-content">
@@ -194,10 +227,27 @@ export function OnboardingPermissions({
         })}
       </div>
 
+      {showRestartButton ? (
+        <div className="onboarding-permissions-restart">
+          <span className="onboarding-permission-card__meta">
+            macOS needs Stella to close before this permission takes effect.
+            After it closes, reopen Stella from the launcher.
+          </span>
+          <button
+            className="onboarding-confirm"
+            data-visible={true}
+            disabled={isRestarting}
+            onClick={() => void handleRestart()}
+          >
+            {isRestarting ? "Closing..." : "Restart"}
+          </button>
+        </div>
+      ) : null}
+
       <button
         className="onboarding-confirm"
         data-visible={true}
-        disabled={splitTransitionActive}
+        disabled={splitTransitionActive || isRestarting}
         onClick={onContinue}
       >
         {allMeasuredGranted ? "Continue" : "Skip for now"}

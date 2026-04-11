@@ -466,6 +466,7 @@ export type ElectronSystemApi = {
     enabled: boolean;
   }) => Promise<{ ok: boolean }>;
   onAuthCallback: (callback: (data: { url: string }) => void) => () => void;
+  quitForRestart: () => Promise<{ ok: boolean }>;
   openFullDiskAccess: () => void;
   getPermissionStatus: () => Promise<{
     accessibility: boolean;
