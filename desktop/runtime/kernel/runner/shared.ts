@@ -90,7 +90,16 @@ export const buildTaskEventPrompt = (
     lines.push(`error: ${event.error}`);
   }
 
-  return lines.join("\n");
+  return [
+    "<system_reminder>",
+    "This task lifecycle update is hidden from the user.",
+    "Do not narrate background coordination or ask follow-up questions in chat text.",
+    "If more background work is needed, use task tools and then call NoResponse.",
+    "Only send a normal assistant reply when you are ready to say something to the user.",
+    "</system_reminder>",
+    "",
+    ...lines,
+  ].join("\n");
 };
 
 export const createSelfModHmrState = (

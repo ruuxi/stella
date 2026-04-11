@@ -71,6 +71,10 @@ type WorkerInitializationState = {
 };
 
 const logger = createRuntimeLogger("worker.server");
+const HIDDEN_ORCHESTRATOR_USER_MESSAGE_PREFIX = "system:";
+
+const isHiddenOrchestratorUserMessageId = (value: string | undefined): boolean =>
+  typeof value === "string" && value.startsWith(HIDDEN_ORCHESTRATOR_USER_MESSAGE_PREFIX);
 
 type RuntimeRunner = ReturnType<typeof createStellaHostRunner>;
 
@@ -579,6 +583,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     const userMessageId = userMessageEvent._id;
     let activeRunId = "";
     let syntheticSeq = 1;
+    const hiddenSystemRunIds = new Set<string>();
     const mergedAttachments = [
       ...(payload.attachments ?? []),
       ...(windowScreenshotAttachment ? [windowScreenshotAttachment] : []),
@@ -606,6 +611,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     }, {
       onRunStarted: (ev) => {
         activeRunId = ev.runId;
+        if (isHiddenOrchestratorUserMessageId(ev.userMessageId)) {
+          hiddenSystemRunIds.add(ev.runId);
+        }
         emitRunEvent({
           ...ev,
           type: AGENT_STREAM_EVENT_TYPES.RUN_STARTED,
@@ -638,21 +646,29 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         });
         peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
       },
-      onStream: (ev) =>
+      onStream: (ev) => {
         emitRunEvent({
           ...ev,
           type: AGENT_STREAM_EVENT_TYPES.STREAM,
           conversationId: payload.conversationId,
           ...(requestId ? { requestId } : {}),
-        }),
-      onStatus: (ev) =>
+        });
+      },
+      onStatus: (ev) => {
+        if (hiddenSystemRunIds.has(ev.runId)) {
+          return;
+        }
         emitRunEvent({
           ...ev,
           type: AGENT_STREAM_EVENT_TYPES.STATUS,
           conversationId: payload.conversationId,
           ...(requestId ? { requestId } : {}),
-        }),
+        });
+      },
       onToolStart: (ev) => {
+        if (hiddenSystemRunIds.has(ev.runId)) {
+          return;
+        }
         ensureChatStore().appendEvent({
           conversationId: payload.conversationId,
           type: "tool_request",
@@ -672,6 +688,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         });
       },
       onToolEnd: (ev) => {
+        if (hiddenSystemRunIds.has(ev.runId)) {
+          return;
+        }
         const details =
           ev.details && typeof ev.details === "object"
             ? (ev.details as Record<string, unknown>)
@@ -696,7 +715,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           ...(requestId ? { requestId } : {}),
         });
       },
-      onError: (ev) =>
+      onError: (ev) => {
+        hiddenSystemRunIds.delete(ev.runId);
         emitRunEvent({
           ...ev,
           type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
@@ -705,7 +725,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           conversationId: payload.conversationId,
           ...(requestId ? { requestId } : {}),
           ...(ev.runId ? { rootRunId: ev.runId } : {}),
-        }),
+        });
+      },
       onTaskEvent: (ev) => {
         if (!ev.rootRunId) {
           logger.warn("task-event-missing-root-run-id", {
@@ -743,22 +764,26 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         }
       },
       onEnd: (ev) => {
+        hiddenSystemRunIds.delete(ev.runId);
+        const finalText = typeof ev.finalText === "string" ? ev.finalText : "";
         if ((ev.agentType ?? AGENT_IDS.ORCHESTRATOR) === AGENT_IDS.ORCHESTRATOR) {
-          ensureChatStore().appendEvent({
-            conversationId: payload.conversationId,
-            type: "assistant_message",
-            requestId: ev.userMessageId,
-            payload: prepareStoredLocalChatPayload({
+          if (finalText.trim().length > 0) {
+            ensureChatStore().appendEvent({
+              conversationId: payload.conversationId,
               type: "assistant_message",
-              payload: {
-                text: ev.finalText,
-                userMessageId: ev.userMessageId,
-              },
-              timestamp: Date.now(),
-              timezone: payload.timezone,
-            }),
-          });
-          peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+              requestId: ev.userMessageId,
+              payload: prepareStoredLocalChatPayload({
+                type: "assistant_message",
+                payload: {
+                  text: finalText,
+                  userMessageId: ev.userMessageId,
+                },
+                timestamp: Date.now(),
+                timezone: payload.timezone,
+              }),
+            });
+            peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+          }
         }
         emitRunEvent({
           ...ev,
@@ -770,6 +795,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         });
       },
       onInterrupted: (ev) => {
+        hiddenSystemRunIds.delete(ev.runId);
         emitRunEvent({
           type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
           runId: ev.runId,
