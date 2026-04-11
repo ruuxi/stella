@@ -66,7 +66,7 @@ export const createRunEventRecorder = ({
       });
     },
 
-    recordStream(chunk: string): RuntimeStreamEvent {
+    recordStream(chunk: string, kind?: "text" | "reasoning"): RuntimeStreamEvent {
       const seq = nextSeq();
       store.recordRunEvent({
         timestamp: now(),
@@ -83,6 +83,7 @@ export const createRunEventRecorder = ({
         seq,
         chunk,
         userMessageId,
+        ...(kind ? { kind } : {}),
       };
     },
 
@@ -253,6 +254,19 @@ export const subscribeRuntimeAgentEvents = ({
       }
       const streamEvent = recorder.recordStream(chunk);
       onProgress?.(chunk);
+      callbacks?.onStream?.(streamEvent);
+      return;
+    }
+
+    if (
+      event.type === "message_update" &&
+      event.assistantMessageEvent.type === "thinking_delta"
+    ) {
+      const chunk = event.assistantMessageEvent.delta;
+      if (!chunk) {
+        return;
+      }
+      const streamEvent = recorder.recordStream(chunk, "reasoning");
       callbacks?.onStream?.(streamEvent);
       return;
     }

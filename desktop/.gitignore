@@ -66,6 +66,7 @@ state/
 # Personal life data (user-specific, never commit)
 life/knowledge/index.md
 life/knowledge/user-profile/
+life/notes/
 life/raw/discovery/
 
 SECURITY-REVIEW.md

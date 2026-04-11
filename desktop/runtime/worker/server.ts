@@ -82,6 +82,7 @@ type AgentEventPayload = {
   requestId?: string;
   userMessageId?: string;
   chunk?: string;
+  kind?: "text" | "reasoning";
   statusState?: "running" | "compacting";
   toolCallId?: string;
   toolName?: string;

@@ -25,6 +25,7 @@ export type AgentStreamEvent = {
   userMessageId?: string;
   rootRunId?: string;
   chunk?: string;
+  kind?: "text" | "reasoning";
   statusState?: "running" | "compacting";
   toolCallId?: string;
   toolName?: string;
