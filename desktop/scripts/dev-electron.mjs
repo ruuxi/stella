@@ -1,5 +1,15 @@
-import { spawn, execSync } from 'node:child_process'
-import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, watch } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  watch,
+} from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
@@ -9,10 +19,16 @@ import { shouldRestartElectronForBuildPath } from './dev-electron-restart-filter
 const require = createRequire(import.meta.url)
 const DEV_MACOS_APP_NAME = 'Stella'
 const DEV_MACOS_BUNDLE_ID = 'com.stella.app'
+const DEV_MACOS_RUNTIME_DIR_NAME = '.stella-dev-runtime'
+const DEV_MACOS_RUNTIME_APP_NAME = 'Stella.app'
+const DEV_MACOS_RUNTIME_FORMAT_VERSION = 2
 const projectDir = process.cwd()
 let electronBinary = require('electron')
 const watchedDir = path.join(projectDir, 'dist-electron')
 const runtimeReloadStateFile = path.join(projectDir, '.stella-runtime-reload-state.json')
+const devRuntimeRoot = path.join(projectDir, DEV_MACOS_RUNTIME_DIR_NAME)
+const devRuntimeAppBundle = path.join(devRuntimeRoot, DEV_MACOS_RUNTIME_APP_NAME)
+const devRuntimeManifestPath = path.join(devRuntimeRoot, 'manifest.json')
 const requiredFiles = [
   path.join(projectDir, '.vite-dev-url'),
   path.join(watchedDir, 'electron', 'main.js'),
@@ -35,130 +51,205 @@ let rootWatcher = null
 let pendingRestartWhilePaused = false
 const expectedExits = new WeakSet()
 
-const patchDevIcon = () => {
-  const appIcon = path.join(projectDir, 'build', 'icon.icns')
-  const appBundle = path.join(path.dirname(electronBinary), '..')
-  const electronIcon = path.join(appBundle, 'Resources', 'electron.icns')
-  const infoPlist = path.join(appBundle, 'Info.plist')
-  if (!existsSync(appIcon) || !existsSync(electronIcon)) {
-    return
+const getAppBundlePath = (binaryPath) =>
+  path.resolve(path.dirname(binaryPath), '..', '..')
+
+const getAppExecutablePath = (appBundlePath) =>
+  path.join(appBundlePath, 'Contents', 'MacOS', 'Electron')
+
+const readHash = (filePath) => {
+  if (!existsSync(filePath)) {
+    return null
+  }
+  return createHash('md5').update(readFileSync(filePath)).digest('hex')
+}
+
+const readManifest = () => {
+  if (!existsSync(devRuntimeManifestPath)) {
+    return null
+  }
+  try {
+    return JSON.parse(readFileSync(devRuntimeManifestPath, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+const sourceAppBundlePath = getAppBundlePath(electronBinary)
+
+const buildRuntimeManifest = () => {
+  let electronVersion = 'unknown'
+  try {
+    electronVersion = require('electron/package.json').version
+  } catch {
+    // Ignore; the source executable timestamp still gives us a sync signal.
   }
 
-  const srcHash = createHash('md5').update(readFileSync(appIcon)).digest('hex')
-  const dstHash = createHash('md5').update(readFileSync(electronIcon)).digest('hex')
+  const sourceExecutable = getAppExecutablePath(sourceAppBundlePath)
+  const sourceExecutableMtimeMs = existsSync(sourceExecutable)
+    ? Math.round(statSync(sourceExecutable).mtimeMs)
+    : 0
+
+  return {
+    runtimeFormatVersion: DEV_MACOS_RUNTIME_FORMAT_VERSION,
+    electronVersion,
+    sourceAppBundlePath,
+    sourceExecutableMtimeMs,
+    appName: DEV_MACOS_APP_NAME,
+    bundleId: DEV_MACOS_BUNDLE_ID,
+    iconHash: readHash(path.join(projectDir, 'build', 'icon.icns')),
+  }
+}
+
+const upsertPlistString = (plist, key, nextValue) => {
+  const pattern = new RegExp(
+    `(<key>${key}</key>\\s*<string>)([^<]*)(<\\/string>)`,
+  )
+  const match = plist.match(pattern)
+  if (match) {
+    if (match[2] === nextValue) {
+      return { plist, changed: false }
+    }
+    return {
+      plist: plist.replace(pattern, `$1${nextValue}$3`),
+      changed: true,
+    }
+  }
+
+  const marker = '</dict>'
+  const insertion =
+    `\t<key>${key}</key>\n` +
+    `\t<string>${nextValue}</string>\n`
+  if (!plist.includes(marker)) {
+    return { plist, changed: false }
+  }
+  return {
+    plist: plist.replace(marker, `${insertion}${marker}`),
+    changed: true,
+  }
+}
+
+const patchRuntimeIcon = (appBundlePath) => {
+  const appIcon = path.join(projectDir, 'build', 'icon.icns')
+  const appBundle = path.join(appBundlePath, 'Contents')
+  const electronIcon = path.join(appBundle, 'Resources', 'electron.icns')
+  if (!existsSync(appIcon) || !existsSync(electronIcon)) {
+    return false
+  }
+
+  const srcHash = readHash(appIcon)
+  const dstHash = readHash(electronIcon)
   if (srcHash === dstHash) {
-    return
+    return false
   }
 
   try {
     copyFileSync(appIcon, electronIcon)
-    if (existsSync(infoPlist)) {
-      execSync(`touch "${path.join(appBundle, '..')}"`, { stdio: 'ignore' })
-    }
+    return true
   } catch {
-    // Best-effort; may fail if node_modules is read-only.
+    // Best-effort; may fail if the copied bundle is temporarily locked.
+    return false
   }
 }
 
-const patchDevAppName = () => {
-  const distDir = path.resolve(path.dirname(electronBinary), '..', '..', '..')
-  const oldBundle = path.join(distDir, 'Electron.app')
-  const newBundle = path.join(distDir, 'Stella.app')
-  const pathTxtFile = path.resolve(distDir, '..', 'path.txt')
-  const hasOldBundle = existsSync(oldBundle)
-  const hasNewBundle = existsSync(newBundle)
-
-  if (!hasOldBundle && !hasNewBundle) {
-    return
+const patchRuntimeInfoPlist = (appBundlePath) => {
+  const infoPlist = path.join(appBundlePath, 'Contents', 'Info.plist')
+  if (!existsSync(infoPlist)) {
+    return false
   }
 
+  let plist = readFileSync(infoPlist, 'utf8')
+  let changed = false
+
+  for (const [key, value] of [
+    ['CFBundleName', DEV_MACOS_APP_NAME],
+    ['CFBundleDisplayName', DEV_MACOS_APP_NAME],
+    ['CFBundleIdentifier', DEV_MACOS_BUNDLE_ID],
+    ['NSMicrophoneUsageDescription', MIC_USAGE_DESCRIPTION],
+  ]) {
+    const result = upsertPlistString(plist, key, value)
+    plist = result.plist
+    changed ||= result.changed
+  }
+
+  if (!changed) {
+    return false
+  }
   try {
-    if (hasOldBundle && !hasNewBundle) {
-      renameSync(oldBundle, newBundle)
-    }
-    electronBinary = electronBinary.replace('Electron.app', 'Stella.app')
-
-    if (existsSync(pathTxtFile)) {
-      const pathTxt = readFileSync(pathTxtFile, 'utf8')
-      const nextPathTxt = pathTxt.replace('Electron.app', 'Stella.app')
-      if (nextPathTxt !== pathTxt) {
-        writeFileSync(pathTxtFile, nextPathTxt)
-      }
-    }
-
-    const infoPlist = path.join(newBundle, 'Contents', 'Info.plist')
-    if (existsSync(infoPlist)) {
-      let plist = readFileSync(infoPlist, 'utf8')
-      let changed = false
-
-      const replaceStringValue = (key, nextValue) => {
-        const pattern = new RegExp(
-          `(<key>${key}</key>\\s*<string>)([^<]+)(<\\/string>)`,
-        )
-        const match = plist.match(pattern)
-        if (match && match[2] !== nextValue) {
-          plist = plist.replace(pattern, `$1${nextValue}$3`)
-          changed = true
-        }
-      }
-
-      // Keep the dev Electron bundle identity aligned with Stella so macOS TCC
-      // permissions target the desktop app instead of the generic Electron app.
-      replaceStringValue('CFBundleName', DEV_MACOS_APP_NAME)
-      replaceStringValue('CFBundleDisplayName', DEV_MACOS_APP_NAME)
-      replaceStringValue('CFBundleIdentifier', DEV_MACOS_BUNDLE_ID)
-
-      if (changed) {
-        writeFileSync(infoPlist, plist)
-      }
-    }
-
-    execSync(`touch "${distDir}"`, { stdio: 'ignore' })
+    writeFileSync(infoPlist, plist)
+    return true
   } catch {
-    // Best-effort; may fail if node_modules is read-only.
+    // Best-effort; may fail if the copied bundle is temporarily locked.
+    return false
   }
 }
 
 /**
  * Packaged apps get NSMicrophoneUsageDescription from electron-builder extendInfo.
- * The stock Electron.app in node_modules does not, so macOS never shows the mic
- * prompt for getUserMedia in dev — inject the same string we ship in production.
+ * The copied dev app needs the same key so macOS can prompt for getUserMedia.
  */
 const MIC_USAGE_DESCRIPTION =
   'Stella uses your microphone for voice conversations and wake-word listening.'
 
-const patchDevMicrophoneUsageDescription = () => {
-  if (process.platform !== 'darwin') {
-    return
-  }
-
-  const contentsDir = path.resolve(path.dirname(electronBinary), '..')
-  const infoPlist = path.join(contentsDir, 'Info.plist')
-  if (!existsSync(infoPlist)) {
-    return
-  }
-
+const signRuntimeAppBundle = (appBundlePath) => {
   try {
-    execSync(
-      `plutil -replace NSMicrophoneUsageDescription -string ${JSON.stringify(MIC_USAGE_DESCRIPTION)} "${infoPlist}"`,
+    execFileSync(
+      'codesign',
+      ['--force', '--deep', '--sign', '-', '--timestamp=none', appBundlePath],
       { stdio: 'ignore' },
     )
+    return true
   } catch {
-    try {
-      execSync(
-        `plutil -insert NSMicrophoneUsageDescription -string ${JSON.stringify(MIC_USAGE_DESCRIPTION)} "${infoPlist}"`,
-        { stdio: 'ignore' },
-      )
-    } catch {
-      // Best-effort; read-only node_modules or unexpected plist shape.
-    }
+    return false
+  }
+}
+
+const verifyRuntimeAppBundle = (appBundlePath) => {
+  try {
+    execFileSync(
+      'codesign',
+      ['--verify', '--deep', '--strict', appBundlePath],
+      { stdio: 'ignore' },
+    )
+    return true
+  } catch {
+    return false
   }
 }
 
 if (process.platform === 'darwin') {
-  patchDevIcon()
-  patchDevAppName()
-  patchDevMicrophoneUsageDescription()
+  const expectedManifest = buildRuntimeManifest()
+  const currentManifest = readManifest()
+  const manifestMatches =
+    currentManifest
+    && JSON.stringify(currentManifest) === JSON.stringify(expectedManifest)
+
+  let didCopy = false
+  if (!existsSync(devRuntimeAppBundle) || !manifestMatches) {
+    rmSync(devRuntimeAppBundle, { recursive: true, force: true })
+    mkdirSync(devRuntimeRoot, { recursive: true })
+    cpSync(sourceAppBundlePath, devRuntimeAppBundle, {
+      recursive: true,
+      verbatimSymlinks: true,
+    })
+    didCopy = true
+  }
+
+  const didPatchIcon = patchRuntimeIcon(devRuntimeAppBundle)
+  const didPatchPlist = patchRuntimeInfoPlist(devRuntimeAppBundle)
+  const didPatch = didPatchIcon || didPatchPlist
+  const needsSigning = didCopy || didPatch || !verifyRuntimeAppBundle(devRuntimeAppBundle)
+
+  if (needsSigning && !signRuntimeAppBundle(devRuntimeAppBundle)) {
+    console.warn('[electron-main] Failed to ad-hoc sign stable dev Stella.app; macOS permissions may not persist across restarts.')
+  }
+
+  writeFileSync(
+    devRuntimeManifestPath,
+    `${JSON.stringify(expectedManifest, null, 2)}\n`,
+    'utf8',
+  )
+  electronBinary = getAppExecutablePath(devRuntimeAppBundle)
 }
 
 const logError = (message) => {
