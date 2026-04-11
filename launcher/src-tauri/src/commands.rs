@@ -115,6 +115,10 @@ pub async fn browse_install_location(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<InstallerState, String> {
+    if state.context.dev_mode {
+        let installer = state.installer.lock().await;
+        return Ok(installer.clone());
+    }
     use tauri_plugin_dialog::DialogExt;
 
     let current_path = {
@@ -152,6 +156,14 @@ pub async fn set_install_location(
     path: String,
 ) -> Result<InstallerState, String> {
     let mut installer = state.installer.lock().await;
+    if state.context.dev_mode {
+        setup::check_all(&mut installer, &state.context, &app).await;
+        let _ = app.emit(
+            "installer-state-update",
+            serde_json::json!({ "state": &*installer }),
+        );
+        return Ok(installer.clone());
+    }
     setup::set_install_path(&mut installer, &state.context, &path).await;
     setup::check_all(&mut installer, &state.context, &app).await;
 
@@ -183,6 +195,10 @@ pub async fn start_install(
     app: AppHandle,
 ) -> Result<OkResult, String> {
     let mut installer = state.installer.lock().await;
+    if state.context.dev_mode {
+        setup::check_all(&mut installer, &state.context, &app).await;
+        return Ok(OkResult { ok: false });
+    }
     let result = setup::install_all(&mut installer, &state.context, &app).await;
 
     if result.is_ok() && installer.run_after_install && installer.can_launch {
@@ -241,6 +257,9 @@ pub async fn uninstall_stella(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<OkResult, String> {
+    if state.context.dev_mode {
+        return Ok(OkResult { ok: false });
+    }
     let mut installer = state.installer.lock().await;
     let result = setup::uninstall(&mut installer).await;
 

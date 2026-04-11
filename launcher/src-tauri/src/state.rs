@@ -69,6 +69,8 @@ pub struct InstallerState {
     pub warning_message: Option<String>,
     pub install_path: String,
     pub default_install_path: String,
+    pub dev_mode: bool,
+    pub install_path_locked: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub install_path_error: Option<String>,
     pub run_after_install: bool,
@@ -84,6 +86,7 @@ pub struct InstallerContext {
     pub default_install_path: String,
     pub settings_file_path: PathBuf,
     pub required_bytes: u64,
+    pub dev_mode: bool,
 }
 
 // ── Settings persistence ────────────────────────────────────────────

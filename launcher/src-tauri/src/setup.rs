@@ -958,14 +958,26 @@ async fn check_step(id: &SetupStepId, state: &InstallerState) -> bool {
         SetupStepId::Payload => {
             path_exists(&package_json_of(dir)).await && path_exists(&node_modules_of(dir)).await
         }
-        SetupStepId::Prepare => match read_emote_install_state(dir).await {
-            Some(install_state) if install_state.status == EMOTE_INSTALL_STATUS_INSTALLED => {
-                path_exists(&emotes_manifest_of(dir)).await
+        SetupStepId::Prepare => {
+            if state.dev_mode {
+                true
+            } else {
+                match read_emote_install_state(dir).await {
+                    Some(install_state) if install_state.status == EMOTE_INSTALL_STATUS_INSTALLED => {
+                        path_exists(&emotes_manifest_of(dir)).await
+                    }
+                    Some(install_state) if install_state.status == EMOTE_INSTALL_STATUS_SKIPPED => true,
+                    _ => false,
+                }
             }
-            Some(install_state) if install_state.status == EMOTE_INSTALL_STATUS_SKIPPED => true,
-            _ => false,
-        },
-        SetupStepId::Finalize => path_exists(&manifest_of(dir)).await,
+        }
+        SetupStepId::Finalize => {
+            if state.dev_mode {
+                true
+            } else {
+                path_exists(&manifest_of(dir)).await
+            }
+        }
         _ => true,
     }
 }
@@ -1086,7 +1098,12 @@ async fn refresh_derived(state: &mut InstallerState, ctx: &InstallerContext) {
 
     let has_manifest = path_exists(&manifest_of(&state.install_path)).await;
     let has_pkg = path_exists(&package_json_of(&state.install_path)).await;
-    state.can_launch = has_manifest && has_pkg;
+    let has_node_modules = path_exists(&node_modules_of(&state.install_path)).await;
+    state.can_launch = if state.dev_mode {
+        has_pkg && has_node_modules
+    } else {
+        has_manifest && has_pkg
+    };
     state.warning_message = read_emote_install_state(&state.install_path)
         .await
         .and_then(|install_state| {
@@ -1118,22 +1135,28 @@ async fn emit_state_full(state: &mut InstallerState, ctx: &InstallerContext, app
 pub fn create_context(
     default_install_path: String,
     settings_file_path: PathBuf,
+    dev_mode: bool,
 ) -> InstallerContext {
     InstallerContext {
         default_install_path,
         settings_file_path,
         required_bytes: ESTIMATED_INSTALL_BYTES,
+        dev_mode,
     }
 }
 
 pub async fn create_initial_state(ctx: &InstallerContext) -> InstallerState {
     let settings = read_settings(ctx).await;
-    let install_path = norm(
-        settings
-            .install_path
-            .as_deref()
-            .unwrap_or(&ctx.default_install_path),
-    );
+    let install_path = if ctx.dev_mode {
+        norm(&ctx.default_install_path)
+    } else {
+        norm(
+            settings
+                .install_path
+                .as_deref()
+                .unwrap_or(&ctx.default_install_path),
+        )
+    };
 
     let mut state = InstallerState {
         steps: vec![],
@@ -1142,6 +1165,8 @@ pub async fn create_initial_state(ctx: &InstallerContext) -> InstallerState {
         warning_message: None,
         install_path,
         default_install_path: ctx.default_install_path.clone(),
+        dev_mode: ctx.dev_mode,
+        install_path_locked: ctx.dev_mode,
         install_path_error: None,
         run_after_install: settings.run_after_install.unwrap_or(true),
         can_launch: false,
@@ -1164,6 +1189,12 @@ pub async fn set_install_path(
     ctx: &InstallerContext,
     install_path: &str,
 ) {
+    if ctx.dev_mode {
+        state.install_path = norm(&ctx.default_install_path);
+        state.error_message = None;
+        state.warning_message = None;
+        return;
+    }
     state.install_path = norm(install_path);
     state.error_message = None;
     state.warning_message = None;
@@ -1175,6 +1206,10 @@ pub async fn set_run_after_install(
     ctx: &InstallerContext,
     value: bool,
 ) {
+    if ctx.dev_mode {
+        state.run_after_install = true;
+        return;
+    }
     state.run_after_install = value;
     write_settings(ctx, state).await;
 }

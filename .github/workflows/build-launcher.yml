@@ -70,14 +70,14 @@ jobs:
       - name: Rename macOS DMG
         if: matrix.os == 'macos-latest'
         shell: bash
-        run: cp launcher/src-tauri/target/release/bundle/dmg/*.dmg StellaSetup-darwin-arm64.dmg
+        run: cp launcher/src-tauri/target/release/bundle/dmg/*.dmg Stella-darwin-arm64.dmg
 
       - name: Upload macOS artifact
         if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: stella-launcher-${{ matrix.platform }}
-          path: StellaSetup-darwin-arm64.dmg
+          path: Stella-darwin-arm64.dmg
           retention-days: 30
 
       # ── Windows: upload raw binary ──
@@ -86,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: stella-launcher-${{ matrix.platform }}
-          path: launcher/src-tauri/target/release/StellaSetup.exe
+          path: launcher/src-tauri/target/release/Stella.exe
           retention-days: 30
 
       # ── macOS: cleanup keychain ──

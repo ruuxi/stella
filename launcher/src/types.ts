@@ -37,6 +37,8 @@ export type InstallerState = {
   warningMessage?: string;
   installPath: string;
   defaultInstallPath: string;
+  devMode: boolean;
+  installPathLocked: boolean;
   installPathError?: string;
   runAfterInstall: boolean;
   canLaunch: boolean;

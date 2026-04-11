@@ -15,6 +15,7 @@
         "title": "Stella",
         "width": 420,
         "height": 520,
+        "skipTaskbar": true,
         "resizable": false,
         "decorations": false,
         "transparent": true,
