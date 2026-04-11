@@ -1,7 +1,8 @@
 ---
-name: Blueprint Management
+
+## name: Blueprint Management
+
 description: Create shareable blueprints from features. Read when packaging, exporting, or publishing a feature reference.
----
 
 # Blueprint Management
 
@@ -11,8 +12,8 @@ Use this entry when the user wants to package, export, publish, or share a featu
 
 1. Ensure the feature is committed in Git with a stable `[feature:<id>]` tag.
 2. Prepare:
-   - `description`: a clear user-facing summary of what the feature does
-   - `implementation`: a developer-facing explanation of how it was built
+  - `description`: a clear user-facing summary of what the feature does
+  - `implementation`: a developer-facing explanation of how it was built
 3. Use Stella's built-in export and share flow to publish the feature reference.
 
 ## Safety

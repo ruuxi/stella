@@ -1,7 +1,8 @@
 ---
-name: Managed Media SDK
+
+## name: Managed Media SDK
+
 description: Fetch the live managed media API docs before wiring Stella media generation or media analysis features.
----
 
 # Managed Media SDK
 
@@ -39,3 +40,4 @@ curl -L "https://host/api/media/v1/docs"
 
 - [Life Registry](../registry.md)
 - [Abilities Index](index.md)
+
