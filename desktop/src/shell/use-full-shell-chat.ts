@@ -78,7 +78,6 @@ export function useFullShellChat({
     runtimeStatusText,
     streamingText,
     reasoningText,
-    subagentStreamingText,
     isStreaming,
     pendingUserMessageId,
     selfModMap,
@@ -261,7 +260,6 @@ export function useFullShellChat({
       streaming: {
         text: streamingText,
         reasoningText,
-        subagentStreamingText,
         isStreaming,
         runtimeStatusText,
         pendingUserMessageId,
@@ -278,7 +276,6 @@ export function useFullShellChat({
       events,
       streamingText,
       reasoningText,
-      subagentStreamingText,
       isStreaming,
       runtimeStatusText,
       pendingUserMessageId,
