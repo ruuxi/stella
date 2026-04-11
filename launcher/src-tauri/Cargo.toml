@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [[bin]]
-name = "StellaSetup"
+name = "Stella"
 path = "src/main.rs"
 
 [dependencies]

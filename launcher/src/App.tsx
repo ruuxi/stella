@@ -3,12 +3,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { InstallerState, SetupStep } from "./types";
 import stellaLogo from "./stella-logo.svg";
 
@@ -32,7 +30,6 @@ function App() {
   const [installPathDraft, setInstallPathDraft] = useState("");
   const [locationBusy, setLocationBusy] = useState(false);
   const [desktopRunning, setDesktopRunning] = useState(false);
-  const pendingAutoClose = useRef(false);
 
   const applyState = useCallback((nextState: InstallerState) => {
     startTransition(() => setState(nextState));
@@ -65,14 +62,6 @@ function App() {
     const id = setInterval(poll, 1000);
     return () => clearInterval(id);
   }, [state?.phase]);
-
-  // Auto-close launcher when desktop is confirmed running after install
-  useEffect(() => {
-    if (desktopRunning && pendingAutoClose.current) {
-      pendingAutoClose.current = false;
-      getCurrentWindow().close();
-    }
-  }, [desktopRunning]);
 
   const commitInstallPath = useCallback(async () => {
     if (!state) return;
@@ -116,15 +105,11 @@ function App() {
 
   const handleInstall = useCallback(async () => {
     await commitInstallPath();
-    pendingAutoClose.current = true;
     await invoke("start_install");
   }, [commitInstallPath]);
 
   const handleLaunch = useCallback(async () => {
-    const result = await invoke<{ ok: boolean }>("launch_desktop");
-    if (result.ok) {
-      getCurrentWindow().close();
-    }
+    await invoke<{ ok: boolean }>("launch_desktop");
   }, []);
 
   const handleOpenFolder = useCallback(async () => {
@@ -199,6 +184,7 @@ function App() {
 
   const canInstall =
     isSetup &&
+    !state.devMode &&
     !state.installPathError &&
     state.disk.enoughSpace &&
     !locationBusy;
@@ -220,7 +206,11 @@ function App() {
         {/* ── Ready / Error ───────────────────────────────── */}
         {isSetup && (
           <>
-            <p className="status-text">Choose where to install Stella</p>
+            <p className="status-text">
+              {state.devMode
+                ? "Using local Stella desktop checkout"
+                : "Choose where to install Stella"}
+            </p>
 
             <div className="field-group">
               <label className="field-label">Location</label>
@@ -228,6 +218,7 @@ function App() {
                 <input
                   className="path-input"
                   value={installPathDraft}
+                  readOnly={state.installPathLocked}
                   onChange={(e) => setInstallPathDraft(e.target.value)}
                   onBlur={() => void commitInstallPath()}
                   onKeyDown={(e) => {
@@ -242,7 +233,7 @@ function App() {
                   type="button"
                   className="btn-secondary"
                   onClick={() => void handleBrowse()}
-                  disabled={locationBusy}
+                  disabled={locationBusy || state.installPathLocked}
                 >
                   Browse
                 </button>
@@ -253,25 +244,34 @@ function App() {
                   <span className="field-error">{state.installPathError}</span>
                 ) : (
                   <span className="field-hint">
-                    {formatBytes(state.disk.requiredBytes)} needed
-                    {" \u00b7 "}
-                    {formatBytes(state.disk.availableBytes)} available
+                    {state.devMode
+                      ? "Dev mode is using the path from STELLA_LAUNCHER_DEV or STELLA_LAUNCHER_DEV_PATH."
+                      : `${formatBytes(state.disk.requiredBytes)} needed \u00b7 ${formatBytes(state.disk.availableBytes)} available`}
                   </span>
                 )}
-                <button
-                  type="button"
-                  className="link-btn"
-                  onClick={() => void handleUseDefaultLocation()}
-                  disabled={locationBusy}
-                >
-                  Reset
-                </button>
+                {!state.installPathLocked && (
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => void handleUseDefaultLocation()}
+                    disabled={locationBusy}
+                  >
+                    Reset
+                  </button>
+                )}
               </div>
             </div>
 
-            {!state.disk.enoughSpace && (
+            {!state.devMode && !state.disk.enoughSpace && (
               <div className="banner banner-warn">
                 Not enough disk space at this location.
+              </div>
+            )}
+
+            {state.devMode && !state.canLaunch && (
+              <div className="banner banner-warn">
+                Dev mode is enabled, but this path is not launchable yet. Make
+                sure <code>desktop/package.json</code> and <code>desktop/node_modules</code> exist.
               </div>
             )}
 
@@ -414,7 +414,7 @@ function App() {
 
       {/* Footer */}
       <footer className="footer">
-        {isSetup && (
+        {isSetup && !state.devMode && (
           <button
             type="button"
             className="btn-primary"
@@ -451,7 +451,7 @@ function App() {
               >
                 Open folder
               </button>
-              {state.installed && !desktopRunning && (
+              {state.installed && !desktopRunning && !state.devMode && (
                 <button
                   type="button"
                   className="link-btn link-danger"
