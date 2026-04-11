@@ -410,102 +410,139 @@ export function extractTasksFromEvents(
   options?: { appSessionStartedAtMs?: number | null },
 ): TaskItem[] {
   const appSessionStartedAtMs = options?.appSessionStartedAtMs ?? null;
-  const startedEvents = events.filter(isTaskStarted);
-  const completedEvents = events.filter(isTaskCompleted);
-  const failedEvents = events.filter(isTaskFailed);
-  const canceledEvents = events.filter(isTaskCanceled);
-  const progressEvents = events.filter(isTaskProgress);
   const laterTurnMessages = events.filter(
     (event) => isUserMessage(event) || isAssistantMessage(event),
   );
+  const tasksById = new Map<string, TaskItem>();
 
-  // Build maps of taskId -> completion/failure events
-  const completedByTaskId = new Map<string, EventRecord & { payload: TaskCompletedPayload }>();
-  for (const event of completedEvents) {
-    completedByTaskId.set(event.payload.taskId, event);
-  }
-
-  const failedByTaskId = new Map<string, EventRecord & { payload: TaskFailedPayload }>();
-  for (const event of failedEvents) {
-    failedByTaskId.set(event.payload.taskId, event);
-  }
-
-  const canceledByTaskId = new Map<string, EventRecord & { payload: TaskCanceledPayload }>();
-  for (const event of canceledEvents) {
-    canceledByTaskId.set(event.payload.taskId, event);
-  }
-
-  // Build map of taskId -> latest progress status text
-  const latestProgressByTaskId = new Map<
-    string,
-    EventRecord & { payload: TaskProgressPayload }
-  >();
-  for (const event of progressEvents) {
-    // Later events overwrite earlier ones — last one wins
-    latestProgressByTaskId.set(event.payload.taskId, event);
-  }
-
-  return startedEvents.map((event) => {
-    const taskId = event.payload.taskId;
-    const latestProgress = latestProgressByTaskId.get(taskId);
-    let status: TaskItem["status"] = "running";
-    let completedAtMs: number | undefined;
-    let lastUpdatedAtMs = event.timestamp;
-    let outputPreview: string | undefined;
-
-    if (completedByTaskId.has(taskId)) {
-      status = "completed";
-      const completedEvent = completedByTaskId.get(taskId)!;
-      completedAtMs = completedEvent.timestamp;
-      lastUpdatedAtMs = completedEvent.timestamp;
-      outputPreview = completedEvent.payload.result;
-    } else if (canceledByTaskId.has(taskId)) {
-      status = "canceled";
-      const canceledEvent = canceledByTaskId.get(taskId)!;
-      completedAtMs = canceledEvent.timestamp;
-      lastUpdatedAtMs = canceledEvent.timestamp;
-      outputPreview = canceledEvent.payload.error ?? "Canceled";
-    } else if (failedByTaskId.has(taskId)) {
-      status = "error";
-      const failedEvent = failedByTaskId.get(taskId)!;
-      completedAtMs = failedEvent.timestamp;
-      lastUpdatedAtMs = failedEvent.timestamp;
-      outputPreview = failedEvent.payload.error;
-    } else if (latestProgress) {
-      lastUpdatedAtMs = latestProgress.timestamp;
-    }
-
-    if (
-      status === "running"
-      && event.payload.agentType === "schedule"
-      && laterTurnMessages.some((messageEvent) => messageEvent.timestamp > event.timestamp)
-    ) {
-      status = "completed";
-      outputPreview = outputPreview ?? "Scheduling updated.";
-    }
-
-    if (
-      status === "running"
-      && appSessionStartedAtMs !== null
-      && lastUpdatedAtMs < appSessionStartedAtMs
-    ) {
-      status = "canceled";
-      outputPreview = outputPreview ?? "Stopped when Stella restarted.";
-    }
-
+  const ensureTask = (
+    taskId: string,
+    timestamp: number,
+    overrides?: Partial<TaskItem>,
+  ): TaskItem => {
+    const previous = tasksById.get(taskId);
     return {
       id: taskId,
-      description: event.payload.description,
-      agentType: event.payload.agentType,
-      status,
-      parentTaskId: event.payload.parentTaskId,
-      statusText: latestProgress?.payload.statusText,
-      startedAtMs: event.timestamp,
-      completedAtMs,
-      lastUpdatedAtMs,
-      outputPreview,
+      description: previous?.description ?? "Task",
+      agentType: previous?.agentType ?? "task",
+      status: previous?.status ?? "running",
+      parentTaskId: previous?.parentTaskId,
+      statusText: previous?.statusText,
+      startedAtMs: previous?.startedAtMs ?? timestamp,
+      completedAtMs: previous?.completedAtMs,
+      lastUpdatedAtMs: previous?.lastUpdatedAtMs ?? timestamp,
+      outputPreview: previous?.outputPreview,
+      ...overrides,
     };
-  });
+  };
+
+  for (const event of events) {
+    if (isTaskStarted(event)) {
+      tasksById.set(event.payload.taskId, {
+        id: event.payload.taskId,
+        description: event.payload.description,
+        agentType: event.payload.agentType,
+        status: "running",
+        parentTaskId: event.payload.parentTaskId,
+        startedAtMs: event.timestamp,
+        completedAtMs: undefined,
+        lastUpdatedAtMs: event.timestamp,
+        outputPreview: undefined,
+      });
+      continue;
+    }
+
+    if (isTaskProgress(event)) {
+      tasksById.set(
+        event.payload.taskId,
+        ensureTask(event.payload.taskId, event.timestamp, {
+          status: "running",
+          statusText: event.payload.statusText,
+          completedAtMs: undefined,
+          lastUpdatedAtMs: event.timestamp,
+          outputPreview: undefined,
+        }),
+      );
+      continue;
+    }
+
+    if (isTaskCompleted(event)) {
+      tasksById.set(
+        event.payload.taskId,
+        ensureTask(event.payload.taskId, event.timestamp, {
+          status: "completed",
+          statusText: undefined,
+          completedAtMs: event.timestamp,
+          lastUpdatedAtMs: event.timestamp,
+          outputPreview: event.payload.result,
+        }),
+      );
+      continue;
+    }
+
+    if (isTaskFailed(event)) {
+      tasksById.set(
+        event.payload.taskId,
+        ensureTask(event.payload.taskId, event.timestamp, {
+          status: "error",
+          statusText: undefined,
+          completedAtMs: event.timestamp,
+          lastUpdatedAtMs: event.timestamp,
+          outputPreview: event.payload.error,
+        }),
+      );
+      continue;
+    }
+
+    if (isTaskCanceled(event)) {
+      tasksById.set(
+        event.payload.taskId,
+        ensureTask(event.payload.taskId, event.timestamp, {
+          status: "canceled",
+          statusText: undefined,
+          completedAtMs: event.timestamp,
+          lastUpdatedAtMs: event.timestamp,
+          outputPreview: event.payload.error ?? "Canceled",
+        }),
+      );
+    }
+  }
+
+  return [...tasksById.values()]
+    .map((task) => {
+      let nextTask = task;
+
+      if (
+        nextTask.status === "running"
+        && nextTask.agentType === "schedule"
+        && laterTurnMessages.some(
+          (messageEvent) => messageEvent.timestamp > nextTask.startedAtMs,
+        )
+      ) {
+        nextTask = {
+          ...nextTask,
+          status: "completed",
+          completedAtMs: nextTask.completedAtMs ?? nextTask.lastUpdatedAtMs,
+          outputPreview: nextTask.outputPreview ?? "Scheduling updated.",
+        };
+      }
+
+      if (
+        nextTask.status === "running"
+        && appSessionStartedAtMs !== null
+        && nextTask.lastUpdatedAtMs < appSessionStartedAtMs
+      ) {
+        nextTask = {
+          ...nextTask,
+          status: "canceled",
+          completedAtMs: nextTask.completedAtMs ?? nextTask.lastUpdatedAtMs,
+          outputPreview: nextTask.outputPreview ?? "Stopped when Stella restarted.",
+        };
+      }
+
+      return nextTask;
+    })
+    .sort((a, b) => a.startedAtMs - b.startedAtMs);
 }
 
 // Get currently running tasks

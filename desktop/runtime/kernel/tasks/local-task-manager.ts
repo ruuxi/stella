@@ -839,6 +839,15 @@ export class LocalTaskManager implements TaskToolApi {
         task.messageLog.splice(0, task.messageLog.length - LocalTaskManager.MAX_LOG_MESSAGES);
       }
       this.resetTaskForNextAttempt(task, text);
+      task.recentActivity = ["Applying task update from orchestrator."];
+      this.opts.onTaskEvent?.({
+        type: "task-progress",
+        conversationId: task.conversationId,
+        rootRunId: task.rootRunId,
+        taskId: task.id,
+        agentType: task.agentType,
+        statusText: "Applying task update",
+      });
       this.enqueueTask(task);
       return { delivered: true };
     }

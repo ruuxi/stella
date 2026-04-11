@@ -35,6 +35,13 @@ export type RuntimeStreamEvent = {
   userMessageId: string;
 };
 
+export type RuntimeRunStartedEvent = {
+  runId: string;
+  agentType: string;
+  seq: number;
+  userMessageId: string;
+};
+
 export type RuntimeToolStartEvent = {
   runId: string;
   agentType: string;
@@ -88,6 +95,7 @@ export type RuntimeEndEvent = {
 };
 
 export type RuntimeRunCallbacks = {
+  onRunStarted?: (event: RuntimeRunStartedEvent) => void;
   onUserMessage?: (event: RuntimeUserMessageEvent) => void;
   onStream: (event: RuntimeStreamEvent) => void;
   onStatus?: (event: RuntimeStatusEvent) => void;

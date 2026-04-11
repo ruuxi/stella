@@ -99,7 +99,15 @@ export const createOrchestratorController = (
       webSearch: deps.webSearch,
       finishInterruptedRun,
       cleanupRun,
-      ...(args.onPrepared ? { onPrepared: args.onPrepared } : {}),
+      onPrepared: (prepared) => {
+        args.callbacks.onRunStarted?.({
+          runId: prepared.runId,
+          agentType: args.agentType,
+          seq: 0,
+          userMessageId: args.userMessageId,
+        });
+        args.onPrepared?.(prepared);
+      },
       onFatalError: createOrchestratorFatalErrorHandler({
         runId,
         agentType: args.agentType,

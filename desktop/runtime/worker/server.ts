@@ -603,6 +603,15 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       agentType: payload.agentType,
       storageMode: payload.storageMode,
     }, {
+      onRunStarted: (ev) => {
+        activeRunId = ev.runId;
+        emitRunEvent({
+          ...ev,
+          type: AGENT_STREAM_EVENT_TYPES.RUN_STARTED,
+          conversationId: payload.conversationId,
+          ...(requestId ? { requestId } : {}),
+        });
+      },
       onUserMessage: (ev) => {
         if (ev.uiVisibility === "hidden") {
           return;

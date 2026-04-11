@@ -2,6 +2,7 @@ import type { ConvexClient } from "convex/browser";
 import type {
   RuntimeEndEvent,
   RuntimeErrorEvent,
+  RuntimeRunStartedEvent,
   RuntimeStatusEvent,
   RuntimeStreamEvent,
   RuntimeToolEndEvent,
@@ -140,6 +141,7 @@ export type AgentHealth = {
 };
 
 export type AgentCallbacks = {
+  onRunStarted?: (event: RuntimeRunStartedEvent) => void;
   onUserMessage?: (event: RuntimeUserMessageEvent) => void;
   onStream: (event: RuntimeStreamEvent) => void;
   onStatus?: (event: RuntimeStatusEvent) => void;
