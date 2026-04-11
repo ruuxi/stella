@@ -4,6 +4,7 @@
 	"private": true,
 	"scripts": {
 		"dev": "tauri dev",
+		"dev:app": "node scripts/open-dev-app.mjs",
 		"build": "tauri build",
 		"dev:frontend": "vite",
 		"build:frontend": "vite build"
