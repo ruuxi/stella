@@ -1,31 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type PermissionKind = "accessibility" | "screen" | "microphone";
+type PermissionKind =
+  | "accessibility"
+  | "screen"
+  | "microphone";
 
 type PermissionStatus = Record<PermissionKind, boolean>;
 
-const PERMISSION_CARDS: {
+type PermissionCard = {
   kind: PermissionKind;
   title: string;
   description: string;
-}[] = [
+  actionLabel: string;
+  requiresRelaunch?: boolean;
+};
+
+const PERMISSION_CARDS: PermissionCard[] = [
   {
     kind: "accessibility",
     title: "Accessibility",
     description:
-      "Enables the radial menu, reading selected text, and understanding what\u2019s on screen.",
+      "Lets Stella open the radial dial, read selected text, and interact with what is under the cursor.",
+    actionLabel: "Enable",
   },
   {
     kind: "screen",
-    title: "Screen Recording",
+    title: "Screen Capture",
     description:
-      "Lets Stella capture screenshots and see window content when you ask.",
+      "Lets Stella capture screenshots and window content for capture and vision tasks.",
+    actionLabel: "Enable",
+    requiresRelaunch: true,
   },
   {
     kind: "microphone",
     title: "Microphone",
     description:
-      "Powers voice conversations and wake-word detection.",
+      "Needed for voice conversations and always-on wake word listening.",
+    actionLabel: "Enable",
   },
 ];
 
@@ -34,6 +45,22 @@ const POLL_INTERVAL_MS = 1500;
 type OnboardingPermissionsProps = {
   splitTransitionActive: boolean;
   onContinue: () => void;
+};
+
+const requestOnboardingScreenAccess = async () => {
+  const result = await window.electronAPI?.system.requestPermission?.("screen");
+  if (result?.granted) {
+    return true;
+  }
+
+  await window.electronAPI?.system.openPermissionSettings?.("screen");
+  return false;
+};
+
+/** Mic on macOS uses the same path as the web: Chromium shows the system prompt via getUserMedia. */
+const requestMicrophoneForOnboarding = async () => {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  stream.getTracks().forEach((t) => t.stop());
 };
 
 export function OnboardingPermissions({
@@ -46,12 +73,19 @@ export function OnboardingPermissions({
     microphone: false,
   });
 
+  /** Windows/Linux: main process cannot read mic TCC; set after successful getUserMedia. */
+  const micSessionGrantedRef = useRef(false);
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchStatus = useCallback(async () => {
     const result = await window.electronAPI?.system.getPermissionStatus?.();
     if (result) {
-      setStatus(result);
+      setStatus({
+        accessibility: result.accessibility,
+        screen: result.screen,
+        microphone: result.microphone || micSessionGrantedRef.current,
+      });
     }
   }, []);
 
@@ -65,36 +99,70 @@ export function OnboardingPermissions({
 
   const [requesting, setRequesting] = useState<PermissionKind | null>(null);
 
-  const handleEnable = useCallback(async (kind: PermissionKind) => {
-    setRequesting(kind);
-    try {
-      const result =
-        await window.electronAPI?.system.requestPermission?.(kind);
-      if (result?.granted) {
-        setStatus((prev) => ({ ...prev, [kind]: true }));
-        return;
-      }
-      window.electronAPI?.system.openPermissionSettings?.(kind);
-    } catch {
-      window.electronAPI?.system.openPermissionSettings?.(kind);
-    } finally {
-      setRequesting(null);
-    }
-  }, []);
+  const handleEnable = useCallback(
+    async (card: PermissionCard) => {
+      setRequesting(card.kind);
+      try {
+        if (card.kind === "screen") {
+          await requestOnboardingScreenAccess();
+          await fetchStatus();
+          return;
+        }
 
-  const allGranted = status.accessibility && status.screen && status.microphone;
+        if (card.kind === "microphone") {
+          try {
+            await requestMicrophoneForOnboarding();
+            micSessionGrantedRef.current = true;
+          } catch {
+            await window.electronAPI?.system.openPermissionSettings?.(
+              "microphone",
+            );
+          }
+          await fetchStatus();
+          return;
+        }
+
+        await window.electronAPI?.system.requestPermission?.(card.kind);
+        await fetchStatus();
+      } catch {
+        await fetchStatus();
+      } finally {
+        setRequesting(null);
+      }
+    },
+    [fetchStatus],
+  );
+
+  const allMeasuredGranted =
+    status.accessibility && status.screen && status.microphone;
 
   return (
     <div className="onboarding-step-content">
       <div className="onboarding-step-label">Permissions</div>
       <p className="onboarding-step-desc">
-        Stella needs a few macOS permissions to work at its best.
-        Enable each one below — you can always change these later in System Settings.
+        Stella works best when these permissions are granted up front.
+        Accessibility powers the radial shortcut and selected text, screen
+        capture powers vision tasks, and the microphone powers voice and wake
+        word.
       </p>
 
       <div className="onboarding-permissions-list">
         {PERMISSION_CARDS.map((card) => {
           const granted = status[card.kind];
+
+          let actionLabel = card.actionLabel;
+          if (granted) {
+            actionLabel = "Granted \u2713";
+          } else if (requesting === card.kind) {
+            actionLabel = "Opening\u2026";
+          }
+
+          const detailParts = [
+            card.requiresRelaunch
+              ? "You may need to reopen Stella after enabling it"
+              : null,
+          ].filter(Boolean);
+
           return (
             <div
               key={card.kind}
@@ -108,17 +176,18 @@ export function OnboardingPermissions({
                 <span className="onboarding-permission-card__desc">
                   {card.description}
                 </span>
+                {detailParts.length > 0 ? (
+                  <span className="onboarding-permission-card__meta">
+                    {detailParts.join(" · ")}
+                  </span>
+                ) : null}
               </div>
               <button
                 className="onboarding-permission-card__action"
-                onClick={() => void handleEnable(card.kind)}
+                onClick={() => void handleEnable(card)}
                 disabled={granted || requesting === card.kind}
               >
-                {granted
-                  ? "Granted \u2713"
-                  : requesting === card.kind
-                    ? "Requesting\u2026"
-                    : "Enable"}
+                {actionLabel}
               </button>
             </div>
           );
@@ -131,7 +200,7 @@ export function OnboardingPermissions({
         disabled={splitTransitionActive}
         onClick={onContinue}
       >
-        {allGranted ? "Continue" : "Skip for now"}
+        {allMeasuredGranted ? "Continue" : "Skip for now"}
       </button>
     </div>
   );
