@@ -136,6 +136,7 @@ export const IPC_HOST_CONFIGURE_RUNTIME = "host:configurePiRuntime" as const;
 export const IPC_AUTH_SET_STATE = "auth:setState" as const;
 export const IPC_HOST_SET_CLOUD_SYNC = "host:setCloudSyncEnabled" as const;
 export const IPC_AUTH_CALLBACK = "auth:callback" as const;
+export const IPC_APP_QUIT_FOR_RESTART = "app:quitForRestart" as const;
 export const IPC_SYSTEM_OPEN_FDA = "system:openFullDiskAccess" as const;
 export const IPC_PERMISSIONS_GET_STATUS = "permissions:getStatus" as const;
 export const IPC_PERMISSIONS_OPEN_SETTINGS = "permissions:openSettings" as const;
