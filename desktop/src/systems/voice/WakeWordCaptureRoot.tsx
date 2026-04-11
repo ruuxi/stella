@@ -8,6 +8,7 @@ import {
   acquireSharedMicrophone,
   type SharedMicrophoneLease,
 } from "@/features/voice/services/shared-microphone";
+import { showToast } from "@/ui/toast";
 
 const WAKE_WORD_SAMPLE_RATE = 16_000;
 const WAKE_WORD_CHUNK_SAMPLES = 1280;
@@ -30,6 +31,7 @@ const combinePcm = (left: Int16Array, right: Int16Array): Int16Array => {
 export function WakeWordCaptureRoot() {
   const { state } = useUiState();
   const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
+  const micErrorToastShownRef = useRef(false);
 
   useEffect(() => {
     const api = window.electronAPI?.voice;
@@ -189,10 +191,25 @@ export function WakeWordCaptureRoot() {
         workletNode.connect(silentSink);
         silentSink.connect(audioContext.destination);
       } catch (error) {
-        console.debug(
+        const message = (error as Error).message;
+        console.warn(
           "[wake-word] Failed to start renderer wake-word capture:",
-          (error as Error).message,
+          message,
         );
+        if (!micErrorToastShownRef.current) {
+          micErrorToastShownRef.current = true;
+          const isMicDisabled = message.includes("disabled in settings");
+          showToast({
+            variant: "error",
+            title: isMicDisabled
+              ? "Microphone is off"
+              : "Microphone access needed",
+            description: isMicDisabled
+              ? "Turn on the microphone in Settings → Audio to use wake word."
+              : "Allow microphone access in system settings to use wake word.",
+            duration: 6000,
+          });
+        }
         cleanup();
       }
     })();

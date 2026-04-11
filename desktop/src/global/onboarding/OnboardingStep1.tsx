@@ -27,18 +27,13 @@ import {
 import type { OnboardingDemo } from "./OnboardingCanvas";
 import { useTheme, useThemeControl } from "@/context/theme-context";
 import { getPlatform } from "@/platform/electron/platform";
-import { PREFERRED_MIC_KEY, MIC_ENABLED_KEY } from "@/features/voice/services/shared-microphone";
-import type {
-  ShowcaseId,
-  ShowcaseOption,
-} from "./OnboardingCreationPhase";
+import type { ShowcaseId, ShowcaseOption } from "./OnboardingCreationPhase";
 import "./Onboarding.css";
 import "@/global/onboarding/selfmod-demo.css";
 
 const loadPermissionsPhase = () => import("./OnboardingPermissions");
 const loadBrowserPhase = () => import("./OnboardingBrowserPhase");
 const loadCreationPhase = () => import("./OnboardingCreationPhase");
-const loadVoicePhase = () => import("./OnboardingVoicePhase");
 const loadThemePhase = () => import("./OnboardingThemePhase");
 const loadPersonalityPhase = () => import("./OnboardingPersonalityPhase");
 const loadShortcutsPhase = () => import("./OnboardingShortcutsPhase");
@@ -57,11 +52,6 @@ const OnboardingBrowserPhase = lazy(() =>
 const OnboardingCreationPhase = lazy(() =>
   loadCreationPhase().then((module) => ({
     default: module.OnboardingCreationPhase,
-  })),
-);
-const OnboardingVoicePhase = lazy(() =>
-  loadVoicePhase().then((module) => ({
-    default: module.OnboardingVoicePhase,
   })),
 );
 const OnboardingThemePhase = lazy(() =>
@@ -92,7 +82,6 @@ const INTRO_CONTINUE_DELAY_MS = 1100;
 const STEP_TITLES: Partial<Record<Phase, string>> = {
   browser: "Let me get to know you.",
   creation: "I can change myself.",
-  voice: "Speak your mind.",
   theme: "How should I look?",
   personality: "How should I talk?",
   "shortcuts-global": "Anywhere on your desktop.",
@@ -247,8 +236,6 @@ const getNextPhaseToPrefetch = (phase: Phase): Phase | null => {
     case "browser":
       return "creation";
     case "creation":
-      return "voice";
-    case "voice":
       return "theme";
     case "theme":
       return "personality";
@@ -272,9 +259,6 @@ const prefetchPhaseModule = (phase: Phase | null) => {
       break;
     case "creation":
       void loadCreationPhase();
-      break;
-    case "voice":
-      void loadVoicePhase();
       break;
     case "theme":
       void loadThemePhase();
@@ -325,13 +309,6 @@ export const OnboardingStep1 = ({
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
   const [showNoneWarning, setShowNoneWarning] = useState(false);
   const [activeMockId, setActiveMockId] = useState<string | null>(null);
-  const [voicePermissionGranted, setVoicePermissionGranted] = useState<
-    boolean | null
-  >(null);
-  const [audioInputDevices, setAudioInputDevices] = useState<
-    MediaDeviceInfo[]
-  >([]);
-  const [selectedMicId, setSelectedMicId] = useState<string | null>(null);
   const [categoryStates, setCategoryStates] = useState<CategoryStates>(
     createDiscoveryCategoryStates,
   );
@@ -479,7 +456,8 @@ export const OnboardingStep1 = ({
 
     const detectBrowser = async () => {
       try {
-        const detected = await window.electronAPI?.discovery.detectPreferred?.();
+        const detected =
+          await window.electronAPI?.discovery.detectPreferred?.();
         if (cancelled || !detected?.browser) {
           return;
         }
@@ -688,39 +666,6 @@ export const OnboardingStep1 = ({
     setSelectedBrowser(browserId);
   }, []);
 
-  const handleRequestMicrophone = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      stream.getTracks().forEach((track) => track.stop());
-      setVoicePermissionGranted(true);
-
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const microphones = devices.filter(
-        (device) => device.kind === "audioinput" && device.deviceId,
-      );
-      setAudioInputDevices(microphones);
-      if (microphones.length > 0 && !selectedMicId) {
-        setSelectedMicId(microphones[0].deviceId);
-      }
-    } catch {
-      setVoicePermissionGranted(false);
-    }
-  }, [selectedMicId]);
-
-  const handleVoiceContinue = useCallback(() => {
-    localStorage.setItem(
-      MIC_ENABLED_KEY,
-      voicePermissionGranted === true ? "true" : "false",
-    );
-    if (selectedMicId) {
-      localStorage.setItem(PREFERRED_MIC_KEY, selectedMicId);
-    }
-
-    nextSplitStep();
-  }, [nextSplitStep, selectedMicId, voicePermissionGranted]);
-
   const handleThemeSelect = useCallback(
     (id: string) => {
       setTheme(id);
@@ -795,23 +740,6 @@ export const OnboardingStep1 = ({
               splitTransitionActive={leaving}
               onContinue={nextSplitStep}
               onSelectShowcase={handleShowcaseSelect}
-            />
-          </Suspense>
-        );
-      case "voice":
-        return (
-          <Suspense fallback={splitPhaseFallback}>
-            <OnboardingVoicePhase
-              audioInputDevices={audioInputDevices}
-              platform={platform}
-              selectedMicId={selectedMicId}
-              splitTransitionActive={leaving}
-              voicePermissionGranted={voicePermissionGranted}
-              onContinue={handleVoiceContinue}
-              onRequestMicrophone={() => {
-                void handleRequestMicrophone();
-              }}
-              onSelectMic={setSelectedMicId}
             />
           </Suspense>
         );
