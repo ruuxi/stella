@@ -63,4 +63,9 @@ native/*.obj
 # Stella local runtime state
 state/
 
+# Personal life data (user-specific, never commit)
+life/knowledge/index.md
+life/knowledge/user-profile/
+life/raw/discovery/
+
 SECURITY-REVIEW.md
