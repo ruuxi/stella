@@ -40,7 +40,6 @@ const INNER_RADIUS = 40
 const OUTER_RADIUS = 125
 const WEDGE_ANGLE = 90
 const DEAD_ZONE_RADIUS = 30
-const CENTER_BG_RADIUS = INNER_RADIUS - 5
 
 const getWedges = (
   compactAndFocused: boolean,
@@ -128,7 +127,6 @@ type BlobRefs = {
 }
 
 function getBlobColors(
-  background: string,
   border: string,
   card: string,
   interactive: string,
@@ -140,7 +138,6 @@ function getBlobColors(
   return {
     fills: BASE_WEDGES.map((_, i) => (i === selectedIdx ? interactiveVec : cardVec)),
     selectedFill: interactiveVec,
-    centerBg: cssToVec3(background),
     stroke: cssToVec3(border),
   }
 }
@@ -149,12 +146,12 @@ function useRadialBlob(
   colors: ReturnType<typeof useTheme>['colors'],
   selectedIdx: number,
 ): BlobRefs {
-  const { background, border, card, interactive } = colors
+  const { border, card, interactive } = colors
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const blobReady = useRef(false)
   const selectedIdxRef = useRef(selectedIdx)
   const colorsRef = useRef<BlobColors>(
-    getBlobColors(background, border, card, interactive, selectedIdx),
+    getBlobColors(border, card, interactive, selectedIdx),
   )
 
   useEffect(() => {
@@ -178,8 +175,8 @@ function useRadialBlob(
 
   useEffect(() => {
     selectedIdxRef.current = selectedIdx
-    colorsRef.current = getBlobColors(background, border, card, interactive, selectedIdx)
-  }, [background, border, card, interactive, selectedIdx])
+    colorsRef.current = getBlobColors(border, card, interactive, selectedIdx)
+  }, [border, card, interactive, selectedIdx])
 
   return useMemo(() => ({ canvasRef, blobReady, selectedIdxRef, colorsRef }), [])
 }
@@ -368,15 +365,13 @@ export function RadialDial({
     const interactiveStroke = toRgba(colors.interactive, 0.9)
     const card = toRgba(colors.card, 1)
     const border = toRgba(colors.border, 0.5)
-    const background = toRgba(colors.background, 1)
     return {
       interactive,
       interactiveStroke,
       card,
       border,
-      background,
     }
-  }, [colors.background, colors.border, colors.card, colors.interactive])
+  }, [colors.border, colors.card, colors.interactive])
 
   const showCanvas = phase !== 'hidden'
 
@@ -449,16 +444,6 @@ export function RadialDial({
               </g>
             )
           })}
-
-          <circle
-            cx={CENTER}
-            cy={CENTER}
-            r={CENTER_BG_RADIUS}
-            fill={palette.background}
-            stroke={palette.border}
-            strokeWidth={1}
-            style={{ transition: 'fill 0.15s ease, stroke 0.15s ease' }}
-          />
         </svg>
 
         {wedgeLayout.map((wedge) => {
