@@ -45,6 +45,7 @@ export const registerBootstrapIpcHandlers = (
       services.uiStateService.scheduleResumeWakeWord(),
     deactivateVoiceModes: () => services.uiStateService.deactivateVoiceModes(),
     syncWakeWordState: () => syncWakeWordState(context),
+    syncNativeRadialGesture: () => services.radialGestureService.start(),
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
     getBroadcastToMobile: lazyMobileBroadcast,

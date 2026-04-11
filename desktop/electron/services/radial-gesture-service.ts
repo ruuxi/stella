@@ -48,6 +48,7 @@ export type RadialWindowBridge = {
 
 type RadialGestureDeps = {
   getRadialTriggerKey: () => RadialTriggerCode
+  shouldEnable: () => boolean
   capture: RadialCaptureBridge
   overlay: RadialOverlayBridge
   window: RadialWindowBridge
@@ -187,6 +188,11 @@ export class RadialGestureService {
   }
 
   start() {
+    if (!this.deps.shouldEnable()) {
+      this.stop()
+      return
+    }
+
     const { capture, overlay, window: win } = this.deps
     this.radialTriggerKey = this.deps.getRadialTriggerKey()
 
@@ -269,6 +275,11 @@ export class RadialGestureService {
 
   stop() {
     this.clearScheduledRadialCapture()
+    this.selectionCommitted = false
+    this.startedInCompactMode = false
+    this.contextBeforeGesture = null
+    this.deps.capture.cancelRadialContextCapture()
+    this.deps.overlay.hideRadial()
     if (this.mouseHook) {
       this.mouseHook.stop()
       this.mouseHook = null

@@ -23,6 +23,7 @@ export class UiStateService {
     view: 'chat',
     conversationId: null,
     isVoiceRtcActive: false,
+    suppressNativeRadialDuringOnboarding: false,
   }
 
   private deps: UiStateServiceDeps | null = null

@@ -74,7 +74,7 @@ fn spawn_detached(info: &LaunchInfo) -> bool {
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
 
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         use std::os::unix::process::CommandExt;
         unsafe {
