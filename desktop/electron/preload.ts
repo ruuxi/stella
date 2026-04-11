@@ -610,6 +610,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("permissions:request", { kind }) as Promise<{
         granted: boolean;
         alreadyGranted: boolean;
+        openedSettings?: boolean;
       }>,
     resetMicrophonePermission: () =>
       ipcRenderer.invoke(IPC_PERMISSIONS_RESET_MICROPHONE) as Promise<{

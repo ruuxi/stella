@@ -39,14 +39,23 @@ const MIC_PERMISSION_BUNDLE_IDS = ['com.stella.app', 'com.github.Electron'] as c
 const checkAccessibility = (prompt: boolean): boolean =>
   systemPreferences.isTrustedAccessibilityClient(prompt)
 
+const checkScreenRecordingFallback = (): boolean =>
+  systemPreferences.getMediaAccessStatus('screen') === 'granted'
+
 const checkScreenRecording = (): boolean => {
   if (process.platform !== 'darwin') {
-    return systemPreferences.getMediaAccessStatus('screen') === 'granted'
+    return checkScreenRecordingFallback()
   }
   const mod = getScreenCapturePermissions()
-  return mod
-    ? mod.hasScreenCapturePermission()
-    : systemPreferences.getMediaAccessStatus('screen') === 'granted'
+  if (!mod) {
+    return checkScreenRecordingFallback()
+  }
+
+  try {
+    return mod.hasScreenCapturePermission()
+  } catch {
+    return checkScreenRecordingFallback()
+  }
 }
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))

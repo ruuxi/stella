@@ -62,11 +62,12 @@ const requestOnboardingScreenAccess = async () => {
     return true;
   }
 
-  await window.electronAPI?.system.openPermissionSettings?.("screen");
+  if (!result?.openedSettings) {
+    await window.electronAPI?.system.openPermissionSettings?.("screen");
+  }
   return false;
 };
 
-/** Mic on macOS uses the same path as the web: Chromium shows the system prompt via getUserMedia. */
 const requestMicrophoneForOnboarding = async () => {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   stream.getTracks().forEach((t) => t.stop());

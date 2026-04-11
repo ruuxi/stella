@@ -1,6 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process'
 import {
-  appendFileSync,
   copyFileSync,
   cpSync,
   existsSync,
@@ -39,7 +38,6 @@ const devRuntimeSourceManifestPath = path.join(
 )
 const devRuntimeAppBundle = path.join(devRuntimeRoot, DEV_MACOS_RUNTIME_APP_NAME)
 const devRuntimeManifestPath = path.join(devRuntimeRoot, 'manifest.json')
-const runtimeDiagnosticsPath = path.join(devRuntimeRoot, 'runtime-diagnostics.log')
 const requiredFiles = [
   path.join(projectDir, '.vite-dev-url'),
   path.join(watchedDir, 'electron', 'main.js'),
@@ -114,54 +112,6 @@ const buildAppManifest = (sourceAppBundlePath) => {
     appName: DEV_MACOS_APP_NAME,
     bundleId: DEV_MACOS_BUNDLE_ID,
     iconHash: readHash(path.join(projectDir, 'build', 'icon.icns')),
-  }
-}
-
-const appendRuntimeDiagnostic = (message, details = null) => {
-  try {
-    mkdirSync(devRuntimeRoot, { recursive: true })
-    const detailText = details
-      ? ` ${JSON.stringify(details, null, 2)}`
-      : ''
-    appendFileSync(
-      runtimeDiagnosticsPath,
-      `[${new Date().toISOString()}] ${message}${detailText}\n`,
-      'utf8',
-    )
-  } catch {
-    // Best-effort diagnostics only.
-  }
-}
-
-const readQuarantineStatus = (targetPath) => {
-  if (!existsSync(targetPath)) {
-    return 'missing'
-  }
-  try {
-    const value = execFileSync(
-      'xattr',
-      ['-p', 'com.apple.quarantine', targetPath],
-      { encoding: 'utf8' },
-    ).trim()
-    return value || 'set'
-  } catch {
-    return 'absent'
-  }
-}
-
-const clearQuarantineAttribute = (targetPath) => {
-  if (!existsSync(targetPath)) {
-    return false
-  }
-  try {
-    execFileSync(
-      'xattr',
-      ['-dr', 'com.apple.quarantine', targetPath],
-      { stdio: 'ignore' },
-    )
-    return true
-  } catch {
-    return false
   }
 }
 
@@ -293,9 +243,6 @@ if (process.platform === 'darwin') {
     currentSourceManifest
     && JSON.stringify(currentSourceManifest) === JSON.stringify(expectedSourceManifest)
 
-  const sourceQuarantineBefore = readQuarantineStatus(sourceAppBundlePath)
-  const clearedSourceQuarantine = clearQuarantineAttribute(sourceAppBundlePath)
-
   let didCopySource = false
   if (!existsSync(devRuntimeSourceAppBundle) || !sourceManifestMatches) {
     rmSync(devRuntimeSourceAppBundle, { recursive: true, force: true })
@@ -307,10 +254,6 @@ if (process.platform === 'darwin') {
     didCopySource = true
   }
 
-  const sourceSeedQuarantineBefore = readQuarantineStatus(devRuntimeSourceAppBundle)
-  const clearedSourceSeedQuarantine = clearQuarantineAttribute(
-    devRuntimeSourceAppBundle,
-  )
   const didPatchSourceIcon = patchRuntimeIcon(devRuntimeSourceAppBundle)
   const didPatchSourcePlist = patchRuntimeInfoPlist(devRuntimeSourceAppBundle)
   const didPatchSource = didPatchSourceIcon || didPatchSourcePlist
@@ -319,25 +262,6 @@ if (process.platform === 'darwin') {
     didCopySource || didPatchSource || !sourceVerifiedBeforeSign
   const sourceSignSucceeded =
     !needsSourceSigning || signRuntimeAppBundle(devRuntimeSourceAppBundle)
-  const sourceVerifiedAfterSign = verifyRuntimeAppBundle(devRuntimeSourceAppBundle)
-
-  appendRuntimeDiagnostic('Prepared macOS source app seed', {
-    sourceAppBundlePath,
-    devRuntimeSourceAppBundle,
-    sourceManifestMatches,
-    usedStockElectronSource: sourceAppBundlePath === stockElectronAppBundlePath,
-    didCopySource,
-    didPatchSourceIcon,
-    didPatchSourcePlist,
-    clearedSourceQuarantine,
-    clearedSourceSeedQuarantine,
-    sourceQuarantineBefore,
-    sourceSeedQuarantineBefore,
-    sourceVerifiedBeforeSign,
-    needsSourceSigning,
-    sourceSignSucceeded,
-    sourceVerifiedAfterSign,
-  })
 
   if (needsSourceSigning && !sourceSignSucceeded) {
     console.warn('[electron-main] Failed to ad-hoc sign stable source Stella.app; macOS permissions may not persist across restarts.')
@@ -366,32 +290,12 @@ if (process.platform === 'darwin') {
     didCopy = true
   }
 
-  const runtimeQuarantineBefore = readQuarantineStatus(devRuntimeAppBundle)
-  const clearedRuntimeQuarantine = clearQuarantineAttribute(devRuntimeAppBundle)
   const didPatchIcon = patchRuntimeIcon(devRuntimeAppBundle)
   const didPatchPlist = patchRuntimeInfoPlist(devRuntimeAppBundle)
   const didPatch = didPatchIcon || didPatchPlist
   const verifiedBeforeSign = verifyRuntimeAppBundle(devRuntimeAppBundle)
   const needsSigning = didCopy || didPatch || !verifiedBeforeSign
   const signSucceeded = !needsSigning || signRuntimeAppBundle(devRuntimeAppBundle)
-  const verifiedAfterSign = verifyRuntimeAppBundle(devRuntimeAppBundle)
-
-  appendRuntimeDiagnostic('Prepared macOS dev runtime app', {
-    sourceAppBundlePath: devRuntimeSourceAppBundle,
-    devRuntimeAppBundle,
-    manifestMatches,
-    didCopy,
-    didPatchIcon,
-    didPatchPlist,
-    clearedSourceQuarantine,
-    clearedRuntimeQuarantine,
-    sourceQuarantineBefore,
-    runtimeQuarantineBefore,
-    verifiedBeforeSign,
-    needsSigning,
-    signSucceeded,
-    verifiedAfterSign,
-  })
 
   if (needsSigning && !signSucceeded) {
     console.warn('[electron-main] Failed to ad-hoc sign stable dev Stella.app; macOS permissions may not persist across restarts.')
