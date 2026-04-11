@@ -9,6 +9,7 @@ import { RadialGestureService } from "../services/radial-gesture-service.js";
 import { SecurityPolicyService } from "../services/security-policy-service.js";
 import { UiStateService } from "../services/ui-state-service.js";
 import { getDevServerUrl } from "../dev-url.js";
+import { hasMacPermission } from "../utils/macos-permissions.js";
 import { loadLocalPreferences } from "../../runtime/kernel/preferences/local-preferences.js";
 import { DEFAULT_RADIAL_TRIGGER_CODE } from "../../src/shared/lib/radial-trigger.js";
 import type {
@@ -92,6 +93,10 @@ export const createBootstrapServices = (options: {
       }
       return loadLocalPreferences(stellaHomePath).radialTriggerKey;
     },
+    shouldEnable: () =>
+      !uiStateService.state.suppressNativeRadialDuringOnboarding &&
+      (process.platform !== "darwin" ||
+        hasMacPermission("accessibility", false)),
     capture: {
       cancelRadialContextCapture: () =>
         captureService.cancelRadialContextCapture(),

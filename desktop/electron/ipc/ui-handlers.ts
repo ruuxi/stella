@@ -19,6 +19,7 @@ type UiHandlersOptions = {
   scheduleResumeWakeWord: () => void;
   deactivateVoiceModes: () => boolean;
   syncWakeWordState: () => boolean;
+  syncNativeRadialGesture: () => void;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -70,6 +71,8 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
   ipcMain.handle("ui:setState", (event, partial: Partial<UiState>) => {
     if (!options.assertPrivilegedSender(event, "ui:setState"))
       return options.uiState;
+    const previousSuppression =
+      options.uiState.suppressNativeRadialDuringOnboarding;
     const {
       window: nextWindow,
       isVoiceRtcActive,
@@ -83,6 +86,12 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     }
     if (Object.keys(rest).length > 0) {
       options.updateUiState(rest);
+    }
+    if (
+      partial.suppressNativeRadialDuringOnboarding !== undefined &&
+      partial.suppressNativeRadialDuringOnboarding !== previousSuppression
+    ) {
+      options.syncNativeRadialGesture();
     }
     if (isVoiceRtcActive !== undefined) {
       options.syncVoiceOverlay();
