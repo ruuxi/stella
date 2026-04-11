@@ -176,6 +176,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+
       - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
