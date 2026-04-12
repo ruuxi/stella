@@ -10,6 +10,8 @@ import {
   writeFileSync,
   watch,
 } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
@@ -309,6 +311,34 @@ if (process.platform === 'darwin') {
   electronBinary = getAppExecutablePath(devRuntimeAppBundle)
 }
 
+const scriptDir = dirname(fileURLToPath(import.meta.url))
+let disclaimBinary = null
+
+if (process.platform === 'darwin') {
+  const disclaimSource = resolve(scriptDir, 'disclaim-spawn.c')
+  disclaimBinary = resolve(devRuntimeRoot, 'disclaim-spawn')
+
+  if (existsSync(disclaimSource)) {
+    const needsBuild = !existsSync(disclaimBinary) ||
+      statSync(disclaimSource).mtimeMs > statSync(disclaimBinary).mtimeMs
+
+    if (needsBuild) {
+      try {
+        mkdirSync(devRuntimeRoot, { recursive: true })
+        execFileSync('clang', ['-O2', '-o', disclaimBinary, disclaimSource], {
+          stdio: 'ignore',
+          timeout: 15_000,
+        })
+      } catch {
+        console.warn('[electron-main] Failed to compile disclaim-spawn; macOS TCC prompts may not appear.')
+        disclaimBinary = null
+      }
+    }
+  } else {
+    disclaimBinary = null
+  }
+}
+
 const logError = (message) => {
   console.error(`[electron-main] ${message}`)
 }
@@ -351,7 +381,11 @@ const startApp = () => {
     return
   }
 
-  const child = spawn(electronBinary, ['.'], {
+  const useDisclaim = disclaimBinary && existsSync(disclaimBinary)
+  const spawnCmd = useDisclaim ? disclaimBinary : electronBinary
+  const spawnArgs = useDisclaim ? [electronBinary, '.'] : ['.']
+
+  const child = spawn(spawnCmd, spawnArgs, {
     cwd: projectDir,
     env: {
       ...process.env,
