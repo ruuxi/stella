@@ -48,6 +48,8 @@ const requiredFiles = [
 const restartDebounceMs = 150
 const forcedShutdownTimeoutMs = 1_500
 const startupWatchDelayMs = 2_500
+const staleAppShutdownPollMs = 150
+const staleAppShutdownTimeoutMs = 3_000
 
 let shuttingDown = false
 let currentApp = null
@@ -343,6 +345,11 @@ const logError = (message) => {
   console.error(`[electron-main] ${message}`)
 }
 
+const wait = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+
 const isPidAlive = (pid) => {
   if (!Number.isInteger(pid) || pid <= 0) {
     return false
@@ -352,6 +359,86 @@ const isPidAlive = (pid) => {
     return true
   } catch {
     return false
+  }
+}
+
+const listStaleDevAppPids = () => {
+  if (process.platform !== 'darwin') {
+    return []
+  }
+
+  try {
+    const stdout = execFileSync('ps', ['-ax', '-o', 'pid=,command='], {
+      encoding: 'utf8',
+    })
+    const expectedCommandPrefix = `${electronBinary} `
+    return stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .flatMap((line) => {
+        const match = line.match(/^(\d+)\s+(.*)$/)
+        if (!match) {
+          return []
+        }
+
+        const pid = Number(match[1])
+        const command = match[2] ?? ''
+        if (!Number.isInteger(pid) || pid === process.pid) {
+          return []
+        }
+
+        if (
+          command === electronBinary
+          || command === `${electronBinary} .`
+          || command.startsWith(expectedCommandPrefix)
+        ) {
+          return [pid]
+        }
+
+        return []
+      })
+  } catch {
+    return []
+  }
+}
+
+const terminateStaleDevApps = async () => {
+  const stalePids = listStaleDevAppPids()
+  if (stalePids.length === 0) {
+    return
+  }
+
+  logError(
+    `found stale dev Stella process${stalePids.length === 1 ? '' : 'es'} (${stalePids.join(', ')}); terminating before launch.`,
+  )
+
+  for (const pid of stalePids) {
+    try {
+      process.kill(pid, 'SIGTERM')
+    } catch {
+      // Ignore races if a stale process exits before termination.
+    }
+  }
+
+  const deadline = Date.now() + staleAppShutdownTimeoutMs
+  while (Date.now() < deadline) {
+    const remaining = stalePids.filter((pid) => isPidAlive(pid))
+    if (remaining.length === 0) {
+      return
+    }
+    await wait(staleAppShutdownPollMs)
+  }
+
+  for (const pid of stalePids) {
+    if (!isPidAlive(pid)) {
+      continue
+    }
+    try {
+      process.kill(pid, 'SIGKILL')
+    } catch {
+      // Ignore races if a stale process exits during escalation.
+    }
   }
 }
 
@@ -525,6 +612,8 @@ const shutdown = async (exitCode) => {
 await waitOn({
   resources: requiredFiles.map((filePath) => `file:${filePath}`),
 })
+
+await terminateStaleDevApps()
 
 watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {
   if (!shouldRestartElectronForBuildPath(filename)) {
