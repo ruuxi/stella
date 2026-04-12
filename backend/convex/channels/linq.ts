@@ -82,12 +82,8 @@ const linqCreateChat = async (
   }
 
   const data = (await res.json()) as Record<string, unknown>;
-  const chatId =
-    (data.id as string | undefined) ??
-    (data.chat_id as string | undefined) ??
-    (data.chatId as string | undefined) ??
-    ((data.data as Record<string, unknown> | undefined)?.id as string | undefined) ??
-    ((data.data as Record<string, unknown> | undefined)?.chat_id as string | undefined);
+  const chat = data.chat as Record<string, unknown> | undefined;
+  const chatId = chat?.id as string | undefined;
   if (!chatId) {
     console.error("[linq] createChat response has no chat ID:", JSON.stringify(data));
     throw new Error(`Linq createChat returned no chat ID: ${JSON.stringify(data)}`);
@@ -390,12 +386,6 @@ export const sendLinqLinkSms = action({
   args: { phoneNumber: v.string() },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    if (!isLinqLiveDeployment()) {
-      throw new ConvexError(
-        "Text Stella is only enabled on the primary Stella deployment.",
-      );
-    }
-
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError(SIGN_IN_REQUIRED_ERROR);
     if ((identity as Record<string, unknown>).isAnonymous === true) {
