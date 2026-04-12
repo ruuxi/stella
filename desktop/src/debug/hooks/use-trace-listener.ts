@@ -37,6 +37,7 @@ import {
   traceAssistantMessage,
   registerRunAgent,
   addTrace,
+  formatTraceSnippet,
 } from "@/debug/trace-store";
 
 /**
@@ -189,7 +190,7 @@ export function useTraceEventMonitor(enabled: boolean, events: EventRecord[]) {
           addTrace(
             "error",
             "tool-error",
-            `${p.toolName}: ${p.error.slice(0, 200)}`,
+            `${p.toolName}: ${formatTraceSnippet(p.error, 200)}`,
             {
               toolName: p.toolName,
               agent: p.agentType,
