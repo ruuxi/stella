@@ -6,6 +6,7 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
+import { useTheme } from "@/context/theme-context";
 import { animate } from "motion";
 import { createPortal } from "react-dom";
 import { CompactConversationSurface } from "@/app/chat/CompactConversationSurface";
@@ -24,6 +25,7 @@ import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
 import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import { useChatContextSync } from "./use-chat-context-sync";
+import { ShiftingGradient } from "./background/ShiftingGradient";
 import "./chat-sidebar.css";
 
 export interface ChatSidebarHandle {
@@ -76,6 +78,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     const [inputText, setInputText] = useState("");
     const [sidebarExpanded, setSidebarExpanded] = useState(false);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const { gradientMode, gradientColor } = useTheme();
     const { chatContext, setChatContext, selectedText, setSelectedText } =
       useChatContextSync();
     const { screenshot: previewScreenshot, previewIndex: previewScreenshotIndex, setPreviewIndex: setPreviewScreenshotIndex } =
@@ -219,109 +222,116 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
         aria-hidden={!isOpen}
       >
         <div className="chat-sidebar-inner">
-          <CompactConversationSurface
-            className="chat-sidebar-messages"
-            conversationClassName="chat-sidebar-conversation"
-            variant="sidebar"
-            events={events}
-            streamingText={streamingText}
-            reasoningText={reasoningText}
-            isStreaming={isStreaming}
-            runtimeStatusText={runtimeStatusText}
-            pendingUserMessageId={pendingUserMessageId}
-            selfModMap={selfModMap}
-            liveTasks={liveTasks}
-            hasOlderEvents={hasOlderEvents}
-            isLoadingOlder={isLoadingOlder}
-            isLoadingHistory={isInitialLoading}
+          <ShiftingGradient
+            mode={gradientMode}
+            colorMode={gradientColor}
+            contained
           />
-
-          <div className="chat-sidebar-composer" {...dropHandlers}>
-            <DropOverlay visible={isDragOver} variant="orb" />
-
-            <ComposerContextRow
-              variant="mini"
-              chatContext={chatContext}
-              selectedText={selectedText}
-              setChatContext={setChatContext}
-              setSelectedText={setSelectedText}
-              onPreviewScreenshot={setPreviewScreenshotIndex}
+          <div className="chat-sidebar-main">
+            <CompactConversationSurface
+              className="chat-sidebar-messages"
+              conversationClassName="chat-sidebar-conversation"
+              variant="sidebar"
+              events={events}
+              streamingText={streamingText}
+              reasoningText={reasoningText}
+              isStreaming={isStreaming}
+              runtimeStatusText={runtimeStatusText}
+              pendingUserMessageId={pendingUserMessageId}
+              selfModMap={selfModMap}
+              liveTasks={liveTasks}
+              hasOlderEvents={hasOlderEvents}
+              isLoadingOlder={isLoadingOlder}
+              isLoadingHistory={isInitialLoading}
             />
 
-            <div ref={shellRef} className="chat-sidebar-shell">
-              <form
-                ref={formRef}
-                className={`chat-sidebar-form${sidebarExpanded ? " expanded" : ""}`}
-                onSubmit={handleSubmit}
-              >
-                <ComposerAddButton
-                  className="composer-add-button"
-                  title="Add"
-                  onClick={onAdd}
-                />
+            <div className="chat-sidebar-composer" {...dropHandlers}>
+              <DropOverlay visible={isDragOver} variant="orb" />
 
-                <ComposerTextarea
-                  ref={inputRef}
-                  className="chat-sidebar-input"
-                  tone="default"
-                  value={inputText}
-                  rows={1}
-                  onChange={(event) => {
-                    setInputText(event.target.value);
-                    requestAnimationFrame(() => {
-                      const el = inputRef.current;
-                      if (!el) return;
-                      const form = el.closest(".chat-sidebar-form") as HTMLElement | null;
-                      if (!form) return;
-                      const isExp = form.classList.contains("expanded");
+              <ComposerContextRow
+                variant="mini"
+                chatContext={chatContext}
+                selectedText={selectedText}
+                setChatContext={setChatContext}
+                setSelectedText={setSelectedText}
+                onPreviewScreenshot={setPreviewScreenshotIndex}
+              />
 
-                      if (!isExp) {
-                        if (el.scrollHeight > 44) setSidebarExpanded(true);
-                      } else {
-                        form.classList.remove("expanded");
-                        const pillSh = el.scrollHeight;
-                        form.classList.add("expanded");
-                        if (pillSh <= 44) setSidebarExpanded(false);
+              <div ref={shellRef} className="chat-sidebar-shell">
+                <form
+                  ref={formRef}
+                  className={`chat-sidebar-form${sidebarExpanded ? " expanded" : ""}`}
+                  onSubmit={handleSubmit}
+                >
+                  <ComposerAddButton
+                    className="composer-add-button"
+                    title="Add"
+                    onClick={onAdd}
+                  />
+
+                  <ComposerTextarea
+                    ref={inputRef}
+                    className="chat-sidebar-input"
+                    tone="default"
+                    value={inputText}
+                    rows={1}
+                    onChange={(event) => {
+                      setInputText(event.target.value);
+                      requestAnimationFrame(() => {
+                        const el = inputRef.current;
+                        if (!el) return;
+                        const form = el.closest(".chat-sidebar-form") as HTMLElement | null;
+                        if (!form) return;
+                        const isExp = form.classList.contains("expanded");
+
+                        if (!isExp) {
+                          if (el.scrollHeight > 44) setSidebarExpanded(true);
+                        } else {
+                          form.classList.remove("expanded");
+                          const pillSh = el.scrollHeight;
+                          form.classList.add("expanded");
+                          if (pillSh <= 44) setSidebarExpanded(false);
+                        }
+                      });
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        handleSubmit(event);
                       }
-                    });
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      handleSubmit(event);
-                    }
-                  }}
-                  placeholder={composerState.placeholder}
-                />
+                    }}
+                    placeholder={composerState.placeholder}
+                  />
 
-                <div className="composer-toolbar">
-                  <div className="composer-toolbar-left">
-                    <ComposerAddButton
-                      className="composer-add-button composer-add-button--toolbar"
-                      title="Add"
-                      onClick={onAdd}
-                    />
-                  </div>
-
-                  <div className="composer-toolbar-right">
-                    {isStreaming && (
-                      <ComposerStopButton
-                        className="composer-stop"
-                        onClick={() => {
-                          /* stop handled externally */
-                        }}
-                        title="Stop"
-                        aria-label="Stop"
+                  <div className="composer-toolbar">
+                    <div className="composer-toolbar-left">
+                      <ComposerAddButton
+                        className="composer-add-button composer-add-button--toolbar"
+                        title="Add"
+                        onClick={onAdd}
                       />
-                    )}
-                    <ComposerSubmitButton
-                      className="composer-submit"
-                      disabled={!composerState.canSubmit}
-                      animated
-                    />
+                    </div>
+
+                    <div className="composer-toolbar-right">
+                      {isStreaming && (
+                        <ComposerStopButton
+                          className="composer-stop"
+                          onClick={() => {
+                            /* stop handled externally */
+                          }}
+                          title="Stop"
+                          aria-label="Stop"
+                        />
+                      )}
+                      <ComposerSubmitButton
+                        className="composer-submit"
+                        disabled={!composerState.canSubmit}
+                        animated
+                      />
+                    </div>
                   </div>
-                </div>
-              </form>
+                </form>
+              </div>
             </div>
           </div>
         </div>

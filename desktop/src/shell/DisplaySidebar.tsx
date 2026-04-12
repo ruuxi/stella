@@ -7,7 +7,9 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useTheme } from "@/context/theme-context";
 import { applyMorphdomHtml } from "./apply-morphdom-html";
+import { ShiftingGradient } from "./background/ShiftingGradient";
 import "./display-sidebar.css";
 
 export interface DisplaySidebarHandle {
@@ -18,6 +20,7 @@ export interface DisplaySidebarHandle {
 
 export const DisplaySidebar = forwardRef<DisplaySidebarHandle>(
   function DisplaySidebar(_props, ref) {
+    const { gradientMode, gradientColor } = useTheme();
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -73,6 +76,11 @@ export const DisplaySidebar = forwardRef<DisplaySidebarHandle>(
         className={`display-sidebar${isOpen ? " display-sidebar--open" : ""}`}
         aria-hidden={!isOpen}
       >
+        <ShiftingGradient
+          mode={gradientMode}
+          colorMode={gradientColor}
+          contained
+        />
         <div className="display-sidebar-inner">
           <button
             className="display-sidebar__close"
