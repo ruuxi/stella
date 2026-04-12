@@ -125,8 +125,14 @@ export const launchPreparedOrchestratorRun = (args: {
     agentContext: prepared.agentContext,
     callbacks: args.runtimeCallbacks,
     toolCatalog: context.toolHost.getToolCatalog(),
-    toolExecutor: (toolName, toolArgs, toolContext) =>
-      context.toolHost.executeTool(toolName, toolArgs, toolContext),
+    toolExecutor: (toolName, toolArgs, toolContext, signal, onUpdate) =>
+      context.toolHost.executeTool(
+        toolName,
+        toolArgs,
+        toolContext,
+        signal,
+        onUpdate,
+      ),
     deviceId: context.deviceId,
     stellaHome: context.stellaHomePath,
     resolvedLlm: prepared.resolvedLlm,

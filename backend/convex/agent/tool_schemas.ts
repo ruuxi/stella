@@ -13,6 +13,7 @@ export const DEVICE_TOOL_NAMES = [
   "Read",
   "Edit",
   "Grep",
+  "ExecuteTypescript",
   "Bash",
   "KillShell",
   "ShellStatus",
@@ -73,6 +74,19 @@ export const GrepSchema = z.object({
   case_insensitive: z.boolean().optional().describe("Case-insensitive search"),
   context_lines: z.number().optional().describe("Lines of context around each match (for output_mode=content)"),
   max_results: z.number().optional().describe("Maximum number of results to return"),
+});
+
+export const ExecuteTypescriptSchema = z.object({
+  summary: z
+    .string()
+    .describe("Short description of what the program will do before it runs."),
+  code: z
+    .string()
+    .describe("TypeScript program body to execute. Top-level await and return are allowed."),
+  timeoutMs: z
+    .number()
+    .optional()
+    .describe("Optional execution timeout in milliseconds."),
 });
 
 export const BashSchema = z.object({
@@ -143,6 +157,15 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "  - \"count\": number of matches per file.\n" +
     "- Use glob to filter by file pattern (e.g. \"*.ts\") or type for standard file types (e.g. \"js\", \"py\").\n" +
     "- Use this instead of Bash with grep or rg.",
+  ExecuteTypescript:
+    "Write and run a short TypeScript program against Stella's typed bindings.\n\n" +
+    "Use this when the task needs loops, batching, Promise.all, aggregation, parsing, or exact math in one step instead of many separate tool calls.\n\n" +
+    "Rules:\n" +
+    "- Write a program body, not a full module. Top-level await and return are allowed.\n" +
+    "- Do not use import, export, require, process, child_process, or direct filesystem/network APIs.\n" +
+    "- Use the provided bindings instead: workspace, life, browser, office, shell, libraries, console.\n" +
+    "- Return JSON-serializable data. Keep code focused and deterministic.\n" +
+    "- Prefer workspace/life/browser/office bindings over raw shell. Keep shell.exec as the escape hatch.",
   Bash:
     "Execute a shell command on the local device.\n\n" +
     "Usage:\n" +
@@ -186,6 +209,7 @@ export const TOOL_SCHEMAS = {
   Read: ReadSchema,
   Edit: EditSchema,
   Grep: GrepSchema,
+  ExecuteTypescript: ExecuteTypescriptSchema,
   Bash: BashSchema,
   KillShell: KillShellSchema,
   ShellStatus: ShellStatusSchema,

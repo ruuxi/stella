@@ -31,6 +31,13 @@ export type ToolResult = {
   error?: string;
 };
 
+export type ToolUpdateCallback = (update: ToolResult) => void;
+
+export type ToolHandlerExtras = {
+  signal?: AbortSignal;
+  onUpdate?: ToolUpdateCallback;
+};
+
 export type ToolMetadata = {
   name: string;
   description: string;
@@ -149,4 +156,5 @@ export type ScheduleToolApi = {
 export type ToolHandler = (
   args: Record<string, unknown>,
   context: ToolContext,
+  extras?: ToolHandlerExtras,
 ) => Promise<ToolResult>;

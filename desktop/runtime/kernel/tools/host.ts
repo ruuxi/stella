@@ -19,6 +19,7 @@ import path from "path";
 // Types
 import type {
   ToolContext,
+  ToolHandlerExtras,
   ToolResult,
   ToolHostOptions,
   ToolMetadata,
@@ -50,11 +51,13 @@ import {
   registerExtensionToolHandlers,
 } from "./registry.js";
 import { TOOL_DESCRIPTIONS, TOOL_JSON_SCHEMAS } from "./schemas.js";
+import { EXECUTE_TYPESCRIPT_TOOL_NAME } from "./execute-typescript-contract.js";
+import { createExecuteTypescriptToolHandlers } from "./execute-typescript.js";
 
 import type { ToolDefinition } from "../extensions/types.js";
 
 // Re-export types for external consumers
-export type { ToolContext, ToolResult };
+export type { ToolContext, ToolHandlerExtras, ToolResult };
 
 export const createToolHost = ({
   stellaHomePath,
@@ -104,7 +107,7 @@ export const createToolHost = ({
       logError("Failed to recover stale secret mounts", error);
     });
 
-  const handlers = mergeToolHandlers(
+  const baseHandlers = mergeToolHandlers(
     createFileToolHandlers(),
     createSearchToolHandlers(),
     createShellToolHandlers(shellState),
@@ -113,6 +116,32 @@ export const createToolHost = ({
     createDisplayToolHandlers({ displayHtml }),
     createScheduleToolHandlers({ taskApi, scheduleApi }),
   );
+
+  let handlers = baseHandlers;
+  const executeCapabilityTool = async (
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    context: ToolContext,
+    extras?: ToolHandlerExtras,
+  ): Promise<ToolResult> => {
+    if (toolName === EXECUTE_TYPESCRIPT_TOOL_NAME) {
+      return {
+        error: `${EXECUTE_TYPESCRIPT_TOOL_NAME} cannot call itself recursively as a tool.`,
+      };
+    }
+    const handler = handlers[toolName];
+    if (!handler) {
+      return { error: `Unknown nested tool: ${toolName}` };
+    }
+    return await handler(toolArgs, context, extras);
+  };
+
+  const codeHandlers = createExecuteTypescriptToolHandlers({
+    stellaHomePath,
+    frontendRoot,
+    executeCapabilityTool,
+  });
+  handlers = mergeToolHandlers(baseHandlers, codeHandlers);
 
   registerExtensionToolHandlers(handlers, extensionTools);
   for (const tool of extensionTools ?? []) {
@@ -127,9 +156,24 @@ export const createToolHost = ({
     toolName: string,
     toolArgs: Record<string, unknown>,
     context: ToolContext,
+    signal?: AbortSignal,
+    onUpdate?: ToolHandlerExtras["onUpdate"],
   ) => {
+    const extras: ToolHandlerExtras = {
+      ...(signal ? { signal } : {}),
+      ...(onUpdate ? { onUpdate } : {}),
+    };
     log(`Executing tool: ${toolName}`, {
-      args: toolName.includes("hera-browser")
+      args:
+        toolName === EXECUTE_TYPESCRIPT_TOOL_NAME
+          ? {
+              summary: toolArgs.summary,
+              codePreview: typeof toolArgs.code === "string"
+                ? toolArgs.code.slice(0, 200)
+                : undefined,
+              timeoutMs: toolArgs.timeoutMs,
+            }
+          : toolName.includes("hera-browser")
         ? { code: (toolArgs.code as string)?.slice(0, 200) + "...", timeout: toolArgs.timeout }
         : toolArgs,
       context,
@@ -144,7 +188,7 @@ export const createToolHost = ({
 
     const startTime = Date.now();
     try {
-      const result = await handler(toolArgs, context);
+      const result = await handler(toolArgs, context, extras);
       const duration = Date.now() - startTime;
       log(`Tool ${toolName} completed in ${duration}ms`, {
         hasResult: "result" in result,

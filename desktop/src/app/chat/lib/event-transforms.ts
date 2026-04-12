@@ -234,6 +234,8 @@ export function extractToolTitle(event: EventRecord): string {
       return args?.path ? str(args.path).split("/").pop()! : "Editing file";
     case "grep":
       return args?.pattern ? `"${str(args.pattern).slice(0, 30)}"` : "Searching";
+    case "executetypescript":
+      return args?.summary ? str(args.summary).slice(0, 40) : "Running code mode";
     case "glob":
       return args?.pattern ? str(args.pattern) : "Finding files";
     case "bash":

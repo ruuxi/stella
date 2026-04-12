@@ -82,6 +82,7 @@
     "date-fns": "^4.1.0",
     "dugite": "3.2.1",
     "effect": "^4.0.0-beta.28",
+    "esbuild": "^0.28.0",
     "googleapis": "^146.0.0",
     "hera-browser": "^0.0.57",
     "lucide-react": "^0.563.0",

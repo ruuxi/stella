@@ -533,6 +533,11 @@ export function useLocalAgentStream({
           break;
         }
         case AGENT_STREAM_EVENT_TYPES.STREAM: {
+          dispatch({
+            type: "run-status",
+            runId: event.runId,
+            statusText: null,
+          });
           if (isPrimaryRun && isOrchestratorEvent && event.chunk) {
             appendStreamingDelta(event.chunk);
           }
@@ -542,10 +547,11 @@ export function useLocalAgentStream({
           dispatch({
             type: "run-status",
             runId: event.runId,
-            statusText:
-              event.statusState === "compacting"
+            statusText: event.statusText
+              ? event.statusState === "compacting"
                 ? event.statusText || "Compacting context"
-                : null,
+                : event.statusText
+              : null,
           });
           break;
         }
@@ -694,7 +700,10 @@ export function useLocalAgentStream({
   useEffect(() => {
     resetStreamingText();
     resetReasoningText();
-    setPendingUserMessageId(null);
+    const timeoutId = window.setTimeout(() => {
+      setPendingUserMessageId(null);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [activeConversationId, resetReasoningText, resetStreamingText]);
 
   const startStream = useCallback(

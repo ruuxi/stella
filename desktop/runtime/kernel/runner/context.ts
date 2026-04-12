@@ -26,6 +26,10 @@ import {
 } from "../runtime-threads.js";
 import { anyApi } from "convex/server";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
+import {
+  EXECUTE_TYPESCRIPT_PROMPT_GUIDANCE,
+  EXECUTE_TYPESCRIPT_TOOL_NAME,
+} from "../tools/execute-typescript-contract.js";
 import type {
   RunnerContext,
   ParsedAgentLike,
@@ -488,6 +492,9 @@ export const buildAgentContext = async (
   const enginePref = getAgentEnginePreference(args.agentType);
 
   const toolsAllowlist = agent?.toolsAllowlist;
+  if (toolsAllowlist?.includes(EXECUTE_TYPESCRIPT_TOOL_NAME)) {
+    dynamicContextSections.push(EXECUTE_TYPESCRIPT_PROMPT_GUIDANCE);
+  }
 
   return {
     systemPrompt:

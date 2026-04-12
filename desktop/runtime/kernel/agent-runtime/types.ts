@@ -6,6 +6,7 @@ import type {
   ToolContext,
   ToolMetadata,
   ToolResult,
+  ToolUpdateCallback,
 } from "../tools/types.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import type {
@@ -132,6 +133,7 @@ export type BaseRunOptions = {
     args: Record<string, unknown>,
     context: ToolContext,
     signal?: AbortSignal,
+    onUpdate?: ToolUpdateCallback,
   ) => Promise<ToolResult>;
   deviceId: string;
   stellaHome: string;

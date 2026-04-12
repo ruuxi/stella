@@ -523,8 +523,14 @@ export const createStellaHostRunner = (
     getStellaSiteAuth: convexSession.getStellaSiteAuth,
     killAllShells: () => context.toolHost.killAllShells(),
     killShellsByPort: (port) => context.toolHost.killShellsByPort(port),
-    executeTool: (toolName, toolArgs, toolContext) =>
-      context.toolHost.executeTool(toolName, toolArgs, toolContext),
+    executeTool: (toolName, toolArgs, toolContext, signal, onUpdate) =>
+      context.toolHost.executeTool(
+        toolName,
+        toolArgs,
+        toolContext,
+        signal,
+        onUpdate,
+      ),
     agentHealthCheck: orchestratorController.agentHealthCheck,
     webSearch: convexSession.webSearch,
     listStorePackages: storeOperations.listStorePackages,

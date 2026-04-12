@@ -5,7 +5,12 @@ import {
   TOOL_DESCRIPTIONS,
   TOOL_JSON_SCHEMAS,
 } from "../tools/schemas.js";
-import type { ToolContext, ToolMetadata, ToolResult } from "../tools/types.js";
+import type {
+  ToolContext,
+  ToolMetadata,
+  ToolResult,
+  ToolUpdateCallback,
+} from "../tools/types.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { TOOL_IDS } from "../../../src/shared/contracts/agent-runtime.js";
 import { AnyToolArgsSchema, textFromUnknown } from "./shared.js";
@@ -70,7 +75,7 @@ const formatToolResult = (
   if (toolResult.error) {
     return {
       text: `Error: ${toolResult.error}`,
-      details: { error: toolResult.error },
+      details: toolResult.details ?? { error: toolResult.error },
     };
   }
 
@@ -120,6 +125,7 @@ type RuntimeToolExecutionArgs = RuntimeToolContextArgs & {
     args: Record<string, unknown>,
     context: ToolContext,
     signal?: AbortSignal,
+    onUpdate?: ToolUpdateCallback,
   ) => Promise<ToolResult>;
   webSearch?: (
     query: string,
@@ -132,6 +138,7 @@ type RuntimeToolExecutionArgs = RuntimeToolContextArgs & {
   }>;
   hookEmitter?: HookEmitter;
   signal?: AbortSignal;
+  onUpdate?: ToolUpdateCallback;
 };
 
 export const executeRuntimeToolCall = async (
@@ -172,6 +179,7 @@ export const executeRuntimeToolCall = async (
     effectiveArgs,
     context,
     args.signal,
+    args.onUpdate,
   );
 
   if (args.hookEmitter) {
@@ -211,6 +219,7 @@ export const createPiTools = (opts: {
     args: Record<string, unknown>,
     context: ToolContext,
     signal?: AbortSignal,
+    onUpdate?: ToolUpdateCallback,
   ) => Promise<ToolResult>;
   webSearch?: (
     query: string,
@@ -235,7 +244,7 @@ export const createPiTools = (opts: {
       label: toolName,
       description: metadata.description,
       parameters: metadata.parameters as typeof AnyToolArgsSchema,
-      execute: async (toolCallId, params, signal) => {
+      execute: async (toolCallId, params, signal, onUpdate) => {
         const args = (params as Record<string, unknown>) ?? {};
         const toolResult = await executeRuntimeToolCall({
           toolCallId,
@@ -255,6 +264,15 @@ export const createPiTools = (opts: {
           webSearch: opts.webSearch,
           hookEmitter: opts.hookEmitter,
           signal,
+          onUpdate: onUpdate
+            ? ((partialResult: ToolResult) => {
+                const formattedPartial = formatToolResult(partialResult);
+                onUpdate({
+                  content: [{ type: "text", text: formattedPartial.text }],
+                  details: formattedPartial.details,
+                });
+              })
+            : undefined,
         });
         const formatted = formatToolResult(toolResult);
         return {
