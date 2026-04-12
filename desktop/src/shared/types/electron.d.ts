@@ -10,6 +10,7 @@ import type { UiState, WindowMode } from "./ui";
 import type { Theme } from "@/shared/theme/themes/types";
 import type { AgentStreamEvent } from "@/app/chat/streaming/streaming-types";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
+import type { LocalChatEventWindowMode } from "../../runtime/chat-event-visibility";
 import type {
   RadialWedge as SharedRadialWedge,
   ChatContext as SharedChatContext,
@@ -395,7 +396,11 @@ export type ElectronVoiceApi = {
 
 export type ElectronAgentApi = {
   healthCheck: () => Promise<AgentHealth | null>;
-  getActiveRun: () => Promise<{ runId: string; conversationId: string } | null>;
+  getActiveRun: () => Promise<{
+    runId: string;
+    conversationId: string;
+    uiVisibility?: "visible" | "hidden";
+  } | null>;
   getAppSessionStartedAt: () => Promise<number>;
   startChat: (payload: {
     conversationId: string;
@@ -424,6 +429,7 @@ export type ElectronAgentApi = {
       conversationId: string;
       requestId?: string;
       userMessageId?: string;
+      uiVisibility?: "visible" | "hidden";
     } | null;
     events: AgentStreamIpcEvent[];
     tasks: Array<{
@@ -679,8 +685,12 @@ export type ElectronLocalChatApi = {
   listEvents: (payload: {
     conversationId: string;
     maxItems?: number;
+    windowBy?: LocalChatEventWindowMode;
   }) => Promise<EventRecord[]>;
-  getEventCount: (payload: { conversationId: string }) => Promise<number>;
+  getEventCount: (payload: {
+    conversationId: string;
+    countBy?: LocalChatEventWindowMode;
+  }) => Promise<number>;
   persistDiscoveryWelcome: (payload: {
     conversationId: string;
     message: string;
