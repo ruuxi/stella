@@ -4,7 +4,7 @@ export type DiscoveryCategory =
   | "apps_system"
   | "messages_notes";
 
-export type RadialWedge = "capture" | "chat" | "full" | "voice" | "dismiss";
+export type RadialWedge = "capture" | "chat" | "add" | "voice" | "dismiss";
 
 export type WindowBounds = { x: number; y: number; width: number; height: number };
 

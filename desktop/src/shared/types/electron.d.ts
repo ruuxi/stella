@@ -228,8 +228,6 @@ export type ElectronRadialApi = {
         screenX?: number;
         screenY?: number;
         compactFocused?: boolean;
-        fullFocused?: boolean;
-        fullEnabled?: boolean;
       },
     ) => void,
   ) => () => void;

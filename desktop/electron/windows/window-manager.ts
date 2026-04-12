@@ -342,11 +342,6 @@ export class WindowManager {
         window.moveTop()
         window.setAlwaysOnTop(true, 'screen-saver')
         window.focus()
-        setTimeout(() => {
-          if (!window.isDestroyed()) {
-            window.setAlwaysOnTop(false)
-          }
-        }, 75)
         return
       }
 

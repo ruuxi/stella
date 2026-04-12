@@ -31,8 +31,6 @@ type OverlayState = {
   radialVisible: boolean;
   radialPosition: { x: number; y: number } | null;
   radialCompactFocused: boolean;
-  radialFullFocused: boolean;
-  radialFullEnabled: boolean;
   windowHighlightBounds: WindowBounds | null;
   windowHighlightTone: WindowHighlightTone;
   regionCaptureActive: boolean;
@@ -47,8 +45,6 @@ type OverlayAction =
       type: "radial:show";
       position?: { x: number; y: number };
       compactFocused?: boolean;
-      fullFocused?: boolean;
-      fullEnabled?: boolean;
     }
   | { type: "radial:hide" }
   | {
@@ -73,8 +69,6 @@ const initialState: OverlayState = {
   radialVisible: false,
   radialPosition: null,
   radialCompactFocused: false,
-  radialFullFocused: false,
-  radialFullEnabled: true,
   windowHighlightBounds: null,
   windowHighlightTone: "default",
   regionCaptureActive: false,
@@ -102,8 +96,6 @@ function overlayReducer(
         radialVisible: true,
         radialPosition: nextPosition,
         radialCompactFocused: action.compactFocused ?? false,
-        radialFullFocused: action.fullFocused ?? false,
-        radialFullEnabled: action.fullEnabled ?? true,
       };
     }
     case "radial:hide":
@@ -112,8 +104,6 @@ function overlayReducer(
             ...state,
             radialVisible: false,
             radialCompactFocused: false,
-            radialFullFocused: false,
-            radialFullEnabled: true,
           }
         : state;
     case "overlay:windowHighlight":
@@ -182,8 +172,6 @@ function useOverlayIPC(
           screenX?: number;
           screenY?: number;
           compactFocused?: boolean;
-          fullFocused?: boolean;
-          fullEnabled?: boolean;
         },
       ) => {
         if (radialHideTimerRef.current) {
@@ -198,15 +186,11 @@ function useOverlayIPC(
             type: "radial:show",
             position: { x: data.screenX!, y: data.screenY! },
             compactFocused: data.compactFocused,
-            fullFocused: data.fullFocused,
-            fullEnabled: data.fullEnabled,
           });
         } else {
           dispatch({
             type: "radial:show",
             compactFocused: data.compactFocused,
-            fullFocused: data.fullFocused,
-            fullEnabled: data.fullEnabled,
           });
         }
       },
@@ -472,8 +456,6 @@ export function OverlayRoot() {
       >
         <RadialDial
           miniVisible={state.radialCompactFocused}
-          fullVisible={state.radialFullFocused}
-          fullEnabled={state.radialFullEnabled}
         />
       </div>
 
