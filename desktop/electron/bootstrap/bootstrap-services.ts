@@ -135,10 +135,7 @@ export const createBootstrapServices = (options: {
       getLastActiveWindowMode: () =>
         state.windowManager?.getLastActiveWindowMode() ?? "full",
       isWindowFocused: () => state.windowManager?.isWindowFocused() ?? false,
-      isFullWindowMacFullscreen: () =>
-        state.windowManager?.isFullWindowMacFullscreen() ?? false,
       showWindow: (target) => state.windowManager?.showWindow(target),
-      restoreFullSize: () => state.windowManager?.restoreFullSize(),
       minimizeWindow: () => state.windowManager?.minimizeWindow(),
     },
     activateVoiceRtc: () => {

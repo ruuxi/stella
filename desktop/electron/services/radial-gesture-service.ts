@@ -28,8 +28,6 @@ export type RadialCaptureBridge = {
 export type RadialOverlayBridge = {
   showRadial: (options?: {
     compactFocused?: boolean
-    fullFocused?: boolean
-    fullEnabled?: boolean
   }) => void
   hideRadial: () => void
   updateRadialCursor: (x: number, y: number) => void
@@ -40,9 +38,7 @@ export type RadialWindowBridge = {
   isCompactMode: () => boolean
   getLastActiveWindowMode: () => 'full' | 'mini'
   isWindowFocused: () => boolean
-  isFullWindowMacFullscreen: () => boolean
   showWindow: (target: 'full' | 'mini') => void
-  restoreFullSize: () => void
   minimizeWindow: () => void
 }
 
@@ -159,6 +155,11 @@ export class RadialGestureService {
         }
         break
       }
+      case 'add': {
+        capture.setRadialContextShouldCommit(true)
+        capture.commitStagedRadialContext(this.contextBeforeGesture)
+        break
+      }
       case 'voice': {
         this.clearScheduledRadialCapture()
         capture.cancelRadialContextCapture()
@@ -170,20 +171,6 @@ export class RadialGestureService {
         }
         break
       }
-      case 'full':
-        this.clearScheduledRadialCapture()
-        capture.cancelRadialContextCapture()
-        this.restoreOrClearTransientContext()
-        if (win.isFullWindowMacFullscreen()) {
-          break
-        }
-        updateUiState({ mode: 'chat' })
-        if (!win.isCompactMode() && win.isWindowFocused()) {
-          win.minimizeWindow()
-        } else {
-          win.showWindow('full')
-        }
-        break
     }
   }
 
@@ -220,13 +207,8 @@ export class RadialGestureService {
         this.selectionCommitted = false
         const windowFocused = win.isWindowFocused()
         const compactFocused = win.isCompactMode() && windowFocused
-        const fullWindowMacFullscreen = win.isFullWindowMacFullscreen()
-        const fullFocused =
-          !fullWindowMacFullscreen && !win.isCompactMode() && windowFocused
         overlay.showRadial({
           compactFocused,
-          fullFocused,
-          fullEnabled: !fullWindowMacFullscreen,
         })
         const cursorPoint = screen.getCursorScreenPoint()
         this.scheduleRadialContextCapture(cursorPoint)

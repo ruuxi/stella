@@ -6,8 +6,6 @@ type RadialState = {
   visible: boolean;
   position: { x: number; y: number } | null;
   miniVisible: boolean;
-  fullVisible: boolean;
-  fullEnabled: boolean;
 };
 
 const HIDE_DELAY_MS = 300;
@@ -17,8 +15,6 @@ export function WindowRadialOverlay() {
     visible: false,
     position: null,
     miniVisible: false,
-    fullVisible: false,
-    fullEnabled: true,
   });
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -48,8 +44,6 @@ export function WindowRadialOverlay() {
         visible: true,
         position: { x: data.screenX, y: data.screenY },
         miniVisible: data.compactFocused ?? false,
-        fullVisible: data.fullFocused ?? false,
-        fullEnabled: data.fullEnabled ?? true,
       });
     });
 
@@ -61,8 +55,6 @@ export function WindowRadialOverlay() {
           ...current,
           visible: false,
           miniVisible: false,
-          fullVisible: false,
-          fullEnabled: true,
         }));
       }, HIDE_DELAY_MS);
     });
@@ -92,8 +84,6 @@ export function WindowRadialOverlay() {
     >
       <RadialDial
         miniVisible={state.miniVisible}
-        fullVisible={state.fullVisible}
-        fullEnabled={state.fullEnabled}
       />
     </div>
   );

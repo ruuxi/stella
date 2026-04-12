@@ -58,7 +58,9 @@ export class MiniWindowController {
           maxHeight: MINI_SHELL_MAX_SIZE.height,
           show: false,
           frame: false,
+          fullscreenable: false,
           backgroundColor: '#00000000',
+          ...(isMac ? { hiddenInMissionControl: true } : {}),
           icon: windowIcon,
           webPreferences: createSharedWebPreferences({
             preloadPath: this.options.preloadPath,
@@ -74,6 +76,11 @@ export class MiniWindowController {
         this.options.onClosed?.()
       },
     })
+
+    if (isMac) {
+      window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+      window.setAlwaysOnTop(true, 'screen-saver')
+    }
 
     this.window = window
 

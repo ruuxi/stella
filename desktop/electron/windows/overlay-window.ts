@@ -505,8 +505,6 @@ export class OverlayWindowController {
 
   showRadial(options?: {
     compactFocused?: boolean
-    fullFocused?: boolean
-    fullEnabled?: boolean
     hostWindow?: BrowserWindow | null
   }) {
     if (this.radialHideTimeout) {
@@ -552,8 +550,6 @@ export class OverlayWindowController {
       screenX: localX,
       screenY: localY,
       compactFocused: options?.compactFocused ?? false,
-      fullFocused: options?.fullFocused ?? false,
-      fullEnabled: options?.fullEnabled ?? true,
     }
 
     if (this.radialHostWindow) {

@@ -6,7 +6,7 @@ import {
   type ComponentType,
   type SVGProps,
 } from 'react'
-import { Camera, Maximize2, MessageSquare, Mic, X } from 'lucide-react'
+import { Camera, MessageSquare, Mic, Plus, X } from 'lucide-react'
 import { StellaAnimation } from '@/shell/ascii-creature/StellaAnimation'
 import { cssToVec3 } from '@/shared/lib/color'
 import { RADIAL_SIZE } from '@/shared/lib/layout'
@@ -30,7 +30,7 @@ const BASE_WEDGES: {
 }[] = [
   { id: 'capture', label: 'Capture', icon: Camera },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
-  { id: 'full', label: 'Full', icon: Maximize2 },
+  { id: 'add', label: 'Add', icon: Plus },
   { id: 'voice', label: 'Voice', icon: Mic },
 ]
 
@@ -41,20 +41,10 @@ const OUTER_RADIUS = 125
 const WEDGE_ANGLE = 90
 const DEAD_ZONE_RADIUS = 30
 
-const getWedges = (
-  compactAndFocused: boolean,
-  fullAndFocused: boolean,
-  fullEnabled: boolean,
-) =>
+const getWedges = (compactAndFocused: boolean) =>
   BASE_WEDGES.map((wedge) => {
     if (wedge.id === 'chat' && compactAndFocused) {
       return { ...wedge, label: 'Close', icon: X, enabled: true }
-    }
-    if (wedge.id === 'full' && fullAndFocused && fullEnabled) {
-      return { ...wedge, label: 'Close', icon: X, enabled: true }
-    }
-    if (wedge.id === 'full' && !fullEnabled) {
-      return { ...wedge, enabled: false }
     }
     return { ...wedge, enabled: true }
   })
@@ -326,21 +316,14 @@ function useRadialIPC(
 
 export function RadialDial({
   miniVisible = false,
-  fullVisible = false,
-  fullEnabled = true,
 }: {
   miniVisible?: boolean
-  fullVisible?: boolean
-  fullEnabled?: boolean
 }) {
   const [selectedWedge, setSelectedWedge] = useState<RadialWedge>('dismiss')
   const [phase, setPhase] = useState<Phase>('hidden')
   const [contentVisible, setContentVisible] = useState(false)
   const { colors } = useTheme()
-  const wedges = useMemo(
-    () => getWedges(miniVisible, fullVisible, fullEnabled),
-    [fullEnabled, fullVisible, miniVisible],
-  )
+  const wedges = useMemo(() => getWedges(miniVisible), [miniVisible])
   const wedgeLayout = useMemo(
     () => wedges.map((wedge, index) => ({
       ...wedge,
