@@ -63,13 +63,6 @@ pub fn stop_desktop_by_path(install_path: &str) {
 }
 
 fn spawn_detached(info: &LaunchInfo) -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        if let Some(ok) = spawn_detached_disclaim(info) {
-            return ok;
-        }
-    }
-
     let mut cmd = StdCommand::new(&info.command[0]);
     cmd.args(&info.command[1..])
         .current_dir(&info.cwd)
@@ -93,115 +86,6 @@ fn spawn_detached(info: &LaunchInfo) -> bool {
     }
 
     cmd.spawn().is_ok()
-}
-
-/// Spawn with `posix_spawn` + `responsibility_spawnattrs_setdisclaim` so the
-/// child becomes its own "responsible process" for macOS TCC. Without this,
-/// TCC attributes permission prompts (microphone, camera, etc.) to the parent
-/// launcher process, which silently prevents them from appearing.
-#[cfg(target_os = "macos")]
-fn spawn_detached_disclaim(info: &LaunchInfo) -> Option<bool> {
-    use std::ffi::{c_char, c_int, CString};
-    use std::ptr;
-
-    type DisclaimFn = unsafe extern "C" fn(*mut libc::posix_spawnattr_t, c_int) -> c_int;
-
-    let disclaim_fn: DisclaimFn = unsafe {
-        let sym = libc::dlsym(
-            libc::RTLD_DEFAULT,
-            b"responsibility_spawnattrs_setdisclaim\0".as_ptr() as *const c_char,
-        );
-        if sym.is_null() {
-            return None;
-        }
-        std::mem::transmute(sym)
-    };
-
-    let c_cmd: Vec<CString> = info
-        .command
-        .iter()
-        .filter_map(|s| CString::new(s.as_str()).ok())
-        .collect();
-    if c_cmd.len() != info.command.len() {
-        return None;
-    }
-
-    let mut argv_ptrs: Vec<*mut c_char> = c_cmd.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-    argv_ptrs.push(ptr::null_mut());
-
-    let mut env_strs: Vec<String> = std::env::vars().map(|(k, v)| format!("{k}={v}")).collect();
-    for (k, v) in &info.env {
-        if let Some(pos) = env_strs.iter().position(|e| {
-            e.starts_with(k) && e.as_bytes().get(k.len()) == Some(&b'=')
-        }) {
-            env_strs[pos] = format!("{k}={v}");
-        } else {
-            env_strs.push(format!("{k}={v}"));
-        }
-    }
-    let c_env: Vec<CString> = env_strs
-        .iter()
-        .filter_map(|s| CString::new(s.as_str()).ok())
-        .collect();
-    let mut envp_ptrs: Vec<*mut c_char> =
-        c_env.iter().map(|s| s.as_ptr() as *mut c_char).collect();
-    envp_ptrs.push(ptr::null_mut());
-
-    unsafe {
-        let mut attr: libc::posix_spawnattr_t = std::mem::zeroed();
-        libc::posix_spawnattr_init(&mut attr);
-
-        const POSIX_SPAWN_SETSID: libc::c_short = 0x0400;
-        libc::posix_spawnattr_setflags(&mut attr, POSIX_SPAWN_SETSID);
-
-        disclaim_fn(&mut attr, 1);
-
-        let mut file_actions: libc::posix_spawn_file_actions_t = std::mem::zeroed();
-        libc::posix_spawn_file_actions_init(&mut file_actions);
-
-        let dev_null = CString::new("/dev/null").unwrap();
-        libc::posix_spawn_file_actions_addopen(
-            &mut file_actions,
-            libc::STDIN_FILENO,
-            dev_null.as_ptr(),
-            libc::O_RDONLY,
-            0,
-        );
-        libc::posix_spawn_file_actions_addopen(
-            &mut file_actions,
-            libc::STDOUT_FILENO,
-            dev_null.as_ptr(),
-            libc::O_WRONLY,
-            0,
-        );
-        libc::posix_spawn_file_actions_addopen(
-            &mut file_actions,
-            libc::STDERR_FILENO,
-            dev_null.as_ptr(),
-            libc::O_WRONLY,
-            0,
-        );
-
-        let cwd = CString::new(info.cwd.as_str()).ok();
-        if let Some(ref cwd) = cwd {
-            libc::chdir(cwd.as_ptr());
-        }
-
-        let mut pid: libc::pid_t = 0;
-        let ret = libc::posix_spawnp(
-            &mut pid,
-            c_cmd[0].as_ptr(),
-            &file_actions,
-            &attr,
-            argv_ptrs.as_ptr(),
-            envp_ptrs.as_ptr(),
-        );
-
-        libc::posix_spawn_file_actions_destroy(&mut file_actions);
-        libc::posix_spawnattr_destroy(&mut attr);
-
-        Some(ret == 0)
-    }
 }
 
 pub fn show_main_window(app: &AppHandle) {
