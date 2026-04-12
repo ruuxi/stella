@@ -17,6 +17,7 @@ import {
   broadcastToWindows,
 } from "./context.js";
 import { startOfficePreviewBridge } from "./office-preview-bridge.js";
+import { IPC_AUTH_RUNTIME_REFRESH_REQUESTED } from "../../src/shared/contracts/ipc-channels.js";
 
 const IDLE_HMR_STATE: SelfModHmrState = {
   phase: "idle",
@@ -79,6 +80,13 @@ export const createHostRunnerHandlers = (
       signature: signDeviceHeartbeat(identity, signedAtMs),
     };
   },
+  requestRuntimeAuthRefresh: async ({ source }) =>
+    await context.services.authService.requestRuntimeAuthRefresh(
+      source,
+      (payload) => {
+        broadcastToWindows(context, IPC_AUTH_RUNTIME_REFRESH_REQUESTED, payload);
+      },
+    ),
   requestCredential: (payload) =>
     context.services.credentialService.requestCredential(payload),
   displayUpdate: (html) => {

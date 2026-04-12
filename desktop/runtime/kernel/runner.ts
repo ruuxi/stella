@@ -164,6 +164,7 @@ export const createStellaHostRunner = (
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let remoteTurnAuthWindowStartedAt = 0;
   let remoteTurnUnauthenticatedFailures = 0;
+  let remoteTurnAuthRecoveryPromise: Promise<boolean> | null = null;
 
   const stopHeartbeatLoop = () => {
     if (heartbeatTimer) {
@@ -181,12 +182,12 @@ export const createStellaHostRunner = (
     remoteTurnUnauthenticatedFailures = 0;
   };
 
-  const stopRemoteTurnForPersistentAuthFailure = (
+  const handleRemoteTurnAuthFailure = (
     source: "heartbeat" | "subscription" | "register",
     error: unknown,
-  ): boolean => {
+  ): { handled: boolean; stopped: boolean } => {
     if (!isConvexUnauthenticatedError(error)) {
-      return false;
+      return { handled: false, stopped: false };
     }
 
     remoteTurnUnauthenticatedFailures += 1;
@@ -197,7 +198,7 @@ export const createStellaHostRunner = (
         nowMs: Date.now(),
       })
     ) {
-      return true;
+      return { handled: true, stopped: false };
     }
 
     stopHeartbeatLoop();
@@ -209,7 +210,52 @@ export const createStellaHostRunner = (
       `[remote-turn] ${source} auth failed; stopping remote turn sync until auth changes.`,
       error,
     );
-    return true;
+    return { handled: true, stopped: true };
+  };
+
+  const recoverRemoteTurnAuth = async (
+    source: "heartbeat" | "subscription" | "register",
+  ): Promise<boolean> => {
+    if (!options.requestRuntimeAuthRefresh) {
+      return false;
+    }
+    if (remoteTurnAuthRecoveryPromise) {
+      return await remoteTurnAuthRecoveryPromise;
+    }
+
+    remoteTurnAuthRecoveryPromise = (async () => {
+      try {
+        const result = await options.requestRuntimeAuthRefresh?.({ source });
+        const nextToken = result?.token?.trim() || null;
+        const nextHasConnectedAccount = Boolean(result?.hasConnectedAccount);
+
+        if (context.state.hasConnectedAccount !== nextHasConnectedAccount) {
+          convexSession.setHasConnectedAccount(nextHasConnectedAccount);
+        }
+        convexSession.setAuthToken(nextToken, { forceReconnect: true });
+
+        if (result?.authenticated && nextToken && nextHasConnectedAccount) {
+          noteRemoteTurnAuthHealthy();
+          console.info(`[remote-turn] Recovered auth after ${source} failure.`);
+          return true;
+        }
+
+        console.warn(
+          `[remote-turn] Auth recovery did not restore a usable session after ${source} failure.`,
+        );
+        return false;
+      } catch (refreshError) {
+        console.warn(
+          `[remote-turn] Failed to refresh auth after ${source} failure:`,
+          refreshError,
+        );
+        return false;
+      } finally {
+        remoteTurnAuthRecoveryPromise = null;
+      }
+    })();
+
+    return await remoteTurnAuthRecoveryPromise;
   };
 
   const sendHeartbeat = async (): Promise<void> => {
@@ -245,7 +291,12 @@ export const createStellaHostRunner = (
       deviceRegistered = true;
       noteRemoteTurnAuthHealthy();
     } catch (error) {
-      if (stopRemoteTurnForPersistentAuthFailure("heartbeat", error)) {
+      const authFailure = handleRemoteTurnAuthFailure("heartbeat", error);
+      if (authFailure.stopped) {
+        void recoverRemoteTurnAuth("heartbeat");
+        return;
+      }
+      if (authFailure.handled) {
         return;
       }
       console.warn("[remote-turn] Heartbeat failed:", error);
@@ -291,7 +342,13 @@ export const createStellaHostRunner = (
       deviceRegistered = true;
       noteRemoteTurnAuthHealthy();
     } catch (error) {
-      if (stopRemoteTurnForPersistentAuthFailure("register", error)) {
+      const authFailure = handleRemoteTurnAuthFailure("register", error);
+      if (authFailure.stopped) {
+        void recoverRemoteTurnAuth("register");
+        deviceRegistering = false;
+        return;
+      }
+      if (authFailure.handled) {
         deviceRegistering = false;
         return;
       }
@@ -398,7 +455,12 @@ export const createStellaHostRunner = (
           );
         },
         (error: Error) => {
-          if (stopRemoteTurnForPersistentAuthFailure("subscription", error)) {
+          const authFailure = handleRemoteTurnAuthFailure("subscription", error);
+          if (authFailure.stopped) {
+            void recoverRemoteTurnAuth("subscription");
+            return;
+          }
+          if (authFailure.handled) {
             return;
           }
           onError?.(error);

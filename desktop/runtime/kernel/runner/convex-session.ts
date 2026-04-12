@@ -154,11 +154,14 @@ export const createConvexSession = (
     options.syncRemoteTurnBridge();
   };
 
-  const setAuthToken = (value: string | null) => {
+  const setAuthToken = (
+    value: string | null,
+    setOptions: { forceReconnect?: boolean } = {},
+  ) => {
     if (process.env.STELLA_LLM_PROXY_TOKEN) return;
     const prev = context.state.authToken?.trim() || null;
     const next = value?.trim() || null;
-    if (next === prev) return;
+    if (next === prev && !setOptions.forceReconnect) return;
 
     const needsClear = Boolean(prev);
     const applyNew = () => {

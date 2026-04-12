@@ -22,6 +22,8 @@ import {
   METHOD_NAMES,
   NOTIFICATION_NAMES,
   type HostDeviceIdentity,
+  type HostRuntimeAuthRefreshParams,
+  type HostRuntimeAuthRefreshResult,
   type HostDisplayUpdateParams,
   type HostHeartbeatSignature,
   type HostUiActParams,
@@ -85,6 +87,9 @@ export type RuntimeHostHandlers = {
   uiAct: (params: HostUiActParams) => Promise<string>;
   getDeviceIdentity: () => Promise<HostDeviceIdentity>;
   signHeartbeatPayload: (signedAtMs: number) => Promise<HostHeartbeatSignature>;
+  requestRuntimeAuthRefresh?: (
+    params: HostRuntimeAuthRefreshParams,
+  ) => Promise<HostRuntimeAuthRefreshResult>;
   requestCredential: (payload: {
     provider: string;
     label?: string;
@@ -1084,6 +1089,15 @@ export class StellaRuntimeClient {
         throw new Error("Invalid host heartbeat signing payload.");
       }
       return await this.options.hostHandlers.signHeartbeatPayload(signedAtMs);
+    });
+    peer.registerRequestHandler(METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH, async (params) => {
+      return await this.options.hostHandlers.requestRuntimeAuthRefresh?.(
+        params as HostRuntimeAuthRefreshParams,
+      ) ?? {
+        authenticated: false,
+        token: null,
+        hasConnectedAccount: false,
+      };
     });
     peer.registerRequestHandler(METHOD_NAMES.HOST_CREDENTIALS_REQUEST, async (params) => {
       return await this.options.hostHandlers.requestCredential(

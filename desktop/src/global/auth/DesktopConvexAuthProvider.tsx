@@ -59,6 +59,10 @@ function useDesktopConvexAuth() {
 function DesktopAuthRuntimeEffects() {
   const session = authClient.useSession();
   const attemptedAnonAuthRef = useRef(false);
+  const runtimeAuthRefreshHandlerRef = useRef<((args?: {
+    forceRefreshToken?: boolean;
+    requestId?: string;
+  }) => Promise<void>) | null>(null);
   const sessionUser = (
     session.data as { user?: { isAnonymous?: boolean | null } } | null | undefined
   )?.user;
@@ -98,15 +102,41 @@ function DesktopAuthRuntimeEffects() {
 
   useEffect(() => {
     const systemApi = window.electronAPI?.system;
+    if (
+      !systemApi?.onRuntimeAuthRefreshRequested
+      || !systemApi.completeRuntimeAuthRefresh
+    ) {
+      return;
+    }
+
+    return systemApi.onRuntimeAuthRefreshRequested(({ requestId }) => {
+      const syncToken = runtimeAuthRefreshHandlerRef.current;
+      if (syncToken) {
+        void syncToken({ forceRefreshToken: true, requestId });
+        return;
+      }
+      void systemApi.completeRuntimeAuthRefresh({
+        requestId,
+        authenticated: false,
+        hasConnectedAccount: false,
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    const systemApi = window.electronAPI?.system;
     if (!systemApi?.setAuthState) {
+      runtimeAuthRefreshHandlerRef.current = null;
       return;
     }
 
     if (isSessionPending) {
+      runtimeAuthRefreshHandlerRef.current = null;
       return;
     }
 
     if (!hasSession) {
+      runtimeAuthRefreshHandlerRef.current = null;
       void systemApi.setAuthState({
         authenticated: false,
         hasConnectedAccount: false,
@@ -143,7 +173,10 @@ function DesktopAuthRuntimeEffects() {
     };
 
     const syncToken = async (
-      { forceRefreshToken = false }: { forceRefreshToken?: boolean } = {},
+      {
+        forceRefreshToken = false,
+        requestId,
+      }: { forceRefreshToken?: boolean; requestId?: string } = {},
     ) => {
       const token = (await getConvexToken({
         forceRefresh: forceRefreshToken,
@@ -151,23 +184,37 @@ function DesktopAuthRuntimeEffects() {
       if (cancelled) return;
 
       if (token) {
+        const nextState = {
+          authenticated: true,
+          token,
+          hasConnectedAccount,
+        } as const;
         if (retryTimer) {
           clearTimeout(retryTimer);
           retryTimer = null;
         }
-        void systemApi.setAuthState({
-          authenticated: true,
-          token,
-          hasConnectedAccount,
-        });
+        void systemApi.setAuthState(nextState);
+        if (requestId && systemApi.completeRuntimeAuthRefresh) {
+          void systemApi.completeRuntimeAuthRefresh({
+            requestId,
+            ...nextState,
+          });
+        }
         scheduleRefresh(token);
         return;
       }
 
-      void systemApi.setAuthState({
+      const nextState = {
         authenticated: false,
         hasConnectedAccount: false,
-      });
+      } as const;
+      void systemApi.setAuthState(nextState);
+      if (requestId && systemApi.completeRuntimeAuthRefresh) {
+        void systemApi.completeRuntimeAuthRefresh({
+          requestId,
+          ...nextState,
+        });
+      }
       if (!retryTimer) {
         retryTimer = setTimeout(() => {
           retryTimer = null;
@@ -176,10 +223,12 @@ function DesktopAuthRuntimeEffects() {
       }
     };
 
+    runtimeAuthRefreshHandlerRef.current = syncToken;
     void syncToken();
 
     return () => {
       cancelled = true;
+      runtimeAuthRefreshHandlerRef.current = null;
       clearTimers();
     };
   }, [hasConnectedAccount, hasSession, isSessionPending]);

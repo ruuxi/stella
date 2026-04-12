@@ -154,6 +154,7 @@ export const METHOD_NAMES = {
   HOST_HMR_RUN_TRANSITION: "host.hmr.runTransition",
   HOST_RUNTIME_RELOAD_PAUSE: "host.runtimeReload.pause",
   HOST_RUNTIME_RELOAD_RESUME: "host.runtimeReload.resume",
+  HOST_RUNTIME_AUTH_REFRESH: "host.runtimeAuth.refresh",
   INTERNAL_WORKER_INITIALIZE: "internal.worker.initialize",
   INTERNAL_WORKER_CONFIGURE: "internal.worker.configure",
   INTERNAL_WORKER_HEALTH: "internal.worker.health",
@@ -295,6 +296,21 @@ export type RuntimeConfigureParams = {
   authToken?: string | null;
   hasConnectedAccount?: boolean;
   cloudSyncEnabled?: boolean;
+};
+
+export type RuntimeAuthRefreshSource =
+  | "heartbeat"
+  | "subscription"
+  | "register";
+
+export type HostRuntimeAuthRefreshParams = {
+  source: RuntimeAuthRefreshSource;
+};
+
+export type HostRuntimeAuthRefreshResult = {
+  authenticated: boolean;
+  token: string | null;
+  hasConnectedAccount: boolean;
 };
 
 import type { ChatContext } from "../contracts/index.js";

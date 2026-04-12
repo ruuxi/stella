@@ -7,6 +7,8 @@ import {
   NOTIFICATION_NAMES,
   type AgentHealth,
   type HostDeviceIdentity,
+  type HostRuntimeAuthRefreshParams,
+  type HostRuntimeAuthRefreshResult,
   type HostHeartbeatSignature,
   type RuntimeAgentEventPayload,
   type RuntimeChatPayload,
@@ -323,6 +325,11 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           { signedAtMs },
         )),
       }),
+      requestRuntimeAuthRefresh: async (params) =>
+        await peer.request<HostRuntimeAuthRefreshResult>(
+          METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH,
+          params as HostRuntimeAuthRefreshParams,
+        ),
       selfModMonitor: {
         getBaselineHead: getGitHead,
         detectAppliedSince: detectSelfModAppliedSince,
