@@ -5,6 +5,10 @@ import {
   watch as watchFs,
 } from "node:fs";
 import path from "node:path";
+import {
+  electronRuntimeAssets,
+  syncElectronRuntimeAssets,
+} from "./sync-electron-runtime-assets.mjs";
 
 const projectDir = process.cwd();
 const outdir = "dist-electron";
@@ -37,6 +41,7 @@ let rebuildTimer = null;
 let rebuildChain = Promise.resolve();
 let shuttingDown = false;
 const rootWatchers = [];
+let assetSyncTimer = null;
 
 const normalizePath = (filePath) => filePath.split(path.sep).join("/");
 
@@ -166,6 +171,28 @@ const scheduleGraphRefresh = () => {
   }, 150);
 };
 
+const scheduleAssetSync = () => {
+  if (shuttingDown) {
+    return;
+  }
+
+  if (assetSyncTimer) {
+    clearTimeout(assetSyncTimer);
+  }
+
+  assetSyncTimer = setTimeout(() => {
+    assetSyncTimer = null;
+    try {
+      const copied = syncElectronRuntimeAssets({ projectDir });
+      if (copied.length > 0) {
+        console.log(`[electron-build] Synced runtime assets: ${copied.join(", ")}`);
+      }
+    } catch (error) {
+      console.error("[electron-build] Failed to sync runtime assets", error);
+    }
+  }, 100);
+};
+
 const startRootWatchers = () => {
   for (const root of graphWatchRoots) {
     const absoluteRoot = path.join(projectDir, root);
@@ -186,6 +213,17 @@ const startRootWatchers = () => {
         scheduleGraphRefresh();
       },
     );
+    rootWatchers.push(watcher);
+  }
+
+  for (const asset of electronRuntimeAssets) {
+    const absoluteSourcePath = path.join(projectDir, asset.sourceRelativePath);
+    if (!existsSync(absoluteSourcePath)) {
+      continue;
+    }
+    const watcher = watchFs(absoluteSourcePath, () => {
+      scheduleAssetSync();
+    });
     rootWatchers.push(watcher);
   }
 };
@@ -209,6 +247,11 @@ const shutdown = async (exitCode) => {
     rebuildTimer = null;
   }
 
+  if (assetSyncTimer) {
+    clearTimeout(assetSyncTimer);
+    assetSyncTimer = null;
+  }
+
   for (const watcher of rootWatchers) {
     watcher.close();
   }
@@ -220,6 +263,10 @@ const shutdown = async (exitCode) => {
 
 await cleanOutdir();
 buildContexts = await startBuildContexts();
+const copiedAssets = syncElectronRuntimeAssets({ projectDir });
+if (copiedAssets.length > 0) {
+  console.log(`[electron-build] Synced runtime assets: ${copiedAssets.join(", ")}`);
+}
 startRootWatchers();
 
 process.once("SIGINT", () => {
