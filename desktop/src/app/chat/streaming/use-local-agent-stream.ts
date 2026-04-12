@@ -45,6 +45,7 @@ type RunRecord = {
   conversationId: string;
   requestId?: string;
   userMessageId?: string;
+  uiVisibility?: "visible" | "hidden";
   terminal: boolean;
   outcome?: "completed" | "error" | "canceled";
   statusText: string | null;
@@ -62,6 +63,7 @@ type ActiveRunSnapshot = {
   conversationId: string;
   requestId?: string;
   userMessageId?: string;
+  uiVisibility?: "visible" | "hidden";
 } | null;
 
 type ResumeTaskSnapshot = {
@@ -83,6 +85,7 @@ type StreamStoreAction =
       conversationId: string;
       requestId?: string;
       userMessageId?: string;
+      uiVisibility?: "visible" | "hidden";
     }
   | {
       type: "run-status";
@@ -135,6 +138,7 @@ function streamStoreReducer(
         conversationId: action.conversationId,
         requestId: action.requestId ?? current?.requestId,
         userMessageId: action.userMessageId ?? current?.userMessageId,
+        uiVisibility: action.uiVisibility ?? current?.uiVisibility,
         terminal: false,
         statusText: null,
       };
@@ -269,6 +273,7 @@ function streamStoreReducer(
             conversationId: action.conversationId,
             requestId: action.activeRun.requestId,
             userMessageId: action.activeRun.userMessageId,
+            uiVisibility: action.activeRun.uiVisibility,
             terminal: false,
             statusText: null,
           },
@@ -517,6 +522,9 @@ export function useLocalAgentStream({
 
       switch (event.type) {
         case AGENT_STREAM_EVENT_TYPES.RUN_STARTED: {
+          if (event.uiVisibility === "hidden") {
+            break;
+          }
           terminalRunIdsRef.current.delete(event.runId);
           dispatch({
             type: "run-started",
@@ -524,6 +532,7 @@ export function useLocalAgentStream({
             conversationId,
             requestId: event.requestId,
             userMessageId: event.userMessageId,
+            uiVisibility: event.uiVisibility,
           });
           if (conversationId === activeConversationIdRef.current) {
             resetStreamingText();
@@ -666,11 +675,18 @@ export function useLocalAgentStream({
       dispatch({
         type: "hydrate-conversation",
         conversationId: args.conversationId,
-        activeRun: args.activeRun,
+        activeRun:
+          args.activeRun?.uiVisibility === "hidden"
+            ? null
+            : args.activeRun,
         tasks: taskItems,
       });
       if (args.conversationId === activeConversationIdRef.current) {
-        setPendingUserMessageId(args.activeRun?.userMessageId ?? null);
+        setPendingUserMessageId(
+          args.activeRun?.uiVisibility === "hidden"
+            ? null
+            : (args.activeRun?.userMessageId ?? null),
+        );
       }
       for (const task of args.tasks) {
         if (task.status === "completed") {

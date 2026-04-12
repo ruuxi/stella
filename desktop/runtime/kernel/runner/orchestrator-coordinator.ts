@@ -13,6 +13,7 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
     }
     context.state.activeOrchestratorRunId = null;
     context.state.activeOrchestratorConversationId = null;
+    context.state.activeOrchestratorUiVisibility = "visible";
     context.state.activeToolExecutionCount = 0;
     context.state.interruptAfterTool = false;
     context.state.activeInterruptedReplayTurn = null;
@@ -181,6 +182,7 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
           runId,
           agentType: event.agentType,
           userMessageId: event.userMessageId,
+          uiVisibility: event.uiVisibility,
           reason: event.reason,
         });
         return;
@@ -190,6 +192,7 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
         runId,
         agentType: event.agentType,
         userMessageId: event.userMessageId,
+        uiVisibility: event.uiVisibility,
         reason: event.reason,
       });
     },
@@ -205,6 +208,7 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
           runId,
           agentType: event.agentType,
           userMessageId: event.userMessageId,
+          uiVisibility: event.uiVisibility,
           reason: QUEUED_TURN_INTERRUPT_ERROR,
         });
         return;

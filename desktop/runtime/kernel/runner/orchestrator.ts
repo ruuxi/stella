@@ -67,6 +67,7 @@ export const createOrchestratorController = (
     conversationId: string;
     agentType: string;
     userPrompt: string;
+    uiVisibility?: "visible" | "hidden";
     promptMessages?: ChatPayload["promptMessages"];
     attachments: StartPreparedRunArgs["attachments"];
     userMessageId: string;
@@ -89,6 +90,7 @@ export const createOrchestratorController = (
       conversationId: args.conversationId,
       agentType: args.agentType,
       userPrompt: args.userPrompt,
+      ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
       ...(args.promptMessages?.length
         ? { promptMessages: args.promptMessages }
         : {}),
@@ -105,6 +107,7 @@ export const createOrchestratorController = (
           agentType: args.agentType,
           seq: 0,
           userMessageId: args.userMessageId,
+          ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
         });
         args.onPrepared?.(prepared);
       },
@@ -126,6 +129,7 @@ export const createOrchestratorController = (
       promptMessages?: ChatPayload["promptMessages"];
       agentType: string;
       userMessageId: string;
+      uiVisibility?: "visible" | "hidden";
     },
     callbacks: AgentCallbacks,
   ): Promise<{ runId: string }> => {
@@ -145,6 +149,7 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
+      ...(startArgs.uiVisibility ? { uiVisibility: startArgs.uiVisibility } : {}),
       ...(promptMessages?.length ? { promptMessages } : {}),
       attachments: [],
       userMessageId: startArgs.userMessageId,
@@ -255,6 +260,7 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
+      uiVisibility: "hidden",
       attachments: [],
       userMessageId: `automation:${crypto.randomUUID()}`,
       replayTurn: queuedTurn.requeueOnInterrupt ? queuedTurn : null,
@@ -309,6 +315,7 @@ export const createOrchestratorController = (
   const getActiveOrchestratorRun = (): {
     runId: string;
     conversationId: string;
+    uiVisibility?: "visible" | "hidden";
   } | null => {
     if (
       !context.state.activeOrchestratorRunId ||
@@ -319,6 +326,7 @@ export const createOrchestratorController = (
     return {
       runId: context.state.activeOrchestratorRunId,
       conversationId: context.state.activeOrchestratorConversationId,
+      uiVisibility: context.state.activeOrchestratorUiVisibility,
     };
   };
 
