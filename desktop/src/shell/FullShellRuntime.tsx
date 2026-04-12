@@ -12,6 +12,7 @@ import {
   WORKSPACE_CREATION_TRIGGER_KIND,
 } from "@/shared/lib/stella-send-message";
 import { ChatSidebar, type ChatSidebarHandle } from "./ChatSidebar";
+import { DisplaySidebar, type DisplaySidebarHandle } from "./DisplaySidebar";
 import { useFullShellChat } from "./use-full-shell-chat";
 
 type PendingAskStellaRequest = {
@@ -43,6 +44,7 @@ export const FullShellRuntime = ({
   onHomeContentChange,
 }: FullShellRuntimeProps) => {
   const sidebarRef = useRef<ChatSidebarHandle>(null);
+  const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
   const chat = useFullShellChat({
     activeConversationId,
     activeView,
@@ -70,6 +72,21 @@ export const FullShellRuntime = ({
 
   const activeViewRef = useRef(activeView);
   activeViewRef.current = activeView;
+
+  const showHomeContentRef = useRef(chat.showHomeContent);
+  showHomeContentRef.current = chat.showHomeContent;
+
+  useEffect(() => {
+    return window.electronAPI?.display.onUpdate((html) => {
+      const ds = displaySidebarRef.current;
+      if (!ds) return;
+      if (showHomeContentRef.current && activeViewRef.current === "chat") {
+        ds.open(html);
+      } else {
+        ds.update(html);
+      }
+    });
+  }, []);
 
   // Close sidebar when navigating to chat/home
   useEffect(() => {
@@ -139,6 +156,8 @@ export const FullShellRuntime = ({
         onSend={chat.conversation.sendMessageWithContext}
         onOpenChange={onSidebarChatOpenChange}
       />
+
+      <DisplaySidebar ref={displaySidebarRef} />
     </>
   );
 };
