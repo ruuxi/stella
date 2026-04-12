@@ -30,6 +30,8 @@ interface ShiftingGradientProps {
   blurMultiplier?: number;
   scale?: number;
   lightweight?: boolean;
+  /** When true, fills the nearest positioned ancestor instead of the viewport (for sidebars, etc.). */
+  contained?: boolean;
 }
 
 const BASE_POSITIONS = [
@@ -105,7 +107,7 @@ function generateBlobs(colors: RGB[], mode: GradientMode = "soft"): Blob[] {
 // Renders at RENDER_SCALE for performance; the browser's bilinear upscale
 // provides additional free smoothing on top of the dithering.
 
-const RENDER_SCALE = 0.25;
+const RENDER_SCALE = 0.6;
 
 function renderGradient(
   ctx: CanvasRenderingContext2D,
@@ -182,8 +184,10 @@ export const ShiftingGradient = memo(function ShiftingGradient({
   mode = "soft",
   colorMode = "relative",
   lightweight = false,
+  contained = false,
 }: ShiftingGradientProps) {
   const { resolvedColorMode, theme, colors } = useTheme();
+  const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const blobsRef = useRef<Blob[]>([]);
@@ -298,12 +302,31 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       renderGradient(ctx, w, h, bg, blobsRef.current, 0.25);
     };
 
+    if (contained) {
+      const el = rootRef.current;
+      if (!el || typeof ResizeObserver === "undefined") return;
+
+      const ro = new ResizeObserver(() => {
+        handleResize();
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [lightweight, colors]);
+  }, [lightweight, colors, contained]);
 
   return (
-    <div aria-hidden="true" className={cn("shifting-gradient", className)}>
+    <div
+      ref={rootRef}
+      aria-hidden="true"
+      className={cn(
+        "shifting-gradient",
+        contained && "shifting-gradient--contained",
+        className,
+      )}
+    >
       {lightweight ? (
         <div
           className="gradient-base"

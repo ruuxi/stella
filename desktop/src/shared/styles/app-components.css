@@ -139,6 +139,14 @@
   pointer-events: none;
 }
 
+.shifting-gradient--contained {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
 .gradient-base {
   position: absolute;
   inset: 0;

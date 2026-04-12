@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTheme } from "@/context/theme-context";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { ThemePicker } from "@/global/settings/ThemePicker";
@@ -10,6 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
+import { ShiftingGradient } from "../background/ShiftingGradient";
 import {
   CustomArrowLeft as ArrowLeft,
   CustomHouse as House,
@@ -148,11 +150,18 @@ export const Sidebar = ({
   onNewApp,
   onNewAppAskStella,
 }: SidebarProps) => {
+  const { gradientMode, gradientColor } = useTheme();
   const isMac = getPlatform() === "darwin";
   const handleAskStella = onNewAppAskStella ?? onNewApp;
 
   return (
     <aside className={`sidebar${className ? ` ${className}` : ""}`}>
+      <ShiftingGradient
+        mode={gradientMode}
+        colorMode={gradientColor}
+        contained
+      />
+      <div className="sidebar-stack">
       <div
         className={`sidebar-header${isMac ? " sidebar-header--mac" : ""}`}
       >
@@ -249,6 +258,7 @@ export const Sidebar = ({
         <div className="sidebar-footer-row">
           <AuthButton onSignIn={onSignIn} />
         </div>
+      </div>
       </div>
     </aside>
   );

@@ -1,4 +1,6 @@
 .chat-sidebar {
+  display: flex;
+  flex-direction: column;
   flex-shrink: 0;
   overflow: hidden;
   height: 100%;
@@ -6,12 +8,12 @@
   opacity: 0;
   margin-left: auto;
   order: 999;
+  position: relative;
+  /* Match inner panel so absolutely positioned layers (e.g. preview) clip to the same curve */
+  border-radius: 0 0 0 32px;
   transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1),
               opacity 240ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: width;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
 }
 
 .chat-sidebar--open {
@@ -26,14 +28,28 @@
 }
 
 .chat-sidebar-inner {
+  position: relative;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   min-width: clamp(380px, 34vw, 520px);
-  background: transparent;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border-left: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
   border-radius: 0 0 0 32px;
   overflow: hidden;
+}
+
+/* Scroll + composer sit above the contained shifting gradient */
+.chat-sidebar-main {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .chat-sidebar-messages {
@@ -64,13 +80,12 @@
   padding: 8px 12px 12px;
 }
 
-/* Shell: animated height + border-radius (motion inline; same pattern as .composer-shell) */
+/* Shell: animated height + border-radius (motion inline; same pattern as .composer-shell).
+   No second glass layer — frosted panel + shifting gradient show through like the main sidebar. */
 .chat-sidebar-shell {
   position: relative;
   width: 100%;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: color-mix(in oklch, var(--background) 18%, transparent);
   border: 1px solid var(--border-strong);
   border-radius: 999px; /* fallback before JS; overridden by motion */
   box-shadow: var(--shadow-md);
