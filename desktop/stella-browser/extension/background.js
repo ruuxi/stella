@@ -6,7 +6,7 @@
  */
 
 import { connect, disconnect, isConnected, onCommand, onStatus } from './lib/connection.js';
-import { handleTabNew, handleTabList, handleTabSwitch, handleTabClose, closeAgentWindow, closeOwnerTabs, cleanupStaleGroups } from './commands/tabs.js';
+import { handleTabNew, handleTabList, handleTabSwitch, handleTabClose, closeAgentWindow, closeOwnerTabs, cleanupStaleGroups, cleanupStaleTabs } from './commands/tabs.js';
 import { handleNavigate, handleBack, handleForward, handleReload, handleUrl, handleTitle } from './commands/navigation.js';
 import {
   handleClick, handleFill, handleType, handleHover, handleSelect,
@@ -267,6 +267,14 @@ ensureOffscreen();
 
 // Clean up stale unnamed tab groups from previous sessions
 cleanupStaleGroups();
+cleanupStaleTabs();
+
+chrome.alarms.create('stale-tabs', { periodInMinutes: 60 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'stale-tabs') {
+    void cleanupStaleTabs();
+  }
+});
 
 // Ensure site-mods content script is registered for pages with saved mods
 syncContentScriptRegistration();
