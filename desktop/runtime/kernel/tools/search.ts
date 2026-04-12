@@ -53,7 +53,7 @@ export const handleGrep = async (
 ): Promise<ToolResult> => {
   const pattern = String(args.pattern ?? "");
   const basePath = expandHomePath(
-    String(args.path ?? context?.frontendRoot ?? process.cwd()),
+    String(args.path ?? context?.stellaRoot ?? process.cwd()),
   );
   const glob = args.glob ? String(args.glob) : undefined;
   const type = args.type ? String(args.type) : undefined;

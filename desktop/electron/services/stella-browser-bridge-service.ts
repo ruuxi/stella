@@ -18,7 +18,7 @@ const DAEMON_SHUTDOWN_TIMEOUT_MS = 2_000;
 const DAEMON_READY_PROBE_TIMEOUT_MS = 1_000;
 
 type StellaBrowserBridgeServiceOptions = {
-  frontendRoot: string;
+  stellaRoot: string;
   onUnexpectedExit?: (error: string) => void;
 };
 
@@ -29,7 +29,7 @@ type DaemonResponse = {
 };
 
 export class StellaBrowserBridgeService {
-  private readonly frontendRoot: string;
+  private readonly stellaRoot: string;
   private readonly onUnexpectedExit?: (error: string) => void;
 
   private daemonProcess: ChildProcess | null = null;
@@ -38,7 +38,7 @@ export class StellaBrowserBridgeService {
   private stopped = false;
 
   constructor(options: StellaBrowserBridgeServiceOptions) {
-    this.frontendRoot = options.frontendRoot;
+    this.stellaRoot = options.stellaRoot;
     this.onUnexpectedExit = options.onUnexpectedExit;
   }
 
@@ -79,7 +79,7 @@ export class StellaBrowserBridgeService {
     this.isLaunching = true;
 
     try {
-      const registration = registerStellaNativeMessagingHost(this.frontendRoot);
+      const registration = registerStellaNativeMessagingHost(this.stellaRoot);
       if (!registration.ok) {
         throw new Error(
           registration.error ??
@@ -105,14 +105,14 @@ export class StellaBrowserBridgeService {
 
   private spawnDaemon() {
     const binPath = path.join(
-      this.frontendRoot,
+      this.stellaRoot,
       "stella-browser",
       "bin",
       "stella-browser.js",
     );
 
     const daemon = spawn(process.execPath, [binPath], {
-      cwd: this.frontendRoot,
+      cwd: this.stellaRoot,
       env: {
         ...process.env,
         ELECTRON_RUN_AS_NODE: "1",

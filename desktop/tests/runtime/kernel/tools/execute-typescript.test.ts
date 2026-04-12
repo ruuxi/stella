@@ -27,27 +27,25 @@ const createTempDir = (prefix: string) => {
   return tempDir;
 };
 
-const createContext = (frontendRoot: string): ToolContext => ({
+const createContext = (stellaRoot: string): ToolContext => ({
   conversationId: "conversation-test",
   deviceId: "device-test",
   requestId: "request-test",
   runId: "run-test",
   agentType: "general",
-  frontendRoot,
+  stellaRoot,
   storageMode: "local",
 });
 
-const createHost = (frontendRoot: string, stellaHomePath: string) =>
+const createHost = (stellaRoot: string) =>
   createToolHost({
-    frontendRoot,
-    stellaHomePath,
+    stellaRoot,
   });
 
 describe("ExecuteTypescript tool", () => {
   it("runs TypeScript, returns structured data, and streams updates", async () => {
-    const frontendRoot = createTempDir("stella-code-mode-workspace-");
-    const stellaHomePath = createTempDir("stella-code-mode-home-");
-    const host = createHost(frontendRoot, stellaHomePath);
+    const stellaRoot = createTempDir("stella-code-mode-root-");
+    const host = createHost(stellaRoot);
     const updates: ToolResult[] = [];
 
     const result = await host.executeTool(
@@ -63,7 +61,7 @@ return {
 };
         `,
       },
-      createContext(frontendRoot),
+      createContext(stellaRoot),
       undefined,
       (update) => updates.push(update),
     );
@@ -86,16 +84,15 @@ return {
   });
 
   it("reads life docs, writes workspace files, and runs reusable libraries", async () => {
-    const frontendRoot = createTempDir("stella-code-mode-workspace-");
-    const stellaHomePath = createTempDir("stella-code-mode-home-");
-    const lifeRoot = path.join(stellaHomePath, "life");
+    const stellaRoot = createTempDir("stella-code-mode-root-");
+    const lifeRoot = path.join(stellaRoot, "life");
 
     mkdirSync(path.join(lifeRoot, "knowledge"), { recursive: true });
     mkdirSync(path.join(lifeRoot, "libraries", "to-upper"), {
       recursive: true,
     });
 
-    writeFileSync(path.join(frontendRoot, "demo.txt"), "hello stella", "utf-8");
+    writeFileSync(path.join(stellaRoot, "demo.txt"), "hello stella", "utf-8");
     writeFileSync(
       path.join(lifeRoot, "knowledge", "guide.md"),
       "# Guide\n\nVerified workflow.",
@@ -112,7 +109,7 @@ return {
       "utf-8",
     );
 
-    const host = createHost(frontendRoot, stellaHomePath);
+    const host = createHost(stellaRoot);
     const result = await host.executeTool(
       "ExecuteTypescript",
       {
@@ -126,7 +123,7 @@ const written = await workspace.readText("result.txt");
 return { original, guide, transformed, written };
         `,
       },
-      createContext(frontendRoot),
+      createContext(stellaRoot),
     );
 
     expect(result.error).toBeUndefined();
@@ -149,23 +146,86 @@ return { original, guide, transformed, written };
     expect(details.libraries[0]?.name).toBe("to-upper");
   });
 
-  it("rejects unsupported imports", async () => {
-    const frontendRoot = createTempDir("stella-code-mode-workspace-");
-    const stellaHomePath = createTempDir("stella-code-mode-home-");
-    const host = createHost(frontendRoot, stellaHomePath);
+  it("runs shell.exec with string-first arguments and rejects the old object form", async () => {
+    const stellaRoot = createTempDir("stella-code-mode-root-");
+    const host = createHost(stellaRoot);
+
+    const success = await host.executeTool(
+      "ExecuteTypescript",
+      {
+        summary: "run shell commands",
+        code: `
+const pwd = await shell.exec("pwd", { workingDirectory: "." });
+const printed = await shell.exec("printf 'hello'");
+return { pwd: pwd.trim(), printed };
+        `,
+      },
+      createContext(stellaRoot),
+    );
+
+    expect(success.error).toBeUndefined();
+    expect(success.result).toEqual({
+      pwd: expect.stringContaining(stellaRoot),
+      printed: "hello",
+    });
+
+    const failure = await host.executeTool(
+      "ExecuteTypescript",
+      {
+        summary: "old shell.exec form",
+        code: `
+return await shell.exec({ command: "pwd" });
+        `,
+      },
+      createContext(stellaRoot),
+    );
+
+    expect(failure.error).toContain(
+      "shell.exec now expects shell.exec(command, options?)",
+    );
+  });
+
+  it("allows full Node globals like Buffer", async () => {
+    const stellaRoot = createTempDir("stella-code-mode-root-");
+    const host = createHost(stellaRoot);
 
     const result = await host.executeTool(
       "ExecuteTypescript",
       {
-        summary: "try imports",
+        summary: "use buffer",
+        code: `
+return {
+  base64: Buffer.from("stella").toString("base64"),
+  cwd: process.cwd(),
+};
+        `,
+      },
+      createContext(stellaRoot),
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toEqual({
+      base64: "c3RlbGxh",
+      cwd: expect.stringContaining(stellaRoot),
+    });
+  });
+
+  it("rejects static import syntax in program bodies", async () => {
+    const stellaRoot = createTempDir("stella-code-mode-root-");
+    const host = createHost(stellaRoot);
+
+    const result = await host.executeTool(
+      "ExecuteTypescript",
+      {
+        summary: "try static import",
         code: `
 import fs from "node:fs";
 return fs.readdirSync(".");
         `,
       },
-      createContext(frontendRoot),
+      createContext(stellaRoot),
     );
 
-    expect(result.error).toContain("Use Stella bindings");
+    expect(result.error).toContain("Static import/export are not supported");
   });
 });

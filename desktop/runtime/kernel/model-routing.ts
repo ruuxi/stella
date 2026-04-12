@@ -21,15 +21,15 @@ export type ResolvedLlmRoute = {
 };
 
 const getCredential = (
-  stellaHomePath: string,
+  stellaRoot: string,
   providerId: string,
-): string | null => getLocalLlmCredential(stellaHomePath, providerId);
+): string | null => getLocalLlmCredential(stellaRoot, providerId);
 
-const getGatewayCredential = (stellaHomePath: string): string | null =>
-  getCredential(stellaHomePath, "vercel-ai-gateway");
+const getGatewayCredential = (stellaRoot: string): string | null =>
+  getCredential(stellaRoot, "vercel-ai-gateway");
 
 const resolveDirectProviderRoute = (args: {
-  stellaHomePath: string;
+  stellaRoot: string;
   provider: string;
   modelId: string;
   fullModelId: string;
@@ -40,7 +40,7 @@ const resolveDirectProviderRoute = (args: {
   }
 
   const directKey = getCredential(
-    args.stellaHomePath,
+    args.stellaRoot,
     directProvider.credentialProvider,
   );
 
@@ -81,10 +81,10 @@ const resolveDirectProviderRoute = (args: {
 };
 
 const resolveOpenRouterRoute = (args: {
-  stellaHomePath: string;
+  stellaRoot: string;
   requestedCandidates: string[];
 }): ResolvedLlmRoute | null => {
-  const openrouterKey = getCredential(args.stellaHomePath, "openrouter");
+  const openrouterKey = getCredential(args.stellaRoot, "openrouter");
   if (!openrouterKey) {
     return null;
   }
@@ -101,10 +101,10 @@ const resolveOpenRouterRoute = (args: {
 };
 
 const resolveGatewayRoute = (args: {
-  stellaHomePath: string;
+  stellaRoot: string;
   requestedCandidates: string[];
 }): ResolvedLlmRoute | null => {
-  const gatewayKey = getGatewayCredential(args.stellaHomePath);
+  const gatewayKey = getGatewayCredential(args.stellaRoot);
   if (!gatewayKey) {
     return null;
   }
@@ -124,7 +124,7 @@ const resolveGatewayRoute = (args: {
 };
 
 const resolveParsedProviderRoute = (args: {
-  stellaHomePath: string;
+  stellaRoot: string;
   parsed: NonNullable<ReturnType<typeof parseModelReference>>;
 }): ResolvedLlmRoute | null => {
   const requestedCandidates = uniqueModelCandidates([
@@ -135,17 +135,17 @@ const resolveParsedProviderRoute = (args: {
   switch (args.parsed.provider) {
     case "openrouter":
       return resolveOpenRouterRoute({
-        stellaHomePath: args.stellaHomePath,
+        stellaRoot: args.stellaRoot,
         requestedCandidates,
       });
     case "vercel-ai-gateway":
       return resolveGatewayRoute({
-        stellaHomePath: args.stellaHomePath,
+        stellaRoot: args.stellaRoot,
         requestedCandidates,
       });
     default:
       return resolveDirectProviderRoute({
-        stellaHomePath: args.stellaHomePath,
+        stellaRoot: args.stellaRoot,
         provider: args.parsed.provider,
         modelId: args.parsed.modelId,
         fullModelId: args.parsed.fullModelId,
@@ -154,7 +154,7 @@ const resolveParsedProviderRoute = (args: {
 };
 
 const resolveMaybeLlmRoute = (args: {
-  stellaHomePath: string;
+  stellaRoot: string;
   modelName: string | undefined;
   agentType: string;
   site: StellaSiteConfig;
@@ -180,7 +180,7 @@ const resolveMaybeLlmRoute = (args: {
   }
 
   const directProviderRoute = resolveParsedProviderRoute({
-    stellaHomePath: args.stellaHomePath,
+    stellaRoot: args.stellaRoot,
     parsed,
   });
   if (directProviderRoute) {
@@ -197,7 +197,7 @@ const resolveMaybeLlmRoute = (args: {
 
   if (parsed.provider !== "openrouter") {
     const openRouterFallback = resolveOpenRouterRoute({
-      stellaHomePath: args.stellaHomePath,
+      stellaRoot: args.stellaRoot,
       requestedCandidates: fallbackCandidates,
     });
     if (openRouterFallback) {
@@ -207,7 +207,7 @@ const resolveMaybeLlmRoute = (args: {
 
   if (parsed.provider !== "vercel-ai-gateway") {
     const gatewayFallback = resolveGatewayRoute({
-      stellaHomePath: args.stellaHomePath,
+      stellaRoot: args.stellaRoot,
       requestedCandidates: fallbackCandidates,
     });
     if (gatewayFallback) {
@@ -225,7 +225,7 @@ const resolveMaybeLlmRoute = (args: {
 };
 
 export const canResolveLlmRoute = (args: {
-  stellaHomePath: string;
+  stellaRoot: string;
   modelName: string | undefined;
   agentType?: string;
   site: StellaSiteConfig;
@@ -238,7 +238,7 @@ export const canResolveLlmRoute = (args: {
   );
 
 export const resolveLlmRoute = (args: {
-  stellaHomePath: string;
+  stellaRoot: string;
   modelName: string | undefined;
   agentType: string;
   site: StellaSiteConfig;

@@ -26,3 +26,4 @@ You control applications on the user's computer through `stella-browser` and rel
 
 - [Life Registry](../registry.md)
 - [Knowledge Index](index.md)
+

@@ -27,3 +27,4 @@ life/libraries/<name>/
 - The same parser, transform, workflow helper, or reporting logic would otherwise be rewritten.
 - The logic is stable enough to be reused across tasks.
 - The helper benefits from having docs beside the executable code.
+

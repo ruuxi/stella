@@ -64,7 +64,7 @@ export const registerBootstrapIpcHandlers = (
     backupService: services.backupService,
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
-    getStellaHomePath: lifecycle.getStellaHomePath,
+    getStellaRoot: lifecycle.getStellaRoot,
     externalLinkService: services.externalLinkService,
     ensurePrivilegedActionApproval: (action, message, detail, event) =>
       services.securityPolicyService.ensureApproval(
@@ -111,8 +111,7 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerBrowserHandlers({
-    getStellaHomePath: lifecycle.getStellaHomePath,
-    getFrontendRoot: () => config.frontendRoot,
+    getStellaRoot: lifecycle.getStellaRoot,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
@@ -131,7 +130,7 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerOfficePreviewHandlers({
-    getStellaHomePath: lifecycle.getStellaHomePath,
+    getStellaRoot: lifecycle.getStellaRoot,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
@@ -141,7 +140,7 @@ export const registerBootstrapIpcHandlers = (
     getAppSessionStartedAt: () => state.appSessionStartedAt,
     isHostAuthAuthenticated: () =>
       services.authService.getHostAuthAuthenticated(),
-    frontendRoot: config.frontendRoot,
+    stellaRoot: config.stellaRoot,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
     hmrTransitionController: state.hmrTransitionController,
@@ -162,7 +161,7 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerStoreHandlers({
-    getStellaHomePath: lifecycle.getStellaHomePath,
+    getStellaRoot: lifecycle.getStellaRoot,
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     assertPrivilegedSender: (event, channel) =>

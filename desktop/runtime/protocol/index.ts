@@ -280,8 +280,7 @@ export type RuntimeInitializeParams = {
   platform: NodeJS.Platform;
   protocolVersion: string;
   isDev: boolean;
-  frontendRoot: string;
-  stellaHomePath: string;
+  stellaRoot: string;
   stellaWorkspacePath: string;
 };
 
@@ -523,8 +522,7 @@ export const initializeParamsSchema = Type.Object({
   platform: Type.String({ minLength: 1 }),
   protocolVersion: Type.String({ minLength: 1 }),
   isDev: Type.Boolean(),
-  frontendRoot: Type.String({ minLength: 1 }),
-  stellaHomePath: Type.String({ minLength: 1 }),
+  stellaRoot: Type.String({ minLength: 1 }),
   stellaWorkspacePath: Type.String({ minLength: 1 }),
 });
 

@@ -20,8 +20,7 @@ const createAdapter = () =>
       clientVersion: "0.0.0",
       isDev: false,
       platform: process.platform,
-      frontendRoot: "/tmp/stella-test",
-      stellaHomePath: "/tmp/stella-test",
+      stellaRoot: "/tmp/stella-test",
       stellaWorkspacePath: "/tmp/stella-test",
     },
   });

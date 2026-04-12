@@ -158,14 +158,16 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- Use glob to filter by file pattern (e.g. \"*.ts\") or type for standard file types (e.g. \"js\", \"py\").\n" +
     "- Use this instead of Bash with grep or rg.",
   ExecuteTypescript:
-    "Write and run a short TypeScript program against Stella's typed bindings.\n\n" +
+    "Write and run a TypeScript program in a full Node.js runner with Stella helpers.\n\n" +
     "Use this when the task needs loops, batching, Promise.all, aggregation, parsing, or exact math in one step instead of many separate tool calls.\n\n" +
     "Rules:\n" +
     "- Write a program body, not a full module. Top-level await and return are allowed.\n" +
-    "- Do not use import, export, require, process, child_process, or direct filesystem/network APIs.\n" +
-    "- Use the provided bindings instead: workspace, life, browser, office, shell, libraries, console.\n" +
+    "- The program runs with full Node.js capabilities, including Buffer, process, require(), child_process, and fetch.\n" +
+    "- Because this is a program body, static import/export syntax is not supported. Use require() or await import() instead.\n" +
+    "- Use the provided bindings instead: workspace, life, shell, libraries, console.\n" +
+    "- Call Stella-native CLIs like stella-browser and stella-office through shell.exec(command, options?).\n" +
     "- Return JSON-serializable data. Keep code focused and deterministic.\n" +
-    "- Prefer workspace/life/browser/office bindings over raw shell. Keep shell.exec as the escape hatch.",
+    "- Prefer structured bindings for workspace/life/libraries, and use shell.exec for CLI workflows.",
   Bash:
     "Execute a shell command on the local device.\n\n" +
     "Usage:\n" +

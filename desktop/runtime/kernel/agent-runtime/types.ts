@@ -140,7 +140,7 @@ export type BaseRunOptions = {
   resolvedLlm: ResolvedLlmRoute;
   store: RuntimeStore;
   abortSignal?: AbortSignal;
-  frontendRoot?: string;
+  stellaRoot?: string;
   selfModMonitor?: SelfModMonitor | null;
   webSearch?: (
     query: string,

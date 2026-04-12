@@ -182,7 +182,7 @@ function installUnixSymlinks(manifest: Record<string, unknown>) {
 /**
  * Idempotently writes the native host launcher, manifest, and browser registrations.
  */
-export function registerStellaNativeMessagingHost(frontendRoot: string): {
+export function registerStellaNativeMessagingHost(stellaRoot: string): {
   ok: boolean;
   error?: string;
 } {
@@ -195,7 +195,7 @@ export function registerStellaNativeMessagingHost(frontendRoot: string): {
       };
     }
 
-    const binaryPath = path.join(frontendRoot, "stella-browser", "bin", binaryName);
+    const binaryPath = path.join(stellaRoot, "stella-browser", "bin", binaryName);
     if (!existsSync(binaryPath)) {
       return {
         ok: false,

@@ -62,9 +62,8 @@ import { VoiceRuntimeService } from "./voice/service.js";
 import { createRuntimeLogger } from "../kernel/debug.js";
 
 type WorkerInitializationState = {
-  stellaHomePath: string;
+  stellaRoot: string;
   stellaWorkspacePath: string;
-  frontendRoot: string;
   authToken: string | null;
   convexUrl: string | null;
   convexSiteUrl: string | null;
@@ -129,13 +128,13 @@ const resolveRuntimeCliPath = () =>
   fileURLToPath(new URL("../../kernel/cli/stella-ui.js", import.meta.url));
 
 const writeBlueprintArtifact = async (args: {
-  stellaHomePath: string;
+  stellaRoot: string;
   packageId: string;
   releaseNumber: number;
   artifact: StoreReleaseArtifact;
 }): Promise<string> => {
   const releaseDir = path.join(
-    args.stellaHomePath,
+    args.stellaRoot,
     "state",
     "mods",
     "store-blueprints",
@@ -253,13 +252,13 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     await stopWorkerServices(state);
     state.init = init;
 
-    const db = createDesktopDatabase(init.stellaHomePath);
-    const transcriptMirror = new TranscriptMirror(path.join(init.stellaHomePath, "state"));
+    const db = createDesktopDatabase(init.stellaRoot);
+    const transcriptMirror = new TranscriptMirror(path.join(init.stellaRoot, "state"));
     const chatStore = new ChatStore(db, transcriptMirror);
     const runtimeStore = new RuntimeStore(db, transcriptMirror);
     const storeModStore = new StoreModStore(db);
     const socialSessionStore = new SocialSessionStore(db);
-    const storeModService = new StoreModService(init.frontendRoot, storeModStore);
+    const storeModService = new StoreModService(init.stellaRoot, storeModStore);
     const deviceIdentity = await peer.request<HostDeviceIdentity>(
       METHOD_NAMES.HOST_DEVICE_IDENTITY_GET,
     );
@@ -274,8 +273,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
 
     const runnerOptions: StellaHostRunnerOptions = {
       deviceId: deviceIdentity.deviceId,
-      stellaHomePath: init.stellaHomePath,
-      frontendRoot: init.frontendRoot,
+      stellaRoot: init.stellaRoot,
       runtimeStore,
       listLocalChatEvents: (conversationId, maxItems) =>
         chatStore.listEvents(conversationId, maxItems),
@@ -391,13 +389,13 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         },
       },
       stellaBrowserBinPath: path.join(
-        init.frontendRoot,
+        init.stellaRoot,
         "stella-browser",
         "bin",
         "stella-browser.js",
       ),
       stellaOfficeBinPath: path.join(
-        init.frontendRoot,
+        init.stellaRoot,
         "stella-office",
         "bin",
         "stella-office.js",
@@ -1026,7 +1024,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       },
       applyRelease: async ({ package: packageRecord, release, artifact, mode }) => {
         const blueprintPath = await writeBlueprintArtifact({
-          stellaHomePath: state.init!.stellaHomePath,
+          stellaRoot: state.init!.stellaRoot,
           packageId: packageRecord.packageId,
           releaseNumber: release.releaseNumber,
           artifact,
@@ -1072,7 +1070,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       };
     }
     const revertedCommits = await revertGitCommits({
-      repoRoot: state.init.frontendRoot,
+      repoRoot: state.init.stellaRoot,
       commitHashes: [...install.applyCommitHashes].reverse(),
     });
     service.markInstallUninstalled(install.installId);
@@ -1183,7 +1181,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       const payload = (params as
         | { selectedBrowser?: string; selectedProfile?: string }
         | undefined) ?? { };
-      const data = await collectBrowserData(state.init.stellaHomePath, {
+      const data = await collectBrowserData(state.init.stellaRoot, {
         selectedBrowser: payload.selectedBrowser as
           | import("../discovery/browser-data.js").BrowserType
           | undefined,
@@ -1207,7 +1205,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           }
         | undefined) ?? { };
       return await collectAllSignals(
-        state.init.stellaHomePath,
+        state.init.stellaRoot,
         payload.categories as
           | import("../../src/shared/contracts/discovery.js").DiscoveryCategory[]
           | undefined,
@@ -1312,7 +1310,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     }
     const payload = params as { featureId?: string; steps?: number };
     return await revertGitFeature({
-      repoRoot: state.init.frontendRoot,
+      repoRoot: state.init.stellaRoot,
       featureId: payload.featureId,
       steps: payload.steps,
     });
@@ -1322,7 +1320,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     if (!state.init) {
       throw new Error("Worker has not been initialized.");
     }
-    return await getLastGitFeatureId(state.init.frontendRoot);
+    return await getLastGitFeatureId(state.init.stellaRoot);
   });
 
   peer.registerRequestHandler(
@@ -1333,7 +1331,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       }
       const rawLimit = (params as { limit?: number } | undefined)?.limit;
       const limit = Number.isFinite(rawLimit) ? Number(rawLimit) : 8;
-      return await listRecentGitFeatures(state.init.frontendRoot, limit);
+      return await listRecentGitFeatures(state.init.stellaRoot, limit);
     },
   );
 

@@ -57,8 +57,8 @@ const STATE_DIRECTORY_SKIP_PREFIXES = new Set([
 ]);
 
 type BackupServiceDeps = {
-  frontendRoot: string;
-  getStellaHomePath: () => string | null;
+  stellaRoot: string;
+  getStellaRoot: () => string | null;
   getRunner: () => StellaHostRunner | null;
   getAuthToken: () => Promise<string | null>;
   getConvexSiteUrl: () => string | null;
@@ -417,7 +417,7 @@ export class BackupService {
   }
 
   async refreshEnabledState() {
-    const stellaHomePath = this.deps.getStellaHomePath();
+    const stellaHomePath = this.deps.getStellaRoot();
     const nextEnabled = stellaHomePath
       ? (await this.readSyncMode(stellaHomePath)) === "on"
       : false;
@@ -426,7 +426,7 @@ export class BackupService {
 
   async setMode(mode: "on" | "off") {
     this.setEnabled(mode === "on");
-    const stellaHomePath = this.deps.getStellaHomePath();
+    const stellaHomePath = this.deps.getStellaRoot();
     if (!stellaHomePath) {
       return;
     }
@@ -438,7 +438,7 @@ export class BackupService {
   }
 
   async getStatus(): Promise<BackupStatus> {
-    const stellaHomePath = this.deps.getStellaHomePath();
+    const stellaHomePath = this.deps.getStellaRoot();
     if (!stellaHomePath) {
       return {
         version: BACKUP_VERSION,
@@ -449,7 +449,7 @@ export class BackupService {
   }
 
   async backupNow(): Promise<BackupNowResult> {
-    const stellaHomePath = this.deps.getStellaHomePath();
+    const stellaHomePath = this.deps.getStellaRoot();
     if (!stellaHomePath) {
       throw new Error("Local Stella home is unavailable.");
     }
@@ -540,7 +540,7 @@ export class BackupService {
     snapshotId: string,
     runtimeOps: RestoreRuntimeOps,
   ): Promise<RestoreBackupResult> {
-    const stellaHomePath = this.deps.getStellaHomePath();
+    const stellaHomePath = this.deps.getStellaRoot();
     if (!stellaHomePath) {
       throw new Error("Local Stella home is unavailable.");
     }
@@ -749,7 +749,7 @@ export class BackupService {
       return;
     }
 
-    const stellaHomePath = this.deps.getStellaHomePath();
+    const stellaHomePath = this.deps.getStellaRoot();
     if (!stellaHomePath) {
       return;
     }
@@ -876,7 +876,7 @@ export class BackupService {
         snapshotId,
         createdAt: Date.now(),
         snapshotHash,
-        repoRoot: this.deps.frontendRoot,
+        repoRoot: this.deps.stellaRoot,
         stellaHomePath,
         entries,
       };
@@ -986,7 +986,7 @@ export class BackupService {
     encryptionKey: Buffer;
   }): Promise<BackupManifestEntry[]> {
     const relativeHome = normalizePath(
-      path.relative(this.deps.frontendRoot, args.stellaHomePath),
+      path.relative(this.deps.stellaRoot, args.stellaHomePath),
     );
     const excludePrefixes =
       relativeHome && !relativeHome.startsWith("..")
@@ -997,12 +997,12 @@ export class BackupService {
           ]
         : [];
     const repoFiles = await listGitWorkingTreeFiles(
-      this.deps.frontendRoot,
+      this.deps.stellaRoot,
       excludePrefixes,
     );
     const entries: BackupManifestEntry[] = [];
     for (const relativePath of repoFiles) {
-      const absolutePath = path.join(this.deps.frontendRoot, relativePath);
+      const absolutePath = path.join(this.deps.stellaRoot, relativePath);
       const stat = await fs.stat(absolutePath).catch(() => null);
       if (!stat?.isFile()) {
         continue;
@@ -1028,7 +1028,7 @@ export class BackupService {
     const bundlePath = path.join(args.tempRoot, "repo.bundle");
     await execFileAsync(
       "git",
-      ["-C", this.deps.frontendRoot, "bundle", "create", bundlePath, "--all"],
+      ["-C", this.deps.stellaRoot, "bundle", "create", bundlePath, "--all"],
       {
         maxBuffer: EXEC_MAX_BUFFER,
       },
@@ -1492,7 +1492,7 @@ export class BackupService {
 
   private getRepoExcludePrefixes(stellaHomePath: string) {
     const relativeHome = normalizePath(
-      path.relative(this.deps.frontendRoot, stellaHomePath),
+      path.relative(this.deps.stellaRoot, stellaHomePath),
     );
     return relativeHome && !relativeHome.startsWith("..")
       ? [
@@ -1505,7 +1505,7 @@ export class BackupService {
 
   private async ensureRepoRestoreSafe(stellaHomePath: string) {
     const excludePrefixes = this.getRepoExcludePrefixes(stellaHomePath);
-    const porcelain = await runGit(this.deps.frontendRoot, ["status", "--porcelain", "-z"]);
+    const porcelain = await runGit(this.deps.stellaRoot, ["status", "--porcelain", "-z"]);
     const entries = porcelain
       .toString("utf8")
       .split("\0")
@@ -1606,7 +1606,7 @@ export class BackupService {
   ) {
     const excludePrefixes = this.getRepoExcludePrefixes(stellaHomePath);
     const currentFiles = await listGitWorkingTreeFiles(
-      this.deps.frontendRoot,
+      this.deps.stellaRoot,
       excludePrefixes,
     );
     const snapshotFiles = new Set(entries.map((entry) => normalizePath(entry.path)));
@@ -1615,14 +1615,14 @@ export class BackupService {
         .filter((relativePath) => !snapshotFiles.has(relativePath))
         .map(async (relativePath) => {
           await removeFileIfExists(
-            resolveInsideRoot(this.deps.frontendRoot, relativePath),
+            resolveInsideRoot(this.deps.stellaRoot, relativePath),
           );
         }),
     );
     for (const entry of entries) {
       await this.restoreEntryToPath(
         entry,
-        resolveInsideRoot(this.deps.frontendRoot, entry.path),
+        resolveInsideRoot(this.deps.stellaRoot, entry.path),
         stagedObjectsDir,
       );
     }

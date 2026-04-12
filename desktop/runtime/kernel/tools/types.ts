@@ -17,7 +17,7 @@ export type ToolContext = {
   runId?: string;
   rootRunId?: string;
   agentType?: string;
-  frontendRoot?: string;
+  stellaRoot?: string;
   storageMode?: "cloud" | "local";
   taskId?: string;
   cloudTaskId?: string;
@@ -116,8 +116,7 @@ export type TaskToolApi = {
 };
 
 export type ToolHostOptions = {
-  stellaHomePath: string;
-  frontendRoot?: string;
+  stellaRoot: string;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaUiCliPath?: string;

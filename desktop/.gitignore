@@ -65,6 +65,7 @@ native/*.obj
 state/
 
 # Personal life data (user-specific, never commit)
+life/core-memory.md
 life/knowledge/index.md
 life/knowledge/user-profile/
 life/notes/

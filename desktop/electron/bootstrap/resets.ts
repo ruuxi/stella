@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import { app, session } from "electron";
 import path from "path";
 import { resetMessageStorage } from "../../runtime/kernel/storage/reset-message-storage.js";
-import { resolveRuntimeHomePath } from "../../runtime/kernel/home/stella-home.js";
+import { resolveStellaRoot } from "../../runtime/kernel/home/stella-home.js";
 import { type BootstrapContext, broadcastLocalChatUpdated } from "./context.js";
 
 export type BootstrapResetFlows = {
@@ -76,10 +76,10 @@ export const createBootstrapResetFlows = (
       appSession.clearCache(),
     ]);
 
-    const homePath = state.stellaHomePath ?? resolveRuntimeHomePath(app);
+    const stellaRoot = state.stellaRoot ?? resolveStellaRoot(app);
     await Promise.allSettled(
       config.hardResetMutableHomePaths.map((relativePath) =>
-        fs.rm(path.join(homePath, relativePath), {
+        fs.rm(path.join(stellaRoot, relativePath), {
           recursive: true,
           force: true,
         }),
@@ -96,12 +96,12 @@ export const createBootstrapResetFlows = (
   resetLocalMessages: async () => {
     const { state } = context;
 
-    if (!state.stellaHomePath) {
+    if (!state.stellaRoot) {
       return { ok: true };
     }
 
     await shutdownBootstrapRuntime(context);
-    await resetMessageStorage(state.stellaHomePath);
+    await resetMessageStorage(state.stellaRoot);
     await options.initializeStellaHostRunner();
 
     broadcastLocalChatUpdated(context);

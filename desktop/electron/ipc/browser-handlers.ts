@@ -30,8 +30,7 @@ type BrowserCookie = {
 };
 
 type BrowserHandlersOptions = {
-  getStellaHomePath: () => string | null;
-  getFrontendRoot: () => string | null;
+  getStellaRoot: () => string | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -39,13 +38,13 @@ type BrowserHandlersOptions = {
 };
 
 const runStellaBrowserJson = (
-  frontendRoot: string,
+  stellaRoot: string,
   args: string[],
   extraEnv?: Record<string, string>,
 ): Promise<StellaBrowserResponse> =>
   new Promise((resolve, reject) => {
     const binPath = path.join(
-      frontendRoot,
+      stellaRoot,
       "stella-browser",
       "bin",
       "stella-browser.js",
@@ -55,7 +54,7 @@ const runStellaBrowserJson = (
       process.execPath,
       [binPath, ...args],
       {
-        cwd: frontendRoot,
+        cwd: stellaRoot,
         timeout: PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
         windowsHide: true,
         env: extraEnv ? { ...process.env, ...extraEnv } : undefined,
@@ -79,7 +78,7 @@ const runStellaBrowserJson = (
   });
 
 const getBrowserCookieHeader = async (
-  frontendRoot: string,
+  stellaRoot: string,
   targetUrl: string,
 ): Promise<string | null> => {
   try {
@@ -89,7 +88,7 @@ const getBrowserCookieHeader = async (
       ...getStellaBrowserBridgeEnv(),
     };
     const response = await runStellaBrowserJson(
-      frontendRoot,
+      stellaRoot,
       ["--json", "cookies", "get", "--url", targetUrl],
       extensionEnv,
     );
@@ -111,11 +110,11 @@ const getBrowserCookieHeader = async (
 };
 
 const fetchWithBrowserSession = async (
-  frontendRoot: string,
+  stellaRoot: string,
   payload: { url: string; responseType: "json" | "text"; init?: BrowserFetchInit },
 ) => {
   const url = await normalizeUrlForPrivilegedRendererFetch(payload.url);
-  const cookieHeader = await getBrowserCookieHeader(frontendRoot, url);
+  const cookieHeader = await getBrowserCookieHeader(stellaRoot, url);
   const method = payload.init?.method ?? "GET";
   const headers = new Headers(payload.init?.headers);
 
@@ -152,12 +151,12 @@ const fetchWithBrowserSession = async (
   return response.text();
 };
 
-const getFrontendRootOrThrow = (options: BrowserHandlersOptions) => {
-  const frontendRoot = options.getFrontendRoot();
-  if (!frontendRoot?.trim()) {
-    throw new Error("Frontend root not available; restart the app.");
+const getStellaRootOrThrow = (options: BrowserHandlersOptions) => {
+  const stellaRoot = options.getStellaRoot();
+  if (!stellaRoot?.trim()) {
+    throw new Error("Stella root not available; restart the app.");
   }
-  return frontendRoot;
+  return stellaRoot;
 };
 
 export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
@@ -167,8 +166,8 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, IPC_BROWSER_FETCH_JSON)) {
         throw new Error("Blocked untrusted request.");
       }
-      const frontendRoot = getFrontendRootOrThrow(options);
-      return fetchWithBrowserSession(frontendRoot, {
+      const stellaRoot = getStellaRootOrThrow(options);
+      return fetchWithBrowserSession(stellaRoot, {
         url: payload.url,
         responseType: "json",
         init: payload.init,
@@ -182,8 +181,8 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, IPC_BROWSER_FETCH_TEXT)) {
         throw new Error("Blocked untrusted request.");
       }
-      const frontendRoot = getFrontendRootOrThrow(options);
-      return fetchWithBrowserSession(frontendRoot, {
+      const stellaRoot = getStellaRootOrThrow(options);
+      return fetchWithBrowserSession(stellaRoot, {
         url: payload.url,
         responseType: "text",
         init: payload.init,
@@ -202,12 +201,12 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, "media:saveOutput")) {
         return { ok: false, error: "Blocked untrusted request." };
       }
-      const stellaHomePath = options.getStellaHomePath();
-      if (!stellaHomePath) {
-        return { ok: false, error: "Stella home not initialized" };
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
+        return { ok: false, error: "Stella root not initialized" };
       }
       try {
-        const dir = path.join(stellaHomePath, "state", "media", "outputs");
+        const dir = path.join(stellaRoot, "state", "media", "outputs");
         await fs.mkdir(dir, { recursive: true });
         const destPath = path.join(dir, payload.fileName);
         const safeUrl = await normalizeUrlForPrivilegedRendererFetch(payload.url);
@@ -234,9 +233,9 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, "media:getStellaMediaDir")) {
         return null;
       }
-      const stellaHomePath = options.getStellaHomePath();
-      if (!stellaHomePath) return null;
-      return path.join(stellaHomePath, "state", "media");
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) return null;
+      return path.join(stellaRoot, "state", "media");
     },
   );
 };

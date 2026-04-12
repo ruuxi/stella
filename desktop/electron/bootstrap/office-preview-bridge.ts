@@ -39,8 +39,8 @@ const asString = (value: unknown): string =>
 const asNumber = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
-const resolvePreviewRoot = (stellaHomePath: string) =>
-  path.join(stellaHomePath, "state", PREVIEW_ROOT_DIRNAME);
+const resolvePreviewRoot = (stellaRoot: string) =>
+  path.join(stellaRoot, "state", PREVIEW_ROOT_DIRNAME);
 
 const readSnapshotFromSessionDir = async (
   sessionDir: string,
@@ -83,9 +83,9 @@ const readSnapshotFromSessionDir = async (
 };
 
 export const listOfficePreviewSnapshots = async (
-  stellaHomePath: string,
+  stellaRoot: string,
 ): Promise<OfficePreviewSnapshot[]> => {
-  const previewRoot = resolvePreviewRoot(stellaHomePath);
+  const previewRoot = resolvePreviewRoot(stellaRoot);
   await fs.mkdir(previewRoot, { recursive: true });
 
   const entries = await fs.readdir(previewRoot, { withFileTypes: true });
@@ -101,8 +101,8 @@ export const listOfficePreviewSnapshots = async (
 };
 
 export const startOfficePreviewBridge = (context: BootstrapContext): (() => void) => {
-  const stellaHomePath = context.state.stellaHomePath;
-  if (!stellaHomePath) {
+  const stellaRoot = context.state.stellaRoot;
+  if (!stellaRoot) {
     return () => {};
   }
 
@@ -112,7 +112,7 @@ export const startOfficePreviewBridge = (context: BootstrapContext): (() => void
 
   const scan = async () => {
     try {
-      const snapshots = await listOfficePreviewSnapshots(stellaHomePath);
+      const snapshots = await listOfficePreviewSnapshots(stellaRoot);
       if (stopped) {
         return;
       }

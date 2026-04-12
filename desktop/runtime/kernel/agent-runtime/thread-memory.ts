@@ -235,9 +235,9 @@ export const buildSystemPrompt = (
 };
 
 export const buildSelfModDocumentationPrompt = (
-  frontendRoot?: string,
+  stellaRoot?: string,
 ): string => {
-  if (!frontendRoot?.trim()) return "";
+  if (!stellaRoot?.trim()) return "";
 
   return [
     "Documentation:",
@@ -269,7 +269,7 @@ export type OrchestratorPromptMessage = RuntimePromptMessage;
 
 const readRegistryContent = async (args: {
   stellaHome?: string;
-  frontendRoot?: string;
+  stellaRoot?: string;
 }): Promise<string | null> => {
   const stellaHome = args.stellaHome?.trim();
   if (stellaHome) {
@@ -281,17 +281,17 @@ const readRegistryContent = async (args: {
     }
   }
 
-  const frontendRoot = args.frontendRoot?.trim();
-  if (!frontendRoot) {
+  const stellaRoot = args.stellaRoot?.trim();
+  if (!stellaRoot) {
     return null;
   }
-  return await readOptionalTextFile(path.join(frontendRoot, "life", "registry.md"));
+  return await readOptionalTextFile(path.join(stellaRoot, "life", "registry.md"));
 };
 
 export const buildStartupPromptMessages = async (args: {
   context: LocalTaskManagerAgentContext;
   stellaHome?: string;
-  frontendRoot?: string;
+  stellaRoot?: string;
 }): Promise<RuntimePromptMessage[]> => {
   if (args.context.threadHistory?.length) {
     return [];
@@ -300,7 +300,7 @@ export const buildStartupPromptMessages = async (args: {
 
   const registryContent = await readRegistryContent({
     stellaHome: args.stellaHome,
-    frontendRoot: args.frontendRoot,
+    stellaRoot: args.stellaRoot,
   });
   if (registryContent) {
     messages.push({
@@ -325,13 +325,13 @@ export const buildSubagentPromptMessages = async (args: {
   userPrompt: string;
   promptMessages?: RuntimePromptMessage[];
   stellaHome?: string;
-  frontendRoot?: string;
+  stellaRoot?: string;
 }): Promise<RuntimePromptMessage[]> => {
   const trimmedUserPrompt = args.userPrompt.trim();
   const messages = await buildStartupPromptMessages({
     context: args.context,
     stellaHome: args.stellaHome,
-    frontendRoot: args.frontendRoot,
+    stellaRoot: args.stellaRoot,
   });
   if (args.promptMessages?.length) {
     messages.push(...args.promptMessages);
@@ -347,7 +347,7 @@ export const buildOrchestratorPromptMessages = async (args: {
   userPrompt: string;
   promptMessages?: OrchestratorPromptMessage[];
   stellaHome?: string;
-  frontendRoot?: string;
+  stellaRoot?: string;
 }): Promise<OrchestratorPromptMessage[]> => {
   const trimmedUserPrompt = args.userPrompt.trim();
   const staleUserReminder = args.context.staleUserReminderText?.trim();
@@ -369,7 +369,7 @@ export const buildOrchestratorPromptMessages = async (args: {
     ...(await buildStartupPromptMessages({
       context: args.context,
       stellaHome: args.stellaHome,
-      frontendRoot: args.frontendRoot,
+      stellaRoot: args.stellaRoot,
     })),
   );
   if (args.promptMessages?.length) {

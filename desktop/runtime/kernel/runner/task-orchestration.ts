@@ -245,7 +245,7 @@ export const createTaskOrchestration = (
 ) => {
   context.state.localTaskManager = new LocalTaskManager({
     maxConcurrent: 24,
-    getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaHomePath),
+    getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaRoot),
     getStarterTools: (agentType) =>
       agentType === AGENT_IDS.GENERAL ? [...GENERAL_STARTER_TOOLS] : [],
     resolveTaskThread: ({ conversationId, agentType, threadId }) => {
@@ -318,7 +318,7 @@ export const createTaskOrchestration = (
         Boolean(effectiveSelfModMetadata) && Boolean(context.selfModLifecycle);
 
       const resolvedLlm = resolveLlmRoute({
-        stellaHomePath: context.stellaHomePath,
+        stellaRoot: context.stellaRoot,
         modelName: agentContext.model,
         agentType,
         site: {
@@ -337,13 +337,13 @@ export const createTaskOrchestration = (
         toolName: string,
         args: Record<string, unknown>,
       ) => {
-        if (hmrPaused || !context.selfModHmrController || !context.frontendRoot) return;
+        if (hmrPaused || !context.selfModHmrController || !context.stellaRoot) return;
         const targetPath = resolveHmrToolTargetPath(
           toolName,
           args,
-          context.frontendRoot,
+          context.stellaRoot,
         );
-        if (!targetPath || !isHmrPathUnderDirectory(targetPath, context.frontendRoot)) return;
+        if (!targetPath || !isHmrPathUnderDirectory(targetPath, context.stellaRoot)) return;
         hmrPaused = true;
         const applied = await context.selfModHmrController.pause(runId);
         if (!applied) {
@@ -389,11 +389,11 @@ export const createTaskOrchestration = (
           toolCatalog: context.toolHost.getToolCatalog(),
           toolExecutor: hmrAwareToolExecutor,
           deviceId: context.deviceId,
-          stellaHome: context.stellaHomePath,
+          stellaHome: context.stellaRoot,
           resolvedLlm,
           store: context.runtimeStore,
           abortSignal,
-          frontendRoot: context.frontendRoot,
+          stellaRoot: context.stellaRoot,
           selfModMonitor: context.selfModMonitor,
           onProgress,
           callbacks: taskCallbacks

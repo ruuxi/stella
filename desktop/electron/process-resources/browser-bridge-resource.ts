@@ -24,7 +24,7 @@ export type StellaBrowserBridgeResource = {
 };
 
 export const createStellaBrowserBridgeResource = (options: {
-  frontendRoot: string;
+  stellaRoot: string;
   processRuntime: ProcessRuntime;
   onStatus: (status: StellaBrowserBridgeStatus) => void;
 }): StellaBrowserBridgeResource => {
@@ -34,7 +34,7 @@ export const createStellaBrowserBridgeResource = (options: {
     processRuntime: options.processRuntime,
     create: ({ onUnexpectedExit }) =>
       new StellaBrowserBridgeService({
-        frontendRoot: options.frontendRoot,
+        stellaRoot: options.stellaRoot,
         onUnexpectedExit,
       }),
     start: (s) => s.start(),

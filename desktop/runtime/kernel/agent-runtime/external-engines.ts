@@ -123,7 +123,7 @@ const runClaudeHostedTurn = async (args: {
 
   const localCliCwd = resolveLocalCliCwd({
     agentType: args.opts.agentType,
-    frontendRoot: args.opts.frontendRoot,
+    stellaRoot: args.opts.stellaRoot,
   });
   const sessionKey = args.opts.agentContext.activeThreadId
     ? `${args.opts.conversationId}:${args.opts.agentContext.activeThreadId}`
@@ -181,7 +181,7 @@ const runClaudeHostedTurn = async (args: {
         conversationId: args.opts.conversationId,
         agentType: args.opts.agentType,
         deviceId: args.opts.deviceId,
-        frontendRoot: args.opts.frontendRoot,
+        stellaRoot: args.opts.stellaRoot,
         taskDepth: args.opts.agentContext.taskDepth ?? 0,
         maxTaskDepth: args.opts.agentContext.maxTaskDepth,
         store: args.opts.store,
@@ -240,9 +240,9 @@ export const runExternalOrchestratorTurn = async (
 
   const runId = opts.runId ?? `local:${crypto.randomUUID()}`;
   const baselineHead =
-    opts.frontendRoot && opts.selfModMonitor
+    opts.stellaRoot && opts.selfModMonitor
       ? await opts.selfModMonitor
-          .getBaselineHead(opts.frontendRoot)
+          .getBaselineHead(opts.stellaRoot)
           .catch(() => null)
       : null;
 

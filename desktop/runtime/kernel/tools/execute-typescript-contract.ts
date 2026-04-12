@@ -23,21 +23,25 @@ export const EXECUTE_TYPESCRIPT_JSON_SCHEMA = {
 } as const;
 
 export const EXECUTE_TYPESCRIPT_TOOL_DESCRIPTION =
-  "Write and run a short TypeScript program against Stella's typed bindings.\n\n" +
+  "Write and run a short TypeScript program in a full Node.js runner with Stella helpers.\n\n" +
   "Use this when the task needs loops, batching, Promise.all, aggregation, parsing, or exact math in one step instead of many separate tool calls.\n\n" +
   "Rules:\n" +
   "- Write a program body, not a full module. Top-level await and return are allowed.\n" +
-  "- Do not use import, export, require, process, child_process, or direct filesystem/network APIs.\n" +
-  "- Use the provided bindings instead: workspace, life, browser, office, shell, libraries, console.\n" +
+  "- The program runs with full Node.js capabilities, including Buffer, process, require(), child_process, and fetch.\n" +
+  "- Because this is a program body, static import/export syntax is not supported. Use require() or await import() instead.\n" +
+  "- Use the provided bindings instead: workspace, life, shell, libraries, console.\n" +
+  "- Call Stella-native CLIs like stella-browser and stella-office through shell.exec(command, options?).\n" +
   "- Return JSON-serializable data. Keep code focused and deterministic.\n" +
-  "- Prefer workspace/life/browser/office bindings over raw shell. Keep shell.exec as the escape hatch.";
+  "- Prefer structured bindings for workspace/life/libraries, and use shell.exec for CLI workflows.";
 
 export const EXECUTE_TYPESCRIPT_PROMPT_GUIDANCE = `
 Code mode:
 - Prefer \`${EXECUTE_TYPESCRIPT_TOOL_NAME}\` when work needs batching, loops, Promise.all, exact math, aggregation, or deterministic transforms.
 - Write a short async TypeScript program body. Top-level await and return are allowed.
-- Do not use import, export, require, process, child_process, fetch, or raw Node APIs inside the program.
+- The program runs in a full Node.js subprocess with Buffer, process, require(), child_process, fetch, and other standard Node APIs available.
+- Static import/export syntax is not supported inside program bodies. Use require() or await import() instead.
 - Use the provided globals instead, and return JSON-serializable data.
+- For stella-browser and stella-office, prefer shell.exec("stella-browser ...") and shell.exec("stella-office ...") inside the program.
 
 Available globals:
 \`\`\`ts
@@ -79,36 +83,15 @@ declare const life: {
   }>>;
 };
 
-declare const browser: {
-  open(url: string): Promise<string>;
-  snapshot(args?: { interactive?: boolean; compact?: boolean; depth?: number; selector?: string }): Promise<string>;
-  click(target: string): Promise<string>;
-  fill(target: string, value: string): Promise<string>;
-  getText(target: string): Promise<string>;
-  wait(args: { ms?: number; text?: string; url?: string; load?: "load" | "domcontentloaded" | "networkidle"; fn?: string; timeoutMs?: number } | number): Promise<string>;
-};
-
-declare const office: {
-  view(file: string, mode: "outline" | "stats" | "issues" | "text" | "annotated", args?: {
-    type?: "format" | "content" | "structure";
-    limit?: number;
-    start?: number;
-    end?: number;
-    maxLines?: number;
-  }): Promise<string>;
-  get(file: string, path: string, args?: { depth?: number; json?: boolean }): Promise<unknown>;
-  query(file: string, selector: string, args?: { json?: boolean }): Promise<unknown>;
-  set(file: string, path: string, props: Record<string, string | number | boolean | null>): Promise<string>;
-  validate(file: string, args?: { json?: boolean }): Promise<unknown>;
-};
-
 declare const shell: {
-  exec(args: {
-    command: string;
-    description?: string;
-    workingDirectory?: string;
-    timeoutMs?: number;
-  }): Promise<string>;
+  exec(
+    command: string,
+    options?: {
+      description?: string;
+      workingDirectory?: string;
+      timeoutMs?: number;
+    },
+  ): Promise<string>;
 };
 
 declare const libraries: {
@@ -129,6 +112,13 @@ declare const console: {
   warn(...args: unknown[]): void;
   error(...args: unknown[]): void;
 };
+\`\`\`
+
+Examples:
+\`\`\`ts
+await shell.exec("stella-browser open https://outlook.office.com");
+const snapshot = await shell.exec("stella-browser snapshot -i");
+const report = await shell.exec("stella-office view report.docx text");
 \`\`\`
 
 life model:

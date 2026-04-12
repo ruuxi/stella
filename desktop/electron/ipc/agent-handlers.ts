@@ -23,7 +23,7 @@ type AgentHandlersOptions = {
   getStellaHostRunner: () => StellaHostRunner | null;
   getAppSessionStartedAt: () => number;
   isHostAuthAuthenticated: () => boolean;
-  frontendRoot: string;
+  stellaRoot: string;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -654,7 +654,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
   // Dev-only: trigger/fix a Vite compile error for testing the error overlay
   const TEST_BROKEN_FILE = path.join(
-    options.frontendRoot,
+    options.stellaRoot,
     "src",
     "testing",
     "__vite_error_trigger.tsx",

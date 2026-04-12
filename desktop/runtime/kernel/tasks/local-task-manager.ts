@@ -221,7 +221,7 @@ const getFsLockKey = (
     if (!filePath) return "*";
     return normalizeFsPathKey(
       filePath,
-      normalizeString(args.working_directory ?? args.cwd ?? context?.frontendRoot),
+        normalizeString(args.working_directory ?? args.cwd ?? context?.stellaRoot),
     );
   }
   if (toolName === "Bash") {
@@ -231,7 +231,7 @@ const getFsLockKey = (
     if (!pathFromCommand) return "*";
     return normalizeFsPathKey(
       pathFromCommand,
-      normalizeString(args.working_directory ?? args.cwd ?? context?.frontendRoot),
+        normalizeString(args.working_directory ?? args.cwd ?? context?.stellaRoot),
     );
   }
   return null;

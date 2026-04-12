@@ -93,7 +93,7 @@ type RuntimeToolContextArgs = {
   conversationId: string;
   agentType: string;
   deviceId: string;
-  frontendRoot?: string;
+  stellaRoot?: string;
   taskDepth?: number;
   maxTaskDepth?: number;
 };
@@ -107,7 +107,7 @@ export const buildRuntimeToolContext = (
   runId: args.runId,
   ...(args.rootRunId ? { rootRunId: args.rootRunId } : {}),
   agentType: args.agentType,
-  ...(args.frontendRoot ? { frontendRoot: args.frontendRoot } : {}),
+  ...(args.stellaRoot ? { stellaRoot: args.stellaRoot } : {}),
   storageMode: "local",
   ...(args.taskId ? { taskId: args.taskId } : {}),
   ...(typeof args.taskDepth === "number" ? { taskDepth: args.taskDepth } : {}),
@@ -208,7 +208,7 @@ export const createPiTools = (opts: {
   conversationId: string;
   agentType: string;
   deviceId: string;
-  frontendRoot?: string;
+  stellaRoot?: string;
   taskDepth?: number;
   maxTaskDepth?: number;
   toolsAllowlist?: string[];
@@ -256,7 +256,7 @@ export const createPiTools = (opts: {
           conversationId: opts.conversationId,
           agentType: opts.agentType,
           deviceId: opts.deviceId,
-          frontendRoot: opts.frontendRoot,
+          stellaRoot: opts.stellaRoot,
           taskDepth: opts.taskDepth,
           maxTaskDepth: opts.maxTaskDepth,
           store: opts.store,

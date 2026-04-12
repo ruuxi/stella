@@ -33,6 +33,7 @@ stella-browser --session public get text body
 ## Session Isolation Properties
 
 Each session has independent:
+
 - Cookies
 - LocalStorage / SessionStorage
 - IndexedDB
@@ -191,3 +192,4 @@ rm /tmp/auth-state.json
 # Set timeout for automated scripts
 timeout 60 stella-browser --session long-task get text body
 ```
+

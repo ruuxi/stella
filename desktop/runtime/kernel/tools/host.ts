@@ -60,8 +60,7 @@ import type { ToolDefinition } from "../extensions/types.js";
 export type { ToolContext, ToolHandlerExtras, ToolResult };
 
 export const createToolHost = ({
-  stellaHomePath,
-  frontendRoot,
+  stellaRoot,
   stellaBrowserBinPath,
   stellaOfficeBinPath,
   stellaUiCliPath,
@@ -71,7 +70,7 @@ export const createToolHost = ({
   extensionTools,
   displayHtml,
 }: ToolHostOptions) => {
-  const stateRoot = path.join(stellaHomePath, "state");
+  const stateRoot = path.join(stellaRoot, "state");
   const toolCatalog = new Map<string, ToolMetadata>(
     Object.entries(TOOL_DESCRIPTIONS).map(([name, description]) => [
       name,
@@ -84,7 +83,7 @@ export const createToolHost = ({
   );
 
   // Configure file tools.
-  setFileToolsConfig({ frontendRoot });
+  setFileToolsConfig({ stellaRoot });
 
   // User tools config
   const userConfig: UserToolsConfig = { requestCredential };
@@ -137,8 +136,7 @@ export const createToolHost = ({
   };
 
   const codeHandlers = createExecuteTypescriptToolHandlers({
-    stellaHomePath,
-    frontendRoot,
+    stellaRoot,
     executeCapabilityTool,
   });
   handlers = mergeToolHandlers(baseHandlers, codeHandlers);

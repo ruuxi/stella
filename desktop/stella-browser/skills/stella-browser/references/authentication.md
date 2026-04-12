@@ -177,26 +177,24 @@ fi
 ## Security Best Practices
 
 1. **Never commit state files** - They contain session tokens
-   ```bash
+  ```bash
    echo "*.auth-state.json" >> .gitignore
-   ```
-
+  ```
 2. **Use environment variables for credentials**
-   ```bash
+  ```bash
    stella-browser fill @e1 "$APP_USERNAME"
    stella-browser fill @e2 "$APP_PASSWORD"
-   ```
-
+  ```
 3. **Clean up after automation**
-   ```bash
+  ```bash
    stella-browser cookies clear
    rm -f ./auth-state.json
-   ```
-
+  ```
 4. **Use short-lived sessions for CI/CD**
-   ```bash
+  ```bash
    # Don't persist state in CI
    stella-browser open https://app.example.com/login
    # ... login and perform actions ...
    stella-browser close  # Session ends, nothing persisted
-   ```
+  ```
+

@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { resolveRuntimeHomePath } from "../home/stella-home.js";
+import { resolveStellaRoot } from "../home/stella-home.js";
 
 export const DEFERRED_DELETE_RETENTION_MS = 24 * 60 * 60 * 1000;
 
@@ -54,7 +54,7 @@ const getStellaHome = (override?: string) => {
   if (override && override.trim().length > 0) {
     return override;
   }
-  return resolveRuntimeHomePath();
+  return resolveStellaRoot();
 };
 
 export const getDeferredDeletePaths = (

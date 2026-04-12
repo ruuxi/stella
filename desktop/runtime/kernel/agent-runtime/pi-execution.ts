@@ -35,9 +35,9 @@ export const runPiOrchestratorTurn = async (
   opts: OrchestratorRunOptions,
 ): Promise<string> => {
   const baselineHead =
-    opts.frontendRoot && opts.selfModMonitor
+    opts.stellaRoot && opts.selfModMonitor
       ? await opts.selfModMonitor
-          .getBaselineHead(opts.frontendRoot)
+          .getBaselineHead(opts.stellaRoot)
           .catch(() => null)
       : null;
 
@@ -88,7 +88,7 @@ export const runPiOrchestratorTurn = async (
       userPrompt: opts.userPrompt,
       promptMessages: opts.promptMessages,
       stellaHome: opts.stellaHome,
-      frontendRoot: opts.frontendRoot,
+      stellaRoot: opts.stellaRoot,
     });
     logger.info("orchestrator.prompt-shape", {
       runId,
@@ -240,7 +240,7 @@ export const runPiSubagentTask = async (
       userPrompt: prompt,
       promptMessages: opts.promptMessages,
       stellaHome: opts.stellaHome,
-      frontendRoot: opts.frontendRoot,
+      stellaRoot: opts.stellaRoot,
     });
     const { finalText: result, errorMessage } = await executeRuntimeAgentPrompt({
       agent,
