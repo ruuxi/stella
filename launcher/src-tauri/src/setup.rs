@@ -587,10 +587,35 @@ async fn install_payload_dependencies(install_dir: &str) -> Result<(), String> {
     if result.ok {
         ensure_mac_screen_capture_permissions_built(install_dir).await?;
         Ok(())
-    } else if result.stderr.is_empty() {
-        Err("bun install failed.".into())
     } else {
-        Err(format!("bun install failed: {}", result.stderr))
+        let mut output_sections = Vec::new();
+        if !result.stderr.is_empty() {
+            output_sections.push(format!("stderr:\n{}", result.stderr));
+        }
+        if !result.stdout.is_empty() {
+            output_sections.push(format!("stdout:\n{}", result.stdout));
+        }
+
+        if !output_sections.is_empty() {
+            log_install(
+                install_dir,
+                &format!(
+                    "bun install --frozen-lockfile failed\n{}",
+                    output_sections.join("\n\n")
+                ),
+            )
+            .await;
+        }
+
+        let summary = if !result.stderr.is_empty() {
+            result.stderr
+        } else if !result.stdout.is_empty() {
+            result.stdout
+        } else {
+            "bun install failed.".into()
+        };
+
+        Err(format!("bun install failed: {summary}"))
     }
 }
 
