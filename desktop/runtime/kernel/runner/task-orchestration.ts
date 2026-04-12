@@ -485,8 +485,14 @@ export const createTaskOrchestration = (
         }
       }
     },
-    toolExecutor: (toolName, args, toolContext) =>
-      context.toolHost.executeTool(toolName, args, toolContext),
+    toolExecutor: (toolName, args, toolContext, signal, onUpdate) =>
+      context.toolHost.executeTool(
+        toolName,
+        args,
+        toolContext,
+        signal,
+        onUpdate,
+      ),
     createCloudTaskRecord: async () => ({
       taskId: `cloud-stub-${crypto.randomUUID().slice(0, 8)}`,
     }),

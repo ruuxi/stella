@@ -17,6 +17,7 @@ import type {
   RuntimeErrorEvent,
   RuntimeInterruptedEvent,
   RuntimeRunCallbacks,
+  RuntimeStatusEvent,
   RuntimeStreamEvent,
   RuntimeToolEndEvent,
   RuntimeToolStartEvent,
@@ -84,6 +85,17 @@ export const createRunEventRecorder = ({
         seq,
         chunk,
         userMessageId,
+      };
+    },
+
+    recordStatus(statusText: string): RuntimeStatusEvent {
+      const seq = nextSeq();
+      return {
+        runId,
+        agentType,
+        seq,
+        statusState: "running",
+        statusText,
       };
     },
 
@@ -231,6 +243,21 @@ const emitHook = <E extends "turn_start" | "turn_end">(
     .catch(() => undefined);
 };
 
+const extractToolUpdateStatusText = (event: Extract<AgentEvent, { type: "tool_execution_update" }>): string | undefined => {
+  const details =
+    typeof event.partialResult.details === "object" &&
+    event.partialResult.details !== null
+      ? (event.partialResult.details as { statusText?: unknown })
+      : null;
+  if (typeof details?.statusText === "string" && details.statusText.trim()) {
+    return details.statusText.trim();
+  }
+  const firstTextBlock = event.partialResult.content.find(
+    (block) => block.type === "text" && block.text.trim().length > 0,
+  );
+  return firstTextBlock?.type === "text" ? firstTextBlock.text.trim() : undefined;
+};
+
 export const subscribeRuntimeAgentEvents = ({
   agent,
   runId,
@@ -314,6 +341,15 @@ export const subscribeRuntimeAgentEvents = ({
         resultPreview: toolEndEvent.resultPreview.slice(0, 200),
       });
       callbacks?.onToolEnd?.(toolEndEvent);
+      return;
+    }
+
+    if (event.type === "tool_execution_update") {
+      const statusText = extractToolUpdateStatusText(event);
+      if (!statusText) {
+        return;
+      }
+      callbacks?.onStatus?.(recorder.recordStatus(statusText));
       return;
     }
 

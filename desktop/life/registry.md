@@ -5,6 +5,7 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 ## Entry Points
 
 - [Knowledge Index](knowledge/index.md) — all operational manuals, workflows, and domain knowledge
+- [Libraries](libraries/index.md) — reusable executable helpers for code mode
 - [Notes](notes/) — daily task summaries (append-only)
 - [Outputs](outputs/) — reusable generated artifacts
 - [Raw](raw/) — unprocessed source material
@@ -29,6 +30,7 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 ## Memory Structure
 
 - `knowledge/` — how things work, how to do things. Mutable. Update when reality changes.
+- `libraries/` — reusable executable helpers. Keep docs in `index.md` and code in `program.ts`.
 - `notes/` — what happened, what was tried, what's open. Append-only. Never modify a past day's entry.
 - `raw/` — unprocessed source material. Immutable after capture. Synthesize into `knowledge/`.
 - `outputs/` — generated artifacts worth keeping. Only file if likely to matter again.

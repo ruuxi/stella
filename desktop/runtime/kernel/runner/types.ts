@@ -17,6 +17,7 @@ import type {
   TaskToolRequest,
   TaskToolSnapshot,
   ToolContext,
+  ToolUpdateCallback,
   ToolMetadata,
   ToolResult,
 } from "../tools/types.js";
@@ -246,6 +247,8 @@ export type RunnerContext = {
       toolName: string,
       toolArgs: Record<string, unknown>,
       context: ToolContext,
+      signal?: AbortSignal,
+      onUpdate?: ToolUpdateCallback,
     ) => Promise<ToolResult>;
     registerExtensionTools: (tools: ToolDefinition[]) => void;
     killAllShells: () => void;
@@ -292,6 +295,8 @@ export type RunnerPublicApi = {
     toolName: string,
     toolArgs: Record<string, unknown>,
     context: ToolContext,
+    signal?: AbortSignal,
+    onUpdate?: ToolUpdateCallback,
   ) => Promise<ToolResult>;
   agentHealthCheck: () => AgentHealth;
   webSearch: (

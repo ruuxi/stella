@@ -1,5 +1,12 @@
 import path from "path";
-import type { ToolContext, ToolResult, TaskToolApi, TaskToolRequest, TaskToolSnapshot } from "../tools/types.js";
+import type {
+  ToolContext,
+  ToolResult,
+  ToolUpdateCallback,
+  TaskToolApi,
+  TaskToolRequest,
+  TaskToolSnapshot,
+} from "../tools/types.js";
 import { truncate } from "../tools/utils.js";
 import type { PersistedTaskRecord } from "../storage/runtime-store.js";
 import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
@@ -130,6 +137,7 @@ type LocalTaskManagerOpts = {
       args: Record<string, unknown>,
       context: ToolContext,
       signal?: AbortSignal,
+      onUpdate?: ToolUpdateCallback,
     ) => Promise<ToolResult>;
   }) => Promise<{ runId: string; result: string; error?: string }>;
   toolExecutor: (
@@ -137,6 +145,7 @@ type LocalTaskManagerOpts = {
     args: Record<string, unknown>,
     context: ToolContext,
     signal?: AbortSignal,
+    onUpdate?: ToolUpdateCallback,
   ) => Promise<ToolResult>;
   createCloudTaskRecord: (args: {
     conversationId: string;

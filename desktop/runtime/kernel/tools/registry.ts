@@ -53,7 +53,8 @@ export const createSearchToolHandlers = (): Record<string, ToolHandler> => ({
 export const createShellToolHandlers = (
   shellState: ShellState,
 ): Record<string, ToolHandler> => ({
-  Bash: (args, context) => handleBash(shellState, args, context),
+  Bash: (args, context, extras) =>
+    handleBash(shellState, args, context, extras?.signal),
   KillShell: (args, _context) => handleKillShell(shellState, args),
   ShellStatus: (args, _context) => handleShellStatus(shellState, args),
 });

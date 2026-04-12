@@ -9,6 +9,7 @@ const TOOL_STATUS_BY_NAME: Record<string, string> = {
   list: "Searching the codebase",
   grep: "Searching the codebase",
   glob: "Searching the codebase",
+  executetypescript: "Running code mode",
   webfetch: "Searching the web",
   edit: "Making edits",
   write: "Making edits",

@@ -7,6 +7,11 @@
  * Schemas are plain JSON Schema objects — no Zod, no conversion libraries.
  */
 
+import {
+  EXECUTE_TYPESCRIPT_JSON_SCHEMA,
+  EXECUTE_TYPESCRIPT_TOOL_DESCRIPTION,
+} from "./execute-typescript-contract.js";
+
 // ─── Device Tool Names ──────────────────────────────────────────────────────
 
 export const DEVICE_TOOL_NAMES = [
@@ -14,6 +19,7 @@ export const DEVICE_TOOL_NAMES = [
   "Write",
   "Edit",
   "Grep",
+  "ExecuteTypescript",
   "Bash",
   "KillShell",
   "ShellStatus",
@@ -475,10 +481,12 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     '  - "count": number of matches per file.\n' +
     '- Use glob to filter by file pattern (e.g. "*.ts") or type for standard file types (e.g. "js", "py").\n' +
     "- Use this instead of Bash with grep or rg.",
+  ExecuteTypescript: EXECUTE_TYPESCRIPT_TOOL_DESCRIPTION,
   Bash:
     "Execute a shell command on the local device.\n\n" +
     "Usage:\n" +
     "- Use Bash for shell commands, scripts, process control, package installs, and CLI tools.\n" +
+    "- Prefer ExecuteTypescript when the task needs loops, batching, parallel calls, aggregation, or exact math across multiple operations.\n" +
     "- Prefer Read, Write, and Edit for repo file inspection and modifications.\n" +
     "- For targeted edits to existing files, prefer the Edit tool over sed/awk.\n" +
     "- Default timeout is 120 seconds, max 600 seconds.\n" +
@@ -632,6 +640,7 @@ export const TOOL_JSON_SCHEMAS: Record<string, object> = {
   Write: WriteJsonSchema,
   Edit: EditJsonSchema,
   Grep: GrepJsonSchema,
+  ExecuteTypescript: EXECUTE_TYPESCRIPT_JSON_SCHEMA,
   Bash: BashJsonSchema,
   KillShell: KillShellJsonSchema,
   ShellStatus: ShellStatusJsonSchema,

@@ -28,7 +28,7 @@ export function setFileToolsConfig(config: FileToolsConfig) {
   fileToolsConfig.frontendRoot = config.frontendRoot;
 }
 
-const resolveFilePath = (
+export const resolveFilePath = (
   rawPath: unknown,
   context?: ToolContext,
 ): string => {
@@ -43,45 +43,40 @@ const resolveFilePath = (
   return path.resolve(basePath, expandedPath);
 };
 
-export const handleRead = async (
-  args: Record<string, unknown>,
+export const readTextFile = async (
+  rawPath: unknown,
   context?: ToolContext,
-): Promise<ToolResult> => {
-  const filePath = resolveFilePath(args.file_path, context);
-
+): Promise<{ path: string; content: string }> => {
+  const filePath = resolveFilePath(rawPath, context);
   const pathBlock = isBlockedPath(filePath);
-  if (pathBlock) return { error: pathBlock };
+  if (pathBlock) {
+    throw new Error(pathBlock);
+  }
 
   try {
     await fs.access(filePath);
   } catch {
-    return { error: `File not found: ${filePath}` };
+    throw new Error(`File not found: ${filePath}`);
   }
 
-  const offset = Number(args.offset ?? 1);
-  const limit = Number(args.limit ?? 2000);
-
-  try {
-    const read = await readFileSafe(filePath);
-    if (!read.ok) return { error: read.error };
-    const formatted = formatWithLineNumbers(read.content, offset, limit);
-    return {
-      result: `File: ${filePath}\n${formatted.header}\n\n${formatted.body}`,
-    };
-  } catch (error) {
-    return { error: `Error reading file: ${(error as Error).message}` };
+  const read = await readFileSafe(filePath);
+  if (!read.ok) {
+    throw new Error(read.error);
   }
+
+  return { path: filePath, content: read.content };
 };
 
-export const handleWrite = async (
-  args: Record<string, unknown>,
+export const writeTextFile = async (
+  rawPath: unknown,
+  content: string,
   context?: ToolContext,
-): Promise<ToolResult> => {
-  const filePath = resolveFilePath(args.file_path, context);
-  const content = String(args.content ?? "");
-
+): Promise<{ path: string; created: boolean }> => {
+  const filePath = resolveFilePath(rawPath, context);
   const pathBlock = isBlockedPath(filePath);
-  if (pathBlock) return { error: pathBlock };
+  if (pathBlock) {
+    throw new Error(pathBlock);
+  }
 
   let existed = false;
   let originalEnding: "\r\n" | "\n" = "\n";
@@ -100,11 +95,105 @@ export const handleWrite = async (
     ? restoreLineEndings(normalizedContent, originalEnding)
     : content;
 
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, finalContent, "utf-8");
+
+  return { path: filePath, created: !existed };
+};
+
+export const replaceTextInFile = async (
+  args: {
+    filePath: unknown;
+    oldString: string;
+    newString: string;
+    replaceAll?: boolean;
+  },
+  context?: ToolContext,
+): Promise<{ path: string; replacements: number }> => {
+  const filePath = resolveFilePath(args.filePath, context);
+  const replaceAll = Boolean(args.replaceAll ?? false);
+
+  const pathBlock = isBlockedPath(filePath);
+  if (pathBlock) {
+    throw new Error(pathBlock);
+  }
+
+  let rawContent: string;
   try {
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, finalContent, "utf-8");
+    rawContent = await fs.readFile(filePath, "utf-8");
+  } catch (error) {
+    throw new Error(`Error reading file: ${(error as Error).message}`);
+  }
+
+  const { bom, text: content } = stripBom(rawContent);
+  const originalEnding = detectLineEnding(content);
+  const normalizedContent = normalizeToLF(content);
+  const normalizedOld = normalizeToLF(args.oldString);
+  const normalizedNew = normalizeToLF(args.newString);
+
+  if (replaceAll) {
+    const occurrences = normalizedContent.split(normalizedOld).length - 1;
+    if (occurrences === 0) {
+      throw new Error("old_string not found in file.");
+    }
+    const replaced = normalizedContent.split(normalizedOld).join(normalizedNew);
+    const final = bom + restoreLineEndings(replaced, originalEnding);
+    await fs.writeFile(filePath, final, "utf-8");
+    return { path: filePath, replacements: occurrences };
+  }
+
+  const matchResult = fuzzyFindText(normalizedContent, normalizedOld);
+  if (!matchResult.found) {
+    throw new Error("old_string not found in file.");
+  }
+
+  const baseContent = matchResult.contentForReplacement;
+  const replaced =
+    baseContent.substring(0, matchResult.index) +
+    normalizedNew +
+    baseContent.substring(matchResult.index + matchResult.matchLength);
+
+  if (baseContent === replaced) {
+    throw new Error("old_string and new_string are identical — no changes made.");
+  }
+
+  const final = bom + restoreLineEndings(replaced, originalEnding);
+  await fs.writeFile(filePath, final, "utf-8");
+
+  return { path: filePath, replacements: 1 };
+};
+
+export const handleRead = async (
+  args: Record<string, unknown>,
+  context?: ToolContext,
+): Promise<ToolResult> => {
+  try {
+    const { path: filePath, content } = await readTextFile(args.file_path, context);
+    const offset = Number(args.offset ?? 1);
+    const limit = Number(args.limit ?? 2000);
+    const formatted = formatWithLineNumbers(content, offset, limit);
     return {
-      result: existed ? `Wrote ${filePath}` : `Created ${filePath}`,
+      result: `File: ${filePath}\n${formatted.header}\n\n${formatted.body}`,
+    };
+  } catch (error) {
+    return { error: `Error reading file: ${(error as Error).message}` };
+  }
+};
+
+export const handleWrite = async (
+  args: Record<string, unknown>,
+  context?: ToolContext,
+): Promise<ToolResult> => {
+  const content = String(args.content ?? "");
+
+  try {
+    const { path: filePath, created } = await writeTextFile(
+      args.file_path,
+      content,
+      context,
+    );
+    return {
+      result: created ? `Created ${filePath}` : `Wrote ${filePath}`,
     };
   } catch (error) {
     return { error: `Error writing file: ${(error as Error).message}` };
@@ -115,65 +204,18 @@ export const handleEdit = async (
   args: Record<string, unknown>,
   context?: ToolContext,
 ): Promise<ToolResult> => {
-  const filePath = resolveFilePath(args.file_path, context);
-  const oldString = String(args.old_string ?? "");
-  const newString = String(args.new_string ?? "");
-  const replaceAll = Boolean(args.replace_all ?? false);
-
-  const pathBlock = isBlockedPath(filePath);
-  if (pathBlock) return { error: pathBlock };
-
-  let rawContent: string;
   try {
-    rawContent = await fs.readFile(filePath, "utf-8");
+    const { path: filePath, replacements } = await replaceTextInFile(
+      {
+        filePath: args.file_path,
+        oldString: String(args.old_string ?? ""),
+        newString: String(args.new_string ?? ""),
+        replaceAll: Boolean(args.replace_all ?? false),
+      },
+      context,
+    );
+    return { result: `Replaced ${replacements} occurrence(s) in ${filePath}` };
   } catch (error) {
-    return { error: `Error reading file: ${(error as Error).message}` };
-  }
-
-  // Use the shared Stella edit utilities for robust line ending handling,
-  // BOM stripping, and fuzzy matching.
-  const { bom, text: content } = stripBom(rawContent);
-  const originalEnding = detectLineEnding(content);
-  const normalizedContent = normalizeToLF(content);
-  const normalizedOld = normalizeToLF(oldString);
-  const normalizedNew = normalizeToLF(newString);
-
-  if (replaceAll) {
-    const occurrences = normalizedContent.split(normalizedOld).length - 1;
-    if (occurrences === 0) {
-      return { error: "old_string not found in file." };
-    }
-    const replaced = normalizedContent.split(normalizedOld).join(normalizedNew);
-    const final = bom + restoreLineEndings(replaced, originalEnding);
-    try {
-      await fs.writeFile(filePath, final, "utf-8");
-      return { result: `Replaced ${occurrences} occurrence(s) in ${filePath}` };
-    } catch (error) {
-      return { error: `Error writing file: ${(error as Error).message}` };
-    }
-  }
-
-  // Single replacement with fuzzy matching
-  const matchResult = fuzzyFindText(normalizedContent, normalizedOld);
-  if (!matchResult.found) {
-    return { error: "old_string not found in file." };
-  }
-
-  const baseContent = matchResult.contentForReplacement;
-  const replaced =
-    baseContent.substring(0, matchResult.index) +
-    normalizedNew +
-    baseContent.substring(matchResult.index + matchResult.matchLength);
-
-  if (baseContent === replaced) {
-    return { error: "old_string and new_string are identical — no changes made." };
-  }
-
-  const final = bom + restoreLineEndings(replaced, originalEnding);
-  try {
-    await fs.writeFile(filePath, final, "utf-8");
-    return { result: `Replaced 1 occurrence(s) in ${filePath}` };
-  } catch (error) {
-    return { error: `Error writing file: ${(error as Error).message}` };
+    return { error: (error as Error).message };
   }
 };

@@ -515,6 +515,7 @@ export const handleBash = async (
   state: ShellState,
   args: Record<string, unknown>,
   context?: ToolContext,
+  _signal?: AbortSignal,
 ): Promise<ToolResult> => {
   let command = String(args.command ?? "");
 
