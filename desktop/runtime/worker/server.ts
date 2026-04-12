@@ -72,10 +72,6 @@ type WorkerInitializationState = {
 };
 
 const logger = createRuntimeLogger("worker.server");
-const HIDDEN_ORCHESTRATOR_USER_MESSAGE_PREFIX = "system:";
-
-const isHiddenOrchestratorUserMessageId = (value: string | undefined): boolean =>
-  typeof value === "string" && value.startsWith(HIDDEN_ORCHESTRATOR_USER_MESSAGE_PREFIX);
 
 type RuntimeRunner = ReturnType<typeof createStellaHostRunner>;
 
@@ -86,6 +82,7 @@ type AgentEventPayload = {
   conversationId?: string;
   requestId?: string;
   userMessageId?: string;
+  uiVisibility?: "visible" | "hidden";
   chunk?: string;
   statusState?: "running" | "compacting";
   toolCallId?: string;
@@ -588,6 +585,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     let activeRunId = "";
     let syntheticSeq = 1;
     const hiddenSystemRunIds = new Set<string>();
+    const pendingHiddenSystemNotificationTitles: string[] = [];
+    const hiddenSystemNotificationTitleByRunId = new Map<string, string>();
     const mergedAttachments = [
       ...(payload.attachments ?? []),
       ...(windowScreenshotAttachment ? [windowScreenshotAttachment] : []),
@@ -615,8 +614,14 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     }, {
       onRunStarted: (ev) => {
         activeRunId = ev.runId;
-        if (isHiddenOrchestratorUserMessageId(ev.userMessageId)) {
+        const isHiddenRun = ev.uiVisibility === "hidden";
+        if (isHiddenRun) {
           hiddenSystemRunIds.add(ev.runId);
+          const notificationTitle = pendingHiddenSystemNotificationTitles.shift();
+          if (notificationTitle) {
+            hiddenSystemNotificationTitleByRunId.set(ev.runId, notificationTitle);
+          }
+          return;
         }
         emitRunEvent({
           ...ev,
@@ -651,6 +656,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
       },
       onStream: (ev) => {
+        if (hiddenSystemRunIds.has(ev.runId)) {
+          return;
+        }
         emitRunEvent({
           ...ev,
           type: AGENT_STREAM_EVENT_TYPES.STREAM,
@@ -720,7 +728,12 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         });
       },
       onError: (ev) => {
+        const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
         hiddenSystemRunIds.delete(ev.runId);
+        hiddenSystemNotificationTitleByRunId.delete(ev.runId);
+        if (isHiddenRun) {
+          return;
+        }
         emitRunEvent({
           ...ev,
           type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
@@ -756,19 +769,16 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           statusText: ev.statusText,
         });
         if (ev.type === "task-completed") {
-          peer.request(METHOD_NAMES.HOST_NOTIFICATION_SHOW, {
-            title: "Task completed",
-            body: ev.description ?? ev.result ?? "A task finished successfully.",
-          }).catch(() => {});
+          pendingHiddenSystemNotificationTitles.push("Task completed");
         } else if (ev.type === "task-failed") {
-          peer.request(METHOD_NAMES.HOST_NOTIFICATION_SHOW, {
-            title: "Task failed",
-            body: ev.description ?? ev.error ?? "A task encountered an error.",
-          }).catch(() => {});
+          pendingHiddenSystemNotificationTitles.push("Task failed");
         }
       },
       onEnd: (ev) => {
+        const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
         hiddenSystemRunIds.delete(ev.runId);
+        const notificationTitle = hiddenSystemNotificationTitleByRunId.get(ev.runId);
+        hiddenSystemNotificationTitleByRunId.delete(ev.runId);
         const finalText = typeof ev.finalText === "string" ? ev.finalText : "";
         if ((ev.agentType ?? AGENT_IDS.ORCHESTRATOR) === AGENT_IDS.ORCHESTRATOR) {
           if (finalText.trim().length > 0) {
@@ -787,7 +797,16 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               }),
             });
             peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+            if (notificationTitle) {
+              peer.request(METHOD_NAMES.HOST_NOTIFICATION_SHOW, {
+                title: notificationTitle,
+                body: finalText,
+              }).catch(() => {});
+            }
           }
+        }
+        if (isHiddenRun) {
+          return;
         }
         emitRunEvent({
           ...ev,
@@ -799,7 +818,12 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         });
       },
       onInterrupted: (ev) => {
+        const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
         hiddenSystemRunIds.delete(ev.runId);
+        hiddenSystemNotificationTitleByRunId.delete(ev.runId);
+        if (isHiddenRun) {
+          return;
+        }
         emitRunEvent({
           type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
           runId: ev.runId,
@@ -1103,13 +1127,26 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
   });
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_LIST_EVENTS, async (params) => {
-    const payload = params as { conversationId?: string; maxItems?: number };
-    return ensureChatStore().listEvents(payload.conversationId ?? "", payload.maxItems);
+    const payload = params as {
+      conversationId?: string;
+      maxItems?: number;
+      windowBy?: "events" | "visible_messages";
+    };
+    return ensureChatStore().listEvents(
+      payload.conversationId ?? "",
+      payload.maxItems,
+      payload.windowBy,
+    );
   });
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_EVENT_COUNT, async (params) => {
+    const payload = params as {
+      conversationId?: string;
+      countBy?: "events" | "visible_messages";
+    };
     return ensureChatStore().getEventCount(
-      (params as { conversationId?: string }).conversationId ?? "",
+      payload.conversationId ?? "",
+      payload.countBy,
     );
   });
 

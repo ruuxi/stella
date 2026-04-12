@@ -4,6 +4,7 @@ import {
   LOCAL_CONTEXT_EVENT_TYPES,
   type LocalHistoryMessage,
 } from "../../../../runtime/kernel/local-history.js";
+import type { LocalChatEventWindowMode } from "../../../../runtime/chat-event-visibility.js";
 
 export type { LocalHistoryMessage } from "../../../../runtime/kernel/local-history.js";
 
@@ -37,14 +38,26 @@ export const getOrCreateLocalConversationId = async (): Promise<string> =>
 export const listLocalEvents = async (
   conversationId: string,
   maxItems = 200,
+  options?: {
+    windowBy?: LocalChatEventWindowMode;
+  },
 ): Promise<EventRecord[]> =>
   getLocalChatApi().listEvents({
     conversationId,
     maxItems,
+    ...(options?.windowBy ? { windowBy: options.windowBy } : {}),
   });
 
-export const getLocalEventCount = async (conversationId: string): Promise<number> =>
-  getLocalChatApi().getEventCount({ conversationId });
+export const getLocalEventCount = async (
+  conversationId: string,
+  options?: {
+    countBy?: LocalChatEventWindowMode;
+  },
+): Promise<number> =>
+  getLocalChatApi().getEventCount({
+    conversationId,
+    ...(options?.countBy ? { countBy: options.countBy } : {}),
+  });
 
 export const buildLocalHistoryMessages = async (
   conversationId: string,

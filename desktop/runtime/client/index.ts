@@ -550,15 +550,26 @@ export class StellaRuntimeClient {
     return this.ensureHostChatStore().getOrCreateDefaultConversationId();
   }
 
-  async listLocalChatEvents(payload: { conversationId: string; maxItems?: number }) {
+  async listLocalChatEvents(payload: {
+    conversationId: string;
+    maxItems?: number;
+    windowBy?: "events" | "visible_messages";
+  }) {
     return this.ensureHostChatStore().listEvents(
       payload.conversationId,
       payload.maxItems,
+      payload.windowBy,
     );
   }
 
-  async getLocalChatEventCount(payload: { conversationId: string }) {
-    return this.ensureHostChatStore().getEventCount(payload.conversationId);
+  async getLocalChatEventCount(payload: {
+    conversationId: string;
+    countBy?: "events" | "visible_messages";
+  }) {
+    return this.ensureHostChatStore().getEventCount(
+      payload.conversationId,
+      payload.countBy,
+    );
   }
 
   async persistDiscoveryWelcome(payload: {

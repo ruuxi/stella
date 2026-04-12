@@ -12,6 +12,7 @@ import {
   listLocalEvents,
   subscribeToLocalChatUpdates,
 } from "@/app/chat/services/local-chat-store";
+import { countVisibleChatMessageEvents } from "../../../../runtime/chat-event-visibility.js";
 import { useChatStore } from "@/context/chat-store";
 import type { EventRecord, MessageTurn, StepItem } from "@/app/chat/lib/event-transforms";
 import { extractStepsFromEvents, groupEventsIntoTurns } from "@/app/chat/lib/event-transforms";
@@ -148,8 +149,12 @@ export const useConversationEventFeed = (
     const load = async () => {
       try {
         const [events, count] = await Promise.all([
-          listLocalEvents(conversationId, localMaxItems),
-          getLocalEventCount(conversationId),
+          listLocalEvents(conversationId, localMaxItems, {
+            windowBy: "visible_messages",
+          }),
+          getLocalEventCount(conversationId, {
+            countBy: "visible_messages",
+          }),
         ]);
         if (cancelled) {
           return;
@@ -244,16 +249,23 @@ export const useConversationEventFeed = (
     () => mergeEventSources(activeLocalSnapshot.events, scheduledEvents),
     [activeLocalSnapshot.events, scheduledEvents],
   );
+  const loadedVisibleLocalMessageCount = useMemo(
+    () => countVisibleChatMessageEvents(activeLocalSnapshot.events),
+    [activeLocalSnapshot.events],
+  );
 
-  const localEventCount =
+  const localVisibleMessageCount =
     storageMode === "local" && conversationId
-      ? activeLocalSnapshot.count + scheduledEventCount
+      ? activeLocalSnapshot.count
       : 0;
   const isLocalLoadingOlder =
     storageMode === "local"
     && pendingLocalMaxItems !== null
-    && mergedLocalEvents.length < pendingLocalMaxItems
-    && localEventCount > mergedLocalEvents.length;
+    && (
+      loadedVisibleLocalMessageCount
+        < Math.min(pendingLocalMaxItems, localVisibleMessageCount)
+      || scheduledEvents.length < Math.min(pendingLocalMaxItems, scheduledEventCount)
+    );
 
   const cloudResults = cloudResult?.results ?? EMPTY_EVENTS;
   const cloudStatus = cloudResult?.status ?? "Exhausted";
@@ -267,8 +279,10 @@ export const useConversationEventFeed = (
       return;
     }
     if (
-      activeLocalSnapshot.events.length >= pendingLocalWindowState.maxItems
-      || localEventCount <= mergedLocalEvents.length
+      loadedVisibleLocalMessageCount
+        >= Math.min(pendingLocalWindowState.maxItems, localVisibleMessageCount)
+      && scheduledEvents.length
+        >= Math.min(pendingLocalWindowState.maxItems, scheduledEventCount)
     ) {
       setPendingLocalWindowState({
         visitToken: localWindowVisitToken,
@@ -276,12 +290,13 @@ export const useConversationEventFeed = (
       });
     }
   }, [
-    activeLocalSnapshot.events.length,
-    localEventCount,
+    loadedVisibleLocalMessageCount,
+    localVisibleMessageCount,
     localWindowVisitToken,
-    mergedLocalEvents.length,
     pendingLocalWindowState.maxItems,
     pendingLocalWindowState.visitToken,
+    scheduledEventCount,
+    scheduledEvents.length,
   ]);
 
   const loadOlder = useCallback(() => {
@@ -290,11 +305,17 @@ export const useConversationEventFeed = (
     }
 
     if (storageMode === "local") {
-      if (localEventCount <= mergedLocalEvents.length) {
+      const hasOlderLocalMessages =
+        localVisibleMessageCount > loadedVisibleLocalMessageCount;
+      const hasOlderScheduledEvents = scheduledEventCount > scheduledEvents.length;
+      if (!hasOlderLocalMessages && !hasOlderScheduledEvents) {
         return;
       }
 
-      const nextMaxItems = Math.min(localMaxItems + EVENT_PAGE_SIZE, localEventCount);
+      const nextMaxItems = Math.min(
+        localMaxItems + EVENT_PAGE_SIZE,
+        Math.max(localVisibleMessageCount, scheduledEventCount),
+      );
       setPendingLocalWindowState({
         visitToken: localWindowVisitToken,
         maxItems: nextMaxItems,
@@ -315,10 +336,12 @@ export const useConversationEventFeed = (
     cloudLoadMore,
     cloudStatus,
     conversationId,
-    localEventCount,
     localMaxItems,
+    localVisibleMessageCount,
     localWindowVisitToken,
-    mergedLocalEvents.length,
+    loadedVisibleLocalMessageCount,
+    scheduledEventCount,
+    scheduledEvents.length,
     storageMode,
   ]);
 
@@ -326,7 +349,9 @@ export const useConversationEventFeed = (
     if (storageMode === "local") {
       return {
         events: mergedLocalEvents,
-        hasOlderEvents: localEventCount > mergedLocalEvents.length,
+        hasOlderEvents:
+          localVisibleMessageCount > loadedVisibleLocalMessageCount
+          || scheduledEventCount > scheduledEvents.length,
         isLoadingOlder: isLocalLoadingOlder,
         isInitialLoading:
           Boolean(conversationId)
@@ -351,8 +376,11 @@ export const useConversationEventFeed = (
     conversationId,
     isLocalLoadingOlder,
     loadOlder,
-    localEventCount,
+    loadedVisibleLocalMessageCount,
+    localVisibleMessageCount,
     mergedLocalEvents,
+    scheduledEventCount,
+    scheduledEvents.length,
     pendingLocalMaxItems,
     storageMode,
   ]);

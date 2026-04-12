@@ -407,6 +407,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("agent:getActiveRun") as Promise<{
         runId: string;
         conversationId: string;
+        uiVisibility?: "visible" | "hidden";
       } | null>,
     getAppSessionStartedAt: () =>
       ipcRenderer.invoke("agent:getAppSessionStartedAt") as Promise<number>,
@@ -441,6 +442,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           conversationId: string;
           requestId?: string;
           userMessageId?: string;
+          uiVisibility?: "visible" | "hidden";
         } | null;
         events: Array<{
           type:
@@ -463,6 +465,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           agentType?: string;
           seq: number;
           userMessageId?: string;
+          uiVisibility?: "visible" | "hidden";
           rootRunId?: string;
           chunk?: string;
           statusState?: "running" | "compacting";
@@ -521,6 +524,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       agentType?: string;
       seq: number;
       userMessageId?: string;
+      uiVisibility?: "visible" | "hidden";
       rootRunId?: string;
       chunk?: string;
       statusState?: "running" | "compacting";
@@ -824,9 +828,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   localChat: {
     getOrCreateDefaultConversationId: () =>
       ipcRenderer.invoke("localChat:getOrCreateDefaultConversationId"),
-    listEvents: (payload: { conversationId: string; maxItems?: number }) =>
+    listEvents: (payload: {
+      conversationId: string;
+      maxItems?: number;
+      windowBy?: "events" | "visible_messages";
+    }) =>
       ipcRenderer.invoke("localChat:listEvents", payload),
-    getEventCount: (payload: { conversationId: string }) =>
+    getEventCount: (payload: {
+      conversationId: string;
+      countBy?: "events" | "visible_messages";
+    }) =>
       ipcRenderer.invoke("localChat:getEventCount", payload),
     persistDiscoveryWelcome: (payload: {
       conversationId: string;

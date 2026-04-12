@@ -15,6 +15,11 @@ import {
   toJsonString,
 } from "./shared.js";
 import { TranscriptMirror } from "./transcript-mirror.js";
+import {
+  countVisibleChatMessageEvents,
+  sliceEventsByVisibleMessageWindow,
+  type LocalChatEventWindowMode,
+} from "../../chat-event-visibility.js";
 
 export class ChatStore {
   constructor(
@@ -255,8 +260,18 @@ export class ChatStore {
     return created;
   }
 
-  listEvents(conversationIdInput: string, maxItems = 200): LocalChatEventRecord[] {
+  listEvents(
+    conversationIdInput: string,
+    maxItems = 200,
+    windowMode: LocalChatEventWindowMode = "events",
+  ): LocalChatEventRecord[] {
     const conversationId = this.sanitizeConversationId(conversationIdInput);
+    if (windowMode === "visible_messages") {
+      return sliceEventsByVisibleMessageWindow(
+        this.listAllEventsForConversation(conversationId),
+        maxItems,
+      );
+    }
     const normalizedLimit = Math.max(1, Math.floor(maxItems));
     const rows = this.db.prepare(`
       SELECT
@@ -289,8 +304,16 @@ export class ChatStore {
     return rows.map((row) => this.deserializeEventRow(row));
   }
 
-  getEventCount(conversationIdInput: string): number {
+  getEventCount(
+    conversationIdInput: string,
+    windowMode: LocalChatEventWindowMode = "events",
+  ): number {
     const conversationId = this.sanitizeConversationId(conversationIdInput);
+    if (windowMode === "visible_messages") {
+      return countVisibleChatMessageEvents(
+        this.listAllEventsForConversation(conversationId),
+      );
+    }
     const row = this.db.prepare(`
       SELECT COUNT(*) AS count
       FROM chat_events
