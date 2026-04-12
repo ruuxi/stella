@@ -21,6 +21,7 @@ import {
 } from "./run-session.js";
 import {
   buildOrchestratorPromptMessages,
+  buildSubagentPromptMessages,
 } from "./thread-memory.js";
 import type {
   OrchestratorRunOptions,
@@ -82,11 +83,13 @@ export const runPiOrchestratorTurn = async (
   const displayStream = createDisplayStreamController(opts.displayHtml);
 
   try {
-    const promptMessages = buildOrchestratorPromptMessages(
-      opts.agentContext,
-      opts.userPrompt,
-      opts.promptMessages,
-    );
+    const promptMessages = await buildOrchestratorPromptMessages({
+      context: opts.agentContext,
+      userPrompt: opts.userPrompt,
+      promptMessages: opts.promptMessages,
+      stellaHome: opts.stellaHome,
+      frontendRoot: opts.frontendRoot,
+    });
     logger.info("orchestrator.prompt-shape", {
       runId,
       conversationId: opts.conversationId,
@@ -232,9 +235,21 @@ export const runPiSubagentTask = async (
   }
 
   try {
+    const promptMessages = await buildSubagentPromptMessages({
+      context: opts.agentContext,
+      userPrompt: prompt,
+      promptMessages: opts.promptMessages,
+      stellaHome: opts.stellaHome,
+      frontendRoot: opts.frontendRoot,
+    });
     const { finalText: result, errorMessage } = await executeRuntimeAgentPrompt({
       agent,
-      promptText: prompt,
+      promptMessages: promptMessages.map((message, index) => ({
+        ...message,
+        ...(index === promptMessages.length - 1 && opts.attachments?.length
+          ? { attachments: opts.attachments }
+          : {}),
+      })),
       runId,
       agentType: opts.agentType,
       userMessageId: opts.userMessageId,

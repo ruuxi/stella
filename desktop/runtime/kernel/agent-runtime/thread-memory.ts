@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import type {
   AssistantMessage,
   ImageContent,
@@ -12,6 +14,7 @@ import { estimateRuntimeTokens } from "../runtime-threads.js";
 import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
 import { createRuntimeLogger } from "../debug.js";
+import type { RuntimePromptMessage } from "../../protocol/index.js";
 import {
   buildRuntimeThreadKey,
   maybeCompactRuntimeThread,
@@ -22,6 +25,8 @@ import { now } from "./shared.js";
 import { sanitizeAssistantText } from "../internal-tool-transcript.js";
 
 const logger = createRuntimeLogger("agent-runtime.thread-memory");
+const LIFE_REGISTRY_DISPLAY_PATH = "life/registry.md";
+const LIFE_CORE_MEMORY_DISPLAY_PATH = "life/core-memory.md";
 
 export const buildRunThreadKey = ({
   conversationId,
@@ -221,10 +226,6 @@ export const buildSystemPrompt = (
     sections.push(context.dynamicContext.trim());
   }
 
-  if (context.coreMemory?.trim()) {
-    sections.push(`Core memory:\n${context.coreMemory.trim()}`);
-  }
-
   const platformShellPrompt = getPlatformShellPrompt();
   if (platformShellPrompt && hasShellToolGuidance(context)) {
     sections.push(platformShellPrompt);
@@ -244,19 +245,113 @@ export const buildSelfModDocumentationPrompt = (
   ].join("\n");
 };
 
-export type OrchestratorPromptMessage = {
-  text: string;
-  uiVisibility?: "visible" | "hidden";
+const readOptionalTextFile = async (filePath: string): Promise<string | null> => {
+  try {
+    const content = (await fs.readFile(filePath, "utf8")).trim();
+    return content.length > 0 ? content : null;
+  } catch {
+    return null;
+  }
 };
 
-export const buildOrchestratorPromptMessages = (
-  context: LocalTaskManagerAgentContext,
-  userPrompt: string,
-  promptMessages?: OrchestratorPromptMessage[],
-): OrchestratorPromptMessage[] => {
-  const trimmedUserPrompt = userPrompt.trim();
-  const staleUserReminder = context.staleUserReminderText?.trim();
-  const reminder = context.orchestratorReminderText?.trim();
+const buildStartupDocMessage = (
+  displayPath: string,
+  content: string,
+): string => {
+  return [
+    `<startup_doc path="${displayPath}">`,
+    content,
+    "</startup_doc>",
+  ].join("\n");
+};
+
+export type OrchestratorPromptMessage = RuntimePromptMessage;
+
+const readRegistryContent = async (args: {
+  stellaHome?: string;
+  frontendRoot?: string;
+}): Promise<string | null> => {
+  const stellaHome = args.stellaHome?.trim();
+  if (stellaHome) {
+    const stellaHomeRegistry = await readOptionalTextFile(
+      path.join(stellaHome, "life", "registry.md"),
+    );
+    if (stellaHomeRegistry) {
+      return stellaHomeRegistry;
+    }
+  }
+
+  const frontendRoot = args.frontendRoot?.trim();
+  if (!frontendRoot) {
+    return null;
+  }
+  return await readOptionalTextFile(path.join(frontendRoot, "life", "registry.md"));
+};
+
+export const buildStartupPromptMessages = async (args: {
+  context: LocalTaskManagerAgentContext;
+  stellaHome?: string;
+  frontendRoot?: string;
+}): Promise<RuntimePromptMessage[]> => {
+  if (args.context.threadHistory?.length) {
+    return [];
+  }
+  const messages: RuntimePromptMessage[] = [];
+
+  const registryContent = await readRegistryContent({
+    stellaHome: args.stellaHome,
+    frontendRoot: args.frontendRoot,
+  });
+  if (registryContent) {
+    messages.push({
+      text: buildStartupDocMessage(LIFE_REGISTRY_DISPLAY_PATH, registryContent),
+      uiVisibility: "hidden",
+    });
+  }
+
+  const coreMemory = args.context.coreMemory?.trim();
+  if (coreMemory) {
+    messages.push({
+      text: buildStartupDocMessage(LIFE_CORE_MEMORY_DISPLAY_PATH, coreMemory),
+      uiVisibility: "hidden",
+    });
+  }
+
+  return messages;
+};
+
+export const buildSubagentPromptMessages = async (args: {
+  context: LocalTaskManagerAgentContext;
+  userPrompt: string;
+  promptMessages?: RuntimePromptMessage[];
+  stellaHome?: string;
+  frontendRoot?: string;
+}): Promise<RuntimePromptMessage[]> => {
+  const trimmedUserPrompt = args.userPrompt.trim();
+  const messages = await buildStartupPromptMessages({
+    context: args.context,
+    stellaHome: args.stellaHome,
+    frontendRoot: args.frontendRoot,
+  });
+  if (args.promptMessages?.length) {
+    messages.push(...args.promptMessages);
+  }
+  if (trimmedUserPrompt.length > 0 || messages.length === 0) {
+    messages.push({ text: args.userPrompt });
+  }
+  return messages;
+};
+
+export const buildOrchestratorPromptMessages = async (args: {
+  context: LocalTaskManagerAgentContext;
+  userPrompt: string;
+  promptMessages?: OrchestratorPromptMessage[];
+  stellaHome?: string;
+  frontendRoot?: string;
+}): Promise<OrchestratorPromptMessage[]> => {
+  const trimmedUserPrompt = args.userPrompt.trim();
+  const staleUserReminder = args.context.staleUserReminderText?.trim();
+  const reminder = args.context.orchestratorReminderText?.trim();
   const messages: OrchestratorPromptMessage[] = [];
   if (staleUserReminder) {
     messages.push({
@@ -264,17 +359,24 @@ export const buildOrchestratorPromptMessages = (
       uiVisibility: "hidden",
     });
   }
-  if (context.shouldInjectDynamicReminder && reminder) {
+  if (args.context.shouldInjectDynamicReminder && reminder) {
     messages.push({
       text: wrapSystemReminder(reminder),
       uiVisibility: "hidden",
     });
   }
-  if (promptMessages?.length) {
-    messages.push(...promptMessages);
+  messages.push(
+    ...(await buildStartupPromptMessages({
+      context: args.context,
+      stellaHome: args.stellaHome,
+      frontendRoot: args.frontendRoot,
+    })),
+  );
+  if (args.promptMessages?.length) {
+    messages.push(...args.promptMessages);
   }
   if (trimmedUserPrompt.length > 0 || messages.length === 0) {
-    messages.push({ text: userPrompt });
+    messages.push({ text: args.userPrompt });
   }
   return messages;
 };

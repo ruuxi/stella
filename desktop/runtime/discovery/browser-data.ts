@@ -1305,13 +1305,19 @@ export const collectBrowserData = async (
  * Check if core memory already exists
  */
 export const coreMemoryExists = async (StellaHome: string): Promise<boolean> => {
-  const coreMemoryPath = path.join(StellaHome, "state", "CORE_MEMORY.MD");
-  try {
-    await fs.access(coreMemoryPath);
-    return true;
-  } catch {
-    return false;
+  const candidatePaths = [
+    path.join(StellaHome, "life", "core-memory.md"),
+    path.join(StellaHome, "state", "CORE_MEMORY.MD"),
+  ];
+  for (const coreMemoryPath of candidatePaths) {
+    try {
+      await fs.access(coreMemoryPath);
+      return true;
+    } catch {
+      continue;
+    }
   }
+  return false;
 };
 
 /**
@@ -1321,11 +1327,11 @@ export const writeCoreMemory = async (
   StellaHome: string,
   content: string
 ): Promise<void> => {
-  const statePath = path.join(StellaHome, "state");
-  await fs.mkdir(statePath, { recursive: true });
-  const coreMemoryPath = path.join(statePath, "CORE_MEMORY.MD");
+  const lifePath = path.join(StellaHome, "life");
+  await fs.mkdir(lifePath, { recursive: true });
+  const coreMemoryPath = path.join(lifePath, "core-memory.md");
   await fs.writeFile(coreMemoryPath, content, "utf-8");
-  log("Wrote CORE_MEMORY.MD");
+  log("Wrote life/core-memory.md");
 };
 
 
