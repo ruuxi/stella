@@ -14,7 +14,6 @@ import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
 import { WindowRadialOverlay } from "./WindowRadialOverlay";
-import { DisplayOverlay } from "./DisplayOverlay";
 import { FullShellDialogs } from "./full-shell-dialogs";
 import type { DialogType } from "./full-shell-dialogs";
 
@@ -205,7 +204,6 @@ export const FullShellReadySurface = ({
       />
 
       <WindowRadialOverlay />
-      <DisplayOverlay />
     </>
   );
 };
