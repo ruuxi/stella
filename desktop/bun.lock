@@ -55,7 +55,6 @@
         "googleapis": "^146.0.0",
         "hera-browser": "^0.0.57",
         "lucide-react": "^0.563.0",
-        "mac-screen-capture-permissions": "^2.1.0",
         "marked": "^17.0.1",
         "morphdom": "^2.7.8",
         "motion": "^12.35.0",
@@ -110,6 +109,9 @@
         "vite": "^8.0.0",
         "vitest": "^4.0.18",
         "wait-on": "^9.0.4",
+      },
+      "optionalDependencies": {
+        "mac-screen-capture-permissions": "^2.1.0",
       },
     },
   },
