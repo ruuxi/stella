@@ -34,11 +34,7 @@ export type MicrophonePermissionStatus =
   | 'unknown'
 
 const permissionCache = new Map<MacPermissionKind, boolean>()
-const MIC_PERMISSION_BUNDLE_IDS = [
-  'com.stella.launcher',
-  'com.stella.app',
-  'com.github.Electron',
-] as const
+const MIC_PERMISSION_BUNDLE_IDS = ['com.stella.app', 'com.github.Electron'] as const
 
 const checkAccessibility = (prompt: boolean): boolean =>
   systemPreferences.isTrustedAccessibilityClient(prompt)
