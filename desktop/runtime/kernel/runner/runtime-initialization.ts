@@ -173,6 +173,7 @@ export const createRuntimeInitialization = (
     deps.shutdownTasks();
     context.state.activeOrchestratorRunId = null;
     context.state.activeOrchestratorConversationId = null;
+    context.state.activeOrchestratorUiVisibility = "visible";
     context.state.queuedOrchestratorTurns.length = 0;
     context.state.activeToolExecutionCount = 0;
     context.state.interruptAfterTool = false;

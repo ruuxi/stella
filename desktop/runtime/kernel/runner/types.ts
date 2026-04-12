@@ -158,6 +158,7 @@ export type AgentCallbacks = {
     runId: string;
     agentType: string;
     userMessageId?: string;
+    uiVisibility?: "visible" | "hidden";
     reason: string;
   }) => void;
   onTaskEvent?: (event: TaskLifecycleEvent) => void;
@@ -206,6 +207,7 @@ export type RunnerState = {
   localTaskManager: LocalTaskManager | null;
   activeOrchestratorRunId: string | null;
   activeOrchestratorConversationId: string | null;
+  activeOrchestratorUiVisibility: "visible" | "hidden";
   queuedOrchestratorTurns: QueuedOrchestratorTurn[];
   activeRunAbortControllers: Map<string, AbortController>;
   conversationCallbacks: Map<string, AgentCallbacks>;

@@ -43,6 +43,7 @@ type RunRecorderArgs = {
   conversationId: string;
   agentType: string;
   userMessageId: string;
+  uiVisibility?: "visible" | "hidden";
 };
 
 export type RuntimeRunEventRecorder = ReturnType<typeof createRunEventRecorder>;
@@ -53,6 +54,7 @@ export const createRunEventRecorder = ({
   conversationId,
   agentType,
   userMessageId,
+  uiVisibility,
 }: RunRecorderArgs) => {
   let seq = 0;
   const nextSeq = () => ++seq;
@@ -85,6 +87,7 @@ export const createRunEventRecorder = ({
         seq,
         chunk,
         userMessageId,
+        ...(uiVisibility ? { uiVisibility } : {}),
       };
     },
 
@@ -96,6 +99,7 @@ export const createRunEventRecorder = ({
         seq,
         statusState: "running",
         statusText,
+        ...(uiVisibility ? { uiVisibility } : {}),
       };
     },
 
@@ -122,6 +126,7 @@ export const createRunEventRecorder = ({
         toolCallId: args.toolCallId,
         toolName: args.toolName,
         args: args.toolArgs,
+        ...(uiVisibility ? { uiVisibility } : {}),
       };
     },
 
@@ -155,6 +160,7 @@ export const createRunEventRecorder = ({
         toolName: args.toolName,
         resultPreview,
         ...(args.details !== undefined ? { details: args.details } : {}),
+        ...(uiVisibility ? { uiVisibility } : {}),
       };
     },
 
@@ -181,6 +187,7 @@ export const createRunEventRecorder = ({
         finalText: args.finalText,
         persisted: true,
         ...(args.selfModApplied ? { selfModApplied: args.selfModApplied } : {}),
+        ...(uiVisibility ? { uiVisibility } : {}),
       };
     },
 
@@ -202,6 +209,7 @@ export const createRunEventRecorder = ({
         seq,
         error,
         fatal: true,
+        ...(uiVisibility ? { uiVisibility } : {}),
       };
     },
 
@@ -223,6 +231,7 @@ export const createRunEventRecorder = ({
         seq,
         userMessageId,
         reason,
+        ...(uiVisibility ? { uiVisibility } : {}),
       };
     },
   };

@@ -368,6 +368,7 @@ export type RuntimeVoiceChatPayload = {
 export type RuntimeActiveRun = {
   runId: string;
   conversationId: string;
+  uiVisibility?: "visible" | "hidden";
 };
 
 export type RuntimeAutomationTurnRequest = {
@@ -425,6 +426,7 @@ export type RuntimeAgentEventPayload = {
   conversationId?: string;
   requestId?: string;
   userMessageId?: string;
+  uiVisibility?: "visible" | "hidden";
   rootRunId?: string;
   chunk?: string;
   statusState?: "running" | "compacting";
@@ -470,6 +472,7 @@ export type RuntimeConversationActiveRunSnapshot = {
   conversationId: string;
   requestId?: string;
   userMessageId?: string;
+  uiVisibility?: "visible" | "hidden";
 };
 
 export type RuntimeConversationTaskSnapshot = {

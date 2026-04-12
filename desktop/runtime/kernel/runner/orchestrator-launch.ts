@@ -28,6 +28,7 @@ export type PreparedOrchestratorRun = {
   conversationId: string;
   agentType: string;
   userPrompt: string;
+  uiVisibility?: "visible" | "hidden";
   promptMessages?: Array<{
     text: string;
     uiVisibility?: "visible" | "hidden";
@@ -47,6 +48,7 @@ export const prepareOrchestratorRun = async (args: {
   conversationId: string;
   agentType: string;
   userPrompt: string;
+  uiVisibility?: "visible" | "hidden";
   promptMessages?: Array<{
     text: string;
     uiVisibility?: "visible" | "hidden";
@@ -67,6 +69,7 @@ export const prepareOrchestratorRun = async (args: {
 
   args.context.state.activeOrchestratorRunId = args.runId;
   args.context.state.activeOrchestratorConversationId = args.conversationId;
+  args.context.state.activeOrchestratorUiVisibility = args.uiVisibility ?? "visible";
   args.context.state.activeInterruptedReplayTurn = args.replayTurn ?? null;
 
   const abortController = new AbortController();
@@ -84,6 +87,7 @@ export const prepareOrchestratorRun = async (args: {
     conversationId: args.conversationId,
     agentType: args.agentType,
     userPrompt: args.userPrompt,
+    ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
     promptMessages: args.promptMessages,
     attachments: args.attachments,
     agentContext,
@@ -118,6 +122,7 @@ export const launchPreparedOrchestratorRun = (args: {
     userMessageId: args.userMessageId,
     agentType: prepared.agentType,
     userPrompt: prepared.userPrompt,
+    ...(prepared.uiVisibility ? { uiVisibility: prepared.uiVisibility } : {}),
     ...(prepared.promptMessages?.length
       ? { promptMessages: prepared.promptMessages }
       : {}),
@@ -172,6 +177,7 @@ export const startPreparedOrchestratorRun = async (args: {
   conversationId: string;
   agentType: string;
   userPrompt: string;
+  uiVisibility?: "visible" | "hidden";
   promptMessages?: Array<{
     text: string;
     uiVisibility?: "visible" | "hidden";
@@ -197,6 +203,7 @@ export const startPreparedOrchestratorRun = async (args: {
     conversationId: args.conversationId,
     agentType: args.agentType,
     userPrompt: args.userPrompt,
+    ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
     promptMessages: args.promptMessages,
     attachments: args.attachments,
     replayTurn: args.replayTurn,

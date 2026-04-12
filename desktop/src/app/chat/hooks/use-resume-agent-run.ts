@@ -6,6 +6,7 @@ type ActiveRunSnapshot = {
   conversationId: string;
   requestId?: string;
   userMessageId?: string;
+  uiVisibility?: "visible" | "hidden";
 } | null;
 
 type TaskSnapshot = {

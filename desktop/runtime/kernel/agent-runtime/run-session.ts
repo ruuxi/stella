@@ -16,6 +16,7 @@ type SessionOptions = Pick<
   | "taskId"
   | "conversationId"
   | "userMessageId"
+  | "uiVisibility"
   | "agentType"
   | "agentContext"
   | "toolCatalog"
@@ -55,6 +56,7 @@ export const createRuntimeExecutionSession = (
     conversationId: opts.conversationId,
     agentType: opts.agentType,
     userMessageId: opts.userMessageId,
+    uiVisibility: opts.uiVisibility,
   });
 
   const tools = createPiTools({

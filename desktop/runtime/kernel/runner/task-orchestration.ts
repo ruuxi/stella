@@ -231,6 +231,7 @@ export const createTaskOrchestration = (
         }>;
         agentType: string;
         userMessageId: string;
+        uiVisibility?: "visible" | "hidden";
       },
       callbacks: AgentCallbacks,
     ) => Promise<{ runId: string }>;
@@ -277,7 +278,7 @@ export const createTaskOrchestration = (
           if (!callbacks) {
             return;
           }
-          const userMessageId = `system:${crypto.randomUUID()}`;
+          const userMessageId = `local:${crypto.randomUUID()}`;
           await deps.startStreamingOrchestratorTurn(
             queuedTurn,
             {
@@ -286,6 +287,7 @@ export const createTaskOrchestration = (
               promptMessages: [{ text: userPrompt, uiVisibility: "hidden" }],
               agentType: AGENT_IDS.ORCHESTRATOR,
               userMessageId,
+              uiVisibility: "hidden",
             },
             callbacks,
           );

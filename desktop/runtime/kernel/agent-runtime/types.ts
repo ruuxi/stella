@@ -34,6 +34,7 @@ export type RuntimeStreamEvent = {
   seq: number;
   chunk: string;
   userMessageId: string;
+  uiVisibility?: "visible" | "hidden";
 };
 
 export type RuntimeRunStartedEvent = {
@@ -41,6 +42,7 @@ export type RuntimeRunStartedEvent = {
   agentType: string;
   seq: number;
   userMessageId: string;
+  uiVisibility?: "visible" | "hidden";
 };
 
 export type RuntimeToolStartEvent = {
@@ -50,6 +52,7 @@ export type RuntimeToolStartEvent = {
   toolCallId: string;
   toolName: string;
   args: Record<string, unknown>;
+  uiVisibility?: "visible" | "hidden";
 };
 
 export type RuntimeToolEndEvent = {
@@ -60,6 +63,7 @@ export type RuntimeToolEndEvent = {
   toolName: string;
   resultPreview: string;
   details?: unknown;
+  uiVisibility?: "visible" | "hidden";
 };
 
 export type RuntimeErrorEvent = {
@@ -68,6 +72,7 @@ export type RuntimeErrorEvent = {
   seq: number;
   error: string;
   fatal: boolean;
+  uiVisibility?: "visible" | "hidden";
 };
 
 export type RuntimeStatusEvent = {
@@ -76,6 +81,7 @@ export type RuntimeStatusEvent = {
   seq: number;
   statusState: "running" | "compacting";
   statusText: string;
+  uiVisibility?: "visible" | "hidden";
 };
 
 export type RuntimeUserMessageEvent = {
@@ -93,6 +99,7 @@ export type RuntimeEndEvent = {
   finalText: string;
   persisted: boolean;
   selfModApplied?: SelfModAppliedPayload;
+  uiVisibility?: "visible" | "hidden";
 };
 
 export type RuntimeInterruptedEvent = {
@@ -101,6 +108,7 @@ export type RuntimeInterruptedEvent = {
   seq: number;
   userMessageId: string;
   reason: string;
+  uiVisibility?: "visible" | "hidden";
 };
 
 export type RuntimeRunCallbacks = {
@@ -121,6 +129,7 @@ export type BaseRunOptions = {
   taskId?: string;
   conversationId: string;
   userMessageId: string;
+  uiVisibility?: "visible" | "hidden";
   agentType: string;
   userPrompt: string;
   promptMessages?: RuntimePromptMessage[];

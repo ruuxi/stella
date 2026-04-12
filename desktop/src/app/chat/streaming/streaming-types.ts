@@ -23,6 +23,7 @@ export type AgentStreamEvent = {
   conversationId?: string;
   requestId?: string;
   userMessageId?: string;
+  uiVisibility?: "visible" | "hidden";
   rootRunId?: string;
   chunk?: string;
   statusState?: "running" | "compacting";

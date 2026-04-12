@@ -39,6 +39,7 @@ type AgentEventPayload = {
   conversationId: string;
   requestId?: string;
   userMessageId?: string;
+  uiVisibility?: "visible" | "hidden";
   chunk?: string;
   statusState?: "running" | "compacting";
   toolCallId?: string;
@@ -67,6 +68,7 @@ type ActiveRunSnapshot = {
   conversationId: string;
   requestId?: string;
   userMessageId?: string;
+  uiVisibility?: "visible" | "hidden";
 };
 
 type ConversationTaskSnapshot = {
@@ -427,6 +429,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
           },
           {
             onRunStarted: (ev) => {
+              if (ev.uiVisibility === "hidden") {
+                return;
+              }
               terminalRunIds.delete(ev.runId);
               runOwners.set(ev.runId, senderWebContentsId);
               runToConversationId.set(ev.runId, payload.conversationId);
@@ -437,6 +442,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                 conversationId: payload.conversationId,
                 requestId,
                 userMessageId: ev.userMessageId,
+                uiVisibility: ev.uiVisibility,
               });
               emitAgentEvent(
                 {
@@ -445,6 +451,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                   conversationId: payload.conversationId,
                   requestId,
                   ...(ev.userMessageId ? { userMessageId: ev.userMessageId } : {}),
+                  ...(ev.uiVisibility ? { uiVisibility: ev.uiVisibility } : {}),
                   ...(ev.agentType ? { agentType: ev.agentType } : {}),
                 },
                 senderWebContentsId,

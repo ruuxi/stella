@@ -371,6 +371,7 @@ export const createRunnerContext = ({
       localTaskManager: null,
       activeOrchestratorRunId: null,
       activeOrchestratorConversationId: null,
+      activeOrchestratorUiVisibility: "visible",
       queuedOrchestratorTurns: [],
       activeRunAbortControllers: new Map(),
       conversationCallbacks: new Map(),
