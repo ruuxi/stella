@@ -12,12 +12,17 @@ import { clearOwnerRefMaps, clearTabRefMap } from '../lib/selector.js';
 
 let agentWindowId = null;
 let stellaGroupId = null;
+let parkingTabId = null;
 let ownerTabState = {};
 let stateLoaded = false;
+let ensureAgentWindowPromise = null;
+let staleTabCleanupPromise = null;
 
 const STELLA_GROUP_TITLE = 'Stella';
 const STELLA_GROUP_COLOR = 'pink';
+const STELLA_PARKING_URL = 'about:blank';
 const DEFAULT_OWNER_ID = 'default';
+const STALE_TAB_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Apply title and color to a tab group.
@@ -37,6 +42,26 @@ function normalizeOwnerId(ownerId) {
   return trimmed || DEFAULT_OWNER_ID;
 }
 
+function normalizeTabActivity(rawActivity, tabIds) {
+  const source = rawActivity && typeof rawActivity === 'object' ? rawActivity : {};
+  const now = Date.now();
+  const next = {};
+
+  for (const tabId of tabIds) {
+    const key = String(tabId);
+    const timestamp = Number(source[key]);
+    next[key] = Number.isFinite(timestamp) ? timestamp : now;
+  }
+
+  return next;
+}
+
+function touchOwnerTab(ownerId, tabId, timestamp = Date.now()) {
+  if (!Number.isInteger(tabId)) return;
+  const state = getOwnerState(ownerId);
+  state.lastTouchedAtByTabId[String(tabId)] = timestamp;
+}
+
 export function getCommandOwnerId(command) {
   return normalizeOwnerId(command?.ownerId);
 }
@@ -52,6 +77,7 @@ function sanitizeOwnerTabState(raw) {
       ? value.tabIds.filter((tabId) => Number.isInteger(tabId))
       : [];
     const activeTabId = Number.isInteger(value.activeTabId) ? value.activeTabId : null;
+    const lastTouchedAtByTabId = normalizeTabActivity(value.lastTouchedAtByTabId, tabIds);
 
     if (tabIds.length === 0 && activeTabId == null) {
       continue;
@@ -60,6 +86,7 @@ function sanitizeOwnerTabState(raw) {
     next[normalizeOwnerId(ownerId)] = {
       tabIds,
       activeTabId,
+      lastTouchedAtByTabId,
     };
   }
 
@@ -69,7 +96,11 @@ function sanitizeOwnerTabState(raw) {
 function getOwnerState(ownerId) {
   const normalized = normalizeOwnerId(ownerId);
   if (!ownerTabState[normalized]) {
-    ownerTabState[normalized] = { tabIds: [], activeTabId: null };
+    ownerTabState[normalized] = {
+      tabIds: [],
+      activeTabId: null,
+      lastTouchedAtByTabId: {},
+    };
   }
   return ownerTabState[normalized];
 }
@@ -91,6 +122,7 @@ function getOwnedTabIds() {
 function resetAgentState() {
   agentWindowId = null;
   stellaGroupId = null;
+  parkingTabId = null;
   ownerTabState = {};
   clearOwnerRefMaps();
 }
@@ -104,10 +136,12 @@ async function loadState() {
     const data = await chrome.storage.session.get([
       'agentWindowId',
       'stellaGroupId',
+      'parkingTabId',
       'ownerTabState',
     ]);
     if (data.agentWindowId != null) agentWindowId = data.agentWindowId;
     if (data.stellaGroupId != null) stellaGroupId = data.stellaGroupId;
+    if (data.parkingTabId != null) parkingTabId = data.parkingTabId;
     ownerTabState = sanitizeOwnerTabState(data.ownerTabState);
   } catch {
     ownerTabState = {};
@@ -123,9 +157,62 @@ async function saveState() {
     await chrome.storage.session.set({
       agentWindowId,
       stellaGroupId,
+      parkingTabId,
       ownerTabState,
     });
   } catch {}
+}
+
+async function ensureParkingTab() {
+  if (agentWindowId == null || stellaGroupId == null) {
+    return null;
+  }
+
+  const existingParkingTab = await getTabIfValid(parkingTabId);
+  if (existingParkingTab) {
+    if (existingParkingTab.groupId !== stellaGroupId) {
+      try {
+        await chrome.tabs.group({ tabIds: [existingParkingTab.id], groupId: stellaGroupId });
+      } catch {}
+    }
+    return existingParkingTab;
+  }
+
+  const tab = await chrome.tabs.create({
+    url: STELLA_PARKING_URL,
+    active: false,
+    windowId: agentWindowId,
+  });
+  parkingTabId = tab.id;
+  await addToStellaGroup(tab.id);
+  await saveState();
+  return tab;
+}
+
+async function ensureStellaGroupInWindow(windowId) {
+  let tabs = await chrome.tabs.query({ windowId });
+  if (tabs.length === 0) {
+    const parkingTab = await chrome.tabs.create({
+      url: STELLA_PARKING_URL,
+      active: false,
+      windowId,
+    });
+    tabs = [parkingTab];
+  }
+
+  const groupId = await chrome.tabs.group({
+    tabIds: tabs.map((tab) => tab.id),
+    createProperties: { windowId },
+  });
+
+  agentWindowId = windowId;
+  stellaGroupId = groupId;
+  const ownedTabIds = getOwnedTabIds();
+  parkingTabId =
+    tabs.find((tab) => tab.url === STELLA_PARKING_URL && !ownedTabIds.has(tab.id))?.id ?? null;
+  await updateGroupStyle(groupId);
+  await saveState();
+  return groupId;
 }
 
 /**
@@ -135,19 +222,40 @@ async function recoverExistingGroup() {
   try {
     const groups = await chrome.tabGroups.query({ title: STELLA_GROUP_TITLE });
     if (groups.length > 0) {
-      stellaGroupId = groups[0].id;
-      agentWindowId = groups[0].windowId;
-      for (let i = 1; i < groups.length; i++) {
+      const groupEntries = [];
+      for (const group of groups) {
         try {
-          const dupeGroupTabs = await chrome.tabs.query({ groupId: groups[i].id });
-          if (dupeGroupTabs.length > 0) {
-            await chrome.tabs.group({
-              tabIds: dupeGroupTabs.map((tab) => tab.id),
-              groupId: stellaGroupId,
-            });
+          const tabs = await chrome.tabs.query({ groupId: group.id });
+          if (tabs.length > 0) {
+            groupEntries.push({ group, tabs });
           }
         } catch {}
       }
+
+      if (groupEntries.length === 0) {
+        return false;
+      }
+
+      groupEntries.sort((left, right) => right.tabs.length - left.tabs.length);
+      const [primary, ...duplicates] = groupEntries;
+      stellaGroupId = primary.group.id;
+      agentWindowId = primary.group.windowId;
+
+      for (const entry of duplicates) {
+        try {
+          await chrome.tabs.group({
+            tabIds: entry.tabs.map((tab) => tab.id),
+            groupId: stellaGroupId,
+          });
+        } catch {}
+      }
+
+      const ownedTabIds = getOwnedTabIds();
+      parkingTabId =
+        primary.tabs.find(
+          (tab) => tab.url === STELLA_PARKING_URL && !ownedTabIds.has(tab.id),
+        )?.id ?? parkingTabId;
+      await updateGroupStyle(stellaGroupId);
       await saveState();
       return true;
     }
@@ -158,7 +266,7 @@ async function recoverExistingGroup() {
 /**
  * Ensure Stella has a dedicated window with a Stella tab group.
  */
-async function ensureAgentWindow() {
+async function ensureAgentWindowInternal() {
   await loadState();
 
   if (agentWindowId != null) {
@@ -177,21 +285,38 @@ async function ensureAgentWindow() {
     }
   }
 
+  const currentParkingTab = await getTabIfValid(parkingTabId);
+  if (!currentParkingTab || (stellaGroupId != null && currentParkingTab.groupId !== stellaGroupId)) {
+    parkingTabId = null;
+  }
+
   if (agentWindowId == null || stellaGroupId == null) {
     if (await recoverExistingGroup()) {
       try {
         await chrome.windows.get(agentWindowId);
-        return agentWindowId;
       } catch {
         resetAgentState();
       }
     }
   }
 
-  if (agentWindowId != null) return agentWindowId;
+  if (agentWindowId != null && stellaGroupId == null) {
+    try {
+      await ensureStellaGroupInWindow(agentWindowId);
+    } catch {
+      resetAgentState();
+    }
+  }
+
+  if (agentWindowId != null) {
+    await updateGroupStyle(stellaGroupId);
+    await ensureParkingTab();
+    await saveState();
+    return agentWindowId;
+  }
 
   const win = await chrome.windows.create({
-    url: 'about:blank',
+    url: STELLA_PARKING_URL,
     focused: true,
   });
   agentWindowId = win.id;
@@ -204,10 +329,23 @@ async function ensureAgentWindow() {
     });
     await updateGroupStyle(groupId);
     stellaGroupId = groupId;
+    parkingTabId = tabs[0]?.id ?? null;
   }
 
+  await ensureParkingTab();
   await saveState();
   return agentWindowId;
+}
+
+async function ensureAgentWindow() {
+  if (ensureAgentWindowPromise) {
+    return ensureAgentWindowPromise;
+  }
+
+  ensureAgentWindowPromise = ensureAgentWindowInternal().finally(() => {
+    ensureAgentWindowPromise = null;
+  });
+  return ensureAgentWindowPromise;
 }
 
 /**
@@ -276,6 +414,11 @@ async function pruneOwnerTabs(ownerId) {
   }
 
   state.tabIds = nextTabIds;
+  const nextActivity = normalizeTabActivity(state.lastTouchedAtByTabId, nextTabIds);
+  if (JSON.stringify(nextActivity) !== JSON.stringify(state.lastTouchedAtByTabId ?? {})) {
+    changed = true;
+  }
+  state.lastTouchedAtByTabId = nextActivity;
   if (!nextTabIds.includes(state.activeTabId)) {
     state.activeTabId = nextTabIds[0] ?? null;
     changed = true;
@@ -294,24 +437,6 @@ async function pruneOwnerTabs(ownerId) {
   return tabs;
 }
 
-async function claimUnownedTab(ownerId) {
-  const windowId = await ensureAgentWindow();
-  const ownedTabIds = getOwnedTabIds();
-  const tabs = await chrome.tabs.query({ windowId });
-  const unowned = tabs.find((tab) => !ownedTabIds.has(tab.id));
-
-  if (!unowned) {
-    return null;
-  }
-
-  const state = getOwnerState(ownerId);
-  state.tabIds = [unowned.id];
-  state.activeTabId = unowned.id;
-  await addToStellaGroup(unowned.id);
-  await saveState();
-  return unowned;
-}
-
 async function createOwnerTab(ownerId, url = 'about:blank') {
   const windowId = await ensureAgentWindow();
   const tab = await chrome.tabs.create({
@@ -324,6 +449,7 @@ async function createOwnerTab(ownerId, url = 'about:blank') {
   const state = getOwnerState(ownerId);
   state.tabIds.push(tab.id);
   state.activeTabId = tab.id;
+  touchOwnerTab(ownerId, tab.id);
   await saveState();
   return tab;
 }
@@ -333,6 +459,7 @@ async function getOwnerTabs(ownerId, { ensureWindow = false } = {}) {
   if (ensureWindow) {
     await ensureAgentWindow();
   }
+  await cleanupStaleTabs();
   return pruneOwnerTabs(ownerId);
 }
 
@@ -341,7 +468,7 @@ async function getOwnerTabs(ownerId, { ensureWindow = false } = {}) {
  */
 export async function getActiveTab(command) {
   const ownerId = getCommandOwnerId(command);
-  let tabs = await getOwnerTabs(ownerId, { ensureWindow: true });
+  const tabs = await getOwnerTabs(ownerId, { ensureWindow: true });
   const state = getOwnerState(ownerId);
 
   if (state.activeTabId != null) {
@@ -352,22 +479,104 @@ export async function getActiveTab(command) {
           await chrome.tabs.group({ tabIds: [activeTab.id], groupId: stellaGroupId });
         } catch {}
       }
+      touchOwnerTab(ownerId, activeTab.id);
+      await saveState();
       return activeTab;
     }
   }
 
   if (tabs.length > 0) {
     state.activeTabId = tabs[0].id;
+    touchOwnerTab(ownerId, tabs[0].id);
     await saveState();
     return tabs[0];
   }
 
-  const claimedTab = await claimUnownedTab(ownerId);
-  if (claimedTab) {
-    return claimedTab;
+  return createOwnerTab(ownerId);
+}
+
+async function cleanupStaleTabsInternal({ now = Date.now() } = {}) {
+  await loadState();
+
+  if (agentWindowId != null && stellaGroupId != null) {
+    try {
+      await chrome.windows.get(agentWindowId);
+      await chrome.tabGroups.get(stellaGroupId);
+      await ensureParkingTab();
+    } catch {}
   }
 
-  return createOwnerTab(ownerId);
+  const staleCutoff = now - STALE_TAB_TIMEOUT_MS;
+  const staleTabIds = [];
+  let changed = false;
+
+  for (const [ownerId, state] of Object.entries(ownerTabState)) {
+    const nextTabIds = [];
+
+    for (const tabId of state.tabIds) {
+      const tab = await getTabIfValid(tabId);
+      if (!tab) {
+        clearTabRefMap(ownerId, tabId);
+        clearCdpEvents(tabId);
+        changed = true;
+        continue;
+      }
+
+      const lastTouchedAt = Number(state.lastTouchedAtByTabId?.[String(tabId)] ?? now);
+      if (tabId !== parkingTabId && lastTouchedAt <= staleCutoff) {
+        staleTabIds.push({ ownerId, tabId });
+        changed = true;
+        continue;
+      }
+
+      nextTabIds.push(tabId);
+    }
+
+    state.tabIds = nextTabIds;
+    const nextActivity = normalizeTabActivity(state.lastTouchedAtByTabId, nextTabIds);
+    if (JSON.stringify(nextActivity) !== JSON.stringify(state.lastTouchedAtByTabId ?? {})) {
+      changed = true;
+    }
+    state.lastTouchedAtByTabId = nextActivity;
+    if (!nextTabIds.includes(state.activeTabId)) {
+      state.activeTabId = nextTabIds[0] ?? null;
+      changed = true;
+    }
+
+    if (state.tabIds.length === 0) {
+      deleteOwnerState(ownerId);
+      clearOwnerRefMaps(ownerId);
+      changed = true;
+    }
+  }
+
+  if (staleTabIds.length > 0) {
+    for (const { ownerId, tabId } of staleTabIds) {
+      clearTabRefMap(ownerId, tabId);
+      clearCdpEvents(tabId);
+    }
+
+    try {
+      await chrome.tabs.remove(staleTabIds.map(({ tabId }) => tabId));
+    } catch {}
+  }
+
+  if (changed) {
+    await saveState();
+  }
+
+  return { closed: staleTabIds.length };
+}
+
+export async function cleanupStaleTabs(options) {
+  if (staleTabCleanupPromise) {
+    return staleTabCleanupPromise;
+  }
+
+  staleTabCleanupPromise = cleanupStaleTabsInternal(options).finally(() => {
+    staleTabCleanupPromise = null;
+  });
+  return staleTabCleanupPromise;
 }
 
 /**
@@ -417,6 +626,8 @@ export async function closeOwnerTabs(commandOrOwnerId) {
     return { closed: 0 };
   }
 
+  await ensureAgentWindow();
+
   for (const tab of tabs) {
     clearTabRefMap(ownerId, tab.id);
     clearCdpEvents(tab.id);
@@ -449,24 +660,7 @@ export async function closeAgentWindow() {
 
 export async function handleTabNew(command) {
   const ownerId = getCommandOwnerId(command);
-  let tab = null;
-  const existingTabs = await getOwnerTabs(ownerId, { ensureWindow: true });
-
-  if (existingTabs.length === 0) {
-    const claimedTab = await claimUnownedTab(ownerId);
-    if (claimedTab) {
-      if (command.url && command.url !== 'about:blank') {
-        await chrome.tabs.update(claimedTab.id, { url: command.url });
-        tab = await chrome.tabs.get(claimedTab.id);
-      } else {
-        tab = claimedTab;
-      }
-    }
-  }
-
-  if (!tab) {
-    tab = await createOwnerTab(ownerId, command.url || 'about:blank');
-  }
+  const tab = await createOwnerTab(ownerId, command.url || 'about:blank');
 
   const tabs = await getOwnerTabs(ownerId, { ensureWindow: true });
 
@@ -482,6 +676,11 @@ export async function handleTabList(command) {
   const tabs = await getOwnerTabs(ownerId, { ensureWindow: true });
   const state = getOwnerState(ownerId);
   const activeIndex = tabs.findIndex((tab) => tab.id === state.activeTabId);
+
+  if (state.activeTabId != null) {
+    touchOwnerTab(ownerId, state.activeTabId);
+    await saveState();
+  }
 
   return {
     id: command.id,
@@ -510,6 +709,7 @@ export async function handleTabSwitch(command) {
   const tab = tabs[index];
   const state = getOwnerState(ownerId);
   state.activeTabId = tab.id;
+  touchOwnerTab(ownerId, tab.id);
   await saveState();
 
   return {
@@ -537,11 +737,16 @@ export async function handleTabClose(command) {
   clearTabRefMap(ownerId, tab.id);
   clearCdpEvents(tab.id);
 
+  if (state.tabIds.length === 1) {
+    await ensureAgentWindow();
+  }
+
   try {
     await chrome.tabs.remove(tab.id);
   } catch {}
 
   state.tabIds = state.tabIds.filter((tabId) => tabId !== tab.id);
+  delete state.lastTouchedAtByTabId?.[String(tab.id)];
   state.activeTabId = state.tabIds[index] ?? state.tabIds[index - 1] ?? null;
 
   if (state.tabIds.length === 0) {
@@ -571,6 +776,7 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
       if (!state.tabIds.includes(tabId)) continue;
 
       state.tabIds = state.tabIds.filter((candidate) => candidate !== tabId);
+      delete state.lastTouchedAtByTabId?.[String(tabId)];
       if (state.activeTabId === tabId) {
         state.activeTabId = state.tabIds[0] ?? null;
       }
