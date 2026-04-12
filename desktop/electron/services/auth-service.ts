@@ -1,8 +1,14 @@
+import { randomUUID } from 'node:crypto'
 import { app } from 'electron'
 import type { PiRunnerTarget } from '../../runtime/kernel/lifecycle-targets.js'
 import { readConfiguredConvexSiteUrl } from '../../runtime/kernel/convex-urls.js'
+import type {
+  HostRuntimeAuthRefreshResult,
+  RuntimeAuthRefreshSource,
+} from '../../runtime/protocol/index.js'
 
 const AUTH_CALLBACK_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/
+const RUNTIME_AUTH_REFRESH_TIMEOUT_MS = 12_000
 
 type AuthServiceOptions = {
   authProtocol: string
@@ -21,8 +27,34 @@ export class AuthService {
   private hostAuthAuthenticated = false
   private hostHasConnectedAccount = false
   private hostAuthToken: string | null = null
+  private runtimeAuthRefreshPromise: Promise<HostRuntimeAuthRefreshResult> | null = null
+  private runtimeAuthRefreshResolve:
+    | ((result: HostRuntimeAuthRefreshResult) => void)
+    | null = null
+  private runtimeAuthRefreshRequestId: string | null = null
+  private runtimeAuthRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(private readonly options: AuthServiceOptions) {}
+
+  private getRuntimeAuthState(): HostRuntimeAuthRefreshResult {
+    return {
+      authenticated: this.hostAuthAuthenticated && Boolean(this.hostAuthToken?.trim()),
+      token: this.hostAuthToken?.trim() || null,
+      hasConnectedAccount: this.hostHasConnectedAccount,
+    }
+  }
+
+  private finishRuntimeAuthRefresh(result: HostRuntimeAuthRefreshResult) {
+    if (this.runtimeAuthRefreshTimer) {
+      clearTimeout(this.runtimeAuthRefreshTimer)
+      this.runtimeAuthRefreshTimer = null
+    }
+    const resolve = this.runtimeAuthRefreshResolve
+    this.runtimeAuthRefreshResolve = null
+    this.runtimeAuthRefreshPromise = null
+    this.runtimeAuthRefreshRequestId = null
+    resolve?.(result)
+  }
 
   private getDeepLinkUrl(argv: string[]) {
     const protocol = this.options.authProtocol.toLowerCase()
@@ -181,6 +213,59 @@ export class AuthService {
 
   async getAuthToken(): Promise<string | null> {
     return this.hostAuthToken?.trim() || null
+  }
+
+  async requestRuntimeAuthRefresh(
+    source: RuntimeAuthRefreshSource,
+    broadcastRequest: (payload: { requestId: string; source: RuntimeAuthRefreshSource }) => void,
+  ): Promise<HostRuntimeAuthRefreshResult> {
+    if (this.runtimeAuthRefreshPromise) {
+      return await this.runtimeAuthRefreshPromise
+    }
+
+    const requestId = randomUUID()
+    this.runtimeAuthRefreshRequestId = requestId
+    this.runtimeAuthRefreshPromise = new Promise<HostRuntimeAuthRefreshResult>((resolve) => {
+      this.runtimeAuthRefreshResolve = resolve
+      this.runtimeAuthRefreshTimer = setTimeout(() => {
+        console.warn(
+          `[auth] Runtime auth refresh timed out after ${source} request.`,
+        )
+        this.finishRuntimeAuthRefresh(this.getRuntimeAuthState())
+      }, RUNTIME_AUTH_REFRESH_TIMEOUT_MS)
+    })
+    const pendingRefresh = this.runtimeAuthRefreshPromise
+
+    try {
+      broadcastRequest({ requestId, source })
+    } catch (error) {
+      console.warn('[auth] Failed to broadcast runtime auth refresh request.', error)
+      this.finishRuntimeAuthRefresh(this.getRuntimeAuthState())
+    }
+
+    return await pendingRefresh
+  }
+
+  completeRuntimeAuthRefresh(payload: {
+    requestId: string
+    authenticated?: boolean
+    token?: string | null
+    hasConnectedAccount?: boolean
+  }) {
+    if (!this.runtimeAuthRefreshRequestId) {
+      return { ok: false, accepted: false }
+    }
+    if (payload.requestId !== this.runtimeAuthRefreshRequestId) {
+      return { ok: false, accepted: false }
+    }
+
+    this.setHostAuthState(
+      Boolean(payload.authenticated),
+      payload.token ?? undefined,
+      payload.hasConnectedAccount,
+    )
+    this.finishRuntimeAuthRefresh(this.getRuntimeAuthState())
+    return { ok: true, accepted: true }
   }
 
   clearPendingAuthCallback() {

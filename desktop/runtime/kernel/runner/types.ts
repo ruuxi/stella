@@ -33,6 +33,8 @@ import type {
   SelfModHmrState,
 } from "../../contracts/index.js";
 import type {
+  HostRuntimeAuthRefreshParams,
+  HostRuntimeAuthRefreshResult,
   RuntimeActiveRun,
   RuntimeAttachmentRef,
   RuntimeAutomationTurnRequest,
@@ -104,6 +106,9 @@ export type StellaHostRunnerOptions = {
   ) =>
     | Promise<{ publicKey: string; signature: string }>
     | { publicKey: string; signature: string };
+  requestRuntimeAuthRefresh?: (
+    params: HostRuntimeAuthRefreshParams,
+  ) => Promise<HostRuntimeAuthRefreshResult>;
   requestCredential?: (payload: {
     provider: string;
     label?: string;

@@ -28,6 +28,7 @@ import {
 } from "../../src/shared/lib/radial-trigger.js";
 import {
   IPC_APP_QUIT_FOR_RESTART,
+  IPC_AUTH_RUNTIME_REFRESH_COMPLETE,
   IPC_BACKUP_GET_STATUS,
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
@@ -429,6 +430,39 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         payload?.hasConnectedAccount,
       );
       return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_AUTH_RUNTIME_REFRESH_COMPLETE,
+    (
+      event,
+      payload: {
+        requestId?: string;
+        authenticated?: boolean;
+        token?: string | null;
+        hasConnectedAccount?: boolean;
+      },
+    ) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "auth:runtimeRefreshComplete",
+        )
+      ) {
+        throw new Error("Blocked untrusted auth:runtimeRefreshComplete request.");
+      }
+      const requestId =
+        typeof payload?.requestId === "string" ? payload.requestId.trim() : "";
+      if (!requestId) {
+        throw new Error("Missing runtime auth refresh request id.");
+      }
+      return options.authService.completeRuntimeAuthRefresh({
+        requestId,
+        authenticated: payload?.authenticated,
+        token: payload?.token,
+        hasConnectedAccount: payload?.hasConnectedAccount,
+      });
     },
   );
 

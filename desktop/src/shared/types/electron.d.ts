@@ -460,10 +460,22 @@ export type ElectronSystemApi = {
     token?: string;
     hasConnectedAccount?: boolean;
   }) => Promise<{ ok: boolean }>;
+  completeRuntimeAuthRefresh: (payload: {
+    requestId: string;
+    authenticated: boolean;
+    token?: string;
+    hasConnectedAccount?: boolean;
+  }) => Promise<{ ok: boolean; accepted?: boolean }>;
   setCloudSyncEnabled: (payload: {
     enabled: boolean;
   }) => Promise<{ ok: boolean }>;
   onAuthCallback: (callback: (data: { url: string }) => void) => () => void;
+  onRuntimeAuthRefreshRequested: (
+    callback: (data: {
+      requestId: string;
+      source: "heartbeat" | "subscription" | "register";
+    }) => void,
+  ) => () => void;
   quitForRestart: () => Promise<{ ok: boolean }>;
   openFullDiskAccess: () => void;
   getPermissionStatus: () => Promise<{
