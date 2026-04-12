@@ -44,13 +44,21 @@ export const defaultPromptForAgentType = (agentType: string): string => {
 };
 
 export const readCoreMemory = (stellaHome: string): string | undefined => {
-  const filePath = path.join(stellaHome, "state", "CORE_MEMORY.MD");
-  try {
-    const content = fs.readFileSync(filePath, "utf-8").trim();
-    return content || undefined;
-  } catch {
-    return undefined;
+  const candidatePaths = [
+    path.join(stellaHome, "life", "core-memory.md"),
+    path.join(stellaHome, "state", "CORE_MEMORY.MD"),
+  ];
+  for (const filePath of candidatePaths) {
+    try {
+      const content = fs.readFileSync(filePath, "utf-8").trim();
+      if (content) {
+        return content;
+      }
+    } catch {
+      continue;
+    }
   }
+  return undefined;
 };
 
 export const buildTaskEventPrompt = (

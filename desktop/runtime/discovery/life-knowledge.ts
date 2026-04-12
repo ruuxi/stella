@@ -135,7 +135,7 @@ const buildSkillFile = (
     "",
     "- Start with the knowledge pages below — they are LLM-summarized from raw discovery data.",
     "- Drop into raw when you need the full unprocessed source material.",
-    "- Prefer updating these pages over expanding `CORE_MEMORY.MD` when new durable context appears.",
+    "- Prefer updating these pages over expanding `life/core-memory.md` when new durable context appears.",
     "",
     "## Knowledge Pages",
     "",
