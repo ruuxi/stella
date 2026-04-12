@@ -10,7 +10,7 @@ describe("loadGoogleWorkspaceTools", () => {
     try {
       const { tools, callTool, disconnect, hasStoredCredentials } =
         await loadGoogleWorkspaceTools({
-          stellaHomePath: dir,
+          stellaRoot: dir,
         });
       expect(tools.length).toBeGreaterThan(10);
       expect(callTool).toBeTypeOf("function");

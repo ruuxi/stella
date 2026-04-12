@@ -12,7 +12,7 @@ import type { StellaHostRunner } from "../stella-host-runner.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
 
 type StoreHandlersOptions = {
-  getStellaHomePath: () => string | null;
+  getStellaRoot: () => string | null;
   getStellaHostRunner: () => StellaHostRunner | null;
   onStellaHostRunnerChanged?: (
     listener: (runner: StellaHostRunner | null) => void,
@@ -23,8 +23,8 @@ type StoreHandlersOptions = {
   ) => boolean;
 };
 
-const listInstalledThemes = async (stellaHomePath: string) => {
-  const themesDir = path.join(stellaHomePath, "state", "themes");
+const listInstalledThemes = async (stellaRoot: string) => {
+  const themesDir = path.join(stellaRoot, "state", "themes");
   try {
     const files = await fs.readdir(themesDir);
     const themes = [];
@@ -73,11 +73,11 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
   };
 
   ipcMain.handle("theme:listInstalled", async () => {
-    const stellaHomePath = options.getStellaHomePath();
-    if (!stellaHomePath) {
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) {
       return [];
     }
-    return await listInstalledThemes(stellaHomePath);
+    return await listInstalledThemes(stellaRoot);
   });
 
   ipcMain.handle("store:listLocalFeatures", async (event, payload?: { limit?: number }) => {

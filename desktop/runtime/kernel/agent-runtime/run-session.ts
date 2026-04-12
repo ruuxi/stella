@@ -20,7 +20,7 @@ type SessionOptions = Pick<
   | "agentContext"
   | "toolCatalog"
   | "deviceId"
-  | "frontendRoot"
+  | "stellaRoot"
   | "store"
   | "toolExecutor"
   | "webSearch"
@@ -64,7 +64,7 @@ export const createRuntimeExecutionSession = (
     conversationId: opts.conversationId,
     agentType: opts.agentType,
     deviceId: opts.deviceId,
-    frontendRoot: opts.frontendRoot,
+    stellaRoot: opts.stellaRoot,
     taskDepth: opts.agentContext.taskDepth ?? 0,
     maxTaskDepth: opts.agentContext.maxTaskDepth,
     toolsAllowlist: opts.agentContext.toolsAllowlist,

@@ -76,8 +76,8 @@ export const createBootstrapServices = (options: {
   });
 
   const backupService = new BackupService({
-    frontendRoot: config.frontendRoot,
-    getStellaHomePath: () => state.stellaHomePath,
+    stellaRoot: config.stellaRoot,
+    getStellaRoot: () => state.stellaRoot,
     getRunner: () => lifecycle.getRunner(),
     getAuthToken: () => authService.getAuthToken(),
     getConvexSiteUrl: () => authService.getConvexSiteUrl(),
@@ -87,11 +87,11 @@ export const createBootstrapServices = (options: {
 
   const radialGestureService = new RadialGestureService({
     getRadialTriggerKey: () => {
-      const stellaHomePath = state.stellaHomePath;
-      if (!stellaHomePath) {
+      const stellaRoot = state.stellaRoot;
+      if (!stellaRoot) {
         return DEFAULT_RADIAL_TRIGGER_CODE;
       }
-      return loadLocalPreferences(stellaHomePath).radialTriggerKey;
+      return loadLocalPreferences(stellaRoot).radialTriggerKey;
     },
     shouldEnable: () =>
       !uiStateService.state.suppressNativeRadialDuringOnboarding &&

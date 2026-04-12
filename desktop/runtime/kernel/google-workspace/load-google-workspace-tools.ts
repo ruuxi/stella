@@ -177,7 +177,7 @@ function buildHandlers(
 }
 
 export const loadGoogleWorkspaceTools = async (options: {
-  stellaHomePath: string;
+  stellaRoot: string;
   onAuthRequired?: () => void;
   onAuthStateChanged?: (authenticated: boolean) => void;
 }): Promise<{
@@ -186,7 +186,7 @@ export const loadGoogleWorkspaceTools = async (options: {
   callTool: GoogleWorkspaceCallToolFn | null;
   hasStoredCredentials: boolean;
 }> => {
-  const root = path.join(options.stellaHomePath, "state", "google-workspace");
+  const root = path.join(options.stellaRoot, "state", "google-workspace");
   await mkdir(root, { recursive: true, mode: 0o700 });
   setGoogleWorkspaceProjectRoot(root);
 

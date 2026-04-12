@@ -257,3 +257,4 @@ STELLA_BROWSER_PROVIDER="browserbase"         # Cloud browser provider
 STELLA_BROWSER_STREAM_PORT="9223"             # WebSocket streaming port
 STELLA_BROWSER_HOME="/path/to/stella-browser"  # Custom install location
 ```
+

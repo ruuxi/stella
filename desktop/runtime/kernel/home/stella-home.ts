@@ -4,8 +4,7 @@ import type { App } from "electron";
 import { ensurePrivateDir } from "../shared/private-fs.js";
 
 export type StellaHome = {
-  desktopRoot: string;
-  homePath: string;
+  stellaRoot: string;
   extensionsPath: string;
   statePath: string;
   logsPath: string;
@@ -21,29 +20,25 @@ const ensureDir = async (dirPath: string) => {
   await ensurePrivateDir(dirPath);
 };
 
-export const resolveDesktopRoot = (app?: App): string =>
+export const resolveStellaRoot = (app?: App): string =>
   app ? path.resolve(app.getAppPath()) : path.resolve(__dirname, "..", "..", "..");
 
-export const resolveRuntimeHomePath = (app?: App): string =>
-  resolveDesktopRoot(app);
-
 export const resolveRuntimeStatePath = (app?: App): string =>
-  path.join(resolveDesktopRoot(app), "state");
+  path.join(resolveStellaRoot(app), "state");
 
 export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
-  const desktopRoot = resolveDesktopRoot(app);
-  const homePath = resolveRuntimeHomePath(app);
-  const runtimeRoot = path.join(desktopRoot, "runtime");
-  const workspacePath = path.join(desktopRoot, "workspace");
+  const stellaRoot = resolveStellaRoot(app);
+  const runtimeRoot = path.join(stellaRoot, "runtime");
+  const workspacePath = path.join(stellaRoot, "workspace");
 
   const extensionsPath = path.join(runtimeRoot, "extensions");
-  const statePath = path.join(homePath, "state");
+  const statePath = path.join(stellaRoot, "state");
   const logsPath = path.join(statePath, "logs");
   const canvasPath = path.join(statePath, "canvas");
   const workspaceAppsPath = path.join(workspacePath, "apps");
 
-  process.env.STELLA_ROOT = desktopRoot;
-  process.env.STELLA_HOME = homePath;
+  process.env.STELLA_ROOT = stellaRoot;
+  process.env.STELLA_HOME = stellaRoot;
   process.env.STELLA_STATE = statePath;
 
   await ensureDir(statePath);
@@ -53,8 +48,7 @@ export const resolveStellaHome = async (app: App): Promise<StellaHome> => {
   await ensureDir(workspaceAppsPath);
 
   return {
-    desktopRoot,
-    homePath,
+    stellaRoot,
     extensionsPath,
     statePath,
     logsPath,

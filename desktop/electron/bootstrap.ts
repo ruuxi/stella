@@ -59,7 +59,7 @@ export const bootstrapMainProcess = () => {
   const context = createBootstrapContext({
     authProtocol: AUTH_PROTOCOL,
     electronDir: __dirname,
-    frontendRoot: path.resolve(__dirname, "..", ".."),
+    stellaRoot: path.resolve(__dirname, "..", ".."),
     hardResetMutableHomePaths: HARD_RESET_MUTABLE_HOME_PATHS,
     isDev,
     sessionPartition: STELLA_SESSION_PARTITION,

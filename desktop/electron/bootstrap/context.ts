@@ -27,7 +27,7 @@ export type MobileBroadcastFn = (channel: string, data: unknown) => void;
 export type BootstrapConfig = {
   authProtocol: string;
   electronDir: string;
-  frontendRoot: string;
+  stellaRoot: string;
   hardResetMutableHomePaths: readonly string[];
   isDev: boolean;
   sessionPartition: string;
@@ -48,7 +48,7 @@ export type BootstrapState = {
   processRuntime: ProcessRuntime;
   scheduleUpdateUnsubscribe: (() => void) | null;
   googleWorkspaceAuthRequiredUnsubscribe: (() => void) | null;
-  stellaHomePath: string | null;
+  stellaRoot: string | null;
   stellaWorkspacePath: string | null;
   stellaHostRunner: StellaHostRunner | null;
   stellaBrowserBridgeService: StellaBrowserBridgeResource | null;
@@ -182,7 +182,7 @@ export const createBootstrapContext = (
     processRuntime,
     scheduleUpdateUnsubscribe: null,
     googleWorkspaceAuthRequiredUnsubscribe: null,
-    stellaHomePath: null,
+    stellaRoot: null,
     stellaWorkspacePath: null,
     stellaHostRunner: null,
     stellaBrowserBridgeService: null,

@@ -19,13 +19,13 @@ import {
 import { isBlockedPath } from "./command-safety.js";
 
 export type FileToolsConfig = {
-  frontendRoot?: string;
+  stellaRoot?: string;
 };
 
 const fileToolsConfig: FileToolsConfig = {};
 
 export function setFileToolsConfig(config: FileToolsConfig) {
-  fileToolsConfig.frontendRoot = config.frontendRoot;
+  fileToolsConfig.stellaRoot = config.stellaRoot;
 }
 
 export const resolveFilePath = (
@@ -38,7 +38,7 @@ export const resolveFilePath = (
   }
 
   const basePath =
-    context?.frontendRoot ?? fileToolsConfig.frontendRoot ?? process.cwd();
+    context?.stellaRoot ?? fileToolsConfig.stellaRoot ?? process.cwd();
 
   return path.resolve(basePath, expandedPath);
 };

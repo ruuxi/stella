@@ -253,8 +253,7 @@ export const buildOrchestratorThreadHistory = (args: {
 
 export const createRunnerContext = ({
   deviceId,
-  stellaHomePath,
-  frontendRoot,
+  stellaRoot,
   stellaBrowserBinPath,
   stellaOfficeBinPath,
   stellaUiCliPath,
@@ -282,8 +281,7 @@ export const createRunnerContext = ({
   const context = {} as RunnerContext;
   const hookEmitter = new HookEmitter();
   const toolHost = createToolHost({
-    stellaHomePath,
-    frontendRoot,
+    stellaRoot,
     stellaBrowserBinPath,
     stellaOfficeBinPath,
     stellaUiCliPath,
@@ -340,8 +338,7 @@ export const createRunnerContext = ({
   Object.assign(context, {
     convexApi: anyApi,
     deviceId,
-    stellaHomePath,
-    frontendRoot,
+    stellaRoot,
     stellaBrowserBinPath,
     stellaOfficeBinPath,
     stellaUiCliPath,
@@ -358,7 +355,7 @@ export const createRunnerContext = ({
     appendLocalChatEvent,
     getDefaultConversationId,
     paths: {
-      extensionsPath: path.join(stellaHomePath, "runtime", "extensions"),
+      extensionsPath: path.join(stellaRoot, "runtime", "extensions"),
     },
     state: {
       convexSiteUrl: envProxyBaseUrl,
@@ -410,8 +407,8 @@ export const getConfiguredModel = (
   agentType: string,
   agent?: ParsedAgentLike,
 ): string | undefined => {
-  const modelFromPrefs = getModelOverride(context.stellaHomePath, agentType);
-  const defaultModel = getDefaultModel(context.stellaHomePath, agentType);
+  const modelFromPrefs = getModelOverride(context.stellaRoot, agentType);
+  const defaultModel = getDefaultModel(context.stellaRoot, agentType);
   return modelFromPrefs ?? defaultModel ?? agent?.model;
 };
 
@@ -506,17 +503,17 @@ export const buildAgentContext = async (
     toolsAllowlist,
     model,
     maxTaskDepth: agent?.maxTaskDepth ?? DEFAULT_MAX_TASK_DEPTH,
-    coreMemory: readCoreMemory(context.stellaHomePath),
+    coreMemory: readCoreMemory(context.stellaRoot),
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
     agentEngine:
       isSelfModTask
-        ? getSelfModAgentEngine(context.stellaHomePath)
+        ? getSelfModAgentEngine(context.stellaRoot)
         : enginePref === "general"
-        ? getGeneralAgentEngine(context.stellaHomePath)
+        ? getGeneralAgentEngine(context.stellaRoot)
         : undefined,
     maxAgentConcurrency: isLocalCliAgentId(args.agentType)
-      ? getMaxAgentConcurrency(context.stellaHomePath)
+      ? getMaxAgentConcurrency(context.stellaRoot)
       : undefined,
   };
 };

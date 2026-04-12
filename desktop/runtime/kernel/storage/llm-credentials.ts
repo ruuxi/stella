@@ -31,13 +31,13 @@ const normalizeProvider = (provider: string) => provider.trim().toLowerCase();
 const credentialScope = (provider: string) =>
   `${LLM_CREDENTIAL_SCOPE_PREFIX}:${normalizeProvider(provider)}`;
 
-const getStatePath = (stellaHomePath: string) => path.join(stellaHomePath, "state");
+const getStatePath = (stellaRoot: string) => path.join(stellaRoot, "state");
 
-export const getLlmCredentialStorePath = (stellaHomePath: string) =>
-  path.join(getStatePath(stellaHomePath), LLM_CREDENTIALS_FILE);
+export const getLlmCredentialStorePath = (stellaRoot: string) =>
+  path.join(getStatePath(stellaRoot), LLM_CREDENTIALS_FILE);
 
-const readCredentialFile = (stellaHomePath: string): StoredLlmCredentialFile => {
-  const filePath = getLlmCredentialStorePath(stellaHomePath);
+const readCredentialFile = (stellaRoot: string): StoredLlmCredentialFile => {
+  const filePath = getLlmCredentialStorePath(stellaRoot);
   try {
     const raw = fs.readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(raw) as StoredLlmCredentialFile;
@@ -54,16 +54,16 @@ const readCredentialFile = (stellaHomePath: string): StoredLlmCredentialFile => 
   };
 };
 
-const writeCredentialFile = (stellaHomePath: string, payload: StoredLlmCredentialFile): void => {
-  const filePath = getLlmCredentialStorePath(stellaHomePath);
+const writeCredentialFile = (stellaRoot: string, payload: StoredLlmCredentialFile): void => {
+  const filePath = getLlmCredentialStorePath(stellaRoot);
   ensurePrivateDirSync(path.dirname(filePath));
   writePrivateFileSync(filePath, JSON.stringify(payload, null, 2));
 };
 
 export const listLocalLlmCredentials = (
-  stellaHomePath: string,
+  stellaRoot: string,
 ): LocalLlmCredentialSummary[] => {
-  const file = readCredentialFile(stellaHomePath);
+  const file = readCredentialFile(stellaRoot);
   return Object.values(file.credentials)
     .map((record) => ({
       provider: record.provider,
@@ -75,11 +75,11 @@ export const listLocalLlmCredentials = (
 };
 
 export const getLocalLlmCredential = (
-  stellaHomePath: string,
+  stellaRoot: string,
   provider: string,
 ): string | null => {
   const normalizedProvider = normalizeProvider(provider);
-  const file = readCredentialFile(stellaHomePath);
+  const file = readCredentialFile(stellaRoot);
   const record = file.credentials[normalizedProvider];
   if (!record) {
     return null;
@@ -89,14 +89,14 @@ export const getLocalLlmCredential = (
 };
 
 export const hasLocalLlmCredential = (
-  stellaHomePath: string,
+  stellaRoot: string,
   provider: string,
 ): boolean => {
-  return Boolean(getLocalLlmCredential(stellaHomePath, provider));
+  return Boolean(getLocalLlmCredential(stellaRoot, provider));
 };
 
 export const saveLocalLlmCredential = (
-  stellaHomePath: string,
+  stellaRoot: string,
   payload: { provider: string; label: string; plaintext: string },
 ): LocalLlmCredentialSummary => {
   const provider = normalizeProvider(payload.provider);
@@ -109,7 +109,7 @@ export const saveLocalLlmCredential = (
     throw new Error("Missing API key.");
   }
 
-  const file = readCredentialFile(stellaHomePath);
+  const file = readCredentialFile(stellaRoot);
   const now = Date.now();
   const existing = file.credentials[provider];
   file.credentials[provider] = {
@@ -119,7 +119,7 @@ export const saveLocalLlmCredential = (
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
-  writeCredentialFile(stellaHomePath, file);
+  writeCredentialFile(stellaRoot, file);
 
   return {
     provider,
@@ -130,7 +130,7 @@ export const saveLocalLlmCredential = (
 };
 
 export const deleteLocalLlmCredential = (
-  stellaHomePath: string,
+  stellaRoot: string,
   provider: string,
 ): { removed: boolean } => {
   const normalizedProvider = normalizeProvider(provider);
@@ -138,12 +138,12 @@ export const deleteLocalLlmCredential = (
     return { removed: false };
   }
 
-  const file = readCredentialFile(stellaHomePath);
+  const file = readCredentialFile(stellaRoot);
   if (!file.credentials[normalizedProvider]) {
     return { removed: false };
   }
 
   delete file.credentials[normalizedProvider];
-  writeCredentialFile(stellaHomePath, file);
+  writeCredentialFile(stellaRoot, file);
   return { removed: true };
 };

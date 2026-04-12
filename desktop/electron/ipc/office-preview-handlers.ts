@@ -3,7 +3,7 @@ import { IPC_OFFICE_PREVIEW_LIST } from "../../src/shared/contracts/ipc-channels
 import { listOfficePreviewSnapshots } from "../bootstrap/office-preview-bridge.js";
 
 type OfficePreviewHandlersOptions = {
-  getStellaHomePath: () => string | null;
+  getStellaRoot: () => string | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -18,11 +18,11 @@ export const registerOfficePreviewHandlers = (
       throw new Error("Blocked untrusted office preview request.");
     }
 
-    const stellaHomePath = options.getStellaHomePath();
-    if (!stellaHomePath?.trim()) {
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot?.trim()) {
       return [];
     }
 
-    return await listOfficePreviewSnapshots(stellaHomePath);
+    return await listOfficePreviewSnapshots(stellaRoot);
   });
 };

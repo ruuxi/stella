@@ -181,15 +181,15 @@ const connectHostRunner = async (context: BootstrapContext) => {
 
 export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   const { lifecycle, services, state } = context;
-  const stellaHomePath = state.stellaHomePath;
-  if (!stellaHomePath || !state.stellaWorkspacePath) {
-    throw new Error("Stella home is not initialized.");
+  const stellaRoot = state.stellaRoot;
+  if (!stellaRoot || !state.stellaWorkspacePath) {
+    throw new Error("Stella root is not initialized.");
   }
 
   await services.securityPolicyService.loadPolicy();
 
   const loadDeviceIdentity = async () =>
-    await getOrCreateDeviceIdentity(path.join(stellaHomePath, "state"));
+    await getOrCreateDeviceIdentity(path.join(stellaRoot, "state"));
 
   clearHostRunnerSubscriptions(context);
   context.state.officePreviewBridgeStop?.();
@@ -202,8 +202,7 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
         clientVersion: "0.0.0",
         isDev: context.config.isDev,
         platform: process.platform,
-        frontendRoot: context.config.frontendRoot,
-        stellaHomePath,
+        stellaRoot,
         stellaWorkspacePath: state.stellaWorkspacePath,
       },
       hostHandlers: createHostRunnerHandlers(context, { loadDeviceIdentity }),

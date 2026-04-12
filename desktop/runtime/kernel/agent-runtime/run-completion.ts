@@ -128,10 +128,10 @@ const detectSelfModApplied = async (
   opts: OrchestratorRunOptions,
   baselineHead: string | null,
 ): Promise<SelfModAppliedPayload | null> =>
-  opts.frontendRoot && opts.selfModMonitor
+  opts.stellaRoot && opts.selfModMonitor
     ? await opts.selfModMonitor
         .detectAppliedSince({
-          repoRoot: opts.frontendRoot,
+          repoRoot: opts.stellaRoot,
           sinceHead: baselineHead,
         })
         .catch(() => null)

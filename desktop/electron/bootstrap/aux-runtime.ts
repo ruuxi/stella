@@ -63,7 +63,7 @@ export const startStellaBrowserBridge = (context: BootstrapContext) => {
   }
 
   const service = createStellaBrowserBridgeResource({
-    frontendRoot: context.config.frontendRoot,
+    stellaRoot: context.config.stellaRoot,
     processRuntime: context.state.processRuntime,
     onStatus: (status) => {
       broadcastStellaBrowserBridgeStatus(context, status);

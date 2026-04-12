@@ -528,7 +528,7 @@ export const handleBash = async (
   }
 
   const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
-  const cwd = String(args.working_directory ?? context?.frontendRoot ?? process.cwd());
+  const cwd = String(args.working_directory ?? context?.stellaRoot ?? process.cwd());
   const runInBackground = Boolean(args.run_in_background ?? false);
   const envOverrides: Record<string, string> = {};
   const browserOwnerId = context?.taskId ?? context?.runId ?? context?.rootRunId;

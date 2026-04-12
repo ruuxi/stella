@@ -118,9 +118,8 @@ export type StellaRuntimeClientOptions = {
 };
 
 type WorkerInitializationState = {
-  stellaHomePath: string;
+  stellaRoot: string;
   stellaWorkspacePath: string;
-  frontendRoot: string;
   authToken: string | null;
   convexUrl: string | null;
   convexSiteUrl: string | null;
@@ -259,7 +258,7 @@ export class StellaRuntimeClient {
 
   private getRuntimeReloadStateFilePath() {
     return path.join(
-      this.options.initializeParams.frontendRoot,
+      this.options.initializeParams.stellaRoot,
       SELF_MOD_RUNTIME_RELOAD_STATE_FILE,
     );
   }
@@ -873,26 +872,26 @@ export class StellaRuntimeClient {
 
   async coreMemoryExists() {
     const { coreMemoryExists } = await import("../discovery/browser-data.js");
-    return await coreMemoryExists(this.options.initializeParams.stellaHomePath);
+    return await coreMemoryExists(this.options.initializeParams.stellaRoot);
   }
 
   async discoveryKnowledgeExists() {
     const { discoveryKnowledgeExists } = await import(
       "../discovery/life-knowledge.js"
     );
-    return await discoveryKnowledgeExists(this.options.initializeParams.stellaHomePath);
+    return await discoveryKnowledgeExists(this.options.initializeParams.stellaRoot);
   }
 
   async writeCoreMemory(content: string) {
     const { writeCoreMemory } = await import("../discovery/browser-data.js");
-    await writeCoreMemory(this.options.initializeParams.stellaHomePath, content);
+    await writeCoreMemory(this.options.initializeParams.stellaRoot, content);
   }
 
   async writeDiscoveryKnowledge(payload: DiscoveryKnowledgeSeedPayload) {
     const { writeDiscoveryKnowledge } = await import(
       "../discovery/life-knowledge.js"
     );
-    await writeDiscoveryKnowledge(this.options.initializeParams.stellaHomePath, payload);
+    await writeDiscoveryKnowledge(this.options.initializeParams.stellaRoot, payload);
   }
 
   async detectPreferredBrowserProfile() {
@@ -936,15 +935,15 @@ export class StellaRuntimeClient {
     await this.stopHostServices();
     this.deviceIdentity = await this.options.hostHandlers.getDeviceIdentity();
 
-    const stellaHome = this.options.initializeParams.stellaHomePath;
-    const db = createDesktopDatabase(stellaHome);
+    const stellaRoot = this.options.initializeParams.stellaRoot;
+    const db = createDesktopDatabase(stellaRoot);
     this.hostDb = db;
-    const mirror = new TranscriptMirror(path.join(stellaHome, "state"));
+    const mirror = new TranscriptMirror(path.join(stellaRoot, "state"));
     this.hostChatStore = new ChatStore(db, mirror);
     this.hostStoreModStore = new StoreModStore(db);
 
     const scheduler = new LocalSchedulerService({
-      stellaHome: this.options.initializeParams.stellaHomePath,
+      stellaHome: this.options.initializeParams.stellaRoot,
       runnerTarget: {
         getRunner: () => ({
           runAutomationTurn: async (payload) =>
@@ -1015,9 +1014,8 @@ export class StellaRuntimeClient {
 
   private buildWorkerInitializationState(): WorkerInitializationState {
     return {
-      stellaHomePath: this.options.initializeParams.stellaHomePath,
+      stellaRoot: this.options.initializeParams.stellaRoot,
       stellaWorkspacePath: this.options.initializeParams.stellaWorkspacePath,
-      frontendRoot: this.options.initializeParams.frontendRoot,
       authToken: this.configCache.authToken ?? null,
       convexUrl: this.configCache.convexUrl ?? null,
       convexSiteUrl: this.configCache.convexSiteUrl ?? null,

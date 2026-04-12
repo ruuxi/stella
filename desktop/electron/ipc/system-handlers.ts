@@ -138,7 +138,7 @@ type SystemHandlersOptions = {
   onStellaHostRunnerChanged?: (
     listener: (runner: StellaHostRunner | null) => void,
   ) => () => void;
-  getStellaHomePath: () => string | null;
+  getStellaRoot: () => string | null;
   externalLinkService: ExternalLinkService;
   ensurePrivilegedActionApproval: (
     action: string,
@@ -719,9 +719,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted preferences:getSyncMode request.");
     }
-    const stellaHomePath = options.getStellaHomePath();
-    if (!stellaHomePath) return "off";
-    return getSyncMode(stellaHomePath);
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return "off";
+    return getSyncMode(stellaRoot);
   });
 
   ipcMain.handle(IPC_PREFERENCES_SET_SYNC_MODE, (event, mode: string) => {
@@ -733,11 +733,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted preferences:setSyncMode request.");
     }
-    const stellaHomePath = options.getStellaHomePath();
-    if (!stellaHomePath) return;
-    const prefs = loadLocalPreferences(stellaHomePath);
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return;
+    const prefs = loadLocalPreferences(stellaRoot);
     prefs.syncMode = mode === "off" ? "off" : "on";
-    saveLocalPreferences(stellaHomePath, prefs);
+    saveLocalPreferences(stellaRoot, prefs);
     return options.backupService.setMode(prefs.syncMode);
   });
 
@@ -752,9 +752,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted preferences:getRadialTrigger request.",
       );
     }
-    const stellaHomePath = options.getStellaHomePath();
-    if (!stellaHomePath) return DEFAULT_RADIAL_TRIGGER_CODE;
-    return loadLocalPreferences(stellaHomePath).radialTriggerKey;
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return DEFAULT_RADIAL_TRIGGER_CODE;
+    return loadLocalPreferences(stellaRoot).radialTriggerKey;
   });
 
   ipcMain.handle(
@@ -771,11 +771,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         );
       }
       const nextTriggerKey = normalizeRadialTriggerCode(triggerKey);
-      const stellaHomePath = options.getStellaHomePath();
-      if (stellaHomePath) {
-        const prefs = loadLocalPreferences(stellaHomePath);
+      const stellaRoot = options.getStellaRoot();
+      if (stellaRoot) {
+        const prefs = loadLocalPreferences(stellaRoot);
         prefs.radialTriggerKey = nextTriggerKey;
-        saveLocalPreferences(stellaHomePath, prefs);
+        saveLocalPreferences(stellaRoot, prefs);
       }
       options.setRadialTriggerKey(nextTriggerKey);
       return { triggerKey: nextTriggerKey };
@@ -805,10 +805,10 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           "Blocked untrusted preferences:syncLocalModelPreferences request.",
         );
       }
-      const stellaHomePath = options.getStellaHomePath();
-      if (!stellaHomePath) return { ok: true };
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) return { ok: true };
 
-      const prefs = loadLocalPreferences(stellaHomePath);
+      const prefs = loadLocalPreferences(stellaRoot);
       const nextDefaultModels = sanitizeStringRecord(payload?.defaultModels);
       const nextResolvedDefaultModels = sanitizeStringRecord(
         payload?.resolvedDefaultModels,
@@ -835,7 +835,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       prefs.generalAgentEngine = generalAgentEngine;
       prefs.selfModAgentEngine = selfModAgentEngine;
       prefs.maxAgentConcurrency = maxAgentConcurrency;
-      saveLocalPreferences(stellaHomePath, prefs);
+      saveLocalPreferences(stellaRoot, prefs);
       return { ok: true };
     },
   );
@@ -849,11 +849,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted credential request.");
     }
-    const stellaHomePath = options.getStellaHomePath();
-    if (!stellaHomePath) {
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) {
       return [];
     }
-    return listLocalLlmCredentials(stellaHomePath);
+    return listLocalLlmCredentials(stellaRoot);
   });
 
   ipcMain.handle(
@@ -874,11 +874,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted credential write.");
       }
-      const stellaHomePath = options.getStellaHomePath();
-      if (!stellaHomePath) {
-        throw new Error("Local Stella home is unavailable.");
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
+        throw new Error("Local Stella root is unavailable.");
       }
-      return saveLocalLlmCredential(stellaHomePath, {
+      return saveLocalLlmCredential(stellaRoot, {
         provider: asTrimmedString(payload?.provider),
         label: asTrimmedString(payload?.label),
         plaintext: asTrimmedString(payload?.plaintext),
@@ -897,12 +897,12 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted credential delete.");
       }
-      const stellaHomePath = options.getStellaHomePath();
-      if (!stellaHomePath) {
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
         return { removed: false };
       }
       return deleteLocalLlmCredential(
-        stellaHomePath,
+        stellaRoot,
         asTrimmedString(payload?.provider),
       );
     },
