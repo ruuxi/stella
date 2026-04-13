@@ -34,6 +34,8 @@ export class AuthManager {
   private client: Auth.OAuth2Client | null = null;
   private scopes: string[];
   private onStatusUpdate: ((message: string) => void) | null = null;
+  private pendingAuthServer: http.Server | null = null;
+  private pendingAuthReject: ((error: Error) => void) | null = null;
 
   constructor(scopes: string[]) {
     this.scopes = scopes;
@@ -41,6 +43,23 @@ export class AuthManager {
 
   public setOnStatusUpdate(callback: (message: string) => void) {
     this.onStatusUpdate = callback;
+  }
+
+  public dispose(): void {
+    this.onStatusUpdate = null;
+    this.client = null;
+    const rejectPendingAuth = this.pendingAuthReject;
+    this.pendingAuthReject = null;
+    const server = this.pendingAuthServer;
+    this.pendingAuthServer = null;
+    try {
+      server?.close();
+    } catch {
+      // Best-effort cleanup for teardown.
+    }
+    rejectPendingAuth?.(
+      new Error('Google Workspace authentication was canceled.'),
+    );
   }
 
   private isTokenExpiringSoon(credentials: Auth.Credentials): boolean {
@@ -339,12 +358,32 @@ export class AuthManager {
     });
 
     const loginCompletePromise = new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const settle = (callback: () => void) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (this.pendingAuthServer === server) {
+          this.pendingAuthServer = null;
+        }
+        if (this.pendingAuthReject === rejectPendingAuth) {
+          this.pendingAuthReject = null;
+        }
+        callback();
+      };
+      const rejectPendingAuth = (error: Error) => {
+        settle(() => reject(error));
+      };
+      const resolveLogin = () => {
+        settle(() => resolve());
+      };
       const server = http.createServer(async (req, res) => {
         try {
           // Use startsWith for more robust path checking.
           if (!req.url || !req.url.startsWith('/oauth2callback')) {
             res.end();
-            reject(
+            rejectPendingAuth(
               new Error(
                 'OAuth callback not received. Unexpected request: ' + req.url,
               ),
@@ -359,7 +398,7 @@ export class AuthManager {
           const returnedState = qs.get('state');
           if (returnedState !== csrfToken) {
             res.end('State mismatch. Possible CSRF attack.');
-            reject(new Error('OAuth state mismatch. Possible CSRF attack.'));
+            rejectPendingAuth(new Error('OAuth state mismatch. Possible CSRF attack.'));
             return;
           }
 
@@ -368,7 +407,7 @@ export class AuthManager {
             const errorDescription =
               qs.get('error_description') || 'No additional details provided';
             res.end();
-            reject(
+            rejectPendingAuth(
               new Error(
                 `Google OAuth error: ${errorCode}. ${errorDescription}`,
               ),
@@ -392,27 +431,39 @@ export class AuthManager {
             };
             client.setCredentials(tokens);
             res.end('Authentication successful! Please return to the console.');
-            resolve();
+            resolveLogin();
           } else {
-            reject(
+            rejectPendingAuth(
               new Error(
                 'Authentication failed: Did not receive tokens from callback.',
               ),
             );
           }
         } catch (e) {
-          reject(e);
+          rejectPendingAuth(
+            e instanceof Error ? e : new Error(String(e)),
+          );
         } finally {
           server.close();
         }
       });
+      this.pendingAuthServer = server;
+      this.pendingAuthReject = rejectPendingAuth;
 
       server.listen(port, host, () => {
         // Server started successfully
       });
 
       server.on('error', (err) => {
-        reject(new Error(`OAuth callback server error: ${err}`));
+        rejectPendingAuth(new Error(`OAuth callback server error: ${err}`));
+      });
+      server.on('close', () => {
+        if (this.pendingAuthServer === server) {
+          this.pendingAuthServer = null;
+        }
+        if (this.pendingAuthReject === rejectPendingAuth) {
+          this.pendingAuthReject = null;
+        }
       });
     });
 

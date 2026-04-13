@@ -295,7 +295,9 @@ export const loadGoogleWorkspaceTools = async (options: {
     dataRoot: root,
   });
 
-  const disconnect = async () => {};
+  const disconnect = async () => {
+    authManager.dispose();
+  };
 
   const hasStoredCredentials = hasStoredCredentialsFile();
 
