@@ -113,6 +113,10 @@ type ExecuteCapabilityTool = (
 
 type ExecuteTypescriptHandlerOptions = {
   stellaRoot: string;
+  stellaBrowserBinPath?: string;
+  stellaOfficeBinPath?: string;
+  stellaUiCliPath?: string;
+  stellaBrowserBridgeEnv?: Record<string, string>;
   executeCapabilityTool: ExecuteCapabilityTool;
 };
 
@@ -530,6 +534,12 @@ const executeProgram = async (args: {
       input: args.input,
       timeoutMs: Math.min(args.env.timer.getRemainingMs(), MAX_TIMEOUT_MS),
       stellaRoot: args.env.options.stellaRoot,
+      stellaBrowserBinPath: args.env.options.stellaBrowserBinPath,
+      stellaOfficeBinPath: args.env.options.stellaOfficeBinPath,
+      stellaUiCliPath: args.env.options.stellaUiCliPath,
+      stellaBrowserBridgeEnv: args.env.options.stellaBrowserBridgeEnv,
+      browserOwnerId:
+        args.env.context.taskId ?? args.env.context.runId ?? args.env.context.rootRunId,
     });
   });
 };

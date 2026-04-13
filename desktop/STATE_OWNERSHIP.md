@@ -20,25 +20,27 @@ initial sync.
 
 ### UI State (`UiState`)
 
-| Field | Source of truth | Written by | Read by |
-|---|---|---|---|
-| `mode` (`chat` \| `voice`) | Main (`UiStateService`) | Renderer via `setState`, Main via `activateVoiceRtc()` | Renderer context, Main (overlay logic) |
-| `window` (`full` \| `mini`) | Main (`UiStateService`) | Renderer via `setState` + `window:show`, Main via IPC handler | Renderer context, WindowManager |
-| `view` (`app` \| `chat` \| `store` \| `social`) | Main (`UiStateService`) | Renderer via `setState` | Renderer context (navigation) |
-| `conversationId` | Main (`UiStateService`) | Renderer via `setState`, Main via `activateVoiceRtc()` | Renderer context, VoiceRuntimeRoot, Main (wake-word) |
-| `isVoiceRtcActive` | Main (`UiStateService`) | Main only — via `activateVoiceRtc()` / `deactivateVoiceModes()` | Renderer context, overlay sync, wake-word scheduler |
+
+| Field                                        | Source of truth         | Written by                                                      | Read by                                              |
+| -------------------------------------------- | ----------------------- | --------------------------------------------------------------- | ---------------------------------------------------- |
+| `mode` (`chat` | `voice`)                    | Main (`UiStateService`) | Renderer via `setState`, Main via `activateVoiceRtc()`          | Renderer context, Main (overlay logic)               |
+| `window` (`full` | `mini`)                   | Main (`UiStateService`) | Renderer via `setState` + `window:show`, Main via IPC handler   | Renderer context, WindowManager                      |
+| `view` (`app` | `chat` | `store` | `social`) | Main (`UiStateService`) | Renderer via `setState`                                         | Renderer context (navigation)                        |
+| `conversationId`                             | Main (`UiStateService`) | Renderer via `setState`, Main via `activateVoiceRtc()`          | Renderer context, VoiceRuntimeRoot, Main (wake-word) |
+| `isVoiceRtcActive`                           | Main (`UiStateService`) | Main only — via `activateVoiceRtc()` / `deactivateVoiceModes()` | Renderer context, overlay sync, wake-word scheduler  |
+
 
 ### conversationId — detailed flow
 
 This is the most complex piece of state because three subsystems interact:
 
 1. **Normal flow**: Renderer calls `setConversationId()` → Main updates →
-   Main broadcasts → all windows receive.
+  Main broadcasts → all windows receive.
 2. **Wake-word flow**: Electron wake-word detector fires → Main calls
-   `activateVoiceRtc(conversationId)` → Main sets conversationId + mode +
+  `activateVoiceRtc(conversationId)` → Main sets conversationId + mode +
    isVoiceRtcActive → broadcasts.
 3. **Voice runtime**: `VoiceRuntimeRoot` reads `state.conversationId` from
-   context and forwards it to the voice session manager. It does NOT write
+  context and forwards it to the voice session manager. It does NOT write
    back to UiState — it is a consumer, not an owner. It has a local
    `bootConversationId` used only to resolve the ID before the first render
    via `localChat.getOrCreateDefaultConversationId()`.
@@ -50,15 +52,18 @@ request deactivation, but activation is gated through Main because it requires
 coordinating overlay visibility, wake-word suspension, and mobile bridge sync.
 
 Side effects triggered by changes:
+
 - `syncVoiceOverlay()` — shows/hides voice overlay window.
 - `scheduleResumeWakeWord()` — resumes wake-word detection after a delay.
 - Broadcast to all windows + mobile bridge.
 
 ### Theme
 
-| Field | Source of truth | Sync |
-|---|---|---|
+
+| Field                                                   | Source of truth           | Sync                                                                  |
+| ------------------------------------------------------- | ------------------------- | --------------------------------------------------------------------- |
 | `themeId`, `colorMode`, `gradientMode`, `gradientColor` | Renderer (`localStorage`) | Renderer persists → broadcasts to Main → Main relays to other windows |
+
 
 Theme is **renderer-owned**. Main never maintains its own theme state — it
 only relays changes between windows. This is intentionally different from
@@ -66,18 +71,22 @@ UiState (which is Main-owned).
 
 ### Chat store mode
 
-| Field | Source of truth |
-|---|---|
-| `storageMode` (`cloud` \| `local`) | Renderer (`ChatStoreProvider` context) |
+
+| Field                             | Source of truth                        |
+| --------------------------------- | -------------------------------------- |
+| `storageMode` (`cloud` | `local`) | Renderer (`ChatStoreProvider` context) |
+
 
 Purely renderer-local. Synced to Main only when needed for agent runtime
 configuration.
 
 ### Workspace
 
-| Field | Source of truth |
-|---|---|
+
+| Field                                  | Source of truth                        |
+| -------------------------------------- | -------------------------------------- |
 | `activePanel`, `chatWidth`, `chatOpen` | Renderer (`WorkspaceProvider` context) |
+
 
 Purely renderer-local. No IPC sync.
 

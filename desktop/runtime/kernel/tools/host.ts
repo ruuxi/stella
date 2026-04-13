@@ -53,6 +53,7 @@ import {
 import { TOOL_DESCRIPTIONS, TOOL_JSON_SCHEMAS } from "./schemas.js";
 import { EXECUTE_TYPESCRIPT_TOOL_NAME } from "./execute-typescript-contract.js";
 import { createExecuteTypescriptToolHandlers } from "./execute-typescript.js";
+import { getStellaBrowserBridgeEnv } from "./stella-browser-bridge-config.js";
 
 import type { ToolDefinition } from "../extensions/types.js";
 
@@ -137,6 +138,10 @@ export const createToolHost = ({
 
   const codeHandlers = createExecuteTypescriptToolHandlers({
     stellaRoot,
+    stellaBrowserBinPath,
+    stellaOfficeBinPath,
+    stellaUiCliPath,
+    stellaBrowserBridgeEnv: getStellaBrowserBridgeEnv(),
     executeCapabilityTool,
   });
   handlers = mergeToolHandlers(baseHandlers, codeHandlers);

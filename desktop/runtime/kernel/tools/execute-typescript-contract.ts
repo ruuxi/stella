@@ -27,21 +27,22 @@ export const EXECUTE_TYPESCRIPT_TOOL_DESCRIPTION =
   "Use this when the task needs loops, batching, Promise.all, aggregation, parsing, or exact math in one step instead of many separate tool calls.\n\n" +
   "Rules:\n" +
   "- Write a program body, not a full module. Top-level await and return are allowed.\n" +
-  "- The program runs with full Node.js capabilities, including Buffer, process, require(), child_process, and fetch.\n" +
+  "- The program runs with full Node.js capabilities, including Buffer, process, require(), and fetch.\n" +
   "- Because this is a program body, static import/export syntax is not supported. Use require() or await import() instead.\n" +
   "- Use the provided bindings instead: workspace, life, shell, libraries, console.\n" +
-  "- Call Stella-native CLIs like stella-browser and stella-office through shell.exec(command, options?).\n" +
+  "- Always use shell.exec(command, options?) for running shell commands. Do not use child_process.exec/spawn directly — Stella CLI wrappers (stella-browser, stella-office, stella-ui) are only available through shell.exec.\n" +
   "- Return JSON-serializable data. Keep code focused and deterministic.\n" +
-  "- Prefer structured bindings for workspace/life/libraries, and use shell.exec for CLI workflows.";
+  "- Before solving from scratch, check life/capabilities/ for an existing capability with libraries.list() or libraries.run(name, input).";
 
 export const EXECUTE_TYPESCRIPT_PROMPT_GUIDANCE = `
 Code mode:
 - Prefer \`${EXECUTE_TYPESCRIPT_TOOL_NAME}\` when work needs batching, loops, Promise.all, exact math, aggregation, or deterministic transforms.
 - Write a short async TypeScript program body. Top-level await and return are allowed.
-- The program runs in a full Node.js subprocess with Buffer, process, require(), child_process, fetch, and other standard Node APIs available.
+- The program runs in a full Node.js subprocess with Buffer, process, require(), fetch, and other standard Node APIs available.
 - Static import/export syntax is not supported inside program bodies. Use require() or await import() instead.
 - Use the provided globals instead, and return JSON-serializable data.
-- For stella-browser and stella-office, prefer shell.exec("stella-browser ...") and shell.exec("stella-office ...") inside the program.
+- Always use shell.exec() for running commands. Do not use child_process directly — Stella CLI wrappers (stella-browser, stella-office, stella-ui) are only available through shell.exec.
+- Before solving from scratch, check life/capabilities/ for existing capabilities with libraries.list() or libraries.run(name, input).
 
 Available globals:
 \`\`\`ts
@@ -75,8 +76,8 @@ declare const workspace: {
 
 declare const life: {
   read(pathOrSlug: string): Promise<string>;
-  list(area?: "knowledge" | "notes" | "raw" | "outputs" | "libraries"): Promise<string[]>;
-  search(query: string, args?: { area?: "knowledge" | "notes" | "raw" | "outputs" | "libraries"; maxResults?: number }): Promise<Array<{
+  list(area?: "knowledge" | "notes" | "raw" | "outputs" | "capabilities"): Promise<string[]>;
+  search(query: string, args?: { area?: "knowledge" | "notes" | "raw" | "outputs" | "capabilities"; maxResults?: number }): Promise<Array<{
     path: string;
     line: number;
     text: string;
@@ -123,9 +124,10 @@ const report = await shell.exec("stella-office view report.docx text");
 
 life model:
 - \`life/knowledge/\` stores human-readable manuals, workflows, and reference docs.
-- \`life/libraries/<name>/\` stores reusable executable memory. Prefer:
-  - \`index.md\` for docs
-  - \`program.ts\` for executable logic
+- \`life/capabilities/<name>/\` stores reusable executable capabilities. Each has:
+  - \`index.md\` for docs (what it does, when to use it, approach used)
+  - \`program.ts\` for executable logic (full Node.js + Stella bindings)
   - optional \`input.schema.json\` and \`output.schema.json\`
-- Use \`libraries.run(name, input)\` when a reusable life library already exists.
+- Use \`libraries.run(name, input)\` when a reusable capability already exists.
+- After succeeding at something non-trivial, save the working approach as a new library.
 `.trim();
