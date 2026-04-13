@@ -74,7 +74,6 @@ stella-browser wait @e1
 stella-browser wait 2000
 stella-browser wait --text "Success"
 stella-browser wait --url "**/dashboard"
-stella-browser wait --load networkidle
 stella-browser wait --fn "window.ready"
 ```
 

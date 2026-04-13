@@ -19,7 +19,7 @@ echo "Form automation: $FORM_URL"
 
 # Step 1: Navigate to form
 stella-browser open "$FORM_URL"
-stella-browser wait --load networkidle
+stella-browser wait 2000
 
 # Step 2: Snapshot to discover form elements
 echo ""
@@ -44,7 +44,7 @@ stella-browser snapshot -i
 # stella-browser click @e3  # Submit button
 
 # Step 4: Wait for submission
-# stella-browser wait --load networkidle
+# stella-browser wait 2000
 # stella-browser wait --url "**/success"  # Or wait for redirect
 
 # Step 5: Verify result

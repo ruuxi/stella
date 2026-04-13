@@ -1347,6 +1347,10 @@ Modes:
   --text <text>        Wait for text to appear on page (substring match)
   --download [path]    Wait for a download to complete (optionally save to path)
 
+Extension mode note:
+  In Stella's extension-backed browser mode, prefer wait @ref, wait --text,
+  wait --url, or wait <ms>. --load is not supported there.
+
 Download Options (with --download):
   --timeout <ms>       Timeout in milliseconds for download to start
 
@@ -1364,9 +1368,8 @@ Examples:
   stella-browser wait "#loading-spinner"
   stella-browser wait 2000
   stella-browser wait --url "**/dashboard"
-  stella-browser wait --load networkidle
-  stella-browser wait --fn "window.appReady === true"
   stella-browser wait --text "Welcome back"
+  stella-browser wait --fn "window.appReady === true"
   stella-browser wait --download ./file.pdf
   stella-browser wait --download ./report.xlsx --timeout 30000
   stella-browser wait --fn "!document.body.innerText.includes('Loading...')"
@@ -2521,7 +2524,7 @@ Examples:
   stella-browser get text @e1
   stella-browser screenshot --full
   stella-browser screenshot --annotate    # Labeled screenshot for vision models
-  stella-browser wait --load networkidle  # Wait for slow pages to load
+  stella-browser wait --url "**/dashboard" # Wait for a navigation target
   stella-browser tab new https://example.com
   stella-browser network requests --filter "api"
   stella-browser clipboard read
