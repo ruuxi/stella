@@ -28,7 +28,6 @@ export type WorkerHealthSnapshot = {
   deviceId: string | null;
   voiceBusy?: boolean;
   pendingVoiceRequestCount?: number;
-  remoteBridgeActive?: boolean;
   socialSessions?: SocialSessionServiceSnapshot;
 };
 
