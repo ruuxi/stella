@@ -75,9 +75,9 @@ export const FullShell = () => {
     }, 400);
   }, []);
 
-  // Main-process "app ready" gates wake word. It must not wait on the local
-  // kernel worker: that can stay "preparing" or fail while the shell and
-  // system integrations should still work once onboarding is complete.
+  // Main-process "app ready" gates global integrations. It must not wait on
+  // the local kernel worker: that can stay "preparing" or fail while the shell
+  // and system integrations should still work once onboarding is complete.
   useEffect(() => {
     window.electronAPI?.ui.setAppReady?.(onboarding.onboardingDone);
   }, [onboarding.onboardingDone]);

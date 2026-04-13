@@ -1,11 +1,6 @@
 import { getSelectedText, initSelectedTextProcess } from "../selected-text.js";
 import { hasMacPermission } from "../utils/macos-permissions.js";
-import { initializeWakeWord } from "../wake-word/initialize.js";
-import {
-  type BootstrapContext,
-  broadcastWakeWordDetected,
-  broadcastWakeWordState,
-} from "./context.js";
+import { type BootstrapContext } from "./context.js";
 
 type DeferredStartupTask = {
   delayMs?: number;
@@ -64,32 +59,6 @@ const createDeferredStartupTasks = (
           return;
         }
         services.radialGestureService.start();
-      },
-    },
-    {
-      label: "wake-word",
-      delayMs: config.startupStageDelayMs,
-      run: async () => {
-        try {
-          state.wakeWordController?.dispose();
-          state.wakeWordController = await initializeWakeWord({
-            isDev: config.isDev,
-            electronDir: config.electronDir,
-            uiStateService: services.uiStateService,
-            onDetection: () => {
-              broadcastWakeWordDetected(context);
-            },
-            onEnabledChange: () => {
-              broadcastWakeWordState(context);
-            },
-          });
-          broadcastWakeWordState(context);
-        } catch (error) {
-          console.error(
-            "[WakeWord] Failed to initialize:",
-            (error as Error).message,
-          );
-        }
       },
     },
   ];

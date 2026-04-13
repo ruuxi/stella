@@ -380,14 +380,6 @@ export type ElectronVoiceApi = {
   onRuntimeState: (
     callback: (state: VoiceRuntimeSnapshot) => void,
   ) => () => void;
-  getWakeWordState: () => Promise<{ enabled: boolean }>;
-  onWakeWordState: (
-    callback: (state: { enabled: boolean }) => void,
-  ) => () => void;
-  onWakeWordDetected: (
-    callback: (payload: { detectedAt: number }) => void,
-  ) => () => void;
-  pushWakeWordAudio: (buffer: ArrayBuffer) => void;
   pushRuntimeState: (state: VoiceRuntimeSnapshot) => void;
   setRtcShortcut: (
     shortcut: string,

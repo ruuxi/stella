@@ -105,10 +105,6 @@ export const IPC_VOICE_ORCHESTRATOR_CHAT = "voice:orchestratorChat" as const;
 export const IPC_VOICE_WEB_SEARCH = "voice:webSearch" as const;
 export const IPC_VOICE_GET_RUNTIME_STATE = "voice:getRuntimeState" as const;
 export const IPC_VOICE_RUNTIME_STATE = "voice:runtimeState" as const;
-export const IPC_VOICE_GET_WAKE_WORD_STATE = "voice:getWakeWordState" as const;
-export const IPC_VOICE_WAKE_WORD_STATE = "voice:wakeWordState" as const;
-export const IPC_VOICE_WAKE_WORD_DETECTED = "voice:wakeWordDetected" as const;
-export const IPC_VOICE_WAKE_WORD_AUDIO = "voice:wakeWordAudio" as const;
 export const IPC_VOICE_RTC_SET_SHORTCUT = "voice-rtc:setShortcut" as const;
 
 // ── Agent ───────────────────────────────────────────────────────────────────

@@ -15,10 +15,7 @@ type UiHandlersOptions = {
   broadcastUiState: () => void;
   syncVoiceOverlay: () => void;
   setAppReady: (ready: boolean) => void;
-  getResumeWakeWordCapture: () => (() => void) | null;
-  scheduleResumeWakeWord: () => void;
   deactivateVoiceModes: () => boolean;
-  syncWakeWordState: () => boolean;
   syncNativeRadialGesture: () => void;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
@@ -30,7 +27,6 @@ type UiHandlersOptions = {
 export const registerUiHandlers = (options: UiHandlersOptions) => {
   ipcMain.on("app:setReady", (_event, ready: boolean) => {
     options.setAppReady(!!ready);
-    options.syncWakeWordState();
   });
 
   ipcMain.on("window:minimize", (event) => {
@@ -96,13 +92,6 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     if (isVoiceRtcActive !== undefined) {
       options.syncVoiceOverlay();
       options.broadcastUiState();
-      options.syncWakeWordState();
-      if (
-        isVoiceRtcActive === false &&
-        options.getResumeWakeWordCapture()
-      ) {
-        options.scheduleResumeWakeWord();
-      }
     }
     return options.uiState;
   });

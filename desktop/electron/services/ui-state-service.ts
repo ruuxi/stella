@@ -27,10 +27,6 @@ export class UiStateService {
   }
 
   private deps: UiStateServiceDeps | null = null
-  private resumeWakeWordCapture: (() => void) | null = null
-  private resumeWakeWordTimer: ReturnType<typeof setTimeout> | null = null
-
-  private static readonly WAKE_WORD_RESUME_DELAY_MS = 150
 
   bind(deps: UiStateServiceDeps) {
     this.deps = deps
@@ -67,7 +63,6 @@ export class UiStateService {
     }
     this.state.isVoiceRtcActive = false
     this.syncVoiceOverlay()
-    this.scheduleResumeWakeWord()
     this.broadcast()
     return true
   }
@@ -78,22 +73,6 @@ export class UiStateService {
     this.state.conversationId = conversationId ?? this.state.conversationId
     this.syncVoiceOverlay()
     this.broadcast()
-  }
-
-  setResumeWakeWordCapture(fn: (() => void) | null) {
-    this.resumeWakeWordCapture = fn
-  }
-
-  getResumeWakeWordCapture(): (() => void) | null {
-    return this.resumeWakeWordCapture
-  }
-
-  scheduleResumeWakeWord() {
-    if (this.resumeWakeWordTimer) clearTimeout(this.resumeWakeWordTimer)
-    this.resumeWakeWordTimer = setTimeout(() => {
-      this.resumeWakeWordTimer = null
-      this.resumeWakeWordCapture?.()
-    }, UiStateService.WAKE_WORD_RESUME_DELAY_MS)
   }
 
   private getStandaloneVoicePosition() {

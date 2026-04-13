@@ -26,20 +26,17 @@ initial sync.
 | `mode` (`chat` | `voice`)                    | Main (`UiStateService`) | Renderer via `setState`, Main via `activateVoiceRtc()`          | Renderer context, Main (overlay logic)               |
 | `window` (`full` | `mini`)                   | Main (`UiStateService`) | Renderer via `setState` + `window:show`, Main via IPC handler   | Renderer context, WindowManager                      |
 | `view` (`app` | `chat` | `store` | `social`) | Main (`UiStateService`) | Renderer via `setState`                                         | Renderer context (navigation)                        |
-| `conversationId`                             | Main (`UiStateService`) | Renderer via `setState`, Main via `activateVoiceRtc()`          | Renderer context, VoiceRuntimeRoot, Main (wake-word) |
-| `isVoiceRtcActive`                           | Main (`UiStateService`) | Main only — via `activateVoiceRtc()` / `deactivateVoiceModes()` | Renderer context, overlay sync, wake-word scheduler  |
+| `conversationId`                             | Main (`UiStateService`) | Renderer via `setState`, Main via `activateVoiceRtc()`          | Renderer context, VoiceRuntimeRoot                    |
+| `isVoiceRtcActive`                           | Main (`UiStateService`) | Main only — via `activateVoiceRtc()` / `deactivateVoiceModes()` | Renderer context, overlay sync                        |
 
 
 ### conversationId — detailed flow
 
-This is the most complex piece of state because three subsystems interact:
+This is the most complex piece of state because two subsystems interact:
 
 1. **Normal flow**: Renderer calls `setConversationId()` → Main updates →
   Main broadcasts → all windows receive.
-2. **Wake-word flow**: Electron wake-word detector fires → Main calls
-  `activateVoiceRtc(conversationId)` → Main sets conversationId + mode +
-   isVoiceRtcActive → broadcasts.
-3. **Voice runtime**: `VoiceRuntimeRoot` reads `state.conversationId` from
+2. **Voice runtime**: `VoiceRuntimeRoot` reads `state.conversationId` from
   context and forwards it to the voice session manager. It does NOT write
    back to UiState — it is a consumer, not an owner. It has a local
    `bootConversationId` used only to resolve the ID before the first render
@@ -49,12 +46,11 @@ This is the most complex piece of state because three subsystems interact:
 
 Only Main can set this to `true` (via `activateVoiceRtc`). The renderer can
 request deactivation, but activation is gated through Main because it requires
-coordinating overlay visibility, wake-word suspension, and mobile bridge sync.
+coordinating overlay visibility and mobile bridge sync.
 
 Side effects triggered by changes:
 
 - `syncVoiceOverlay()` — shows/hides voice overlay window.
-- `scheduleResumeWakeWord()` — resumes wake-word detection after a delay.
 - Broadcast to all windows + mobile bridge.
 
 ### Theme

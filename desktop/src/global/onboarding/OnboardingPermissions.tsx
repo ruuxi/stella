@@ -44,7 +44,7 @@ const PERMISSION_CARDS: PermissionCard[] = [
     kind: "microphone",
     title: "Microphone",
     description:
-      "Needed for voice conversations and always-on wake word listening.",
+      "Needed for voice conversations.",
     actionLabel: "Enable",
   },
 ];

@@ -10,11 +10,7 @@ type VoiceHandlersOptions = {
   getAppReady: () => boolean;
   windowManager: WindowManager;
   broadcastUiState: () => void;
-  scheduleResumeWakeWord: () => void;
   syncVoiceOverlay: () => void;
-  syncWakeWordState: () => boolean;
-  getWakeWordEnabled: () => boolean;
-  pushWakeWordAudio: (pcm: Int16Array) => void;
   getStellaHostRunner: () => StellaHostRunner | null;
   getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
   getOverlayController?: () => OverlayWindowController | null;
@@ -153,12 +149,9 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     options.uiState.isVoiceRtcActive = !options.uiState.isVoiceRtcActive;
     if (options.uiState.isVoiceRtcActive) {
       options.uiState.mode = "voice";
-    } else {
-      options.scheduleResumeWakeWord();
     }
     options.syncVoiceOverlay();
     options.broadcastUiState();
-    options.syncWakeWordState();
   };
 
   const initialVoiceRtcShortcut = applyShortcutRegistration(
@@ -283,17 +276,6 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
 
   ipcMain.handle("voice:getRuntimeState", () => runtimeState);
 
-  ipcMain.handle("voice:getWakeWordState", () => ({
-    enabled: options.getWakeWordEnabled(),
-  }));
-
-  ipcMain.on("voice:wakeWordAudio", (_event, buffer: ArrayBuffer) => {
-    if (!(buffer instanceof ArrayBuffer)) {
-      return;
-    }
-    options.pushWakeWordAudio(new Int16Array(buffer));
-  });
-
   ipcMain.on(
     "voice:runtimeState",
     (_event, nextState: VoiceRuntimeSnapshot) => {
@@ -312,10 +294,6 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       broadcastRuntimeState();
     },
   );
-
-  ipcMain.on("app:setReady", () => {
-    options.syncWakeWordState();
-  });
 
   // ─── Screen Guide ────────────────────────────────────────────────────
 

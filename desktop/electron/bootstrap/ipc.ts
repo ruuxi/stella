@@ -16,7 +16,6 @@ import { startCapturingHandlers } from "../services/mobile-bridge/handler-regist
 import {
   type BootstrapContext,
   getMobileBroadcast,
-  syncWakeWordState,
 } from "./context.js";
 import type { BootstrapResetFlows } from "./resets.js";
 import { startMobileBridge, stopMobileBridge } from "./aux-runtime.js";
@@ -39,12 +38,7 @@ export const registerBootstrapIpcHandlers = (
     setAppReady: (ready) => {
       state.appReady = ready;
     },
-    getResumeWakeWordCapture: () =>
-      services.uiStateService.getResumeWakeWordCapture(),
-    scheduleResumeWakeWord: () =>
-      services.uiStateService.scheduleResumeWakeWord(),
     deactivateVoiceModes: () => services.uiStateService.deactivateVoiceModes(),
-    syncWakeWordState: () => syncWakeWordState(context),
     syncNativeRadialGesture: () => services.radialGestureService.start(),
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
@@ -180,12 +174,7 @@ export const registerBootstrapIpcHandlers = (
     getAppReady: () => state.appReady,
     windowManager: state.windowManager!,
     broadcastUiState: () => services.uiStateService.broadcast(),
-    scheduleResumeWakeWord: () =>
-      services.uiStateService.scheduleResumeWakeWord(),
     syncVoiceOverlay: () => services.uiStateService.syncVoiceOverlay(),
-    syncWakeWordState: () => syncWakeWordState(context),
-    getWakeWordEnabled: () => state.wakeWordController?.getEnabled() ?? false,
-    pushWakeWordAudio: (pcm) => state.wakeWordController?.pushAudioChunk(pcm),
     getStellaHostRunner: lifecycle.getRunner,
     getBroadcastToMobile: lazyMobileBroadcast,
     getOverlayController: () => state.overlayController ?? null,

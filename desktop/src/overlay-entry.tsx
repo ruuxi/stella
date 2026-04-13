@@ -6,7 +6,6 @@ import { ErrorBoundary } from "./shell/ErrorBoundary";
 import { UiStateProvider } from "./context/ui-state";
 import { OverlayRoot } from "./shell/overlay/OverlayRoot";
 import { DeferredVoiceRuntime } from "./systems/voice/DeferredVoiceRuntime";
-import { WakeWordCaptureRoot } from "./systems/voice/WakeWordCaptureRoot";
 import { ToastProvider } from "./ui/toast";
 
 document.documentElement.dataset.stellaWindow = "overlay";
@@ -17,7 +16,6 @@ createRoot(document.getElementById("root")!).render(
       <ToastProvider>
         <UiStateProvider>
           <DeferredVoiceRuntime />
-          <WakeWordCaptureRoot />
           <OverlayRoot />
         </UiStateProvider>
       </ToastProvider>

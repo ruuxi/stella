@@ -15,10 +15,6 @@ export const registerBootstrapProcessCleanups = (
   processRuntime.registerCleanup("before-quit", "browser-bridge", async () => {
     await context.state.stellaBrowserBridgeService?.stop();
   });
-  processRuntime.registerCleanup("before-quit", "wake-word", () => {
-    context.state.wakeWordController?.dispose();
-    context.state.wakeWordController = null;
-  });
   processRuntime.registerCleanup("before-quit", "selected-text", () => {
     cleanupSelectedTextProcess();
   });
