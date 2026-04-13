@@ -72,7 +72,6 @@ type WorkerInitializationState = {
 };
 
 const logger = createRuntimeLogger("worker.server");
-const ENABLE_WORKER_REMOTE_TURN_BRIDGE = false;
 
 type RuntimeRunner = ReturnType<typeof createStellaHostRunner>;
 
@@ -272,7 +271,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     const runnerOptions: StellaHostRunnerOptions = {
       deviceId: deviceIdentity.deviceId,
       stellaRoot: init.stellaRoot,
-      enableRemoteTurnBridge: ENABLE_WORKER_REMOTE_TURN_BRIDGE,
       runtimeStore,
       listLocalChatEvents: (conversationId, maxItems) =>
         chatStore.listEvents(conversationId, maxItems),
@@ -509,12 +507,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       deviceId: state.deviceId,
       voiceBusy: state.voiceService?.isBusy() ?? false,
       pendingVoiceRequestCount: state.voiceService?.getPendingRequestCount() ?? 0,
-      remoteBridgeActive: Boolean(
-        ENABLE_WORKER_REMOTE_TURN_BRIDGE &&
-          state.init?.convexUrl &&
-          state.init?.authToken &&
-          state.init?.hasConnectedAccount,
-      ),
       socialSessions,
     };
   });
