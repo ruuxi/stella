@@ -9,7 +9,31 @@ describe("state tools", () => {
     const ctx = createStateContext("/tmp", {
       createTask: async (request) => {
         createdRequest = request;
-        return { threadId: "thread-1" };
+        return {
+          threadId: "thread-1",
+          activeThreads: [
+            {
+              threadId: "thread-1",
+              name: "thread-1",
+              conversationId: "conversation-1",
+              agentType: AGENT_IDS.GENERAL,
+              status: "active",
+              createdAt: 1,
+              lastUsedAt: 1,
+              description: "Do work",
+            },
+            {
+              threadId: "thread-0",
+              name: "thread-0",
+              conversationId: "conversation-1",
+              agentType: AGENT_IDS.GENERAL,
+              status: "active",
+              createdAt: 1,
+              lastUsedAt: 1,
+              description: "Previous task",
+            },
+          ],
+        };
       },
       getTask: async () => null,
       cancelTask: async () => ({ canceled: false }),
@@ -34,10 +58,15 @@ describe("state tools", () => {
     expect(result).toEqual({
       result: {
         thread_id: "thread-1",
-        status: "running",
-        background: true,
-        elapsed_ms: 0,
+        created: true,
+        running_in_background: true,
         follow_up_on_completion: true,
+        other_threads: [
+          {
+            thread_id: "thread-0",
+            description: "Previous task",
+          },
+        ],
       },
     });
   });
@@ -61,6 +90,44 @@ describe("state tools", () => {
 
     expect(result).toEqual({
       error: "Only the orchestrator can create tasks.",
+    });
+  });
+
+  it("requires description and prompt for task creation", async () => {
+    const ctx = createStateContext("/tmp");
+
+    await expect(
+      handleTask(
+        ctx,
+        {
+          prompt: "Run it",
+        },
+        {
+          conversationId: "conversation-1",
+          deviceId: "device-1",
+          requestId: "request-1",
+          agentType: AGENT_IDS.ORCHESTRATOR,
+        },
+      ),
+    ).resolves.toEqual({
+      error: "description is required",
+    });
+
+    await expect(
+      handleTask(
+        ctx,
+        {
+          description: "Do work",
+        },
+        {
+          conversationId: "conversation-1",
+          deviceId: "device-1",
+          requestId: "request-1",
+          agentType: AGENT_IDS.ORCHESTRATOR,
+        },
+      ),
+    ).resolves.toEqual({
+      error: "prompt is required",
     });
   });
 });

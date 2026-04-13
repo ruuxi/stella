@@ -1,13 +1,14 @@
 export const MAX_ACTIVE_RUNTIME_THREADS = 16;
-export const RUNTIME_THREAD_REMINDER_INTERVAL_TOKENS = 25_000;
 
 export type RuntimeThreadRecord = {
   conversationId: string;
   threadId: string;
+  name: string;
   agentType: string;
   status: "active" | "evicted";
   createdAt: number;
   lastUsedAt: number;
+  description?: string;
   summary?: string;
 };
 
@@ -29,16 +30,23 @@ const formatAge = (timestamp: number, now: number): string => {
   return `${Math.floor(ageMs / 86_400_000)}d ago`;
 };
 
+const formatPromptValue = (value: string | undefined, fallback: string): string => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.replace(/\s+/g, " ").slice(0, 180) : fallback;
+};
+
 export const buildActiveThreadsPrompt = (
   threads: RuntimeThreadRecord[],
   now = Date.now(),
 ): string => {
   if (threads.length === 0) return "";
   const lines = threads.slice(0, MAX_ACTIVE_RUNTIME_THREADS).map((thread) => {
-    const summary = thread.summary?.trim()
-      ? ` - ${thread.summary.trim().replace(/\s+/g, " ").slice(0, 180)}`
-      : "";
-    return `- ${thread.threadId} (${thread.agentType}, last used ${formatAge(thread.lastUsedAt, now)})${summary}`;
+    const summary = formatPromptValue(thread.summary, "");
+    return [
+      `- ${thread.threadId} (resumable, last used ${formatAge(thread.lastUsedAt, now)})`,
+      `  description: ${formatPromptValue(thread.description, "No description recorded")}`,
+      ...(summary ? [`  summary: ${summary}`] : []),
+    ].join("\n");
   });
-  return `# Active Threads\nEach thread_id is durable and can be reused later for continued work, even after cancellation or completion, and even if it falls out of the active list.\n${lines.join("\n")}`;
+  return `# Other Threads\nThese thread_ids are durable and can be reused later for continued work, even after cancellation or completion.\n${lines.join("\n")}`;
 };
