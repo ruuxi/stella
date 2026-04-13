@@ -2430,9 +2430,14 @@ Examples:
 pub fn print_help() {
     println!(
         r#"
-stella-browser - fast browser automation CLI for AI agents
+stella-browser - extension-backed browser automation for Stella
 
 Usage: stella-browser <command> [args] [options]
+
+Stella uses your existing Chrome browser through the extension bridge.
+This help intentionally shows the extension-backed commands Stella actually uses.
+Standalone CLI features such as provider switching, proxy/session/state/auth
+flows, browser installs, and direct CDP connection workflows are hidden here.
 
 Core Commands:
   open <url>                 Navigate to URL
@@ -2441,16 +2446,14 @@ Core Commands:
   type <sel> <text>          Type into element
   fill <sel> <text>          Clear and fill
   press <key>                Press key (Enter, Tab, Control+a)
-  keyboard type <text>       Type text with real keystrokes (no selector)
-  keyboard inserttext <text> Insert text without key events
+  keydown <key>              Hold a key down
+  keyup <key>                Release a held key
   hover <sel>                Hover element
   focus <sel>                Focus element
   check <sel>                Check checkbox
   uncheck <sel>              Uncheck checkbox
   select <sel> <val...>      Select dropdown option
   drag <src> <dst>           Drag and drop
-  upload <sel> <files...>    Upload files
-  download <sel> <path>      Download file by clicking element
   scroll <dir> [px]          Scroll (up/down/left/right)
   scrollintoview <sel>       Scroll element into view
   wait <sel|ms>              Wait for element or time
@@ -2458,8 +2461,7 @@ Core Commands:
   pdf <path>                 Save as PDF
   snapshot                   Accessibility tree with refs (for AI)
   eval <js>                  Run JavaScript
-  connect <port|url>         Connect to browser via CDP
-  close                      Close browser
+  close                      Close the shared Stella browser window
 
 Navigation:
   back                       Go back
@@ -2467,68 +2469,29 @@ Navigation:
   reload                     Reload page
 
 Get Info:  stella-browser get <what> [selector]
-  text, html, value, attr <name>, title, url, count, box, styles, cdp-url
+  text, html, value, attr <name>, title, url, count, box, styles
 
 Check State:  stella-browser is <what> <selector>
   visible, enabled, checked
 
-Find Elements:  stella-browser find <locator> <value> <action> [text]
-  role, text, label, placeholder, alt, title, testid, first, last, nth
-
-Mouse:  stella-browser mouse <action> [args]
-  move <x> <y>, down [btn], up [btn], wheel <dy> [dx]
-
-Browser Settings:  stella-browser set <setting> [value]
-  viewport <w> <h>, device <name>, geo <lat> <lng>
-  offline [on|off], headers <json>, credentials <user> <pass>
-  media [dark|light] [reduced-motion]
+Tabs:
+  tab [new|list|close|<n>]   Manage tabs in Stella's shared tab group
 
 Network:  stella-browser network <action>
   route <url> [--abort|--body <json>]
   unroute [url]
   requests [--clear] [--filter <pattern>]
 
-Storage:
-  cookies [get|set|clear]    Manage cookies (set supports --url, --domain, --path, --httpOnly, --secure, --sameSite, --expires)
+Storage and Downloads:
+  cookies [get|set|clear]    Manage cookies
   storage <local|session>    Manage web storage
+  download <sel> <path>      Download file by clicking an element
 
-Tabs:
-  tab [new|list|close|<n>]   Manage tabs
-
-Diff:
-  diff snapshot              Compare current vs last snapshot
-  diff screenshot --baseline Compare current vs baseline image
-  diff url <u1> <u2>         Compare two pages
-
-Debug:
-  trace start|stop [path]    Record Chrome DevTools trace
-  profiler start|stop [path] Record Chrome DevTools profile
-  record start <path> [url]  Start video recording (WebM)
-  record stop                Stop and save video
-  console [--clear]          View console logs
-  errors [--clear]           View page errors
-  highlight <sel>            Highlight element
-  inspect                    Open Chrome DevTools for the active page
+Mouse and Clipboard:
+  mouse move <x> <y>         Move mouse
+  mouse down [btn]           Press mouse button
+  mouse up [btn]             Release mouse button
   clipboard <op> [text]      Read/write clipboard (read, write, copy, paste)
-
-Auth Vault:
-  auth save <name> [opts]    Save auth profile (--url, --username, --password/--password-stdin)
-  auth login <name>          Login using saved credentials
-  auth list                  List saved auth profiles
-  auth show <name>           Show auth profile metadata
-  auth delete <name>         Delete auth profile
-
-Confirmation:
-  confirm <id>               Approve a pending action
-  deny <id>                  Deny a pending action
-
-Sessions:
-  session                    Show current session name
-  session list               List active sessions
-
-Setup:
-  install                    Install browser binaries
-  install --with-deps        Also install system dependencies (Linux)
 
 Snapshot Options:
   -i, --interactive          Only interactive elements
@@ -2536,145 +2499,38 @@ Snapshot Options:
   -d, --depth <n>            Limit tree depth
   -s, --selector <sel>       Scope to CSS selector
 
-Authentication:
-  --profile <path>           Persist login sessions across restarts (cookies, IndexedDB, cache)
-                             (or STELLA_BROWSER_PROFILE env)
-  --session-name <name>      Auto-save/restore cookies and localStorage by name
-                             (or STELLA_BROWSER_SESSION_NAME env)
-  --state <path>             Load saved auth state (cookies + storage) from JSON file
-                             (or STELLA_BROWSER_STATE env)
-  --auto-connect             Connect to a running Chrome to reuse its auth state
-                             Tip: stella-browser --auto-connect state save ./auth.json
-  --headers <json>           HTTP headers scoped to URL's origin (e.g., Authorization bearer token)
-
 Options:
-  --session <name>           Isolated session (or STELLA_BROWSER_SESSION env)
-  --executable-path <path>   Custom browser executable (or STELLA_BROWSER_EXECUTABLE_PATH)
-  --extension <path>         Load browser extensions (repeatable)
-  --args <args>              Browser launch args, comma or newline separated (or STELLA_BROWSER_ARGS)
-                             e.g., --args "--no-sandbox,--disable-blink-features=AutomationControlled"
-  --user-agent <ua>          Custom User-Agent (or STELLA_BROWSER_USER_AGENT)
-  --proxy <server>           Proxy server URL (or STELLA_BROWSER_PROXY)
-                             e.g., --proxy "http://user:pass@127.0.0.1:7890"
-  --proxy-bypass <hosts>     Bypass proxy for these hosts (or STELLA_BROWSER_PROXY_BYPASS)
-                             e.g., --proxy-bypass "localhost,*.internal.com"
-  --ignore-https-errors      Ignore HTTPS certificate errors
-  --allow-file-access        Allow file:// URLs to access local files (Chromium only)
-  -p, --provider <name>      Browser provider: ios, browserbase, kernel, browseruse, browserless
-  --device <name>            iOS device name (e.g., "iPhone 15 Pro")
   --json                     JSON output
   --full, -f                 Full page screenshot
   --annotate                 Annotated screenshot with numbered labels and legend
   --screenshot-dir <path>    Default screenshot output directory (or STELLA_BROWSER_SCREENSHOT_DIR)
   --screenshot-quality <n>   JPEG quality 0-100; ignored for PNG (or STELLA_BROWSER_SCREENSHOT_QUALITY)
   --screenshot-format <fmt>  Screenshot format: png, jpeg (or STELLA_BROWSER_SCREENSHOT_FORMAT)
-  --headed                   Show browser window (not headless) (or STELLA_BROWSER_HEADED env)
-  --cdp <port>               Connect via CDP (Chrome DevTools Protocol)
-  --color-scheme <scheme>    Color scheme: dark, light, no-preference (or STELLA_BROWSER_COLOR_SCHEME)
   --download-path <path>     Default download directory (or STELLA_BROWSER_DOWNLOAD_PATH)
   --content-boundaries       Wrap page output in boundary markers (or STELLA_BROWSER_CONTENT_BOUNDARIES)
   --max-output <chars>       Truncate page output to N chars (or STELLA_BROWSER_MAX_OUTPUT)
-  --allowed-domains <list>   Restrict navigation domains (or STELLA_BROWSER_ALLOWED_DOMAINS)
-  --action-policy <path>     Action policy JSON file (or STELLA_BROWSER_ACTION_POLICY)
-  --confirm-actions <list>   Categories requiring confirmation (or STELLA_BROWSER_CONFIRM_ACTIONS)
-  --confirm-interactive      Interactive confirmation prompts; auto-denies if stdin is not a TTY (or STELLA_BROWSER_CONFIRM_INTERACTIVE)
-  --engine <name>            Browser engine: chrome (default), lightpanda (or STELLA_BROWSER_ENGINE)
-  --config <path>            Use a custom config file (or STELLA_BROWSER_CONFIG env)
+  --headed                   Show browser window if supported
   --debug                    Debug output
   --version, -V              Show version
-
-Configuration:
-  stella-browser looks for stella-browser.json in these locations (lowest to highest priority):
-    1. ~/.stella-browser/config.json      User-level defaults
-    2. ./stella-browser.json              Project-level overrides
-    3. Environment variables             Override config file values
-    4. CLI flags                         Override everything
-
-  Use --config <path> to load a specific config file instead of the defaults.
-  If --config points to a missing or invalid file, stella-browser exits with an error.
-
-  Boolean flags accept an optional true/false value to override config:
-    --headed           (same as --headed true)
-    --headed false     (disables "headed": true from config)
-
-  Extensions from user and project configs are merged (not replaced).
-
-  Example stella-browser.json:
-    {{"headed": true, "proxy": "http://localhost:8080", "profile": "./browser-data"}}
-
-Environment:
-  STELLA_BROWSER_CONFIG           Path to config file (or use --config)
-  STELLA_BROWSER_SESSION          Session name (default: "default")
-  STELLA_BROWSER_SESSION_NAME     Auto-save/restore state persistence name
-  STELLA_BROWSER_ENCRYPTION_KEY   64-char hex key for AES-256-GCM state encryption
-  STELLA_BROWSER_STATE_EXPIRE_DAYS Auto-delete states older than N days (default: 30)
-  STELLA_BROWSER_EXECUTABLE_PATH  Custom browser executable path
-  STELLA_BROWSER_EXTENSIONS       Comma-separated browser extension paths
-  STELLA_BROWSER_HEADED           Show browser window (not headless)
-  STELLA_BROWSER_JSON             JSON output
-  STELLA_BROWSER_FULL             Full page screenshot
-  STELLA_BROWSER_ANNOTATE         Annotated screenshot with numbered labels and legend
-  STELLA_BROWSER_DEBUG            Debug output
-  STELLA_BROWSER_IGNORE_HTTPS_ERRORS Ignore HTTPS certificate errors
-  STELLA_BROWSER_PROVIDER         Browser provider (ios, browserbase, kernel, browseruse, browserless)
-  STELLA_BROWSER_AUTO_CONNECT     Auto-discover and connect to running Chrome
-  STELLA_BROWSER_ALLOW_FILE_ACCESS Allow file:// URLs to access local files
-  STELLA_BROWSER_COLOR_SCHEME     Color scheme preference (dark, light, no-preference)
-  STELLA_BROWSER_DOWNLOAD_PATH    Default download directory for browser downloads
-  STELLA_BROWSER_DEFAULT_TIMEOUT  Default action timeout in ms (default: 25000)
-  STELLA_BROWSER_SESSION_NAME     Auto-save/load state persistence name
-  STELLA_BROWSER_STATE_EXPIRE_DAYS Auto-delete saved states older than N days (default: 30)
-  STELLA_BROWSER_ENCRYPTION_KEY   64-char hex key for AES-256-GCM session encryption
-  STELLA_BROWSER_STREAM_PORT      Enable WebSocket streaming on port (e.g., 9223)
-  STELLA_BROWSER_IDLE_TIMEOUT_MS  Auto-shutdown daemon after N ms of inactivity (disabled by default)
-  STELLA_BROWSER_IOS_DEVICE       Default iOS device name
-  STELLA_BROWSER_IOS_UDID         Default iOS device UDID
-  STELLA_BROWSER_CONTENT_BOUNDARIES Wrap page output in boundary markers
-  STELLA_BROWSER_MAX_OUTPUT       Max characters for page output
-  STELLA_BROWSER_ALLOWED_DOMAINS  Comma-separated allowed domain patterns
-  STELLA_BROWSER_ACTION_POLICY    Path to action policy JSON file
-  STELLA_BROWSER_CONFIRM_ACTIONS  Action categories requiring confirmation
-  STELLA_BROWSER_CONFIRM_INTERACTIVE Enable interactive confirmation prompts
-  STELLA_BROWSER_ENGINE           Browser engine: chrome (default), lightpanda
-  STELLA_BROWSER_SCREENSHOT_DIR   Default screenshot output directory
-  STELLA_BROWSER_SCREENSHOT_QUALITY JPEG quality 0-100
-  STELLA_BROWSER_SCREENSHOT_FORMAT Screenshot format: png, jpeg
-
-Install:
-  npm install -g stella-browser           # npm
-  brew install stella-browser             # Homebrew
-  cargo install stella-browser            # Cargo
-  stella-browser install                  # Download Chrome (first time)
 
 Examples:
   stella-browser open example.com
   stella-browser snapshot -i              # Interactive elements only
   stella-browser click @e2                # Click by ref from snapshot
   stella-browser fill @e3 "test@example.com"
-  stella-browser find role button click --name Submit
   stella-browser get text @e1
   stella-browser screenshot --full
   stella-browser screenshot --annotate    # Labeled screenshot for vision models
   stella-browser wait --load networkidle  # Wait for slow pages to load
-  stella-browser --cdp 9222 snapshot      # Connect via CDP port
-  stella-browser --auto-connect snapshot  # Auto-discover running Chrome
-  stella-browser --color-scheme dark open example.com  # Dark mode
-  stella-browser --profile ~/.myapp open example.com    # Persistent profile
-  stella-browser --session-name myapp open example.com  # Auto-save/restore state
+  stella-browser tab new https://example.com
+  stella-browser network requests --filter "api"
+  stella-browser clipboard read
 
-Command Chaining:
-  Chain commands with && in a single shell call (browser persists via daemon):
+Notes:
+  - Stella reuses one shared tab group in the user's browser across tasks.
+  - Logged-in sites reuse the browser's existing auth state automatically.
+  - Re-run snapshot after navigation or major DOM changes so refs stay valid.
 
-  stella-browser open example.com && stella-browser wait --load networkidle && stella-browser snapshot -i
-  stella-browser fill @e1 "user@example.com" && stella-browser fill @e2 "pass" && stella-browser click @e3
-  stella-browser open example.com && stella-browser wait --load networkidle && stella-browser screenshot page.png
-
-iOS Simulator (requires Xcode and Appium):
-  stella-browser -p ios open example.com                    # Use default iPhone
-  stella-browser -p ios --device "iPhone 15 Pro" open url   # Specific device
-  stella-browser -p ios device list                         # List simulators
-  stella-browser -p ios swipe up                            # Swipe gesture
-  stella-browser -p ios tap @e1                             # Touch element
 "#
     );
 }
