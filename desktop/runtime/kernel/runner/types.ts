@@ -46,6 +46,8 @@ import type { LocalChatAppendEventArgs } from "../storage/shared.js";
 export type StellaHostRunnerOptions = {
   deviceId: string;
   stellaRoot: string;
+  /** When false, remote-turn subscriptions and heartbeat stay in Electron host. */
+  enableRemoteTurnBridge?: boolean;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaUiCliPath?: string;

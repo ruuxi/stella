@@ -115,8 +115,7 @@ const shouldKeepWorkerAlive = (health: WorkerHealthSnapshot) => {
     health.activeRun ||
     health.activeTaskCount > 0 ||
     socialPinned ||
-    voicePinned ||
-    health.remoteBridgeActive,
+    voicePinned,
   );
 };
 
