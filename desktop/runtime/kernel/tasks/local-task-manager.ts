@@ -10,6 +10,7 @@ import type {
 import { truncate } from "../tools/utils.js";
 import type { PersistedTaskRecord } from "../storage/runtime-store.js";
 import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
+import type { RuntimeThreadRecord } from "../runtime-threads.js";
 
 export type LocalTaskManagerAgentContext = {
   systemPrompt: string;
@@ -165,6 +166,7 @@ type LocalTaskManagerOpts = {
   cancelCloudTaskRecord: (taskId: string, reason?: string) => Promise<{ canceled: boolean }>;
   saveTaskRecord?: (record: PersistedTaskRecord) => void;
   getTaskRecord?: (threadId: string) => PersistedTaskRecord | null;
+  listActiveThreads?: (conversationId: string) => RuntimeThreadRecord[];
 };
 
 const normalizeString = (value: unknown): string | undefined => {
@@ -671,7 +673,10 @@ export class LocalTaskManager implements TaskToolApi {
     }
   }
 
-  async createTask(request: TaskToolRequest): Promise<{ threadId: string }> {
+  async createTask(request: TaskToolRequest): Promise<{
+    threadId: string;
+    activeThreads?: RuntimeThreadRecord[];
+  }> {
     const controller = new AbortController();
     const initialToolsAllowlist = await this.buildInitialToolsAllowlist(request);
     const resolvedThread = this.opts.resolveTaskThread?.({
@@ -739,6 +744,7 @@ export class LocalTaskManager implements TaskToolApi {
     this.enqueueTask(task);
     return {
       threadId: task.id,
+      activeThreads: this.opts.listActiveThreads?.(request.conversationId),
     };
   }
 

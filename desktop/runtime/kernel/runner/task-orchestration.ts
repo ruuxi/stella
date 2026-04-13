@@ -259,6 +259,8 @@ export const createTaskOrchestration = (
         threadId,
       });
     },
+    listActiveThreads: (conversationId) =>
+      context.runtimeStore.listActiveThreads(conversationId),
     onTaskEvent: (event) => {
       appendTaskLifecycleChatEvent(context, event);
       context.state.conversationCallbacks

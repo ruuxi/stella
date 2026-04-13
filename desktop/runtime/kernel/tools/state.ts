@@ -9,6 +9,7 @@ import type {
   TaskToolApi,
   TaskToolSnapshot,
 } from "./types.js";
+import type { RuntimeThreadRecord } from "../runtime-threads.js";
 import { truncate } from "./utils.js";
 import { AGENT_IDS } from "../../../src/shared/contracts/agent-runtime.js";
 
@@ -23,6 +24,17 @@ const toOptionalString = (value: unknown): string | undefined => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 };
+
+const buildOtherThreadsResult = (
+  threads: Array<Pick<RuntimeThreadRecord, "threadId" | "description">>,
+  currentThreadId: string,
+) =>
+  threads
+    .filter((thread) => thread.threadId !== currentThreadId)
+    .map((thread) => ({
+      thread_id: thread.threadId,
+      ...(thread.description ? { description: thread.description } : {}),
+    }));
 
 const buildTaskSnapshotResult = (snapshot: TaskToolSnapshot) => {
   const duration = (snapshot.completedAt ?? Date.now()) - snapshot.startedAt;
@@ -152,11 +164,6 @@ export const handleTask = async (
     };
   }
 
-  const description = toOptionalString(args.description) ?? "Task";
-  const prompt =
-    toOptionalString(args.prompt) ??
-    toOptionalString(args.command) ??
-    description;
   const agentType = AGENT_IDS.GENERAL;
   const parentTaskId =
     toOptionalString(args.parentTaskId ?? args.parent_task_id) ??
@@ -179,6 +186,15 @@ export const handleTask = async (
     };
   }
 
+  const description = toOptionalString(args.description);
+  if (!description) {
+    return { error: "description is required" };
+  }
+  const prompt = toOptionalString(args.prompt);
+  if (!prompt) {
+    return { error: "prompt is required" };
+  }
+
   if (ctx.taskApi) {
     const created = await ctx.taskApi.createTask({
       conversationId: context.conversationId,
@@ -191,13 +207,16 @@ export const handleTask = async (
       parentTaskId,
       storageMode,
     });
+    const otherThreads = created.activeThreads
+      ? buildOtherThreadsResult(created.activeThreads, created.threadId)
+      : [];
     return {
       result: {
         thread_id: created.threadId,
-        status: "running",
-        background: true,
-        elapsed_ms: 0,
+        created: true,
+        running_in_background: true,
         follow_up_on_completion: true,
+        ...(otherThreads.length > 0 ? { other_threads: otherThreads } : {}),
       },
     };
   }
@@ -212,13 +231,18 @@ export const handleTask = async (
     completedAt: null,
   };
   ctx.tasks.set(id, record);
+  const activeThreads = [...ctx.tasks.values()].slice(-16).map((task) => ({
+    threadId: task.id,
+    description: task.description,
+  }));
+  const otherThreads = buildOtherThreadsResult(activeThreads, id);
   return {
     result: {
       thread_id: id,
-      status: "running",
-      background: true,
-      elapsed_ms: 0,
+      created: true,
+      running_in_background: true,
       follow_up_on_completion: true,
+      ...(otherThreads.length > 0 ? { other_threads: otherThreads } : {}),
     },
   };
 };

@@ -10,7 +10,6 @@ import type {
   UserMessage,
 } from "../../ai/types.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
-import { estimateRuntimeTokens } from "../runtime-threads.js";
 import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
 import { createRuntimeLogger } from "../debug.js";
@@ -405,14 +404,6 @@ export const updateOrchestratorReminderState = (
     updateCounter.call(store, {
       conversationId: args.conversationId,
       resetTo: 0,
-    });
-    return;
-  }
-  const outputTokens = estimateRuntimeTokens(args.finalText);
-  if (outputTokens > 0) {
-    updateCounter.call(store, {
-      conversationId: args.conversationId,
-      incrementBy: outputTokens,
     });
   }
 };

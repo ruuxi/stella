@@ -9,6 +9,7 @@ import type {
   LocalHeartbeatConfigRecord,
   LocalHeartbeatUpsertInput,
 } from "../shared/scheduling.js";
+import type { RuntimeThreadRecord } from "../runtime-threads.js";
 
 export type ToolContext = {
   conversationId: string;
@@ -101,7 +102,10 @@ export type TaskToolSnapshot = {
 };
 
 export type TaskToolApi = {
-  createTask: (request: TaskToolRequest) => Promise<{ threadId: string }>;
+  createTask: (request: TaskToolRequest) => Promise<{
+    threadId: string;
+    activeThreads?: RuntimeThreadRecord[];
+  }>;
   getTask: (threadId: string) => Promise<TaskToolSnapshot | null>;
   cancelTask: (threadId: string, reason?: string) => Promise<{ canceled: boolean }>;
   sendTaskMessage?: (

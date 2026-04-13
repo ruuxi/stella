@@ -1,6 +1,5 @@
 import {
   MAX_ACTIVE_RUNTIME_THREADS,
-  RUNTIME_THREAD_REMINDER_INTERVAL_TOKENS,
   type RuntimeThreadRecord,
   normalizeRuntimeThreadId,
 } from "../runtime-threads.js";
@@ -428,19 +427,23 @@ export class RuntimeStore {
   private deserializeRuntimeThread(row: {
     threadId: string;
     conversationId: string;
+    name: string;
     agentType: string;
     status: "active" | "evicted";
     createdAt: number;
     lastUsedAt: number;
+    description: string | null;
     summary: string | null;
   }): RuntimeThreadRecord {
     return {
       threadId: row.threadId,
       conversationId: row.conversationId,
+      name: row.name,
       agentType: row.agentType,
       status: row.status,
       createdAt: row.createdAt,
       lastUsedAt: row.lastUsedAt,
+      ...(row.description ? { description: row.description } : {}),
       ...(row.summary ? { summary: row.summary } : {}),
     };
   }
@@ -450,23 +453,29 @@ export class RuntimeStore {
       SELECT
         thread_key AS threadId,
         conversation_id AS conversationId,
+        name,
         agent_type AS agentType,
-        status,
+        runtime_threads.status AS status,
         created_at AS createdAt,
         last_used_at AS lastUsedAt,
-        summary
+        runtime_threads.summary AS summary,
+        runtime_tasks.description AS description
       FROM runtime_threads
-      WHERE conversation_id = ?
-        AND status = 'active'
-      ORDER BY last_used_at DESC
+      LEFT JOIN runtime_tasks
+        ON runtime_tasks.thread_id = runtime_threads.thread_key
+      WHERE runtime_threads.conversation_id = ?
+        AND runtime_threads.status = 'active'
+      ORDER BY runtime_threads.last_used_at DESC
       LIMIT ?
     `).all(conversationId, MAX_ACTIVE_RUNTIME_THREADS) as Array<{
       threadId: string;
       conversationId: string;
+      name: string;
       agentType: string;
       status: "active" | "evicted";
       createdAt: number;
       lastUsedAt: number;
+      description: string | null;
       summary: string | null;
     }>;
     return rows.map((row) => this.deserializeRuntimeThread(row));
@@ -586,7 +595,6 @@ export class RuntimeStore {
       now,
       now,
     );
-    this.forceOrchestratorReminderOnNextTurn(args.conversationId);
     return {
       threadId,
       reused: false,
@@ -650,12 +658,12 @@ export class RuntimeStore {
 
   getThreadName(threadKey: string): string | undefined {
     const row = this.db.prepare(`
-      SELECT thread_key AS threadId
+      SELECT name
       FROM runtime_threads
       WHERE thread_key = ?
       LIMIT 1
-    `).get(threadKey) as { threadId?: unknown } | undefined;
-    return typeof row?.threadId === "string" && row.threadId.length > 0 ? row.threadId : undefined;
+    `).get(threadKey) as { name?: unknown } | undefined;
+    return typeof row?.name === "string" && row.name.length > 0 ? row.name : undefined;
   }
 
   saveTaskRecord(record: PersistedTaskRecord): void {
@@ -815,8 +823,7 @@ export class RuntimeStore {
       : 0;
     const shouldInjectDynamicReminder =
       row?.forceReminderOnNextTurn === 1
-      || row?.reminderTokensSinceLastInjection == null
-      || current >= RUNTIME_THREAD_REMINDER_INTERVAL_TOKENS;
+      || row?.reminderTokensSinceLastInjection == null;
     return {
       shouldInjectDynamicReminder,
       reminderTokensSinceLastInjection: current,
