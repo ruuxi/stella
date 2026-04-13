@@ -349,6 +349,20 @@ function mapStopReason(stopReason: string): "stop" | "length" | "tool_calls" {
   }
 }
 
+function assistantReasoningContent(
+  message: Awaited<ReturnType<typeof completeManagedChat>>,
+): string | null {
+  const reasoning = message.content
+    .filter(
+      (part): part is { type: "thinking"; thinking: string } =>
+        part.type === "thinking" && typeof part.thinking === "string",
+    )
+    .map((part) => part.thinking)
+    .join("\n")
+    .trim();
+  return reasoning.length > 0 ? reasoning : null;
+}
+
 function buildChatCompletionResponse(args: {
   id: string;
   created: number;
@@ -356,6 +370,7 @@ function buildChatCompletionResponse(args: {
   message: Awaited<ReturnType<typeof completeManagedChat>>;
 }) {
   const text = assistantText(args.message);
+  const reasoningContent = assistantReasoningContent(args.message);
   const toolCalls = args.message.content
     .filter((part): part is { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> } =>
       part.type === "toolCall")
@@ -381,6 +396,7 @@ function buildChatCompletionResponse(args: {
       message: {
         role: "assistant",
         content: text || null,
+        ...(reasoningContent ? { reasoning_content: reasoningContent } : {}),
         ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
       },
       finish_reason: mapStopReason(args.message.stopReason),

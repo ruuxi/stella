@@ -6,6 +6,7 @@ import type {
   SimpleStreamOptions,
   TextContent,
   ThinkingLevel,
+  ToolCall,
 } from "../ai/types.js";
 import {
   extractChatText,
@@ -15,6 +16,7 @@ import {
   STELLA_MODELS_PATH,
   type ChatCompletionResponse,
   type ChatMessage,
+  type ChatToolCall,
 } from "../../src/shared/stella-api.js";
 
 function readAssistantText(message: AssistantMessage): string {
@@ -51,6 +53,7 @@ const toSimpleOptions = (
 ): SimpleStreamOptions => {
   const maxTokensValue = body?.max_completion_tokens ?? body?.max_tokens;
   const reasoningValue = body?.reasoning_effort;
+  const thinkingValue = body?.thinking;
   return {
     maxTokens: typeof maxTokensValue === "number" ? maxTokensValue : undefined,
     temperature: typeof body?.temperature === "number" ? body.temperature : undefined,
@@ -58,6 +61,19 @@ const toSimpleOptions = (
       reasoningValue === "minimal" || reasoningValue === "low" || reasoningValue === "medium" || reasoningValue === "high" || reasoningValue === "xhigh"
         ? reasoningValue as ThinkingLevel
         : undefined,
+    ...(thinkingValue !== undefined
+      ? {
+          onPayload: (payload: unknown) => {
+            if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+              return undefined;
+            }
+            return {
+              ...(payload as Record<string, unknown>),
+              thinking: thinkingValue,
+            };
+          },
+        }
+      : {}),
   };
 };
 
@@ -65,6 +81,9 @@ const toTextBlocks = (content: ChatMessage["content"]): TextContent[] => {
   if (typeof content === "string") {
     const text = content.trim();
     return text ? [{ type: "text", text }] : [];
+  }
+  if (!Array.isArray(content)) {
+    return [];
   }
   return content
     .filter(
@@ -78,6 +97,58 @@ const toTextBlocks = (content: ChatMessage["content"]): TextContent[] => {
     .filter((part) => part.text.length > 0);
 };
 
+const reasoningFields = [
+  "reasoning_content",
+  "reasoning",
+  "reasoning_text",
+] as const;
+
+const toReasoningBlocks = (
+  message: ChatMessage,
+): AssistantMessage["content"] => {
+  for (const field of reasoningFields) {
+    const value = message[field];
+    if (typeof value !== "string" || value.trim().length === 0) {
+      continue;
+    }
+    return [{
+      type: "thinking",
+      thinking: value.trim(),
+      thinkingSignature: field,
+    }];
+  }
+  return [];
+};
+
+const toToolCalls = (toolCalls: ChatToolCall[] | undefined): ToolCall[] =>
+  (toolCalls ?? []).flatMap((toolCall) => {
+    const id = typeof toolCall.id === "string" ? toolCall.id : "";
+    const name = typeof toolCall.function?.name === "string"
+      ? toolCall.function.name
+      : "";
+    const rawArguments = typeof toolCall.function?.arguments === "string"
+      ? toolCall.function.arguments
+      : "{}";
+    if (!id || !name) {
+      return [];
+    }
+    try {
+      return [{
+        type: "toolCall" as const,
+        id,
+        name,
+        arguments: JSON.parse(rawArguments) as Record<string, unknown>,
+      }];
+    } catch {
+      return [{
+        type: "toolCall" as const,
+        id,
+        name,
+        arguments: {},
+      }];
+    }
+  });
+
 const emptyUsage = (): AssistantMessage["usage"] => ({
   input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
@@ -86,6 +157,7 @@ const emptyUsage = (): AssistantMessage["usage"] => ({
 export function buildStellaChatContext(messages: ChatMessage[]): Context {
   const systemParts: string[] = [];
   const llmMessages: Context["messages"] = [];
+  const toolNameById = new Map<string, string>();
 
   for (const message of messages) {
     const blocks = toTextBlocks(message.content);
@@ -94,18 +166,48 @@ export function buildStellaChatContext(messages: ChatMessage[]): Context {
       if (text) systemParts.push(text);
       continue;
     }
-    if (blocks.length === 0) continue;
 
     if (message.role === "user") {
+      if (blocks.length === 0) continue;
       llmMessages.push({ role: "user", content: blocks, timestamp: Date.now() });
       continue;
     }
 
+    if (message.role === "tool" && typeof message.tool_call_id === "string") {
+      llmMessages.push({
+        role: "toolResult",
+        toolCallId: message.tool_call_id,
+        toolName:
+          typeof message.name === "string" && message.name.trim().length > 0
+            ? message.name
+            : (toolNameById.get(message.tool_call_id) ?? ""),
+        content: blocks.length > 0 ? blocks : [{ type: "text", text: "" }],
+        isError: false,
+        timestamp: Date.now(),
+      });
+      continue;
+    }
+
+    if (message.role !== "assistant") {
+      continue;
+    }
+
+    const toolCalls = toToolCalls(message.tool_calls);
+    for (const toolCall of toolCalls) {
+      toolNameById.set(toolCall.id, toolCall.name);
+    }
+    const content = [
+      ...toReasoningBlocks(message),
+      ...blocks,
+      ...toolCalls,
+    ];
+    if (content.length === 0) continue;
+
     llmMessages.push({
       role: "assistant",
-      content: blocks,
+      content,
       timestamp: Date.now(),
-      stopReason: "stop",
+      stopReason: toolCalls.length > 0 ? "toolUse" : "stop",
       usage: emptyUsage(),
       api: "openai-completions",
       provider: "stella",
@@ -181,12 +283,47 @@ const ensureSuccess = (message: AssistantMessage): AssistantMessage => {
   return message;
 };
 
-const messageToResponse = (message: AssistantMessage): ChatCompletionResponse => ({
+const readAssistantReasoning = (message: AssistantMessage): string | undefined => {
+  const reasoning = message.content
+    .filter(
+      (part): part is Extract<AssistantMessage["content"][number], { type: "thinking" }> =>
+        part.type === "thinking",
+    )
+    .map((part) => part.thinking)
+    .join("\n")
+    .trim();
+  return reasoning.length > 0 ? reasoning : undefined;
+};
+
+const messageToResponse = (message: AssistantMessage): ChatCompletionResponse => {
+  const reasoningContent = readAssistantReasoning(message);
+  return ({
   choices: [{
     message: {
+      role: "assistant",
       content: message.content
         .filter((part): part is { type: "text"; text: string } => part.type === "text")
         .map((part) => ({ type: "text", text: part.text })),
+      ...(reasoningContent
+        ? { reasoning_content: reasoningContent }
+        : {}),
+      ...(message.content.some((part) => part.type === "toolCall")
+        ? {
+            tool_calls: message.content
+              .filter(
+                (part): part is Extract<AssistantMessage["content"][number], { type: "toolCall" }> =>
+                  part.type === "toolCall",
+              )
+              .map((part) => ({
+                id: part.id,
+                type: "function" as const,
+                function: {
+                  name: part.name,
+                  arguments: JSON.stringify(part.arguments),
+                },
+              })),
+          }
+        : {}),
     },
   }],
   usage: {
@@ -195,7 +332,8 @@ const messageToResponse = (message: AssistantMessage): ChatCompletionResponse =>
     output_tokens: message.usage.output,
     completion_tokens: message.usage.output,
   },
-});
+  });
+};
 
 export async function callStellaChatCompletion<TResponse = ChatCompletionResponse>(args: {
   transport: StellaTransport;

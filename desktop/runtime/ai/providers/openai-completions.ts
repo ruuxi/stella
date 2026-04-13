@@ -703,12 +703,19 @@ export function convertMessages<TApi extends Api>(
 					.join("\n");
 				const hasImages = toolMsg.content.some((c) => c.type === "image");
 
-				// Always send tool result with text (or placeholder if only images)
+				// Always send tool result with text. Only mention an attached image when
+				// the tool result actually contains image content.
 				const hasText = textResult.length > 0;
 				// Some providers (e.g. Mistral) require the 'name' field in tool results
 				const toolResultMsg: ToolResultMessageWithName = {
 					role: "tool",
-					content: sanitizeSurrogates(hasText ? textResult : "(see attached image)"),
+					content: sanitizeSurrogates(
+						hasText
+							? textResult
+							: hasImages
+								? "(see attached image)"
+								: "(tool completed with no text output)",
+					),
 					tool_call_id: toolMsg.toolCallId,
 				};
 				if (compat.requiresToolResultName && toolMsg.toolName) {
