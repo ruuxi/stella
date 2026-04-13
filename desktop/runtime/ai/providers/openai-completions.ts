@@ -33,6 +33,7 @@ import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.js";
 import { buildBaseOptions, clampReasoning } from "./simple-options.js";
 import { transformMessages } from "./transform-messages.js";
+import { retryWithBackoff } from "../utils/retry.js";
 
 /**
  * Normalize tool call ID for Mistral.
@@ -136,7 +137,10 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 			if (nextParams !== undefined) {
 				params = nextParams as typeof params;
 			}
-			const openaiStream = await client.chat.completions.create(params, { signal: options?.signal });
+			const openaiStream = await retryWithBackoff(
+				() => client.chat.completions.create(params, { signal: options?.signal }),
+				{ signal: options?.signal },
+			);
 			stream.push({ type: "start", partial: output });
 
 			let currentBlock: TextContent | ThinkingContent | (ToolCall & { partialArgs?: string }) | null = null;
@@ -430,6 +434,7 @@ function createClient(
 		baseURL: model.baseUrl,
 		dangerouslyAllowBrowser: true,
 		defaultHeaders: headers,
+		maxRetries: 0,
 	});
 }
 
