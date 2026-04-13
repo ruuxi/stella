@@ -821,9 +821,7 @@ export class RuntimeStore {
     const current = typeof row?.reminderTokensSinceLastInjection === "number"
       ? Math.max(0, Math.floor(row.reminderTokensSinceLastInjection))
       : 0;
-    const shouldInjectDynamicReminder =
-      row?.forceReminderOnNextTurn === 1
-      || row?.reminderTokensSinceLastInjection == null;
+    const shouldInjectDynamicReminder = row?.forceReminderOnNextTurn === 1;
     return {
       shouldInjectDynamicReminder,
       reminderTokensSinceLastInjection: current,

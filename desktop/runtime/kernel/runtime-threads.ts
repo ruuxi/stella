@@ -22,7 +22,7 @@ export const estimateRuntimeTokens = (value: string): number => {
   return trimmed.length > 0 ? Math.max(1, Math.ceil(trimmed.length / 4)) : 0;
 };
 
-const formatAge = (timestamp: number, now: number): string => {
+export const formatRuntimeThreadAge = (timestamp: number, now = Date.now()): string => {
   const ageMs = Math.max(0, now - timestamp);
   if (ageMs < 60_000) return "just now";
   if (ageMs < 3_600_000) return `${Math.floor(ageMs / 60_000)}m ago`;
@@ -43,7 +43,7 @@ export const buildActiveThreadsPrompt = (
   const lines = threads.slice(0, MAX_ACTIVE_RUNTIME_THREADS).map((thread) => {
     const summary = formatPromptValue(thread.summary, "");
     return [
-      `- ${thread.threadId} (resumable, last used ${formatAge(thread.lastUsedAt, now)})`,
+      `- ${thread.threadId} (resumable, last used ${formatRuntimeThreadAge(thread.lastUsedAt, now)})`,
       `  description: ${formatPromptValue(thread.description, "No description recorded")}`,
       ...(summary ? [`  summary: ${summary}`] : []),
     ].join("\n");

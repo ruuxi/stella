@@ -5,6 +5,7 @@ import type { TaskToolRequest } from "../../../../runtime/kernel/tools/types.js"
 
 describe("state tools", () => {
   it("always creates general tasks from orchestrator requests", async () => {
+    const now = Date.now();
     let createdRequest: TaskToolRequest | null = null;
     const ctx = createStateContext("/tmp", {
       createTask: async (request) => {
@@ -19,7 +20,7 @@ describe("state tools", () => {
               agentType: AGENT_IDS.GENERAL,
               status: "active",
               createdAt: 1,
-              lastUsedAt: 1,
+              lastUsedAt: now,
               description: "Do work",
             },
             {
@@ -29,7 +30,7 @@ describe("state tools", () => {
               agentType: AGENT_IDS.GENERAL,
               status: "active",
               createdAt: 1,
-              lastUsedAt: 1,
+              lastUsedAt: now,
               description: "Previous task",
             },
           ],
@@ -64,6 +65,8 @@ describe("state tools", () => {
         other_threads: [
           {
             thread_id: "thread-0",
+            availability: "resumable",
+            last_used: "just now",
             description: "Previous task",
           },
         ],

@@ -9,7 +9,10 @@ import type {
   TaskToolApi,
   TaskToolSnapshot,
 } from "./types.js";
-import type { RuntimeThreadRecord } from "../runtime-threads.js";
+import {
+  formatRuntimeThreadAge,
+  type RuntimeThreadRecord,
+} from "../runtime-threads.js";
 import { truncate } from "./utils.js";
 import { AGENT_IDS } from "../../../src/shared/contracts/agent-runtime.js";
 
@@ -26,13 +29,15 @@ const toOptionalString = (value: unknown): string | undefined => {
 };
 
 const buildOtherThreadsResult = (
-  threads: Array<Pick<RuntimeThreadRecord, "threadId" | "description">>,
+  threads: Array<Pick<RuntimeThreadRecord, "threadId" | "description" | "lastUsedAt">>,
   currentThreadId: string,
 ) =>
   threads
     .filter((thread) => thread.threadId !== currentThreadId)
     .map((thread) => ({
       thread_id: thread.threadId,
+      availability: "resumable",
+      last_used: formatRuntimeThreadAge(thread.lastUsedAt),
       ...(thread.description ? { description: thread.description } : {}),
     }));
 
@@ -234,6 +239,7 @@ export const handleTask = async (
   const activeThreads = [...ctx.tasks.values()].slice(-16).map((task) => ({
     threadId: task.id,
     description: task.description,
+    lastUsedAt: task.completedAt ?? task.startedAt,
   }));
   const otherThreads = buildOtherThreadsResult(activeThreads, id);
   return {
