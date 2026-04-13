@@ -452,9 +452,9 @@ export class RuntimeStore {
     const rows = this.db.prepare(`
       SELECT
         thread_key AS threadId,
-        conversation_id AS conversationId,
+        runtime_threads.conversation_id AS conversationId,
         name,
-        agent_type AS agentType,
+        runtime_threads.agent_type AS agentType,
         runtime_threads.status AS status,
         created_at AS createdAt,
         last_used_at AS lastUsedAt,
