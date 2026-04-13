@@ -1,4 +1,4 @@
-import { memo, useRef } from "react";
+import { memo, useRef, useState, useEffect } from "react";
 import type { Attachment, ChannelEnvelope } from "@/app/chat/lib/event-transforms";
 import { Markdown } from "@/app/chat/Markdown";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
@@ -12,6 +12,7 @@ import {
 } from "@/app/chat/lib/event-transforms";
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
+import { GrowIn } from "@/app/chat/GrowIn";
 
 export type TurnViewModel = {
   id: string;
@@ -314,6 +315,47 @@ export const TurnItem = memo(function TurnItem({
     hasWebSearchBadge ||
     hasOfficePreview ||
     shouldShowStreamingAssistant;
+
+  const MIN_DISPLAY_HOLD_MS = 3000;
+  const shownSinceRef = useRef<number>(0);
+  const [visibleMessageId, setVisibleMessageId] = useState<string | null>(
+    turn.assistantMessageId,
+  );
+  const hadPreviousMessageRef = useRef(false);
+
+  const currentAssistantMessageId = turn.assistantMessageId;
+
+  useEffect(() => {
+    if (!currentAssistantMessageId) return;
+
+    if (visibleMessageId === null) {
+      shownSinceRef.current = Date.now();
+      setVisibleMessageId(currentAssistantMessageId);
+      return;
+    }
+
+    if (currentAssistantMessageId === visibleMessageId) return;
+
+    hadPreviousMessageRef.current = true;
+    const elapsed = Date.now() - shownSinceRef.current;
+    const holdRemaining = Math.max(0, MIN_DISPLAY_HOLD_MS - elapsed);
+
+    const commit = () => {
+      shownSinceRef.current = Date.now();
+      setVisibleMessageId(currentAssistantMessageId);
+    };
+
+    if (holdRemaining <= 0) {
+      commit();
+      return;
+    }
+
+    const timer = window.setTimeout(commit, holdRemaining);
+    return () => window.clearTimeout(timer);
+  }, [currentAssistantMessageId, visibleMessageId]);
+
+  const animateReplacement = hadPreviousMessageRef.current;
+
   const assistantDisplayText = hasAssistantContent
     ? assistantText
     : (streaming?.streamingText ?? "");
@@ -419,41 +461,47 @@ export const TurnItem = memo(function TurnItem({
 
       {/* Assistant / Streaming assistant */}
       {shouldShowAssistantArea && (
-        <div
-          className={`event-item assistant${shouldShowStreamingAssistant ? " streaming" : ""}`}
+        <GrowIn
+          key={animateReplacement ? `replace-${visibleMessageId}` : turn.id}
+          animate={animateReplacement || showEntrance}
+          duration={animateReplacement ? 400 : 500}
         >
-          {shouldShowStreamingAssistant && streaming && (
-            <>
-              {hasReasoningContent && streaming.reasoningText && (
-                <ReasoningSection
-                  content={streaming.reasoningText}
-                  isStreaming={Boolean(
-                    streaming.isStreaming && !hasStreamingContent,
-                  )}
-                />
-              )}
-            </>
-          )}
+          <div
+            className={`event-item assistant${shouldShowStreamingAssistant ? " streaming" : ""}`}
+          >
+            {shouldShowStreamingAssistant && streaming && (
+              <>
+                {hasReasoningContent && streaming.reasoningText && (
+                  <ReasoningSection
+                    content={streaming.reasoningText}
+                    isStreaming={Boolean(
+                      streaming.isStreaming && !hasStreamingContent,
+                    )}
+                  />
+                )}
+              </>
+            )}
 
-          {hasWebSearchBadge && renderWebSearchBadge(webSearchBadgeHtml)}
+            {hasWebSearchBadge && renderWebSearchBadge(webSearchBadgeHtml)}
 
-          {assistantDisplayText.trim().length > 0 && (
-            <Markdown
-              text={assistantDisplayText}
-              cacheKey={assistantCacheKey}
-              isAnimating={
-                shouldShowStreamingAssistant && streaming?.isStreaming
-              }
-              enableEmotes={assistantEnableEmotes}
-            />
-          )}
+            {assistantDisplayText.trim().length > 0 && (
+              <Markdown
+                text={assistantDisplayText}
+                cacheKey={assistantCacheKey}
+                isAnimating={
+                  shouldShowStreamingAssistant && streaming?.isStreaming
+                }
+                enableEmotes={assistantEnableEmotes}
+              />
+            )}
 
-          {officePreviewRef && <OfficePreviewCard previewRef={officePreviewRef} />}
+            {officePreviewRef && <OfficePreviewCard previewRef={officePreviewRef} />}
 
-          {turn.selfModApplied && !shouldShowStreamingAssistant && (
-            <SelfModUndoButton selfModApplied={turn.selfModApplied} />
-          )}
-        </div>
+            {turn.selfModApplied && !shouldShowStreamingAssistant && (
+              <SelfModUndoButton selfModApplied={turn.selfModApplied} />
+            )}
+          </div>
+        </GrowIn>
       )}
 
     </div>
