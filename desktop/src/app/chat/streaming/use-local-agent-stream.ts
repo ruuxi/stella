@@ -542,12 +542,27 @@ export function useLocalAgentStream({
           break;
         }
         case AGENT_STREAM_EVENT_TYPES.STREAM: {
+          const isReactivation =
+            !isPrimaryRun &&
+            isOrchestratorEvent &&
+            terminalRunIdsRef.current.has(event.runId);
+          if (isReactivation) {
+            terminalRunIdsRef.current.delete(event.runId);
+            dispatch({
+              type: "run-started",
+              runId: event.runId,
+              conversationId,
+              requestId: event.requestId,
+            });
+            resetStreamingText();
+            resetReasoningText();
+          }
           dispatch({
             type: "run-status",
             runId: event.runId,
             statusText: null,
           });
-          if (isPrimaryRun && isOrchestratorEvent && event.chunk) {
+          if ((isPrimaryRun || isReactivation) && isOrchestratorEvent && event.chunk) {
             appendStreamingDelta(event.chunk);
           }
           break;

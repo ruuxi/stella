@@ -568,6 +568,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     const hiddenSystemRunIds = new Set<string>();
     const pendingHiddenSystemNotificationTitles: string[] = [];
     const hiddenSystemNotificationTitleByRunId = new Map<string, string>();
+    let lastVisibleRunId = "";
+    let lastVisibleRequestId = requestId;
     const mergedAttachments = [
       ...(payload.attachments ?? []),
       ...(windowScreenshotAttachment ? [windowScreenshotAttachment] : []),
@@ -604,6 +606,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           }
           return;
         }
+        lastVisibleRunId = ev.runId;
+        lastVisibleRequestId = requestId;
         emitRunEvent({
           ...ev,
           type: AGENT_STREAM_EVENT_TYPES.RUN_STARTED,
@@ -638,6 +642,15 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       },
       onStream: (ev) => {
         if (hiddenSystemRunIds.has(ev.runId)) {
+          if (lastVisibleRunId) {
+            emitRunEvent({
+              ...ev,
+              runId: lastVisibleRunId,
+              type: AGENT_STREAM_EVENT_TYPES.STREAM,
+              conversationId: payload.conversationId,
+              ...(lastVisibleRequestId ? { requestId: lastVisibleRequestId } : {}),
+            });
+          }
           return;
         }
         emitRunEvent({
@@ -649,6 +662,15 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       },
       onStatus: (ev) => {
         if (hiddenSystemRunIds.has(ev.runId)) {
+          if (lastVisibleRunId) {
+            emitRunEvent({
+              ...ev,
+              runId: lastVisibleRunId,
+              type: AGENT_STREAM_EVENT_TYPES.STATUS,
+              conversationId: payload.conversationId,
+              ...(lastVisibleRequestId ? { requestId: lastVisibleRequestId } : {}),
+            });
+          }
           return;
         }
         emitRunEvent({
@@ -713,6 +735,18 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         hiddenSystemRunIds.delete(ev.runId);
         hiddenSystemNotificationTitleByRunId.delete(ev.runId);
         if (isHiddenRun) {
+          if (lastVisibleRunId) {
+            emitRunEvent({
+              ...ev,
+              runId: lastVisibleRunId,
+              type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+              outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
+              reason: ev.error,
+              conversationId: payload.conversationId,
+              ...(lastVisibleRequestId ? { requestId: lastVisibleRequestId } : {}),
+              rootRunId: lastVisibleRunId,
+            });
+          }
           return;
         }
         emitRunEvent({
@@ -787,6 +821,17 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           }
         }
         if (isHiddenRun) {
+          if (lastVisibleRunId) {
+            emitRunEvent({
+              ...ev,
+              runId: lastVisibleRunId,
+              type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+              outcome: AGENT_RUN_FINISH_OUTCOMES.COMPLETED,
+              conversationId: payload.conversationId,
+              ...(lastVisibleRequestId ? { requestId: lastVisibleRequestId } : {}),
+              rootRunId: lastVisibleRunId,
+            });
+          }
           return;
         }
         emitRunEvent({
@@ -803,6 +848,19 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         hiddenSystemRunIds.delete(ev.runId);
         hiddenSystemNotificationTitleByRunId.delete(ev.runId);
         if (isHiddenRun) {
+          if (lastVisibleRunId) {
+            emitRunEvent({
+              type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+              runId: lastVisibleRunId,
+              seq: Number.MAX_SAFE_INTEGER,
+              conversationId: payload.conversationId,
+              ...(lastVisibleRequestId ? { requestId: lastVisibleRequestId } : {}),
+              agentType: ev.agentType,
+              outcome: AGENT_RUN_FINISH_OUTCOMES.CANCELED,
+              reason: ev.reason,
+              rootRunId: lastVisibleRunId,
+            });
+          }
           return;
         }
         emitRunEvent({
