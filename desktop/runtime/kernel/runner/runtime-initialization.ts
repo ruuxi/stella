@@ -12,7 +12,6 @@ export const createRuntimeInitialization = (
   context: RunnerContext,
   deps: {
     disposeConvexClient: () => void;
-    syncRemoteTurnBridge: () => void;
     shutdownTasks: () => void;
     onGoogleWorkspaceAuthRequired?: () => void;
   },
@@ -143,7 +142,6 @@ export const createRuntimeInitialization = (
       extensionsLoad,
     ]).then(() => {
       context.state.isInitialized = true;
-      deps.syncRemoteTurnBridge();
     });
 
     return context.state.initializationPromise;
@@ -153,7 +151,6 @@ export const createRuntimeInitialization = (
     if (context.state.isRunning) return;
     context.state.isRunning = true;
     context.state.isInitialized = false;
-    deps.syncRemoteTurnBridge();
     void initializeRuntime();
   };
 
@@ -168,7 +165,6 @@ export const createRuntimeInitialization = (
     context.state.isRunning = false;
     context.state.isInitialized = false;
     context.state.initializationPromise = null;
-    deps.syncRemoteTurnBridge();
     deps.disposeConvexClient();
     deps.shutdownTasks();
     context.state.activeOrchestratorRunId = null;
