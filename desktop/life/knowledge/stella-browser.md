@@ -25,7 +25,7 @@ stella-browser snapshot -i
 stella-browser fill @e1 "user@example.com"
 stella-browser fill @e2 "password123"
 stella-browser click @e3
-stella-browser wait --load networkidle
+stella-browser wait 2000
 stella-browser snapshot -i
 ```
 
@@ -84,7 +84,7 @@ stella-browser is checked @e1
 
 # Wait and capture
 stella-browser wait @e1
-stella-browser wait --load networkidle
+stella-browser wait --text "Success"
 stella-browser wait --url "**/page"
 stella-browser wait 2000
 stella-browser screenshot
@@ -119,7 +119,7 @@ stella-browser fill @e2 "jane@example.com"
 stella-browser select @e3 "California"
 stella-browser check @e4
 stella-browser click @e5
-stella-browser wait --load networkidle
+stella-browser wait --url "**/thank-you"
 ```
 
 ### Work With Existing Login State
@@ -168,19 +168,24 @@ stella-browser click @e1
 
 ## Reference Docs
 
-| Reference                                                  | When to Use                                        |
-| ---------------------------------------------------------- | -------------------------------------------------- |
+
+| Reference                                                                 | When to Use                                        |
+| ------------------------------------------------------------------------- | -------------------------------------------------- |
 | [references/commands.md](life/knowledge/references/commands.md)           | Supported extension-backed command surface         |
 | [references/snapshot-refs.md](life/knowledge/references/snapshot-refs.md) | Ref lifecycle, invalidation rules, troubleshooting |
 
+
 ## Ready-to-Use Templates
 
-| Template                                                       | Description                         |
-| -------------------------------------------------------------- | ----------------------------------- |
+
+| Template                                                                      | Description                         |
+| ----------------------------------------------------------------------------- | ----------------------------------- |
 | [templates/form-automation.sh](life/knowledge/templates/form-automation.sh)   | Form filling with validation        |
 | [templates/capture-workflow.sh](life/knowledge/templates/capture-workflow.sh) | Content extraction with screenshots |
+
 
 ```bash
 ./templates/form-automation.sh https://example.com/form
 ./templates/capture-workflow.sh https://example.com ./output
 ```
+

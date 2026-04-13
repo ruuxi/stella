@@ -27,7 +27,7 @@ mkdir -p "$OUTPUT_DIR"
 
 # Navigate to target
 stella-browser open "$TARGET_URL"
-stella-browser wait --load networkidle
+stella-browser wait 2000
 
 # Get metadata
 TITLE=$(stella-browser get title)

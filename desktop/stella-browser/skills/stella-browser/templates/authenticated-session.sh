@@ -31,7 +31,7 @@ if [[ -f "$STATE_FILE" ]]; then
     echo "Loading saved state from $STATE_FILE..."
     stella-browser state load "$STATE_FILE"
     stella-browser open "$LOGIN_URL"
-    stella-browser wait --load networkidle
+    stella-browser wait 2000
 
     CURRENT_URL=$(stella-browser get url)
     if [[ "$CURRENT_URL" != *"login"* ]] && [[ "$CURRENT_URL" != *"signin"* ]]; then
@@ -48,7 +48,7 @@ fi
 # ================================================================
 echo "Opening login page..."
 stella-browser open "$LOGIN_URL"
-stella-browser wait --load networkidle
+stella-browser wait 2000
 
 echo ""
 echo "Login form structure:"
@@ -72,14 +72,14 @@ exit 0
 # : "${APP_PASSWORD:?Set APP_PASSWORD environment variable}"
 #
 # stella-browser open "$LOGIN_URL"
-# stella-browser wait --load networkidle
+# stella-browser wait 2000
 # stella-browser snapshot -i
 #
 # # Fill credentials (update refs to match your form)
 # stella-browser fill @e1 "$APP_USERNAME"
 # stella-browser fill @e2 "$APP_PASSWORD"
 # stella-browser click @e3
-# stella-browser wait --load networkidle
+# stella-browser wait 2000
 #
 # # Verify login succeeded
 # FINAL_URL=$(stella-browser get url)
