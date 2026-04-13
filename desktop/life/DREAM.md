@@ -1,18 +1,19 @@
 # Dream — Memory Consolidation Protocol
 
-Run this protocol periodically or on demand to consolidate scattered session signals into durable knowledge.
+Run this protocol periodically or on demand to consolidate scattered session signals into durable knowledge and review capabilities.
 
 ## When to Dream
 
 - After a stretch of varied tasks (5+ notes entries without consolidation)
 - When notes/ is growing but knowledge/ feels stale
+- When capabilities/ has entries that may be outdated, duplicated, or unused
 - On explicit request
 
 ## Protocol
 
 ### 1. Orient
 
-Read the full memory layer: `knowledge/index.md`, all `knowledge/` files, and recent `notes/` entries. Form hypotheses about what feels stale or missing. No searching yet.
+Read the full memory layer: `knowledge/index.md`, all `knowledge/` files, `capabilities/index.md`, all capability entries, and recent `notes/` entries. Form hypotheses about what feels stale or missing. No searching yet.
 
 ### 2. Signal
 
@@ -28,7 +29,17 @@ Merge findings into the knowledge layer:
 - **Compress without destroying.** Test: would deletion cause worse future decisions? If no, cut it.
 - **Prefer under-writing to overfitting.** One-off events and low-signal observations don't get promoted.
 
-### 4. Prune and Index
+### 4. Review Capabilities
+
+Evaluate the health and relevance of saved capabilities in `capabilities/`:
+
+- **Fix broken capabilities.** If a capability has recent failures (check `failCount` in frontmatter), investigate and update its `program.ts` or docs.
+- **Merge related capabilities.** If multiple entries solve overlapping problems (e.g., three Spotify helpers), consolidate into one cohesive capability.
+- **Prune unused capabilities.** If a capability has never been reused and is unlikely to be needed again, remove it.
+- **Update stale approaches.** If the approach a capability uses has changed (e.g., an app updated, an API changed), update the program and docs.
+- **Promote patterns to knowledge.** If a capability reveals a general workflow pattern, document it in `knowledge/` so it benefits future work beyond that specific capability.
+
+### 5. Prune and Index
 
 Tighten memory for the next cold start:
 
@@ -36,10 +47,11 @@ Tighten memory for the next cold start:
 - Add references to newly important files
 - Delete knowledge files that are unused or derivable in seconds from live sources
 - Verify the index matches actual files on disk
+- Verify `registry.md` fast paths are current
 
 ## Boundaries
 
-- Dream only touches `knowledge/`, `knowledge/index.md`, and `registry.md`
+- Dream touches `knowledge/`, `capabilities/`, `knowledge/index.md`, and `registry.md`
 - Never modify `notes/` or `raw/` — they are immutable records
 - Never touch project code, tests, or config
 - Log what was consolidated in the current day's notes entry

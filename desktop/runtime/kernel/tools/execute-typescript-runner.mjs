@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { spawn } from "node:child_process";
@@ -163,13 +163,194 @@ const emitUpdate = (result, details) => {
   sendMessage({ type: "update", result, details });
 };
 
-const runCommand = async ({ command, cwd, timeoutMs }) =>
+const WINDOWS_GIT_BASH_CANDIDATES = [
+  "C:\\Program Files\\Git\\bin\\bash.exe",
+  "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
+  "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+  "C:\\Program Files (x86)\\Git\\usr\\bin\\bash.exe",
+];
+
+const normalizeComputerAgentShellCommand = (command) =>
+  command
+    .replace(
+      /(?:^|&&\s*|\|\|\s*|;\s*)STELLA_BROWSER_SESSION=[^\s]+(?=\s+stella-browser\b)/g,
+      (match) => match.replace(/STELLA_BROWSER_SESSION=[^\s]+\s*/, ""),
+    )
+    .replace(/\bstella-browser\s+--session(?:=|\s+)\S+\s*/g, "stella-browser ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+const shouldUseStellaBrowserBridge = (command) =>
+  /\bstella-browser\b/.test(command) || /\bSTELLA_BROWSER_SESSION=/.test(command);
+
+const resolveWindowsBash = () => {
+  const configured = process.env.STELLA_GIT_BASH?.trim();
+  if (configured && existsSync(configured)) {
+    return configured;
+  }
+
+  for (const candidate of WINDOWS_GIT_BASH_CANDIDATES) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  const pathEntries = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  for (const entry of pathEntries) {
+    const candidate = path.join(entry, "bash.exe");
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+};
+
+const resolveShellLaunch = (command) => {
+  if (process.platform !== "win32") {
+    return { shell: "bash", args: ["-lc", command] };
+  }
+
+  const bashPath = resolveWindowsBash();
+  if (!bashPath) {
+    return {
+      error:
+        "Git Bash was not found on this Windows machine. Install Git for Windows or add bash.exe to PATH.",
+    };
+  }
+
+  return { shell: bashPath, args: ["-lc", command] };
+};
+
+const buildCommandPreamble = (payload) => {
+  const lines = [];
+
+  if (payload.stellaBrowserBinPath) {
+    lines.push(
+      `stella-browser() { "$STELLA_NODE_BIN" ${shellQuote(payload.stellaBrowserBinPath)} "$@"; }`,
+    );
+  }
+
+  if (payload.stellaOfficeBinPath) {
+    lines.push(
+      `stella-office() { "$STELLA_NODE_BIN" ${shellQuote(payload.stellaOfficeBinPath)} "$@"; }`,
+    );
+  }
+
+  if (payload.stellaUiCliPath) {
+    lines.push(`stella-ui() { "$STELLA_NODE_BIN" ${shellQuote(payload.stellaUiCliPath)} "$@"; }`);
+  }
+
+  return lines.join("\n");
+};
+
+const buildShellCommand = (command, payload) => {
+  const preamble = buildCommandPreamble(payload);
+  if (!preamble) {
+    return command;
+  }
+  return `${preamble}\n${command}`;
+};
+
+const buildShellEnv = (payload, usesBrowserBridge) => {
+  const env = {
+    ...process.env,
+    STELLA_NODE_BIN: process.execPath,
+  };
+
+  if (payload.stellaBrowserBinPath) {
+    env.STELLA_BROWSER_BIN = payload.stellaBrowserBinPath;
+  }
+  if (payload.stellaOfficeBinPath) {
+    env.STELLA_OFFICE_BIN = payload.stellaOfficeBinPath;
+  }
+  if (payload.stellaUiCliPath) {
+    env.STELLA_UI_CLI = payload.stellaUiCliPath;
+  }
+  if (usesBrowserBridge && payload.stellaBrowserBridgeEnv) {
+    Object.assign(env, payload.stellaBrowserBridgeEnv);
+    if (payload.browserOwnerId) {
+      env.STELLA_BROWSER_OWNER_ID = String(payload.browserOwnerId);
+    }
+  }
+
+  return env;
+};
+
+const killShellProcess = (child, signal = "SIGTERM") => {
+  const pid = child.pid;
+
+  if (!pid) {
+    return;
+  }
+
+  if (process.platform === "win32") {
+    const taskkillArgs = ["/pid", String(pid), "/t"];
+    if (signal === "SIGKILL") {
+      taskkillArgs.push("/f");
+    }
+
+    const killer = spawn("taskkill", taskkillArgs, {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+
+    killer.on("error", () => {
+      try {
+        child.kill(signal);
+      } catch {
+        // Ignore cleanup errors on fallback kill.
+      }
+    });
+    return;
+  }
+
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {
+      // Ignore cleanup errors when the child already exited.
+    }
+  }
+};
+
+const terminateShellProcess = (child) => {
+  if (child.exitCode !== null) {
+    return;
+  }
+
+  killShellProcess(child, "SIGTERM");
+
+  const forceKillTimer = setTimeout(() => {
+    if (child.exitCode !== null) {
+      return;
+    }
+    killShellProcess(child, "SIGKILL");
+  }, 1_000);
+  forceKillTimer.unref?.();
+};
+
+const runCommand = async ({ command, cwd, timeoutMs, payload }) =>
   await new Promise((resolve, reject) => {
-    const child = spawn(command, {
+    const usesBrowserBridge = shouldUseStellaBrowserBridge(command);
+    const normalizedCommand = usesBrowserBridge
+      ? normalizeComputerAgentShellCommand(command)
+      : command;
+    const launch = resolveShellLaunch(buildShellCommand(normalizedCommand, payload));
+
+    if ("error" in launch) {
+      reject(new ExecuteTypescriptError(launch.error, "binding"));
+      return;
+    }
+
+    const child = spawn(launch.shell, launch.args, {
       cwd,
-      env: process.env,
-      shell: true,
+      env: buildShellEnv(payload, usesBrowserBridge),
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      detached: process.platform !== "win32",
     });
     let stdout = "";
     let stderr = "";
@@ -184,7 +365,7 @@ const runCommand = async ({ command, cwd, timeoutMs }) =>
     };
 
     const timerId = setTimeout(() => {
-      child.kill("SIGKILL");
+      terminateShellProcess(child);
       finish(() =>
         reject(new ExecuteTypescriptError(`Command timed out: ${command}`, "binding")),
       );
@@ -213,7 +394,7 @@ const runCommand = async ({ command, cwd, timeoutMs }) =>
         reject(
           new ExecuteTypescriptError(
             output ||
-              `Command failed with exit code ${code ?? "unknown"}${signal ? ` (${signal})` : ""}: ${command}`,
+              `Command failed with exit code ${code ?? "unknown"}${signal ? ` (${signal})` : ""}: ${normalizedCommand}`,
             "binding",
           ),
         );
@@ -629,6 +810,7 @@ const createRuntime = (payload) => {
               : runtime.timer.getRemainingMs(),
             runtime.timer.getRemainingMs(),
           ),
+          payload: runtime.payload,
         });
       },
     );
@@ -637,7 +819,9 @@ const createRuntime = (payload) => {
 
   const runLibrary = async (libraryName, input, libraryDepth) => {
     const normalizedName = String(libraryName)
+      .replace(/^life\/capabilities\//u, "")
       .replace(/^life\/libraries\//u, "")
+      .replace(/^capabilities\//u, "")
       .replace(/^libraries\//u, "")
       .trim();
     if (!normalizedName) {
@@ -656,21 +840,21 @@ const createRuntime = (payload) => {
       { name: normalizedName, input },
       async () => {
         const libraryDir = resolvePathWithinRoot(
-          path.join(lifeRoot, "libraries"),
+          path.join(lifeRoot, "capabilities"),
           normalizedName,
         );
         const programPath = path.join(libraryDir, "program.ts");
         const code = await fs.readFile(programPath, "utf8").catch(() => null);
         if (code === null) {
           throw new ExecuteTypescriptError(
-            `Library program not found: ${toLifeDisplayPath(lifeRoot, programPath)}`,
+            `Capability program not found: ${toLifeDisplayPath(lifeRoot, programPath)}`,
             "library",
           );
         }
-        emitUpdate(`Code mode · running library ${normalizedName}`, {
+        emitUpdate(`Code mode · running capability ${normalizedName}`, {
           tool: EXECUTE_TYPESCRIPT_TOOL_NAME,
           kind: "library_start",
-          statusText: `Code mode · running library ${normalizedName}`,
+          statusText: `Code mode · running capability ${normalizedName}`,
           library: normalizedName,
         });
         const startedAt = Date.now();
@@ -678,7 +862,7 @@ const createRuntime = (payload) => {
           const value = await executeProgram({
             runtime,
             code,
-            sourceLabel: `life/libraries/${normalizedName}/program.ts`,
+            sourceLabel: `life/capabilities/${normalizedName}/program.ts`,
             input,
             libraryDepth: libraryDepth + 1,
           });
@@ -1082,7 +1266,7 @@ const createRuntime = (payload) => {
   const libraries = Object.freeze({
     list: async () =>
       await createBindingCall(runtime, "libraries", "list", {}, async () => {
-        const librariesRoot = path.join(lifeRoot, "libraries");
+        const librariesRoot = path.join(lifeRoot, "capabilities");
         let entries;
         try {
           entries = await fs.readdir(librariesRoot, { withFileTypes: true });
@@ -1117,11 +1301,13 @@ const createRuntime = (payload) => {
     read: async (name) =>
       await createBindingCall(runtime, "libraries", "read", { name }, async () => {
         const normalizedName = String(name)
+          .replace(/^life\/capabilities\//u, "")
           .replace(/^life\/libraries\//u, "")
+          .replace(/^capabilities\//u, "")
           .replace(/^libraries\//u, "")
           .trim();
         const libraryDir = resolvePathWithinRoot(
-          path.join(lifeRoot, "libraries"),
+          path.join(lifeRoot, "capabilities"),
           normalizedName,
         );
         const indexPath = path.join(libraryDir, "index.md");

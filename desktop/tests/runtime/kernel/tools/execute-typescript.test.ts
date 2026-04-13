@@ -27,7 +27,10 @@ const createTempDir = (prefix: string) => {
   return tempDir;
 };
 
-const createContext = (stellaRoot: string): ToolContext => ({
+const createContext = (
+  stellaRoot: string,
+  overrides?: Partial<ToolContext>,
+): ToolContext => ({
   conversationId: "conversation-test",
   deviceId: "device-test",
   requestId: "request-test",
@@ -35,11 +38,20 @@ const createContext = (stellaRoot: string): ToolContext => ({
   agentType: "general",
   stellaRoot,
   storageMode: "local",
+  ...overrides,
 });
 
-const createHost = (stellaRoot: string) =>
+const createHost = (
+  stellaRoot: string,
+  options?: {
+    stellaBrowserBinPath?: string;
+    stellaOfficeBinPath?: string;
+    stellaUiCliPath?: string;
+  },
+) =>
   createToolHost({
     stellaRoot,
+    ...options,
   });
 
 describe("ExecuteTypescript tool", () => {
@@ -88,7 +100,7 @@ return {
     const lifeRoot = path.join(stellaRoot, "life");
 
     mkdirSync(path.join(lifeRoot, "knowledge"), { recursive: true });
-    mkdirSync(path.join(lifeRoot, "libraries", "to-upper"), {
+    mkdirSync(path.join(lifeRoot, "capabilities", "to-upper"), {
       recursive: true,
     });
 
@@ -99,12 +111,12 @@ return {
       "utf-8",
     );
     writeFileSync(
-      path.join(lifeRoot, "libraries", "to-upper", "index.md"),
+      path.join(lifeRoot, "capabilities", "to-upper", "index.md"),
       "---\nname: to-upper\ndescription: Uppercase text.\n---\n",
       "utf-8",
     );
     writeFileSync(
-      path.join(lifeRoot, "libraries", "to-upper", "program.ts"),
+      path.join(lifeRoot, "capabilities", "to-upper", "program.ts"),
       'return String(input ?? "").toUpperCase();',
       "utf-8",
     );
@@ -183,6 +195,43 @@ return await shell.exec({ command: "pwd" });
     expect(failure.error).toContain(
       "shell.exec now expects shell.exec(command, options?)",
     );
+  });
+
+  it("exposes Stella CLI wrappers inside ExecuteTypescript shell.exec", async () => {
+    const stellaRoot = createTempDir("stella-code-mode-root-");
+    const fakeBrowserPath = path.join(stellaRoot, "fake-stella-browser.js");
+    writeFileSync(
+      fakeBrowserPath,
+      `console.log(JSON.stringify({
+  args: process.argv.slice(2),
+  provider: process.env.STELLA_BROWSER_PROVIDER ?? null,
+  session: process.env.STELLA_BROWSER_SESSION ?? null,
+  owner: process.env.STELLA_BROWSER_OWNER_ID ?? null,
+}));`,
+      "utf-8",
+    );
+
+    const host = createHost(stellaRoot, {
+      stellaBrowserBinPath: fakeBrowserPath,
+    });
+    const result = await host.executeTool(
+      "ExecuteTypescript",
+      {
+        summary: "run stella browser wrapper",
+        code: `
+return await shell.exec("stella-browser snapshot -i");
+        `,
+      },
+      createContext(stellaRoot, { taskId: "task-test" }),
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(JSON.parse(String(result.result))).toEqual({
+      args: ["snapshot", "-i"],
+      provider: "extension",
+      session: "stella-app-bridge",
+      owner: "task-test",
+    });
   });
 
   it("allows full Node globals like Buffer", async () => {
