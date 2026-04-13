@@ -582,11 +582,11 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Create a background task executed by the general subagent.\n\n" +
     "Usage:\n" +
     "- description: short summary shown in the task list.\n" +
-    "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, relevant file paths, and expected output.\n" +
+    "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, the goal, and the expected output.\n" +
     "- Starts background work and immediately returns a structured status object with a durable thread_id plus other resumable threads and their last-used timing.\n" +
     "- Use this only for genuinely new work. Do not use it to continue, resume, retry, or revise an existing thread.\n" +
     "- After calling it, do not create another task for the same work.\n" +
-    "- Wait for the completion/failure event; in the meantime you may gently reply to the user or call NoResponse.\n" +
+    "- Wait for the completion/failure event; in the meantime you may gently reply to the user if needed.\n" +
     "- Use the returned thread_id for TaskOutput, TaskUpdate, and TaskPause.",
   TaskOutput:
     "Check the status and output of a task thread.\n\n" +

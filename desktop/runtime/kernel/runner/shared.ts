@@ -102,7 +102,7 @@ export const buildTaskEventPrompt = (
     "<system_reminder>",
     "This task lifecycle update is hidden from the user.",
     "Do not narrate background coordination or ask follow-up questions in chat text.",
-    "If more background work is needed, use task tools and then call NoResponse.",
+    "If more background work is needed, use task tools quietly without narrating the coordination.",
     "Only send a normal assistant reply when you are ready to say something to the user.",
     "</system_reminder>",
     "",

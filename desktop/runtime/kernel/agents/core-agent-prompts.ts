@@ -49,7 +49,6 @@ const CORE_AGENT_DEFINITIONS: CoreAgentDefinition[] = [
       "TaskCreate",
       "TaskUpdate",
       "TaskPause",
-      "NoResponse",
       "SaveMemory",
       "RecallMemories",
     ],
