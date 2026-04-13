@@ -356,5 +356,5 @@ stella-office pptx help
 
 ## Backlinks
 
-- [Abilities Index](index.md)
-- [Life Registry](../registry.md)
+- [Abilities Index](life/knowledge/index.md)
+- [Life Registry](life/registry.md)

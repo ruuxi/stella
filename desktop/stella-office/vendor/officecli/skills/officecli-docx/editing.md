@@ -10,7 +10,7 @@ Use this guide when modifying an existing .docx file (template-based or content 
 2. **Plan** content mapping (what to change, what to keep)
 3. **Structural changes** (add/remove sections, reorder elements) -- **do this FIRST**
 4. **Content edits** (text, images, charts, tables)
-5. **QA** (content + validation) -- see [SKILL.md](SKILL.md#qa-required)
+5. **QA** (content + validation) -- see [SKILL.md](stella-office/vendor/officecli/skills/officecli-docx/SKILL.md#qa-required)
 
 ---
 
@@ -329,7 +329,7 @@ officecli set doc.docx 'p:contains("important")' --prop bold=true
 
 ## Raw XML Escape Hatch
 
-When the high-level CLI cannot express what you need, fall back to raw XML. See [creating.md](creating.md#l1-l2-l3-escalation-when-to-use-raw-xml) for the full L1/L2/L3 escalation guide.
+When the high-level CLI cannot express what you need, fall back to raw XML. See [creating.md](stella-office/vendor/officecli/skills/officecli-docx/creating.md#l1-l2-l3-escalation-when-to-use-raw-xml) for the full L1/L2/L3 escalation guide.
 
 ```bash
 # View raw XML

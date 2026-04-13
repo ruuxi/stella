@@ -187,10 +187,10 @@ When the user requests changes after the model is built:
 
 ## Full Guide
 
-Read [creating.md](creating.md) and follow it step by step. It contains setup conventions, core financial statement patterns, advanced patterns (DCF, sensitivity, scenarios), chart recipes, QA checklist, and known issues with workarounds.
+Read [creating.md](stella-office/vendor/officecli/skills/officecli-financial-model/creating.md) and follow it step by step. It contains setup conventions, core financial statement patterns, advanced patterns (DCF, sensitivity, scenarios), chart recipes, QA checklist, and known issues with workarounds.
 
 ## References
 
-- [creating.md](creating.md) -- Complete financial model creation guide
-- [xlsx SKILL.md](../xlsx/SKILL.md) -- General xlsx reading, editing, and QA reference
-- [data-dashboard creating.md](../officecli-data-dashboard/creating.md) -- Batch syntax, chart presets, and CF basics
+- [creating.md](stella-office/vendor/officecli/skills/officecli-financial-model/creating.md) -- Complete financial model creation guide
+- [xlsx SKILL.md](stella-office/vendor/officecli/skills/xlsx/SKILL.md) -- General xlsx reading, editing, and QA reference
+- [data-dashboard creating.md](stella-office/vendor/officecli/skills/officecli-data-dashboard/creating.md) -- Batch syntax, chart presets, and CF basics

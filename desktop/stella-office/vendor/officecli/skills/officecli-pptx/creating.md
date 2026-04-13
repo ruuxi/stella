@@ -22,7 +22,7 @@ Use this guide when creating a new presentation with no template.
 1. **Create** blank presentation
 2. **Plan** slide structure (content outline + layout types)
 3. **Build** each slide — one command at a time; use `batch` only for bulk repetitive operations (many shapes with identical props, filling many text boxes). Structural operations (`add slide`, `add chart`, `set transition`) should run individually so errors surface immediately.
-4. **QA** (content + visual + validation) -- see [SKILL.md](SKILL.md#qa-required)
+4. **QA** (content + visual + validation) -- see [SKILL.md](stella-office/vendor/officecli/skills/officecli-pptx/SKILL.md#qa-required)
 
 ---
 
@@ -553,7 +553,7 @@ Batch mode:
 officecli add slides.pptx /slide[1] --type chart --prop chartType=column --prop categories="Q1,Q2,Q3,Q4" --prop series1="2024:42,58,65,78" --prop series2="2025:51,67,74,92" --prop x=2cm --prop y=4cm --prop width=29cm --prop height=13cm --prop colors="1E2761,CADCFC"
 ```
 
-**Important:** Once a chart is created, `set --prop data=` and `set --prop seriesN=` can only update existing series -- they cannot add new series. To add series to an existing chart, delete it and recreate with all series in the `add` command. See [editing.md](editing.md#update-charts) for the delete-and-recreate pattern.
+**Important:** Once a chart is created, `set --prop data=` and `set --prop seriesN=` can only update existing series -- they cannot add new series. To add series to an existing chart, delete it and recreate with all series in the `add` command. See [editing.md](stella-office/vendor/officecli/skills/officecli-pptx/editing.md#update-charts) for the delete-and-recreate pattern.
 
 ### Tables
 

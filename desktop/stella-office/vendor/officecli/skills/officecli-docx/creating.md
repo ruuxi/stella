@@ -9,7 +9,7 @@ Use this guide when creating a new document with no template.
 1. **Create** blank document
 2. **Plan** document structure (outline + element types)
 3. **Build** incrementally — run each command and check output before proceeding; use `batch` only for bulk content entry (many paragraphs or table cells at once)
-4. **QA** (content + validation) -- see [SKILL.md](SKILL.md#qa-required)
+4. **QA** (content + validation) -- see [SKILL.md](stella-office/vendor/officecli/skills/officecli-docx/SKILL.md#qa-required)
 
 ---
 

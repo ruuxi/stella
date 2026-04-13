@@ -10,7 +10,7 @@ Use this guide when modifying an existing .xlsx file or working from a template.
 2. **Plan** content mapping (what to change, what to keep, what to add)
 3. **Structural changes** (add/remove sheets, rows, columns) -- **do this FIRST**
 4. **Content edits** (data updates, formula changes, chart updates)
-5. **QA** (content + formula verification + validation) -- see [SKILL.md](SKILL.md#qa-required)
+5. **QA** (content + formula verification + validation) -- see [SKILL.md](stella-office/vendor/officecli/skills/officecli-xlsx/SKILL.md#qa-required)
 
 ---
 

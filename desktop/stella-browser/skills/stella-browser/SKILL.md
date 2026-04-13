@@ -171,15 +171,15 @@ stella-browser click @e1
 
 | Reference                                                  | When to Use                                        |
 | ---------------------------------------------------------- | -------------------------------------------------- |
-| [references/commands.md](references/commands.md)           | Supported extension-backed command surface         |
-| [references/snapshot-refs.md](references/snapshot-refs.md) | Ref lifecycle, invalidation rules, troubleshooting |
+| [references/commands.md](stella-browser/skills/stella-browser/references/commands.md)           | Supported extension-backed command surface         |
+| [references/snapshot-refs.md](stella-browser/skills/stella-browser/references/snapshot-refs.md) | Ref lifecycle, invalidation rules, troubleshooting |
 
 ## Ready-to-Use Templates
 
 | Template                                                       | Description                         |
 | -------------------------------------------------------------- | ----------------------------------- |
-| [templates/form-automation.sh](templates/form-automation.sh)   | Form filling with validation        |
-| [templates/capture-workflow.sh](templates/capture-workflow.sh) | Content extraction with screenshots |
+| [templates/form-automation.sh](stella-browser/skills/stella-browser/templates/form-automation.sh)   | Form filling with validation        |
+| [templates/capture-workflow.sh](stella-browser/skills/stella-browser/templates/capture-workflow.sh) | Content extraction with screenshots |
 
 ```bash
 ./templates/form-automation.sh https://example.com/form

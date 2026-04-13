@@ -35,7 +35,7 @@
 
 Complete guide for building professional pitch presentations from scratch. Follow the workflow: decide structure, set up, build slides pattern-by-pattern, polish, QA.
 
-For general pptx building blocks (shapes, pictures, rich text, animations, batch syntax), see [pptx creating.md](../officecli-pptx/creating.md). This document focuses on pitch-deck-specific patterns and recipes.
+For general pptx building blocks (shapes, pictures, rich text, animations, batch syntax), see [pptx creating.md](stella-office/vendor/officecli/skills/officecli-pptx/creating.md). This document focuses on pitch-deck-specific patterns and recipes.
 
 ---
 

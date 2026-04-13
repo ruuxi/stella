@@ -10,7 +10,7 @@ Use this guide when modifying an existing .pptx file (template-based or content 
 2. **Plan** slide mapping (content -> layout)
 3. **Structural changes** (clone, remove, reorder slides) -- **do this FIRST**
 4. **Content edits** (text, images, charts, tables)
-5. **QA** (content + visual + validation) -- see [SKILL.md](SKILL.md#qa-required)
+5. **QA** (content + visual + validation) -- see [SKILL.md](stella-office/vendor/officecli/skills/officecli-pptx/SKILL.md#qa-required)
 
 ---
 
@@ -322,7 +322,7 @@ officecli set template.pptx /slide[1] --prop notes="Opening remarks: welcome the
 
 ### Add New Elements to Existing Slides
 
-**When adding new slides to an existing template:** Inspect the template's existing slides first (`get /slide[1]`) to match the background color, font family, and color scheme. For layout patterns (stat callouts, charts, card grids, timelines), refer to [creating.md](creating.md) -- adapt its recipes to the template's color palette.
+**When adding new slides to an existing template:** Inspect the template's existing slides first (`get /slide[1]`) to match the background color, font family, and color scheme. For layout patterns (stat callouts, charts, card grids, timelines), refer to [creating.md](stella-office/vendor/officecli/skills/officecli-pptx/creating.md) -- adapt its recipes to the template's color palette.
 
 ```bash
 # Add text box to slide

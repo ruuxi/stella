@@ -135,7 +135,7 @@ Use ONLY colors from your pre-defined palette (`$PRIMARY`, `$SECONDARY`, `$ACCEN
 
 1. **Layout-First Construction** -- Select a slide pattern from creating.md Section C, then fill with content. Never manually calculate x/y from scratch.
 2. **Color Palette Upfront** -- Define 5-6 hex colors as shell variables before building. All commands reference `$PRIMARY`, `$SECONDARY`, etc.
-3. **Slide Pattern Library** -- 11 pre-tested spatial blueprints with positioning tables. See [creating.md](creating.md) Section C.
+3. **Slide Pattern Library** -- 11 pre-tested spatial blueprints with positioning tables. See [creating.md](stella-office/vendor/officecli/skills/officecli-pitch-deck/creating.md) Section C.
 4. **Chart Styling is Non-Negotiable** -- Every chart uses the modern recipe: `plotFill=none`, `chartFill=none`, subtle gridlines, `series.outline`.
 5. **Speaker Notes as Checklist Item** -- Add 2+ sentence notes after each content slide is complete.
 
@@ -224,7 +224,7 @@ officecli validate pitch.pptx
 
 ## QA Checklist
 
-Run before every delivery. See [creating.md](creating.md) Section G for the full checklist.
+Run before every delivery. See [creating.md](stella-office/vendor/officecli/skills/officecli-pitch-deck/creating.md) Section G for the full checklist.
 
 1. `officecli validate` = 0 errors. **Exception:** slides with cell merge may report schema warnings that are cosmetic (PowerPoint renders correctly).
 2. Every chart is editable (click -> Edit Data appears in PowerPoint)
@@ -248,7 +248,7 @@ Run before every delivery. See [creating.md](creating.md) Section G for the full
 
 ## Known Issues
 
-See [creating.md](creating.md) Section H for the full list with workarounds. Key issues:
+See [creating.md](stella-office/vendor/officecli/skills/officecli-pitch-deck/creating.md) Section H for the full list with workarounds. Key issues:
 
 | Issue | Impact |
 |-------|--------|

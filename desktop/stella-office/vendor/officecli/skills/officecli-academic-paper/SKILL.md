@@ -181,7 +181,7 @@ officecli add paper.docx /body --type paragraph --prop text="Introduction" --pro
 officecli add paper.docx /body --type paragraph --prop text="This paper examines..." --prop size=12 --prop lineSpacing=2x
 ```
 
-Follow [creating.md](creating.md) for the full step-by-step guide.
+Follow [creating.md](stella-office/vendor/officecli/skills/officecli-academic-paper/creating.md) for the full step-by-step guide.
 
 ---
 
@@ -203,6 +203,6 @@ After any `swap` or `move`, paragraph indices shift — re-query with `officecli
 
 ## References
 
-- [creating.md](creating.md) -- Complete academic paper creation guide
-- [docx SKILL.md](../officecli-docx/SKILL.md) -- General docx reading, editing, and QA reference
-- [docx creating.md](../officecli-docx/creating.md) -- General building blocks (paragraphs, tables, images, etc.)
+- [creating.md](stella-office/vendor/officecli/skills/officecli-academic-paper/creating.md) -- Complete academic paper creation guide
+- [docx SKILL.md](stella-office/vendor/officecli/skills/officecli-docx/SKILL.md) -- General docx reading, editing, and QA reference
+- [docx creating.md](stella-office/vendor/officecli/skills/officecli-docx/creating.md) -- General building blocks (paragraphs, tables, images, etc.)

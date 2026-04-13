@@ -9,7 +9,7 @@ Use this guide when creating a new workbook with no template.
 1. **Create** blank workbook
 2. **Plan** sheet structure (sheets, data layout, formulas, charts)
 3. **Build** each sheet incrementally — run each command and check output before proceeding; use `batch` only for bulk cell data entry (filling many cells or rows with values/formulas)
-4. **QA** (content + formula verification + validation) -- see [SKILL.md](SKILL.md#qa-required)
+4. **QA** (content + formula verification + validation) -- see [SKILL.md](stella-office/vendor/officecli/skills/officecli-xlsx/SKILL.md#qa-required)
 
 ---
 

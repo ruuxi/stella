@@ -9,7 +9,7 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 [![GitHub Release](https://img.shields.io/github/v/release/iOfficeAI/OfficeCLI)](https://github.com/iOfficeAI/OfficeCLI/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-**English** | [中文](README_zh.md) | [日本語](README_ja.md) | [한국어](README_ko.md)
+**English** | [中文](stella-office/vendor/officecli/README_zh.md) | [日本語](stella-office/vendor/officecli/README_ja.md) | [한국어](stella-office/vendor/officecli/README_ko.md)
 
 <p align="center">
   <img src="assets/ppt-process.gif" alt="OfficeCLI creating a PowerPoint presentation on AionUi" width="100%">
@@ -66,7 +66,7 @@ curl -fsSL https://officecli.ai/SKILL.md
 
 That's it. The skill file teaches the agent how to install the binary and use all commands.
 
-> **Technical details:** OfficeCLI ships with a [SKILL.md](SKILL.md) that covers command syntax, architecture, and common pitfalls. After installation, your agent can immediately create, read, and modify any Office document.
+> **Technical details:** OfficeCLI ships with a [SKILL.md](stella-office/vendor/officecli/SKILL.md) that covers command syntax, architecture, and common pitfalls. After installation, your agent can immediately create, read, and modify any Office document.
 
 ## For Humans
 
@@ -572,7 +572,7 @@ Requires [.NET 10 SDK](https://dotnet.microsoft.com/download) for compilation on
 
 ## License
 
-[Apache License 2.0](LICENSE)
+[Apache License 2.0](stella-office/vendor/officecli/LICENSE)
 
 Bug reports and contributions are welcome on [GitHub Issues](https://github.com/iOfficeAI/OfficeCLI/issues).
 
