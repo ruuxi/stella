@@ -93,7 +93,7 @@ Deliver the `.xlsx` file. Tell the user the Dashboard sheet opens first and form
 
 ## Full Guide
 
-Read [creating.md](creating.md) and follow it step by step. It contains the complete workflow, decision tables, command templates, a full runnable example, and the QA checklist.
+Read [creating.md](stella-office/vendor/officecli/skills/officecli-data-dashboard/creating.md) and follow it step by step. It contains the complete workflow, decision tables, command templates, a full runnable example, and the QA checklist.
 
 ---
 
@@ -140,5 +140,5 @@ When the user requests changes after the dashboard is built:
 
 ## References
 
-- [creating.md](creating.md) -- Complete dashboard creation guide (the main skill file)
-- [xlsx SKILL.md](../officecli-xlsx/SKILL.md) -- General xlsx reading, editing, and QA reference
+- [creating.md](stella-office/vendor/officecli/skills/officecli-data-dashboard/creating.md) -- Complete dashboard creation guide (the main skill file)
+- [xlsx SKILL.md](stella-office/vendor/officecli/skills/officecli-xlsx/SKILL.md) -- General xlsx reading, editing, and QA reference

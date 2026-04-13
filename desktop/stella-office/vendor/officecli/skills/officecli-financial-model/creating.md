@@ -4,7 +4,7 @@
 
 Complete guide for building formula-driven, multi-sheet financial models from scratch.
 
-> **Prerequisite:** This guide assumes familiarity with the officecli xlsx building blocks from [data-dashboard creating.md](../officecli-data-dashboard/creating.md). This guide focuses on what is unique to financial models: formula chains, cross-sheet patterns, financial conventions, sensitivity tables, and scenario switching.
+> **Prerequisite:** This guide assumes familiarity with the officecli xlsx building blocks from [data-dashboard creating.md](stella-office/vendor/officecli/skills/officecli-data-dashboard/creating.md). This guide focuses on what is unique to financial models: formula chains, cross-sheet patterns, financial conventions, sensitivity tables, and scenario switching.
 
 ---
 

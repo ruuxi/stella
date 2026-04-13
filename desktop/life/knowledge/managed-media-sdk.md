@@ -38,6 +38,6 @@ curl -L "https://host/api/media/v1/docs"
 
 ## Backlinks
 
-- [Life Registry](../registry.md)
-- [Abilities Index](index.md)
+- [Life Registry](life/registry.md)
+- [Abilities Index](life/knowledge/index.md)
 

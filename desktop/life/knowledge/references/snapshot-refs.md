@@ -2,7 +2,7 @@
 
 Compact element references that reduce context usage dramatically for AI agents.
 
-**Related**: [commands.md](commands.md) for full command reference, [stella-browser](../stella-browser.md) for quick start.
+**Related**: [commands.md](life/knowledge/references/commands.md) for full command reference, [stella-browser](life/knowledge/stella-browser.md) for quick start.
 
 ## Contents
 

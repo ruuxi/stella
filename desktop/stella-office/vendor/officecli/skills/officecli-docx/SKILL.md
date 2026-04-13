@@ -37,8 +37,8 @@ officecli --version
 | Task | Action |
 |------|--------|
 | Read / analyze content | Use `view` and `get` commands below |
-| Edit existing document | Read [editing.md](editing.md) |
-| Create from scratch | Read [creating.md](creating.md) |
+| Edit existing document | Read [editing.md](stella-office/vendor/officecli/skills/officecli-docx/editing.md) |
+| Create from scratch | Read [creating.md](stella-office/vendor/officecli/skills/officecli-docx/creating.md) |
 
 ---
 # officecli: v1.0.23

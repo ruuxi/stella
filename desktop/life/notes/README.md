@@ -8,5 +8,5 @@ Each entry is the General agent's final summary appended after task completion â
 
 - Append-only. Never modify a past day's entry.
 - Entries are written automatically at task completion.
-- Promote durable conclusions into `knowledge/` via the [dream protocol](../DREAM.md).
+- Promote durable conclusions into `knowledge/` via the [dream protocol](life/DREAM.md).
 - Keep entries terse â€” they're for the agent's future self, not documentation.

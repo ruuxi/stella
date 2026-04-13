@@ -4,25 +4,25 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 
 ## Entry Points
 
-- [Knowledge Index](knowledge/index.md) — all operational manuals, workflows, and domain knowledge
-- [Capabilities](capabilities/index.md) — reusable executable capabilities Stella builds over time
-- [Notes](notes/) — daily task summaries (append-only)
-- [Outputs](outputs/) — reusable generated artifacts
-- [Raw](raw/) — unprocessed source material
+- [Knowledge Index](life/knowledge/index.md) — all operational manuals, workflows, and domain knowledge
+- [Capabilities](life/capabilities/index.md) — reusable executable capabilities Stella builds over time
+- [Notes](life/notes/) — daily task summaries (append-only)
+- [Outputs](life/outputs/) — reusable generated artifacts
+- [Raw](life/raw/) — unprocessed source material
 
 ## Fast Paths
 
-- Browser automation: [stella-browser](knowledge/stella-browser.md)
-- Office documents: [stella-office](knowledge/stella-office.md)
-- Electron app control: [electron](knowledge/electron.md)
-- Managed media API docs: [managed-media-sdk](knowledge/managed-media-sdk.md)
-- Feature packaging and sharing: [blueprint-management](knowledge/blueprint-management.md)
-- User profile and context: [user-profile](knowledge/user-profile/index.md)
+- Browser automation: [stella-browser](life/knowledge/stella-browser.md)
+- Office documents: [stella-office](life/knowledge/stella-office.md)
+- Electron app control: [electron](life/knowledge/electron.md)
+- Managed media API docs: [managed-media-sdk](life/knowledge/managed-media-sdk.md)
+- Feature packaging and sharing: [blueprint-management](life/knowledge/blueprint-management.md)
+- User profile and context: [user-profile](life/knowledge/user-profile/index.md)
 
 ## Reference Docs
 
-- [stella-browser command reference](knowledge/references/commands.md)
-- [Snapshot and refs](knowledge/references/snapshot-refs.md)
+- [stella-browser command reference](life/knowledge/references/commands.md)
+- [Snapshot and refs](life/knowledge/references/snapshot-refs.md)
 
 ## Memory Structure
 
@@ -34,4 +34,4 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 
 ## Dream
 
-Run the [consolidation protocol](DREAM.md) periodically to promote durable insights from notes into knowledge, review capability health, and prune stale entries.
+Run the [consolidation protocol](life/DREAM.md) periodically to promote durable insights from notes into knowledge, review capability health, and prune stale entries.

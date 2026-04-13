@@ -46,8 +46,8 @@ officecli --version
 | Task | Action |
 |------|--------|
 | Read / analyze content | Use `view` and `get` commands below |
-| Edit existing presentation | Read [editing.md](editing.md) |
-| Create from scratch | Read [creating.md](creating.md) |
+| Edit existing presentation | Read [editing.md](stella-office/vendor/officecli/skills/officecli-pptx/editing.md) |
+| Create from scratch | Read [creating.md](stella-office/vendor/officecli/skills/officecli-pptx/creating.md) |
 
 ---
 
