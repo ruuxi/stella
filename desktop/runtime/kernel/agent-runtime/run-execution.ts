@@ -12,21 +12,9 @@ import {
 } from "./shared.js";
 import type { RuntimeRunCallbacks } from "./types.js";
 import {
-  containsLeakedInternalToolTranscript,
   sanitizeAssistantText,
 } from "../internal-tool-transcript.js";
 import { persistThreadPayloadMessage } from "./thread-memory.js";
-
-const MAX_INTERNAL_TOOL_TRANSCRIPT_RECOVERY_ATTEMPTS = 2;
-const INTERNAL_TOOL_TRANSCRIPT_FALLBACK_REPLY =
-  "I ran into an internal formatting issue while checking that task. Ask again and I'll reply normally.";
-const INTERNAL_TOOL_TRANSCRIPT_RECOVERY_PROMPT =
-  [
-    "System correction: your previous reply exposed Stella's internal tool transcript.",
-    "Do not output raw tool call blocks, request IDs, JSON arguments, or thread IDs.",
-    "Based on the tool results already in context, answer the user normally in plain language.",
-    "If you do not need to say anything else to the user, call NoResponse instead of exposing internal state.",
-  ].join("\n");
 
 type RuntimeExecutableAgent = {
   state: {
@@ -114,29 +102,7 @@ export const executeRuntimeAgentPrompt = async (args: {
     }
     await args.agent.prompt(promptMessages);
     await args.onAfterPrompt?.();
-    let completion = getAgentCompletion(args.agent);
-    let recoveryAttempts = 0;
-
-    while (
-      containsLeakedInternalToolTranscript(completion.finalText) &&
-      recoveryAttempts < MAX_INTERNAL_TOOL_TRANSCRIPT_RECOVERY_ATTEMPTS
-    ) {
-      args.agent.followUp({
-        ...createUserPromptMessage(INTERNAL_TOOL_TRANSCRIPT_RECOVERY_PROMPT),
-        timestamp: now(),
-      });
-      await args.agent.continue();
-      await args.onAfterPrompt?.();
-      completion = getAgentCompletion(args.agent);
-      recoveryAttempts += 1;
-    }
-
-    if (containsLeakedInternalToolTranscript(completion.finalText)) {
-      const cleaned = sanitizeAssistantText(completion.finalText);
-      return {
-        finalText: cleaned || INTERNAL_TOOL_TRANSCRIPT_FALLBACK_REPLY,
-      };
-    }
+    const completion = getAgentCompletion(args.agent);
 
     return {
       ...completion,
