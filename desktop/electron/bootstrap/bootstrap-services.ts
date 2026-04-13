@@ -140,13 +140,6 @@ export const createBootstrapServices = (options: {
     },
     activateVoiceRtc: () => {
       uiStateService.activateVoiceRtc(uiStateService.state.conversationId);
-      const enabled = state.wakeWordController?.syncState() ?? false;
-      for (const window of options.getAllWindows()) {
-        if (!window.isDestroyed()) {
-          window.webContents.send("voice:wakeWordState", { enabled });
-        }
-      }
-      options.getMobileBroadcast()?.("voice:wakeWordState", { enabled });
     },
     deactivateVoiceModes: () => uiStateService.deactivateVoiceModes(),
     isVoiceActive: () => uiStateService.state.isVoiceRtcActive,

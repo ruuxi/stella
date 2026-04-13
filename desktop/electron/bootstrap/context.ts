@@ -9,7 +9,6 @@ import type { ExternalLinkService } from "../services/external-link-service.js";
 import type { RadialGestureService } from "../services/radial-gesture-service.js";
 import type { SecurityPolicyService } from "../services/security-policy-service.js";
 import type { UiStateService } from "../services/ui-state-service.js";
-import type { WakeWordController } from "../wake-word/initialize.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
 import type {
@@ -52,7 +51,6 @@ export type BootstrapState = {
   stellaWorkspacePath: string | null;
   stellaHostRunner: StellaHostRunner | null;
   stellaBrowserBridgeService: StellaBrowserBridgeResource | null;
-  wakeWordController: WakeWordController | null;
   mobileBridgeResource: MobileBridgeResource | null;
   officePreviewBridgeStop: (() => void) | null;
   windowManager: WindowManager | null;
@@ -143,27 +141,11 @@ export const broadcastGoogleWorkspaceAuthRequired = (
   broadcastToWindows(context, "googleWorkspace:authRequired");
 };
 
-export const broadcastWakeWordState = (context: BootstrapContext) => {
-  const enabled = context.state.wakeWordController?.getEnabled() ?? false;
-  broadcastToWindowsAndMobile(context, "voice:wakeWordState", { enabled });
-};
-
-export const broadcastWakeWordDetected = (context: BootstrapContext) => {
-  const payload = { detectedAt: Date.now() };
-  broadcastToWindowsAndMobile(context, "voice:wakeWordDetected", payload);
-};
-
 export const broadcastStellaBrowserBridgeStatus = (
   context: BootstrapContext,
   status: StellaBrowserBridgeStatus,
 ) => {
   broadcastToWindows(context, "browser:bridgeStatus", status);
-};
-
-export const syncWakeWordState = (context: BootstrapContext) => {
-  const enabled = context.state.wakeWordController?.syncState() ?? false;
-  broadcastToWindows(context, "voice:wakeWordState", { enabled });
-  return enabled;
 };
 
 export const createBootstrapContext = (
@@ -186,7 +168,6 @@ export const createBootstrapContext = (
     stellaWorkspacePath: null,
     stellaHostRunner: null,
     stellaBrowserBridgeService: null,
-    wakeWordController: null,
     mobileBridgeResource: null,
     officePreviewBridgeStop: null,
     windowManager: null,

@@ -5,9 +5,7 @@ export const PREFERRED_MIC_KEY = "stella-preferred-mic-id";
 export const PREFERRED_SPEAKER_KEY = "stella-preferred-speaker-id";
 export const MIC_ENABLED_KEY = "stella-mic-enabled";
 
-export type SharedMicrophoneUseCase =
-  | "voice-rtc"
-  | "wake-word";
+export type SharedMicrophoneUseCase = "voice-rtc";
 
 export interface SharedMicrophoneAcquireOptions {
   useCase: SharedMicrophoneUseCase;

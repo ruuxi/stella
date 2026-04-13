@@ -423,29 +423,6 @@ export class RealtimeVoiceSession {
     return this.outputAnalyser;
   }
 
-  injectWakeWordPrefill(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed) {
-      return;
-    }
-
-    this.lastUserTranscript = trimmed;
-    this.trace("WAKE_WORD_PREFILL", trimmed);
-    this.sendEvent({
-      type: "conversation.item.create",
-      item: {
-        type: "message",
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: trimmed,
-          },
-        ],
-      },
-    });
-  }
-
   // ---------------------------------------------------------------------------
   // WebRTC internals
   // ---------------------------------------------------------------------------

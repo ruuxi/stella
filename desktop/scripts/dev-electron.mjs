@@ -207,7 +207,7 @@ const patchRuntimeInfoPlist = (appBundlePath) => {
  * The copied dev app needs the same key so macOS can prompt for getUserMedia.
  */
 const MIC_USAGE_DESCRIPTION =
-  'Stella uses your microphone for voice conversations and wake-word listening.'
+  'Stella uses your microphone for voice conversations.'
 
 const signRuntimeAppBundle = (appBundlePath) => {
   try {

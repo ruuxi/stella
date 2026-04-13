@@ -90,7 +90,6 @@
     "morphdom": "^2.7.8",
     "motion": "^12.35.0",
     "next-themes": "^0.4.6",
-    "onnxruntime-node": "^1.24.2",
     "openai": "6.10.0",
     "partial-json": "^0.1.7",
     "proxy-agent": "^6.5.0",
@@ -188,13 +187,6 @@
         "filter": [
           "**/*"
         ]
-      },
-      {
-        "from": "resources/models",
-        "to": "models",
-        "filter": [
-          "*.onnx"
-        ]
       }
     ],
     "win": {
@@ -205,7 +197,7 @@
       "target": "dmg",
       "icon": "build/icon.icns",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Stella uses your microphone for voice conversations and wake-word listening."
+        "NSMicrophoneUsageDescription": "Stella uses your microphone for voice conversations."
       }
     },
     "linux": {
@@ -222,7 +214,6 @@
     "esbuild",
     "mac-screen-capture-permissions",
     "msgpackr-extract",
-    "onnxruntime-node",
     "protobufjs",
     "sharp",
     "uiohook-napi"

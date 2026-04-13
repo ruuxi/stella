@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Stella uses your microphone for voice conversations and wake-word listening.</string>
+	<string>Stella uses your microphone for voice conversations.</string>
 </dict>
 </plist>

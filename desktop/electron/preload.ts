@@ -367,14 +367,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       micLevel: number;
       outputLevel: number;
     }>("voice:runtimeState"),
-    getWakeWordState: () =>
-      ipcRenderer.invoke("voice:getWakeWordState") as Promise<{
-        enabled: boolean;
-      }>,
-    onWakeWordState: onIpc<{ enabled: boolean }>("voice:wakeWordState"),
-    onWakeWordDetected: onIpc<{ detectedAt: number }>("voice:wakeWordDetected"),
-    pushWakeWordAudio: (buffer: ArrayBuffer) =>
-      ipcRenderer.send("voice:wakeWordAudio", buffer),
     pushRuntimeState: (state: {
       sessionState:
         | "idle"
