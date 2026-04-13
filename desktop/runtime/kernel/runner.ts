@@ -152,6 +152,7 @@ export const createStellaHostRunner = (
   options: StellaHostRunnerOptions,
 ): RunnerPublicApi => {
   const context = createRunnerContext(options);
+  const remoteTurnBridgeEnabled = options.enableRemoteTurnBridge !== false;
   const deviceName = (() => {
     const hostname = os.hostname().trim();
     if (hostname) return hostname;
@@ -202,7 +203,7 @@ export const createStellaHostRunner = (
     }
 
     stopHeartbeatLoop();
-    remoteTurnBridge.stop();
+    remoteTurnBridge?.stop();
     deviceRegistered = false;
     deviceRegistering = false;
     remoteTurnUnauthenticatedFailures = 0;
@@ -366,12 +367,13 @@ export const createStellaHostRunner = (
   const convexSession = createConvexSession(context, {
     syncRemoteTurnBridge: () => syncRemoteTurnBridge(),
     onAuthTokenSet: () => {
-      if (!context.state.hasConnectedAccount) {
+      if (!remoteTurnBridgeEnabled || !context.state.hasConnectedAccount) {
         return;
       }
       void registerDevice();
     },
-    onBeforeAuthTokenClear: () => sendGoOffline(),
+    onBeforeAuthTokenClear: () =>
+      remoteTurnBridgeEnabled ? sendGoOffline() : undefined,
   });
 
   sendGoOffline = async () => {
@@ -416,120 +418,126 @@ export const createStellaHostRunner = (
     webSearch: convexSession.webSearch,
   });
 
-  const remoteTurnBridge = createRemoteTurnBridge({
-    deviceId: context.deviceId,
-    isEnabled: () => context.state.isRunning,
-    isRunnerBusy: () => false,
-    subscribeRemoteTurnRequests: ({
-      deviceId: targetDeviceId,
-      since,
-      onUpdate,
-      onError,
-    }) => {
-      const client = convexSession.ensureConvexClient();
-      if (!client) {
-        return () => {};
-      }
+  const remoteTurnBridge = remoteTurnBridgeEnabled
+    ? createRemoteTurnBridge({
+      deviceId: context.deviceId,
+      isEnabled: () => context.state.isRunning,
+      isRunnerBusy: () => false,
+      subscribeRemoteTurnRequests: ({
+        deviceId: targetDeviceId,
+        since,
+        onUpdate,
+        onError,
+      }) => {
+        const client = convexSession.ensureConvexClient();
+        if (!client) {
+          return () => {};
+        }
 
-      const subscription = (client as any).onUpdate(
-        (
-          context.convexApi as {
-            events: { subscribeRemoteTurnRequestsForDevice: unknown };
-          }
-        ).events.subscribeRemoteTurnRequestsForDevice,
-        {
-          deviceId: targetDeviceId,
-          since,
-          limit: 20,
-        },
-        (events: unknown) => {
-          noteRemoteTurnAuthHealthy();
-          onUpdate(
-            events as Array<{
-              _id: string;
-              timestamp: number;
-              type: string;
-              requestId?: string;
-              payload?: Record<string, unknown>;
-            }>,
-          );
-        },
-        (error: Error) => {
-          const authFailure = handleRemoteTurnAuthFailure("subscription", error);
-          if (authFailure.stopped) {
-            void recoverRemoteTurnAuth("subscription");
-            return;
-          }
-          if (authFailure.handled) {
-            return;
-          }
-          onError?.(error);
-        },
-      );
+        const subscription = (client as any).onUpdate(
+          (
+            context.convexApi as {
+              events: { subscribeRemoteTurnRequestsForDevice: unknown };
+            }
+          ).events.subscribeRemoteTurnRequestsForDevice,
+          {
+            deviceId: targetDeviceId,
+            since,
+            limit: 20,
+          },
+          (events: unknown) => {
+            noteRemoteTurnAuthHealthy();
+            onUpdate(
+              events as Array<{
+                _id: string;
+                timestamp: number;
+                type: string;
+                requestId?: string;
+                payload?: Record<string, unknown>;
+              }>,
+            );
+          },
+          (error: Error) => {
+            const authFailure = handleRemoteTurnAuthFailure("subscription", error);
+            if (authFailure.stopped) {
+              void recoverRemoteTurnAuth("subscription");
+              return;
+            }
+            if (authFailure.handled) {
+              return;
+            }
+            onError?.(error);
+          },
+        );
 
-      return () => {
-        subscription.unsubscribe();
-      };
-    },
-    runLocalTurn: async ({ conversationId, userPrompt, agentType }) => {
-      const localConversationId =
-        context.getDefaultConversationId?.() ?? conversationId;
-      context.appendLocalChatEvent?.({
-        conversationId: localConversationId,
-        type: "user_message",
-        payload: { text: userPrompt, source: "connector" },
-      });
-      const result = await orchestratorController.runAutomationTurn({
-        conversationId: localConversationId,
-        userPrompt,
-        agentType,
-      });
-      if (result.status === "ok" && result.finalText) {
+        return () => {
+          subscription.unsubscribe();
+        };
+      },
+      runLocalTurn: async ({ conversationId, userPrompt, agentType }) => {
+        const localConversationId =
+          context.getDefaultConversationId?.() ?? conversationId;
         context.appendLocalChatEvent?.({
           conversationId: localConversationId,
-          type: "assistant_message",
-          payload: { text: result.finalText, source: "connector" },
+          type: "user_message",
+          payload: { text: userPrompt, source: "connector" },
         });
-      }
-      return result;
-    },
-    claimRemoteTurn: async ({ requestId, conversationId }) => {
-      const client = convexSession.ensureConvexClient();
-      if (!client) return;
-      await (client as any).mutation(
-        (
-          context.convexApi as {
-            channels: { connector_delivery: { claimRemoteTurn: unknown } };
-          }
-        ).channels.connector_delivery.claimRemoteTurn,
-        { requestId, conversationId },
-      );
-    },
-    completeConnectorTurn: async ({ requestId, conversationId, text }) => {
-      const client = convexSession.ensureConvexClient();
-      if (!client) {
-        throw new Error("Missing Convex client configuration.");
-      }
-      await (client as any).mutation(
-        (
-          context.convexApi as {
-            channels: { connector_delivery: { completeRemoteTurn: unknown } };
-          }
-        ).channels.connector_delivery.completeRemoteTurn,
-        { requestId, conversationId, text },
-      );
-    },
-    log: (level, message, error) => {
-      const logger = level === "error" ? console.error : console.warn;
-      if (error === undefined) {
-        logger(message);
-        return;
-      }
-      logger(message, error);
-    },
-  });
+        const result = await orchestratorController.runAutomationTurn({
+          conversationId: localConversationId,
+          userPrompt,
+          agentType,
+        });
+        if (result.status === "ok" && result.finalText) {
+          context.appendLocalChatEvent?.({
+            conversationId: localConversationId,
+            type: "assistant_message",
+            payload: { text: result.finalText, source: "connector" },
+          });
+        }
+        return result;
+      },
+      claimRemoteTurn: async ({ requestId, conversationId }) => {
+        const client = convexSession.ensureConvexClient();
+        if (!client) return;
+        await (client as any).mutation(
+          (
+            context.convexApi as {
+              channels: { connector_delivery: { claimRemoteTurn: unknown } };
+            }
+          ).channels.connector_delivery.claimRemoteTurn,
+          { requestId, conversationId },
+        );
+      },
+      completeConnectorTurn: async ({ requestId, conversationId, text }) => {
+        const client = convexSession.ensureConvexClient();
+        if (!client) {
+          throw new Error("Missing Convex client configuration.");
+        }
+        await (client as any).mutation(
+          (
+            context.convexApi as {
+              channels: { connector_delivery: { completeRemoteTurn: unknown } };
+            }
+          ).channels.connector_delivery.completeRemoteTurn,
+          { requestId, conversationId, text },
+        );
+      },
+      log: (level, message, error) => {
+        const logger = level === "error" ? console.error : console.warn;
+        if (error === undefined) {
+          logger(message);
+          return;
+        }
+        logger(message, error);
+      },
+    })
+    : null;
 
   syncRemoteTurnBridge = () => {
+    if (!remoteTurnBridgeEnabled || !remoteTurnBridge) {
+      stopHeartbeatLoop();
+      return;
+    }
     if (!context.state.isRunning || !context.state.isInitialized) {
       stopHeartbeatLoop();
       remoteTurnBridge.stop();
