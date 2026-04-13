@@ -10,6 +10,7 @@ const runnerPidFilePath = resolve(desktopDir, '.electron-dev-runner.pid');
 const stellaStatePath = resolve(desktopDir, 'state');
 const devElectronBinaryPathFragments = [
   resolve(desktopDir, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron'),
+  resolve(desktopDir, '.stella-dev-runtime', 'Stella.app', 'Contents', 'MacOS', 'Electron'),
 ].map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 const desktopGeneratedPaths = [
   resolve(desktopDir, '.vite-dev-url'),
