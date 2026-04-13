@@ -58,6 +58,9 @@ type OpenAIChatToolChoice =
 type ChatRequestMessage = {
   role?: unknown;
   content?: unknown;
+  reasoning_content?: unknown;
+  reasoning?: unknown;
+  reasoning_text?: unknown;
   tool_calls?: unknown;
   tool_call_id?: unknown;
   name?: unknown;
@@ -296,6 +299,28 @@ function readAssistantToolCalls(value: unknown): ToolCall[] {
   return toolCalls;
 }
 
+function readAssistantReasoningBlocks(
+  message: ChatRequestMessage,
+): AssistantMessage["content"] {
+  const reasoningFields: ChatCompletionReasoningField[] = [
+    "reasoning_content",
+    "reasoning",
+    "reasoning_text",
+  ];
+  for (const field of reasoningFields) {
+    const thinking = readReasoningText(message[field]);
+    if (!thinking) {
+      continue;
+    }
+    return [{
+      type: "thinking",
+      thinking,
+      thinkingSignature: field,
+    }];
+  }
+  return [];
+}
+
 function readTools(value: unknown): Tool[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
@@ -404,6 +429,7 @@ export function buildContextFromChatMessages(
 
       if (role === "assistant") {
         const content = [
+          ...readAssistantReasoningBlocks(message),
           ...blocks.filter(
             (block): block is TextContent => block.type === "text",
           ),

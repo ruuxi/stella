@@ -9,18 +9,50 @@ export type ChatContentPart =
   | { type?: string; text?: string }
   | { type: "image_url"; image_url: { url: string; detail?: "auto" | "low" | "high" } };
 
+export type ChatToolCall = {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+};
+
 export type ChatMessage = {
-  role: "system" | "user" | "assistant" | "developer";
-  content: string | ChatContentPart[];
+  role: "system" | "user" | "assistant" | "developer" | "tool";
+  content: string | ChatContentPart[] | null;
+  reasoning_content?: string;
+  reasoning?: string;
+  reasoning_text?: string;
+  tool_calls?: ChatToolCall[];
+  tool_call_id?: string;
+  name?: string;
 };
 
 export type ChatCompletionResponse = {
   choices?: Array<{
     message?: {
-      content?: string | Array<{ type?: string; text?: string }>;
+      role?: "assistant";
+      content?: string | Array<{ type?: string; text?: string }> | null;
+      reasoning_content?: string;
+      reasoning?: string;
+      reasoning_text?: string;
+      tool_calls?: ChatToolCall[];
     };
     delta?: {
       content?: string;
+      reasoning_content?: string;
+      reasoning?: string;
+      reasoning_text?: string;
+      tool_calls?: Array<{
+        index?: number;
+        id?: string;
+        type?: "function";
+        function?: {
+          name?: string;
+          arguments?: string;
+        };
+      }>;
     };
   }>;
   usage?: {
@@ -28,6 +60,12 @@ export type ChatCompletionResponse = {
     prompt_tokens?: number;
     output_tokens?: number;
     completion_tokens?: number;
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+    };
+    completion_tokens_details?: {
+      reasoning_tokens?: number;
+    };
   };
 };
 
