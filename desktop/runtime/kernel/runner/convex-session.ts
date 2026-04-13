@@ -9,11 +9,10 @@ import {
 export const createConvexSession = (
   context: RunnerContext,
   options: {
-    syncRemoteTurnBridge: () => void;
     onAuthTokenSet?: () => void;
     /** Called before clearing auth so the client can still authenticate (e.g. goOffline). */
     onBeforeAuthTokenClear?: () => void | Promise<void>;
-  },
+  } = {},
 ) => {
   const disposeConvexClient = () => {
     const client = context.state.convexClient;
@@ -145,13 +144,11 @@ export const createConvexSession = (
     if (!process.env.STELLA_LLM_PROXY_URL) {
       context.state.convexSiteUrl = sanitizeStellaBase(value);
     }
-    options.syncRemoteTurnBridge();
   };
 
   const setConvexSiteUrl = (value: string | null) => {
     if (process.env.STELLA_LLM_PROXY_URL) return;
     context.state.convexSiteUrl = sanitizeStellaBase(value);
-    options.syncRemoteTurnBridge();
   };
 
   const setAuthToken = (
@@ -168,7 +165,6 @@ export const createConvexSession = (
       context.state.authToken = value;
       // Recreate the client so background subscriptions reconnect with fresh auth.
       disposeConvexClient();
-      options.syncRemoteTurnBridge();
       if (next) {
         options.onAuthTokenSet?.();
       }
@@ -183,12 +179,10 @@ export const createConvexSession = (
 
   const setCloudSyncEnabled = (enabled: boolean) => {
     context.state.cloudSyncEnabled = Boolean(enabled);
-    options.syncRemoteTurnBridge();
   };
 
   const setHasConnectedAccount = (value: boolean) => {
     context.state.hasConnectedAccount = Boolean(value);
-    options.syncRemoteTurnBridge();
   };
 
   const subscribeQuery = (

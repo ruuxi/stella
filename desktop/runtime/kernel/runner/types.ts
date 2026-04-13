@@ -33,8 +33,6 @@ import type {
   SelfModHmrState,
 } from "../../contracts/index.js";
 import type {
-  HostRuntimeAuthRefreshParams,
-  HostRuntimeAuthRefreshResult,
   RuntimeActiveRun,
   RuntimeAttachmentRef,
   RuntimeAutomationTurnRequest,
@@ -100,14 +98,6 @@ export type StellaHostRunnerOptions = {
       requiresFullReload: boolean;
     }) => Promise<void>;
   } | null;
-  signHeartbeatPayload?: (
-    signedAtMs: number,
-  ) =>
-    | Promise<{ publicKey: string; signature: string }>
-    | { publicKey: string; signature: string };
-  requestRuntimeAuthRefresh?: (
-    params: HostRuntimeAuthRefreshParams,
-  ) => Promise<HostRuntimeAuthRefreshResult>;
   requestCredential?: (payload: {
     provider: string;
     label?: string;
@@ -234,7 +224,6 @@ export type RunnerContext = {
   selfModLifecycle?: StellaHostRunnerOptions["selfModLifecycle"];
   selfModHmrController?: StellaHostRunnerOptions["selfModHmrController"];
   getHmrTransitionController?: StellaHostRunnerOptions["getHmrTransitionController"];
-  signHeartbeatPayload?: StellaHostRunnerOptions["signHeartbeatPayload"];
   requestCredential?: StellaHostRunnerOptions["requestCredential"];
   scheduleApi?: ScheduleToolApi;
   displayHtml?: (html: string) => void;

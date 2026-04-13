@@ -109,9 +109,7 @@ export const createStellaHostRunner = (
   options: StellaHostRunnerOptions,
 ): RunnerPublicApi => {
   const context = createRunnerContext(options);
-  const convexSession = createConvexSession(context, {
-    syncRemoteTurnBridge: () => {},
-  });
+  const convexSession = createConvexSession(context);
 
   const storeOperations = createStoreOperations(context, {
     ensureStoreClient: convexSession.ensureStoreClient,
@@ -133,7 +131,6 @@ export const createStellaHostRunner = (
 
   const runtimeInitialization = createRuntimeInitialization(context, {
     disposeConvexClient: convexSession.disposeConvexClient,
-    syncRemoteTurnBridge: () => {},
     shutdownTasks: taskOrchestration.shutdown,
     onGoogleWorkspaceAuthRequired: options.onGoogleWorkspaceAuthRequired,
   });
