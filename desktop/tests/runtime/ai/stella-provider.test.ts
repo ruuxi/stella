@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { streamSimpleStella } from "../../../runtime/ai/providers/stella.js";
 import type { AssistantMessage, Context, Model } from "../../../runtime/ai/types.js";
-import { normalizeStellaApiBaseUrl } from "../../../src/shared/stella-api.js";
+import {
+  normalizeStellaSiteUrl,
+  stellaRuntimeUrlFromSiteUrl,
+} from "../../../src/shared/stella-api.js";
 
 const createModel = (): Model<"stella"> => ({
   id: "stella/default",
@@ -78,15 +81,18 @@ afterEach(() => {
 });
 
 describe("streamSimpleStella", () => {
-  it("normalizes Stella API base URLs back to the site root", () => {
-    expect(normalizeStellaApiBaseUrl("https://example.test/api/stella/v1")).toBe(
+  it("normalizes Stella URLs back to the site root and derives runtime in one place", () => {
+    expect(normalizeStellaSiteUrl("https://example.test/api/stella/v1")).toBe(
       "https://example.test",
     );
-    expect(normalizeStellaApiBaseUrl("https://example.test/api/stella/v1/runtime")).toBe(
+    expect(normalizeStellaSiteUrl("https://example.test/api/stella/v1/runtime")).toBe(
       "https://example.test",
     );
-    expect(normalizeStellaApiBaseUrl("https://example.test/api/stella/v1/chat/completions")).toBe(
+    expect(normalizeStellaSiteUrl("https://example.test/api/stella/v1/chat/completions")).toBe(
       "https://example.test",
+    );
+    expect(stellaRuntimeUrlFromSiteUrl("https://example.test/api/stella/v1")).toBe(
+      "https://example.test/api/stella/v1/runtime",
     );
   });
 
