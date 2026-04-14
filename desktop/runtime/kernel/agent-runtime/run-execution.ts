@@ -1,6 +1,9 @@
 import type { AgentEvent, AgentMessage } from "../agent-core/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
-import type { RuntimeAttachmentRef } from "../../protocol/index.js";
+import type {
+  RuntimeAttachmentRef,
+  RuntimePromptMessage,
+} from "../../protocol/index.js";
 import {
   subscribeRuntimeAgentEvents,
   type RuntimeRunEventRecorder,
@@ -35,11 +38,11 @@ export const executeRuntimeAgentPrompt = async (args: {
   agent: RuntimeExecutableAgent;
   promptText?: string;
   attachments?: RuntimeAttachmentRef[];
-  promptMessages?: Array<{
-    text: string;
-    attachments?: RuntimeAttachmentRef[];
-    uiVisibility?: "visible" | "hidden";
-  }>;
+  promptMessages?: Array<
+    RuntimePromptMessage & {
+      attachments?: RuntimeAttachmentRef[];
+    }
+  >;
   runId: string;
   agentType: string;
   userMessageId: string;
@@ -84,17 +87,19 @@ export const executeRuntimeAgentPrompt = async (args: {
       timestamp: promptTimestamp + index,
     }));
     for (const [index, promptMessage] of promptMessages.entries()) {
-      if (args.threadStore && args.threadKey) {
+      const promptInput = promptInputs[index];
+      const messageType = promptInput?.messageType ?? "user";
+      if (messageType === "user" && args.threadStore && args.threadKey) {
         persistThreadPayloadMessage(args.threadStore, {
           threadKey: args.threadKey,
           payload: promptMessage,
         });
       }
-      const uiVisibility = promptInputs[index]?.uiVisibility;
-      if (uiVisibility) {
+      const uiVisibility = promptInput?.uiVisibility;
+      if (messageType === "user" && uiVisibility) {
         args.callbacks?.onUserMessage?.({
           userMessageId: args.userMessageId,
-          text: promptInputs[index]!.text,
+          text: promptInput.text,
           timestamp: promptMessage.timestamp,
           uiVisibility,
         });

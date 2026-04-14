@@ -123,9 +123,7 @@ export const createStellaHostRunner = (
   });
   const taskOrchestration = createTaskOrchestration(context, {
     buildAgentContext: (args) => buildAgentContext(context, args),
-    queueOrchestratorTurn: orchestratorController.queueOrchestratorTurn,
-    startStreamingOrchestratorTurn:
-      orchestratorController.startStreamingOrchestratorTurn,
+    sendMessage: orchestratorController.sendMessage,
     webSearch: convexSession.webSearch,
   });
 
@@ -174,6 +172,8 @@ export const createStellaHostRunner = (
     createFirstStoreRelease: storeOperations.createFirstStoreRelease,
     createStoreReleaseUpdate: storeOperations.createStoreReleaseUpdate,
     handleLocalChat: orchestratorController.handleLocalChat,
+    sendMessage: orchestratorController.sendMessage,
+    sendUserMessage: orchestratorController.sendUserMessage,
     runAutomationTurn: orchestratorController.runAutomationTurn,
     runBlockingLocalTask: taskOrchestration.runBlockingLocalTask,
     createBackgroundTask: taskOrchestration.createBackgroundTask,

@@ -61,6 +61,7 @@ export const buildChatPromptMessages = ({
     promptMessages.push({
       text: hiddenContextParts.join("\n\n"),
       uiVisibility: "hidden",
+      messageType: "message",
     });
   }
 

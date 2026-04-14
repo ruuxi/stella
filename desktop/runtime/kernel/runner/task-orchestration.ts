@@ -15,9 +15,7 @@ import {
   isLocalCliAgentId,
 } from "../../../src/shared/contracts/agent-runtime.js";
 import type {
-  AgentCallbacks,
   RunnerContext,
-  QueuedOrchestratorTurn,
 } from "./types.js";
 import { buildTaskEventPrompt, createSelfModHmrState } from "./shared.js";
 import type { SelfModHmrState } from "../../contracts/index.js";
@@ -219,22 +217,13 @@ export const createTaskOrchestration = (
       threadId?: string;
       selfModMetadata?: TaskToolRequest["selfModMetadata"];
     }) => Promise<LocalTaskManagerAgentContext>;
-    queueOrchestratorTurn: (turn: QueuedOrchestratorTurn) => void;
-    startStreamingOrchestratorTurn: (
-      payload: QueuedOrchestratorTurn,
-      startArgs: {
-        conversationId: string;
-        userPrompt: string;
-        promptMessages?: Array<{
-          text: string;
-          uiVisibility?: "visible" | "hidden";
-        }>;
-        agentType: string;
-        userMessageId: string;
-        uiVisibility?: "visible" | "hidden";
-      },
-      callbacks: AgentCallbacks,
-    ) => Promise<{ runId: string }>;
+    sendMessage: (input: {
+      conversationId: string;
+      text: string;
+      uiVisibility?: "visible" | "hidden";
+      agentType?: string;
+      deliverAs?: "steer" | "followUp";
+    }) => Promise<void>;
     webSearch: (
       query: string,
       options?: { category?: string; displayResults?: boolean },
@@ -270,32 +259,13 @@ export const createTaskOrchestration = (
       if (!userPrompt) {
         return;
       }
-      const queuedTurn: QueuedOrchestratorTurn = {
-        priority: "system",
-        requeueOnInterrupt: true,
-        execute: async () => {
-          const callbacks = context.state.conversationCallbacks.get(
-            event.conversationId,
-          );
-          if (!callbacks) {
-            return;
-          }
-          const userMessageId = `local:${crypto.randomUUID()}`;
-          await deps.startStreamingOrchestratorTurn(
-            queuedTurn,
-            {
-              conversationId: event.conversationId,
-              userPrompt: "",
-              promptMessages: [{ text: userPrompt, uiVisibility: "hidden" }],
-              agentType: AGENT_IDS.ORCHESTRATOR,
-              userMessageId,
-              uiVisibility: "hidden",
-            },
-            callbacks,
-          );
-        },
-      };
-      deps.queueOrchestratorTurn(queuedTurn);
+      void deps.sendMessage({
+        conversationId: event.conversationId,
+        text: userPrompt,
+        uiVisibility: "hidden",
+        agentType: AGENT_IDS.ORCHESTRATOR,
+        deliverAs: "followUp",
+      });
     },
     fetchAgentContext: deps.buildAgentContext,
     runSubagent: async ({

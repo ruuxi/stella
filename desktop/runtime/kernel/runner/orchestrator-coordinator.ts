@@ -14,6 +14,7 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
     context.state.activeOrchestratorRunId = null;
     context.state.activeOrchestratorConversationId = null;
     context.state.activeOrchestratorUiVisibility = "visible";
+    context.state.activeOrchestratorSession = null;
     context.state.activeToolExecutionCount = 0;
     context.state.interruptAfterTool = false;
     context.state.activeInterruptedReplayTurn = null;

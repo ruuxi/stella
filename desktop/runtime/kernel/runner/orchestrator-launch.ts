@@ -6,7 +6,10 @@ import type {
   QueuedOrchestratorTurn,
   RunnerContext,
 } from "./types.js";
-import type { RuntimeAttachmentRef } from "../../protocol/index.js";
+import type {
+  RuntimeAttachmentRef,
+  RuntimePromptMessage,
+} from "../../protocol/index.js";
 
 type BuildAgentContext = (args: {
   conversationId: string;
@@ -29,10 +32,7 @@ export type PreparedOrchestratorRun = {
   agentType: string;
   userPrompt: string;
   uiVisibility?: "visible" | "hidden";
-  promptMessages?: Array<{
-    text: string;
-    uiVisibility?: "visible" | "hidden";
-  }>;
+  promptMessages?: RuntimePromptMessage[];
   attachments: RuntimeAttachmentRef[];
   agentContext: LocalTaskManagerAgentContext;
   resolvedLlm: ReturnType<typeof resolveRunnerLlmRoute>;
@@ -49,10 +49,7 @@ export const prepareOrchestratorRun = async (args: {
   agentType: string;
   userPrompt: string;
   uiVisibility?: "visible" | "hidden";
-  promptMessages?: Array<{
-    text: string;
-    uiVisibility?: "visible" | "hidden";
-  }>;
+  promptMessages?: RuntimePromptMessage[];
   attachments: RuntimeAttachmentRef[];
   replayTurn?: QueuedOrchestratorTurn | null;
 }): Promise<PreparedOrchestratorRun> => {
@@ -102,6 +99,9 @@ export const launchPreparedOrchestratorRun = (args: {
   prepared: PreparedOrchestratorRun;
   userMessageId: string;
   runtimeCallbacks: RuntimeRunCallbacks;
+  onExecutionSessionCreated?: NonNullable<
+    Parameters<typeof runOrchestratorTurn>[0]["onExecutionSessionCreated"]
+  >;
   webSearch: WebSearch;
   finishInterruptedRun: (args: {
     runId: string;
@@ -148,6 +148,7 @@ export const launchPreparedOrchestratorRun = (args: {
     webSearch: args.webSearch,
     hookEmitter: context.hookEmitter,
     displayHtml: context.displayHtml,
+    onExecutionSessionCreated: args.onExecutionSessionCreated,
   }).catch((error) => {
     if (isReportedOrchestratorError(error)) {
       return;
@@ -178,10 +179,7 @@ export const startPreparedOrchestratorRun = async (args: {
   agentType: string;
   userPrompt: string;
   uiVisibility?: "visible" | "hidden";
-  promptMessages?: Array<{
-    text: string;
-    uiVisibility?: "visible" | "hidden";
-  }>;
+  promptMessages?: RuntimePromptMessage[];
   attachments: RuntimeAttachmentRef[];
   userMessageId: string;
   webSearch: WebSearch;
@@ -193,6 +191,9 @@ export const startPreparedOrchestratorRun = async (args: {
   cleanupRun: (runId: string, onCleanup?: () => void) => void;
   onFatalError: (error: unknown) => void;
   onPrepared?: (prepared: PreparedOrchestratorRun) => void;
+  onExecutionSessionCreated?: NonNullable<
+    Parameters<typeof runOrchestratorTurn>[0]["onExecutionSessionCreated"]
+  >;
   replayTurn?: QueuedOrchestratorTurn | null;
 }): Promise<{ runId: string; prepared: PreparedOrchestratorRun }> => {
   const prepared = await prepareOrchestratorRun({
@@ -219,6 +220,7 @@ export const startPreparedOrchestratorRun = async (args: {
       runId: args.runId,
       prepared,
     }),
+    onExecutionSessionCreated: args.onExecutionSessionCreated,
     webSearch: args.webSearch,
     finishInterruptedRun: args.finishInterruptedRun,
     cleanupRun: args.cleanupRun,

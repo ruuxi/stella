@@ -370,6 +370,7 @@ export const createRunnerContext = ({
       activeOrchestratorRunId: null,
       activeOrchestratorConversationId: null,
       activeOrchestratorUiVisibility: "visible",
+      activeOrchestratorSession: null,
       queuedOrchestratorTurns: [],
       activeRunAbortControllers: new Map(),
       conversationCallbacks: new Map(),

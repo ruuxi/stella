@@ -1,11 +1,18 @@
 import crypto from "crypto";
+import { AGENT_IDS } from "../../../src/shared/contracts/agent-runtime.js";
+import { createUserPromptMessage } from "../agent-runtime/run-preparation.js";
+import { persistThreadPayloadMessage } from "../agent-runtime/thread-memory.js";
 import { createRuntimeLogger } from "../debug.js";
+import type { AgentMessage } from "../agent-core/types.js";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
 import type {
-  RunnerContext,
+  ActiveOrchestratorSession,
   AgentCallbacks,
   ChatPayload,
   QueuedOrchestratorTurn,
+  RunnerContext,
+  RuntimeSendMessageInput,
+  RuntimeSendUserMessageInput,
 } from "./types.js";
 import {
   createAutomationAgentCallbacks,
@@ -27,6 +34,20 @@ import {
 } from "./orchestrator-policy.js";
 
 const logger = createRuntimeLogger("runner.orchestrator");
+const UI_VISIBILITY_HIDDEN = "hidden" as const;
+const UI_VISIBILITY_VISIBLE = "visible" as const;
+
+const asMetadataRecord = (
+  value: unknown,
+): Record<string, unknown> | undefined =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? { ...(value as Record<string, unknown>) }
+    : undefined;
+
+const buildInjectedUserMessage = (text: string, timestamp: number) => ({
+  ...createUserPromptMessage(text),
+  timestamp,
+});
 
 export const createOrchestratorController = (
   context: RunnerContext,
@@ -111,6 +132,24 @@ export const createOrchestratorController = (
         });
         args.onPrepared?.(prepared);
       },
+      onExecutionSessionCreated: (session) => {
+        context.state.activeOrchestratorSession = {
+          ...session,
+          conversationId: args.conversationId,
+          agentType: args.agentType,
+          uiVisibility: args.uiVisibility ?? UI_VISIBILITY_VISIBLE,
+          queueMessage: (
+            message: AgentMessage,
+            delivery: "steer" | "followUp",
+          ) => {
+            if (delivery === "followUp") {
+              session.agent.followUp(message);
+              return;
+            }
+            session.agent.steer(message);
+          },
+        } satisfies ActiveOrchestratorSession;
+      },
       onFatalError: createOrchestratorFatalErrorHandler({
         runId,
         agentType: args.agentType,
@@ -163,6 +202,190 @@ export const createOrchestratorController = (
   };
 
   const agentHealthCheck = () => getOrchestratorHealth(context, deps);
+
+  const getConversationCallbacks = (
+    conversationId: string,
+  ): AgentCallbacks | null => {
+    const callbacks = context.state.conversationCallbacks.get(conversationId) ?? null;
+    if (!callbacks) {
+      logger.debug("missing-conversation-callbacks", { conversationId });
+    }
+    return callbacks;
+  };
+
+  const getLiveOrchestratorSession = (
+    conversationId: string,
+    agentType?: string,
+  ): ActiveOrchestratorSession | null => {
+    const session = context.state.activeOrchestratorSession;
+    if (!session || !session.agent.state.isStreaming) {
+      return null;
+    }
+    if (session.uiVisibility !== UI_VISIBILITY_VISIBLE) {
+      return null;
+    }
+    if (session.conversationId !== conversationId) {
+      return null;
+    }
+    if (agentType && session.agentType !== agentType) {
+      return null;
+    }
+    return session;
+  };
+
+  const persistInjectedMessage = (
+    session: ActiveOrchestratorSession,
+    text: string,
+    timestamp: number,
+  ): AgentMessage => {
+    const payload = buildInjectedUserMessage(text, timestamp);
+    persistThreadPayloadMessage(context.runtimeStore, {
+      threadKey: session.threadKey,
+      payload,
+    });
+    return payload;
+  };
+
+  const appendVisibleUserChatEvent = (args: {
+    conversationId: string;
+    userMessageId: string;
+    text: string;
+    timestamp: number;
+    metadata?: Record<string, unknown>;
+  }) => {
+    context.appendLocalChatEvent?.({
+      conversationId: args.conversationId,
+      type: "user_message",
+      requestId: args.userMessageId,
+      timestamp: args.timestamp,
+      payload: {
+        text: args.text,
+        ...(args.metadata ? { metadata: args.metadata } : {}),
+      },
+    });
+  };
+
+  const sendMessage = async (input: RuntimeSendMessageInput): Promise<void> => {
+    const text = input.text.trim();
+    if (!text) {
+      return;
+    }
+    const callbacks = getConversationCallbacks(input.conversationId);
+    if (!callbacks) {
+      return;
+    }
+    const health = agentHealthCheck();
+    if (!health.ready) {
+      throw new Error(health.reason ?? "Stella runtime not ready");
+    }
+    const delivery = input.deliverAs ?? "steer";
+    const liveSession = getLiveOrchestratorSession(
+      input.conversationId,
+      input.agentType,
+    );
+    if (liveSession) {
+      const timestamp = Date.now();
+      const message = persistInjectedMessage(liveSession, text, timestamp);
+      liveSession.queueMessage(message, delivery);
+      return;
+    }
+
+    await executeOrQueueSystemOrchestratorTurn({
+      hasActiveRun: Boolean(context.state.activeOrchestratorRunId),
+      queueOrchestratorTurn,
+      execute: async (queuedTurn) => {
+        await startStreamingOrchestratorTurn(
+          queuedTurn,
+          {
+            conversationId: input.conversationId,
+            userPrompt: "",
+            promptMessages: [{
+              text,
+              uiVisibility: input.uiVisibility ?? UI_VISIBILITY_HIDDEN,
+              messageType: "message",
+            }],
+            agentType: input.agentType ?? AGENT_IDS.ORCHESTRATOR,
+            userMessageId: `message:${crypto.randomUUID()}`,
+            uiVisibility: UI_VISIBILITY_VISIBLE,
+          },
+          callbacks,
+        );
+      },
+    });
+  };
+
+  const sendUserMessage = async (
+    input: RuntimeSendUserMessageInput,
+  ): Promise<void> => {
+    const text = input.text.trim();
+    if (!text) {
+      return;
+    }
+    const callbacks = getConversationCallbacks(input.conversationId);
+    if (!callbacks) {
+      return;
+    }
+    const health = agentHealthCheck();
+    if (!health.ready) {
+      throw new Error(health.reason ?? "Stella runtime not ready");
+    }
+
+    const userMessageId = `local:${crypto.randomUUID()}`;
+    const uiVisibility = input.uiVisibility ?? UI_VISIBILITY_VISIBLE;
+    const runtimePromptVisibility = UI_VISIBILITY_HIDDEN;
+    const delivery = input.deliverAs ?? "steer";
+    const timestamp = Date.now();
+    const metadata = asMetadataRecord(input.metadata);
+    const uiMetadata = asMetadataRecord(metadata?.ui);
+    const nextMetadata =
+      metadata || uiVisibility === UI_VISIBILITY_HIDDEN
+        ? {
+            ...(metadata ?? {}),
+            ui: {
+              ...(uiMetadata ?? {}),
+              visibility: uiVisibility,
+            },
+          }
+        : undefined;
+    if (uiVisibility !== UI_VISIBILITY_HIDDEN) {
+      appendVisibleUserChatEvent({
+        conversationId: input.conversationId,
+        userMessageId,
+        text,
+        timestamp,
+        ...(nextMetadata ? { metadata: nextMetadata } : {}),
+      });
+    }
+    const liveSession = getLiveOrchestratorSession(
+      input.conversationId,
+      input.agentType,
+    );
+    if (liveSession) {
+      const message = persistInjectedMessage(liveSession, text, timestamp);
+      liveSession.queueMessage(message, delivery);
+      return;
+    }
+
+    await executeOrQueueUserOrchestratorTurn({
+      hasActiveRun: Boolean(context.state.activeOrchestratorRunId),
+      queueOrchestratorTurn,
+      execute: async () =>
+        await startLocalChatTurn(
+          {
+            conversationId: input.conversationId,
+            userMessageId,
+            userPrompt: "",
+            promptMessages: [{
+              text,
+              uiVisibility: runtimePromptVisibility,
+              messageType: "user",
+            }],
+            agentType: input.agentType,
+          },
+          callbacks,
+        ),
+    });
+  };
 
   const startLocalChatTurn = async (
     payload: ChatPayload,
@@ -335,6 +558,8 @@ export const createOrchestratorController = (
     queueOrchestratorTurn,
     startStreamingOrchestratorTurn,
     handleLocalChat,
+    sendMessage,
+    sendUserMessage,
     runAutomationTurn,
     cancelLocalChat,
     getActiveOrchestratorRun,

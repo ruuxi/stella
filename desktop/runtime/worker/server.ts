@@ -566,8 +566,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     let activeRunId = "";
     let syntheticSeq = 1;
     const hiddenSystemRunIds = new Set<string>();
-    const pendingHiddenSystemNotificationTitles: string[] = [];
-    const hiddenSystemNotificationTitleByRunId = new Map<string, string>();
     let lastVisibleRunId = "";
     let lastVisibleRequestId = requestId;
     const mergedAttachments = [
@@ -600,10 +598,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         const isHiddenRun = ev.uiVisibility === "hidden";
         if (isHiddenRun) {
           hiddenSystemRunIds.add(ev.runId);
-          const notificationTitle = pendingHiddenSystemNotificationTitles.shift();
-          if (notificationTitle) {
-            hiddenSystemNotificationTitleByRunId.set(ev.runId, notificationTitle);
-          }
           return;
         }
         lastVisibleRunId = ev.runId;
@@ -733,7 +727,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       onError: (ev) => {
         const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
         hiddenSystemRunIds.delete(ev.runId);
-        hiddenSystemNotificationTitleByRunId.delete(ev.runId);
         if (isHiddenRun) {
           if (lastVisibleRunId) {
             emitRunEvent({
@@ -783,17 +776,10 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           error: ev.error,
           statusText: ev.statusText,
         });
-        if (ev.type === "task-completed") {
-          pendingHiddenSystemNotificationTitles.push("Task completed");
-        } else if (ev.type === "task-failed") {
-          pendingHiddenSystemNotificationTitles.push("Task failed");
-        }
       },
       onEnd: (ev) => {
         const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
         hiddenSystemRunIds.delete(ev.runId);
-        const notificationTitle = hiddenSystemNotificationTitleByRunId.get(ev.runId);
-        hiddenSystemNotificationTitleByRunId.delete(ev.runId);
         const finalText = typeof ev.finalText === "string" ? ev.finalText : "";
         if ((ev.agentType ?? AGENT_IDS.ORCHESTRATOR) === AGENT_IDS.ORCHESTRATOR) {
           if (finalText.trim().length > 0) {
@@ -812,12 +798,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
               }),
             });
             peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
-            if (notificationTitle) {
-              peer.request(METHOD_NAMES.HOST_NOTIFICATION_SHOW, {
-                title: notificationTitle,
-                body: finalText,
-              }).catch(() => {});
-            }
           }
         }
         if (isHiddenRun) {
@@ -846,7 +826,6 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       onInterrupted: (ev) => {
         const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
         hiddenSystemRunIds.delete(ev.runId);
-        hiddenSystemNotificationTitleByRunId.delete(ev.runId);
         if (isHiddenRun) {
           if (lastVisibleRunId) {
             emitRunEvent({

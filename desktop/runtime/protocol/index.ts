@@ -333,6 +333,10 @@ export type RuntimeAttachmentRef = {
 export type RuntimePromptMessage = {
   text: string;
   uiVisibility?: "visible" | "hidden";
+  messageType?: "message" | "user";
+  customType?: string;
+  display?: boolean;
+  details?: unknown;
 };
 
 export type RuntimeChatPayload = {
