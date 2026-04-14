@@ -55,6 +55,7 @@ const DEFAULT_RETRY_AFTER_MS = 60_000;
 const SSE_HEARTBEAT_INTERVAL_MS = 45_000;
 const SSE_STREAM_OPEN_COMMENT = new TextEncoder().encode(": stella-stream-open\n\n");
 const SSE_HEARTBEAT_COMMENT = new TextEncoder().encode(": keepalive\n\n");
+const STELLA_MANAGED_API = "openai-responses" as const;
 
 export const STELLA_API_BASE_PATH = "/api/stella/v1";
 export const STELLA_CHAT_COMPLETIONS_PATH = `${STELLA_API_BASE_PATH}/chat/completions`;
@@ -516,6 +517,7 @@ async function createStreamingRuntimeResponse(args: {
   const runtimeStream = streamManagedChat({
     config: serverModelConfig,
     context: buildContextFromChatMessages(requestBody.messages, requestBody.tools),
+    api: STELLA_MANAGED_API,
     request: runtimeRequest,
   });
   const iterator = runtimeStream[Symbol.asyncIterator]();
@@ -942,6 +944,7 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
     const message = await completeManagedChat({
       config: serverModelConfig,
       context: buildContextFromChatMessages(requestJson.messages, requestJson.tools),
+      api: STELLA_MANAGED_API,
       request: buildManagedRuntimeRequest(requestJson, request.signal),
     });
 

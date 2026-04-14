@@ -13,8 +13,13 @@ import {
   type LocalChatEventRecord,
   type LocalChatEventRow,
   type LocalChatSyncMessage,
+  type PersistedRuntimeThreadPayload,
   type RuntimeMemory,
   type RuntimeRunEvent,
+  RUNTIME_THREAD_SESSION_VERSION,
+  type RuntimeThreadCompactionEntry,
+  type RuntimeThreadMessageEntry,
+  type RuntimeThreadSessionEntry,
   type RuntimeThreadMessage,
   asFiniteNumber,
   asObject,
@@ -43,6 +48,22 @@ type SessionRow = {
 type ThreadMessageRow = {
   timestamp: number;
   role: "user" | "assistant" | "toolResult";
+  dataJson: string | null;
+};
+
+type ThreadSessionRow = {
+  sessionId: string;
+  createdAt: number;
+  cwd: string;
+  parentSession: string | null;
+};
+
+type ThreadSessionEntryRow = {
+  entryId: string;
+  parentEntryId: string | null;
+  entryType: string;
+  timestampIso: string;
+  createdAt: number;
   dataJson: string | null;
 };
 
@@ -107,6 +128,257 @@ const eventRoleForType = (type: string): string => {
     default:
       return "system";
   }
+};
+
+const THREAD_CHECKPOINT_MARKER = "[[THREAD_CHECKPOINT]]";
+
+const toIsoTimestamp = (timestamp: number): string =>
+  new Date(timestamp).toISOString();
+
+const formatThreadCheckpointMessage = (summary: string): string =>
+  [
+    THREAD_CHECKPOINT_MARKER,
+    "",
+    summary.trim(),
+  ].join("\n");
+
+const previewFromTextAndImages = (
+  content: Extract<PersistedRuntimeThreadPayload, { role: "user" | "toolResult" }>["content"],
+): string => {
+  if (typeof content === "string") {
+    return content;
+  }
+  return content
+    .map((block) =>
+      block.type === "text" ? block.text : `[Image: ${block.mimeType}]`)
+    .join("\n")
+    .trim();
+};
+
+const previewFromAssistantPayload = (
+  payload: Extract<PersistedRuntimeThreadPayload, { role: "assistant" }>,
+): string =>
+  payload.content
+    .flatMap((block) => {
+      if (block.type === "text") {
+        return block.text.trim() ? [block.text] : [];
+      }
+      if (block.type === "toolCall") {
+        return [
+          `[Tool call] ${block.name}\nargs: ${JSON.stringify(block.arguments ?? {})}`,
+        ];
+      }
+      return [];
+    })
+    .join("\n\n")
+    .trim();
+
+const previewFromPayload = (
+  payload: PersistedRuntimeThreadPayload,
+): string => {
+  if (payload.role === "assistant") {
+    return previewFromAssistantPayload(payload);
+  }
+  if (payload.role === "toolResult") {
+    const body = previewFromTextAndImages(payload.content);
+    return [
+      `[Tool result] ${payload.toolName}`,
+      ...(body ? [body] : []),
+    ].join("\n").trim();
+  }
+  return previewFromTextAndImages(payload.content);
+};
+
+const buildFallbackThreadPayload = (
+  message: RuntimeThreadMessage,
+): PersistedRuntimeThreadPayload => {
+  if (message.payload) {
+    return message.payload;
+  }
+  if (message.role === "assistant") {
+    return {
+      role: "assistant",
+      content: message.content.trim().length > 0
+        ? [{ type: "text", text: message.content }]
+        : [],
+      api: "openai-completions",
+      provider: "stella",
+      model: "history",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: message.timestamp,
+    };
+  }
+  if (message.role === "toolResult") {
+    return {
+      role: "toolResult",
+      toolCallId: message.toolCallId ?? "",
+      toolName: "tool",
+      content: message.content.trim().length > 0
+        ? [{ type: "text", text: message.content }]
+        : [],
+      isError: false,
+      timestamp: message.timestamp,
+    };
+  }
+  return {
+    role: "user",
+    content: message.content,
+    timestamp: message.timestamp,
+  };
+};
+
+const parseThreadSessionEntry = (
+  row: ThreadSessionEntryRow,
+): RuntimeThreadSessionEntry | null => {
+  const data = parseJsonValue<Record<string, unknown>>(row.dataJson);
+  switch (row.entryType) {
+    case "message": {
+      const rawMessage =
+        data && "message" in data
+          ? parseRuntimeThreadPayload(
+              JSON.stringify((data as { message?: unknown }).message),
+            )
+          : undefined;
+      if (!rawMessage) {
+        return null;
+      }
+      return {
+        type: "message",
+        id: row.entryId,
+        parentId: row.parentEntryId,
+        timestamp: row.timestampIso,
+        message: rawMessage,
+      } satisfies RuntimeThreadMessageEntry;
+    }
+    case "compaction": {
+      const summary =
+        typeof data?.summary === "string" ? data.summary.trim() : "";
+      const firstKeptEntryId =
+        typeof data?.firstKeptEntryId === "string"
+          ? data.firstKeptEntryId.trim()
+          : "";
+      const tokensBefore =
+        typeof data?.tokensBefore === "number" && Number.isFinite(data.tokensBefore)
+          ? data.tokensBefore
+          : 0;
+      if (!summary || !firstKeptEntryId) {
+        return null;
+      }
+      return {
+        type: "compaction",
+        id: row.entryId,
+        parentId: row.parentEntryId,
+        timestamp: row.timestampIso,
+        summary,
+        firstKeptEntryId,
+        tokensBefore,
+        ...(data && "details" in data ? { details: data.details } : {}),
+        ...(data?.fromHook === true ? { fromHook: true } : {}),
+      } satisfies RuntimeThreadCompactionEntry;
+    }
+    default:
+      return null;
+  }
+};
+
+const toThreadMessageRecord = (
+  entry: RuntimeThreadSessionEntry,
+): (RuntimeThreadMessage & { entryId: string }) | null => {
+  if (entry.type === "message") {
+    const payload = entry.message;
+    return {
+      entryId: entry.id,
+      threadKey: "",
+      timestamp: payload.timestamp,
+      role: payload.role,
+      content: previewFromPayload(payload),
+      ...(payload.role === "toolResult"
+        ? { toolCallId: payload.toolCallId }
+        : {}),
+      payload,
+    };
+  }
+  if (entry.type === "compaction") {
+    return {
+      entryId: entry.id,
+      threadKey: "",
+      timestamp: Date.parse(entry.timestamp) || Date.now(),
+      role: "assistant",
+      content: formatThreadCheckpointMessage(entry.summary),
+    };
+  }
+  return null;
+};
+
+const buildThreadMessagesFromEntries = (
+  entries: RuntimeThreadSessionEntry[],
+): Array<RuntimeThreadMessage & { entryId: string }> => {
+  if (entries.length === 0) {
+    return [];
+  }
+
+  const byId = new Map<string, RuntimeThreadSessionEntry>();
+  for (const entry of entries) {
+    byId.set(entry.id, entry);
+  }
+
+  let leaf: RuntimeThreadSessionEntry | undefined = entries[entries.length - 1];
+  const path: RuntimeThreadSessionEntry[] = [];
+  while (leaf) {
+    path.unshift(leaf);
+    leaf = leaf.parentId ? byId.get(leaf.parentId) : undefined;
+  }
+
+  const latestCompaction = [...path].reverse().find(
+    (entry): entry is RuntimeThreadCompactionEntry => entry.type === "compaction",
+  );
+
+  const messages: Array<RuntimeThreadMessage & { entryId: string }> = [];
+  const appendMessage = (entry: RuntimeThreadSessionEntry) => {
+    const message = toThreadMessageRecord(entry);
+    if (!message) {
+      return;
+    }
+    messages.push(message);
+  };
+
+  if (latestCompaction) {
+    appendMessage(latestCompaction);
+    const compactionIndex = path.findIndex((entry) => entry.id === latestCompaction.id);
+    let foundFirstKept = false;
+    for (let index = 0; index < compactionIndex; index += 1) {
+      const entry = path[index]!;
+      if (entry.id === latestCompaction.firstKeptEntryId) {
+        foundFirstKept = true;
+      }
+      if (foundFirstKept) {
+        appendMessage(entry);
+      }
+    }
+    for (let index = compactionIndex + 1; index < path.length; index += 1) {
+      appendMessage(path[index]!);
+    }
+    return messages;
+  }
+
+  for (const entry of path) {
+    appendMessage(entry);
+  }
+  return messages;
 };
 
 export class SessionStore {
@@ -575,52 +847,171 @@ export class SessionStore {
     return this.ensureImplicitThreadRow(threadKey).conversationId;
   }
 
+  private getThreadSession(threadKey: string): ThreadSessionRow | null {
+    const row = this.db.prepare(`
+      SELECT
+        session_id AS sessionId,
+        created_at AS createdAt,
+        cwd,
+        parent_session AS parentSession
+      FROM runtime_thread_sessions
+      WHERE thread_key = ?
+      LIMIT 1
+    `).get(threadKey) as ThreadSessionRow | undefined;
+    return row ?? null;
+  }
+
+  private ensureThreadSession(
+    threadKey: string,
+    conversationId: string,
+    timestamp: number,
+  ): ThreadSessionRow {
+    const existing = this.getThreadSession(threadKey);
+    if (existing) {
+      this.db.prepare(`
+        UPDATE runtime_thread_sessions
+        SET updated_at = ?
+        WHERE thread_key = ?
+      `).run(timestamp, threadKey);
+      return existing;
+    }
+
+    const sessionId = generateLocalId();
+    const cwd = "";
+    this.upsertSession(conversationId, timestamp);
+    this.db.prepare(`
+      INSERT INTO runtime_thread_sessions (
+        thread_key,
+        session_id,
+        version,
+        cwd,
+        parent_session,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, NULL, ?, ?)
+    `).run(
+      threadKey,
+      sessionId,
+      RUNTIME_THREAD_SESSION_VERSION,
+      cwd,
+      timestamp,
+      timestamp,
+    );
+    return {
+      sessionId,
+      createdAt: timestamp,
+      cwd,
+      parentSession: null,
+    };
+  }
+
+  private getThreadLeafEntryId(threadKey: string): string | null {
+    const row = this.db.prepare(`
+      SELECT entry_id AS entryId
+      FROM runtime_thread_entries
+      WHERE thread_key = ?
+      ORDER BY created_at DESC, entry_id DESC
+      LIMIT 1
+    `).get(threadKey) as { entryId?: unknown } | undefined;
+    return typeof row?.entryId === "string" && row.entryId.trim().length > 0
+      ? row.entryId
+      : null;
+  }
+
+  private appendThreadSessionEntry(args: {
+    threadKey: string;
+    sessionId: string;
+    entryType: RuntimeThreadSessionEntry["type"];
+    timestamp: number;
+    data: Record<string, unknown>;
+  }): string {
+    const entryId = generateLocalId();
+    const parentEntryId = this.getThreadLeafEntryId(args.threadKey);
+    const timestampIso = toIsoTimestamp(args.timestamp);
+    this.db.prepare(`
+      INSERT INTO runtime_thread_entries (
+        entry_id,
+        thread_key,
+        session_id,
+        parent_entry_id,
+        entry_type,
+        timestamp_iso,
+        created_at,
+        data_json
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      entryId,
+      args.threadKey,
+      args.sessionId,
+      parentEntryId,
+      args.entryType,
+      timestampIso,
+      args.timestamp,
+      toJsonValueString(args.data),
+    );
+    return entryId;
+  }
+
+  private loadThreadSessionEntries(
+    threadKey: string,
+    limit?: number,
+  ): RuntimeThreadSessionEntry[] {
+    const normalizedLimit =
+      typeof limit === "number" && Number.isFinite(limit)
+        ? Math.max(1, Math.floor(limit))
+        : undefined;
+    const sql = `
+      SELECT
+        recent.entry_id AS entryId,
+        recent.parent_entry_id AS parentEntryId,
+        recent.entry_type AS entryType,
+        recent.timestamp_iso AS timestampIso,
+        recent.created_at AS createdAt,
+        recent.data_json AS dataJson
+      FROM (
+        SELECT *
+        FROM runtime_thread_entries
+        WHERE thread_key = ?
+        ORDER BY created_at DESC, entry_id DESC
+        ${normalizedLimit ? "LIMIT ?" : ""}
+      ) recent
+      ORDER BY recent.created_at ASC, recent.entry_id ASC
+    `;
+    const rows = (
+      normalizedLimit
+        ? this.db.prepare(sql).all(threadKey, normalizedLimit)
+        : this.db.prepare(sql).all(threadKey)
+    ) as ThreadSessionEntryRow[];
+    return rows
+      .map((row) => parseThreadSessionEntry(row))
+      .filter((entry): entry is RuntimeThreadSessionEntry => entry !== null);
+  }
+
   appendThreadMessage(message: RuntimeThreadMessage): void {
     const threadKey = normalizeRuntimeThreadId(message.threadKey);
     if (!threadKey) {
       throw new Error("threadKey is required.");
     }
     const conversationId = this.getThreadConversationId(threadKey);
-    const messageId = `thread:${threadKey}:${generateLocalId()}`;
+    const payload = buildFallbackThreadPayload(message);
     this.withTransaction(() => {
       this.upsertSession(conversationId, message.timestamp);
-      this.db.prepare(`
-        INSERT INTO message (
-          id,
-          session_id,
-          thread_key,
-          run_id,
-          role,
-          type,
-          request_id,
-          device_id,
-          target_device_id,
-          agent_type,
-          data_json,
-          created_at,
-          updated_at
-        )
-        VALUES (?, ?, ?, NULL, ?, 'thread_message', NULL, NULL, NULL, NULL, NULL, ?, ?)
-      `).run(
-        messageId,
-        conversationId,
+      const threadSession = this.ensureThreadSession(
         threadKey,
-        message.role,
-        message.timestamp,
+        conversationId,
         message.timestamp,
       );
-      this.replaceMessageParts(messageId, conversationId, [
-        {
-          type: "runtime_thread_payload",
-          toolCallId: message.toolCallId,
-          data: {
-            content: message.content,
-            ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
-            ...(message.payload ? { payload: message.payload } : {}),
-          },
-          createdAt: message.timestamp,
+      this.appendThreadSessionEntry({
+        threadKey,
+        sessionId: threadSession.sessionId,
+        entryType: "message",
+        timestamp: message.timestamp,
+        data: {
+          message: payload,
         },
-      ]);
+      });
       this.touchThread(threadKey);
     });
   }
@@ -629,6 +1020,7 @@ export class SessionStore {
     threadKeyInput: string,
     limit?: number,
   ): Array<{
+    entryId?: string;
     timestamp: number;
     role: RuntimeThreadMessage["role"];
     content: string;
@@ -639,110 +1031,59 @@ export class SessionStore {
     if (!threadKey) {
       throw new Error("threadKey is required.");
     }
-    const normalizedLimit =
-      typeof limit === "number" && Number.isFinite(limit)
-        ? Math.max(1, Math.floor(limit))
-        : undefined;
-    const sql = `
-      SELECT
-        recent.created_at AS timestamp,
-        recent.role AS role,
-        part.data_json AS dataJson
-      FROM (
-        SELECT *
-        FROM message
-        WHERE thread_key = ?
-          AND type = 'thread_message'
-        ORDER BY created_at DESC, id DESC
-        ${normalizedLimit ? "LIMIT ?" : ""}
-      ) recent
-      LEFT JOIN part
-        ON part.message_id = recent.id
-       AND part.ord = 0
-      ORDER BY recent.created_at ASC, recent.id ASC
-    `;
-    const rows = (
-      normalizedLimit
-        ? this.db.prepare(sql).all(threadKey, normalizedLimit)
-        : this.db.prepare(sql).all(threadKey)
-    ) as ThreadMessageRow[];
-    return rows.map((row) => {
-      const data = parseJsonValue<{
-        content?: unknown;
-        toolCallId?: unknown;
-        payload?: unknown;
-      }>(row.dataJson);
-      const payload = data?.payload != null
-        ? parseRuntimeThreadPayload(JSON.stringify(data.payload))
-        : undefined;
-      return {
-        timestamp: row.timestamp,
-        role: row.role,
-        content: typeof data?.content === "string" ? data.content : "",
-        ...(typeof data?.toolCallId === "string" ? { toolCallId: data.toolCallId } : {}),
-        ...(payload ? { payload } : {}),
-      };
-    });
+    return buildThreadMessagesFromEntries(
+      this.loadThreadSessionEntries(threadKey, limit),
+    ).map((message) => ({
+      ...(message.entryId ? { entryId: message.entryId } : {}),
+      timestamp: message.timestamp,
+      role: message.role,
+      content: message.content,
+      ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
+      ...(message.payload ? { payload: message.payload } : {}),
+    }));
   }
 
-  replaceThreadMessages(threadKeyInput: string, nextMessages: RuntimeThreadMessage[]): void {
-    const threadKey = normalizeRuntimeThreadId(threadKeyInput);
+  compactThread(args: {
+    threadKey: string;
+    summary: string;
+    firstKeptEntryId: string;
+    tokensBefore: number;
+    timestamp?: number;
+    details?: unknown;
+    fromHook?: boolean;
+  }): void {
+    const threadKey = normalizeRuntimeThreadId(args.threadKey);
     if (!threadKey) {
       throw new Error("threadKey is required.");
     }
+    const summary = args.summary.trim();
+    const firstKeptEntryId = args.firstKeptEntryId.trim();
+    if (!summary || !firstKeptEntryId) {
+      throw new Error("summary and firstKeptEntryId are required.");
+    }
+    const timestamp = asFiniteNumber(args.timestamp) ?? Date.now();
     const conversationId = this.getThreadConversationId(threadKey);
     this.withTransaction(() => {
-      this.db.prepare(`
-        DELETE FROM message
-        WHERE thread_key = ?
-          AND type = 'thread_message'
-      `).run(threadKey);
-      for (const message of nextMessages) {
-        const messageId = `thread:${threadKey}:${generateLocalId()}`;
-        this.db.prepare(`
-          INSERT INTO message (
-            id,
-            session_id,
-            thread_key,
-            run_id,
-            role,
-            type,
-            request_id,
-            device_id,
-            target_device_id,
-            agent_type,
-            data_json,
-            created_at,
-            updated_at
-          )
-          VALUES (?, ?, ?, NULL, ?, 'thread_message', NULL, NULL, NULL, NULL, NULL, ?, ?)
-        `).run(
-          messageId,
-          conversationId,
-          threadKey,
-          message.role,
-          message.timestamp,
-          message.timestamp,
-        );
-        this.replaceMessageParts(messageId, conversationId, [
-          {
-            type: "runtime_thread_payload",
-            toolCallId: message.toolCallId,
-            data: {
-              content: message.content,
-              ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
-              ...(message.payload ? { payload: message.payload } : {}),
-            },
-            createdAt: message.timestamp,
-          },
-        ]);
-      }
+      const threadSession = this.ensureThreadSession(
+        threadKey,
+        conversationId,
+        timestamp,
+      );
+      this.appendThreadSessionEntry({
+        threadKey,
+        sessionId: threadSession.sessionId,
+        entryType: "compaction",
+        timestamp,
+        data: {
+          summary,
+          firstKeptEntryId,
+          tokensBefore: Math.max(0, Math.floor(args.tokensBefore)),
+          ...(args.details !== undefined ? { details: args.details } : {}),
+          ...(args.fromHook ? { fromHook: true } : {}),
+        },
+      });
       this.touchThread(threadKey);
     });
-  }
-
-  archiveCurrentThread(_threadKeyInput: string): string | null {
-    return null;
   }
 
   recordRunEvent(event: RuntimeRunEvent): void {

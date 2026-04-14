@@ -489,6 +489,40 @@ function buildSimpleOptions(args: {
     model: args.config.model,
     configuredProvider: args.config.managedGatewayProvider,
   });
+  const extraBody: Record<string, unknown> = {
+    ...(args.request?.extraBody ?? {}),
+  };
+  const gatewayRouting = args.config.providerOptions?.gateway;
+
+  if (
+    managedGateway.baseURL.includes("openrouter.ai")
+    && gatewayRouting
+    && extraBody.provider === undefined
+  ) {
+    extraBody.provider = gatewayRouting;
+  }
+
+  if (
+    managedGateway.baseURL.includes("ai-gateway.vercel.sh")
+    && gatewayRouting
+    && extraBody.providerOptions === undefined
+  ) {
+    extraBody.providerOptions = { gateway: gatewayRouting };
+  }
+
+  if (
+    args.request?.toolChoice !== undefined
+    && extraBody.tool_choice === undefined
+  ) {
+    extraBody.tool_choice = args.request.toolChoice;
+  }
+
+  if (
+    args.request?.responseFormat !== undefined
+    && extraBody.response_format === undefined
+  ) {
+    extraBody.response_format = args.request.responseFormat;
+  }
 
   return {
     temperature: args.request?.temperature ?? args.config.temperature,
@@ -496,7 +530,7 @@ function buildSimpleOptions(args: {
     reasoning,
     toolChoice: args.request?.toolChoice,
     responseFormat: args.request?.responseFormat,
-    extraBody: args.request?.extraBody,
+    extraBody: Object.keys(extraBody).length > 0 ? extraBody : undefined,
     signal: args.request?.signal,
     apiKey: process.env[managedGateway.apiKeyEnvVar]?.trim(),
     headers: args.request?.headers,

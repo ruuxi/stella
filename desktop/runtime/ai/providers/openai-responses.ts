@@ -53,6 +53,8 @@ export interface OpenAIResponsesOptions extends StreamOptions {
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
 	reasoningSummary?: "auto" | "detailed" | "concise" | null;
 	serviceTier?: ResponseCreateParamsStreaming["service_tier"];
+	toolChoice?: "auto" | "none" | "required" | { type: "function"; function: { name: string } };
+	responseFormat?: unknown;
 }
 
 /**
@@ -139,10 +141,14 @@ export const streamSimpleOpenAIResponses: StreamFunction<"openai-responses", Sim
 
 	const base = buildBaseOptions(model, options, apiKey);
 	const reasoningEffort = supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning);
+	const toolChoice = (options as OpenAIResponsesOptions | undefined)?.toolChoice;
+	const responseFormat = (options as OpenAIResponsesOptions | undefined)?.responseFormat;
 
 	return streamOpenAIResponses(model, context, {
 		...base,
 		reasoningEffort,
+		toolChoice,
+		responseFormat,
 	} satisfies OpenAIResponsesOptions);
 };
 
@@ -234,6 +240,19 @@ function buildParams(model: Model<"openai-responses">, context: Context, options
 				});
 			}
 		}
+	}
+
+	Object.assign(
+		params as unknown as Record<string, unknown>,
+		options?.extraBody ?? {},
+	);
+
+	if (options?.toolChoice !== undefined) {
+		(params as unknown as Record<string, unknown>).tool_choice = options.toolChoice;
+	}
+
+	if (options?.responseFormat !== undefined) {
+		(params as unknown as Record<string, unknown>).response_format = options.responseFormat;
 	}
 
 	return params;

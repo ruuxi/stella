@@ -11,6 +11,7 @@
 //   ../skills/<name>/SKILL.md
 
 import type { ToolContext, ToolResult } from "../tools/types.js";
+import type { ParsedAgent } from "../agents/types.js";
 
 // ---------------------------------------------------------------------------
 // Tool Definition
@@ -193,6 +194,22 @@ export interface PromptTemplate {
   filePath: string;
 }
 
+export interface ExtensionRegistrationApi {
+  on<E extends HookEvent>(
+    event: E,
+    handler: HookDefinition<E>["handler"],
+    filter?: HookDefinition<E>["filter"],
+  ): void;
+  registerTool(tool: ToolDefinition): void;
+  registerProvider(provider: ProviderDefinition): void;
+  registerPrompt(prompt: PromptTemplate): void;
+  registerAgent(agent: ParsedAgent): void;
+}
+
+export type ExtensionFactory = (
+  api: ExtensionRegistrationApi,
+) => void | Promise<void>;
+
 // ---------------------------------------------------------------------------
 // Loaded extensions bundle
 // ---------------------------------------------------------------------------
@@ -202,4 +219,5 @@ export interface LoadedExtensions {
   hooks: HookDefinition[];
   providers: ProviderDefinition[];
   prompts: PromptTemplate[];
+  agents: ParsedAgent[];
 }

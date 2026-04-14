@@ -72,6 +72,7 @@ type ThreadMessage = {
 };
 
 type StoredThreadMessage = {
+  entryId?: string;
   timestamp: number;
   role: string;
   content: string;
@@ -487,27 +488,16 @@ export const maybeCompactRuntimeThread = async (args: {
     return;
   }
 
-  const archivedPath = args.store.archiveCurrentThread(args.threadKey);
-  const nextMessages: RuntimeThreadMessage[] = [
-    {
-      timestamp: Date.now(),
-      threadKey: args.threadKey,
-      role: "assistant",
-      content: formatThreadCheckpointMessage({
-        summary,
-        ...(archivedPath ? { previousThreadFile: archivedPath } : {}),
-      }),
-    },
-    ...recentMessages.map((message) => ({
-      timestamp: message.timestamp,
-      threadKey: args.threadKey,
-      role: message.role as RuntimeThreadMessage["role"],
-      content: message.content,
-      ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
-      ...(message.payload ? { payload: message.payload } : {}),
-    })),
-  ];
+  const firstKeptEntryId = recentMessages[0]?.entryId;
+  if (!firstKeptEntryId) {
+    return;
+  }
 
-  args.store.replaceThreadMessages(args.threadKey, nextMessages);
+  args.store.compactThread({
+    threadKey: args.threadKey,
+    summary,
+    firstKeptEntryId,
+    tokensBefore: totalTokens,
+  });
   args.store.updateThreadSummary(args.threadKey, summary);
 };

@@ -46,6 +46,100 @@ export type PersistedRuntimeThreadPayload =
   | AssistantMessage
   | Omit<ToolResultMessage, "details">;
 
+export const RUNTIME_THREAD_SESSION_VERSION = 3;
+
+export type RuntimeThreadSessionHeader = {
+  type: "session";
+  version: typeof RUNTIME_THREAD_SESSION_VERSION;
+  id: string;
+  timestamp: string;
+  cwd: string;
+  parentSession?: string;
+};
+
+export type RuntimeThreadSessionEntryBase = {
+  type: string;
+  id: string;
+  parentId: string | null;
+  timestamp: string;
+};
+
+export type RuntimeThreadMessageEntry = RuntimeThreadSessionEntryBase & {
+  type: "message";
+  message: PersistedRuntimeThreadPayload;
+};
+
+export type RuntimeThreadThinkingLevelChangeEntry =
+  RuntimeThreadSessionEntryBase & {
+    type: "thinking_level_change";
+    thinkingLevel: string;
+  };
+
+export type RuntimeThreadModelChangeEntry = RuntimeThreadSessionEntryBase & {
+  type: "model_change";
+  provider: string;
+  modelId: string;
+};
+
+export type RuntimeThreadCompactionEntry = RuntimeThreadSessionEntryBase & {
+  type: "compaction";
+  summary: string;
+  firstKeptEntryId: string;
+  tokensBefore: number;
+  details?: unknown;
+  fromHook?: boolean;
+};
+
+export type RuntimeThreadBranchSummaryEntry =
+  RuntimeThreadSessionEntryBase & {
+    type: "branch_summary";
+    fromId: string;
+    summary: string;
+    details?: unknown;
+    fromHook?: boolean;
+  };
+
+export type RuntimeThreadCustomEntry = RuntimeThreadSessionEntryBase & {
+  type: "custom";
+  customType: string;
+  data?: unknown;
+};
+
+export type RuntimeThreadCustomMessageEntry =
+  RuntimeThreadSessionEntryBase & {
+    type: "custom_message";
+    customType: string;
+    content: string | (TextContent | ImageContent)[];
+    display: boolean;
+    details?: unknown;
+  };
+
+export type RuntimeThreadLabelEntry = RuntimeThreadSessionEntryBase & {
+  type: "label";
+  targetId: string;
+  label?: string;
+};
+
+export type RuntimeThreadSessionInfoEntry = RuntimeThreadSessionEntryBase & {
+  type: "session_info";
+  name?: string;
+};
+
+export type RuntimeThreadSessionEntry =
+  | RuntimeThreadMessageEntry
+  | RuntimeThreadThinkingLevelChangeEntry
+  | RuntimeThreadModelChangeEntry
+  | RuntimeThreadCompactionEntry
+  | RuntimeThreadBranchSummaryEntry
+  | RuntimeThreadCustomEntry
+  | RuntimeThreadCustomMessageEntry
+  | RuntimeThreadLabelEntry
+  | RuntimeThreadSessionInfoEntry;
+
+export type RuntimeThreadSessionFileEntry =
+  | RuntimeThreadSessionHeader
+  | RuntimeThreadSessionEntry;
+
 export type RuntimeThreadMessage = {
   timestamp: number;
   threadKey: string;

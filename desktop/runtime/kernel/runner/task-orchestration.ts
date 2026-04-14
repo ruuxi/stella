@@ -10,7 +10,7 @@ import type {
   LocalTaskManagerAgentContext,
   TaskLifecycleEvent,
 } from "../tasks/local-task-manager.js";
-import { GENERAL_STARTER_TOOLS } from "../agents/core-agent-prompts.js";
+import { GENERAL_STARTER_TOOLS } from "../agents/starter-tools.js";
 import {
   AGENT_IDS,
   isLocalCliAgentId,
