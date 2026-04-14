@@ -11,6 +11,8 @@ import type {
   ProviderDefinition,
   PromptTemplate,
   LoadedExtensions,
+  ExtensionFactory,
+  ExtensionRegistrationApi,
 } from "./types.js";
 import { extractFrontmatter } from "../frontmatter.js";
 
@@ -35,7 +37,8 @@ async function importModules<T>(dir: string, suffix: string): Promise<T[]> {
     const filePath = path.join(dir, entry);
     try {
       // Use file:// URL for cross-platform ESM import compatibility
-      const fileUrl = `file:///${filePath.replace(/\\/g, "/")}`;
+      const resolvedPath = path.resolve(filePath);
+      const fileUrl = `file:///${resolvedPath.replace(/\\/g, "/")}`;
       const mod = await import(/* @vite-ignore */ fileUrl);
       const definition = mod.default ?? mod;
       if (definition && typeof definition === "object") {
@@ -48,6 +51,85 @@ async function importModules<T>(dir: string, suffix: string): Promise<T[]> {
   }
 
   return results;
+}
+
+async function loadExtensionFactories(baseDir: string): Promise<LoadedExtensions> {
+  const collected: LoadedExtensions = {
+    tools: [],
+    hooks: [],
+    providers: [],
+    prompts: [],
+    agents: [],
+  };
+
+  let entries: string[];
+  try {
+    entries = await fs.readdir(baseDir);
+  } catch {
+    return collected;
+  }
+
+  for (const entry of entries) {
+    if (entry.startsWith(".")) {
+      continue;
+    }
+    const extensionDir = path.join(baseDir, entry);
+    let stat;
+    try {
+      stat = await fs.stat(extensionDir);
+    } catch {
+      continue;
+    }
+    if (!stat.isDirectory()) {
+      continue;
+    }
+
+    const filePath = path.join(extensionDir, "index.ts");
+    try {
+      await fs.access(filePath);
+    } catch {
+      continue;
+    }
+
+    try {
+      const resolvedPath = path.resolve(filePath);
+      const fileUrl = `file:///${resolvedPath.replace(/\\/g, "/")}`;
+      const mod = await import(/* @vite-ignore */ fileUrl);
+      const factory = (mod.default ?? mod) as ExtensionFactory;
+      if (typeof factory !== "function") {
+        continue;
+      }
+
+      const api: ExtensionRegistrationApi = {
+        on(event, handler, filter) {
+          collected.hooks.push({
+            event,
+            filter,
+            handler,
+          });
+        },
+        registerTool(tool) {
+          collected.tools.push(tool);
+        },
+        registerProvider(provider) {
+          collected.providers.push(provider);
+        },
+        registerPrompt(prompt) {
+          collected.prompts.push(prompt);
+        },
+        registerAgent(agent) {
+          collected.agents.push(agent);
+        },
+      };
+
+      await factory(api);
+      log(`Loaded extension: ${entry}`);
+    } catch (error) {
+      logError(`Failed to load extension ${filePath}:`, (error as Error).message);
+    }
+  }
+
+  return collected;
 }
 
 /**
@@ -97,14 +179,25 @@ async function loadPrompts(dir: string): Promise<PromptTemplate[]> {
 export async function loadExtensions(baseDir: string): Promise<LoadedExtensions> {
   log(`Loading extensions from ${baseDir}`);
 
-  const [tools, hooks, providers, prompts] = await Promise.all([
+  const [tools, hooks, providers, prompts, registered] = await Promise.all([
     importModules<ToolDefinition>(path.join(baseDir, "tools"), ".tool.ts"),
     importModules<HookDefinition>(path.join(baseDir, "hooks"), ".hook.ts"),
     importModules<ProviderDefinition>(path.join(baseDir, "providers"), ".provider.ts"),
     loadPrompts(path.join(baseDir, "prompts")),
+    loadExtensionFactories(baseDir),
   ]);
 
-  log(`Loaded ${tools.length} tools, ${hooks.length} hooks, ${providers.length} providers, ${prompts.length} prompts`);
+  const loaded: LoadedExtensions = {
+    tools: [...tools, ...registered.tools],
+    hooks: [...hooks, ...registered.hooks],
+    providers: [...providers, ...registered.providers],
+    prompts: [...prompts, ...registered.prompts],
+    agents: [...registered.agents],
+  };
 
-  return { tools, hooks, providers, prompts };
+  log(
+    `Loaded ${loaded.tools.length} tools, ${loaded.hooks.length} hooks, ${loaded.providers.length} providers, ${loaded.prompts.length} prompts, ${loaded.agents.length} agents`,
+  );
+
+  return loaded;
 }

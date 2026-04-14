@@ -1,9 +1,14 @@
 import type { ParsedAgent } from "./types.js";
-import { buildBundledCoreAgents } from "./core-agent-prompts.js";
 import { getAgentDefinition } from "../../../src/shared/contracts/agent-runtime.js";
+import { loadParsedAgentsFromDir } from "./markdown-agent-loader.js";
+
+const BUNDLED_AGENT_DIR = new URL(
+  "../../extensions/stella-runtime/agents/",
+  import.meta.url,
+);
 
 export const loadBundledAgents = (): ParsedAgent[] =>
-  buildBundledCoreAgents().filter(
+  loadParsedAgentsFromDir(BUNDLED_AGENT_DIR).filter(
     (agent) => getAgentDefinition(agent.id)?.includeInAgentRoster !== false,
   );
 
@@ -14,7 +19,7 @@ export const getBundledCoreAgentFallback = (
   if (getAgentDefinition(agentType)?.includeInAgentRoster !== false) {
     return undefined;
   }
-  return buildBundledCoreAgents().find(
+  return loadParsedAgentsFromDir(BUNDLED_AGENT_DIR).find(
     (agent) => agent.id === agentType || agent.agentTypes.includes(agentType),
   );
 };

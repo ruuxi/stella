@@ -123,6 +123,41 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   `);
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS runtime_thread_sessions (
+      thread_key TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      cwd TEXT NOT NULL DEFAULT '',
+      parent_session TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY(thread_key) REFERENCES runtime_threads(thread_key) ON DELETE CASCADE
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS runtime_thread_entries (
+      entry_id TEXT PRIMARY KEY,
+      thread_key TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      parent_entry_id TEXT,
+      entry_type TEXT NOT NULL,
+      timestamp_iso TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      data_json TEXT,
+      FOREIGN KEY(thread_key) REFERENCES runtime_threads(thread_key) ON DELETE CASCADE
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_runtime_thread_entries_thread_created
+    ON runtime_thread_entries(thread_key, created_at, entry_id);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_runtime_thread_entries_thread_parent
+    ON runtime_thread_entries(thread_key, parent_entry_id, created_at, entry_id);
+  `);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS runtime_tasks (
       thread_id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,

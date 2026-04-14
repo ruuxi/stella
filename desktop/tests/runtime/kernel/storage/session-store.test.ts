@@ -176,11 +176,102 @@ describe("session-store", () => {
 
     const threadRows = db.prepare(`
       SELECT COUNT(*) AS count
-      FROM message
+      FROM runtime_thread_entries
       WHERE thread_key = ?
-        AND type = 'thread_message'
+        AND entry_type = 'message'
     `).get(threadId) as { count: number };
     expect(threadRows.count).toBe(2);
+  });
+
+  it("compacts thread history using append-only session entries", () => {
+    const { db, store } = createTestContext();
+    const conversationId = "conv-compact";
+    const { threadId } = store.resolveOrCreateActiveThread({
+      conversationId,
+      agentType: "general",
+    });
+
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 4_000,
+      role: "user",
+      content: "First request",
+      payload: {
+        role: "user",
+        content: "First request",
+        timestamp: 4_000,
+      },
+    });
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 4_001,
+      role: "assistant",
+      content: "First answer",
+      payload: {
+        role: "assistant",
+        content: [{ type: "text", text: "First answer" }],
+        api: "openai-responses",
+        provider: "openai",
+        model: "gpt-5.4",
+        usage: {
+          input: 10,
+          output: 20,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 30,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
+        stopReason: "stop",
+        timestamp: 4_001,
+      },
+    });
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 4_002,
+      role: "user",
+      content: "Latest request",
+      payload: {
+        role: "user",
+        content: "Latest request",
+        timestamp: 4_002,
+      },
+    });
+
+    const beforeCompaction = store.loadThreadMessages(threadId);
+    expect(beforeCompaction).toHaveLength(3);
+
+    store.compactThread({
+      threadKey: threadId,
+      summary: "Condensed earlier work",
+      firstKeptEntryId: beforeCompaction[2]!.entryId!,
+      tokensBefore: 1234,
+      timestamp: 4_100,
+    });
+
+    const afterCompaction = store.loadThreadMessages(threadId);
+    expect(afterCompaction).toHaveLength(2);
+    expect(afterCompaction[0]).toMatchObject({
+      role: "assistant",
+      content: expect.stringContaining("[[THREAD_CHECKPOINT]]"),
+    });
+    expect(afterCompaction[1]).toMatchObject({
+      role: "user",
+      content: "Latest request",
+    });
+
+    const compactionRows = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM runtime_thread_entries
+      WHERE thread_key = ?
+        AND entry_type = 'compaction'
+    `).get(threadId) as { count: number };
+    expect(compactionRows.count).toBe(1);
   });
 
   it("lazily registers implicit orchestrator thread keys", () => {

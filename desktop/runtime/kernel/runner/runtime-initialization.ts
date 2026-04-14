@@ -81,16 +81,10 @@ export const createRuntimeInitialization = (
   };
 
   const initializeRuntime = () => {
-    const agentsLoad = Promise.resolve()
-      .then(() => loadBundledAgents())
-      .then((agents) => {
-        context.state.loadedAgents = agents;
-      })
-      .catch(() => {
-        context.state.loadedAgents = [];
-      });
     const extensionsLoad = loadExtensions(context.paths.extensionsPath)
       .then((extensions) => {
+        context.state.loadedAgents =
+          extensions.agents.length > 0 ? extensions.agents : loadBundledAgents();
         context.hookEmitter.registerAll(extensions.hooks);
         context.toolHost.registerExtensionTools(extensions.tools);
 
@@ -131,16 +125,14 @@ export const createRuntimeInitialization = (
         });
       })
       .catch((error) => {
+        context.state.loadedAgents = loadBundledAgents();
         console.error(
           "[stella:extensions] Failed to load extensions:",
           (error as Error).message,
         );
       });
 
-    context.state.initializationPromise = Promise.all([
-      agentsLoad,
-      extensionsLoad,
-    ]).then(() => {
+    context.state.initializationPromise = Promise.all([extensionsLoad]).then(() => {
       context.state.isInitialized = true;
     });
 
