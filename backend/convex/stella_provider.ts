@@ -38,6 +38,7 @@ import {
   buildContextFromChatMessages,
   completeManagedChat,
   streamManagedChat,
+  type ManagedProtocol,
   usageSummaryFromAssistant,
 } from "./runtime_ai/managed";
 import type { AssistantMessageEvent } from "./runtime_ai/types";
@@ -55,8 +56,6 @@ const DEFAULT_RETRY_AFTER_MS = 60_000;
 const SSE_HEARTBEAT_INTERVAL_MS = 45_000;
 const SSE_STREAM_OPEN_COMMENT = new TextEncoder().encode(": stella-stream-open\n\n");
 const SSE_HEARTBEAT_COMMENT = new TextEncoder().encode(": keepalive\n\n");
-const STELLA_MANAGED_API = "openai-responses" as const;
-
 export const STELLA_API_BASE_PATH = "/api/stella/v1";
 export const STELLA_CHAT_COMPLETIONS_PATH = `${STELLA_API_BASE_PATH}/chat/completions`;
 export const STELLA_MODELS_PATH = `${STELLA_API_BASE_PATH}/models`;
@@ -132,28 +131,6 @@ function toUpstreamHttpError(error: unknown): UpstreamHttpError | null {
   return {
     status,
     message: directMessage,
-  };
-}
-
-function toUpstreamHttpErrorFromMessage(message: string | undefined): UpstreamHttpError | null {
-  if (!message) {
-    return null;
-  }
-
-  const trimmed = message.trim();
-  const match = trimmed.match(/^(\d{3})\s+(.+)$/s);
-  if (!match) {
-    return null;
-  }
-
-  const status = Number(match[1]);
-  if (!Number.isFinite(status) || status < 400 || status >= 500) {
-    return null;
-  }
-
-  return {
-    status,
-    message: match[2].trim(),
   };
 }
 
@@ -477,6 +454,20 @@ function buildStreamingErrorPayload(args: {
   };
 }
 
+function resolveManagedProtocol(args: {
+  resolvedModel: string;
+  managedGatewayProvider: ManagedGatewayProvider;
+}): ManagedProtocol {
+  const normalizedModel = args.resolvedModel.trim().toLowerCase();
+  if (
+    args.managedGatewayProvider === "fireworks"
+    || normalizedModel.startsWith("openai/")
+  ) {
+    return "openai-responses";
+  }
+  return "openai-completions";
+}
+
 async function createStreamingRuntimeResponse(args: {
   request: Request;
   ctx: ActionCtx;
@@ -485,6 +476,7 @@ async function createStreamingRuntimeResponse(args: {
   modelId: string;
   tokenEstimate: TokenEstimate;
   requestBody: StellaRequestBody;
+  managedApi: ManagedProtocol;
   serverModelConfig: {
     model: string;
     managedGatewayProvider?: ManagedGatewayProvider;
@@ -501,6 +493,7 @@ async function createStreamingRuntimeResponse(args: {
     modelId,
     tokenEstimate,
     requestBody,
+    managedApi,
     serverModelConfig,
   } = args;
   const origin = request.headers.get("origin");
@@ -513,43 +506,6 @@ async function createStreamingRuntimeResponse(args: {
   const responseId = `chatcmpl_${requestStartedAt}`;
   const created = Math.floor(requestStartedAt / 1000);
   const encoder = new TextEncoder();
-  const runtimeRequest = buildManagedRuntimeRequest(requestBody, request.signal);
-  const runtimeStream = streamManagedChat({
-    config: serverModelConfig,
-    context: buildContextFromChatMessages(requestBody.messages, requestBody.tools),
-    api: STELLA_MANAGED_API,
-    request: runtimeRequest,
-  });
-  const iterator = runtimeStream[Symbol.asyncIterator]();
-  const prefetched = await iterator.next();
-  const prefetchedEvent = prefetched.done ? null : prefetched.value;
-  const prefetchedResult = prefetched.done ? await runtimeStream.result() : null;
-
-  if (
-    prefetchedEvent?.type === "error"
-    || prefetchedResult?.stopReason === "error"
-    || prefetchedResult?.stopReason === "aborted"
-  ) {
-    const errorMessage =
-      prefetchedEvent?.type === "error"
-        ? (prefetchedEvent.error.errorMessage || "Failed to generate Stella completion")
-        : (prefetchedResult?.errorMessage || "Failed to generate Stella completion");
-    const upstreamHttpError = toUpstreamHttpErrorFromMessage(errorMessage);
-    await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
-      ownerId,
-      agentType,
-      model: modelId,
-      durationMs: Date.now() - requestStartedAt,
-      success: false,
-      inputTokens: tokenEstimate.inputTokens,
-      outputTokens: tokenEstimate.outputTokens,
-    });
-    return stellaProviderErrorResponse(
-      upstreamHttpError?.status ?? 502,
-      upstreamHttpError?.message ?? errorMessage,
-      request,
-    );
-  }
 
   const sendChunk = (
     controller: ReadableStreamDefaultController<Uint8Array>,
@@ -604,6 +560,14 @@ async function createStreamingRuntimeResponse(args: {
 
       request.signal.addEventListener("abort", onClientAbort, { once: true });
       enqueueComment(SSE_STREAM_OPEN_COMMENT);
+
+      const runtimeStream = streamManagedChat({
+        config: serverModelConfig,
+        context: buildContextFromChatMessages(requestBody.messages, requestBody.tools),
+        api: managedApi,
+        request: buildManagedRuntimeRequest(requestBody, request.signal),
+      });
+      const iterator = runtimeStream[Symbol.asyncIterator]();
 
       const handleRuntimeEvent = async (event: AssistantMessageEvent) => {
         if (event.type === "text_delta") {
@@ -733,10 +697,6 @@ async function createStreamingRuntimeResponse(args: {
 
       void (async () => {
         try {
-          if (prefetchedEvent && await handleRuntimeEvent(prefetchedEvent)) {
-            return;
-          }
-
           while (true) {
             const next = await iterator.next();
             if (next.done) {
@@ -921,9 +881,13 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
   };
   const tokenEstimate = estimateRequestTokens(requestJson);
   const isStreaming = requestJson.stream === true;
+  const managedApi = resolveManagedProtocol({
+    resolvedModel,
+    managedGatewayProvider,
+  });
 
   console.log(
-    `[stella-provider] agent=${agentType} | requestedModel=${requestedModel} | resolvedModel=${resolvedModel}`,
+    `[stella-provider] agent=${agentType} | requestedModel=${requestedModel} | resolvedModel=${resolvedModel} | gateway=${managedGatewayProvider} | api=${managedApi}`,
   );
 
   if (isStreaming) {
@@ -935,6 +899,7 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
       modelId: resolvedModel,
       tokenEstimate,
       requestBody: requestJson,
+      managedApi,
       serverModelConfig,
     });
   }
@@ -944,7 +909,7 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
     const message = await completeManagedChat({
       config: serverModelConfig,
       context: buildContextFromChatMessages(requestJson.messages, requestJson.tools),
-      api: STELLA_MANAGED_API,
+      api: managedApi,
       request: buildManagedRuntimeRequest(requestJson, request.signal),
     });
 
