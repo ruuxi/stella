@@ -104,6 +104,12 @@ type StreamStoreAction =
       task: TaskItem;
     }
   | {
+      type: "task-reasoning";
+      runId: string;
+      taskId: string;
+      chunk: string;
+    }
+  | {
       type: "task-remove";
       runId: string;
       taskId: string;
@@ -211,6 +217,7 @@ function streamStoreReducer(
         ...action.task,
         startedAtMs: existing?.startedAtMs ?? action.task.startedAtMs,
         statusText: action.task.statusText ?? existing?.statusText,
+        reasoningText: action.task.reasoningText ?? existing?.reasoningText,
         outputPreview: action.task.outputPreview ?? existing?.outputPreview,
       };
       return {
@@ -220,6 +227,30 @@ function streamStoreReducer(
           [action.runId]: {
             ...runTasks,
             [action.task.id]: nextTask,
+          },
+        },
+      };
+    }
+    case "task-reasoning": {
+      const runTasks = state.tasksByRunId[action.runId];
+      const existing = runTasks?.[action.taskId];
+      if (!runTasks || !existing || !action.chunk) {
+        return state;
+      }
+      const nextReasoningText = `${existing.reasoningText ?? ""}${action.chunk}`;
+      return {
+        ...state,
+        tasksByRunId: {
+          ...state.tasksByRunId,
+          [action.runId]: {
+            ...runTasks,
+            [action.taskId]: {
+              ...existing,
+              reasoningText:
+                nextReasoningText.length > MAX_TASK_REASONING_CHARS
+                  ? nextReasoningText.slice(-MAX_TASK_REASONING_CHARS)
+                  : nextReasoningText,
+            },
           },
         },
       };
@@ -317,6 +348,7 @@ function attachmentsForStartChat(
 }
 
 const toRunTaskId = (runId: string, taskId: string) => `${runId}:${taskId}`;
+const MAX_TASK_REASONING_CHARS = 8_000;
 
 const isTokenSyncIssue = (reason: string | null) =>
   Boolean(reason && reason.toLowerCase().match(/token|auth/));
@@ -580,6 +612,7 @@ export function useLocalAgentStream({
           break;
         }
         case AGENT_STREAM_EVENT_TYPES.TASK_STARTED:
+        case AGENT_STREAM_EVENT_TYPES.TASK_REASONING:
         case AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS:
         case AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED:
         case AGENT_STREAM_EVENT_TYPES.TASK_FAILED:
@@ -587,6 +620,18 @@ export function useLocalAgentStream({
           const runId = event.rootRunId ?? event.runId;
           if (!runId || !event.taskId) {
             return;
+          }
+          if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_REASONING) {
+            if (!event.chunk) {
+              return;
+            }
+            dispatch({
+              type: "task-reasoning",
+              runId,
+              taskId: event.taskId,
+              chunk: event.chunk,
+            });
+            break;
           }
           clearScheduledTaskRemoval(runId, event.taskId);
           const nowMs = Date.now();
@@ -620,6 +665,11 @@ export function useLocalAgentStream({
                   : "running",
               parentTaskId: event.parentTaskId,
               statusText: event.statusText,
+              reasoningText:
+                event.type === AGENT_STREAM_EVENT_TYPES.TASK_STARTED
+                  || event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
+                  ? ""
+                  : undefined,
               startedAtMs: nowMs,
               completedAtMs:
                 event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED

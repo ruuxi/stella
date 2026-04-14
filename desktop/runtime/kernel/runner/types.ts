@@ -4,6 +4,7 @@ import type {
   RuntimeEndEvent,
   RuntimeErrorEvent,
   RuntimeExecutionSessionHandle,
+  RuntimeReasoningEvent,
   RuntimeRunStartedEvent,
   RuntimeStatusEvent,
   RuntimeStreamEvent,
@@ -164,6 +165,9 @@ export type AgentCallbacks = {
   onRunStarted?: (event: RuntimeRunStartedEvent) => void;
   onUserMessage?: (event: RuntimeUserMessageEvent) => void;
   onStream: (event: RuntimeStreamEvent) => void;
+  onTaskReasoning?: (
+    event: RuntimeReasoningEvent & { taskId: string; rootRunId?: string },
+  ) => void;
   onStatus?: (event: RuntimeStatusEvent) => void;
   onToolStart: (event: RuntimeToolStartEvent) => void;
   onToolEnd: (event: RuntimeToolEndEvent) => void;

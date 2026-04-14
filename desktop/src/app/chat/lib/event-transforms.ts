@@ -155,6 +155,7 @@ export type TaskItem = {
   status: "running" | "completed" | "error" | "canceled";
   parentTaskId?: string;
   statusText?: string;
+  reasoningText?: string;
   startedAtMs: number;
   completedAtMs?: number;
   lastUpdatedAtMs: number;

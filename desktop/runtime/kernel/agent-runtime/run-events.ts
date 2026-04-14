@@ -16,6 +16,7 @@ import type {
   RuntimeEndEvent,
   RuntimeErrorEvent,
   RuntimeInterruptedEvent,
+  RuntimeReasoningEvent,
   RuntimeRunCallbacks,
   RuntimeStatusEvent,
   RuntimeStreamEvent,
@@ -81,6 +82,18 @@ export const createRunEventRecorder = ({
         type: RUNTIME_RUN_EVENT_TYPES.STREAM,
         chunk,
       });
+      return {
+        runId,
+        agentType,
+        seq,
+        chunk,
+        userMessageId,
+        ...(uiVisibility ? { uiVisibility } : {}),
+      };
+    },
+
+    recordReasoning(chunk: string): RuntimeReasoningEvent {
+      const seq = nextSeq();
       return {
         runId,
         agentType,
@@ -314,6 +327,18 @@ export const subscribeRuntimeAgentEvents = ({
       const streamEvent = recorder.recordStream(chunk);
       onProgress?.(chunk);
       callbacks?.onStream?.(streamEvent);
+      return;
+    }
+
+    if (
+      event.type === "message_update" &&
+      event.assistantMessageEvent.type === "thinking_delta"
+    ) {
+      const chunk = event.assistantMessageEvent.delta;
+      if (!chunk) {
+        return;
+      }
+      callbacks?.onReasoning?.(recorder.recordReasoning(chunk));
       return;
     }
 

@@ -253,9 +253,14 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         }
       : undefined;
 
-    if (args.responseTarget?.type === "task_turn") {
+    const taskIdFromTarget =
+      args.responseTarget?.type === "task_turn" || args.responseTarget?.type === "task_terminal_notice"
+        ? (args.responseTarget as { taskId: string }).taskId
+        : undefined;
+
+    if (taskIdFromTarget) {
       const taskTurnMessages = getTaskTurnMessages(args.conversationId);
-      const existing = taskTurnMessages.get(args.responseTarget.taskId);
+      const existing = taskTurnMessages.get(taskIdFromTarget);
       const effectiveUserMessageId = existing?.userMessageId ?? args.userMessageId;
       const timestamp = existing?.timestamp ?? Date.now();
       const stored = ensureChatStore().appendEvent({
@@ -275,7 +280,7 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           timezone: args.timezone,
         }),
       });
-      taskTurnMessages.set(args.responseTarget.taskId, {
+      taskTurnMessages.set(taskIdFromTarget, {
         eventId: stored._id,
         timestamp: stored.timestamp,
         userMessageId: effectiveUserMessageId,
@@ -864,6 +869,23 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
           statusText: ev.statusText,
         });
       },
+      onTaskReasoning: (ev) => {
+        if (!ev.taskId) {
+          return;
+        }
+        const runId = ev.rootRunId ?? ev.runId;
+        emitRunEvent({
+          type: AGENT_STREAM_EVENT_TYPES.TASK_REASONING,
+          runId,
+          seq: syntheticSeq++,
+          conversationId: payload.conversationId,
+          ...(requestId ? { requestId } : {}),
+          taskId: ev.taskId,
+          rootRunId: runId,
+          agentType: ev.agentType,
+          chunk: ev.chunk,
+        });
+      },
       onEnd: (ev) => {
         const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
         hiddenSystemRunIds.delete(ev.runId);
@@ -876,9 +898,9 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             timezone: payload.timezone,
             responseTarget: ev.responseTarget,
           });
-          if (ev.responseTarget?.type === "task_turn") {
+          if (ev.responseTarget?.type === "task_turn" || ev.responseTarget?.type === "task_terminal_notice") {
             getTaskTurnMessages(payload.conversationId).delete(
-              ev.responseTarget.taskId,
+              (ev.responseTarget as { taskId: string }).taskId,
             );
           }
         }

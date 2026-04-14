@@ -1,5 +1,5 @@
-import { memo, useState, useEffect, useCallback } from "react";
-import type { EventRecord } from "@/app/chat/lib/event-transforms";
+import { memo, useMemo, useState, useEffect, useCallback } from "react";
+import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
 import type { Attachment } from "@/app/chat/lib/event-transforms";
 import {
   TurnItem,
@@ -19,6 +19,7 @@ type Props = {
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
   selfModMap?: Record<string, SelfModAppliedData>;
+  liveTasks?: TaskItem[];
   hasOlderEvents?: boolean;
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
@@ -34,6 +35,7 @@ function MessageList({
   pendingUserMessageId,
   onOpenAttachment,
   showStandaloneStreaming,
+  liveTasks,
 }: {
   turns: TurnViewModel[];
   showStreaming: boolean;
@@ -43,7 +45,19 @@ function MessageList({
   pendingUserMessageId?: string | null;
   onOpenAttachment?: (attachment: Attachment) => void;
   showStandaloneStreaming: boolean;
+  liveTasks?: TaskItem[];
 }) {
+  const taskReasoningByTaskId = useMemo(() => {
+    if (!liveTasks?.length) return null;
+    const map = new Map<string, string>();
+    for (const task of liveTasks) {
+      if (task.status === "running" && task.reasoningText?.trim()) {
+        map.set(task.id, task.reasoningText);
+      }
+    }
+    return map.size > 0 ? map : null;
+  }, [liveTasks]);
+
   return (
     <>
       {turns.map((turn, index) => {
@@ -52,12 +66,17 @@ function MessageList({
           Boolean(pendingUserMessageId) &&
           turn.id === pendingUserMessageId;
 
+        const taskReasoning = turn.taskId && taskReasoningByTaskId
+          ? taskReasoningByTaskId.get(turn.taskId)
+          : undefined;
+
         return (
           <TurnItem
             key={turn.id}
             turn={turn}
             isLastTurn={index === turns.length - 1}
             onOpenAttachment={onOpenAttachment}
+            taskReasoningText={taskReasoning}
             streaming={
               shouldAttachStreaming
                 ? {
@@ -92,6 +111,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   isStreaming,
   pendingUserMessageId,
   selfModMap,
+  liveTasks,
   hasOlderEvents,
   isLoadingOlder,
   isLoadingHistory,
@@ -169,6 +189,7 @@ export const ConversationEvents = memo(function ConversationEvents({
         isStreaming={isStreaming}
         pendingUserMessageId={pendingUserMessageId}
         onOpenAttachment={onOpenAttachment}
+        liveTasks={liveTasks}
       />
 
       <GrowIn animate={true} show={showGwsConnect}>

@@ -25,6 +25,7 @@ type AgentCallbacks = {
   onRunStarted?: (event: RuntimeAgentEventPayload) => void;
   onRunFinished?: (event: RuntimeAgentEventPayload) => void;
   onStream: (event: RuntimeAgentEventPayload) => void;
+  onTaskReasoning?: (event: RuntimeAgentEventPayload) => void;
   onStatus?: (event: RuntimeAgentEventPayload) => void;
   onToolStart: (event: RuntimeAgentEventPayload) => void;
   onToolEnd: (event: RuntimeAgentEventPayload) => void;
@@ -58,6 +59,7 @@ const isTerminalTaskLifecycleEvent = (type: string) =>
 
 const isTaskLifecycleEvent = (type: string) =>
   type !== AGENT_STREAM_EVENT_TYPES.STREAM &&
+  type !== AGENT_STREAM_EVENT_TYPES.TASK_REASONING &&
   type !== AGENT_STREAM_EVENT_TYPES.STATUS &&
   type !== AGENT_STREAM_EVENT_TYPES.TOOL_START &&
   type !== AGENT_STREAM_EVENT_TYPES.TOOL_END &&
@@ -65,6 +67,9 @@ const isTaskLifecycleEvent = (type: string) =>
   type !== AGENT_STREAM_EVENT_TYPES.RUN_FINISHED &&
   type !== AGENT_STREAM_EVENT_TYPES.ERROR &&
   type !== AGENT_STREAM_EVENT_TYPES.END;
+
+const isTaskScopedEvent = (type: string) =>
+  type === AGENT_STREAM_EVENT_TYPES.TASK_REASONING || isTaskLifecycleEvent(type);
 
 const LOCAL_CHAT_SESSION_IDLE_CLEANUP_MS = 30_000;
 
@@ -216,7 +221,7 @@ export class RuntimeClientAdapter {
       return true;
     }
 
-    const scopeKey = `${isTaskLifecycleEvent(event.type) ? "task" : "run"}:${event.rootRunId ?? event.runId}`;
+    const scopeKey = `${isTaskScopedEvent(event.type) ? "task" : "run"}:${event.rootRunId ?? event.runId}`;
     const previousSeq = session.lastSeqByScope.get(scopeKey);
     if (typeof previousSeq === "number" && event.seq <= previousSeq) {
       return true;
@@ -263,6 +268,9 @@ export class RuntimeClientAdapter {
         break;
       case AGENT_STREAM_EVENT_TYPES.STREAM:
         session.callbacks.onStream(event);
+        break;
+      case AGENT_STREAM_EVENT_TYPES.TASK_REASONING:
+        session.callbacks.onTaskReasoning?.(event);
         break;
       case AGENT_STREAM_EVENT_TYPES.STATUS:
         session.callbacks.onStatus?.(event);
