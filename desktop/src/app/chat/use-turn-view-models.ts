@@ -9,7 +9,7 @@ import {
 } from "@/app/chat/lib/event-transforms";
 import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
 import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-started-at";
-
+import { isOrchestratorChatMessagePayload } from "@/app/chat/emotes/message-source";
 import { sanitizeAssistantText } from "../../../runtime/kernel/internal-tool-transcript.js";
 import {
   type TurnViewModel,
@@ -167,6 +167,9 @@ export function useTurnViewModels(opts: {
         ? getDisplayMessageText(turn.assistantMessage)
         : "";
       const assistantMessageId = turn.assistantMessage?._id ?? null;
+      const assistantEmotesEnabled = isOrchestratorChatMessagePayload(
+        getMessagePayload(turn.assistantMessage),
+      );
       const taskId = getAssistantTaskId(turn.assistantMessage);
 
       return {
@@ -182,6 +185,7 @@ export function useTurnViewModels(opts: {
         userChannelEnvelope,
         assistantText,
         assistantMessageId,
+        assistantEmotesEnabled,
         webSearchBadgeHtml: getWebSearchBadgeHtml(turn.toolEvents),
         officePreviewRef: getOfficePreviewRef(turn.toolEvents),
         ...(taskId ? { taskId } : {}),
