@@ -191,6 +191,7 @@ export const AGENT_STREAM_EVENT_TYPES = {
   RUN_STARTED: "run-started",
   STREAM: "stream",
   STATUS: "status",
+  TASK_REASONING: "task-reasoning",
   TOOL_START: "tool-start",
   TOOL_END: "tool-end",
   /** Legacy terminal event — prefer RUN_FINISHED. */

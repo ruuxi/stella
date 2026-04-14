@@ -138,6 +138,7 @@ export function CompactConversationSurface({
             isStreaming={isStreaming}
             pendingUserMessageId={pendingUserMessageId}
             selfModMap={selfModMap}
+            liveTasks={liveTasks}
             hasOlderEvents={hasOlderEvents}
             isLoadingOlder={isLoadingOlder}
             isLoadingHistory={isLoadingHistory}

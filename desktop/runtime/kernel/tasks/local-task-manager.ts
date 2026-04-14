@@ -527,7 +527,7 @@ export class LocalTaskManager implements TaskToolApi {
         conversationId: task.conversationId,
         userMessageId: runId,
         agentType: task.agentType,
-        ...(task.cloudTaskId ? { taskId: task.cloudTaskId } : {}),
+        taskId: task.id,
         rootRunId: task.rootRunId,
         taskDescription: task.description,
         taskPrompt,

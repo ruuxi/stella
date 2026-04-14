@@ -39,6 +39,8 @@ export type RuntimeStreamEvent = {
   uiVisibility?: "visible" | "hidden";
 };
 
+export type RuntimeReasoningEvent = RuntimeStreamEvent;
+
 export type RuntimeRunStartedEvent = {
   runId: string;
   agentType: string;
@@ -130,6 +132,7 @@ export type RuntimeRunCallbacks = {
   onRunStarted?: (event: RuntimeRunStartedEvent) => void;
   onUserMessage?: (event: RuntimeUserMessageEvent) => void;
   onStream: (event: RuntimeStreamEvent) => void;
+  onReasoning?: (event: RuntimeReasoningEvent) => void;
   onStatus?: (event: RuntimeStatusEvent) => void;
   onToolStart: (event: RuntimeToolStartEvent) => void;
   onToolEnd: (event: RuntimeToolEndEvent) => void;

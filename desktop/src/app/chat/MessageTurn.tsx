@@ -23,10 +23,11 @@ export type TurnViewModel = {
   userChannelEnvelope?: ChannelEnvelope;
   assistantText: string;
   assistantMessageId: string | null;
-  assistantEmotesEnabled: boolean;
+
   webSearchBadgeHtml?: string;
   officePreviewRef?: OfficePreviewRef;
   selfModApplied?: SelfModApplied;
+  taskId?: string;
 };
 
 export type StreamingTurnProps = {
@@ -240,7 +241,6 @@ const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean => (
   channelEnvelopeEqual(a.userChannelEnvelope, b.userChannelEnvelope) &&
   a.assistantText === b.assistantText &&
   a.assistantMessageId === b.assistantMessageId &&
-  a.assistantEmotesEnabled === b.assistantEmotesEnabled &&
   (a.webSearchBadgeHtml ?? null) === (b.webSearchBadgeHtml ?? null) &&
   (a.officePreviewRef?.sessionId ?? null) ===
     (b.officePreviewRef?.sessionId ?? null) &&
@@ -253,16 +253,19 @@ const areTurnItemPropsEqual = (
     isLastTurn?: boolean;
     onOpenAttachment?: (attachment: Attachment) => void;
     streaming?: StreamingTurnProps;
+    taskReasoningText?: string;
   },
   next: {
     turn: TurnViewModel;
     isLastTurn?: boolean;
     onOpenAttachment?: (attachment: Attachment) => void;
     streaming?: StreamingTurnProps;
+    taskReasoningText?: string;
   },
 ): boolean => (
   prev.onOpenAttachment === next.onOpenAttachment &&
   prev.isLastTurn === next.isLastTurn &&
+  (prev.taskReasoningText ?? "") === (next.taskReasoningText ?? "") &&
   turnViewModelEqual(prev.turn, next.turn) &&
   streamingPropsEqual(prev.streaming, next.streaming)
 );
@@ -273,12 +276,14 @@ export const TurnItem = memo(function TurnItem({
   isLastTurn = false,
   onOpenAttachment,
   streaming,
+  taskReasoningText,
 }: {
   turn: TurnViewModel;
   /** Latest turn in the thread: keeps expanded reply region after streaming ends. */
   isLastTurn?: boolean;
   onOpenAttachment?: (attachment: Attachment) => void;
   streaming?: StreamingTurnProps;
+  taskReasoningText?: string;
 }) {
   const userText = turn.userText;
   const userWindowLabel = turn.userWindowLabel;
@@ -359,9 +364,6 @@ export const TurnItem = memo(function TurnItem({
   const assistantDisplayText = hasAssistantContent
     ? assistantText
     : (streaming?.streamingText ?? "");
-  const assistantEnableEmotes = hasAssistantContent
-    ? turn.assistantEmotesEnabled
-    : shouldShowStreamingAssistant;
   const assistantCacheKey = `assistant-${turn.id}`;
 
   const hasEverHadContent = useRef(hasAssistantContent);
@@ -491,7 +493,6 @@ export const TurnItem = memo(function TurnItem({
                 isAnimating={
                   shouldShowStreamingAssistant && streaming?.isStreaming
                 }
-                enableEmotes={assistantEnableEmotes}
               />
             )}
 
@@ -502,6 +503,16 @@ export const TurnItem = memo(function TurnItem({
             )}
           </div>
         </GrowIn>
+      )}
+
+      {taskReasoningText && taskReasoningText.trim().length > 0 && (
+        <div className="task-reasoning-ticker" aria-live="off">
+          <div className="task-reasoning-ticker__track">
+            <span className="task-reasoning-ticker__text">
+              {taskReasoningText.trim().replace(/\s+/g, " ")}
+            </span>
+          </div>
+        </div>
       )}
 
     </div>
@@ -551,7 +562,6 @@ export const StreamingIndicator = memo(function StreamingIndicator({
                 : undefined
             }
             isAnimating={isStreaming}
-            enableEmotes={true}
           />
         )}
       </div>

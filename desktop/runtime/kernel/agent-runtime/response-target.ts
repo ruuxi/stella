@@ -74,9 +74,7 @@ export const createOrchestratorResponseTargetTracker = (
     };
   }
 
-  let taskId: string | null = initialTarget?.type === "task_turn"
-    ? initialTarget.taskId
-    : null;
+  let taskId: string | null = null;
   let hasConflictingTaskIds = false;
 
   const recordTaskId = (candidate: string | undefined) => {
@@ -101,7 +99,7 @@ export const createOrchestratorResponseTargetTracker = (
       recordTaskId(getTaskIdFromArgsLike(args));
     },
     noteToolEnd: (toolName, details) => {
-      if (!TASK_TOOL_NAMES.has(toolName)) {
+      if (!TASK_TOOL_NAMES.has(toolName) || toolName === "TaskCreate") {
         return;
       }
       recordTaskId(getTaskIdFromToolDetails(toolName, details));

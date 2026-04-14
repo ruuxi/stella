@@ -224,6 +224,8 @@ export const createTaskOrchestration = (
       uiVisibility?: "visible" | "hidden";
       agentType?: string;
       deliverAs?: "steer" | "followUp";
+      callbackRunId?: string;
+      responseTarget?: import("../../protocol/index.js").RuntimeAgentEventPayload["responseTarget"];
     }) => Promise<void>;
     webSearch: (
       query: string,
@@ -253,9 +255,11 @@ export const createTaskOrchestration = (
       context.runtimeStore.listActiveThreads(conversationId),
     onTaskEvent: (event) => {
       appendTaskLifecycleChatEvent(context, event);
-      context.state.runCallbacksByRunId
-        .get(event.rootRunId)
-        ?.onTaskEvent?.(event);
+      if (event.rootRunId) {
+        context.state.runCallbacksByRunId
+          .get(event.rootRunId)
+          ?.onTaskEvent?.(event);
+      }
       const userPrompt = buildTaskEventPrompt(event);
       if (!userPrompt) {
         return;
@@ -307,7 +311,11 @@ export const createTaskOrchestration = (
         },
       });
       const taskCallbacks =
-        context.state.conversationCallbacks.get(conversationId) ?? null;
+        (rootRunId
+          ? context.state.runCallbacksByRunId.get(rootRunId)
+          : null)
+        ?? context.state.conversationCallbacks.get(conversationId)
+        ?? null;
       const reportSelfModHmrState = (state: SelfModHmrState) => {
         taskCallbacks?.onSelfModHmrState?.(state);
       };
@@ -379,6 +387,16 @@ export const createTaskOrchestration = (
           callbacks: taskCallbacks
             ? {
                 onStream: (event) => taskCallbacks.onStream(event),
+                onReasoning: (event) => {
+                  if (!taskId) {
+                    return;
+                  }
+                  taskCallbacks.onTaskReasoning?.({
+                    ...event,
+                    taskId,
+                    ...(rootRunId ? { rootRunId } : {}),
+                  });
+                },
                 onToolStart: (event) => taskCallbacks.onToolStart(event),
                 onToolEnd: (event) => taskCallbacks.onToolEnd(event),
                 onError: (event) => taskCallbacks.onError(event),

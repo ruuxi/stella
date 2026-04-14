@@ -9,7 +9,7 @@ import {
 } from "@/app/chat/lib/event-transforms";
 import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
 import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-started-at";
-import { isOrchestratorChatMessagePayload } from "@/app/chat/emotes/message-source";
+
 import { sanitizeAssistantText } from "../../../runtime/kernel/internal-tool-transcript.js";
 import {
   type TurnViewModel,
@@ -27,6 +27,19 @@ const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
     return null;
   }
   return event.payload as MessagePayload;
+};
+
+const getAssistantTaskId = (event?: EventRecord): string | undefined => {
+  const payload = getMessagePayload(event);
+  const rt = (payload?.metadata as Record<string, unknown> | undefined)
+    ?.runtime as Record<string, unknown> | undefined;
+  const target = rt?.responseTarget as
+    | { type: string; taskId?: string }
+    | undefined;
+  if (target?.type === "task_turn" && typeof target.taskId === "string") {
+    return target.taskId;
+  }
+  return undefined;
 };
 
 const getWebSearchBadgeHtml = (events: EventRecord[]): string | undefined => {
@@ -154,9 +167,7 @@ export function useTurnViewModels(opts: {
         ? getDisplayMessageText(turn.assistantMessage)
         : "";
       const assistantMessageId = turn.assistantMessage?._id ?? null;
-      const assistantEmotesEnabled = isOrchestratorChatMessagePayload(
-        getMessagePayload(turn.assistantMessage),
-      );
+      const taskId = getAssistantTaskId(turn.assistantMessage);
 
       return {
         id: turn.id,
@@ -171,9 +182,9 @@ export function useTurnViewModels(opts: {
         userChannelEnvelope,
         assistantText,
         assistantMessageId,
-        assistantEmotesEnabled,
         webSearchBadgeHtml: getWebSearchBadgeHtml(turn.toolEvents),
         officePreviewRef: getOfficePreviewRef(turn.toolEvents),
+        ...(taskId ? { taskId } : {}),
       };
     });
   }, [slicedTurns]);

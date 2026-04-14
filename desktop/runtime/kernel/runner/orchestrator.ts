@@ -353,7 +353,9 @@ export const createOrchestratorController = (
     if (!text) {
       return;
     }
-    const callbacks = getConversationCallbacks(input.conversationId);
+    const callbacks = getCallbacksForTarget({
+      conversationId: input.conversationId,
+    });
     if (!callbacks) {
       return;
     }

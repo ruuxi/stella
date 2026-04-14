@@ -107,7 +107,10 @@ export const createRuntimeExecutionSession = (
 };
 
 export const createOrchestratorExecutionSession = (
-  opts: OrchestratorRunOptions & { systemPrompt: string },
+  opts: OrchestratorRunOptions & {
+    systemPrompt: string;
+    responseTargetTracker?: OrchestratorResponseTargetTracker;
+  },
 ) => createRuntimeExecutionSession(opts);
 
 export const createSubagentExecutionSession = (

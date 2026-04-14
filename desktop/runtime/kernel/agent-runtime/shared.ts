@@ -359,5 +359,7 @@ export const createRuntimeAgent = (args: {
       args.hookEmitter,
       args.agentType,
     ),
-    afterToolCall: args.afterToolCall,
+    afterToolCall: args.afterToolCall
+      ? async (context, signal) => await args.afterToolCall?.(context, signal)
+      : undefined,
   });
