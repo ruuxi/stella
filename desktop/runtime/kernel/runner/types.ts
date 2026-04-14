@@ -1,7 +1,9 @@
 import type { ConvexClient } from "convex/browser";
+import type { AgentMessage } from "../agent-core/types.js";
 import type {
   RuntimeEndEvent,
   RuntimeErrorEvent,
+  RuntimeExecutionSessionHandle,
   RuntimeRunStartedEvent,
   RuntimeStatusEvent,
   RuntimeStreamEvent,
@@ -37,6 +39,7 @@ import type {
   RuntimeAttachmentRef,
   RuntimeAutomationTurnRequest,
   RuntimeAutomationTurnResult,
+  RuntimePromptMessage,
   StorePublishArgs,
 } from "../../protocol/index.js";
 import type { LocalChatAppendEventArgs } from "../storage/shared.js";
@@ -120,13 +123,32 @@ export type ChatPayload = {
   conversationId: string;
   userMessageId: string;
   userPrompt: string;
-  promptMessages?: Array<{
-    text: string;
-    uiVisibility?: "visible" | "hidden";
-  }>;
+  promptMessages?: RuntimePromptMessage[];
   attachments?: RuntimeAttachmentRef[];
   agentType?: string;
   storageMode?: "cloud" | "local";
+};
+
+export type RuntimeSendMessageInput = {
+  conversationId: string;
+  text: string;
+  uiVisibility?: "visible" | "hidden";
+  agentType?: string;
+  deliverAs?: "steer" | "followUp";
+};
+
+export type RuntimeSendUserMessageInput = RuntimeSendMessageInput & {
+  metadata?: Record<string, unknown>;
+};
+
+export type ActiveOrchestratorSession = RuntimeExecutionSessionHandle & {
+  conversationId: string;
+  agentType: string;
+  uiVisibility: "visible" | "hidden";
+  queueMessage: (
+    message: AgentMessage,
+    delivery: "steer" | "followUp",
+  ) => void;
 };
 
 export type AgentHealth = {
@@ -198,6 +220,7 @@ export type RunnerState = {
   activeOrchestratorRunId: string | null;
   activeOrchestratorConversationId: string | null;
   activeOrchestratorUiVisibility: "visible" | "hidden";
+  activeOrchestratorSession: ActiveOrchestratorSession | null;
   queuedOrchestratorTurns: QueuedOrchestratorTurn[];
   activeRunAbortControllers: Map<string, AbortController>;
   conversationCallbacks: Map<string, AgentCallbacks>;
@@ -310,6 +333,8 @@ export type RunnerPublicApi = {
     payload: ChatPayload,
     callbacks: AgentCallbacks,
   ) => Promise<{ runId: string }>;
+  sendMessage: (input: RuntimeSendMessageInput) => Promise<void>;
+  sendUserMessage: (input: RuntimeSendUserMessageInput) => Promise<void>;
   runAutomationTurn: (
     payload: RuntimeAutomationTurnRequest,
   ) => Promise<RuntimeAutomationTurnResult>;

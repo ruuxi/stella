@@ -1,3 +1,4 @@
+import type { AgentMessage } from "../agent-core/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import type { LocalTaskManagerAgentContext } from "../tasks/local-task-manager.js";
@@ -111,6 +112,18 @@ export type RuntimeInterruptedEvent = {
   uiVisibility?: "visible" | "hidden";
 };
 
+export type RuntimeExecutionSessionHandle = {
+  runId: string;
+  threadKey: string;
+  agent: {
+    state: {
+      isStreaming: boolean;
+    };
+    steer: (message: AgentMessage) => void;
+    followUp: (message: AgentMessage) => void;
+  };
+};
+
 export type RuntimeRunCallbacks = {
   onRunStarted?: (event: RuntimeRunStartedEvent) => void;
   onUserMessage?: (event: RuntimeUserMessageEvent) => void;
@@ -166,6 +179,9 @@ export type BaseRunOptions = {
 
 export type OrchestratorRunOptions = BaseRunOptions & {
   callbacks: RuntimeRunCallbacks;
+  onExecutionSessionCreated?: (
+    session: RuntimeExecutionSessionHandle,
+  ) => void;
 };
 
 export type SubagentRunOptions = BaseRunOptions & {

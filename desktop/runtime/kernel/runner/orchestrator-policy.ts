@@ -6,7 +6,10 @@ import type {
   ChatPayload,
   RunnerContext,
 } from "./types.js";
-import type { RuntimeAttachmentRef } from "../../protocol/index.js";
+import type {
+  RuntimeAttachmentRef,
+  RuntimePromptMessage,
+} from "../../protocol/index.js";
 
 export type OrchestratorRuntimeDeps = {
   resolveAgent: (agentType: string) => unknown;
@@ -19,10 +22,7 @@ export type OrchestratorRuntimeDeps = {
 export type NormalizedOrchestratorRunInput = {
   conversationId: string;
   userPrompt: string;
-  promptMessages?: Array<{
-    text: string;
-    uiVisibility?: "visible" | "hidden";
-  }>;
+  promptMessages?: RuntimePromptMessage[];
   attachments: RuntimeAttachmentRef[];
   agentType: string;
 };
@@ -95,6 +95,7 @@ export const normalizeChatRunInput = (
         .map((message) => ({
           text: message.text.trim(),
           ...(message.uiVisibility ? { uiVisibility: message.uiVisibility } : {}),
+          ...(message.messageType ? { messageType: message.messageType } : {}),
         }))
     : undefined,
   attachments: normalizeAttachments(payload.attachments),

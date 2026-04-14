@@ -48,6 +48,11 @@ export const runPiOrchestratorTurn = async (
       ...opts,
       systemPrompt: effectiveSystemPrompt,
     });
+  opts.onExecutionSessionCreated?.({
+    runId,
+    threadKey,
+    agent,
+  });
 
   logger.debug("orchestrator.start", {
     runId,
