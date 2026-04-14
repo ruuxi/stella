@@ -33,6 +33,7 @@ export type PreparedOrchestratorRun = {
   userPrompt: string;
   uiVisibility?: "visible" | "hidden";
   promptMessages?: RuntimePromptMessage[];
+  responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
   agentContext: LocalTaskManagerAgentContext;
   resolvedLlm: ReturnType<typeof resolveRunnerLlmRoute>;
@@ -50,6 +51,7 @@ export const prepareOrchestratorRun = async (args: {
   userPrompt: string;
   uiVisibility?: "visible" | "hidden";
   promptMessages?: RuntimePromptMessage[];
+  responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
   replayTurn?: QueuedOrchestratorTurn | null;
 }): Promise<PreparedOrchestratorRun> => {
@@ -86,6 +88,7 @@ export const prepareOrchestratorRun = async (args: {
     userPrompt: args.userPrompt,
     ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
     promptMessages: args.promptMessages,
+    ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
     attachments: args.attachments,
     agentContext,
     resolvedLlm,
@@ -126,6 +129,7 @@ export const launchPreparedOrchestratorRun = (args: {
     ...(prepared.promptMessages?.length
       ? { promptMessages: prepared.promptMessages }
       : {}),
+    ...(prepared.responseTarget ? { responseTarget: prepared.responseTarget } : {}),
     attachments: prepared.attachments,
     agentContext: prepared.agentContext,
     callbacks: args.runtimeCallbacks,
@@ -180,6 +184,7 @@ export const startPreparedOrchestratorRun = async (args: {
   userPrompt: string;
   uiVisibility?: "visible" | "hidden";
   promptMessages?: RuntimePromptMessage[];
+  responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
   userMessageId: string;
   webSearch: WebSearch;
@@ -206,6 +211,7 @@ export const startPreparedOrchestratorRun = async (args: {
     userPrompt: args.userPrompt,
     ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
     promptMessages: args.promptMessages,
+    ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
     attachments: args.attachments,
     replayTurn: args.replayTurn,
   });

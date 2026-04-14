@@ -453,6 +453,14 @@ export type RuntimeAgentEventPayload = {
   outcome?: AgentRunFinishOutcome;
   reason?: string;
   replacedByRunId?: string;
+  responseTarget?:
+    | { type: "user_turn" }
+    | { type: "task_turn"; taskId: string }
+    | {
+        type: "task_terminal_notice";
+        taskId: string;
+        terminalState: "completed" | "failed" | "canceled";
+      };
 };
 
 export type RuntimeVoiceAgentEventPayload = {

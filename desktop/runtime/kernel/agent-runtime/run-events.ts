@@ -167,6 +167,7 @@ export const createRunEventRecorder = ({
     recordRunEnd(args: {
       finalText: string;
       selfModApplied?: SelfModAppliedPayload;
+      responseTarget?: RuntimeEndEvent["responseTarget"];
     }): RuntimeEndEvent {
       const seq = nextSeq();
       store.recordRunEvent({
@@ -187,6 +188,7 @@ export const createRunEventRecorder = ({
         finalText: args.finalText,
         persisted: true,
         ...(args.selfModApplied ? { selfModApplied: args.selfModApplied } : {}),
+        ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
         ...(uiVisibility ? { uiVisibility } : {}),
       };
     },

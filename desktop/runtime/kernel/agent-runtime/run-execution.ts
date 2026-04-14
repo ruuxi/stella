@@ -8,7 +8,7 @@ import {
   subscribeRuntimeAgentEvents,
   type RuntimeRunEventRecorder,
 } from "./run-events.js";
-import { createUserPromptMessage } from "./run-preparation.js";
+import { createRuntimePromptAgentMessage } from "./run-preparation.js";
 import {
   getAgentCompletion,
   now,
@@ -24,12 +24,8 @@ type RuntimeExecutableAgent = {
     messages: AgentMessage[];
   };
   subscribe: (listener: (event: AgentEvent) => void) => () => void;
-  prompt: (
-    message:
-      | (ReturnType<typeof createUserPromptMessage> & { timestamp: number })
-      | Array<ReturnType<typeof createUserPromptMessage> & { timestamp: number }>,
-  ) => Promise<void>;
-  followUp: (message: ReturnType<typeof createUserPromptMessage> & { timestamp: number }) => void;
+  prompt: (message: AgentMessage | AgentMessage[]) => Promise<void>;
+  followUp: (message: AgentMessage) => void;
   continue: () => Promise<void>;
   abort: () => void;
 };
@@ -83,16 +79,24 @@ export const executeRuntimeAgentPrompt = async (args: {
           }];
     const promptTimestamp = now();
     const promptMessages = promptInputs.map((message, index) => ({
-      ...createUserPromptMessage(message.text, message.attachments),
-      timestamp: promptTimestamp + index,
+      message: createRuntimePromptAgentMessage(
+        message,
+        promptTimestamp + index,
+      ),
+      input: message,
     }));
     for (const [index, promptMessage] of promptMessages.entries()) {
-      const promptInput = promptInputs[index];
+      const promptInput = promptMessage.input ?? promptInputs[index];
       const messageType = promptInput?.messageType ?? "user";
-      if (messageType === "user" && args.threadStore && args.threadKey) {
+      if (
+        messageType === "user" &&
+        promptMessage.message.role === "user" &&
+        args.threadStore &&
+        args.threadKey
+      ) {
         persistThreadPayloadMessage(args.threadStore, {
           threadKey: args.threadKey,
-          payload: promptMessage,
+          payload: promptMessage.message,
         });
       }
       const uiVisibility = promptInput?.uiVisibility;
@@ -100,12 +104,12 @@ export const executeRuntimeAgentPrompt = async (args: {
         args.callbacks?.onUserMessage?.({
           userMessageId: args.userMessageId,
           text: promptInput.text,
-          timestamp: promptMessage.timestamp,
+          timestamp: promptMessage.message.timestamp,
           uiVisibility,
         });
       }
     }
-    await args.agent.prompt(promptMessages);
+    await args.agent.prompt(promptMessages.map((message) => message.message));
     await args.onAfterPrompt?.();
     const completion = getAgentCompletion(args.agent);
 

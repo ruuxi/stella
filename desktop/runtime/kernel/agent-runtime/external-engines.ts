@@ -18,6 +18,9 @@ import {
   markOrchestratorErrorReported,
   resolveInterruptionReason,
 } from "./run-completion.js";
+import {
+  createOrchestratorResponseTargetTracker,
+} from "./response-target.js";
 import { now, resolveLocalCliCwd, textFromUnknown } from "./shared.js";
 import {
   buildRunThreadKey,
@@ -100,6 +103,7 @@ const runClaudeHostedTurn = async (args: {
   runId: string;
   systemPrompt: string;
   callbacks?: Partial<RuntimeRunCallbacks>;
+  responseTargetTracker?: ReturnType<typeof createOrchestratorResponseTargetTracker>;
 }) => {
   const threadKey = buildRunThreadKey({
     conversationId: args.opts.conversationId,
@@ -156,6 +160,7 @@ const runClaudeHostedTurn = async (args: {
       });
     },
     executeTool: async (toolCallId, toolName, toolArgs, signal) => {
+      args.responseTargetTracker?.noteToolStart(toolName, toolArgs);
       args.callbacks?.onToolStart?.(
         runEvents.recordToolStart({
           toolCallId,
@@ -190,6 +195,7 @@ const runClaudeHostedTurn = async (args: {
         hookEmitter: args.opts.hookEmitter,
         signal,
       });
+      args.responseTargetTracker?.noteToolEnd(toolName, toolResult.details);
       args.callbacks?.onToolEnd?.(
         runEvents.recordToolEnd({
           toolCallId,
@@ -245,6 +251,9 @@ export const runExternalOrchestratorTurn = async (
           .getBaselineHead(opts.stellaRoot)
           .catch(() => null)
       : null;
+  const responseTargetTracker = createOrchestratorResponseTargetTracker(
+    opts.responseTarget,
+  );
 
   try {
     const systemPrompt = await buildRuntimeSystemPrompt(opts);
@@ -253,6 +262,7 @@ export const runExternalOrchestratorTurn = async (
       runId,
       systemPrompt,
       callbacks: opts.callbacks,
+      responseTargetTracker,
     });
     await finalizeOrchestratorSuccess({
       opts,
@@ -262,6 +272,7 @@ export const runExternalOrchestratorTurn = async (
       agent: { state: { messages: [] } },
       finalText: result.finalText,
       baselineHead,
+      responseTarget: responseTargetTracker.resolve(),
     });
     return runId;
   } catch (error) {

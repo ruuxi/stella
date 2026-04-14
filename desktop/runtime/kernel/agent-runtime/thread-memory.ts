@@ -269,10 +269,12 @@ export type OrchestratorPromptMessage = RuntimePromptMessage;
 const createInternalPromptMessage = (
   text: string,
   uiVisibility: "visible" | "hidden" = "hidden",
+  customType?: string,
 ): RuntimePromptMessage => ({
   text,
   uiVisibility,
   messageType: "message",
+  ...(customType ? { customType } : {}),
 });
 
 const readRegistryContent = async (args: {
@@ -314,6 +316,8 @@ export const buildStartupPromptMessages = async (args: {
     messages.push(
       createInternalPromptMessage(
         buildStartupDocMessage(LIFE_REGISTRY_DISPLAY_PATH, registryContent),
+        "hidden",
+        "bootstrap.startup_doc",
       ),
     );
   }
@@ -323,6 +327,8 @@ export const buildStartupPromptMessages = async (args: {
     messages.push(
       createInternalPromptMessage(
         buildStartupDocMessage(LIFE_CORE_MEMORY_DISPLAY_PATH, coreMemory),
+        "hidden",
+        "bootstrap.startup_doc",
       ),
     );
   }
@@ -364,10 +370,22 @@ export const buildOrchestratorPromptMessages = async (args: {
   const reminder = args.context.orchestratorReminderText?.trim();
   const messages: OrchestratorPromptMessage[] = [];
   if (staleUserReminder) {
-    messages.push(createInternalPromptMessage(wrapSystemReminder(staleUserReminder)));
+    messages.push(
+      createInternalPromptMessage(
+        wrapSystemReminder(staleUserReminder),
+        "hidden",
+        "runtime.stale_user_reminder",
+      ),
+    );
   }
   if (args.context.shouldInjectDynamicReminder && reminder) {
-    messages.push(createInternalPromptMessage(wrapSystemReminder(reminder)));
+    messages.push(
+      createInternalPromptMessage(
+        wrapSystemReminder(reminder),
+        "hidden",
+        "runtime.orchestrator_reminder",
+      ),
+    );
   }
   messages.push(
     ...(await buildStartupPromptMessages({

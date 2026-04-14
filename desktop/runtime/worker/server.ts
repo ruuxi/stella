@@ -102,6 +102,13 @@ type AgentEventPayload = {
   outcome?: AgentRunFinishOutcome;
   reason?: string;
   replacedByRunId?: string;
+  responseTarget?: RuntimeAgentEventPayload["responseTarget"];
+};
+
+type TaskTurnMessageRecord = {
+  eventId: string;
+  timestamp: number;
+  userMessageId: string;
 };
 
 type WorkerState = {
@@ -190,6 +197,10 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     runner: null,
     deviceId: null,
   };
+  const taskTurnMessagesByConversation = new Map<
+    string,
+    Map<string, TaskTurnMessageRecord>
+  >();
 
   const emitRunEvent = (event: AgentEventPayload) => {
     peer.notify(NOTIFICATION_NAMES.RUN_EVENT, event);
@@ -212,6 +223,84 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     state: unknown;
   }) => {
     peer.notify(NOTIFICATION_NAMES.VOICE_SELF_MOD_HMR_STATE, payload);
+  };
+
+  const getTaskTurnMessages = (conversationId: string) => {
+    let records = taskTurnMessagesByConversation.get(conversationId);
+    if (!records) {
+      records = new Map<string, TaskTurnMessageRecord>();
+      taskTurnMessagesByConversation.set(conversationId, records);
+    }
+    return records;
+  };
+
+  const persistAssistantMessage = (args: {
+    conversationId: string;
+    text: string;
+    userMessageId: string;
+    timezone?: string;
+    responseTarget?: RuntimeAgentEventPayload["responseTarget"];
+  }) => {
+    const trimmedText = args.text.trim();
+    if (!trimmedText) {
+      return;
+    }
+
+    const runtimeMetadata = args.responseTarget
+      ? {
+          runtime: {
+            responseTarget: args.responseTarget,
+          },
+        }
+      : undefined;
+
+    if (args.responseTarget?.type === "task_turn") {
+      const taskTurnMessages = getTaskTurnMessages(args.conversationId);
+      const existing = taskTurnMessages.get(args.responseTarget.taskId);
+      const effectiveUserMessageId = existing?.userMessageId ?? args.userMessageId;
+      const timestamp = existing?.timestamp ?? Date.now();
+      const stored = ensureChatStore().appendEvent({
+        conversationId: args.conversationId,
+        ...(existing?.eventId ? { eventId: existing.eventId } : {}),
+        type: "assistant_message",
+        requestId: effectiveUserMessageId,
+        timestamp,
+        payload: prepareStoredLocalChatPayload({
+          type: "assistant_message",
+          payload: {
+            text: trimmedText,
+            userMessageId: effectiveUserMessageId,
+            ...(runtimeMetadata ? { metadata: runtimeMetadata } : {}),
+          },
+          timestamp,
+          timezone: args.timezone,
+        }),
+      });
+      taskTurnMessages.set(args.responseTarget.taskId, {
+        eventId: stored._id,
+        timestamp: stored.timestamp,
+        userMessageId: effectiveUserMessageId,
+      });
+      peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+      return;
+    }
+
+    ensureChatStore().appendEvent({
+      conversationId: args.conversationId,
+      type: "assistant_message",
+      requestId: args.userMessageId,
+      payload: prepareStoredLocalChatPayload({
+        type: "assistant_message",
+        payload: {
+          text: trimmedText,
+          userMessageId: args.userMessageId,
+          ...(runtimeMetadata ? { metadata: runtimeMetadata } : {}),
+        },
+        timestamp: Date.now(),
+        timezone: args.timezone,
+      }),
+    });
+    peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
   };
 
   const ensureRunner = () => {
@@ -782,23 +871,13 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         hiddenSystemRunIds.delete(ev.runId);
         const finalText = typeof ev.finalText === "string" ? ev.finalText : "";
         if ((ev.agentType ?? AGENT_IDS.ORCHESTRATOR) === AGENT_IDS.ORCHESTRATOR) {
-          if (finalText.trim().length > 0) {
-            ensureChatStore().appendEvent({
-              conversationId: payload.conversationId,
-              type: "assistant_message",
-              requestId: ev.userMessageId,
-              payload: prepareStoredLocalChatPayload({
-                type: "assistant_message",
-                payload: {
-                  text: finalText,
-                  userMessageId: ev.userMessageId,
-                },
-                timestamp: Date.now(),
-                timezone: payload.timezone,
-              }),
-            });
-            peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
-          }
+          persistAssistantMessage({
+            conversationId: payload.conversationId,
+            text: finalText,
+            userMessageId: ev.userMessageId,
+            timezone: payload.timezone,
+            responseTarget: ev.responseTarget,
+          });
         }
         if (isHiddenRun) {
           if (lastVisibleRunId) {

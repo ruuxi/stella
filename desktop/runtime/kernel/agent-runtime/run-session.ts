@@ -3,6 +3,7 @@ import { createRuntimeAgent } from "./shared.js";
 import { buildHistorySource, buildRunThreadKey } from "./thread-memory.js";
 import { createPiTools } from "./tool-adapters.js";
 import { createRunEventRecorder } from "./run-events.js";
+import type { OrchestratorResponseTargetTracker } from "./response-target.js";
 import type {
   BaseRunOptions,
   OrchestratorRunOptions,
@@ -27,9 +28,11 @@ type SessionOptions = Pick<
   | "webSearch"
   | "hookEmitter"
   | "resolvedLlm"
+  | "responseTarget"
 > & {
   systemPrompt: string;
   runIdPrefix?: string;
+  responseTargetTracker?: OrchestratorResponseTargetTracker;
 };
 
 export type RuntimeExecutionSession = {
@@ -85,6 +88,13 @@ export const createRuntimeExecutionSession = (
     hookEmitter: opts.hookEmitter,
     tools,
     historySource,
+    afterToolCall: async (context) => {
+      opts.responseTargetTracker?.noteToolEnd(
+        context.toolCall.name,
+        context.result.details,
+      );
+      return undefined;
+    },
   });
 
   return {

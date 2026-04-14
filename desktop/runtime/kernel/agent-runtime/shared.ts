@@ -1,7 +1,12 @@
 import os from "os";
 import { Type } from "@sinclair/typebox";
 import { Agent } from "../agent-core/agent.js";
-import type { AgentMessage, AgentTool } from "../agent-core/types.js";
+import type {
+  AfterToolCallContext,
+  AfterToolCallResult,
+  AgentMessage,
+  AgentTool,
+} from "../agent-core/types.js";
 import type { Message } from "../../ai/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import { selectRecentByTokenBudget } from "../local-history.js";
@@ -19,13 +24,24 @@ export const DEFAULT_MAX_TURNS = 40;
 
 export const PI_AGENT_MESSAGE_FILTER = (
   messages: AgentMessage[],
-): AgentMessage[] =>
-  messages.filter(
-    (msg) =>
+): Message[] =>
+  messages.flatMap((msg): Message[] => {
+    if (
       msg.role === "user" ||
       msg.role === "assistant" ||
-      msg.role === "toolResult",
-  );
+      msg.role === "toolResult"
+    ) {
+      return [msg];
+    }
+    if (msg.role === "runtimeInternal") {
+      return [{
+        role: "user",
+        content: msg.content,
+        timestamp: msg.timestamp,
+      }];
+    }
+    return [];
+  });
 
 export const AnyToolArgsSchema = Type.Object(
   {},
@@ -323,6 +339,10 @@ export const createRuntimeAgent = (args: {
   hookEmitter?: HookEmitter;
   tools: AgentTool[];
   historySource: Message[];
+  afterToolCall?: (
+    context: AfterToolCallContext,
+    signal?: AbortSignal,
+  ) => Promise<AfterToolCallResult | undefined> | AfterToolCallResult | undefined;
 }): Agent =>
   new Agent({
     initialState: {
@@ -339,4 +359,5 @@ export const createRuntimeAgent = (args: {
       args.hookEmitter,
       args.agentType,
     ),
+    afterToolCall: args.afterToolCall,
   });

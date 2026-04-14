@@ -1,5 +1,9 @@
+import type { AgentMessage } from "../agent-core/types.js";
 import type { ImageContent } from "../../ai/types.js";
-import type { RuntimeAttachmentRef } from "../../protocol/index.js";
+import type {
+  RuntimeAttachmentRef,
+  RuntimePromptMessage,
+} from "../../protocol/index.js";
 import { shouldIncludeStellaDocumentation } from "../../../src/shared/contracts/agent-runtime.js";
 import { buildSelfModDocumentationPrompt, buildSystemPrompt } from "./thread-memory.js";
 import type {
@@ -35,6 +39,33 @@ export const createUserPromptMessage = (
       .filter((attachment): attachment is ImageContent => attachment !== null)),
   ],
 });
+
+export const createRuntimePromptAgentMessage = (
+  message: RuntimePromptMessage & { attachments?: RuntimeAttachmentRef[] },
+  timestamp: number,
+): AgentMessage => {
+  const content = [
+    { type: "text" as const, text: message.text },
+    ...((message.attachments ?? [])
+      .map((attachment) => toImageContent(attachment))
+      .filter((attachment): attachment is ImageContent => attachment !== null)),
+  ];
+  if (message.messageType === "message") {
+    return {
+      role: "runtimeInternal",
+      content,
+      timestamp,
+      ...(message.customType ? { customType: message.customType } : {}),
+      ...(message.display !== undefined ? { display: message.display } : {}),
+      ...(message.details !== undefined ? { details: message.details } : {}),
+    };
+  }
+  return {
+    role: "user",
+    content,
+    timestamp,
+  };
+};
 
 export const buildRuntimeSystemPrompt = async (
   opts: OrchestratorRunOptions,

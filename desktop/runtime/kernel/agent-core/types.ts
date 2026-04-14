@@ -236,6 +236,15 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
  * ```
  */
 export interface CustomAgentMessages {
+	/** Internal prompt/context messages that should participate in LLM context without masquerading as user-typed chat. */
+	runtimeInternal?: {
+		role: "runtimeInternal";
+		content: string | (TextContent | ImageContent)[];
+		timestamp: number;
+		customType?: string;
+		display?: boolean;
+		details?: unknown;
+	};
 	/** Preserves declaration merging without widening the indexed union. */
 	__customAgentMessagesBrand?: never;
 }

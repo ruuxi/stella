@@ -20,6 +20,9 @@ import {
   createSubagentExecutionSession,
 } from "./run-session.js";
 import {
+  createOrchestratorResponseTargetTracker,
+} from "./response-target.js";
+import {
   buildOrchestratorPromptMessages,
   buildSubagentPromptMessages,
 } from "./thread-memory.js";
@@ -42,11 +45,15 @@ export const runPiOrchestratorTurn = async (
       : null;
 
   const effectiveSystemPrompt = await buildRuntimeSystemPrompt(opts);
+  const responseTargetTracker = createOrchestratorResponseTargetTracker(
+    opts.responseTarget,
+  );
 
   const { runId, threadKey, runEvents, tools, agent } =
     createOrchestratorExecutionSession({
       ...opts,
       systemPrompt: effectiveSystemPrompt,
+      responseTargetTracker,
     });
   opts.onExecutionSessionCreated?.({
     runId,
@@ -158,6 +165,7 @@ export const runPiOrchestratorTurn = async (
       agent,
       finalText,
       baselineHead,
+      responseTarget: responseTargetTracker.resolve(),
     });
 
     return runId;

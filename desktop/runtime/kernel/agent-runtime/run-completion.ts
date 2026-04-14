@@ -188,6 +188,7 @@ export const finalizeOrchestratorSuccess = async (args: {
   agent: CompactableAgentState;
   finalText: string;
   baselineHead: string | null;
+  responseTarget?: OrchestratorRunOptions["responseTarget"];
 }): Promise<void> => {
   logger.debug("orchestrator.end", {
     runId: args.runId,
@@ -208,6 +209,7 @@ export const finalizeOrchestratorSuccess = async (args: {
     args.runEvents.recordRunEnd({
       finalText: args.finalText,
       ...(selfModApplied ? { selfModApplied } : {}),
+      ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
     }),
   );
 
