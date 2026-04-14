@@ -1,9 +1,8 @@
 import type { Model } from "../ai/types.js";
 import {
-  normalizeStellaApiBaseUrl,
   STELLA_DEFAULT_MODEL,
 } from "./stella-provider.js";
-import { readConfiguredStellaBaseUrl } from "./convex-urls.js";
+import { readConfiguredStellaSiteUrl } from "./convex-urls.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 
 const STELLA_CONTEXT_WINDOW = 256_000;
@@ -27,7 +26,7 @@ const createStellaModel = (
       : modelId.replace(/^stella\//, ""),
   api: "stella",
   provider: STELLA_PROVIDER,
-  baseUrl: normalizeStellaApiBaseUrl(siteBaseUrl),
+  baseUrl: siteBaseUrl,
   reasoning: true,
   input: ["text", "image"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -38,7 +37,7 @@ const createStellaModel = (
   },
 });
 
-export const normalizeStellaBase = readConfiguredStellaBaseUrl;
+export const normalizeStellaBase = readConfiguredStellaSiteUrl;
 
 export const createStellaRoute = (args: {
   site: StellaSiteConfig;

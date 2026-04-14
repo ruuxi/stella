@@ -1,8 +1,10 @@
-export const STELLA_CHAT_COMPLETIONS_PATH = "/api/stella/v1/chat/completions";
-export const STELLA_MODELS_PATH = "/api/stella/v1/models";
+export const STELLA_API_BASE_PATH = "/api/stella/v1";
+export const STELLA_RUNTIME_PATH = `${STELLA_API_BASE_PATH}/runtime`;
+export const STELLA_CHAT_COMPLETIONS_PATH = `${STELLA_API_BASE_PATH}/chat/completions`;
+export const STELLA_MODELS_PATH = `${STELLA_API_BASE_PATH}/models`;
 export const STELLA_DEFAULT_MODEL = "stella/default";
 
-export const normalizeStellaApiBaseUrl = (value: string): string =>
+export const normalizeStellaSiteUrl = (value: string): string =>
   value
     .trim()
     .replace(/\/chat\/completions\/?$/i, "")
@@ -10,6 +12,21 @@ export const normalizeStellaApiBaseUrl = (value: string): string =>
     .replace(/\/models\/?$/i, "")
     .replace(/\/api\/stella\/v1\/?$/i, "")
     .replace(/\/+$/, "");
+
+const stellaUrlFromSiteUrl = (siteUrl: string, path: string): string =>
+  `${normalizeStellaSiteUrl(siteUrl)}${path}`;
+
+export const stellaApiBaseUrlFromSiteUrl = (siteUrl: string): string =>
+  stellaUrlFromSiteUrl(siteUrl, STELLA_API_BASE_PATH);
+
+export const stellaRuntimeUrlFromSiteUrl = (siteUrl: string): string =>
+  stellaUrlFromSiteUrl(siteUrl, STELLA_RUNTIME_PATH);
+
+export const stellaChatCompletionsUrlFromSiteUrl = (siteUrl: string): string =>
+  stellaUrlFromSiteUrl(siteUrl, STELLA_CHAT_COMPLETIONS_PATH);
+
+export const stellaModelsUrlFromSiteUrl = (siteUrl: string): string =>
+  stellaUrlFromSiteUrl(siteUrl, STELLA_MODELS_PATH);
 
 export type ChatContentPart =
   | { type?: string; text?: string }

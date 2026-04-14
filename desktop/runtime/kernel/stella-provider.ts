@@ -10,10 +10,11 @@ import type {
 } from "../ai/types.js";
 import {
   extractChatText,
-  normalizeStellaApiBaseUrl,
   STELLA_CHAT_COMPLETIONS_PATH,
   STELLA_DEFAULT_MODEL,
   STELLA_MODELS_PATH,
+  normalizeStellaSiteUrl,
+  stellaApiBaseUrlFromSiteUrl,
   type ChatCompletionResponse,
   type ChatMessage,
   type ChatToolCall,
@@ -29,7 +30,7 @@ function readAssistantText(message: AssistantMessage): string {
 
 export {
   extractChatText,
-  normalizeStellaApiBaseUrl,
+  normalizeStellaSiteUrl,
   STELLA_CHAT_COMPLETIONS_PATH,
   STELLA_DEFAULT_MODEL,
   STELLA_MODELS_PATH,
@@ -236,7 +237,7 @@ function buildModel(
     name: modelId === STELLA_DEFAULT_MODEL ? "Stella Recommended" : modelId.replace(/^stella\//, ""),
     api: "openai-completions",
     provider: "stella",
-    baseUrl: normalizeStellaApiBaseUrl(endpoint),
+    baseUrl: stellaApiBaseUrlFromSiteUrl(normalizeStellaSiteUrl(endpoint)),
     reasoning: true,
     input: ["text", "image"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

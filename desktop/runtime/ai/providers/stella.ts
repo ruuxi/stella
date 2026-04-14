@@ -11,8 +11,7 @@ import type {
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
-
-const STELLA_RUNTIME_PATH = "/api/stella/v1/runtime";
+import { stellaRuntimeUrlFromSiteUrl } from "../../../src/shared/stella-api.js";
 
 type StreamingToolCall = ToolCall & { partialJson?: string };
 
@@ -248,7 +247,7 @@ export const streamStella: (
     }
 
     try {
-      const endpoint = `${model.baseUrl.replace(/\/+$/, "")}${STELLA_RUNTIME_PATH}`;
+      const endpoint = stellaRuntimeUrlFromSiteUrl(model.baseUrl);
       let payload = buildRequestPayload(model, context, options);
       const nextPayload = await options?.onPayload?.(payload, model);
       if (nextPayload !== undefined) {

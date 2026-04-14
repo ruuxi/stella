@@ -1,3 +1,8 @@
+import {
+  normalizeStellaSiteUrl,
+  stellaApiBaseUrlFromSiteUrl,
+} from "../../src/shared/stella-api.js";
+
 const trimUrl = (value: string): string => value.trim().replace(/\/+$/, "");
 
 const readConfiguredUrl = (value: string | null | undefined): string | null => {
@@ -14,22 +19,24 @@ export const readConfiguredConvexSiteUrl = (
   value: string | null | undefined,
 ): string | null => readConfiguredUrl(value);
 
-export const readConfiguredStellaBaseUrl = (
+export const readConfiguredStellaSiteUrl = (
   value: string | null | undefined,
 ): string | null => {
   const configured = readConfiguredUrl(value);
   if (!configured) return null;
-  return configured.endsWith("/api/stella/v1")
-    ? configured
-    : `${configured}/api/stella/v1`;
+  return normalizeStellaSiteUrl(configured);
 };
 
-export const stellaBaseUrlFromConvexSiteUrl = (convexSiteUrl: string): string =>
-  readConfiguredStellaBaseUrl(convexSiteUrl)!;
+export const readConfiguredStellaBaseUrl = readConfiguredStellaSiteUrl;
+
+export const stellaApiBaseUrlFromConvexSiteUrl = (convexSiteUrl: string): string =>
+  stellaApiBaseUrlFromSiteUrl(readConfiguredStellaSiteUrl(convexSiteUrl)!);
+
+export const stellaBaseUrlFromConvexSiteUrl = stellaApiBaseUrlFromConvexSiteUrl;
 
 export const managedMediaDocsUrlFromConvexSiteUrl = (
   convexSiteUrl: string,
 ): string => {
-  const baseUrl = readConfiguredStellaBaseUrl(convexSiteUrl)!;
-  return `${baseUrl.replace(/\/api\/stella\/v1$/i, "")}/api/media/v1/docs`;
+  const siteUrl = readConfiguredStellaSiteUrl(convexSiteUrl)!;
+  return `${siteUrl}/api/media/v1/docs`;
 };
