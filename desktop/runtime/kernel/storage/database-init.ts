@@ -28,107 +28,76 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   `);
 
   db.exec(`
-    CREATE TABLE IF NOT EXISTS chat_conversations (
+    CREATE TABLE IF NOT EXISTS session (
       id TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'active',
+      parent_id TEXT,
+      workspace_path TEXT,
+      sync_checkpoint_message_id TEXT,
+      created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
   `);
   db.exec(`
-    CREATE TABLE IF NOT EXISTS chat_events (
-      _id TEXT PRIMARY KEY,
-      conversation_id TEXT NOT NULL,
-      timestamp INTEGER NOT NULL,
-      type TEXT NOT NULL,
-      device_id TEXT,
-      request_id TEXT,
-      target_device_id TEXT,
-      payload_json TEXT,
-      channel_envelope_json TEXT
-    );
-  `);
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_chat_events_conversation_ts
-    ON chat_events(conversation_id, timestamp, _id);
-  `);
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_chat_events_request
-    ON chat_events(conversation_id, request_id);
-  `);
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS chat_sync_checkpoints (
-      conversation_id TEXT PRIMARY KEY,
-      local_message_id TEXT NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS runtime_thread_messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      thread_key TEXT NOT NULL,
-      timestamp INTEGER NOT NULL,
+    CREATE TABLE IF NOT EXISTS message (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      thread_key TEXT,
+      run_id TEXT,
       role TEXT NOT NULL,
-      content TEXT NOT NULL,
-      tool_call_id TEXT,
-      payload_json TEXT
+      type TEXT NOT NULL,
+      request_id TEXT,
+      device_id TEXT,
+      target_device_id TEXT,
+      agent_type TEXT,
+      data_json TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY(session_id) REFERENCES session(id) ON DELETE CASCADE
     );
   `);
-  try {
-    db.exec("ALTER TABLE runtime_thread_messages ADD COLUMN payload_json TEXT;");
-  } catch {
-    // Column already exists.
-  }
   db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_runtime_thread_messages_thread_ts
-    ON runtime_thread_messages(thread_key, timestamp, id);
+    CREATE INDEX IF NOT EXISTS idx_message_session_created
+    ON message(session_id, created_at, id);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_message_thread_created
+    ON message(thread_key, created_at, id);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_message_run_created
+    ON message(run_id, created_at, id);
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS part (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      ord INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      tool_call_id TEXT,
+      data_json TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(session_id) REFERENCES session(id) ON DELETE CASCADE,
+      FOREIGN KEY(message_id) REFERENCES message(id) ON DELETE CASCADE
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_part_message_ord
+    ON part(message_id, ord);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_part_session_created
+    ON part(session_id, created_at, id);
   `);
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS runtime_run_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      timestamp INTEGER NOT NULL,
-      run_id TEXT NOT NULL,
-      conversation_id TEXT NOT NULL,
-      agent_type TEXT NOT NULL,
-      seq INTEGER,
-      event_type TEXT NOT NULL,
-      chunk TEXT,
-      tool_call_id TEXT,
-      tool_name TEXT,
-      result_preview TEXT,
-      error TEXT,
-      fatal INTEGER,
-      final_text TEXT,
-      self_mod_applied_json TEXT
-    );
-  `);
-  try {
-    db.exec("ALTER TABLE runtime_run_events ADD COLUMN self_mod_applied_json TEXT;");
-  } catch {
-    // Column already exists.
-  }
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_runtime_run_events_run_seq
-    ON runtime_run_events(run_id, seq, id);
-  `);
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_runtime_run_events_conversation_ts
-    ON runtime_run_events(conversation_id, timestamp, id);
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS runtime_memories (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      timestamp INTEGER NOT NULL,
-      conversation_id TEXT NOT NULL,
-      content TEXT NOT NULL,
-      tags_json TEXT
-    );
-  `);
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_runtime_memories_timestamp
-    ON runtime_memories(timestamp, id);
-  `);
+  db.exec("DROP TABLE IF EXISTS chat_sync_checkpoints;");
+  db.exec("DROP TABLE IF EXISTS chat_events;");
+  db.exec("DROP TABLE IF EXISTS chat_conversations;");
+  db.exec("DROP TABLE IF EXISTS runtime_thread_messages;");
+  db.exec("DROP TABLE IF EXISTS runtime_run_events;");
+  db.exec("DROP TABLE IF EXISTS runtime_memories;");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS runtime_threads (
