@@ -186,6 +186,7 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_KILL_SHELL_BY_PORT: "internal.worker.killShellByPort",
   INTERNAL_WORKER_LOCAL_CHAT_GET_OR_CREATE_DEFAULT:
     "internal.worker.localChat.getOrCreateDefaultConversationId",
+  INTERNAL_WORKER_LOCAL_CHAT_APPEND_EVENT: "internal.worker.localChat.appendEvent",
   INTERNAL_WORKER_LOCAL_CHAT_LIST_EVENTS: "internal.worker.localChat.listEvents",
   INTERNAL_WORKER_LOCAL_CHAT_GET_EVENT_COUNT: "internal.worker.localChat.getEventCount",
   INTERNAL_WORKER_LOCAL_CHAT_PERSIST_DISCOVERY_WELCOME:

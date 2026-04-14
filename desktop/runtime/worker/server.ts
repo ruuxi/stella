@@ -46,7 +46,6 @@ import { ChatStore } from "../kernel/storage/chat-store.js";
 import { RuntimeStore } from "../kernel/storage/runtime-store.js";
 import { StoreModStore } from "../kernel/storage/store-mod-store.js";
 import type { SqliteDatabase } from "../kernel/storage/shared.js";
-import { TranscriptMirror } from "../kernel/storage/transcript-mirror.js";
 import {
   createEmptySocialSessionServiceSnapshot,
   type StorePackageRecord,
@@ -336,9 +335,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     state.init = init;
 
     const db = createDesktopDatabase(init.stellaRoot);
-    const transcriptMirror = new TranscriptMirror(path.join(init.stellaRoot, "state"));
-    const chatStore = new ChatStore(db, transcriptMirror);
-    const runtimeStore = new RuntimeStore(db, transcriptMirror);
+    const chatStore = new ChatStore(db);
+    const runtimeStore = chatStore as RuntimeStore;
     const storeModStore = new StoreModStore(db);
     const socialSessionStore = new SocialSessionStore(db);
     const storeModService = new StoreModService(init.stellaRoot, storeModStore);
@@ -1221,6 +1219,22 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_OR_CREATE_DEFAULT, async () => {
     return ensureChatStore().getOrCreateDefaultConversationId();
+  });
+
+  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_APPEND_EVENT, async (params) => {
+    ensureChatStore().appendEvent(params as {
+      conversationId: string;
+      type: string;
+      payload?: unknown;
+      requestId?: string;
+      targetDeviceId?: string;
+      deviceId?: string;
+      timestamp?: number;
+      eventId?: string;
+      channelEnvelope?: unknown;
+    });
+    peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+    return { ok: true };
   });
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_LIST_EVENTS, async (params) => {
