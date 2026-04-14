@@ -584,9 +584,10 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "- description: short summary shown in the task list.\n" +
     "- prompt: detailed instructions — the subagent's ONLY context. Include the user's request, the goal, and the expected output.\n" +
     "- Starts background work and immediately returns a structured status object with a durable thread_id plus other resumable threads and their last-used timing.\n" +
+    "- IMPORTANT: The return value means the task has STARTED, not that it has finished. The work is still in progress. Do NOT tell the user the task is done or describe its outcome based on the TaskCreate return alone. Wait for the completion/failure event before reporting results.\n" +
     "- Use this only for genuinely new work. Do not use it to continue, resume, retry, or revise an existing thread.\n" +
     "- After calling it, do not create another task for the same work.\n" +
-    "- Wait for the completion/failure event; in the meantime you may gently reply to the user if needed.\n" +
+    "- Wait for the completion/failure event; in the meantime you may acknowledge the request is underway but never claim it is finished.\n" +
     "- Use the returned thread_id for TaskOutput, TaskUpdate, and TaskPause.",
   TaskOutput:
     "Check the status and output of a task thread.\n\n" +

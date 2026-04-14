@@ -221,6 +221,7 @@ export const handleTask = async (
         created: true,
         running_in_background: true,
         follow_up_on_completion: true,
+        note: "Task has started but is NOT finished yet. Wait for the completion event before telling the user it is done.",
         ...(otherThreads.length > 0 ? { other_threads: otherThreads } : {}),
       },
     };
@@ -248,6 +249,7 @@ export const handleTask = async (
       created: true,
       running_in_background: true,
       follow_up_on_completion: true,
+      note: "Task has started but is NOT finished yet. Wait for the completion event before telling the user it is done.",
       ...(otherThreads.length > 0 ? { other_threads: otherThreads } : {}),
     },
   };
