@@ -183,6 +183,85 @@ describe("session-store", () => {
     expect(threadRows.count).toBe(2);
   });
 
+  it("preserves assistant thinking blocks in persisted thread payloads", () => {
+    const { store } = createTestContext();
+    const conversationId = "conv-thinking";
+    const { threadId } = store.resolveOrCreateActiveThread({
+      conversationId,
+      agentType: "general",
+    });
+
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 3_000,
+      role: "assistant",
+      content: "Final answer",
+      payload: {
+        role: "assistant",
+        content: [
+          {
+            type: "thinking",
+            thinking: "Check the relevant files first.",
+            thinkingSignature: '{"type":"reasoning","id":"rs_123"}',
+          },
+          { type: "text", text: "Final answer" },
+        ],
+        api: "openai-completions",
+        provider: "stella",
+        model: "openai/gpt-5.4",
+        usage: {
+          input: 10,
+          output: 20,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 30,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
+        stopReason: "stop",
+        timestamp: 3_000,
+      },
+    });
+
+    const loaded = store.loadThreadMessages(threadId);
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]?.payload).toEqual({
+      role: "assistant",
+      content: [
+        {
+          type: "thinking",
+          thinking: "Check the relevant files first.",
+          thinkingSignature: '{"type":"reasoning","id":"rs_123"}',
+        },
+        { type: "text", text: "Final answer" },
+      ],
+      api: "openai-completions",
+      provider: "stella",
+      model: "openai/gpt-5.4",
+      usage: {
+        input: 10,
+        output: 20,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 30,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: 3_000,
+    });
+  });
+
   it("compacts thread history using append-only session entries", () => {
     const { db, store } = createTestContext();
     const conversationId = "conv-compact";

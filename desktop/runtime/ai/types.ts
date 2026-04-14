@@ -3,6 +3,7 @@ import type { AssistantMessageEventStream } from "./utils/event-stream.js";
 export type { AssistantMessageEventStream } from "./utils/event-stream.js";
 
 export type KnownApi =
+	| "stella"
 	| "openai-completions"
 	| "openai-responses"
 	| "azure-openai-responses"
