@@ -3,7 +3,13 @@ export const STELLA_MODELS_PATH = "/api/stella/v1/models";
 export const STELLA_DEFAULT_MODEL = "stella/default";
 
 export const normalizeStellaApiBaseUrl = (value: string): string =>
-  value.trim().replace(/\/chat\/completions\/?$/i, "").replace(/\/+$/, "");
+  value
+    .trim()
+    .replace(/\/chat\/completions\/?$/i, "")
+    .replace(/\/runtime\/?$/i, "")
+    .replace(/\/models\/?$/i, "")
+    .replace(/\/api\/stella\/v1\/?$/i, "")
+    .replace(/\/+$/, "");
 
 export type ChatContentPart =
   | { type?: string; text?: string }
