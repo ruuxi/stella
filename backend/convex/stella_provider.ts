@@ -458,11 +458,7 @@ function resolveManagedProtocol(args: {
   resolvedModel: string;
   managedGatewayProvider: ManagedGatewayProvider;
 }): ManagedProtocol {
-  const normalizedModel = args.resolvedModel.trim().toLowerCase();
-  if (
-    args.managedGatewayProvider === "fireworks"
-    || normalizedModel.startsWith("openai/")
-  ) {
+  if (args.managedGatewayProvider === "fireworks") {
     return "openai-responses";
   }
   return "openai-completions";
