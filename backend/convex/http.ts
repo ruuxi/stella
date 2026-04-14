@@ -18,9 +18,11 @@ import { registerVoiceRoutes } from "./http_routes/voice";
 import {
   STELLA_CHAT_COMPLETIONS_PATH,
   STELLA_MODELS_PATH,
+  STELLA_RUNTIME_PATH,
   stellaProviderChatCompletions,
   stellaProviderModels,
   stellaProviderOptions,
+  stellaProviderRuntime,
 } from "./stella_provider";
 
 const http = httpRouter();
@@ -104,6 +106,21 @@ http.route({
   path: STELLA_CHAT_COMPLETIONS_PATH,
   method: "POST",
   handler: stellaProviderChatCompletions,
+});
+
+const stellaRuntimeOptionsHandler = httpAction(async (_ctx, request) =>
+  stellaProviderOptions(request),
+);
+
+http.route({
+  path: STELLA_RUNTIME_PATH,
+  method: "OPTIONS",
+  handler: stellaRuntimeOptionsHandler,
+});
+http.route({
+  path: STELLA_RUNTIME_PATH,
+  method: "POST",
+  handler: stellaProviderRuntime,
 });
 
 export default http;

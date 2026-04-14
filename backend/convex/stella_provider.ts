@@ -36,12 +36,13 @@ import {
 import {
   assistantText,
   buildContextFromChatMessages,
+  buildManagedModel,
   completeManagedChat,
   streamManagedChat,
   type ManagedProtocol,
   usageSummaryFromAssistant,
 } from "./runtime_ai/managed";
-import type { AssistantMessageEvent } from "./runtime_ai/types";
+import type { AssistantMessageEvent, Context } from "./runtime_ai/types";
 import {
   STELLA_DEFAULT_MODEL,
   isStellaModel,
@@ -58,6 +59,7 @@ const SSE_STREAM_OPEN_COMMENT = new TextEncoder().encode(": stella-stream-open\n
 const SSE_HEARTBEAT_COMMENT = new TextEncoder().encode(": keepalive\n\n");
 export const STELLA_API_BASE_PATH = "/api/stella/v1";
 export const STELLA_CHAT_COMPLETIONS_PATH = `${STELLA_API_BASE_PATH}/chat/completions`;
+export const STELLA_RUNTIME_PATH = `${STELLA_API_BASE_PATH}/runtime`;
 export const STELLA_MODELS_PATH = `${STELLA_API_BASE_PATH}/models`;
 
 type StellaRequestBody = Record<string, unknown>;
@@ -82,6 +84,22 @@ type ManagedRuntimeRequest = NonNullable<
 type UpstreamHttpError = {
   status: number;
   message: string;
+};
+
+type AuthorizedStellaRequest = {
+  ownerId: string;
+  agentType: string;
+  requestJson: StellaRequestBody;
+  requestedModel: string;
+  resolvedModel: string;
+  managedApi: ManagedProtocol;
+  serverModelConfig: {
+    model: string;
+    managedGatewayProvider?: ManagedGatewayProvider;
+    temperature?: number;
+    maxOutputTokens?: number;
+    providerOptions?: Record<string, Record<string, unknown>>;
+  };
 };
 
 const STELLA_REQUEST_PASSTHROUGH_EXCLUSIONS = new Set([
@@ -164,6 +182,12 @@ async function parseRequestJson(request: Request): Promise<StellaRequestBody | n
   } catch {
     return null;
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function getRequestedStellaMode(selection: string): ModelMode | "default" | null {
@@ -269,6 +293,60 @@ function estimateRequestTokens(requestBody: StellaRequestBody): TokenEstimate {
   };
 }
 
+function estimateContextTokens(args: {
+  context: Context;
+  request?: Record<string, unknown> | null;
+}): TokenEstimate {
+  const parts: string[] = [];
+  if (typeof args.context.systemPrompt === "string") {
+    parts.push(args.context.systemPrompt);
+  }
+
+  for (const message of args.context.messages) {
+    if (typeof message.content === "string") {
+      parts.push(message.content);
+      continue;
+    }
+
+    if (!Array.isArray(message.content)) {
+      continue;
+    }
+
+    for (const block of message.content) {
+      if (!block || typeof block !== "object") {
+        continue;
+      }
+      if ("text" in block && typeof block.text === "string") {
+        parts.push(block.text);
+        continue;
+      }
+      if ("thinking" in block && typeof block.thinking === "string") {
+        parts.push(block.thinking);
+        continue;
+      }
+      if ("arguments" in block && block.arguments && typeof block.arguments === "object") {
+        parts.push(JSON.stringify(block.arguments));
+      }
+    }
+  }
+
+  const requestRecord = args.request ?? null;
+  const maxTokens =
+    typeof requestRecord?.maxTokens === "number"
+      ? requestRecord.maxTokens
+      : typeof requestRecord?.max_completion_tokens === "number"
+        ? requestRecord.max_completion_tokens
+        : typeof requestRecord?.max_tokens === "number"
+          ? requestRecord.max_tokens
+          : 1024;
+
+  const inputTextLength = parts.join("\n").length;
+  return {
+    inputTokens: Math.max(1, Math.ceil(inputTextLength / 4)),
+    outputTokens: Math.max(0, Math.min(16_384, Math.floor(maxTokens))),
+  };
+}
+
 function toManagedBillingUsage(
   message: Parameters<typeof usageSummaryFromAssistant>[0],
   estimate: TokenEstimate,
@@ -341,6 +419,21 @@ function assistantReasoningContent(
   return reasoning.length > 0 ? reasoning : null;
 }
 
+function assistantReasoningSignature(
+  message: Awaited<ReturnType<typeof completeManagedChat>>,
+): string | null {
+  const signature = message.content
+    .filter(
+      (part): part is { type: "thinking"; thinking: string; thinkingSignature?: string } =>
+        part.type === "thinking"
+        && typeof part.thinking === "string"
+        && typeof part.thinkingSignature === "string",
+    )
+    .map((part) => part.thinkingSignature?.trim() || "")
+    .find((value) => value.startsWith("{"));
+  return signature && signature.length > 0 ? signature : null;
+}
+
 function buildChatCompletionResponse(args: {
   id: string;
   created: number;
@@ -349,6 +442,7 @@ function buildChatCompletionResponse(args: {
 }) {
   const text = assistantText(args.message);
   const reasoningContent = assistantReasoningContent(args.message);
+  const reasoningSignature = assistantReasoningSignature(args.message);
   const toolCalls = args.message.content
     .filter((part): part is { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> } =>
       part.type === "toolCall")
@@ -375,6 +469,7 @@ function buildChatCompletionResponse(args: {
         role: "assistant",
         content: text || null,
         ...(reasoningContent ? { reasoning_content: reasoningContent } : {}),
+        ...(reasoningSignature ? { reasoning_signature: reasoningSignature } : {}),
         ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
       },
       finish_reason: mapStopReason(args.message.stopReason),
@@ -431,6 +526,72 @@ function buildManagedRuntimeRequest(
   };
 }
 
+function buildManagedRuntimeRequestFromNativeRequest(
+  requestBody: unknown,
+  signal: AbortSignal,
+): ManagedRuntimeRequest {
+  const record = asRecord(requestBody) ?? {};
+  const extraBody = asRecord(record.extraBody) ?? undefined;
+  const headerRecord = asRecord(record.headers);
+  const headers = headerRecord
+    ? Object.fromEntries(
+        Object.entries(headerRecord).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      )
+    : undefined;
+
+  return {
+    temperature: typeof record.temperature === "number" ? record.temperature : undefined,
+    maxTokens:
+      typeof record.maxTokens === "number"
+        ? record.maxTokens
+        : typeof record.max_completion_tokens === "number"
+          ? record.max_completion_tokens
+          : typeof record.max_tokens === "number"
+            ? record.max_tokens
+            : undefined,
+    reasoning:
+      record.reasoning === "minimal"
+      || record.reasoning === "low"
+      || record.reasoning === "medium"
+      || record.reasoning === "high"
+      || record.reasoning === "xhigh"
+        ? record.reasoning
+        : record.reasoning_effort === "minimal"
+          || record.reasoning_effort === "low"
+          || record.reasoning_effort === "medium"
+          || record.reasoning_effort === "high"
+          || record.reasoning_effort === "xhigh"
+          ? record.reasoning_effort
+          : undefined,
+    toolChoice:
+      record.toolChoice === "auto"
+      || record.toolChoice === "none"
+      || record.toolChoice === "required"
+      || (record.toolChoice && typeof record.toolChoice === "object")
+        ? record.toolChoice as ManagedRuntimeRequest["toolChoice"]
+        : record.tool_choice === "auto"
+          || record.tool_choice === "none"
+          || record.tool_choice === "required"
+          || (record.tool_choice && typeof record.tool_choice === "object")
+          ? record.tool_choice as ManagedRuntimeRequest["toolChoice"]
+          : undefined,
+    responseFormat: record.responseFormat ?? record.response_format,
+    extraBody,
+    signal,
+    headers,
+  };
+}
+
+function parseNativeContext(value: unknown): Context | null {
+  const record = asRecord(value);
+  if (!record || !Array.isArray(record.messages)) {
+    return null;
+  }
+  return record as unknown as Context;
+}
+
 function buildStreamingErrorPayload(args: {
   id: string;
   created: number;
@@ -466,6 +627,135 @@ function resolveManagedProtocol(args: {
     return "openai-responses";
   }
   return "openai-completions";
+}
+
+async function authorizeStellaRequest(
+  ctx: ActionCtx,
+  request: Request,
+  expectedPath: string,
+): Promise<AuthorizedStellaRequest | Response> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    return stellaProviderErrorResponse(401, "Unauthorized", request);
+  }
+
+  const ownerId = identity.subject;
+  const isAnonymous = (identity as Record<string, unknown>).isAnonymous === true;
+  let modelAudience: ManagedModelAudience = isAnonymous ? "anonymous" : "free";
+
+  const url = new URL(request.url);
+  if (!url.pathname.endsWith(expectedPath)) {
+    return stellaProviderErrorResponse(404, "Stella provider path not found", request);
+  }
+
+  if (isAnonymous) {
+    const allowed = await consumeDeviceRateLimit(
+      ctx,
+      `anon-jwt:${ownerId}`,
+      getClientAddressKey(request),
+    );
+    if (!allowed) {
+      return stellaProviderErrorResponse(
+        429,
+        "Rate limit exceeded. Please create an account for continued access.",
+        request,
+      );
+    }
+  } else {
+    const subscriptionCheck = await resolveManagedModelAccess(ctx, ownerId);
+    modelAudience = subscriptionCheck.modelAudience;
+
+    if (!subscriptionCheck.allowed) {
+      const response = stellaProviderErrorResponse(429, subscriptionCheck.message, request);
+      response.headers.set(
+        "Retry-After",
+        String(Math.ceil((subscriptionCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000)),
+      );
+      return response;
+    }
+
+    const rateCheck = await ctx.runMutation(
+      internal.ai_proxy_data.checkProxyRateLimit,
+      {
+        ownerId,
+        tokensPerMinuteLimit: subscriptionCheck.tokensPerMinute,
+      },
+    );
+
+    if (!rateCheck.allowed) {
+      const response = stellaProviderErrorResponse(429, "Rate limit exceeded", request);
+      response.headers.set(
+        "Retry-After",
+        String(Math.ceil((rateCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000)),
+      );
+      return response;
+    }
+  }
+
+  const requestJson = await parseRequestJson(request);
+  if (!requestJson) {
+    return stellaProviderErrorResponse(400, "Stella request body must be valid JSON", request);
+  }
+
+  const headerAgentType = request.headers.get("X-Stella-Agent-Type")?.trim();
+  const bodyAgentType =
+    typeof requestJson.agentType === "string" && requestJson.agentType.trim().length > 0
+      ? requestJson.agentType.trim()
+      : undefined;
+  const agentType = headerAgentType || bodyAgentType || "general";
+
+  let selection: ResolvedStellaModelSelection;
+  try {
+    selection = resolveRequestedStellaModel(agentType, requestJson, modelAudience);
+  } catch (error) {
+    return stellaProviderErrorResponse(
+      400,
+      error instanceof Error ? error.message : "Invalid Stella model selection",
+      request,
+    );
+  }
+
+  const { requestedModel, resolvedModel, config } = selection;
+  const managedGatewayProvider: ManagedGatewayProvider = resolveManagedGatewayProvider({
+    model: resolvedModel,
+    configuredProvider: config.managedGatewayProvider,
+  });
+  const managedGateway = resolveManagedGatewayConfig({
+    model: resolvedModel,
+    configuredProvider: config.managedGatewayProvider,
+  });
+  if (!process.env[managedGateway.apiKeyEnvVar]?.trim()) {
+    return stellaProviderErrorResponse(
+      503,
+      "Stella upstream gateway is not configured",
+      request,
+    );
+  }
+
+  const managedApi = resolveManagedProtocol({
+    resolvedModel,
+    managedGatewayProvider,
+  });
+
+  console.log(
+    `[stella-provider] agent=${agentType} | requestedModel=${requestedModel} | resolvedModel=${resolvedModel} | gateway=${managedGatewayProvider} | api=${managedApi}`,
+  );
+
+  return {
+    ownerId,
+    agentType,
+    requestJson,
+    requestedModel,
+    resolvedModel,
+    managedApi,
+    serverModelConfig: {
+      model: resolvedModel,
+      managedGatewayProvider,
+      temperature: config.temperature,
+      maxOutputTokens: config.maxOutputTokens,
+      providerOptions: config.providerOptions as Record<string, Record<string, unknown>> | undefined,
+    },
+  };
 }
 
 async function createStreamingRuntimeResponse(args: {
@@ -597,6 +887,29 @@ async function createStreamingRuntimeResponse(args: {
             }],
           });
           lastDownstreamWriteAt = Date.now();
+          return false;
+        }
+
+        if (event.type === "thinking_end") {
+          const partial = event.partial.content[event.contentIndex];
+          if (
+            partial
+            && partial.type === "thinking"
+            && typeof partial.thinkingSignature === "string"
+            && partial.thinkingSignature.trim().startsWith("{")
+          ) {
+            sendChunk(controller, {
+              id: responseId,
+              object: "chat.completion.chunk",
+              created,
+              model: modelId,
+              choices: [{
+                index: 0,
+                delta: { reasoning_signature: partial.thinkingSignature },
+              }],
+            });
+            lastDownstreamWriteAt = Date.now();
+          }
           return false;
         }
 
@@ -746,6 +1059,321 @@ async function createStreamingRuntimeResponse(args: {
   });
 }
 
+type StellaAssistantMessageEventPayload =
+  | { type: "start"; api: ManagedProtocol; provider: string; model: string }
+  | { type: "text_start"; contentIndex: number }
+  | { type: "text_delta"; contentIndex: number; delta: string }
+  | { type: "text_end"; contentIndex: number; contentSignature?: string }
+  | { type: "thinking_start"; contentIndex: number }
+  | { type: "thinking_delta"; contentIndex: number; delta: string }
+  | { type: "thinking_end"; contentIndex: number; contentSignature?: string }
+  | { type: "toolcall_start"; contentIndex: number; id: string; toolName: string }
+  | { type: "toolcall_delta"; contentIndex: number; delta: string }
+  | { type: "toolcall_end"; contentIndex: number }
+  | {
+      type: "done";
+      reason: Extract<AssistantMessageEvent["type"], "done"> extends never ? never : "stop" | "length" | "toolUse";
+      usage: Awaited<ReturnType<typeof completeManagedChat>>["usage"];
+    }
+  | {
+      type: "error";
+      reason: "aborted" | "error";
+      errorMessage?: string;
+      usage: Awaited<ReturnType<typeof completeManagedChat>>["usage"];
+    };
+
+function mapAssistantEventToStellaEvent(args: {
+  event: AssistantMessageEvent;
+  partialModel: ReturnType<typeof buildManagedModel>;
+}): StellaAssistantMessageEventPayload | null {
+  const { event, partialModel } = args;
+
+  switch (event.type) {
+    case "start":
+      return {
+        type: "start",
+        api: partialModel.api,
+        provider: partialModel.provider,
+        model: partialModel.id,
+      };
+    case "text_start":
+      return { type: "text_start", contentIndex: event.contentIndex };
+    case "text_delta":
+      return {
+        type: "text_delta",
+        contentIndex: event.contentIndex,
+        delta: event.delta,
+      };
+    case "text_end": {
+      const content = event.partial.content[event.contentIndex];
+      return {
+        type: "text_end",
+        contentIndex: event.contentIndex,
+        contentSignature:
+          content && content.type === "text" ? content.textSignature : undefined,
+      };
+    }
+    case "thinking_start":
+      return { type: "thinking_start", contentIndex: event.contentIndex };
+    case "thinking_delta":
+      return {
+        type: "thinking_delta",
+        contentIndex: event.contentIndex,
+        delta: event.delta,
+      };
+    case "thinking_end": {
+      const content = event.partial.content[event.contentIndex];
+      return {
+        type: "thinking_end",
+        contentIndex: event.contentIndex,
+        contentSignature:
+          content && content.type === "thinking"
+            ? content.thinkingSignature
+            : undefined,
+      };
+    }
+    case "toolcall_start": {
+      const toolCall = event.partial.content[event.contentIndex];
+      if (!toolCall || toolCall.type !== "toolCall") {
+        return null;
+      }
+      return {
+        type: "toolcall_start",
+        contentIndex: event.contentIndex,
+        id: toolCall.id,
+        toolName: toolCall.name,
+      };
+    }
+    case "toolcall_delta":
+      return {
+        type: "toolcall_delta",
+        contentIndex: event.contentIndex,
+        delta: event.delta,
+      };
+    case "toolcall_end":
+      return { type: "toolcall_end", contentIndex: event.contentIndex };
+    case "done":
+      return {
+        type: "done",
+        reason: event.reason,
+        usage: event.message.usage,
+      };
+    case "error":
+      return {
+        type: "error",
+        reason: event.reason,
+        errorMessage: event.error.errorMessage,
+        usage: event.error.usage,
+      };
+    default: {
+      const _exhaustive: never = event;
+      return _exhaustive;
+    }
+  }
+}
+
+async function createNativeRuntimeResponse(args: {
+  request: Request;
+  ctx: ActionCtx;
+  ownerId: string;
+  agentType: string;
+  modelId: string;
+  tokenEstimate: TokenEstimate;
+  context: Context;
+  nativeRequest: Record<string, unknown> | null;
+  managedApi: ManagedProtocol;
+  serverModelConfig: {
+    model: string;
+    managedGatewayProvider?: ManagedGatewayProvider;
+    temperature?: number;
+    maxOutputTokens?: number;
+    providerOptions?: Record<string, Record<string, unknown>>;
+  };
+}): Promise<Response> {
+  const {
+    request,
+    ctx,
+    ownerId,
+    agentType,
+    modelId,
+    tokenEstimate,
+    context,
+    nativeRequest,
+    managedApi,
+    serverModelConfig,
+  } = args;
+  const origin = request.headers.get("origin");
+  const responseHeaders: Record<string, string> = {
+    ...getCorsHeaders(origin),
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache, no-transform",
+  };
+  const requestStartedAt = Date.now();
+  const encoder = new TextEncoder();
+  const managedModel = buildManagedModel(serverModelConfig, managedApi);
+
+  const sendEvent = (
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    payload: StellaAssistantMessageEventPayload,
+  ) => {
+    controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+  };
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      let lastDownstreamWriteAt = Date.now();
+      let closed = false;
+
+      const closeStream = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(heartbeatTimer);
+        request.signal.removeEventListener("abort", onClientAbort);
+      };
+
+      const enqueueComment = (chunk: Uint8Array) => {
+        if (closed) return;
+        controller.enqueue(chunk);
+        lastDownstreamWriteAt = Date.now();
+      };
+
+      const onClientAbort = () => {
+        try {
+          controller.close();
+        } catch {
+          // Ignore double-close races with the runtime loop.
+        } finally {
+          closeStream();
+        }
+      };
+
+      const heartbeatTimer = setInterval(() => {
+        if (closed) {
+          clearInterval(heartbeatTimer);
+          return;
+        }
+        if (Date.now() - lastDownstreamWriteAt >= SSE_HEARTBEAT_INTERVAL_MS) {
+          try {
+            enqueueComment(SSE_HEARTBEAT_COMMENT);
+          } catch {
+            closeStream();
+          }
+        }
+      }, SSE_HEARTBEAT_INTERVAL_MS);
+
+      request.signal.addEventListener("abort", onClientAbort, { once: true });
+      enqueueComment(SSE_STREAM_OPEN_COMMENT);
+
+      const runtimeStream = streamManagedChat({
+        config: serverModelConfig,
+        context,
+        api: managedApi,
+        request: buildManagedRuntimeRequestFromNativeRequest(nativeRequest, request.signal),
+      });
+      const iterator = runtimeStream[Symbol.asyncIterator]();
+
+      const handleRuntimeEvent = async (event: AssistantMessageEvent) => {
+        const payload = mapAssistantEventToStellaEvent({
+          event,
+          partialModel: managedModel,
+        });
+        if (payload) {
+          sendEvent(controller, payload);
+          lastDownstreamWriteAt = Date.now();
+        }
+
+        if (event.type === "done") {
+          await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
+            ownerId,
+            agentType,
+            model: modelId,
+            durationMs: Date.now() - requestStartedAt,
+            success: true,
+            ...toManagedBillingUsage(event.message, tokenEstimate),
+          });
+          if (!closed) {
+            controller.close();
+          }
+          return true;
+        }
+
+        if (event.type === "error") {
+          console.error(
+            "[stella-provider] Native streaming error:",
+            event.error.errorMessage || "Streaming completion failed",
+          );
+          await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
+            ownerId,
+            agentType,
+            model: modelId,
+            durationMs: Date.now() - requestStartedAt,
+            success: false,
+            inputTokens: tokenEstimate.inputTokens,
+            outputTokens: tokenEstimate.outputTokens,
+          });
+          if (!closed) {
+            controller.close();
+          }
+          return true;
+        }
+
+        return false;
+      };
+
+      void (async () => {
+        try {
+          while (true) {
+            const next = await iterator.next();
+            if (next.done) {
+              break;
+            }
+            if (await handleRuntimeEvent(next.value)) {
+              return;
+            }
+          }
+          if (!closed) {
+            controller.close();
+          }
+        } catch (error) {
+          console.error("[stella-provider] Native streaming error:", error);
+          await ctx.scheduler.runAfter(0, internal.billing.logManagedUsage, {
+            ownerId,
+            agentType,
+            model: modelId,
+            durationMs: Date.now() - requestStartedAt,
+            success: false,
+            inputTokens: tokenEstimate.inputTokens,
+            outputTokens: tokenEstimate.outputTokens,
+          });
+          if (!closed && !request.signal.aborted) {
+            sendEvent(controller, {
+              type: "error",
+              reason: "error",
+              errorMessage: "Failed to generate Stella completion",
+              usage: {
+                input: tokenEstimate.inputTokens,
+                output: tokenEstimate.outputTokens,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: tokenEstimate.inputTokens + tokenEstimate.outputTokens,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              },
+            });
+            controller.close();
+          }
+        } finally {
+          closeStream();
+        }
+      })();
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: responseHeaders,
+  });
+}
+
 export const stellaProviderModels = httpAction(async (ctx, request) =>
   handleCorsRequest(request, async (origin) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -775,120 +1403,25 @@ export const stellaProviderModels = httpAction(async (ctx, request) =>
 );
 
 export const stellaProviderChatCompletions = httpAction(async (ctx, request) => {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
-    return stellaProviderErrorResponse(401, "Unauthorized", request);
+  const authorized = await authorizeStellaRequest(
+    ctx,
+    request,
+    STELLA_CHAT_COMPLETIONS_PATH,
+  );
+  if (authorized instanceof Response) {
+    return authorized;
   }
 
-  const ownerId = identity.subject;
-  const isAnonymous = (identity as Record<string, unknown>).isAnonymous === true;
-  let modelAudience: ManagedModelAudience = isAnonymous ? "anonymous" : "free";
-
-  const url = new URL(request.url);
-  if (!url.pathname.endsWith("/chat/completions")) {
-    return stellaProviderErrorResponse(404, "Stella provider path not found", request);
-  }
-
-  if (isAnonymous) {
-    const allowed = await consumeDeviceRateLimit(
-      ctx,
-      `anon-jwt:${ownerId}`,
-      getClientAddressKey(request),
-    );
-    if (!allowed) {
-      return stellaProviderErrorResponse(
-        429,
-        "Rate limit exceeded. Please create an account for continued access.",
-        request,
-      );
-    }
-  } else {
-    const subscriptionCheck = await resolveManagedModelAccess(ctx, ownerId);
-    modelAudience = subscriptionCheck.modelAudience;
-
-    if (!subscriptionCheck.allowed) {
-      const response = stellaProviderErrorResponse(429, subscriptionCheck.message, request);
-      response.headers.set(
-        "Retry-After",
-        String(Math.ceil((subscriptionCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000)),
-      );
-      return response;
-    }
-
-    const rateCheck = await ctx.runMutation(
-      internal.ai_proxy_data.checkProxyRateLimit,
-      {
-        ownerId,
-        tokensPerMinuteLimit: subscriptionCheck.tokensPerMinute,
-      },
-    );
-
-    if (!rateCheck.allowed) {
-      const response = stellaProviderErrorResponse(429, "Rate limit exceeded", request);
-      response.headers.set(
-        "Retry-After",
-        String(Math.ceil((rateCheck.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS) / 1000)),
-      );
-      return response;
-    }
-  }
-
-  const requestJson = await parseRequestJson(request);
-  if (!requestJson) {
-    return stellaProviderErrorResponse(400, "Stella request body must be valid JSON", request);
-  }
-
-  const headerAgentType = request.headers.get("X-Stella-Agent-Type")?.trim();
-  const bodyAgentType =
-    typeof requestJson.agentType === "string" && requestJson.agentType.trim().length > 0
-      ? requestJson.agentType.trim()
-      : undefined;
-  const agentType = headerAgentType || bodyAgentType || "general";
-
-  let selection: ResolvedStellaModelSelection;
-  try {
-    selection = resolveRequestedStellaModel(agentType, requestJson, modelAudience);
-  } catch (error) {
-    return stellaProviderErrorResponse(
-      400,
-      error instanceof Error ? error.message : "Invalid Stella model selection",
-      request,
-    );
-  }
-
-  const { requestedModel, resolvedModel, config } = selection;
-  const managedGatewayProvider: ManagedGatewayProvider = resolveManagedGatewayProvider({
-    model: resolvedModel,
-    configuredProvider: config.managedGatewayProvider,
-  });
-  const managedGateway = resolveManagedGatewayConfig({
-    model: resolvedModel,
-    configuredProvider: config.managedGatewayProvider,
-  });
-  if (!process.env[managedGateway.apiKeyEnvVar]?.trim()) {
-    return stellaProviderErrorResponse(
-      503,
-      "Stella upstream gateway is not configured",
-      request,
-    );
-  }
-  const serverModelConfig = {
-    model: resolvedModel,
-    managedGatewayProvider,
-    temperature: config.temperature,
-    maxOutputTokens: config.maxOutputTokens,
-    providerOptions: config.providerOptions as Record<string, Record<string, unknown>> | undefined,
-  };
+  const {
+    ownerId,
+    agentType,
+    requestJson,
+    resolvedModel,
+    managedApi,
+    serverModelConfig,
+  } = authorized;
   const tokenEstimate = estimateRequestTokens(requestJson);
   const isStreaming = requestJson.stream === true;
-  const managedApi = resolveManagedProtocol({
-    resolvedModel,
-    managedGatewayProvider,
-  });
-
-  console.log(
-    `[stella-provider] agent=${agentType} | requestedModel=${requestedModel} | resolvedModel=${resolvedModel} | gateway=${managedGatewayProvider} | api=${managedApi}`,
-  );
 
   if (isStreaming) {
     return await createStreamingRuntimeResponse({
@@ -954,6 +1487,47 @@ export const stellaProviderChatCompletions = httpAction(async (ctx, request) => 
       request,
     );
   }
+});
+
+export const stellaProviderRuntime = httpAction(async (ctx, request) => {
+  const authorized = await authorizeStellaRequest(ctx, request, STELLA_RUNTIME_PATH);
+  if (authorized instanceof Response) {
+    return authorized;
+  }
+
+  const {
+    ownerId,
+    agentType,
+    requestJson,
+    resolvedModel,
+    managedApi,
+    serverModelConfig,
+  } = authorized;
+
+  const context = parseNativeContext(requestJson.context);
+  if (!context) {
+    return stellaProviderErrorResponse(
+      400,
+      "Stella runtime request must include a valid context object",
+      request,
+    );
+  }
+
+  return await createNativeRuntimeResponse({
+    request,
+    ctx,
+    ownerId,
+    agentType,
+    modelId: resolvedModel,
+    tokenEstimate: estimateContextTokens({
+      context,
+      request: asRecord(requestJson.request),
+    }),
+    context,
+    nativeRequest: asRecord(requestJson.request),
+    managedApi,
+    serverModelConfig,
+  });
 });
 
 export { corsPreflightHandler as stellaProviderOptions };

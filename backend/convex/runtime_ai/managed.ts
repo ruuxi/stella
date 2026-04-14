@@ -61,6 +61,7 @@ type ChatRequestMessage = {
   reasoning_content?: unknown;
   reasoning?: unknown;
   reasoning_text?: unknown;
+  reasoning_signature?: unknown;
   tool_calls?: unknown;
   tool_call_id?: unknown;
   name?: unknown;
@@ -315,7 +316,11 @@ function readAssistantReasoningBlocks(
     return [{
       type: "thinking",
       thinking,
-      thinkingSignature: field,
+      thinkingSignature:
+        typeof message.reasoning_signature === "string"
+        && message.reasoning_signature.trim().length > 0
+          ? message.reasoning_signature.trim()
+          : field,
     }];
   }
   return [];

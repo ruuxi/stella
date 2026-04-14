@@ -24,6 +24,7 @@ export type ChatMessage = {
   reasoning_content?: string;
   reasoning?: string;
   reasoning_text?: string;
+  reasoning_signature?: string;
   tool_calls?: ChatToolCall[];
   tool_call_id?: string;
   name?: string;
@@ -37,6 +38,7 @@ export type ChatCompletionResponse = {
       reasoning_content?: string;
       reasoning?: string;
       reasoning_text?: string;
+      reasoning_signature?: string;
       tool_calls?: ChatToolCall[];
     };
     delta?: {
@@ -44,6 +46,7 @@ export type ChatCompletionResponse = {
       reasoning_content?: string;
       reasoning?: string;
       reasoning_text?: string;
+      reasoning_signature?: string;
       tool_calls?: Array<{
         index?: number;
         id?: string;

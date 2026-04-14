@@ -29,6 +29,7 @@ export type OpenAICompatibleChatCompletionChunk = {
       reasoning?: string | null;
       reasoning_content?: string | null;
       reasoning_text?: string | null;
+      reasoning_signature?: string | null;
       tool_calls?: Array<{
         index?: number;
         id?: string;
@@ -260,6 +261,20 @@ export async function pumpOpenAICompatibleChatCompletionsResponse(args: {
             delta: reasoningDelta,
             partial: args.output,
           });
+        }
+      }
+
+      if (typeof delta.reasoning_signature === "string" && delta.reasoning_signature.length > 0) {
+        if (currentBlock?.type === "thinking") {
+          currentBlock.thinkingSignature = delta.reasoning_signature;
+        } else {
+          for (let index = blocks.length - 1; index >= 0; index -= 1) {
+            const block = blocks[index];
+            if (block?.type === "thinking") {
+              block.thinkingSignature = delta.reasoning_signature;
+              break;
+            }
+          }
         }
       }
 

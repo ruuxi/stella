@@ -114,7 +114,11 @@ const toReasoningBlocks = (
     return [{
       type: "thinking",
       thinking: value.trim(),
-      thinkingSignature: field,
+      thinkingSignature:
+        typeof message.reasoning_signature === "string"
+        && message.reasoning_signature.trim().length > 0
+          ? message.reasoning_signature.trim()
+          : field,
     }];
   }
   return [];
@@ -295,8 +299,18 @@ const readAssistantReasoning = (message: AssistantMessage): string | undefined =
   return reasoning.length > 0 ? reasoning : undefined;
 };
 
+const readAssistantReasoningSignature = (message: AssistantMessage): string | undefined =>
+  message.content
+    .filter(
+      (part): part is Extract<AssistantMessage["content"][number], { type: "thinking" }> =>
+        part.type === "thinking",
+    )
+    .map((part) => part.thinkingSignature?.trim() || "")
+    .find((part) => part.startsWith("{") && part.length > 0);
+
 const messageToResponse = (message: AssistantMessage): ChatCompletionResponse => {
   const reasoningContent = readAssistantReasoning(message);
+  const reasoningSignature = readAssistantReasoningSignature(message);
   return ({
   choices: [{
     message: {
@@ -306,6 +320,9 @@ const messageToResponse = (message: AssistantMessage): ChatCompletionResponse =>
         .map((part) => ({ type: "text", text: part.text })),
       ...(reasoningContent
         ? { reasoning_content: reasoningContent }
+        : {}),
+      ...(reasoningSignature
+        ? { reasoning_signature: reasoningSignature }
         : {}),
       ...(message.content.some((part) => part.type === "toolCall")
         ? {

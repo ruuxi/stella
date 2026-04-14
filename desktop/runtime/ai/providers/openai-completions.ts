@@ -81,6 +81,7 @@ type ReasoningField = "reasoning_content" | "reasoning" | "reasoning_text";
 type ReasoningDetail = { type?: string; id?: string; data?: string };
 type CompletionDeltaWithReasoning = NonNullable<ChatCompletionChunk.Choice["delta"]> &
 	Partial<Record<ReasoningField, string | null>> & {
+		reasoning_signature?: string | null;
 		reasoning_details?: ReasoningDetail[];
 	};
 type OpenAICompletionsRequest = OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming & {
@@ -92,6 +93,7 @@ type OpenAICompletionsRequest = OpenAI.Chat.Completions.ChatCompletionCreatePara
 };
 type AssistantMessageWithExtras = ChatCompletionAssistantMessageParam &
 	Partial<Record<ReasoningField, string>> & {
+		reasoning_signature?: string;
 		reasoning_details?: ReasoningDetail[];
 	};
 type ToolResultMessageWithName = ChatCompletionToolMessageParam & { name?: string };
@@ -295,6 +297,23 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 								delta,
 								partial: output,
 							});
+						}
+					}
+
+					if (
+						typeof deltaWithReasoning.reasoning_signature === "string"
+						&& deltaWithReasoning.reasoning_signature.length > 0
+					) {
+						if (currentBlock?.type === "thinking") {
+							currentBlock.thinkingSignature = deltaWithReasoning.reasoning_signature;
+						} else {
+							for (let index = output.content.length - 1; index >= 0; index -= 1) {
+								const block = output.content[index];
+								if (block?.type === "thinking") {
+									block.thinkingSignature = deltaWithReasoning.reasoning_signature;
+									break;
+								}
+							}
 						}
 					}
 
@@ -649,10 +668,16 @@ export function convertMessages<TApi extends Api>(
 						assistantMsg.content = [{ type: "text", text: thinkingText }];
 					}
 				} else {
-					// Use the signature from the first thinking block if available (for llama.cpp server + gpt-oss)
+					// Use the signature from the first thinking block if available.
 					const signature = nonEmptyThinkingBlocks[0].thinkingSignature;
 					if (signature && signature.length > 0) {
-						assistantMsg[signature as ReasoningField] = nonEmptyThinkingBlocks.map((b) => b.thinking).join("\n");
+						const thinkingText = nonEmptyThinkingBlocks.map((b) => b.thinking).join("\n");
+						if (signature.startsWith("{")) {
+							assistantMsg.reasoning_content = thinkingText;
+							assistantMsg.reasoning_signature = signature;
+						} else {
+							assistantMsg[signature as ReasoningField] = thinkingText;
+						}
 					}
 				}
 			}

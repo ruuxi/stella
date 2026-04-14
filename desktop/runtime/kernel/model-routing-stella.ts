@@ -19,13 +19,13 @@ const createStellaModel = (
   siteBaseUrl: string,
   modelId: string,
   agentType: string,
-): Model<"openai-completions"> => ({
+): Model<"stella"> => ({
   id: modelId,
   name:
     modelId === STELLA_DEFAULT_MODEL
       ? "Stella Recommended"
       : modelId.replace(/^stella\//, ""),
-  api: "openai-completions",
+  api: "stella",
   provider: STELLA_PROVIDER,
   baseUrl: normalizeStellaApiBaseUrl(siteBaseUrl),
   reasoning: true,
@@ -35,13 +35,6 @@ const createStellaModel = (
   maxTokens: STELLA_MAX_TOKENS,
   headers: {
     "X-Stella-Agent-Type": agentType,
-  },
-  compat: {
-    supportsDeveloperRole: true,
-    supportsReasoningEffort: true,
-    supportsUsageInStreaming: true,
-    maxTokensField: "max_completion_tokens",
-    supportsStrictMode: false,
   },
 });
 
