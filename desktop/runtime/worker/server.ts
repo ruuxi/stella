@@ -876,6 +876,11 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             timezone: payload.timezone,
             responseTarget: ev.responseTarget,
           });
+          if (ev.responseTarget?.type === "task_turn") {
+            getTaskTurnMessages(payload.conversationId).delete(
+              ev.responseTarget.taskId,
+            );
+          }
         }
         if (isHiddenRun) {
           if (lastVisibleRunId) {
