@@ -23,7 +23,7 @@ export type TurnViewModel = {
   userChannelEnvelope?: ChannelEnvelope;
   assistantText: string;
   assistantMessageId: string | null;
-
+  assistantEmotesEnabled: boolean;
   webSearchBadgeHtml?: string;
   officePreviewRef?: OfficePreviewRef;
   selfModApplied?: SelfModApplied;
@@ -241,6 +241,7 @@ const turnViewModelEqual = (a: TurnViewModel, b: TurnViewModel): boolean => (
   channelEnvelopeEqual(a.userChannelEnvelope, b.userChannelEnvelope) &&
   a.assistantText === b.assistantText &&
   a.assistantMessageId === b.assistantMessageId &&
+  a.assistantEmotesEnabled === b.assistantEmotesEnabled &&
   (a.webSearchBadgeHtml ?? null) === (b.webSearchBadgeHtml ?? null) &&
   (a.officePreviewRef?.sessionId ?? null) ===
     (b.officePreviewRef?.sessionId ?? null) &&
@@ -364,6 +365,9 @@ export const TurnItem = memo(function TurnItem({
   const assistantDisplayText = hasAssistantContent
     ? assistantText
     : (streaming?.streamingText ?? "");
+  const assistantEnableEmotes = hasAssistantContent
+    ? turn.assistantEmotesEnabled
+    : shouldShowStreamingAssistant;
   const assistantCacheKey = `assistant-${turn.id}`;
 
   const hasEverHadContent = useRef(hasAssistantContent);
@@ -493,6 +497,7 @@ export const TurnItem = memo(function TurnItem({
                 isAnimating={
                   shouldShowStreamingAssistant && streaming?.isStreaming
                 }
+                enableEmotes={assistantEnableEmotes}
               />
             )}
 
@@ -562,6 +567,7 @@ export const StreamingIndicator = memo(function StreamingIndicator({
                 : undefined
             }
             isAnimating={isStreaming}
+            enableEmotes={true}
           />
         )}
       </div>
