@@ -136,12 +136,13 @@ const buildStaleUserReminder = (
   return formatDateTimeReminder(latestUserEvent.timestamp, timezone);
 };
 
-const shouldIncludeInOrchestratorLocalHistory = (
+export const shouldIncludeInOrchestratorLocalHistory = (
   event: LocalContextEvent,
 ): boolean =>
-  // Terminal task events are delivered back to the orchestrator as hidden
+  // Task lifecycle updates are delivered back to the orchestrator as hidden
   // follow-up prompts. Keeping them in local-history context as well doubles
-  // the same completion signal.
+  // the same signal.
+  event.type !== "task_started" &&
   event.type !== "task_completed" &&
   event.type !== "task_failed" &&
   event.type !== "task_canceled";
@@ -374,6 +375,7 @@ export const createRunnerContext = ({
       queuedOrchestratorTurns: [],
       activeRunAbortControllers: new Map(),
       conversationCallbacks: new Map(),
+      runCallbacksByRunId: new Map(),
       interruptedRunIds: new Set(),
       activeToolExecutionCount: 0,
       interruptAfterTool: false,

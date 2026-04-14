@@ -12,6 +12,7 @@ import type {
   RuntimeUserMessageEvent,
   SelfModMonitor,
 } from "../agent-runtime.js";
+import type { RuntimeAgentEventPayload } from "../../protocol/index.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { LocalContextEvent } from "../local-history.js";
 import type {
@@ -135,6 +136,8 @@ export type RuntimeSendMessageInput = {
   uiVisibility?: "visible" | "hidden";
   agentType?: string;
   deliverAs?: "steer" | "followUp";
+  callbackRunId?: string;
+  responseTarget?: RuntimeAgentEventPayload["responseTarget"];
 };
 
 export type RuntimeSendUserMessageInput = RuntimeSendMessageInput & {
@@ -224,6 +227,7 @@ export type RunnerState = {
   queuedOrchestratorTurns: QueuedOrchestratorTurn[];
   activeRunAbortControllers: Map<string, AbortController>;
   conversationCallbacks: Map<string, AgentCallbacks>;
+  runCallbacksByRunId: Map<string, AgentCallbacks>;
   interruptedRunIds: Set<string>;
   activeToolExecutionCount: number;
   interruptAfterTool: boolean;

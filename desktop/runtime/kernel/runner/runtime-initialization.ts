@@ -159,6 +159,7 @@ export const createRuntimeInitialization = (
       activeOrchestratorRunId: context.state.activeOrchestratorRunId,
       activeAbortControllers: context.state.activeRunAbortControllers.size,
       conversationCallbacks: context.state.conversationCallbacks.size,
+      runCallbacksByRunId: context.state.runCallbacksByRunId.size,
     });
     googleWorkspaceToolsLoadGeneration += 1;
     googleWorkspaceToolsLoadPromise = null;
@@ -179,6 +180,7 @@ export const createRuntimeInitialization = (
     }
     context.state.activeRunAbortControllers.clear();
     context.state.conversationCallbacks.clear();
+    context.state.runCallbacksByRunId.clear();
     context.state.interruptedRunIds.clear();
     void context.selfModHmrController?.forceResumeAll();
     context.toolHost.killAllShells();

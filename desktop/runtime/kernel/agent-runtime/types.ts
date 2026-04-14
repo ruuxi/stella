@@ -13,6 +13,7 @@ import type { RuntimeStore } from "../storage/runtime-store.js";
 import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
+  RuntimeAgentEventPayload,
 } from "../../protocol/index.js";
 
 export type SelfModAppliedPayload = {
@@ -101,6 +102,7 @@ export type RuntimeEndEvent = {
   persisted: boolean;
   selfModApplied?: SelfModAppliedPayload;
   uiVisibility?: "visible" | "hidden";
+  responseTarget?: RuntimeAgentEventPayload["responseTarget"];
 };
 
 export type RuntimeInterruptedEvent = {
@@ -175,6 +177,7 @@ export type BaseRunOptions = {
   }>;
   hookEmitter?: HookEmitter;
   displayHtml?: (html: string) => void;
+  responseTarget?: RuntimeAgentEventPayload["responseTarget"];
 };
 
 export type OrchestratorRunOptions = BaseRunOptions & {

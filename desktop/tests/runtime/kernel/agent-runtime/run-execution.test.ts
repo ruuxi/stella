@@ -63,6 +63,11 @@ describe("executeRuntimeAgentPrompt", () => {
 
     expect(result.finalText).toBe("done");
     expect(prompt).toHaveBeenCalledOnce();
+    expect(prompt).toHaveBeenCalledWith([
+      expect.objectContaining({
+        role: "runtimeInternal",
+      }),
+    ]);
     expect(appendThreadMessage).not.toHaveBeenCalled();
     expect(onUserMessage).not.toHaveBeenCalled();
   });

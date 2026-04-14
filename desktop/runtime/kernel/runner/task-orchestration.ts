@@ -3,6 +3,7 @@ import path from "path";
 import { resolveLlmRoute } from "../model-routing.js";
 import { getMaxAgentConcurrency } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
+import { createTaskLifecycleResponseTarget } from "../agent-runtime/response-target.js";
 import { LocalTaskManager } from "../tasks/local-task-manager.js";
 import type { TaskToolRequest, ToolContext, ToolResult } from "../tools/types.js";
 import type {
@@ -252,8 +253,8 @@ export const createTaskOrchestration = (
       context.runtimeStore.listActiveThreads(conversationId),
     onTaskEvent: (event) => {
       appendTaskLifecycleChatEvent(context, event);
-      context.state.conversationCallbacks
-        .get(event.conversationId)
+      context.state.runCallbacksByRunId
+        .get(event.rootRunId)
         ?.onTaskEvent?.(event);
       const userPrompt = buildTaskEventPrompt(event);
       if (!userPrompt) {
@@ -265,6 +266,11 @@ export const createTaskOrchestration = (
         uiVisibility: "hidden",
         agentType: AGENT_IDS.ORCHESTRATOR,
         deliverAs: "followUp",
+        callbackRunId: event.rootRunId,
+        responseTarget: createTaskLifecycleResponseTarget({
+          taskId: event.taskId,
+          eventType: event.type,
+        }),
       });
     },
     fetchAgentContext: deps.buildAgentContext,

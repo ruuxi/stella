@@ -16,6 +16,15 @@ export type SelfModAppliedData = {
   batchIndex: number;
 };
 
+export type AgentResponseTarget =
+  | { type: "user_turn" }
+  | { type: "task_turn"; taskId: string }
+  | {
+      type: "task_terminal_notice";
+      taskId: string;
+      terminalState: "completed" | "failed" | "canceled";
+    };
+
 export type AgentStreamEvent = {
   type: AgentStreamEventType;
   runId: string;
@@ -46,4 +55,5 @@ export type AgentStreamEvent = {
   outcome?: AgentRunFinishOutcome;
   reason?: string;
   replacedByRunId?: string;
+  responseTarget?: AgentResponseTarget;
 };
