@@ -140,7 +140,7 @@ export const ChatColumn = memo(function ChatColumn({
     Boolean(conversation.streaming.isStreaming) ||
     Boolean(conversation.streaming.runtimeStatusText);
   const showThinkingFooter = hasActiveWork;
-  const shouldShowHomeContent = homeVisible && !hasActiveWork;
+  const shouldShowHomeContent = homeVisible;
 
   // Capture viewport ref for drag operations
   const assignViewport = useCallback(
