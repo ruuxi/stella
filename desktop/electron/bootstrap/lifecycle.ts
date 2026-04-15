@@ -80,6 +80,9 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
       if (app.isPackaged) {
         process.env.STELLA_APP_RESOURCES_PATH = process.resourcesPath;
       }
+      if (process.platform === "darwin") {
+        app.dock?.show();
+      }
       applyDockIcon(context.config.electronDir);
       await initializeBootstrapApplication(context);
       applyDockIcon(context.config.electronDir);

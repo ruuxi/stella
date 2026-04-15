@@ -21,7 +21,7 @@ const MAX_TIMEOUT_MS = 120_000;
 const MAX_LOGS = 200;
 const MAX_CALLS = 400;
 const EXECUTE_TYPESCRIPT_RUNNER_PATH = fileURLToPath(
-  new URL("./execute-typescript-runner.mjs", import.meta.url),
+  new URL("./execute-typescript-runner.js", import.meta.url),
 );
 
 type ExecutionPhase = "compile" | "execute" | "binding" | "library";
