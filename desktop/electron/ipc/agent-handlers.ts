@@ -76,12 +76,16 @@ type ConversationTaskSnapshot = {
   taskId: string;
   agentType?: string;
   description?: string;
+  anchorTurnId?: string;
   parentTaskId?: string;
   status: "running" | "completed" | "error" | "canceled";
   statusText?: string;
+  reasoningText?: string;
   result?: string;
   error?: string;
 };
+
+const MAX_TASK_REASONING_CHARS = 8_000;
 
 type SelfModHmrStatePayload = SelfModHmrState;
 
@@ -169,6 +173,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     if (
       !event.taskId
       || (event.type !== AGENT_STREAM_EVENT_TYPES.TASK_STARTED
+        && event.type !== AGENT_STREAM_EVENT_TYPES.TASK_REASONING
         && event.type !== AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS
         && event.type !== AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
         && event.type !== AGENT_STREAM_EVENT_TYPES.TASK_FAILED
@@ -185,15 +190,25 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       taskId: event.taskId,
       agentType: event.agentType ?? current?.agentType,
       description: event.description ?? current?.description,
+      anchorTurnId: event.userMessageId ?? current?.anchorTurnId,
       parentTaskId: event.parentTaskId ?? current?.parentTaskId,
       status: current?.status ?? "running",
       statusText: event.statusText ?? current?.statusText,
+      reasoningText: current?.reasoningText,
       result: event.result ?? current?.result,
       error: event.error ?? current?.error,
     };
 
     if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_STARTED) {
       base.status = "running";
+    } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_REASONING) {
+      base.reasoningText = `${current?.reasoningText ?? ""}${event.chunk ?? ""}`;
+      if (
+        typeof base.reasoningText === "string"
+        && base.reasoningText.length > MAX_TASK_REASONING_CHARS
+      ) {
+        base.reasoningText = base.reasoningText.slice(-MAX_TASK_REASONING_CHARS);
+      }
     } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_PROGRESS) {
       base.status = "running";
     } else if (event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED) {
@@ -216,13 +231,21 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       ...event,
       seq: nextAgentEventSeq(),
     };
+    const trackedRunId = normalizedEvent.rootRunId ?? normalizedEvent.runId;
+
+    runToConversationId.set(trackedRunId, normalizedEvent.conversationId);
+    if (normalizedEvent.requestId) {
+      runToRequestId.set(trackedRunId, normalizedEvent.requestId);
+    }
+    if (typeof targetWebContentsId === "number") {
+      runOwners.set(trackedRunId, targetWebContentsId);
+    }
 
     if (normalizedEvent.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED) {
       const activeRun = activeRunByConversation.get(normalizedEvent.conversationId);
       if (activeRun?.runId === normalizedEvent.runId) {
         activeRunByConversation.delete(normalizedEvent.conversationId);
       }
-      tasksByRunId.delete(normalizedEvent.runId);
     } else {
       upsertTaskSnapshot(normalizedEvent);
     }
@@ -243,6 +266,14 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
   const scheduleRunCleanup = (runId: string, requestId?: string) => {
     setTimeout(() => {
+      const runTasks = tasksByRunId.get(runId);
+      const hasRunningTasks = Array.from(runTasks?.values() ?? []).some(
+        (task) => task.status === "running",
+      );
+      if (hasRunningTasks) {
+        scheduleRunCleanup(runId, requestId);
+        return;
+      }
       runOwners.delete(runId);
       runToConversationId.delete(runId);
       tasksByRunId.delete(runId);
@@ -318,9 +349,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       }
       const buffer = conversationEventBuffers.get(conversationId);
       const activeRun = activeRunByConversation.get(conversationId) ?? null;
-      const tasks = activeRun
-        ? Array.from(tasksByRunId.get(activeRun.runId)?.values() ?? [])
-        : [];
+      const tasks = Array.from(tasksByRunId.entries())
+        .filter(([runId]) => runToConversationId.get(runId) === conversationId)
+        .flatMap(([, taskMap]) => Array.from(taskMap.values()));
       return {
         activeRun,
         events: buffer
@@ -549,6 +580,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                   rootRunId: ev.rootRunId,
                   conversationId: payload.conversationId,
                   requestId,
+                  userMessageId: ev.userMessageId,
                   taskId: ev.taskId,
                   agentType: ev.agentType,
                   description: ev.description,
@@ -556,6 +588,26 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                   result: ev.result,
                   error: ev.error,
                   statusText: ev.statusText,
+                },
+                senderWebContentsId,
+              );
+            },
+            onTaskReasoning: (ev) => {
+              if (!ev.taskId) {
+                return;
+              }
+              const runId = ev.rootRunId ?? ev.runId;
+              emitAgentEvent(
+                {
+                  type: AGENT_STREAM_EVENT_TYPES.TASK_REASONING,
+                  runId,
+                  rootRunId: runId,
+                  conversationId: payload.conversationId,
+                  requestId,
+                  userMessageId: ev.userMessageId,
+                  taskId: ev.taskId,
+                  agentType: ev.agentType,
+                  chunk: ev.chunk,
                 },
                 senderWebContentsId,
               );

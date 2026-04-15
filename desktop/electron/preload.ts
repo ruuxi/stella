@@ -447,6 +447,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
             | "error"
             | "end"
             | "task-started"
+            | "task-reasoning"
             | "task-completed"
             | "task-failed"
             | "task-canceled"
@@ -482,15 +483,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
           parentTaskId?: string;
           result?: string;
           statusText?: string;
+          reasoningText?: string;
         }>;
         tasks: Array<{
           runId: string;
           taskId: string;
           agentType?: string;
           description?: string;
+          anchorTurnId?: string;
           parentTaskId?: string;
           status: "running" | "completed" | "error" | "canceled";
           statusText?: string;
+          reasoningText?: string;
           result?: string;
           error?: string;
         }>;
@@ -506,6 +510,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         | "error"
         | "end"
         | "task-started"
+        | "task-reasoning"
         | "task-completed"
         | "task-failed"
         | "task-canceled"
@@ -538,10 +543,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
         batchIndex: number;
       };
       taskId?: string;
+      userMessageId?: string;
       description?: string;
       parentTaskId?: string;
       result?: string;
       statusText?: string;
+      reasoningText?: string;
     }>("agent:event"),
     onSelfModHmrState: onIpc<SelfModHmrState>("agent:selfModHmrState"),
     selfModRevert: (featureId?: string, steps?: number) =>

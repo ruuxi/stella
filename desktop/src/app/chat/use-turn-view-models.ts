@@ -34,12 +34,22 @@ const getAssistantTaskId = (event?: EventRecord): string | undefined => {
   const rt = (payload?.metadata as Record<string, unknown> | undefined)
     ?.runtime as Record<string, unknown> | undefined;
   const target = rt?.responseTarget as
-    | { type: string; taskId?: string }
+    | { type: string; taskId?: string; terminalState?: string }
     | undefined;
-  if (target?.type === "task_turn" && typeof target.taskId === "string") {
+  if (
+    (target?.type === "task_turn" || target?.type === "task_terminal_notice")
+    && typeof target.taskId === "string"
+  ) {
     return target.taskId;
   }
   return undefined;
+};
+
+const getAssistantUserMessageId = (event?: EventRecord): string | undefined => {
+  const payload = getMessagePayload(event);
+  return typeof payload?.userMessageId === "string" && payload.userMessageId.trim().length > 0
+    ? payload.userMessageId.trim()
+    : undefined;
 };
 
 const getWebSearchBadgeHtml = (events: EventRecord[]): string | undefined => {
@@ -130,6 +140,23 @@ export function useTurnViewModels(opts: {
 
   const displayEvents = useMemo(() => filterEventsForUiDisplay(events), [events]);
   const allTurns = useMemo(() => groupEventsIntoTurns(displayEvents), [displayEvents]);
+  const stickyTaskIdByTurnId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const event of displayEvents) {
+      if (event.type !== "assistant_message") {
+        continue;
+      }
+      const taskId = getAssistantTaskId(event);
+      if (!taskId) {
+        continue;
+      }
+      const turnId = getAssistantUserMessageId(event) ?? event._id;
+      if (!map.has(turnId)) {
+        map.set(turnId, taskId);
+      }
+    }
+    return map;
+  }, [displayEvents]);
 
   const slicedTurns = useMemo(() => {
     if (maxTurns === null) return allTurns;
@@ -170,7 +197,9 @@ export function useTurnViewModels(opts: {
       const assistantEmotesEnabled = isOrchestratorChatMessagePayload(
         getMessagePayload(turn.assistantMessage),
       );
-      const taskId = getAssistantTaskId(turn.assistantMessage);
+      const taskId =
+        getAssistantTaskId(turn.assistantMessage)
+        ?? stickyTaskIdByTurnId.get(turn.id);
 
       return {
         id: turn.id,
@@ -191,7 +220,7 @@ export function useTurnViewModels(opts: {
         ...(taskId ? { taskId } : {}),
       };
     });
-  }, [slicedTurns]);
+  }, [slicedTurns, stickyTaskIdByTurnId]);
 
   const turns = useMemo(() => {
     if (!selfModMap) {
@@ -256,5 +285,4 @@ export function useTurnViewModels(opts: {
     runningTasks,
   };
 }
-
 

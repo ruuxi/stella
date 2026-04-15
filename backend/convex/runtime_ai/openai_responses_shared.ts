@@ -343,7 +343,10 @@ export async function processResponsesStream<TApi extends Api>(
       continue;
     }
 
-    if (event.type === "response.reasoning_summary_text.delta") {
+    if (
+      event.type === "response.reasoning_summary_text.delta"
+      || event.type === "response.reasoning_text.delta"
+    ) {
       if (currentItem?.type === "reasoning" && currentBlock?.type === "thinking") {
         currentBlock.thinking += event.delta;
         stream.push({
@@ -352,6 +355,16 @@ export async function processResponsesStream<TApi extends Api>(
           delta: event.delta,
           partial: output,
         });
+      }
+      continue;
+    }
+
+    if (
+      event.type === "response.reasoning_summary_text.done"
+      || event.type === "response.reasoning_text.done"
+    ) {
+      if (currentItem?.type === "reasoning" && currentBlock?.type === "thinking") {
+        currentBlock.thinking = event.text || currentBlock.thinking;
       }
       continue;
     }
@@ -393,8 +406,14 @@ export async function processResponsesStream<TApi extends Api>(
 
     if (event.type === "response.output_item.done") {
       if (event.item.type === "reasoning" && currentBlock?.type === "thinking") {
+        const directReasoningText = event.item.content
+          ?.filter((part): part is { type: "reasoning_text"; text: string } =>
+            part.type === "reasoning_text" && typeof part.text === "string")
+          .map((part) => part.text)
+          .join("\n\n");
         currentBlock.thinking =
           event.item.summary?.map((part) => part.text).join("\n\n")
+          || directReasoningText
           || currentBlock.thinking;
         currentBlock.thinkingSignature = JSON.stringify(event.item);
         stream.push({

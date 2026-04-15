@@ -304,8 +304,11 @@ export const subscribeRuntimeAgentEvents = ({
   hookEmitter?: HookEmitter;
   threadStore?: RuntimeStore;
   threadKey?: string;
-}) =>
-  agent.subscribe((event) => {
+}) => {
+  const emittedThinkingLengths = new Map<number, number>();
+
+  return agent.subscribe((event) => {
+
     if (event.type === "message_end" && threadStore && threadKey) {
       const payload = toPersistedThreadPayload(event.message);
       if (payload && payload.role !== "user") {
@@ -338,7 +341,31 @@ export const subscribeRuntimeAgentEvents = ({
       if (!chunk) {
         return;
       }
+      const previousLength =
+        emittedThinkingLengths.get(event.assistantMessageEvent.contentIndex) ?? 0;
+      emittedThinkingLengths.set(
+        event.assistantMessageEvent.contentIndex,
+        previousLength + chunk.length,
+      );
       callbacks?.onReasoning?.(recorder.recordReasoning(chunk));
+      return;
+    }
+
+    if (
+      event.type === "message_update" &&
+      event.assistantMessageEvent.type === "thinking_end"
+    ) {
+      const { contentIndex, content } = event.assistantMessageEvent;
+      if (!content) {
+        return;
+      }
+      const alreadyEmittedLength = emittedThinkingLengths.get(contentIndex) ?? 0;
+      const remaining = content.slice(alreadyEmittedLength);
+      if (!remaining) {
+        return;
+      }
+      emittedThinkingLengths.set(contentIndex, content.length);
+      callbacks?.onReasoning?.(recorder.recordReasoning(remaining));
       return;
     }
 
@@ -415,6 +442,7 @@ export const subscribeRuntimeAgentEvents = ({
       );
     }
   });
+};
 
 const toPersistedThreadPayload = (
   message: AgentMessage,

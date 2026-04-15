@@ -153,6 +153,7 @@ export type TaskItem = {
   description: string;
   agentType: string;
   status: "running" | "completed" | "error" | "canceled";
+  anchorTurnId?: string;
   parentTaskId?: string;
   statusText?: string;
   reasoningText?: string;
@@ -427,7 +428,7 @@ export function extractTasksFromEvents(
     return {
       id: taskId,
       description: previous?.description ?? "Task",
-      agentType: previous?.agentType ?? "task",
+      agentType: previous?.agentType ?? "general",
       status: previous?.status ?? "running",
       parentTaskId: previous?.parentTaskId,
       statusText: previous?.statusText,

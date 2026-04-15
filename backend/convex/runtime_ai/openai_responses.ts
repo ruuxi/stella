@@ -118,10 +118,16 @@ export const streamSimpleOpenAIResponses: StreamFunction<
     : clampReasoning(options?.reasoning);
   const toolChoice = (options as OpenAIResponsesOptions | undefined)?.toolChoice;
   const responseFormat = (options as OpenAIResponsesOptions | undefined)?.responseFormat;
+  const reasoningSummary =
+    reasoningEffort
+      ? ((options as OpenAIResponsesOptions | undefined)?.reasoningSummary
+        ?? "detailed")
+      : (options as OpenAIResponsesOptions | undefined)?.reasoningSummary;
 
   return streamOpenAIResponses(model, context, {
     ...base,
     reasoningEffort,
+    reasoningSummary,
     toolChoice,
     responseFormat,
   });

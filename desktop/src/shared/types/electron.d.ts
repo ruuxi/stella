@@ -429,9 +429,11 @@ export type ElectronAgentApi = {
       taskId: string;
       agentType?: string;
       description?: string;
+      anchorTurnId?: string;
       parentTaskId?: string;
       status: "running" | "completed" | "error" | "canceled";
       statusText?: string;
+      reasoningText?: string;
       result?: string;
       error?: string;
     }>;
