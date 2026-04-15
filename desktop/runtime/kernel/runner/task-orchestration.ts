@@ -97,13 +97,77 @@ const resolvePath = (candidate: string, cwd?: string): string => {
   );
 };
 
+const resolveToolWorkingDirectory = (
+  args: Record<string, unknown>,
+  fallbackCwd?: string,
+): string | undefined =>
+  normalizeString(args.working_directory ?? args.cwd) ?? normalizeString(fallbackCwd);
+
+const READ_ONLY_EXECUTE_TYPESCRIPT_WORKSPACE_METHODS = new Set([
+  "readText",
+  "search",
+  "glob",
+  "gitStatus",
+  "gitDiff",
+]);
+
+const READ_ONLY_EXECUTE_TYPESCRIPT_LIFE_METHODS = new Set([
+  "read",
+  "list",
+  "search",
+]);
+
+const EXECUTE_TYPESCRIPT_MUTATION_PATTERNS: RegExp[] = [
+  /\bworkspace\.(?:writeText|replaceText)\s*\(/,
+  /\b(?:shell|browser|office)\s*\./,
+  /\blibraries\s*\.\s*run\s*\(/,
+  /\bfs(?:\.promises)?\.(?:writeFile|appendFile|cp|copyFile|rename|rm|rmdir|unlink|mkdir|mkdtemp|truncate|chmod|chown|utimes)\s*\(/,
+  /\bprocess\s*\.\s*chdir\s*\(/,
+  /\b(?:const|let|var)\s*\{[^}]+\}\s*=\s*(?:workspace|life)\b/,
+  /\b(?:const|let|var)\s+\w+\s*=\s*(?:workspace|life)\b/,
+  /\b(?:workspace|life)\s*\[/,
+  /\b(?:require|import)\s*\(/,
+];
+
+const isClearlyReadOnlyExecuteTypescript = (
+  args: Record<string, unknown>,
+): boolean => {
+  const code = normalizeString(args.code);
+  if (!code) {
+    return false;
+  }
+
+  for (const pattern of EXECUTE_TYPESCRIPT_MUTATION_PATTERNS) {
+    if (pattern.test(code)) {
+      return false;
+    }
+  }
+
+  const workspaceCalls = code.matchAll(/\bworkspace\.(\w+)\s*\(/g);
+  for (const match of workspaceCalls) {
+    const method = match[1];
+    if (!method || !READ_ONLY_EXECUTE_TYPESCRIPT_WORKSPACE_METHODS.has(method)) {
+      return false;
+    }
+  }
+
+  const lifeCalls = code.matchAll(/\blife\.(\w+)\s*\(/g);
+  for (const match of lifeCalls) {
+    const method = match[1];
+    if (!method || !READ_ONLY_EXECUTE_TYPESCRIPT_LIFE_METHODS.has(method)) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 export const resolveHmrToolTargetPath = (
   toolName: string,
   args: Record<string, unknown>,
   fallbackCwd?: string,
 ): string | null => {
-  const workingDirectory =
-    normalizeString(args.working_directory ?? args.cwd) ?? fallbackCwd;
+  const workingDirectory = resolveToolWorkingDirectory(args, fallbackCwd);
   if (toolName === "Write" || toolName === "Edit") {
     const rawPath = normalizeString(
       args.file_path ?? args.path ?? args.target_path,
@@ -114,7 +178,24 @@ export const resolveHmrToolTargetPath = (
     const command = normalizeString(args.command);
     if (!command) return null;
     const rawPath = extractShellPath(command);
-    return rawPath ? resolvePath(rawPath, workingDirectory) : null;
+    if (rawPath) {
+      return resolvePath(rawPath, workingDirectory);
+    }
+    // Shell commands often mutate files without explicit path args (for example
+    // package installs/codegen). Treat repo-local working-directory commands as
+    // potential writes so HMR pauses before the command runs.
+    return workingDirectory
+      ? resolvePath(workingDirectory, normalizeString(fallbackCwd))
+      : null;
+  }
+  if (toolName === "ExecuteTypescript") {
+    // Code mode can write through workspace bindings, shell.exec, or direct Node
+    // filesystem APIs. Only skip HMR pause for programs that are clearly read-only.
+    const basePath = normalizeString(fallbackCwd);
+    if (!basePath) {
+      return null;
+    }
+    return isClearlyReadOnlyExecuteTypescript(args) ? null : resolvePath(basePath);
   }
   return null;
 };
