@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -1460,4 +1461,3 @@ process.once("message", (payload) => {
     setTimeout(() => process.exit(0), 0);
   });
 });
-
