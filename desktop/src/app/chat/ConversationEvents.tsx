@@ -53,27 +53,18 @@ function MessageList({
     [],
   );
 
-  const taskReasoningByTaskId = useMemo(() => {
-    if (!liveTasks?.length) return null;
-    const map = new Map<string, string>();
-    for (const task of liveTasks) {
-      if (shouldShowTaskReasoning(task)) {
-        map.set(task.id, task.reasoningText);
-      }
-    }
-    return map.size > 0 ? map : null;
-  }, [liveTasks, shouldShowTaskReasoning]);
-
   const taskReasoningByAnchorTurnId = useMemo(() => {
     if (!liveTasks?.length) return null;
     const map = new Map<string, string>();
     for (const task of liveTasks) {
+      const reasoningText = task.reasoningText?.trim();
       if (
         shouldShowTaskReasoning(task)
         && task.anchorTurnId
+        && reasoningText
         && !map.has(task.anchorTurnId)
       ) {
-        map.set(task.anchorTurnId, task.reasoningText);
+        map.set(task.anchorTurnId, reasoningText);
       }
     }
     return map.size > 0 ? map : null;
@@ -88,8 +79,7 @@ function MessageList({
           turn.id === pendingUserMessageId;
 
         const taskReasoning =
-          (turn.taskId ? taskReasoningByTaskId?.get(turn.taskId) : undefined)
-          ?? taskReasoningByAnchorTurnId?.get(turn.id)
+          taskReasoningByAnchorTurnId?.get(turn.id)
           ?? (turn.assistantMessageId
             ? taskReasoningByAnchorTurnId?.get(turn.assistantMessageId)
             : undefined);

@@ -335,7 +335,7 @@
 
 .task-reasoning-ticker__track {
   display: inline-block;
-  animation: ticker-scroll 18s linear infinite;
+  animation: ticker-scroll var(--task-reasoning-ticker-duration, 18s) linear infinite;
   padding-left: 100%;
 }
 
