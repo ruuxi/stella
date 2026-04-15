@@ -8,20 +8,39 @@ type UseIdleHomeVisibilityOptions = {
   isStreaming: boolean
 }
 
+type HomeVisibilityArgs = {
+  hasMessages: boolean
+  isStreaming: boolean
+  isIdle: boolean
+  isForcedHome: boolean
+}
+
+export function computeShowHomeContent({
+  hasMessages,
+  isStreaming,
+  isIdle,
+  isForcedHome,
+}: HomeVisibilityArgs) {
+  return isForcedHome || !hasMessages || (!isStreaming && isIdle)
+}
+
 export function useIdleHomeVisibility({
   hasMessages,
   isStreaming,
 }: UseIdleHomeVisibilityOptions) {
   const [isIdle, setIsIdle] = useState(false)
+  const [isForcedHome, setIsForcedHome] = useState(false)
   const lastActivityRef = useRef(Date.now())
 
   // Only called explicitly on message send or suggestion click
   const resetIdleTimer = useCallback(() => {
     lastActivityRef.current = Date.now()
+    setIsForcedHome(false)
     setIsIdle(false)
   }, [])
 
   const forceShowHome = useCallback(() => {
+    setIsForcedHome(true)
     setIsIdle(true)
   }, [])
 
@@ -38,7 +57,12 @@ export function useIdleHomeVisibility({
     return () => clearInterval(interval)
   }, [hasMessages, isStreaming, isIdle])
 
-  const showHomeContent = !hasMessages || (!isStreaming && isIdle)
+  const showHomeContent = computeShowHomeContent({
+    hasMessages,
+    isStreaming,
+    isIdle,
+    isForcedHome,
+  })
 
   return { showHomeContent, resetIdleTimer, forceShowHome }
 }
