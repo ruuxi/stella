@@ -109,6 +109,7 @@ const STELLA_REQUEST_PASSTHROUGH_EXCLUSIONS = new Set([
   "stream",
   "tools",
   "temperature",
+  "reasoning",
   "max_completion_tokens",
   "max_tokens",
   "maxOutputTokens",
@@ -506,7 +507,13 @@ function buildManagedRuntimeRequest(
             ? requestBody.maxOutputTokens
             : undefined,
     reasoning:
-      requestBody.reasoning_effort === "minimal"
+      requestBody.reasoning === "minimal"
+      || requestBody.reasoning === "low"
+      || requestBody.reasoning === "medium"
+      || requestBody.reasoning === "high"
+      || requestBody.reasoning === "xhigh"
+        ? requestBody.reasoning
+        : requestBody.reasoning_effort === "minimal"
       || requestBody.reasoning_effort === "low"
       || requestBody.reasoning_effort === "medium"
       || requestBody.reasoning_effort === "high"
@@ -1066,7 +1073,7 @@ type StellaAssistantMessageEventPayload =
   | { type: "text_end"; contentIndex: number; contentSignature?: string }
   | { type: "thinking_start"; contentIndex: number }
   | { type: "thinking_delta"; contentIndex: number; delta: string }
-  | { type: "thinking_end"; contentIndex: number; contentSignature?: string }
+  | { type: "thinking_end"; contentIndex: number; content?: string; contentSignature?: string }
   | { type: "toolcall_start"; contentIndex: number; id: string; toolName: string }
   | { type: "toolcall_delta"; contentIndex: number; delta: string }
   | { type: "toolcall_end"; contentIndex: number }
@@ -1126,6 +1133,7 @@ function mapAssistantEventToStellaEvent(args: {
       return {
         type: "thinking_end",
         contentIndex: event.contentIndex,
+        content: content && content.type === "thinking" ? content.thinking : event.content,
         contentSignature:
           content && content.type === "thinking"
             ? content.thinkingSignature

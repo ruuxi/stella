@@ -71,9 +71,11 @@ type ResumeTaskSnapshot = {
   taskId: string;
   agentType?: string;
   description?: string;
+  anchorTurnId?: string;
   parentTaskId?: string;
   status: "running" | "completed" | "error" | "canceled";
   statusText?: string;
+  reasoningText?: string;
   result?: string;
   error?: string;
 };
@@ -101,11 +103,15 @@ type StreamStoreAction =
   | {
       type: "task-upsert";
       runId: string;
+      conversationId: string;
+      userMessageId?: string;
       task: TaskItem;
     }
   | {
       type: "task-reasoning";
       runId: string;
+      conversationId: string;
+      userMessageId?: string;
       taskId: string;
       chunk: string;
     }
@@ -211,10 +217,12 @@ function streamStoreReducer(
       };
     }
     case "task-upsert": {
+      const runRecord = state.runsById[action.runId];
       const runTasks = state.tasksByRunId[action.runId] ?? {};
       const existing = runTasks[action.task.id];
       const nextTask: TaskItem = {
         ...action.task,
+        anchorTurnId: action.task.anchorTurnId ?? existing?.anchorTurnId,
         startedAtMs: existing?.startedAtMs ?? action.task.startedAtMs,
         statusText: action.task.statusText ?? existing?.statusText,
         reasoningText: action.task.reasoningText ?? existing?.reasoningText,
@@ -222,6 +230,19 @@ function streamStoreReducer(
       };
       return {
         ...state,
+        runsById: runRecord
+          ? state.runsById
+          : {
+              ...state.runsById,
+              [action.runId]: {
+                runId: action.runId,
+                conversationId: action.conversationId,
+                userMessageId: action.userMessageId,
+                uiVisibility: "hidden",
+                terminal: false,
+                statusText: null,
+              },
+            },
         tasksByRunId: {
           ...state.tasksByRunId,
           [action.runId]: {
@@ -232,24 +253,49 @@ function streamStoreReducer(
       };
     }
     case "task-reasoning": {
-      const runTasks = state.tasksByRunId[action.runId];
-      const existing = runTasks?.[action.taskId];
-      if (!runTasks || !existing || !action.chunk) {
+      const runRecord = state.runsById[action.runId];
+      const runTasks = state.tasksByRunId[action.runId] ?? {};
+      const existing = runTasks[action.taskId];
+      if (!action.chunk) {
         return state;
       }
-      const nextReasoningText = `${existing.reasoningText ?? ""}${action.chunk}`;
+      const nextReasoningText = `${existing?.reasoningText ?? ""}${action.chunk}`;
+      const storedReasoningText =
+        nextReasoningText.length > MAX_TASK_REASONING_CHARS
+          ? nextReasoningText.slice(-MAX_TASK_REASONING_CHARS)
+          : nextReasoningText;
+      const nowMs = Date.now();
       return {
         ...state,
+        runsById: runRecord
+          ? state.runsById
+          : {
+              ...state.runsById,
+              [action.runId]: {
+                runId: action.runId,
+                conversationId: action.conversationId,
+                userMessageId: action.userMessageId,
+                uiVisibility: "hidden",
+                terminal: false,
+                statusText: null,
+              },
+            },
         tasksByRunId: {
           ...state.tasksByRunId,
           [action.runId]: {
             ...runTasks,
             [action.taskId]: {
-              ...existing,
-              reasoningText:
-                nextReasoningText.length > MAX_TASK_REASONING_CHARS
-                  ? nextReasoningText.slice(-MAX_TASK_REASONING_CHARS)
-                  : nextReasoningText,
+              ...(existing ?? {
+                id: action.taskId,
+                description: "Task",
+                agentType: AGENT_IDS.GENERAL,
+                status: "running",
+                anchorTurnId: runRecord?.userMessageId,
+                startedAtMs: nowMs,
+                lastUpdatedAtMs: nowMs,
+              }),
+              reasoningText: storedReasoningText,
+              lastUpdatedAtMs: nowMs,
             },
           },
         },
@@ -282,9 +328,25 @@ function streamStoreReducer(
       };
     }
     case "hydrate-conversation": {
+      const nextRunsById = { ...state.runsById };
+      const nextTasksByRunId = { ...state.tasksByRunId };
+      for (const task of action.tasks) {
+        nextRunsById[task.runId] = nextRunsById[task.runId] ?? {
+          runId: task.runId,
+          conversationId: action.conversationId,
+          terminal: false,
+          statusText: null,
+        };
+        nextTasksByRunId[task.runId] = {
+          ...(nextTasksByRunId[task.runId] ?? {}),
+          [task.id]: task,
+        };
+      }
       if (!action.activeRun) {
         return {
           ...state,
+          runsById: nextRunsById,
+          tasksByRunId: nextTasksByRunId,
           activeRunIdByConversation: {
             ...state.activeRunIdByConversation,
             [action.conversationId]: null,
@@ -292,13 +354,14 @@ function streamStoreReducer(
         };
       }
       const runId = action.activeRun.runId;
-      const taskMap = Object.fromEntries(
-        action.tasks.map((task) => [task.id, task]),
-      );
+      const taskMap = {
+        ...(nextTasksByRunId[runId] ?? {}),
+        ...Object.fromEntries(action.tasks.map((task) => [task.id, task])),
+      };
       return {
         ...state,
         runsById: {
-          ...state.runsById,
+          ...nextRunsById,
           [runId]: {
             runId,
             conversationId: action.conversationId,
@@ -320,7 +383,7 @@ function streamStoreReducer(
             }
           : state.requestToRunId,
         tasksByRunId: {
-          ...state.tasksByRunId,
+          ...nextTasksByRunId,
           [runId]: taskMap,
         },
       };
@@ -359,7 +422,7 @@ const toTaskFromResumeSnapshot = (
 ): TaskItem => ({
   id: snapshot.taskId,
   description: snapshot.description ?? "Task",
-  agentType: snapshot.agentType ?? "task",
+  agentType: snapshot.agentType || AGENT_IDS.GENERAL,
   status:
     snapshot.status === "completed"
       ? "completed"
@@ -368,6 +431,7 @@ const toTaskFromResumeSnapshot = (
         : snapshot.status === "canceled"
           ? "canceled"
           : "running",
+  anchorTurnId: snapshot.anchorTurnId,
   parentTaskId: snapshot.parentTaskId,
   statusText: snapshot.statusText,
   startedAtMs: nowMs,
@@ -377,6 +441,7 @@ const toTaskFromResumeSnapshot = (
       : undefined,
   lastUpdatedAtMs: nowMs,
   outputPreview: snapshot.result ?? snapshot.error,
+  reasoningText: snapshot.reasoningText,
 });
 
 export function useLocalAgentStream({
@@ -628,6 +693,8 @@ export function useLocalAgentStream({
             dispatch({
               type: "task-reasoning",
               runId,
+              conversationId,
+              userMessageId: event.userMessageId,
               taskId: event.taskId,
               chunk: event.chunk,
             });
@@ -655,19 +722,21 @@ export function useLocalAgentStream({
           dispatch({
             type: "task-upsert",
             runId,
+            conversationId,
+            userMessageId: event.userMessageId,
             task: {
               id: event.taskId,
               description: event.description ?? "Task",
-              agentType: event.agentType ?? "task",
+              agentType: event.agentType || AGENT_IDS.GENERAL,
               status:
                 event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
                   ? "completed"
                   : "running",
+              anchorTurnId: event.userMessageId,
               parentTaskId: event.parentTaskId,
               statusText: event.statusText,
               reasoningText:
                 event.type === AGENT_STREAM_EVENT_TYPES.TASK_STARTED
-                  || event.type === AGENT_STREAM_EVENT_TYPES.TASK_COMPLETED
                   ? ""
                   : undefined,
               startedAtMs: nowMs,
@@ -881,10 +950,18 @@ export function useLocalAgentStream({
     window.electronAPI.agent.cancelChat(activeRunId);
   }, [activeRunId]);
 
-  const activeRunTasks = activeRunId
-    ? storeState.tasksByRunId[activeRunId] ?? {}
-    : {};
-  const liveTasks = Object.values(activeRunTasks).sort(
+  const conversationTasks = activeConversationId
+    ? Object.entries(storeState.tasksByRunId)
+        .filter(([runId]) => storeState.runsById[runId]?.conversationId === activeConversationId)
+        .flatMap(([runId, taskMap]) => {
+          const anchorTurnId = storeState.runsById[runId]?.userMessageId;
+          return Object.values(taskMap).map((task) => ({
+            ...task,
+            anchorTurnId: task.anchorTurnId ?? anchorTurnId ?? undefined,
+          }));
+        })
+    : [];
+  const liveTasks = conversationTasks.sort(
     (a, b) => a.startedAtMs - b.startedAtMs,
   );
 

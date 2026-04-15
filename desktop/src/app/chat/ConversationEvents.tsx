@@ -47,16 +47,37 @@ function MessageList({
   showStandaloneStreaming: boolean;
   liveTasks?: TaskItem[];
 }) {
+  const shouldShowTaskReasoning = useCallback(
+    (task: TaskItem) =>
+      task.status === "running" && Boolean(task.reasoningText?.trim()),
+    [],
+  );
+
   const taskReasoningByTaskId = useMemo(() => {
     if (!liveTasks?.length) return null;
     const map = new Map<string, string>();
     for (const task of liveTasks) {
-      if (task.status === "running" && task.reasoningText?.trim()) {
+      if (shouldShowTaskReasoning(task)) {
         map.set(task.id, task.reasoningText);
       }
     }
     return map.size > 0 ? map : null;
-  }, [liveTasks]);
+  }, [liveTasks, shouldShowTaskReasoning]);
+
+  const taskReasoningByAnchorTurnId = useMemo(() => {
+    if (!liveTasks?.length) return null;
+    const map = new Map<string, string>();
+    for (const task of liveTasks) {
+      if (
+        shouldShowTaskReasoning(task)
+        && task.anchorTurnId
+        && !map.has(task.anchorTurnId)
+      ) {
+        map.set(task.anchorTurnId, task.reasoningText);
+      }
+    }
+    return map.size > 0 ? map : null;
+  }, [liveTasks, shouldShowTaskReasoning]);
 
   return (
     <>
@@ -66,9 +87,12 @@ function MessageList({
           Boolean(pendingUserMessageId) &&
           turn.id === pendingUserMessageId;
 
-        const taskReasoning = turn.taskId && taskReasoningByTaskId
-          ? taskReasoningByTaskId.get(turn.taskId)
-          : undefined;
+        const taskReasoning =
+          (turn.taskId ? taskReasoningByTaskId?.get(turn.taskId) : undefined)
+          ?? taskReasoningByAnchorTurnId?.get(turn.id)
+          ?? (turn.assistantMessageId
+            ? taskReasoningByAnchorTurnId?.get(turn.assistantMessageId)
+            : undefined);
 
         return (
           <TurnItem
@@ -199,4 +223,3 @@ export const ConversationEvents = memo(function ConversationEvents({
     </div>
   );
 });
-
