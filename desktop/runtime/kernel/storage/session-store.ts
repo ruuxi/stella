@@ -45,12 +45,6 @@ type SessionRow = {
   syncCheckpointMessageId: string | null;
 };
 
-type ThreadMessageRow = {
-  timestamp: number;
-  role: "user" | "assistant" | "toolResult";
-  dataJson: string | null;
-};
-
 type ThreadSessionRow = {
   sessionId: string;
   createdAt: number;
@@ -241,6 +235,123 @@ const buildFallbackThreadPayload = (
   };
 };
 
+const rowSizeTextEncoder = new TextEncoder();
+const THREAD_ROW_MAX_BYTES = 1_800_000;
+const THREAD_ROW_MAX_TEXT_CHARS = 1_000;
+const THREAD_ROW_PREVIEW_CHARS = 500;
+
+const payloadByteLength = (payload: PersistedRuntimeThreadPayload): number =>
+  rowSizeTextEncoder.encode(JSON.stringify(payload)).byteLength;
+
+const truncatePreview = (
+  value: string,
+  maxChars = THREAD_ROW_PREVIEW_CHARS,
+): string => (value.length <= maxChars ? value : `${value.slice(0, maxChars)}...`);
+
+const truncateTextBlockForStorage = (
+  text: string,
+  label = "Text",
+): string =>
+  `[${label} truncated for storage (${text.length} chars). First ${Math.min(text.length, THREAD_ROW_PREVIEW_CHARS)} chars: ${truncatePreview(text)}]`;
+
+const truncateToolOutputForStorage = (text: string): string =>
+  `This tool output was too large to persist in storage (${text.length} chars). If the user asks about this data, suggest re-running the tool. Preview: ${truncatePreview(text)}`;
+
+const truncateObjectForStorage = (
+  value: unknown,
+  label: string,
+): Record<string, string> => {
+  const json = JSON.stringify(value);
+  return {
+    __truncated: `${label} truncated for storage (${json.length} chars). Preview: ${truncatePreview(json)}`,
+  };
+};
+
+const enforceThreadPayloadRowSizeLimit = (
+  payload: PersistedRuntimeThreadPayload,
+): PersistedRuntimeThreadPayload => {
+  if (payloadByteLength(payload) <= THREAD_ROW_MAX_BYTES) {
+    return payload;
+  }
+
+  if (payload.role === "user") {
+    const content =
+      typeof payload.content === "string"
+        ? truncateTextBlockForStorage(payload.content, "User content")
+        : payload.content.map((block) =>
+            block.type === "text" && block.text.length > THREAD_ROW_MAX_TEXT_CHARS
+              ? { ...block, text: truncateTextBlockForStorage(block.text, "User content") }
+              : block,
+          );
+    const candidate = { ...payload, content };
+    if (payloadByteLength(candidate) <= THREAD_ROW_MAX_BYTES) {
+      return candidate;
+    }
+    return {
+      ...payload,
+      content:
+        typeof payload.content === "string"
+          ? truncateTextBlockForStorage(payload.content, "User content")
+          : [{ type: "text", text: truncateTextBlockForStorage(JSON.stringify(payload.content), "User content") }],
+    };
+  }
+
+  if (payload.role === "assistant") {
+    const compacted = {
+      ...payload,
+      content: payload.content.map((block) => {
+        if (block.type === "text" && block.text.length > THREAD_ROW_MAX_TEXT_CHARS) {
+          return { ...block, text: truncateTextBlockForStorage(block.text) };
+        }
+        if (block.type === "thinking" && block.thinking.length > THREAD_ROW_MAX_TEXT_CHARS) {
+          return { ...block, thinking: truncateTextBlockForStorage(block.thinking, "Reasoning") };
+        }
+        if (block.type === "toolCall") {
+          const argsJson = JSON.stringify(block.arguments ?? {});
+          if (argsJson.length > THREAD_ROW_MAX_TEXT_CHARS) {
+            return {
+              ...block,
+              arguments: truncateObjectForStorage(block.arguments ?? {}, `${block.name} arguments`),
+            };
+          }
+        }
+        return block;
+      }),
+    } satisfies PersistedRuntimeThreadPayload;
+    if (payloadByteLength(compacted) <= THREAD_ROW_MAX_BYTES) {
+      return compacted;
+    }
+    return {
+      ...payload,
+      content: [
+        {
+          type: "text",
+          text: truncateTextBlockForStorage(
+            JSON.stringify(payload.content),
+            "Assistant message",
+          ),
+        },
+      ],
+    };
+  }
+
+  const compacted = {
+    ...payload,
+    content: payload.content.map((block) =>
+      block.type === "text" && block.text.length > THREAD_ROW_MAX_TEXT_CHARS
+        ? { ...block, text: truncateToolOutputForStorage(block.text) }
+        : block,
+    ),
+  } satisfies PersistedRuntimeThreadPayload;
+  if (payloadByteLength(compacted) <= THREAD_ROW_MAX_BYTES) {
+    return compacted;
+  }
+  return {
+    ...payload,
+    content: [{ type: "text", text: truncateToolOutputForStorage(JSON.stringify(payload.content)) }],
+  };
+};
+
 const parseThreadSessionEntry = (
   row: ThreadSessionEntryRow,
 ): RuntimeThreadSessionEntry | null => {
@@ -267,6 +378,14 @@ const parseThreadSessionEntry = (
     case "compaction": {
       const summary =
         typeof data?.summary === "string" ? data.summary.trim() : "";
+      const fromEntryId =
+        typeof data?.fromEntryId === "string"
+          ? data.fromEntryId.trim()
+          : "";
+      const toEntryId =
+        typeof data?.toEntryId === "string"
+          ? data.toEntryId.trim()
+          : "";
       const firstKeptEntryId =
         typeof data?.firstKeptEntryId === "string"
           ? data.firstKeptEntryId.trim()
@@ -275,7 +394,7 @@ const parseThreadSessionEntry = (
         typeof data?.tokensBefore === "number" && Number.isFinite(data.tokensBefore)
           ? data.tokensBefore
           : 0;
-      if (!summary || !firstKeptEntryId) {
+      if (!summary || (!(fromEntryId && toEntryId) && !firstKeptEntryId)) {
         return null;
       }
       return {
@@ -284,7 +403,8 @@ const parseThreadSessionEntry = (
         parentId: row.parentEntryId,
         timestamp: row.timestampIso,
         summary,
-        firstKeptEntryId,
+        ...(fromEntryId && toEntryId ? { fromEntryId, toEntryId } : {}),
+        ...(firstKeptEntryId ? { firstKeptEntryId } : {}),
         tokensBefore,
         ...(data && "details" in data ? { details: data.details } : {}),
         ...(data?.fromHook === true ? { fromHook: true } : {}),
@@ -324,13 +444,20 @@ const toThreadMessageRecord = (
   return null;
 };
 
-const buildThreadMessagesFromEntries = (
+type ThreadCompactionOverlay = {
+  id: string;
+  summary: string;
+  fromEntryId: string;
+  toEntryId: string;
+  timestamp: number;
+};
+
+const buildThreadPathEntries = (
   entries: RuntimeThreadSessionEntry[],
-): Array<RuntimeThreadMessage & { entryId: string }> => {
+): RuntimeThreadSessionEntry[] => {
   if (entries.length === 0) {
     return [];
   }
-
   const byId = new Map<string, RuntimeThreadSessionEntry>();
   for (const entry of entries) {
     byId.set(entry.id, entry);
@@ -342,43 +469,106 @@ const buildThreadMessagesFromEntries = (
     path.unshift(leaf);
     leaf = leaf.parentId ? byId.get(leaf.parentId) : undefined;
   }
+  return path;
+};
 
-  const latestCompaction = [...path].reverse().find(
-    (entry): entry is RuntimeThreadCompactionEntry => entry.type === "compaction",
+const buildRawThreadMessages = (
+  path: RuntimeThreadSessionEntry[],
+): Array<RuntimeThreadMessage & { entryId: string }> =>
+  path
+    .filter((entry): entry is RuntimeThreadMessageEntry => entry.type === "message")
+    .map((entry) => toThreadMessageRecord(entry))
+    .filter(
+      (message): message is RuntimeThreadMessage & { entryId: string } =>
+        message !== null,
+    );
+
+const normalizeCompactionOverlay = (
+  compaction: RuntimeThreadCompactionEntry,
+  rawMessages: Array<RuntimeThreadMessage & { entryId: string }>,
+): ThreadCompactionOverlay | null => {
+  const timestamp = Date.parse(compaction.timestamp) || Date.now();
+  if (compaction.fromEntryId && compaction.toEntryId) {
+    return {
+      id: compaction.id,
+      summary: compaction.summary,
+      fromEntryId: compaction.fromEntryId,
+      toEntryId: compaction.toEntryId,
+      timestamp,
+    };
+  }
+  if (!compaction.firstKeptEntryId) {
+    return null;
+  }
+  const firstKeptIndex = rawMessages.findIndex(
+    (message) => message.entryId === compaction.firstKeptEntryId,
   );
-
-  const messages: Array<RuntimeThreadMessage & { entryId: string }> = [];
-  const appendMessage = (entry: RuntimeThreadSessionEntry) => {
-    const message = toThreadMessageRecord(entry);
-    if (!message) {
-      return;
-    }
-    messages.push(message);
+  if (firstKeptIndex <= 0) {
+    return null;
+  }
+  const fromEntryId = rawMessages[0]?.entryId;
+  const toEntryId = rawMessages[firstKeptIndex - 1]?.entryId;
+  if (!fromEntryId || !toEntryId) {
+    return null;
+  }
+  return {
+    id: compaction.id,
+    summary: compaction.summary,
+    fromEntryId,
+    toEntryId,
+    timestamp,
   };
+};
 
-  if (latestCompaction) {
-    appendMessage(latestCompaction);
-    const compactionIndex = path.findIndex((entry) => entry.id === latestCompaction.id);
-    let foundFirstKept = false;
-    for (let index = 0; index < compactionIndex; index += 1) {
-      const entry = path[index]!;
-      if (entry.id === latestCompaction.firstKeptEntryId) {
-        foundFirstKept = true;
-      }
-      if (foundFirstKept) {
-        appendMessage(entry);
+const buildThreadCompactionOverlays = (
+  path: RuntimeThreadSessionEntry[],
+  rawMessages: Array<RuntimeThreadMessage & { entryId: string }>,
+): ThreadCompactionOverlay[] =>
+  path
+    .filter((entry): entry is RuntimeThreadCompactionEntry => entry.type === "compaction")
+    .map((entry) => normalizeCompactionOverlay(entry, rawMessages))
+    .filter((entry): entry is ThreadCompactionOverlay => entry !== null);
+
+const applyCompactionOverlays = (
+  rawMessages: Array<RuntimeThreadMessage & { entryId: string }>,
+  overlays: ThreadCompactionOverlay[],
+): Array<RuntimeThreadMessage & { entryId: string }> => {
+  if (rawMessages.length === 0 || overlays.length === 0) {
+    return rawMessages;
+  }
+  const ids = rawMessages.map((message) => message.entryId);
+  const result: Array<RuntimeThreadMessage & { entryId: string }> = [];
+  let index = 0;
+  while (index < rawMessages.length) {
+    const matching = overlays.filter((overlay) => overlay.fromEntryId === ids[index]);
+    const overlay = matching.length > 1 ? matching[matching.length - 1] : matching[0];
+    if (overlay) {
+      const endIndex = ids.indexOf(overlay.toEntryId);
+      if (endIndex >= index) {
+        result.push({
+          entryId: overlay.id,
+          threadKey: "",
+          timestamp: overlay.timestamp,
+          role: "assistant",
+          content: formatThreadCheckpointMessage(overlay.summary),
+        });
+        index = endIndex + 1;
+        continue;
       }
     }
-    for (let index = compactionIndex + 1; index < path.length; index += 1) {
-      appendMessage(path[index]!);
-    }
-    return messages;
+    result.push(rawMessages[index]!);
+    index += 1;
   }
+  return result;
+};
 
-  for (const entry of path) {
-    appendMessage(entry);
-  }
-  return messages;
+const buildThreadMessagesFromEntries = (
+  entries: RuntimeThreadSessionEntry[],
+): Array<RuntimeThreadMessage & { entryId: string }> => {
+  const path = buildThreadPathEntries(entries);
+  const rawMessages = buildRawThreadMessages(path);
+  const overlays = buildThreadCompactionOverlays(path, rawMessages);
+  return applyCompactionOverlays(rawMessages, overlays);
 };
 
 export class SessionStore {
@@ -995,7 +1185,9 @@ export class SessionStore {
       throw new Error("threadKey is required.");
     }
     const conversationId = this.getThreadConversationId(threadKey);
-    const payload = buildFallbackThreadPayload(message);
+    const payload = enforceThreadPayloadRowSizeLimit(
+      buildFallbackThreadPayload(message),
+    );
     this.withTransaction(() => {
       this.upsertSession(conversationId, message.timestamp);
       const threadSession = this.ensureThreadSession(
@@ -1046,7 +1238,9 @@ export class SessionStore {
   compactThread(args: {
     threadKey: string;
     summary: string;
-    firstKeptEntryId: string;
+    fromEntryId?: string;
+    toEntryId?: string;
+    firstKeptEntryId?: string;
     tokensBefore: number;
     timestamp?: number;
     details?: unknown;
@@ -1057,13 +1251,20 @@ export class SessionStore {
       throw new Error("threadKey is required.");
     }
     const summary = args.summary.trim();
-    const firstKeptEntryId = args.firstKeptEntryId.trim();
-    if (!summary || !firstKeptEntryId) {
-      throw new Error("summary and firstKeptEntryId are required.");
+    const fromEntryId = args.fromEntryId?.trim();
+    const toEntryId = args.toEntryId?.trim();
+    const firstKeptEntryId = args.firstKeptEntryId?.trim();
+    if (!summary || (!(fromEntryId && toEntryId) && !firstKeptEntryId)) {
+      throw new Error("summary and a compaction range are required.");
     }
     const timestamp = asFiniteNumber(args.timestamp) ?? Date.now();
     const conversationId = this.getThreadConversationId(threadKey);
     this.withTransaction(() => {
+      const path = buildThreadPathEntries(this.loadThreadSessionEntries(threadKey));
+      const rawMessages = buildRawThreadMessages(path);
+      const existingOverlays = buildThreadCompactionOverlays(path, rawMessages);
+      const normalizedFromEntryId =
+        existingOverlays[0]?.fromEntryId ?? fromEntryId;
       const threadSession = this.ensureThreadSession(
         threadKey,
         conversationId,
@@ -1076,7 +1277,13 @@ export class SessionStore {
         timestamp,
         data: {
           summary,
-          firstKeptEntryId,
+          ...(normalizedFromEntryId && toEntryId
+            ? {
+                fromEntryId: normalizedFromEntryId,
+                toEntryId,
+              }
+            : {}),
+          ...(normalizedFromEntryId || toEntryId ? {} : { firstKeptEntryId }),
           tokensBefore: Math.max(0, Math.floor(args.tokensBefore)),
           ...(args.details !== undefined ? { details: args.details } : {}),
           ...(args.fromHook ? { fromHook: true } : {}),

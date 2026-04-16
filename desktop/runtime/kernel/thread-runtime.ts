@@ -8,56 +8,10 @@ import type { ResolvedLlmRoute } from "./model-routing.js";
 
 const THREAD_CHECKPOINT_MARKER = "[[THREAD_CHECKPOINT]]";
 const THREAD_COMPACTION_SYSTEM_PROMPT = "Output ONLY the summary content.";
-const THREAD_COMPACTION_PROMPT = `The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
-
-When summarizing coding sessions:
-- Focus on test output and code changes.
-- Preserve exact file paths, function names, and error messages.
-- Include critical file-read snippets verbatim when needed for continuity.
-
-Use this EXACT format:
-
-## Goal
-[What is the user trying to accomplish?]
-
-## Constraints & Preferences
-- [Constraints, preferences, or requirements]
-
-## Progress
-### Done
-- [x] [Completed work]
-
-### In Progress
-- [ ] [Current work]
-
-### Blocked
-- [Current blockers, if any]
-
-## Key Decisions
-- **[Decision]**: [Brief rationale]
-
-## Next Steps
-1. [Ordered next step]
-
-## Critical Context
-- [Important paths, function names, errors, details needed to continue]
-
-Keep sections concise. Preserve exact technical details needed to resume work.`;
-
-const THREAD_COMPACTION_UPDATE_PROMPT = `The messages above are NEW conversation messages to incorporate into the existing summary in <previous-summary>.
-
-Update the existing structured summary with new information:
-- Preserve prior important context unless superseded
-- Move completed items from In Progress to Done
-- Add new decisions, errors, and outcomes
-- Update Next Steps based on the latest state
-- Preserve exact file paths, function names, and error messages
-- Carry forward critical file-read snippets verbatim when still relevant
-
-Use the same exact output format as the base summary prompt.`;
-
 const THREAD_COMPACTION_RESERVE_TOKENS = 16_384;
+const THREAD_COMPACTION_PROTECT_HEAD_MESSAGES = 3;
 const THREAD_COMPACTION_KEEP_RECENT_TOKENS = 20_000;
+const THREAD_COMPACTION_MIN_TAIL_MESSAGES = 2;
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 const MIN_TRIGGER_TOKENS = 8_000;
 const MAX_BLOCK_CHARS = 100_000;
@@ -83,6 +37,13 @@ type StoredThreadMessage = {
 type ThreadCheckpoint = {
   summary: string;
   previousThreadFile?: string;
+};
+
+export type ThreadCompactionPlan = {
+  previousSummary?: string;
+  fromEntryId: string;
+  toEntryId: string;
+  middleMessages: StoredThreadMessage[];
 };
 
 const truncateWithSuffix = (
@@ -268,70 +229,165 @@ const getCompactionTriggerTokens = (route: ResolvedLlmRoute): number =>
 export const getThreadTokenEstimate = (messages: StoredThreadMessage[]): number =>
   messages.reduce((sum, message) => sum + estimateStoredMessageTokens(message), 0);
 
-const isCutPointMessage = (
-  entry: StoredThreadMessage,
-): entry is ThreadMessage =>
-  (entry.role === "user" || entry.role === "assistant") &&
-  typeof entry.content === "string";
+const isCompactionMessage = (message: StoredThreadMessage): boolean =>
+  message.role === "assistant" && parseThreadCheckpoint(message.content) !== null;
+
+const hasToolCalls = (message: StoredThreadMessage): boolean =>
+  message.role === "assistant"
+  && message.payload?.role === "assistant"
+  && message.payload.content.some((block) => block.type === "toolCall");
+
+const getToolCallIds = (message: StoredThreadMessage): Set<string> => {
+  const ids = new Set<string>();
+  if (message.role !== "assistant" || message.payload?.role !== "assistant") {
+    return ids;
+  }
+  for (const block of message.payload.content) {
+    if (block.type === "toolCall" && typeof block.id === "string") {
+      ids.add(block.id);
+    }
+  }
+  return ids;
+};
+
+const getToolResultId = (message: StoredThreadMessage): string | undefined => {
+  if (message.role !== "toolResult") {
+    return undefined;
+  }
+  if (message.payload?.role === "toolResult" && message.payload.toolCallId.trim()) {
+    return message.payload.toolCallId.trim();
+  }
+  return message.toolCallId?.trim();
+};
+
+const isToolResultFor = (
+  message: StoredThreadMessage,
+  callIds: Set<string>,
+): boolean => {
+  const toolCallId = getToolResultId(message);
+  return Boolean(toolCallId && callIds.has(toolCallId));
+};
+
+const alignBoundaryForward = (
+  messages: StoredThreadMessage[],
+  index: number,
+): number => {
+  if (index <= 0 || index >= messages.length) {
+    return index;
+  }
+  const previous = messages[index - 1];
+  if (!previous || !hasToolCalls(previous)) {
+    return index;
+  }
+  const callIds = getToolCallIds(previous);
+  let nextIndex = index;
+  while (
+    nextIndex < messages.length
+    && isToolResultFor(messages[nextIndex]!, callIds)
+  ) {
+    nextIndex += 1;
+  }
+  return nextIndex;
+};
+
+const alignBoundaryBackward = (
+  messages: StoredThreadMessage[],
+  index: number,
+): number => {
+  if (index <= 0 || index >= messages.length) {
+    return index;
+  }
+  let nextIndex = index;
+  while (nextIndex > 0) {
+    const message = messages[nextIndex];
+    if (!message) {
+      break;
+    }
+    if (hasToolCalls(message)) {
+      break;
+    }
+    const previous = messages[nextIndex - 1];
+    if (!previous || !hasToolCalls(previous)) {
+      break;
+    }
+    if (!isToolResultFor(message, getToolCallIds(previous))) {
+      break;
+    }
+    nextIndex -= 1;
+  }
+  return nextIndex;
+};
 
 const findTailStartIndexByTokenBudget = (
   messages: StoredThreadMessage[],
+  headEnd: number,
   keepRecentTokens = THREAD_COMPACTION_KEEP_RECENT_TOKENS,
+  minTailMessages = THREAD_COMPACTION_MIN_TAIL_MESSAGES,
 ): number => {
-  let earliestCutPoint: number | null = null;
-  let nearestCutPoint: number | null = null;
-  let thresholdReached = false;
   let accumulatedTokens = 0;
+  let tailStartIndex = messages.length;
 
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (isCutPointMessage(messages[index]!)) {
-      nearestCutPoint = index;
-      earliestCutPoint = index;
-      if (thresholdReached) {
-        return index;
-      }
+  for (let index = messages.length - 1; index >= headEnd; index -= 1) {
+    const messageTokens = estimateStoredMessageTokens(messages[index]!);
+    if (accumulatedTokens + messageTokens > keepRecentTokens && tailStartIndex < messages.length) {
+      break;
     }
-
-    accumulatedTokens += estimateStoredMessageTokens(messages[index]!);
-    if (!thresholdReached && accumulatedTokens >= keepRecentTokens) {
-      thresholdReached = true;
-      if (nearestCutPoint !== null) {
-        return nearestCutPoint;
-      }
-    }
+    accumulatedTokens += messageTokens;
+    tailStartIndex = index;
   }
 
-  return earliestCutPoint ?? 0;
+  const minCutIndex = messages.length - minTailMessages;
+  const cutIndex =
+    minCutIndex >= headEnd
+      ? Math.min(tailStartIndex, minCutIndex)
+      : tailStartIndex;
+  return alignBoundaryBackward(messages, cutIndex);
 };
 
 export const splitThreadMessagesForCompaction = (
   messages: StoredThreadMessage[],
+  protectHeadMessages = THREAD_COMPACTION_PROTECT_HEAD_MESSAGES,
   keepRecentTokens = THREAD_COMPACTION_KEEP_RECENT_TOKENS,
-): {
-  oldMessages: StoredThreadMessage[];
-  recentMessages: StoredThreadMessage[];
-} | null => {
-  if (messages.length === 0) {
+  minTailMessages = THREAD_COMPACTION_MIN_TAIL_MESSAGES,
+): ThreadCompactionPlan | null => {
+  if (messages.length <= protectHeadMessages + minTailMessages) {
     return null;
   }
 
+  let compressionStart = Math.min(protectHeadMessages, messages.length);
+  compressionStart = alignBoundaryForward(messages, compressionStart);
   const tailStartIndex = findTailStartIndexByTokenBudget(
     messages,
+    compressionStart,
     keepRecentTokens,
+    minTailMessages,
   );
-  if (tailStartIndex <= 0) {
+  if (tailStartIndex <= compressionStart) {
     return null;
   }
 
-  const oldMessages = messages.slice(0, tailStartIndex);
-  const recentMessages = messages.slice(tailStartIndex);
-  if (oldMessages.length === 0 || recentMessages.length === 0) {
+  const middleMessages = messages
+    .slice(compressionStart, tailStartIndex)
+    .filter((message) => !isCompactionMessage(message));
+  if (middleMessages.length === 0) {
+    return null;
+  }
+
+  const previousSummary =
+    messages
+      .map((message) => parseThreadCheckpoint(message.content)?.summary)
+      .find((summary): summary is string => typeof summary === "string" && summary.trim().length > 0);
+  const fromEntryId = middleMessages[0]?.entryId?.trim();
+  const toEntryId = middleMessages[middleMessages.length - 1]?.entryId?.trim();
+  if (!fromEntryId || !toEntryId) {
     return null;
   }
 
   return {
-    oldMessages,
-    recentMessages,
+    ...(previousSummary ? { previousSummary } : {}),
+    fromEntryId,
+    toEntryId,
+    middleMessages,
   };
 };
 
@@ -393,6 +449,66 @@ export const formatThreadCheckpointMessage = (checkpoint: ThreadCheckpoint): str
     checkpoint.summary.trim(),
   ].join("\n");
 
+const computeSummaryBudget = (messages: StoredThreadMessage[]): number =>
+  Math.max(100, Math.floor(getThreadTokenEstimate(messages) * 0.2));
+
+const buildSummaryPrompt = (
+  messages: StoredThreadMessage[],
+  previousSummary: string | undefined,
+  budget: number,
+): string => {
+  const formattedConversation = formatThreadMessagesForCompaction(messages).trim();
+  if (!formattedConversation) {
+    return previousSummary?.trim() ?? "";
+  }
+  if (previousSummary?.trim()) {
+    return `You are updating a conversation summary. A previous summary exists below. New conversation turns have occurred since then and need to be incorporated.
+
+PREVIOUS SUMMARY:
+${previousSummary.trim()}
+
+NEW TURNS TO INCORPORATE:
+${formattedConversation}
+
+Update the summary. PRESERVE existing information that is still relevant. ADD new information. Remove information only if it is clearly obsolete.
+
+## Topic
+[What the conversation is about]
+
+## Key Points
+[Important information, decisions, and conclusions from the conversation]
+
+## Current State
+[Where things stand now — what has been done, what is in progress]
+
+## Open Items
+[Unresolved questions, pending tasks, or next steps discussed]
+
+Target ~${budget} tokens. Be factual — only include information that was explicitly discussed in the conversation. Do NOT invent file paths, commands, or details that were not mentioned. Write only the summary body.`;
+  }
+
+  return `Create a concise summary of this conversation that preserves the important information for future context.
+
+CONVERSATION TO SUMMARIZE:
+${formattedConversation}
+
+Use this structure:
+
+## Topic
+[What the conversation is about]
+
+## Key Points
+[Important information, decisions, and conclusions from the conversation]
+
+## Current State
+[Where things stand now — what has been done, what is in progress]
+
+## Open Items
+[Unresolved questions, pending tasks, or next steps discussed]
+
+Target ~${budget} tokens. Be factual — only include information that was explicitly discussed in the conversation. Do NOT invent file paths, commands, or details that were not mentioned. Write only the summary body.`;
+};
+
 const generateThreadSummary = async (args: {
   messages: StoredThreadMessage[];
   previousSummary?: string;
@@ -408,17 +524,11 @@ const generateThreadSummary = async (args: {
     return args.previousSummary?.trim() || null;
   }
 
-  const promptBody = [
-    `<conversation>\n${formattedConversation}\n</conversation>`,
-    args.previousSummary?.trim()
-      ? `<previous-summary>\n${args.previousSummary.trim()}\n</previous-summary>`
-      : "",
-    args.previousSummary?.trim()
-      ? THREAD_COMPACTION_UPDATE_PROMPT
-      : THREAD_COMPACTION_PROMPT,
-  ]
-    .filter((part) => part.length > 0)
-    .join("\n\n");
+  const promptBody = buildSummaryPrompt(
+    args.messages,
+    args.previousSummary,
+    computeSummaryBudget(args.messages),
+  );
 
   try {
     const message = await completeSimple(
@@ -465,38 +575,20 @@ export const maybeCompactRuntimeThread = async (args: {
     return;
   }
 
-  const { oldMessages, recentMessages } = splitMessages;
-
-  let previousSummary: string | undefined;
-  const firstOldMessage = oldMessages[0];
-  const firstCheckpoint =
-    firstOldMessage?.role === "assistant"
-      ? parseThreadCheckpoint(firstOldMessage.content)
-      : null;
-  const summaryInputMessages = [...oldMessages];
-  if (firstCheckpoint) {
-    previousSummary = firstCheckpoint.summary;
-    summaryInputMessages.shift();
-  }
-
   const summary = await generateThreadSummary({
-    messages: summaryInputMessages,
-    previousSummary,
+    messages: splitMessages.middleMessages,
+    previousSummary: splitMessages.previousSummary,
     resolvedLlm: args.resolvedLlm,
   });
   if (!summary) {
     return;
   }
 
-  const firstKeptEntryId = recentMessages[0]?.entryId;
-  if (!firstKeptEntryId) {
-    return;
-  }
-
   args.store.compactThread({
     threadKey: args.threadKey,
     summary,
-    firstKeptEntryId,
+    fromEntryId: splitMessages.fromEntryId,
+    toEntryId: splitMessages.toEntryId,
     tokensBefore: totalTokens,
   });
   args.store.updateThreadSummary(args.threadKey, summary);

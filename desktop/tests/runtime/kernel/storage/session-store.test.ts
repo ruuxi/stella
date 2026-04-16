@@ -328,7 +328,8 @@ describe("session-store", () => {
     store.compactThread({
       threadKey: threadId,
       summary: "Condensed earlier work",
-      firstKeptEntryId: beforeCompaction[2]!.entryId!,
+      fromEntryId: beforeCompaction[0]!.entryId!,
+      toEntryId: beforeCompaction[1]!.entryId!,
       tokensBefore: 1234,
       timestamp: 4_100,
     });
@@ -351,6 +352,129 @@ describe("session-store", () => {
         AND entry_type = 'compaction'
     `).get(threadId) as { count: number };
     expect(compactionRows.count).toBe(1);
+  });
+
+  it("applies later compaction overlays over the same raw message range", () => {
+    const { store } = createTestContext();
+    const conversationId = "conv-compact-overlay";
+    const { threadId } = store.resolveOrCreateActiveThread({
+      conversationId,
+      agentType: "general",
+    });
+
+    for (let index = 0; index < 4; index += 1) {
+      store.appendThreadMessage({
+        threadKey: threadId,
+        timestamp: 5_000 + index,
+        role: index % 2 === 0 ? "user" : "assistant",
+        content: `Message ${index}`,
+        payload:
+          index % 2 === 0
+            ? {
+                role: "user",
+                content: `Message ${index}`,
+                timestamp: 5_000 + index,
+              }
+            : {
+                role: "assistant",
+                content: [{ type: "text", text: `Message ${index}` }],
+                api: "openai-responses",
+                provider: "openai",
+                model: "gpt-5.4",
+                usage: {
+                  input: 0,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  totalTokens: 0,
+                  cost: {
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    total: 0,
+                  },
+                },
+                stopReason: "stop",
+                timestamp: 5_000 + index,
+              },
+      });
+    }
+
+    const initial = store.loadThreadMessages(threadId);
+    store.compactThread({
+      threadKey: threadId,
+      summary: "Initial summary",
+      fromEntryId: initial[0]!.entryId!,
+      toEntryId: initial[1]!.entryId!,
+      tokensBefore: 500,
+      timestamp: 5_100,
+    });
+
+    const afterFirstCompaction = store.loadThreadMessages(threadId);
+    expect(afterFirstCompaction.map((message) => message.content)).toEqual([
+      expect.stringContaining("[[THREAD_CHECKPOINT]]"),
+      "Message 2",
+      "Message 3",
+    ]);
+
+    const secondPass = store.loadThreadMessages(threadId);
+    store.compactThread({
+      threadKey: threadId,
+      summary: "Updated summary",
+      fromEntryId: secondPass[1]!.entryId!,
+      toEntryId: secondPass[2]!.entryId!,
+      tokensBefore: 900,
+      timestamp: 5_200,
+    });
+
+    const afterSecondCompaction = store.loadThreadMessages(threadId);
+    expect(afterSecondCompaction).toHaveLength(1);
+    expect(afterSecondCompaction[0]).toMatchObject({
+      role: "assistant",
+      content: expect.stringContaining("Updated summary"),
+    });
+  });
+
+  it("truncates oversized persisted tool results to stay under SQLite row limits", () => {
+    const { store } = createTestContext();
+    const conversationId = "conv-big-tool-result";
+    const { threadId } = store.resolveOrCreateActiveThread({
+      conversationId,
+      agentType: "general",
+    });
+
+    const largeOutput = "A".repeat(2_000_000);
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 6_000,
+      role: "toolResult",
+      content: largeOutput,
+      toolCallId: "tool-call-1",
+      payload: {
+        role: "toolResult",
+        toolCallId: "tool-call-1",
+        toolName: "Read",
+        content: [{ type: "text", text: largeOutput }],
+        isError: false,
+        timestamp: 6_000,
+      },
+    });
+
+    const loaded = store.loadThreadMessages(threadId);
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]?.payload).toMatchObject({
+      role: "toolResult",
+      toolCallId: "tool-call-1",
+    });
+    const persistedText =
+      loaded[0]?.payload?.role === "toolResult"
+        ? loaded[0].payload.content[0]
+        : null;
+    expect(persistedText).toMatchObject({
+      type: "text",
+      text: expect.stringContaining("too large to persist in storage"),
+    });
   });
 
   it("lazily registers implicit orchestrator thread keys", () => {
