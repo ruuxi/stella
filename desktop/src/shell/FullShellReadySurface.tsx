@@ -9,7 +9,13 @@ import {
 import { WorkspaceArea } from "@/app/workspace/WorkspaceArea";
 import { useUiState } from "@/context/ui-state";
 import { secureSignOut } from "@/global/auth/services/auth";
-import { dispatchCloseSidebarChat, dispatchOpenSidebarChat, dispatchShowHome } from "@/shared/lib/stella-orb-chat";
+import {
+  dispatchCloseDisplaySidebar,
+  dispatchCloseSidebarChat,
+  dispatchOpenDisplaySidebar,
+  dispatchOpenSidebarChat,
+  dispatchShowHome,
+} from "@/shared/lib/stella-orb-chat";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
@@ -44,6 +50,7 @@ export const FullShellReadySurface = ({
   const [pendingAskStellaRequest, setPendingAskStellaRequest] =
     useState<PendingAskStellaRequest | null>(null);
   const [isSidebarChatOpen, setIsSidebarChatOpen] = useState(false);
+  const [isDisplaySidebarOpen, setIsDisplaySidebarOpen] = useState(false);
   const [isShowingHomeContent, setIsShowingHomeContent] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -115,10 +122,25 @@ export const FullShellReadySurface = ({
   const showChatSurface = state.view === "chat" || state.view === "social";
 
   const handleContextMenuOpenSidebarChat = useCallback(() => {
-    if (state.view === "chat") return;
+    if (state.view === "chat") {
+      dispatchOpenDisplaySidebar();
+      return;
+    }
 
     dispatchOpenSidebarChat();
   }, [state.view]);
+
+  const handleContextMenuCloseSidebarChat = useCallback(() => {
+    if (state.view === "chat") {
+      dispatchCloseDisplaySidebar();
+      return;
+    }
+
+    dispatchCloseSidebarChat();
+  }, [state.view]);
+
+  const isContextMenuPanelOpen =
+    state.view === "chat" ? isDisplaySidebarOpen : isSidebarChatOpen;
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
@@ -142,9 +164,9 @@ export const FullShellReadySurface = ({
       />
 
       <StellaContextMenu
-        isSidebarChatOpen={isSidebarChatOpen}
-        onOpenSidebarChat={handleContextMenuOpenSidebarChat}
-        onCloseSidebarChat={dispatchCloseSidebarChat}
+        isOpen={isContextMenuPanelOpen}
+        onOpen={handleContextMenuOpenSidebarChat}
+        onClose={handleContextMenuCloseSidebarChat}
       >
         <div className="content-area">
           <button
@@ -186,6 +208,7 @@ export const FullShellReadySurface = ({
               pendingAskStellaRequest={pendingAskStellaRequest}
               onPendingAskStellaHandled={handlePendingAskStellaHandled}
               onSidebarChatOpenChange={setIsSidebarChatOpen}
+              onDisplaySidebarOpenChange={setIsDisplaySidebarOpen}
               onHomeContentChange={setIsShowingHomeContent}
             />
           </Suspense>

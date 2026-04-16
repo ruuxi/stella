@@ -25,6 +25,8 @@ export function consumeOpenOrbAfterOnboarding(): boolean {
 
 export const STELLA_OPEN_SIDEBAR_CHAT_EVENT = "stella:open-sidebar-chat";
 export const STELLA_CLOSE_SIDEBAR_CHAT_EVENT = "stella:close-sidebar-chat";
+export const STELLA_OPEN_DISPLAY_SIDEBAR_EVENT = "stella:open-display-sidebar";
+export const STELLA_CLOSE_DISPLAY_SIDEBAR_EVENT = "stella:close-display-sidebar";
 
 export type StellaOpenSidebarChatDetail = {
   chatContext?: ChatContext | null;
@@ -40,6 +42,14 @@ export function dispatchOpenSidebarChat(detail: StellaOpenSidebarChatDetail = {}
 
 export function dispatchCloseSidebarChat() {
   window.dispatchEvent(new CustomEvent(STELLA_CLOSE_SIDEBAR_CHAT_EVENT));
+}
+
+export function dispatchOpenDisplaySidebar() {
+  window.dispatchEvent(new CustomEvent(STELLA_OPEN_DISPLAY_SIDEBAR_EVENT));
+}
+
+export function dispatchCloseDisplaySidebar() {
+  window.dispatchEvent(new CustomEvent(STELLA_CLOSE_DISPLAY_SIDEBAR_EVENT));
 }
 
 export const STELLA_SHOW_HOME_EVENT = "stella:show-home";
