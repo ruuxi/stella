@@ -35,8 +35,8 @@ const legacyRuntimeElectronBinary = path.join(
 )
 const requiredFiles = [
   path.join(projectDir, '.vite-dev-url'),
-  path.join(watchedDir, 'electron', 'main.js'),
-  path.join(watchedDir, 'electron', 'preload.js'),
+  path.join(watchedDir, 'desktop', 'electron', 'main.js'),
+  path.join(watchedDir, 'desktop', 'electron', 'preload.js'),
 ]
 const restartDebounceMs = 150
 const forcedShutdownTimeoutMs = 1_500

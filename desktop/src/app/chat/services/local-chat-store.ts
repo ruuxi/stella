@@ -3,10 +3,10 @@ import {
   buildLocalHistoryFromEvents,
   LOCAL_CONTEXT_EVENT_TYPES,
   type LocalHistoryMessage,
-} from "../../../../runtime/kernel/local-history.js";
-import type { LocalChatEventWindowMode } from "../../../../runtime/chat-event-visibility.js";
+} from "../../../../../runtime/kernel/local-history.js";
+import type { LocalChatEventWindowMode } from "../../../../../runtime/chat-event-visibility.js";
 
-export type { LocalHistoryMessage } from "../../../../runtime/kernel/local-history.js";
+export type { LocalHistoryMessage } from "../../../../../runtime/kernel/local-history.js";
 
 const MAX_EVENTS_PER_CONVERSATION = 2000;
 

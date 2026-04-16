@@ -12,7 +12,8 @@ import {
   STELLA_BROWSER_EXTENSION_ID,
   STELLA_NATIVE_MESSAGING_HOST_NAME,
   getStellaBrowserSocketDir,
-} from "../../runtime/kernel/tools/stella-browser-bridge-config.js";
+} from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
+import { resolveStellaBrowserRoot } from "./stella-browser-paths.js";
 
 function getStellaBrowserBinaryName(): string | null {
   const plat = os.platform();
@@ -182,7 +183,7 @@ function installUnixSymlinks(manifest: Record<string, unknown>) {
 /**
  * Idempotently writes the native host launcher, manifest, and browser registrations.
  */
-export function registerStellaNativeMessagingHost(stellaRoot: string): {
+export function registerStellaNativeMessagingHost(): {
   ok: boolean;
   error?: string;
 } {
@@ -195,7 +196,11 @@ export function registerStellaNativeMessagingHost(stellaRoot: string): {
       };
     }
 
-    const binaryPath = path.join(stellaRoot, "stella-browser", "bin", binaryName);
+    const binaryPath = path.join(
+      resolveStellaBrowserRoot(),
+      "bin",
+      binaryName,
+    );
     if (!existsSync(binaryPath)) {
       return {
         ok: false,

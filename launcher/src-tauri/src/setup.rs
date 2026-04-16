@@ -141,14 +141,23 @@ fn norm(p: &str) -> String {
 fn manifest_of(d: &str) -> PathBuf {
     Path::new(d).join(INSTALL_MANIFEST)
 }
+fn desktop_dir_of(d: &str) -> PathBuf {
+    Path::new(d).join("desktop")
+}
 fn package_json_of(d: &str) -> PathBuf {
     Path::new(d).join("package.json")
+}
+fn desktop_package_json_of(d: &str) -> PathBuf {
+    desktop_dir_of(d).join("package.json")
 }
 fn node_modules_of(d: &str) -> PathBuf {
     Path::new(d).join("node_modules")
 }
+fn desktop_node_modules_of(d: &str) -> PathBuf {
+    desktop_dir_of(d).join("node_modules")
+}
 fn mac_screen_capture_permissions_dir_of(d: &str) -> PathBuf {
-    node_modules_of(d).join("mac-screen-capture-permissions")
+    desktop_node_modules_of(d).join("mac-screen-capture-permissions")
 }
 fn mac_screen_capture_permissions_binary_of(d: &str) -> PathBuf {
     mac_screen_capture_permissions_dir_of(d)
@@ -167,13 +176,13 @@ fn launch_script_of(d: &str) -> PathBuf {
     Path::new(d).join(launch_script_name())
 }
 fn env_file_of(d: &str) -> PathBuf {
-    Path::new(d).join(ENV_FILE_NAME)
+    desktop_dir_of(d).join(ENV_FILE_NAME)
 }
 fn emote_install_state_of(d: &str) -> PathBuf {
     Path::new(d).join(EMOTE_INSTALL_STATE_FILE)
 }
 fn emotes_dir_of(d: &str) -> PathBuf {
-    Path::new(d).join("public").join("emotes")
+    desktop_dir_of(d).join("public").join("emotes")
 }
 fn emotes_manifest_of(d: &str) -> PathBuf {
     emotes_dir_of(d).join("manifest.json")
@@ -182,7 +191,7 @@ fn emote_staging_root_of(d: &str) -> PathBuf {
     Path::new(d).join(".stella-emotes-staging")
 }
 fn dugite_git_root_of(d: &str) -> PathBuf {
-    Path::new(d).join("node_modules").join("dugite").join("git")
+    desktop_node_modules_of(d).join("dugite").join("git")
 }
 fn dugite_git_bin_of(d: &str) -> PathBuf {
     if cfg!(target_os = "windows") {
@@ -403,9 +412,10 @@ async fn write_settings(ctx: &InstallerContext, state: &InstallerState) {
 async fn write_launch_script(install_dir: &str) -> String {
     let script_path = launch_script_of(install_dir);
     let launch_env = dugite_launch_env(install_dir);
+    let desktop_dir = desktop_dir_of(install_dir).to_string_lossy().to_string();
 
     if cfg!(target_os = "windows") {
-        let mut content = format!("@echo off\r\ncd /d \"{install_dir}\"\r\n");
+        let mut content = format!("@echo off\r\ncd /d \"{desktop_dir}\"\r\n");
         if let Some(git_path) = launch_env.get("STELLA_GIT_BIN") {
             content.push_str(&format!("set \"STELLA_GIT_BIN={git_path}\"\r\n"));
         }
@@ -424,7 +434,7 @@ async fn write_launch_script(install_dir: &str) -> String {
         content.push_str("bun run electron:dev\r\n");
         let _ = fs::write(&script_path, content).await;
     } else {
-        let mut content = format!("#!/bin/sh\ncd \"{install_dir}\"\n");
+        let mut content = format!("#!/bin/sh\ncd \"{desktop_dir}\"\n");
         if let Some(git_path) = launch_env.get("STELLA_GIT_BIN") {
             content.push_str(&format!("export STELLA_GIT_BIN=\"{git_path}\"\n"));
         }
@@ -1023,7 +1033,10 @@ async fn check_step(id: &SetupStepId, state: &InstallerState) -> bool {
     match id {
         SetupStepId::Runtime => bun_on_path().await,
         SetupStepId::Payload => {
-            path_exists(&package_json_of(dir)).await && path_exists(&node_modules_of(dir)).await
+            path_exists(&package_json_of(dir)).await
+                && path_exists(&node_modules_of(dir)).await
+                && path_exists(&desktop_package_json_of(dir)).await
+                && path_exists(&desktop_node_modules_of(dir)).await
         }
         SetupStepId::Prepare => {
             if state.dev_mode {
@@ -1166,10 +1179,13 @@ async fn refresh_derived(state: &mut InstallerState, ctx: &InstallerContext) {
     let has_manifest = path_exists(&manifest_of(&state.install_path)).await;
     let has_pkg = path_exists(&package_json_of(&state.install_path)).await;
     let has_node_modules = path_exists(&node_modules_of(&state.install_path)).await;
+    let has_desktop_pkg = path_exists(&desktop_package_json_of(&state.install_path)).await;
+    let has_desktop_node_modules =
+        path_exists(&desktop_node_modules_of(&state.install_path)).await;
     state.can_launch = if state.dev_mode {
-        has_pkg && has_node_modules
+        has_pkg && has_node_modules && has_desktop_pkg && has_desktop_node_modules
     } else {
-        has_manifest && has_pkg
+        has_manifest && has_pkg && has_desktop_pkg && has_desktop_node_modules
     };
     state.warning_message = read_emote_install_state(&state.install_path)
         .await
@@ -1400,13 +1416,14 @@ pub async fn install_all(
 
 pub async fn get_launch_info(state: &InstallerState) -> Option<LaunchInfo> {
     let dir = &state.install_path;
-    if !path_exists(&package_json_of(dir)).await {
+    if !path_exists(&package_json_of(dir)).await || !path_exists(&desktop_package_json_of(dir)).await
+    {
         return None;
     }
 
     Some(LaunchInfo {
         command: vec!["bun".into(), "run".into(), "electron:dev".into()],
-        cwd: dir.clone(),
+        cwd: desktop_dir_of(dir).to_string_lossy().to_string(),
         env: dugite_launch_env(dir),
     })
 }

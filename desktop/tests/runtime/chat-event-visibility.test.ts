@@ -3,7 +3,7 @@ import {
   countVisibleChatMessageEvents,
   isUiDisplayableChatEvent,
   sliceEventsByVisibleMessageWindow,
-} from "../../runtime/chat-event-visibility";
+} from "../../../runtime/chat-event-visibility";
 
 type TestEvent = {
   _id: string;

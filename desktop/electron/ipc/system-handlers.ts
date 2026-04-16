@@ -9,7 +9,7 @@ import {
   getSyncMode,
   loadLocalPreferences,
   saveLocalPreferences,
-} from "../../runtime/kernel/preferences/local-preferences.js";
+} from "../../../runtime/kernel/preferences/local-preferences.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { AuthService } from "../services/auth-service.js";
 import type { BackupService } from "../services/backup-service.js";
@@ -18,9 +18,9 @@ import {
   deleteLocalLlmCredential,
   listLocalLlmCredentials,
   saveLocalLlmCredential,
-} from "../../runtime/kernel/storage/llm-credentials.js";
-import type { RuntimeSocialSessionStatus } from "../../runtime/protocol/index.js";
-import { isRuntimeUnavailableError } from "../../runtime/protocol/rpc-peer.js";
+} from "../../../runtime/kernel/storage/llm-credentials.js";
+import type { RuntimeSocialSessionStatus } from "../../../runtime/protocol/index.js";
+import { isRuntimeUnavailableError } from "../../../runtime/protocol/rpc-peer.js";
 import {
   DEFAULT_RADIAL_TRIGGER_CODE,
   normalizeRadialTriggerCode,

@@ -1,1 +1,1 @@
-export * from "../../../runtime/contracts/index.js";
+export * from "../../../../runtime/contracts/index.js";

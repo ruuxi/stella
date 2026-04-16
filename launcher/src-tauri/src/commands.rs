@@ -15,8 +15,12 @@ const PID_FILE_NAME: &str = ".electron-dev-runner.pid";
 #[cfg(target_os = "macos")]
 const LAUNCHER_BUNDLE_ID: &str = "com.stella.launcher";
 
+fn desktop_pid_file(install_path: &str) -> std::path::PathBuf {
+    Path::new(install_path).join("desktop").join(PID_FILE_NAME)
+}
+
 fn read_pid_file(install_path: &str) -> Option<u32> {
-    let path = Path::new(install_path).join(PID_FILE_NAME);
+    let path = desktop_pid_file(install_path);
     let raw = std::fs::read_to_string(&path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
     parsed.get("pid")?.as_u64().map(|p| p as u32)
@@ -56,9 +60,7 @@ pub fn stop_desktop_by_path(install_path: &str) {
         if is_pid_alive(pid) {
             kill_pid_tree(pid);
         }
-        let _ = std::fs::remove_file(
-            Path::new(install_path).join(PID_FILE_NAME),
-        );
+        let _ = std::fs::remove_file(desktop_pid_file(install_path));
     }
 }
 

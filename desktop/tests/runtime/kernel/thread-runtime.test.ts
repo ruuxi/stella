@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   formatThreadCheckpointMessage,
   splitThreadMessagesForCompaction,
-} from "../../../runtime/kernel/thread-runtime.js";
-import type { PersistedRuntimeThreadPayload } from "../../../runtime/kernel/storage/shared.js";
+} from "../../../../runtime/kernel/thread-runtime.js";
+import type { PersistedRuntimeThreadPayload } from "../../../../runtime/kernel/storage/shared.js";
 
 const zeroUsage = {
   input: 0,

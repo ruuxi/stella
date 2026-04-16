@@ -6,6 +6,7 @@
       "dependencies": {
         "@anthropic-ai/sdk": "^0.73.0",
         "@aws-sdk/client-bedrock-runtime": "^3.1004.0",
+        "@cloudflare/codemode": "^0.3.4",
         "@convex-dev/better-auth": "^0.10.0",
         "@google/genai": "^1.44.0",
         "@hookform/resolvers": "^5.2.2",
@@ -264,6 +265,8 @@
     "@better-auth/utils": ["@better-auth/utils@0.3.0", "", {}, "sha512-W+Adw6ZA6mgvnSnhOki270rwJ42t4XzSK6YWGF//BbVXL6SwCLWfyzBc1lN2m/4RM28KubdBKQ4X5VMoLRNPQw=="],
 
     "@better-fetch/fetch": ["@better-fetch/fetch@1.1.21", "", {}, "sha512-/ImESw0sskqlVR94jB+5+Pxjf+xBwDZF/N5+y2/q4EqD7IARUTSpPfIo8uf39SYpCxyOCtbyYpUrZ3F/k0zT4A=="],
+
+    "@cloudflare/codemode": ["@cloudflare/codemode@0.3.4", "", { "dependencies": { "@types/json-schema": "^7.0.15", "acorn": "^8.16.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.25.0", "@tanstack/ai": ">=0.8.0 <1.0.0", "ai": "^6.0.0", "zod": "^4.0.0" }, "optionalPeers": ["@modelcontextprotocol/sdk", "@tanstack/ai", "ai", "zod"] }, "sha512-GDzPUnEqgp9qBNYvrjoO1iODXtOjWVhbyvVE40TJ/oaYvHsOgsaws4TnIKDM/+JK8uG3S3GAJ2+ixDIEuicIdw=="],
 
     "@convex-dev/better-auth": ["@convex-dev/better-auth@0.10.13", "", { "dependencies": { "@better-auth/passkey": "1.4.9", "@better-fetch/fetch": "^1.1.18", "common-tags": "^1.8.2", "convex-helpers": "^0.1.95", "jose": "^6.1.0", "remeda": "^2.32.0", "semver": "^7.7.3", "type-fest": "^4.39.1", "zod": "^4.0.0" }, "peerDependencies": { "better-auth": ">=1.4.9 <1.5.0", "convex": "^1.25.0", "react": "^18.3.1 || ^19.0.0" } }, "sha512-ll59IxdJrefJkKcH667aWt0S5Z0vPNiW2EixWlsdz0h4qdm31J8dxwxO9aDIaeqnE+m1iJ0mUwRedTgYcxQxiQ=="],
 

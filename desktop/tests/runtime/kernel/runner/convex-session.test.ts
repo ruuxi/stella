@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createConvexSession } from "../../../../runtime/kernel/runner/convex-session.js";
+import { createConvexSession } from "../../../../../runtime/kernel/runner/convex-session.js";
 
 const CONVEX_URL = "https://example.convex.cloud";
 

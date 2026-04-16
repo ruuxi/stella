@@ -7,8 +7,8 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createToolHost } from "../../../../runtime/kernel/tools/host.js";
-import type { ToolContext, ToolResult } from "../../../../runtime/kernel/tools/types.js";
+import { createToolHost } from "../../../../../runtime/kernel/tools/host.js";
+import type { ToolContext, ToolResult } from "../../../../../runtime/kernel/tools/types.js";
 
 const tempDirs: string[] = [];
 
@@ -97,7 +97,7 @@ return {
 
   it("reads life docs, writes workspace files, and runs reusable libraries", async () => {
     const stellaRoot = createTempDir("stella-code-mode-root-");
-    const lifeRoot = path.join(stellaRoot, "life");
+    const lifeRoot = path.join(stellaRoot, "state");
 
     mkdirSync(path.join(lifeRoot, "knowledge"), { recursive: true });
     mkdirSync(path.join(lifeRoot, "capabilities", "to-upper"), {

@@ -4,7 +4,7 @@ import {
   getClaudeCodeStatusChangeFromStreamEvent,
   isClaudeCodeModel,
   parseClaudeCodeDecision,
-} from "../../../../runtime/kernel/integrations/claude-code-session-runtime.js";
+} from "../../../../../runtime/kernel/integrations/claude-code-session-runtime.js";
 
 describe("claude-code-session-runtime", () => {
   it("builds a Stella-hosted tool contract prompt", () => {

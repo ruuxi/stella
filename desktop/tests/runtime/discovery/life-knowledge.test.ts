@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   discoveryKnowledgeExists,
   writeDiscoveryKnowledge,
-} from "../../../runtime/discovery/life-knowledge.js";
+} from "../../../../runtime/discovery/life-knowledge.js";
 import type { DiscoveryKnowledgeSeedPayload } from "../../../src/shared/contracts/discovery.js";
 
 const tempDirs: string[] = [];
@@ -13,9 +13,9 @@ const tempDirs: string[] = [];
 const createTempHome = async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "stella-life-knowledge-"));
   tempDirs.push(dir);
-  await fs.mkdir(path.join(dir, "life", "knowledge"), { recursive: true });
+  await fs.mkdir(path.join(dir, "state", "knowledge"), { recursive: true });
   await fs.writeFile(
-    path.join(dir, "life", "registry.md"),
+    path.join(dir, "state", "registry.md"),
     [
       "# Life Registry",
       "",
@@ -39,7 +39,7 @@ const createTempHome = async () => {
     "utf-8",
   );
   await fs.writeFile(
-    path.join(dir, "life", "knowledge", "index.md"),
+    path.join(dir, "state", "knowledge", "index.md"),
     [
       "# Knowledge Index",
       "",
@@ -108,25 +108,25 @@ describe("life knowledge discovery writer", () => {
 
     // Knowledge pages contain LLM-summarized content
     const skillFile = await fs.readFile(
-      path.join(stellaHome, "life", "knowledge", "user-profile", "index.md"),
+      path.join(stellaHome, "state", "knowledge", "user-profile", "index.md"),
       "utf-8",
     );
     const browsingKnowledge = await fs.readFile(
-      path.join(stellaHome, "life", "knowledge", "user-profile", "browsing-bookmarks.md"),
+      path.join(stellaHome, "state", "knowledge", "user-profile", "browsing-bookmarks.md"),
       "utf-8",
     );
     const devKnowledge = await fs.readFile(
-      path.join(stellaHome, "life", "knowledge", "user-profile", "dev-environment.md"),
+      path.join(stellaHome, "state", "knowledge", "user-profile", "dev-environment.md"),
       "utf-8",
     );
 
     // Raw signal dumps
     const rawBrowsing = await fs.readFile(
-      path.join(stellaHome, "life", "raw", "discovery", "browsing-bookmarks.md"),
+      path.join(stellaHome, "state", "raw", "discovery", "browsing-bookmarks.md"),
       "utf-8",
     );
     const rawDev = await fs.readFile(
-      path.join(stellaHome, "life", "raw", "discovery", "dev-environment.md"),
+      path.join(stellaHome, "state", "raw", "discovery", "dev-environment.md"),
       "utf-8",
     );
 
@@ -156,7 +156,7 @@ describe("life knowledge discovery writer", () => {
 
     // Index and registry updated
     const knowledgeIndex = await fs.readFile(
-      path.join(stellaHome, "life", "knowledge", "index.md"),
+      path.join(stellaHome, "state", "knowledge", "index.md"),
       "utf-8",
     );
     expect(knowledgeIndex).toContain("[user-profile](user-profile/index.md)");
@@ -175,14 +175,14 @@ describe("life knowledge discovery writer", () => {
 
     // index.md exists
     const skillFile = await fs.readFile(
-      path.join(stellaHome, "life", "knowledge", "user-profile", "index.md"),
+      path.join(stellaHome, "state", "knowledge", "user-profile", "index.md"),
       "utf-8",
     );
     expect(skillFile).toContain("No knowledge pages are populated yet.");
 
     // Raw still written
     const rawBrowsing = await fs.readFile(
-      path.join(stellaHome, "life", "raw", "discovery", "browsing-bookmarks.md"),
+      path.join(stellaHome, "state", "raw", "discovery", "browsing-bookmarks.md"),
       "utf-8",
     );
     expect(rawBrowsing).toContain("cursor.com (5)");
@@ -190,7 +190,7 @@ describe("life knowledge discovery writer", () => {
     // No knowledge page for browsing since no analysis was provided
     await expect(
       fs.access(
-        path.join(stellaHome, "life", "knowledge", "user-profile", "browsing-bookmarks.md"),
+        path.join(stellaHome, "state", "knowledge", "user-profile", "browsing-bookmarks.md"),
       ),
     ).rejects.toThrow();
   });
@@ -206,11 +206,11 @@ describe("life knowledge discovery writer", () => {
     await writeDiscoveryKnowledge(stellaHome, payload);
 
     const knowledgeIndex = await fs.readFile(
-      path.join(stellaHome, "life", "knowledge", "index.md"),
+      path.join(stellaHome, "state", "knowledge", "index.md"),
       "utf-8",
     );
     const registry = await fs.readFile(
-      path.join(stellaHome, "life", "registry.md"),
+      path.join(stellaHome, "state", "registry.md"),
       "utf-8",
     );
 

@@ -3,7 +3,7 @@ import {
   getConvexErrorCode,
   isConvexUnauthenticatedError,
   shouldStopRemoteTurnForAuthFailure,
-} from "../../../../runtime/kernel/runner.js";
+} from "../../../../../runtime/kernel/runner.js";
 
 describe("remote-turn auth failure handling", () => {
   it("detects Convex unauthenticated errors from nested error data", () => {

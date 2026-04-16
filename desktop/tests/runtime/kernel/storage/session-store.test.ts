@@ -6,9 +6,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   getDesktopDatabasePath,
   initializeDesktopDatabase,
-} from "../../../../runtime/kernel/storage/database-init.js";
-import { SessionStore } from "../../../../runtime/kernel/storage/session-store.js";
-import type { SqliteDatabase } from "../../../../runtime/kernel/storage/shared.js";
+} from "../../../../../runtime/kernel/storage/database-init.js";
+import { SessionStore } from "../../../../../runtime/kernel/storage/session-store.js";
+import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/shared.js";
 
 type TestContext = {
   rootPath: string;

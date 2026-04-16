@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "outDir": "dist-electron",
-    "rootDir": ".",
+    "rootDir": "..",
     "lib": ["ES2022"],
     "strict": true,
     "esModuleInterop": true,
@@ -15,7 +15,7 @@
   },
   "include": [
     "electron/**/*",
-    "runtime/**/*",
+    "../runtime/**/*",
     "src/shared/contracts/**/*",
     "src/shared/ai/**/*",
     "src/shared/lib/convex-urls.ts",

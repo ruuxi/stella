@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildChatPromptMessages } from "../../../runtime/kernel/chat-prompt-context.js";
+import { buildChatPromptMessages } from "../../../../runtime/kernel/chat-prompt-context.js";
 
 describe("buildChatPromptMessages", () => {
   it("marks hidden active-window context as an internal message", () => {

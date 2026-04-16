@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const launcherDir = path.resolve(scriptDir, '..')
 const repoRoot = path.resolve(launcherDir, '..')
-const desktopDir = path.resolve(repoRoot, 'desktop')
 const debugAppPath = path.resolve(
   launcherDir,
   'src-tauri',
@@ -22,8 +21,8 @@ if (process.platform !== 'darwin') {
   process.exit(1)
 }
 
-if (!existsSync(desktopDir)) {
-  console.error(`[launcher:dev-app] Missing desktop checkout at ${desktopDir}`)
+if (!existsSync(path.resolve(repoRoot, 'desktop'))) {
+  console.error(`[launcher:dev-app] Missing desktop checkout at ${path.resolve(repoRoot, 'desktop')}`)
   process.exit(1)
 }
 
@@ -47,7 +46,7 @@ if (!existsSync(debugAppPath)) {
 
 const openResult = spawnSync(
   'open',
-  ['-n', debugAppPath, '--args', '--dev-path', desktopDir],
+  ['-n', debugAppPath, '--args', '--dev-path', repoRoot],
   {
     cwd: launcherDir,
     stdio: 'inherit',

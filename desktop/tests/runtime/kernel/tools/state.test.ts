@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AGENT_IDS } from "../../../../src/shared/contracts/agent-runtime.js";
-import { createStateContext, handleTask } from "../../../../runtime/kernel/tools/state.js";
-import type { TaskToolRequest } from "../../../../runtime/kernel/tools/types.js";
+import { createStateContext, handleTask } from "../../../../../runtime/kernel/tools/state.js";
+import type { TaskToolRequest } from "../../../../../runtime/kernel/tools/types.js";
 
 describe("state tools", () => {
   it("always creates general tasks from orchestrator requests", async () => {

@@ -10,7 +10,7 @@ import type { UiState, WindowMode } from "./ui";
 import type { Theme } from "@/shared/theme/themes/types";
 import type { AgentStreamEvent } from "@/app/chat/streaming/streaming-types";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
-import type { LocalChatEventWindowMode } from "../../runtime/chat-event-visibility";
+import type { LocalChatEventWindowMode } from "../../../../runtime/chat-event-visibility";
 import type {
   RadialWedge as SharedRadialWedge,
   ChatContext as SharedChatContext,
@@ -67,7 +67,7 @@ import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
 } from "../contracts/onboarding";
-import type { RuntimeSocialSessionStatus } from "../../runtime/protocol/index";
+import type { RuntimeSocialSessionStatus } from "../../../../runtime/protocol/index";
 import type {
   OfficePreviewRef as SharedOfficePreviewRef,
   OfficePreviewSnapshot as SharedOfficePreviewSnapshot,

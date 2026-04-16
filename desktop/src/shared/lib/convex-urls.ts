@@ -6,4 +6,4 @@ export {
   readConfiguredStellaBaseUrl,
   stellaApiBaseUrlFromConvexSiteUrl,
   stellaBaseUrlFromConvexSiteUrl,
-} from "../../../runtime/kernel/convex-urls.js";
+} from "../../../../runtime/kernel/convex-urls.js";

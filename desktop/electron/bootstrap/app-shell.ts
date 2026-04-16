@@ -1,7 +1,7 @@
 import { app, session } from "electron";
 import { hasMacPermission } from "../utils/macos-permissions.js";
 import path from "path";
-import { resolveStellaHome } from "../../runtime/kernel/home/stella-home.js";
+import { resolveStellaHome } from "../../../runtime/kernel/home/stella-home.js";
 import { getDevServerUrl } from "../dev-url.js";
 import { OverlayWindowController } from "../windows/overlay-window.js";
 import { WindowManager } from "../windows/window-manager.js";

@@ -3,7 +3,7 @@ import {
   GOOGLE_WORKSPACE_TOOL_ALLOWLIST,
   isAllowedGoogleWorkspaceTool,
   toGoogleWorkspaceToolRegistrationName,
-} from "../../../../runtime/kernel/google-workspace/tool-allowlist.js";
+} from "../../../../../runtime/kernel/google-workspace/tool-allowlist.js";
 
 describe("google-workspace-allowlist", () => {
   it("allows curated tools", () => {

@@ -12,7 +12,7 @@ import {
   listLocalEvents,
   subscribeToLocalChatUpdates,
 } from "@/app/chat/services/local-chat-store";
-import { countVisibleChatMessageEvents } from "../../../../runtime/chat-event-visibility.js";
+import { countVisibleChatMessageEvents } from "../../../../../runtime/chat-event-visibility.js";
 import { useChatStore } from "@/context/chat-store";
 import type { EventRecord, MessageTurn, StepItem } from "@/app/chat/lib/event-transforms";
 import { extractStepsFromEvents, groupEventsIntoTurns } from "@/app/chat/lib/event-transforms";

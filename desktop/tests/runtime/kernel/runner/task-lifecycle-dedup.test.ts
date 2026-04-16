@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { shouldIncludeInOrchestratorLocalHistory } from "../../../../runtime/kernel/runner/context.js";
-import { buildTaskEventPrompt } from "../../../../runtime/kernel/runner/shared.js";
+import { shouldIncludeInOrchestratorLocalHistory } from "../../../../../runtime/kernel/runner/context.js";
+import { buildTaskEventPrompt } from "../../../../../runtime/kernel/runner/shared.js";
 
 const makeEvent = (type: string) => ({
   _id: `${type}-1`,
