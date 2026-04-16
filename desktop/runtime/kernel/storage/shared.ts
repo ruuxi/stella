@@ -84,7 +84,9 @@ export type RuntimeThreadModelChangeEntry = RuntimeThreadSessionEntryBase & {
 export type RuntimeThreadCompactionEntry = RuntimeThreadSessionEntryBase & {
   type: "compaction";
   summary: string;
-  firstKeptEntryId: string;
+  fromEntryId?: string;
+  toEntryId?: string;
+  firstKeptEntryId?: string;
   tokensBefore: number;
   details?: unknown;
   fromHook?: boolean;
