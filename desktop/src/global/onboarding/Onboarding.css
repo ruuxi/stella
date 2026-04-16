@@ -735,6 +735,30 @@
   font-size: 12px;
 }
 
+/* Progressive disclosure for theme sub-sections */
+.onboarding-theme-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--onboarding-duration-enter) var(--onboarding-ease-soft);
+}
+
+.onboarding-theme-reveal[data-visible] {
+  grid-template-rows: 1fr;
+}
+
+.onboarding-theme-reveal-inner {
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transition: opacity var(--onboarding-duration-fade) ease 80ms;
+}
+
+.onboarding-theme-reveal[data-visible] > .onboarding-theme-reveal-inner {
+  opacity: 1;
+}
+
 /* ═══ Hide real sidebar during onboarding ═══ */
 
 .window-shell[data-onboarding] .full-body > .sidebar {

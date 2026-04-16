@@ -1,3 +1,5 @@
+import { useState, useCallback } from "react";
+
 type ThemeSummary = {
   id: string;
   name: string;
@@ -64,29 +66,36 @@ export function OnboardingThemePhase({
   onThemePreviewEnter,
   onThemePreviewLeave,
 }: ThemePhaseProps) {
+  const [showAppearance, setShowAppearance] = useState(false);
+  const [showGradientStyle, setShowGradientStyle] = useState(false);
+  const [showGradientColor, setShowGradientColor] = useState(false);
+
+  const handleSelectTheme = useCallback(
+    (id: string) => {
+      onSelectTheme(id);
+      setShowAppearance(true);
+    },
+    [onSelectTheme],
+  );
+
+  const handleSelectColorMode = useCallback(
+    (mode: "light" | "dark" | "system") => {
+      onSelectColorMode(mode);
+      setShowGradientStyle(true);
+    },
+    [onSelectColorMode],
+  );
+
+  const handleSelectGradientMode = useCallback(
+    (mode: "soft" | "flat") => {
+      onSelectGradientMode(mode);
+      setShowGradientColor(true);
+    },
+    [onSelectGradientMode],
+  );
+
   return (
     <div className="onboarding-step-content">
-      {renderThemeOptionRow(
-        "Appearance",
-        ["light", "dark", "system"] as const,
-        colorMode,
-        onSelectColorMode,
-      )}
-
-      {renderThemeOptionRow(
-        "Gradient Style",
-        ["soft", "flat"] as const,
-        gradientMode,
-        onSelectGradientMode,
-      )}
-
-      {renderThemeOptionRow(
-        "Gradient Color",
-        ["relative", "strong"] as const,
-        gradientColor,
-        onSelectGradientColor,
-      )}
-
       <div className="onboarding-step-label">Theme</div>
       <div
         className="onboarding-theme-grid onboarding-pill-stagger"
@@ -97,12 +106,45 @@ export function OnboardingThemePhase({
             key={theme.id}
             className="onboarding-pill"
             data-active={theme.id === themeId}
-            onClick={() => onSelectTheme(theme.id)}
+            onClick={() => handleSelectTheme(theme.id)}
             onMouseEnter={() => onThemePreviewEnter(theme.id)}
           >
             {theme.name}
           </button>
         ))}
+      </div>
+
+      <div className="onboarding-theme-reveal" data-visible={showAppearance || undefined}>
+        <div className="onboarding-theme-reveal-inner">
+          {renderThemeOptionRow(
+            "Appearance",
+            ["light", "dark", "system"] as const,
+            colorMode,
+            handleSelectColorMode,
+          )}
+        </div>
+      </div>
+
+      <div className="onboarding-theme-reveal" data-visible={showGradientStyle || undefined}>
+        <div className="onboarding-theme-reveal-inner">
+          {renderThemeOptionRow(
+            "Gradient Style",
+            ["soft", "flat"] as const,
+            gradientMode,
+            handleSelectGradientMode,
+          )}
+        </div>
+      </div>
+
+      <div className="onboarding-theme-reveal" data-visible={showGradientColor || undefined}>
+        <div className="onboarding-theme-reveal-inner">
+          {renderThemeOptionRow(
+            "Gradient Color",
+            ["relative", "strong"] as const,
+            gradientColor,
+            onSelectGradientColor,
+          )}
+        </div>
       </div>
 
       <button
