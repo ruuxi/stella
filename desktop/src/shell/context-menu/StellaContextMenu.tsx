@@ -10,23 +10,23 @@ import {
 
 type StellaContextMenuProps = {
   children: ReactNode;
-  isSidebarChatOpen: boolean;
-  onOpenSidebarChat: () => void;
-  onCloseSidebarChat: () => void;
+  isOpen: boolean;
+  onOpen: () => void;
+  onClose: () => void;
 };
 
 export function StellaContextMenu({
   children,
-  isSidebarChatOpen,
-  onOpenSidebarChat,
-  onCloseSidebarChat,
+  isOpen,
+  onOpen,
+  onClose,
 }: StellaContextMenuProps) {
-  const onOpenRef = useRef(onOpenSidebarChat);
-  onOpenRef.current = onOpenSidebarChat;
-  const onCloseRef = useRef(onCloseSidebarChat);
-  onCloseRef.current = onCloseSidebarChat;
-  const isOpenRef = useRef(isSidebarChatOpen);
-  isOpenRef.current = isSidebarChatOpen;
+  const onOpenRef = useRef(onOpen);
+  onOpenRef.current = onOpen;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

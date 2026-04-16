@@ -3,7 +3,9 @@ import { ChatColumn } from "@/app/chat/ChatColumn";
 import { SocialView } from "@/app/social/SocialView";
 import type { ViewType } from "@/shared/contracts/ui";
 import {
+  STELLA_CLOSE_DISPLAY_SIDEBAR_EVENT,
   STELLA_CLOSE_SIDEBAR_CHAT_EVENT,
+  STELLA_OPEN_DISPLAY_SIDEBAR_EVENT,
   STELLA_OPEN_SIDEBAR_CHAT_EVENT,
   type StellaOpenSidebarChatDetail,
 } from "@/shared/lib/stella-orb-chat";
@@ -29,6 +31,7 @@ type FullShellRuntimeProps = {
   pendingAskStellaRequest: PendingAskStellaRequest | null;
   onPendingAskStellaHandled: (requestId: number) => void;
   onSidebarChatOpenChange?: (open: boolean) => void;
+  onDisplaySidebarOpenChange?: (open: boolean) => void;
   onHomeContentChange?: (showing: boolean) => void;
 };
 
@@ -41,10 +44,12 @@ export const FullShellRuntime = ({
   pendingAskStellaRequest,
   onPendingAskStellaHandled,
   onSidebarChatOpenChange,
+  onDisplaySidebarOpenChange,
   onHomeContentChange,
 }: FullShellRuntimeProps) => {
   const sidebarRef = useRef<ChatSidebarHandle>(null);
   const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
+  const latestDisplayHtmlRef = useRef<string | null>(null);
   const chat = useFullShellChat({
     activeConversationId,
     activeView,
@@ -78,6 +83,7 @@ export const FullShellRuntime = ({
 
   useEffect(() => {
     return window.electronAPI?.display.onUpdate((html) => {
+      latestDisplayHtmlRef.current = html;
       const ds = displaySidebarRef.current;
       if (!ds) return;
       if (showHomeContentRef.current && activeViewRef.current === "chat") {
@@ -87,6 +93,19 @@ export const FullShellRuntime = ({
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (activeView !== "chat" || !chat.showHomeContent) {
+      return;
+    }
+
+    const html = latestDisplayHtmlRef.current;
+    if (!html) {
+      return;
+    }
+
+    displaySidebarRef.current?.open(html);
+  }, [activeView, chat.showHomeContent]);
 
   // Close sidebar when navigating to chat/home
   useEffect(() => {
@@ -114,11 +133,38 @@ export const FullShellRuntime = ({
       sidebarRef.current?.close();
     };
 
+    const handleOpenDisplay = () => {
+      if (activeViewRef.current !== "chat") {
+        return;
+      }
+
+      const html = latestDisplayHtmlRef.current;
+      if (!html) {
+        return;
+      }
+
+      displaySidebarRef.current?.open(html);
+    };
+
+    const handleCloseDisplay = () => {
+      displaySidebarRef.current?.close();
+    };
+
     window.addEventListener(STELLA_OPEN_SIDEBAR_CHAT_EVENT, handleOpen);
     window.addEventListener(STELLA_CLOSE_SIDEBAR_CHAT_EVENT, handleClose);
+    window.addEventListener(STELLA_OPEN_DISPLAY_SIDEBAR_EVENT, handleOpenDisplay);
+    window.addEventListener(STELLA_CLOSE_DISPLAY_SIDEBAR_EVENT, handleCloseDisplay);
     return () => {
       window.removeEventListener(STELLA_OPEN_SIDEBAR_CHAT_EVENT, handleOpen);
       window.removeEventListener(STELLA_CLOSE_SIDEBAR_CHAT_EVENT, handleClose);
+      window.removeEventListener(
+        STELLA_CLOSE_DISPLAY_SIDEBAR_EVENT,
+        handleCloseDisplay,
+      );
+      window.removeEventListener(
+        STELLA_OPEN_DISPLAY_SIDEBAR_EVENT,
+        handleOpenDisplay,
+      );
     };
   }, []);
 
@@ -157,7 +203,10 @@ export const FullShellRuntime = ({
         onOpenChange={onSidebarChatOpenChange}
       />
 
-      <DisplaySidebar ref={displaySidebarRef} />
+      <DisplaySidebar
+        ref={displaySidebarRef}
+        onOpenChange={onDisplaySidebarOpenChange}
+      />
     </>
   );
 };

@@ -18,8 +18,12 @@ export interface DisplaySidebarHandle {
   close(): void;
 }
 
+type DisplaySidebarProps = {
+  onOpenChange?: (open: boolean) => void;
+};
+
 export const DisplaySidebar = forwardRef<DisplaySidebarHandle>(
-  function DisplaySidebar(_props, ref) {
+  function DisplaySidebar({ onOpenChange }: DisplaySidebarProps, ref) {
     const { gradientMode, gradientColor } = useTheme();
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -27,7 +31,9 @@ export const DisplaySidebar = forwardRef<DisplaySidebarHandle>(
     const applyHtml = useCallback((html: string) => {
       const container = containerRef.current;
       if (!container) return;
-      applyMorphdomHtml(container, "display-sidebar__content", html);
+      applyMorphdomHtml(container, "display-sidebar__content", html, {
+        executeScripts: true,
+      });
     }, []);
 
     useImperativeHandle(ref, () => ({
@@ -51,6 +57,10 @@ export const DisplaySidebar = forwardRef<DisplaySidebarHandle>(
       document.addEventListener("keydown", onKey);
       return () => document.removeEventListener("keydown", onKey);
     }, [isOpen]);
+
+    useEffect(() => {
+      onOpenChange?.(isOpen);
+    }, [isOpen, onOpenChange]);
 
     const handleClick = useCallback((e: React.MouseEvent) => {
       const el = (e.target as HTMLElement).closest(
