@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getSelfModHmrFlushMode,
   shouldRunSelfModHmrTransition,
-} from "../../runtime/kernel/self-mod/flush-mode.js";
+} from "../../../runtime/kernel/self-mod/flush-mode.js";
 
 describe("self-mod HMR flush mode", () => {
   it("does not request a transition when only non-module files were queued", () => {

@@ -2,7 +2,8 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
-import { getStellaBrowserBridgeEnv } from "../../runtime/kernel/tools/stella-browser-bridge-config.js";
+import { getStellaBrowserBridgeEnv } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
+import { resolveStellaBrowserRoot } from "../utils/stella-browser-paths.js";
 import {
   normalizeUrlForPrivilegedRendererFetch,
   PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
@@ -38,23 +39,18 @@ type BrowserHandlersOptions = {
 };
 
 const runStellaBrowserJson = (
-  stellaRoot: string,
   args: string[],
   extraEnv?: Record<string, string>,
 ): Promise<StellaBrowserResponse> =>
   new Promise((resolve, reject) => {
-    const binPath = path.join(
-      stellaRoot,
-      "stella-browser",
-      "bin",
-      "stella-browser.js",
-    );
+    const stellaBrowserRoot = resolveStellaBrowserRoot();
+    const binPath = path.join(stellaBrowserRoot, "bin", "stella-browser.js");
 
     execFile(
       process.execPath,
       [binPath, ...args],
       {
-        cwd: stellaRoot,
+        cwd: stellaBrowserRoot,
         timeout: PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
         windowsHide: true,
         env: extraEnv ? { ...process.env, ...extraEnv } : undefined,
@@ -78,7 +74,6 @@ const runStellaBrowserJson = (
   });
 
 const getBrowserCookieHeader = async (
-  stellaRoot: string,
   targetUrl: string,
 ): Promise<string | null> => {
   try {
@@ -88,7 +83,6 @@ const getBrowserCookieHeader = async (
       ...getStellaBrowserBridgeEnv(),
     };
     const response = await runStellaBrowserJson(
-      stellaRoot,
       ["--json", "cookies", "get", "--url", targetUrl],
       extensionEnv,
     );
@@ -110,11 +104,10 @@ const getBrowserCookieHeader = async (
 };
 
 const fetchWithBrowserSession = async (
-  stellaRoot: string,
   payload: { url: string; responseType: "json" | "text"; init?: BrowserFetchInit },
 ) => {
   const url = await normalizeUrlForPrivilegedRendererFetch(payload.url);
-  const cookieHeader = await getBrowserCookieHeader(stellaRoot, url);
+  const cookieHeader = await getBrowserCookieHeader(url);
   const method = payload.init?.method ?? "GET";
   const headers = new Headers(payload.init?.headers);
 
@@ -151,12 +144,14 @@ const fetchWithBrowserSession = async (
   return response.text();
 };
 
-const getStellaRootOrThrow = (options: BrowserHandlersOptions) => {
+const assertStellaInitialized = (options: BrowserHandlersOptions) => {
+  // The browser bridge is gated on the app being far enough along that a
+  // stellaRoot has been resolved; the value itself isn't needed here because
+  // the stella-browser CLI lives inside the desktop tree.
   const stellaRoot = options.getStellaRoot();
   if (!stellaRoot?.trim()) {
     throw new Error("Stella root not available; restart the app.");
   }
-  return stellaRoot;
 };
 
 export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
@@ -166,8 +161,8 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, IPC_BROWSER_FETCH_JSON)) {
         throw new Error("Blocked untrusted request.");
       }
-      const stellaRoot = getStellaRootOrThrow(options);
-      return fetchWithBrowserSession(stellaRoot, {
+      assertStellaInitialized(options);
+      return fetchWithBrowserSession({
         url: payload.url,
         responseType: "json",
         init: payload.init,
@@ -181,8 +176,8 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, IPC_BROWSER_FETCH_TEXT)) {
         throw new Error("Blocked untrusted request.");
       }
-      const stellaRoot = getStellaRootOrThrow(options);
-      return fetchWithBrowserSession(stellaRoot, {
+      assertStellaInitialized(options);
+      return fetchWithBrowserSession({
         url: payload.url,
         responseType: "text",
         init: payload.init,

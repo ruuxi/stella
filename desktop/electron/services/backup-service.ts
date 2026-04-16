@@ -5,16 +5,16 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
-import type { RuntimeHealthSnapshot } from "../../runtime/protocol/index.js";
+import type { RuntimeHealthSnapshot } from "../../../runtime/protocol/index.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import {
   ensurePrivateDir,
   writePrivateFile,
-} from "../../runtime/kernel/shared/private-fs.js";
+} from "../../../runtime/kernel/shared/private-fs.js";
 import {
   protectValue,
   unprotectValue,
-} from "../../runtime/kernel/shared/protected-storage.js";
+} from "../../../runtime/kernel/shared/protected-storage.js";
 import type {
   BackupNowResult,
   BackupStatusSnapshot,
@@ -84,7 +84,6 @@ type BackupManifestEntry = {
     | "repo-git-bundle"
     | "sqlite"
     | "state"
-    | "life"
     | "workspace";
   path: string;
   sha256: string;
@@ -954,12 +953,6 @@ export class BackupService {
         );
       },
     });
-    const lifeEntries = await this.collectDirectoryEntries({
-      ...args,
-      rootPath: path.join(args.stellaHomePath, "life"),
-      scope: "life",
-      shouldSkip: () => false,
-    });
     const workspaceEntries = await this.collectDirectoryEntries({
       ...args,
       rootPath: path.join(args.stellaHomePath, "workspace"),
@@ -972,7 +965,6 @@ export class BackupService {
       ...(gitBundleEntry ? [gitBundleEntry] : []),
       ...(sqliteEntry ? [sqliteEntry] : []),
       ...stateEntries,
-      ...lifeEntries,
       ...workspaceEntries,
     ].sort(
       (left, right) =>
@@ -992,7 +984,6 @@ export class BackupService {
       relativeHome && !relativeHome.startsWith("..")
         ? [
             normalizePath(path.posix.join(relativeHome, "state")),
-            normalizePath(path.posix.join(relativeHome, "life")),
             normalizePath(path.posix.join(relativeHome, "workspace")),
           ]
         : [];
@@ -1075,7 +1066,7 @@ export class BackupService {
   private async collectDirectoryEntries(args: {
     stellaHomePath: string;
     rootPath: string;
-    scope: "state" | "life" | "workspace";
+    scope: "state" | "workspace";
     shouldSkip: (relativePath: string, isDirectory: boolean) => boolean;
     encryptionKey: Buffer;
   }): Promise<BackupManifestEntry[]> {
@@ -1497,7 +1488,6 @@ export class BackupService {
     return relativeHome && !relativeHome.startsWith("..")
       ? [
           normalizePath(path.posix.join(relativeHome, "state")),
-          normalizePath(path.posix.join(relativeHome, "life")),
           normalizePath(path.posix.join(relativeHome, "workspace")),
         ]
       : [];
@@ -1539,9 +1529,6 @@ export class BackupService {
     const stateEntries = args.manifest.entries.filter(
       (entry) => entry.scope === "state",
     );
-    const lifeEntries = args.manifest.entries.filter(
-      (entry) => entry.scope === "life",
-    );
     const workspaceEntries = args.manifest.entries.filter(
       (entry) => entry.scope === "workspace",
     );
@@ -1556,12 +1543,6 @@ export class BackupService {
       args.stellaHomePath,
       repoEntries,
     );
-    await this.restoreScopedDirectory({
-      rootPath: path.join(args.stellaHomePath, "life"),
-      entries: lifeEntries,
-      stagedObjectsDir: args.stagedObjectsDir,
-      shouldSkip: () => false,
-    });
     await this.restoreScopedDirectory({
       rootPath: path.join(args.stellaHomePath, "workspace"),
       entries: workspaceEntries,

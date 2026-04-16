@@ -59,11 +59,10 @@ fn dev_path_override() -> Option<String> {
         return None;
     }
 
-    let repo_desktop = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
-        .join("..")
-        .join("desktop");
-    Some(repo_desktop.to_string_lossy().to_string())
+        .join("..");
+    Some(repo_root.to_string_lossy().to_string())
 }
 
 fn main() {
@@ -95,7 +94,7 @@ fn main() {
             let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
             let default_install_path = dev_install_path
                 .clone()
-                .unwrap_or_else(|| home.join("Stella").to_string_lossy().to_string());
+                .unwrap_or_else(|| home.join("stella").to_string_lossy().to_string());
 
             let app_data = app.path().app_data_dir().unwrap_or_else(|_| {
                 home.join(".stella-launcher")

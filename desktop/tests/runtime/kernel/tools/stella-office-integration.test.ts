@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createShellState,
   runShell,
-} from "../../../../runtime/kernel/tools/shell.js";
+} from "../../../../../runtime/kernel/tools/shell.js";
 
 const officeWrapperPath = path.resolve(
   process.cwd(),

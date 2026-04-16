@@ -3,7 +3,7 @@ import { Notification } from "electron";
 import {
   getOrCreateDeviceIdentity,
   signDeviceHeartbeat,
-} from "../../runtime/kernel/home/device.js";
+} from "../../../runtime/kernel/home/device.js";
 import type { SelfModHmrState } from "../../src/shared/contracts/boundary.js";
 import {
   createStellaHostRunner,

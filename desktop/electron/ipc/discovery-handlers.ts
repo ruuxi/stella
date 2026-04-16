@@ -1,6 +1,6 @@
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
-import type { BrowserData, BrowserType } from "../../runtime/discovery/browser-data.js";
-import type { AllUserSignalsResult } from "../../runtime/discovery/types.js";
+import type { BrowserData, BrowserType } from "../../../runtime/discovery/browser-data.js";
+import type { AllUserSignalsResult } from "../../../runtime/discovery/types.js";
 import type { DiscoveryKnowledgeSeedPayload } from "../../src/shared/contracts/discovery.js";
 import {
   IPC_DISCOVERY_COLLECT_ALL_SIGNALS,

@@ -3,7 +3,7 @@ import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig, searchForWorkspaceRoot, type ModuleNode, type Plugin } from "vite"
-import { getSelfModHmrFlushMode } from "./runtime/kernel/self-mod/flush-mode.js"
+import { getSelfModHmrFlushMode } from "../runtime/kernel/self-mod/flush-mode.js"
 
 const DEV_URL_FILE = path.resolve(__dirname, '.vite-dev-url')
 const SELF_MOD_HMR_STATE_FILE = path.resolve(__dirname, '.stella-hmr-state.json')
@@ -15,8 +15,7 @@ const STELLA_WORKSPACE_PANELS_DIR = path.resolve(
   'workspace',
   'panels',
 )
-const STELLA_STATE_DIR = path.resolve(__dirname, 'state')
-const STELLA_LIFE_DIR = path.resolve(__dirname, 'life')
+const STELLA_STATE_DIR = path.resolve(__dirname, '..', 'state')
 const VITE_WORKSPACE_ROOT = searchForWorkspaceRoot(__dirname)
 const PACKAGE_MANIFEST_BASENAMES = new Set([
   'package.json',
@@ -397,7 +396,6 @@ export default defineConfig({
     watch: {
       ignored: [
         `${STELLA_STATE_DIR.replace(/\\/g, '/')}/**`,
-        `${STELLA_LIFE_DIR.replace(/\\/g, '/')}/**`,
         normalizeWatchedFilePath(DEV_URL_FILE),
         normalizeWatchedFilePath(SELF_MOD_HMR_STATE_FILE),
         normalizeWatchedFilePath(SELF_MOD_RUNTIME_RELOAD_STATE_FILE),

@@ -7,30 +7,31 @@ import {
 import path from "node:path";
 
 const projectDir = process.cwd();
+const repoRootDir = path.resolve(projectDir, "..");
 const outdir = "dist-electron";
 const nodeTarget = `node${process.versions.node.split(".")[0]}`;
 const graphWatchRoots = [
-  "electron",
+  "desktop/electron",
   "runtime",
-  "src/shared/contracts",
-  "src/shared/ai",
-  "src/shared",
-  "src/convex",
-  "src/prompts",
+  "desktop/src/shared/contracts",
+  "desktop/src/shared/ai",
+  "desktop/src/shared",
+  "desktop/src/convex",
+  "desktop/src/prompts",
 ];
 const mainEntryRoots = [
-  "electron",
+  "desktop/electron",
   "runtime",
-  "src/shared/contracts",
-  "src/shared/ai",
+  "desktop/src/shared/contracts",
+  "desktop/src/shared/ai",
 ];
 const mainExplicitEntries = [
-  "src/convex/api.ts",
-  "src/prompts/dashboard-page-focus.ts",
-  "src/shared/lib/radial-trigger.ts",
-  "src/shared/stella-api.ts",
+  "desktop/src/convex/api.ts",
+  "desktop/src/prompts/dashboard-page-focus.ts",
+  "desktop/src/shared/lib/radial-trigger.ts",
+  "desktop/src/shared/stella-api.ts",
 ];
-const preloadEntryPoint = "electron/preload.ts";
+const preloadEntryPoint = "desktop/electron/preload.ts";
 
 let buildContexts = [];
 let rebuildTimer = null;
@@ -46,7 +47,7 @@ const isTsSourceFile = (filePath) =>
   !filePath.endsWith(".test.ts");
 
 const collectTsEntries = async (rootRelativePath) => {
-  const rootAbsolutePath = path.join(projectDir, rootRelativePath);
+  const rootAbsolutePath = path.join(repoRootDir, rootRelativePath);
   const results = [];
 
   const visit = async (currentPath) => {
@@ -68,7 +69,7 @@ const collectTsEntries = async (rootRelativePath) => {
         continue;
       }
 
-      results.push(normalizePath(path.relative(projectDir, absolutePath)));
+      results.push(normalizePath(path.relative(repoRootDir, absolutePath)));
     }
   };
 
@@ -81,7 +82,7 @@ const getMainEntryPoints = async () => {
     mainEntryRoots.map((root) => collectTsEntries(root)),
   );
   const existingExplicitEntries = mainExplicitEntries.filter((entryPath) =>
-    existsSync(path.join(projectDir, entryPath)),
+    existsSync(path.join(repoRootDir, entryPath)),
   );
   const entryPoints = new Set(
     [...collectedEntries.flat(), ...existingExplicitEntries].map(normalizePath),
@@ -95,29 +96,29 @@ const createBuildOptions = async () => {
 
   return [
     {
-      absWorkingDir: projectDir,
+      absWorkingDir: repoRootDir,
       bundle: false,
       entryPoints: mainEntryPoints,
       format: "esm",
       logLevel: "info",
       outbase: ".",
-      outdir,
+      outdir: path.join("desktop", outdir),
       platform: "node",
       target: nodeTarget,
-      tsconfig: "tsconfig.electron.json",
+      tsconfig: path.join("desktop", "tsconfig.electron.json"),
     },
     {
-      absWorkingDir: projectDir,
+      absWorkingDir: repoRootDir,
       bundle: true,
       external: ["electron"],
       entryPoints: [preloadEntryPoint],
       format: "cjs",
       logLevel: "info",
       outbase: ".",
-      outdir,
+      outdir: path.join("desktop", outdir),
       platform: "node",
       target: nodeTarget,
-      tsconfig: "tsconfig.preload.json",
+      tsconfig: path.join("desktop", "tsconfig.preload.json"),
     },
   ];
 };
@@ -168,7 +169,7 @@ const scheduleGraphRefresh = () => {
 
 const startRootWatchers = () => {
   for (const root of graphWatchRoots) {
-    const absoluteRoot = path.join(projectDir, root);
+    const absoluteRoot = path.join(repoRootDir, root);
     if (!existsSync(absoluteRoot)) {
       continue;
     }

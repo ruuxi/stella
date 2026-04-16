@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { StellaRuntimeClient } from "../../../runtime/client/index.js";
+import { StellaRuntimeClient } from "../../../../runtime/client/index.js";
 
 const createClient = () =>
   new StellaRuntimeClient({

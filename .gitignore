@@ -7,3 +7,25 @@ AGENT.md
 docs/
 .claude
 .cursor
+
+# Workspace installs
+/node_modules/
+/runtime/node_modules/
+
+# Stella runtime state (mutable, user-specific, never commit).
+# Seed content under state/ stays tracked via the allowlist below.
+state/*
+state/electron-user-data/
+!state/DREAM.md
+!state/registry.md
+!state/capabilities/
+!state/knowledge/
+state/knowledge/user-profile/
+!state/notes/
+state/notes/*
+!state/notes/README.md
+!state/outputs/
+state/outputs/*
+!state/outputs/README.md
+state/core-memory.md
+state/raw/

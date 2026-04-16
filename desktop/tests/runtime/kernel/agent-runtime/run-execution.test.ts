@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { executeRuntimeAgentPrompt } from "../../../../runtime/kernel/agent-runtime/run-execution.js";
+import { executeRuntimeAgentPrompt } from "../../../../../runtime/kernel/agent-runtime/run-execution.js";
 
 const createAssistantMessage = (text: string) => ({
   role: "assistant" as const,

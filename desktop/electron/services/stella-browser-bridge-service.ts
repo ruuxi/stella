@@ -8,8 +8,9 @@ import {
   STELLA_BROWSER_BRIDGE_SESSION,
   STELLA_BROWSER_BRIDGE_TOKEN,
   getStellaBrowserSocketDir,
-} from "../../runtime/kernel/tools/stella-browser-bridge-config.js";
+} from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
 import { registerStellaNativeMessagingHost } from "../utils/register-stella-native-messaging-host.js";
+import { resolveStellaBrowserRoot } from "../utils/stella-browser-paths.js";
 import { stopChildProcessTree } from "../process-runtime.js";
 
 const DAEMON_READY_TIMEOUT_MS = 10_000;
@@ -79,7 +80,7 @@ export class StellaBrowserBridgeService {
     this.isLaunching = true;
 
     try {
-      const registration = registerStellaNativeMessagingHost(this.stellaRoot);
+      const registration = registerStellaNativeMessagingHost();
       if (!registration.ok) {
         throw new Error(
           registration.error ??
@@ -104,15 +105,11 @@ export class StellaBrowserBridgeService {
   }
 
   private spawnDaemon() {
-    const binPath = path.join(
-      this.stellaRoot,
-      "stella-browser",
-      "bin",
-      "stella-browser.js",
-    );
+    const stellaBrowserRoot = resolveStellaBrowserRoot();
+    const binPath = path.join(stellaBrowserRoot, "bin", "stella-browser.js");
 
     const daemon = spawn(process.execPath, [binPath], {
-      cwd: this.stellaRoot,
+      cwd: stellaBrowserRoot,
       env: {
         ...process.env,
         ELECTRON_RUN_AS_NODE: "1",

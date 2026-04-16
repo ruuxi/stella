@@ -5,9 +5,10 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(scriptDir, '..');
+const repoRootDir = resolve(desktopDir, '..');
 const runnerScriptPath = resolve(scriptDir, 'electron-dev-runner.mjs');
 const runnerPidFilePath = resolve(desktopDir, '.electron-dev-runner.pid');
-const stellaStatePath = resolve(desktopDir, 'state');
+const stellaStatePath = resolve(repoRootDir, 'state');
 const devElectronBinaryPathFragments = [
   resolve(desktopDir, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron'),
   resolve(desktopDir, '.stella-dev-runtime', 'Stella.app', 'Contents', 'MacOS', 'Electron'),
@@ -18,6 +19,21 @@ const desktopGeneratedPaths = [
   resolve(desktopDir, '.stella-dev-runtime'),
   resolve(desktopDir, 'dist-electron'),
 ];
+const stellaStateRuntimePaths = [
+  'canvas',
+  'electron-user-data',
+  'logs',
+  'office-previews',
+  'raw',
+  'tmp',
+  'knowledge/user-profile',
+  'core-memory.md',
+  'device.json',
+  'local-scheduler.json',
+  'stella.sqlite',
+  'stella.sqlite-shm',
+  'stella.sqlite-wal',
+].map((relativePath) => resolve(stellaStatePath, relativePath));
 const macPermissionBundleIds = [
   'com.github.Electron',
   'com.stella.app',
@@ -213,7 +229,7 @@ const main = async () => {
   const stoppedResidualElectron = await stopResidualDevElectron();
 
   await clearPaths([
-    stellaStatePath,
+    ...stellaStateRuntimePaths,
     ...desktopGeneratedPaths,
   ]);
 

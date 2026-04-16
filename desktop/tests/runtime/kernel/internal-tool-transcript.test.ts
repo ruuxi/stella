@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isUiOnlyAssistantStatus,
   sanitizeAssistantText,
-} from "../../../runtime/kernel/internal-tool-transcript.js";
+} from "../../../../runtime/kernel/internal-tool-transcript.js";
 
 describe("internal-tool-transcript", () => {
   it("keeps assistant prose while removing leaked internal transcript lines", () => {

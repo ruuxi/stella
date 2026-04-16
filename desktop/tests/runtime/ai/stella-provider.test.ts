@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { streamSimpleStella } from "../../../runtime/ai/providers/stella.js";
-import type { AssistantMessage, Context, Model } from "../../../runtime/ai/types.js";
+import { streamSimpleStella } from "../../../../runtime/ai/providers/stella.js";
+import type { AssistantMessage, Context, Model } from "../../../../runtime/ai/types.js";
 import {
   normalizeStellaSiteUrl,
   stellaRuntimeUrlFromSiteUrl,

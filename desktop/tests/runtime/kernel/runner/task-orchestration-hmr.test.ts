@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isHmrPathUnderDirectory,
   resolveHmrToolTargetPath,
-} from "../../../../runtime/kernel/runner/task-orchestration.js";
+} from "../../../../../runtime/kernel/runner/task-orchestration.js";
 
 describe("task-orchestration HMR target resolution", () => {
   const stellaRoot = path.resolve("/tmp/stella-root");

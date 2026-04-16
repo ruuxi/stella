@@ -39,7 +39,10 @@ export const shouldRestartElectronForBuildPath = (filename) => {
     return true
   }
 
-  if (!normalized.startsWith('electron/')) {
+  if (
+    !normalized.startsWith('electron/') &&
+    !normalized.startsWith('desktop/electron/')
+  ) {
     return false
   }
 

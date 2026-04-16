@@ -12,14 +12,14 @@ import type {
   RuntimeVoiceChatPayload,
   SelfModFeatureSummary,
   StorePublishArgs,
-} from "../runtime/protocol/index.js";
+} from "../../runtime/protocol/index.js";
 import {
   StellaRuntimeClient,
   type StellaRuntimeClientOptions,
-} from "../runtime/client/index.js";
-import { createRuntimeUnavailableError } from "../runtime/protocol/rpc-peer.js";
-import type { TaskLifecycleEvent } from "../runtime/kernel/tasks/local-task-manager.js";
-import { readConfiguredStellaSiteUrl } from "../runtime/kernel/convex-urls.js";
+} from "../../runtime/client/index.js";
+import { createRuntimeUnavailableError } from "../../runtime/protocol/rpc-peer.js";
+import type { TaskLifecycleEvent } from "../../runtime/kernel/tasks/local-task-manager.js";
+import { readConfiguredStellaSiteUrl } from "../../runtime/kernel/convex-urls.js";
 
 type AgentCallbacks = {
   onRunStarted?: (event: RuntimeAgentEventPayload) => void;
@@ -586,7 +586,7 @@ export class RuntimeClientAdapter {
       conversationId: string;
       userPrompt: string;
       selectedText?: string | null;
-      chatContext?: import("../runtime/contracts/index.js").ChatContext | null;
+      chatContext?: import("../../runtime/contracts/index.js").ChatContext | null;
       deviceId?: string;
       platform?: string;
       timezone?: string;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createOrchestratorResponseTargetTracker,
   createTaskLifecycleResponseTarget,
-} from "../../../../runtime/kernel/agent-runtime/response-target.js";
+} from "../../../../../runtime/kernel/agent-runtime/response-target.js";
 
 describe("orchestrator response target tracking", () => {
   it("classifies a TaskCreate reply as a task turn", () => {

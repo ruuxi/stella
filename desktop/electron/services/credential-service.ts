@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { BrowserWindow } from 'electron'
 import type { CredentialRequestPayload, CredentialResponsePayload } from '../types.js'
-import type { WindowManagerTarget } from '../../runtime/kernel/lifecycle-targets.js'
+import type { WindowManagerTarget } from '../../../runtime/kernel/lifecycle-targets.js'
 import { PendingRequestStore } from './pending-request-store.js'
 
 export class CredentialService {

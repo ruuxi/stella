@@ -14,7 +14,7 @@ import {
   initializeBootstrapSingleInstance,
   registerBootstrapLifecycle,
 } from "./bootstrap/lifecycle.js";
-import { resolveRuntimeStatePath } from "../runtime/kernel/home/stella-home.js";
+import { resolveRuntimeStatePath } from "../../runtime/kernel/home/stella-home.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,7 +59,7 @@ export const bootstrapMainProcess = () => {
   const context = createBootstrapContext({
     authProtocol: AUTH_PROTOCOL,
     electronDir: __dirname,
-    stellaRoot: path.resolve(__dirname, "..", ".."),
+    stellaRoot: path.resolve(__dirname, "..", "..", "..", ".."),
     hardResetMutableHomePaths: HARD_RESET_MUTABLE_HOME_PATHS,
     isDev,
     sessionPartition: STELLA_SESSION_PARTITION,

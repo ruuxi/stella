@@ -1,4 +1,4 @@
-import { sanitizeAssistantText } from "../../../../runtime/kernel/internal-tool-transcript.js";
+import { sanitizeAssistantText } from "../../../../../runtime/kernel/internal-tool-transcript.js";
 import type { OfficePreviewRef } from "@/shared/contracts/office-preview";
 
 export interface StepItem {

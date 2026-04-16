@@ -10,7 +10,7 @@ import {
 import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
 import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-started-at";
 import { isOrchestratorChatMessagePayload } from "@/app/chat/emotes/message-source";
-import { sanitizeAssistantText } from "../../../runtime/kernel/internal-tool-transcript.js";
+import { sanitizeAssistantText } from "../../../../runtime/kernel/internal-tool-transcript.js";
 import {
   type TurnViewModel,
   getDisplayMessageText,

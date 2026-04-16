@@ -1,4 +1,4 @@
-import { normalizeSafeExternalUrl } from "../../runtime/kernel/tools/network-guards.js";
+import { normalizeSafeExternalUrl } from "../../../runtime/kernel/tools/network-guards.js";
 
 /** Same budget as browser-backed fetch (`browser:fetchJson` / `browser:fetchText`). */
 export const PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS = 30_000;

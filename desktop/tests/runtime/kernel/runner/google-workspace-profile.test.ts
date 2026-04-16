@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseGoogleWorkspaceProfile } from "../../../../runtime/kernel/runner.js";
+import { parseGoogleWorkspaceProfile } from "../../../../../runtime/kernel/runner.js";
 
 describe("parseGoogleWorkspaceProfile", () => {
   it("reads the authenticated account from People API nested fields", () => {

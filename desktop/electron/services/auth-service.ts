@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { app } from 'electron'
-import type { PiRunnerTarget } from '../../runtime/kernel/lifecycle-targets.js'
-import { readConfiguredConvexSiteUrl } from '../../runtime/kernel/convex-urls.js'
+import type { PiRunnerTarget } from '../../../runtime/kernel/lifecycle-targets.js'
+import { readConfiguredConvexSiteUrl } from '../../../runtime/kernel/convex-urls.js'
 import type {
   HostRuntimeAuthRefreshResult,
   RuntimeAuthRefreshSource,
-} from '../../runtime/protocol/index.js'
+} from '../../../runtime/protocol/index.js'
 
 const AUTH_CALLBACK_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/
 const RUNTIME_AUTH_REFRESH_TIMEOUT_MS = 12_000

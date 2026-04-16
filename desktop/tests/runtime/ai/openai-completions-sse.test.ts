@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { AssistantMessageEventStream } from "../../../runtime/ai/utils/event-stream.js";
+import { AssistantMessageEventStream } from "../../../../runtime/ai/utils/event-stream.js";
 import {
   createAssistantMessageShell,
   pumpOpenAICompatibleChatCompletionsResponse,
-} from "../../../runtime/ai/utils/openai-completions-sse.js";
+} from "../../../../runtime/ai/utils/openai-completions-sse.js";
 
 const collectEventTypes = async (stream: AssistantMessageEventStream) => {
   const eventTypes: string[] = [];
