@@ -11,6 +11,7 @@ docs/
 # Workspace installs
 /node_modules/
 /runtime/node_modules/
+/.stella-runtime-reload-state.json
 
 # Stella runtime state (mutable, user-specific, never commit).
 # Seed content under state/ stays tracked via the allowlist below.
