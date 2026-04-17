@@ -47,6 +47,7 @@ const createHost = (
     stellaBrowserBinPath?: string;
     stellaOfficeBinPath?: string;
     stellaUiCliPath?: string;
+    stellaComputerCliPath?: string;
   },
 ) =>
   createToolHost({
@@ -231,6 +232,41 @@ return await shell.exec("stella-browser snapshot -i");
       provider: "extension",
       session: "stella-app-bridge",
       owner: "task-test",
+    });
+  });
+
+  it("exposes the stella-computer wrapper inside ExecuteTypescript shell.exec", async () => {
+    const stellaRoot = createTempDir("stella-code-mode-root-");
+    const fakeComputerPath = path.join(stellaRoot, "fake-stella-computer.js");
+    writeFileSync(
+      fakeComputerPath,
+      `console.log(JSON.stringify({
+  args: process.argv.slice(2),
+  cli: process.env.STELLA_COMPUTER_CLI ?? null,
+  session: process.env.STELLA_COMPUTER_SESSION ?? null,
+}));`,
+      "utf-8",
+    );
+
+    const host = createHost(stellaRoot, {
+      stellaComputerCliPath: fakeComputerPath,
+    });
+    const result = await host.executeTool(
+      "ExecuteTypescript",
+      {
+        summary: "run stella computer wrapper",
+        code: `
+return await shell.exec("stella-computer snapshot --json");
+        `,
+      },
+      createContext(stellaRoot, { taskId: "task-test" }),
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(JSON.parse(String(result.result))).toEqual({
+      args: ["snapshot", "--json"],
+      cli: fakeComputerPath,
+      session: "general-task-task-test",
     });
   });
 
