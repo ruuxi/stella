@@ -94,7 +94,12 @@ stella-computer --session my-task snapshot --app Finder
 stella-computer snapshot --app Finder --no-screenshot
 stella-computer snapshot --app Finder --no-inline-screenshot   # keep file path, skip base64
 stella-computer click @d4 --no-raise                            # don't bring app frontmost
+stella-computer click @d4 --no-overlay                          # skip the lens + cursor visual overlay
 ```
+
+## Visual overlay
+
+By default every ref-based action (`click`, `fill`, `focus`, `secondary-action`, `scroll`) shows a brief lens + software-cursor overlay around the target element so the user can see what Stella is acting on. The overlay fades in, holds for a beat while the action executes, then fades out — about 700ms total per action. Pass `--no-overlay` (or set `STELLA_COMPUTER_NO_OVERLAY=1`) to skip it when chained-action latency matters more than visual feedback.
 
 ## Common Patterns
 

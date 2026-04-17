@@ -4,6 +4,7 @@ import Carbon.HIToolbox
 import CoreGraphics
 import Foundation
 import OSAKit
+import QuartzCore
 import ScreenCaptureKit
 
 struct Rect: Codable {
@@ -140,6 +141,7 @@ struct ActionOptions {
     let captureScreenshot: Bool
     let noRaise: Bool
     let inlineScreenshot: Bool
+    let showOverlay: Bool
 }
 
 struct AppTarget {
@@ -1426,6 +1428,340 @@ func configureMessagingTimeout(for target: AppTarget) {
 // don't keep stale "prepared" state across runs.
 func forgetPreparedTarget(pid: Int32) {
     preparedTargetPids.remove(pid)
+}
+
+// MARK: - Action overlay (lens + software cursor)
+//
+// Visual feedback while the agent acts. Architecture mirrors the recovered
+// shape of Codex's `ComputerUseCursor`: a borderless screen-spanning panel
+// hosting two CALayers (a pulsing ring around the target frame, and a
+// software cursor pointer drawn at the action point), with spring-driven
+// fade-in / fade-out and frame-driven pulse.
+//
+// Timing constants are inferred from the bundled 45-frame sprite analysis
+// (alpha sum 331k → 397k → 365k, so ~20% breathing depth, near-loop), the
+// modern SwiftUI spring API hint (`initWithPerceptualDuration:bounce:`),
+// and typical Apple HIG durations. We do NOT copy the upstream sprites;
+// the lens is drawn programmatically with CAShapeLayer, and the cursor
+// sprite is drawn once into an NSImage in `softwareCursorImage()`.
+//
+// Lifetime model: the CLI is one-shot, so we keep the overlay in-process
+// for just the action duration. `showOverlay(...)` blocks for the
+// fade-in + brief hold + fade-out sequence (~700ms total), then the
+// caller invokes the action and tears the overlay down afterwards. For
+// chained agent actions this adds ~700ms per call but the visual feedback
+// is worth it; pass `--no-overlay` (or `STELLA_COMPUTER_NO_OVERLAY=1`) to
+// disable.
+
+let overlayLensDiameter: CGFloat = 96         // ring outer diameter, points
+let overlayLensRingWidth: CGFloat = 6
+let overlayPulseDuration: TimeInterval = 1.5  // matches 45 frames @ 30fps
+let overlayPulseDepth: CGFloat = 0.20         // breathing range (matches alpha analysis)
+let overlayFadeInDuration: TimeInterval = 0.18
+let overlayFadeOutDuration: TimeInterval = 0.22
+let overlayHoldDuration: TimeInterval = 0.30  // visible time after fade-in completes
+let overlayCursorMoveDuration: TimeInterval = 0.32  // spring move between targets
+
+final class ActionOverlayWindow: NSPanel {
+    init(screen: NSScreen) {
+        super.init(
+            contentRect: screen.frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        // Transparent, click-through, above app windows but below menu bar.
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        ignoresMouseEvents = true
+        level = .popUpMenu
+        collectionBehavior = [
+            .canJoinAllSpaces,
+            .stationary,
+            .ignoresCycle,
+            .fullScreenAuxiliary,
+        ]
+        isMovableByWindowBackground = false
+        isReleasedWhenClosed = false
+        // Match the screen frame so layer coordinates are screen-relative.
+        setFrame(screen.frame, display: false)
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
+// Programmatic cursor sprite. Draws a small white pointer with a soft
+// drop shadow and a thin black outline so it remains visible on both
+// light and dark surfaces. Drawn once per process and cached.
+//
+// Shape: classic upper-left arrow pointer, 18pt × 24pt, anchor at the tip.
+private var cachedSoftwareCursorImage: NSImage?
+
+func softwareCursorImage() -> NSImage {
+    if let cached = cachedSoftwareCursorImage { return cached }
+    let size = NSSize(width: 18, height: 24)
+    let image = NSImage(size: size, flipped: false) { rect in
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+        // Pointer outline path (top-left arrow shape).
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: 1, y: rect.height - 1))
+        path.addLine(to: CGPoint(x: 1, y: 4))
+        path.addLine(to: CGPoint(x: 6, y: 8))
+        path.addLine(to: CGPoint(x: 9, y: 1))
+        path.addLine(to: CGPoint(x: 12, y: 2.5))
+        path.addLine(to: CGPoint(x: 9, y: 9.5))
+        path.addLine(to: CGPoint(x: 16, y: 11.5))
+        path.closeSubpath()
+        // Drop shadow for visibility on busy backgrounds.
+        ctx.saveGState()
+        ctx.setShadow(
+            offset: CGSize(width: 0, height: -1),
+            blur: 3,
+            color: NSColor.black.withAlphaComponent(0.55).cgColor
+        )
+        // White fill.
+        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.addPath(path)
+        ctx.fillPath()
+        ctx.restoreGState()
+        // Thin black stroke on top of the fill so the outline is crisp.
+        ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.85).cgColor)
+        ctx.setLineWidth(1)
+        ctx.addPath(path)
+        ctx.strokePath()
+        return true
+    }
+    cachedSoftwareCursorImage = image
+    return image
+}
+
+final class ActionOverlayController {
+    private var window: ActionOverlayWindow?
+    private var lensLayer: CAShapeLayer?
+    private var cursorLayer: CALayer?
+    // Track whether we've already promoted the NSApplication activation
+    // policy so we don't toggle it more than once per CLI invocation.
+    private static var activationPolicyPromoted = false
+
+    func show(at frame: CGRect, cursorAt cursorPoint: CGPoint) {
+        promoteActivationPolicyIfNeeded()
+        guard let screen = screenContaining(point: cursorPoint) ?? NSScreen.main else {
+            return
+        }
+
+        let win = ActionOverlayWindow(screen: screen)
+        let host = OverlayHostView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        host.wantsLayer = true
+        host.layer?.backgroundColor = .clear
+        win.contentView = host
+
+        // Convert AX (top-left origin) screen coords to AppKit (bottom-left
+        // origin) window-local coords. The window covers the full screen so
+        // window-local == (screen.frame.origin offset).
+        let screenOrigin = screen.frame.origin
+        let lensCenterAppKit = CGPoint(
+            x: frame.midX - screenOrigin.x,
+            y: screen.frame.size.height - (frame.midY - screenOrigin.y)
+        )
+        let cursorAppKit = CGPoint(
+            x: cursorPoint.x - screenOrigin.x,
+            y: screen.frame.size.height - (cursorPoint.y - screenOrigin.y)
+        )
+
+        let lens = makeLensLayer(at: lensCenterAppKit)
+        host.layer?.addSublayer(lens)
+        lensLayer = lens
+
+        let cursor = makeCursorLayer(at: cursorAppKit, screen: screen)
+        host.layer?.addSublayer(cursor)
+        cursorLayer = cursor
+
+        // Fade-in from 0 to 1 with a quick spring-y curve.
+        host.layer?.opacity = 0
+        win.alphaValue = 1
+        win.orderFrontRegardless()
+        self.window = win
+
+        let fadeIn = CABasicAnimation(keyPath: "opacity")
+        fadeIn.fromValue = 0
+        fadeIn.toValue = 1
+        fadeIn.duration = overlayFadeInDuration
+        fadeIn.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 1.56, 0.64, 1)
+        fadeIn.fillMode = .forwards
+        fadeIn.isRemovedOnCompletion = false
+        host.layer?.add(fadeIn, forKey: "fadeIn")
+        host.layer?.opacity = 1
+    }
+
+    func moveCursor(to point: CGPoint) {
+        guard let cursor = cursorLayer, let screen = screenForCurrentWindow() else { return }
+        let dest = CGPoint(
+            x: point.x - screen.frame.origin.x,
+            y: screen.frame.size.height - (point.y - screen.frame.origin.y)
+        )
+        let move = CABasicAnimation(keyPath: "position")
+        move.fromValue = NSValue(point: cursor.position)
+        move.toValue = NSValue(point: dest)
+        move.duration = overlayCursorMoveDuration
+        move.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 1.2, 0.4, 1)
+        cursor.add(move, forKey: "cursorMove")
+        cursor.position = dest
+    }
+
+    func hide() {
+        guard let win = window, let host = win.contentView else { return }
+        let fadeOut = CABasicAnimation(keyPath: "opacity")
+        fadeOut.fromValue = 1
+        fadeOut.toValue = 0
+        fadeOut.duration = overlayFadeOutDuration
+        fadeOut.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        fadeOut.fillMode = .forwards
+        fadeOut.isRemovedOnCompletion = false
+        host.layer?.add(fadeOut, forKey: "fadeOut")
+        host.layer?.opacity = 0
+        // Wait for the fade to finish, then close. Use a brief synchronous
+        // wait so the CLI doesn't exit before the animation completes.
+        usleep(useconds_t(overlayFadeOutDuration * 1_000_000) + 30_000)
+        win.orderOut(nil)
+        window = nil
+        lensLayer = nil
+        cursorLayer = nil
+    }
+
+    private func makeLensLayer(at center: CGPoint) -> CAShapeLayer {
+        let layer = CAShapeLayer()
+        let radius = overlayLensDiameter / 2
+        let rect = CGRect(
+            x: -radius, y: -radius,
+            width: overlayLensDiameter, height: overlayLensDiameter
+        )
+        layer.path = CGPath(ellipseIn: rect, transform: nil)
+        layer.fillColor = NSColor.clear.cgColor
+        layer.strokeColor = NSColor(calibratedRed: 0.40, green: 0.78, blue: 1.00, alpha: 1.0).cgColor
+        layer.lineWidth = overlayLensRingWidth
+        layer.shadowColor = layer.strokeColor
+        layer.shadowOpacity = 0.85
+        layer.shadowRadius = 14
+        layer.shadowOffset = .zero
+        layer.position = center
+        layer.bounds = CGRect(origin: .zero, size: CGSize(
+            width: overlayLensDiameter + 40,
+            height: overlayLensDiameter + 40
+        ))
+
+        // Breathing pulse: scale + opacity oscillation, repeats forever
+        // while the overlay is shown. Matches the 1.5s cycle inferred from
+        // the upstream 45-frame sprite analysis.
+        let scale = CABasicAnimation(keyPath: "transform.scale")
+        scale.fromValue = 1.0
+        scale.toValue = 1.0 + overlayPulseDepth
+        scale.duration = overlayPulseDuration
+        scale.autoreverses = true
+        scale.repeatCount = .infinity
+        scale.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.add(scale, forKey: "pulseScale")
+
+        let pulseOpacity = CABasicAnimation(keyPath: "opacity")
+        pulseOpacity.fromValue = 0.95
+        pulseOpacity.toValue = 0.55
+        pulseOpacity.duration = overlayPulseDuration
+        pulseOpacity.autoreverses = true
+        pulseOpacity.repeatCount = .infinity
+        pulseOpacity.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.add(pulseOpacity, forKey: "pulseOpacity")
+
+        return layer
+    }
+
+    private func makeCursorLayer(at point: CGPoint, screen: NSScreen) -> CALayer {
+        let img = softwareCursorImage()
+        let layer = CALayer()
+        layer.contents = img
+        layer.contentsScale = screen.backingScaleFactor
+        let size = img.size
+        // Anchor at the pointer tip (upper-left of the sprite) so the
+        // visible cursor tip lands exactly on the action point.
+        layer.bounds = CGRect(origin: .zero, size: size)
+        layer.anchorPoint = CGPoint(x: 0.05, y: 0.95)
+        layer.position = point
+        layer.shadowColor = NSColor.black.cgColor
+        layer.shadowOpacity = 0.35
+        layer.shadowRadius = 4
+        layer.shadowOffset = CGSize(width: 0, height: -1)
+        return layer
+    }
+
+    private func screenContaining(point: CGPoint) -> NSScreen? {
+        for screen in NSScreen.screens {
+            // AX coords are top-left; NSScreen.frame is bottom-left in
+            // multi-display arrangements. Convert before testing.
+            let topLeftFrame = NSRect(
+                x: screen.frame.origin.x,
+                y: NSScreen.screens.first?.frame.maxY ?? 0
+                    - screen.frame.maxY,
+                width: screen.frame.width,
+                height: screen.frame.height
+            )
+            if topLeftFrame.contains(point) { return screen }
+        }
+        return nil
+    }
+
+    private func screenForCurrentWindow() -> NSScreen? {
+        window?.screen ?? NSScreen.main
+    }
+
+    private func promoteActivationPolicyIfNeeded() {
+        if Self.activationPolicyPromoted { return }
+        let app = NSApplication.shared
+        if app.activationPolicy() != .accessory {
+            _ = app.setActivationPolicy(.accessory)
+        }
+        Self.activationPolicyPromoted = true
+    }
+}
+
+// NSView subclass that hosts the overlay layers. Layer-backed so we can add
+// CAShapeLayers + CALayers directly without per-view drawing.
+final class OverlayHostView: NSView {
+    override var isFlipped: Bool { false } // AppKit default; bottom-left origin
+    override func mouseDown(with event: NSEvent) { /* click-through */ }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { false }
+}
+
+// Run the overlay show → hold → action → hide flow synchronously around
+// `body`. Returns whatever `body` returns. When `frame` is nil (e.g. the
+// candidate has no AX frame) the overlay is skipped. When `cursorPoint` is
+// nil the cursor sprite is anchored at the lens center.
+func withActionOverlay<T>(
+    enabled: Bool,
+    frame: Rect?,
+    cursorPoint: CGPoint? = nil,
+    body: () -> T
+) -> T {
+    guard enabled, let frame, frame.width > 0, frame.height > 0 else {
+        return body()
+    }
+    let cgFrame = rectToCGRect(frame)
+    let cursor = cursorPoint ?? frameCenter(frame)
+    let overlay = ActionOverlayController()
+    overlay.show(at: cgFrame, cursorAt: cursor)
+
+    // Brief hold so the user actually sees the lens land before the
+    // action perturbs the UI.
+    usleep(useconds_t(overlayHoldDuration * 1_000_000))
+
+    let result = body()
+
+    overlay.hide()
+    return result
+}
+
+func overlayEnabled(_ options: ActionOptions) -> Bool {
+    if envBool("STELLA_COMPUTER_NO_OVERLAY") { return false }
+    return options.showOverlay
 }
 
 // ScreenCaptureKit-backed window capture. Falls back to /usr/sbin/screencapture
@@ -3181,13 +3517,20 @@ func actionOptions(from args: [String]) throws -> ActionOptions {
     }
     let inlineScreenshot = !hasFlag(args, key: "--no-inline-screenshot")
         && !envBool("STELLA_COMPUTER_NO_INLINE_SCREENSHOT")
+    // Visual overlay (lens + software cursor) is on by default; agent-driven
+    // sessions get the visible "Stella is acting on this element" feedback.
+    // Pass `--no-overlay` (or set STELLA_COMPUTER_NO_OVERLAY=1) to disable
+    // when chained-action latency matters more than visual feedback.
+    let showOverlay = !hasFlag(args, key: "--no-overlay")
+        && !envBool("STELLA_COMPUTER_NO_OVERLAY")
     return ActionOptions(
         statePath: statePath,
         coordinateFallback: hasFlag(args, key: "--coordinate-fallback"),
         allowHid: isHidAllowed(args),
         captureScreenshot: !hasFlag(args, key: "--no-screenshot"),
         noRaise: hasFlag(args, key: "--no-raise") || envBool("STELLA_COMPUTER_NO_RAISE"),
-        inlineScreenshot: inlineScreenshot
+        inlineScreenshot: inlineScreenshot,
+        showOverlay: showOverlay
     )
 }
 
@@ -3296,12 +3639,17 @@ func run() throws {
             ])
         }
         let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, ref: ref)
-        let (clicked, usedAction) = performClick(
-            candidate: resolved.candidate,
-            target: target,
-            coordinateFallback: options.coordinateFallback && options.allowHid,
-            raise: !options.noRaise
-        )
+        let (clicked, usedAction) = withActionOverlay(
+            enabled: overlayEnabled(options),
+            frame: resolved.candidate.frame
+        ) {
+            performClick(
+                candidate: resolved.candidate,
+                target: target,
+                coordinateFallback: options.coordinateFallback && options.allowHid,
+                raise: !options.noRaise
+            )
+        }
         guard clicked else {
             throw failureWithScreenshot(
                 "Failed to click \(ref).",
@@ -3345,12 +3693,17 @@ func run() throws {
         let ref = positional[0]
         let text = positional[1]
         let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, ref: ref)
-        let (filled, fillUsedAction) = setValue(
-            candidate: resolved.candidate,
-            text: text,
-            target: target,
-            raise: !options.noRaise
-        )
+        let (filled, fillUsedAction) = withActionOverlay(
+            enabled: overlayEnabled(options),
+            frame: resolved.candidate.frame
+        ) {
+            setValue(
+                candidate: resolved.candidate,
+                text: text,
+                target: target,
+                raise: !options.noRaise
+            )
+        }
         guard filled else {
             throw failureWithScreenshot(
                 "Failed to set value for \(ref).",
@@ -3392,7 +3745,13 @@ func run() throws {
             ])
         }
         let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, ref: ref)
-        guard setFocused(resolved.candidate.element) else {
+        let focusOk = withActionOverlay(
+            enabled: overlayEnabled(options),
+            frame: resolved.candidate.frame
+        ) {
+            setFocused(resolved.candidate.element)
+        }
+        guard focusOk else {
             throw failureWithScreenshot(
                 "Failed to focus \(ref).",
                 statePath: options.statePath,
@@ -3446,7 +3805,13 @@ func run() throws {
                 captureDiagnosticScreenshot: options.captureScreenshot
             )
         }
-        guard performSemanticAction(candidate: resolved.candidate, actionName: actionName) else {
+        let secondaryOk = withActionOverlay(
+            enabled: overlayEnabled(options),
+            frame: resolved.candidate.frame
+        ) {
+            performSemanticAction(candidate: resolved.candidate, actionName: actionName)
+        }
+        guard secondaryOk else {
             throw failureWithScreenshot(
                 "Failed to perform \(actionName) on \(ref).",
                 statePath: options.statePath,
@@ -3492,11 +3857,17 @@ func run() throws {
             ])
         }
         let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, ref: ref)
-        guard let (usedAction, scrollWarnings) = performScroll(
-            candidate: resolved.candidate,
-            direction: direction,
-            pages: pages
-        ) else {
+        let scrollResult = withActionOverlay(
+            enabled: overlayEnabled(options),
+            frame: resolved.candidate.frame
+        ) {
+            performScroll(
+                candidate: resolved.candidate,
+                direction: direction,
+                pages: pages
+            )
+        }
+        guard let (usedAction, scrollWarnings) = scrollResult else {
             var warnings = resolved.warnings
             if !resolved.candidate.actions.isEmpty {
                 warnings.append("Available actions: \(resolved.candidate.actions.joined(separator: ", "))")

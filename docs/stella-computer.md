@@ -149,6 +149,58 @@ The hook is wired into the generic per-tool `execute` adapter, so any future CLI
 
 The Anthropic provider (`runtime/ai/providers/anthropic.ts::convertContentBlocks`) already handles `(TextContent | ImageContent)[]` arrays in tool results — Anthropic's `tool_result.content` natively supports image blocks. Google + OpenAI providers similarly accept image content; we don't need provider changes.
 
+## Action overlay (lens + software cursor)
+
+`ActionOverlayController` shows a transparent borderless `NSPanel`
+(`ActionOverlayWindow`) over the target screen during every ref-based
+action (`click`, `fill`, `focus`, `secondary-action`, `scroll`). The panel
+hosts two `CALayer`s:
+
+- A `CAShapeLayer` ring around the target element's frame, breathing on
+  scale (1.0 → 1.20) and opacity (0.95 → 0.55) with a 1.5s autoreversing
+  pulse cycle. Stroke colour is sky-blue with a soft glow shadow.
+- A programmatically-drawn software cursor (`softwareCursorImage()` →
+  cached `NSImage`) anchored at the action point so the user sees the
+  pointer "land" at the click target. The pointer is an upper-left arrow
+  with a white fill, thin black stroke, and a 1pt drop shadow so it's
+  visible on light + dark backgrounds.
+
+Window setup mirrors the recovered Codex `ComputerUseCursor.Window`:
+`.borderless` + `.nonactivatingPanel`, `.popUpMenu` level (above app
+windows, below the menu bar), `ignoresMouseEvents = true`,
+`hasShadow = false`, `collectionBehavior = [.canJoinAllSpaces, .stationary,
+.ignoresCycle, .fullScreenAuxiliary]`, `orderFrontRegardless()`.
+
+Animation timings:
+
+| Phase | Duration | Curve |
+|---|---|---|
+| Fade-in | `0.18s` | spring-like cubic-bezier `(0.34, 1.56, 0.64, 1.00)` |
+| Hold | `0.30s` | constant |
+| Action body | varies | (real AX / System Events work happens here) |
+| Fade-out | `0.22s` | `easeIn` |
+| Pulse cycle (during hold/action) | `1.5s` autoreverse, infinite | `easeInEaseOut` on scale + opacity |
+| Cursor move (between sequential actions, when implemented) | `0.32s` | spring-like cubic-bezier `(0.34, 1.20, 0.40, 1.00)` |
+
+Total per-action overlay overhead is ~700ms. Disabled per-call via
+`--no-overlay` and globally via `STELLA_COMPUTER_NO_OVERLAY=1`.
+
+The CLI is one-shot: each action invocation creates a fresh overlay,
+runs the show → hold → action → hide cycle synchronously, then exits.
+The first action of the CLI process promotes `NSApplication.shared`'s
+activation policy to `.accessory` so the panel can host AppKit windows;
+subsequent actions in the same process reuse that promotion.
+
+Multi-monitor support: `screenContaining(point:)` finds the screen
+holding the action point (after AX→AppKit coordinate conversion) and
+the panel is created at that screen's frame. Layer positions are
+screen-relative.
+
+We do NOT ship Codex's lens PNG sprites or cursor sprites. The lens is
+fully programmatic (`CAShapeLayer` + `CABasicAnimation`); the software
+cursor is drawn once into an `NSImage` via `NSGraphicsContext` and
+cached for the process lifetime.
+
 ## Per-app operator instructions
 
 Bundled markdown lives in the Swift binary itself (`bundledAppInstructions: [String: String]`) keyed by bundle id. When `snapshot` resolves to `com.apple.finder`, `com.apple.Notes`, `com.apple.iCal`, `com.apple.MobileSMS`, `com.apple.Safari`, or `com.apple.MobileSafari`, the matching markdown is appended to the result under `--- App-specific instructions ---` markers.
