@@ -64,7 +64,7 @@ const verifyHeartbeatSignature = async (args: {
   }
 };
 
-const loadDeviceRow = async (
+const loadDeviceProfile = async (
   ctx: QueryCtx | MutationCtx,
   ownerId: string,
   deviceId: string,
@@ -77,11 +77,132 @@ const loadDeviceRow = async (
     .unique();
 };
 
-const listDevicesForOwner = async (ctx: QueryCtx, ownerId: string) => {
+const loadDevicePresence = async (
+  ctx: QueryCtx | MutationCtx,
+  ownerId: string,
+  deviceId: string,
+) => {
   return await ctx.db
-    .query("devices")
-    .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-    .collect();
+    .query("device_presence")
+    .withIndex("by_ownerId_and_deviceId", (q) =>
+      q.eq("ownerId", ownerId).eq("deviceId", deviceId),
+    )
+    .unique();
+};
+
+type DeviceProfileFields = {
+  deviceName?: string;
+  devicePublicKey?: string;
+  platform?: string;
+};
+
+const upsertDeviceProfile = async (
+  ctx: MutationCtx,
+  ownerId: string,
+  deviceId: string,
+  fields: DeviceProfileFields,
+) => {
+  const existing = await loadDeviceProfile(ctx, ownerId, deviceId);
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      ...(fields.deviceName !== undefined ? { deviceName: fields.deviceName } : {}),
+      ...(fields.devicePublicKey !== undefined ? { devicePublicKey: fields.devicePublicKey } : {}),
+      ...(fields.platform !== undefined ? { platform: fields.platform } : {}),
+    });
+    return existing;
+  }
+  const id = await ctx.db.insert("devices", {
+    ownerId,
+    deviceId,
+    ...(fields.deviceName !== undefined ? { deviceName: fields.deviceName } : {}),
+    ...(fields.devicePublicKey !== undefined ? { devicePublicKey: fields.devicePublicKey } : {}),
+    ...(fields.platform !== undefined ? { platform: fields.platform } : {}),
+  });
+  return await ctx.db.get(id);
+};
+
+type DevicePresenceFields = {
+  online: boolean;
+  lastHeartbeatAt?: number;
+  lastSignedAtMs?: number;
+};
+
+const upsertDevicePresence = async (
+  ctx: MutationCtx,
+  ownerId: string,
+  deviceId: string,
+  fields: DevicePresenceFields,
+) => {
+  const now = Date.now();
+  const existing = await loadDevicePresence(ctx, ownerId, deviceId);
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      online: fields.online,
+      ...(fields.lastHeartbeatAt !== undefined ? { lastHeartbeatAt: fields.lastHeartbeatAt } : {}),
+      ...(fields.lastSignedAtMs !== undefined ? { lastSignedAtMs: fields.lastSignedAtMs } : {}),
+      updatedAt: now,
+    });
+    return;
+  }
+  await ctx.db.insert("device_presence", {
+    ownerId,
+    deviceId,
+    online: fields.online,
+    ...(fields.lastHeartbeatAt !== undefined ? { lastHeartbeatAt: fields.lastHeartbeatAt } : {}),
+    ...(fields.lastSignedAtMs !== undefined ? { lastSignedAtMs: fields.lastSignedAtMs } : {}),
+    updatedAt: now,
+  });
+};
+
+// Owners typically have a small handful of devices; cap the scan so this
+// stays bounded even if device rows accumulate over time.
+const MAX_DEVICES_PER_OWNER_SCAN = 200;
+
+const listDevicesForOwner = async (
+  ctx: QueryCtx,
+  ownerId: string,
+): Promise<DeviceRow[]> => {
+  const [profiles, presences] = await Promise.all([
+    ctx.db
+      .query("devices")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+      .take(MAX_DEVICES_PER_OWNER_SCAN),
+    ctx.db
+      .query("device_presence")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+      .take(MAX_DEVICES_PER_OWNER_SCAN),
+  ]);
+
+  const presenceByDeviceId = new Map<string, typeof presences[number]>();
+  for (const presence of presences) {
+    presenceByDeviceId.set(presence.deviceId, presence);
+  }
+
+  const rows: DeviceRow[] = profiles.map((profile) => {
+    const presence = presenceByDeviceId.get(profile.deviceId);
+    presenceByDeviceId.delete(profile.deviceId);
+    return {
+      deviceId: profile.deviceId,
+      deviceName: profile.deviceName,
+      platform: profile.platform,
+      online: presence?.online ?? false,
+      lastHeartbeatAt: presence?.lastHeartbeatAt,
+      lastSignedAtMs: presence?.lastSignedAtMs,
+    };
+  });
+
+  // Surface presence rows that lack a profile row (shouldn't normally happen
+  // but keeps the merge total) so callers don't silently drop them.
+  for (const presence of presenceByDeviceId.values()) {
+    rows.push({
+      deviceId: presence.deviceId,
+      online: presence.online,
+      lastHeartbeatAt: presence.lastHeartbeatAt,
+      lastSignedAtMs: presence.lastSignedAtMs,
+    });
+  }
+
+  return rows;
 };
 
 const getLastHeartbeatAt = (row: Pick<DeviceRow, "lastHeartbeatAt" | "lastSignedAtMs">) =>
@@ -156,36 +277,25 @@ export const heartbeat = mutation({
       });
     }
 
-    const existing = await loadDeviceRow(ctx, ownerId, args.deviceId);
+    const existingProfile = await loadDeviceProfile(ctx, ownerId, args.deviceId);
 
-    if (existing?.devicePublicKey && existing.devicePublicKey !== args.publicKey) {
+    if (existingProfile?.devicePublicKey && existingProfile.devicePublicKey !== args.publicKey) {
       throw new ConvexError({
         code: "UNAUTHORIZED",
         message: "Device key mismatch for this machine.",
       });
     }
 
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        ...(args.deviceName !== undefined ? { deviceName: args.deviceName } : {}),
-        devicePublicKey: args.publicKey,
-        lastHeartbeatAt: now,
-        lastSignedAtMs: args.signedAtMs,
-        online: true,
-        ...(args.platform !== undefined ? { platform: args.platform } : {}),
-      });
-    } else {
-      await ctx.db.insert("devices", {
-        ownerId,
-        deviceId: args.deviceId,
-        deviceName: args.deviceName,
-        devicePublicKey: args.publicKey,
-        lastHeartbeatAt: now,
-        lastSignedAtMs: args.signedAtMs,
-        online: true,
-        platform: args.platform,
-      });
-    }
+    await upsertDeviceProfile(ctx, ownerId, args.deviceId, {
+      deviceName: args.deviceName,
+      devicePublicKey: args.publicKey,
+      platform: args.platform,
+    });
+    await upsertDevicePresence(ctx, ownerId, args.deviceId, {
+      online: true,
+      lastHeartbeatAt: now,
+      lastSignedAtMs: args.signedAtMs,
+    });
     return null;
   },
 });
@@ -205,25 +315,14 @@ export const registerDevice = mutation({
     const ownerId = await requireUserId(ctx);
     const now = Date.now();
 
-    const existing = await loadDeviceRow(ctx, ownerId, args.deviceId);
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        ...(args.deviceName !== undefined ? { deviceName: args.deviceName } : {}),
-        lastHeartbeatAt: now,
-        online: true,
-        ...(args.platform !== undefined ? { platform: args.platform } : {}),
-      });
-    } else {
-      await ctx.db.insert("devices", {
-        ownerId,
-        deviceId: args.deviceId,
-        deviceName: args.deviceName,
-        lastHeartbeatAt: now,
-        online: true,
-        platform: args.platform,
-      });
-    }
+    await upsertDeviceProfile(ctx, ownerId, args.deviceId, {
+      deviceName: args.deviceName,
+      platform: args.platform,
+    });
+    await upsertDevicePresence(ctx, ownerId, args.deviceId, {
+      online: true,
+      lastHeartbeatAt: now,
+    });
     return null;
   },
 });
@@ -238,10 +337,12 @@ export const goOffline = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const ownerId = await requireUserId(ctx);
-    const device = await loadDeviceRow(ctx, ownerId, args.deviceId);
-
-    if (device) {
-      await ctx.db.patch(device._id, { online: false });
+    const presence = await loadDevicePresence(ctx, ownerId, args.deviceId);
+    if (presence) {
+      await ctx.db.patch(presence._id, {
+        online: false,
+        updatedAt: Date.now(),
+      });
     }
     return null;
   },
@@ -329,12 +430,27 @@ export const resolveExecutionTarget = internalQuery({
 
 /**
  * Get device status for system prompt injection (any desktop online).
+ * Reads only the high-churn presence table to avoid scanning device profile
+ * data we don't need.
  */
 export const getDeviceStatus = internalQuery({
   args: { ownerId: v.string(), nowMs: v.number() },
   handler: async (ctx, args) => {
-    const rows = await listDevicesForOwner(ctx, args.ownerId);
-    const localOnline = rows.some((r) => isFreshDevice(r, args.nowMs));
+    const presences = await ctx.db
+      .query("device_presence")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
+      .take(MAX_DEVICES_PER_OWNER_SCAN);
+    const localOnline = presences.some((row) =>
+      isFreshDevice(
+        {
+          deviceId: row.deviceId,
+          online: row.online,
+          lastHeartbeatAt: row.lastHeartbeatAt,
+          lastSignedAtMs: row.lastSignedAtMs,
+        },
+        args.nowMs,
+      ),
+    );
     return { localOnline };
   },
 });

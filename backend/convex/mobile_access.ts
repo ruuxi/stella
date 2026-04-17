@@ -21,6 +21,12 @@ const PAIRING_CODE_LENGTH = 8;
 const PAIR_SECRET_ALPHABET =
   "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 const PAIR_SECRET_LENGTH = 48;
+// Bounded reads keep these helpers safe even if (owner, desktop) accumulates
+// historical rows over time. Pairing sessions are short-lived and paired
+// devices are typically a handful per desktop, so these caps are generous.
+const PAIRING_SESSION_SCAN_LIMIT = 50;
+const PAIRED_DEVICE_SCAN_LIMIT = 100;
+const CONNECT_INTENT_SCAN_LIMIT = 20;
 
 const pairedDeviceValidator = v.object({
   mobileDeviceId: v.string(),
@@ -83,21 +89,25 @@ const randomPairSecret = () =>
   randomToken(PAIR_SECRET_LENGTH, PAIR_SECRET_ALPHABET);
 
 
-const loadActivePairingSession = async (
+const loadMostRecentUnusedPairingSession = async (
   ctx: QueryCtx | MutationCtx,
   args: { ownerId: string; desktopDeviceId: string },
 ) => {
+  // Pairing sessions accumulate historically; bound the scan and pick the
+  // most recent unused row. Callers in mutation contexts apply the live
+  // expiry check against `Date.now()` themselves so query handlers stay
+  // deterministic.
   const sessions = await ctx.db
     .query("mobile_pairing_sessions")
     .withIndex("by_ownerId_and_desktopDeviceId", (q) =>
       q.eq("ownerId", args.ownerId).eq("desktopDeviceId", args.desktopDeviceId),
     )
-    .collect();
+    .order("desc")
+    .take(PAIRING_SESSION_SCAN_LIMIT);
 
-  const now = Date.now();
   return (
     sessions
-      .filter((session) => !session.usedAt && session.expiresAt > now)
+      .filter((session) => !session.usedAt)
       .sort((left, right) => right.createdAt - left.createdAt)[0] ?? null
   );
 };
@@ -111,7 +121,7 @@ const listActivePairedDevices = async (
     .withIndex("by_ownerId_and_desktopDeviceId", (q) =>
       q.eq("ownerId", args.ownerId).eq("desktopDeviceId", args.desktopDeviceId),
     )
-    .collect();
+    .take(PAIRED_DEVICE_SCAN_LIMIT);
 
   return devices
     .filter((device) => device.revokedAt === undefined)
@@ -135,7 +145,7 @@ const getPairedMobileDeviceRecord = async (
         .eq("desktopDeviceId", args.desktopDeviceId)
         .eq("mobileDeviceId", args.mobileDeviceId),
     )
-    .collect();
+    .take(PAIRED_DEVICE_SCAN_LIMIT);
 
   const filtered = args.includeRevoked
     ? records
@@ -165,7 +175,7 @@ export const getPhoneAccessState = query({
   handler: async (ctx, args) => {
     const ownerId = await requireConnectedUserId(ctx);
     const [activePairing, pairedDevices] = await Promise.all([
-      loadActivePairingSession(ctx, {
+      loadMostRecentUnusedPairingSession(ctx, {
         ownerId,
         desktopDeviceId: args.desktopDeviceId,
       }),
@@ -206,11 +216,12 @@ export const createPairingSession = mutation({
   }),
   handler: async (ctx, args) => {
     const ownerId = await requireSensitiveUserId(ctx);
-    const existing = await loadActivePairingSession(ctx, {
+    const createdAt = Date.now();
+    const existing = await loadMostRecentUnusedPairingSession(ctx, {
       ownerId,
       desktopDeviceId: args.desktopDeviceId,
     });
-    if (existing) {
+    if (existing && existing.expiresAt > createdAt) {
       return {
         pairingCode: existing.pairingCode,
         expiresAt: existing.expiresAt,
@@ -219,7 +230,6 @@ export const createPairingSession = mutation({
       };
     }
 
-    const createdAt = Date.now();
     const expiresAt = createdAt + MOBILE_PAIRING_SESSION_TTL_MS;
     let pairingCode = randomPairingCode();
 
@@ -275,6 +285,7 @@ export const revokePairedMobileDevice = mutation({
 export const watchIncomingConnectIntent = query({
   args: {
     desktopDeviceId: v.string(),
+    nowMs: v.number(),
   },
   returns: connectIntentValidator,
   handler: async (ctx, args) => {
@@ -282,18 +293,25 @@ export const watchIncomingConnectIntent = query({
     if (!identity || isAnonymousIdentity(identity)) {
       return null;
     }
-    const ownerId = identity.subject;
+    const ownerId = identity.tokenIdentifier;
+    // Range query against the (ownerId, desktopDeviceId, expiresAt) index keeps
+    // the scan bounded to live (un-expired) intents. `nowMs` is supplied by the
+    // caller so this query stays deterministic per the no-Date.now-in-queries
+    // rule; the desktop hook updates it on a polling interval.
     const intents = await ctx.db
       .query("mobile_connect_intents")
       .withIndex("by_ownerId_and_desktopDeviceId_and_expiresAt", (q) =>
-        q.eq("ownerId", ownerId).eq("desktopDeviceId", args.desktopDeviceId),
+        q
+          .eq("ownerId", ownerId)
+          .eq("desktopDeviceId", args.desktopDeviceId)
+          .gt("expiresAt", args.nowMs),
       )
-      .collect();
+      .order("desc")
+      .take(CONNECT_INTENT_SCAN_LIMIT);
 
-    const now = Date.now();
     const intent =
       intents
-        .filter((entry) => !entry.acknowledgedAt && entry.expiresAt > now)
+        .filter((entry) => !entry.acknowledgedAt)
         .sort((left, right) => right.createdAt - left.createdAt)[0] ?? null;
 
     if (!intent) {

@@ -35,6 +35,11 @@ const roomSummaryValidator = v.object({
 
 const optionalRoomSummaryValidator = v.union(v.null(), roomSummaryValidator);
 
+// Cap on member rows hydrated for a single room summary. Group rooms can grow,
+// so this keeps the query bounded; over-cap rooms simply truncate the
+// member-profile preview.
+const MAX_ROOM_MEMBERS_HYDRATED = 500;
+
 const hydrateRoomSummary = async (
   ctx: QueryCtx,
   room: Doc<"social_rooms"> | null,
@@ -47,7 +52,7 @@ const hydrateRoomSummary = async (
     ctx.db
       .query("social_room_members")
       .withIndex("by_roomId_and_joinedAt", (q) => q.eq("roomId", room._id))
-      .collect(),
+      .take(MAX_ROOM_MEMBERS_HYDRATED),
     ctx.db
       .query("social_messages")
       .withIndex("by_roomId_and_createdAt", (q) => q.eq("roomId", room._id))

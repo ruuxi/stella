@@ -5,6 +5,10 @@ import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state"
 
 const DEVICE_ID_RETRY_LIMIT = 8;
 const DEVICE_ID_RETRY_BASE_DELAY_MS = 2_000;
+// Connect intents expire after ~90s; refreshing nowMs every 15s keeps the
+// query subscription deterministic (no Date.now inside the query handler)
+// while remaining responsive to newly-issued intents.
+const INTENT_NOW_REFRESH_MS = 15_000;
 
 type AcknowledgeIntentArgs = Parameters<
   ReturnType<
@@ -18,7 +22,20 @@ export function PhoneAccessBridge() {
     api.mobile_access.acknowledgeConnectIntent,
   );
   const [desktopDeviceId, setDesktopDeviceId] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const lastHandledIntentIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!hasConnectedAccount) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, INTENT_NOW_REFRESH_MS);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [hasConnectedAccount]);
 
   useEffect(() => {
     if (!hasConnectedAccount) {
@@ -72,7 +89,9 @@ export function PhoneAccessBridge() {
 
   const intent = useQuery(
     api.mobile_access.watchIncomingConnectIntent,
-    hasConnectedAccount && desktopDeviceId ? { desktopDeviceId } : "skip",
+    hasConnectedAccount && desktopDeviceId
+      ? { desktopDeviceId, nowMs }
+      : "skip",
   ) as
     | {
         intentId: AcknowledgeIntentArgs["intentId"];

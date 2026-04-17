@@ -64,19 +64,22 @@ export const listPendingRequests = query({
   returns: v.array(socialPendingRequestSummaryValidator),
   handler: async (ctx) => {
     const ownerId = await requireConnectedUserId(ctx);
+    // Pending lists are typically small; cap the scan to keep the query
+    // bounded even for prolific senders/receivers.
+    const MAX_PENDING_REQUESTS_PER_SIDE = 200;
     const [incoming, outgoing] = await Promise.all([
       ctx.db
         .query("social_relationships")
         .withIndex("by_addresseeOwnerId_and_status", (q) =>
           q.eq("addresseeOwnerId", ownerId).eq("status", "pending"),
         )
-        .collect(),
+        .take(MAX_PENDING_REQUESTS_PER_SIDE),
       ctx.db
         .query("social_relationships")
         .withIndex("by_requesterOwnerId_and_status", (q) =>
           q.eq("requesterOwnerId", ownerId).eq("status", "pending"),
         )
-        .collect(),
+        .take(MAX_PENDING_REQUESTS_PER_SIDE),
     ]);
 
     const entries = await Promise.all(
