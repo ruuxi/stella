@@ -6,7 +6,7 @@ use super::cdp::client::CdpClient;
 use super::cdp::types::{
     AXNode, AXProperty, AXValue, EvaluateParams, EvaluateResult, GetFullAXTreeResult,
 };
-use super::element::RefMap;
+use super::element::{RefLocatorHints, RefMap};
 
 const INTERACTIVE_ROLES: &[&str] = &[
     "button",
@@ -77,6 +77,7 @@ pub struct SnapshotOptions {
 struct TreeNode {
     role: String,
     name: String,
+    description: String,
     level: Option<i64>,
     checked: Option<String>,
     expanded: Option<bool>,
@@ -295,12 +296,22 @@ pub async fn take_snapshot(
         let ref_id = format!("e{}", next_ref);
         next_ref += 1;
 
-        ref_map.add(
+        let backend_node_id = tree_nodes[*idx].backend_node_id;
+        let role = tree_nodes[*idx].role.clone();
+        let name = tree_nodes[*idx].name.clone();
+        let hints = RefLocatorHints {
+            description: tree_nodes[*idx].description.clone(),
+            value_text: tree_nodes[*idx].value_text.clone().unwrap_or_default(),
+            ancestor_path: build_ref_ancestor_path(&tree_nodes, *idx, 3),
+        };
+
+        ref_map.add_with_hints(
             ref_id.clone(),
-            tree_nodes[*idx].backend_node_id,
-            &tree_nodes[*idx].role,
-            &tree_nodes[*idx].name,
+            backend_node_id,
+            &role,
+            &name,
             actual_nth,
+            hints,
         );
 
         tree_nodes[*idx].has_ref = true;
@@ -705,6 +716,7 @@ fn build_tree(nodes: &[AXNode]) -> (Vec<TreeNode>, Vec<usize>) {
     for (i, node) in nodes.iter().enumerate() {
         let role = extract_ax_string(&node.role);
         let name = extract_ax_string(&node.name);
+        let description = extract_ax_string(&node.description);
         let value_text = extract_ax_string_opt(&node.value);
 
         let (level, checked, expanded, selected, disabled, required) =
@@ -714,6 +726,7 @@ fn build_tree(nodes: &[AXNode]) -> (Vec<TreeNode>, Vec<usize>) {
             tree_nodes.push(TreeNode {
                 role: String::new(),
                 name: String::new(),
+                description: String::new(),
                 level: None,
                 checked: None,
                 expanded: None,
@@ -736,6 +749,7 @@ fn build_tree(nodes: &[AXNode]) -> (Vec<TreeNode>, Vec<usize>) {
         tree_nodes.push(TreeNode {
             role,
             name,
+            description,
             level,
             checked,
             expanded,
@@ -794,6 +808,36 @@ fn build_tree(nodes: &[AXNode]) -> (Vec<TreeNode>, Vec<usize>) {
     }
 
     (tree_nodes, root_indices)
+}
+
+fn build_ref_ancestor_path(nodes: &[TreeNode], idx: usize, max_len: usize) -> Vec<String> {
+    let mut path = Vec::new();
+    let mut current = nodes[idx].parent_idx;
+
+    while let Some(parent_idx) = current {
+        let parent = &nodes[parent_idx];
+        current = parent.parent_idx;
+
+        if parent.role.is_empty() {
+            continue;
+        }
+        if parent.name.is_empty()
+            && matches!(
+                parent.role.as_str(),
+                "RootWebArea" | "WebArea" | "none" | "generic" | "group" | "presentation"
+            )
+        {
+            continue;
+        }
+
+        path.push(format!("{}:{}", parent.role, parent.name));
+        if path.len() >= max_len {
+            break;
+        }
+    }
+
+    path.reverse();
+    path
 }
 
 fn render_tree(
