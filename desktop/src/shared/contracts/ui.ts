@@ -10,5 +10,5 @@ export type UiState = {
   view: ViewType
   conversationId: string | null
   isVoiceRtcActive: boolean
-  suppressNativeRadialDuringOnboarding: boolean
+  suppressNativeContextMenuDuringOnboarding: boolean
 }

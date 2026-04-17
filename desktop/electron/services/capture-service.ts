@@ -30,7 +30,6 @@ export type CaptureWindowBridge = {
 }
 
 export type CaptureOverlayBridge = {
-  hideRadial: () => void
   startRegionCapture: () => void
   endRegionCapture: () => void
   getOverlayBounds: () => { x: number; y: number; width: number; height: number } | null
@@ -128,6 +127,28 @@ export class CaptureService {
     this.stagedRadialChatContext = null
     this.radialContextShouldCommit = false
     this.radialWindowContextEnabled = true
+  }
+
+  /**
+   * Returns the most recently staged radial-capture context (window info +
+   * screenshot). Used by the cmd+rc "Open chat" path to surface what the
+   * user pointed at as a sidebar suggestion instead of an auto-attach. The
+   * caller must drain the staged context themselves; calling this method
+   * does NOT clear it.
+   */
+  getStagedRadialContext(): ChatContext | null {
+    return this.stagedRadialChatContext
+  }
+
+  /** Wait for any in-flight radial capture to settle (or no-op if none). */
+  async waitForRadialContextSettled(): Promise<void> {
+    const promise = this.pendingRadialCapturePromise
+    if (!promise) return
+    try {
+      await promise
+    } catch {
+      // captureRadialContext swallows errors internally; just ensure we wait.
+    }
   }
 
   setRadialContextShouldCommit(value: boolean) {
@@ -351,7 +372,6 @@ export class CaptureService {
    * capture-preparation pattern shared by every capture path.
    */
   private async withCaptureContext<T>(fn: () => Promise<T>): Promise<T> {
-    this.options.overlay.hideRadial()
     this.options.overlay.endRegionCapture()
 
     try {

@@ -503,42 +503,59 @@
   color: var(--text-weak);
 }
 
-/* ── Compact mode: window narrower than 600px ── */
+/* ── Compact mode: window narrower than 600px ──
+   In compact mode (e.g. the mini window) the sidebar stays as a slim rail
+   alongside the content so chat/home is still visible. The drawer plumbing
+   in the React tree is left in place but neutralised here. */
 @media (max-width: 600px) {
   .full-body > .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 100;
-    transform: translateX(-100%);
+    position: relative;
+    width: 56px;
+    flex-shrink: 0;
+    transform: none;
     box-shadow: none;
+    z-index: 2;
   }
 
-  .full-body > .sidebar.sidebar--drawer-open {
-    transform: translateX(0);
-    box-shadow: var(--shadow-lg);
-    transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  /* The mini window is frameless and has no traffic lights / custom
+     window controls, so the header strip + brand row reserve dead space
+     at the top of the rail. Collapse them. */
+  .full-body > .sidebar .sidebar-header {
+    display: none;
+  }
+
+  .full-body > .sidebar .sidebar-brand {
+    display: none;
+  }
+
+  .full-body > .sidebar .sidebar-nav-item {
+    justify-content: center;
+    padding: 10px 0;
+    gap: 0;
+  }
+
+  .full-body > .sidebar .sidebar-nav-label {
+    display: none;
+  }
+
+  .full-body > .sidebar .sidebar-nav {
+    padding: 12px 6px;
+  }
+
+  .full-body > .sidebar .sidebar-footer {
+    padding: 8px 6px;
+  }
+
+  .full-body > .sidebar .sidebar-footer-row--theme {
+    grid-template-columns: 1fr;
+    row-gap: 4px;
   }
 
   .full-body > .sidebar-drawer-scrim {
-    display: block;
-  }
-
-  .content-area {
-    border-left: none;
-    border-top-left-radius: 0;
-  }
-
-  .content-area::before {
-    height: 40px;
+    display: none;
   }
 
   .compact-hamburger {
-    display: flex;
-  }
-
-  .session-messages {
-    padding-top: 56px;
+    display: none;
   }
 }

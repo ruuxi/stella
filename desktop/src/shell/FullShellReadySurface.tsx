@@ -12,14 +12,11 @@ import { secureSignOut } from "@/global/auth/services/auth";
 import {
   dispatchCloseDisplaySidebar,
   dispatchCloseSidebarChat,
-  dispatchOpenDisplaySidebar,
   dispatchOpenSidebarChat,
-  dispatchShowHome,
 } from "@/shared/lib/stella-orb-chat";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
-import { WindowRadialOverlay } from "./WindowRadialOverlay";
 import { FullShellDialogs } from "./full-shell-dialogs";
 import type { DialogType } from "./full-shell-dialogs";
 
@@ -38,11 +35,17 @@ type PendingAskStellaRequest = {
 };
 
 type FullShellReadySurfaceProps = {
-  onboardingExiting: boolean;
+  /**
+   * True while the onboarding splash is animating out. Currently consumed
+   * by sub-surfaces (kept on the type so callers don't have to change), but
+   * the home page no longer needs to coordinate any composer-entering
+   * animation since the composer lives in the sidebar.
+   */
+  onboardingExiting?: boolean;
 };
 
 export const FullShellReadySurface = ({
-  onboardingExiting,
+  onboardingExiting: _onboardingExiting,
 }: FullShellReadySurfaceProps) => {
   const { state, setView } = useUiState();
   const activeConversationId = state.conversationId;
@@ -51,7 +54,6 @@ export const FullShellReadySurface = ({
     useState<PendingAskStellaRequest | null>(null);
   const [isSidebarChatOpen, setIsSidebarChatOpen] = useState(false);
   const [isDisplaySidebarOpen, setIsDisplaySidebarOpen] = useState(false);
-  const [isShowingHomeContent, setIsShowingHomeContent] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
@@ -79,7 +81,6 @@ export const FullShellReadySurface = ({
 
   const showChatView = useCallback(() => {
     if (state.view === "chat") {
-      dispatchShowHome();
       return;
     }
     setView("chat");
@@ -121,26 +122,22 @@ export const FullShellReadySurface = ({
 
   const showChatSurface = state.view === "chat" || state.view === "social";
 
+  // Right-click toggles the chat sidebar from any view. When the display
+  // sidebar happens to be open (a runtime-driven HTML panel), favor closing
+  // it first so the same gesture dismisses whichever overlay is showing.
   const handleContextMenuOpenSidebarChat = useCallback(() => {
-    if (state.view === "chat") {
-      dispatchOpenDisplaySidebar();
-      return;
-    }
-
     dispatchOpenSidebarChat();
-  }, [state.view]);
+  }, []);
 
   const handleContextMenuCloseSidebarChat = useCallback(() => {
-    if (state.view === "chat") {
+    if (isDisplaySidebarOpen) {
       dispatchCloseDisplaySidebar();
       return;
     }
-
     dispatchCloseSidebarChat();
-  }, [state.view]);
+  }, [isDisplaySidebarOpen]);
 
-  const isContextMenuPanelOpen =
-    state.view === "chat" ? isDisplaySidebarOpen : isSidebarChatOpen;
+  const isContextMenuPanelOpen = isSidebarChatOpen || isDisplaySidebarOpen;
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
@@ -153,7 +150,6 @@ export const FullShellReadySurface = ({
       <Sidebar
         className={drawerOpen ? "sidebar--drawer-open" : undefined}
         activeView={state.view}
-        isShowingHomeContent={isShowingHomeContent}
         onSignIn={showAuthDialog}
         onConnect={showConnectDialog}
         onSettings={showSettingsDialog}
@@ -202,14 +198,12 @@ export const FullShellReadySurface = ({
             <FullShellRuntime
               activeConversationId={activeConversationId}
               activeView={state.view}
-              composerEntering={onboardingExiting}
               conversationId={activeConversationId}
               onSignIn={showAuthDialog}
               pendingAskStellaRequest={pendingAskStellaRequest}
               onPendingAskStellaHandled={handlePendingAskStellaHandled}
               onSidebarChatOpenChange={setIsSidebarChatOpen}
               onDisplaySidebarOpenChange={setIsDisplaySidebarOpen}
-              onHomeContentChange={setIsShowingHomeContent}
             />
           </Suspense>
         </div>
@@ -225,8 +219,6 @@ export const FullShellReadySurface = ({
         conversationId={activeConversationId}
         onConnect={showConnectDialog}
       />
-
-      <WindowRadialOverlay />
     </>
   );
 };

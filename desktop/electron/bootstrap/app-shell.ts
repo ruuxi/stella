@@ -118,7 +118,7 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
       if (!hasMacPermission("accessibility", false)) {
         return;
       }
-      services.radialGestureService.start();
+      services.contextMenuService.start();
     });
   }
 };

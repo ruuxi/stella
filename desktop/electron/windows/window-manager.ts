@@ -380,6 +380,15 @@ export class WindowManager {
       this.miniShouldRestoreExternalApp =
         process.platform === 'darwin' && this.getFocusedShellWindow() === null
 
+      // Hide the full window first so showing the mini doesn't accidentally
+      // also surface a previously-hidden full shell (macOS app.show()
+      // unhides every Stella window, and the full window otherwise stays
+      // raised behind the mini).
+      const fullWindow = this.getFullWindow()
+      if (fullWindow && !fullWindow.isDestroyed() && fullWindow.isVisible()) {
+        this.hideWindow(fullWindow, { preserveExternalFocus: true })
+      }
+
       if (miniWindow.isMinimized()) {
         miniWindow.restore()
       }

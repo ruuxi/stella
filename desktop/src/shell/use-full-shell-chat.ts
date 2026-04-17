@@ -21,15 +21,10 @@ import {
   type StellaSendMessageDetail,
   toStellaMessageMetadata,
 } from '@/shared/lib/stella-send-message'
-import { STELLA_SHOW_HOME_EVENT } from '@/shared/lib/stella-orb-chat'
-import { useIdleHomeVisibility } from '@/app/chat/hooks/use-idle-home-visibility'
 import { useChatContextSync } from './use-chat-context-sync'
 import { useChatScrollManagement } from './use-chat-scroll-management'
 
 const NO_OP = () => {}
-
-/** Set when navigating away from chat; cleared on full app restart (new session). */
-const SESSION_LEFT_CHAT_KEY = 'stella_left_chat_once'
 
 const resetChatScroll = (
   resetScrollState: () => void,
@@ -55,13 +50,6 @@ export function useFullShellChat({
   isDev,
 }: UseFullShellChatOptions) {
   const [message, setMessage] = useState('')
-  const [leftChatOnce, setLeftChatOnce] = useState(() => {
-    if (typeof sessionStorage === 'undefined') return false
-    return sessionStorage.getItem(SESSION_LEFT_CHAT_KEY) === '1'
-  })
-  const [hasInteractedWithChatThisSession, setHasInteractedWithChatThisSession] =
-    useState(false)
-  const prevViewRef = useRef(activeView)
   const { chatContext, setChatContext, selectedText, setSelectedText } =
     useChatContextSync()
 
@@ -97,13 +85,8 @@ export function useFullShellChat({
     sendMessageRef.current = sendMessage
   }, [sendMessage])
 
-  const markHomeSessionInteraction = useCallback(() => {
-    setHasInteractedWithChatThisSession(true)
-  }, [])
-
   const sendContextlessMessage = useCallback(
     (text: string, metadata?: MessageMetadata) => {
-      markHomeSessionInteraction()
       void sendMessageRef.current({
         text,
         selectedText: null,
@@ -112,7 +95,7 @@ export function useFullShellChat({
         metadata,
       })
     },
-    [markHomeSessionInteraction],
+    [],
   )
 
   const sendMessageWithContext = useCallback(
@@ -121,7 +104,6 @@ export function useFullShellChat({
       chatCtx?: import('@/shared/types/electron').ChatContext | null,
       selectedTextCtx?: string | null,
     ) => {
-      markHomeSessionInteraction()
       void sendMessageRef.current({
         text,
         selectedText: selectedTextCtx ?? null,
@@ -129,52 +111,8 @@ export function useFullShellChat({
         onClear: NO_OP,
       })
     },
-    [markHomeSessionInteraction],
+    [],
   )
-
-  const hasMessages = events.length > 0
-
-  const { showHomeContent: idleBasedHome, resetIdleTimer, forceShowHome } = useIdleHomeVisibility({
-    hasMessages,
-    isStreaming,
-  })
-
-  const firstStintOnChat = !leftChatOnce && activeView === 'chat'
-  const showHomeContent = firstStintOnChat
-    ? !hasMessages ||
-      !hasInteractedWithChatThisSession ||
-      idleBasedHome
-    : idleBasedHome
-
-  useEffect(() => {
-    if (prevViewRef.current === 'chat' && activeView !== 'chat') {
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem(SESSION_LEFT_CHAT_KEY, '1')
-      }
-      setLeftChatOnce(true)
-    }
-    prevViewRef.current = activeView
-  }, [activeView])
-
-  const onSuggestionClick = useCallback((prompt: string) => {
-    resetIdleTimer()
-    setMessage(prompt)
-  }, [resetIdleTimer])
-
-  const dismissHome = useCallback(() => {
-    resetIdleTimer()
-    markHomeSessionInteraction()
-  }, [resetIdleTimer, markHomeSessionInteraction])
-
-  const showHome = useCallback(() => {
-    forceShowHome()
-  }, [forceShowHome])
-
-  useEffect(() => {
-    const handler = () => forceShowHome()
-    window.addEventListener(STELLA_SHOW_HOME_EVENT, handler)
-    return () => window.removeEventListener(STELLA_SHOW_HOME_EVENT, handler)
-  }, [forceShowHome])
 
   // Scroll: column-reverse viewport; ResizeObserver follows newest unless paused while a reply is in flight.
   const {
@@ -209,8 +147,6 @@ export function useFullShellChat({
   }, [activeView, resetScrollState, scrollToBottom])
 
   const handleSend = useCallback(() => {
-    markHomeSessionInteraction()
-    resetIdleTimer()
     void sendMessage({
       text: message,
       selectedText,
@@ -223,9 +159,7 @@ export function useFullShellChat({
     })
   }, [
     chatContext,
-    markHomeSessionInteraction,
     message,
-    resetIdleTimer,
     selectedText,
     sendMessage,
     setChatContext,
@@ -363,9 +297,5 @@ export function useFullShellChat({
       hasScrollElement,
       setScrollContainerElement,
     },
-    showHomeContent,
-    onSuggestionClick,
-    dismissHome,
-    showHome,
   }
 }

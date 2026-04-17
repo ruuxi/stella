@@ -12,7 +12,6 @@ import type { AgentStreamEvent } from "@/app/chat/streaming/streaming-types";
 import type { EventRecord } from "@/app/chat/lib/event-transforms";
 import type { LocalChatEventWindowMode } from "../../../../runtime/chat-event-visibility";
 import type {
-  RadialWedge as SharedRadialWedge,
   ChatContext as SharedChatContext,
   ChatContextFile as SharedChatContextFile,
   ChatContextUpdate as SharedChatContextUpdate,
@@ -62,7 +61,6 @@ import type {
   DiscoveryCategory,
   DiscoveryKnowledgeSeedPayload,
 } from "@/shared/contracts/discovery";
-import type { RadialTriggerCode as SharedRadialTriggerCode } from "@/shared/lib/radial-trigger";
 import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
@@ -79,7 +77,6 @@ import type {
   RestoreBackupResult as SharedRestoreBackupResult,
 } from "../contracts/backup";
 
-export type RadialWedge = SharedRadialWedge;
 export type ChatContext = SharedChatContext;
 export type ChatContextFile = SharedChatContextFile;
 export type ChatContextUpdate = SharedChatContextUpdate;
@@ -125,7 +122,6 @@ export type ScheduledConversationEvent = SharedScheduledConversationEvent;
 export type VoiceRuntimeSnapshot = SharedVoiceRuntimeSnapshot;
 export type SocialSessionRuntimeRecord = SharedSocialSessionRuntimeRecord;
 export type SocialSessionServiceSnapshot = SharedSocialSessionServiceSnapshot;
-export type RadialTriggerCode = SharedRadialTriggerCode;
 export type OfficePreviewRef = SharedOfficePreviewRef;
 export type OfficePreviewSnapshot = SharedOfficePreviewSnapshot;
 export type BackupNowResult = SharedBackupNowResult;
@@ -156,6 +152,7 @@ export type ElectronUiApi = {
   getState: () => Promise<UiState>;
   setState: (partial: Partial<UiState>) => Promise<UiState>;
   onState: (callback: (state: UiState) => void) => () => void;
+  onOpenChatSidebar: (callback: () => void) => () => void;
   setAppReady: (ready: boolean) => void;
   reload: () => void;
   hardReset: () => Promise<{ ok: boolean }>;
@@ -215,36 +212,6 @@ export type ElectronCaptureApi = {
   }>;
   cancelRegion: () => void;
   onRegionReset: (callback: () => void) => () => void;
-};
-
-export type ElectronRadialApi = {
-  onShow: (
-    callback: (
-      event: unknown,
-      data: {
-        centerX: number;
-        centerY: number;
-        x?: number;
-        y?: number;
-        screenX?: number;
-        screenY?: number;
-        compactFocused?: boolean;
-      },
-    ) => void,
-  ) => () => void;
-  onHide: (callback: () => void) => () => void;
-  animDone: () => void;
-  onCursor: (
-    callback: (
-      event: unknown,
-      data: { x: number; y: number; centerX: number; centerY: number },
-    ) => void,
-  ) => () => void;
-  onWindowBounds: (
-    callback: (
-      data: { x: number; y: number; width: number; height: number } | null,
-    ) => void,
-  ) => () => void;
 };
 
 export type ElectronOverlayApi = {
@@ -505,10 +472,6 @@ export type ElectronSystemApi = {
   backUpNow: () => Promise<BackupNowResult>;
   listBackups: (limit?: number) => Promise<BackupSummary[]>;
   restoreBackup: (snapshotId: string) => Promise<RestoreBackupResult>;
-  getRadialTriggerKey: () => Promise<RadialTriggerCode>;
-  setRadialTriggerKey: (
-    triggerKey: RadialTriggerCode,
-  ) => Promise<{ triggerKey: RadialTriggerCode }>;
   syncLocalModelPreferences: (payload: {
     defaultModels: Record<string, string>;
     resolvedDefaultModels: Record<string, string>;
@@ -733,6 +696,88 @@ export type ElectronGoogleWorkspaceApi = {
   onAuthRequired: (callback: () => void) => () => void;
 };
 
+// ---------------------------------------------------------------------------
+// Home dashboard signals
+// ---------------------------------------------------------------------------
+
+export type ElectronHomeApi = {
+  /**
+   * Returns a snapshot of currently running user-facing apps with the
+   * frontmost app marked `isActive: true`. Resolves with an empty `apps`
+   * list when the native helper is unavailable (e.g. non-darwin) so the
+   * UI can render an empty state without special-casing.
+   */
+  listRecentApps: (limit?: number) => Promise<{
+    apps: Array<{
+      name: string;
+      bundleId?: string;
+      pid: number;
+      isActive: boolean;
+      windowTitle?: string;
+    }>;
+  }>;
+  /**
+   * Captures a screenshot of the named app's topmost window via Electron's
+   * desktopCapturer, and returns the title we matched against. Returns
+   * `{ capture: null }` when no matching window source is available or
+   * screen recording permission is denied. Used by the auto-context chip
+   * "lazy capture" path: chip attaches eagerly with metadata, then we
+   * patch in this screenshot when it lands.
+   */
+  captureAppWindow: (
+    target: string | { appName?: string | null; pid?: number | null },
+  ) => Promise<{
+    capture: {
+      title: string;
+      screenshot: {
+        dataUrl: string;
+        width: number;
+        height: number;
+      };
+    } | null;
+  }>;
+  /**
+   * Looks up the active tab for the given browser bundle id. Returns
+   * `{ tab: null }` when the bundle id isn't a known browser, the browser
+   * has no windows, or AppleScript permission was denied.
+   */
+  getActiveBrowserTab: (bundleId: string) => Promise<{
+    tab: {
+      browser: string;
+      bundleId?: string;
+      url: string;
+      title?: string;
+    } | null;
+  }>;
+  /**
+   * Subscribe to one-shot suggestion-pin events from the main process
+   * (e.g. cmd+right-click → "Open chat" surfaces the right-clicked window
+   * as a sidebar suggestion). The renderer's auto-context chip strip
+   * absorbs these into the next available slot.
+   */
+  onPinSuggestion: (
+    callback: (payload: {
+      chip:
+        | {
+            kind: "app";
+            pid: number;
+            name: string;
+            bundleId?: string;
+            isActive: boolean;
+            windowTitle?: string;
+          }
+        | {
+            kind: "tab";
+            browser: string;
+            bundleId: string;
+            url: string;
+            title?: string;
+            host: string;
+          };
+    }) => void,
+  ) => () => void;
+};
+
 export type ElectronScreenGuideApi = {
   show: (annotations: Array<{
     id: string;
@@ -763,7 +808,6 @@ export type ElectronApi = {
   window: ElectronWindowApi;
   ui: ElectronUiApi;
   capture: ElectronCaptureApi;
-  radial: ElectronRadialApi;
   overlay: ElectronOverlayApi;
   screenGuide: ElectronScreenGuideApi;
   mini: ElectronMiniApi;
@@ -786,6 +830,7 @@ export type ElectronApi = {
   socialSessions: ElectronSocialSessionsApi;
   localChat: ElectronLocalChatApi;
   googleWorkspace: ElectronGoogleWorkspaceApi;
+  home: ElectronHomeApi;
 };
 
 declare global {

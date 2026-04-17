@@ -11,13 +11,13 @@ import {
   Maximize2,
   MessageSquare,
   Mic,
+  Plus,
   Scan,
   Search,
   Sparkles,
   X,
   type LucideIcon,
 } from "lucide-react";
-import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
 
 type ShortcutsPhaseProps = {
   mode: "global" | "local";
@@ -25,92 +25,68 @@ type ShortcutsPhaseProps = {
   onFinish: () => void;
 };
 
-const TRIGGER_KEYS_BY_PLATFORM: Record<string, { symbol: string; label: string }[]> = {
-  darwin: [
-    { symbol: "⌥", label: "Option" },
-    { symbol: "⌘", label: "Command" },
-  ],
-  win32: [
-    { symbol: "Alt", label: "Alt" },
-    { symbol: "⊞", label: "Win" },
-  ],
-  linux: [
-    { symbol: "Alt", label: "Alt" },
-    { symbol: "Super", label: "Super" },
-  ],
+const TRIGGER_KEYS_BY_PLATFORM: Record<string, { symbol: string; label: string }> = {
+  darwin: { symbol: "⌘", label: "Command" },
+  win32: { symbol: "Ctrl", label: "Control" },
+  linux: { symbol: "Ctrl", label: "Control" },
 };
 
-function TriggerKeyCaps({ platform }: { platform?: string }) {
-  const keys = TRIGGER_KEYS_BY_PLATFORM[platform ?? ""] ?? TRIGGER_KEYS_BY_PLATFORM.darwin;
+function TriggerHint({ platform }: { platform?: string }) {
+  const key = TRIGGER_KEYS_BY_PLATFORM[platform ?? ""] ?? TRIGGER_KEYS_BY_PLATFORM.darwin;
   return (
     <span className="onboarding-keycaps">
-      {keys.map((key, i) => (
-        <span key={i}>
-          {i > 0 && <span className="onboarding-keycap-plus">+</span>}
-          <kbd className="onboarding-keycap" aria-label={key.label}>{key.symbol}</kbd>
-        </span>
-      ))}
+      <kbd className="onboarding-keycap" aria-label={key.label}>
+        {key.symbol}
+      </kbd>
+      <span className="onboarding-keycap-plus">+</span>
+      <span className="onboarding-keycap" aria-label="Right click">
+        Right click
+      </span>
     </span>
   );
 }
 
-type RadialActionId = "capture" | "chat" | "close" | "voice" | "dismiss";
+type GlobalActionId = "capture" | "chat" | "add" | "voice";
 type MenuActionId = "open-chat";
 
-type Point = {
-  x: number;
-  y: number;
-};
+type Point = { x: number; y: number };
 
-const RADIAL_SIZE = 280;
-const RADIAL_CENTER = RADIAL_SIZE / 2;
-const RADIAL_INNER_RADIUS = 40;
-const RADIAL_OUTER_RADIUS = 125;
-const RADIAL_DEAD_ZONE_RADIUS = 30;
-const RADIAL_CENTER_BG_RADIUS = RADIAL_INNER_RADIUS - 5;
-const RADIAL_WEDGE_ANGLE = 90;
-
-const RADIAL_ACTIONS: {
-  id: Exclude<RadialActionId, "dismiss">;
+const GLOBAL_ACTIONS: {
+  id: GlobalActionId;
   label: string;
-  icon: LucideIcon | null;
-  enabled: boolean;
-  resultTitle?: string;
-  resultBody?: string;
-  resultPrompt?: string;
+  icon: LucideIcon;
+  resultTitle: string;
+  resultBody: string;
+  resultPrompt: string;
 }[] = [
   {
-    id: "capture",
-    label: "Capture",
-    icon: Camera,
-    enabled: true,
-    resultTitle: "Captured selection",
-    resultBody: "I grab the area you marked and open it as context for the next question.",
-    resultPrompt: "Ask about this screenshot...",
-  },
-  {
     id: "chat",
-    label: "Chat",
+    label: "Open chat",
     icon: MessageSquare,
-    enabled: true,
     resultTitle: "Quick chat opened",
     resultBody: "A lightweight chat with me opens over what you were already doing.",
     resultPrompt: "Ask Stella about this page...",
   },
   {
-    id: "close",
-    label: "Close",
-    icon: X,
-    enabled: true,
-    resultTitle: "Mini chat closed",
-    resultBody: "The floating chat gets out of the way while keeping the rest of your workspace unchanged.",
-    resultPrompt: "Mini chat dismissed",
+    id: "capture",
+    label: "Capture region",
+    icon: Camera,
+    resultTitle: "Captured selection",
+    resultBody: "I grab the area you marked and open it as context for the next question.",
+    resultPrompt: "Ask about this screenshot...",
+  },
+  {
+    id: "add",
+    label: "Add to context",
+    icon: Plus,
+    resultTitle: "Context added",
+    resultBody: "I quietly stage the active window or selection so the next question already knows about it.",
+    resultPrompt: "Context staged",
   },
   {
     id: "voice",
-    label: "Voice",
+    label: "Voice mode",
     icon: Mic,
-    enabled: true,
     resultTitle: "Voice mode listening",
     resultBody: "Talk naturally and I'll keep the current context while transcribing.",
     resultPrompt: "Listening...",
@@ -130,192 +106,96 @@ const MENU_ACTION: {
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
-const createWedgePath = (startAngle: number, endAngle: number): string => {
-  const startRad = (startAngle - 90) * (Math.PI / 180);
-  const endRad = (endAngle - 90) * (Math.PI / 180);
-
-  const x1 = RADIAL_CENTER + RADIAL_INNER_RADIUS * Math.cos(startRad);
-  const y1 = RADIAL_CENTER + RADIAL_INNER_RADIUS * Math.sin(startRad);
-  const x2 = RADIAL_CENTER + RADIAL_OUTER_RADIUS * Math.cos(startRad);
-  const y2 = RADIAL_CENTER + RADIAL_OUTER_RADIUS * Math.sin(startRad);
-  const x3 = RADIAL_CENTER + RADIAL_OUTER_RADIUS * Math.cos(endRad);
-  const y3 = RADIAL_CENTER + RADIAL_OUTER_RADIUS * Math.sin(endRad);
-  const x4 = RADIAL_CENTER + RADIAL_INNER_RADIUS * Math.cos(endRad);
-  const y4 = RADIAL_CENTER + RADIAL_INNER_RADIUS * Math.sin(endRad);
-
-  return `
-    M ${x1} ${y1}
-    L ${x2} ${y2}
-    A ${RADIAL_OUTER_RADIUS} ${RADIAL_OUTER_RADIUS} 0 0 1 ${x3} ${y3}
-    L ${x4} ${y4}
-    A ${RADIAL_INNER_RADIUS} ${RADIAL_INNER_RADIUS} 0 0 0 ${x1} ${y1}
-    Z
-  `;
-};
-
-const getWedgePosition = (index: number) => {
-  const midAngle =
-    (index * RADIAL_WEDGE_ANGLE + RADIAL_WEDGE_ANGLE / 2 - 90) *
-    (Math.PI / 180);
-  const contentRadius = (RADIAL_INNER_RADIUS + RADIAL_OUTER_RADIUS) / 2;
-  return {
-    x: RADIAL_CENTER + contentRadius * Math.cos(midAngle),
-    y: RADIAL_CENTER + contentRadius * Math.sin(midAngle),
-  };
-};
-
-const RADIAL_LAYOUT = RADIAL_ACTIONS.map((action, index) => ({
-  ...action,
-  path: createWedgePath(index * RADIAL_WEDGE_ANGLE, (index + 1) * RADIAL_WEDGE_ANGLE),
-  position: getWedgePosition(index),
-}));
-
-const getRadialAction = (
-  point: Point,
-  center: Point,
-): RadialActionId => {
-  const dx = point.x - center.x;
-  const dy = point.y - center.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-
-  if (distance < RADIAL_DEAD_ZONE_RADIUS) {
-    return "dismiss";
-  }
-
-  let angle = Math.atan2(dy, dx) * (180 / Math.PI);
-  if (angle < 0) {
-    angle += 360;
-  }
-  angle = (angle + 90) % 360;
-
-  const wedgeIndex = Math.floor(angle / RADIAL_WEDGE_ANGLE);
-  return RADIAL_ACTIONS[wedgeIndex]?.enabled
-    ? RADIAL_ACTIONS[wedgeIndex].id
-    : "dismiss";
-};
+const MENU_WIDTH = 200;
+const MENU_ITEM_HEIGHT = 28;
+const MENU_PADDING_Y = 6;
+const MENU_HEIGHT = GLOBAL_ACTIONS.length * MENU_ITEM_HEIGHT + MENU_PADDING_Y * 2;
 
 export function OnboardingShortcutsPhase({
   mode,
   splitTransitionActive,
   onFinish,
 }: ShortcutsPhaseProps) {
-  const radialSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
   const menuSurfaceRef = useRef<HTMLDivElement | null>(null);
 
-  const [radialOpen, setRadialOpen] = useState(false);
-  const [radialAnchor, setRadialAnchor] = useState<Point>({ x: 0, y: 0 });
-  const [radialSelected, setRadialSelected] = useState<RadialActionId>("dismiss");
-  const [radialResult, setRadialResult] = useState<Exclude<RadialActionId, "dismiss"> | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<Point>({ x: 0, y: 0 });
+  const [menuResult, setMenuResult] = useState<GlobalActionId | null>(null);
 
-  const [menuSidebarOpen, setMenuSidebarOpen] = useState(false);
-  const [menuResult, setMenuResult] = useState<MenuActionId | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [localResult, setLocalResult] = useState<MenuActionId | null>(null);
 
-  // Capture region selection state
+  // Capture region selection state (used for the "capture" demo).
   const [capturePhase, setCapturePhase] = useState<"idle" | "ready" | "dragging" | "done">("idle");
   const [captureStart, setCaptureStart] = useState<Point>({ x: 0, y: 0 });
   const selectionRef = useRef<HTMLDivElement | null>(null);
 
   const platform = window.electronAPI?.platform;
 
-  const gestureModeRef = useRef<"idle" | "radial">("idle");
-  const triggerKeysHeld = useRef(false);
-
-  const radialResultCard = useMemo(
-    () => RADIAL_ACTIONS.find((action) => action.id === radialResult) ?? null,
-    [radialResult],
+  const globalResultCard = useMemo(
+    () => GLOBAL_ACTIONS.find((action) => action.id === menuResult) ?? null,
+    [menuResult],
   );
-  const menuResultCard = menuResult ? MENU_ACTION : null;
+  const localResultCard = localResult ? MENU_ACTION : null;
 
-  const closeGesture = useCallback(() => {
-    gestureModeRef.current = "idle";
-    triggerKeysHeld.current = false;
-    setRadialOpen(false);
-    setRadialSelected("dismiss");
-  }, []);
-
-  // Check if the chord keys (Option+Cmd / Alt+Win) are both held
-  const isTriggerChord = useCallback((event: KeyboardEvent) => {
-    const platform = window.electronAPI?.platform;
-    if (platform === "darwin") {
-      return event.altKey && event.metaKey;
-    }
-    // win32 / linux: Alt + Meta(Win)
-    return event.altKey && event.metaKey;
-  }, []);
-
-  useEffect(() => {
-    const handleMouseMove = (event: MouseEvent) => {
-      if (gestureModeRef.current === "radial") {
-        const surface = radialSurfaceRef.current;
-        if (!surface) {
-          return;
-        }
-
-        const rect = surface.getBoundingClientRect();
-        const center = {
-          x: rect.left + radialAnchor.x,
-          y: rect.top + radialAnchor.y,
-        };
-
-        setRadialSelected(
-          getRadialAction({ x: event.clientX, y: event.clientY }, center),
-        );
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeGesture();
+  // Detect Cmd+Right Click (mac) or Ctrl+Right Click (Windows / Linux) inside
+  // the demo surface and pop the mock context menu at the cursor position.
+  const handleSurfaceContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const isMac = platform === "darwin";
+      const modifierHeld = isMac ? event.metaKey : event.ctrlKey;
+      if (!modifierHeld) {
+        // Without the modifier, we don't intercept — let the OS / app handle it.
         return;
       }
+      event.preventDefault();
+      const surface = surfaceRef.current;
+      if (!surface) return;
+      const rect = surface.getBoundingClientRect();
+      const x = clamp(event.clientX - rect.left, 8, rect.width - MENU_WIDTH - 8);
+      const y = clamp(event.clientY - rect.top, 8, rect.height - MENU_HEIGHT - 8);
+      setMenuAnchor({ x, y });
+      setMenuOpen(true);
+    },
+    [platform],
+  );
 
-      if (!triggerKeysHeld.current && isTriggerChord(event)) {
-        triggerKeysHeld.current = true;
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false);
+  }, []);
 
-        // Open radial at center of the surface
-        const surface = radialSurfaceRef.current;
-        if (!surface) return;
+  const handleMenuItemClick = useCallback((action: GlobalActionId) => {
+    setMenuOpen(false);
+    setMenuResult(action);
+    setCapturePhase(action === "capture" ? "ready" : "idle");
+  }, []);
 
-        const rect = surface.getBoundingClientRect();
-        const localX = rect.width / 2;
-        const localY = rect.height / 2;
-
-        gestureModeRef.current = "radial";
-        setRadialAnchor({ x: localX, y: localY });
-        setRadialSelected("dismiss");
-        setRadialResult(null);
-        setCapturePhase("idle");
-        setRadialOpen(true);
-      }
+  // Click anywhere outside the open menu to dismiss it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      const surface = surfaceRef.current;
+      if (!surface || !target) return;
+      const menu = surface.querySelector('[data-shortcuts-menu="true"]');
+      if (menu && menu.contains(target)) return;
+      closeMenu();
     };
-
-    const handleKeyUp = () => {
-      if (!triggerKeysHeld.current) return;
-
-      if (gestureModeRef.current === "radial") {
-        if (radialSelected !== "dismiss") {
-          setRadialResult(radialSelected);
-          setCapturePhase(radialSelected === "capture" ? "ready" : "idle");
-        }
-      }
-
-      closeGesture();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
     };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("keydown", handleKey);
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("keydown", handleKey);
     };
-  }, [closeGesture, isTriggerChord, radialAnchor.x, radialAnchor.y, radialSelected]);
+  }, [menuOpen, closeMenu]);
 
   const handleCaptureMouseDown = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     if (capturePhase !== "ready" || event.button !== 0) return;
-    const surface = radialSurfaceRef.current;
+    const surface = surfaceRef.current;
     if (!surface) return;
     const rect = surface.getBoundingClientRect();
     const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
@@ -330,7 +210,7 @@ export function OnboardingShortcutsPhase({
     let pendingEnd: Point | null = null;
 
     const handleMove = (event: MouseEvent) => {
-      const surface = radialSurfaceRef.current;
+      const surface = surfaceRef.current;
       if (!surface) return;
       const rect = surface.getBoundingClientRect();
       const end = {
@@ -373,22 +253,22 @@ export function OnboardingShortcutsPhase({
 
   const handleMenuContextMenu = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
-    setMenuSidebarOpen((prev) => {
+    setSidebarOpen((prev) => {
       const next = !prev;
       if (next) {
-        setMenuResult("open-chat");
+        setLocalResult("open-chat");
       }
       return next;
     });
   }, []);
 
-  const finishVisible = mode === "global" ? radialResult !== null : menuResult !== null;
+  const finishVisible = mode === "global" ? menuResult !== null : localResult !== null;
 
   return (
     <div className="onboarding-step-content onboarding-shortcuts-phase">
       <p className="onboarding-step-desc">
         {mode === "global"
-          ? "Trigger Stella from anywhere with the system quick gesture, then release on an option to preview what happens."
+          ? "Trigger Stella from anywhere by holding the modifier key and right-clicking. Pick an option to preview what happens."
           : "Inside Stella, the hold menu gives you fast context-aware actions on cards, notes, and other app content."}
       </p>
 
@@ -400,18 +280,20 @@ export function OnboardingShortcutsPhase({
           </div>
 
           <div
-            ref={radialSurfaceRef}
-            className="onboarding-shortcut-surface onboarding-shortcut-surface--radial"
-            data-testid="shortcuts-radial-surface"
-            data-result={radialResult ?? undefined}
+            ref={surfaceRef}
+            className="onboarding-shortcut-surface onboarding-shortcut-surface--menu"
+            data-testid="shortcuts-global-surface"
+            data-result={menuResult ?? undefined}
+            onContextMenu={handleSurfaceContextMenu}
           >
-            {!radialOpen && !radialResult && (
+            {!menuOpen && !menuResult && (
               <div className="onboarding-shortcut-surface__instruction">
-                <h3 className="onboarding-shortcut-demo__title">Hold <TriggerKeyCaps platform={platform} />, drag to an option, release.</h3>
+                <h3 className="onboarding-shortcut-demo__title">
+                  <TriggerHint platform={platform} /> anywhere to open the menu.
+                </h3>
               </div>
             )}
             <div className="onboarding-shortcut-scene onboarding-shortcut-scene--article">
-              {/* Background window for depth */}
               <div className="onboarding-shortcut-window onboarding-shortcut-window--bg">
                 <div className="onboarding-shortcut-window__bar">
                   <span />
@@ -421,12 +303,10 @@ export function OnboardingShortcutsPhase({
                 </div>
               </div>
 
-              {/* Desktop taskbar */}
               <div className="onboarding-shortcut-taskbar">
                 <span /><span /><span /><span />
               </div>
 
-              {/* Main window */}
               <div className="onboarding-shortcut-window onboarding-shortcut-window--main">
                 <div className="onboarding-shortcut-window__bar">
                   <span />
@@ -505,31 +385,29 @@ export function OnboardingShortcutsPhase({
                   />
                 )}
                 {capturePhase === "done" && (
-                  <>
-                    <div className="scene-effect__capture-chat">
-                      <div className="scene-effect__mini-shell">
-                        <div className="scene-effect__mini-shell-bar">
-                          <span>Stella</span>
-                          <div className="scene-effect__mini-shell-actions">
-                            <Maximize2 size={11} />
-                            <X size={11} />
-                          </div>
-                        </div>
-                        <div className="scene-effect__mini-shell-messages">
-                          <div className="scene-effect__capture-screenshot">
-                            <Camera size={14} />
-                            <span>Screenshot attached</span>
-                          </div>
-                          <div className="scene-effect__mini-shell-msg scene-effect__mini-shell-msg--assistant">
-                            I can see the chart from your report. What would you like to know about the revenue trends?
-                          </div>
-                        </div>
-                        <div className="scene-effect__mini-shell-composer">
-                          <span>Ask about this screenshot...</span>
+                  <div className="scene-effect__capture-chat">
+                    <div className="scene-effect__mini-shell">
+                      <div className="scene-effect__mini-shell-bar">
+                        <span>Stella</span>
+                        <div className="scene-effect__mini-shell-actions">
+                          <Maximize2 size={11} />
+                          <X size={11} />
                         </div>
                       </div>
+                      <div className="scene-effect__mini-shell-messages">
+                        <div className="scene-effect__capture-screenshot">
+                          <Camera size={14} />
+                          <span>Screenshot attached</span>
+                        </div>
+                        <div className="scene-effect__mini-shell-msg scene-effect__mini-shell-msg--assistant">
+                          I can see the chart from your report. What would you like to know about the revenue trends?
+                        </div>
+                      </div>
+                      <div className="scene-effect__mini-shell-composer">
+                        <span>Ask about this screenshot...</span>
+                      </div>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
 
@@ -560,24 +438,11 @@ export function OnboardingShortcutsPhase({
                 </div>
               </div>
 
-              {/* Close: mini shell dismisses */}
-              <div className="scene-effect scene-effect--close">
-                <div className="scene-effect__mini-shell scene-effect__mini-shell--closing">
-                  <div className="scene-effect__mini-shell-bar">
-                    <span>Stella</span>
-                    <div className="scene-effect__mini-shell-actions">
-                      <Maximize2 size={11} />
-                      <X size={11} />
-                    </div>
-                  </div>
-                  <div className="scene-effect__mini-shell-messages">
-                    <div className="scene-effect__mini-shell-msg scene-effect__mini-shell-msg--assistant">
-                      I can see your research report. What would you like to know?
-                    </div>
-                  </div>
-                  <div className="scene-effect__mini-shell-composer">
-                    <span>Ask a follow-up...</span>
-                  </div>
+              {/* Add: subtle "context staged" badge */}
+              <div className="scene-effect scene-effect--add">
+                <div className="scene-effect__add-badge">
+                  <Plus size={14} />
+                  <span>Context staged</span>
                 </div>
               </div>
 
@@ -593,85 +458,37 @@ export function OnboardingShortcutsPhase({
                 </div>
                 <span className="scene-effect__voice-label">Listening...</span>
               </div>
-
             </div>
 
             <div className="onboarding-shortcut-hint">
               Try it here
             </div>
 
-            {radialOpen ? (
-              <div className="onboarding-shortcut-radial-backdrop">
-                <div
-                  className="onboarding-shortcut-radial"
-                  data-testid="shortcuts-radial-overlay"
-                  style={{
-                    left: radialAnchor.x,
-                    top: radialAnchor.y,
-                  }}
-                >
-                  <div className="radial-dial-container">
-                    <div className="onboarding-shortcut-radial-glow" />
-                    <div className="radial-dial-frame radial-dial-frame--visible">
-                      <svg
-                        width={RADIAL_SIZE}
-                        height={RADIAL_SIZE}
-                        viewBox={`0 0 ${RADIAL_SIZE} ${RADIAL_SIZE}`}
-                        className="radial-dial"
-                      >
-                        {RADIAL_LAYOUT.map((action) => {
-                          const isSelected = radialSelected === action.id;
-                          return (
-                            <path
-                              key={action.id}
-                              d={action.path}
-                              className="onboarding-shortcut-radial__wedge"
-                              data-selected={isSelected || undefined}
-                            />
-                          );
-                        })}
-                        <circle
-                          cx={RADIAL_CENTER}
-                          cy={RADIAL_CENTER}
-                          r={RADIAL_CENTER_BG_RADIUS}
-                          className="onboarding-shortcut-radial__center"
-                        />
-                      </svg>
-
-                      {RADIAL_LAYOUT.map((action) => {
-                        const Icon = action.icon;
-                        const isSelected = radialSelected === action.id;
-
-                        return (
-                          <div
-                            key={action.id}
-                            className="radial-wedge-content onboarding-shortcut-radial__content"
-                            data-selected={isSelected || undefined}
-                            style={{
-                              left: action.position.x,
-                              top: action.position.y,
-                            }}
-                          >
-                            {Icon ? <Icon width={16} height={16} /> : null}
-                            {action.label ? (
-                              <span className="radial-wedge-label">{action.label}</span>
-                            ) : null}
-                          </div>
-                        );
-                      })}
-
-                      <div className="radial-center-stella-animation onboarding-shortcut-radial__stella">
-                        <StellaAnimation
-                          width={20}
-                          height={20}
-                          initialBirthProgress={1}
-                          maxDpr={1}
-                          frameSkip={1}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
+            {menuOpen ? (
+              <div
+                data-shortcuts-menu="true"
+                data-testid="shortcuts-menu-overlay"
+                className="onboarding-shortcut-context-menu"
+                style={{
+                  left: menuAnchor.x,
+                  top: menuAnchor.y,
+                  width: MENU_WIDTH,
+                }}
+              >
+                {GLOBAL_ACTIONS.map((action) => {
+                  const Icon = action.icon;
+                  return (
+                    <button
+                      key={action.id}
+                      type="button"
+                      className="onboarding-shortcut-context-menu__item"
+                      onClick={() => handleMenuItemClick(action.id)}
+                    >
+                      <Icon size={14} />
+                      <span>{action.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
 
@@ -689,7 +506,7 @@ export function OnboardingShortcutsPhase({
             ref={menuSurfaceRef}
             className="onboarding-shortcut-surface onboarding-shortcut-surface--menu"
             data-testid="shortcuts-menu-surface"
-            data-menu-result={menuResult ?? undefined}
+            data-menu-result={localResult ?? undefined}
             onContextMenu={handleMenuContextMenu}
           >
             <div className="onboarding-shortcut-app">
@@ -732,7 +549,7 @@ export function OnboardingShortcutsPhase({
                 </div>
               </div>
 
-              {menuSidebarOpen && (
+              {sidebarOpen && (
                 <div className="onboarding-shortcut-sidebar-demo">
                   <div className="onboarding-shortcut-sidebar-demo__header">
                     <span>Stella</span>
@@ -766,18 +583,18 @@ export function OnboardingShortcutsPhase({
 
       <div
         className="onboarding-shortcut-result-description"
-        data-visible={mode === "global" ? (radialResultCard ? "true" : undefined) : (menuResultCard ? "true" : undefined)}
+        data-visible={mode === "global" ? (globalResultCard ? "true" : undefined) : (localResultCard ? "true" : undefined)}
       >
-        {mode === "global" && radialResultCard ? (
+        {mode === "global" && globalResultCard ? (
           <>
-            <strong>{radialResultCard.resultTitle}</strong>
-            <span>{radialResultCard.resultBody}</span>
+            <strong>{globalResultCard.resultTitle}</strong>
+            <span>{globalResultCard.resultBody}</span>
           </>
         ) : null}
-        {mode === "local" && menuResultCard ? (
+        {mode === "local" && localResultCard ? (
           <>
-            <strong>{menuResultCard.resultTitle}</strong>
-            <span>{menuResultCard.resultBody}</span>
+            <strong>{localResultCard.resultTitle}</strong>
+            <span>{localResultCard.resultBody}</span>
           </>
         ) : null}
       </div>

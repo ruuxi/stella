@@ -28,6 +28,10 @@ type QueryWindowInfoOptions = {
   excludePids?: number[]
 }
 
+type WindowInfoByPidOptions = {
+  excludePids?: number[]
+}
+
 const WINDOW_INFO_HELPER = 'window_info'
 
 const queryWindowInfo = (x: number, y: number, options?: QueryWindowInfoOptions): Promise<WindowInfo | null> => {
@@ -88,20 +92,52 @@ export const captureWindowScreenshot = async (
     args.push(`--exclude-pids=${options.excludePids.join(',')}`)
   }
 
-  try {
-      const stdout = await runNativeHelper(WINDOW_INFO_HELPER, args, { timeout: 5000 })
-      if (!stdout) {
-        return null
-      }
+  return runWindowCapture(WINDOW_INFO_HELPER, args, tempPath)
+}
 
-      const info = JSON.parse(stdout) as WindowInfo & { error?: string }
+const HOME_CAPTURE_HELPER = 'home_capture'
+
+/**
+ * Capture the topmost window owned by `pid`. Used by the home suggestion
+ * chip lazy-capture path: the chip attaches eagerly with metadata and we
+ * patch in the screenshot when this resolves.
+ *
+ * Backed by the dedicated `home_capture` helper (separate from
+ * `desktop_automation` / `window_info`) because the home flow needs
+ * different defaults: include off-Space windows in the search, skip the
+ * point-based layer-0 filter, and use ScreenCaptureKit with
+ * `onScreenWindowsOnly: false` so off-Space windows still capture.
+ */
+export const captureWindowScreenshotByPid = async (
+  pid: number,
+  _options?: WindowInfoByPidOptions,
+): Promise<WindowCapture | null> => {
+  if (!hasMacPermission('screen')) return null
+  if (!Number.isFinite(pid) || pid <= 0) return null
+
+  const tempPath = path.join(tmpdir(), `stella_cap_${randomBytes(8).toString('hex')}.png`)
+  const args = [`--pid=${pid}`, `--screenshot=${tempPath}`]
+
+  return runWindowCapture(HOME_CAPTURE_HELPER, args, tempPath)
+}
+
+const runWindowCapture = async (
+  helperName: string,
+  args: string[],
+  tempPath: string,
+): Promise<WindowCapture | null> => {
+  try {
+    const stdout = await runNativeHelper(helperName, args, { timeout: 5000 })
+    if (!stdout) return null
+
+    const info = JSON.parse(stdout) as WindowInfo & { error?: string }
     if (info.error) return null
 
     let pngBuffer: Buffer
     try {
       pngBuffer = await fs.readFile(tempPath)
     } catch {
-      // Screenshot file wasn't created (native capture failed), return info without screenshot
+      // Screenshot file wasn't created (native capture failed); return null
       return null
     }
 
@@ -111,16 +147,11 @@ export const captureWindowScreenshot = async (
 
     return {
       windowInfo: info,
-      screenshot: {
-        dataUrl,
-        width: size.width,
-        height: size.height,
-      },
+      screenshot: { dataUrl, width: size.width, height: size.height },
     }
   } catch {
     return null
   } finally {
-    // Clean up temp file
     fs.unlink(tempPath).catch(() => {})
   }
 }

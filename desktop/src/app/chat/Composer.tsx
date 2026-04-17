@@ -15,6 +15,7 @@ import {
 } from "./ComposerPrimitives";
 import {
   deriveComposerState,
+  hasAttachedComposerChips,
 } from "./composer-context";
 import { useFileDrop } from "./hooks/use-file-drop";
 import { DropOverlay } from "./DropOverlay";
@@ -53,6 +54,7 @@ export function Composer({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const shellContentRef = useRef<HTMLDivElement | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
   const { screenshot: previewScreenshot, previewIndex: previewScreenshotIndex, setPreviewIndex: setPreviewScreenshotIndex } =
     useScreenshotPreview(chatContext);
@@ -72,26 +74,30 @@ export function Composer({
     conversationId,
     requireConversationId: true,
   });
-  const { contextState: composerContextState, placeholder } = composerState;
-  const { hasComposerContext } = composerContextState;
+  const { placeholder } = composerState;
   const isExpanded = composerExpanded;
 
-  /* Shell/inner height animation.
-     The form renders at full natural size (no constraints on children).
-     The shell clips overflow and springs its height to match the form,
-     creating a smooth reveal animation. */
+  /* Shell height animation.
+     The shell-content wrapper renders at full natural size (chip strip +
+     form). The shell clips overflow and springs its height to match the
+     wrapper, creating a smooth reveal animation when chips are added or
+     the textarea expands. */
   useEffect(() => {
+    const content = shellContentRef.current;
     const form = formRef.current;
     const shell = shellRef.current;
-    if (!form || !shell || typeof ResizeObserver === "undefined") return;
+    if (!content || !form || !shell || typeof ResizeObserver === "undefined") return;
 
-    lastHeightRef.current = form.getBoundingClientRect().height;
+    lastHeightRef.current = content.getBoundingClientRect().height;
     shell.style.height = `${lastHeightRef.current}px`;
-    // Clamp pill radius to element height — a radius equal to the height
-    // gives a perfect pill shape but keeps the animation range small
-    // (48→20 instead of 999→20) so the shape change is perceptible
-    // throughout, not bunched at the tail end.
-    shell.style.borderRadius = form.classList.contains("expanded")
+    // Clamp pill radius to height — a radius equal to the height gives a
+    // perfect pill shape but keeps the animation range small (48→20 instead
+    // of 999→20) so the shape change is perceptible throughout, not bunched
+    // at the tail end. Force a non-pill radius once chips are present so
+    // the chip strip never visually overflows the curve.
+    const isExpandedNow = form.classList.contains("expanded");
+    const hasChipsNow = Boolean(content.querySelector(".composer-attached-strip"));
+    shell.style.borderRadius = isExpandedNow || hasChipsNow
       ? "20px"
       : `${Math.min(999, lastHeightRef.current)}px`;
 
@@ -104,7 +110,8 @@ export function Composer({
 
       lastHeightRef.current = newH;
       const expanded = form.classList.contains("expanded");
-      const targetRadius = expanded ? 20 : Math.min(999, newH);
+      const hasChips = Boolean(content.querySelector(".composer-attached-strip"));
+      const targetRadius = expanded || hasChips ? 20 : Math.min(999, newH);
 
       heightAnimRef.current?.stop();
       heightAnimRef.current = animate(
@@ -118,102 +125,107 @@ export function Composer({
       );
     });
 
-    ro.observe(form);
+    ro.observe(content);
     return () => {
       ro.disconnect();
       heightAnimRef.current?.stop();
     };
   }, []);
 
+  const hasAttachedChips = hasAttachedComposerChips(chatContext, selectedText);
+
   return (
     <div className="composer">
-      <div className={`composer-floating-context${hasComposerContext ? "" : " composer-floating-context--empty"}`}>
-        <ComposerContextRow
-          chatContext={chatContext}
-          selectedText={selectedText}
-          setChatContext={setChatContext}
-          setSelectedText={setSelectedText}
-          onPreviewScreenshot={setPreviewScreenshotIndex}
-        />
-      </div>
-
       <div ref={shellRef} className="composer-shell" {...dropHandlers}>
         <DropOverlay visible={isDragOver} variant="full" />
-        <form
-          ref={formRef}
-          className={`composer-form${isExpanded ? " expanded" : ""}`}
-          aria-busy={isStreaming}
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSend();
-          }}
-        >
-          <ComposerAddButton
-            className="composer-add-button"
-            title="Add"
-            onClick={onAdd}
-          />
+        <div ref={shellContentRef} className="composer-shell-content">
+          {hasAttachedChips && (
+            <div className="composer-attached-strip">
+              <ComposerContextRow
+                chatContext={chatContext}
+                selectedText={selectedText}
+                setChatContext={setChatContext}
+                setSelectedText={setSelectedText}
+                onPreviewScreenshot={setPreviewScreenshotIndex}
+              />
+            </div>
+          )}
+          <form
+            ref={formRef}
+            className={`composer-form${isExpanded ? " expanded" : ""}`}
+            aria-busy={isStreaming}
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSend();
+            }}
+          >
+            <ComposerAddButton
+              className="composer-add-button"
+              title="Add"
+              onClick={onAdd}
+            />
 
-          <ComposerTextarea
-            ref={textareaRef}
-            className="composer-input"
-            placeholder={placeholder}
-            value={message}
-            onChange={(event) => {
-              setMessage(event.target.value);
-              requestAnimationFrame(() => {
-                const el = textareaRef.current;
-                if (!el) return;
-                const form = el.closest(".composer-form") as HTMLElement | null;
-                if (!form) return;
-                const isExpanded = form.classList.contains("expanded");
+            <ComposerTextarea
+              ref={textareaRef}
+              className="composer-input"
+              placeholder={placeholder}
+              value={message}
+              onChange={(event) => {
+                setMessage(event.target.value);
+                requestAnimationFrame(() => {
+                  const el = textareaRef.current;
+                  if (!el) return;
+                  const form = el.closest(".composer-form") as HTMLElement | null;
+                  if (!form) return;
+                  const isExpanded = form.classList.contains("expanded");
 
-                if (!isExpanded) {
-                  if (el.scrollHeight > 44) setComposerExpanded(true);
-                } else {
-                  form.classList.remove("expanded");
-                  const pillSh = el.scrollHeight;
-                  form.classList.add("expanded");
-                  if (pillSh <= 44) setComposerExpanded(false);
+                  if (!isExpanded) {
+                    if (el.scrollHeight > 44) setComposerExpanded(true);
+                  } else {
+                    form.classList.remove("expanded");
+                    const pillSh = el.scrollHeight;
+                    form.classList.add("expanded");
+                    if (pillSh <= 44) setComposerExpanded(false);
+                  }
+                });
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  onSend();
                 }
-              });
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                onSend();
-              }
-            }}
-            disabled={!conversationId}
-            rows={1}
-          />
+              }}
+              disabled={!conversationId}
+              rows={1}
+            />
 
-          <div className="composer-toolbar">
-            <div className="composer-toolbar-left">
-              <ComposerAddButton
-                className="composer-add-button composer-add-button--toolbar"
-                title="Add"
-                onClick={onAdd}
-              />
-            </div>
-
-            <div className="composer-toolbar-right">
-              {isStreaming && (
-                <ComposerStopButton
-                  className="composer-stop"
-                  onClick={onStop}
-                  title="Stop"
-                  aria-label="Stop"
+            <div className="composer-toolbar">
+              <div className="composer-toolbar-left">
+                <ComposerAddButton
+                  className="composer-add-button composer-add-button--toolbar"
+                  title="Add"
+                  onClick={onAdd}
                 />
-              )}
-              <ComposerSubmitButton
-                className="composer-submit"
-                disabled={!canSubmit}
-                animated
-              />
+              </div>
+
+              <div className="composer-toolbar-right">
+                {isStreaming && (
+                  <ComposerStopButton
+                    className="composer-stop"
+                    onClick={onStop}
+                    title="Stop"
+                    aria-label="Stop"
+                  />
+                )}
+                <ComposerSubmitButton
+                  className="composer-submit"
+                  disabled={!canSubmit}
+                  animated
+                />
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
 
       {previewScreenshot && previewScreenshotIndex !== null && (

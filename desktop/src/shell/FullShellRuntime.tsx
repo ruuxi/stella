@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ChatColumn } from "@/app/chat/ChatColumn";
+import { HomeContent } from "@/app/home/HomeContent";
 import { SocialView } from "@/app/social/SocialView";
 import type { ViewType } from "@/shared/contracts/ui";
 import {
@@ -13,6 +13,8 @@ import {
   dispatchStellaSendMessage,
   WORKSPACE_CREATION_TRIGGER_KIND,
 } from "@/shared/lib/stella-send-message";
+import { dispatchStellaPinSuggestion } from "@/shared/lib/stella-suggestions";
+import type { SuggestionChip } from "@/app/chat/hooks/use-auto-context-chips";
 import { ChatSidebar, type ChatSidebarHandle } from "./ChatSidebar";
 import { DisplaySidebar, type DisplaySidebarHandle } from "./DisplaySidebar";
 import { useFullShellChat } from "./use-full-shell-chat";
@@ -25,27 +27,23 @@ type PendingAskStellaRequest = {
 type FullShellRuntimeProps = {
   activeConversationId: string | null;
   activeView: ViewType;
-  composerEntering: boolean;
   conversationId: string | null;
   onSignIn: () => void;
   pendingAskStellaRequest: PendingAskStellaRequest | null;
   onPendingAskStellaHandled: (requestId: number) => void;
   onSidebarChatOpenChange?: (open: boolean) => void;
   onDisplaySidebarOpenChange?: (open: boolean) => void;
-  onHomeContentChange?: (showing: boolean) => void;
 };
 
 export const FullShellRuntime = ({
   activeConversationId,
   activeView,
-  composerEntering,
   conversationId,
   onSignIn,
   pendingAskStellaRequest,
   onPendingAskStellaHandled,
   onSidebarChatOpenChange,
   onDisplaySidebarOpenChange,
-  onHomeContentChange,
 }: FullShellRuntimeProps) => {
   const sidebarRef = useRef<ChatSidebarHandle>(null);
   const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
@@ -71,62 +69,48 @@ export const FullShellRuntime = ({
     onPendingAskStellaHandled(pendingAskStellaRequest.id);
   }, [onPendingAskStellaHandled, pendingAskStellaRequest]);
 
-  useEffect(() => {
-    onHomeContentChange?.(chat.showHomeContent);
-  }, [chat.showHomeContent, onHomeContentChange]);
-
-  const activeViewRef = useRef(activeView);
-  activeViewRef.current = activeView;
-
-  const showHomeContentRef = useRef(chat.showHomeContent);
-  showHomeContentRef.current = chat.showHomeContent;
-
+  // Display sidebar mirrors any HTML the runtime emits. Always mount it,
+  // and update its content as it changes — opening on the first payload
+  // for whichever view is active.
   useEffect(() => {
     return window.electronAPI?.display.onUpdate((html) => {
       latestDisplayHtmlRef.current = html;
       const ds = displaySidebarRef.current;
       if (!ds) return;
-      if (showHomeContentRef.current && activeViewRef.current === "chat") {
-        ds.open(html);
-      } else {
-        ds.update(html);
+      ds.update(html);
+    });
+  }, []);
+
+  // Cmd+right-click → "Open chat" surfaces the pointed-at window as a one-shot
+  // suggestion chip in the sidebar. The main process broadcasts via
+  // `home:pinSuggestion` (typed via `electronAPI.home.onPinSuggestion`); we
+  // re-dispatch as a window event so the suggestion-row hook can absorb it
+  // without coupling to electronAPI directly.
+  useEffect(() => {
+    return window.electronAPI?.home.onPinSuggestion((payload) => {
+      if (payload?.chip) {
+        dispatchStellaPinSuggestion({
+          chip: payload.chip as SuggestionChip,
+        });
       }
     });
   }, []);
 
   useEffect(() => {
-    if (activeView !== "chat" || !chat.showHomeContent) {
-      return;
-    }
-
-    const html = latestDisplayHtmlRef.current;
-    if (!html) {
-      return;
-    }
-
-    displaySidebarRef.current?.open(html);
-  }, [activeView, chat.showHomeContent]);
-
-  // Close sidebar when navigating to chat/home
-  useEffect(() => {
-    if (activeView === "chat") {
-      sidebarRef.current?.close();
-    }
-  }, [activeView]);
-
-  useEffect(() => {
     const handleOpen = (event: Event) => {
-      if (activeViewRef.current === "chat") return;
-
       const detail = (event as CustomEvent<StellaOpenSidebarChatDetail>).detail;
       const chatContext = detail?.chatContext;
+      const prefillText = detail?.prefillText;
 
-      if (chatContext === undefined) {
+      if (chatContext === undefined && prefillText === undefined) {
         sidebarRef.current?.open();
         return;
       }
 
-      sidebarRef.current?.open(chatContext ?? null);
+      sidebarRef.current?.open({
+        ...(chatContext !== undefined ? { chatContext } : {}),
+        ...(prefillText !== undefined ? { prefillText } : {}),
+      });
     };
 
     const handleClose = () => {
@@ -134,15 +118,8 @@ export const FullShellRuntime = ({
     };
 
     const handleOpenDisplay = () => {
-      if (activeViewRef.current !== "chat") {
-        return;
-      }
-
       const html = latestDisplayHtmlRef.current;
-      if (!html) {
-        return;
-      }
-
+      if (!html) return;
       displaySidebarRef.current?.open(html);
     };
 
@@ -154,6 +131,13 @@ export const FullShellRuntime = ({
     window.addEventListener(STELLA_CLOSE_SIDEBAR_CHAT_EVENT, handleClose);
     window.addEventListener(STELLA_OPEN_DISPLAY_SIDEBAR_EVENT, handleOpenDisplay);
     window.addEventListener(STELLA_CLOSE_DISPLAY_SIDEBAR_EVENT, handleCloseDisplay);
+
+    // The global Cmd+RightClick → "Open chat" menu fires this from main
+    // after the mini window finishes loading.
+    const cleanupIpcOpen = window.electronAPI?.ui.onOpenChatSidebar?.(() => {
+      sidebarRef.current?.open();
+    });
+
     return () => {
       window.removeEventListener(STELLA_OPEN_SIDEBAR_CHAT_EVENT, handleOpen);
       window.removeEventListener(STELLA_CLOSE_SIDEBAR_CHAT_EVENT, handleClose);
@@ -165,22 +149,14 @@ export const FullShellRuntime = ({
         STELLA_OPEN_DISPLAY_SIDEBAR_EVENT,
         handleOpenDisplay,
       );
+      cleanupIpcOpen?.();
     };
   }, []);
 
   return (
     <>
       {activeView === "chat" ? (
-        <ChatColumn
-          conversation={chat.conversation}
-          composer={chat.composer}
-          scroll={chat.scroll}
-          composerEntering={composerEntering}
-          conversationId={conversationId}
-          showHomeContent={chat.showHomeContent}
-          onSuggestionClick={chat.onSuggestionClick}
-          onDismissHome={chat.dismissHome}
-        />
+        <HomeContent conversationId={conversationId} />
       ) : activeView === "social" ? (
         <SocialView onSignIn={onSignIn} />
       ) : null}

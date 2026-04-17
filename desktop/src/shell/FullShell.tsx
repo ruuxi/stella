@@ -36,7 +36,6 @@ export const FullShell = () => {
   const { gradientMode, gradientColor } = useTheme();
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
   const [demoClosing, setDemoClosing] = useState(false);
-  const [demoMorphing, setDemoMorphing] = useState(false);
   const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeDemoRef = useRef<OnboardingDemo>(null);
   const onboarding = useOnboardingOverlay();
@@ -84,7 +83,7 @@ export const FullShell = () => {
 
   useEffect(() => {
     updateState({
-      suppressNativeRadialDuringOnboarding: !onboarding.onboardingDone,
+      suppressNativeContextMenuDuringOnboarding: !onboarding.onboardingDone,
     });
   }, [onboarding.onboardingDone, updateState]);
 
@@ -143,7 +142,6 @@ export const FullShell = () => {
               onSelectionChange={onboarding.setHasDiscoverySelections}
               onDemoChange={handleDemoChange}
               activeDemo={activeDemo}
-              demoMorphing={demoMorphing}
             />
             <div
               className="onboarding-demo-area"
@@ -152,10 +150,7 @@ export const FullShell = () => {
               aria-hidden={!showOnboardingDemos}
             >
               <Suspense fallback={null}>
-                <OnboardingCanvas
-                  activeDemo={activeDemo}
-                  onMorphStateChange={setDemoMorphing}
-                />
+                <OnboardingCanvas activeDemo={activeDemo} />
               </Suspense>
             </div>
           </div>

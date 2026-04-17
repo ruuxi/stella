@@ -3,15 +3,13 @@ import path from "path";
 import { AuthService } from "../services/auth-service.js";
 import { BackupService } from "../services/backup-service.js";
 import { CaptureService } from "../services/capture-service.js";
+import { ContextMenuService } from "../services/context-menu-service.js";
 import { CredentialService } from "../services/credential-service.js";
 import { ExternalLinkService } from "../services/external-link-service.js";
-import { RadialGestureService } from "../services/radial-gesture-service.js";
 import { SecurityPolicyService } from "../services/security-policy-service.js";
 import { UiStateService } from "../services/ui-state-service.js";
 import { getDevServerUrl } from "../dev-url.js";
 import { hasMacPermission } from "../utils/macos-permissions.js";
-import { loadLocalPreferences } from "../../../runtime/kernel/preferences/local-preferences.js";
-import { DEFAULT_RADIAL_TRIGGER_CODE } from "../../src/shared/lib/radial-trigger.js";
 import type {
   BootstrapConfig,
   BootstrapServices,
@@ -51,7 +49,6 @@ export const createBootstrapServices = (options: {
       showWindow: (target) => state.windowManager?.showWindow(target),
     },
     overlay: {
-      hideRadial: () => state.overlayController?.hideRadial(),
       startRegionCapture: () => state.overlayController?.startRegionCapture(),
       endRegionCapture: () => state.overlayController?.endRegionCapture(),
       getOverlayBounds: () =>
@@ -85,16 +82,9 @@ export const createBootstrapServices = (options: {
     processRuntime: state.processRuntime,
   });
 
-  const radialGestureService = new RadialGestureService({
-    getRadialTriggerKey: () => {
-      const stellaRoot = state.stellaRoot;
-      if (!stellaRoot) {
-        return DEFAULT_RADIAL_TRIGGER_CODE;
-      }
-      return loadLocalPreferences(stellaRoot).radialTriggerKey;
-    },
+  const contextMenuService = new ContextMenuService({
     shouldEnable: () =>
-      !uiStateService.state.suppressNativeRadialDuringOnboarding &&
+      !uiStateService.state.suppressNativeContextMenuDuringOnboarding &&
       (process.platform !== "darwin" ||
         hasMacPermission("accessibility", false)),
     capture: {
@@ -112,23 +102,12 @@ export const createBootstrapServices = (options: {
       hasPendingRadialCapture: () => captureService.hasPendingRadialCapture(),
       captureRadialContext: (x, y, before) =>
         captureService.captureRadialContext(x, y, before),
+      waitForRadialContextSettled: () =>
+        captureService.waitForRadialContextSettled(),
+      getStagedRadialContext: () => captureService.getStagedRadialContext(),
       startRegionCapture: () => captureService.startRegionCapture(),
       emptyContext: () => captureService.emptyContext(),
       broadcastChatContext: () => captureService.broadcastChatContext(),
-    },
-    overlay: {
-      showRadial: (options) =>
-        state.overlayController?.showRadial({
-          ...options,
-          hostWindow:
-            state.windowManager?.isFullWindowMacFullscreen() &&
-            state.windowManager?.getFullWindow()?.isFocused()
-              ? state.windowManager.getFullWindow()
-              : null,
-        }),
-      hideRadial: () => state.overlayController?.hideRadial(),
-      updateRadialCursor: () => state.overlayController?.updateRadialCursor(),
-      getRadialBounds: () => state.overlayController?.getRadialBounds() ?? null,
     },
     window: {
       isCompactMode: () => state.windowManager?.isCompactMode() ?? false,
@@ -137,22 +116,42 @@ export const createBootstrapServices = (options: {
       isWindowFocused: () => state.windowManager?.isWindowFocused() ?? false,
       showWindow: (target) => state.windowManager?.showWindow(target),
       minimizeWindow: () => state.windowManager?.minimizeWindow(),
+      openChatSidebar: (target) => {
+        const wm = state.windowManager;
+        if (!wm) return;
+        const window =
+          target === "mini" ? wm.getMiniWindow() : wm.getFullWindow();
+        if (!window || window.isDestroyed()) return;
+        const send = () => {
+          if (!window.isDestroyed()) {
+            window.webContents.send("chat:openSidebar");
+          }
+        };
+        if (window.webContents.isLoading()) {
+          window.webContents.once("did-finish-load", send);
+        } else {
+          send();
+        }
+      },
     },
-    activateVoiceRtc: () => {
-      uiStateService.activateVoiceRtc(uiStateService.state.conversationId);
-    },
-    deactivateVoiceModes: () => uiStateService.deactivateVoiceModes(),
-    isVoiceActive: () => uiStateService.state.isVoiceRtcActive,
     updateUiState: (partial) => uiStateService.update(partial),
+    pinSidebarSuggestion: (chip) => {
+      const wm = state.windowManager;
+      if (!wm) return;
+      for (const window of wm.getAllWindows()) {
+        if (window.isDestroyed()) continue;
+        window.webContents.send("home:pinSuggestion", { chip });
+      }
+    },
   });
 
   return {
     authService,
     backupService,
     captureService,
+    contextMenuService,
     credentialService,
     externalLinkService,
-    radialGestureService,
     securityPolicyService,
     uiStateService,
   };

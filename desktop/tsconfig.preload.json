@@ -15,7 +15,6 @@
     "electron/preload.ts",
     "../runtime/contracts/**/*",
     "../runtime/protocol/**/*",
-    "src/shared/contracts/**/*",
-    "src/shared/lib/radial-trigger.ts"
+    "src/shared/contracts/**/*"
   ]
 }

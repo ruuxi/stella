@@ -11,40 +11,6 @@
   padding: 8px 24px 16px;
 }
 
-.composer-floating-context {
-  width: 100%;
-  max-width: min(var(--full-chat-composer-max-width), calc(100% - 48px));
-  padding-left: 10px;
-}
-
-.composer-floating-context--empty {
-  display: none;
-}
-
-.full-body-main--home .composer {
-  gap: 0;
-}
-
-.full-body-main--home .composer-floating-context {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition: grid-template-rows 200ms ease;
-}
-
-.full-body-main--home .composer-floating-context--empty {
-  display: grid;
-  grid-template-rows: 0fr;
-}
-
-.full-body-main--home .composer-floating-context > * {
-  min-height: 0;
-  padding-bottom: 10px;
-}
-
-.full-body-main--home .composer-floating-context--empty > * {
-  overflow: hidden;
-}
-
 /* === Shell: visual container with animated height + border-radius === */
 .composer-shell {
   position: relative;
@@ -55,6 +21,26 @@
   box-shadow: var(--shadow-md);
   overflow: clip;
   transition: box-shadow 200ms ease;
+}
+
+/* Wraps the optional chip strip + form so the ResizeObserver can spring
+ * the shell to the right height when chips appear/disappear. */
+.composer-shell-content {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* Strip of attached chips above the textarea row, inside the shell. */
+.composer-attached-strip {
+  width: 100%;
+  padding: 8px 14px 0;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.composer-attached-strip .composer-context-actions {
+  width: 100%;
 }
 
 /* Focus glow — subtle ring when textarea is focused */
