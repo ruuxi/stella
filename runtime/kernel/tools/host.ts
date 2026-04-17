@@ -65,6 +65,7 @@ export const createToolHost = ({
   stellaBrowserBinPath,
   stellaOfficeBinPath,
   stellaUiCliPath,
+  stellaComputerCliPath,
   requestCredential,
   taskApi,
   scheduleApi,
@@ -94,6 +95,7 @@ export const createToolHost = ({
     stellaBrowserBinPath,
     stellaOfficeBinPath,
     stellaUiCliPath,
+    stellaComputerCliPath,
   });
   const stateContext: StateContext = createStateContext(stateRoot, taskApi);
 
@@ -141,6 +143,7 @@ export const createToolHost = ({
     stellaBrowserBinPath,
     stellaOfficeBinPath,
     stellaUiCliPath,
+    stellaComputerCliPath,
     stellaBrowserBridgeEnv: getStellaBrowserBridgeEnv(),
     executeCapabilityTool,
   });

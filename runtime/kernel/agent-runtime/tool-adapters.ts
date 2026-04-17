@@ -85,6 +85,76 @@ const formatToolResult = (
   };
 };
 
+// Inline-image attach contract used by stella-computer (and any other CLI we
+// wire up the same way): when tool output contains a line of the form
+//
+//     [stella-attach-image][ <WxH>][ <N>KB][ inline=image/png] <PATH>
+//
+// the runtime reads the file at <PATH> and emits an image content block
+// alongside the text result, so the model sees the screenshot on its very
+// next turn without having to call a separate Read.
+//
+// The marker line is stripped from the text we forward to the model so the
+// model doesn't waste tokens describing a path it doesn't need to see.
+//
+// We intentionally do NOT trust the model to emit these markers itself —
+// only output that flowed through `shell.exec` (the only surface that runs
+// stella-computer) goes through this transform. If a future CLI wants to
+// opt in, just emit the marker on stdout.
+const STELLA_ATTACH_IMAGE_RE =
+  /^\[stella-attach-image\][^\n]*?\s(\/[^\s\n]+\.(?:png|jpg|jpeg|gif|webp))\s*$/gm;
+
+type ImageBlock = { type: "image"; mimeType: string; data: string };
+
+const mimeForPath = (filePath: string): string => {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  return "image/png";
+};
+
+// Exported for tests. See `desktop/tests/runtime/kernel/agent-runtime/stella-attach-image.test.ts`.
+export const extractAttachImageBlocks = async (
+  text: string,
+): Promise<{ text: string; images: ImageBlock[] }> => {
+  if (!text || !text.includes("[stella-attach-image]")) {
+    return { text, images: [] };
+  }
+  const matches: Array<{ full: string; path: string }> = [];
+  for (const m of text.matchAll(STELLA_ATTACH_IMAGE_RE)) {
+    if (m[1]) matches.push({ full: m[0], path: m[1] });
+  }
+  if (matches.length === 0) return { text, images: [] };
+
+  const images: ImageBlock[] = [];
+  // Read sequentially to keep failure messages deterministic; screenshots are
+  // small and there's typically 1-2 per call.
+  for (const { path: imgPath } of matches) {
+    try {
+      const fs = await import("node:fs/promises");
+      const buf = await fs.readFile(imgPath);
+      images.push({
+        type: "image",
+        mimeType: mimeForPath(imgPath),
+        data: buf.toString("base64"),
+      });
+    } catch {
+      // If the file vanished between CLI exit and our read, leave the marker
+      // in the text so the model can still see what was attempted.
+      return { text, images: [] };
+    }
+  }
+
+  // Strip the marker lines from the forwarded text so we don't double-send.
+  let stripped = text;
+  for (const { full } of matches) {
+    stripped = stripped.replace(full, "").replace(/\n{3,}/g, "\n\n");
+  }
+  stripped = stripped.replace(/[ \t]+\n/g, "\n").trim();
+  return { text: stripped, images };
+};
+
 type RuntimeToolContextArgs = {
   toolCallId: string;
   runId: string;
@@ -275,8 +345,18 @@ export const createPiTools = (opts: {
             : undefined,
         });
         const formatted = formatToolResult(toolResult);
+        // Detect [stella-attach-image] markers in the text and read the
+        // referenced PNG(s) into image content blocks. This is what makes
+        // `stella-computer snapshot` "auto-read" its screenshot — the model
+        // sees the image on the very next turn with no extra Read step.
+        const { text: forwardedText, images } = await extractAttachImageBlocks(
+          formatted.text,
+        );
         return {
-          content: [{ type: "text", text: formatted.text }],
+          content: [
+            { type: "text" as const, text: forwardedText },
+            ...images,
+          ],
           details: formatted.details,
         };
       },

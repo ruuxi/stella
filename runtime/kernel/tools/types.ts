@@ -124,6 +124,7 @@ export type ToolHostOptions = {
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaUiCliPath?: string;
+  stellaComputerCliPath?: string;
   taskApi?: TaskToolApi;
   scheduleApi?: ScheduleToolApi;
   extensionTools?: import("../extensions/types.js").ToolDefinition[];

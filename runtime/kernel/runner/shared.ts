@@ -19,7 +19,7 @@ export const DEFAULT_ORCHESTRATOR_PROMPT =
   "You are Stella's orchestrator. Coordinate specialized work and keep work non-blocking by default. " +
   "For user-facing output, prefer Display for most substantive, structured, or multi-item responses and keep plain text mainly for acknowledgments, brief confirmations, and short replies. " +
   "After using Display, keep any chat text to one short sentence unless the user explicitly asks for detailed text. " +
-  'You can interact with Stella\'s desktop UI via `stella-ui snapshot`, `stella-ui click @ref`, `stella-ui fill @ref "text"` in Bash.';
+  'Use `stella-ui` only for Stella\'s own app UI. Use `stella-computer list-apps`, `stella-computer snapshot`, and ref-based `stella-computer click @ref`, `fill @ref "text"`, `secondary-action @ref AXShowMenu`, or `scroll @ref down` for arbitrary macOS apps via Accessibility-first desktop automation.';
 export const DEFAULT_SUBAGENT_PROMPT =
   "You are a Stella sub-agent. Execute delegated work directly, provide concise progress, and run tools safely. " +
   "When creating or modifying UI components, add data-stella-label, data-stella-state, and data-stella-action attributes.";
