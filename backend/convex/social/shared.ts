@@ -381,6 +381,10 @@ export const requireSessionHost = async (
   return session;
 };
 
+// Cap the number of accepted friendships scanned per side. Friend lists are
+// typically small but bounding the read keeps queries safe at scale.
+const MAX_ACCEPTED_RELATIONSHIPS_PER_SIDE = 500;
+
 export const listAcceptedRelationshipsForOwner = async (
   ctx: AnyCtx,
   ownerId: string,
@@ -391,13 +395,13 @@ export const listAcceptedRelationshipsForOwner = async (
       .withIndex("by_lowOwnerId_and_status", (q) =>
         q.eq("lowOwnerId", ownerId).eq("status", "accepted"),
       )
-      .collect(),
+      .take(MAX_ACCEPTED_RELATIONSHIPS_PER_SIDE),
     ctx.db
       .query("social_relationships")
       .withIndex("by_highOwnerId_and_status", (q) =>
         q.eq("highOwnerId", ownerId).eq("status", "accepted"),
       )
-      .collect(),
+      .take(MAX_ACCEPTED_RELATIONSHIPS_PER_SIDE),
   ]);
   return [...low, ...high];
 };

@@ -135,6 +135,11 @@ export const _deleteOwnerBatch = internalMutation({
         .take(BATCH),
     );
     await deleteBatch(
+      await ctx.db.query("device_presence")
+        .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+        .take(BATCH),
+    );
+    await deleteBatch(
       await ctx.db.query("cloudflare_tunnels")
         .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
         .take(BATCH),
