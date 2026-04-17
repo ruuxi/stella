@@ -21,4 +21,29 @@ describe("buildChatPromptMessages", () => {
       }),
     ]);
   });
+
+  it("describes explicit images before the ambient window screenshot", () => {
+    const result = buildChatPromptMessages({
+      userPrompt: "What am I looking at?",
+      explicitImageAttachmentCount: 2,
+      chatContext: {
+        window: {
+          app: "Cursor",
+          title: "stella/runtime",
+        },
+        windowScreenshot: {
+          dataUrl: "data:image/png;base64,AAAA",
+          width: 10,
+          height: 10,
+        },
+      } as never,
+    });
+
+    expect(result.promptMessages?.[0]?.text).toContain(
+      "first 2 images are user-provided",
+    );
+    expect(result.promptMessages?.[0]?.text).toContain(
+      "final image is a screenshot",
+    );
+  });
 });
