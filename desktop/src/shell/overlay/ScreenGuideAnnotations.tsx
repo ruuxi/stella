@@ -16,6 +16,7 @@ type ScreenGuideAnnotationsProps = {
 
 const AUTO_DISMISS_MS = 10_000;
 const EXIT_DURATION_MS = 350;
+const CURSOR_STEP_MS = 900;
 
 export function ScreenGuideAnnotations({
   annotations,
@@ -24,8 +25,10 @@ export function ScreenGuideAnnotations({
 }: ScreenGuideAnnotationsProps) {
   const [showDom, setShowDom] = useState(false);
   const [exiting, setExiting] = useState(false);
+  const [cursorIndex, setCursorIndex] = useState(0);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cursorTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
 
@@ -38,6 +41,10 @@ export function ScreenGuideAnnotations({
       clearTimeout(exitTimerRef.current);
       exitTimerRef.current = null;
     }
+    if (cursorTimerRef.current) {
+      clearInterval(cursorTimerRef.current);
+      cursorTimerRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -45,6 +52,21 @@ export function ScreenGuideAnnotations({
       clearTimers();
       setExiting(false);
       setShowDom(true);
+      setCursorIndex(0);
+      if (annotations.length > 1) {
+        cursorTimerRef.current = setInterval(() => {
+          setCursorIndex((current) => {
+            if (current >= annotations.length - 1) {
+              if (cursorTimerRef.current) {
+                clearInterval(cursorTimerRef.current);
+                cursorTimerRef.current = null;
+              }
+              return current;
+            }
+            return current + 1;
+          });
+        }, CURSOR_STEP_MS);
+      }
       dismissTimerRef.current = setTimeout(() => {
         onDismissRef.current?.();
       }, AUTO_DISMISS_MS);
@@ -65,14 +87,30 @@ export function ScreenGuideAnnotations({
 
   if (!showDom) return null;
 
+  const activeAnnotation =
+    annotations[Math.min(cursorIndex, annotations.length - 1)];
+
   return (
     <div
       className={`screen-guide-root ${exiting ? "screen-guide-exiting" : "screen-guide-entering"}`}
     >
-      {annotations.map((ann) => (
+      {activeAnnotation ? (
+        <div
+          className="screen-guide-cursor"
+          style={{
+            left: activeAnnotation.x,
+            top: activeAnnotation.y,
+          }}
+          aria-hidden="true"
+        >
+          <div className="screen-guide-cursor-pulse" />
+          <div className="screen-guide-cursor-pointer" />
+        </div>
+      ) : null}
+      {annotations.map((ann, index) => (
         <div
           key={ann.id}
-          className="screen-guide-pill"
+          className={`screen-guide-pill ${index === cursorIndex ? "screen-guide-pill-active" : ""}`}
           style={{
             left: ann.x + 24,
             top: ann.y,
