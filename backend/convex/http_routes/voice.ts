@@ -143,7 +143,7 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
           internal.rate_limits.consumeWebhookRateLimit,
           {
             scope: "voice_session",
-            key: identity.subject,
+            key: identity.tokenIdentifier,
             limit: VOICE_SESSION_RATE_LIMIT,
             windowMs: VOICE_SESSION_RATE_WINDOW_MS,
             blockMs: VOICE_SESSION_RATE_WINDOW_MS,
@@ -174,7 +174,7 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
         }
 
         // Resolve owner ID from identity
-        const ownerId = identity.subject;
+        const ownerId = identity.tokenIdentifier;
         const subscriptionCheck = await checkManagedUsageLimit(ctx, ownerId);
         if (!subscriptionCheck.allowed) {
           return errorResponse(429, subscriptionCheck.message, origin);
@@ -399,7 +399,7 @@ export const registerVoiceRoutes = (http: HttpRouter) => {
         const result = await ctx.runMutation(
           internal.billing.recordVoiceRealtimeUsage,
           {
-            ownerId: identity.subject,
+            ownerId: identity.tokenIdentifier,
             responseId: parsed.responseId,
             model: parsed.model,
             ...(conversationId ? { conversationId } : {}),

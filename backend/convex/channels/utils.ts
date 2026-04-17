@@ -259,7 +259,7 @@ export const getConnection = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
     if ((identity as Record<string, unknown>).isAnonymous === true) return null;
-    const ownerId = identity.subject;
+    const ownerId = identity.tokenIdentifier;
 
     return await ctx.db
       .query("channel_connections")

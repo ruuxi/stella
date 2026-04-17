@@ -703,9 +703,9 @@ const ORPHAN_MIN_AGE_MS = 90_000; // must be at least 90s old
 const ORPHAN_MAX_AGE_MS = 10 * 60_000; // ignore anything older than 10 min
 
 export const findOrphanedTurnRequests = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const now = Date.now();
+  args: { nowMs: v.number() },
+  handler: async (ctx, args) => {
+    const now = args.nowMs;
 
     // Check all registered devices — routing always tries the desktop
     // first and relies on this watchdog for fallback, so we cannot
@@ -788,7 +788,7 @@ export const rescueOrphanedTurns = internalAction({
   handler: async (ctx) => {
     const orphans = await ctx.runQuery(
       internal.channels.connector_delivery.findOrphanedTurnRequests,
-      {},
+      { nowMs: Date.now() },
     );
 
     if (orphans.length === 0) return null;

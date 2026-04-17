@@ -402,7 +402,7 @@ export const sendLinqLinkSms = action({
 
     const { code } = await ctx.runMutation(
       internal.channels.link_codes.generateAndStoreLinkCode,
-      { ownerId: identity.subject, provider: "linq" },
+      { ownerId: identity.tokenIdentifier, provider: "linq" },
     );
 
     const message =

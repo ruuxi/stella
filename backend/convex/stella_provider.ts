@@ -646,7 +646,7 @@ async function authorizeStellaRequest(
     return stellaProviderErrorResponse(401, "Unauthorized", request);
   }
 
-  const ownerId = identity.subject;
+  const ownerId = identity.tokenIdentifier;
   const isAnonymous = (identity as Record<string, unknown>).isAnonymous === true;
   let modelAudience: ManagedModelAudience = isAnonymous ? "anonymous" : "free";
 
@@ -1390,7 +1390,7 @@ export const stellaProviderModels = httpAction(async (ctx, request) =>
       : "anonymous";
 
     if (identity && (identity as Record<string, unknown>).isAnonymous !== true) {
-      const access = await resolveManagedModelAccess(ctx, identity.subject);
+      const access = await resolveManagedModelAccess(ctx, identity.tokenIdentifier);
       audience = access.modelAudience;
     }
 

@@ -146,7 +146,7 @@ export const registerSynthesisRoutes = (http: HttpRouter) => {
             }
           }
 
-          const ownerId = identity?.subject;
+          const ownerId = identity?.tokenIdentifier;
           const modelAccess = ownerId
             ? await resolveManagedModelAccess(ctx, ownerId, {
               isAnonymous: (identity as Record<string, unknown> | null)?.isAnonymous === true,

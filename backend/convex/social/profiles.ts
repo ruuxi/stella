@@ -55,7 +55,7 @@ export const getMyProfile = query({
     if (!identity || (identity as Record<string, unknown>).isAnonymous === true) {
       return null;
     }
-    return await getSocialProfileByOwnerId(ctx, identity.subject);
+    return await getSocialProfileByOwnerId(ctx, identity.tokenIdentifier);
   },
 });
 

@@ -144,8 +144,16 @@ type WorkerState = {
   deviceId: string | null;
 };
 
+// Resolve a runtime CLI bundled into desktop/dist-electron/runtime/kernel/cli/.
+// `import.meta.url` for this file at runtime is
+// `desktop/dist-electron/runtime/worker/server.js`, so we walk up to
+// `runtime/` and then back down into `kernel/cli/`. The previous
+// `../../kernel/cli/...` form skipped the `runtime/` segment and resolved
+// to a path that does not exist on disk, surfacing as
+// `Module not found "<...>/dist-electron/kernel/cli/stella-computer.js"`
+// in agent runs.
 const resolveRuntimeCliPath = (fileName: string) =>
-  fileURLToPath(new URL(`../../kernel/cli/${fileName}`, import.meta.url));
+  fileURLToPath(new URL(`../kernel/cli/${fileName}`, import.meta.url));
 
 const writeBlueprintArtifact = async (args: {
   stellaRoot: string;
