@@ -24,10 +24,8 @@ import {
   type OnboardingStep1Props,
   type Phase,
 } from "./use-onboarding-state";
-import type { OnboardingDemo } from "./OnboardingCanvas";
 import { useTheme, useThemeControl } from "@/context/theme-context";
 import { getPlatform } from "@/platform/electron/platform";
-import type { ShowcaseId, ShowcaseOption } from "./OnboardingCreationPhase";
 import "./Onboarding.css";
 import "@/global/onboarding/selfmod-demo.css";
 
@@ -90,124 +88,6 @@ const STEP_TITLES: Partial<Record<Phase, string>> = {
 
 type CategoryStates = Record<DiscoveryCategory, boolean>;
 
-const SHOWCASE_DEMO_BY_ID: Record<
-  ShowcaseId,
-  Exclude<OnboardingDemo, null | "default">
-> = {
-  modern: "modern",
-  "cozy-cat": "cozy-cat",
-  "dj-studio": "dj-studio",
-  weather: "weather-station",
-  pomodoro: "pomodoro",
-};
-
-const SHOWCASE_OPTIONS: ShowcaseOption[] = [
-  {
-    id: "modern",
-    label: "Modernize the chat",
-    description: "Glass panels, refined spacing, cool blue accents",
-    category: "UI",
-    accent: "oklch(0.6 0.18 250)",
-    icon: (
-      <svg
-        width="10"
-        height="10"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <polygon points="12 2 2 7 12 12 22 7 12 2" />
-        <polyline points="2 17 12 22 22 17" />
-        <polyline points="2 12 12 17 22 12" />
-      </svg>
-    ),
-  },
-  {
-    id: "cozy-cat",
-    label: "Cozy cat theme",
-    description: "Warm palette, playful cards, paw print decorations",
-    category: "Theme",
-    accent: "oklch(0.72 0.12 350)",
-    icon: (
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.08C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z" />
-      </svg>
-    ),
-  },
-  {
-    id: "dj-studio",
-    label: "Build a beat maker",
-    description: "8-track step sequencer with real-time synthesis",
-    category: "App",
-    accent: "oklch(0.6 0.2 300)",
-    icon: (
-      <svg
-        width="10"
-        height="10"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M9 18V5l12-2v13" />
-        <circle cx="6" cy="18" r="3" />
-        <circle cx="18" cy="16" r="3" />
-      </svg>
-    ),
-  },
-  {
-    id: "weather",
-    label: "Weather dashboard",
-    description: "Live forecasts, hourly charts, and smart insights",
-    category: "Dashboard",
-    accent: "oklch(0.65 0.15 200)",
-    icon: (
-      <svg
-        width="10"
-        height="10"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
-      </svg>
-    ),
-  },
-  {
-    id: "pomodoro",
-    label: "Focus timer",
-    description: "Pomodoro sessions with ambient soundscapes",
-    category: "Tool",
-    accent: "oklch(0.7 0.15 60)",
-    icon: (
-      <svg
-        width="10"
-        height="10"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <circle cx="12" cy="13" r="8" />
-        <path d="M12 9v4l2 2" />
-        <path d="M5 3l2 2" />
-        <path d="M19 3l-2 2" />
-        <path d="M12 5V3" />
-      </svg>
-    ),
-  },
-];
-
 const createDiscoveryCategoryStates = (): CategoryStates => {
   const initial = {} as CategoryStates;
   for (const category of DISCOVERY_CATEGORIES) {
@@ -223,9 +103,6 @@ const getSelectedDiscoveryCategories = (states: CategoryStates) =>
 
 const getFirstEnabledDiscoveryCategory = (states: CategoryStates) =>
   DISCOVERY_CATEGORIES.find((category) => states[category.id])?.id ?? null;
-
-const getShowcaseDemo = (id: ShowcaseId | null): OnboardingDemo =>
-  id === null ? "default" : SHOWCASE_DEMO_BY_ID[id];
 
 const getNextPhaseToPrefetch = (phase: Phase): Phase | null => {
   switch (phase) {
@@ -288,7 +165,6 @@ export const OnboardingStep1 = ({
   onEnterSplit,
   onSelectionChange,
   onDemoChange,
-  demoMorphing,
   isAuthenticated,
 }: OnboardingStep1Props) => {
   const [phase, setPhase] = useState<Phase>(initialPhase);
@@ -315,7 +191,6 @@ export const OnboardingStep1 = ({
   const [expressionStyle, setExpressionStyle] = useState<
     "emotes" | "emoji" | "none" | null
   >(null);
-  const [activeShowcase, setActiveShowcase] = useState<ShowcaseId | null>(null);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   const saveExpressionStyle = useMutation(
@@ -401,10 +276,6 @@ export const OnboardingStep1 = ({
   const transitionTo = useCallback(
     (next: Phase) => {
       clearTimeoutRef();
-
-      if (phase === "creation" && next !== "creation") {
-        setActiveShowcase(null);
-      }
 
       if (prefersReducedMotion) {
         setLeaving(false);
@@ -559,19 +430,6 @@ export const OnboardingStep1 = ({
     onEnterSplit?.();
     transitionTo("permissions");
   }, [onEnterSplit, onInteract, transitionTo]);
-
-  const handleShowcaseSelect = useCallback(
-    (id: ShowcaseId) => {
-      if (demoMorphing) {
-        return;
-      }
-
-      const nextShowcase = activeShowcase === id ? null : id;
-      setActiveShowcase(nextShowcase);
-      onDemoChange?.(getShowcaseDemo(nextShowcase));
-    },
-    [activeShowcase, demoMorphing, onDemoChange],
-  );
 
   const handleDiscoveryConfirm = useCallback(() => {
     const selected = getSelectedDiscoveryCategories(categoryStates);
@@ -734,12 +592,8 @@ export const OnboardingStep1 = ({
         return (
           <Suspense fallback={splitPhaseFallback}>
             <OnboardingCreationPhase
-              activeShowcase={activeShowcase}
-              demoMorphing={demoMorphing}
-              showcaseOptions={SHOWCASE_OPTIONS}
               splitTransitionActive={leaving}
               onContinue={nextSplitStep}
-              onSelectShowcase={handleShowcaseSelect}
             />
           </Suspense>
         );
