@@ -1,6 +1,7 @@
 ---
 
 ## name: stella-office
+
 description: Create, analyze, proofread, and modify Office documents (.docx, .xlsx, .pptx) using Stella's bundled `stella-office` CLI. Use when the user wants to create, inspect, check formatting, find issues, add charts, or modify Office documents.
 
 # stella-office
@@ -114,13 +115,13 @@ stella-office validate <file>
 ### view modes
 
 
-| Mode        | Description                           | Useful flags                                   |
-| ----------- | ------------------------------------- | ---------------------------------------------- |
-| `outline`   | Document structure                    |                                                |
-| `stats`     | Statistics (pages, words, shapes)     |                                                |
-| `issues`    | Formatting/content/structure problems | `--type format|content|structure`, `--limit N` |
-| `text`      | Plain text extraction                 | `--start N --end N`, `--max-lines N`           |
-| `annotated` | Text with formatting annotations      |                                                |
+| Mode        | Description                           | Useful flags                                        |
+| ----------- | ------------------------------------- | --------------------------------------------------- |
+| `outline`   | Document structure                    |                                                     |
+| `stats`     | Statistics (pages, words, shapes)     |                                                     |
+| `issues`    | Formatting/content/structure problems | `--type format\|content\|structure`, `--limit N`    |
+| `text`      | Plain text extraction                 | `--start N --end N`, `--max-lines N`                |
+| `annotated` | Text with formatting annotations      |                                                     |
 
 
 ### get
