@@ -241,6 +241,11 @@ const buildCommandPreamble = (payload) => {
   if (payload.stellaUiCliPath) {
     lines.push(`stella-ui() { "$STELLA_NODE_BIN" ${shellQuote(payload.stellaUiCliPath)} "$@"; }`);
   }
+  if (payload.stellaComputerCliPath) {
+    lines.push(
+      `stella-computer() { "$STELLA_NODE_BIN" ${shellQuote(payload.stellaComputerCliPath)} "$@"; }`,
+    );
+  }
 
   return lines.join("\n");
 };
@@ -267,6 +272,12 @@ const buildShellEnv = (payload, usesBrowserBridge) => {
   }
   if (payload.stellaUiCliPath) {
     env.STELLA_UI_CLI = payload.stellaUiCliPath;
+  }
+  if (payload.stellaComputerCliPath) {
+    env.STELLA_COMPUTER_CLI = payload.stellaComputerCliPath;
+  }
+  if (payload.stellaComputerSessionId) {
+    env.STELLA_COMPUTER_SESSION = String(payload.stellaComputerSessionId);
   }
   if (usesBrowserBridge && payload.stellaBrowserBridgeEnv) {
     Object.assign(env, payload.stellaBrowserBridgeEnv);

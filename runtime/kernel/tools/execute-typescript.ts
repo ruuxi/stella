@@ -15,6 +15,7 @@ import type {
 import {
   truncate,
 } from "./utils.js";
+import { getStellaComputerSessionId } from "./stella-computer-session.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 120_000;
@@ -116,6 +117,7 @@ type ExecuteTypescriptHandlerOptions = {
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaUiCliPath?: string;
+  stellaComputerCliPath?: string;
   stellaBrowserBridgeEnv?: Record<string, string>;
   executeCapabilityTool: ExecuteCapabilityTool;
 };
@@ -537,9 +539,11 @@ const executeProgram = async (args: {
       stellaBrowserBinPath: args.env.options.stellaBrowserBinPath,
       stellaOfficeBinPath: args.env.options.stellaOfficeBinPath,
       stellaUiCliPath: args.env.options.stellaUiCliPath,
+      stellaComputerCliPath: args.env.options.stellaComputerCliPath,
       stellaBrowserBridgeEnv: args.env.options.stellaBrowserBridgeEnv,
       browserOwnerId:
         args.env.context.taskId ?? args.env.context.runId ?? args.env.context.rootRunId,
+      stellaComputerSessionId: getStellaComputerSessionId(args.env.context),
     });
   });
 };

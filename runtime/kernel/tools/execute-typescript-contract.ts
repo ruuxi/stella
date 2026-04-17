@@ -30,7 +30,7 @@ export const EXECUTE_TYPESCRIPT_TOOL_DESCRIPTION =
   "- The program runs with full Node.js capabilities, including Buffer, process, require(), and fetch.\n" +
   "- Because this is a program body, static import/export syntax is not supported. Use require() or await import() instead.\n" +
   "- Use the provided bindings instead: workspace, life, shell, libraries, console.\n" +
-  "- Always use shell.exec(command, options?) for running shell commands. Do not use child_process.exec/spawn directly — Stella CLI wrappers (stella-browser, stella-office, stella-ui) are only available through shell.exec.\n" +
+  "- Always use shell.exec(command, options?) for running shell commands. Do not use child_process.exec/spawn directly — Stella CLI wrappers (stella-browser, stella-office, stella-ui, stella-computer) are only available through shell.exec.\n" +
   "- Return JSON-serializable data. Keep code focused and deterministic.\n" +
   "- Before solving from scratch, check state/capabilities/ for an existing capability with libraries.list() or libraries.run(name, input).";
 
@@ -41,7 +41,7 @@ Code mode:
 - The program runs in a full Node.js subprocess with Buffer, process, require(), fetch, and other standard Node APIs available.
 - Static import/export syntax is not supported inside program bodies. Use require() or await import() instead.
 - Use the provided globals instead, and return JSON-serializable data.
-- Always use shell.exec() for running commands. Do not use child_process directly — Stella CLI wrappers (stella-browser, stella-office, stella-ui) are only available through shell.exec.
+- Always use shell.exec() for running commands. Do not use child_process directly — Stella CLI wrappers (stella-browser, stella-office, stella-ui, stella-computer) are only available through shell.exec.
 - Before solving from scratch, check state/capabilities/ for existing capabilities with libraries.list() or libraries.run(name, input).
 
 Available globals:
