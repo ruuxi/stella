@@ -1,48 +1,49 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { CozyCatDemo } from "./panels/CozyCatDemo";
-import { DJStudio } from "./panels/DJStudioDemo";
-import { PomodoroDemo } from "./panels/PomodoroDemo";
 import { StellaAppMock } from "./panels/StellaAppMock";
-import { WeatherStation } from "./panels/WeatherStationDemo";
+import {
+  EMPTY_SECTION_TOGGLES,
+  type SectionKey,
+  type SectionToggles,
+} from "./panels/stella-app-mock-types";
 
-export type OnboardingDemo =
-  | "default"
-  | "modern"
-  | "dj-studio"
-  | "weather-station"
-  | "cozy-cat"
-  | "pomodoro"
-  | null;
+/**
+ * OnboardingCanvas — renders the live demo shown during the "creation"
+ * onboarding phase.
+ *
+ * The creation phase shows an interactive `StellaAppMock` whose individual
+ * sections (sidebar, header, messages, composer) can each be toggled into a
+ * "modern" variant via floating pills rendered on the demo itself. Each
+ * toggle is wrapped in the onboarding morph animation: native (Electron IPC)
+ * when available, with a CSS blur fallback otherwise — so every change feels
+ * like a single "transformation moment".
+ */
+export type OnboardingDemo = "default" | null;
 
-/** Onboarding-only morph timings (not shared with HMR; keep in sync with overlay behavior manually). */
+/** Onboarding-only morph timings — keep in sync with the overlay's morph feel. */
 const ONBOARDING_MORPH_PAINT_SETTLE_MS = 200;
-/** CSS fallback + `animationDuration` — match `ONBOARDING_MORPH_REVERSE_MS` in MorphTransition. */
+/** CSS fallback + `animationDuration` — matches `onboardingMorphFallback` in Onboarding.css. */
 const ONBOARDING_MORPH_CSS_DURATION_MS = 400;
 const CSS_FALLBACK_SWAP_AT_MS = Math.round(ONBOARDING_MORPH_CSS_DURATION_MS / 2);
 const NATIVE_MORPH_RETRY_MS = 80;
 const NATIVE_MORPH_MAX_ATTEMPTS = 6;
 
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
 interface OnboardingCanvasProps {
   activeDemo: OnboardingDemo;
-  onMorphStateChange?: (morphing: boolean) => void;
 }
 
 export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
   activeDemo,
-  onMorphStateChange,
 }) => {
-  const [displayedDemo, setDisplayedDemo] = useState<OnboardingDemo>(activeDemo);
+  const [toggles, setToggles] =
+    useState<SectionToggles>(EMPTY_SECTION_TOGGLES);
   const [cssMorphing, setCssMorphing] = useState(false);
   const morphInFlightRef = useRef(false);
-  const pendingDemoRef = useRef<OnboardingDemo>(null);
-
-  const wait = useCallback(
-    (ms: number) =>
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, ms);
-      }),
-    [],
-  );
+  const pendingToggleRef = useRef<SectionKey | null>(null);
 
   const startNativeMorph = useCallback(async () => {
     const morphApi = window.electronAPI?.ui;
@@ -61,57 +62,57 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
     }
 
     return null;
-  }, [wait]);
+  }, []);
+
+  const runMorphRef = useRef<(section: SectionKey) => Promise<void>>(
+    async () => {},
+  );
 
   const runMorph = useCallback(
-    async (nextDemo: OnboardingDemo) => {
+    async (section: SectionKey) => {
       if (morphInFlightRef.current) {
-        pendingDemoRef.current = nextDemo;
+        // Coalesce rapid clicks: keep only the most recent.
+        pendingToggleRef.current = section;
         return;
       }
+
       morphInFlightRef.current = true;
-      onMorphStateChange?.(true);
+
+      const applyToggle = () => {
+        setToggles((prev) => ({ ...prev, [section]: !prev[section] }));
+      };
 
       const morphApi = await startNativeMorph();
 
       if (morphApi) {
-        setDisplayedDemo(nextDemo);
+        applyToggle();
         await wait(ONBOARDING_MORPH_PAINT_SETTLE_MS);
         await morphApi.morphComplete();
       } else {
         setCssMorphing(true);
         await new Promise<void>((resolve) => {
-          setTimeout(() => setDisplayedDemo(nextDemo), CSS_FALLBACK_SWAP_AT_MS);
+          setTimeout(applyToggle, CSS_FALLBACK_SWAP_AT_MS);
           setTimeout(resolve, ONBOARDING_MORPH_CSS_DURATION_MS);
         });
         setCssMorphing(false);
       }
 
       morphInFlightRef.current = false;
-      onMorphStateChange?.(false);
 
-      const pending = pendingDemoRef.current;
-      pendingDemoRef.current = null;
-      if (pending !== null && pending !== nextDemo) {
-        void runMorph(pending);
+      const pending = pendingToggleRef.current;
+      pendingToggleRef.current = null;
+      if (pending !== null) {
+        void runMorphRef.current(pending);
       }
     },
-    [onMorphStateChange, startNativeMorph, wait],
+    [startNativeMorph],
   );
 
   useEffect(() => {
-    if (activeDemo === displayedDemo) return;
+    runMorphRef.current = runMorph;
+  }, [runMorph]);
 
-    if (!activeDemo || !displayedDemo) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- direct enter/exit swap is intentional
-      setDisplayedDemo(activeDemo);
-      return;
-    }
-
-    void runMorph(activeDemo);
-  }, [activeDemo, displayedDemo, runMorph]);
-
-  if (!displayedDemo) return null;
+  if (!activeDemo) return null;
 
   return (
     <div
@@ -122,13 +123,11 @@ export const OnboardingCanvas: React.FC<OnboardingCanvasProps> = ({
           : undefined
       }
     >
-      {(displayedDemo === "default" || displayedDemo === "modern") && (
-        <StellaAppMock variant={displayedDemo} />
-      )}
-      {displayedDemo === "dj-studio" && <DJStudio />}
-      {displayedDemo === "weather-station" && <WeatherStation />}
-      {displayedDemo === "cozy-cat" && <CozyCatDemo />}
-      {displayedDemo === "pomodoro" && <PomodoroDemo />}
+      <StellaAppMock
+        interactive
+        toggles={toggles}
+        onToggleSection={runMorph}
+      />
     </div>
   );
 };

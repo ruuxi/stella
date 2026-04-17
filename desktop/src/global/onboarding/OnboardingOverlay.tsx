@@ -202,7 +202,6 @@ export function OnboardingView({
   onSelectionChange,
   onDemoChange,
   activeDemo,
-  demoMorphing,
 }: {
   hasExpanded: boolean;
   onboardingDone: boolean;
@@ -224,9 +223,8 @@ export function OnboardingView({
   onRetryRuntime?: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
   onSelectionChange?: (hasSelections: boolean) => void;
-  onDemoChange?: (demo: "default" | "modern" | "dj-studio" | "weather-station" | "cozy-cat" | "pomodoro" | null) => void;
+  onDemoChange?: (demo: "default" | null) => void;
   activeDemo?: OnboardingDemo;
-  demoMorphing?: boolean;
 }) {
   const showRuntimeGate = isPreparingRuntime || Boolean(runtimeError)
   const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(null);
@@ -294,7 +292,6 @@ export function OnboardingView({
             onEnterSplit={handleEnterSplit}
             onSelectionChange={onSelectionChange}
             onDemoChange={onDemoChange}
-            demoMorphing={demoMorphing}
             isAuthenticated={isAuthenticated}
           />
         ) : (

@@ -64,8 +64,7 @@ export interface OnboardingStep1Props {
   onConfirmTheme?: () => void;
   onDiscoveryConfirm?: (categories: DiscoveryCategory[]) => void;
   onEnterSplit?: () => void;
-  onDemoChange?: (demo: "default" | "modern" | "dj-studio" | "weather-station" | "cozy-cat" | "pomodoro" | null) => void;
-  demoMorphing?: boolean;
+  onDemoChange?: (demo: "default" | null) => void;
   onSelectionChange?: (hasSelections: boolean) => void;
   themeConfirmed?: boolean;
   hasSelectedTheme?: boolean;
