@@ -1,12 +1,13 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext, ChatContextFile } from "@/shared/types/electron";
 import { cn } from "@/shared/lib/utils";
+import { ChipPreviewPortal } from "./ChipPreviewPortal";
+import { useHoverPreview } from "./use-hover-preview";
 import {
   clearComposerSelectedTextContext,
   clearComposerWindowContext,
   removeComposerFileContext,
   removeComposerScreenshotContext,
-  toggleComposerWindowContext,
 } from "./composer-context";
 
 type SetChatContext = Dispatch<SetStateAction<ChatContext | null>>;
@@ -14,66 +15,69 @@ type SetChatContext = Dispatch<SetStateAction<ChatContext | null>>;
 type WindowContextChipProps = {
   chatWindow: NonNullable<ChatContext["window"]>;
   chatWindowScreenshot?: ChatContext["windowScreenshot"];
-  included?: boolean;
+  /**
+   * When true, the chip is showing eagerly-attached metadata while the
+   * screenshot capture is still in flight. Renders a subtle pulse so the
+   * user knows we're working on it.
+   */
+  capturePending?: boolean;
   setChatContext: SetChatContext;
   className?: string;
   toggleClassName?: string;
   textClassName?: string;
-  removeClassName?: string;
   textFormatter?: (chatWindow: NonNullable<ChatContext["window"]>) => string;
 };
 
 export function WindowContextChip({
   chatWindow,
   chatWindowScreenshot,
-  included = true,
+  capturePending = false,
   setChatContext,
   className,
   toggleClassName,
   textClassName,
-  removeClassName,
   textFormatter,
 }: WindowContextChipProps) {
   const baseLabel = textFormatter
     ? textFormatter(chatWindow)
     : `${chatWindow.app}${chatWindow.title ? ` - ${chatWindow.title}` : ""}`;
   const hasScreenshot = Boolean(chatWindowScreenshot?.dataUrl);
-  const displayLabel = included ? baseLabel : `+ Add: ${baseLabel}`;
+  const { triggerRef, open } = useHoverPreview<HTMLDivElement>();
 
   return (
-    <div className={cn(className)} data-included={included ? "true" : "false"}>
+    <div
+      ref={triggerRef}
+      className={cn(className)}
+      data-included="true"
+      data-capture-pending={capturePending ? "true" : undefined}
+    >
       <button
         type="button"
         className={cn(toggleClassName)}
-        aria-pressed={included}
-        title={included ? "Window context included" : "Window context not included. Click to include it."}
+        title={
+          capturePending
+            ? "Capturing window… click to remove"
+            : "Click to remove window context"
+        }
         onClick={(event) => {
-          toggleComposerWindowContext(setChatContext);
-          event.currentTarget.blur();
-        }}
-      >
-        <span className={cn(textClassName)}>{displayLabel}</span>
-      </button>
-      <button
-        type="button"
-        className={cn(removeClassName)}
-        aria-label="Remove window context"
-        onClick={(event) => {
-          event.stopPropagation();
           clearComposerWindowContext(setChatContext);
           event.currentTarget.blur();
         }}
       >
-        &times;
+        <span className={cn(textClassName)}>{baseLabel}</span>
       </button>
       {hasScreenshot && (
-        <div className="composer-context-preview" role="tooltip">
+        <ChipPreviewPortal
+          triggerRef={triggerRef}
+          open={open}
+          className="composer-context-preview composer-context-preview--portal"
+        >
           <img
             src={chatWindowScreenshot!.dataUrl}
             alt="Window content preview"
             className="composer-context-preview-img"
           />
-        </div>
+        </ChipPreviewPortal>
       )}
     </div>
   );
@@ -85,7 +89,6 @@ type SelectedTextChipProps = {
   setChatContext: SetChatContext;
   className?: string;
   textClassName?: string;
-  removeClassName?: string;
 };
 
 export function SelectedTextChip({
@@ -94,23 +97,19 @@ export function SelectedTextChip({
   setChatContext,
   className,
   textClassName,
-  removeClassName,
 }: SelectedTextChipProps) {
   return (
-    <div className={cn(className)}>
+    <button
+      type="button"
+      className={cn(className)}
+      title="Click to remove selected text"
+      onClick={(event) => {
+        clearComposerSelectedTextContext(setSelectedText, setChatContext);
+        event.currentTarget.blur();
+      }}
+    >
       <span className={cn(textClassName)}>&quot;{selectedText}&quot;</span>
-      <button
-        type="button"
-        className={cn(removeClassName)}
-        aria-label="Remove selected text"
-        onClick={(event) => {
-          event.stopPropagation();
-          clearComposerSelectedTextContext(setSelectedText, setChatContext);
-        }}
-      >
-        &times;
-      </button>
-    </div>
+    </button>
   );
 }
 
@@ -133,44 +132,39 @@ export function PendingCaptureChip({
 type ScreenshotContextChipsProps = {
   screenshots: NonNullable<ChatContext["regionScreenshots"]>;
   setChatContext: SetChatContext;
+  // Preview previously opened the full-size view; with the
+  // "click-to-remove" model the param is unused but retained so callers
+  // can still pass it without a type error.
   onPreviewScreenshot?: (index: number) => void;
   chipClassName?: string;
   imageClassName?: string;
-  removeClassName?: string;
 };
 
 export function ScreenshotContextChips({
   screenshots,
   setChatContext,
-  onPreviewScreenshot,
   chipClassName,
   imageClassName,
-  removeClassName,
 }: ScreenshotContextChipsProps) {
   return (
     <>
       {screenshots.map((screenshot, index) => (
-        <div key={index} className={cn(chipClassName)}>
+        <button
+          type="button"
+          key={index}
+          className={cn(chipClassName)}
+          title="Click to remove screenshot"
+          onClick={(event) => {
+            removeComposerScreenshotContext(index, setChatContext);
+            event.currentTarget.blur();
+          }}
+        >
           <img
             src={screenshot.dataUrl}
             className={cn(imageClassName)}
             alt={`Screenshot ${index + 1}`}
-            onClick={
-              onPreviewScreenshot ? () => onPreviewScreenshot(index) : undefined
-            }
           />
-          <button
-            type="button"
-            className={cn(removeClassName)}
-            aria-label="Remove screenshot"
-            onClick={(event) => {
-              event.stopPropagation();
-              removeComposerScreenshotContext(index, setChatContext);
-            }}
-          >
-            &times;
-          </button>
-        </div>
+        </button>
       ))}
     </>
   );
@@ -247,21 +241,28 @@ type FileContextChipsProps = {
   files: ChatContextFile[];
   setChatContext: SetChatContext;
   chipClassName?: string;
-  removeClassName?: string;
 };
 
 export function FileContextChips({
   files,
   setChatContext,
   chipClassName,
-  removeClassName,
 }: FileContextChipsProps) {
   return (
     <>
       {files.map((file, index) => {
         const category = resolveFileCategory(file.mimeType, file.name);
         return (
-          <div key={index} className={cn("chat-composer-file-chip", chipClassName)}>
+          <button
+            type="button"
+            key={index}
+            className={cn("chat-composer-file-chip", chipClassName)}
+            title={`Click to remove ${file.name}`}
+            onClick={(event) => {
+              removeComposerFileContext(index, setChatContext);
+              event.currentTarget.blur();
+            }}
+          >
             <div className="chat-composer-file-icon">
               <FileIcon category={category} />
             </div>
@@ -269,18 +270,7 @@ export function FileContextChips({
               <span className="chat-composer-file-name">{file.name}</span>
               <span className="chat-composer-file-size">{formatFileSize(file.size)}</span>
             </div>
-            <button
-              type="button"
-              className={cn("chat-composer-context-remove", removeClassName)}
-              aria-label={`Remove ${file.name}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                removeComposerFileContext(index, setChatContext);
-              }}
-            >
-              &times;
-            </button>
-          </div>
+          </button>
         );
       })}
     </>

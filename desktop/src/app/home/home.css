@@ -1,41 +1,46 @@
-.home-content {
-  --home-scale-title: clamp(1.9rem, 4vw, 2.8rem);
-  --home-scale-pill-text: 15px;
-  --home-scale-pill-padding-y: 6px;
-  --home-scale-pill-padding-x: 24px;
-  --home-scale-option-text: 18px;
-  --home-scale-option-gap: 10px;
+/*
+ * Home view — minimalist landing surface.
+ *
+ * Layout: a vertically-centered "core" (greeting + suggestions) with an
+ * optional muted schedule line pinned to the bottom. Each shelf collapses
+ * to nothing when it has no content, so the empty state is just the
+ * greeting.
+ *
+ * The composer and auto context chips live in the chat sidebar — clicking
+ * a suggestion opens the sidebar with the prompt prefilled.
+ */
+
+.home-view {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  padding: 48px 24px;
+}
+
+.home-view__center {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 24px;
   width: 100%;
-  flex: 1;
-  padding: 48px 24px;
+  max-width: 760px;
+  margin: 0 auto;
 }
 
-.full-body-main--home {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Fade siblings in together when home mounts. */
+.home-view__greeting,
+.home-view__suggestions,
+.home-view__schedule {
+  animation: home-fade-in 360ms ease both;
 }
 
-.full-body-main--home .home-content {
-  max-width: 780px;
-}
-
-.full-body-main--home .composer-wrap {
-  width: 100%;
-  margin-bottom: 12px;
-}
-
-/* Fade-in for home content elements */
-.home-stella-title,
-.home-center-group {
-  animation: homeContentFadeIn 300ms ease both;
-}
-
-@keyframes homeContentFadeIn {
+@keyframes home-fade-in {
   from {
     opacity: 0;
     transform: translateY(6px);
@@ -46,196 +51,136 @@
   }
 }
 
-/* Fade-out when leaving home → chat */
-.full-body-main--home-leaving .home-stella-title,
-.full-body-main--home-leaving .home-center-group,
-.full-body-main--home-leaving .composer-wrap {
-  animation: homeContentFadeOut 280ms ease both;
-}
+/* ── Greeting ────────────────────────────────────────────────────────── */
 
-@keyframes homeContentFadeOut {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-}
-
-.home-stella-title {
+.home-view__greeting {
+  margin: 0;
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: var(--home-scale-title);
+  font-size: clamp(2rem, 4vw, 2.6rem);
   font-weight: 450;
   font-style: italic;
-  letter-spacing: -0.03em;
-  line-height: 1.2;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
   color: var(--text-strong);
   text-align: center;
-  margin: 0 0 32px;
-  width: 100%;
 }
 
-.home-center-group {
+/* ── Suggestions ────────────────────────────────────────────────────── */
+
+.home-view__suggestions {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 22px;
+  gap: 6px;
   width: 100%;
 }
 
-/* Category row */
-.home-categories {
-  display: flex;
-  gap: 12px;
+.home-view__suggestion-item {
+  margin: 0;
 }
 
-.home-category {
-  padding: var(--home-scale-pill-padding-y) var(--home-scale-pill-padding-x);
-  min-width: 100px;
-  text-align: center;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  color: var(--text-base);
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: var(--home-scale-pill-text);
-  font-weight: 500;
-  cursor: default;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.home-category:hover,
-.home-category.active {
-  background: color-mix(in oklch, var(--foreground) 6%, var(--background));
-}
-
-/* Options reveal - grid-template-rows 0fr/1fr trick for smooth expand */
-.home-options-reveal {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 420ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.home-options-reveal[data-visible] {
-  grid-template-rows: 1fr;
-}
-
-.home-options-reveal__inner {
-  overflow: hidden;
-  min-height: 0;
-  opacity: 0;
-  transition: opacity 200ms ease;
-}
-
-.home-options-reveal[data-visible] .home-options-reveal__inner {
-  opacity: 1;
-  transition: opacity 260ms ease 80ms;
-}
-
-/* Options list */
-.home-options {
-  display: grid;
-  position: relative;
-}
-
-.home-options-group {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--home-scale-option-gap);
-  grid-area: 1 / 1;
-  visibility: hidden;
-}
-
-.home-options-group[data-active] {
-  visibility: visible;
-}
-
-.home-option {
-  padding: 10px 0;
+.home-view__suggestion {
   background: transparent;
   border: none;
-  color: var(--text-base);
+  padding: 4px 0;
+  color: var(--text-weak);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: var(--home-scale-option-text);
-  font-weight: 500;
-  line-height: 1.45;
-  letter-spacing: -0.01em;
-  cursor: default;
-  transition: color 0.1s ease;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: color 120ms ease;
 }
 
-/* First open: stagger fade-in */
-.home-options-reveal[data-visible]:not([data-entered]) .home-options-group[data-active] .home-option {
-  opacity: 0;
-  transform: translateY(8px);
-  animation: homeOptionIn 300ms ease forwards;
-  animation-delay: calc(120ms + var(--stagger) * 50ms);
-}
-
-.home-option:hover {
+.home-view__suggestion:hover {
   color: var(--text-strong);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in oklch, currentColor 40%, transparent);
 }
 
-@keyframes homeOptionIn {
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+/* ── Schedule status line (footer) ──────────────────────────────────── */
 
-
-/* View messages button — shown when home overlays existing chat */
-.home-view-messages {
-  position: absolute;
-  bottom: 20px;
+.home-view__schedule {
+  align-self: stretch;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
+  gap: 6px;
+  margin-top: 24px;
+  padding-bottom: 4px;
+}
+
+.home-view__schedule-line {
   background: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  color: var(--text-base);
+  border: none;
+  padding: 6px 12px;
+  color: var(--text-weak);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 16px;
-  font-weight: 500;
-  cursor: default;
-  transition: color 0.15s ease, border-color 0.15s ease;
-  animation: homeContentFadeIn 300ms ease both;
-  animation-delay: 200ms;
-  opacity: 0;
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: color 120ms ease;
 }
 
-.home-view-messages:hover {
-  color: var(--text-strong);
-  border-color: var(--border-base);
+.home-view__schedule-line:hover {
+  color: var(--text-base);
 }
 
-.full-body-main--home-leaving .home-view-messages {
-  animation: homeContentFadeOut 280ms ease both;
+.home-view__schedule-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  width: 100%;
+  max-width: 520px;
 }
 
-/* Music Player Widget */
+.home-view__schedule-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  width: 100%;
+  padding: 4px 12px;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13px;
+  color: var(--text-weak);
+}
+
+.home-view__schedule-name {
+  color: var(--text-base);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-view__schedule-when {
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* ── Music Player Widget (kept; user may add via self-mod) ─────────── */
+
 .home-music-player-wrapper {
-  grid-row: 3;
-  align-self: start;
-  justify-self: center;
+  align-self: center;
   width: 100%;
   max-width: 820px;
   padding: 0 24px;
-  margin-top: 40px;
+  margin-top: 16px;
 }
 
 .home-music-player-wrapper .dashboard-card {
   width: 100%;
 }
 
-/* Dashboard Card (Music Player container) */
 .dashboard-card {
   position: relative;
   display: flex;
@@ -250,7 +195,6 @@
   min-height: 88px;
 }
 
-/* Waveform Canvas */
 .music-waveform {
   position: absolute;
   inset: 0;
@@ -261,7 +205,6 @@
   color: var(--text-weak);
 }
 
-/* Left Group: Prompt bar + track info */
 .music-left-group {
   display: flex;
   flex-direction: column;
@@ -317,7 +260,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Center: Play/Stop Button */
 .music-play-btn {
   flex-shrink: 0;
   display: flex;
@@ -362,8 +304,7 @@
 }
 
 @keyframes music-loading-pulse {
-  0%,
-  100% {
+  0%, 100% {
     opacity: 0.3;
     transform: scale(0.8);
   }
@@ -373,7 +314,6 @@
   }
 }
 
-/* Right Group: Mood chips + Lyrics toggle */
 .music-right-group {
   display: flex;
   flex-direction: column;
@@ -412,7 +352,6 @@
   color: var(--accent-foreground);
 }
 
-/* Lyrics Toggle */
 .music-lyrics-toggle {
   display: flex;
   align-items: center;
@@ -465,7 +404,6 @@
   transform: translateX(14px);
 }
 
-/* Responsive adjustments */
 @media (max-width: 640px) {
   .dashboard-card {
     flex-wrap: wrap;

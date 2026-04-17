@@ -278,13 +278,10 @@ html:has(.window-shell) .app {
   background: transparent !important;
 }
 
-/* Transparent windows - overlay (unified), radial, mini (Spotlight), region capture */
+/* Transparent windows - overlay (unified), mini (Spotlight), region capture */
 html[data-stella-window="overlay"],
 html[data-stella-window="overlay"] body,
 html[data-stella-window="overlay"] #root,
-html:has(.window-radial),
-html:has(.window-radial) body,
-html:has(.window-radial) #root,
 html:has(.window-region),
 html:has(.window-region) body,
 html:has(.window-region) #root,

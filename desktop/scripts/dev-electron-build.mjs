@@ -28,7 +28,6 @@ const mainEntryRoots = [
 const mainExplicitEntries = [
   "desktop/src/convex/api.ts",
   "desktop/src/prompts/dashboard-page-focus.ts",
-  "desktop/src/shared/lib/radial-trigger.ts",
   "desktop/src/shared/stella-api.ts",
 ];
 const preloadEntryPoint = "desktop/electron/preload.ts";

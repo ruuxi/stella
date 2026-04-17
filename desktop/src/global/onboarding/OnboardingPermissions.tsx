@@ -29,7 +29,7 @@ const PERMISSION_CARDS: PermissionCard[] = [
     kind: "accessibility",
     title: "Accessibility",
     description:
-      "Lets Stella open the radial dial, read selected text, and interact with what is under the cursor.",
+      "Lets Stella open the quick menu (⌘/Ctrl + right-click), read selected text, and interact with what is under the cursor.",
     actionLabel: "Enable",
   },
   {
@@ -221,7 +221,7 @@ export function OnboardingPermissions({
       <div className="onboarding-step-label">Permissions</div>
       <p className="onboarding-step-desc">
         Stella works best when these permissions are granted up front.
-        Accessibility powers the radial shortcut and selected text, screen
+        Accessibility powers the global ⌘/Ctrl + right-click shortcut and selected text, screen
         capture powers vision tasks, and the microphone powers voice and wake
         word.
       </p>

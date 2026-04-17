@@ -3,6 +3,7 @@ import { registerBrowserHandlers } from "../ipc/browser-handlers.js";
 import { registerDiscoveryHandlers } from "../ipc/discovery-handlers.js";
 import { registerGoogleWorkspaceHandlers } from "../ipc/google-workspace-handlers.js";
 import { registerCaptureHandlers } from "../ipc/capture-handlers.js";
+import { registerHomeHandlers } from "../ipc/home-handlers.js";
 import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
@@ -39,7 +40,7 @@ export const registerBootstrapIpcHandlers = (
       state.appReady = ready;
     },
     deactivateVoiceModes: () => services.uiStateService.deactivateVoiceModes(),
-    syncNativeRadialGesture: () => services.radialGestureService.start(),
+    syncNativeContextMenu: () => services.contextMenuService.start(),
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
     getBroadcastToMobile: lazyMobileBroadcast,
@@ -48,6 +49,11 @@ export const registerBootstrapIpcHandlers = (
   registerCaptureHandlers({
     captureService: services.captureService,
     windowManager: state.windowManager!,
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
+  });
+
+  registerHomeHandlers({
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
@@ -84,16 +90,13 @@ export const registerBootstrapIpcHandlers = (
       await stopMobileBridge(context);
       return { ok: true };
     },
-    setRadialTriggerKey: (triggerKey) => {
-      services.radialGestureService.setRadialTriggerKey(triggerKey);
-    },
     onPermissionGranted: (kind) => {
       if (kind === "accessibility") {
-        services.radialGestureService.start();
+        services.contextMenuService.start();
       }
     },
-    ensureRadialGestureOnMac: () => {
-      services.radialGestureService.start();
+    ensureContextMenuOnMac: () => {
+      services.contextMenuService.start();
     },
   });
 

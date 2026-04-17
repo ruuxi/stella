@@ -58,7 +58,7 @@ const createDeferredStartupTasks = (
         if (process.platform === "darwin" && !hasMacPermission("accessibility", false)) {
           return;
         }
-        services.radialGestureService.start();
+        services.contextMenuService.start();
       },
     },
   ];

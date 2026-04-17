@@ -51,14 +51,6 @@ export const IPC_REGION_CANCEL = "region:cancel" as const;
 export const IPC_REGION_RESET = "region:reset" as const;
 export const IPC_CAPTURE_PAGE_DATA_URL = "capture:pageDataUrl" as const;
 
-// ── Radial ──────────────────────────────────────────────────────────────────
-
-export const IPC_RADIAL_SHOW = "radial:show" as const;
-export const IPC_RADIAL_HIDE = "radial:hide" as const;
-export const IPC_RADIAL_ANIM_DONE = "radial:animDone" as const;
-export const IPC_RADIAL_CURSOR = "radial:cursor" as const;
-export const IPC_RADIAL_WINDOW_BOUNDS = "radial:windowBounds" as const;
-
 // ── Overlay ─────────────────────────────────────────────────────────────────
 
 export const IPC_OVERLAY_SET_INTERACTIVE = "overlay:setInteractive" as const;
@@ -149,8 +141,6 @@ export const IPC_SHELL_KILL_BY_PORT = "shell:killByPort" as const;
 export const IPC_PREFERENCES_GET_SYNC_MODE = "preferences:getSyncMode" as const;
 export const IPC_PREFERENCES_SET_SYNC_MODE = "preferences:setSyncMode" as const;
 export const IPC_PREFERENCES_SYNC_MODELS = "preferences:syncLocalModelPreferences" as const;
-export const IPC_PREFERENCES_GET_RADIAL_TRIGGER = "preferences:getRadialTrigger" as const;
-export const IPC_PREFERENCES_SET_RADIAL_TRIGGER = "preferences:setRadialTrigger" as const;
 export const IPC_BACKUP_GET_STATUS = "backup:getStatus" as const;
 export const IPC_BACKUP_RUN_NOW = "backup:runNow" as const;
 export const IPC_BACKUP_LIST = "backup:list" as const;
@@ -191,6 +181,14 @@ export const IPC_DISCOVERY_COLLECT_ALL_SIGNALS =
 export const IPC_BROWSER_FETCH_JSON = "browser:fetchJson" as const;
 export const IPC_BROWSER_FETCH_TEXT = "browser:fetchText" as const;
 export const IPC_BROWSER_BRIDGE_STATUS = "browser:bridgeStatus" as const;
+
+// ── Home ────────────────────────────────────────────────────────────────────
+
+export const IPC_HOME_LIST_RECENT_APPS = "home:listRecentApps" as const;
+export const IPC_HOME_GET_ACTIVE_BROWSER_TAB =
+  "home:getActiveBrowserTab" as const;
+export const IPC_HOME_CAPTURE_APP_WINDOW = "home:captureAppWindow" as const;
+export const IPC_HOME_PIN_SUGGESTION = "home:pinSuggestion" as const;
 
 // ── Media ───────────────────────────────────────────────────────────────────
 

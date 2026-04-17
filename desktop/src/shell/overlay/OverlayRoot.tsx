@@ -5,7 +5,6 @@ import {
   useRef,
   type Dispatch,
 } from "react";
-import { RadialDial } from "./RadialDial";
 import { RegionCapture } from "./RegionCapture";
 import { VoiceOverlay } from "@/shell/overlay/VoiceOverlay";
 import { MorphTransition } from "@/shell/overlay/MorphTransition";
@@ -15,10 +14,11 @@ import "./overlays.css";
 /**
  * OverlayRoot manages the unified transparent overlay window.
  *
- * All overlay components (Radial Dial, Region Capture, Mini Shell, and
- * floating overlay behavior) live as absolutely-positioned children.
- * The overlay window is hidden when idle and only shown when a component
- * activates, preventing it from blocking interaction with windows below.
+ * All overlay components (Region Capture, Voice Overlay, Screen Guide,
+ * Window Highlight, and Morph Transition) live as absolutely-positioned
+ * children. The overlay window is hidden when idle and only shown when a
+ * component activates, preventing it from blocking interaction with windows
+ * below.
  *
  * Hit-testing: the renderer tracks visible component bounding rects and
  * notifies the main process to toggle `setIgnoreMouseEvents` accordingly.
@@ -28,9 +28,6 @@ type WindowBounds = { x: number; y: number; width: number; height: number };
 type WindowHighlightTone = "default" | "subtle";
 
 type OverlayState = {
-  radialVisible: boolean;
-  radialPosition: { x: number; y: number } | null;
-  radialCompactFocused: boolean;
   windowHighlightBounds: WindowBounds | null;
   windowHighlightTone: WindowHighlightTone;
   regionCaptureActive: boolean;
@@ -41,12 +38,6 @@ type OverlayState = {
 };
 
 type OverlayAction =
-  | {
-      type: "radial:show";
-      position?: { x: number; y: number };
-      compactFocused?: boolean;
-    }
-  | { type: "radial:hide" }
   | {
       type: "overlay:windowHighlight";
       bounds: WindowBounds | null;
@@ -66,9 +57,6 @@ function isSamePosition(
 }
 
 const initialState: OverlayState = {
-  radialVisible: false,
-  radialPosition: null,
-  radialCompactFocused: false,
   windowHighlightBounds: null,
   windowHighlightTone: "default",
   regionCaptureActive: false,
@@ -83,29 +71,6 @@ function overlayReducer(
   action: OverlayAction,
 ): OverlayState {
   switch (action.type) {
-    case "radial:show": {
-      const nextPosition = action.position ?? state.radialPosition;
-      if (
-        state.radialVisible &&
-        isSamePosition(state.radialPosition, nextPosition)
-      ) {
-        return state;
-      }
-      return {
-        ...state,
-        radialVisible: true,
-        radialPosition: nextPosition,
-        radialCompactFocused: action.compactFocused ?? false,
-      };
-    }
-    case "radial:hide":
-      return state.radialVisible
-        ? {
-            ...state,
-            radialVisible: false,
-            radialCompactFocused: false,
-          }
-        : state;
     case "overlay:windowHighlight":
       return {
         ...state,
@@ -144,69 +109,16 @@ const VOICE_CREATURE_SIZE = {
 
 // ---------------------------------------------------------------------------
 // Hook: useOverlayIPC
-// Consolidates ALL IPC subscription effects (radial show/hide, region capture,
-// mini show/hide/restore, voice show/hide) into a single hook.
+// Consolidates ALL IPC subscription effects (window highlight, region capture,
+// voice show/hide, screen guide) into a single hook.
 // ---------------------------------------------------------------------------
 function useOverlayIPC(
   dispatch: Dispatch<OverlayAction>,
 ) {
-  const radialHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Radial dial positioning (driven by radial:show/hide IPC).
-  // The RadialDial component handles its own animation state via these same
-  // IPC channels. OverlayRoot additionally tracks visibility and position
-  // to control the container element's CSS and hit-testing.
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
 
-    // radial:show includes extra screenX/screenY for container positioning
-    const cleanupShow = api.radial.onShow(
-      (
-        _event: unknown,
-        data: {
-          centerX: number;
-          centerY: number;
-          x?: number;
-          y?: number;
-          screenX?: number;
-          screenY?: number;
-          compactFocused?: boolean;
-        },
-      ) => {
-        if (radialHideTimerRef.current) {
-          clearTimeout(radialHideTimerRef.current);
-          radialHideTimerRef.current = null;
-        }
-        if (
-          typeof data.screenX === "number" &&
-          typeof data.screenY === "number"
-        ) {
-          dispatch({
-            type: "radial:show",
-            position: { x: data.screenX!, y: data.screenY! },
-            compactFocused: data.compactFocused,
-          });
-        } else {
-          dispatch({
-            type: "radial:show",
-            compactFocused: data.compactFocused,
-          });
-        }
-      },
-    );
-    const cleanupHide = api.radial.onHide(() => {
-      // Do not immediately set radialVisible=false. The RadialDial plays a
-      // close animation and calls radialAnimDone. We hide after a short delay
-      // to let the animation complete.
-      if (radialHideTimerRef.current) {
-        clearTimeout(radialHideTimerRef.current);
-      }
-      radialHideTimerRef.current = setTimeout(() => {
-        radialHideTimerRef.current = null;
-        dispatch({ type: "radial:hide" });
-      }, 300);
-    });
     const cleanupWindowHighlight = api.overlay.onWindowHighlight?.((payload) => {
       dispatch({
         type: "overlay:windowHighlight",
@@ -223,17 +135,10 @@ function useOverlayIPC(
     });
 
     return () => {
-      if (radialHideTimerRef.current) {
-        clearTimeout(radialHideTimerRef.current);
-        radialHideTimerRef.current = null;
-      }
-      cleanupShow();
-      cleanupHide();
       cleanupWindowHighlight?.();
     };
   }, [dispatch]);
 
-  // Region capture.
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
@@ -250,7 +155,6 @@ function useOverlayIPC(
     };
   }, [dispatch]);
 
-  // Standalone voice overlay visibility/position.
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
@@ -270,7 +174,6 @@ function useOverlayIPC(
     };
   }, [dispatch]);
 
-  // Screen guide annotations.
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
@@ -289,7 +192,6 @@ function useOverlayIPC(
       cleanupHide?.();
     };
   }, [dispatch]);
-
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +206,6 @@ function useOverlayHitTesting(
 ) {
   const {
     regionCaptureActive,
-    radialVisible,
     voiceVisible,
     voicePosition,
     screenGuideVisible,
@@ -315,10 +216,6 @@ function useOverlayHitTesting(
   useEffect(() => {
     if (regionCaptureActive) {
       updateInteractive(true);
-      return;
-    }
-
-    if (radialVisible) {
       return;
     }
 
@@ -348,7 +245,6 @@ function useOverlayHitTesting(
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [
     regionCaptureActive,
-    radialVisible,
     voiceVisible,
     voiceX,
     voiceY,
@@ -357,7 +253,6 @@ function useOverlayHitTesting(
 
   useEffect(() => {
     const anythingActive =
-      radialVisible ||
       regionCaptureActive ||
       voiceVisible ||
       screenGuideVisible;
@@ -366,7 +261,6 @@ function useOverlayHitTesting(
       updateInteractive(false);
     }
   }, [
-    radialVisible,
     regionCaptureActive,
     voiceVisible,
     screenGuideVisible,
@@ -381,15 +275,12 @@ function useOverlayHitTesting(
 export function OverlayRoot() {
   const [state, dispatch] = useReducer(overlayReducer, initialState);
   const interactiveRef = useRef<boolean | null>(null);
-  const radialRef = useRef<HTMLDivElement>(null);
 
   useOverlayIPC(dispatch);
 
-  // Interactivity / hit-testing management
   const updateInteractive = useCallback((shouldBeInteractive: boolean) => {
     if (interactiveRef.current === shouldBeInteractive) return;
     interactiveRef.current = shouldBeInteractive;
-    // Safety check to ensure electronAPI is available and properly initialized
     if (
       typeof window !== "undefined" &&
       window.electronAPI?.overlay?.setInteractive
@@ -401,7 +292,6 @@ export function OverlayRoot() {
   useEffect(() => {
     interactiveRef.current = null;
   }, [
-    state.radialVisible,
     state.regionCaptureActive,
     state.voiceVisible,
     state.screenGuideVisible,
@@ -419,8 +309,6 @@ export function OverlayRoot() {
         overflow: "hidden",
       }}
     >
-      {/* Window highlight ring: shown when a surface explicitly requests it,
-          such as capture hover or the disabled Include badge hover. */}
       {state.windowHighlightBounds && (
         <div
           className={
@@ -437,29 +325,6 @@ export function OverlayRoot() {
         />
       )}
 
-      {/* Radial Dial: always mounted; visibility is managed via IPC.
-          When not visible, position off-screen so the compositor's stale
-          backing-store frame doesn't flash at the old position when the
-          overlay window transitions from hidden → visible. */}
-      <div
-        ref={radialRef}
-        className="radial-shell"
-        style={{
-          position: "absolute",
-          zIndex: 2,
-          left: state.radialVisible ? (state.radialPosition?.x ?? 0) : -9999,
-          top: state.radialVisible ? (state.radialPosition?.y ?? 0) : -9999,
-          width: 280,
-          height: 280,
-          pointerEvents: state.radialVisible ? "auto" : "none",
-        }}
-      >
-        <RadialDial
-          miniVisible={state.radialCompactFocused}
-        />
-      </div>
-
-      {/* Region capture: mounted only when active. */}
       {state.regionCaptureActive && (
         <div
           style={{
@@ -501,4 +366,3 @@ export function OverlayRoot() {
     </div>
   );
 }
-

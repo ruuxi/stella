@@ -1,11 +1,15 @@
 /**
  * ChatColumn: column-reverse scroll viewport, message rendering, custom scrollbar, composer.
+ *
+ * Used by the expanded "full chat" surfaces inside a workspace. Home no
+ * longer renders this — the home view (`@/app/home/HomeContent`) is the
+ * landing surface and the chat sidebar is the always-available conversation
+ * panel.
  */
 
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
-import { HomeContent } from "@/app/home/HomeContent";
 import { StickyThinkingFooter } from "./StickyThinkingFooter";
 import {
   getCurrentRunningTool,
@@ -23,9 +27,6 @@ export const ChatColumn = memo(function ChatColumn({
   scroll,
   composerEntering,
   conversationId,
-  showHomeContent,
-  onSuggestionClick,
-  onDismissHome,
 }: ChatColumnProps) {
   const pinnedTurnIdRef = useRef<string | null>(null);
 
@@ -60,7 +61,6 @@ export const ChatColumn = memo(function ChatColumn({
   }, [
     pendingUserMessageId,
     conversation.events.length,
-    showHomeContent,
     hasScrollElement,
     scrollTurnToPinTop,
   ]);
@@ -107,24 +107,6 @@ export const ChatColumn = memo(function ChatColumn({
     thumbState,
   } = scroll;
 
-  // Delay unmount of home content so fade-out can play
-  const [homeVisible, setHomeVisible] = useState(Boolean(showHomeContent));
-  const [homeLeaving, setHomeLeaving] = useState(false);
-
-  useEffect(() => {
-    if (showHomeContent) {
-      setHomeLeaving(false);
-      setHomeVisible(true);
-    } else if (homeVisible) {
-      setHomeLeaving(true);
-      const timer = setTimeout(() => {
-        setHomeVisible(false);
-        setHomeLeaving(false);
-      }, 280);
-      return () => clearTimeout(timer);
-    }
-  }, [showHomeContent]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const appSessionStartedAtMs = useAgentSessionStartedAt();
   const runningTool = useMemo(
     () => getCurrentRunningTool(conversation.events),
@@ -140,7 +122,6 @@ export const ChatColumn = memo(function ChatColumn({
     Boolean(conversation.streaming.isStreaming) ||
     Boolean(conversation.streaming.runtimeStatusText);
   const showThinkingFooter = hasActiveWork;
-  const shouldShowHomeContent = homeVisible;
 
   // Capture viewport ref for drag operations
   const assignViewport = useCallback(
@@ -167,34 +148,6 @@ export const ChatColumn = memo(function ChatColumn({
       onStop={composer.onStop}
     />
   );
-
-  if (shouldShowHomeContent && onSuggestionClick) {
-    const hasMessages = conversation.events.length > 0;
-    return (
-      <div className={`full-body-main full-body-main--home${homeLeaving ? " full-body-main--home-leaving" : ""}`}>
-        <HomeContent
-          conversationId={conversationId}
-          onSuggestionClick={onSuggestionClick}
-        >
-          <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
-            {composerElement}
-          </div>
-        </HomeContent>
-        {hasMessages && onDismissHome && (
-          <button
-            className="home-view-messages"
-            type="button"
-            onClick={onDismissHome}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            View messages
-          </button>
-        )}
-      </div>
-    );
-  }
 
   return (
     <div className="full-body-main">

@@ -58,9 +58,9 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
   );
   context.state.processRuntime.registerCleanup(
     "will-quit",
-    "radial-gesture-service",
+    "context-menu-service",
     () => {
-      context.services.radialGestureService.stop();
+      context.services.contextMenuService.stop();
     },
   );
   context.state.processRuntime.registerCleanup(

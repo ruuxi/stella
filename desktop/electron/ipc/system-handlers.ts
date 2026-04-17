@@ -22,11 +22,6 @@ import {
 import type { RuntimeSocialSessionStatus } from "../../../runtime/protocol/index.js";
 import { isRuntimeUnavailableError } from "../../../runtime/protocol/rpc-peer.js";
 import {
-  DEFAULT_RADIAL_TRIGGER_CODE,
-  normalizeRadialTriggerCode,
-  type RadialTriggerCode,
-} from "../../src/shared/lib/radial-trigger.js";
-import {
   IPC_APP_QUIT_FOR_RESTART,
   IPC_AUTH_RUNTIME_REFRESH_COMPLETE,
   IPC_BACKUP_GET_STATUS,
@@ -39,9 +34,7 @@ import {
   IPC_PERMISSIONS_OPEN_SETTINGS,
   IPC_PERMISSIONS_REQUEST,
   IPC_PERMISSIONS_RESET_MICROPHONE,
-  IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_SYNC_MODE,
-  IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_PREFERENCES_SYNC_MODELS,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
@@ -165,10 +158,9 @@ type SystemHandlersOptions = {
     | null;
   startPhoneAccessSession: () => { ok: boolean };
   stopPhoneAccessSession: () => Promise<{ ok: boolean }>;
-  setRadialTriggerKey: (triggerKey: RadialTriggerCode) => void;
   onPermissionGranted?: (kind: MacPermissionKind) => void;
   /** When Accessibility is granted (e.g. user enabled it in System Settings), ensure hooks are running. */
-  ensureRadialGestureOnMac?: () => void;
+  ensureContextMenuOnMac?: () => void;
 };
 
 const asTrimmedString = (value: unknown) =>
@@ -741,47 +733,6 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     return options.backupService.setMode(prefs.syncMode);
   });
 
-  ipcMain.handle(IPC_PREFERENCES_GET_RADIAL_TRIGGER, (event) => {
-    if (
-      !options.externalLinkService.assertPrivilegedSender(
-        event,
-        IPC_PREFERENCES_GET_RADIAL_TRIGGER,
-      )
-    ) {
-      throw new Error(
-        "Blocked untrusted preferences:getRadialTrigger request.",
-      );
-    }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return DEFAULT_RADIAL_TRIGGER_CODE;
-    return loadLocalPreferences(stellaRoot).radialTriggerKey;
-  });
-
-  ipcMain.handle(
-    IPC_PREFERENCES_SET_RADIAL_TRIGGER,
-    (event, triggerKey: string) => {
-      if (
-        !options.externalLinkService.assertPrivilegedSender(
-          event,
-          IPC_PREFERENCES_SET_RADIAL_TRIGGER,
-        )
-      ) {
-        throw new Error(
-          "Blocked untrusted preferences:setRadialTrigger request.",
-        );
-      }
-      const nextTriggerKey = normalizeRadialTriggerCode(triggerKey);
-      const stellaRoot = options.getStellaRoot();
-      if (stellaRoot) {
-        const prefs = loadLocalPreferences(stellaRoot);
-        prefs.radialTriggerKey = nextTriggerKey;
-        saveLocalPreferences(stellaRoot, prefs);
-      }
-      options.setRadialTriggerKey(nextTriggerKey);
-      return { triggerKey: nextTriggerKey };
-    },
-  );
-
   ipcMain.handle(
     IPC_PREFERENCES_SYNC_MODELS,
     (
@@ -930,7 +881,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     lastAccessibilityStatus = accessibility;
     if (accessibility) {
       try {
-        options.ensureRadialGestureOnMac?.();
+        options.ensureContextMenuOnMac?.();
       } catch {
         // Best-effort; hooks may still be starting.
       }

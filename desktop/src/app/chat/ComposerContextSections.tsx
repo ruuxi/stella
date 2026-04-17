@@ -38,8 +38,6 @@ const captureVariantClassNames = {
       "chat-composer-context-chip chat-composer-context-chip--screenshot composer-context-chip composer-context-chip--screenshot",
     imageClassName:
       "chat-composer-context-thumb composer-context-thumb",
-    removeClassName:
-      "chat-composer-context-remove composer-context-remove",
     pendingClassName:
       "chat-composer-context-chip chat-composer-context-chip--pending composer-context-chip composer-context-chip--pending",
     pendingInnerClassName:
@@ -51,8 +49,6 @@ const captureVariantClassNames = {
       "chat-composer-context-chip chat-composer-context-chip--screenshot mini-context-chip mini-context-chip--screenshot",
     imageClassName:
       "chat-composer-context-thumb mini-context-thumb",
-    removeClassName:
-      "chat-composer-context-remove mini-context-remove",
     pendingClassName:
       "chat-composer-context-chip chat-composer-context-chip--pending mini-context-chip mini-context-chip--pending",
     pendingInnerClassName:
@@ -64,12 +60,10 @@ const fileVariantClassNames = {
   full: {
     containerClassName: null,
     chipClassName: "composer-context-chip",
-    removeClassName: "chat-composer-context-remove composer-context-remove",
   },
   mini: {
     containerClassName: null,
     chipClassName: "mini-context-chip",
-    removeClassName: "chat-composer-context-remove mini-context-remove",
   },
 } as const;
 
@@ -80,8 +74,6 @@ const selectedTextVariantClassNames = {
       "chat-composer-context-chip chat-composer-context-chip--text composer-context-chip composer-context-chip--text",
     textClassName:
       "chat-composer-context-text composer-context-text",
-    removeClassName:
-      "chat-composer-context-remove composer-context-remove",
   },
   mini: {
     containerClassName: null,
@@ -89,8 +81,6 @@ const selectedTextVariantClassNames = {
       "chat-composer-context-chip chat-composer-context-chip--text mini-context-chip mini-context-chip--text",
     textClassName:
       "chat-composer-context-text mini-context-text",
-    removeClassName:
-      "chat-composer-context-remove mini-context-remove",
   },
 } as const;
 
@@ -103,34 +93,26 @@ export function ComposerWindowContextSection({
     return null;
   }
 
+  const sharedProps = {
+    chatWindow: chatContext.window,
+    chatWindowScreenshot: chatContext.windowScreenshot,
+    capturePending: chatContext.capturePending,
+    setChatContext,
+    className:
+      "chat-composer-context-chip chat-composer-context-chip--window composer-context-chip composer-context-chip--window",
+    toggleClassName: "composer-context-window-toggle",
+    textClassName: "chat-composer-context-window composer-context-window",
+    textFormatter: (chatWindow: NonNullable<ChatContext["window"]>) =>
+      chatWindow.title
+        ? `${chatWindow.app} — ${chatWindow.title}`
+        : chatWindow.app,
+  } as const;
+
   if (variant === "mini") {
-    return (
-      <WindowContextChip
-        chatWindow={chatContext.window}
-        chatWindowScreenshot={chatContext.windowScreenshot}
-        included={chatContext.windowContextEnabled !== false}
-        setChatContext={setChatContext}
-        className="chat-composer-context-chip chat-composer-context-chip--window composer-context-chip composer-context-chip--window"
-        toggleClassName="composer-context-window-toggle"
-        textClassName="chat-composer-context-window composer-context-window"
-        removeClassName="chat-composer-context-remove composer-context-remove"
-        textFormatter={(chatWindow) => chatWindow.title || chatWindow.app}
-      />
-    );
+    return <WindowContextChip {...sharedProps} />;
   }
 
-  return (
-    <WindowContextChip
-      chatWindow={chatContext.window}
-      chatWindowScreenshot={chatContext.windowScreenshot}
-      included={chatContext.windowContextEnabled !== false}
-      setChatContext={setChatContext}
-      className="chat-composer-context-chip chat-composer-context-chip--window composer-context-chip composer-context-chip--window"
-      toggleClassName="composer-context-window-toggle"
-      textClassName="chat-composer-context-window composer-context-window"
-      removeClassName="chat-composer-context-remove composer-context-remove"
-    />
-  );
+  return <WindowContextChip {...sharedProps} />;
 }
 
 export function ComposerCaptureContextSection({
@@ -141,7 +123,12 @@ export function ComposerCaptureContextSection({
 }: CaptureContextSectionProps) {
   const screenshots = chatContext?.regionScreenshots ?? [];
   const hasScreenshots = screenshots.length > 0;
-  const isCapturePending = Boolean(chatContext?.capturePending);
+  // Only render the standalone pending-capture shimmer when there's no
+  // window chip in flight — the window chip renders its own pending
+  // treatment so users see one loading indicator, not two.
+  const hasWindow = Boolean(chatContext?.window);
+  const isCapturePending =
+    Boolean(chatContext?.capturePending) && !hasWindow;
 
   if (!hasScreenshots && !isCapturePending) {
     return null;
@@ -157,7 +144,6 @@ export function ComposerCaptureContextSection({
           onPreviewScreenshot={onPreviewScreenshot}
           chipClassName={classes.chipClassName}
           imageClassName={classes.imageClassName}
-          removeClassName={classes.removeClassName}
         />
       ) : null}
       {isCapturePending ? (
@@ -190,7 +176,6 @@ export function ComposerFileContextSection({
       files={files}
       setChatContext={setChatContext}
       chipClassName={classes.chipClassName}
-      removeClassName={classes.removeClassName}
     />
   );
 
@@ -216,7 +201,6 @@ export function ComposerSelectedTextContextSection({
       setChatContext={setChatContext}
       className={classes.chipClassName}
       textClassName={classes.textClassName}
-      removeClassName={classes.removeClassName}
     />
   );
 

@@ -6,6 +6,97 @@
   width: 100%;
 }
 
+/* Floating suggestion row that sits ABOVE the composer shell (the chat
+ * sidebar opts into this). Matches the chip strip's left padding so the
+ * dashed chips align with the composer's left edge. */
+.composer-context-actions--suggestions {
+  padding: 0 4px 4px;
+}
+
+/* Suggestion chips — auto-detected context Stella offers but hasn't yet
+ * attached. Distinct from "attached" chips above: dashed border, smaller
+ * type, no remove button (click attaches). */
+.composer-context-suggestion {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px dashed
+    color-mix(in oklch, var(--foreground) 22%, transparent);
+  border-radius: 999px;
+  color: var(--text-weak);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  cursor: pointer;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease,
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+/* Slot lifecycle states. The reducer drives `data-phase`:
+ *   - "entering": rendered immediately at opacity 0; advancePhase flips to
+ *      "stable" on the next frame so the transition kicks in.
+ *   - "stable": fully visible, normal hover behavior.
+ *   - "leaving": fade out before the slot is removed. */
+.composer-context-suggestion[data-phase="entering"] {
+  opacity: 0;
+  transform: translateY(-2px);
+}
+
+.composer-context-suggestion[data-phase="leaving"] {
+  opacity: 0;
+  transform: translateY(2px);
+  pointer-events: none;
+}
+
+.composer-context-suggestion:hover {
+  color: var(--text-base);
+  border-color: color-mix(in oklch, var(--foreground) 36%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+/* Empty-slot placeholder keeps the row from collapsing when one of the
+ * three suggestion slots is currently empty (e.g. one app quit, no live
+ * candidate to fill it yet). Zero-width — invisible but reserves no
+ * horizontal space; flex `gap` collapses around it gracefully. */
+.composer-context-suggestion-placeholder {
+  display: none;
+}
+
+.composer-context-suggestion__plus {
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.composer-context-suggestion__label {
+  white-space: nowrap;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer-context-suggestion__meta {
+  margin-left: 2px;
+  color: var(--text-weak);
+  opacity: 0.65;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.composer-context-suggestion--tab .composer-context-suggestion__label {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.005em;
+}
+
 .chat-composer-context-chip,
 .composer-context-chip,
 .mini-context-chip,
@@ -14,6 +105,20 @@
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+/* Subtle hover affordance — every attached chip is clickable to remove. */
+button.chat-composer-context-chip:hover,
+button.composer-context-chip:hover,
+button.mini-context-chip:hover {
+  filter: brightness(1.05);
 }
 
 .chat-composer-context-chip--screenshot,
@@ -83,27 +188,24 @@
   border-color: color-mix(in oklch, var(--primary, var(--foreground)) 22%, transparent);
 }
 
-.chat-composer-context-chip--window[data-included="false"],
-.composer-context-chip--window[data-included="false"],
-.mini-composer-window-badge[data-included="false"] {
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  border-color: color-mix(in oklch, var(--foreground) 14%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--foreground) 6%, transparent);
-  animation: context-chip-nudge 1.8s ease-in-out 0.3s 1;
+/* Attached chips are removed by clicking the chip body — the floating ×
+ * removal button no longer exists in the markup. Hover surfaces the
+ * "Click to remove …" tooltip on each chip. */
+
+/* Window chip while its screenshot capture is still in flight: subtle
+ * pulse so the user knows we're working on it without blocking input. */
+.chat-composer-context-chip--window[data-capture-pending="true"],
+.composer-context-chip--window[data-capture-pending="true"] {
+  animation: composer-context-pending-pulse 1.4s ease-in-out infinite;
 }
 
-@keyframes context-chip-nudge {
-  0%, 100% { box-shadow: 0 0 0 0 transparent; }
-  30% { box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary, var(--foreground)) 15%, transparent); }
-  70% { box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary, var(--foreground)) 15%, transparent); }
-}
-
-.chat-composer-context-chip--window[data-included="false"]:hover,
-.composer-context-chip--window[data-included="false"]:hover,
-.mini-composer-window-badge[data-included="false"]:hover {
-  background: color-mix(in oklch, var(--primary, var(--foreground)) 10%, transparent);
-  border-color: color-mix(in oklch, var(--primary, var(--foreground)) 22%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary, var(--foreground)) 10%, transparent);
+@keyframes composer-context-pending-pulse {
+  0%, 100% {
+    border-color: color-mix(in oklch, var(--primary, var(--foreground)) 22%, transparent);
+  }
+  50% {
+    border-color: color-mix(in oklch, var(--primary, var(--foreground)) 50%, transparent);
+  }
 }
 
 .chat-composer-context-text,
@@ -148,59 +250,13 @@
   text-align: left;
 }
 
-.chat-composer-context-chip--window[data-included="false"] .chat-composer-context-window,
-.composer-context-chip--window[data-included="false"] .composer-context-window,
-.mini-composer-window-badge[data-included="false"] .mini-composer-window-text {
-  color: var(--text-weaker);
-}
 
-.chat-composer-context-remove,
-.composer-context-remove,
-.mini-context-remove {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  border: none;
-  background: color-mix(in oklch, var(--foreground) 70%, transparent);
-  color: var(--background);
-  font-size: 12px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-  padding: 0;
-}
-
-.chat-composer-context-chip:hover .chat-composer-context-remove,
-.composer-context-chip:hover .composer-context-remove,
-.mini-context-chip:hover .mini-context-remove {
-  opacity: 1;
-}
-
-.chat-composer-context-chip:hover .composer-context-preview,
-.chat-composer-context-chip:focus-within .composer-context-preview,
-.composer-context-chip:hover .composer-context-preview,
-.composer-context-chip:focus-within .composer-context-preview,
-.mini-context-chip:hover .composer-context-preview,
-.mini-context-chip:focus-within .composer-context-preview,
-.mini-composer-window-badge:hover .composer-context-preview,
-.mini-composer-window-badge:focus-within .composer-context-preview {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
+/* Visual shell of the hover preview. The portal in ChipPreviewPortal
+ * controls position/visibility; this rule purely styles the floating box.
+ * Older selectors that flipped opacity on hover are gone — the portal
+ * mounts only while hovered, so the chip CSS no longer needs to participate
+ * in the visibility decision. */
 .composer-context-preview {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 10px);
-  z-index: 20;
   width: min(460px, calc(100vw - 64px));
   max-height: 180px;
   padding: 12px 14px;
@@ -218,12 +274,6 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  opacity: 0;
-  transform: translateY(4px);
-  pointer-events: none;
-  transition:
-    opacity 140ms ease,
-    transform 140ms ease;
 }
 
 .composer-context-preview > div:first-child {
@@ -297,12 +347,16 @@
   border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
   max-width: min(220px, 45vw);
-  cursor: default;
-  transition: background 0.15s ease;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.chat-composer-file-chip:hover {
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+button.chat-composer-file-chip:hover {
+  background: color-mix(in oklch, var(--foreground) 14%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
 }
 
 .chat-composer-file-icon {
@@ -338,16 +392,4 @@
   font-size: 10px;
   line-height: 1.2;
   color: var(--text-weaker);
-}
-
-.chat-composer-file-chip .chat-composer-context-remove,
-.chat-composer-file-chip .composer-context-remove,
-.chat-composer-file-chip .mini-context-remove {
-  opacity: 0;
-}
-
-.chat-composer-file-chip:hover .chat-composer-context-remove,
-.chat-composer-file-chip:hover .composer-context-remove,
-.chat-composer-file-chip:hover .mini-context-remove {
-  opacity: 1;
 }

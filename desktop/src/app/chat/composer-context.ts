@@ -27,6 +27,27 @@ type ComposerPlaceholderOptions = {
   contextState: ComposerContextState;
 };
 
+/**
+ * Returns true when there is at least one attached chip to render (window,
+ * file, screenshot, selected text, or a pending capture). Callers can use
+ * this to skip rendering the chip strip container entirely so it doesn't
+ * eat layout space when empty.
+ */
+export const hasAttachedComposerChips = (
+  chatContext: ChatContext | null,
+  selectedText: string | null,
+): boolean => {
+  if (selectedText) return true;
+  if (!chatContext) return false;
+  if (chatContext.window) return true;
+  if (chatContext.browserUrl) return true;
+  if (chatContext.regionScreenshots && chatContext.regionScreenshots.length > 0)
+    return true;
+  if (chatContext.files && chatContext.files.length > 0) return true;
+  if (chatContext.capturePending) return true;
+  return false;
+};
+
 export const resolveComposerContextState = (
   chatContext: ChatContext | null,
   selectedText: string | null,
@@ -112,15 +133,6 @@ export const clearComposerWindowContext = (setChatContext: SetChatContext) => {
   ));
 };
 
-export const toggleComposerWindowContext = (setChatContext: SetChatContext) => {
-  setChatContext((prev) => {
-    if (!prev?.window) return prev;
-    return {
-      ...prev,
-      windowContextEnabled: prev.windowContextEnabled === false,
-    };
-  });
-};
 
 export const clearComposerSelectedTextContext = (
   setSelectedText: SetSelectedText,

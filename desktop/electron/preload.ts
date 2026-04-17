@@ -4,12 +4,15 @@ import type {
   ChatContext,
   SelfModHmrState,
 } from "../src/shared/contracts/boundary.js";
-import type { RadialTriggerCode } from "../src/shared/lib/radial-trigger.js";
 import type { OfficePreviewSnapshot } from "../src/shared/contracts/office-preview.js";
 import {
   IPC_BROWSER_FETCH_JSON,
   IPC_BROWSER_FETCH_TEXT,
   IPC_DISCOVERY_COLLECT_ALL_SIGNALS,
+  IPC_HOME_CAPTURE_APP_WINDOW,
+  IPC_HOME_GET_ACTIVE_BROWSER_TAB,
+  IPC_HOME_LIST_RECENT_APPS,
+  IPC_HOME_PIN_SUGGESTION,
   IPC_DISCOVERY_COLLECT_BROWSER_DATA,
   IPC_DISCOVERY_CORE_MEMORY_EXISTS,
   IPC_DISCOVERY_DETECT_PREFERRED_BROWSER,
@@ -34,9 +37,7 @@ import {
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
   IPC_PERMISSIONS_RESET_MICROPHONE,
-  IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_SYNC_MODE,
-  IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_PREFERENCES_SYNC_MODELS,
   IPC_SOCIAL_SESSIONS_CREATE,
@@ -141,6 +142,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setState: (partial: Record<string, unknown>) =>
       ipcRenderer.invoke("ui:setState", partial),
     onState: onIpc<Record<string, unknown>>("ui:state"),
+    onOpenChatSidebar: onIpcSignal("chat:openSidebar"),
     setAppReady: (ready: boolean) => ipcRenderer.send("app:setReady", ready),
     reload: () => ipcRenderer.send("app:reload"),
     hardReset: () =>
@@ -205,32 +207,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     pageDataUrl: () =>
       ipcRenderer.invoke("capture:pageDataUrl") as Promise<string | null>,
     onRegionReset: onIpcSignal("region:reset"),
-  },
-
-  radial: {
-    onShow: onIpcWithEvent<{
-      centerX: number;
-      centerY: number;
-      x?: number;
-      y?: number;
-      screenX?: number;
-      screenY?: number;
-      compactFocused?: boolean;
-    }>("radial:show"),
-    onHide: onIpcSignal("radial:hide"),
-    animDone: () => ipcRenderer.send("radial:animDone"),
-    onCursor: onIpcWithEvent<{
-      x: number;
-      y: number;
-      centerX: number;
-      centerY: number;
-    }>("radial:cursor"),
-    onWindowBounds: onIpc<{
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    } | null>("radial:windowBounds"),
   },
 
   overlay: {
@@ -658,13 +634,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         IPC_PREFERENCES_SYNC_MODELS,
         payload,
       ) as Promise<{ ok: boolean }>,
-    getRadialTriggerKey: () =>
-      ipcRenderer.invoke(IPC_PREFERENCES_GET_RADIAL_TRIGGER) as Promise<RadialTriggerCode>,
-    setRadialTriggerKey: (triggerKey: RadialTriggerCode) =>
-      ipcRenderer.invoke(
-        IPC_PREFERENCES_SET_RADIAL_TRIGGER,
-        triggerKey,
-      ) as Promise<{ triggerKey: RadialTriggerCode }>,
     listLlmCredentials: () =>
       ipcRenderer.invoke("llmCredentials:list") as Promise<
         Array<{
@@ -767,6 +736,72 @@ contextBridge.exposeInMainWorld("electronAPI", {
       error?: string;
       notifyUser?: boolean;
     }>("browser:bridgeStatus"),
+  },
+
+  home: {
+    listRecentApps: (limit?: number) =>
+      ipcRenderer.invoke(IPC_HOME_LIST_RECENT_APPS, { limit }) as Promise<{
+        apps: Array<{
+          name: string;
+          bundleId?: string;
+          pid: number;
+          isActive: boolean;
+          windowTitle?: string;
+        }>;
+      }>,
+    getActiveBrowserTab: (bundleId: string) =>
+      ipcRenderer.invoke(IPC_HOME_GET_ACTIVE_BROWSER_TAB, {
+        bundleId,
+      }) as Promise<{
+        tab: {
+          browser: string;
+          bundleId?: string;
+          url: string;
+          title?: string;
+        } | null;
+      }>,
+    captureAppWindow: (
+      target:
+        | string
+        | { appName?: string | null; pid?: number | null },
+    ) => {
+      const payload =
+        typeof target === "string"
+          ? { appName: target }
+          : { appName: target?.appName ?? null, pid: target?.pid ?? null };
+      return ipcRenderer.invoke(
+        IPC_HOME_CAPTURE_APP_WINDOW,
+        payload,
+      ) as Promise<{
+        capture: {
+          title: string;
+          screenshot: {
+            dataUrl: string;
+            width: number;
+            height: number;
+          };
+        } | null;
+      }>;
+    },
+    onPinSuggestion: onIpc<{
+      chip:
+        | {
+            kind: "app";
+            pid: number;
+            name: string;
+            bundleId?: string;
+            isActive: boolean;
+            windowTitle?: string;
+          }
+        | {
+            kind: "tab";
+            browser: string;
+            bundleId: string;
+            url: string;
+            title?: string;
+            host: string;
+          };
+    }>(IPC_HOME_PIN_SUGGESTION),
   },
 
   media: {

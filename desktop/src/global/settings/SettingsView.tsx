@@ -42,12 +42,6 @@ import { BillingTab } from "@/global/settings/BillingTab";
 import { AudioTab } from "@/global/settings/AudioTab";
 import { ConnectionsTab } from "@/global/settings/ConnectionsTab";
 import { hasBillingCheckoutCompletionMarker } from "@/global/settings/lib/billing-checkout";
-import {
-  DEFAULT_RADIAL_TRIGGER_CODE,
-  getRadialTriggerLabel,
-  getRadialTriggerOptions,
-  type RadialTriggerCode,
-} from "@/shared/lib/radial-trigger";
 import "@/global/settings/settings.css";
 
 const LegalDialog = lazy(() =>
@@ -146,18 +140,6 @@ function BasicTab({
 }) {
   const { hasConnectedAccount } = useAuthSessionState();
   const platform = window.electronAPI?.platform;
-  const radialTriggerOptions = useMemo(
-    () => getRadialTriggerOptions(platform),
-    [platform],
-  );
-  const [radialTriggerKey, setRadialTriggerKey] = useState<RadialTriggerCode>(
-    DEFAULT_RADIAL_TRIGGER_CODE,
-  );
-  const [radialTriggerLoaded, setRadialTriggerLoaded] = useState(false);
-  const [radialTriggerError, setRadialTriggerError] = useState<string | null>(
-    null,
-  );
-  const [isSavingRadialTrigger, setIsSavingRadialTrigger] = useState(false);
   const [syncMode, setSyncMode] = useState<"on" | "off">("off");
   const [backupStatus, setBackupStatus] = useState<BackupStatusSnapshot | null>(
     null,
@@ -186,45 +168,6 @@ function BasicTab({
   const [isRestartingAfterPermissions, setIsRestartingAfterPermissions] =
     useState(false);
   const [screenRestartRecommended, setScreenRestartRecommended] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      const api = window.electronAPI?.system;
-      if (!api?.getRadialTriggerKey) {
-        if (!cancelled) {
-          setRadialTriggerLoaded(true);
-        }
-        return;
-      }
-
-      try {
-        const nextTriggerKey = await api.getRadialTriggerKey();
-        if (!cancelled) {
-          setRadialTriggerKey(nextTriggerKey);
-          setRadialTriggerError(null);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setRadialTriggerError(
-            getSettingsErrorMessage(
-              error,
-              "Failed to load the radial dial shortcut.",
-            ),
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setRadialTriggerLoaded(true);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const loadBackupState = useCallback(async () => {
     const systemApi = window.electronAPI?.system;
@@ -339,43 +282,6 @@ function BasicTab({
     };
   }, [fetchPermissionStatus, platform]);
 
-  const handleRadialTriggerChange = useCallback(
-    async (value: string) => {
-      if (isSavingRadialTrigger) {
-        return;
-      }
-
-      const nextTriggerKey = value as RadialTriggerCode;
-      const previousTriggerKey = radialTriggerKey;
-      const api = window.electronAPI?.system;
-      if (!api?.setRadialTriggerKey) {
-        setRadialTriggerError(
-          "Radial dial shortcut settings are unavailable in this window.",
-        );
-        return;
-      }
-
-      setRadialTriggerError(null);
-      setRadialTriggerKey(nextTriggerKey);
-      setIsSavingRadialTrigger(true);
-
-      try {
-        const result = await api.setRadialTriggerKey(nextTriggerKey);
-        setRadialTriggerKey(result.triggerKey);
-      } catch (error) {
-        setRadialTriggerKey(previousTriggerKey);
-        setRadialTriggerError(
-          getSettingsErrorMessage(
-            error,
-            "Failed to update the radial dial shortcut.",
-          ),
-        );
-      } finally {
-        setIsSavingRadialTrigger(false);
-      }
-    },
-    [isSavingRadialTrigger, radialTriggerKey],
-  );
 
   const handleSyncModeChange = useCallback(
     async (value: string) => {
@@ -530,46 +436,10 @@ function BasicTab({
       <div className="settings-card">
         <h3 className="settings-card-title">Shortcuts</h3>
         <p className="settings-card-desc">
-          Hold the radial trigger shortcut, drag to a wedge, then release to select.
+          {platform === "darwin"
+            ? "Hold ⌘ (Command) and right-click anywhere on screen to open the Stella quick menu."
+            : "Hold Ctrl and right-click anywhere on screen to open the Stella quick menu."}
         </p>
-        {radialTriggerError ? (
-          <p
-            className="settings-card-desc settings-card-desc--error"
-            role="alert"
-          >
-            {radialTriggerError}
-          </p>
-        ) : null}
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <div className="settings-row-label">Radial Dial Trigger</div>
-            <div className="settings-row-sublabel">
-              Defaults to{" "}
-              <code>{getRadialTriggerLabel(DEFAULT_RADIAL_TRIGGER_CODE, platform)}</code>.
-            </div>
-          </div>
-          <div className="settings-row-control">
-            <NativeSelect
-              className="settings-runtime-select"
-              value={radialTriggerKey}
-              onChange={(event) =>
-                void handleRadialTriggerChange(event.target.value)
-              }
-              disabled={!radialTriggerLoaded || isSavingRadialTrigger}
-            >
-              {!radialTriggerLoaded ? (
-                <option value={DEFAULT_RADIAL_TRIGGER_CODE}>
-                  Loading saved setting...
-                </option>
-              ) : null}
-              {radialTriggerOptions.map((option) => (
-                <option key={option.code} value={option.code}>
-                  {option.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-        </div>
       </div>
       {platform === "darwin" ? (
         <div className="settings-card">
@@ -590,7 +460,7 @@ function BasicTab({
             <div className="settings-row-info">
               <div className="settings-row-label">Accessibility</div>
               <div className="settings-row-sublabel">
-                Required for the global radial shortcut and selected text.
+                Required for the global ⌘+right-click shortcut and selected text.
               </div>
             </div>
             <div className="settings-row-control">

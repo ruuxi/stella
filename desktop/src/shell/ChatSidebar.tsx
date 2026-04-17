@@ -10,14 +10,20 @@ import { useTheme } from "@/context/theme-context";
 import { animate } from "motion";
 import { createPortal } from "react-dom";
 import { CompactConversationSurface } from "@/app/chat/CompactConversationSurface";
-import { ComposerContextRow } from "@/app/chat/ComposerContextRow";
+import {
+  ComposerContextRow,
+  ComposerSuggestionContextRow,
+} from "@/app/chat/ComposerContextRow";
 import {
   ComposerAddButton,
   ComposerSubmitButton,
   ComposerStopButton,
   ComposerTextarea,
 } from "@/app/chat/ComposerPrimitives";
-import { deriveComposerState } from "@/app/chat/composer-context";
+import {
+  deriveComposerState,
+  hasAttachedComposerChips,
+} from "@/app/chat/composer-context";
 import { useFileDrop } from "@/app/chat/hooks/use-file-drop";
 import { DropOverlay } from "@/app/chat/DropOverlay";
 import { useScreenshotPreview, ScreenshotPreviewOverlay } from "@/app/chat/ScreenshotPreview";
@@ -28,10 +34,37 @@ import { useChatContextSync } from "./use-chat-context-sync";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import "./chat-sidebar.css";
 
+export interface ChatSidebarOpenOptions {
+  /** When provided, attaches/replaces the current chat context before opening. */
+  chatContext?: ChatContext | null;
+  /** When provided, sets the composer text (replaces existing input). */
+  prefillText?: string;
+}
+
 export interface ChatSidebarHandle {
-  open(chatContext?: ChatContext | null): void;
+  open(options?: ChatSidebarOpenOptions | ChatContext | null): void;
   close(): void;
 }
+
+/**
+ * The legacy signature was `open(chatContext)`; the new one is
+ * `open({ chatContext, prefillText })`. We detect the new form by looking
+ * for either explicit options key — `regionScreenshots` is unique to
+ * `ChatContext` so its presence means the caller passed a raw context.
+ */
+const normalizeOpenArg = (
+  arg?: ChatSidebarOpenOptions | ChatContext | null,
+): ChatSidebarOpenOptions => {
+  if (arg === undefined) return {};
+  if (arg === null) return { chatContext: null };
+  if ("chatContext" in arg || "prefillText" in arg) {
+    return arg as ChatSidebarOpenOptions;
+  }
+  if ("regionScreenshots" in arg) {
+    return { chatContext: arg as ChatContext };
+  }
+  return arg as ChatSidebarOpenOptions;
+};
 
 interface ChatSidebarProps {
   events: EventRecord[];
@@ -86,6 +119,7 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
 
     const formRef = useRef<HTMLFormElement | null>(null);
     const shellRef = useRef<HTMLDivElement | null>(null);
+    const shellContentRef = useRef<HTMLDivElement | null>(null);
     const heightAnimRef = useRef<ReturnType<typeof animate> | null>(null);
     const lastHeightRef = useRef(0);
 
@@ -95,9 +129,13 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     });
 
     useImperativeHandle(ref, () => ({
-      open(ctx?: ChatContext | null) {
-        if (ctx !== undefined) {
-          setChatContext(ctx);
+      open(arg?: ChatSidebarOpenOptions | ChatContext | null) {
+        const options = normalizeOpenArg(arg);
+        if (options.chatContext !== undefined) {
+          setChatContext(options.chatContext);
+        }
+        if (typeof options.prefillText === "string") {
+          setInputText(options.prefillText);
         }
         setIsOpen(true);
       },
@@ -135,24 +173,29 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
     }, [isOpen]);
 
     /* Shell height + corner radius — same behavior as full chat Composer
-       (ResizeObserver + spring). Only attach while sidebar is open so layout
-       is valid after the panel width finishes expanding. */
+       (ResizeObserver + spring). Watches the shell-content wrapper (chip
+       strip + form) so the shell grows when chips are attached. Only attach
+       while sidebar is open so layout is valid after the panel width finishes
+       expanding. */
     useEffect(() => {
       if (!isOpen) return;
 
+      const content = shellContentRef.current;
       const form = formRef.current;
       const shell = shellRef.current;
-      if (!form || !shell || typeof ResizeObserver === "undefined") return;
+      if (!content || !form || !shell || typeof ResizeObserver === "undefined") return;
 
-      const syncShellToForm = () => {
-        lastHeightRef.current = form.getBoundingClientRect().height;
+      const syncShellToContent = () => {
+        lastHeightRef.current = content.getBoundingClientRect().height;
         shell.style.height = `${lastHeightRef.current}px`;
-        shell.style.borderRadius = form.classList.contains("expanded")
+        const expanded = form.classList.contains("expanded");
+        const hasChips = Boolean(content.querySelector(".composer-attached-strip"));
+        shell.style.borderRadius = expanded || hasChips
           ? "20px"
           : `${Math.min(999, lastHeightRef.current)}px`;
       };
 
-      syncShellToForm();
+      syncShellToContent();
 
       const ro = new ResizeObserver((entries) => {
         const entry = entries[0];
@@ -163,7 +206,8 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
 
         lastHeightRef.current = newH;
         const expanded = form.classList.contains("expanded");
-        const targetRadius = expanded ? 20 : Math.min(999, newH);
+        const hasChips = Boolean(content.querySelector(".composer-attached-strip"));
+        const targetRadius = expanded || hasChips ? 20 : Math.min(999, newH);
 
         heightAnimRef.current?.stop();
         heightAnimRef.current = animate(
@@ -177,10 +221,10 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
         );
       });
 
-      ro.observe(form);
+      ro.observe(content);
 
       const id = requestAnimationFrame(() => {
-        syncShellToForm();
+        syncShellToContent();
       });
 
       return () => {
@@ -248,89 +292,99 @@ export const ChatSidebar = forwardRef<ChatSidebarHandle, ChatSidebarProps>(
             <div className="chat-sidebar-composer" {...dropHandlers}>
               <DropOverlay visible={isDragOver} variant="orb" />
 
-              <ComposerContextRow
-                variant="mini"
+              <ComposerSuggestionContextRow
                 chatContext={chatContext}
-                selectedText={selectedText}
                 setChatContext={setChatContext}
-                setSelectedText={setSelectedText}
-                onPreviewScreenshot={setPreviewScreenshotIndex}
               />
 
               <div ref={shellRef} className="chat-sidebar-shell">
-                <form
-                  ref={formRef}
-                  className={`chat-sidebar-form${sidebarExpanded ? " expanded" : ""}`}
-                  onSubmit={handleSubmit}
-                >
-                  <ComposerAddButton
-                    className="composer-add-button"
-                    title="Add"
-                    onClick={onAdd}
-                  />
+                <div ref={shellContentRef} className="chat-sidebar-shell-content">
+                  {hasAttachedComposerChips(chatContext, selectedText) && (
+                    <div className="composer-attached-strip composer-attached-strip--mini">
+                      <ComposerContextRow
+                        variant="mini"
+                        chatContext={chatContext}
+                        selectedText={selectedText}
+                        setChatContext={setChatContext}
+                        setSelectedText={setSelectedText}
+                        onPreviewScreenshot={setPreviewScreenshotIndex}
+                      />
+                    </div>
+                  )}
+                  <form
+                    ref={formRef}
+                    className={`chat-sidebar-form${sidebarExpanded ? " expanded" : ""}`}
+                    onSubmit={handleSubmit}
+                  >
+                    <ComposerAddButton
+                      className="composer-add-button"
+                      title="Add"
+                      onClick={onAdd}
+                    />
 
-                  <ComposerTextarea
-                    ref={inputRef}
-                    className="chat-sidebar-input"
-                    tone="default"
-                    value={inputText}
-                    rows={1}
-                    onChange={(event) => {
-                      setInputText(event.target.value);
-                      requestAnimationFrame(() => {
-                        const el = inputRef.current;
-                        if (!el) return;
-                        const form = el.closest(".chat-sidebar-form") as HTMLElement | null;
-                        if (!form) return;
-                        const isExp = form.classList.contains("expanded");
+                    <ComposerTextarea
+                      ref={inputRef}
+                      className="chat-sidebar-input"
+                      tone="default"
+                      value={inputText}
+                      rows={1}
+                      onChange={(event) => {
+                        setInputText(event.target.value);
+                        requestAnimationFrame(() => {
+                          const el = inputRef.current;
+                          if (!el) return;
+                          const form = el.closest(".chat-sidebar-form") as HTMLElement | null;
+                          if (!form) return;
+                          const isExp = form.classList.contains("expanded");
 
-                        if (!isExp) {
-                          if (el.scrollHeight > 44) setSidebarExpanded(true);
-                        } else {
-                          form.classList.remove("expanded");
-                          const pillSh = el.scrollHeight;
-                          form.classList.add("expanded");
-                          if (pillSh <= 44) setSidebarExpanded(false);
+                          if (!isExp) {
+                            if (el.scrollHeight > 44) setSidebarExpanded(true);
+                          } else {
+                            form.classList.remove("expanded");
+                            const pillSh = el.scrollHeight;
+                            form.classList.add("expanded");
+                            if (pillSh <= 44) setSidebarExpanded(false);
+                          }
+                        });
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          handleSubmit(event);
                         }
-                      });
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        handleSubmit(event);
-                      }
-                    }}
-                    placeholder={composerState.placeholder}
-                  />
+                      }}
+                      placeholder={composerState.placeholder}
+                    />
 
-                  <div className="composer-toolbar">
-                    <div className="composer-toolbar-left">
-                      <ComposerAddButton
-                        className="composer-add-button composer-add-button--toolbar"
-                        title="Add"
-                        onClick={onAdd}
-                      />
-                    </div>
-
-                    <div className="composer-toolbar-right">
-                      {isStreaming && (
-                        <ComposerStopButton
-                          className="composer-stop"
-                          onClick={() => {
-                            /* stop handled externally */
-                          }}
-                          title="Stop"
-                          aria-label="Stop"
+                    <div className="composer-toolbar">
+                      <div className="composer-toolbar-left">
+                        <ComposerAddButton
+                          className="composer-add-button composer-add-button--toolbar"
+                          title="Add"
+                          onClick={onAdd}
                         />
-                      )}
-                      <ComposerSubmitButton
-                        className="composer-submit"
-                        disabled={!composerState.canSubmit}
-                        animated
-                      />
+                      </div>
+
+                      <div className="composer-toolbar-right">
+                        {isStreaming && (
+                          <ComposerStopButton
+                            className="composer-stop"
+                            onClick={() => {
+                              /* stop handled externally */
+                            }}
+                            title="Stop"
+                            aria-label="Stop"
+                          />
+                        )}
+                        <ComposerSubmitButton
+                          className="composer-submit"
+                          disabled={!composerState.canSubmit}
+                          animated
+                        />
+                      </div>
                     </div>
-                  </div>
-                </form>
+                  </form>
+                </div>
               </div>
             </div>
           </div>

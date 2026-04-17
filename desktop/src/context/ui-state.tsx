@@ -18,7 +18,7 @@ const defaultState: UiState = {
   view: 'chat',
   conversationId: null,
   isVoiceRtcActive: false,
-  suppressNativeRadialDuringOnboarding: false,
+  suppressNativeContextMenuDuringOnboarding: false,
 }
 
 const UiStateContext = createContext<UiStateContextValue | null>(null)

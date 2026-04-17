@@ -27,6 +27,33 @@
   }
 }
 
+/* In the mini window the chat panel takes up the full content area instead
+   of being a constrained side rail. The content area (home, workspace,
+   etc.) hides while the chat sidebar is open so the chat surface owns the
+   remaining width next to the icon rail. */
+@media (max-width: 600px) {
+  .chat-sidebar--open {
+    width: 100%;
+    flex: 1;
+  }
+
+  .chat-sidebar-inner {
+    min-width: 0;
+    width: 100%;
+    border-left: none;
+    border-radius: 0;
+  }
+
+  .chat-sidebar {
+    border-radius: 0;
+    margin-left: 0;
+  }
+
+  .full-body:has(.chat-sidebar--open) .content-area {
+    display: none;
+  }
+}
+
 .chat-sidebar-inner {
   position: relative;
   display: flex;
@@ -91,6 +118,21 @@
   box-shadow: var(--shadow-md);
   overflow: clip;
   transition: box-shadow 200ms ease;
+}
+
+/* Wraps the optional chip strip + form so the ResizeObserver can spring
+ * the shell to the right height when chips appear/disappear. Mirrors the
+ * full-shell composer-shell-content. */
+.chat-sidebar-shell-content {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* Mini variant of the attached chip strip — tighter padding to match the
+ * sidebar form's compact toolbar density. */
+.composer-attached-strip--mini {
+  padding: 6px 10px 0;
 }
 
 .chat-sidebar-shell:focus-within {
