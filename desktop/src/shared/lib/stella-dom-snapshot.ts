@@ -11,7 +11,10 @@ type BuildDomSnapshotOptions = {
 
 const DEFAULT_SKIP_TAGS = new Set(["script", "style", "noscript"]);
 
-function isVisibleForSnapshot(el: Element, requireViewportIntersection: boolean): boolean {
+export function isVisibleForSnapshot(
+  el: Element,
+  requireViewportIntersection: boolean,
+): boolean {
   // Check rect first — cheaper than getComputedStyle and catches display:none
   // (which yields a zero rect) without forcing style resolution.
   const rect = el.getBoundingClientRect();
@@ -61,7 +64,11 @@ export function getAccessibleName(el: Element): string {
   return full.length > 60 ? `${full.slice(0, 57)}...` : full;
 }
 
-function formatInteractiveLine(prefix: string, name: string, suffix = ""): string {
+function formatInteractiveLine(
+  prefix: string,
+  name: string,
+  suffix = "",
+): string {
   return `${prefix}${name ? ` ${name}` : ""}${suffix}`;
 }
 
@@ -69,10 +76,15 @@ function walkSnapshotElement(
   el: Element,
   depth: number,
   lines: string[],
-  options: Required<Pick<
-    BuildDomSnapshotOptions,
-    "maxLines" | "requireViewportIntersection" | "capIndentDepth" | "skipUnnamedInteractive"
-  >> &
+  options: Required<
+    Pick<
+      BuildDomSnapshotOptions,
+      | "maxLines"
+      | "requireViewportIntersection"
+      | "capIndentDepth"
+      | "skipUnnamedInteractive"
+    >
+  > &
     Pick<BuildDomSnapshotOptions, "skipTags" | "registerRef">,
 ): void {
   if (lines.length >= options.maxLines) return;
@@ -101,11 +113,15 @@ function walkSnapshotElement(
   const isInput = tag === "input" || tag === "textarea";
   const isSelect = tag === "select";
   const isLink = tag === "a" && el.hasAttribute("href");
-  const isClickable = role === "menuitem" || role === "option" || role === "tab";
-  const isInteractive = isButton || isInput || isSelect || isLink || isClickable;
+  const isClickable =
+    role === "menuitem" || role === "option" || role === "tab";
+  const isInteractive =
+    isButton || isInput || isSelect || isLink || isClickable;
 
   if (isInteractive) {
-    const disabled = el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true";
+    const disabled =
+      el.hasAttribute("disabled") ||
+      el.getAttribute("aria-disabled") === "true";
     if (disabled) return;
 
     const action = el.getAttribute("data-stella-action");
@@ -140,10 +156,19 @@ function walkSnapshotElement(
       const selectEl = el as HTMLSelectElement;
       const selected = selectEl.options[selectEl.selectedIndex]?.text ?? "";
       lines.push(
-        formatInteractiveLine(`${indent}[select${refSuffix}]`, name, `: "${selected}"`),
+        formatInteractiveLine(
+          `${indent}[select${refSuffix}]`,
+          name,
+          `: "${selected}"`,
+        ),
       );
     } else {
-      lines.push(formatInteractiveLine(`${indent}[${isLink ? "link" : "btn"}${refSuffix}]`, name));
+      lines.push(
+        formatInteractiveLine(
+          `${indent}[${isLink ? "link" : "btn"}${refSuffix}]`,
+          name,
+        ),
+      );
     }
     return;
   }
@@ -152,7 +177,10 @@ function walkSnapshotElement(
     const text = el.textContent?.trim();
     if (text && text.length > 0 && text.length < 200) {
       const cls = el.className;
-      if (typeof cls === "string" && (cls.includes("skeleton") || cls.includes("shimmer"))) {
+      if (
+        typeof cls === "string" &&
+        (cls.includes("skeleton") || cls.includes("shimmer"))
+      ) {
         return;
       }
       lines.push(`${indent}${text}`);
