@@ -2,7 +2,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 
-const resolveStatePath = () => {
+export const resolveStatePath = () => {
   if (process.env.STELLA_UI_STATE_DIR) {
     return process.env.STELLA_UI_STATE_DIR;
   }

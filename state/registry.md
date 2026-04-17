@@ -14,6 +14,7 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 
 - Browser automation: [stella-browser](state/knowledge/stella-browser.md)
 - Office documents: [stella-office](state/knowledge/stella-office.md)
+- Desktop app automation: [stella-computer](state/knowledge/stella-computer.md)
 - Electron app control: [electron](state/knowledge/electron.md)
 - Managed media API docs: [managed-media-sdk](state/knowledge/managed-media-sdk.md)
 - Feature packaging and sharing: [blueprint-management](state/knowledge/blueprint-management.md)

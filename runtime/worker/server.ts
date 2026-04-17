@@ -7,6 +7,7 @@ import {
   NOTIFICATION_NAMES,
   type AgentHealth,
   type HostDeviceIdentity,
+  type RuntimeAttachmentRef,
   type RuntimeAgentEventPayload,
   type RuntimeChatPayload,
   type StorePublishArgs,
@@ -76,7 +77,13 @@ const resolveDesktopCliEntrypoint = (
   packageName: string,
   entrypoint: string,
 ): string => {
-  const desktopLocal = path.join(stellaRoot, "desktop", packageName, "bin", entrypoint);
+  const desktopLocal = path.join(
+    stellaRoot,
+    "desktop",
+    packageName,
+    "bin",
+    entrypoint,
+  );
   if (existsSync(desktopLocal)) {
     return desktopLocal;
   }
@@ -137,8 +144,8 @@ type WorkerState = {
   deviceId: string | null;
 };
 
-const resolveRuntimeCliPath = () =>
-  fileURLToPath(new URL("../../kernel/cli/stella-ui.js", import.meta.url));
+const resolveRuntimeCliPath = (fileName: string) =>
+  fileURLToPath(new URL(`../../kernel/cli/${fileName}`, import.meta.url));
 
 const writeBlueprintArtifact = async (args: {
   stellaRoot: string;
@@ -178,6 +185,114 @@ const buildStoreInstallPrompt = (args: {
 
 const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
+
+const DATA_URL_RE = /^data:([^;,]+);base64,(.+)$/i;
+const HTTP_URL_RE = /^https?:\/\//i;
+
+type MaterializedImageAttachment = {
+  index: number;
+  attachment: RuntimeAttachmentRef;
+};
+
+const normalizeAttachmentMimeType = (
+  value: string | null | undefined,
+): string => value?.split(";")[0]?.trim().toLowerCase() ?? "";
+
+const isImageMimeType = (mimeType: string): boolean =>
+  mimeType.startsWith("image/");
+
+const encodeImageDataUrl = (mimeType: string, data: ArrayBuffer): string =>
+  `data:${mimeType};base64,${Buffer.from(data).toString("base64")}`;
+
+const materializeImageAttachments = async (
+  attachments: RuntimeAttachmentRef[] | undefined,
+): Promise<MaterializedImageAttachment[]> => {
+  const materialized: MaterializedImageAttachment[] = [];
+
+  for (const [index, attachment] of (attachments ?? []).entries()) {
+    const url = asTrimmedString(attachment.url);
+    if (!url) {
+      continue;
+    }
+
+    const hintedMimeType = normalizeAttachmentMimeType(attachment.mimeType);
+    const dataUrlMatch = DATA_URL_RE.exec(url);
+    if (dataUrlMatch) {
+      const mimeType =
+        hintedMimeType || normalizeAttachmentMimeType(dataUrlMatch[1]);
+      if (!isImageMimeType(mimeType)) {
+        continue;
+      }
+      materialized.push({
+        index,
+        attachment: {
+          url,
+          mimeType,
+        },
+      });
+      continue;
+    }
+
+    if (!HTTP_URL_RE.test(url)) {
+      continue;
+    }
+    if (hintedMimeType && !isImageMimeType(hintedMimeType)) {
+      continue;
+    }
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        logger.warn("startChat.attachment-materialize-failed", {
+          url,
+          status: response.status,
+          statusText: response.statusText,
+        });
+        continue;
+      }
+
+      const responseMimeType = normalizeAttachmentMimeType(
+        response.headers.get("content-type"),
+      );
+      const mimeType = responseMimeType || hintedMimeType;
+      if (!isImageMimeType(mimeType)) {
+        continue;
+      }
+
+      materialized.push({
+        index,
+        attachment: {
+          url: encodeImageDataUrl(mimeType, await response.arrayBuffer()),
+          mimeType,
+        },
+      });
+    } catch (error) {
+      logger.warn("startChat.attachment-materialize-failed", {
+        url,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return materialized;
+};
+
+const replaceStoredImageAttachments = (
+  attachments: RuntimeAttachmentRef[] | undefined,
+  materializedImages: MaterializedImageAttachment[],
+): RuntimeAttachmentRef[] | undefined => {
+  if (!attachments?.length) {
+    return undefined;
+  }
+
+  const replacementByIndex = new Map(
+    materializedImages.map(({ index, attachment }) => [index, attachment]),
+  );
+
+  return attachments.map(
+    (attachment, index) => replacementByIndex.get(index) ?? attachment,
+  );
+};
 
 const stopWorkerServices = async (state: WorkerState) => {
   state.socialSessionService?.stop();
@@ -267,14 +382,16 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       : undefined;
 
     const taskIdFromTarget =
-      args.responseTarget?.type === "task_turn" || args.responseTarget?.type === "task_terminal_notice"
+      args.responseTarget?.type === "task_turn" ||
+      args.responseTarget?.type === "task_terminal_notice"
         ? (args.responseTarget as { taskId: string }).taskId
         : undefined;
 
     if (taskIdFromTarget) {
       const taskTurnMessages = getTaskTurnMessages(args.conversationId);
       const existing = taskTurnMessages.get(taskIdFromTarget);
-      const effectiveUserMessageId = existing?.userMessageId ?? args.userMessageId;
+      const effectiveUserMessageId =
+        existing?.userMessageId ?? args.userMessageId;
       const timestamp = existing?.timestamp ?? Date.now();
       const stored = ensureChatStore().appendEvent({
         conversationId: args.conversationId,
@@ -391,7 +508,10 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         listCronJobs: async () =>
           await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_LIST_CRON_JOBS),
         addCronJob: async (input) =>
-          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_ADD_CRON_JOB, input),
+          await peer.request(
+            METHOD_NAMES.INTERNAL_SCHEDULE_ADD_CRON_JOB,
+            input,
+          ),
         updateCronJob: async (jobId, patch) =>
           await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_UPDATE_CRON_JOB, {
             jobId,
@@ -406,11 +526,17 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
             jobId,
           }),
         getHeartbeatConfig: async (conversationId) =>
-          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_GET_HEARTBEAT_CONFIG, {
-            conversationId,
-          }),
+          await peer.request(
+            METHOD_NAMES.INTERNAL_SCHEDULE_GET_HEARTBEAT_CONFIG,
+            {
+              conversationId,
+            },
+          ),
         upsertHeartbeat: async (input) =>
-          await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_UPSERT_HEARTBEAT, input),
+          await peer.request(
+            METHOD_NAMES.INTERNAL_SCHEDULE_UPSERT_HEARTBEAT,
+            input,
+          ),
         runHeartbeat: async (conversationId) =>
           await peer.request(METHOD_NAMES.INTERNAL_SCHEDULE_RUN_HEARTBEAT, {
             conversationId,
@@ -433,15 +559,26 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         },
       }),
       selfModLifecycle: {
-        beginRun: async ({ runId, taskDescription, featureId, packageId, releaseNumber, mode, displayName, description }) => {
-          await peer.request(METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE, {
-            runId,
-          }).catch((error) => {
-            console.warn(
-              "[self-mod-reload] Failed to pause host runtime reloads:",
-              (error as Error).message,
-            );
-          });
+        beginRun: async ({
+          runId,
+          taskDescription,
+          featureId,
+          packageId,
+          releaseNumber,
+          mode,
+          displayName,
+          description,
+        }) => {
+          await peer
+            .request(METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE, {
+              runId,
+            })
+            .catch((error) => {
+              console.warn(
+                "[self-mod-reload] Failed to pause host runtime reloads:",
+                (error as Error).message,
+              );
+            });
           await storeModService.beginSelfModRun({
             runId,
             taskDescription,
@@ -455,25 +592,29 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         },
         finalizeRun: async ({ runId, succeeded }) => {
           await storeModService.finalizeSelfModRun({ runId, succeeded });
-          await peer.request(METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME, {
-            runId,
-          }).catch((error) => {
-            console.warn(
-              "[self-mod-reload] Failed to resume host runtime reloads:",
-              (error as Error).message,
-            );
-          });
+          await peer
+            .request(METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME, {
+              runId,
+            })
+            .catch((error) => {
+              console.warn(
+                "[self-mod-reload] Failed to resume host runtime reloads:",
+                (error as Error).message,
+              );
+            });
         },
         cancelRun: async (runId) => {
           storeModService.cancelSelfModRun(runId);
-          await peer.request(METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME, {
-            runId,
-          }).catch((error) => {
-            console.warn(
-              "[self-mod-reload] Failed to resume host runtime reloads:",
-              (error as Error).message,
-            );
-          });
+          await peer
+            .request(METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME, {
+              runId,
+            })
+            .catch((error) => {
+              console.warn(
+                "[self-mod-reload] Failed to resume host runtime reloads:",
+                (error as Error).message,
+              );
+            });
         },
       },
       stellaBrowserBinPath: resolveDesktopCliEntrypoint(
@@ -486,7 +627,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         "stella-office",
         "stella-office.js",
       ),
-      stellaUiCliPath: resolveRuntimeCliPath(),
+      stellaUiCliPath: resolveRuntimeCliPath("stella-ui.js"),
+      stellaComputerCliPath: resolveRuntimeCliPath("stella-computer.js"),
       onGoogleWorkspaceAuthRequired: () => {
         peer.notify(NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED, null);
       },
@@ -540,14 +682,19 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     };
   };
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_INITIALIZE, async (params) => {
-    const result = await initializeWorker(params as WorkerInitializationState);
-    if (pendingConfigPatch) {
-      applyConfigPatch(pendingConfigPatch);
-      pendingConfigPatch = null;
-    }
-    return result;
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_INITIALIZE,
+    async (params) => {
+      const result = await initializeWorker(
+        params as WorkerInitializationState,
+      );
+      if (pendingConfigPatch) {
+        applyConfigPatch(pendingConfigPatch);
+        pendingConfigPatch = null;
+      }
+      return result;
+    },
+  );
 
   let pendingConfigPatch: Partial<WorkerInitializationState> | null = null;
 
@@ -573,21 +720,27 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     }
   };
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_CONFIGURE, async (params) => {
-    const patch = params as Partial<WorkerInitializationState>;
-    if (!state.init) {
-      // Queue the patch — it will be applied after initialization
-      pendingConfigPatch = { ...pendingConfigPatch, ...patch };
-      return { ok: true, queued: true };
-    }
-    applyConfigPatch(patch);
-    return { ok: true };
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_CONFIGURE,
+    async (params) => {
+      const patch = params as Partial<WorkerInitializationState>;
+      if (!state.init) {
+        // Queue the patch — it will be applied after initialization
+        pendingConfigPatch = { ...pendingConfigPatch, ...patch };
+        return { ok: true, queued: true };
+      }
+      applyConfigPatch(patch);
+      return { ok: true };
+    },
+  );
 
   peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_HEALTH, async () => {
-    const health = state.runner?.agentHealthCheck() ?? ({ ready: false } satisfies AgentHealth);
+    const health =
+      state.runner?.agentHealthCheck() ??
+      ({ ready: false } satisfies AgentHealth);
     const socialSessions =
-      state.socialSessionService?.getSnapshot() ?? createEmptySocialSessionServiceSnapshot();
+      state.socialSessionService?.getSnapshot() ??
+      createEmptySocialSessionServiceSnapshot();
     return {
       health,
       activeRun: state.runner?.getActiveOrchestratorRun() ?? null,
@@ -595,410 +748,466 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       pid: process.pid,
       deviceId: state.deviceId,
       voiceBusy: state.voiceService?.isBusy() ?? false,
-      pendingVoiceRequestCount: state.voiceService?.getPendingRequestCount() ?? 0,
+      pendingVoiceRequestCount:
+        state.voiceService?.getPendingRequestCount() ?? 0,
       socialSessions,
     };
   });
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_GET_ACTIVE, async () => {
-    return ensureRunner().getActiveOrchestratorRun();
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_GET_ACTIVE,
+    async () => {
+      return ensureRunner().getActiveOrchestratorRun();
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_START_CHAT, async (params) => {
-    const payload = params as RuntimeChatPayload;
-    const requestId =
-      asTrimmedString((payload as RuntimeChatPayload & { requestId?: string }).requestId)
-      || undefined;
-    const {
-      visibleUserPrompt,
-      windowContextLabel,
-      promptMessages,
-      windowScreenshotAttachment,
-    } = buildChatPromptMessages({
-      userPrompt: payload.userPrompt,
-      selectedText: payload.selectedText ?? payload.chatContext?.selectedText ?? null,
-      chatContext: payload.chatContext ?? null,
-    });
-    const userMessageTimestamp = Date.now();
-    const windowPreviewImageUrl = windowScreenshotAttachment?.url;
-    const userMessageEvent = ensureChatStore().appendEvent({
-      conversationId: payload.conversationId,
-      type: "user_message",
-      deviceId: payload.deviceId,
-      timestamp: userMessageTimestamp,
-      payload: prepareStoredLocalChatPayload({
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_START_CHAT,
+    async (params) => {
+      const payload = params as RuntimeChatPayload;
+      const requestId =
+        asTrimmedString(
+          (payload as RuntimeChatPayload & { requestId?: string }).requestId,
+        ) || undefined;
+      const materializedImageAttachments = await materializeImageAttachments(
+        payload.attachments,
+      );
+      const modelImageAttachments = materializedImageAttachments.map(
+        ({ attachment }) => attachment,
+      );
+      const storedAttachments = replaceStoredImageAttachments(
+        payload.attachments,
+        materializedImageAttachments,
+      );
+      const {
+        visibleUserPrompt,
+        windowContextLabel,
+        promptMessages,
+        windowScreenshotAttachment,
+      } = buildChatPromptMessages({
+        userPrompt: payload.userPrompt,
+        selectedText:
+          payload.selectedText ?? payload.chatContext?.selectedText ?? null,
+        chatContext: payload.chatContext ?? null,
+        explicitImageAttachmentCount: modelImageAttachments.length,
+      });
+      const userMessageTimestamp = Date.now();
+      const windowPreviewImageUrl = windowScreenshotAttachment?.url;
+      const userMessageEvent = ensureChatStore().appendEvent({
+        conversationId: payload.conversationId,
         type: "user_message",
-        payload: {
-          text: visibleUserPrompt,
-          ...(payload.attachments?.length ? { attachments: payload.attachments } : {}),
-          ...(payload.platform ? { platform: payload.platform } : {}),
-          ...(payload.timezone ? { timezone: payload.timezone } : {}),
-          ...((payload.messageMetadata || windowContextLabel || windowPreviewImageUrl)
-            ? {
-                metadata: {
-                  ...(payload.messageMetadata ?? {}),
-                  ...((windowContextLabel || windowPreviewImageUrl)
-                    ? {
-                        context: {
-                          ...(payload.messageMetadata?.context ?? {}),
-                          ...(windowContextLabel
-                            ? {
-                                windowLabel: windowContextLabel,
-                              }
-                            : {}),
-                          ...(windowPreviewImageUrl
-                            ? {
-                                windowPreviewImageUrl,
-                              }
-                            : {}),
-                        },
-                      }
-                    : {}),
-                },
-              }
-            : {}),
-          ...(payload.mode ? { mode: payload.mode } : {}),
-        },
+        deviceId: payload.deviceId,
         timestamp: userMessageTimestamp,
-        timezone: payload.timezone,
-      }),
-    });
-    peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
-
-    const userMessageId = userMessageEvent._id;
-    let activeRunId = "";
-    let syntheticSeq = 1;
-    const hiddenSystemRunIds = new Set<string>();
-    let lastVisibleRunId = "";
-    let lastVisibleRequestId = requestId;
-    const mergedAttachments = [
-      ...(payload.attachments ?? []),
-      ...(windowScreenshotAttachment ? [windowScreenshotAttachment] : []),
-    ];
-    logger.info("startChat.prompt-shape", {
-      conversationId: payload.conversationId,
-      visibleUserPrompt,
-      windowContextLabel,
-      promptMessages: (promptMessages ?? []).map((message, index) => ({
-        index,
-        uiVisibility: message.uiVisibility ?? "visible",
-        textPreview: message.text.slice(0, 200),
-      })),
-      mergedAttachmentCount: mergedAttachments.length,
-      hasWindowScreenshotAttachment: Boolean(windowScreenshotAttachment),
-    });
-    const result = await ensureRunner().handleLocalChat({
-      conversationId: payload.conversationId,
-      userMessageId,
-      userPrompt: visibleUserPrompt,
-      ...(promptMessages?.length ? { promptMessages } : {}),
-      attachments: mergedAttachments.length > 0 ? mergedAttachments : undefined,
-      agentType: payload.agentType,
-      storageMode: payload.storageMode,
-    }, {
-      onRunStarted: (ev) => {
-        activeRunId = ev.runId;
-        const isHiddenRun = ev.uiVisibility === "hidden";
-        if (isHiddenRun) {
-          hiddenSystemRunIds.add(ev.runId);
-          return;
-        }
-        lastVisibleRunId = ev.runId;
-        lastVisibleRequestId = requestId;
-        emitRunEvent({
-          ...ev,
-          type: AGENT_STREAM_EVENT_TYPES.RUN_STARTED,
-          conversationId: payload.conversationId,
-          ...(requestId ? { requestId } : {}),
-        });
-      },
-      onUserMessage: (ev) => {
-        if (ev.uiVisibility === "hidden") {
-          return;
-        }
-        ensureChatStore().appendEvent({
-          conversationId: payload.conversationId,
+        payload: prepareStoredLocalChatPayload({
           type: "user_message",
-          requestId: ev.userMessageId,
-          timestamp: ev.timestamp,
-          payload: prepareStoredLocalChatPayload({
-            type: "user_message",
-            payload: {
-              text: ev.text,
-              metadata: {
-                ui: {
-                  visibility: ev.uiVisibility ?? "visible",
-                },
-              },
-            },
-            timestamp: ev.timestamp,
-            timezone: payload.timezone,
-          }),
-        });
-        peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
-      },
-      onStream: (ev) => {
-        if (hiddenSystemRunIds.has(ev.runId)) {
-          if (lastVisibleRunId) {
+          payload: {
+            text: visibleUserPrompt,
+            ...(storedAttachments?.length
+              ? { attachments: storedAttachments }
+              : {}),
+            ...(payload.platform ? { platform: payload.platform } : {}),
+            ...(payload.timezone ? { timezone: payload.timezone } : {}),
+            ...(payload.messageMetadata ||
+            windowContextLabel ||
+            windowPreviewImageUrl
+              ? {
+                  metadata: {
+                    ...(payload.messageMetadata ?? {}),
+                    ...(windowContextLabel || windowPreviewImageUrl
+                      ? {
+                          context: {
+                            ...(payload.messageMetadata?.context ?? {}),
+                            ...(windowContextLabel
+                              ? {
+                                  windowLabel: windowContextLabel,
+                                }
+                              : {}),
+                            ...(windowPreviewImageUrl
+                              ? {
+                                  windowPreviewImageUrl,
+                                }
+                              : {}),
+                          },
+                        }
+                      : {}),
+                  },
+                }
+              : {}),
+            ...(payload.mode ? { mode: payload.mode } : {}),
+          },
+          timestamp: userMessageTimestamp,
+          timezone: payload.timezone,
+        }),
+      });
+      peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+
+      const userMessageId = userMessageEvent._id;
+      let activeRunId = "";
+      let syntheticSeq = 1;
+      const hiddenSystemRunIds = new Set<string>();
+      let lastVisibleRunId = "";
+      let lastVisibleRequestId = requestId;
+      const mergedAttachments = [
+        ...modelImageAttachments,
+        ...(windowScreenshotAttachment ? [windowScreenshotAttachment] : []),
+      ];
+      logger.info("startChat.prompt-shape", {
+        conversationId: payload.conversationId,
+        visibleUserPrompt,
+        windowContextLabel,
+        promptMessages: (promptMessages ?? []).map((message, index) => ({
+          index,
+          uiVisibility: message.uiVisibility ?? "visible",
+          textPreview: message.text.slice(0, 200),
+        })),
+        incomingAttachmentCount: payload.attachments?.length ?? 0,
+        modelImageAttachmentCount: modelImageAttachments.length,
+        mergedAttachmentCount: mergedAttachments.length,
+        hasWindowScreenshotAttachment: Boolean(windowScreenshotAttachment),
+      });
+      const result = await ensureRunner().handleLocalChat(
+        {
+          conversationId: payload.conversationId,
+          userMessageId,
+          userPrompt: visibleUserPrompt,
+          ...(promptMessages?.length ? { promptMessages } : {}),
+          attachments:
+            mergedAttachments.length > 0 ? mergedAttachments : undefined,
+          agentType: payload.agentType,
+          storageMode: payload.storageMode,
+        },
+        {
+          onRunStarted: (ev) => {
+            activeRunId = ev.runId;
+            const isHiddenRun = ev.uiVisibility === "hidden";
+            if (isHiddenRun) {
+              hiddenSystemRunIds.add(ev.runId);
+              return;
+            }
+            lastVisibleRunId = ev.runId;
+            lastVisibleRequestId = requestId;
             emitRunEvent({
               ...ev,
-              runId: lastVisibleRunId,
+              type: AGENT_STREAM_EVENT_TYPES.RUN_STARTED,
+              conversationId: payload.conversationId,
+              ...(requestId ? { requestId } : {}),
+            });
+          },
+          onUserMessage: (ev) => {
+            if (ev.uiVisibility === "hidden") {
+              return;
+            }
+            ensureChatStore().appendEvent({
+              conversationId: payload.conversationId,
+              type: "user_message",
+              requestId: ev.userMessageId,
+              timestamp: ev.timestamp,
+              payload: prepareStoredLocalChatPayload({
+                type: "user_message",
+                payload: {
+                  text: ev.text,
+                  metadata: {
+                    ui: {
+                      visibility: ev.uiVisibility ?? "visible",
+                    },
+                  },
+                },
+                timestamp: ev.timestamp,
+                timezone: payload.timezone,
+              }),
+            });
+            peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+          },
+          onStream: (ev) => {
+            if (hiddenSystemRunIds.has(ev.runId)) {
+              if (lastVisibleRunId) {
+                emitRunEvent({
+                  ...ev,
+                  runId: lastVisibleRunId,
+                  type: AGENT_STREAM_EVENT_TYPES.STREAM,
+                  conversationId: payload.conversationId,
+                  ...(lastVisibleRequestId
+                    ? { requestId: lastVisibleRequestId }
+                    : {}),
+                });
+              }
+              return;
+            }
+            emitRunEvent({
+              ...ev,
               type: AGENT_STREAM_EVENT_TYPES.STREAM,
               conversationId: payload.conversationId,
-              ...(lastVisibleRequestId ? { requestId: lastVisibleRequestId } : {}),
+              ...(requestId ? { requestId } : {}),
             });
-          }
-          return;
-        }
-        emitRunEvent({
-          ...ev,
-          type: AGENT_STREAM_EVENT_TYPES.STREAM,
-          conversationId: payload.conversationId,
-          ...(requestId ? { requestId } : {}),
-        });
-      },
-      onStatus: (ev) => {
-        if (hiddenSystemRunIds.has(ev.runId)) {
-          if (lastVisibleRunId) {
+          },
+          onStatus: (ev) => {
+            if (hiddenSystemRunIds.has(ev.runId)) {
+              if (lastVisibleRunId) {
+                emitRunEvent({
+                  ...ev,
+                  runId: lastVisibleRunId,
+                  type: AGENT_STREAM_EVENT_TYPES.STATUS,
+                  conversationId: payload.conversationId,
+                  ...(lastVisibleRequestId
+                    ? { requestId: lastVisibleRequestId }
+                    : {}),
+                });
+              }
+              return;
+            }
             emitRunEvent({
               ...ev,
-              runId: lastVisibleRunId,
               type: AGENT_STREAM_EVENT_TYPES.STATUS,
               conversationId: payload.conversationId,
-              ...(lastVisibleRequestId ? { requestId: lastVisibleRequestId } : {}),
+              ...(requestId ? { requestId } : {}),
             });
-          }
-          return;
-        }
-        emitRunEvent({
-          ...ev,
-          type: AGENT_STREAM_EVENT_TYPES.STATUS,
-          conversationId: payload.conversationId,
-          ...(requestId ? { requestId } : {}),
-        });
-      },
-      onToolStart: (ev) => {
-        if (hiddenSystemRunIds.has(ev.runId)) {
-          return;
-        }
-        ensureChatStore().appendEvent({
-          conversationId: payload.conversationId,
-          type: "tool_request",
-          requestId: ev.toolCallId,
-          payload: {
-            toolName: ev.toolName,
-            ...(ev.args ? { args: ev.args } : {}),
-            ...(ev.agentType ? { agentType: ev.agentType } : {}),
           },
-        });
-        peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
-        emitRunEvent({
-          ...ev,
-          type: AGENT_STREAM_EVENT_TYPES.TOOL_START,
-          conversationId: payload.conversationId,
-          ...(requestId ? { requestId } : {}),
-        });
-      },
-      onToolEnd: (ev) => {
-        if (hiddenSystemRunIds.has(ev.runId)) {
-          return;
-        }
-        const details =
-          ev.details && typeof ev.details === "object"
-            ? (ev.details as Record<string, unknown>)
-            : undefined;
-        ensureChatStore().appendEvent({
-          conversationId: payload.conversationId,
-          type: "tool_result",
-          requestId: ev.toolCallId,
-          payload: {
-            toolName: ev.toolName,
-            result: details ?? ev.resultPreview,
-            resultPreview: ev.resultPreview,
-            ...(details ? details : {}),
-            ...(ev.agentType ? { agentType: ev.agentType } : {}),
-          },
-        });
-        peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
-        emitRunEvent({
-          ...ev,
-          type: AGENT_STREAM_EVENT_TYPES.TOOL_END,
-          conversationId: payload.conversationId,
-          ...(requestId ? { requestId } : {}),
-        });
-      },
-      onError: (ev) => {
-        const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
-        hiddenSystemRunIds.delete(ev.runId);
-        if (isHiddenRun) {
-          if (lastVisibleRunId) {
+          onToolStart: (ev) => {
+            if (hiddenSystemRunIds.has(ev.runId)) {
+              return;
+            }
+            ensureChatStore().appendEvent({
+              conversationId: payload.conversationId,
+              type: "tool_request",
+              requestId: ev.toolCallId,
+              payload: {
+                toolName: ev.toolName,
+                ...(ev.args ? { args: ev.args } : {}),
+                ...(ev.agentType ? { agentType: ev.agentType } : {}),
+              },
+            });
+            peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
             emitRunEvent({
               ...ev,
-              runId: lastVisibleRunId,
+              type: AGENT_STREAM_EVENT_TYPES.TOOL_START,
+              conversationId: payload.conversationId,
+              ...(requestId ? { requestId } : {}),
+            });
+          },
+          onToolEnd: (ev) => {
+            if (hiddenSystemRunIds.has(ev.runId)) {
+              return;
+            }
+            const details =
+              ev.details && typeof ev.details === "object"
+                ? (ev.details as Record<string, unknown>)
+                : undefined;
+            ensureChatStore().appendEvent({
+              conversationId: payload.conversationId,
+              type: "tool_result",
+              requestId: ev.toolCallId,
+              payload: {
+                toolName: ev.toolName,
+                result: details ?? ev.resultPreview,
+                resultPreview: ev.resultPreview,
+                ...(details ? details : {}),
+                ...(ev.agentType ? { agentType: ev.agentType } : {}),
+              },
+            });
+            peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+            emitRunEvent({
+              ...ev,
+              type: AGENT_STREAM_EVENT_TYPES.TOOL_END,
+              conversationId: payload.conversationId,
+              ...(requestId ? { requestId } : {}),
+            });
+          },
+          onError: (ev) => {
+            const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
+            hiddenSystemRunIds.delete(ev.runId);
+            if (isHiddenRun) {
+              if (lastVisibleRunId) {
+                emitRunEvent({
+                  ...ev,
+                  runId: lastVisibleRunId,
+                  type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+                  outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
+                  reason: ev.error,
+                  conversationId: payload.conversationId,
+                  ...(lastVisibleRequestId
+                    ? { requestId: lastVisibleRequestId }
+                    : {}),
+                  rootRunId: lastVisibleRunId,
+                });
+              }
+              return;
+            }
+            emitRunEvent({
+              ...ev,
               type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
               outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
               reason: ev.error,
               conversationId: payload.conversationId,
-              ...(lastVisibleRequestId ? { requestId: lastVisibleRequestId } : {}),
-              rootRunId: lastVisibleRunId,
+              ...(requestId ? { requestId } : {}),
+              ...(ev.runId ? { rootRunId: ev.runId } : {}),
             });
-          }
-          return;
-        }
-        emitRunEvent({
-          ...ev,
-          type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
-          outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
-          reason: ev.error,
-          conversationId: payload.conversationId,
-          ...(requestId ? { requestId } : {}),
-          ...(ev.runId ? { rootRunId: ev.runId } : {}),
-        });
-      },
-      onTaskEvent: (ev) => {
-        if (!ev.rootRunId) {
-          logger.warn("task-event-missing-root-run-id", {
-            conversationId: ev.conversationId,
-            taskId: ev.taskId,
-            type: ev.type,
-          });
-          return;
-        }
-        emitRunEvent({
-          type: ev.type,
-          runId: ev.rootRunId,
-          seq: syntheticSeq++,
-          conversationId: payload.conversationId,
-          ...(requestId ? { requestId } : {}),
-          userMessageId,
-          taskId: ev.taskId,
-          rootRunId: ev.rootRunId,
-          agentType: ev.agentType,
-          description: ev.description,
-          parentTaskId: ev.parentTaskId,
-          result: ev.result,
-          error: ev.error,
-          statusText: ev.statusText,
-        });
-      },
-      onTaskReasoning: (ev) => {
-        if (!ev.taskId) {
-          return;
-        }
-        const runId = ev.rootRunId ?? ev.runId;
-        emitRunEvent({
-          type: AGENT_STREAM_EVENT_TYPES.TASK_REASONING,
-          runId,
-          seq: syntheticSeq++,
-          conversationId: payload.conversationId,
-          ...(requestId ? { requestId } : {}),
-          userMessageId,
-          taskId: ev.taskId,
-          rootRunId: runId,
-          agentType: ev.agentType,
-          chunk: ev.chunk,
-        });
-      },
-      onEnd: (ev) => {
-        const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
-        hiddenSystemRunIds.delete(ev.runId);
-        const finalText = typeof ev.finalText === "string" ? ev.finalText : "";
-        if ((ev.agentType ?? AGENT_IDS.ORCHESTRATOR) === AGENT_IDS.ORCHESTRATOR) {
-          persistAssistantMessage({
-            conversationId: payload.conversationId,
-            text: finalText,
-            userMessageId: ev.userMessageId,
-            timezone: payload.timezone,
-            responseTarget: ev.responseTarget,
-          });
-          if (ev.responseTarget?.type === "task_turn" || ev.responseTarget?.type === "task_terminal_notice") {
-            getTaskTurnMessages(payload.conversationId).delete(
-              (ev.responseTarget as { taskId: string }).taskId,
-            );
-          }
-        }
-        if (isHiddenRun) {
-          if (lastVisibleRunId) {
+          },
+          onTaskEvent: (ev) => {
+            if (!ev.rootRunId) {
+              logger.warn("task-event-missing-root-run-id", {
+                conversationId: ev.conversationId,
+                taskId: ev.taskId,
+                type: ev.type,
+              });
+              return;
+            }
+            emitRunEvent({
+              type: ev.type,
+              runId: ev.rootRunId,
+              seq: syntheticSeq++,
+              conversationId: payload.conversationId,
+              ...(requestId ? { requestId } : {}),
+              userMessageId,
+              taskId: ev.taskId,
+              rootRunId: ev.rootRunId,
+              agentType: ev.agentType,
+              description: ev.description,
+              parentTaskId: ev.parentTaskId,
+              result: ev.result,
+              error: ev.error,
+              statusText: ev.statusText,
+            });
+          },
+          onTaskReasoning: (ev) => {
+            if (!ev.taskId) {
+              return;
+            }
+            const runId = ev.rootRunId ?? ev.runId;
+            emitRunEvent({
+              type: AGENT_STREAM_EVENT_TYPES.TASK_REASONING,
+              runId,
+              seq: syntheticSeq++,
+              conversationId: payload.conversationId,
+              ...(requestId ? { requestId } : {}),
+              userMessageId,
+              taskId: ev.taskId,
+              rootRunId: runId,
+              agentType: ev.agentType,
+              chunk: ev.chunk,
+            });
+          },
+          onEnd: (ev) => {
+            const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
+            hiddenSystemRunIds.delete(ev.runId);
+            const finalText =
+              typeof ev.finalText === "string" ? ev.finalText : "";
+            if (
+              (ev.agentType ?? AGENT_IDS.ORCHESTRATOR) ===
+              AGENT_IDS.ORCHESTRATOR
+            ) {
+              persistAssistantMessage({
+                conversationId: payload.conversationId,
+                text: finalText,
+                userMessageId: ev.userMessageId,
+                timezone: payload.timezone,
+                responseTarget: ev.responseTarget,
+              });
+              if (
+                ev.responseTarget?.type === "task_turn" ||
+                ev.responseTarget?.type === "task_terminal_notice"
+              ) {
+                getTaskTurnMessages(payload.conversationId).delete(
+                  (ev.responseTarget as { taskId: string }).taskId,
+                );
+              }
+            }
+            if (isHiddenRun) {
+              if (lastVisibleRunId) {
+                emitRunEvent({
+                  ...ev,
+                  runId: lastVisibleRunId,
+                  type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+                  outcome: AGENT_RUN_FINISH_OUTCOMES.COMPLETED,
+                  conversationId: payload.conversationId,
+                  ...(lastVisibleRequestId
+                    ? { requestId: lastVisibleRequestId }
+                    : {}),
+                  rootRunId: lastVisibleRunId,
+                });
+              }
+              return;
+            }
             emitRunEvent({
               ...ev,
-              runId: lastVisibleRunId,
               type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
               outcome: AGENT_RUN_FINISH_OUTCOMES.COMPLETED,
               conversationId: payload.conversationId,
-              ...(lastVisibleRequestId ? { requestId: lastVisibleRequestId } : {}),
-              rootRunId: lastVisibleRunId,
+              ...(requestId ? { requestId } : {}),
+              ...(ev.runId ? { rootRunId: ev.runId } : {}),
             });
-          }
-          return;
-        }
-        emitRunEvent({
-          ...ev,
-          type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
-          outcome: AGENT_RUN_FINISH_OUTCOMES.COMPLETED,
-          conversationId: payload.conversationId,
-          ...(requestId ? { requestId } : {}),
-          ...(ev.runId ? { rootRunId: ev.runId } : {}),
-        });
-      },
-      onInterrupted: (ev) => {
-        const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
-        hiddenSystemRunIds.delete(ev.runId);
-        if (isHiddenRun) {
-          if (lastVisibleRunId) {
+          },
+          onInterrupted: (ev) => {
+            const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
+            hiddenSystemRunIds.delete(ev.runId);
+            if (isHiddenRun) {
+              if (lastVisibleRunId) {
+                emitRunEvent({
+                  type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+                  runId: lastVisibleRunId,
+                  seq: Number.MAX_SAFE_INTEGER,
+                  conversationId: payload.conversationId,
+                  ...(lastVisibleRequestId
+                    ? { requestId: lastVisibleRequestId }
+                    : {}),
+                  agentType: ev.agentType,
+                  outcome: AGENT_RUN_FINISH_OUTCOMES.CANCELED,
+                  reason: ev.reason,
+                  rootRunId: lastVisibleRunId,
+                });
+              }
+              return;
+            }
             emitRunEvent({
               type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
-              runId: lastVisibleRunId,
+              runId: ev.runId,
               seq: Number.MAX_SAFE_INTEGER,
               conversationId: payload.conversationId,
-              ...(lastVisibleRequestId ? { requestId: lastVisibleRequestId } : {}),
+              ...(requestId ? { requestId } : {}),
               agentType: ev.agentType,
+              userMessageId: ev.userMessageId,
               outcome: AGENT_RUN_FINISH_OUTCOMES.CANCELED,
               reason: ev.reason,
-              rootRunId: lastVisibleRunId,
+              rootRunId: ev.runId,
             });
-          }
-          return;
-        }
-        emitRunEvent({
-          type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
-          runId: ev.runId,
-          seq: Number.MAX_SAFE_INTEGER,
-          conversationId: payload.conversationId,
-          ...(requestId ? { requestId } : {}),
-          agentType: ev.agentType,
-          userMessageId: ev.userMessageId,
-          outcome: AGENT_RUN_FINISH_OUTCOMES.CANCELED,
-          reason: ev.reason,
-          rootRunId: ev.runId,
-        });
-      },
-      onSelfModHmrState: (statePayload) =>
-        emitSelfModHmrState({ runId: activeRunId || undefined, state: statePayload }),
-      onHmrResume: async ({ runId, requiresFullReload }) => {
-        await peer.request(METHOD_NAMES.HOST_HMR_RUN_TRANSITION, {
-          runId,
-          requiresFullReload,
-        });
-      },
-    });
-    activeRunId = result.runId;
-    return { ...result, userMessageId };
-  });
+          },
+          onSelfModHmrState: (statePayload) =>
+            emitSelfModHmrState({
+              runId: activeRunId || undefined,
+              state: statePayload,
+            }),
+          onHmrResume: async ({ runId, requiresFullReload }) => {
+            await peer.request(METHOD_NAMES.HOST_HMR_RUN_TRANSITION, {
+              runId,
+              requiresFullReload,
+            });
+          },
+        },
+      );
+      activeRunId = result.runId;
+      return { ...result, userMessageId };
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_CANCEL, async (params) => {
-    ensureRunner().cancelLocalChat((params as { runId: string }).runId);
-    return { ok: true };
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_CANCEL,
+    async (params) => {
+      ensureRunner().cancelLocalChat((params as { runId: string }).runId);
+      return { ok: true };
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_RUN_AUTOMATION, async (params) => {
-    return await ensureRunner().runAutomationTurn(
-      params as {
-        conversationId: string;
-        userPrompt: string;
-        agentType?: string;
-      },
-    );
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_RUN_AUTOMATION,
+    async (params) => {
+      return await ensureRunner().runAutomationTurn(
+        params as {
+          conversationId: string;
+          userPrompt: string;
+          agentType?: string;
+        },
+      );
+    },
+  );
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_RUN_BLOCKING_TASK,
@@ -1022,28 +1231,43 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     },
   );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_GET_TASK_SNAPSHOT, async (params) => {
-    return await ensureRunner().getLocalTaskSnapshot((params as { taskId: string }).taskId);
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_GET_TASK_SNAPSHOT,
+    async (params) => {
+      return await ensureRunner().getLocalTaskSnapshot(
+        (params as { taskId: string }).taskId,
+      );
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_APPEND_THREAD_MESSAGE, async (params) => {
-    ensureRunner().appendThreadMessage(
-      params as {
-        threadKey: string;
-        role: "user" | "assistant";
-        content: string;
-      },
-    );
-    return { ok: true };
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_APPEND_THREAD_MESSAGE,
+    async (params) => {
+      ensureRunner().appendThreadMessage(
+        params as {
+          threadKey: string;
+          role: "user" | "assistant";
+          content: string;
+        },
+      );
+      return { ok: true };
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_WEB_SEARCH, async (params) => {
-    const payload = params as { query: string; category?: string; displayResults?: boolean };
-    return await ensureRunner().webSearch(payload.query, {
-      category: payload.category,
-      displayResults: payload.displayResults,
-    });
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_WEB_SEARCH,
+    async (params) => {
+      const payload = params as {
+        query: string;
+        category?: string;
+        displayResults?: boolean;
+      };
+      return await ensureRunner().webSearch(payload.query, {
+        category: payload.category,
+        displayResults: payload.displayResults,
+      });
+    },
+  );
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_VOICE_PERSIST_TRANSCRIPT,
@@ -1072,36 +1296,53 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     },
   );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_VOICE_WEB_SEARCH, async (params) => {
-    return await ensureVoiceService().webSearch(
-      params as {
-        query: string;
-        category?: string;
-      },
-    );
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_VOICE_WEB_SEARCH,
+    async (params) => {
+      return await ensureVoiceService().webSearch(
+        params as {
+          query: string;
+          category?: string;
+        },
+      );
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LIST_STORE_PACKAGES, async () => {
-    return await ensureRunner().listStorePackages();
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_LIST_STORE_PACKAGES,
+    async () => {
+      return await ensureRunner().listStorePackages();
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_GET_STORE_PACKAGE, async (params) => {
-    return await ensureRunner().getStorePackage((params as { packageId: string }).packageId);
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_GET_STORE_PACKAGE,
+    async (params) => {
+      return await ensureRunner().getStorePackage(
+        (params as { packageId: string }).packageId,
+      );
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LIST_STORE_RELEASES, async (params) => {
-    return await ensureRunner().listStorePackageReleases(
-      (params as { packageId: string }).packageId,
-    );
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_LIST_STORE_RELEASES,
+    async (params) => {
+      return await ensureRunner().listStorePackageReleases(
+        (params as { packageId: string }).packageId,
+      );
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_GET_STORE_RELEASE, async (params) => {
-    const payload = params as { packageId: string; releaseNumber: number };
-    return await ensureRunner().getStorePackageRelease(
-      payload.packageId,
-      payload.releaseNumber,
-    );
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_GET_STORE_RELEASE,
+    async (params) => {
+      const payload = params as { packageId: string; releaseNumber: number };
+      return await ensureRunner().getStorePackageRelease(
+        payload.packageId,
+        payload.releaseNumber,
+      );
+    },
+  );
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_CREATE_FIRST_STORE_RELEASE,
@@ -1115,191 +1356,241 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       await ensureRunner().createStoreReleaseUpdate(params as StorePublishArgs),
   );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_RELEASE, async (params) => {
-    const payload = params as {
-      featureId: string;
-      batchIds?: string[];
-      packageId?: string;
-      displayName?: string;
-      description?: string;
-      releaseNotes?: string;
-    };
-    const runner = ensureRunner();
-    const service = ensureStoreModService();
-    const existing = payload.packageId
-      ? await runner.getStorePackage(payload.packageId)
-      : null;
-    return await service.publishRelease({
-      ...payload,
-      releaseNumber: existing ? existing.latestReleaseNumber + 1 : 1,
-      publish: (args) =>
-        existing
-          ? runner.createStoreReleaseUpdate(args)
-          : runner.createFirstStoreRelease(args),
-    });
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_RELEASE,
+    async (params) => {
+      const payload = params as {
+        featureId: string;
+        batchIds?: string[];
+        packageId?: string;
+        displayName?: string;
+        description?: string;
+        releaseNotes?: string;
+      };
+      const runner = ensureRunner();
+      const service = ensureStoreModService();
+      const existing = payload.packageId
+        ? await runner.getStorePackage(payload.packageId)
+        : null;
+      return await service.publishRelease({
+        ...payload,
+        releaseNumber: existing ? existing.latestReleaseNumber + 1 : 1,
+        publish: (args) =>
+          existing
+            ? runner.createStoreReleaseUpdate(args)
+            : runner.createFirstStoreRelease(args),
+      });
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_INSTALL_STORE_RELEASE, async (params) => {
-    if (!state.init) {
-      throw new Error("Worker has not been initialized.");
-    }
-    const payload = params as { packageId: string; releaseNumber?: number };
-    const runner = ensureRunner();
-    const service = ensureStoreModService();
-    const requestedReleaseNumber =
-      typeof payload.releaseNumber === "number" && Number.isFinite(payload.releaseNumber)
-        ? Math.max(1, Math.floor(payload.releaseNumber))
-        : undefined;
-    const availableReleases = await runner.listStorePackageReleases(payload.packageId);
-    if (!requestedReleaseNumber && availableReleases.length === 0) {
-      throw new Error(`Package "${payload.packageId}" has no published releases.`);
-    }
-    const releaseNumber =
-      requestedReleaseNumber ??
-      Math.max(1, ...availableReleases.map((entry) => entry.releaseNumber));
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_INSTALL_STORE_RELEASE,
+    async (params) => {
+      if (!state.init) {
+        throw new Error("Worker has not been initialized.");
+      }
+      const payload = params as { packageId: string; releaseNumber?: number };
+      const runner = ensureRunner();
+      const service = ensureStoreModService();
+      const requestedReleaseNumber =
+        typeof payload.releaseNumber === "number" &&
+        Number.isFinite(payload.releaseNumber)
+          ? Math.max(1, Math.floor(payload.releaseNumber))
+          : undefined;
+      const availableReleases = await runner.listStorePackageReleases(
+        payload.packageId,
+      );
+      if (!requestedReleaseNumber && availableReleases.length === 0) {
+        throw new Error(
+          `Package "${payload.packageId}" has no published releases.`,
+        );
+      }
+      const releaseNumber =
+        requestedReleaseNumber ??
+        Math.max(1, ...availableReleases.map((entry) => entry.releaseNumber));
 
-    const result = await service.installRelease({
-      packageId: payload.packageId,
-      releaseNumber,
-      fetchRelease: async ({ packageId, releaseNumber }) => {
-        const release = await runner.getStorePackageRelease(packageId, releaseNumber);
-        const packageRecord = await runner.getStorePackage(packageId);
-        if (!release || !packageRecord) {
-          throw new Error("Store release not found.");
-        }
-        if (!release.artifactUrl) {
-          throw new Error("Store release artifact URL is unavailable.");
-        }
-        const response = await fetch(release.artifactUrl);
-        if (!response.ok) {
-          throw new Error(`Failed to download release artifact (${response.status}).`);
-        }
-        const artifact = (await response.json()) as StoreReleaseArtifact;
-        return {
+      const result = await service.installRelease({
+        packageId: payload.packageId,
+        releaseNumber,
+        fetchRelease: async ({ packageId, releaseNumber }) => {
+          const release = await runner.getStorePackageRelease(
+            packageId,
+            releaseNumber,
+          );
+          const packageRecord = await runner.getStorePackage(packageId);
+          if (!release || !packageRecord) {
+            throw new Error("Store release not found.");
+          }
+          if (!release.artifactUrl) {
+            throw new Error("Store release artifact URL is unavailable.");
+          }
+          const response = await fetch(release.artifactUrl);
+          if (!response.ok) {
+            throw new Error(
+              `Failed to download release artifact (${response.status}).`,
+            );
+          }
+          const artifact = (await response.json()) as StoreReleaseArtifact;
+          return {
+            package: packageRecord,
+            release,
+            artifact,
+          };
+        },
+        applyRelease: async ({
           package: packageRecord,
           release,
           artifact,
-        };
-      },
-      applyRelease: async ({ package: packageRecord, release, artifact, mode }) => {
-        const blueprintPath = await writeBlueprintArtifact({
-          stellaRoot: state.init!.stellaRoot,
-          packageId: packageRecord.packageId,
-          releaseNumber: release.releaseNumber,
-          artifact,
-        });
-        const taskResult = await runner.runBlockingLocalTask({
-          conversationId: `store:${packageRecord.packageId}`,
-          description: `${mode === "update" ? "Update" : "Install"} ${packageRecord.displayName} from store`,
-          prompt: buildStoreInstallPrompt({
-            blueprintPath,
-            packageRecord,
-            release,
-            mode,
-          }),
-          agentType: "general",
-          selfModMetadata: {
-            featureId: packageRecord.featureId,
+          mode,
+        }) => {
+          const blueprintPath = await writeBlueprintArtifact({
+            stellaRoot: state.init!.stellaRoot,
             packageId: packageRecord.packageId,
             releaseNumber: release.releaseNumber,
-            mode,
-            displayName: packageRecord.displayName,
-            description: packageRecord.description,
-          },
-        });
-        if (taskResult.status !== "ok") {
-          throw new Error(taskResult.error);
-        }
-      },
-    });
-    return result.installRecord;
-  });
+            artifact,
+          });
+          const taskResult = await runner.runBlockingLocalTask({
+            conversationId: `store:${packageRecord.packageId}`,
+            description: `${mode === "update" ? "Update" : "Install"} ${packageRecord.displayName} from store`,
+            prompt: buildStoreInstallPrompt({
+              blueprintPath,
+              packageRecord,
+              release,
+              mode,
+            }),
+            agentType: "general",
+            selfModMetadata: {
+              featureId: packageRecord.featureId,
+              packageId: packageRecord.packageId,
+              releaseNumber: release.releaseNumber,
+              mode,
+              displayName: packageRecord.displayName,
+              description: packageRecord.description,
+            },
+          });
+          if (taskResult.status !== "ok") {
+            throw new Error(taskResult.error);
+          }
+        },
+      });
+      return result.installRecord;
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_UNINSTALL_STORE_MOD, async (params) => {
-    if (!state.init) {
-      throw new Error("Worker has not been initialized.");
-    }
-    const payload = params as { packageId: string };
-    const service = ensureStoreModService();
-    const install = service.getInstalledModByPackageId(payload.packageId);
-    if (!install || install.state === "uninstalled") {
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_UNINSTALL_STORE_MOD,
+    async (params) => {
+      if (!state.init) {
+        throw new Error("Worker has not been initialized.");
+      }
+      const payload = params as { packageId: string };
+      const service = ensureStoreModService();
+      const install = service.getInstalledModByPackageId(payload.packageId);
+      if (!install || install.state === "uninstalled") {
+        return {
+          packageId: payload.packageId,
+          revertedCommits: [],
+        };
+      }
+      const revertedCommits = await revertGitCommits({
+        repoRoot: state.init.stellaRoot,
+        commitHashes: [...install.applyCommitHashes].reverse(),
+      });
+      service.markInstallUninstalled(install.installId);
       return {
         packageId: payload.packageId,
-        revertedCommits: [],
+        revertedCommits,
       };
-    }
-    const revertedCommits = await revertGitCommits({
-      repoRoot: state.init.stellaRoot,
-      commitHashes: [...install.applyCommitHashes].reverse(),
-    });
-    service.markInstallUninstalled(install.installId);
-    return {
-      packageId: payload.packageId,
-      revertedCommits,
-    };
-  });
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR, async (params) => {
-    const runId = (params as { runId?: string } | undefined)?.runId?.trim();
-    if (!runId) {
-      throw new Error("INTERNAL_WORKER_RESUME_HMR requires a runId.");
-    }
-    const options =
-      (params as {
-        options?: { suppressClientFullReload?: boolean };
-      } | undefined)?.options;
-    const resumeApplied = await ensureRunner().resumeSelfModHmr(runId, options);
-    return { ok: Boolean(resumeApplied) };
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR,
+    async (params) => {
+      const runId = (params as { runId?: string } | undefined)?.runId?.trim();
+      if (!runId) {
+        throw new Error("INTERNAL_WORKER_RESUME_HMR requires a runId.");
+      }
+      const options = (
+        params as
+          | {
+              options?: { suppressClientFullReload?: boolean };
+            }
+          | undefined
+      )?.options;
+      const resumeApplied = await ensureRunner().resumeSelfModHmr(
+        runId,
+        options,
+      );
+      return { ok: Boolean(resumeApplied) };
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_KILL_ALL_SHELLS, async () => {
-    ensureRunner().killAllShells();
-    return { ok: true };
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_KILL_ALL_SHELLS,
+    async () => {
+      ensureRunner().killAllShells();
+      return { ok: true };
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_OR_CREATE_DEFAULT, async () => {
-    return ensureChatStore().getOrCreateDefaultConversationId();
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_OR_CREATE_DEFAULT,
+    async () => {
+      return ensureChatStore().getOrCreateDefaultConversationId();
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_APPEND_EVENT, async (params) => {
-    ensureChatStore().appendEvent(params as {
-      conversationId: string;
-      type: string;
-      payload?: unknown;
-      requestId?: string;
-      targetDeviceId?: string;
-      deviceId?: string;
-      timestamp?: number;
-      eventId?: string;
-      channelEnvelope?: unknown;
-    });
-    peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
-    return { ok: true };
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_APPEND_EVENT,
+    async (params) => {
+      ensureChatStore().appendEvent(
+        params as {
+          conversationId: string;
+          type: string;
+          payload?: unknown;
+          requestId?: string;
+          targetDeviceId?: string;
+          deviceId?: string;
+          timestamp?: number;
+          eventId?: string;
+          channelEnvelope?: unknown;
+        },
+      );
+      peer.notify(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, null);
+      return { ok: true };
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_LIST_EVENTS, async (params) => {
-    const payload = params as {
-      conversationId?: string;
-      maxItems?: number;
-      windowBy?: "events" | "visible_messages";
-    };
-    return ensureChatStore().listEvents(
-      payload.conversationId ?? "",
-      payload.maxItems,
-      payload.windowBy,
-    );
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_LIST_EVENTS,
+    async (params) => {
+      const payload = params as {
+        conversationId?: string;
+        maxItems?: number;
+        windowBy?: "events" | "visible_messages";
+      };
+      return ensureChatStore().listEvents(
+        payload.conversationId ?? "",
+        payload.maxItems,
+        payload.windowBy,
+      );
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_EVENT_COUNT, async (params) => {
-    const payload = params as {
-      conversationId?: string;
-      countBy?: "events" | "visible_messages";
-    };
-    return ensureChatStore().getEventCount(
-      payload.conversationId ?? "",
-      payload.countBy,
-    );
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_EVENT_COUNT,
+    async (params) => {
+      const payload = params as {
+        conversationId?: string;
+        countBy?: "events" | "visible_messages";
+      };
+      return ensureChatStore().getEventCount(
+        payload.conversationId ?? "",
+        payload.countBy,
+      );
+    },
+  );
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_PERSIST_DISCOVERY_WELCOME,
@@ -1310,7 +1601,8 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
         suggestions?: unknown[];
       };
       const conversationId = payload.conversationId ?? "";
-      const message = typeof payload.message === "string" ? payload.message : "";
+      const message =
+        typeof payload.message === "string" ? payload.message : "";
       if (message.trim().length > 0) {
         ensureChatStore().appendEvent({
           conversationId,
@@ -1337,28 +1629,43 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     },
   );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_LIST_SYNC_MESSAGES, async (params) => {
-    const payload = params as { conversationId?: string; maxMessages?: number };
-    return ensureChatStore().listSyncMessages(
-      payload.conversationId ?? "",
-      payload.maxMessages,
-    );
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_LIST_SYNC_MESSAGES,
+    async (params) => {
+      const payload = params as {
+        conversationId?: string;
+        maxMessages?: number;
+      };
+      return ensureChatStore().listSyncMessages(
+        payload.conversationId ?? "",
+        payload.maxMessages,
+      );
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_SYNC_CHECKPOINT, async (params) => {
-    return ensureChatStore().getSyncCheckpoint(
-      (params as { conversationId?: string }).conversationId ?? "",
-    );
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_SYNC_CHECKPOINT,
+    async (params) => {
+      return ensureChatStore().getSyncCheckpoint(
+        (params as { conversationId?: string }).conversationId ?? "",
+      );
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_SET_SYNC_CHECKPOINT, async (params) => {
-    const payload = params as { conversationId?: string; localMessageId?: string };
-    ensureChatStore().setSyncCheckpoint(
-      payload.conversationId ?? "",
-      payload.localMessageId ?? "",
-    );
-    return { ok: true };
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_SET_SYNC_CHECKPOINT,
+    async (params) => {
+      const payload = params as {
+        conversationId?: string;
+        localMessageId?: string;
+      };
+      ensureChatStore().setSyncCheckpoint(
+        payload.conversationId ?? "",
+        payload.localMessageId ?? "",
+      );
+      return { ok: true };
+    },
+  );
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_DISCOVERY_COLLECT_BROWSER_DATA,
@@ -1366,9 +1673,10 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       if (!state.init) {
         throw new Error("Worker has not been initialized.");
       }
-      const payload = (params as
-        | { selectedBrowser?: string; selectedProfile?: string }
-        | undefined) ?? { };
+      const payload =
+        (params as
+          | { selectedBrowser?: string; selectedProfile?: string }
+          | undefined) ?? {};
       const data = await collectBrowserData(state.init.stellaRoot, {
         selectedBrowser: payload.selectedBrowser as
           | import("../discovery/browser-data.js").BrowserType
@@ -1385,13 +1693,14 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       if (!state.init) {
         throw new Error("Worker has not been initialized.");
       }
-      const payload = (params as
-        | {
-            categories?: string[];
-            selectedBrowser?: string;
-            selectedProfile?: string;
-          }
-        | undefined) ?? { };
+      const payload =
+        (params as
+          | {
+              categories?: string[];
+              selectedBrowser?: string;
+              selectedProfile?: string;
+            }
+          | undefined) ?? {};
       return await collectAllSignals(
         state.init.stellaRoot,
         payload.categories as
@@ -1403,42 +1712,57 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     },
   );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_FEATURES, async (params) => {
-    return ensureStoreModService().listLocalFeatures(
-      (params as { limit?: number } | undefined)?.limit,
-    );
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_FEATURES,
+    async (params) => {
+      return ensureStoreModService().listLocalFeatures(
+        (params as { limit?: number } | undefined)?.limit,
+      );
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_BATCHES, async (params) => {
-    return ensureStoreModService().listFeatureBatches(
-      (params as { featureId: string }).featureId,
-    );
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_BATCHES,
+    async (params) => {
+      return ensureStoreModService().listFeatureBatches(
+        (params as { featureId: string }).featureId,
+      );
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_CREATE_RELEASE_DRAFT, async (params) => {
-    return ensureStoreModService().createReleaseDraft(
-      params as { featureId: string; batchIds?: string[] },
-    );
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_CREATE_RELEASE_DRAFT,
+    async (params) => {
+      return ensureStoreModService().createReleaseDraft(
+        params as { featureId: string; batchIds?: string[] },
+      );
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED, async () => {
-    return ensureStoreModService().listInstalledMods();
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_STORE_MODS_LIST_INSTALLED,
+    async () => {
+      return ensureStoreModService().listInstalledMods();
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_CREATE, async (params) => {
-    if (!state.socialSessionService) {
-      throw new Error("Social session service is unavailable.");
-    }
-    const payload = params as { roomId?: string; workspaceLabel?: string };
-    const roomId = asTrimmedString(payload?.roomId);
-    if (!roomId) {
-      throw new Error("Room ID is required.");
-    }
-    return await state.socialSessionService.createSession({
-      roomId,
-      workspaceLabel: asTrimmedString(payload?.workspaceLabel) || undefined,
-    });
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_CREATE,
+    async (params) => {
+      if (!state.socialSessionService) {
+        throw new Error("Social session service is unavailable.");
+      }
+      const payload = params as { roomId?: string; workspaceLabel?: string };
+      const roomId = asTrimmedString(payload?.roomId);
+      if (!roomId) {
+        throw new Error("Room ID is required.");
+      }
+      return await state.socialSessionService.createSession({
+        roomId,
+        workspaceLabel: asTrimmedString(payload?.workspaceLabel) || undefined,
+      });
+    },
+  );
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_UPDATE_STATUS,
@@ -1446,7 +1770,10 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
       if (!state.socialSessionService) {
         throw new Error("Social session service is unavailable.");
       }
-      const payload = params as { sessionId?: string; status?: "active" | "paused" | "ended" };
+      const payload = params as {
+        sessionId?: string;
+        status?: "active" | "paused" | "ended";
+      };
       const sessionId = asTrimmedString(payload?.sessionId);
       if (!sessionId) {
         throw new Error("Session ID is required.");
@@ -1462,54 +1789,69 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     },
   );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_QUEUE_TURN, async (params) => {
-    if (!state.socialSessionService) {
-      throw new Error("Social session service is unavailable.");
-    }
-    const payload = params as {
-      sessionId?: string;
-      prompt?: string;
-      agentType?: string;
-      clientTurnId?: string;
-    };
-    const sessionId = asTrimmedString(payload?.sessionId);
-    const prompt = asTrimmedString(payload?.prompt);
-    if (!sessionId) {
-      throw new Error("Session ID is required.");
-    }
-    if (!prompt) {
-      throw new Error("Prompt is required.");
-    }
-    return await state.socialSessionService.queueTurn({
-      sessionId,
-      prompt,
-      agentType: asTrimmedString(payload?.agentType) || undefined,
-      clientTurnId: asTrimmedString(payload?.clientTurnId) || undefined,
-    });
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_QUEUE_TURN,
+    async (params) => {
+      if (!state.socialSessionService) {
+        throw new Error("Social session service is unavailable.");
+      }
+      const payload = params as {
+        sessionId?: string;
+        prompt?: string;
+        agentType?: string;
+        clientTurnId?: string;
+      };
+      const sessionId = asTrimmedString(payload?.sessionId);
+      const prompt = asTrimmedString(payload?.prompt);
+      if (!sessionId) {
+        throw new Error("Session ID is required.");
+      }
+      if (!prompt) {
+        throw new Error("Prompt is required.");
+      }
+      return await state.socialSessionService.queueTurn({
+        sessionId,
+        prompt,
+        agentType: asTrimmedString(payload?.agentType) || undefined,
+        clientTurnId: asTrimmedString(payload?.clientTurnId) || undefined,
+      });
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_GET_STATUS, async () => {
-    return state.socialSessionService?.getSnapshot() ?? createEmptySocialSessionServiceSnapshot();
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_GET_STATUS,
+    async () => {
+      return (
+        state.socialSessionService?.getSnapshot() ??
+        createEmptySocialSessionServiceSnapshot()
+      );
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_REVERT, async (params) => {
-    if (!state.init) {
-      throw new Error("Worker has not been initialized.");
-    }
-    const payload = params as { featureId?: string; steps?: number };
-    return await revertGitFeature({
-      repoRoot: state.init.stellaRoot,
-      featureId: payload.featureId,
-      steps: payload.steps,
-    });
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_REVERT,
+    async (params) => {
+      if (!state.init) {
+        throw new Error("Worker has not been initialized.");
+      }
+      const payload = params as { featureId?: string; steps?: number };
+      return await revertGitFeature({
+        repoRoot: state.init.stellaRoot,
+        featureId: payload.featureId,
+        steps: payload.steps,
+      });
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_LAST_FEATURE, async () => {
-    if (!state.init) {
-      throw new Error("Worker has not been initialized.");
-    }
-    return await getLastGitFeatureId(state.init.stellaRoot);
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_LAST_FEATURE,
+    async () => {
+      if (!state.init) {
+        throw new Error("Worker has not been initialized.");
+      }
+      return await getLastGitFeatureId(state.init.stellaRoot);
+    },
+  );
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_RECENT_FEATURES,
@@ -1523,22 +1865,34 @@ export const createRuntimeWorkerServer = (peer: JsonRpcPeer) => {
     },
   );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_KILL_SHELL_BY_PORT, async (params) => {
-    ensureRunner().killShellsByPort((params as { port: number }).port);
-    return { ok: true };
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_KILL_SHELL_BY_PORT,
+    async (params) => {
+      ensureRunner().killShellsByPort((params as { port: number }).port);
+      return { ok: true };
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_AUTH_STATUS, async () => {
-    return await ensureRunner().googleWorkspaceGetAuthStatus();
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_AUTH_STATUS,
+    async () => {
+      return await ensureRunner().googleWorkspaceGetAuthStatus();
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_CONNECT, async () => {
-    return await ensureRunner().googleWorkspaceConnect();
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_CONNECT,
+    async () => {
+      return await ensureRunner().googleWorkspaceConnect();
+    },
+  );
 
-  peer.registerRequestHandler(METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_DISCONNECT, async () => {
-    return await ensureRunner().googleWorkspaceDisconnect();
-  });
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_DISCONNECT,
+    async () => {
+      return await ensureRunner().googleWorkspaceDisconnect();
+    },
+  );
 
   peer.registerRequestHandler(METHOD_NAMES.RUNTIME_HEALTH, async () => {
     return {

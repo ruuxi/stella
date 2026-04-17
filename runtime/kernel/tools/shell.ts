@@ -11,6 +11,7 @@ import type { ToolContext, ToolResult, ShellRecord } from "./types.js";
 import { truncate } from "./utils.js";
 import { isDangerousCommand } from "./command-safety.js";
 import { getStellaBrowserBridgeEnv } from "./stella-browser-bridge-config.js";
+import { getStellaComputerSessionId } from "./stella-computer-session.js";
 import type { OfficePreviewRef } from "../../../desktop/src/shared/contracts/office-preview.js";
 
 export type ShellState = {
@@ -19,6 +20,7 @@ export type ShellState = {
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaUiCliPath?: string;
+  stellaComputerCliPath?: string;
 };
 
 const OFFICE_PREVIEW_REF_MARKER = "__STELLA_OFFICE_PREVIEW_REF__";
@@ -68,6 +70,7 @@ export const createShellState = (
     stellaBrowserBinPath?: string;
     stellaOfficeBinPath?: string;
     stellaUiCliPath?: string;
+    stellaComputerCliPath?: string;
   },
 ): ShellState => ({
   shells: new Map(),
@@ -75,6 +78,7 @@ export const createShellState = (
   stellaBrowserBinPath: options?.stellaBrowserBinPath,
   stellaOfficeBinPath: options?.stellaOfficeBinPath,
   stellaUiCliPath: options?.stellaUiCliPath,
+  stellaComputerCliPath: options?.stellaComputerCliPath,
 });
 
 const deferredDeleteHelperPath = (() => {
@@ -105,6 +109,7 @@ const buildProtectedCommand = (
     stellaBrowserBinPath?: string;
     stellaOfficeBinPath?: string;
     stellaUiCliPath?: string;
+    stellaComputerCliPath?: string;
   },
 ) => {
   if (!deferredDeleteHelperPath) {
@@ -121,6 +126,10 @@ const buildProtectedCommand = (
   const stellaUiCli =
     options?.stellaUiCliPath && existsSync(options.stellaUiCliPath)
       ? options.stellaUiCliPath
+      : "";
+  const stellaComputerCli =
+    options?.stellaComputerCliPath && existsSync(options.stellaComputerCliPath)
+      ? options.stellaComputerCliPath
       : "";
 
   // Dynamically detect python-like invocations (python, python3, python3.11, py, etc.)
@@ -201,8 +210,9 @@ pwsh() { __stella_dd powershell "$PWD" "$(type -P pwsh || true)" "$@"; }
 ${stellaBrowserBin ? `stella-browser() { "$STELLA_NODE_BIN" "$STELLA_BROWSER_BIN" "$@"; }` : ""}
 ${stellaOfficeBin ? `stella-office() { "$STELLA_NODE_BIN" "$STELLA_OFFICE_BIN" "$@"; }` : ""}
 ${stellaUiCli ? `stella-ui() { "$STELLA_NODE_BIN" "$STELLA_UI_CLI" "$@"; }` : ""}
+${stellaComputerCli ? `stella-computer() { "$STELLA_NODE_BIN" "$STELLA_COMPUTER_CLI" "$@"; }` : ""}
 ${pythonFuncs}
-export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaOfficeBin ? " stella-office" : ""}${stellaUiCli ? " stella-ui" : ""}${pythonExports} >/dev/null 2>&1 || true
+export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaOfficeBin ? " stella-office" : ""}${stellaUiCli ? " stella-ui" : ""}${stellaComputerCli ? " stella-computer" : ""}${pythonExports} >/dev/null 2>&1 || true
 `;
 
   return `${preamble}\n${rewriteDeleteBypassPatterns(command)}`;
@@ -215,6 +225,7 @@ const buildShellEnv = (
     stellaBrowserBinPath?: string;
     stellaOfficeBinPath?: string;
     stellaUiCliPath?: string;
+    stellaComputerCliPath?: string;
   },
 ) => {
   const mergedEnv = {
@@ -225,6 +236,7 @@ const buildShellEnv = (
     ...(options?.stellaBrowserBinPath ? { STELLA_BROWSER_BIN: options.stellaBrowserBinPath } : {}),
     ...(options?.stellaOfficeBinPath ? { STELLA_OFFICE_BIN: options.stellaOfficeBinPath } : {}),
     ...(options?.stellaUiCliPath ? { STELLA_UI_CLI: options.stellaUiCliPath } : {}),
+    ...(options?.stellaComputerCliPath ? { STELLA_COMPUTER_CLI: options.stellaComputerCliPath } : {}),
   };
 
   return setupEnvironment(mergedEnv).env;
@@ -393,6 +405,9 @@ export const normalizeComputerAgentShellCommand = (command: string) =>
 const shouldUseStellaBrowserBridge = (command: string): boolean =>
   /\bstella-browser\b/.test(command) || /\bSTELLA_BROWSER_SESSION=/.test(command);
 
+const shouldUseStellaComputer = (command: string): boolean =>
+  /\bstella-computer\b/.test(command);
+
 export const startShell = (
   state: ShellState,
   command: string,
@@ -532,6 +547,7 @@ export const handleBash = async (
   const runInBackground = Boolean(args.run_in_background ?? false);
   const envOverrides: Record<string, string> = {};
   const browserOwnerId = context?.taskId ?? context?.runId ?? context?.rootRunId;
+  const stellaComputerSessionId = getStellaComputerSessionId(context);
 
   if (shouldUseStellaBrowserBridge(command)) {
     // Browser automation uses one shared Stella browser bridge.
@@ -541,6 +557,10 @@ export const handleBash = async (
     if (browserOwnerId) {
       envOverrides.STELLA_BROWSER_OWNER_ID = browserOwnerId;
     }
+  }
+
+  if (shouldUseStellaComputer(command) && stellaComputerSessionId) {
+    envOverrides.STELLA_COMPUTER_SESSION = stellaComputerSessionId;
   }
 
   if (runInBackground) {

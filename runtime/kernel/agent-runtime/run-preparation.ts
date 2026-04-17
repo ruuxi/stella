@@ -5,24 +5,30 @@ import type {
   RuntimePromptMessage,
 } from "../../protocol/index.js";
 import { shouldIncludeStellaDocumentation } from "../../../desktop/src/shared/contracts/agent-runtime.js";
-import { buildSelfModDocumentationPrompt, buildSystemPrompt } from "./thread-memory.js";
-import type {
-  OrchestratorRunOptions,
-  SubagentRunOptions,
-} from "./types.js";
+import {
+  buildSelfModDocumentationPrompt,
+  buildSystemPrompt,
+} from "./thread-memory.js";
+import type { OrchestratorRunOptions, SubagentRunOptions } from "./types.js";
 
-const DATA_URL_IMAGE_RE = /^data:([^;,]+);base64,(.+)$/i;
+const DATA_URL_RE = /^data:([^;,]+);base64,(.+)$/i;
 
 const toImageContent = (
   attachment: RuntimeAttachmentRef,
 ): ImageContent | null => {
-  const match = DATA_URL_IMAGE_RE.exec(attachment.url.trim());
+  const match = DATA_URL_RE.exec(attachment.url.trim());
   if (!match) {
+    return null;
+  }
+  const mimeType = (attachment.mimeType?.trim() || match[1])
+    .trim()
+    .toLowerCase();
+  if (!mimeType.startsWith("image/")) {
     return null;
   }
   return {
     type: "image",
-    mimeType: attachment.mimeType?.trim() || match[1],
+    mimeType,
     data: match[2],
   };
 };
@@ -34,9 +40,9 @@ export const createUserPromptMessage = (
   role: "user" as const,
   content: [
     { type: "text" as const, text },
-    ...((attachments ?? [])
+    ...(attachments ?? [])
       .map((attachment) => toImageContent(attachment))
-      .filter((attachment): attachment is ImageContent => attachment !== null)),
+      .filter((attachment): attachment is ImageContent => attachment !== null),
   ],
 });
 
@@ -46,9 +52,9 @@ export const createRuntimePromptAgentMessage = (
 ): AgentMessage => {
   const content = [
     { type: "text" as const, text: message.text },
-    ...((message.attachments ?? [])
+    ...(message.attachments ?? [])
       .map((attachment) => toImageContent(attachment))
-      .filter((attachment): attachment is ImageContent => attachment !== null)),
+      .filter((attachment): attachment is ImageContent => attachment !== null),
   ];
   if (message.messageType === "message") {
     return {
@@ -89,13 +95,11 @@ export const buildRuntimeSystemPrompt = async (
   return effectiveSystemPrompt;
 };
 
-export const buildSubagentSystemPrompt = (
-  opts: SubagentRunOptions,
-): string =>
+export const buildSubagentSystemPrompt = (opts: SubagentRunOptions): string =>
   [
     buildSystemPrompt(opts.agentContext),
-    (shouldIncludeStellaDocumentation(opts.agentType) ||
-      Boolean(opts.selfModMetadata))
+    shouldIncludeStellaDocumentation(opts.agentType) ||
+    Boolean(opts.selfModMetadata)
       ? buildSelfModDocumentationPrompt(opts.stellaRoot)
       : "",
   ]
