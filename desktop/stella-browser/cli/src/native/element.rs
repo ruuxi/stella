@@ -5,6 +5,13 @@ use serde_json::Value;
 use super::cdp::client::CdpClient;
 use super::cdp::types::*;
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RefLocatorHints {
+    pub description: String,
+    pub value_text: String,
+    pub ancestor_path: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct RefEntry {
     pub backend_node_id: Option<i64>,
@@ -12,6 +19,7 @@ pub struct RefEntry {
     pub name: String,
     pub nth: Option<usize>,
     pub selector: Option<String>,
+    pub hints: RefLocatorHints,
 }
 
 pub struct RefMap {
@@ -35,6 +43,25 @@ impl RefMap {
         name: &str,
         nth: Option<usize>,
     ) {
+        self.add_with_hints(
+            ref_id,
+            backend_node_id,
+            role,
+            name,
+            nth,
+            RefLocatorHints::default(),
+        );
+    }
+
+    pub fn add_with_hints(
+        &mut self,
+        ref_id: String,
+        backend_node_id: Option<i64>,
+        role: &str,
+        name: &str,
+        nth: Option<usize>,
+        hints: RefLocatorHints,
+    ) {
         self.map.insert(
             ref_id,
             RefEntry {
@@ -43,6 +70,7 @@ impl RefMap {
                 name: name.to_string(),
                 nth,
                 selector: None,
+                hints,
             },
         );
     }
@@ -63,6 +91,7 @@ impl RefMap {
                 name: name.to_string(),
                 nth,
                 selector: Some(selector),
+                hints: RefLocatorHints::default(),
             },
         );
     }
@@ -159,9 +188,7 @@ pub async fn resolve_element_center(
         }
 
         // Fallback: re-query the accessibility tree to find a fresh node by role/name
-        let fresh_id =
-            find_node_id_by_role_name(client, session_id, &entry.role, &entry.name, entry.nth)
-                .await?;
+        let fresh_id = find_node_id_by_ref_entry(client, session_id, entry).await?;
         let result: DomGetBoxModelResult = client
             .send_command_typed(
                 "DOM.getBoxModel",
@@ -214,9 +241,7 @@ pub async fn resolve_element_object_id(
         }
 
         // Fallback: re-query the accessibility tree to find a fresh node by role/name
-        let fresh_id =
-            find_node_id_by_role_name(client, session_id, &entry.role, &entry.name, entry.nth)
-                .await?;
+        let fresh_id = find_node_id_by_ref_entry(client, session_id, entry).await?;
         let result: DomResolveNodeResult = client
             .send_command_typed(
                 "DOM.resolveNode",
@@ -257,16 +282,24 @@ pub async fn resolve_element_object_id(
         .ok_or_else(|| format!("Element not found: {}", selector_or_ref))
 }
 
-/// Re-query the accessibility tree to find a node matching role+name+nth,
-/// returning its fresh backendDOMNodeId. This uses the same data source
-/// (Accessibility.getFullAXTree) that built the ref map during snapshot,
-/// so role/name matching is guaranteed to be consistent.
-async fn find_node_id_by_role_name(
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RefCandidate {
+    backend_node_id: i64,
+    role: String,
+    name: String,
+    description: String,
+    value_text: String,
+    ancestor_path: Vec<String>,
+}
+
+/// Re-query the accessibility tree and resolve a fresh backendDOMNodeId using
+/// progressively broader heuristics:
+/// 1. exact role/name/nth parity with the original snapshot
+/// 2. scored role-preserving fuzzy match using description/value/ancestor path
+async fn find_node_id_by_ref_entry(
     client: &CdpClient,
     session_id: &str,
-    role: &str,
-    name: &str,
-    nth: Option<usize>,
+    entry: &RefEntry,
 ) -> Result<i64, String> {
     let ax_tree: GetFullAXTreeResult = client
         .send_command_typed(
@@ -276,31 +309,52 @@ async fn find_node_id_by_role_name(
         )
         .await?;
 
-    let nth_index = nth.unwrap_or(0);
-    let mut match_count: usize = 0;
+    let parent_by_idx = build_ax_parent_map(&ax_tree.nodes);
+    let expected_name = normalize_locator_text(&entry.name);
+    let nth_index = entry.nth.unwrap_or(0);
+    let mut exact_matches: Vec<RefCandidate> = Vec::new();
+    let mut candidates: Vec<RefCandidate> = Vec::new();
 
-    for node in &ax_tree.nodes {
+    for (idx, node) in ax_tree.nodes.iter().enumerate() {
         if node.ignored.unwrap_or(false) {
             continue;
         }
         let node_role = extract_ax_string(&node.role);
-        let node_name = extract_ax_string(&node.name);
-        if node_role == role && node_name == name {
-            if match_count == nth_index {
-                return node.backend_d_o_m_node_id.ok_or_else(|| {
-                    format!(
-                        "AX node has no backendDOMNodeId for role={} name={}",
-                        role, name
-                    )
-                });
-            }
-            match_count += 1;
+        if node_role != entry.role {
+            continue;
         }
+        let Some(backend_node_id) = node.backend_d_o_m_node_id else {
+            continue;
+        };
+        let candidate = RefCandidate {
+            backend_node_id,
+            role: node_role,
+            name: extract_ax_string(&node.name),
+            description: extract_ax_string(&node.description),
+            value_text: extract_ax_string_opt(&node.value),
+            ancestor_path: build_ax_ancestor_path(&ax_tree.nodes, &parent_by_idx, idx, 3),
+        };
+
+        let candidate_name = normalize_locator_text(&candidate.name);
+        if (expected_name.is_empty() && candidate_name.is_empty())
+            || (!expected_name.is_empty() && candidate_name == expected_name)
+        {
+            exact_matches.push(candidate.clone());
+        }
+        candidates.push(candidate);
+    }
+
+    if let Some(candidate) = exact_matches.get(nth_index) {
+        return Ok(candidate.backend_node_id);
+    }
+
+    if let Some(candidate) = select_best_candidate(entry, &candidates) {
+        return Ok(candidate.backend_node_id);
     }
 
     Err(format!(
         "Could not locate element with role={} name={}",
-        role, name
+        entry.role, entry.name
     ))
 }
 
@@ -314,6 +368,174 @@ fn extract_ax_string(value: &Option<AXValue>) -> String {
         },
         None => String::new(),
     }
+}
+
+fn extract_ax_string_opt(value: &Option<AXValue>) -> String {
+    match value {
+        Some(v) => match &v.value {
+            Some(Value::String(s)) => s.clone(),
+            Some(Value::Number(n)) => n.to_string(),
+            Some(Value::Bool(b)) => b.to_string(),
+            _ => String::new(),
+        },
+        None => String::new(),
+    }
+}
+
+fn build_ax_parent_map(nodes: &[AXNode]) -> HashMap<usize, usize> {
+    let mut id_to_idx: HashMap<&str, usize> = HashMap::with_capacity(nodes.len());
+    for (idx, node) in nodes.iter().enumerate() {
+        id_to_idx.insert(node.node_id.as_str(), idx);
+    }
+
+    let mut parent_by_idx = HashMap::new();
+    for (idx, node) in nodes.iter().enumerate() {
+        if let Some(child_ids) = &node.child_ids {
+            for child_id in child_ids {
+                if let Some(&child_idx) = id_to_idx.get(child_id.as_str()) {
+                    parent_by_idx.insert(child_idx, idx);
+                }
+            }
+        }
+    }
+    parent_by_idx
+}
+
+fn build_ax_ancestor_path(
+    nodes: &[AXNode],
+    parent_by_idx: &HashMap<usize, usize>,
+    mut idx: usize,
+    max_len: usize,
+) -> Vec<String> {
+    let mut path = Vec::new();
+
+    while let Some(parent_idx) = parent_by_idx.get(&idx).copied() {
+        idx = parent_idx;
+        let parent = &nodes[idx];
+        if parent.ignored.unwrap_or(false) {
+            continue;
+        }
+        let role = extract_ax_string(&parent.role);
+        let name = extract_ax_string(&parent.name);
+        if role.is_empty() {
+            continue;
+        }
+        if name.is_empty() && is_low_signal_ax_role(&role) {
+            continue;
+        }
+        path.push(format!("{}:{}", role, name));
+        if path.len() >= max_len {
+            break;
+        }
+    }
+
+    path.reverse();
+    path
+}
+
+fn is_low_signal_ax_role(role: &str) -> bool {
+    matches!(
+        role,
+        "RootWebArea" | "WebArea" | "none" | "generic" | "group" | "presentation"
+    )
+}
+
+fn normalize_locator_text(value: &str) -> String {
+    value
+        .split_whitespace()
+        .map(|segment| segment.to_ascii_lowercase())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn longest_common_ancestor_suffix(expected: &[String], actual: &[String]) -> usize {
+    let mut matches = 0;
+    let mut left = expected.iter().rev();
+    let mut right = actual.iter().rev();
+    loop {
+        match (left.next(), right.next()) {
+            (Some(a), Some(b)) if normalize_locator_text(a) == normalize_locator_text(b) => {
+                matches += 1;
+            }
+            _ => return matches,
+        }
+    }
+}
+
+fn score_text_match(expected: &str, actual: &str) -> i32 {
+    let expected = normalize_locator_text(expected);
+    let actual = normalize_locator_text(actual);
+
+    if expected.is_empty() || actual.is_empty() {
+        return 0;
+    }
+    if expected == actual {
+        return 120;
+    }
+    if actual.contains(&expected) || expected.contains(&actual) {
+        return 80;
+    }
+
+    let expected_tokens: Vec<&str> = expected.split(' ').collect();
+    let actual_tokens: Vec<&str> = actual.split(' ').collect();
+    let overlap = expected_tokens
+        .iter()
+        .filter(|token| !token.is_empty() && actual_tokens.contains(token))
+        .count();
+    if overlap == 0 {
+        return 0;
+    }
+
+    (overlap as i32) * 25
+}
+
+fn score_candidate(entry: &RefEntry, candidate: &RefCandidate) -> i32 {
+    if entry.role != candidate.role {
+        return i32::MIN;
+    }
+
+    let mut score = 200;
+    score += score_text_match(&entry.name, &candidate.name);
+    score += score_text_match(&entry.hints.description, &candidate.description) / 2;
+    score += score_text_match(&entry.hints.value_text, &candidate.value_text) / 2;
+
+    let ancestor_overlap =
+        longest_common_ancestor_suffix(&entry.hints.ancestor_path, &candidate.ancestor_path);
+    score += (ancestor_overlap as i32) * 35;
+
+    score
+}
+
+fn select_best_candidate<'a>(
+    entry: &RefEntry,
+    candidates: &'a [RefCandidate],
+) -> Option<&'a RefCandidate> {
+    let mut best: Option<&RefCandidate> = None;
+    let mut best_score = i32::MIN;
+    let mut second_best = i32::MIN;
+
+    for candidate in candidates {
+        let score = score_candidate(entry, candidate);
+        if score > best_score {
+            second_best = best_score;
+            best_score = score;
+            best = Some(candidate);
+        } else if score > second_best {
+            second_best = score;
+        }
+    }
+
+    let minimum_score = if normalize_locator_text(&entry.name).is_empty() {
+        235
+    } else {
+        260
+    };
+
+    if best_score < minimum_score || best_score == second_best {
+        return None;
+    }
+
+    best
 }
 
 async fn resolve_by_selector(
@@ -784,6 +1006,51 @@ pub async fn get_element_styles(
 mod tests {
     use super::*;
 
+    fn make_ref_entry(
+        role: &str,
+        name: &str,
+        description: &str,
+        value_text: &str,
+        ancestor_path: &[&str],
+    ) -> RefEntry {
+        RefEntry {
+            backend_node_id: None,
+            role: role.to_string(),
+            name: name.to_string(),
+            nth: None,
+            selector: None,
+            hints: RefLocatorHints {
+                description: description.to_string(),
+                value_text: value_text.to_string(),
+                ancestor_path: ancestor_path
+                    .iter()
+                    .map(|segment| segment.to_string())
+                    .collect(),
+            },
+        }
+    }
+
+    fn make_candidate(
+        backend_node_id: i64,
+        role: &str,
+        name: &str,
+        description: &str,
+        value_text: &str,
+        ancestor_path: &[&str],
+    ) -> RefCandidate {
+        RefCandidate {
+            backend_node_id,
+            role: role.to_string(),
+            name: name.to_string(),
+            description: description.to_string(),
+            value_text: value_text.to_string(),
+            ancestor_path: ancestor_path
+                .iter()
+                .map(|segment| segment.to_string())
+                .collect(),
+        }
+    }
+
     #[test]
     fn test_parse_ref_at_prefix() {
         assert_eq!(parse_ref("@e1"), Some("e1".to_string()));
@@ -831,5 +1098,60 @@ mod tests {
         let (x, y) = box_model_center(&model);
         assert!((x - 60.0).abs() < 0.01);
         assert!((y - 40.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_select_best_candidate_prefers_matching_ancestor_path() {
+        let entry = make_ref_entry("button", "Save", "", "", &["dialog:Billing"]);
+        let candidates = vec![
+            make_candidate(1, "button", "Save", "", "", &["dialog:Profile"]),
+            make_candidate(2, "button", "Save", "", "", &["dialog:Billing"]),
+        ];
+
+        let selected = select_best_candidate(&entry, &candidates).expect("candidate");
+        assert_eq!(selected.backend_node_id, 2);
+    }
+
+    #[test]
+    fn test_select_best_candidate_allows_name_drift_with_context() {
+        let entry = make_ref_entry(
+            "button",
+            "Continue",
+            "Proceed to checkout",
+            "",
+            &["form:Checkout"],
+        );
+        let candidates = vec![
+            make_candidate(
+                1,
+                "button",
+                "Continue to payment",
+                "Proceed to checkout",
+                "",
+                &["form:Checkout"],
+            ),
+            make_candidate(
+                2,
+                "button",
+                "Continue to payment",
+                "",
+                "",
+                &["form:Profile"],
+            ),
+        ];
+
+        let selected = select_best_candidate(&entry, &candidates).expect("candidate");
+        assert_eq!(selected.backend_node_id, 1);
+    }
+
+    #[test]
+    fn test_select_best_candidate_rejects_ambiguous_tie() {
+        let entry = make_ref_entry("button", "Save", "", "", &["dialog:Billing"]);
+        let candidates = vec![
+            make_candidate(1, "button", "Save", "", "", &["dialog:Billing"]),
+            make_candidate(2, "button", "Save", "", "", &["dialog:Billing"]),
+        ];
+
+        assert!(select_best_candidate(&entry, &candidates).is_none());
     }
 }
