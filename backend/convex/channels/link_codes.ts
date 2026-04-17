@@ -232,7 +232,7 @@ export const generateLinkCode = mutation({
     if ((identity as Record<string, unknown>).isAnonymous === true) {
       throw new ConvexError(SIGN_IN_REQUIRED_ERROR);
     }
-    const ownerId = identity.subject;
+    const ownerId = identity.tokenIdentifier;
 
     const code = generateSecureLinkCode(6);
 
@@ -264,7 +264,7 @@ export const verifyLinqLinkCode = mutation({
     if ((identity as Record<string, unknown>).isAnonymous === true) {
       throw new ConvexError(SIGN_IN_REQUIRED_ERROR);
     }
-    const ownerId = identity.subject;
+    const ownerId = identity.tokenIdentifier;
     const code = args.code.toUpperCase();
 
     const codeOwner = await ctx.runQuery(

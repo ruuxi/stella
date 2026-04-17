@@ -256,7 +256,7 @@ const requireMobileAccountOwner = async (
   }
 
   return {
-    ownerId: identity.subject,
+    ownerId: identity.tokenIdentifier,
     name:
       typeof identity.name === "string" && identity.name.trim().length > 0
         ? identity.name.trim()
@@ -303,7 +303,7 @@ const resolveMobileOwnerOrGuest = async (
       return anonymousOwner;
     }
     return {
-      ownerId: identity.subject,
+      ownerId: identity.tokenIdentifier,
       name:
         typeof identity.name === "string" && identity.name.trim().length > 0
           ? identity.name.trim()

@@ -29,6 +29,16 @@ const getRequiredEnv = (name: string) => {
   return value;
 };
 
+/**
+ * Map a Better Auth `user.id` to the Convex `UserIdentity.tokenIdentifier`
+ * shape (`${issuer}|${subject}`). Use this anywhere we have a Better Auth
+ * `user.id` but no live `UserIdentity` (lifecycle hooks, JWT payload builder,
+ * Stripe webhooks, etc.) so the value matches what `requireUserId` and friends
+ * return inside Convex functions.
+ */
+export const tokenIdentifierForBetterAuthUserId = (userId: string) =>
+  `${getRequiredEnv("CONVEX_SITE_URL")}|${userId}`;
+
 const escapeHtmlAttribute = (value: string) =>
   value
     .replaceAll("&", "&amp;")
@@ -165,7 +175,7 @@ export const assertSensitiveSessionPolicy = async (
   identity: Awaited<ReturnType<QueryCtx["auth"]["getUserIdentity"]>>,
 ) => {
   if (!identity) return;
-  const policy = await getSessionPolicyFromDb(ctx, identity.subject);
+  const policy = await getSessionPolicyFromDb(ctx, identity.tokenIdentifier);
   if (!policy) return;
 
   const tokenVersion =
@@ -194,7 +204,7 @@ export const assertSensitiveSessionPolicyAction = async (
   identity: Awaited<ReturnType<QueryCtx["auth"]["getUserIdentity"]>>,
 ) => {
   if (!identity) return;
-  const policy = await getSessionPolicyForOwnerAction(ctx, identity.subject);
+  const policy = await getSessionPolicyForOwnerAction(ctx, identity.tokenIdentifier);
   if (!policy) return;
 
   const tokenVersion =
@@ -242,7 +252,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
         beforeDelete: async (user) => {
           const actionCtx = requireActionCtx(ctx);
           await actionCtx.runAction(internal.account_deletion.purgeOwnerCloudData, {
-            ownerId: user.id,
+            ownerId: tokenIdentifierForBetterAuthUserId(user.id),
           });
         },
       },
@@ -260,8 +270,8 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
             0,
             internal.auth_migration.migrateOwnership,
             {
-              fromOwnerId: anonymousUser.user.id,
-              toOwnerId: newUser.user.id,
+              fromOwnerId: tokenIdentifierForBetterAuthUserId(anonymousUser.user.id),
+              toOwnerId: tokenIdentifierForBetterAuthUserId(newUser.user.id),
             },
           );
         },
@@ -289,15 +299,16 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
         jwt: {
           expirationTime: JWT_EXPIRATION_TIME,
           definePayload: async (session) => {
+            const ownerId = tokenIdentifierForBetterAuthUserId(session.user.id);
             const sessionVersion =
               "db" in ctx
                 ? await getSessionVersionForOwner(
                     ctx as QueryCtx | MutationCtx,
-                    session.user.id,
+                    ownerId,
                   )
                 : await getSessionVersionForOwnerAction(
                     ctx as unknown as ActionCtx,
-                    session.user.id,
+                    ownerId,
                   );
             return {
               ...session.user,
@@ -466,7 +477,7 @@ export const requireUserId = async (
   ctx: QueryCtx | MutationCtx | ActionCtx,
 ) => {
   const identity = await requireUserIdentity(ctx);
-  return identity.subject;
+  return identity.tokenIdentifier;
 };
 
 export const isAnonymousIdentity = (identity: unknown): boolean =>
@@ -506,14 +517,14 @@ export const requireConnectedUserId = async (
   ctx: QueryCtx | MutationCtx,
 ) => {
   const identity = await requireConnectedUserIdentity(ctx);
-  return identity.subject;
+  return identity.tokenIdentifier;
 };
 
 export const requireConnectedUserIdAction = async (
   ctx: ActionCtx,
 ) => {
   const identity = await requireConnectedUserIdentityAction(ctx);
-  return identity.subject;
+  return identity.tokenIdentifier;
 };
 
 export const requireSensitiveUserIdentity = async (
@@ -536,14 +547,14 @@ export const requireSensitiveUserId = async (
   ctx: QueryCtx | MutationCtx,
 ) => {
   const identity = await requireSensitiveUserIdentity(ctx);
-  return identity.subject;
+  return identity.tokenIdentifier;
 };
 
 export const requireSensitiveUserIdAction = async (
   ctx: ActionCtx,
 ) => {
   const identity = await requireSensitiveUserIdentityAction(ctx);
-  return identity.subject;
+  return identity.tokenIdentifier;
 };
 
 const loadConversation = async (

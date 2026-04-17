@@ -152,8 +152,8 @@ const toStoredMediaJobResponse = (job: {
 
 const toViewerOwnerId = async (ctx: QueryCtx): Promise<string> => {
   const identity = await ctx.auth.getUserIdentity();
-  if (identity?.subject) {
-    return identity.subject;
+  if (identity?.tokenIdentifier) {
+    return identity.tokenIdentifier;
   }
   if (isMediaPublicTestModeEnabled()) {
     return PUBLIC_MEDIA_TEST_OWNER_ID;

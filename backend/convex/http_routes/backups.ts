@@ -41,7 +41,7 @@ const getOwnerIdFromRequest = async (
       message: "Sign in with an account to use backups.",
     });
   }
-  return identity.subject;
+  return identity.tokenIdentifier;
 };
 
 const getRequiredDeviceId = (request: Request) => {

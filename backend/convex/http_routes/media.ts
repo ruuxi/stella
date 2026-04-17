@@ -505,7 +505,7 @@ export const registerMediaRoutes = (http: HttpRouter) => {
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
         const identity = await ctx.auth.getUserIdentity();
-        const ownerId = identity?.subject ?? (isMediaPublicTestModeEnabled() ? PUBLIC_MEDIA_TEST_OWNER_ID : null);
+        const ownerId = identity?.tokenIdentifier ?? (isMediaPublicTestModeEnabled() ? PUBLIC_MEDIA_TEST_OWNER_ID : null);
         if (!ownerId) return errorResponse(401, "Unauthorized", origin);
         const rateLimit = await ctx.runMutation(internal.rate_limits.consumeWebhookRateLimit, {
           scope: "media_realtime_session",
@@ -587,7 +587,7 @@ export const registerMediaRoutes = (http: HttpRouter) => {
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
         const identity = await ctx.auth.getUserIdentity();
-        const ownerId = identity?.subject ?? (isMediaPublicTestModeEnabled() ? PUBLIC_MEDIA_TEST_OWNER_ID : null);
+        const ownerId = identity?.tokenIdentifier ?? (isMediaPublicTestModeEnabled() ? PUBLIC_MEDIA_TEST_OWNER_ID : null);
         if (!ownerId) return errorResponse(401, "Unauthorized", origin);
         const subscriptionCheck = await checkManagedUsageLimit(ctx, ownerId, {
           minimumRemainingMicroCents: MEDIA_DENY_BUFFER_MICRO_CENTS,

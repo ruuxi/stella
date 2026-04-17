@@ -122,7 +122,7 @@ export const getAccountMode = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return "private_local";
-    const ownerId = identity.subject;
+    const ownerId = identity.tokenIdentifier;
     const record = await ctx.db
       .query("user_preferences")
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", ACCOUNT_MODE_KEY))
@@ -149,7 +149,7 @@ export const getSyncMode = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return "off";
-    const ownerId = identity.subject;
+    const ownerId = identity.tokenIdentifier;
     const record = await ctx.db
       .query("user_preferences")
       .withIndex("by_ownerId_and_key", (q) => q.eq("ownerId", ownerId).eq("key", SYNC_MODE_KEY))
@@ -334,7 +334,7 @@ export const getModelDefaults = query({
       return listStellaDefaultSelections("anonymous");
     }
 
-    const ownerId = identity.subject;
+    const ownerId = identity.tokenIdentifier;
     const profile = await ctx.db
       .query("billing_profiles")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))

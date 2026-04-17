@@ -265,7 +265,7 @@ export const registerMusicRoutes = (http: HttpRouter) => {
           internal.rate_limits.consumeWebhookRateLimit,
           {
             scope: "music_stream",
-            key: identity.subject,
+            key: identity.tokenIdentifier,
             limit: MUSIC_STREAM_RATE_LIMIT,
             windowMs: MUSIC_STREAM_RATE_WINDOW_MS,
             blockMs: MUSIC_STREAM_RATE_WINDOW_MS,
@@ -292,7 +292,7 @@ export const registerMusicRoutes = (http: HttpRouter) => {
         }
 
         const apiKey =
-          await getUserProviderKey(ctx, identity.subject, "llm:google") ??
+          await getUserProviderKey(ctx, identity.tokenIdentifier, "llm:google") ??
           process.env.GOOGLE_AI_API_KEY ??
           null;
         if (!apiKey) {

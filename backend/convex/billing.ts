@@ -1300,7 +1300,7 @@ export const getSubscriptionStatus = query({
       };
     }
 
-    const ownerId = identity.subject;
+    const ownerId = identity.tokenIdentifier;
     const profile = await ctx.db
       .query("billing_profiles")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
@@ -1355,7 +1355,7 @@ export const createEmbeddedCheckoutSession = action({
       });
     }
 
-    const ownerId = identity.subject;
+    const ownerId = identity.tokenIdentifier;
     const normalizedReturnUrl = normalizeReturnUrl(args.returnUrl);
     const stripe = getStripeClient();
     const publishableKey = getStripePublishableKey();
@@ -1451,7 +1451,7 @@ export const createBillingPortalSession = action({
       });
     }
 
-    const ownerId = identity.subject;
+    const ownerId = identity.tokenIdentifier;
     const billing: {
       ownerId: string;
       activePlan: string;
