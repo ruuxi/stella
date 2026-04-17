@@ -120,11 +120,11 @@ const usage = `stella-computer - control macOS apps through Accessibility
 Usage:
   stella-computer list-apps
   stella-computer [--session ID] snapshot [--app NAME|--bundle-id ID|--pid PID] [--all-windows] [--screenshot [PATH]|--no-screenshot] [--no-inline-screenshot] [--max-depth N] [--max-nodes N]
-  stella-computer [--session ID] click <ref> [--coordinate-fallback] [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise]
-  stella-computer [--session ID] fill <ref> <text> [--no-screenshot] [--no-inline-screenshot] [--no-raise]
-  stella-computer [--session ID] focus <ref> [--no-screenshot] [--no-inline-screenshot]
-  stella-computer [--session ID] secondary-action <ref> <action> [--no-screenshot] [--no-inline-screenshot]
-  stella-computer [--session ID] scroll <ref> <up|down|left|right> [--pages N] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] click <ref> [--coordinate-fallback] [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise] [--no-overlay]
+  stella-computer [--session ID] fill <ref> <text> [--no-screenshot] [--no-inline-screenshot] [--no-raise] [--no-overlay]
+  stella-computer [--session ID] focus <ref> [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
+  stella-computer [--session ID] secondary-action <ref> <action> [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
+  stella-computer [--session ID] scroll <ref> <up|down|left|right> [--pages N] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
   stella-computer [--session ID] drag <from_x> <from_y> <to_x> <to_y> [--allow-hid] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] drag-element <source-ref> (<dest-ref> | <to_x> <to_y> | --to-ref REF | --to-x N --to-y N) [--type file|url|text] [--operation copy|link|move|every] [--allow-hid] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] click-point <x> <y> [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise]
@@ -143,6 +143,7 @@ Notes:
   - HID fallbacks require --allow-hid (or STELLA_COMPUTER_ALLOW_HID=1) because they can interfere with active user input
   - ref actions use macOS Accessibility first, which avoids taking over the physical cursor
   - --no-raise (or STELLA_COMPUTER_NO_RAISE=1) avoids bringing the target app frontmost during click/type/press
+  - actions show a brief lens + software-cursor overlay around the target (~700ms); pass --no-overlay (or STELLA_COMPUTER_NO_OVERLAY=1) to skip it for chained-action latency
   - STELLA_COMPUTER_ALWAYS_SIMULATE_INPUT=1 forces CGEvent synthesis for click/type/press (CLICK alias kept for back-compat)
   - STELLA_COMPUTER_APP_INSTRUCTIONS_DIR=<dir> adds per-bundle markdown manuals (e.g. com.example.app.md)
   - Forbidden bundles: ${"set STELLA_COMPUTER_FORBIDDEN_BUNDLES=a,b,c to extend; the built-in deny list covers Stella, Keychain, password managers, System Settings"}
