@@ -143,16 +143,24 @@ export function CompactConversationSurface({
             isLoadingOlder={isLoadingOlder}
             isLoadingHistory={isLoadingHistory}
           />
-          <div className="thinking-footer-overlay">
-            {showThinkingFooter && (
+          {/*
+           * Render the thinking-footer wrapper only when there is something
+           * to show. The wrapper itself enforces `min-height: 52px` so that
+           * the full-shell composer doesn't shift when the footer toggles —
+           * but in the column-reverse compact surface, that reserved height
+           * sits at the visual bottom and creates the "empty space below
+           * the latest message" effect users see when scrolling.
+           */}
+          {showThinkingFooter && (
+            <div className="thinking-footer-overlay">
               <StickyThinkingFooter
                 tasks={footerTasks}
                 runningTool={runningTool}
                 isStreaming={isStreaming}
                 status={runtimeStatusText}
               />
-            )}
-          </div>
+            </div>
+          )}
         </div>
       ) : null}
     </div>

@@ -85,7 +85,10 @@
   flex-direction: column-reverse;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px 4px 12px;
+  /* Bottom padding kept tight (was 12px) so the latest message sits
+   * close to the composer with minimal dead space when the user scrolls
+   * to the bottom of the conversation. */
+  padding: 8px 4px 4px;
   min-height: 0;
   scrollbar-width: thin;
   mask-image: linear-gradient(to bottom, transparent 0%, black 16px, black 100%);
