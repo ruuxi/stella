@@ -21,6 +21,7 @@ state/electron-user-data/
 !state/registry.md
 !state/capabilities/
 !state/knowledge/
+state/stella-computer/sessions/
 state/knowledge/user-profile/
 !state/notes/
 state/notes/*
