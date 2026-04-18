@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { resolveStatePath } from "./shared.js";
-import { runNativeHelper } from "./native-helper.js";
+import { resolveNativeHelperPath, runNativeHelper } from "./native-helper.js";
+import { screenshotPixelToScreenPoint } from "./screenshot-coordinates.js";
 import { sanitizeStellaComputerSessionId } from "../tools/stella-computer-session.js";
 
 type Rect = {
@@ -22,12 +24,17 @@ type Screenshot = {
 };
 
 type SnapshotNode = {
+  index?: number | null;
   ref?: string | null;
   role: string;
   subrole?: string | null;
   title?: string | null;
   description?: string | null;
   value?: string | null;
+  valueType?: string | null;
+  settable?: boolean | null;
+  details?: string | null;
+  help?: string | null;
   identifier?: string | null;
   url?: string | null;
   enabled?: boolean | null;
@@ -38,6 +45,10 @@ type SnapshotNode = {
   children: SnapshotNode[];
 };
 
+type OverlayEntry = {
+  frame?: Rect | null;
+};
+
 type SnapshotDocument = {
   ok: boolean;
   appName: string;
@@ -45,8 +56,11 @@ type SnapshotDocument = {
   pid: number;
   windowTitle?: string | null;
   windowFrame?: Rect | null;
+  windowId?: number | null;
   nodeCount: number;
   refCount: number;
+  refs?: Record<string, OverlayEntry> | null;
+  indices?: Record<string, OverlayEntry> | null;
   warnings: string[];
   screenshotPath?: string | null;
   screenshot?: Screenshot | null;
@@ -101,6 +115,23 @@ type SessionPaths = {
   screenshotPath: string;
 };
 
+type OverlayCommandPayload = {
+  seq: number;
+  action: "show" | "hide" | "close";
+  frame?: Rect;
+  viewportFrame?: Rect;
+  cursorPoint?: { x: number; y: number };
+  interactionKind?: string | null;
+  // Preferred exact target window ID plus fallback identity hints. Codex's
+  // overlay API takes `aboveWindowID` directly; we mirror that when Stella
+  // has a resolved `windowId`, and only fall back to pid/title matching when
+  // the live window ID has changed.
+  targetWindowId?: number | null;
+  targetPid?: number;
+  targetBundleId?: string | null;
+  targetWindowTitle?: string | null;
+};
+
 const stateDir = path.join(resolveStatePath(), "stella-computer");
 const sessionsDir = path.join(stateDir, "sessions");
 const locksDir = path.join(stateDir, "locks");
@@ -120,30 +151,35 @@ const usage = `stella-computer - control macOS apps through Accessibility
 Usage:
   stella-computer list-apps
   stella-computer [--session ID] snapshot [--app NAME|--bundle-id ID|--pid PID] [--all-windows] [--screenshot [PATH]|--no-screenshot] [--no-inline-screenshot] [--max-depth N] [--max-nodes N]
-  stella-computer [--session ID] click <ref> [--coordinate-fallback] [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise] [--no-overlay]
-  stella-computer [--session ID] fill <ref> <text> [--no-screenshot] [--no-inline-screenshot] [--no-raise] [--no-overlay]
-  stella-computer [--session ID] focus <ref> [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
-  stella-computer [--session ID] secondary-action <ref> <action> [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
-  stella-computer [--session ID] scroll <ref> <up|down|left|right> [--pages N] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
+  stella-computer [--session ID] get-state [--app NAME|--bundle-id ID|--pid PID] [--all-windows] [--screenshot [PATH]|--no-screenshot] [--no-inline-screenshot] [--max-depth N] [--max-nodes N]
+  stella-computer [--session ID] click <element> [--coordinate-fallback] [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise] [--no-overlay]
+  stella-computer [--session ID] fill <element> <text> [--no-screenshot] [--no-inline-screenshot] [--no-raise] [--no-overlay]
+  stella-computer [--session ID] focus <element> [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
+  stella-computer [--session ID] secondary-action <element> <action> [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
+  stella-computer [--session ID] scroll <element> <up|down|left|right> [--pages N] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
   stella-computer [--session ID] drag <from_x> <from_y> <to_x> <to_y> [--allow-hid] [--no-screenshot] [--no-inline-screenshot]
-  stella-computer [--session ID] drag-element <source-ref> (<dest-ref> | <to_x> <to_y> | --to-ref REF | --to-x N --to-y N) [--type file|url|text] [--operation copy|link|move|every] [--allow-hid] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] drag-element <source-element> (<dest-element> | <to_x> <to_y> | --to-ref REF | --to-x N --to-y N) [--type file|url|text] [--operation copy|link|move|every] [--allow-hid] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] click-point <x> <y> [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise]
+  stella-computer [--session ID] click-screenshot <x_px> <y_px> [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise]
+  stella-computer [--session ID] drag-screenshot <from_x_px> <from_y_px> <to_x_px> <to_y_px> [--allow-hid] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] type <text> [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise]
   stella-computer [--session ID] press <key> [--allow-hid] [--no-screenshot] [--no-inline-screenshot] [--no-raise]
 
 Notes:
-  - snapshot writes ref state to ${defaultSessionStateExample}
+  - snapshot writes element state to ${defaultSessionStateExample}
+  - get-state is an alias for snapshot
   - click/fill/focus/secondary-action/scroll/drag reuse the last snapshot state unless --state is provided
   - snapshot captures a window screenshot by default; pass --no-screenshot to skip it
   - --all-windows enumerates every accessibility window the app advertises (default: focused only)
-  - successful actions refresh refs and the attached screenshot automatically
+  - successful actions refresh the numbered snapshot state and the attached screenshot automatically
   - screenshots are auto-attached inline (base64 PNG); pass --no-inline-screenshot to keep only the file path
   - the agent runtime detects "[stella-attach-image]" markers in output and attaches the image as vision input on the next turn
   - Stella isolates default state/screenshot files by session; agent runs set that session automatically
   - HID fallbacks require --allow-hid (or STELLA_COMPUTER_ALLOW_HID=1) because they can interfere with active user input
-  - ref actions use macOS Accessibility first, which avoids taking over the physical cursor
+  - element actions accept the numbered IDs shown in snapshot output (and still accept legacy @d refs); macOS Accessibility is tried first so Stella avoids taking over the physical cursor
+  - click-screenshot / drag-screenshot interpret coordinates in attached screenshot pixels, then map them back into screen space using the saved window frame
   - --no-raise (or STELLA_COMPUTER_NO_RAISE=1) avoids bringing the target app frontmost during click/type/press
-  - actions show a brief lens + software-cursor overlay around the target (~700ms); pass --no-overlay (or STELLA_COMPUTER_NO_OVERLAY=1) to skip it for chained-action latency
+  - actions keep a session overlay alive between targets so the software cursor visibly moves from action to action; pass --no-overlay (or STELLA_COMPUTER_NO_OVERLAY=1) to skip it
   - STELLA_COMPUTER_ALWAYS_SIMULATE_INPUT=1 forces CGEvent synthesis for click/type/press (CLICK alias kept for back-compat)
   - STELLA_COMPUTER_APP_INSTRUCTIONS_DIR=<dir> adds per-bundle markdown manuals (e.g. com.example.app.md)
   - Forbidden bundles: ${"set STELLA_COMPUTER_FORBIDDEN_BUNDLES=a,b,c to extend; the built-in deny list covers Stella, Keychain, password managers, System Settings"}
@@ -206,10 +242,44 @@ const getOptionValue = (args: string[], flag: string) => {
 const hasOption = (args: string[], flag: string) =>
   args.includes(flag) || args.some((arg) => arg.startsWith(`${flag}=`));
 
+const splitArgsIntoPositionalsAndOptions = (args: string[]) => {
+  const positionals: string[] = [];
+  const options: string[] = [];
+  let index = 0;
+
+  while (index < args.length) {
+    const current = args[index];
+    if (current.startsWith("--")) {
+      options.push(current);
+      if (
+        !current.includes("=") &&
+        index + 1 < args.length &&
+        !args[index + 1].startsWith("--")
+      ) {
+        options.push(args[index + 1]);
+        index += 2;
+        continue;
+      }
+      index += 1;
+      continue;
+    }
+    positionals.push(current);
+    index += 1;
+  }
+
+  return { positionals, options };
+};
+
 const deriveScreenshotPath = (statePath: string) => {
   const parsed = path.parse(statePath);
   return path.join(parsed.dir, `${parsed.name}.png`);
 };
+
+const overlayCommandPath = (sessionPaths: SessionPaths) =>
+  path.join(sessionPaths.sessionDir, "overlay-command.json");
+
+const overlayPidPath = (sessionPaths: SessionPaths) =>
+  path.join(sessionPaths.sessionDir, "overlay.pid");
 
 const resolveSessionPaths = (sessionOverride?: string | null): SessionPaths => {
   const sessionId =
@@ -237,6 +307,352 @@ const ensureStateDirectory = (sessionPaths: SessionPaths) => {
   fs.mkdirSync(stateDir, { recursive: true });
   fs.mkdirSync(locksDir, { recursive: true });
   fs.mkdirSync(sessionPaths.sessionDir, { recursive: true });
+};
+
+const pidIsRunning = (pid: number) => {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const readPidFile = (pidPath: string) => {
+  try {
+    const raw = fs.readFileSync(pidPath, "utf8").trim();
+    const pid = Number.parseInt(raw, 10);
+    return Number.isFinite(pid) ? pid : null;
+  } catch {
+    return null;
+  }
+};
+
+const delayMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const ensureOverlayDaemon = async (sessionPaths: SessionPaths) => {
+  const pidPath = overlayPidPath(sessionPaths);
+  const existingPid = readPidFile(pidPath);
+  if (existingPid && pidIsRunning(existingPid)) {
+    return true;
+  }
+  fs.rmSync(pidPath, { force: true });
+  fs.rmSync(overlayCommandPath(sessionPaths), { force: true });
+
+  const helperPath = resolveNativeHelperPath("desktop_overlay");
+  if (!helperPath) {
+    return false;
+  }
+
+  const child = spawn(
+    helperPath,
+    [
+      "--command-file",
+      overlayCommandPath(sessionPaths),
+      "--pid-file",
+      pidPath,
+    ],
+    {
+      detached: process.platform !== "win32",
+      stdio: "ignore",
+      windowsHide: true,
+      env: process.env,
+    },
+  );
+  child.unref();
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await delayMs(25);
+    const pid = readPidFile(pidPath);
+    if (pid && pidIsRunning(pid)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const writeOverlayCommand = (sessionPaths: SessionPaths, payload: OverlayCommandPayload) => {
+  const finalPath = overlayCommandPath(sessionPaths);
+  const tempPath = `${finalPath}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(payload));
+  fs.renameSync(tempPath, finalPath);
+};
+
+// The daemon writes its real per-move duration into
+// `overlay-busy-until.json`. Wrappers should always read that file;
+// they never compute their own duration. We keep this constant only as
+// the *upper bound* spawn budget (spawn = first show, no inbound move
+// yet) so we don't wedge waiting for a busy clock the daemon may not
+// have written yet.
+const overlaySpawnBudgetMs = 1200;
+
+const overlayBusyUntilPath = (sessionPaths: SessionPaths) =>
+  path.join(sessionPaths.sessionDir, "overlay-busy-until.json");
+
+type OverlayBusyState = {
+  busyUntilMs: number;
+  // Wall-clock ms at which the daemon says the cursor satisfies Codex's
+  // `nextInteractionTiming.closeEnough` predicate. For click-like moves
+  // this is the moment the wrapper is allowed to dispatch the underlying
+  // HID action so it lands in sync with the visible press pulse. For
+  // non-click moves it equals `busyUntilMs`. May be 0/undefined if read
+  // from a daemon binary that predates the field.
+  actionReadyAtMs: number;
+};
+
+const readOverlayBusyState = (sessionPaths: SessionPaths): OverlayBusyState => {
+  try {
+    const raw = fs.readFileSync(overlayBusyUntilPath(sessionPaths), "utf8");
+    const parsed = JSON.parse(raw) as {
+      busyUntilMs?: number;
+      actionReadyAtMs?: number;
+    };
+    const busyUntilMs = Number.isFinite(parsed.busyUntilMs)
+      ? Number(parsed.busyUntilMs)
+      : 0;
+    const actionReadyAtMs = Number.isFinite(parsed.actionReadyAtMs)
+      ? Number(parsed.actionReadyAtMs)
+      : busyUntilMs;
+    return { busyUntilMs, actionReadyAtMs };
+  } catch {
+    return { busyUntilMs: 0, actionReadyAtMs: 0 };
+  }
+};
+
+const readOverlayBusyUntil = (sessionPaths: SessionPaths): number =>
+  readOverlayBusyState(sessionPaths).busyUntilMs;
+
+const writeOverlayBusyUntil = (sessionPaths: SessionPaths, busyUntilMs: number) => {
+  const finalPath = overlayBusyUntilPath(sessionPaths);
+  const tempPath = `${finalPath}.tmp`;
+  // Pre-seed both fields so a click-like helper that races us doesn't
+  // see only `busyUntilMs` and assume actionReady = busyUntil. The
+  // daemon will overwrite both in a few ms with its real values.
+  fs.writeFileSync(
+    tempPath,
+    JSON.stringify({ busyUntilMs, actionReadyAtMs: busyUntilMs }),
+  );
+  fs.renameSync(tempPath, finalPath);
+};
+
+const waitForOverlayIdle = async (sessionPaths: SessionPaths) => {
+  // Re-read the busy file repeatedly: the daemon may extend the budget
+  // mid-move (e.g. queue a follow-up action) while we're sleeping.
+  // Without re-reading, we'd return early and race the next show.
+  for (;;) {
+    const busyUntilMs = readOverlayBusyUntil(sessionPaths);
+    const remainingMs = busyUntilMs - Date.now();
+    if (remainingMs <= 0) return;
+    await delayMs(Math.min(remainingMs, 60));
+  }
+};
+
+// Wait until the daemon publishes that the cursor has reached its
+// `closeEnough` threshold to the click target. This is what gates the
+// real HID action dispatch so the click visually lands in sync with
+// the press pulse instead of after the full move + pulse animation.
+//
+// Re-reads the file each loop iteration because the daemon may move
+// `actionReadyAtMs` *earlier* mid-flight if the cursor crosses the
+// distance threshold before the predicted progress threshold (the file
+// gets re-published with `actionReadyInSeconds: 0` the moment that
+// happens in `tick()`).
+const waitForOverlayActionReady = async (sessionPaths: SessionPaths) => {
+  for (;;) {
+    const { actionReadyAtMs } = readOverlayBusyState(sessionPaths);
+    const remainingMs = actionReadyAtMs - Date.now();
+    if (remainingMs <= 0) return;
+    await delayMs(Math.min(remainingMs, 30));
+  }
+};
+
+// After we write a `show` command, the daemon needs a few ms to pick
+// it up off disk, build the path, and publish the real per-move
+// duration into the busy file. We pre-seed a short upper-bound budget
+// before sending the command, then wait here for the daemon to either:
+//   (a) overwrite the file with its own (typically longer) duration,
+//   (b) leave the pre-seeded value in place (e.g. spawn-only frame),
+// then return. This keeps the wrapper from racing the daemon.
+const waitForDaemonBusyClock = async (
+  sessionPaths: SessionPaths,
+  showSentAtMs: number,
+) => {
+  const deadline = showSentAtMs + 250;
+  for (;;) {
+    const busyUntilMs = readOverlayBusyUntil(sessionPaths);
+    if (busyUntilMs > showSentAtMs + overlaySpawnBudgetMs - 50) return;
+    if (Date.now() > deadline) return;
+    await delayMs(15);
+  }
+};
+
+const isValidRect = (rect: Rect | null | undefined): rect is Rect =>
+  !!rect &&
+  Number.isFinite(rect.x) &&
+  Number.isFinite(rect.y) &&
+  Number.isFinite(rect.width) &&
+  Number.isFinite(rect.height) &&
+  rect.width > 0 &&
+  rect.height > 0;
+
+type ResolvedOverlayTarget = {
+  frame: Rect;
+  viewportFrame: Rect;
+  cursorPoint: { x: number; y: number };
+  interactionKind?: string | null;
+  targetWindowId?: number | null;
+  targetPid?: number;
+  targetBundleId?: string | null;
+  targetWindowTitle?: string | null;
+};
+
+const resolveOverlayTarget = (
+  command: string,
+  args: string[],
+  snapshot: SnapshotDocument | null,
+): ResolvedOverlayTarget | null => {
+  const { positionals } = splitArgsIntoPositionalsAndOptions(args);
+  const centerOf = (frame: Rect) => ({
+    x: frame.x + frame.width / 2,
+    y: frame.y + frame.height / 2,
+  });
+
+  if (!snapshot || !isValidRect(snapshot.windowFrame)) {
+    return null;
+  }
+
+  const identity = {
+    interactionKind: command,
+    targetWindowId: snapshot.windowId ?? null,
+    targetPid: snapshot.pid,
+    targetBundleId: snapshot.bundleId ?? null,
+    targetWindowTitle: snapshot.windowTitle ?? null,
+  } as const;
+
+  if (command === "click-point" && positionals.length >= 2) {
+    const x = Number(positionals[0]);
+    const y = Number(positionals[1]);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      const frame = { x: x - 24, y: y - 24, width: 48, height: 48 };
+      return {
+        frame,
+        viewportFrame: snapshot.windowFrame,
+        cursorPoint: { x, y },
+        ...identity,
+      };
+    }
+  }
+
+  if (positionals.length === 0) {
+    return null;
+  }
+
+  const targetId = positionals[0];
+  const entry =
+    snapshot.indices?.[targetId] ??
+    snapshot.refs?.[targetId] ??
+    null;
+  if (!entry?.frame) {
+    return null;
+  }
+  return {
+    frame: entry.frame,
+    viewportFrame: snapshot.windowFrame,
+    cursorPoint: centerOf(entry.frame),
+    ...identity,
+  };
+};
+
+const commandUsesPersistentOverlay = (command: string) =>
+  command === "click" ||
+  command === "fill" ||
+  command === "focus" ||
+  command === "secondary-action" ||
+  command === "perform-secondary-action" ||
+  command === "scroll" ||
+  command === "click-point";
+
+// Mirror of the daemon-side `isClickLikeInteraction` predicate. The
+// wrapper waits on `actionReadyAtMs` (early release at closeEnough) for
+// these commands; everything else waits on full move completion before
+// dispatching the helper, since there's no visible press to sync to.
+const commandIsClickLike = (command: string) =>
+  command === "click" ||
+  command === "click-point" ||
+  command === "secondary-action" ||
+  command === "perform-secondary-action";
+
+const withNoOverlayFlag = (args: string[]) =>
+  hasOption(args, "--no-overlay") ? args : [...args, "--no-overlay"];
+
+const maybePrimePersistentOverlay = async (
+  command: string,
+  helperArgs: string[],
+  sessionPaths: SessionPaths,
+) => {
+  if (
+    !commandUsesPersistentOverlay(command) ||
+    hasOption(helperArgs.slice(1), "--no-overlay") ||
+    process.env.STELLA_COMPUTER_NO_OVERLAY === "1"
+  ) {
+    return {
+      helperArgs,
+      daemonActive: false,
+    };
+  }
+
+  const statePath = getOptionValue(helperArgs.slice(1), "--state") ?? sessionPaths.statePath;
+  const target = resolveOverlayTarget(command, helperArgs.slice(1), readSnapshotDocument(statePath));
+  if (!target) {
+    return {
+      helperArgs: withNoOverlayFlag(helperArgs),
+      daemonActive: false,
+    };
+  }
+
+  const daemonReady = await ensureOverlayDaemon(sessionPaths);
+  if (!daemonReady) {
+    return {
+      helperArgs,
+      daemonActive: false,
+    };
+  }
+
+  // Pace consecutive actions: don't fire a new arc (or its underlying
+  // mouse action) until the previous arc has finished animating. The
+  // daemon owns the busy clock — it knows the real per-move duration —
+  // so we just read whatever it wrote.
+  await waitForOverlayIdle(sessionPaths);
+
+  const showSentAt = Date.now();
+  writeOverlayCommand(sessionPaths, {
+    seq: showSentAt,
+    action: "show",
+    frame: target.frame,
+    viewportFrame: target.viewportFrame,
+    cursorPoint: target.cursorPoint,
+    interactionKind: target.interactionKind,
+    targetWindowId: target.targetWindowId,
+    targetPid: target.targetPid,
+    targetBundleId: target.targetBundleId,
+    targetWindowTitle: target.targetWindowTitle,
+  });
+  // Pre-seed a short upper-bound budget so the *next* invocation that
+  // races us doesn't see an empty file and skip waiting. The daemon
+  // will overwrite this with the real duration in a few ms.
+  writeOverlayBusyUntil(sessionPaths, showSentAt + overlaySpawnBudgetMs);
+  // Now wait for the daemon to either (a) actually start the move and
+  // publish a real duration, or (b) finish a quick spawn-only frame.
+  // Either way, by the time we return, we're either still in our
+  // pre-seeded budget OR the daemon has taken over the budget — so the
+  // wrapper-side action body below races against an accurate clock.
+  await waitForDaemonBusyClock(sessionPaths, showSentAt);
+
+  return {
+    helperArgs: withNoOverlayFlag(helperArgs),
+    daemonActive: true,
+  };
 };
 
 const ensureSnapshotArgs = (args: string[], sessionPaths: SessionPaths) => {
@@ -270,63 +686,204 @@ const truncate = (value: string | null | undefined, limit = 80) => {
   return value.length > limit ? `${value.slice(0, limit)}...` : value;
 };
 
-// "AXScrollArea" -> "scroll area". This matches the Codex Computer Use
-// rendering format ("4 menu bar", "0 scroll area (disabled) desktop") which
-// is significantly more token-efficient than the raw kAX role names and is
-// what the model is most familiar with from Codex training data.
-const humanRole = (role: string): string => {
-  const trimmed = role.startsWith("AX") ? role.slice(2) : role;
-  // Insert a space before any uppercase letter that follows a lowercase one.
-  return trimmed
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .toLowerCase();
+const ACTIONS_TO_HIDE = new Set([
+  "AXPress",
+  "AXShowMenu",
+  "AXScrollToVisible",
+  "AXIncrement",
+  "AXDecrement",
+]);
+
+const ROLES_WITH_VISIBLE_SETTABLE_STATE = new Set([
+  "AXCell",
+  "AXCheckBox",
+  "AXComboBox",
+  "AXPopUpButton",
+  "AXRadioButton",
+  "AXSearchField",
+  "AXSecureTextField",
+  "AXSlider",
+  "AXSplitter",
+  "AXSwitch",
+  "AXTextArea",
+  "AXTextField",
+]);
+
+const formatUrlLike = (value: string) => value.replace(/^https?:\/\//, "");
+
+const humanActionName = (action: string) => {
+  const trimmed = action.startsWith("AX") ? action.slice(2) : action;
+  return trimmed.replace(/([a-z])([A-Z])/g, "$1 $2");
 };
 
-const refSuffixForActions = (actions: string[]): string => {
-  // Codex surfaces the union of *user-callable* secondary actions next to the
-  // node so the model can immediately call them via `perform_secondary_action`
-  // without re-snapshotting. We mirror that filter rule here: AXPress is
-  // implicit (every clickable node has it), the rest are surfaced verbatim.
-  const surfaced = actions.filter((action) => action !== "AXPress");
-  if (surfaced.length === 0) return "";
-  return `, Secondary Actions: ${surfaced.join(", ")}`;
+const humanRole = (node: Pick<SnapshotNode, "role" | "subrole">): string => {
+  switch (node.role) {
+    case "AXWindow":
+      return node.subrole === "AXStandardWindow" ? "standard window" : "window";
+    case "AXWebArea":
+      return "HTML content";
+    case "AXGroup":
+    case "AXGenericElement":
+    case "AXUnknown":
+    case "AXSplitGroup":
+      return "container";
+    case "AXStaticText":
+      return "text";
+    case "AXCheckBox":
+      return node.subrole === "AXSwitch" ? "switch" : "checkbox";
+    case "AXList":
+      return "list box";
+    default: {
+      const trimmed = node.role.startsWith("AX") ? node.role.slice(2) : node.role;
+      return trimmed
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .toLowerCase();
+    }
+  }
 };
 
-// Codex-style flat-list rendering. One node per line, tab-indent per depth,
-// `<id> <role>[ (<state-flags>)] [<label>][, Secondary Actions: ...][, ID: ...]`.
-// Stella refs (e.g. `@d12`) are kept as the leading token because callers
-// invoke actions with them — switching to bare integers would break the CLI.
+const secondaryActions = (actions: string[]) =>
+  actions
+    .filter((action) => !ACTIONS_TO_HIDE.has(action))
+    .map((action) => humanActionName(action));
+
+const displayValue = (node: SnapshotNode) => {
+  if (!node.value) return null;
+  if (node.subrole === "AXSwitch" && inferredValueType(node) === "boolean") {
+    if (node.value === "1") return "on";
+    if (node.value === "0") return "off";
+  }
+  return node.value;
+};
+
+const shouldSurfaceSettable = (node: SnapshotNode) =>
+  !!node.settable &&
+  (
+    ROLES_WITH_VISIBLE_SETTABLE_STATE.has(node.role) ||
+    node.subrole === "AXSwitch" ||
+    !!node.value
+  );
+
+const inferredValueType = (node: SnapshotNode) => {
+  if (node.role === "AXSlider") return "float";
+  if (node.subrole === "AXSwitch") return "boolean";
+  if (node.valueType && node.valueType !== "error") return node.valueType;
+  if (!shouldSurfaceSettable(node)) return null;
+  return "string";
+};
+
+const choosePrimaryLabel = (node: SnapshotNode) => {
+  if (node.title) return node.title;
+  if (node.role === "AXStaticText" && node.value) return node.value;
+  if (
+    (node.role === "AXButton" ||
+      node.role === "AXComboBox" ||
+      node.role === "AXMenuItem" ||
+      node.role === "AXRow" ||
+      node.role === "AXWindow" ||
+      node.role === "AXGroup" ||
+      node.role === "AXGenericElement" ||
+      node.role === "AXHeading" ||
+      node.role === "AXList") &&
+    node.description
+  ) {
+    return node.description;
+  }
+  if (!node.title && !node.description && node.value) return node.value;
+  return null;
+};
+
+const annotationSegment = (node: SnapshotNode) => {
+  const flags: string[] = [];
+  if (node.enabled === false) flags.push("disabled");
+  if (node.selected) flags.push("selected");
+  if (node.focused) flags.push("focused");
+  if (shouldSurfaceSettable(node)) {
+    flags.push("settable");
+    const valueType = inferredValueType(node);
+    if (valueType) flags.push(valueType);
+  }
+  return flags.length > 0 ? ` (${flags.join(", ")})` : "";
+};
+
 const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
   const indent = "\t".repeat(depth);
-  const id = node.ref ?? "_";
-  const role = humanRole(node.role);
+  const id =
+    typeof node.index === "number" && Number.isFinite(node.index)
+      ? String(node.index)
+      : (node.ref ?? "_");
+  const role = humanRole(node);
+  const primaryLabel = choosePrimaryLabel(node);
+  const extras: string[] = [];
 
-  const stateFlags: string[] = [];
-  if (node.enabled === false) stateFlags.push("disabled");
-  if (node.selected) stateFlags.push("selected");
-  if (node.focused) stateFlags.push("focused");
-  const stateSegment = stateFlags.length > 0 ? ` (${stateFlags.join(", ")})` : "";
+  if (
+    node.description &&
+    node.description !== primaryLabel &&
+    (node.role === "AXLink" || node.role === "AXCheckBox" || node.subrole === "AXSwitch")
+  ) {
+    extras.push(`Description: ${truncate(node.description, 120)}`);
+  }
 
-  const rawLabel =
-    node.title ?? node.description ?? node.value ?? node.identifier ?? null;
-  const label = rawLabel ? ` ${truncate(rawLabel, 120)}` : "";
+  const renderedValue = displayValue(node);
+  if (renderedValue && renderedValue !== primaryLabel) {
+    extras.push(`Value: ${truncate(renderedValue, 120)}`);
+  }
 
-  const idTag = node.identifier && node.identifier !== rawLabel
-    ? `, ID: ${node.identifier}`
-    : "";
+  if (node.details && node.details !== primaryLabel && node.details !== renderedValue) {
+    extras.push(`Details: ${truncate(node.details, 120)}`);
+  }
 
-  const urlTag = node.url ? `, URL: ${truncate(node.url, 100)}` : "";
+  if (node.help && node.help !== primaryLabel) {
+    extras.push(`Help: ${truncate(node.help, 120)}`);
+  }
 
-  const actions = refSuffixForActions(node.actions ?? []);
+  if (
+    node.identifier &&
+    node.identifier !== primaryLabel &&
+    node.identifier !== node.description &&
+    node.identifier !== node.value
+  ) {
+    extras.push(`ID: ${truncate(node.identifier, 120)}`);
+  }
 
-  const line = `${indent}${id} ${role}${stateSegment}${label}${actions}${idTag}${urlTag}`;
+  if (node.url) {
+    const renderedUrl = truncate(formatUrlLike(node.url), 100);
+    if (node.role === "AXLink" && !renderedValue) {
+      extras.push(`Value: ${renderedUrl}`);
+    } else {
+      extras.push(`URL: ${renderedUrl}`);
+    }
+  }
+
+  const actions = secondaryActions(node.actions ?? []);
+  if (actions.length > 0) {
+    extras.push(`Secondary Actions: ${actions.join(", ")}`);
+  }
+
+  let line = `${indent}${id} ${role}${annotationSegment(node)}`;
+  if (primaryLabel) {
+    line += ` ${truncate(primaryLabel, 120)}`;
+  }
+  if (extras.length > 0) {
+    line += `, ${extras.join(", ")}`;
+  }
   return [line, ...node.children.flatMap((child) => formatNodeLinesCodex(child, depth + 1))];
 };
 
-const findFocusedRef = (nodes: SnapshotNode[]): string | null => {
+const findFocusedElement = (
+  nodes: SnapshotNode[],
+): { index: number | string; role: string } | null => {
   for (const node of nodes) {
-    if (node.focused && node.ref) return node.ref;
-    const nested = findFocusedRef(node.children);
+    if (node.focused) {
+      return {
+        index:
+          typeof node.index === "number" && Number.isFinite(node.index)
+            ? node.index
+            : (node.ref ?? "_"),
+        role: humanRole(node),
+      };
+    }
+    const nested = findFocusedElement(node.children);
     if (nested) return nested;
   }
   return null;
@@ -376,22 +933,23 @@ const formatAppInstructions = (instructions?: string | null) => {
   if (!instructions) return "";
   const trimmed = instructions.trim();
   if (!trimmed) return "";
-  return `\n--- App-specific instructions ---\n${trimmed}\n--- end app-specific instructions ---\n`;
+  return `<app_specific_instructions>\n${trimmed}\n</app_specific_instructions>\n`;
 };
 
-const formatSnapshot = (snapshot: SnapshotDocument) => {
-  // Codex Computer Use's verbatim rendering format. The model is trained on
-  // exactly this shape so it pattern-matches snapshots quickly:
-  //
-  //   <stella_computer_state cua_version=...>
-  //   App=com.apple.finder (pid 504)
-  //   Window: "Desktop", App: Finder.
-  //       0 menu bar
-  //           1 Finder
-  //           ...
-  //   The focused UI element is @d3 button.
-  //   </stella_computer_state>
-  process.stdout.write("<stella_computer_state>\n");
+const formatBundleSpecificStateNote = (snapshot: SnapshotDocument) => {
+  if (snapshot.bundleId !== "com.spotify.client") {
+    return "";
+  }
+  return (
+    'Note: In order to be usable, Spotify app links must be rewritten as regular links ' +
+    '(e.g. use open.spotify.com instead of xpui.app.spotify.com). Only use Spotify links ' +
+    'that are written verbatim in the UI above. Note that IDs are only valid with their ' +
+    'associated type (e.g. you cannot change an "album" URL to a "track" URL).'
+  );
+};
+
+const formatAppStateBlock = (snapshot: SnapshotDocument) => {
+  process.stdout.write("<app_state>\n");
   const appLabel = snapshot.bundleId
     ? `App=${snapshot.bundleId} (pid ${snapshot.pid})`
     : `App=${snapshot.appName} (pid ${snapshot.pid})`;
@@ -402,29 +960,37 @@ const formatSnapshot = (snapshot: SnapshotDocument) => {
   for (const node of snapshot.nodes) {
     process.stdout.write(`${formatNodeLinesCodex(node).join("\n")}\n`);
   }
-  const focusedRef = findFocusedRef(snapshot.nodes);
-  if (focusedRef) {
-    process.stdout.write(`The focused UI element is ${focusedRef}.\n`);
+  const focused = findFocusedElement(snapshot.nodes);
+  if (focused) {
+    process.stdout.write(`\nThe focused UI element is ${focused.index} ${focused.role}.\n`);
   }
-  process.stdout.write("</stella_computer_state>\n");
+  const bundleNote = formatBundleSpecificStateNote(snapshot);
+  if (bundleNote) {
+    process.stdout.write(`\n${bundleNote}\n`);
+  }
+  process.stdout.write("</app_state>\n");
+};
 
-  // After the structured state block, emit metadata + auto-attach hints +
-  // app-specific instructions. The order matters: the screenshot marker
-  // comes immediately after </stella_computer_state> so any host that
-  // attaches the image renders it adjacent to the tree.
+const formatSnapshot = (snapshot: SnapshotDocument) => {
+  const instructions = formatAppInstructions(snapshot.appInstructions);
+  if (instructions) {
+    process.stdout.write(instructions);
+  }
+  formatAppStateBlock(snapshot);
+
   process.stdout.write(formatScreenshotMarker(snapshot.screenshot, snapshot.screenshotPath));
-  process.stdout.write(formatAppInstructions(snapshot.appInstructions));
   printWarnings(snapshot.warnings);
 };
 
-const formatAction = (payload: ActionPayload) => {
-  process.stdout.write(payload.message);
-  if (payload.usedAction) {
-    process.stdout.write(` (${payload.usedAction})`);
-  }
+const formatAction = (payload: ActionPayload, snapshot: SnapshotDocument | null) => {
+  process.stdout.write(
+    payload.message.replace(/\bAX[A-Za-z]+\b/g, (action) => humanActionName(action)),
+  );
   process.stdout.write("\n");
+  if (snapshot) {
+    formatAppStateBlock(snapshot);
+  }
   process.stdout.write(formatScreenshotMarker(payload.screenshot, payload.screenshotPath));
-  process.stdout.write(formatAppInstructions(payload.appInstructions));
   printWarnings(payload.warnings);
 };
 
@@ -491,6 +1057,66 @@ const readSnapshotDocument = (statePath: string): SnapshotDocument | null => {
   } catch {
     return null;
   }
+};
+
+const translateScreenshotCoordinateCommand = (
+  command: string,
+  args: string[],
+  sessionPaths: SessionPaths,
+) => {
+  if (command !== "click-screenshot" && command !== "drag-screenshot") {
+    return { command, args };
+  }
+
+  const { positionals, options } = splitArgsIntoPositionalsAndOptions(args);
+  const statePath = getOptionValue(options, "--state") ?? sessionPaths.statePath;
+  const snapshot = readSnapshotDocument(statePath);
+
+  if (command === "click-screenshot") {
+    if (positionals.length < 2) {
+      throw new Error("click-screenshot requires x_px and y_px.");
+    }
+    const xPx = Number(positionals[0]);
+    const yPx = Number(positionals[1]);
+    const { point, error } = screenshotPixelToScreenPoint(snapshot, xPx, yPx);
+    if (!point) {
+      throw new Error(error ?? "Failed to map screenshot pixel coordinates.");
+    }
+    return {
+      command: "click-point",
+      args: [String(point.x), String(point.y), ...options],
+    };
+  }
+
+  if (positionals.length < 4) {
+    throw new Error(
+      "drag-screenshot requires from_x_px, from_y_px, to_x_px, and to_y_px.",
+    );
+  }
+
+  const fromX = Number(positionals[0]);
+  const fromY = Number(positionals[1]);
+  const toX = Number(positionals[2]);
+  const toY = Number(positionals[3]);
+  const fromPoint = screenshotPixelToScreenPoint(snapshot, fromX, fromY);
+  if (!fromPoint.point) {
+    throw new Error(fromPoint.error ?? "Failed to map drag start screenshot coordinates.");
+  }
+  const toPoint = screenshotPixelToScreenPoint(snapshot, toX, toY);
+  if (!toPoint.point) {
+    throw new Error(toPoint.error ?? "Failed to map drag end screenshot coordinates.");
+  }
+
+  return {
+    command: "drag",
+    args: [
+      String(fromPoint.point.x),
+      String(fromPoint.point.y),
+      String(toPoint.point.x),
+      String(toPoint.point.y),
+      ...options,
+    ],
+  };
 };
 
 const snapshotLockKeys = (snapshot: SnapshotDocument | null, statePath: string) => {
@@ -700,20 +1326,40 @@ const runCommand = async (
   const sessionPaths = resolveSessionPaths(sessionOverride);
   ensureStateDirectory(sessionPaths);
 
-  const helperArgs =
-    command === "list-apps"
-      ? ["list-apps"]
-      : command === "snapshot"
-      ? ["snapshot", ...ensureSnapshotArgs(args, sessionPaths)]
-      : [command, ...withStatePath(args, sessionPaths)];
+  let effectiveCommand = command === "get-state" ? "snapshot" : command;
+  let effectiveArgs = args;
+  try {
+    const translated = translateScreenshotCoordinateCommand(effectiveCommand, args, sessionPaths);
+    effectiveCommand = translated.command;
+    effectiveArgs = translated.args;
+  } catch (error) {
+    emitError(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        warnings: [],
+        screenshotPath: null,
+      },
+      jsonMode,
+    );
+  }
 
-  validateHidAccess(command, helperArgs.slice(1), jsonMode);
-  ensureCommandPaths(command, helperArgs.slice(1));
+  const initialHelperArgs =
+    effectiveCommand === "list-apps"
+      ? ["list-apps"]
+      : effectiveCommand === "snapshot"
+      ? ["snapshot", ...ensureSnapshotArgs(effectiveArgs, sessionPaths)]
+      : [effectiveCommand, ...withStatePath(effectiveArgs, sessionPaths)];
+  const statePathForCommand =
+    getOptionValue(initialHelperArgs.slice(1), "--state") ?? sessionPaths.statePath;
+
+  validateHidAccess(effectiveCommand, initialHelperArgs.slice(1), jsonMode);
+  ensureCommandPaths(effectiveCommand, initialHelperArgs.slice(1));
 
   let releaseLocks: (() => void) | undefined;
   try {
     releaseLocks = await acquireLocks(
-      resolveLockKeys(command, helperArgs.slice(1), sessionPaths),
+      resolveLockKeys(effectiveCommand, initialHelperArgs.slice(1), sessionPaths),
       sessionPaths.sessionId,
     );
   } catch (error) {
@@ -729,6 +1375,21 @@ const runCommand = async (
   }
 
   try {
+    const { helperArgs, daemonActive } = await maybePrimePersistentOverlay(
+      effectiveCommand,
+      initialHelperArgs,
+      sessionPaths,
+    );
+    // Gate the actual HID dispatch on the daemon's recovered Codex
+    // `nextInteractionTiming.closeEnough` deadline so the real click
+    // lands at the same moment the cursor's press pulse fires
+    // visually, instead of after the full move completes. Only applies
+    // to click-like interactions; for everything else
+    // `actionReadyAtMs` equals `busyUntilMs` so the early release is a
+    // no-op anyway.
+    if (daemonActive && commandIsClickLike(effectiveCommand)) {
+      await waitForOverlayActionReady(sessionPaths);
+    }
     const result = await runNativeHelper({
       helperName: "desktop_automation",
       helperArgs,
@@ -737,6 +1398,14 @@ const runCommand = async (
         STELLA_COMPUTER_SESSION: sessionPaths.sessionId,
       },
     });
+    if (daemonActive) {
+      // The daemon's animation usually outlasts the helper's actual
+      // mouse-down/up. Hold the wrapper open until the move has
+      // visually finished, otherwise the next `bun stella-computer`
+      // invocation can race in and overwrite the in-flight `show`
+      // command before the cursor reaches its destination.
+      await waitForOverlayIdle(sessionPaths);
+    }
 
     if (result.error) {
       throw result.error;
@@ -787,12 +1456,12 @@ const runCommand = async (
       return 1;
     }
 
-    if (command === "list-apps") {
+    if (effectiveCommand === "list-apps") {
       formatListApps(parsed as ListAppsPayload);
-    } else if (command === "snapshot") {
-      formatSnapshot(parsed as SnapshotDocument);
+    } else if (effectiveCommand === "snapshot") {
+      formatSnapshot(readSnapshotDocument(statePathForCommand) ?? parsed as SnapshotDocument);
     } else {
-      formatAction(parsed as ActionPayload);
+      formatAction(parsed as ActionPayload, readSnapshotDocument(statePathForCommand));
     }
 
     return 0;
@@ -831,6 +1500,7 @@ if (
   ![
     "list-apps",
     "snapshot",
+    "get-state",
     "click",
     "fill",
     "focus",
@@ -840,6 +1510,8 @@ if (
     "drag",
     "drag-element",
     "click-point",
+    "click-screenshot",
+    "drag-screenshot",
     "type",
     "press",
   ].includes(command)

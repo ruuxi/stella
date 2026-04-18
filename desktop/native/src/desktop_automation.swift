@@ -29,12 +29,17 @@ struct Screenshot: Codable {
 
 struct RefEntry: Codable {
     let ref: String
+    let index: Int?
     let role: String
     let subrole: String?
     let primaryLabel: String?
     let title: String?
     let description: String?
     let value: String?
+    let valueType: String?
+    let settable: Bool?
+    let details: String?
+    let help: String?
     let identifier: String?
     let url: String?
     let windowTitle: String?
@@ -49,12 +54,17 @@ struct RefEntry: Codable {
 }
 
 struct SnapshotNode: Codable {
+    let index: Int?
     let ref: String?
     let role: String
     let subrole: String?
     let title: String?
     let description: String?
     let value: String?
+    let valueType: String?
+    let settable: Bool?
+    let details: String?
+    let help: String?
     let identifier: String?
     let url: String?
     let enabled: Bool?
@@ -72,9 +82,11 @@ struct SnapshotDocument: Codable {
     let pid: Int32
     let windowTitle: String?
     let windowFrame: Rect?
+    let windowId: UInt32?
     let nodeCount: Int
     let refCount: Int
     let refs: [String: RefEntry]
+    let indices: [String: RefEntry]?
     let nodes: [SnapshotNode]
     let warnings: [String]
     let screenshotPath: String?
@@ -149,12 +161,21 @@ struct AppTarget {
     let axApp: AXUIElement
 }
 
+struct OverlayCursorState: Codable {
+    let x: Double
+    let y: Double
+}
+
 struct NodeDetails {
     let role: String
     let subrole: String?
     let title: String?
     let description: String?
     let value: String?
+    let valueType: String?
+    let settable: Bool?
+    let details: String?
+    let help: String?
     let identifier: String?
     let url: String?
     let enabled: Bool?
@@ -282,18 +303,38 @@ let roleSpecificSingleChildAttributes: [String: [String]] = [
     "AXWindow": ["AXToolbar", "AXSheet"],
 ]
 
+// Roles where we'll fall back to `kAXChildren` when no role-specific child
+// attribute produced descendants. Without an entry here, `axChildren`
+// returns the empty array even if the underlying element has children —
+// that's deliberate for opaque containers we don't want to walk into.
+//
+// We MUST descend into AXGroup, AXWebArea, AXScrollArea, AXSplitGroup,
+// and AXGenericElement because that's how CEF/Electron/WebKit hosts
+// expose their entire DOM under the parent app's window:
+//
+//   AXWindow
+//     AXGroup (URL: https://...)        ← the whole webview
+//       AXGroup → AXGroup → AXButton ...  ← actual app UI
+//
+// Without these, Spotify, Discord, Slack, VS Code, Notion, and any
+// app with a WKWebView/Chromium subtree comes back as an empty shell.
 let safeFallbackChildRoles: Set<String> = [
     "AXApplication",
     "AXBrowser",
+    "AXGenericElement",
+    "AXGroup",
     "AXList",
     "AXMenu",
     "AXMenuBar",
     "AXOutline",
     "AXRow",
+    "AXScrollArea",
     "AXSheet",
+    "AXSplitGroup",
     "AXTable",
     "AXTabGroup",
     "AXToolbar",
+    "AXWebArea",
     "AXWindow",
 ]
 
@@ -498,6 +539,27 @@ let bundledAppInstructions: [String: String] = [
         - Drag-to-move files: prefer `drag-element --type file` from a row ref to a destination
           folder ref. The raw `drag` command will not produce a real Finder file move.
         """,
+    "com.spotify.client": """
+        ## Spotify Computer Use
+
+        ### Playing media
+
+        The Spotify app doesn't immediately update after requesting playback, so the result from a
+        click might indicate paused media or outdated media. Instead of acting again, first: run
+        `get-state` to confirm it didn't take. You may be pleasantly surprised. Do not sleep any
+        time, it should be updated by the time you notice and request another `get-state`.
+
+        ### Searching
+
+        Be sure the search field is focused before pressing return to search. If you press return
+        without the search field focused, it may affect playback inadvertently.
+
+        ### General Navigation
+
+        This app is not fully local state. That means you must sometimes wait for network to give
+        you a response. When searching, that means it might say "no results" momentarily. Err on
+        running `get-state` again before changing course.
+        """,
     "com.apple.MobileSafari": """
         # Safari Computer Use
 
@@ -676,6 +738,64 @@ func rectToCGRect(_ rect: Rect) -> CGRect {
     CGRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
 }
 
+func resolveOnScreenWindowID(
+    pid: Int32,
+    expectedTitle: String?,
+    expectedFrame: Rect?
+) -> CGWindowID? {
+    let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+    guard let raw = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+        return nil
+    }
+
+    let expectedTitleNormalized = normalized(expectedTitle)
+    let expectedCGRect = expectedFrame.map(rectToCGRect)
+    var best: (windowID: CGWindowID, score: CGFloat)?
+
+    for entry in raw {
+        guard let entryPid = (entry[kCGWindowOwnerPID as String] as? Int).map(Int32.init),
+              entryPid == pid,
+              let windowID = entry[kCGWindowNumber as String] as? CGWindowID,
+              let bounds = entry[kCGWindowBounds as String] as? [String: CGFloat] else {
+            continue
+        }
+
+        let layer = entry[kCGWindowLayer as String] as? Int ?? 0
+        if layer < 0 || layer > 3 { continue }
+
+        let frame = CGRect(
+            x: bounds["X"] ?? 0,
+            y: bounds["Y"] ?? 0,
+            width: bounds["Width"] ?? 0,
+            height: bounds["Height"] ?? 0
+        )
+        if frame.width <= 0 || frame.height <= 0 { continue }
+
+        var score: CGFloat
+        if let expectedCGRect {
+            let intersection = frame.intersection(expectedCGRect)
+            let overlapArea = intersection.isNull ? 0 : intersection.width * intersection.height
+            if overlapArea <= 0 { continue }
+            score = overlapArea
+        } else {
+            score = frame.width * frame.height
+        }
+
+        let entryTitleNormalized = normalized(entry[kCGWindowName as String] as? String)
+        if !expectedTitleNormalized.isEmpty,
+           !entryTitleNormalized.isEmpty,
+           entryTitleNormalized == expectedTitleNormalized {
+            score *= 4
+        }
+
+        if best == nil || score > best!.score {
+            best = (windowID: windowID, score: score)
+        }
+    }
+
+    return best?.windowID
+}
+
 func frameCenter(_ rect: Rect) -> CGPoint {
     CGPoint(
         x: rect.x + (rect.width / 2.0),
@@ -826,6 +946,35 @@ func axBoolValue(_ element: AXUIElement, _ attribute: String) -> Bool? {
         return numberValue.boolValue
     }
     return nil
+}
+
+func axAttributeSettable(_ element: AXUIElement, _ attribute: String) -> Bool? {
+    var settable = DarwinBoolean(false)
+    let result = AXUIElementIsAttributeSettable(
+        element,
+        attribute as CFString,
+        &settable
+    )
+    guard result == .success else {
+        if result == .cannotComplete {
+            AxDiagnostics.shared.recordOOP()
+        }
+        return nil
+    }
+    return settable.boolValue
+}
+
+func numericValueTypeName(_ number: NSNumber) -> String {
+    if CFGetTypeID(number) == CFBooleanGetTypeID() {
+        return "boolean"
+    }
+    let cfType = CFNumberGetType(number)
+    switch cfType {
+    case .float32Type, .float64Type, .floatType, .doubleType, .cgFloatType:
+        return "float"
+    default:
+        return "integer"
+    }
 }
 
 func axPointValue(_ element: AXUIElement, _ attribute: String) -> CGPoint? {
@@ -1003,6 +1152,35 @@ func coerceURL(_ raw: AnyObject?) -> String? {
     return nil
 }
 
+func valueTypeName(_ raw: AnyObject?) -> String? {
+    guard let raw else { return nil }
+    if CFGetTypeID(raw) == CFBooleanGetTypeID() {
+        return "boolean"
+    }
+    if let stringValue = raw as? String, !stringValue.isEmpty {
+        return "string"
+    }
+    if let urlValue = raw as? URL, !urlValue.absoluteString.isEmpty {
+        return "string"
+    }
+    if let numberValue = raw as? NSNumber {
+        return numericValueTypeName(numberValue)
+    }
+    guard CFGetTypeID(raw) == AXValueGetTypeID() else {
+        return nil
+    }
+    let axValue = raw as! AXValue
+    switch AXValueGetType(axValue) {
+    case .cgPoint: return "point"
+    case .cgSize: return "size"
+    case .cgRect: return "rect"
+    case .cfRange: return "range"
+    case .axError: return "error"
+    case .illegal: return nil
+    @unknown default: return nil
+    }
+}
+
 func snapshotRoots(for app: AXUIElement) -> [AXUIElement] {
     var roots: [AXUIElement] = []
 
@@ -1084,19 +1262,24 @@ func nodeDetails(for element: AXUIElement) -> NodeDetails {
 
     let urlRaw = coerceURL(firstBatch[kAXURLAttribute as String])
     let url = truncateValue(urlRaw)
+    let rawValue = firstBatch[kAXValueAttribute as String]
+    let valueType = valueTypeName(rawValue)
+    let settable = axAttributeSettable(element, kAXValueAttribute as String)
 
     // Second batched read: the deeper attribute set, only if the node is
     // potentially actionable. This avoids paying ~6 round-trips on every
     // static-text leaf node.
     var subrole: String? = nil
     var description: String? = nil
+    var details: String? = nil
+    var help: String? = nil
     var identifier: String? = nil
     var enabled: Bool? = nil
     var selected: Bool? = nil
     var frame: Rect? = nil
     let shouldReadValue = valueBearingRoles.contains(role) || likelyActionable
     var value: String? = shouldReadValue
-        ? truncateValue(coerceString(firstBatch[kAXValueAttribute as String]))
+        ? truncateValue(coerceString(rawValue))
         : nil
     var actions: [String] = []
 
@@ -1111,10 +1294,14 @@ func nodeDetails(for element: AXUIElement) -> NodeDetails {
                 kAXSelectedAttribute as String,
                 kAXPositionAttribute as String,
                 kAXSizeAttribute as String,
+                "AXValueDescription",
+                kAXHelpAttribute as String,
             ]
         )
         subrole = coerceString(secondBatch[kAXSubroleAttribute as String])
         description = truncateValue(coerceString(secondBatch[kAXDescriptionAttribute as String]))
+        details = truncateValue(coerceString(secondBatch["AXValueDescription"]))
+        help = truncateValue(coerceString(secondBatch[kAXHelpAttribute as String]))
         identifier = truncateValue(coerceString(secondBatch[kAXIdentifierAttribute as String]))
         enabled = coerceBool(secondBatch[kAXEnabledAttribute as String])
         selected = coerceBool(secondBatch[kAXSelectedAttribute as String])
@@ -1138,6 +1325,10 @@ func nodeDetails(for element: AXUIElement) -> NodeDetails {
         title: title,
         description: description,
         value: value,
+        valueType: valueType,
+        settable: settable,
+        details: details,
+        help: help,
         identifier: identifier,
         url: url,
         enabled: enabled,
@@ -1163,7 +1354,9 @@ final class SnapshotBuilder {
     private let maxNodes: Int
     private(set) var warnings: [String] = []
     private(set) var refs: [String: RefEntry] = [:]
+    private(set) var indices: [String: RefEntry] = [:]
     private var nextRef = 1
+    private var nextIndex = 0
     private var nodeCount = 0
     private var warnedDepth = false
     private var warnedNodeLimit = false
@@ -1202,6 +1395,8 @@ final class SnapshotBuilder {
                 ? details.title ?? windowTitle
                 : windowTitle
 
+        let index = nextIndex
+        nextIndex += 1
         nodeCount += 1
         let signature = nodeSignature(
             role: details.role,
@@ -1210,6 +1405,20 @@ final class SnapshotBuilder {
             identifier: details.identifier
         )
         let nextAncestry = Array((ancestry + [signature]).suffix(8))
+        let primary = primaryLabel(
+            title: details.title,
+            description: details.description,
+            value: details.value,
+            identifier: details.identifier
+        )
+        let occurrenceKey = [
+            details.role,
+            normalized(primary),
+            normalized(details.identifier),
+            normalized(currentWindowTitle),
+        ].joined(separator: "|")
+        let occurrence = (occurrenceCounts[occurrenceKey] ?? 0) + 1
+        occurrenceCounts[occurrenceKey] = occurrence
 
         var children: [SnapshotNode] = []
         if depth < maxDepth {
@@ -1230,33 +1439,51 @@ final class SnapshotBuilder {
             warnedDepth = true
         }
 
+        let indexToken = String(index)
+        indices[indexToken] = RefEntry(
+            ref: indexToken,
+            index: index,
+            role: details.role,
+            subrole: details.subrole,
+            primaryLabel: primary,
+            title: details.title,
+            description: details.description,
+            value: details.value,
+            valueType: details.valueType,
+            settable: details.settable,
+            details: details.details,
+            help: details.help,
+            identifier: details.identifier,
+            url: details.url,
+            windowTitle: currentWindowTitle,
+            childPath: childPath,
+            ancestry: nextAncestry,
+            occurrence: occurrence,
+            enabled: details.enabled,
+            focused: details.focused,
+            selected: details.selected,
+            frame: details.frame,
+            actions: details.actions
+        )
+
         var ref: String?
         if isActionableNode(details) {
-            let primary = primaryLabel(
-                title: details.title,
-                description: details.description,
-                value: details.value,
-                identifier: details.identifier
-            )
-            let occurrenceKey = [
-                details.role,
-                normalized(primary),
-                normalized(details.identifier),
-                normalized(currentWindowTitle),
-            ].joined(separator: "|")
-            let occurrence = (occurrenceCounts[occurrenceKey] ?? 0) + 1
-            occurrenceCounts[occurrenceKey] = occurrence
             ref = "@d\(nextRef)"
             nextRef += 1
             if let ref {
                 refs[ref] = RefEntry(
                     ref: ref,
+                    index: index,
                     role: details.role,
                     subrole: details.subrole,
                     primaryLabel: primary,
                     title: details.title,
                     description: details.description,
                     value: details.value,
+                    valueType: details.valueType,
+                    settable: details.settable,
+                    details: details.details,
+                    help: details.help,
                     identifier: details.identifier,
                     url: details.url,
                     windowTitle: currentWindowTitle,
@@ -1273,12 +1500,17 @@ final class SnapshotBuilder {
         }
 
         return SnapshotNode(
+            index: index,
             ref: ref,
             role: details.role,
             subrole: details.subrole,
             title: details.title,
             description: details.description,
             value: details.value,
+            valueType: details.valueType,
+            settable: details.settable,
+            details: details.details,
+            help: details.help,
             identifier: details.identifier,
             url: details.url,
             enabled: details.enabled,
@@ -1384,6 +1616,14 @@ func shouldEnableManualAccessibility(for app: NSRunningApplication) -> Bool {
     }
 }
 
+// Note: an earlier iteration tried to enumerate renderer child pids
+// via `sysctl(KERN_PROC_ALL)` + `proc_pidpath` and wake each renderer's
+// AX tree separately. That's the wrong layer. CEF/Electron exposes the
+// entire renderer DOM through a single `AXGroup` (or `AXWebArea`) that
+// is already a child of the parent app's window. The fix is just to let
+// the snapshot walker descend into `AXGroup` / `AXWebArea` instead of
+// stopping at it, which is now done via `safeFallbackChildRoles`.
+
 // Tracks per-pid one-time setup so we don't re-set kAXEnhancedUserInterface
 // (which can be visually disruptive in some apps) every command invocation.
 var preparedTargetPids: Set<Int32> = []
@@ -1430,20 +1670,18 @@ func forgetPreparedTarget(pid: Int32) {
     preparedTargetPids.remove(pid)
 }
 
-// MARK: - Action overlay (lens + software cursor)
+// MARK: - Action overlay (software cursor)
 //
 // Visual feedback while the agent acts. Architecture mirrors the recovered
 // shape of Codex's `ComputerUseCursor`: a borderless screen-spanning panel
-// hosting two CALayers (a pulsing ring around the target frame, and a
-// software cursor pointer drawn at the action point), with spring-driven
-// fade-in / fade-out and frame-driven pulse.
+// hosting a software cursor pointer drawn at the action point, with
+// spring-driven fade-in / fade-out and cursor movement between targets.
 //
 // Timing constants are inferred from the bundled 45-frame sprite analysis
 // (alpha sum 331k → 397k → 365k, so ~20% breathing depth, near-loop), the
 // modern SwiftUI spring API hint (`initWithPerceptualDuration:bounce:`),
 // and typical Apple HIG durations. We do NOT copy the upstream sprites;
-// the lens is drawn programmatically with CAShapeLayer, and the cursor
-// sprite is drawn once into an NSImage in `softwareCursorImage()`.
+// the cursor sprite is drawn once into an NSImage in `softwareCursorImage()`.
 //
 // Lifetime model: the CLI is one-shot, so we keep the overlay in-process
 // for just the action duration. `showOverlay(...)` blocks for the
@@ -1453,19 +1691,22 @@ func forgetPreparedTarget(pid: Int32) {
 // is worth it; pass `--no-overlay` (or `STELLA_COMPUTER_NO_OVERLAY=1`) to
 // disable.
 
-let overlayLensDiameter: CGFloat = 96         // ring outer diameter, points
-let overlayLensRingWidth: CGFloat = 6
-let overlayPulseDuration: TimeInterval = 1.5  // matches 45 frames @ 30fps
-let overlayPulseDepth: CGFloat = 0.20         // breathing range (matches alpha analysis)
 let overlayFadeInDuration: TimeInterval = 0.18
 let overlayFadeOutDuration: TimeInterval = 0.22
 let overlayHoldDuration: TimeInterval = 0.30  // visible time after fade-in completes
-let overlayCursorMoveDuration: TimeInterval = 0.32  // spring move between targets
+let overlayCursorMoveDuration: TimeInterval = 1.10
+let overlayCursorPreRotationDuration: TimeInterval = 0.55
+let overlayCursorPreRotationLeadFraction: CGFloat = 0.55
+let overlayCursorOvershoot: CGFloat = 0.18
+let overlayCursorSettleDuration: TimeInterval = 0.32
+let overlayCursorMinPathDistance: CGFloat = 6
+let overlayCursorBaseRotation: CGFloat = 0.18
+let overlayCursorTangentLagFraction: CGFloat = 0.45
 
 final class ActionOverlayWindow: NSPanel {
-    init(screen: NSScreen) {
+    init(frame: CGRect) {
         super.init(
-            contentRect: screen.frame,
+            contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -1484,8 +1725,7 @@ final class ActionOverlayWindow: NSPanel {
         ]
         isMovableByWindowBackground = false
         isReleasedWhenClosed = false
-        // Match the screen frame so layer coordinates are screen-relative.
-        setFrame(screen.frame, display: false)
+        setFrame(frame, display: false)
     }
 
     override var canBecomeKey: Bool { false }
@@ -1496,85 +1736,137 @@ final class ActionOverlayWindow: NSPanel {
 // drop shadow and a thin black outline so it remains visible on both
 // light and dark surfaces. Drawn once per process and cached.
 //
-// Shape: classic upper-left arrow pointer, 18pt × 24pt, anchor at the tip.
+// Shape: sleek triangular pointer, 24pt × 30pt, anchor at the tip.
 private var cachedSoftwareCursorImage: NSImage?
 
 func softwareCursorImage() -> NSImage {
     if let cached = cachedSoftwareCursorImage { return cached }
-    let size = NSSize(width: 18, height: 24)
+    let size = NSSize(width: 30, height: 38)
     let image = NSImage(size: size, flipped: false) { rect in
         guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-        // Pointer outline path (top-left arrow shape).
         let path = CGMutablePath()
-        path.move(to: CGPoint(x: 1, y: rect.height - 1))
-        path.addLine(to: CGPoint(x: 1, y: 4))
-        path.addLine(to: CGPoint(x: 6, y: 8))
-        path.addLine(to: CGPoint(x: 9, y: 1))
-        path.addLine(to: CGPoint(x: 12, y: 2.5))
-        path.addLine(to: CGPoint(x: 9, y: 9.5))
-        path.addLine(to: CGPoint(x: 16, y: 11.5))
+        path.move(to: CGPoint(x: rect.width / 2, y: rect.height - 2))
+        path.addLine(to: CGPoint(x: rect.width - 7, y: 14))
+        path.addLine(to: CGPoint(x: 7, y: 14))
         path.closeSubpath()
-        // Drop shadow for visibility on busy backgrounds.
+        guard
+            let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+            let gradient = CGGradient(
+                colorsSpace: colorSpace,
+                colors: [
+                    NSColor(calibratedWhite: 1, alpha: 0.98).cgColor,
+                    NSColor(calibratedRed: 0.82, green: 0.85, blue: 0.89, alpha: 0.98).cgColor,
+                ] as CFArray,
+                locations: [0, 1]
+            )
+        else {
+            return false
+        }
         ctx.saveGState()
         ctx.setShadow(
             offset: CGSize(width: 0, height: -1),
-            blur: 3,
-            color: NSColor.black.withAlphaComponent(0.55).cgColor
+            blur: 4,
+            color: NSColor.black.withAlphaComponent(0.4).cgColor
         )
-        // White fill.
-        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.setFillColor(NSColor.white.withAlphaComponent(0.98).cgColor)
         ctx.addPath(path)
         ctx.fillPath()
         ctx.restoreGState()
-        // Thin black stroke on top of the fill so the outline is crisp.
-        ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.85).cgColor)
-        ctx.setLineWidth(1)
+
+        ctx.saveGState()
+        ctx.addPath(path)
+        ctx.clip()
+        ctx.drawLinearGradient(
+            gradient,
+            start: CGPoint(x: rect.width / 2, y: rect.height - 2),
+            end: CGPoint(x: rect.width / 2, y: 14),
+            options: []
+        )
+        ctx.restoreGState()
+
+        ctx.saveGState()
+        ctx.setLineJoin(.round)
+        ctx.setLineCap(.round)
+        ctx.setStrokeColor(NSColor(calibratedWhite: 0.08, alpha: 0.72).cgColor)
+        ctx.setLineWidth(1.2)
         ctx.addPath(path)
         ctx.strokePath()
+        ctx.restoreGState()
         return true
     }
     cachedSoftwareCursorImage = image
     return image
 }
 
+// One-shot AppKit bootstrap for the overlay path. The CLI is launched as a
+// stdio process (activationPolicy == .prohibited), so the very first call
+// into AppKit / SkyLight tears down with `Assertion failed: (did_initialize),
+// CGS_REQUIRE_INIT` because we have no WindowServer connection yet. Calling
+// `setActivationPolicy(.accessory)` is necessary but not sufficient — we
+// also have to give NSApplication a chance to `finishLaunching`, which
+// establishes the SkyLight connection. After this runs once per process,
+// every subsequent NSScreen / NSPanel call works.
+//
+// This is wrapped in `tryBootstrapAppKit()` so that, when WindowServer
+// itself can't be reached (headless ssh, stripped environment, missing
+// DISPLAY-equivalent), we degrade gracefully: the overlay is skipped and
+// the action proceeds without visual feedback rather than crashing the
+// whole CLI on a CG assertion.
+private var appKitBootstrapped = false
+private var appKitBootstrapFailed = false
+
+func tryBootstrapAppKit() -> Bool {
+    if appKitBootstrapped { return true }
+    if appKitBootstrapFailed { return false }
+
+    // Touching CGSessionCopyCurrentDictionary is a cheap way to probe whether
+    // the process actually has a WindowServer session. Returns nil when run
+    // outside a logged-in graphical context (ssh, launchd job without
+    // user-graphical, etc.). In those cases we must NOT touch AppKit.
+    guard let _ = CGSessionCopyCurrentDictionary() as Dictionary? else {
+        trace("overlay:bootstrap-failed reason=no-window-server-session")
+        appKitBootstrapFailed = true
+        return false
+    }
+
+    let app = NSApplication.shared
+    if app.activationPolicy() != .accessory {
+        _ = app.setActivationPolicy(.accessory)
+    }
+    // finishLaunching primes the SkyLight connection. Without it, the very
+    // first NSPanel/NSScreen.main call asserts in CGInitialization.
+    app.finishLaunching()
+    // One run-loop tick lets WindowServer finish the handshake. Empirically
+    // 0 ticks is sometimes enough on warm systems but 1 tick is bulletproof.
+    RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.02))
+
+    appKitBootstrapped = true
+    trace("overlay:bootstrap-ok")
+    return true
+}
+
 final class ActionOverlayController {
     private var window: ActionOverlayWindow?
-    private var lensLayer: CAShapeLayer?
     private var cursorLayer: CALayer?
-    // Track whether we've already promoted the NSApplication activation
-    // policy so we don't toggle it more than once per CLI invocation.
-    private static var activationPolicyPromoted = false
 
-    func show(at frame: CGRect, cursorAt cursorPoint: CGPoint) {
-        promoteActivationPolicyIfNeeded()
-        guard let screen = screenContaining(point: cursorPoint) ?? NSScreen.main else {
+    func show(at _: CGRect, cursorAt cursorPoint: CGPoint, viewportFrame: CGRect) {
+        // Bootstrap AppKit before we touch any AppKit/SkyLight types. If the
+        // bootstrap fails (no WindowServer session), bail out silently so the
+        // caller's action body still runs.
+        guard tryBootstrapAppKit() else { return }
+        let viewportCenter = CGPoint(x: viewportFrame.midX, y: viewportFrame.midY)
+        guard let screen = screenContaining(point: viewportCenter) ?? screenContaining(point: cursorPoint) ?? NSScreen.main else {
             return
         }
 
-        let win = ActionOverlayWindow(screen: screen)
-        let host = OverlayHostView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        let winFrame = appKitFrame(fromAXRect: viewportFrame, screen: screen)
+        let win = ActionOverlayWindow(frame: winFrame)
+        let host = OverlayHostView(frame: NSRect(origin: .zero, size: winFrame.size))
         host.wantsLayer = true
         host.layer?.backgroundColor = .clear
         win.contentView = host
 
-        // Convert AX (top-left origin) screen coords to AppKit (bottom-left
-        // origin) window-local coords. The window covers the full screen so
-        // window-local == (screen.frame.origin offset).
-        let screenOrigin = screen.frame.origin
-        let lensCenterAppKit = CGPoint(
-            x: frame.midX - screenOrigin.x,
-            y: screen.frame.size.height - (frame.midY - screenOrigin.y)
-        )
-        let cursorAppKit = CGPoint(
-            x: cursorPoint.x - screenOrigin.x,
-            y: screen.frame.size.height - (cursorPoint.y - screenOrigin.y)
-        )
-
-        let lens = makeLensLayer(at: lensCenterAppKit)
-        host.layer?.addSublayer(lens)
-        lensLayer = lens
-
-        let cursor = makeCursorLayer(at: cursorAppKit, screen: screen)
+        let cursor = makeCursorLayer(at: cursorPoint, viewportFrame: viewportFrame, screen: screen)
         host.layer?.addSublayer(cursor)
         cursorLayer = cursor
 
@@ -1593,21 +1885,15 @@ final class ActionOverlayController {
         fadeIn.isRemovedOnCompletion = false
         host.layer?.add(fadeIn, forKey: "fadeIn")
         host.layer?.opacity = 1
+        host.layer?.displayIfNeeded()
+        win.displayIfNeeded()
+        CATransaction.flush()
     }
 
-    func moveCursor(to point: CGPoint) {
-        guard let cursor = cursorLayer, let screen = screenForCurrentWindow() else { return }
-        let dest = CGPoint(
-            x: point.x - screen.frame.origin.x,
-            y: screen.frame.size.height - (point.y - screen.frame.origin.y)
-        )
-        let move = CABasicAnimation(keyPath: "position")
-        move.fromValue = NSValue(point: cursor.position)
-        move.toValue = NSValue(point: dest)
-        move.duration = overlayCursorMoveDuration
-        move.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 1.2, 0.4, 1)
-        cursor.add(move, forKey: "cursorMove")
-        cursor.position = dest
+    func moveCursor(to point: CGPoint, viewportFrame: CGRect) {
+        guard let cursor = cursorLayer else { return }
+        let dest = overlayLocalPoint(fromAXPoint: point, viewportFrame: viewportFrame)
+        animateCursorAlongCurve(cursor, to: dest, bowSign: 1)
     }
 
     func hide() {
@@ -1621,71 +1907,28 @@ final class ActionOverlayController {
         fadeOut.isRemovedOnCompletion = false
         host.layer?.add(fadeOut, forKey: "fadeOut")
         host.layer?.opacity = 0
-        // Wait for the fade to finish, then close. Use a brief synchronous
-        // wait so the CLI doesn't exit before the animation completes.
-        usleep(useconds_t(overlayFadeOutDuration * 1_000_000) + 30_000)
+        host.layer?.displayIfNeeded()
+        win.displayIfNeeded()
+        CATransaction.flush()
+        runAnimationLoop(for: overlayFadeOutDuration + 0.03)
         win.orderOut(nil)
         window = nil
-        lensLayer = nil
         cursorLayer = nil
     }
 
-    private func makeLensLayer(at center: CGPoint) -> CAShapeLayer {
-        let layer = CAShapeLayer()
-        let radius = overlayLensDiameter / 2
-        let rect = CGRect(
-            x: -radius, y: -radius,
-            width: overlayLensDiameter, height: overlayLensDiameter
-        )
-        layer.path = CGPath(ellipseIn: rect, transform: nil)
-        layer.fillColor = NSColor.clear.cgColor
-        layer.strokeColor = NSColor(calibratedRed: 0.40, green: 0.78, blue: 1.00, alpha: 1.0).cgColor
-        layer.lineWidth = overlayLensRingWidth
-        layer.shadowColor = layer.strokeColor
-        layer.shadowOpacity = 0.85
-        layer.shadowRadius = 14
-        layer.shadowOffset = .zero
-        layer.position = center
-        layer.bounds = CGRect(origin: .zero, size: CGSize(
-            width: overlayLensDiameter + 40,
-            height: overlayLensDiameter + 40
-        ))
-
-        // Breathing pulse: scale + opacity oscillation, repeats forever
-        // while the overlay is shown. Matches the 1.5s cycle inferred from
-        // the upstream 45-frame sprite analysis.
-        let scale = CABasicAnimation(keyPath: "transform.scale")
-        scale.fromValue = 1.0
-        scale.toValue = 1.0 + overlayPulseDepth
-        scale.duration = overlayPulseDuration
-        scale.autoreverses = true
-        scale.repeatCount = .infinity
-        scale.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        layer.add(scale, forKey: "pulseScale")
-
-        let pulseOpacity = CABasicAnimation(keyPath: "opacity")
-        pulseOpacity.fromValue = 0.95
-        pulseOpacity.toValue = 0.55
-        pulseOpacity.duration = overlayPulseDuration
-        pulseOpacity.autoreverses = true
-        pulseOpacity.repeatCount = .infinity
-        pulseOpacity.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        layer.add(pulseOpacity, forKey: "pulseOpacity")
-
-        return layer
-    }
-
-    private func makeCursorLayer(at point: CGPoint, screen: NSScreen) -> CALayer {
+    private func makeCursorLayer(at point: CGPoint, viewportFrame: CGRect, screen: NSScreen) -> CALayer {
         let img = softwareCursorImage()
         let layer = CALayer()
         layer.contents = img
         layer.contentsScale = screen.backingScaleFactor
         let size = img.size
-        // Anchor at the pointer tip (upper-left of the sprite) so the
-        // visible cursor tip lands exactly on the action point.
+        // Anchor at the cursor tip so rotation
+        // pivots around the visible action point rather than the sprite
+        // center.
         layer.bounds = CGRect(origin: .zero, size: size)
-        layer.anchorPoint = CGPoint(x: 0.05, y: 0.95)
-        layer.position = point
+        layer.anchorPoint = CGPoint(x: 0.5, y: 36.0 / 38.0)
+        layer.position = overlayLocalPoint(fromAXPoint: point, viewportFrame: viewportFrame)
+        setCursorRotation(layer, rotation: overlayCursorBaseRotation)
         layer.shadowColor = NSColor.black.cgColor
         layer.shadowOpacity = 0.35
         layer.shadowRadius = 4
@@ -1695,31 +1938,9 @@ final class ActionOverlayController {
 
     private func screenContaining(point: CGPoint) -> NSScreen? {
         for screen in NSScreen.screens {
-            // AX coords are top-left; NSScreen.frame is bottom-left in
-            // multi-display arrangements. Convert before testing.
-            let topLeftFrame = NSRect(
-                x: screen.frame.origin.x,
-                y: NSScreen.screens.first?.frame.maxY ?? 0
-                    - screen.frame.maxY,
-                width: screen.frame.width,
-                height: screen.frame.height
-            )
-            if topLeftFrame.contains(point) { return screen }
+            if topLeftFrame(for: screen).contains(point) { return screen }
         }
         return nil
-    }
-
-    private func screenForCurrentWindow() -> NSScreen? {
-        window?.screen ?? NSScreen.main
-    }
-
-    private func promoteActivationPolicyIfNeeded() {
-        if Self.activationPolicyPromoted { return }
-        let app = NSApplication.shared
-        if app.activationPolicy() != .accessory {
-            _ = app.setActivationPolicy(.accessory)
-        }
-        Self.activationPolicyPromoted = true
     }
 }
 
@@ -1731,12 +1952,189 @@ final class OverlayHostView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { false }
 }
 
+func runAnimationLoop(for duration: TimeInterval) {
+    guard duration > 0 else { return }
+    let deadline = Date().addingTimeInterval(duration)
+    while Date() < deadline {
+        RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.016))
+    }
+}
+
+func topLeftFrame(for screen: NSScreen) -> CGRect {
+    let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
+    return CGRect(
+        x: screen.frame.origin.x,
+        y: primaryMaxY - screen.frame.maxY,
+        width: screen.frame.width,
+        height: screen.frame.height
+    )
+}
+
+func appKitFrame(fromAXRect rect: CGRect, screen: NSScreen) -> CGRect {
+    let screenTopLeft = topLeftFrame(for: screen)
+    let localX = rect.origin.x - screenTopLeft.origin.x
+    let localYTop = rect.origin.y - screenTopLeft.origin.y
+    let localYBottom = screen.frame.height - localYTop - rect.height
+    return CGRect(
+        x: screen.frame.origin.x + localX,
+        y: screen.frame.origin.y + localYBottom,
+        width: rect.width,
+        height: rect.height
+    )
+}
+
+func overlayLocalPoint(fromAXPoint point: CGPoint, viewportFrame: CGRect) -> CGPoint {
+    CGPoint(
+        x: point.x - viewportFrame.origin.x,
+        y: viewportFrame.height - (point.y - viewportFrame.origin.y)
+    )
+}
+
+func rotationForHeading(dx: CGFloat, dy: CGFloat) -> CGFloat {
+    let safeDx = (dx == 0 && dy == 0) ? 1 : dx
+    return atan2(safeDx, dy)
+}
+
+func cursorRotation(from layer: CALayer?) -> CGFloat? {
+    guard let layer else { return nil }
+    return atan2(layer.transform.m12, layer.transform.m11)
+}
+
+func setCursorRotation(_ layer: CALayer, rotation: CGFloat) {
+    layer.transform = CATransform3DMakeRotation(rotation, 0, 0, 1)
+}
+
+func animateCursorAlongCurve(
+    _ cursor: CALayer,
+    to dest: CGPoint,
+    bowSign _: CGFloat
+) {
+    let start = cursor.presentation()?.position ?? cursor.position
+    let distance = hypot(dest.x - start.x, dest.y - start.y)
+
+    let currentRotation = cursorRotation(from: cursor.presentation())
+        ?? cursorRotation(from: cursor)
+        ?? overlayCursorBaseRotation
+
+    guard distance >= overlayCursorMinPathDistance else {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        cursor.position = dest
+        setCursorRotation(cursor, rotation: overlayCursorBaseRotation)
+        CATransaction.commit()
+        let rest = CABasicAnimation(keyPath: "transform.rotation.z")
+        rest.fromValue = currentRotation
+        rest.toValue = overlayCursorBaseRotation
+        rest.duration = overlayCursorSettleDuration
+        cursor.add(rest, forKey: "cursorRotateRest")
+        return
+    }
+
+    let dx = dest.x - start.x
+    let dy = dest.y - start.y
+    let destHeading = rotationForHeading(dx: dx, dy: dy)
+    let overshootSign: CGFloat = destHeading >= currentRotation ? 1 : -1
+    let overshootHeading = destHeading + overshootSign * overlayCursorOvershoot
+    let launchHeading = currentRotation + (overshootHeading - currentRotation) * overlayCursorPreRotationLeadFraction
+
+    let launchTangent = CGPoint(x: sin(launchHeading), y: cos(launchHeading))
+    let arrivalTangent = CGPoint(x: sin(destHeading), y: cos(destHeading))
+    let lag = overlayCursorTangentLagFraction
+    let controlOut = CGPoint(
+        x: start.x + launchTangent.x * distance * lag,
+        y: start.y + launchTangent.y * distance * lag
+    )
+    let controlIn = CGPoint(
+        x: dest.x - arrivalTangent.x * distance * lag,
+        y: dest.y - arrivalTangent.y * distance * lag
+    )
+    let path = CGMutablePath()
+    path.move(to: start)
+    path.addCurve(to: dest, control1: controlOut, control2: controlIn)
+
+    let now = CACurrentMediaTime()
+    let preRotationLead = overlayCursorPreRotationDuration * Double(overlayCursorPreRotationLeadFraction)
+
+    let preRotate = CABasicAnimation(keyPath: "transform.rotation.z")
+    preRotate.fromValue = currentRotation
+    preRotate.toValue = overshootHeading
+    preRotate.duration = overlayCursorPreRotationDuration
+    preRotate.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 0.95, 0.5, 1)
+    preRotate.fillMode = .forwards
+    preRotate.isRemovedOnCompletion = false
+    cursor.add(preRotate, forKey: "cursorPreRotate")
+
+    let move = CAKeyframeAnimation(keyPath: "position")
+    move.path = path
+    move.duration = overlayCursorMoveDuration
+    move.calculationMode = .linear
+    move.beginTime = now + preRotationLead
+    move.timingFunction = CAMediaTimingFunction(controlPoints: 0.42, 0.0, 0.58, 1.0)
+    move.fillMode = .both
+    move.isRemovedOnCompletion = false
+    cursor.add(move, forKey: "cursorMove")
+
+    let settleStart = preRotationLead + overlayCursorMoveDuration
+    let settle = CABasicAnimation(keyPath: "transform.rotation.z")
+    settle.fromValue = overshootHeading
+    settle.toValue = overlayCursorBaseRotation
+    settle.duration = overlayCursorSettleDuration
+    settle.beginTime = now + settleStart
+    settle.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+    settle.fillMode = .forwards
+    settle.isRemovedOnCompletion = false
+    cursor.add(settle, forKey: "cursorSettle")
+
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    cursor.position = dest
+    setCursorRotation(cursor, rotation: overlayCursorBaseRotation)
+    CATransaction.commit()
+}
+
+func overlayCursorStatePath(for statePath: String) -> String {
+    let url = URL(fileURLWithPath: statePath)
+    let dir = url.deletingLastPathComponent()
+    return dir.appendingPathComponent("last-overlay-cursor.json").path
+}
+
+func loadOverlayCursorState(statePath: String) -> CGPoint? {
+    let cursorStatePath = overlayCursorStatePath(for: statePath)
+    guard let data = try? Data(contentsOf: URL(fileURLWithPath: cursorStatePath)) else {
+        return nil
+    }
+    guard let decoded = try? JSONDecoder().decode(OverlayCursorState.self, from: data) else {
+        return nil
+    }
+    return CGPoint(x: decoded.x, y: decoded.y)
+}
+
+func saveOverlayCursorState(statePath: String, point: CGPoint) {
+    let cursorStatePath = overlayCursorStatePath(for: statePath)
+    let payload = OverlayCursorState(x: point.x, y: point.y)
+    guard let data = try? JSONEncoder().encode(payload) else {
+        return
+    }
+    try? data.write(to: URL(fileURLWithPath: cursorStatePath), options: [.atomic])
+}
+
+func overlayViewportFrame(statePath: String) -> Rect? {
+    if let snapshot = try? loadSnapshotState(from: statePath),
+       let windowFrame = snapshot.windowFrame,
+       windowFrame.width > 0,
+       windowFrame.height > 0 {
+        return windowFrame
+    }
+    return nil
+}
+
 // Run the overlay show → hold → action → hide flow synchronously around
 // `body`. Returns whatever `body` returns. When `frame` is nil (e.g. the
 // candidate has no AX frame) the overlay is skipped. When `cursorPoint` is
-// nil the cursor sprite is anchored at the lens center.
+// nil the cursor sprite is anchored at the target frame center.
 func withActionOverlay<T>(
     enabled: Bool,
+    statePath: String,
     frame: Rect?,
     cursorPoint: CGPoint? = nil,
     body: () -> T
@@ -1744,17 +2142,34 @@ func withActionOverlay<T>(
     guard enabled, let frame, frame.width > 0, frame.height > 0 else {
         return body()
     }
+    guard let viewportFrame = overlayViewportFrame(statePath: statePath) else {
+        return body()
+    }
     let cgFrame = rectToCGRect(frame)
+    let viewport = rectToCGRect(viewportFrame)
     let cursor = cursorPoint ?? frameCenter(frame)
+    let previousCursor = loadOverlayCursorState(statePath: statePath)
     let overlay = ActionOverlayController()
-    overlay.show(at: cgFrame, cursorAt: cursor)
+    overlay.show(at: cgFrame, cursorAt: previousCursor ?? cursor, viewportFrame: viewport)
 
-    // Brief hold so the user actually sees the lens land before the
-    // action perturbs the UI.
-    usleep(useconds_t(overlayHoldDuration * 1_000_000))
+    // Let AppKit/CoreAnimation present the overlay window before we start any
+    // movement or action body. Without a live run loop here the fade-in and
+    // cursor layer can be committed too late to ever become visible.
+    runAnimationLoop(for: 0.05)
+    if let previousCursor,
+       hypot(previousCursor.x - cursor.x, previousCursor.y - cursor.y) >= 2 {
+        overlay.moveCursor(to: cursor, viewportFrame: viewport)
+        let preLead = overlayCursorPreRotationDuration * Double(overlayCursorPreRotationLeadFraction)
+        runAnimationLoop(for: preLead + overlayCursorMoveDuration + overlayCursorSettleDuration + 0.04)
+    }
+
+    // Brief hold so the user actually sees the cursor land before the action
+    // perturbs the UI.
+    runAnimationLoop(for: overlayHoldDuration)
 
     let result = body()
 
+    saveOverlayCursorState(statePath: statePath, point: cursor)
     overlay.hide()
     return result
 }
@@ -2410,6 +2825,23 @@ func preferredAction(for candidate: CandidateNode) -> String? {
     return candidate.actions.first
 }
 
+func normalizedActionAlias(_ actionName: String) -> String {
+    let trimmed = actionName.hasPrefix("AX") ? String(actionName.dropFirst(2)) : actionName
+    return trimmed
+        .replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression)
+        .replacingOccurrences(of: "[^A-Za-z0-9]+", with: " ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+}
+
+func resolveActionName(_ requested: String, from available: [String]) -> String? {
+    if available.contains(requested) {
+        return requested
+    }
+    let needle = normalizedActionAlias(requested)
+    return available.first { normalizedActionAlias($0) == needle }
+}
+
 func activationPolicyName(_ policy: NSApplication.ActivationPolicy) -> String {
     switch policy {
     case .regular:
@@ -2922,12 +3354,13 @@ func performNSDragSession(
     toScreen: CGPoint,
     operation: NSDragOperation
 ) -> (Bool, String?) {
-    // NSDraggingSession requires an active NSApplication. CLI binaries
-    // launch with `.prohibited` policy, so promote ourselves to .accessory
-    // (no Dock icon, but eligible to host AppKit windows).
-    let app = NSApplication.shared
-    if app.activationPolicy() != .accessory {
-        _ = app.setActivationPolicy(.accessory)
+    // NSDraggingSession requires an active NSApplication that has finished
+    // launching against WindowServer. tryBootstrapAppKit() handles the
+    // activation-policy promotion, the finishLaunching call, and the brief
+    // run-loop tick that establishes the SkyLight connection. Without it,
+    // the first NSPanel/NSScreen call asserts in CGInitialization.
+    guard tryBootstrapAppKit() else {
+        return (false, "drag-element requires a graphical (window-server) session")
     }
 
     let appKitFrom = axPointToAppKitPoint(fromScreen)
@@ -3224,6 +3657,11 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
         maxDepth: options.maxDepth,
         maxNodes: options.maxNodes
     )
+
+    // Snapshot the app's currently relevant window roots. For Electron/CEF
+    // hosts, `prepareTargetForAutomation(...)` enables manual accessibility
+    // and `axChildren(...)` descends through webview container roles when
+    // the app exposes meaningful descendants through the parent AX tree.
     let roots = options.allWindows
         ? allWindowRoots(for: target.axApp)
         : snapshotRoots(for: target.axApp)
@@ -3256,6 +3694,11 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
     }
 
     let appInstructions = bundleAppInstructions(for: target.app.bundleIdentifier)
+    let windowId = resolveOnScreenWindowID(
+        pid: target.app.processIdentifier,
+        expectedTitle: windowTitle,
+        expectedFrame: windowFrame
+    )
 
     let document = SnapshotDocument(
         ok: true,
@@ -3264,9 +3707,11 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
         pid: target.app.processIdentifier,
         windowTitle: windowTitle,
         windowFrame: windowFrame,
+        windowId: windowId,
         nodeCount: builder.currentNodeCount(),
         refCount: builder.refs.count,
         refs: builder.refs,
+        indices: builder.indices,
         nodes: nodes,
         warnings: warnings,
         screenshotPath: options.screenshotPath,
@@ -3368,11 +3813,11 @@ func allWindowRoots(for app: AXUIElement) -> [AXUIElement] {
 
 func actionCandidate(
     statePath: String,
-    ref: String
+    targetId: String
 ) throws -> (SnapshotDocument, AppTarget, RefEntry, ResolvedCandidate) {
     let snapshot = try loadSnapshotState(from: statePath)
-    guard let entry = snapshot.refs[ref] else {
-        throw failure("Unknown ref: \(ref)")
+    guard let entry = snapshot.refs[targetId] ?? snapshot.indices?[targetId] else {
+        throw failure("Unknown element: \(targetId)")
     }
 
     // Re-resolve via NSWorkspace first to detect "app died between snapshot
@@ -3409,8 +3854,11 @@ func actionCandidate(
     }
 
     AxDiagnostics.shared.reset()
-    let lookupDepth = max(snapshot.maxDepth ?? 4, 4)
-    let lookupNodes = max((snapshot.maxNodes ?? 220) * 2, 600)
+    // Action-time lookup must reach at least as deep as the snapshot did.
+    // CEF/Electron wrappers are nested ~30 levels deep before reaching
+    // anything actionable; floor at 32 to match the snapshot defaults.
+    let lookupDepth = max(snapshot.maxDepth ?? 32, 32)
+    let lookupNodes = max((snapshot.maxNodes ?? 1500) * 2, 3000)
     let candidates = collectCandidates(target: target, maxDepth: lookupDepth, maxNodes: lookupNodes)
     let ranked = rankedCandidates(for: entry, in: candidates)
     guard var candidate = bestCandidate(for: entry, in: candidates) else {
@@ -3418,7 +3866,7 @@ func actionCandidate(
             let best = ranked[0]
             let second = ranked[1]
             throw failureWithScreenshot(
-                "Ambiguous match for \(ref) in the current accessibility tree.",
+                "Ambiguous match for \(targetId) in the current accessibility tree.",
                 statePath: statePath,
                 target: target,
                 warnings: [
@@ -3435,7 +3883,7 @@ func actionCandidate(
             ? ["Target hosts UI in helper processes; some elements may be invisible to AX. Consider stella-browser for web content."]
             : []
         throw failureWithScreenshot(
-            "Failed to resolve \(ref) in the current accessibility tree.",
+            "Failed to resolve \(targetId) in the current accessibility tree.",
             statePath: statePath,
             target: target,
             warnings: extra + AxDiagnostics.shared.warnings()
@@ -3488,8 +3936,16 @@ func snapshotOptions(from args: [String]) throws -> SnapshotOptions {
     let pidValue = parseNamedOption(args, key: "--pid").flatMap(Int32.init)
     let appName = parseNamedOption(args, key: "--app")
     let bundleId = parseNamedOption(args, key: "--bundle-id")
-    let maxDepth = parseNamedOption(args, key: "--max-depth").flatMap(Int.init) ?? 4
-    let maxNodes = parseNamedOption(args, key: "--max-nodes").flatMap(Int.init) ?? 320
+    // Depth/node defaults are driven by CEF/Electron worst case. Spotify
+    // wraps the actual content in 9-12 nested empty `AXGroup` containers
+    // before reaching the search field or track row, then needs another
+    // 6-10 levels inside the row itself. Discord, Slack, Notion, Cursor,
+    // VS Code, and any other Electron app are similar. AppKit-native apps
+    // never come close to these depths so the only cost is a slightly
+    // larger snapshot for them; on the other hand, getting these too low
+    // for CEF means the snapshot stops before reaching anything actionable.
+    let maxDepth = parseNamedOption(args, key: "--max-depth").flatMap(Int.init) ?? 32
+    let maxNodes = parseNamedOption(args, key: "--max-nodes").flatMap(Int.init) ?? 1500
     let screenshotPath = hasFlag(args, key: "--no-screenshot")
         ? nil
         : parseNamedOption(args, key: "--screenshot") ?? derivedScreenshotPath(for: statePath)
@@ -3517,7 +3973,7 @@ func actionOptions(from args: [String]) throws -> ActionOptions {
     }
     let inlineScreenshot = !hasFlag(args, key: "--no-inline-screenshot")
         && !envBool("STELLA_COMPUTER_NO_INLINE_SCREENSHOT")
-    // Visual overlay (lens + software cursor) is on by default; agent-driven
+    // Visual overlay (software cursor only) is on by default; agent-driven
     // sessions get the visible "Stella is acting on this element" feedback.
     // Pass `--no-overlay` (or set STELLA_COMPUTER_NO_OVERLAY=1) to disable
     // when chained-action latency matters more than visual feedback.
@@ -3603,8 +4059,38 @@ func run() throws {
     }
     let commandArgs = Array(args.dropFirst())
 
+    // `list-apps` is pure NSWorkspace + LaunchServices and does not need a
+    // WindowServer connection, so it short-circuits before the bootstrap.
     if command == "list-apps" {
         exitWithJson(listAppsCommand())
+    }
+
+    // Every other command touches a GUI-bound API: ScreenCaptureKit (used
+    // by `snapshot`), NSBitmapImageRep, NSPanel, NSScreen, the action
+    // overlay, NSDraggingSession. All of those assert inside
+    // `CGS_REQUIRE_INIT` if the process hasn't first promoted its
+    // activation policy, called `finishLaunching`, and spun the run-loop
+    // once to let SkyLight finish the handshake. This is the same
+    // bootstrap Codex Computer Use's service does at LSApplicationCheckIn
+    // time — it never operates in a degraded "no graphical session" mode,
+    // and neither do we. Surface a clean error envelope if the host has
+    // no WindowServer session at all (headless ssh, non-user launchd
+    // job, etc.) so the model gets a directly actionable message instead
+    // of a process-killing CG assertion.
+    guard tryBootstrapAppKit() else {
+        exitWithJson(
+            ErrorPayload(
+                ok: false,
+                error:
+                    "stella-computer requires a graphical (WindowServer) session. "
+                    + "Run from a logged-in macOS user context that has Accessibility "
+                    + "and Screen Recording permission for this binary.",
+                warnings: [],
+                screenshot: nil,
+                screenshotPath: nil
+            ),
+            code: 1
+        )
     }
 
     guard AXIsProcessTrusted() else {
@@ -3638,9 +4124,10 @@ func run() throws {
                     "click --coordinate-fallback requires --allow-hid or STELLA_COMPUTER_ALLOW_HID=1."
             ])
         }
-        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, ref: ref)
+        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
         let (clicked, usedAction) = withActionOverlay(
             enabled: overlayEnabled(options),
+            statePath: options.statePath,
             frame: resolved.candidate.frame
         ) {
             performClick(
@@ -3692,9 +4179,10 @@ func run() throws {
         }
         let ref = positional[0]
         let text = positional[1]
-        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, ref: ref)
+        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
         let (filled, fillUsedAction) = withActionOverlay(
             enabled: overlayEnabled(options),
+            statePath: options.statePath,
             frame: resolved.candidate.frame
         ) {
             setValue(
@@ -3744,9 +4232,10 @@ func run() throws {
                 NSLocalizedDescriptionKey: "focus requires a ref."
             ])
         }
-        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, ref: ref)
+        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
         let focusOk = withActionOverlay(
             enabled: overlayEnabled(options),
+            statePath: options.statePath,
             frame: resolved.candidate.frame
         ) {
             setFocused(resolved.candidate.element)
@@ -3790,8 +4279,8 @@ func run() throws {
         }
         let ref = positional[0]
         let actionName = positional[1]
-        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, ref: ref)
-        guard resolved.candidate.actions.contains(actionName) else {
+        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
+        guard let resolvedActionName = resolveActionName(actionName, from: resolved.candidate.actions) else {
             var warnings = resolved.warnings
             if !resolved.candidate.actions.isEmpty {
                 warnings.append("Available actions: \(resolved.candidate.actions.joined(separator: ", "))")
@@ -3807,13 +4296,14 @@ func run() throws {
         }
         let secondaryOk = withActionOverlay(
             enabled: overlayEnabled(options),
+            statePath: options.statePath,
             frame: resolved.candidate.frame
         ) {
-            performSemanticAction(candidate: resolved.candidate, actionName: actionName)
+            performSemanticAction(candidate: resolved.candidate, actionName: resolvedActionName)
         }
         guard secondaryOk else {
             throw failureWithScreenshot(
-                "Failed to perform \(actionName) on \(ref).",
+                "Failed to perform \(resolvedActionName) on \(ref).",
                 statePath: options.statePath,
                 target: target,
                 candidate: resolved.candidate,
@@ -3833,9 +4323,9 @@ func run() throws {
             actionSuccessPayload(
                 action: "secondary-action",
                 ref: ref,
-                message: "Performed \(actionName) on \(ref).",
+                message: "Performed \(resolvedActionName) on \(ref).",
                 matchedRef: ref,
-                usedAction: actionName,
+                usedAction: resolvedActionName,
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot
             )
@@ -3856,9 +4346,10 @@ func run() throws {
                 NSLocalizedDescriptionKey: "scroll direction must be up, down, left, or right."
             ])
         }
-        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, ref: ref)
+        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
         let scrollResult = withActionOverlay(
             enabled: overlayEnabled(options),
+            statePath: options.statePath,
             frame: resolved.candidate.frame
         ) {
             performScroll(
@@ -4030,7 +4521,7 @@ func run() throws {
 
         let (snapshot, target, _, sourceResolved) = try actionCandidate(
             statePath: options.statePath,
-            ref: sourceRef
+            targetId: sourceRef
         )
         guard let sourceFrame = sourceResolved.candidate.frame else {
             throw failureWithScreenshot(
@@ -4057,7 +4548,7 @@ func run() throws {
             let destRef = positional[1]
             let (_, _, _, destResolved) = try actionCandidate(
                 statePath: options.statePath,
-                ref: destRef
+                targetId: destRef
             )
             guard let destFrame = destResolved.candidate.frame else {
                 throw failureWithScreenshot(
@@ -4074,7 +4565,7 @@ func run() throws {
         } else if let toRef = parseNamedOption(commandArgs, key: "--to-ref") {
             let (_, _, _, destResolved) = try actionCandidate(
                 statePath: options.statePath,
-                ref: toRef
+                targetId: toRef
             )
             guard let destFrame = destResolved.candidate.frame else {
                 throw failureWithScreenshot(
